@@ -538,14 +538,226 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
 
   try {
     const repoInfo = await githubJson(`/repos/${config.owner}/${config.repo}`);
-    const pulls = await githubJson(
-      `/repos/${config.owner}/${config.repo}/pulls?state=open&per_page=100&sort=updated&direction=desc`,
+    const now = Date.now();
+    const terminalStatuses = new Set(["producao_validada", "cancelada"]);
+    const tracked = await pool.query(
+      `SELECT id,title,status,test_status AS "testStatus",pr_number AS "prNumber",
+              pr_url AS "prUrl",branch,due_at AS "dueAt",updated_at AS "updatedAt"
+         FROM admin_improvements
+        WHERE pr_number IS NOT NULL
+        ORDER BY updated_at DESC`,
     );
-    const list = Array.isArray(pulls) ? pulls : [];
 
     let created = 0;
     let updated = 0;
     let skipped = 0;
+    let inconsistent = 0;
+    let merged = 0;
+    let closedWithoutMerge = 0;
+    let conflicted = 0;
+    let overdue = 0;
+
+    const trackedPrNumbers = new Set<number>();
+
+    for (const item of tracked.rows) {
+      const prNumber = Number(item.prNumber ?? 0);
+      if (!prNumber) {
+        skipped += 1;
+        continue;
+      }
+      trackedPrNumbers.add(prNumber);
+
+      try {
+        const pr = await githubJson(`/repos/${config.owner}/${config.repo}/pulls/${prNumber}`);
+        const headSha = String(pr?.head?.sha ?? "");
+        const headBranch = String(pr?.head?.ref ?? item.branch ?? "");
+        const baseBranch = String(pr?.base?.ref ?? "");
+        const prUrl = pr?.html_url ? String(pr.html_url) : item.prUrl;
+        const prState = String(pr?.state ?? "unknown");
+        const isMerged = Boolean(pr?.merged || pr?.merged_at);
+        const isClosedWithoutMerge = prState === "closed" && !isMerged;
+        const hasConflict = prState === "open" && pr?.mergeable === false;
+        const isOverdue = Boolean(
+          item.dueAt &&
+          new Date(item.dueAt).getTime() < now &&
+          !terminalStatuses.has(String(item.status)),
+        );
+
+        const check = headSha
+          ? await githubCheckSummary(config.owner, config.repo, headSha)
+          : { testStatus: "pending" as const, summary: JSON.stringify({ warning: "PR sem head SHA" }) };
+
+        let nextStatus = String(item.status ?? "solicitada");
+        let nextTestStatus: "pending" | "running" | "passed" | "failed" = check.testStatus;
+        let nextAgentStatus = "desenvolvendo";
+        let reason = "";
+
+        if (terminalStatuses.has(nextStatus)) {
+          nextAgentStatus = "concluido";
+        } else if (isClosedWithoutMerge) {
+          nextStatus = "bloqueada";
+          nextTestStatus = "failed";
+          nextAgentStatus = "needs_attention";
+          reason = "PR fechado sem merge";
+          closedWithoutMerge += 1;
+          inconsistent += 1;
+        } else if (hasConflict) {
+          nextStatus = "bloqueada";
+          nextTestStatus = "failed";
+          nextAgentStatus = "needs_attention";
+          reason = "PR possui conflito de merge";
+          conflicted += 1;
+          inconsistent += 1;
+        } else if (isMerged) {
+          nextTestStatus = check.testStatus === "failed" ? "failed" : "passed";
+          nextAgentStatus = nextTestStatus === "failed" ? "needs_attention" : "ready";
+          if (nextTestStatus === "failed") {
+            nextStatus = "bloqueada";
+            reason = "PR foi mergeado, mas há check falhando";
+            inconsistent += 1;
+          } else if (baseBranch === "staging") {
+            if (!["homologado", "aguardando_producao"].includes(nextStatus)) {
+              nextStatus = "em_homologacao";
+            }
+            reason = "PR mergeado em staging";
+          } else if (baseBranch === "main") {
+            nextStatus = "mergeado_main";
+            reason = "PR mergeado em main; aguardando confirmação do deploy/validação";
+          } else {
+            nextStatus = "pronto_staging";
+            reason = `PR mergeado em ${baseBranch || "base desconhecida"}`;
+          }
+          merged += 1;
+        } else if (check.testStatus === "failed") {
+          nextStatus = "bloqueada";
+          nextAgentStatus = "needs_attention";
+          reason = "Checks do PR falharam";
+          inconsistent += 1;
+        } else if (check.testStatus === "running") {
+          nextStatus = "testando";
+          nextAgentStatus = "validando";
+          reason = "Checks do PR em andamento";
+        } else if (check.testStatus === "passed") {
+          nextStatus = "pronto_staging";
+          nextAgentStatus = "pronto_para_revisao";
+          reason = "Checks do PR aprovados";
+        } else if (isOverdue) {
+          nextStatus = "bloqueada";
+          nextAgentStatus = "needs_attention";
+          reason = "Prazo da melhoria venceu sem conclusão";
+          overdue += 1;
+          inconsistent += 1;
+        } else {
+          nextAgentStatus = "aguardando_checks";
+          reason = "Aguardando evidências dos checks";
+        }
+
+        const summary = JSON.stringify({
+          source: "github-reconcile",
+          repository: config.repository,
+          prNumber,
+          prState,
+          merged: isMerged,
+          mergeable: pr?.mergeable ?? null,
+          baseBranch,
+          headBranch,
+          headSha,
+          overdue: isOverdue,
+          reason,
+          checks: (() => {
+            try { return JSON.parse(check.summary); } catch { return check.summary; }
+          })(),
+          reconciledAt: new Date().toISOString(),
+        }).slice(0, 8000);
+
+        const changed =
+          nextStatus !== String(item.status) ||
+          nextTestStatus !== String(item.testStatus) ||
+          headBranch !== String(item.branch ?? "") ||
+          String(prUrl ?? "") !== String(item.prUrl ?? "");
+
+        await pool.query(
+          `UPDATE admin_improvements
+              SET branch=$2,
+                  pr_url=$3,
+                  test_status=$4,
+                  test_summary=$5,
+                  status=$6,
+                  agent_status=$7,
+                  agent_summary=$8,
+                  updated_at=CASE WHEN $9 THEN now() ELSE updated_at END
+            WHERE id=$1`,
+          [
+            String(item.id),
+            headBranch || null,
+            prUrl ?? null,
+            nextTestStatus,
+            summary,
+            nextStatus,
+            nextAgentStatus,
+            reason,
+            changed,
+          ],
+        );
+
+        if (changed) {
+          await pool.query(
+            `INSERT INTO admin_improvement_events
+               (id,improvement_id,event_type,message,payload,actor)
+             VALUES ($1,$2,'github_state_changed',$3,$4::jsonb,$5)`,
+            [
+              randomUUID(),
+              String(item.id),
+              `GitHub reconciliado: ${reason || "estado atualizado"}.`,
+              JSON.stringify({
+                prNumber,
+                from: { status: item.status, testStatus: item.testStatus },
+                to: { status: nextStatus, testStatus: nextTestStatus },
+                prState,
+                merged: isMerged,
+                mergeable: pr?.mergeable ?? null,
+                baseBranch,
+                overdue: isOverdue,
+              }),
+              actor(req),
+            ],
+          );
+          updated += 1;
+        }
+      } catch (error) {
+        inconsistent += 1;
+        await pool.query(
+          `UPDATE admin_improvements
+              SET status=CASE WHEN status='producao_validada' THEN status ELSE 'bloqueada' END,
+                  agent_status='needs_attention',
+                  agent_summary=$2,
+                  updated_at=now()
+            WHERE id=$1`,
+          [
+            String(item.id),
+            ("Falha ao reconciliar PR #" + prNumber + ": " +
+              (error instanceof Error ? error.message : "erro desconhecido")).slice(0, 12000),
+          ],
+        );
+        await pool.query(
+          `INSERT INTO admin_improvement_events
+             (id,improvement_id,event_type,message,payload,actor)
+           VALUES ($1,$2,'github_reconcile_failed',$3,$4::jsonb,$5)`,
+          [
+            randomUUID(),
+            String(item.id),
+            `Não foi possível reconciliar o PR #${prNumber}.`,
+            JSON.stringify({ prNumber, error: error instanceof Error ? error.message : "erro desconhecido" }),
+            actor(req),
+          ],
+        );
+      }
+    }
+
+    const pulls = await githubJson(
+      `/repos/${config.owner}/${config.repo}/pulls?state=open&per_page=100&sort=updated&direction=desc`,
+    );
+    const list = Array.isArray(pulls) ? pulls : [];
 
     for (const pr of list) {
       const prNumber = Number(pr?.number ?? 0);
@@ -557,60 +769,21 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
       const sameRepository =
         !pr?.head?.repo?.full_name || String(pr.head.repo.full_name) === config.repository;
 
-      if (!prNumber || !headSha || !sameRepository) {
-        skipped += 1;
+      if (!prNumber || !headSha || !sameRepository || trackedPrNumbers.has(prNumber)) {
+        if (!prNumber || !headSha || !sameRepository) skipped += 1;
         continue;
       }
 
       const check = await githubCheckSummary(config.owner, config.repo, headSha);
-      const existing = await pool.query(
-        "SELECT id,status FROM admin_improvements WHERE pr_number=$1 LIMIT 1",
-        [prNumber],
-      );
-
-      if (existing.rowCount) {
-        await pool.query(
-          `UPDATE admin_improvements
-             SET title=$2,
-                 branch=$3,
-                 pr_url=$4,
-                 test_status=$5,
-                 test_summary=$6,
-                 status=CASE
-                   WHEN status IN ('homologado','aguardando_producao','producao_validada') THEN status
-                   WHEN $5='failed' THEN 'bloqueada'
-                   WHEN $5='running' THEN 'testando'
-                   WHEN status='bloqueada' AND $5<>'failed' THEN 'em_desenvolvimento'
-                   ELSE status
-                 END,
-                 agent_status=CASE
-                   WHEN $5='failed' THEN 'bloqueado'
-                   WHEN $5='running' THEN 'validando'
-                   WHEN $5='passed' THEN 'pronto_para_revisao'
-                   ELSE 'desenvolvendo'
-                 END,
-                 updated_at=now()
-           WHERE id=$1`,
-          [
-            String(existing.rows[0].id),
-            title,
-            headBranch || null,
-            prUrl,
-            check.testStatus,
-            check.summary,
-          ],
-        );
-        updated += 1;
-        continue;
-      }
-
       const id = randomUUID();
       const status =
-        check.testStatus === "failed"
+        pr?.mergeable === false || check.testStatus === "failed"
           ? "bloqueada"
           : check.testStatus === "running"
             ? "testando"
-            : "em_desenvolvimento";
+            : check.testStatus === "passed"
+              ? "pronto_staging"
+              : "em_desenvolvimento";
 
       await pool.query(
         `INSERT INTO admin_improvements (
@@ -634,8 +807,8 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
           check.summary,
           actor(req),
           `github-pr:${prNumber}`,
-          check.testStatus === "failed"
-            ? "bloqueado"
+          status === "bloqueada"
+            ? "needs_attention"
             : check.testStatus === "running"
               ? "validando"
               : check.testStatus === "passed"
@@ -667,10 +840,17 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
     return res.json({
       ok: true,
       repository: repoInfo?.full_name ?? config.repository,
-      scanned: list.length,
+      scanned: tracked.rows.length + list.length,
+      tracked: tracked.rows.length,
+      openDiscovered: list.length,
       created,
       updated,
       skipped,
+      inconsistent,
+      merged,
+      closedWithoutMerge,
+      conflicted,
+      overdue,
       reconciledAt: new Date().toISOString(),
     });
   } catch (error) {
