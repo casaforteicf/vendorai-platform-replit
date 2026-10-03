@@ -31,7 +31,7 @@ const DEFAULT_CNAES = [
   "4771-7/01", // Farmácias
 ];
 
-export async function runRecemAbertas(log: Logger = rootLogger, onlyTenantId?: string): Promise<{ created: number; tenants: number }> {
+export async function runRecemAbertas(log: Logger = rootLogger, onlyTenantId?: string, dryRun = false): Promise<{ created: number; tenants: number; dryRun: boolean }> {
   log.info("recem-abertas: starting weekly new-companies scan");
 
   const tenants = await db
@@ -107,6 +107,11 @@ export async function runRecemAbertas(log: Logger = rootLogger, onlyTenantId?: s
             .limit(1);
 
           if (existing) continue;
+
+          if (dryRun) {
+            totalCreated++;
+            continue;
+          }
 
           // Calculate how many days since opening
           const abertura = empresa.dataAbertura ? new Date(empresa.dataAbertura) : null;
@@ -184,6 +189,6 @@ export async function runRecemAbertas(log: Logger = rootLogger, onlyTenantId?: s
     }
   }
 
-  log.info({ totalCreated, tenants: tenants.length, onlyTenantId: onlyTenantId ?? null }, "recem-abertas: done");
-  return { created: totalCreated, tenants: tenants.length };
+  log.info({ totalCreated, tenants: tenants.length, onlyTenantId: onlyTenantId ?? null, dryRun }, "recem-abertas: done");
+  return { created: totalCreated, tenants: tenants.length, dryRun };
 }
