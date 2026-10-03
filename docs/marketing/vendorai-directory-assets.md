@@ -24,8 +24,8 @@ Fonte de verdade de posicionamento: `docs/marketing/vendorai-directory-profile.m
 - URL pública: `https://appvendorai.com/logo-full-light.svg`
 
 ### Ícone quadrado
-- Arquivo: `artifacts/website/public/apple-touch-icon.png`
-- URL pública: `https://appvendorai.com/apple-touch-icon.png`
+- Arquivo: `artifacts/website/public/logo-icon.svg`
+- URL pública: `https://appvendorai.com/logo-icon.svg`
 
 Uso recomendado:
 - G2/Capterra: logo principal em fundo claro.
