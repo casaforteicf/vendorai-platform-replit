@@ -1113,20 +1113,26 @@ async function executeScheduledRelease(release: any) {
 
 let workerStarted = false;
 let workerRunning = false;
-let lastGithubReconcileAt = 0;
+let githubReconcileRunning = false;
+
+async function runGithubReconcileWorker() {
+  if (githubReconcileRunning) return;
+  githubReconcileRunning = true;
+  try {
+    await ensureSchema();
+    await reconcileGithubImprovements("vendi:worker");
+  } catch (error) {
+    console.error("[github-reconcile-worker] cycle failed:", error instanceof Error ? error.message : error);
+  } finally {
+    githubReconcileRunning = false;
+  }
+}
 
 async function runReleaseWorker() {
   if (workerRunning) return;
   workerRunning = true;
   try {
     await ensureSchema();
-
-    if (Date.now() - lastGithubReconcileAt >= 60000) {
-      lastGithubReconcileAt = Date.now();
-      await reconcileGithubImprovements("vendi:worker").catch((error) => {
-        console.error("[release-worker] github reconcile failed:", error instanceof Error ? error.message : error);
-      });
-    }
 
     if (fullAutonomyEnabled()) {
       await repairAutonomousBlockedImprovement().catch((error) => {
@@ -1205,9 +1211,16 @@ async function runReleaseWorker() {
 function startReleaseWorker() {
   if (workerStarted) return;
   workerStarted = true;
-  const timer = setInterval(() => { void runReleaseWorker(); }, 30000);
-  timer.unref();
+
+  const releaseTimer = setInterval(() => { void runReleaseWorker(); }, 30000);
+  releaseTimer.unref();
+
+  const reconcileTimer = setInterval(() => { void runGithubReconcileWorker(); }, 300000);
+  reconcileTimer.unref();
+
   void runReleaseWorker();
+  const initialReconcile = setTimeout(() => { void runGithubReconcileWorker(); }, 10000);
+  initialReconcile.unref();
 }
 
 startReleaseWorker();
