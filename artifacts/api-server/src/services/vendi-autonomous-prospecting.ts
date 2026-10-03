@@ -182,12 +182,16 @@ export async function runAutonomousProspectingCycle(input: {
   try {
     const scout = await getLaunchRevenueScout(input.tenantId, { period: "30d" } as any);
     const raw = scout as any;
-    const candidates =
-      (Array.isArray(raw?.opportunities) && raw.opportunities) ||
-      (Array.isArray(raw?.oportunidades) && raw.oportunidades) ||
-      (Array.isArray(raw?.items) && raw.items) ||
-      [];
-    totals.revenueOpportunities = candidates.length;
+    totals.revenueOpportunities =
+      Number.isFinite(Number(raw?.opportunities))
+        ? Number(raw.opportunities)
+        : Array.isArray(raw?.topOpportunities)
+          ? raw.topOpportunities.length
+          : Array.isArray(raw?.oportunidades)
+            ? raw.oportunidades.length
+            : Array.isArray(raw?.items)
+              ? raw.items.length
+              : 0;
   } catch (error: any) {
     totals.sourceErrors.push({ source: "revenue_scout", message: error?.message ?? "falha" });
   }
