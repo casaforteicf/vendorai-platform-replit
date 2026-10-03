@@ -16,7 +16,9 @@ const STATUSES = [
   "em_homologacao",
   "homologado",
   "aguardando_producao",
+  "mergeado_main",
   "producao_validada",
+  "cancelada",
   "bloqueada",
 ] as const;
 
@@ -124,107 +126,21 @@ let schemaReady: Promise<void> | null = null;
 
 function ensureSchema() {
   if (schemaReady) return schemaReady;
-  schemaReady = pool.query(`
-    CREATE TABLE IF NOT EXISTS admin_improvements (
-      id uuid PRIMARY KEY,
-      title text NOT NULL,
-      description text NOT NULL DEFAULT '',
-      module text NOT NULL DEFAULT 'Plataforma',
-      priority text NOT NULL DEFAULT 'media',
-      status text NOT NULL DEFAULT 'solicitada',
-      branch text,
-      pr_number integer,
-      pr_url text,
-      homolog_url text,
-      production_url text,
-      package_key text,
-      test_status text NOT NULL DEFAULT 'pending',
-      test_summary text,
-      created_by text,
-      approved_homolog_by text,
-      approved_homolog_at timestamptz,
-      approved_production_by text,
-      approved_production_at timestamptz,
-      merged_staging_sha text,
-      source_type text NOT NULL DEFAULT 'super_admin',
-      source_ref_id text,
-      source_tenant_id text,
-      change_scope text,
-      scope_reason text,
-      tenant_context_snapshot jsonb,
-      owner_agent text NOT NULL DEFAULT 'vendi',
-      agent_status text NOT NULL DEFAULT 'idle',
-      agent_summary text,
-      requested_at timestamptz NOT NULL DEFAULT now(),
-      due_at timestamptz NOT NULL DEFAULT (now() + interval '24 hours'),
-      acceptance_criteria text NOT NULL DEFAULT '',
-      risk_summary text NOT NULL DEFAULT '',
-      dependencies text NOT NULL DEFAULT '',
-      attachments jsonb NOT NULL DEFAULT '[]'::jsonb,
-      created_at timestamptz NOT NULL DEFAULT now(),
-      updated_at timestamptz NOT NULL DEFAULT now()
-    );
-    CREATE INDEX IF NOT EXISTS admin_improvements_status_idx ON admin_improvements(status);
-    CREATE INDEX IF NOT EXISTS admin_improvements_package_idx ON admin_improvements(package_key);
-    CREATE INDEX IF NOT EXISTS admin_improvements_pr_idx ON admin_improvements(pr_number);
-    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS source_type text NOT NULL DEFAULT 'super_admin';
-    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS source_ref_id text;
-    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS source_tenant_id text;
-    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS change_scope text;
-    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS scope_reason text;
-    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS tenant_context_snapshot jsonb;
-    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS owner_agent text NOT NULL DEFAULT 'vendi';
-    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS agent_status text NOT NULL DEFAULT 'idle';
-    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS agent_summary text;
-    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS requested_at timestamptz NOT NULL DEFAULT now();
-    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS due_at timestamptz NOT NULL DEFAULT (now() + interval '24 hours');
-    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS acceptance_criteria text NOT NULL DEFAULT '';
-    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS risk_summary text NOT NULL DEFAULT '';
-    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS dependencies text NOT NULL DEFAULT '';
-    ALTER TABLE admin_improvements ADD COLUMN IF NOT EXISTS attachments jsonb NOT NULL DEFAULT '[]'::jsonb;
-
-    CREATE TABLE IF NOT EXISTS admin_improvement_events (
-      id uuid PRIMARY KEY,
-      improvement_id uuid NOT NULL REFERENCES admin_improvements(id) ON DELETE CASCADE,
-      event_type text NOT NULL,
-      message text NOT NULL DEFAULT '',
-      payload jsonb,
-      actor text,
-      created_at timestamptz NOT NULL DEFAULT now()
-    );
-    CREATE INDEX IF NOT EXISTS admin_improvement_events_improvement_idx
-      ON admin_improvement_events(improvement_id, created_at DESC);
-
-    CREATE TABLE IF NOT EXISTS admin_releases (
-      id uuid PRIMARY KEY,
-      version text NOT NULL UNIQUE,
-      name text NOT NULL,
-      summary text NOT NULL DEFAULT '',
-      status text NOT NULL DEFAULT 'draft',
-      improvement_ids uuid[] NOT NULL DEFAULT '{}',
-      test_url text,
-      test_status text NOT NULL DEFAULT 'pending',
-      test_summary text,
-      impact jsonb,
-      base_sha text,
-      head_sha text,
-      approval_fingerprint text,
-      approved_by text,
-      approved_at timestamptz,
-      scheduled_at timestamptz,
-      started_at timestamptz,
-      published_at timestamptz,
-      duration_ms integer,
-      release_pr_number integer,
-      release_pr_url text,
-      rollback_version text,
-      last_error text,
-      created_by text,
-      created_at timestamptz NOT NULL DEFAULT now(),
-      updated_at timestamptz NOT NULL DEFAULT now()
-    );
-    CREATE INDEX IF NOT EXISTS admin_releases_status_idx ON admin_releases(status, scheduled_at);
-  `).then(() => undefined);
+  schemaReady = pool.query(
+    "SELECT " +
+      "to_regclass('public.admin_improvements') AS admin_improvements," +
+      "to_regclass('public.admin_releases') AS admin_releases," +
+      "to_regclass('public.admin_improvement_events') AS admin_improvement_events," +
+      "to_regclass('public.admin_improvement_pr_registry') AS admin_improvement_pr_registry"
+  ).then((result) => {
+    const row = result.rows[0] ?? {};
+    if (!row.admin_improvements || !row.admin_releases || !row.admin_improvement_events || !row.admin_improvement_pr_registry) {
+      throw new Error("ADMIN_IMPROVEMENTS_SCHEMA_NOT_READY");
+    }
+  }).catch((error) => {
+    schemaReady = null;
+    throw error;
+  });
   return schemaReady;
 }
 
@@ -546,17 +462,14 @@ async function githubCheckSummary(owner: string, repo: string, sha: string) {
   }
 }
 
-router.post("/admin/improvements/github-reconcile", async (req, res) => {
+export async function reconcileGithubImprovements(actorName = "vendi:reconcile") {
   await ensureSchema();
 
   let config: GithubConfig;
   try {
     config = githubConfig();
   } catch (error) {
-    return res.status(503).json({
-      error: "GitHub não está configurado no backend deste ambiente.",
-      code: error instanceof Error ? error.message : "GITHUB_CONFIG_ERROR",
-    });
+    throw new Error(error instanceof Error ? error.message : "GITHUB_CONFIG_ERROR");
   }
 
   try {
@@ -782,7 +695,7 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
                 baseBranch,
                 overdue: isOverdue,
               }),
-              actor(req),
+              actorName,
             ],
           );
           updated += 1;
@@ -816,16 +729,21 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
             String(item.id),
             `Não foi possível reconciliar o PR #${prNumber}.`,
             JSON.stringify({ prNumber, error: error instanceof Error ? error.message : "erro desconhecido" }),
-            actor(req),
+            actorName,
           ],
         );
       }
     }
 
-    const pulls = await githubJson(
-      `/repos/${config.owner}/${config.repo}/pulls?state=open&per_page=100&sort=updated&direction=desc`,
-    );
-    const list = Array.isArray(pulls) ? pulls : [];
+    const list: any[] = [];
+    for (let page = 1; page <= 10; page += 1) {
+      const pulls = await githubJson(
+        `/repos/${config.owner}/${config.repo}/pulls?state=open&per_page=100&page=${page}&sort=updated&direction=desc`,
+      );
+      const batch = Array.isArray(pulls) ? pulls : [];
+      list.push(...batch);
+      if (batch.length < 100) break;
+    }
 
     for (const pr of list) {
       const prNumber = Number(pr?.number ?? 0);
@@ -842,18 +760,18 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
         continue;
       }
 
-      const existingByPr = await pool.query(
-        "SELECT id FROM admin_improvements WHERE pr_number=$1 OR source_ref_id=$2 ORDER BY updated_at DESC LIMIT 1",
-        [prNumber, `github-pr:${prNumber}`],
+      const id = randomUUID();
+      const claim = await pool.query(
+        "INSERT INTO admin_improvement_pr_registry (pr_number,improvement_id,created_at,updated_at) VALUES ($1,$2,now(),now()) ON CONFLICT (pr_number) DO NOTHING RETURNING pr_number",
+        [prNumber, id],
       );
-      if (existingByPr.rowCount) {
+      if (!claim.rowCount) {
         trackedPrNumbers.add(prNumber);
         skipped += 1;
         continue;
       }
 
       const check = await githubCheckSummary(config.owner, config.repo, headSha);
-      const id = randomUUID();
       const status =
         pr?.mergeable === false || check.testStatus === "failed"
           ? "bloqueada"
@@ -885,7 +803,7 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
           prUrl,
           check.testStatus,
           check.summary,
-          actor(req),
+          actorName,
           `github-pr:${prNumber}`,
           status === "bloqueada"
             ? "needs_attention"
@@ -913,13 +831,13 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
             headBranch,
             headSha,
           }),
-          actor(req),
+          actorName,
         ],
       );
       created += 1;
     }
 
-    return res.json({
+    return {
       ok: true,
       repository: repoInfo?.full_name ?? config.repository,
       scanned: tracked.rows.length + list.length,
@@ -934,12 +852,20 @@ router.post("/admin/improvements/github-reconcile", async (req, res) => {
       conflicted,
       overdue,
       reconciledAt: new Date().toISOString(),
-    });
+    };
   } catch (error) {
-    return res.status(502).json({
-      error: error instanceof Error ? error.message : "Falha ao reconciliar GitHub.",
-      code: "GITHUB_RECONCILE_FAILED",
-    });
+    throw error instanceof Error ? error : new Error("Falha ao reconciliar GitHub.");
+  }
+}
+
+router.post("/admin/improvements/github-reconcile", async (req, res) => {
+  try {
+    const result = await reconcileGithubImprovements(actor(req));
+    return res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha ao reconciliar GitHub.";
+    const status = message.includes("GITHUB_") ? 503 : 502;
+    return res.status(status).json({ error: message, code: "GITHUB_RECONCILE_FAILED" });
   }
 });
 
