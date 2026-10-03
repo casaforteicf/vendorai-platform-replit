@@ -63,10 +63,8 @@ function normalizedDomain(value: string | null | undefined): string | null {
 function normalizeIdentityText(value: string | null | undefined): string | null {
   if (!value) return null;
   const normalized = value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
     .toLocaleLowerCase("pt-BR")
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim()
     .replace(/\s+/g, " ");
   return normalized || null;
@@ -274,8 +272,8 @@ async function processQueueItem(params: {
   }
   if (normalizedName && normalizedAddress) {
     matchers.push(
-      sql`lower(regexp_replace(unaccent(coalesce(${leadsTable.empresa}, ${leadsTable.nome})), '[^a-zA-Z0-9]+', ' ', 'g')) = ${normalizedName}
-        AND lower(regexp_replace(unaccent(coalesce(${leadsTable.endereco}, '')), '[^a-zA-Z0-9]+', ' ', 'g')) = ${normalizedAddress}` as ReturnType<typeof eq>,
+      sql`lower(regexp_replace(coalesce(${leadsTable.empresa}, ${leadsTable.nome}), '[^[:alnum:]]+', ' ', 'g')) = ${normalizedName}
+        AND lower(regexp_replace(coalesce(${leadsTable.endereco}, ''), '[^[:alnum:]]+', ' ', 'g')) = ${normalizedAddress}` as ReturnType<typeof eq>,
     );
   }
 
