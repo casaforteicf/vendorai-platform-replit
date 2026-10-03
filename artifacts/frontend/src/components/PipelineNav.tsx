@@ -31,6 +31,21 @@ import "./pipeline-layout.css";
 
 export type PipelineTab = "comercial" | "execucao" | "suporte" | "aquecimento" | "parceiros" | "scout";
 
+type StageActivityTemplate = {
+  id: string;
+  titulo: string;
+  descricao?: string | null;
+  objetivo?: string | null;
+  resultadoEsperado?: string | null;
+  tipo?: "ligacao" | "whatsapp" | "email" | "visita" | "tarefa" | "reuniao";
+  categoria: "obrigatoria" | "sugerida" | "automatica";
+  prazoMinutos?: number | null;
+  responsavel?: "deal_owner" | "stage_agent" | "unassigned";
+  prioridade?: "baixa" | "normal" | "alta" | "urgente";
+  bloqueiaAvanco?: boolean;
+  condicao?: "sempre" | "sem_resposta_cliente" | "sem_atividade_aberta";
+};
+
 type PipelineStageSummary = {
   id: string;
   key?: string;
@@ -44,6 +59,7 @@ type PipelineStageSummary = {
   atividadePadraoTitulo?: string | null;
   atividadePadraoDescricao?: string | null;
   atividadePadraoPrazoMinutos?: number | null;
+  atividadesPadrao?: StageActivityTemplate[] | null;
 };
 
 const TABS: Array<{ key: PipelineTab; label: string; href: string }> = [
@@ -153,6 +169,7 @@ function PipelineStageManager({
   const [editActivityTitle, setEditActivityTitle] = useState("");
   const [editActivityDescription, setEditActivityDescription] = useState("");
   const [editActivityDueMinutes, setEditActivityDueMinutes] = useState("");
+  const [editActivities, setEditActivities] = useState<StageActivityTemplate[]>([]);
 
   const invalidate = async () => {
     await Promise.all([
@@ -199,6 +216,24 @@ function PipelineStageManager({
     setEditActivityTitle(stage.atividadePadraoTitulo ?? "");
     setEditActivityDescription(stage.atividadePadraoDescricao ?? "");
     setEditActivityDueMinutes(stage.atividadePadraoPrazoMinutos == null ? "" : String(stage.atividadePadraoPrazoMinutos));
+    setEditActivities(
+      stage.atividadesPadrao?.length
+        ? stage.atividadesPadrao
+        : stage.atividadePadraoTitulo
+          ? [{
+              id: "legacy-default",
+              titulo: stage.atividadePadraoTitulo,
+              descricao: stage.atividadePadraoDescricao ?? null,
+              categoria: "sugerida",
+              prazoMinutos: stage.atividadePadraoPrazoMinutos ?? 1440,
+              responsavel: "deal_owner",
+              prioridade: "normal",
+              bloqueiaAvanco: false,
+              condicao: "sempre",
+              tipo: "tarefa",
+            }]
+          : [],
+    );
   }
 
   async function saveEdit(stage: PipelineStageSummary) {
@@ -214,6 +249,9 @@ function PipelineStageManager({
           atividadePadraoTitulo: editActivityTitle.trim() || null,
           atividadePadraoDescricao: editActivityDescription.trim() || null,
           atividadePadraoPrazoMinutos: editActivityDueMinutes.trim() ? Number(editActivityDueMinutes) : null,
+          atividadesPadrao: editActivities
+            .filter((item) => item.titulo.trim())
+            .map((item) => ({ ...item, titulo: item.titulo.trim() })),
         }),
         responseType: "json",
       });
@@ -344,27 +382,105 @@ function PipelineStageManager({
                         placeholder="SLA em minutos"
                       />
                     </div>
-                    <div className="grid gap-2 rounded-md border bg-muted/20 p-3">
-                      <p className="text-xs font-medium">Atividade padrão ao entrar na etapa</p>
-                      <Input
-                        value={editActivityTitle}
-                        onChange={(event) => setEditActivityTitle(event.target.value)}
-                        placeholder="Ex.: Preparar solução e proposta"
-                      />
-                      <Input
-                        value={editActivityDescription}
-                        onChange={(event) => setEditActivityDescription(event.target.value)}
-                        placeholder="Orientações da atividade (opcional)"
-                      />
-                      <Input
-                        value={editActivityDueMinutes}
-                        onChange={(event) => setEditActivityDueMinutes(event.target.value.replace(/\D/g, ""))}
-                        inputMode="numeric"
-                        placeholder="Prazo da atividade em minutos (opcional)"
-                      />
-                      <p className="text-[11px] text-muted-foreground">
-                        Se o título ficar vazio, a Central usa o padrão do sistema e permite ajuste manual na passagem.
-                      </p>
+                    <div className="space-y-3 rounded-md border bg-muted/20 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-medium">Atividades padrão ao entrar na etapa</p>
+                          <p className="text-[11px] text-muted-foreground">Obrigatórias podem bloquear o avanço; automáticas ficam destinadas ao Agente IA da etapa.</p>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEditActivities((items) => [...items, {
+                            id: crypto.randomUUID(),
+                            titulo: "",
+                            categoria: "sugerida",
+                            prazoMinutos: 1440,
+                            responsavel: "deal_owner",
+                            prioridade: "normal",
+                            bloqueiaAvanco: false,
+                            condicao: "sempre",
+                            tipo: "tarefa",
+                          }])}
+                        >
+                          <Plus className="mr-1 h-3.5 w-3.5" /> Atividade
+                        </Button>
+                      </div>
+                      {editActivities.length === 0 && (
+                        <p className="rounded border border-dashed p-3 text-xs text-muted-foreground">
+                          Nenhuma atividade configurada. O sistema continuará usando o padrão legado da etapa quando existir.
+                        </p>
+                      )}
+                      {editActivities.map((item, activityIndex) => (
+                        <div key={item.id} className="space-y-2 rounded-md border bg-background p-3">
+                          <div className="flex gap-2">
+                            <Input
+                              value={item.titulo}
+                              onChange={(event) => setEditActivities((items) => items.map((row, index) => index === activityIndex ? { ...row, titulo: event.target.value } : row))}
+                              placeholder="Ex.: Confirmar recebimento da proposta"
+                            />
+                            <Button type="button" size="icon" variant="ghost" onClick={() => setEditActivities((items) => items.filter((_, index) => index !== activityIndex))}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <div className="grid gap-2 sm:grid-cols-3">
+                            <select
+                              className="h-10 rounded-md border bg-background px-3 text-sm"
+                              value={item.categoria}
+                              onChange={(event) => setEditActivities((items) => items.map((row, index) => index === activityIndex ? { ...row, categoria: event.target.value as StageActivityTemplate["categoria"], bloqueiaAvanco: event.target.value === "obrigatoria" ? true : row.bloqueiaAvanco } : row))}
+                            >
+                              <option value="sugerida">Sugerida</option>
+                              <option value="obrigatoria">Obrigatória</option>
+                              <option value="automatica">Automática / IA</option>
+                            </select>
+                            <select
+                              className="h-10 rounded-md border bg-background px-3 text-sm"
+                              value={item.responsavel ?? "deal_owner"}
+                              onChange={(event) => setEditActivities((items) => items.map((row, index) => index === activityIndex ? { ...row, responsavel: event.target.value as StageActivityTemplate["responsavel"] } : row))}
+                            >
+                              <option value="deal_owner">Responsável do negócio</option>
+                              <option value="stage_agent">Agente IA da etapa</option>
+                              <option value="unassigned">Sem responsável</option>
+                            </select>
+                            <Input
+                              value={item.prazoMinutos ?? ""}
+                              inputMode="numeric"
+                              onChange={(event) => setEditActivities((items) => items.map((row, index) => index === activityIndex ? { ...row, prazoMinutos: event.target.value ? Number(event.target.value.replace(/\D/g, "")) : null } : row))}
+                              placeholder="Prazo (min)"
+                            />
+                          </div>
+                          <Input
+                            value={item.objetivo ?? ""}
+                            onChange={(event) => setEditActivities((items) => items.map((row, index) => index === activityIndex ? { ...row, objetivo: event.target.value } : row))}
+                            placeholder="Objetivo da atividade"
+                          />
+                          <Input
+                            value={item.resultadoEsperado ?? ""}
+                            onChange={(event) => setEditActivities((items) => items.map((row, index) => index === activityIndex ? { ...row, resultadoEsperado: event.target.value } : row))}
+                            placeholder="Resultado esperado"
+                          />
+                          <div className="flex flex-wrap items-center gap-3 text-xs">
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(item.bloqueiaAvanco)}
+                                onChange={(event) => setEditActivities((items) => items.map((row, index) => index === activityIndex ? { ...row, bloqueiaAvanco: event.target.checked } : row))}
+                              />
+                              Bloquear avanço enquanto pendente
+                            </label>
+                            <select
+                              className="h-8 rounded-md border bg-background px-2"
+                              value={item.condicao ?? "sempre"}
+                              onChange={(event) => setEditActivities((items) => items.map((row, index) => index === activityIndex ? { ...row, condicao: event.target.value as StageActivityTemplate["condicao"] } : row))}
+                            >
+                              <option value="sempre">Sempre</option>
+                              <option value="sem_atividade_aberta">Se não houver atividade aberta</option>
+                              <option value="sem_resposta_cliente">Se cliente ainda não respondeu</option>
+                            </select>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                     <DialogFooter className="gap-2 sm:justify-end">
                       <Button type="button" variant="outline" onClick={() => setEditingId(null)}>
@@ -388,9 +504,11 @@ function PipelineStageManager({
                         {stage.slaMinutos ? `SLA: ${stage.slaMinutos} min` : "Sem SLA definido"}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {stage.atividadePadraoTitulo
-                          ? `Atividade padrão: ${stage.atividadePadraoTitulo}${stage.atividadePadraoPrazoMinutos ? ` · prazo ${stage.atividadePadraoPrazoMinutos} min` : ""}`
-                          : "Atividade padrão: usar sugestão do sistema / definir manualmente"}
+                        {stage.atividadesPadrao?.length
+                          ? `${stage.atividadesPadrao.length} atividade(s) padrão configurada(s)`
+                          : stage.atividadePadraoTitulo
+                            ? `Atividade padrão: ${stage.atividadePadraoTitulo}${stage.atividadePadraoPrazoMinutos ? ` · prazo ${stage.atividadePadraoPrazoMinutos} min` : ""}`
+                            : "Atividades padrão: usar sugestão do sistema / definir manualmente"}
                       </p>
                       <div className="mt-2">
                         <PipelineStageFunctionAccess
