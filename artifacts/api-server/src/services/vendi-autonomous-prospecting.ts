@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
   cnaeVerticalMapTable,
   db,
+  agentConfigsTable,
   prospectorConfigTable,
   prospectorQueueTable,
 } from "@workspace/db";
@@ -160,4 +161,48 @@ export async function runAutonomousProspectingCycle(input: {
 
   input.log.info({ tenantId: input.tenantId, ...totals }, "vendi/prospecting: autonomous discovery cycle complete");
   return totals;
+}
+
+
+export async function runAutonomousProspectingAllTenants(log: Logger) {
+  const tenants = await db
+    .selectDistinct({ tenantId: prospectorConfigTable.tenantId })
+    .from(prospectorConfigTable)
+    .innerJoin(agentConfigsTable, eq(agentConfigsTable.tenantId, prospectorConfigTable.tenantId))
+    .where(and(
+      eq(prospectorConfigTable.ativo, true),
+      sql`${agentConfigsTable.autonomyEnabledAt} IS NOT NULL`,
+    ));
+
+  const summary = {
+    tenants: tenants.length,
+    processed: 0,
+    queued: 0,
+    googleFound: 0,
+    cnpjFound: 0,
+    constructionSignals: 0,
+    revenueOpportunities: 0,
+    failed: 0,
+  };
+
+  for (const row of tenants) {
+    try {
+      const result = await runAutonomousProspectingCycle({
+        tenantId: row.tenantId,
+        log,
+      });
+      summary.processed++;
+      summary.queued += result.queued;
+      summary.googleFound += result.googleFound;
+      summary.cnpjFound += result.cnpjFound;
+      summary.constructionSignals += result.constructionSignals;
+      summary.revenueOpportunities += result.revenueOpportunities;
+    } catch (error) {
+      summary.failed++;
+      log.error({ err: error, tenantId: row.tenantId }, "vendi/prospecting: autonomous tenant cycle failed");
+    }
+  }
+
+  log.info(summary, "vendi/prospecting: autonomous all-tenants cycle complete");
+  return summary;
 }
