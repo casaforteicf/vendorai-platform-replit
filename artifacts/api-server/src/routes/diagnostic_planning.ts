@@ -189,6 +189,7 @@ diagnosticPlanningPublicRouter.put("/public/diagnostico-negocio/:token", async (
 });
 
 diagnosticPlanningProtectedRouter.post("/tenants/:tenantId/diagnostico-planejamento/public-link", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately checked against authenticated tenant/super-admin before tenant data access.
   const tenantId = String(req.params.tenantId);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Acesso negado" });
   const token = signPublicLink(tenantId);
@@ -200,6 +201,7 @@ diagnosticPlanningProtectedRouter.post("/tenants/:tenantId/diagnostico-planejame
 });
 
 diagnosticPlanningProtectedRouter.post("/tenants/:tenantId/diagnostico-planejamento/sales-history", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately checked against authenticated tenant/super-admin before tenant data access.
   const tenantId = String(req.params.tenantId);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Acesso negado" });
   const parsed = salesHistorySchema.safeParse(req.body);
@@ -224,6 +226,7 @@ function monthKey(value: Date) {
 }
 
 diagnosticPlanningProtectedRouter.post("/tenants/:tenantId/diagnostico-planejamento/action-plan", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately checked against authenticated tenant/super-admin before tenant data access.
   const tenantId = String(req.params.tenantId);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Acesso negado" });
   const parsed = actionPlanSchema.safeParse(req.body);
@@ -249,6 +252,7 @@ diagnosticPlanningProtectedRouter.post("/tenants/:tenantId/diagnostico-planejame
 });
 
 diagnosticPlanningProtectedRouter.get("/tenants/:tenantId/diagnostico-planejamento/action-plan", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately checked against authenticated tenant/super-admin before tenant data access.
   const tenantId = String(req.params.tenantId);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Acesso negado" });
   const current = await profileForTenant(tenantId);
@@ -256,6 +260,7 @@ diagnosticPlanningProtectedRouter.get("/tenants/:tenantId/diagnostico-planejamen
 });
 
 diagnosticPlanningProtectedRouter.get("/tenants/:tenantId/diagnostico-planejamento/growth-scenarios", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately checked against authenticated tenant/super-admin before tenant data access.
   const tenantId = String(req.params.tenantId);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Acesso negado" });
 
