@@ -1,6 +1,7 @@
 import { randomUUID, createHash } from "crypto";
 import type { Logger } from "pino";
 import { pool } from "@workspace/db";
+import { executeDevAutonomousWork } from "../routes/dev_agent_autonomy.js";
 
 type Severity = "baixa" | "media" | "alta" | "urgente";
 
@@ -23,6 +24,121 @@ let deepRunning = false;
 
 function fingerprint(key: string) {
   return createHash("sha256").update(key).digest("hex").slice(0, 32);
+}
+
+function isNightAuditWindow() {
+  const hour = Number(new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    hour12: false,
+  }).format(new Date()));
+  return hour >= 22 || hour < 6;
+}
+
+async function runEmergencyRemediation(improvementId: string, finding: AuditFinding, log: Logger) {
+  if (finding.priority !== "urgente") return;
+
+  const recent = await pool.query(
+    `SELECT 1 FROM admin_improvement_events
+      WHERE improvement_id=$1
+        AND event_type='emergency_remediation_started'
+        AND created_at > now() - interval '30 minutes'
+      LIMIT 1`,
+    [improvementId],
+  );
+  if (recent.rowCount) return;
+
+  await pool.query(
+    `UPDATE admin_improvements
+        SET status='em_desenvolvimento',
+            owner_agent='audit_24x7',
+            agent_status='emergency_running',
+            updated_at=now()
+      WHERE id=$1`,
+    [improvementId],
+  );
+
+  await pool.query(
+    `INSERT INTO admin_improvement_events
+      (id, improvement_id, event_type, message, actor, payload)
+     VALUES ($1,$2,'emergency_remediation_started',$3,'audit_24x7',$4::jsonb)`,
+    [
+      randomUUID(),
+      improvementId,
+      "Falha crítica detectada. Correção emergencial automática iniciada imediatamente.",
+      JSON.stringify({ auditKey: finding.key, priority: finding.priority }),
+    ],
+  ).catch(() => undefined);
+
+  try {
+    const result = await executeDevAutonomousWork({
+      requestId: improvementId,
+      request: [
+        "INCIDENTE CRÍTICO P0/P1 detectado pela auditoria contínua.",
+        "Objetivo: restaurar o funcionamento do VendorAI imediatamente.",
+        "Aplique a menor correção reversível possível, use fallback seguro quando houver,",
+        "valide a correção e não declare resolvido sem evidência real de runtime.",
+        "Se uma tentativa falhar, preserve o estado anterior/rollback e tente a alternativa segura permitida.",
+        "",
+        finding.title,
+        finding.description,
+        `Critério de aceite: ${finding.acceptanceCriteria}`,
+      ].join("\n"),
+      diagnosis: `${finding.riskSummary}\nOrigem: continuous-audit 24x7\nChave: ${finding.key}`,
+      route: "/audit/emergency",
+      source: "super_admin",
+    });
+
+    const status = String((result as any)?.status ?? ((result as any)?.success === false ? "failed" : "completed"));
+    const summary = String((result as any)?.summary ?? (result as any)?.error ?? "Execução emergencial concluída sem resumo.").slice(0, 12000);
+
+    await pool.query(
+      `UPDATE admin_improvements
+          SET agent_status=$2,
+              agent_summary=$3,
+              status=CASE
+                WHEN $2='approval_required' THEN 'bloqueada'
+                WHEN $2 IN ('failed','error') THEN 'em_desenvolvimento'
+                ELSE status
+              END,
+              updated_at=now()
+        WHERE id=$1`,
+      [improvementId, status, summary],
+    );
+
+    await pool.query(
+      `INSERT INTO admin_improvement_events
+        (id, improvement_id, event_type, message, actor, payload)
+       VALUES ($1,$2,'emergency_remediation_result',$3,'audit_24x7',$4::jsonb)`,
+      [
+        randomUUID(),
+        improvementId,
+        summary.slice(0, 6000),
+        JSON.stringify({ status, success: (result as any)?.success ?? null }),
+      ],
+    ).catch(() => undefined);
+
+    log.warn({ improvementId, status, key: finding.key }, "continuous-audit: correção emergencial executada");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await pool.query(
+      `UPDATE admin_improvements
+          SET agent_status='emergency_failed',
+              agent_summary=$2,
+              updated_at=now()
+        WHERE id=$1`,
+      [improvementId, message.slice(0, 12000)],
+    ).catch(() => undefined);
+
+    await pool.query(
+      `INSERT INTO admin_improvement_events
+        (id, improvement_id, event_type, message, actor, payload)
+       VALUES ($1,$2,'emergency_remediation_failed',$3,'audit_24x7',$4::jsonb)`,
+      [randomUUID(), improvementId, message.slice(0, 6000), JSON.stringify({ auditKey: finding.key })],
+    ).catch(() => undefined);
+
+    log.error({ err: error, improvementId, key: finding.key }, "continuous-audit: correção emergencial falhou");
+  }
 }
 
 async function ensureAuditTablesAvailable() {
@@ -66,6 +182,7 @@ async function upsertFinding(finding: AuditFinding, log: Logger) {
        VALUES ($1,$2,'audit_recheck',$3,'audit_24x7',$4::jsonb)`,
       [randomUUID(), row.id, "Agente de Auditoria 24/7 confirmou que o sinal continua presente.", JSON.stringify({ auditKey: finding.key, priority: finding.priority })],
     ).catch(() => undefined);
+    await runEmergencyRemediation(row.id, finding, log);
     return;
   }
 
@@ -86,6 +203,7 @@ async function upsertFinding(finding: AuditFinding, log: Logger) {
   ).catch(() => undefined);
 
   log.warn({ improvementId: id, title: finding.title }, "continuous-audit: nova ocorrência registrada");
+  await runEmergencyRemediation(id, finding, log);
 }
 
 async function auditDatabaseSchema(): Promise<AuditFinding[]> {
@@ -257,6 +375,10 @@ async function auditFrontendRoutes(): Promise<AuditFinding[]> {
 }
 
 async function runAudit(log: Logger, mode: "fast" | "deep") {
+  if (mode === "deep" && !isNightAuditWindow()) {
+    log.debug("continuous-audit: auditoria profunda adiada; janela pesada é 22h-06h BRT");
+    return;
+  }
   if ((mode === "fast" && fastRunning) || (mode === "deep" && deepRunning)) return;
   if (mode === "fast") fastRunning = true; else deepRunning = true;
 
@@ -280,7 +402,7 @@ export function startContinuousAuditAgent(log: Logger) {
   if (started) return;
   started = true;
 
-  log.info("continuous-audit: agente 24/7 iniciado (rápido 15min, profundo 6h, sem publicação automática em produção)");
+  log.info("continuous-audit: agente 24/7 iniciado (leve 24h, profunda somente 22h-06h BRT, P0/P1 com remediação emergencial imediata)");
   setTimeout(() => { void runAudit(log, "fast"); }, 45_000).unref();
   setTimeout(() => { void runAudit(log, "deep"); }, 2 * 60_000).unref();
   setInterval(() => { void runAudit(log, "fast"); }, FAST_INTERVAL_MS).unref();
