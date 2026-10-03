@@ -317,6 +317,12 @@ diagnosticPlanningProtectedRouter.get("/tenants/:tenantId/diagnostico-planejamen
     [tenantId],
   ).catch(() => ({ rows: [] as any[] }));
 
+  const recommendations: Array<{ priority: "alta" | "media" | "baixa"; title: string; action: string; reason: string }> = [];
+  if (confidence === "baixa") recommendations.push({ priority: "alta", title: "Melhorar base histórica", action: "Importar pelo menos 6 a 12 meses de vendas, leads e investimento em mídia.", reason: "A confiança da projeção ainda é baixa." });
+  if (conversion > 0 && conversion < 0.1) recommendations.push({ priority: "alta", title: "Melhorar conversão comercial", action: "Revisar qualificação, velocidade de resposta, proposta e follow-up antes de ampliar mídia.", reason: `Conversão observada de ${Math.round(conversion * 10000) / 100}%.` });
+  if (cpl > 0 && cac > 0) recommendations.push({ priority: "media", title: "Otimizar aquisição por resultado", action: "Priorizar canais e campanhas que sustentem CAC e ROAS melhores, não apenas CPL menor.", reason: `CPL observado R$ ${cpl.toFixed(2)} e CAC R$ ${cac.toFixed(2)}.` });
+  if (baseRevenue > 0) recommendations.push({ priority: "media", title: "Acompanhar cenário base", action: "Comparar semanalmente realizado x cenário e recalibrar investimento com o BI.", reason: "Há histórico suficiente para usar o cenário como referência operacional." });
+
   return res.json({
     generatedAt: new Date().toISOString(),
     source: imported.length > 0 ? "imported_sales_history" : "crm_won_deals",
@@ -334,6 +340,14 @@ diagnosticPlanningProtectedRouter.get("/tenants/:tenantId/diagnostico-planejamen
     series,
     scenarios,
     planVsExecution: (goals as any).rows ?? [],
+    valueGenerated: {
+      trackedRevenue: Math.round(revenueTotal * 100) / 100,
+      trackedOrders: ordersTotal,
+      trackedMarketingSpend: Math.round(spendTotal * 100) / 100,
+      trackedMonths: series.length,
+      source: imported.length > 0 ? "historico_importado" : "crm",
+    },
+    recommendations,
     assumptions: [
       imported.length > 0 ? "Histórico importado priorizado para receita, pedidos, leads e mídia." : "Receita calculada a partir de negócios ganhos no CRM.",
       conversion > 0 ? "Conversão derivada de dados observados." : "Sem conversão observada suficiente; leads necessários não são estimados.",
