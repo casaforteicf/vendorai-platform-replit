@@ -3,6 +3,7 @@ import {
   db,
   vendiMissionsTable,
   vendiMissionEventsTable,
+  notificationsTable,
 } from "@workspace/db";
 import { callOpenAI } from "../lib/ai-gateway.js";
 import {
@@ -215,6 +216,31 @@ export async function executeVendiMission(input: {
       await db.update(vendiMissionsTable)
         .set({ status: "paused_approval", updatedAt: new Date() })
         .where(eq(vendiMissionsTable.id, mission.id));
+
+      await db.insert(notificationsTable).values({
+        tenantId: input.tenantId,
+        title: "Vendi precisa da sua aprovação",
+        message: [
+          "A missão foi pausada antes de uma ação de alto risco.",
+          "Missão: " + mission.objective.slice(0, 240),
+          "Ação: " + tool.description,
+          step.reason ? "Motivo: " + step.reason : "",
+          "Abra Vendi · Operações para revisar e aprovar.",
+        ].filter(Boolean).join("\n"),
+        type: "warning",
+        category: "vendi_approval_required",
+      });
+
+      await appendEvent({
+        tenantId: input.tenantId,
+        missionId: mission.id,
+        sequence: sequence++,
+        type: "approval_notification",
+        toolId: tool.id,
+        status: "executed",
+        output: { stepIndex, channel: "in_app", category: "vendi_approval_required" },
+      });
+
       return {
         ok: false,
         status: "paused_approval" as const,
