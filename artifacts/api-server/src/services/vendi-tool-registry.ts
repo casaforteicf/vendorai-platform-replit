@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, lt } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, notInArray } from "drizzle-orm";
 import {
   db,
   dealsTable,
@@ -335,6 +335,8 @@ register({
           eq(leadsTable.tenantId, tenantId),
           isNull(leadsTable.assignedTo),
           isNull(leadsTable.naoLeadTipo),
+          isNull(leadsTable.excluidoEm),
+          notInArray(leadsTable.status, ["cliente", "perdido"]),
         ))
         .orderBy(desc(leadsTable.createdAt))
         .limit(limit),
