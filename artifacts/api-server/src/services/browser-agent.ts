@@ -128,6 +128,7 @@ export interface BrowserAgentInput {
   sessionCookies?: CookieData[];
   sessionProfile?: BrowserProfileState;
   firstPartyAuthToken?: string;
+  firstPartyAuthUserCache?: Record<string, unknown>;
   onSessionPersist?: (cookies: CookieData[]) => Promise<void>;
   onProfilePersist?: (profile: BrowserProfileState) => Promise<void>;
   onHumanVerification?: (browser: Browser, page: Page) => Promise<{ sessionId: string; controlUrl: string }>;
@@ -361,6 +362,29 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
     }
     await restoreBrowserProfileBeforeNavigation(page, input.sessionProfile);
 
+    if (input.firstPartyAuthToken) {
+      const start = new URL(input.startUrl);
+      const host = start.hostname.toLowerCase();
+      const configuredHosts = (process.env["VENDI_FIRST_PARTY_HOSTS"] ?? "")
+        .split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
+      const trustedFirstParty =
+        host === "app.appvendorai.com" ||
+        host === "homolog.appvendorai.com" ||
+        host.endsWith(".vendorai.pages.dev") ||
+        configuredHosts.includes(host);
+      if (!trustedFirstParty) throw new Error("VENDI_AUTH_ORIGIN_MISMATCH");
+
+      // Instala a identidade técnica antes do primeiro carregamento. Assim o app
+      // não chega a redirecionar a Vendi para /login por ausência momentânea de token.
+      await page.evaluateOnNewDocument((payload) => {
+        localStorage.setItem("vendorai_token", payload.token);
+        if (payload.userCache) {
+          localStorage.setItem("vendorai_user_cache", JSON.stringify(payload.userCache));
+        }
+        sessionStorage.removeItem("vendorai_demo_session");
+      }, { token: input.firstPartyAuthToken, userCache: input.firstPartyAuthUserCache ?? null });
+    }
+
     await withBrowserRetry(() => page.goto(validateBrowserUrl(input.startUrl, input.allowedHosts), {
       waitUntil: "domcontentloaded",
       timeout: 30000,
@@ -370,18 +394,20 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
     }
 
     if (input.firstPartyAuthToken) {
-      const current = new URL(page.url());
-      const host = current.hostname.toLowerCase();
-      const configuredHosts = (process.env["VENDI_FIRST_PARTY_HOSTS"] ?? "")
-        .split(",").map((value) => value.trim().toLowerCase()).filter(Boolean);
-      const trustedFirstParty =
-        host === "app.appvendorai.com" ||
-        host === "homolog.appvendorai.com" ||
-        host.endsWith(".vendorai.pages.dev") ||
-        configuredHosts.includes(host);
-      if (!trustedFirstParty) throw new Error("VENDI_AUTH_ORIGIN_MISMATCH");
-      await page.evaluate((token) => localStorage.setItem("vendorai_token", token), input.firstPartyAuthToken);
-      await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 });
+      // Garante compatibilidade com páginas já criadas/perfis restaurados.
+      await page.evaluate((payload) => {
+        localStorage.setItem("vendorai_token", payload.token);
+        if (payload.userCache) {
+          localStorage.setItem("vendorai_user_cache", JSON.stringify(payload.userCache));
+        }
+        sessionStorage.removeItem("vendorai_demo_session");
+      }, { token: input.firstPartyAuthToken, userCache: input.firstPartyAuthUserCache ?? null });
+      const target = validateBrowserUrl(input.startUrl, input.allowedHosts);
+      if (page.url() !== target) {
+        await page.goto(target, { waitUntil: "domcontentloaded", timeout: 30000 });
+      } else {
+        await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 });
+      }
       await page.waitForNetworkIdle({ idleTime: 400, timeout: 5000 }).catch(() => undefined);
     }
 
