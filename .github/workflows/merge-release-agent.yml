@@ -19,7 +19,7 @@ permissions:
   pull-requests: write
   actions: write
   checks: read
-  statuses: read
+  statuses: write
 
 concurrency:
   group: vendorai-production-release
