@@ -341,22 +341,6 @@ export default function AdminImprovements() {
     staleTime: 60000,
   });
 
-  useQuery({
-    queryKey: ["admin", "improvements", "github-auto-reconcile"],
-    enabled: !!token && github.data?.ready === true,
-    queryFn: async () => {
-      const response = await fetch("/api/admin/improvements/github-reconcile", { method: "POST", headers });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body?.error ?? "Falha ao sincronizar GitHub");
-      if ((body.created ?? 0) > 0 || (body.updated ?? 0) > 0) {
-        void qc.invalidateQueries({ queryKey: ["admin", "improvements"] });
-      }
-      return body;
-    },
-    refetchInterval: 15000,
-    refetchIntervalInBackground: true,
-    retry: false,
-  });
 
   const items = improvementsQuery.data?.items ?? [];
   const releases = releasesQuery.data?.items ?? [];
@@ -598,7 +582,7 @@ export default function AdminImprovements() {
               GitHub {github.data?.ready ? "conectado" : "não conectado"}
             </Badge>
             <Badge variant="outline">Produção protegida</Badge>
-            <Badge variant="secondary">Acompanhamento automático • 15s</Badge>
+            <Badge variant="secondary">Worker backend • automático</Badge>
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">Melhorias & Publicações</h1>
           <p className="mt-1 max-w-4xl text-sm text-muted-foreground">
