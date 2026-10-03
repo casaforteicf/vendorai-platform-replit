@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRoute } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -97,6 +97,6 @@ export default function PublicDiagnosticoNegocio() {
   );
 }
 
-function Field({ label, wide, children }: { label: string; wide?: boolean; children: React.ReactNode }) {
+function Field({ label, wide, children }: { label: string; wide?: boolean; children: ReactNode }) {
   return <label className={wide ? "space-y-1.5 sm:col-span-2" : "space-y-1.5"}><span className="text-sm font-medium">{label}</span>{children}</label>;
 }
