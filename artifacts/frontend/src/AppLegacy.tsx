@@ -565,14 +565,14 @@ function ConstrucaoRoute({ component: Component, ...rest }: any) {
 }
 
 function PublicRoute({ component: Component }: any) {
-  const { token, isLoading } = useAuth();
+  const { token, user, isLoading } = useAuth();
   const [, setLocation] = useLocation();
 
   useEffect(() => {
-    if (!isLoading && token) {
-      setLocation("/dashboard");
+    if (!isLoading && token && user) {
+      setLocation(user.platformRole === "partner" ? "/partner" : user.platformRole === "tenant_admin" ? "/diagnostico-planejamento" : "/dashboard");
     }
-  }, [token, isLoading, setLocation]);
+  }, [token, user, isLoading, setLocation]);
 
   if (isLoading) return <Spinner />;
 
