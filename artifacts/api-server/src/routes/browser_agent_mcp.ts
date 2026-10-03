@@ -48,9 +48,20 @@ const browserMcpConnectionSelection = {
   updatedAt: browserAgentConnectionsTable.updatedAt,
 };
 
-type BrowserMcpConnection = {
-  [K in keyof typeof browserMcpConnectionSelection]: typeof browserAgentConnectionsTable.$inferSelect[K];
-};
+type BrowserMcpConnection = Pick<
+  typeof browserAgentConnectionsTable.$inferSelect,
+  | "id"
+  | "tenantId"
+  | "name"
+  | "startUrl"
+  | "allowedHosts"
+  | "usernameEncrypted"
+  | "passwordEncrypted"
+  | "cookiesEncrypted"
+  | "lastUsedAt"
+  | "createdAt"
+  | "updatedAt"
+>;
 
 async function resolveTenantId(tenantKey: string): Promise<string | undefined> {
   const [tenant] = await db
@@ -107,7 +118,7 @@ router.post("/internal/browser-mcp/connections", async (req, res) => {
   }
 
   const rows = await db
-    .select()
+    .select(browserMcpConnectionSelection)
     .from(browserAgentConnectionsTable)
     .where(eq(browserAgentConnectionsTable.tenantId, tenantId));
 
@@ -210,7 +221,7 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
         allowWrite,
       },
     })
-    .returning();
+    .returning(browserMcpConnectionSelection);
 
   try {
     const sessionCookies = connection?.cookiesEncrypted
