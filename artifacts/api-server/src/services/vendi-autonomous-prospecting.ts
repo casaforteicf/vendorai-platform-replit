@@ -12,6 +12,7 @@ import { searchProspectorCompanies } from "./prospector-company-search.js";
 import { searchByCnae } from "./cnpjService.js";
 import { searchConstructionWorkSignals } from "./construction-radar-search.js";
 import { getLaunchRevenueScout } from "./launchRevenueScout.js";\nimport { runRecemAbertas } from "../jobs/recemAbertasJob.js";
+import { upsertProspectingSignal } from "./prospecting-signal-ingest.js";
 
 type DiscoverySource = "google_places";
 
@@ -133,6 +134,38 @@ export async function runAutonomousProspectingCycle(input: {
           maxResults: Math.min(maxPerConfig, 10),
         });
         totals.constructionSignals += radar.works.length;
+        for (const work of radar.works) {
+          await upsertProspectingSignal({
+            tenantId: input.tenantId,
+            source: "construction_radar",
+            externalKey: work.id,
+            category: "prospecting_construction",
+            title: work.obra,
+            detail: [
+              work.local,
+              work.fase ? "Fase: " + work.fase : "",
+              work.evidencia,
+            ].filter(Boolean).join(" · "),
+            confidence: work.confidence,
+            impact: work.opportunityScore,
+            href: work.sourceUrl,
+            evidence: {
+              sourceTitle: work.sourceTitle,
+              sourceFamily: work.sourceFamily,
+              sourceAuthority: work.sourceAuthority,
+              endereco: work.endereco ?? null,
+              proprietario: work.proprietario ?? null,
+              responsavelTecnico: work.responsavelTecnico ?? null,
+              construtora: work.construtora ?? null,
+              incorporadora: work.incorporadora ?? null,
+              fase: work.fase ?? null,
+              priority: work.priority,
+              priorityReason: work.priorityReason,
+              recommendedActor: work.recommendedActor,
+            },
+            recommendedAction: "Validar ator recomendado, enriquecer contato e iniciar diagnóstico consultivo somente com evidência suficiente.",
+          });
+        }
       } catch (error: any) {
         totals.sourceErrors.push({ source: "construction_radar", message: error?.message ?? "falha" });
       }
