@@ -5,6 +5,7 @@ import { z } from "zod/v4";
 import {
   businessProfilesTable,
   db,
+  pool,
   dealsTable,
   mediaPlansTable,
   tenantsTable,
@@ -307,13 +308,13 @@ diagnosticPlanningProtectedRouter.get("/tenants/:tenantId/diagnostico-planejamen
     };
   });
 
-  const goals = await db.execute<any>(
+  const goals = await pool.query(
     `SELECT metric_key, label, target_value, unit, starts_at, ends_at
        FROM business_goals
       WHERE tenant_id=$1 AND active=true AND ends_at >= now()
       ORDER BY ends_at ASC
       LIMIT 20`,
-    [tenantId] as any,
+    [tenantId],
   ).catch(() => ({ rows: [] as any[] }));
 
   return res.json({
