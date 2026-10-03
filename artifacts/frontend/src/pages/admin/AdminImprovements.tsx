@@ -216,6 +216,7 @@ function improvementSimpleStatus(item: Improvement) {
 function operationalProgress(item: Improvement) {
   if (item.status === "producao_validada") return 100;
   if (item.status === "mergeado_main") return 95;
+  if (item.agentStatus === "substituido_historico" || item.status === "cancelada") return 100;
   if (item.agentStatus === "pr_legado_encadeado") return 25;
   if (item.agentStatus === "aguardando_checks" && item.testStatus !== "failed") return 55;
   if (item.status === "bloqueada" || item.testStatus === "failed") return 55;
@@ -232,6 +233,7 @@ function operationalProgress(item: Improvement) {
 function nextOperationalAction(item: Improvement) {
   if (item.status === "producao_validada") return "Concluída e monitorada em produção";
   if (item.status === "mergeado_main") return "Confirmar deploy e validação em produção";
+  if (item.agentStatus === "substituido_historico" || item.status === "cancelada") return "Sem ação: item substituído e preservado no histórico";
   if (item.agentStatus === "pr_legado_encadeado") return "Reconciliar com a cadeia atual; não conta como erro ativo";
   if (item.agentStatus === "aguardando_checks" && item.testStatus !== "failed") return "Aguardar evidências dos checks do GitHub";
   if (item.status === "bloqueada" || item.testStatus === "failed") return "Vendi corrige a falha e repete os testes";
@@ -248,7 +250,7 @@ function nextOperationalAction(item: Improvement) {
 function statusVariant(status: string): "default" | "secondary" | "outline" | "destructive" {
   if (["Publicada", "Pronta para homologação", "published"].includes(status)) return "default";
   if (status === "Bloqueada / com erro" || status === "blocked") return "destructive";
-  if (["Em testes", "Aguardando checks", "PR legado / encadeado", "Em homologação", "Aguardando publicação", "Validando produção", "Em desenvolvimento", "scheduled", "monitoring", "publishing"].includes(status)) return "secondary";
+  if (["Em testes", "Aguardando checks", "PR legado / encadeado", "Substituído / histórico", "Em homologação", "Aguardando publicação", "Validando produção", "Em desenvolvimento", "scheduled", "monitoring", "publishing"].includes(status)) return "secondary";
   return "outline";
 }
 
