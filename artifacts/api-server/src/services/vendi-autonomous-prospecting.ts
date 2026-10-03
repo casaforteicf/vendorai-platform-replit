@@ -11,7 +11,8 @@ import type { Logger } from "pino";
 import { searchProspectorCompanies } from "./prospector-company-search.js";
 import { searchByCnae } from "./cnpjService.js";
 import { searchConstructionWorkSignals } from "./construction-radar-search.js";
-import { getLaunchRevenueScout } from "./launchRevenueScout.js";\nimport { runRecemAbertas } from "../jobs/recemAbertasJob.js";
+import { getLaunchRevenueScout } from "./launchRevenueScout.js";
+import { runRecemAbertas } from "../jobs/recemAbertasJob.js";
 import { upsertProspectingSignal } from "./prospecting-signal-ingest.js";
 
 type DiscoverySource = "google_places";
