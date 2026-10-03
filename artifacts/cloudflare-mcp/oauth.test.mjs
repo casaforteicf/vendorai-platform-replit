@@ -136,7 +136,7 @@ test('real MCP server still initializes and lists tools behind authentication', 
   await new Promise(resolve => probe.close(resolve));
   const secret = randomBytes(32).toString('hex');
   const base = `http://127.0.0.1:${port}`;
-  const child = spawn(process.execPath, ['dist/index.js'], {
+  const child = spawn(process.execPath, ['artifacts/cloudflare-mcp/dist/index.js'], {
     env: { ...process.env, PORT: String(port), MCP_PUBLIC_URL: base, MCP_ACCESS_TOKEN: secret }, stdio: ['ignore', 'pipe', 'pipe'],
   });
   let childErr = '';
