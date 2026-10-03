@@ -160,7 +160,7 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
   let connection: BrowserMcpConnection | undefined;
   if (parsed.data.connectionId) {
     [connection] = await db
-      .select()
+      .select(browserMcpConnectionSelection)
       .from(browserAgentConnectionsTable)
       .where(
         and(
@@ -177,7 +177,7 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
     const start = new URL(parsed.data.startUrl);
     const normalizedStartUrl = start.origin + "/";
     [connection] = await db
-      .select()
+      .select(browserMcpConnectionSelection)
       .from(browserAgentConnectionsTable)
       .where(
         and(
