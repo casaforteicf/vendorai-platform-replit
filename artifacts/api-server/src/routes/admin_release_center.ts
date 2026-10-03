@@ -5,6 +5,7 @@ import { pool } from "@workspace/db";
 import { requireRole } from "../middlewares/auth.js";
 import { executeDevAutonomousWork } from "./dev_agent_autonomy.js";
 import { validateProductionRevision } from "./dev_agent_validation.js";
+import { reconcileGithubImprovements } from "./admin_improvements.js";
 import { collectDevAgentCheckEvidence } from "../lib/dev-agent-check-evidence.js";
 import { runBrowserAgent } from "../services/browser-agent.js";
 import { signToken } from "../lib/jwt.js";
@@ -393,6 +394,91 @@ async function advanceAutonomousImprovement() {
   }
 }
 
+async function repairAutonomousBlockedImprovement() {
+  const found = await pool.query(
+    `WITH canonical AS (
+       SELECT DISTINCT ON (pr_number)
+              id,pr_number,title,description,module,priority,agent_summary,updated_at
+         FROM admin_improvements
+        WHERE pr_number IS NOT NULL
+        ORDER BY pr_number,updated_at DESC,created_at DESC
+     )
+     SELECT *
+       FROM canonical
+      WHERE agent_summary IS NOT NULL
+        AND id IN (
+          SELECT id FROM admin_improvements
+           WHERE status='bloqueada' AND agent_status='needs_attention'
+        )
+        AND updated_at < now() - interval '5 minutes'
+      ORDER BY CASE priority WHEN 'urgente' THEN 0 WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END,updated_at ASC
+      LIMIT 1`
+  );
+  const item = found.rows[0];
+  if (!item) return false;
+
+  const claimed = await pool.query(
+    "UPDATE admin_improvements SET agent_status='repairing',owner_agent='vendi',updated_at=now() WHERE id=$1 AND status='bloqueada' AND agent_status='needs_attention' RETURNING id",
+    [item.id],
+  );
+  if (!claimed.rowCount) return false;
+
+  await pool.query(
+    "INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,actor,payload) VALUES ($1,$2,'auto_repair_started',$3,'vendi:auto',$4::jsonb)",
+    [randomUUID(), item.id, "Vendi iniciou correção automática do bloqueio.", JSON.stringify({ prNumber: item.pr_number, reason: item.agent_summary })],
+  );
+
+  try {
+    const result = await executeDevAutonomousWork({
+      requestId: String(item.id) + ":repair:" + String(item.pr_number),
+      request: [
+        "Corrija automaticamente esta melhoria bloqueada sem remover funcionalidades existentes.",
+        "PR atual: #" + String(item.pr_number),
+        "Título: " + String(item.title),
+        "Descrição: " + String(item.description ?? ""),
+        "Motivo do bloqueio: " + String(item.agent_summary ?? "não informado"),
+        "Se o PR antigo estiver conflitado, obsoleto ou fechado, reconstrua uma versão limpa sobre a main atual e crie um PR substituto.",
+        "Preserve o histórico e não altere caminhos protegidos sem exigir aprovação.",
+      ].join("\n"),
+      diagnosis: "Auto-reparo da Central. Módulo: " + String(item.module ?? "Plataforma") + ". Prioridade: " + String(item.priority ?? "media"),
+      route: "/admin/melhorias/" + String(item.id),
+      source: "release_center_auto_repair",
+    });
+    const pr = result.pullRequest ?? extractAction(result, "create_pr");
+    const branch = extractAction(result, "create_branch")?.branch ?? null;
+    const needsApproval = result.status === "approval_required";
+    const success = Boolean(result.success && pr?.number);
+    const summary = String(result.summary ?? result.error ?? "Auto-reparo concluído sem resumo.").slice(0,12000);
+
+    await pool.query(
+      `UPDATE admin_improvements
+          SET branch=COALESCE($2,branch),
+              pr_number=COALESCE($3,pr_number),
+              pr_url=COALESCE($4,pr_url),
+              status=CASE WHEN $5 THEN 'testando' WHEN $6 THEN 'bloqueada' ELSE 'bloqueada' END,
+              test_status=CASE WHEN $5 THEN 'running' ELSE 'failed' END,
+              agent_status=CASE WHEN $5 THEN 'waiting_tests' WHEN $6 THEN 'needs_attention' ELSE 'needs_attention' END,
+              agent_summary=$7,
+              updated_at=now()
+        WHERE id=$1`,
+      [item.id, branch, pr?.number ? Number(pr.number) : null, pr?.url ?? null, success, needsApproval, summary],
+    );
+    await pool.query(
+      "INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,actor,payload) VALUES ($1,$2,'auto_repair_result',$3,'vendi:auto',$4::jsonb)",
+      [randomUUID(), item.id, summary.slice(0,6000), JSON.stringify({ success, needsApproval, prNumber: pr?.number ?? null, prUrl: pr?.url ?? null, branch })],
+    );
+    return success;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha no auto-reparo";
+    await pool.query(
+      "UPDATE admin_improvements SET agent_status='needs_attention',agent_summary=$2,updated_at=now() WHERE id=$1",
+      [item.id, message.slice(0,12000)],
+    );
+    return false;
+  }
+}
+
+
 async function refreshAutonomousImprovementChecks() {
   const found = await pool.query(
     "SELECT id,pr_number AS \"prNumber\" FROM admin_improvements WHERE pr_number IS NOT NULL AND status='testando' AND test_status IN ('pending','running') ORDER BY updated_at ASC LIMIT 1"
@@ -427,7 +513,18 @@ async function refreshAutonomousImprovementChecks() {
 
 async function createAutonomousReleaseIfReady() {
   const ready = await pool.query(
-    "SELECT id,title FROM admin_improvements WHERE package_key IS NULL AND test_status='passed' AND pr_number IS NOT NULL AND status IN ('pronto_staging','em_homologacao','testando') ORDER BY CASE priority WHEN 'urgente' THEN 0 WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END, created_at ASC LIMIT 10"
+    `WITH canonical AS (
+       SELECT DISTINCT ON (pr_number) id,title,priority,created_at,pr_number,status,test_status,package_key
+         FROM admin_improvements
+        WHERE pr_number IS NOT NULL
+        ORDER BY pr_number,updated_at DESC,created_at DESC
+     )
+     SELECT id,title FROM canonical
+      WHERE package_key IS NULL
+        AND test_status='passed'
+        AND status IN ('pronto_staging','em_homologacao','testando')
+      ORDER BY CASE priority WHEN 'urgente' THEN 0 WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END,created_at ASC
+      LIMIT 10`
   );
   if (!ready.rowCount) return null;
 
@@ -1016,13 +1113,25 @@ async function executeScheduledRelease(release: any) {
 
 let workerStarted = false;
 let workerRunning = false;
+let lastGithubReconcileAt = 0;
 
 async function runReleaseWorker() {
   if (workerRunning) return;
   workerRunning = true;
   try {
     await ensureSchema();
+
+    if (Date.now() - lastGithubReconcileAt >= 60000) {
+      lastGithubReconcileAt = Date.now();
+      await reconcileGithubImprovements("vendi:worker").catch((error) => {
+        console.error("[release-worker] github reconcile failed:", error instanceof Error ? error.message : error);
+      });
+    }
+
     if (fullAutonomyEnabled()) {
+      await repairAutonomousBlockedImprovement().catch((error) => {
+        console.error("[release-worker] autonomous repair failed:", error instanceof Error ? error.message : error);
+      });
       await advanceAutonomousImprovement().catch((error) => {
         console.error("[release-worker] autonomous development failed:", error instanceof Error ? error.message : error);
       });
