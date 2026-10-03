@@ -24,6 +24,7 @@ describe("Vendi orchestration policy", () => {
     expect(ids).toContain("prospector.search_companies");
     expect(ids).toContain("prospector.search_construction_signals");
     expect(ids).toContain("prospector.autonomous_cycle");
+    expect(ids).toContain("prospector.sources_catalog");
     expect(ids).toContain("prospector.revenue_scout");
     expect(ids).toContain("agents.dispatch");
     expect(ids).toContain("web.discover");
