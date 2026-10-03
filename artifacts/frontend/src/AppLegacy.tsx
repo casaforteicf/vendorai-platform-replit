@@ -27,6 +27,7 @@ const ContactSales       = lazy(() => import("@/pages/demo/contact-sales"));
 const PortalObra         = lazy(() => import("@/pages/PortalObra"));
 const ObraCampo           = lazy(() => import("@/pages/ObraCampo"));
 const PublicProposta     = lazy(() => import("@/pages/PublicProposta"));
+const PublicDiagnosticoNegocio = lazy(() => import("@/pages/PublicDiagnosticoNegocio"));
 const PublicDeliveryRuntime = lazy(() => import("@/pages/PublicDeliveryRuntime"));
 const ForcePasswordChange= lazy(() => import("@/pages/ForcePasswordChange"));
 const AcceptInvite       = lazy(() => import("@/pages/AcceptInvite"));
@@ -608,6 +609,7 @@ function AppRoutes() {
         <Route path="/portal/obra/:token"><PublicRoute component={PortalObra} /></Route>
         <Route path="/obra/campo/:obraId">{() => <ObraCampo />}</Route>
         <Route path="/p/:token">{() => <PublicProposta />}</Route>
+        <Route path="/diagnostico-negocio/:token">{() => <PublicDiagnosticoNegocio />}</Route>
         <Route path="/rastreio/:id">{() => <RastreioFrete />}</Route>
         <Route path="/acompanhar-entrega/:token">{() => <AcompanharEntrega />}</Route>
         <Route path="/entrega/agente/:agentKey">{() => <PublicDeliveryRuntime />}</Route>
