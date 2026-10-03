@@ -365,17 +365,6 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
     }
   }, [token, isLoading, setLocation]);
 
-  useEffect(() => {
-    if (!isTenantAdmin || tenantLoading || !tenant || tenant.isDemo) return;
-    if (tenant.status !== "suspended" && !hasOverdueInvoice) {
-      if (!tenant.onboardingConcluido && !tenant.setupCompletedAt) {
-        setLocation("/onboarding");
-      } else if (!tenant.integracoesConcluido && !isInstallationAction) {
-        setLocation("/onboarding/integracoes");
-      }
-    }
-  }, [tenant, tenantLoading, isTenantAdmin, hasOverdueInvoice, isInstallationAction, setLocation]);
-
   if (isLoading || !token || !user) {
     return (
       <Spinner
@@ -469,38 +458,14 @@ function PartnerRoute({ component: Component }: any) {
 }
 
 function OnboardingRoute() {
-  const { token, user, isLoading } = useAuth();
+  const { token, isLoading } = useAuth();
   const [, setLocation] = useLocation();
 
-  const isTenantAdmin = user?.platformRole === "tenant_admin";
-
-  const { data: tenant, isLoading: tenantLoading } = useGetTenant(
-    user?.tenantId ?? "",
-    {
-      query: {
-        enabled: !isLoading && !!token && isTenantAdmin && !!user?.tenantId,
-        queryKey: getGetTenantQueryKey(user?.tenantId ?? ""),
-      },
-    }
-  );
-
   useEffect(() => {
-    if (!isLoading && !token) setLocation("/login");
+    if (!isLoading) setLocation(token ? "/diagnostico-planejamento" : "/login", { replace: true });
   }, [token, isLoading, setLocation]);
 
-  useEffect(() => {
-    if (!isTenantAdmin || tenantLoading || !tenant) return;
-    // Either completion marker grants access to the app. Keep this in sync with
-    // ProtectedRoute so a partially migrated tenant cannot bounce indefinitely.
-    if (tenant.onboardingConcluido || tenant.setupCompletedAt) {
-      setLocation("/dashboard", { replace: true });
-    }
-  }, [tenant, tenantLoading, isTenantAdmin, setLocation]);
-
-  if (isLoading || !token) return <Spinner />;
-  if (isTenantAdmin && tenantLoading) return <Spinner />;
-
-  return <Onboarding />;
+  return <Spinner />;
 }
 
 function VarejoRoute({ component: Component, ...rest }: any) {
@@ -649,7 +614,7 @@ function AppRoutes() {
         <Route path="/entrega/simulador/sdr">{() => <PublicDeliveryRuntime />}</Route>
         <Route path="/entrega/arqdor/pre-projeto">{() => <PublicDeliveryRuntime />}</Route>
         <Route path="/onboarding"><OnboardingRoute /></Route>
-        <Route path="/onboarding/integracoes">{() => <Suspense fallback={<Spinner />}><OnboardingIntegracoes /></Suspense>}</Route>
+        <Route path="/onboarding/integracoes"><RedirectPage to="/configuracoes" /></Route>
         <Route path="/"><PublicRoute component={Login} /></Route>
         <Route path="/app"><RedirectPage to="/" /></Route>
         <Route path="/app/"><RedirectPage to="/" /></Route>
