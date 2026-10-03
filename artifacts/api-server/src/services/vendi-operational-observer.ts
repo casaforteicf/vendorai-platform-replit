@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, notInArray, sql } from "drizzle-orm";
 import {
   db,
   activitiesTable,
@@ -107,6 +107,8 @@ export async function runVendiOperationalObserver(log: Logger) {
           eq(leadsTable.tenantId, tenant.tenantId),
           isNull(leadsTable.assignedTo),
           isNull(leadsTable.naoLeadTipo),
+          isNull(leadsTable.excluidoEm),
+          notInArray(leadsTable.status, ["cliente", "perdido"]),
         ));
 
       const [highChurn] = await db
@@ -117,6 +119,8 @@ export async function runVendiOperationalObserver(log: Logger) {
           eq(customerIntelligenceTable.tenantId, tenant.tenantId),
           sql`${customerIntelligenceTable.churnRisk} >= 70`,
           isNull(leadsTable.naoLeadTipo),
+          isNull(leadsTable.excluidoEm),
+          notInArray(leadsTable.status, ["perdido"]),
         ));
 
       const snapshot = {
