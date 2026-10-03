@@ -202,9 +202,12 @@ function isStaleActive(item: Improvement) {
 
 function improvementSimpleStatus(item: Improvement) {
   if (item.status === "producao_validada") return "Concluído";
+  if (item.agentStatus === "substituido_historico" || item.status === "cancelada") return "Histórico";
+  if (item.agentStatus === "pr_legado_encadeado") return "Histórico";
   if (item.status === "mergeado_main") return "Publicando";
   if (item.status === "homologado" || item.status === "aguardando_producao") return "Aguardando sua aprovação";
-  if ((item.status === "bloqueada" || item.testStatus === "failed") && isStaleActive(item)) return "Precisa de atenção";
+  if (item.status === "bloqueada" || item.testStatus === "failed") return "Precisa de atenção";
+  if (isStaleActive(item)) return "Precisa de atenção";
   return "Em andamento";
 }
 
@@ -230,14 +233,19 @@ function nextOperationalAction(item: Improvement) {
   if (status === "Concluído") return "Nenhuma ação necessária";
   if (status === "Publicando") return "O sistema publica, valida e troca de rota automaticamente se necessário";
   if (status === "Aguardando sua aprovação") return "Aprovar produção ou pedir alteração";
-  if (status === "Precisa de atenção") return "Todos os caminhos automáticos precisam ser revisados";
-  if (item.status === "bloqueada" || item.testStatus === "failed") return "Vendi está corrigindo e repetindo os testes automaticamente";
-  return "Vendi cuida das etapas técnicas automaticamente";
+  if (status === "Histórico") return "Item legado ou substituído; não faz parte da fila ativa";
+  if (status === "Precisa de atenção") return "Vendi está recuperando a execução; se depender de decisão humana, a aprovação será solicitada";
+  if (item.agentStatus === "aguardando_checks") return "Aguardando evidência real dos checks do GitHub";
+  if (item.testStatus === "running" || item.status === "testando") return "Checks em execução; Vendi acompanha e avança assim que concluírem";
+  if (item.testStatus === "passed" && item.prNumber) return "Checks aprovados; Vendi prepara a próxima etapa de homologação";
+  if (item.branch || item.status === "em_desenvolvimento") return "Desenvolvimento ativo; Vendi deve registrar a próxima ação concreta";
+  return "Vendi prepara a próxima ação técnica";
 }
 
 function statusVariant(status: string): "default" | "secondary" | "outline" | "destructive" {
   if (["Concluído", "published"].includes(status)) return "default";
   if (status === "Precisa de atenção" || status === "blocked") return "destructive";
+  if (status === "Histórico") return "outline";
   if (["Em andamento", "Aguardando sua aprovação", "Publicando", "scheduled", "monitoring", "publishing"].includes(status)) return "secondary";
   return "outline";
 }
