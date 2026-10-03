@@ -24,8 +24,34 @@ function requiredEnv(name: string): string {
   return value;
 }
 
-function accountId(): string {
-  return requiredEnv("CLOUDFLARE_ACCOUNT_ID");
+let resolvedAccountId: string | null = null;
+
+async function accountId(): Promise<string> {
+  const configured = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
+  if (configured) return configured;
+  if (resolvedAccountId) return resolvedAccountId;
+
+  const token = requiredEnv("CLOUDFLARE_API_TOKEN");
+  const auth = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+  const zoneName = process.env.CLOUDFLARE_SAAS_ZONE_NAME?.trim() || "appvendorai.com";
+  const zoneResponse = await fetch(`https://api.cloudflare.com/client/v4/zones?name=${encodeURIComponent(zoneName)}&per_page=50`, { headers: auth });
+  const zonePayload = await zoneResponse.json() as { success?: boolean; result?: Array<{ account?: { id?: string } }> };
+  const zoneAccountId = zonePayload?.result?.find((z) => z?.account?.id)?.account?.id?.trim();
+  if (zoneResponse.ok && zonePayload?.success !== false && zoneAccountId) {
+    resolvedAccountId = zoneAccountId;
+    return resolvedAccountId;
+  }
+
+  const accountsResponse = await fetch("https://api.cloudflare.com/client/v4/accounts?per_page=50", { headers: auth });
+  const accountsPayload = await accountsResponse.json() as { success?: boolean; result?: Array<{ id?: string }> };
+  const accounts = Array.isArray(accountsPayload?.result) ? accountsPayload.result.filter((a) => a?.id?.trim()) : [];
+  if (accountsResponse.ok && accountsPayload?.success !== false && accounts.length === 1) {
+    resolvedAccountId = accounts[0]!.id!.trim();
+    return resolvedAccountId;
+  }
+
+  throw new Error("Não foi possível resolver CLOUDFLARE_ACCOUNT_ID automaticamente");
 }
 
 async function cloudflare<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -74,7 +100,7 @@ async function resolveSaasZoneId(): Promise<string> {
   if (explicit) return explicit;
 
   const zoneName = (process.env["CLOUDFLARE_SAAS_ZONE_NAME"] || "appvendorai.com").trim().toLowerCase();
-  const query = new URLSearchParams({ name: zoneName, "account.id": accountId(), per_page: "50" });
+  const query = new URLSearchParams({ name: zoneName, "account.id": await accountId(), per_page: "50" });
   const zones = await cloudflare<Array<{ id: string; name: string }>>(`/zones?${query.toString()}`);
   const zone = zones.find((item) => item.name.toLowerCase() === zoneName);
   if (!zone) throw new Error(`Cloudflare SaaS zone not found: ${zoneName}`);
@@ -173,7 +199,7 @@ function createCloudflareMcpServer() {
       // Verify the API token independently from optional product permissions such as Pages.
       // /user/tokens/verify is the canonical bearer-token validity check and does not require Pages access.
       const verification = await cloudflare<{ id?: string; status?: string }>(`/user/tokens/verify`);
-      return toolText({ connected: true, accountIdConfigured: Boolean(accountId()), tokenStatus: verification?.status || "active" });
+      return toolText({ connected: true, accountIdConfigured: Boolean(await accountId()), tokenStatus: verification?.status || "active" });
     },
   );
 
@@ -185,7 +211,7 @@ function createCloudflareMcpServer() {
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
     async ({ perPage }) => {
-      const result = await cloudflare<unknown[]>(`/accounts/${accountId()}/pages/projects?per_page=${perPage}`);
+      const result = await cloudflare<unknown[]>(`/accounts/${await accountId()}/pages/projects?per_page=${perPage}`);
       return toolText(result);
     },
   );
@@ -198,7 +224,7 @@ function createCloudflareMcpServer() {
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
     async ({ projectName }) => {
-      const result = await cloudflare<unknown>(`/accounts/${accountId()}/pages/projects/${encodeURIComponent(projectName)}`);
+      const result = await cloudflare<unknown>(`/accounts/${await accountId()}/pages/projects/${encodeURIComponent(projectName)}`);
       return toolText(result);
     },
   );
@@ -221,7 +247,7 @@ function createCloudflareMcpServer() {
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
     async (input) => {
-      const result = await cloudflare<unknown>(`/accounts/${accountId()}/pages/projects`, {
+      const result = await cloudflare<unknown>(`/accounts/${await accountId()}/pages/projects`, {
         method: "POST",
         body: JSON.stringify({
           name: input.projectName,
@@ -263,7 +289,7 @@ function createCloudflareMcpServer() {
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
     async ({ projectName, perPage }) => {
-      const result = await cloudflare<unknown[]>(`/accounts/${accountId()}/pages/projects/${encodeURIComponent(projectName)}/deployments?per_page=${perPage}`);
+      const result = await cloudflare<unknown[]>(`/accounts/${await accountId()}/pages/projects/${encodeURIComponent(projectName)}/deployments?per_page=${perPage}`);
       return toolText(result);
     },
   );
@@ -276,7 +302,7 @@ function createCloudflareMcpServer() {
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
     async ({ projectName }) => {
-      const result = await cloudflare<unknown>(`/accounts/${accountId()}/pages/projects/${encodeURIComponent(projectName)}/deployments`, {
+      const result = await cloudflare<unknown>(`/accounts/${await accountId()}/pages/projects/${encodeURIComponent(projectName)}/deployments`, {
         method: "POST",
         body: "{}",
       });
@@ -292,7 +318,7 @@ function createCloudflareMcpServer() {
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
     async ({ name }) => {
-      const query = new URLSearchParams({ "account.id": accountId(), per_page: "50" });
+      const query = new URLSearchParams({ "account.id": await accountId(), per_page: "50" });
       if (name) query.set("name", name);
       const result = await cloudflare<unknown[]>(`/zones?${query.toString()}`);
       return toolText(result);
