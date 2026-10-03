@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, isNotNull, isNull, notExists, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, notExists, sql } from "drizzle-orm";
 import multer from "multer";
 import {
   db,
@@ -78,14 +78,17 @@ const COMMERCIAL_STAGE_TASKS: Record<string, string> = {
   ganho: "Confirmar pedido e transferir para execução",
 };
 
-async function ensureCommercialStageTask(deal: typeof dealsTable.$inferSelect) {
-  if (!deal.leadId || !deal.assignedTo) return;
+async function ensureCommercialStageTasks(deal: typeof dealsTable.$inferSelect) {
+  if (!deal.leadId) return;
 
   const [stageConfig] = await db
     .select({
+      id: pipelineStagesTable.id,
+      responsavelAgenteKey: pipelineStagesTable.responsavelAgenteKey,
       atividadePadraoTitulo: pipelineStagesTable.atividadePadraoTitulo,
       atividadePadraoDescricao: pipelineStagesTable.atividadePadraoDescricao,
       atividadePadraoPrazoMinutos: pipelineStagesTable.atividadePadraoPrazoMinutos,
+      atividadesPadrao: pipelineStagesTable.atividadesPadrao,
     })
     .from(pipelineStagesTable)
     .where(and(
@@ -95,34 +98,70 @@ async function ensureCommercialStageTask(deal: typeof dealsTable.$inferSelect) {
     ))
     .limit(1);
 
-  const configuredTitle = stageConfig?.atividadePadraoTitulo?.trim();
-  const fallbackTitle = COMMERCIAL_STAGE_TASKS[deal.etapa];
-  const taskTitle = configuredTitle || fallbackTitle;
-  if (!taskTitle) return;
+  const configured = stageConfig?.atividadesPadrao ?? [];
+  const fallbackTitle = stageConfig?.atividadePadraoTitulo?.trim() || COMMERCIAL_STAGE_TASKS[deal.etapa];
+  const templates = configured.length > 0 ? configured : (fallbackTitle ? [{
+    id: "legacy-default",
+    titulo: fallbackTitle,
+    descricao: stageConfig?.atividadePadraoDescricao ?? null,
+    categoria: "sugerida" as const,
+    prazoMinutos: stageConfig?.atividadePadraoPrazoMinutos ?? 24 * 60,
+    responsavel: "deal_owner" as const,
+    prioridade: "normal" as const,
+    bloqueiaAvanco: false,
+    condicao: "sempre" as const,
+    tipo: "tarefa" as const,
+  }] : []);
 
-  const title = `${taskTitle} — ${deal.titulo}`;
-  const [existingTask] = await db.select({ id: activitiesTable.id }).from(activitiesTable).where(and(
-    eq(activitiesTable.tenantId, deal.tenantId),
-    eq(activitiesTable.leadId, deal.leadId),
-    eq(activitiesTable.dealId, deal.id),
-    eq(activitiesTable.titulo, title),
-    eq(activitiesTable.status, "planejado"),
-  )).limit(1);
-  if (existingTask) return;
+  for (const template of templates) {
+    const templateKey = template.id || template.titulo.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 80);
+    const [existingTask] = await db.select({ id: activitiesTable.id }).from(activitiesTable).where(and(
+      eq(activitiesTable.tenantId, deal.tenantId),
+      eq(activitiesTable.dealId, deal.id),
+      eq(activitiesTable.origemEtapaKey, deal.etapa),
+      eq(activitiesTable.origemTemplateKey, templateKey),
+      inArray(activitiesTable.status, ["planejado", "pendente", "concluida"]),
+    )).limit(1);
+    if (existingTask) continue;
 
-  const prazoMinutos = stageConfig?.atividadePadraoPrazoMinutos ?? 24 * 60;
-  await db.insert(activitiesTable).values({
-    tenantId: deal.tenantId,
-    leadId: deal.leadId,
-    dealId: deal.id,
-    tipo: "tarefa",
-    titulo: title,
-    descricao: stageConfig?.atividadePadraoDescricao?.trim()
-      || `Tarefa criada automaticamente ao entrar na etapa ${DEAL_STAGE_LABELS[deal.etapa] ?? deal.etapa}.`,
-    status: "planejado",
-    responsavelId: deal.assignedTo,
-    dataVencimento: new Date(Date.now() + prazoMinutos * 60 * 1000),
-  });
+    if (template.condicao === "sem_atividade_aberta") {
+      const [openActivity] = await db.select({ id: activitiesTable.id }).from(activitiesTable).where(and(
+        eq(activitiesTable.tenantId, deal.tenantId),
+        eq(activitiesTable.dealId, deal.id),
+        inArray(activitiesTable.status, ["planejado", "pendente"]),
+      )).limit(1);
+      if (openActivity) continue;
+    }
+
+    const automatic = template.categoria === "automatica";
+    const assignedToHuman = template.responsavel !== "stage_agent" ? deal.assignedTo : null;
+    const dueMinutes = template.prazoMinutos ?? 24 * 60;
+    const title = `${template.titulo} — ${deal.titulo}`;
+
+    await db.insert(activitiesTable).values({
+      tenantId: deal.tenantId,
+      leadId: deal.leadId,
+      dealId: deal.id,
+      tipo: template.tipo ?? "tarefa",
+      titulo: title,
+      descricao: template.descricao?.trim()
+        || `Atividade criada automaticamente ao entrar na etapa ${DEAL_STAGE_LABELS[deal.etapa] ?? deal.etapa}.`,
+      objetivo: template.objetivo ?? null,
+      resultadoEsperado: template.resultadoEsperado ?? null,
+      prioridade: template.prioridade ?? "normal",
+      estadoExecucao: automatic ? "planejada_ia" : "planejada",
+      categoriaExecucao: template.categoria,
+      origem: "pipeline_stage",
+      origemEtapaId: stageConfig?.id ?? null,
+      origemEtapaKey: deal.etapa,
+      origemTemplateKey: templateKey,
+      bloqueiaAvanco: Boolean(template.bloqueiaAvanco || template.categoria === "obrigatoria"),
+      agenteResponsavelKey: template.responsavel === "stage_agent" ? stageConfig?.responsavelAgenteKey ?? null : null,
+      status: "planejado",
+      responsavelId: assignedToHuman ?? null,
+      dataVencimento: new Date(Date.now() + dueMinutes * 60 * 1000),
+    });
+  }
 }
 
 async function recordDealJourney(input: {
@@ -774,6 +813,28 @@ router.patch("/deals/:id", async (req, res) => {
     }
   }
 
+  if (parsed.data.etapa && parsed.data.etapa !== existing.etapa) {
+    const blocking = await db
+      .select({ id: activitiesTable.id, titulo: activitiesTable.titulo })
+      .from(activitiesTable)
+      .where(and(
+        eq(activitiesTable.tenantId, existing.tenantId),
+        eq(activitiesTable.dealId, existing.id),
+        eq(activitiesTable.origemEtapaKey, existing.etapa),
+        eq(activitiesTable.bloqueiaAvanco, true),
+        inArray(activitiesTable.status, ["planejado", "pendente"]),
+      ))
+      .limit(20);
+    if (blocking.length > 0) {
+      res.status(409).json({
+        error: "ACTIVITIES_REQUIRED_BEFORE_STAGE_CHANGE",
+        message: "Existem atividades obrigatórias pendentes antes de avançar esta etapa.",
+        activities: blocking,
+      });
+      return;
+    }
+  }
+
   const nextAssignedTo = handoff?.responsavelId ?? ("assignedTo" in parsed.data ? parsed.data.assignedTo : (existing.assignedTo ?? req.user?.sub ?? null));
   const assignedToChanged = nextAssignedTo !== existing.assignedTo;
   const etapaChanged = Boolean(parsed.data.etapa && parsed.data.etapa !== existing.etapa);
@@ -858,7 +919,7 @@ router.patch("/deals/:id", async (req, res) => {
       description: "Etapa anterior: " + (DEAL_STAGE_LABELS[existing.etapa] ?? existing.etapa) + ". Nova etapa: " + (DEAL_STAGE_LABELS[parsed.data.etapa] ?? parsed.data.etapa) + ".",
       responsavelId: req.user?.sub,
     });
-      await ensureCommercialStageTask(deal);
+      await ensureCommercialStageTasks(deal);
 
     void recordIntelligenceEvent({
       tenantId: existing.tenantId,
