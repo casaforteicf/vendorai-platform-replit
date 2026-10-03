@@ -398,6 +398,7 @@ export default function LeadDetail() {
 
   const [editingNextBestAction, setEditingNextBestAction] = useState(false);
   const [nextBestActionDraft, setNextBestActionDraft] = useState<string>("");
+  const [executingApprovedApproach, setExecutingApprovedApproach] = useState(false);
 
   const [editingChurnReasons, setEditingChurnReasons] = useState(false);
   const [churnReasonsDraft, setChurnReasonsDraft] = useState<string[]>([]);
@@ -1123,6 +1124,57 @@ export default function LeadDetail() {
       data: { nextBestAction: nextBestActionDraft },
     });
     setEditingNextBestAction(false);
+  }
+
+  async function approveAndExecuteSuggestedApproach() {
+    if (!tenantId || !id || executingApprovedApproach) return;
+    setExecutingApprovedApproach(true);
+    try {
+      let res = await fetch(`/api/sdr-templates/send-approach?tenantId=${encodeURIComponent(tenantId)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadId: id }),
+      });
+      const prepared = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(prepared?.error ?? "Não foi possível preparar a abordagem");
+
+      if (prepared.sent) {
+        toast({ title: "Abordagem executada", description: "A mensagem aprovada foi enviada e registrada no histórico." });
+      } else if (prepared.taskId) {
+        res = await fetch(`/api/tenants/${tenantId}/agent-tasks/${prepared.taskId}/approve`, { method: "POST" });
+        const approved = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(approved?.error ?? "Não foi possível aprovar a abordagem");
+
+        let finished = approved;
+        if (approved.status === "aprovado") {
+          res = await fetch(`/api/tenants/${tenantId}/agent-tasks/${prepared.taskId}/execute`, { method: "POST" });
+          finished = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(finished?.error ?? "A abordagem foi aprovada, mas não pôde ser executada");
+        }
+
+        if (finished.status === "concluido") {
+          toast({ title: "Aprovado e executado", description: "O agente enviou a abordagem aprovada pelo WhatsApp." });
+        } else {
+          toast({ title: "Abordagem aprovada", description: "A ação ficou registrada para execução conforme o nível de autonomia configurado." });
+        }
+      } else {
+        throw new Error("Não há uma abordagem executável para este lead neste momento.");
+      }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }) }),
+        queryClient.invalidateQueries({ queryKey: getListTenantConversationsQueryKey(tenantId) }),
+        queryClient.invalidateQueries({ queryKey: getGetOrCreateLeadIntelligenceQueryKey(tenantId, id) }),
+      ]);
+    } catch (error) {
+      toast({
+        title: "Não foi possível executar a abordagem",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setExecutingApprovedApproach(false);
+    }
   }
 
   function saveChurnReasons() {
@@ -2731,15 +2783,68 @@ export default function LeadDetail() {
                             {intelligence.nextBestActionReason}
                           </p>
                         )}
-                        <div className="flex items-center gap-2 pt-1">
+                        {(() => {
+                          const plan = (intelligence as any).outreachPlan as {
+                            objective?: string;
+                            currentContactRole?: string;
+                            decisionMakerStatus?: string;
+                            decisionMakerHint?: string;
+                            freeValueOffer?: string;
+                            messageSuggestion?: string;
+                            expectedResult?: string;
+                            nextStepIfPositive?: string;
+                            approvalRequired?: boolean;
+                          } | null;
+                          if (!plan) return null;
+                          return (
+                            <div className="mt-2 rounded-md border bg-background/70 p-2.5 space-y-2 text-xs">
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                {plan.objective && <div><span className="font-medium">Objetivo:</span> {plan.objective}</div>}
+                                {plan.currentContactRole && <div><span className="font-medium">Contato atual:</span> {plan.currentContactRole}</div>}
+                              </div>
+                              {plan.decisionMakerHint && (
+                                <div><span className="font-medium">Decisor:</span> {plan.decisionMakerHint}</div>
+                              )}
+                              {plan.freeValueOffer && (
+                                <div><span className="font-medium">Entrega gratuita:</span> {plan.freeValueOffer}</div>
+                              )}
+                              {plan.messageSuggestion && (
+                                <div className="rounded border bg-muted/30 p-2">
+                                  <span className="font-medium">Mensagem sugerida:</span>
+                                  <p className="mt-1 whitespace-pre-wrap">{plan.messageSuggestion}</p>
+                                </div>
+                              )}
+                              {plan.expectedResult && <div><span className="font-medium">Resultado esperado:</span> {plan.expectedResult}</div>}
+                              {plan.nextStepIfPositive && <div><span className="font-medium">Se houver interesse:</span> {plan.nextStepIfPositive}</div>}
+                              {plan.approvalRequired !== false && (
+                                <Badge variant="secondary" className="text-[10px]">Requer aprovação antes de executar</Badge>
+                              )}
+                            </div>
+                          );
+                        })()}
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
                           <Button
                             size="sm"
-                            className="h-6 text-xs px-2 gap-1"
-                            onClick={() => openNewActivityDialog(intelligence.nextBestAction ?? "")}
-                            data-testid="btn-criar-atividade-nba"
+                            className="h-7 text-xs px-2 gap-1"
+                            onClick={() => void approveAndExecuteSuggestedApproach()}
+                            disabled={executingApprovedApproach}
+                            data-testid="btn-aprovar-executar-nba"
                           >
-                            <Plus className="h-3 w-3" />
-                            Criar como Atividade
+                            {executingApprovedApproach ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                            Aprovar e executar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs px-2 gap-1"
+                            onClick={() => {
+                              const plan = (intelligence as any).outreachPlan;
+                              setNextBestActionDraft(plan?.messageSuggestion ?? intelligence.nextBestAction ?? "");
+                              setEditingNextBestAction(true);
+                            }}
+                          >
+                            <Pencil className="h-3 w-3" />
+                            Editar abordagem
                           </Button>
                           {intelligence.lastAnalyzedAt && (
                             <span className="text-xs text-muted-foreground">

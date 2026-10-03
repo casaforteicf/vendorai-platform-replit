@@ -582,7 +582,7 @@ export async function enrichLead(
       // template cannot use that flow, keep the existing AI dispatch as a safe
       // fallback — but only AFTER the evidence gate has passed.
       const firstApproach = await sendSdrFirstApproach(leadId, null, tenantId, log);
-      if (!firstApproach.sent) {
+      if (!firstApproach.sent && !firstApproach.queuedForApproval) {
         dispatchAgentBackground({
           tenantId,
           leadId,
@@ -604,7 +604,10 @@ export async function enrichLead(
       }
 
       await db.update(leadsTable)
-        .set({ enrichmentStatus: "dispatched", updatedAt: new Date() })
+        .set({
+          enrichmentStatus: firstApproach.queuedForApproval ? "scored" : "dispatched",
+          updatedAt: new Date(),
+        })
         .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
     } else {
       log.info(

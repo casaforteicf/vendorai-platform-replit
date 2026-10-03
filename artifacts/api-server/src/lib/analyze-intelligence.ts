@@ -92,6 +92,18 @@ const aiAnalysisSchema = z.object({
   opportunities:        z.array(z.string()).default([]),
   nextBestAction:       z.string(),
   nextBestActionReason: z.string(),
+  outreachPlan: z.object({
+    objective: z.string(),
+    currentContactRole: z.string().default("desconhecido"),
+    decisionMakerStatus: z.enum(["identified", "likely", "unknown"]).default("unknown"),
+    decisionMakerHint: z.string().default(""),
+    freeValueOffer: z.string(),
+    messageSuggestion: z.string(),
+    expectedResult: z.string(),
+    nextStepIfPositive: z.string(),
+    approvalRequired: z.boolean().default(true),
+    strategyVersion: z.string().default("value-first-v1"),
+  }).optional(),
   scoreExplicacao:      z.string().optional(),
   churnRiskExplicacao:  z.string().optional(),
 });
@@ -381,6 +393,18 @@ Retorne SOMENTE JSON:
   "opportunities": ["oportunidade real observada"],
   "nextBestAction": "<ação concreta agora>",
   "nextBestActionReason": "<por que esta ação reduz o maior risco ou aproveita a melhor oportunidade>",
+  "outreachPlan": {
+    "objective": "<objetivo deste contato agora>",
+    "currentContactRole": "<decisor|influenciador|operacional|recepção|desconhecido>",
+    "decisionMakerStatus": "identified|likely|unknown",
+    "decisionMakerHint": "<quem provavelmente decide e como chegar até ele sem inventar fatos>",
+    "freeValueOffer": "<diagnóstico, análise, benchmark ou entrega gratuita específica e útil para esta empresa>",
+    "messageSuggestion": "<mensagem curta, consultiva e personalizada para WhatsApp, sem pitch precoce>",
+    "expectedResult": "<resultado esperado desta interação>",
+    "nextStepIfPositive": "<próxima ação caso haja interesse>",
+    "approvalRequired": true,
+    "strategyVersion": "value-first-v1"
+  },
   "scoreExplicacao": "<explicação curta da saúde>",
   "churnRiskExplicacao": "<explicação curta do risco principal>"
 }
@@ -409,6 +433,12 @@ Regras:
 - journeyStage deve ser um valor curto descritivo
 - opportunities são upsell, expansão, avanço comercial ou resolução de problemas identificados
 - nextBestAction deve ser específica e executável pela equipe de vendas/CS
+- Em prospecção/pré-venda, NÃO presuma que o primeiro contato é o decisor; identifique o papel do interlocutor e o caminho provável até quem decide.
+- Antes de tentar vender, priorize entrega de valor: diagnóstico, análise, benchmark, plano curto ou outra utilidade gratuita realmente relacionada ao negócio do lead.
+- A oferta gratuita deve ser específica para o contexto disponível; evite iscas genéricas e promessas não comprovadas.
+- A primeira mensagem deve buscar atenção e contexto, não fazer uma apresentação longa do produto.
+- Se o contato atual não for o decisor, a mensagem deve permitir descobrir ou ser encaminhada ao responsável sem pressionar.
+- outreachPlan deve descrever a estratégia completa da próxima interação. approvalRequired deve ser true por padrão; a execução automática é decidida pelo modo/autonomia do agente fora desta análise.
 - O canal de comunicação preferido é SEMPRE WhatsApp — nunca sugira e-mail como canal de follow-up; use "Enviar mensagem de WhatsApp" ou "Ligar via WhatsApp"
 - Se o lead precisa ser reativado ou está em risco, a ação deve ser um contato proativo por WhatsApp${diasSemContato !== null ? `\n- O lead está sem contato via mensagens há ${diasSemContato} dia${diasSemContato !== 1 ? "s" : ""} — mas verifique o pipeline e o estado das propostas antes de considerar como inatividade real` : ""}`;
 
@@ -499,6 +529,7 @@ Regras:
     opportunities:         parsed.opportunities,
     nextBestAction:        parsed.nextBestAction,
     nextBestActionReason:  parsed.nextBestActionReason,
+    outreachPlan:           parsed.outreachPlan ?? null,
     scoreExplicacao:       parsed.scoreExplicacao ?? null,
     churnRiskExplicacao:   parsed.churnRiskExplicacao ?? null,
     lastAnalyzedAt:        now,

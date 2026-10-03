@@ -13,6 +13,10 @@ import {
   businessProfilesTable,
   conversationsTable,
   messagesTable,
+  customerIntelligenceTable,
+  agentConfigsTable,
+  agentTasksTable,
+  resolveAgentAutonomyLevel,
 } from "@workspace/db";
 import type { Logger } from "pino";
 import { sendDirectWhatsAppMessage } from "./omnichannel.js";
@@ -20,7 +24,7 @@ import { dispatchAgentBackground } from "./agent-dispatch.js";
 import { ensureColdProspectLandingPage } from "./coldProspectLandingPage.js";
 import type { ColdEvidence } from "../lib/coldProspectQuality.js";
 import { tenantIsWithinBusinessHours } from "../lib/proactiveMessageGuard.js";
-import { getAgentConfig } from "../lib/agent-engine.js";
+import { getAgentConfig, insertAndRun } from "../lib/agent-engine.js";
 import {
   buildProspectorOpening,
   isColdProspectSource,
@@ -412,7 +416,7 @@ export async function sendSdrFirstApproach(
   dealId: string | null,
   tenantId: string,
   log: Logger,
-): Promise<{ sent: boolean; cenario: SdrCenario; message?: string }> {
+): Promise<{ sent: boolean; queuedForApproval?: boolean; taskId?: string; cenario: SdrCenario; message?: string }> {
   const cenario = await detectSdrCenario(leadId, tenantId);
   if (!cenario || cenario === "frio_revelacao") {
     log.info({ leadId, cenario }, "sdrService: no applicable scenario for first approach");
@@ -424,6 +428,51 @@ export async function sendSdrFirstApproach(
     // fall through to its generic SDR fallback. The lead remains queued for a
     // later run rather than being contacted outside policy.
     await assertColdOutreachAllowed(leadId, tenantId, log);
+  }
+
+  const [agentRuntimeConfig] = await db
+    .select({
+      autonomyEnabledAt: agentConfigsTable.autonomyEnabledAt,
+      agents: agentConfigsTable.agents,
+    })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.tenantId, tenantId))
+    .limit(1);
+
+  const now = new Date();
+  const legacyAutonomyEnabled = Boolean(
+    agentRuntimeConfig?.autonomyEnabledAt && agentRuntimeConfig.autonomyEnabledAt <= now,
+  );
+  const autonomyLevel = resolveAgentAutonomyLevel(
+    agentRuntimeConfig?.agents,
+    "sdr",
+    legacyAutonomyEnabled,
+  );
+  const isAutonomous = autonomyLevel === "autonomous";
+
+  const [existingPendingTask] = await db
+    .select({ id: agentTasksTable.id, status: agentTasksTable.status })
+    .from(agentTasksTable)
+    .where(and(
+      eq(agentTasksTable.tenantId, tenantId),
+      eq(agentTasksTable.leadId, leadId),
+      eq(agentTasksTable.agentName, "sdr"),
+      eq(agentTasksTable.actionType, "enviar_whatsapp"),
+    ))
+    .orderBy(desc(agentTasksTable.createdAt))
+    .limit(1);
+
+  if (existingPendingTask && ["pendente_aprovacao", "aprovado", "executando"].includes(existingPendingTask.status)) {
+    log.info(
+      { leadId, tenantId, taskId: existingPendingTask.id, status: existingPendingTask.status },
+      "sdrService: first approach task already active — skipping duplicate",
+    );
+    return {
+      sent: existingPendingTask.status === "executando",
+      queuedForApproval: existingPendingTask.status === "pendente_aprovacao" || existingPendingTask.status === "aprovado",
+      taskId: existingPendingTask.id,
+      cenario,
+    };
   }
 
   const [existingActivity] = await db
@@ -460,6 +509,64 @@ export async function sendSdrFirstApproach(
     return { sent: false, cenario };
   }
 
+  const [intelligence] = await db
+    .select({ outreachPlan: customerIntelligenceTable.outreachPlan })
+    .from(customerIntelligenceTable)
+    .where(and(
+      eq(customerIntelligenceTable.tenantId, tenantId),
+      eq(customerIntelligenceTable.leadId, leadId),
+    ))
+    .limit(1);
+
+  const outreachPlan = (intelligence?.outreachPlan ?? null) as {
+    messageSuggestion?: string;
+    objective?: string;
+    freeValueOffer?: string;
+    expectedResult?: string;
+    nextStepIfPositive?: string;
+  } | null;
+
+  const queueOrExecute = async (message: string, source: string) => {
+    const task = await insertAndRun({
+      tenantId,
+      leadId,
+      agentName: "sdr",
+      actionType: "enviar_whatsapp",
+      resposta: message,
+      extraPayload: {
+        dealId: dealId ?? null,
+        source,
+        outreachPlan: outreachPlan ?? undefined,
+      },
+      isAutonomous,
+      now: new Date(),
+      log,
+    });
+
+    if (task.status === "concluido") {
+      await db.insert(activitiesTable).values({
+        tenantId,
+        leadId,
+        dealId: dealId ?? undefined,
+        tipo: "whatsapp",
+        titulo: source === "prospector_value_first"
+          ? "Prospecctor — primeira abordagem de valor"
+          : `SDR — ${cenario} — primeira abordagem`,
+        descricao: message,
+        status: "concluida",
+        concluidaEm: new Date(),
+        resultadoExecucao: `cenario:${cenario}|source:${source}|value_first:v1`,
+      });
+      return { sent: true, queuedForApproval: false, taskId: task.id, cenario, message };
+    }
+
+    log.info(
+      { leadId, tenantId, taskId: task.id, autonomyLevel },
+      "sdrService: approach prepared and waiting for human approval",
+    );
+    return { sent: false, queuedForApproval: true, taskId: task.id, cenario, message };
+  };
+
   // Cold outbound discovered by Prospector must open as research, not as a pitch.
   // Do not send the legacy maturity survey, product claim or landing page before
   // the lead has confirmed the real project/business context.
@@ -481,29 +588,15 @@ export async function sendSdrFirstApproach(
         lead_source: lead.source ?? "",
       },
     );
-    const message = buildProspectorOpening({
+    const valueFirstMessage = outreachPlan?.messageSuggestion?.trim();
+    const message = valueFirstMessage || buildProspectorOpening({
       playbook,
       leadName: lead.nome,
       companyName: lead.empresa,
       metadata: (lead.metadata ?? {}) as Record<string, unknown>,
     });
 
-    await sendDirectWhatsAppMessage(tenantId, lead.telefone, message, log);
-    await recordProspectorOutboundMessage(tenantId, leadId, message, log);
-    await db.insert(activitiesTable).values({
-      tenantId,
-      leadId,
-      dealId: dealId ?? undefined,
-      tipo: "whatsapp",
-      titulo: "Prospecctor — primeira abordagem consultiva",
-      descricao: message,
-      status: "concluida",
-      concluidaEm: new Date(),
-      resultadoExecucao: "cenario:frio_teste|prospector_consultivo:v1",
-    });
-
-    log.info({ leadId, tenantId }, "sdrService: Prospecctor research-first opening sent");
-    return { sent: true, cenario, message };
+    return queueOrExecute(message, valueFirstMessage ? "prospector_value_first" : "prospector_consultive_fallback");
   }
 
   const rawTemplate = await getTemplateForCenario(tenantId, cenario);
@@ -512,23 +605,9 @@ export async function sendSdrFirstApproach(
     return { sent: false, cenario };
   }
 
-  const message = await resolveTemplateVars(rawTemplate, leadId, dealId, tenantId, log);
-  await sendDirectWhatsAppMessage(tenantId, lead.telefone, message, log);
-
-  await db.insert(activitiesTable).values({
-    tenantId,
-    leadId,
-    dealId: dealId ?? undefined,
-    tipo: "whatsapp",
-    titulo: `SDR — ${cenario} — primeira abordagem`,
-    descricao: message,
-    status: "concluida",
-    concluidaEm: new Date(),
-    resultadoExecucao: `cenario:${cenario}|template_ordem:1`,
-  });
-
-  log.info({ leadId, tenantId, cenario }, "sdrService: first SDR approach sent");
-  return { sent: true, cenario, message };
+  const templateMessage = await resolveTemplateVars(rawTemplate, leadId, dealId, tenantId, log);
+  const message = outreachPlan?.messageSuggestion?.trim() || templateMessage;
+  return queueOrExecute(message, outreachPlan?.messageSuggestion ? "customer_intelligence_value_first" : `template:${cenario}`);
 }
 
 // ── Send revelation (cenário 1, msg 2) ───────────────────────────────────────
