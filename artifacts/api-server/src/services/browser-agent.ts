@@ -124,6 +124,16 @@ async function navigateBrowserPage(page: Page, target: string, timeout = 12_000)
   throw lastError;
 }
 
+async function reloadBrowserPage(page: Page, timeout = 12_000) {
+  try {
+    await page.reload({ waitUntil: "domcontentloaded", timeout });
+  } catch (error) {
+    if (classifyBrowserError(error) !== "navigation_timeout") throw error;
+    const state = await snapshotBrowserPage(page).catch(() => null);
+    if (!state || (!state.title && !state.text && state.interactive.length === 0)) throw error;
+  }
+}
+
 
 export function checkpointFromState(state: { url: string; title: string; text: string; interactive: unknown[] }): BrowserAgentCheckpoint {
   const normalized = state.text.replace(/\s+/g, " ").trim().slice(0, 600);
@@ -410,7 +420,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
 
     await navigateBrowserPage(page, validateBrowserUrl(input.startUrl, input.allowedHosts));
     if (await restoreBrowserProfileAfterNavigation(page, input.sessionProfile)) {
-      await page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
+      await reloadBrowserPage(page);
     }
 
     if (input.firstPartyAuthToken) {
@@ -425,8 +435,6 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
       const target = validateBrowserUrl(input.startUrl, input.allowedHosts);
       if (page.url() !== target) {
         await navigateBrowserPage(page, target);
-      } else {
-        await withBrowserRetry(() => page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 }));
       }
       await page.waitForNetworkIdle({ idleTime: 400, timeout: 5000 }).catch(() => undefined);
     }
