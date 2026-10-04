@@ -405,7 +405,7 @@ export async function debitVendorCredits(input: {
         metricKey: null,
         quantityDelta: null,
         reason: input.reason ?? "usage_debit",
-        commercialKey: input.commercialKey ?? null,
+        commercialKey: input.commercialKey ?? "vendor.credits",
         referenceId: input.referenceId,
         metadata: input.metadata ?? {},
       })
