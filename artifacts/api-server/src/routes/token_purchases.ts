@@ -9,6 +9,7 @@ import {
   GENERATION_PACK_SIZE,
   getContentGenerationAllowance,
 } from "../services/content-generation-allowance.js";
+import { getVendorCreditBalance } from "../services/commercial-usage.js";
 import {
   AI_CREDIT_PACK_CREDITS,
   AI_CREDIT_PACK_PRICE_BRL,
@@ -225,10 +226,13 @@ router.get(
       res.status(404).json({ error: "Tenant não encontrado" });
       return;
     }
+    const vendorCreditsBalance = await getVendorCreditBalance(tenantId);
     res.json({
       tenantId: budget.tenantId,
       planName: budget.planName,
       percentUsed: budget.percentUsed,
+      usageUnit: "vendor_credits",
+      vendorCreditsBalance,
       alertPercent: budget.alertPercent,
       blocked: budget.blocked,
       baseTokens: budget.baseCredits,
@@ -374,43 +378,42 @@ router.post(
   },
 );
 
-// ── GET /tenants/:tenantId/token-purchases ────────────────────────────────────
+// ── GET /tenants/:tenantId/vendor-credit-purchases ───────────────────────────
+async function sendVendorCreditPurchases(tenantId: string, res: any) {
+  const purchases = await db
+    .select()
+    .from(tokenPurchasesTable)
+    .where(eq(tokenPurchasesTable.tenantId, tenantId))
+    .orderBy(desc(tokenPurchasesTable.createdAt))
+    .limit(20);
+
+  const vendorCreditsBalance = await getVendorCreditBalance(tenantId);
+  res.json({
+    usageUnit: "vendor_credits",
+    vendorCreditsBalance,
+    purchases,
+    packs: VENDOR_CREDIT_PACKS,
+    // Deprecated aliases for old clients. Values represent Vendor Credits.
+    tokenCredits: vendorCreditsBalance,
+    tokenBalance: vendorCreditsBalance,
+  });
+}
+
+router.get(
+  "/tenants/:tenantId/vendor-credit-purchases",
+  requireSameTenanOrSuperAdmin(),
+  async (req, res) => {
+    await sendVendorCreditPurchases(String(req.params["tenantId"]), res);
+  },
+);
+
+// Legacy read endpoint kept temporarily.
 router.get(
   "/tenants/:tenantId/token-purchases",
   requireSameTenanOrSuperAdmin(),
   async (req, res) => {
-    const tenantId = String(req.params["tenantId"]);
-
-    const [tenant] = await db
-      .select({ tokenCredits: tenantsTable.tokenCredits })
-      .from(tenantsTable)
-      .where(eq(tenantsTable.id, tenantId));
-
-    if (!tenant) {
-      res.status(404).json({ error: "Tenant não encontrado" });
-      return;
-    }
-
-    const allPurchases = await db
-      .select()
-      .from(tokenPurchasesTable)
-      .where(eq(tokenPurchasesTable.tenantId, tenantId))
-      .orderBy(desc(tokenPurchasesTable.createdAt))
-      .limit(50);
-    const purchases = allPurchases.filter((purchase) => !isGenerationPack(purchase)).slice(0, 20);
-
-    res.json({
-      tokenCredits: tenant.tokenCredits,
-      tokenBalance: tenant.tokenCredits,
-      purchases,
-      creditsPerBrl: CREDITS_PER_BRL,
-      tokenStandard: {
-        tokensPerBrl: VENDOR_TOKENS_PER_BRL,
-        packPriceBrl: VENDOR_TOKEN_PACK_PRICE_BRL,
-        packTokens: VENDOR_TOKEN_PACK_TOKENS,
-      },
-    });
-  }
+    await sendVendorCreditPurchases(String(req.params["tenantId"]), res);
+  },
 );
 
 // ── POST /tenants/:tenantId/generation-pack-purchases ────────────────────────
