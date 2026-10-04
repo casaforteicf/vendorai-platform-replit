@@ -1,6 +1,7 @@
 import { and, eq, gt, gte, isNull, or, sql } from "drizzle-orm";
 import {
   consumptionPackDefinitionsTable,
+  commercialProductProfilesTable,
   db,
   productUsageQuotasTable,
   tenantEntitlementsTable,
@@ -322,6 +323,10 @@ export async function getVendorCreditBalance(tenantId: string, now = new Date())
 export type VendorCreditAuthorization = {
   ok: boolean;
   required: number;
+  includedMonthly: number;
+  includedUsed: number;
+  includedRemaining: number;
+  walletRequired: number;
   available: number;
   mode: "measure_only" | "enforce";
   reason?: "INSUFFICIENT_VENDOR_CREDITS";
@@ -329,6 +334,46 @@ export type VendorCreditAuthorization = {
 
 export function getVendorCreditEnforcementMode(): "measure_only" | "enforce" {
   return process.env["VENDOR_CREDITS_ENFORCEMENT"] === "enforce" ? "enforce" : "measure_only";
+}
+
+export async function getMonthlyIncludedVendorCredits(tenantId: string, now = new Date()) {
+  const entitlements = await getActiveEntitlements(tenantId, now);
+  if (entitlements.length === 0) return 0;
+
+  const keys = entitlements.map((item) => item.commercialKey);
+  const profiles = await db
+    .select({
+      commercialKey: commercialProductProfilesTable.commercialKey,
+      metadata: commercialProductProfilesTable.metadata,
+    })
+    .from(commercialProductProfilesTable)
+    .where(and(
+      eq(commercialProductProfilesTable.active, true),
+      sql`${commercialProductProfilesTable.commercialKey} = any(${keys})`,
+    ));
+
+  return profiles.reduce((sum, profile) => {
+    const metadata = (profile.metadata ?? {}) as Record<string, unknown>;
+    const included = Number(metadata["includedVendorCreditsMonthly"] ?? 0);
+    return sum + (Number.isFinite(included) && included > 0 ? included : 0);
+  }, 0);
+}
+
+export async function getVendorCreditSnapshot(tenantId: string, now = new Date()) {
+  const [walletBalance, includedMonthly, includedUsed] = await Promise.all([
+    getVendorCreditBalance(tenantId, now),
+    getMonthlyIncludedVendorCredits(tenantId, now),
+    getMonthlyVendorCreditUsage(tenantId, now),
+  ]);
+
+  const includedRemaining = Math.max(0, includedMonthly - includedUsed);
+  return {
+    includedMonthly,
+    includedUsed,
+    includedRemaining,
+    purchasedBalance: walletBalance,
+    totalAvailable: includedRemaining + walletBalance,
+  };
 }
 
 export async function authorizeVendorCredits(
@@ -345,13 +390,34 @@ export async function authorizeVendorCredits(
   if (!metric) throw new Error(`Unknown usage metric: ${metricKey}`);
 
   const required = Math.max(0, Math.ceil(Math.max(0, quantity) * Number(metric.vendorCreditsPerUnit)));
-  const available = await getVendorCreditBalance(tenantId);
+  const snapshot = await getVendorCreditSnapshot(tenantId);
+  const walletRequired = Math.max(0, required - snapshot.includedRemaining);
   const mode = getVendorCreditEnforcementMode();
 
-  if (mode === "enforce" && required > available) {
-    return { ok: false, required, available, mode, reason: "INSUFFICIENT_VENDOR_CREDITS" };
+  if (mode === "enforce" && walletRequired > snapshot.purchasedBalance) {
+    return {
+      ok: false,
+      required,
+      includedMonthly: snapshot.includedMonthly,
+      includedUsed: snapshot.includedUsed,
+      includedRemaining: snapshot.includedRemaining,
+      walletRequired,
+      available: snapshot.purchasedBalance,
+      mode,
+      reason: "INSUFFICIENT_VENDOR_CREDITS",
+    };
   }
-  return { ok: true, required, available, mode };
+
+  return {
+    ok: true,
+    required,
+    includedMonthly: snapshot.includedMonthly,
+    includedUsed: snapshot.includedUsed,
+    includedRemaining: snapshot.includedRemaining,
+    walletRequired,
+    available: snapshot.purchasedBalance,
+    mode,
+  };
 }
 
 /**
