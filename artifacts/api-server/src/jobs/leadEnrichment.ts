@@ -227,7 +227,12 @@ Regras:
       params.tenantId,
       "intelligence_analysis",
       [{ role: "user", content: prompt }],
-      { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, temperature: 0.3 },
+      {
+        model: "gpt-4o-mini",
+        responseFormat: { type: "json_object" },
+        temperature: 0.3,
+        commercialUsage: { metricKey: "prospect_deep", quantity: 1, commercialKey: "vendor.prospector" },
+      },
     );
 
     const content = response.content ?? "{}";
