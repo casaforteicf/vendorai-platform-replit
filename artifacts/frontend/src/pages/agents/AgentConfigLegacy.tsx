@@ -306,12 +306,16 @@ function AgentCard({
           </div>
           <Badge
             variant="outline"
-            className={agent.ativo
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-400"
-              : "border-border bg-muted/50 text-muted-foreground"}
+            className={
+              !agent.ativo
+                ? "border-border bg-muted/50 text-muted-foreground"
+                : configScore < 70
+                  ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-400"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-400"
+            }
           >
-            <span className={`mr-1.5 h-1.5 w-1.5 rounded-full ${agent.ativo ? "bg-emerald-500" : "bg-muted-foreground/50"}`} />
-            {agent.ativo ? "Operando" : "Desativado"}
+            <span className={`mr-1.5 h-1.5 w-1.5 rounded-full ${!agent.ativo ? "bg-muted-foreground/50" : configScore < 70 ? "bg-amber-500" : "bg-emerald-500"}`} />
+            {!agent.ativo ? "Desativado" : configScore < 70 ? "Configuração pendente" : "Operando"}
           </Badge>
         </div>
       </CardHeader>
@@ -342,7 +346,7 @@ function AgentCard({
               onCheckedChange={(checked) => onToggle(agent.agentKey, checked)}
               aria-label={`${agent.ativo ? "Desativar" : "Ativar"} agente ${nome}`}
             />
-            {agent.ativo ? "Habilitado" : "Desabilitado"}
+            {agent.ativo ? "Ativo" : "Desativado"}
           </label>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={() => onTest(agent)}>
