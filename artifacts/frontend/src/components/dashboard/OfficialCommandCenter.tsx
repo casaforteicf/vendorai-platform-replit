@@ -325,8 +325,8 @@ export default function OfficialCommandCenter({ data, executive, loading, userNa
     return (
       <div className="space-y-5">
         <div className="h-24 animate-pulse rounded-2xl bg-muted" />
-        <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
-          {Array.from({ length: 10 }).map((_, index) => <div key={index} className="h-36 animate-pulse rounded-2xl bg-muted" />)}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => <div key={index} className="h-32 animate-pulse rounded-2xl bg-muted" />)}
         </div>
         <div className="grid gap-4 xl:grid-cols-2"><div className="h-72 animate-pulse rounded-2xl bg-muted" /><div className="h-72 animate-pulse rounded-2xl bg-muted" /></div>
       </div>
