@@ -924,3 +924,77 @@ main.vendor-scrollbar {
     padding-top: 12px;
   }
 }
+
+
+/* Secondary core screens */
+.vendor-agenda-page,
+.vendor-proposals-page,
+.vendor-agents-page {
+  min-width: 0;
+}
+
+.vendor-agenda-page {
+  overflow: hidden;
+}
+
+.vendor-agenda-page > aside {
+  padding: 10px;
+  border: 1px solid hsl(var(--border) / .7);
+  border-radius: 16px;
+  background: hsl(var(--card));
+  box-shadow: 0 1px 2px rgba(15,23,42,.025);
+}
+
+.vendor-agenda-page :where(.rounded-xl.border) {
+  border-color: hsl(var(--border) / .7);
+  box-shadow: 0 1px 2px rgba(15,23,42,.02);
+}
+
+.vendor-proposals-page .vendor-product-hero {
+  margin-bottom: 14px;
+}
+
+.vendor-proposals-page :where(.rounded-xl.border.bg-card, .rounded-lg.border.bg-card) {
+  border-color: hsl(var(--border) / .7);
+  box-shadow: 0 1px 2px rgba(15,23,42,.025);
+}
+
+.vendor-proposals-page :where(table) {
+  min-width: 920px;
+}
+
+.vendor-proposals-page :where(th, td) {
+  padding-inline: 12px;
+}
+
+.vendor-agents-page > :where(div) {
+  min-width: 0;
+}
+
+.vendor-agents-page :where(.border-primary\/20) {
+  border-color: hsl(var(--primary) / .18);
+}
+
+.vendor-agents-page :where(.bg-primary\/\[0\.025\]) {
+  background: hsl(var(--primary) / .025);
+}
+
+.vendor-agents-page :where(.rounded-xl.border, [data-slot="card"]) {
+  box-shadow: 0 1px 2px rgba(15,23,42,.025);
+}
+
+@media (max-width: 767px) {
+  .vendor-agenda-page,
+  .vendor-proposals-page,
+  .vendor-agents-page {
+    padding-inline: 14px;
+  }
+
+  .vendor-agenda-page {
+    overflow: visible;
+  }
+
+  .vendor-proposals-page :where(table) {
+    min-width: 820px;
+  }
+}
