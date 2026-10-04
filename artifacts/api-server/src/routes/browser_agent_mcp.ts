@@ -35,6 +35,36 @@ router.use("/internal/browser-mcp", (req, res, next) => {
 
 const tenantKeySchema = z.string().min(1).max(255);
 
+const browserMcpConnectionSelection = {
+  id: browserAgentConnectionsTable.id,
+  tenantId: browserAgentConnectionsTable.tenantId,
+  name: browserAgentConnectionsTable.name,
+  startUrl: browserAgentConnectionsTable.startUrl,
+  allowedHosts: browserAgentConnectionsTable.allowedHosts,
+  usernameEncrypted: browserAgentConnectionsTable.usernameEncrypted,
+  passwordEncrypted: browserAgentConnectionsTable.passwordEncrypted,
+  cookiesEncrypted: browserAgentConnectionsTable.cookiesEncrypted,
+  lastUsedAt: browserAgentConnectionsTable.lastUsedAt,
+  createdAt: browserAgentConnectionsTable.createdAt,
+  updatedAt: browserAgentConnectionsTable.updatedAt,
+};
+
+type BrowserMcpConnection = Pick<
+  typeof browserAgentConnectionsTable.$inferSelect,
+  | "id"
+  | "tenantId"
+  | "name"
+  | "startUrl"
+  | "allowedHosts"
+  | "usernameEncrypted"
+  | "passwordEncrypted"
+  | "cookiesEncrypted"
+  | "lastUsedAt"
+  | "createdAt"
+  | "updatedAt"
+>;
+
+
 async function resolveTenantId(tenantKey: string): Promise<string | undefined> {
   const [tenant] = await db
     .select({ id: tenantsTable.id })
@@ -50,7 +80,7 @@ async function resolveTenantId(tenantKey: string): Promise<string | undefined> {
   return tenant?.id;
 }
 
-function safeConnection(connection: typeof browserAgentConnectionsTable.$inferSelect) {
+function safeConnection(connection: BrowserMcpConnection) {
   return {
     id: connection.id,
     name: connection.name,
@@ -90,7 +120,7 @@ router.post("/internal/browser-mcp/connections", async (req, res) => {
   }
 
   const rows = await db
-    .select()
+    .select(browserMcpConnectionSelection)
     .from(browserAgentConnectionsTable)
     .where(eq(browserAgentConnectionsTable.tenantId, tenantId));
 
@@ -129,10 +159,10 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
   const mode = globalVendiAutonomy ? "autonomo" : (parsed.data.mode ?? (autonomyEnabled ? "autonomo" : "assistido"));
   const allowWrite = globalVendiAutonomy ? true : (parsed.data.allowWrite ?? autonomyEnabled);
 
-  let connection: typeof browserAgentConnectionsTable.$inferSelect | undefined;
+  let connection: BrowserMcpConnection | undefined;
   if (parsed.data.connectionId) {
     [connection] = await db
-      .select()
+      .select(browserMcpConnectionSelection)
       .from(browserAgentConnectionsTable)
       .where(
         and(
@@ -149,7 +179,7 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
     const start = new URL(parsed.data.startUrl);
     const normalizedStartUrl = start.origin + "/";
     [connection] = await db
-      .select()
+      .select(browserMcpConnectionSelection)
       .from(browserAgentConnectionsTable)
       .where(
         and(
@@ -168,7 +198,7 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
           startUrl: normalizedStartUrl,
           allowedHosts: [start.hostname.toLowerCase()],
         })
-        .returning();
+        .returning(browserMcpConnectionSelection);
     }
   }
 
@@ -193,7 +223,7 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
         allowWrite,
       },
     })
-    .returning();
+    .returning(browserMcpConnectionSelection);
 
   try {
     const sessionCookies = connection?.cookiesEncrypted
