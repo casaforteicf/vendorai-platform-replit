@@ -271,11 +271,14 @@ router.post("/tenants/:tenantId/media/assets/import-dropbox", async (req, res) =
   // tenant-audit: reviewed route is already protected by requireSameTenanOrSuperAdmin()
   const tenantId = String(req.params["tenantId"]);
   const body = asRecord(req.body);
-  const rawUrl = nonEmptyString(body["url"]);
+  const requestedUrl = nonEmptyString(body["url"]);
+  const rawUrl = requestedUrl === "official"
+    ? nonEmptyString(process.env["VENDORAI_OFFICIAL_PRESENTATION_IMPORT_URL"])
+    : requestedUrl;
   const originalFilename = nonEmptyString(body["originalFilename"]) ?? "arquivo-importado.pptx";
 
   if (!rawUrl) {
-    res.status(422).json({ error: "url é obrigatória" });
+    res.status(422).json({ error: requestedUrl === "official" ? "Importação oficial não configurada" : "url é obrigatória" });
     return;
   }
 
