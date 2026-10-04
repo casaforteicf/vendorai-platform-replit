@@ -267,6 +267,72 @@ router.post("/tenants/:tenantId/media/assets/request-upload", async (req, res) =
   }
 });
 
+router.post("/tenants/:tenantId/media/assets/import-dropbox", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const body = asRecord(req.body);
+  const rawUrl = nonEmptyString(body["url"]);
+  const originalFilename = nonEmptyString(body["originalFilename"]) ?? "arquivo-importado.pptx";
+
+  if (!rawUrl) {
+    res.status(422).json({ error: "url é obrigatória" });
+    return;
+  }
+
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(rawUrl);
+  } catch {
+    res.status(422).json({ error: "url inválida" });
+    return;
+  }
+
+  const host = parsedUrl.hostname.toLowerCase();
+  if (parsedUrl.protocol !== "https:" || !host.endsWith(".dropboxusercontent.com")) {
+    res.status(422).json({ error: "origem não permitida" });
+    return;
+  }
+
+  try {
+    const upstream = await fetch(parsedUrl, { redirect: "follow" });
+    if (!upstream.ok) {
+      res.status(422).json({ error: `Falha ao baixar arquivo: HTTP ${upstream.status}` });
+      return;
+    }
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+    if (buffer.length === 0 || buffer.length > 50 * 1024 * 1024) {
+      res.status(buffer.length > 50 * 1024 * 1024 ? 413 : 422).json({ error: buffer.length ? "Arquivo excede o limite de 50 MB" : "Arquivo vazio" });
+      return;
+    }
+    const mimeType = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    const storageUrl = await objectStorage.saveMediaBuffer(buffer, mimeType, originalFilename);
+    const [asset] = await db.insert(mediaAssetsTable).values({
+      tenantId,
+      projectId: null,
+      userId: req.user?.sub ?? null,
+      type: "document",
+      role: "source",
+      storageUrl,
+      mimeType,
+      fileSize: buffer.length,
+      originalFilename,
+      source: "imported",
+      metadata: {
+        folderPath: "Apresentações",
+        title: "Vendor.ai — Apresentação Comercial Master",
+        official: true,
+        usage: "comercial",
+        importedFrom: "dropbox_temporary_link",
+        importedAt: new Date().toISOString(),
+      },
+    }).returning();
+
+    res.status(201).json({ asset });
+  } catch (error) {
+    req.log.error({ err: error, tenantId }, "media-library: import-dropbox failed");
+    res.status(500).json({ error: "Falha ao importar apresentação" });
+  }
+});
+
 router.post("/tenants/:tenantId/media/assets", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
   const body = asRecord(req.body);
