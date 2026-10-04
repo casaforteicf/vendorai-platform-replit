@@ -71,7 +71,7 @@ export async function acquireBrowserLease(): Promise<BrowserLease> {
   const node = chooseNode();
   node.activeLeases++;
   try {
-    const browser = await puppeteer.connect({ browserWSEndpoint: node.endpoint });
+    const browser = await puppeteer.connect({ browserWSEndpoint: node.endpoint, protocolTimeout: 300_000 });
     let released = false;
     return {
       nodeId: node.id,
