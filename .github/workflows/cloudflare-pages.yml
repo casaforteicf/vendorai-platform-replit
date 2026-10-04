@@ -127,12 +127,65 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Deploy to Cloudflare Pages
-        run: pnpm dlx wrangler@3.90.0 pages deploy artifacts/frontend/dist/public --project-name vendorai --branch main
+        id: deploy_primary
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            echo "Primary Cloudflare Pages deploy attempt $attempt/3"
+            if pnpm dlx wrangler@3.90.0 pages deploy artifacts/frontend/dist/public --project-name vendorai --branch main; then
+              echo "Primary deploy succeeded on attempt $attempt."
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              sleep $((attempt * 10))
+            fi
+          done
+          echo "Primary Cloudflare Pages deploy failed after 3 attempts."
+          exit 1
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
+      - name: Trigger alternate fullstack fallback
+        id: deploy_fallback
+        if: steps.deploy_primary.outcome != 'success'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          before="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          gh workflow run cloudflare-fullstack-alt.yml --repo "$REPO" --ref main
+
+          run_id=""
+          for attempt in {1..30}; do
+            run_id="$(gh run list --repo "$REPO" --workflow cloudflare-fullstack-alt.yml --branch main --event workflow_dispatch --created ">=$before" --json databaseId,headSha,status,conclusion --jq 'map(select(.headSha == env.EXPECTED_SHA)) | sort_by(.databaseId) | last | .databaseId // empty' 2>/dev/null || true)"
+            if [ -n "$run_id" ]; then
+              break
+            fi
+            sleep 5
+          done
+
+          if [ -z "$run_id" ]; then
+            echo "::error::Alternate Cloudflare workflow was dispatched but no matching run for $EXPECTED_SHA was found."
+            exit 1
+          fi
+
+          echo "Waiting for alternate workflow run $run_id"
+          gh run watch "$run_id" --repo "$REPO" --exit-status
+
+      - name: Fail if all frontend publish paths failed
+        if: steps.deploy_primary.outcome != 'success' && steps.deploy_fallback.outcome != 'success'
+        run: |
+          echo "::error::Primary Cloudflare Pages deploy and alternate fullstack fallback both failed."
+          exit 1
+
       - name: Bind app.appvendorai.com
+        if: steps.deploy_primary.outcome == 'success' || steps.deploy_fallback.outcome == 'success'
         shell: bash
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
