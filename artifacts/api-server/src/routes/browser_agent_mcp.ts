@@ -25,6 +25,104 @@ function authorized(req: any): boolean {
   return req.headers.authorization === `Bearer ${expected}`;
 }
 
+router.post("/internal/browser-mcp/homolog-bootstrap", async (req, res) => {
+  if (String(process.env["HOMOLOGATION_AUTH_BOOTSTRAP_ENABLED"] ?? "").toLowerCase() !== "true") {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+
+  const parsed = z.object({ tenantKey: tenantKeySchema }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const upstreamToken = String(req.headers.authorization ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (!upstreamToken) {
+    res.status(401).json({ error: "missing_upstream_token" });
+    return;
+  }
+
+  const verifyUrl = process.env["HOMOLOGATION_UPSTREAM_AUTH_ME_URL"]?.trim()
+    || "https://app.appvendorai.com/api/auth/me";
+
+  let upstreamUser: any;
+  try {
+    const verifyResponse = await fetch(verifyUrl, {
+      headers: { authorization: `Bearer ${upstreamToken}` },
+    });
+    if (!verifyResponse.ok) {
+      res.status(401).json({ error: "upstream_token_rejected", status: verifyResponse.status });
+      return;
+    }
+    upstreamUser = await verifyResponse.json();
+  } catch {
+    res.status(502).json({ error: "upstream_auth_unreachable" });
+    return;
+  }
+
+  if (upstreamUser?.platformRole !== "super_admin") {
+    res.status(403).json({ error: "super_admin_required" });
+    return;
+  }
+
+  const tenantId = await resolveTenantId(parsed.data.tenantKey);
+  if (!tenantId) {
+    res.status(404).json({ error: "tenant_not_found" });
+    return;
+  }
+
+  const principalSelect = {
+    id: usersTable.id,
+    email: usersTable.email,
+    name: usersTable.name,
+    platformRole: usersTable.platformRole,
+    role: usersTable.role,
+    userFunction: usersTable.userFunction,
+    active: usersTable.active,
+  };
+
+  const [platformPrincipal] = await db.select(principalSelect)
+    .from(usersTable)
+    .where(and(eq(usersTable.platformRole, "super_admin"), eq(usersTable.active, true)))
+    .limit(1);
+  const [tenantPrincipal] = platformPrincipal ? [] : await db.select(principalSelect)
+    .from(usersTable)
+    .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)))
+    .limit(1);
+  const servicePrincipal = platformPrincipal ?? tenantPrincipal;
+
+  if (!servicePrincipal) {
+    res.status(409).json({ error: "vendi_auth_principal_not_found" });
+    return;
+  }
+
+  const token = signToken({
+    sub: servicePrincipal.id,
+    email: servicePrincipal.email,
+    platformRole: servicePrincipal.platformRole,
+    tenantId,
+    role: servicePrincipal.role,
+    userFunction: servicePrincipal.userFunction ?? undefined,
+    actorType: "ai",
+  });
+
+  res.json({
+    token,
+    tenantId,
+    userCache: {
+      id: servicePrincipal.id,
+      email: servicePrincipal.email,
+      name: servicePrincipal.name,
+      platformRole: servicePrincipal.platformRole,
+      tenantId,
+      role: servicePrincipal.role,
+      userFunction: servicePrincipal.userFunction ?? null,
+      actorType: "ai",
+    },
+  });
+});
+
 router.use("/internal/browser-mcp", (req, res, next) => {
   if (!authorized(req)) {
     res.status(401).json({ error: "unauthorized" });
@@ -103,70 +201,6 @@ router.get("/internal/browser-mcp/status", (_req, res) => {
     secureSecretInjection: true,
     persistentConnections: true,
     vendiAutonomyEnabled: vendiAutonomyEnabled(),
-  });
-});
-
-router.post("/internal/browser-mcp/bootstrap-auth", async (req, res) => {
-  const parsed = z.object({ tenantKey: tenantKeySchema }).safeParse(req.body);
-  if (!parsed.success) {
-    res.status(422).json({ error: parsed.error.flatten() });
-    return;
-  }
-
-  const tenantId = await resolveTenantId(parsed.data.tenantKey);
-  if (!tenantId) {
-    res.status(404).json({ error: "tenant_not_found" });
-    return;
-  }
-
-  const principalSelect = {
-    id: usersTable.id,
-    email: usersTable.email,
-    name: usersTable.name,
-    platformRole: usersTable.platformRole,
-    role: usersTable.role,
-    userFunction: usersTable.userFunction,
-    active: usersTable.active,
-  };
-
-  const [platformPrincipal] = await db.select(principalSelect)
-    .from(usersTable)
-    .where(and(eq(usersTable.platformRole, "super_admin"), eq(usersTable.active, true)))
-    .limit(1);
-  const [tenantPrincipal] = platformPrincipal ? [] : await db.select(principalSelect)
-    .from(usersTable)
-    .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)))
-    .limit(1);
-  const servicePrincipal = platformPrincipal ?? tenantPrincipal;
-
-  if (!servicePrincipal) {
-    res.status(409).json({ error: "vendi_auth_principal_not_found" });
-    return;
-  }
-
-  const token = signToken({
-    sub: servicePrincipal.id,
-    email: servicePrincipal.email,
-    platformRole: servicePrincipal.platformRole,
-    tenantId,
-    role: servicePrincipal.role,
-    userFunction: servicePrincipal.userFunction ?? undefined,
-    actorType: "ai",
-  });
-
-  res.json({
-    token,
-    tenantId,
-    userCache: {
-      id: servicePrincipal.id,
-      email: servicePrincipal.email,
-      name: servicePrincipal.name,
-      platformRole: servicePrincipal.platformRole,
-      tenantId,
-      role: servicePrincipal.role,
-      userFunction: servicePrincipal.userFunction ?? null,
-      actorType: "ai",
-    },
   });
 });
 
@@ -341,14 +375,39 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
         actorType: "ai",
       };
     } else if (firstPartyHost === "homolog.appvendorai.com") {
-      const exchangeToken = process.env["BROWSER_MCP_ACCESS_TOKEN"]?.trim();
-      if (!exchangeToken) throw new Error("VENDI_HOMOLOG_AUTH_EXCHANGE_NOT_CONFIGURED");
+      // Gera primeiro uma credencial técnica válida na produção e a apresenta à
+      // homologação. A homologação valida essa credencial contra /auth/me da
+      // produção e só então emite um JWT local com o próprio JWT_SECRET.
+      const principalSelect = {
+        id: usersTable.id,
+        email: usersTable.email,
+        name: usersTable.name,
+        platformRole: usersTable.platformRole,
+        role: usersTable.role,
+        userFunction: usersTable.userFunction,
+        active: usersTable.active,
+      };
+      const [platformPrincipal] = await db.select(principalSelect)
+        .from(usersTable)
+        .where(and(eq(usersTable.platformRole, "super_admin"), eq(usersTable.active, true)))
+        .limit(1);
+      if (!platformPrincipal) throw new Error("VENDI_AUTH_PRINCIPAL_NOT_FOUND");
 
-      const exchangeUrl = new URL("/api/internal/browser-mcp/bootstrap-auth", firstPartyUrl.origin);
+      const upstreamToken = signToken({
+        sub: platformPrincipal.id,
+        email: platformPrincipal.email,
+        platformRole: platformPrincipal.platformRole,
+        tenantId,
+        role: platformPrincipal.role,
+        userFunction: platformPrincipal.userFunction ?? undefined,
+        actorType: "ai",
+      });
+
+      const exchangeUrl = new URL("/api/internal/browser-mcp/homolog-bootstrap", firstPartyUrl.origin);
       const exchangeResponse = await fetch(exchangeUrl, {
         method: "POST",
         headers: {
-          authorization: `Bearer ${exchangeToken}`,
+          authorization: `Bearer ${upstreamToken}`,
           "content-type": "application/json",
         },
         body: JSON.stringify({ tenantKey: parsed.data.tenantKey }),
