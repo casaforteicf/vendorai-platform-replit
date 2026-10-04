@@ -298,7 +298,7 @@ export async function executeBrowserAction(
 
   if (action.action === "navigate") {
     await withBrowserRetry(() =>
-      page.goto(validateBrowserUrl(action.url, input.allowedHosts), { waitUntil: "domcontentloaded", timeout: 30000 }),
+      page.goto(validateBrowserUrl(action.url, input.allowedHosts), { waitUntil: "domcontentloaded", timeout: 60_000 }),
     );
     return;
   }
@@ -387,10 +387,10 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
 
     await withBrowserRetry(() => page.goto(validateBrowserUrl(input.startUrl, input.allowedHosts), {
       waitUntil: "domcontentloaded",
-      timeout: 30000,
+      timeout: 60_000,
     }));
     if (await restoreBrowserProfileAfterNavigation(page, input.sessionProfile)) {
-      await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 });
+      await page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
     }
 
     if (input.firstPartyAuthToken) {
