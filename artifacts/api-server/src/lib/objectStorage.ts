@@ -282,6 +282,17 @@ export class ObjectStorageService {
     return `/objects/${entityId}`;
   }
 
+  async saveMediaBuffer(buffer: Buffer, contentType: string, originalName: string): Promise<string> {
+    const privateDir = this.getPrivateObjectDir();
+    const objectId = randomUUID();
+    const ext = originalName.split(".").pop()?.toLowerCase() ?? "bin";
+    const safeName = `${objectId}.${ext}`;
+    const fullPath = `${privateDir}/media/${safeName}`;
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    await objectStorageClient.bucket(bucketName).file(objectName).save(buffer, { contentType, resumable: false });
+    return `/objects/media/${safeName}`;
+  }
+
   async savePrivateBuffer(buffer: Buffer, contentType: string, originalName: string): Promise<string> {
     const privateDir = this.getPrivateObjectDir();
     const objectId = randomUUID();
