@@ -348,12 +348,12 @@ export async function callOpenAI(
       throw new AiGatewayError(
         "Saldo de Vendor Credits insuficiente. Adicione Credits para continuar.",
         402,
-        { requiredVendorCredits: authorization.required, availableVendorCredits: authorization.available },
+        { requiredVendorCredits: authorization.required, includedVendorCreditsRemaining: authorization.includedRemaining, purchasedVendorCreditsAvailable: authorization.available },
       );
     }
     const reservation = await debitVendorCredits({
       tenantId,
-      credits: authorization.required,
+      credits: authorization.walletRequired,
       commercialKey: options.commercialUsage?.commercialKey ?? null,
       referenceId: `usage-reservation:${commercialRequestId}`,
       reason: "usage_reservation",
@@ -559,12 +559,12 @@ export async function callAnthropic(
     throw new AiGatewayError(
       "Saldo de Vendor Credits insuficiente. Adicione Credits para continuar.",
       402,
-      { requiredVendorCredits: authorization.required, availableVendorCredits: authorization.available },
+      { requiredVendorCredits: authorization.required, includedVendorCreditsRemaining: authorization.includedRemaining, purchasedVendorCreditsAvailable: authorization.available },
     );
   }
   const reservation = await debitVendorCredits({
     tenantId,
-    credits: authorization.required,
+    credits: authorization.walletRequired,
     commercialKey: options.commercialUsage?.commercialKey ?? null,
     referenceId: `usage-reservation:${commercialRequestId}`,
     reason: "usage_reservation",
@@ -796,12 +796,12 @@ export async function generateImage(
     throw new AiGatewayError(
       "Saldo de Vendor Credits insuficiente. Adicione Credits para gerar a imagem.",
       402,
-      { requiredVendorCredits: authorization.required, availableVendorCredits: authorization.available },
+      { requiredVendorCredits: authorization.required, includedVendorCreditsRemaining: authorization.includedRemaining, purchasedVendorCreditsAvailable: authorization.available },
     );
   }
   const reservation = await debitVendorCredits({
     tenantId,
-    credits: authorization.required,
+    credits: authorization.walletRequired,
     commercialKey: options.commercialUsage?.commercialKey ?? null,
     referenceId: `usage-reservation:${commercialRequestId}`,
     reason: "usage_reservation",
