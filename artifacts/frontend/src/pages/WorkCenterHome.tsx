@@ -1,4 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   getListActivitiesQueryKey,
@@ -6,7 +7,6 @@ import {
   getListPipelineStagesQueryKey,
   getListTenantLeadsQueryKey,
   getListTenantUsersQueryKey,
-  useListActivities,
   useListDeals,
   useListPipelineStages,
   useListTenantLeads,
@@ -78,7 +78,22 @@ export default function WorkCenterHome() {
   const request = { headers: { Authorization: "Bearer " + token } };
   const { data: leads = [], isLoading: loadingLeads } = useListTenantLeads(tenantId, undefined, { request, query: { enabled, queryKey: getListTenantLeadsQueryKey(tenantId) } });
   const { data: deals = [], isLoading: loadingDeals } = useListDeals(tenantId, undefined, { request, query: { enabled, queryKey: getListDealsQueryKey(tenantId) } });
-  const { data: activities = [], isLoading: loadingActivities } = useListActivities(tenantId, undefined, { request, query: { enabled, queryKey: getListActivitiesQueryKey(tenantId) } });
+  const { data: activities = [], isLoading: loadingActivities } = useQuery<any[]>({
+    queryKey: getListActivitiesQueryKey(tenantId),
+    enabled,
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${encodeURIComponent(tenantId)}/activities`, {
+        headers: request.headers,
+      });
+      if (!response.ok) {
+        throw new Error(`Falha ao carregar atividades (${response.status})`);
+      }
+      const body = await response.json();
+      return Array.isArray(body) ? body : [];
+    },
+    staleTime: 15_000,
+    refetchOnWindowFocus: false,
+  });
   const { data: users = [] } = useListTenantUsers(tenantId, { request, query: { enabled, queryKey: getListTenantUsersQueryKey(tenantId) } });
   const { data: stages = [] } = useListPipelineStages(tenantId, { request, query: { enabled, queryKey: getListPipelineStagesQueryKey(tenantId) } });
   const [search, setSearch] = useState("");
