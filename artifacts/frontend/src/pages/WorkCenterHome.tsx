@@ -70,6 +70,23 @@ function formatDeadline(value: string) {
   }).format(date);
 }
 
+function leadFallbackNextActivity(
+  lead: { proximaAcao?: string | null; createdAt?: string | Date | null } | undefined,
+  dealTitle?: string | null,
+) {
+  const title = lead?.proximaAcao?.trim();
+  if (!title) return undefined;
+
+  const isProspectorAuto = Boolean(dealTitle?.toLocaleLowerCase("pt-BR").includes("prospector auto"));
+  const createdAt = lead?.createdAt ? new Date(lead.createdAt).getTime() : Number.NaN;
+  const dataVencimento =
+    isProspectorAuto && Number.isFinite(createdAt)
+      ? new Date(createdAt + 2 * 60 * 60 * 1000).toISOString()
+      : null;
+
+  return { titulo: title, dataVencimento };
+}
+
 export default function WorkCenterHome() {
   const { user, token } = useAuth();
   const [, navigate] = useLocation();
@@ -159,7 +176,10 @@ export default function WorkCenterHome() {
         dealTitle: deal.titulo,
         stage: deal.etapa,
         ownerId: deal.assignedTo ?? lead?.assignedTo,
-        nextActivity: pendingByDeal.get(deal.id)?.[0] ?? (lead?.id ? pendingByLead.get(lead.id)?.[0] : undefined),
+        nextActivity:
+          pendingByDeal.get(deal.id)?.[0] ??
+          (lead?.id ? pendingByLead.get(lead.id)?.[0] : undefined) ??
+          leadFallbackNextActivity(lead, deal.titulo),
         updatedAt: deal.updatedAt,
         dataIssue: !lead,
       });
@@ -174,7 +194,7 @@ export default function WorkCenterHome() {
         dealTitle: "Atendimento ainda não iniciado",
         stage: "sem_negocio",
         ownerId: lead.assignedTo,
-        nextActivity: pendingByLead.get(lead.id)?.[0],
+        nextActivity: pendingByLead.get(lead.id)?.[0] ?? leadFallbackNextActivity(lead, null),
       });
     }
 
