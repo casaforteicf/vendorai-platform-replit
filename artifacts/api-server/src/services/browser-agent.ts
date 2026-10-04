@@ -412,6 +412,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
     }
 
     let selectorRecoveryNote = "";
+    let noChangeStreak = 0;
     for (let index = 1; index <= maxSteps; index++) {
       const state = await withBrowserRetry(() => snapshotBrowserPage(page));
       assertBrowserPageAccessible(state);
@@ -442,13 +443,39 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
           const afterState = await withBrowserRetry(() => snapshotBrowserPage(page));
           const verification = verifyCheckpointTransition(checkpointFromState(state), checkpointFromState(afterState));
           if (!verification.changed) {
+            noChangeStreak += 1;
+            const failedSelector = "selector" in action ? action.selector : "indisponível";
             selectorRecoveryNote =
               "A ação anterior foi executada sem produzir mudança observável na página. " +
-              "Reavalie o estado atual e escolha outra ação/elemento para atingir o objetivo.";
+              `Não repita a mesma ação/seletor (${failedSelector}). Escolha outra ação/elemento.`;
+
+            if (noChangeStreak >= 2) {
+              const goalUrl = input.goal.match(/https?:\/\/[^\s)]+/)?.[0];
+              if (goalUrl) {
+                try {
+                  const target = validateBrowserUrl(goalUrl, input.allowedHosts);
+                  if (page.url() !== target) {
+                    await withBrowserRetry(() => page.goto(target, { waitUntil: "domcontentloaded", timeout: 60_000 }));
+                    await page.waitForNetworkIdle({ idleTime: 400, timeout: 5000 }).catch(() => undefined);
+                    steps[steps.length - 1]!.detail = [steps[steps.length - 1]!.detail, "verified_no_change_direct_navigation"]
+                      .filter(Boolean).join(" | ");
+                    noChangeStreak = 0;
+                    continue;
+                  }
+                } catch {
+                  // If the goal URL is invalid or outside the allowlist, keep normal replanning.
+                }
+              }
+              selectorRecoveryNote +=
+                " Já houve duas tentativas consecutivas sem mudança. É proibido repetir o mesmo clique; " +
+                "use navegação direta, extração do estado atual ou outro elemento do snapshot.";
+            }
+
             steps[steps.length - 1]!.detail = [steps[steps.length - 1]!.detail, "verified_no_change_replan"]
               .filter(Boolean).join(" | ");
             continue;
           }
+          noChangeStreak = 0;
         }
       } catch (error) {
         if (isRecoverableSelectorError(error)) {
