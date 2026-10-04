@@ -790,3 +790,137 @@ main.vendor-scrollbar {
     font-size: 24px !important;
   }
 }
+
+
+/* ==========================================================================
+   Premium product screens — CRM, Pipeline, Omnichannel and Settings
+   ========================================================================== */
+
+.vendor-leads-page,
+.vendor-deals-page {
+  min-width: 0;
+}
+
+.vendor-leads-page .vendor-product-hero,
+.vendor-deals-page .vendor-product-hero {
+  margin-bottom: 14px;
+}
+
+.vendor-leads-page :where(.rounded-xl.border.bg-card, .rounded-lg.border.bg-card),
+.vendor-deals-page :where(.rounded-xl.border.bg-card, .rounded-lg.border.bg-card),
+.vendor-config-page :where(.rounded-xl.border.bg-card, .rounded-lg.border.bg-card) {
+  border-color: hsl(var(--border) / .7);
+  box-shadow: 0 1px 2px rgba(15,23,42,.025);
+}
+
+.vendor-leads-page :where(table) {
+  min-width: 1120px;
+}
+
+.vendor-leads-page :where(th, td) {
+  padding-inline: 12px;
+}
+
+.vendor-leads-page :where(tbody td) {
+  vertical-align: middle;
+}
+
+.vendor-leads-page :where(tbody td:first-child) {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: hsl(var(--card));
+}
+
+.vendor-leads-page :where(tbody tr:hover td:first-child) {
+  background: hsl(var(--muted) / .52);
+}
+
+.vendor-leads-page :where(input, [role="combobox"]) {
+  min-height: 40px;
+}
+
+.vendor-deals-page {
+  overflow: hidden;
+}
+
+.vendor-deals-page :where(.overflow-x-auto) {
+  scroll-padding-inline: 12px;
+}
+
+.vendor-deals-page :where(.w-72) {
+  width: 18rem;
+}
+
+.vendor-deals-page :where([data-ai-accent="true"]) {
+  border-color: hsl(var(--primary) / .16);
+}
+
+.vendor-conversations-page {
+  background: hsl(var(--background));
+}
+
+.vendor-conversations-header {
+  box-shadow: 0 1px 0 hsl(var(--border) / .35);
+}
+
+.vendor-conversations-page :where(.rounded-xl.border) {
+  border-color: hsl(var(--border) / .65);
+}
+
+.vendor-conversations-page :where(.bg-muted\/60) {
+  background: hsl(var(--muted) / .42);
+}
+
+.vendor-conversations-page :where(button) {
+  box-shadow: none;
+}
+
+.vendor-config-page {
+  padding-top: 18px;
+  padding-bottom: 28px;
+}
+
+.vendor-config-page .settings-quick-panel,
+.vendor-config-page .settings-toggle-summary,
+.vendor-config-page .settings-advanced-content {
+  border-color: hsl(var(--border) / .7);
+}
+
+.vendor-config-page .settings-toggle-summary {
+  min-height: 58px;
+}
+
+.vendor-config-page .settings-toggle-description {
+  max-width: 760px;
+}
+
+@media (max-width: 1023px) {
+  .vendor-leads-page :where(table) {
+    min-width: 980px;
+  }
+
+  .vendor-deals-page {
+    overflow: visible;
+  }
+}
+
+@media (max-width: 767px) {
+  .vendor-leads-page,
+  .vendor-deals-page {
+    padding-inline: 14px;
+  }
+
+  .vendor-leads-page .vendor-product-hero,
+  .vendor-deals-page .vendor-product-hero {
+    gap: 12px;
+  }
+
+  .vendor-conversations-page .vendor-conversations-header {
+    padding-inline: 12px;
+  }
+
+  .vendor-config-page {
+    padding-top: 12px;
+  }
+}
