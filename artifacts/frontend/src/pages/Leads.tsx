@@ -689,11 +689,11 @@ export default function Leads() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="vendor-product-page vendor-page-canvas vendor-leads-page space-y-5">
+      <div className="vendor-product-hero flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Leads</h1>
-          <p className="text-sm text-muted-foreground mt-1">{leads?.length ?? 0} contatos cadastrados</p>
+          <h1 className="vendor-product-title">Leads</h1>
+          <p className="vendor-product-subtitle">{leads?.length ?? 0} contatos cadastrados · visualize primeiro o que exige ação</p>
         </div>
 
         <div className="flex gap-2 flex-wrap">

@@ -352,7 +352,7 @@ export default function Configuracoes() {
 
   if (isInstallationMode) {
     return (
-      <div className="vendor-settings-compact">
+      <div className="vendor-settings-compact vendor-page-canvas vendor-config-page">
         <SettingsUxCleanup />
         <section className="mx-auto mb-3 w-full max-w-7xl px-4 sm:px-6">
           <div className="settings-quick-panel border border-border bg-card shadow-sm">
@@ -395,7 +395,7 @@ export default function Configuracoes() {
   }
 
   return (
-    <div className="vendor-settings-compact">
+    <div className="vendor-settings-compact vendor-page-canvas vendor-config-page">
       <SettingsUxCleanup />
       <section className="mx-auto mb-3 w-full max-w-7xl px-4 sm:px-6">
         <div className="settings-quick-panel border border-border bg-card shadow-sm">
@@ -470,8 +470,19 @@ export default function Configuracoes() {
         </div>
       </details>
 
-      <ConfiguracoesNormalized />
-      <ConfigurationCatalogProductsBridge />
+      <details className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6">
+        <summary className="settings-toggle-summary flex cursor-pointer list-none items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5 shadow-sm [&::-webkit-details-marker]:hidden">
+          <div className="min-w-0">
+            <div className="settings-toggle-title">Configurações completas</div>
+            <div className="settings-toggle-description">Empresa, equipe, integrações, catálogo e preferências detalhadas.</div>
+          </div>
+          <span className="settings-toggle-action">Abrir</span>
+        </summary>
+        <div className="settings-advanced-content mt-2.5">
+          <ConfiguracoesNormalized />
+          <ConfigurationCatalogProductsBridge />
+        </div>
+      </details>
     </div>
   );
 }
