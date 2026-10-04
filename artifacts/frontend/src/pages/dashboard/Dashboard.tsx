@@ -134,14 +134,42 @@ export default function Dashboard() {
           }
         />
         <Suspense fallback={null}>
-          <StrategicObserver
-            tenantId={tenantId}
-            token={token}
-            official={official}
-            refreshKey={refreshKey}
-          />
           <JarvisObserverCaseSync token={token} />
-          <JarvisHistory token={token} refreshKey={refreshKey} />
+
+          <div className="mx-auto mt-6 max-w-[1600px] space-y-3">
+            <details className="group overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-muted/40 [&::-webkit-details-marker]:hidden">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">Inteligência avançada</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">Observador Estratégico, oportunidades territoriais, sinais e análises aprofundadas.</p>
+                </div>
+                <span className="shrink-0 text-xs font-medium text-primary group-open:hidden">Abrir</span>
+                <span className="hidden shrink-0 text-xs font-medium text-primary group-open:inline">Ocultar</span>
+              </summary>
+              <div className="border-t border-border/60 p-4 md:p-5">
+                <StrategicObserver
+                  tenantId={tenantId}
+                  token={token}
+                  official={official}
+                  refreshKey={refreshKey}
+                />
+              </div>
+            </details>
+
+            <details className="group overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-muted/40 [&::-webkit-details-marker]:hidden">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">Histórico do JARVIS</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">Atividades, análises e registros anteriores sem ocupar a visão executiva principal.</p>
+                </div>
+                <span className="shrink-0 text-xs font-medium text-primary group-open:hidden">Abrir</span>
+                <span className="hidden shrink-0 text-xs font-medium text-primary group-open:inline">Ocultar</span>
+              </summary>
+              <div className="max-w-full overflow-hidden border-t border-border/60 p-4 md:p-5 [&_a]:break-all [&_pre]:overflow-x-auto [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto">
+                <JarvisHistory token={token} refreshKey={refreshKey} />
+              </div>
+            </details>
+          </div>
         </Suspense>
       </TabsContent>
 
