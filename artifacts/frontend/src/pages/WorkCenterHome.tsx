@@ -71,17 +71,17 @@ function formatDeadline(value: string) {
 }
 
 function leadFallbackNextActivity(
-  lead: { proximaAcao?: string | null; createdAt?: string | Date | null } | undefined,
+  lead: { proximaAcao?: string | null; updatedAt?: string | Date | null } | undefined,
   dealTitle?: string | null,
 ) {
   const title = lead?.proximaAcao?.trim();
   if (!title) return undefined;
 
   const isProspectorAuto = Boolean(dealTitle?.toLocaleLowerCase("pt-BR").includes("prospector auto"));
-  const createdAt = lead?.createdAt ? new Date(lead.createdAt).getTime() : Number.NaN;
+  const actionDefinedAt = lead?.updatedAt ? new Date(lead.updatedAt).getTime() : Number.NaN;
   const dataVencimento =
-    isProspectorAuto && Number.isFinite(createdAt)
-      ? new Date(createdAt + 2 * 60 * 60 * 1000).toISOString()
+    isProspectorAuto && Number.isFinite(actionDefinedAt)
+      ? new Date(actionDefinedAt + 2 * 60 * 60 * 1000).toISOString()
       : null;
 
   return { titulo: title, dataVencimento };
