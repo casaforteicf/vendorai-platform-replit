@@ -22,6 +22,11 @@ describe("runtime database connection string recovery", () => {
     expect(normalizeRuntimeConnectionString(value, true)).toBe(value);
   });
 
+  it("does not rewrite the postgres user for non-Supabase APP_DATABASE_URL hosts", () => {
+    const value = "postgresql://postgres:secret@postgres.railway.internal:5432/railway";
+    expect(normalizeRuntimeConnectionString(value, true)).toBe(value);
+  });
+
   it("sanitizes an invalid database path instead of logging embedded credentials", () => {
     const target = safeConnectionTarget(
       "postgresql://user:secret@db.example.com:5432/postgrespostgresql://other:leak@db.example.com/postgres",
