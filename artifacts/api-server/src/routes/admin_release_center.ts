@@ -42,8 +42,13 @@ function githubConfig(): GithubConfig {
   return { token, owner: parts[0], repo: parts[1], repository };
 }
 
+let githubRateLimitBackoffUntil = 0;
+
 async function githubJson(path: string, init?: RequestInit) {
   const config = githubConfig();
+  if (Date.now() < githubRateLimitBackoffUntil) {
+    throw new Error("GITHUB_RATE_LIMIT_COOLDOWN_UNTIL:" + new Date(githubRateLimitBackoffUntil).toISOString());
+  }
   const response = await fetch("https://api.github.com" + path, {
     ...init,
     headers: {
@@ -58,7 +63,17 @@ async function githubJson(path: string, init?: RequestInit) {
   const raw = await response.text();
   let body: any = {};
   try { body = raw ? JSON.parse(raw) : {}; } catch { body = { raw: raw.slice(0, 1000) }; }
-  if (!response.ok) throw new Error(body?.message ?? "GitHub HTTP " + response.status);
+  if (!response.ok) {
+    const remaining = Number(response.headers.get("x-ratelimit-remaining") ?? "");
+    const resetSeconds = Number(response.headers.get("x-ratelimit-reset") ?? "");
+    if (response.status === 403 && remaining === 0) {
+      githubRateLimitBackoffUntil =
+        Number.isFinite(resetSeconds) && resetSeconds > 0
+          ? Math.max(Date.now() + 60_000, resetSeconds * 1000 + 5_000)
+          : Date.now() + 15 * 60_000;
+    }
+    throw new Error(body?.message ?? "GitHub HTTP " + response.status);
+  }
   return body;
 }
 
