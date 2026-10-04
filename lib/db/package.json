@@ -12,6 +12,7 @@
     "push": "drizzle-kit push --config ./drizzle.config.ts",
     "push-force": "drizzle-kit push --force --config ./drizzle.config.ts",
     "homolog:init": "tsx src/prepare-homolog-db.ts && tsx src/seed-homolog-representation.ts",
+    "homolog:rebuild": "tsx src/prepare-homolog-db.ts && drizzle-kit push --force --config ./drizzle.config.ts && tsx src/seed-homolog-representation.ts",
     "migrate": "tsx src/reconcile-redacted-migration.ts && tsx src/migrate.ts up",
     "migrate:status": "tsx src/migrate.ts status",
     "migrate:dry-run": "tsx src/migrate.ts dry-run",
