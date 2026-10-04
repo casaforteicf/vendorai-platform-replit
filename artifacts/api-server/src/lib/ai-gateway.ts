@@ -465,7 +465,7 @@ export async function callOpenAI(
           maxTokens: options.maxTokens ?? 600,
           system: typeof systemMsgRaw?.content === "string" ? systemMsgRaw.content : undefined,
           log,
-          requestId: commercialRequestId,
+          requestId: `${commercialRequestId}:fallback-anthropic`,
           commercialUsage: commercialMetricKey ? {
             metricKey: commercialMetricKey,
             quantity: commercialQuantity,
@@ -648,6 +648,24 @@ export async function callAnthropic(
         tenantId: String(tenantId),
         model: String(model),
         message: errorMessage ?? "Erro desconhecido",
+      });
+      await recordCommercialUsage({
+        tenantId,
+        commercialKey: options.commercialUsage?.commercialKey ?? null,
+        metricKey: commercialMetricKey,
+        quantity: commercialQuantity,
+        success: false,
+        billable: true,
+        billingStatus: "non_billable",
+        provider: "anthropic",
+        model,
+        inputTokens: Math.ceil(inputTokens),
+        outputTokens: 0,
+        totalCostUsd: costUsdPartial,
+        source: "ai_gateway",
+        sourceEventId: `commercial:${commercialRequestId}`,
+        requestId: commercialRequestId,
+        metadata: { feature: String(feature), billingFailure: true },
       });
       if (reservedVendorCredits > 0) {
         await refundVendorCredits({
