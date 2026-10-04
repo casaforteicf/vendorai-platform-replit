@@ -10,6 +10,7 @@ import {
   billingEventsTable,
   tokenPurchasesTable,
   vendorTokenTransactionsTable,
+  vendorCreditTransactionsTable,
   dealsTable,
   prospectorFlowExecutionsTable,
   campaignSentLogsTable,
@@ -2049,6 +2050,13 @@ router.post("/webhooks/asaas", async (req, res) => {
     const parts = payment.externalReference.split(":");
     tenantId = parts[1] ?? null;
   }
+  if (!tenantId && (
+    payment.externalReference?.startsWith("token_topup:") ||
+    payment.externalReference?.startsWith("vendor_credits:")
+  )) {
+    const parts = payment.externalReference.split(":");
+    tenantId = parts[1] ?? null;
+  }
 
   // Resolve a deal linked to this charge (customer-level cobrança, distinct from
   // the tenant's own subscription billing above). externalReference is either
@@ -2058,6 +2066,7 @@ router.post("/webhooks/asaas", async (req, res) => {
   const isKnownPrefixedRef =
     payment.externalReference?.startsWith("monthly:") ||
     payment.externalReference?.startsWith("token_topup:") ||
+    payment.externalReference?.startsWith("vendor_credits:") ||
     payment.externalReference?.startsWith("sku_delivery:");
   if (!isKnownPrefixedRef && payment.externalReference) {
     if (payment.externalReference.length === 36) {
@@ -2137,8 +2146,12 @@ router.post("/webhooks/asaas", async (req, res) => {
   }
 
   if (event === "PAYMENT_RECEIVED" || event === "PAYMENT_CONFIRMED") {
-    // ── Token top-up: credit tokens to tenant ──────────────────────────────
-    if (payment.externalReference?.startsWith("token_topup:")) {
+    // ── Vendor Credits top-up ───────────────────────────────────────────────
+    // Accept both the new canonical reference and the legacy token_topup alias.
+    if (
+      payment.externalReference?.startsWith("vendor_credits:") ||
+      payment.externalReference?.startsWith("token_topup:")
+    ) {
       const parts = payment.externalReference.split(":");
       const purchaseId = parts[2] ?? null;
       if (purchaseId) {
@@ -2148,26 +2161,48 @@ router.post("/webhooks/asaas", async (req, res) => {
           .where(eq(tokenPurchasesTable.id, purchaseId));
 
         if (purchase && purchase.status !== "paid") {
-          await db
-            .update(tokenPurchasesTable)
-            .set({ status: "paid", paidAt: new Date() })
-            .where(eq(tokenPurchasesTable.id, purchase.id));
+          await db.transaction(async (tx) => {
+            await tx
+              .update(tokenPurchasesTable)
+              .set({ status: "paid", paidAt: new Date() })
+              .where(eq(tokenPurchasesTable.id, purchase.id));
 
-          await db
-            .update(tenantsTable)
-            .set({ tokenCredits: sql`token_credits + ${purchase.credits}`, updatedAt: new Date() })
-            .where(eq(tenantsTable.id, tenantId));
+            // Canonical customer wallet.
+            await tx.insert(vendorCreditTransactionsTable).values({
+              tenantId,
+              creditsDelta: purchase.credits,
+              metricKey: null,
+              quantityDelta: null,
+              reason: "purchase",
+              commercialKey: "vendor.credits",
+              referenceId: purchase.id,
+              metadata: {
+                paymentId: payment.id,
+                source: "asaas_vendor_credit_purchase",
+                canonical: true,
+              },
+            }).onConflictDoNothing();
 
-          await db.insert(vendorTokenTransactionsTable).values({
-            tenantId,
-            tokensDelta: purchase.credits,
-            kind: "purchase",
-            source: "asaas_token_purchase",
-            referenceId: purchase.id,
-            metadata: { paymentId: payment.id, canonical: true },
-          }).onConflictDoNothing();
+            // Legacy mirrors remain during the compatibility window only.
+            await tx
+              .update(tenantsTable)
+              .set({ tokenCredits: sql`token_credits + ${purchase.credits}`, updatedAt: new Date() })
+              .where(eq(tenantsTable.id, tenantId));
 
-          req.log.info({ tenantId, purchaseId, tokens: purchase.credits }, "asaas-webhook: token top-up credited");
+            await tx.insert(vendorTokenTransactionsTable).values({
+              tenantId,
+              tokensDelta: purchase.credits,
+              kind: "purchase",
+              source: "asaas_vendor_credit_purchase",
+              referenceId: purchase.id,
+              metadata: { paymentId: payment.id, canonical: false, compatibility: "vendor_credits" },
+            }).onConflictDoNothing();
+          });
+
+          req.log.info(
+            { tenantId, purchaseId, vendorCredits: purchase.credits },
+            "asaas-webhook: Vendor Credits credited",
+          );
         }
       }
       res.status(200).json({ ok: true });
