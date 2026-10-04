@@ -106,18 +106,27 @@ export default function WorkCenterHome() {
     return terminal;
   }, [stages]);
 
-  const pendingByDeal = useMemo(() => {
-    const grouped = new Map<string, typeof activities>();
+  const { pendingByDeal, pendingByLead } = useMemo(() => {
+    const byDeal = new Map<string, typeof activities>();
+    const byLead = new Map<string, typeof activities>();
     for (const activity of activities) {
-      if (!activity.dealId || !["pendente", "planejado"].includes(activity.status)) continue;
-      const list = grouped.get(activity.dealId) ?? [];
-      list.push(activity);
-      grouped.set(activity.dealId, list);
+      if (!["pendente", "planejado"].includes(activity.status)) continue;
+      if (activity.dealId) {
+        const dealList = byDeal.get(activity.dealId) ?? [];
+        dealList.push(activity);
+        byDeal.set(activity.dealId, dealList);
+      }
+      if (activity.leadId) {
+        const leadList = byLead.get(activity.leadId) ?? [];
+        leadList.push(activity);
+        byLead.set(activity.leadId, leadList);
+      }
     }
-    for (const list of grouped.values()) {
+    const sortPending = (list: typeof activities) =>
       list.sort((a, b) => new Date(a.dataVencimento ?? "9999-12-31").getTime() - new Date(b.dataVencimento ?? "9999-12-31").getTime());
-    }
-    return grouped;
+    for (const list of byDeal.values()) sortPending(list);
+    for (const list of byLead.values()) sortPending(list);
+    return { pendingByDeal: byDeal, pendingByLead: byLead };
   }, [activities]);
 
   const queue = useMemo<QueueItem[]>(() => {
@@ -135,7 +144,7 @@ export default function WorkCenterHome() {
         dealTitle: deal.titulo,
         stage: deal.etapa,
         ownerId: deal.assignedTo ?? lead?.assignedTo,
-        nextActivity: pendingByDeal.get(deal.id)?.[0],
+        nextActivity: pendingByDeal.get(deal.id)?.[0] ?? (lead?.id ? pendingByLead.get(lead.id)?.[0] : undefined),
         updatedAt: deal.updatedAt,
         dataIssue: !lead,
       });
@@ -150,6 +159,7 @@ export default function WorkCenterHome() {
         dealTitle: "Atendimento ainda não iniciado",
         stage: "sem_negocio",
         ownerId: lead.assignedTo,
+        nextActivity: pendingByLead.get(lead.id)?.[0],
       });
     }
 
@@ -163,7 +173,7 @@ export default function WorkCenterHome() {
       if (aDue != null && bDue != null && aDue !== bDue) return aDue - bDue;
       return new Date(b.updatedAt ?? 0).getTime() - new Date(a.updatedAt ?? 0).getTime();
     });
-  }, [deals, leadById, leads, pendingByDeal]);
+  }, [deals, leadById, leads, pendingByDeal, pendingByLead]);
 
   const now = Date.now();
   const activeQueue = queue.filter((item) => !terminalStageKeys.has(item.stage));
