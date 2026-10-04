@@ -87,6 +87,7 @@ import { runSupportLifecycle } from "./supportLifecycle.js";
 import { runPipelineActivityLifecycle } from "./pipelineActivityLifecycle.js";
 import { runPipelineStageLifecycle } from "./pipelineStageLifecycle.js";
 import { runAcompanhamentoJornada } from "./acompanhamentoJornada.js";
+import { runVendiOperationalObserver } from "../services/vendi-operational-observer.js";
 import { processDuePickupWaves } from "../services/pracaRoutePlanner.js";
 import { processDeliveryNotificationOutbox } from "../services/pracaDeliveryNotifications.js";
 import { runPracaExceptionScan } from "../services/pracaExceptionDetector.js";
@@ -1905,6 +1906,15 @@ export function startScheduler(log: Logger): void {
   cron.schedule("*/30 * * * *", () => {
     runAcompanhamentoJornada(log).catch((err) => {
       log.error({ err }, "scheduler/acompanhamento-jornada: unhandled error");
+    });
+  }, { timezone: "America/Sao_Paulo" });
+
+  // Vendi Operational Observer — observa exceções reais a cada 30 minutos.
+  // Só tenants ativos com autonomia habilitada participam. Ações de alto risco
+  // continuam pausando para aprovação no Mission Supervisor.
+  cron.schedule("*/30 * * * *", () => {
+    runVendiOperationalObserver(log).catch((err) => {
+      log.error({ err }, "scheduler/vendi-operational-observer: unhandled error");
     });
   }, { timezone: "America/Sao_Paulo" });
 
