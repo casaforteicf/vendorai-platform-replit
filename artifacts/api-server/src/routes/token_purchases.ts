@@ -9,17 +9,21 @@ import {
   GENERATION_PACK_SIZE,
   getContentGenerationAllowance,
 } from "../services/content-generation-allowance.js";
+import { getVendorCreditBalance } from "../services/commercial-usage.js";
 import {
   AI_CREDIT_PACK_CREDITS,
   AI_CREDIT_PACK_PRICE_BRL,
    getTenantAiBudget,
 } from "../services/ai-budget.js";
 import {
+  VENDOR_CREDIT_PACKS,
+  getVendorCreditPackByKey,
+  getVendorCreditPackByCredits,
   VENDOR_TOKENS_PER_BRL,
   VENDOR_TOKEN_PACK_PRICE_BRL,
   VENDOR_TOKEN_PACK_TOKENS,
   brlToVendorTokens,
-} from "../services/vendor-tokens.js";
+} from "../services/vendor-credits.js";
 
 const router: IRouter = Router();
 const requireBillingAdmin = requireRole("tenant_admin", "super_admin");
@@ -34,6 +38,93 @@ export function calcCredits(valorReais: number): number {
 function isGenerationPack(purchase: typeof tokenPurchasesTable.$inferSelect) {
   return Number(purchase.valor) === GENERATION_PACK_PRICE_BRL
     && (purchase.credits === 0 || purchase.credits === AI_CREDIT_PACK_CREDITS);
+}
+
+async function createVendorCreditPackPurchase(
+  tenantId: string,
+  packKey: string,
+  billingType: "PIX" | "UNDEFINED" = "PIX",
+) {
+  const pack = getVendorCreditPackByKey(packKey);
+  if (!pack) return { error: "Pacote de Vendor Credits inválido", status: 400 as const };
+
+  if (!(await isAsaasConfigured())) {
+    return { error: "Pagamentos não configurados", status: 503 as const };
+  }
+
+  const [tenant] = await db
+    .select({ id: tenantsTable.id, name: tenantsTable.name })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId));
+  if (!tenant) return { error: "Tenant não encontrado", status: 404 as const };
+
+  const [existingPending] = await db
+    .select()
+    .from(tokenPurchasesTable)
+    .where(and(
+      eq(tokenPurchasesTable.tenantId, tenantId),
+      eq(tokenPurchasesTable.status, "pending"),
+      eq(tokenPurchasesTable.credits, pack.credits),
+      eq(tokenPurchasesTable.valor, String(pack.priceBrl)),
+    ))
+    .orderBy(desc(tokenPurchasesTable.createdAt))
+    .limit(1);
+
+  if (existingPending?.invoiceUrl) {
+    return {
+      id: existingPending.id,
+      status: "pending" as const,
+      packKey: pack.key,
+      vendorCredits: pack.credits,
+      credits: pack.credits,
+      value: pack.priceBrl,
+      invoiceUrl: existingPending.invoiceUrl,
+      chargeId: existingPending.asaasChargeId,
+      reused: true,
+    };
+  }
+
+  const purchase = await db.insert(tokenPurchasesTable).values({
+    tenantId,
+    valor: String(pack.priceBrl),
+    credits: pack.credits,
+    status: "pending",
+  }).returning().then((rows) => rows[0]!);
+
+  try {
+    const customer = await createOrGetCustomer({ name: tenant.name });
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 1);
+    const dueDateStr = dueDate.toISOString().split("T")[0]!;
+    const charge = await createCharge({
+      customer: customer.id,
+      billingType,
+      value: pack.priceBrl,
+      dueDate: dueDateStr,
+      description: `Vendor.ai — +${pack.credits.toLocaleString("pt-BR")} Vendor Credits`,
+      externalReference: `vendor_credits:${tenantId}:${purchase.id}`,
+    });
+
+    await db.update(tokenPurchasesTable).set({
+      asaasChargeId: charge.id,
+      asaasCustomerId: customer.id,
+      invoiceUrl: charge.invoiceUrl,
+    }).where(eq(tokenPurchasesTable.id, purchase.id));
+
+    return {
+      id: purchase.id,
+      status: "pending" as const,
+      packKey: pack.key,
+      vendorCredits: pack.credits,
+      credits: pack.credits,
+      value: pack.priceBrl,
+      invoiceUrl: charge.invoiceUrl,
+      chargeId: charge.id,
+    };
+  } catch (error) {
+    await db.update(tokenPurchasesTable).set({ status: "failed" }).where(eq(tokenPurchasesTable.id, purchase.id));
+    throw error;
+  }
 }
 
 async function createFixedAiCreditPack(tenantId: string) {
@@ -135,10 +226,13 @@ router.get(
       res.status(404).json({ error: "Tenant não encontrado" });
       return;
     }
+    const vendorCreditsBalance = await getVendorCreditBalance(tenantId);
     res.json({
       tenantId: budget.tenantId,
       planName: budget.planName,
       percentUsed: budget.percentUsed,
+      usageUnit: "vendor_credits",
+      vendorCreditsBalance,
       alertPercent: budget.alertPercent,
       blocked: budget.blocked,
       baseTokens: budget.baseCredits,
@@ -180,117 +274,146 @@ router.post(
   },
 );
 
-// ── POST /tenants/:tenantId/token-purchases ──────────────────────────────────
-// Produto único inicial: R$165 = 165.000 Tokens Vendor.ai.
+// ── GET /vendor-credit-packs ─────────────────────────────────────────────────
+router.get(
+  "/vendor-credit-packs",
+  async (_req, res) => {
+    res.json({
+      currency: "BRL",
+      unit: "vendor_credits",
+      packs: VENDOR_CREDIT_PACKS,
+    });
+  },
+);
+
+// ── POST /tenants/:tenantId/vendor-credit-purchases ──────────────────────────
+router.post(
+  "/tenants/:tenantId/vendor-credit-purchases",
+  requireSameTenanOrSuperAdmin(),
+  requireBillingAdmin,
+  async (req, res) => {
+    const tenantId = String(req.params["tenantId"]);
+    const parsed = z.object({
+      packKey: z.string().min(1).optional(),
+      credits: z.number().int().positive().optional(),
+    }).refine((value) => Boolean(value.packKey || value.credits), {
+      message: "Informe packKey ou credits",
+    }).safeParse(req.body ?? {});
+
+    if (!parsed.success) {
+      res.status(400).json({ error: "Compra de Vendor Credits inválida", packs: VENDOR_CREDIT_PACKS });
+      return;
+    }
+
+    const pack = parsed.data.packKey
+      ? getVendorCreditPackByKey(parsed.data.packKey)
+      : getVendorCreditPackByCredits(parsed.data.credits!);
+
+    if (!pack) {
+      res.status(400).json({ error: "Pacote de Vendor Credits não encontrado", packs: VENDOR_CREDIT_PACKS });
+      return;
+    }
+
+    try {
+      const purchase = await createVendorCreditPackPurchase(tenantId, pack.key, "PIX");
+      if ("error" in purchase) {
+        res.status(purchase.status).json({ error: purchase.error, packs: VENDOR_CREDIT_PACKS });
+        return;
+      }
+      res.status(purchase.reused ? 200 : 201).json({ ...purchase, usageUnit: "vendor_credits" });
+    } catch (error) {
+      req.log.error({ error, tenantId, packKey: pack.key }, "vendor-credits: failed to create Asaas charge");
+      res.status(502).json({ error: "Não foi possível abrir a cobrança de Vendor Credits no Asaas. Tente novamente." });
+    }
+  },
+);
+
+// Legacy endpoint kept as compatibility alias. New clients must use vendor-credit-purchases.
 router.post(
   "/tenants/:tenantId/token-purchases",
   requireSameTenanOrSuperAdmin(),
   requireBillingAdmin,
   async (req, res) => {
     const tenantId = String(req.params["tenantId"]);
-    const parsed = z.object({ valor: z.number().optional() }).safeParse(req.body ?? {});
+    const parsed = z.object({
+      packKey: z.string().optional(),
+      credits: z.number().int().positive().optional(),
+      valor: z.number().optional(),
+    }).safeParse(req.body ?? {});
+
     if (!parsed.success) {
-      res.status(400).json({ error: "Compra de Tokens inválida" });
+      res.status(400).json({ error: "Compra de Vendor Credits inválida", packs: VENDOR_CREDIT_PACKS });
       return;
     }
-    if (parsed.data.valor != null && parsed.data.valor !== VENDOR_TOKEN_PACK_PRICE_BRL) {
-      res.status(400).json({
-        error: `O pacote disponível custa R$ ${VENDOR_TOKEN_PACK_PRICE_BRL.toFixed(2)}`,
-        pack: { value: VENDOR_TOKEN_PACK_PRICE_BRL, tokens: VENDOR_TOKEN_PACK_TOKENS },
+
+    const pack = parsed.data.packKey
+      ? getVendorCreditPackByKey(parsed.data.packKey)
+      : parsed.data.credits
+        ? getVendorCreditPackByCredits(parsed.data.credits)
+        : parsed.data.valor
+          ? VENDOR_CREDIT_PACKS.find((candidate) => candidate.priceBrl === parsed.data.valor) ?? null
+          : VENDOR_CREDIT_PACKS[2]!;
+
+    if (!pack) {
+      res.status(400).json({ error: "Pacote de Vendor Credits não encontrado", packs: VENDOR_CREDIT_PACKS });
+      return;
+    }
+
+    try {
+      const purchase = await createVendorCreditPackPurchase(tenantId, pack.key, "PIX");
+      if ("error" in purchase) {
+        res.status(purchase.status).json({ error: purchase.error, packs: VENDOR_CREDIT_PACKS });
+        return;
+      }
+      res.status(purchase.reused ? 200 : 201).json({
+        ...purchase,
+        usageUnit: "vendor_credits",
+        // Deprecated response aliases.
+        tokens: purchase.vendorCredits,
       });
-      return;
+    } catch (error) {
+      req.log.error({ error, tenantId, packKey: pack.key }, "vendor-credits legacy alias: failed to create Asaas charge");
+      res.status(502).json({ error: "Não foi possível abrir a cobrança de Vendor Credits no Asaas. Tente novamente." });
     }
-    if (!(await isAsaasConfigured())) {
-      res.status(503).json({ error: "Pagamentos não configurados" });
-      return;
-    }
-
-    const valor = VENDOR_TOKEN_PACK_PRICE_BRL;
-    const credits = VENDOR_TOKEN_PACK_TOKENS;
-    const [tenant] = await db
-      .select({ id: tenantsTable.id, name: tenantsTable.name })
-      .from(tenantsTable)
-      .where(eq(tenantsTable.id, tenantId));
-    if (!tenant) {
-      res.status(404).json({ error: "Tenant não encontrado" });
-      return;
-    }
-
-    const purchase = await db.insert(tokenPurchasesTable).values({
-      tenantId,
-      valor: String(valor),
-      credits,
-      status: "pending",
-    }).returning().then((rows) => rows[0]!);
-
-    const customer = await createOrGetCustomer({ name: tenant.name });
-    const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + 1);
-    const dueDateStr = dueDate.toISOString().split("T")[0]!;
-    const charge = await createCharge({
-      customer: customer.id,
-      billingType: "PIX",
-      value: valor,
-      dueDate: dueDateStr,
-      description: `Vendor.ai — +${credits.toLocaleString("pt-BR")} Tokens`,
-      externalReference: `token_topup:${tenantId}:${purchase.id}`,
-    });
-
-    await db.update(tokenPurchasesTable).set({
-      asaasChargeId: charge.id,
-      asaasCustomerId: customer.id,
-      invoiceUrl: charge.invoiceUrl,
-    }).where(eq(tokenPurchasesTable.id, purchase.id));
-
-    res.status(201).json({
-      id: purchase.id,
-      valor,
-      credits,
-      tokens: credits,
-      tokenStandard: { tokensPerBrl: VENDOR_TOKENS_PER_BRL },
-      invoiceUrl: charge.invoiceUrl,
-      chargeId: charge.id,
-    });
-  }
+  },
 );
 
-// ── GET /tenants/:tenantId/token-purchases ────────────────────────────────────
+// ── GET /tenants/:tenantId/vendor-credit-purchases ───────────────────────────
+async function sendVendorCreditPurchases(tenantId: string, res: any) {
+  const purchases = await db
+    .select()
+    .from(tokenPurchasesTable)
+    .where(eq(tokenPurchasesTable.tenantId, tenantId))
+    .orderBy(desc(tokenPurchasesTable.createdAt))
+    .limit(20);
+
+  const vendorCreditsBalance = await getVendorCreditBalance(tenantId);
+  res.json({
+    usageUnit: "vendor_credits",
+    vendorCreditsBalance,
+    purchases,
+    packs: VENDOR_CREDIT_PACKS,
+    // Deprecated aliases for old clients. Values represent Vendor Credits.
+    tokenCredits: vendorCreditsBalance,
+    tokenBalance: vendorCreditsBalance,
+  });
+}
+
+router.get(
+  "/tenants/:tenantId/vendor-credit-purchases",
+  requireSameTenanOrSuperAdmin(),
+  async (req, res) => {
+    await sendVendorCreditPurchases(String(req.params["tenantId"]), res);
+  },
+);
+
+// Legacy read endpoint kept temporarily.
 router.get(
   "/tenants/:tenantId/token-purchases",
   requireSameTenanOrSuperAdmin(),
   async (req, res) => {
-    const tenantId = String(req.params["tenantId"]);
-
-    const [tenant] = await db
-      .select({ tokenCredits: tenantsTable.tokenCredits })
-      .from(tenantsTable)
-      .where(eq(tenantsTable.id, tenantId));
-
-    if (!tenant) {
-      res.status(404).json({ error: "Tenant não encontrado" });
-      return;
-    }
-
-    const allPurchases = await db
-      .select()
-      .from(tokenPurchasesTable)
-      .where(eq(tokenPurchasesTable.tenantId, tenantId))
-      .orderBy(desc(tokenPurchasesTable.createdAt))
-      .limit(50);
-    const purchases = allPurchases.filter((purchase) => !isGenerationPack(purchase)).slice(0, 20);
-
-    res.json({
-      tokenCredits: tenant.tokenCredits,
-      tokenBalance: tenant.tokenCredits,
-      purchases,
-      creditsPerBrl: CREDITS_PER_BRL,
-      tokenStandard: {
-        tokensPerBrl: VENDOR_TOKENS_PER_BRL,
-        packPriceBrl: VENDOR_TOKEN_PACK_PRICE_BRL,
-        packTokens: VENDOR_TOKEN_PACK_TOKENS,
-      },
-    });
-  }
+    await sendVendorCreditPurchases(String(req.params["tenantId"]), res);
+  },
 );
 
 // ── POST /tenants/:tenantId/generation-pack-purchases ────────────────────────
