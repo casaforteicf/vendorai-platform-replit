@@ -340,7 +340,7 @@ export default function AgendaPage() {
   const alertIcon = (kind: AlertKind) => kind === "conflict" ? <CircleAlert className="h-4 w-4 text-red-500" /> : kind === "overdue" ? <AlertTriangle className="h-4 w-4 text-amber-600" /> : kind === "unconfirmed" ? <BellRing className="h-4 w-4 text-amber-500" /> : <Clock className="h-4 w-4 text-blue-500" />;
 
   return (
-    <div className="flex flex-col md:flex-row gap-4 md:gap-5 h-full min-h-0">
+    <div className="vendor-product-page vendor-page-canvas vendor-agenda-page flex h-full min-h-0 flex-col gap-4 md:flex-row md:gap-5">
       <aside className="hidden md:flex w-52 shrink-0 flex-col gap-1">
         <div className="flex items-center justify-between mb-1 px-1"><span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Agendas</span><button onClick={openNewAgenda} className="p-1 rounded-md hover:bg-muted" title="Nova agenda"><Plus className="h-3.5 w-3.5 text-muted-foreground" /></button></div>
         <button className={`flex items-center gap-2 px-2.5 py-2 rounded-lg text-left transition-colors ${selectedAgendaId === null ? "bg-primary/10 font-semibold text-primary" : "hover:bg-muted"}`} onClick={() => setSelectedAgendaId(null)}><span className="w-2.5 h-2.5 rounded-full bg-muted-foreground/30" /><span className="text-sm">Todas</span></button>
@@ -350,7 +350,7 @@ export default function AgendaPage() {
 
       <div className="flex-1 min-w-0 flex flex-col gap-4">
         <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div className="min-w-0"><h1 className="text-2xl font-bold tracking-tight truncate">{selectedAgendaId ? agendaMap.get(selectedAgendaId)?.nome ?? "Agenda" : "Agenda"}</h1><p className="text-sm text-muted-foreground mt-0.5">Organize compromissos, visitas, reuniões e atendimentos.</p></div>
+          <div className="min-w-0"><h1 className="vendor-product-title truncate">{selectedAgendaId ? agendaMap.get(selectedAgendaId)?.nome ?? "Agenda" : "Agenda"}</h1><p className="vendor-product-subtitle mt-1">Organize compromissos, visitas, reuniões e atendimentos.</p></div>
           <div className="flex items-center gap-2 flex-wrap justify-end"><Button variant="outline" size="sm" onClick={goToday}>Hoje</Button><ViewPicker view={view} onChange={setView} /><Button variant="outline" size="sm" onClick={() => setIsAlertsOpen(true)} className="relative">{alerts.length > 0 ? <BellRing className="h-4 w-4 mr-1.5" /> : <Bell className="h-4 w-4 mr-1.5" />}Avisos{alerts.length > 0 && <span className="ml-1.5 min-w-5 h-5 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">{alerts.length}</span>}</Button><Button onClick={() => openCreateAt(selectedDay, 9)} className="hidden md:flex"><Plus className="h-4 w-4 mr-2" />Novo Agendamento</Button><Button onClick={() => openCreateAt(selectedDay, 9)} size="icon" className="md:hidden"><Plus className="h-4 w-4" /></Button></div>
         </div>
 
