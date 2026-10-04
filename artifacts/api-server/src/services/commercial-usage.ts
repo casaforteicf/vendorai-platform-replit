@@ -304,15 +304,117 @@ export async function getMonthlyVendorCreditUsage(tenantId: string, now = new Da
   return Number(row?.used ?? 0);
 }
 
-export async function getVendorCreditBalance(tenantId: string) {
+export async function getVendorCreditBalance(tenantId: string, now = new Date()) {
   const [row] = await db
     .select({ balance: sql<number>`coalesce(sum(${vendorCreditTransactionsTable.creditsDelta}), 0)` })
     .from(vendorCreditTransactionsTable)
     .where(and(
       eq(vendorCreditTransactionsTable.tenantId, tenantId),
       isNull(vendorCreditTransactionsTable.metricKey),
+      or(
+        isNull(vendorCreditTransactionsTable.expiresAt),
+        gt(vendorCreditTransactionsTable.expiresAt, now),
+      ),
     ));
   return Number(row?.balance ?? 0);
+}
+
+export type VendorCreditAuthorization = {
+  ok: boolean;
+  required: number;
+  available: number;
+  mode: "measure_only" | "enforce";
+  reason?: "INSUFFICIENT_VENDOR_CREDITS";
+};
+
+export function getVendorCreditEnforcementMode(): "measure_only" | "enforce" {
+  return process.env["VENDOR_CREDITS_ENFORCEMENT"] === "enforce" ? "enforce" : "measure_only";
+}
+
+export async function authorizeVendorCredits(
+  tenantId: string,
+  metricKey: string,
+  quantity = 1,
+): Promise<VendorCreditAuthorization> {
+  const [metric] = await db
+    .select({ vendorCreditsPerUnit: usageMetricsTable.vendorCreditsPerUnit })
+    .from(usageMetricsTable)
+    .where(and(eq(usageMetricsTable.key, metricKey), eq(usageMetricsTable.active, true)))
+    .limit(1);
+
+  if (!metric) throw new Error(`Unknown usage metric: ${metricKey}`);
+
+  const required = Math.max(0, Math.ceil(Math.max(0, quantity) * Number(metric.vendorCreditsPerUnit)));
+  const available = await getVendorCreditBalance(tenantId);
+  const mode = getVendorCreditEnforcementMode();
+
+  if (mode === "enforce" && required > available) {
+    return { ok: false, required, available, mode, reason: "INSUFFICIENT_VENDOR_CREDITS" };
+  }
+  return { ok: true, required, available, mode };
+}
+
+/**
+ * Append-only debit with tenant-scoped advisory locking.
+ * In measure_only mode this returns the projected debit without mutating wallet.
+ */
+export async function debitVendorCredits(input: {
+  tenantId: string;
+  credits: number;
+  commercialKey?: string | null;
+  referenceId: string;
+  reason?: string;
+  metadata?: Record<string, unknown>;
+}) {
+  const credits = Math.max(0, Math.ceil(input.credits));
+  if (credits === 0) return { debited: 0, balance: await getVendorCreditBalance(input.tenantId), mode: getVendorCreditEnforcementMode() };
+
+  const mode = getVendorCreditEnforcementMode();
+  if (mode !== "enforce") {
+    return { debited: 0, projectedDebit: credits, balance: await getVendorCreditBalance(input.tenantId), mode };
+  }
+
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.tenantId}))`);
+
+    const [balanceRow] = await tx
+      .select({ balance: sql<number>`coalesce(sum(${vendorCreditTransactionsTable.creditsDelta}), 0)` })
+      .from(vendorCreditTransactionsTable)
+      .where(and(
+        eq(vendorCreditTransactionsTable.tenantId, input.tenantId),
+        isNull(vendorCreditTransactionsTable.metricKey),
+        or(
+          isNull(vendorCreditTransactionsTable.expiresAt),
+          gt(vendorCreditTransactionsTable.expiresAt, new Date()),
+        ),
+      ));
+
+    const balance = Number(balanceRow?.balance ?? 0);
+    if (balance < credits) {
+      const error = new Error("INSUFFICIENT_VENDOR_CREDITS");
+      (error as Error & { required?: number; available?: number }).required = credits;
+      (error as Error & { required?: number; available?: number }).available = balance;
+      throw error;
+    }
+
+    const [row] = await tx
+      .insert(vendorCreditTransactionsTable)
+      .values({
+        tenantId: input.tenantId,
+        creditsDelta: -credits,
+        metricKey: null,
+        quantityDelta: null,
+        reason: input.reason ?? "usage_debit",
+        commercialKey: input.commercialKey ?? null,
+        referenceId: input.referenceId,
+        metadata: input.metadata ?? {},
+      })
+      .onConflictDoNothing()
+      .returning();
+
+    const finalBalance = row ? balance - credits : balance;
+    return { debited: row ? credits : 0, balance: finalBalance, mode };
+  });
 }
 
 export async function getActiveEntitlements(tenantId: string, now = new Date()) {
