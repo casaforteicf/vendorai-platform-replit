@@ -11,6 +11,12 @@ import multer from "multer";
 import { toFile } from "openai";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { captureGeneratedMedia } from "../services/media-library.js";
+import {
+  authorizeVendorCredits,
+  debitVendorCredits,
+  refundVendorCredits,
+  recordCommercialUsage,
+} from "../services/commercial-usage.js";
 
 const router = Router();
 const upload = multer({
@@ -156,6 +162,27 @@ router.post("/render/quick", uploadFields, async (req, res) => {
     notes ? `Additional user request: ${notes}` : null,
   ].filter(Boolean).join(" ");
 
+  const commercialRequestId = crypto.randomUUID();
+  const authorization = await authorizeVendorCredits(tenantId, "render", 1);
+  if (!authorization.ok) {
+    return res.status(402).json({
+      error: "Saldo de Vendor Credits insuficiente para gerar o render.",
+      requiredVendorCredits: authorization.required,
+      includedVendorCreditsRemaining: authorization.includedRemaining,
+      purchasedVendorCreditsAvailable: authorization.available,
+    });
+  }
+
+  const reservation = await debitVendorCredits({
+    tenantId,
+    credits: authorization.walletRequired,
+    commercialKey: "vendor.arqdor",
+    referenceId: `usage-reservation:${commercialRequestId}`,
+    reason: "usage_reservation",
+    metadata: { metricKey: "render", operation: "render_quick" },
+  });
+  const reservedVendorCredits = Number(reservation.debited ?? 0);
+
   try {
     const openai = await getOpenAIForTenant(tenantId);
 
@@ -208,9 +235,53 @@ router.post("/render/quick", uploadFields, async (req, res) => {
     const servePath = captured.storageUrl.replace(/^\/objects\//, "");
     const imageUrl = `/api/storage/objects/${servePath}`;
 
+    await recordCommercialUsage({
+      tenantId,
+      userId: req.user?.sub ?? null,
+      commercialKey: "vendor.arqdor",
+      metricKey: "render",
+      quantity: 1,
+      success: true,
+      billable: true,
+      billingStatus: "overage",
+      provider: "openai",
+      model: "gpt-image-1",
+      source: "render_quick",
+      sourceEventId: `commercial:${commercialRequestId}`,
+      requestId: commercialRequestId,
+      metadata: { style, roomType, mediaAssetId: captured.assetId, vendorCreditsReserved: reservedVendorCredits },
+    });
+
     req.log.info({ tenantId, style, roomType, assetId: captured.assetId }, "render/quick: concluído");
     return res.json({ imageUrl, prompt, mediaAssetId: captured.assetId });
   } catch (err: any) {
+    await recordCommercialUsage({
+      tenantId,
+      userId: req.user?.sub ?? null,
+      commercialKey: "vendor.arqdor",
+      metricKey: "render",
+      quantity: 1,
+      success: false,
+      billable: true,
+      billingStatus: "non_billable",
+      provider: "openai",
+      model: "gpt-image-1",
+      source: "render_quick",
+      sourceEventId: `commercial:${commercialRequestId}`,
+      requestId: commercialRequestId,
+      metadata: { style, roomType, error: err?.message ?? "render_failed" },
+    }).catch(() => null);
+
+    if (reservedVendorCredits > 0) {
+      await refundVendorCredits({
+        tenantId,
+        credits: reservedVendorCredits,
+        commercialKey: "vendor.arqdor",
+        referenceId: `usage-reservation:${commercialRequestId}`,
+        metadata: { metricKey: "render", operation: "render_quick", providerFailure: true },
+      }).catch(() => null);
+    }
+
     req.log.error({ err }, "render/quick: erro");
     return res.status(500).json({ error: err?.message ?? "Erro ao renderizar imagem" });
   }

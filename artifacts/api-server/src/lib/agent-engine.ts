@@ -349,7 +349,13 @@ export async function callOpenAI(
     tenantId,
     feature,
     messages,
-    { model: "gpt-4o-mini", temperature: 0.7, maxTokens: 600, log }
+    {
+      model: "gpt-4o-mini",
+      temperature: 0.7,
+      maxTokens: 600,
+      log,
+      commercialUsage: { metricKey: "agent_work_unit", quantity: 1, commercialKey: "vendor.ai_team" },
+    }
   );
   return { resposta: content, tokensUsed: inputTokens + outputTokens };
 }

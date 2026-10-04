@@ -19,6 +19,13 @@ import {
 import type { AiFeature } from "@workspace/db";
 import { sendAiFailureAlert } from "./email.js";
 import { isModernReasoningModel, reasoningEffortForFeature, resolveTextModel } from "./ai-model-router.js";
+import {
+  authorizeVendorCredits,
+  debitVendorCredits,
+  refundVendorCredits,
+  recordCommercialUsage,
+  getVendorCreditEnforcementMode,
+} from "../services/commercial-usage.js";
 
 // ── Cost models (USD per 1M tokens) ───────────────────────────────────────────
 const COST_PER_1M: Record<string, { input: number; output: number }> = {
@@ -188,6 +195,20 @@ export async function checkQuota(
     };
   }
 
+  // Once Vendor Credits enforcement is enabled, commercial allowance is
+  // governed by the Vendor Credit wallet. USD quota remains internal telemetry
+  // and the platform spend ceiling above remains the hard safety guardrail.
+  if (getVendorCreditEnforcementMode() === "enforce") {
+    return {
+      ok: true,
+      usedByok: false,
+      quotaUsd,
+      creditsUsd,
+      spentThisMonthUsd,
+      remainingUsd: Infinity,
+    };
+  }
+
   if (quotaUsd === null && creditsUsd === 0) {
     const hasPlatformKey = Boolean(process.env["OPENAI_API_KEY"] || process.env["ANTHROPIC_API_KEY"]);
     if (hasPlatformKey) {
@@ -298,6 +319,12 @@ export async function callOpenAI(
     responseFormat?: OpenAI.Chat.Completions.ChatCompletionCreateParams["response_format"];
     log?: Logger;
     billingScope?: "tenant" | "platform_runtime";
+    requestId?: string;
+    commercialUsage?: {
+      metricKey?: string;
+      quantity?: number;
+      commercialKey?: string | null;
+    };
   } = {},
 ): Promise<{ content: string; inputTokens: number; outputTokens: number; costUsd: number; usedByok: boolean }> {
   const model = resolveTextModel({ tenantId, feature, requestedModel: options.model, legacyDefault: "gpt-4o-mini" });
@@ -308,6 +335,32 @@ export async function callOpenAI(
     ? [{ role: "system" as const, content: businessContext }, ...messages]
     : messages;
   const localizedMessages = await localizeAgentOnboardingMessages(tenantId, feature, withBusinessContext);
+  const commercialRequestId = options.requestId ?? crypto.randomUUID();
+  const commercialMetricKey = options.billingScope === "platform_runtime"
+    ? null
+    : (options.commercialUsage?.metricKey ?? "ai_assist");
+  const commercialQuantity = Math.max(0, Number(options.commercialUsage?.quantity ?? 1));
+  let reservedVendorCredits = 0;
+
+  if (commercialMetricKey) {
+    const authorization = await authorizeVendorCredits(tenantId, commercialMetricKey, commercialQuantity);
+    if (!authorization.ok) {
+      throw new AiGatewayError(
+        "Saldo de Vendor Credits insuficiente. Adicione Credits para continuar.",
+        402,
+        { requiredVendorCredits: authorization.required, includedVendorCreditsRemaining: authorization.includedRemaining, purchasedVendorCreditsAvailable: authorization.available },
+      );
+    }
+    const reservation = await debitVendorCredits({
+      tenantId,
+      credits: authorization.walletRequired,
+      commercialKey: options.commercialUsage?.commercialKey ?? null,
+      referenceId: `usage-reservation:${commercialRequestId}`,
+      reason: "usage_reservation",
+      metadata: { metricKey: commercialMetricKey, quantity: commercialQuantity, feature: String(feature) },
+    });
+    reservedVendorCredits = Number(reservation.debited ?? 0);
+  }
 
   // 1. Estimate cost (rough pre-check based on message length)
   const estimatedInputTokens = localizedMessages.reduce((acc, m) => acc + (typeof m.content === "string" ? m.content.length : 0), 0) / 4;
@@ -356,6 +409,35 @@ export async function callOpenAI(
     const inputTokensEst = Math.ceil(estimatedInputTokens);
     const costUsdEst = estimateCost((model ?? "unknown"), inputTokensEst, 0);
     await logUsage({ tenantId, provider: "openai", model: model ?? "unknown", feature, inputTokens: inputTokensEst, outputTokens: 0, costEstimateUsd: costUsdEst, usedByok: key.usedByok, success: false, errorMessage });
+    if (commercialMetricKey) {
+      await recordCommercialUsage({
+        tenantId,
+        commercialKey: options.commercialUsage?.commercialKey ?? null,
+        metricKey: commercialMetricKey,
+        quantity: commercialQuantity,
+        success: false,
+        billable: true,
+        billingStatus: "non_billable",
+        provider: "openai",
+        model: model ?? "unknown",
+        inputTokens: inputTokensEst,
+        outputTokens: 0,
+        totalCostUsd: costUsdEst,
+        source: "ai_gateway",
+        sourceEventId: `commercial:${commercialRequestId}`,
+        requestId: commercialRequestId,
+        metadata: { feature: String(feature) },
+      });
+      if (reservedVendorCredits > 0) {
+        await refundVendorCredits({
+          tenantId,
+          credits: reservedVendorCredits,
+          commercialKey: options.commercialUsage?.commercialKey ?? null,
+          referenceId: `usage-reservation:${commercialRequestId}`,
+          metadata: { metricKey: commercialMetricKey, feature: String(feature), providerFailure: true },
+        });
+      }
+    }
     if (quota.ok && !quota.usedByok) await incrementDailySpend(tenantId, costUsdEst);
 
     // Fire-and-forget alert (non-blocking, throttled to 1/15min per error type)
@@ -383,6 +465,12 @@ export async function callOpenAI(
           maxTokens: options.maxTokens ?? 600,
           system: typeof systemMsgRaw?.content === "string" ? systemMsgRaw.content : undefined,
           log,
+          requestId: `${commercialRequestId}:fallback-anthropic`,
+          commercialUsage: commercialMetricKey ? {
+            metricKey: commercialMetricKey,
+            quantity: commercialQuantity,
+            commercialKey: options.commercialUsage?.commercialKey ?? null,
+          } : undefined,
         });
       } catch (anthropicErr: any) {
         log?.error({ tenantId, feature, error: anthropicErr?.message }, "ai-gateway: Anthropic fallback also failed");
@@ -402,6 +490,26 @@ export async function callOpenAI(
 
   // 6. Log usage
   await logUsage({ tenantId, provider: "openai", model: model ?? "unknown", feature, inputTokens, outputTokens, costEstimateUsd: costUsd, usedByok: key.usedByok, success: true });
+  if (commercialMetricKey) {
+    await recordCommercialUsage({
+      tenantId,
+      commercialKey: options.commercialUsage?.commercialKey ?? null,
+      metricKey: commercialMetricKey,
+      quantity: commercialQuantity,
+      success: true,
+      billable: true,
+      billingStatus: "overage",
+      provider: "openai",
+      model: model ?? "unknown",
+      inputTokens,
+      outputTokens,
+      totalCostUsd: costUsd,
+      source: "ai_gateway",
+      sourceEventId: `commercial:${commercialRequestId}`,
+      requestId: commercialRequestId,
+      metadata: { feature: String(feature), vendorCreditsReserved: reservedVendorCredits },
+    });
+  }
 
   // 7. Update daily spend (only if using shared key)
   if (!key.usedByok) {
@@ -428,6 +536,12 @@ export async function callAnthropic(
     maxTokens?: number;
     system?: string;
     log?: Logger;
+    requestId?: string;
+    commercialUsage?: {
+      metricKey?: string;
+      quantity?: number;
+      commercialKey?: string | null;
+    };
   } = {},
 ): Promise<{ content: string; inputTokens: number; outputTokens: number; costUsd: number; usedByok: boolean }> {
   const role = roleForFeature(String(feature));
@@ -435,6 +549,28 @@ export async function callAnthropic(
   const system = options.system?.includes("[VENDORAI_BUSINESS_PLAN]") ? options.system : [businessContext, options.system].filter(Boolean).join("\n\n");
   const model = options.model ?? "claude-sonnet-4-6";
   const log = options.log;
+  const commercialRequestId = options.requestId ?? crypto.randomUUID();
+  const commercialMetricKey = options.commercialUsage?.metricKey ?? "ai_assist";
+  const commercialQuantity = Math.max(0, Number(options.commercialUsage?.quantity ?? 1));
+  let reservedVendorCredits = 0;
+
+  const authorization = await authorizeVendorCredits(tenantId, commercialMetricKey, commercialQuantity);
+  if (!authorization.ok) {
+    throw new AiGatewayError(
+      "Saldo de Vendor Credits insuficiente. Adicione Credits para continuar.",
+      402,
+      { requiredVendorCredits: authorization.required, includedVendorCreditsRemaining: authorization.includedRemaining, purchasedVendorCreditsAvailable: authorization.available },
+    );
+  }
+  const reservation = await debitVendorCredits({
+    tenantId,
+    credits: authorization.walletRequired,
+    commercialKey: options.commercialUsage?.commercialKey ?? null,
+    referenceId: `usage-reservation:${commercialRequestId}`,
+    reason: "usage_reservation",
+    metadata: { metricKey: commercialMetricKey, quantity: commercialQuantity, feature: String(feature) },
+  });
+  reservedVendorCredits = Number(reservation.debited ?? 0);
 
   // 1. Estimate cost
   const estimatedInputTokens = (system.length + messages.reduce((acc, m) => acc + m.content.length, 0)) / 4;
@@ -513,6 +649,33 @@ export async function callAnthropic(
         model: String(model),
         message: errorMessage ?? "Erro desconhecido",
       });
+      await recordCommercialUsage({
+        tenantId,
+        commercialKey: options.commercialUsage?.commercialKey ?? null,
+        metricKey: commercialMetricKey,
+        quantity: commercialQuantity,
+        success: false,
+        billable: true,
+        billingStatus: "non_billable",
+        provider: "anthropic",
+        model,
+        inputTokens: Math.ceil(inputTokens),
+        outputTokens: 0,
+        totalCostUsd: costUsdPartial,
+        source: "ai_gateway",
+        sourceEventId: `commercial:${commercialRequestId}`,
+        requestId: commercialRequestId,
+        metadata: { feature: String(feature), billingFailure: true },
+      });
+      if (reservedVendorCredits > 0) {
+        await refundVendorCredits({
+          tenantId,
+          credits: reservedVendorCredits,
+          commercialKey: options.commercialUsage?.commercialKey ?? null,
+          referenceId: `usage-reservation:${commercialRequestId}`,
+          metadata: { metricKey: commercialMetricKey, feature: String(feature), providerFailure: true },
+        });
+      }
       throw new AiGatewayError(
         "Saldo da IA esgotado. Configure uma chave própria da Anthropic ou da OpenAI nas Configurações → Integrações.",
         402,
@@ -547,6 +710,35 @@ export async function callAnthropic(
     success,
     errorMessage,
   });
+
+  await recordCommercialUsage({
+    tenantId,
+    commercialKey: options.commercialUsage?.commercialKey ?? null,
+    metricKey: commercialMetricKey,
+    quantity: commercialQuantity,
+    success,
+    billable: true,
+    billingStatus: success ? "overage" : "non_billable",
+    provider: "anthropic",
+    model,
+    inputTokens,
+    outputTokens,
+    totalCostUsd: costUsd,
+    source: "ai_gateway",
+    sourceEventId: `commercial:${commercialRequestId}`,
+    requestId: commercialRequestId,
+    metadata: { feature: String(feature), vendorCreditsReserved: reservedVendorCredits },
+  });
+
+  if (!success && reservedVendorCredits > 0) {
+    await refundVendorCredits({
+      tenantId,
+      credits: reservedVendorCredits,
+      commercialKey: options.commercialUsage?.commercialKey ?? null,
+      referenceId: `usage-reservation:${commercialRequestId}`,
+      metadata: { metricKey: commercialMetricKey, feature: String(feature), providerFailure: true },
+    });
+  }
 
   // 7. Update daily spend
   if (!key.usedByok) {
@@ -586,11 +778,36 @@ export async function generateImage(
     n?: number;
     log?: Logger;
     requestId?: string;
+    commercialUsage?: {
+      metricKey?: "image" | "image_premium";
+      quantity?: number;
+      commercialKey?: string | null;
+    };
   } = {},
 ): Promise<{ urls: string[]; costUsd: number; usedByok: boolean }> {
   const model = options.model ?? "gpt-image-1";
   const log = options.log;
   const n = Math.min(Math.max(options.n ?? 1, 1), 10);
+  const commercialRequestId = options.requestId ?? crypto.randomUUID();
+  const commercialMetricKey = options.commercialUsage?.metricKey ?? "image";
+  const commercialQuantity = Math.max(1, Number(options.commercialUsage?.quantity ?? n));
+  const authorization = await authorizeVendorCredits(tenantId, commercialMetricKey, commercialQuantity);
+  if (!authorization.ok) {
+    throw new AiGatewayError(
+      "Saldo de Vendor Credits insuficiente. Adicione Credits para gerar a imagem.",
+      402,
+      { requiredVendorCredits: authorization.required, includedVendorCreditsRemaining: authorization.includedRemaining, purchasedVendorCreditsAvailable: authorization.available },
+    );
+  }
+  const reservation = await debitVendorCredits({
+    tenantId,
+    credits: authorization.walletRequired,
+    commercialKey: options.commercialUsage?.commercialKey ?? null,
+    referenceId: `usage-reservation:${commercialRequestId}`,
+    reason: "usage_reservation",
+    metadata: { metricKey: commercialMetricKey, quantity: commercialQuantity, feature: String(feature) },
+  });
+  const reservedVendorCredits = Number(reservation.debited ?? 0);
 
   // Image cost is per-image, not per-token
   const costPerImage = model === "dall-e-3" ? 0.04 : 0.02; // approximate
@@ -655,8 +872,37 @@ export async function generateImage(
     usedByok: key.usedByok,
     success,
     errorMessage,
-    requestId: options.requestId,
+    requestId: commercialRequestId,
   });
+
+  await recordCommercialUsage({
+    tenantId,
+    commercialKey: options.commercialUsage?.commercialKey ?? null,
+    metricKey: commercialMetricKey,
+    quantity: commercialQuantity,
+    success,
+    billable: true,
+    billingStatus: success ? "overage" : "non_billable",
+    provider: "openai",
+    model,
+    inputTokens: 0,
+    outputTokens: 0,
+    totalCostUsd: costUsd,
+    source: "ai_gateway_image",
+    sourceEventId: `commercial:${commercialRequestId}`,
+    requestId: commercialRequestId,
+    metadata: { feature: String(feature), vendorCreditsReserved: reservedVendorCredits },
+  });
+
+  if (!success && reservedVendorCredits > 0) {
+    await refundVendorCredits({
+      tenantId,
+      credits: reservedVendorCredits,
+      commercialKey: options.commercialUsage?.commercialKey ?? null,
+      referenceId: `usage-reservation:${commercialRequestId}`,
+      metadata: { metricKey: commercialMetricKey, feature: String(feature), providerFailure: true },
+    });
+  }
 
   // Não consome a cota interna quando a geração falhou.
   // Falhas continuam registradas para auditoria técnica.

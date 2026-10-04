@@ -23,9 +23,23 @@ type UsageQuota = {
 type CommercialUsage = {
   tenantId: string;
   commercialKey: string;
+  usageUnit?: "vendor_credits";
   vendorCreditsBalance: number;
+  vendorCredits?: {
+    includedMonthly: number;
+    includedUsed: number;
+    includedRemaining: number;
+    purchasedBalance: number;
+    totalAvailable: number;
+  };
   quotas: UsageQuota[];
-  enforcementMode: "measure_only" | string;
+  enforcementMode: "measure_only" | "enforce" | string;
+};
+
+type VendorCreditPack = {
+  key: string;
+  credits: number;
+  priceBrl: number;
 };
 
 type PopoverPosition = { left: number; bottom: number; width: number };
@@ -70,6 +84,9 @@ export function AiBudgetUsageIndicator() {
   const [expanded, setExpanded] = useState(false);
   const [sidebarSlot, setSidebarSlot] = useState<HTMLElement | null>(null);
   const [popoverPosition, setPopoverPosition] = useState<PopoverPosition | null>(null);
+  const [packs, setPacks] = useState<VendorCreditPack[]>([]);
+  const [buyingPack, setBuyingPack] = useState<string | null>(null);
+  const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   const load = useCallback(async () => {
@@ -90,8 +107,51 @@ export function AiBudgetUsageIndicator() {
     }
   }, []);
 
+  const loadPacks = useCallback(async () => {
+    try {
+      const response = await fetch("/api/vendor-credit-packs", {
+        headers: authHeaders(),
+        cache: "no-store",
+      });
+      if (!response.ok) return;
+      const data = await response.json() as { packs?: VendorCreditPack[] };
+      setPacks(Array.isArray(data.packs) ? data.packs : []);
+    } catch {
+      // Compra de Credits não pode interromper o restante da navegação.
+    }
+  }, []);
+
+  const buyPack = useCallback(async (pack: VendorCreditPack) => {
+    const tenantId = tenantIdFromStorage();
+    if (!tenantId || buyingPack) return;
+    setBuyingPack(pack.key);
+    setPurchaseError(null);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/vendor-credit-purchases`, {
+        method: "POST",
+        headers: {
+          ...authHeaders(),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ packKey: pack.key }),
+      });
+      const data = await response.json() as {
+        invoiceUrl?: string | null;
+        error?: string;
+      };
+      if (!response.ok) throw new Error(data.error || "Não foi possível iniciar a compra.");
+      if (!data.invoiceUrl) throw new Error("A cobrança foi criada, mas o link de pagamento não foi retornado.");
+      window.open(data.invoiceUrl, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      setPurchaseError(error instanceof Error ? error.message : "Não foi possível iniciar a compra.");
+    } finally {
+      setBuyingPack(null);
+    }
+  }, [buyingPack]);
+
   useEffect(() => {
     void load();
+    void loadPacks();
     const timer = window.setInterval(() => void load(), 30_000);
     const refresh = () => void load();
     window.addEventListener("focus", refresh);
@@ -101,7 +161,7 @@ export function AiBudgetUsageIndicator() {
       window.removeEventListener("focus", refresh);
       window.removeEventListener("popstate", refresh);
     };
-  }, [load]);
+  }, [load, loadPacks]);
 
   // O indicador passa a ocupar um slot declarativo no rodapé da sidebar.
   // Nunca usa position: fixed: se Conta e atalhos estiver recolhido, ele some
@@ -174,6 +234,14 @@ export function AiBudgetUsageIndicator() {
   if (hideOnConceptMobile) return null;
   if (!usage) return null;
 
+  const credits = usage.vendorCredits ?? {
+    includedMonthly: 0,
+    includedUsed: 0,
+    includedRemaining: 0,
+    purchasedBalance: usage.vendorCreditsBalance ?? 0,
+    totalAvailable: usage.vendorCreditsBalance ?? 0,
+  };
+
   const panel = (
     <div className={`overflow-hidden rounded-xl border shadow-xl ${tone}`}>
       <button type="button" onClick={() => setExpanded(false)} className="flex w-full items-center gap-3 px-3 py-2 text-left">
@@ -204,7 +272,61 @@ export function AiBudgetUsageIndicator() {
             })}
           </div>
         )}
-        <p className="mt-3 text-[10px] leading-4 opacity-65">Operações normais do CRM não consomem franquia. Falhas técnicas não descontam unidades. A nova medição está em modo de acompanhamento antes da ativação de bloqueios comerciais.</p>
+        <div className="mt-4 rounded-lg border border-black/10 bg-black/[0.03] p-3">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold">Vendor Credits</p>
+              <p className="text-[10px] opacity-65">Franquia mensal + saldo comprado</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-bold">{formatQuantity(credits.totalAvailable)}</p>
+              <p className="text-[10px] opacity-65">disponíveis</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-[10px]">
+            <div className="rounded-md bg-black/5 p-2">
+              <span className="block opacity-60">Franquia restante</span>
+              <strong>{formatQuantity(credits.includedRemaining)}</strong>
+            </div>
+            <div className="rounded-md bg-black/5 p-2">
+              <span className="block opacity-60">Saldo comprado</span>
+              <strong>{formatQuantity(credits.purchasedBalance)}</strong>
+            </div>
+          </div>
+
+          {packs.length > 0 && (
+            <div className="mt-3">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide opacity-65">Adicionar Credits</p>
+              <div className="grid grid-cols-2 gap-2">
+                {packs.map((pack) => (
+                  <button
+                    key={pack.key}
+                    type="button"
+                    disabled={buyingPack !== null}
+                    onClick={() => void buyPack(pack)}
+                    className="rounded-lg border border-black/10 bg-background px-2 py-2 text-left transition hover:bg-black/5 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    <span className="block text-xs font-semibold">{pack.credits.toLocaleString("pt-BR")} Credits</span>
+                    <span className="block text-[10px] opacity-70">
+                      {pack.priceBrl.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                    </span>
+                    {buyingPack === pack.key && <span className="mt-1 block text-[9px]">Abrindo cobrança…</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {purchaseError && (
+            <p className="mt-2 rounded-md bg-red-100 px-2 py-1.5 text-[10px] text-red-800">{purchaseError}</p>
+          )}
+        </div>
+
+        <p className="mt-3 text-[10px] leading-4 opacity-65">
+          Operações normais do CRM não consomem Credits. Falhas técnicas não descontam unidades.
+          Os Credits adicionais podem ser comprados a qualquer momento, sem trocar de produto.
+        </p>
       </div>
     </div>
   );
@@ -217,11 +339,11 @@ export function AiBudgetUsageIndicator() {
         onClick={() => setExpanded((value) => !value)}
         className={`flex h-6 items-center gap-1 rounded-full border px-1.5 text-left ${tone}`}
         aria-expanded={expanded}
-        aria-label="Abrir consumo de IA"
-        title={`Uso de IA: ${maxPercent.toFixed(0)}%`}
+        aria-label="Abrir consumo e Vendor Credits"
+        title={`Vendor Credits disponíveis: ${formatQuantity(credits.totalAvailable)}`}
       >
         <Sparkles className="h-2.5 w-2.5" />
-        <span className="text-[9px] font-semibold leading-none">IA · {maxPercent.toFixed(0)}%</span>
+        <span className="text-[9px] font-semibold leading-none">{formatQuantity(credits.totalAvailable)} Credits</span>
         {expanded ? <ChevronDown className="h-2.5 w-2.5 opacity-60" /> : <ChevronUp className="h-2.5 w-2.5 opacity-60" />}
       </button>,
       sidebarSlot,

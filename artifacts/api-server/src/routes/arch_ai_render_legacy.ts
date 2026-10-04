@@ -42,6 +42,11 @@ import sharp from "sharp";
 import { generateRenderCreateOpenAI, generateRenderPremiumOpenAI } from "../services/media-provider-execution.js";
 import { captureGeneratedMedia } from "../services/media-library.js";
 import {
+  authorizeVendorCredits,
+  debitVendorCredits,
+  recordCommercialUsage,
+} from "../services/commercial-usage.js";
+import {
   buildArqdorFidelityBlock,
   inferArqdorRenderPresets,
   type ArqdorRenderPreset,
@@ -921,6 +926,13 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
   );
 
   try {
+    const initialCreditAuthorization = await authorizeVendorCredits(tid, "render_premium", 1);
+    if (!initialCreditAuthorization.ok) {
+      throw new Error(
+        `INSUFFICIENT_VENDOR_CREDITS: required=${initialCreditAuthorization.required} available=${initialCreditAuthorization.includedRemaining + initialCreditAuthorization.available}`,
+      );
+    }
+
     // ── 1. Baixar imagem original ──────────────────────────────────────────
     const { buf: originalBuf, mime: originalMime } = await fetchImageAsBuffer(originalUrl, storage);
 
@@ -1285,7 +1297,47 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
     // quando o navegador precisa consumir o arquivo.
     const resultUrl = captured.storageUrl;
 
-    // ── 7. Atualizar registro ──────────────────────────────────────────────
+    // ── 7. Debitar Vendor Credits somente após resultado final válido ─────
+    const finalCreditAuthorization = await authorizeVendorCredits(tid, "render_premium", 1);
+    if (!finalCreditAuthorization.ok) {
+      throw new Error(
+        `INSUFFICIENT_VENDOR_CREDITS: required=${finalCreditAuthorization.required} available=${finalCreditAuthorization.includedRemaining + finalCreditAuthorization.available}`,
+      );
+    }
+
+    const creditReferenceId = `arqdor-render:${renderId}`;
+    const creditDebit = await debitVendorCredits({
+      tenantId: tid,
+      credits: finalCreditAuthorization.walletRequired,
+      commercialKey: "vendor.arqdor",
+      referenceId: creditReferenceId,
+      reason: "render_premium",
+      metadata: { renderId, mode, ambiente, renderProfile, motor },
+    });
+
+    await recordCommercialUsage({
+      tenantId: tid,
+      commercialKey: "vendor.arqdor",
+      metricKey: "render_premium",
+      quantity: 1,
+      success: true,
+      billable: true,
+      billingStatus: "overage",
+      provider: motor?.startsWith("openai") ? "openai" : "media_provider",
+      model: motor,
+      source: "arqdor_render",
+      sourceEventId: `commercial:${renderId}`,
+      requestId: renderId,
+      metadata: {
+        mode,
+        ambiente,
+        renderProfile,
+        vendorCreditsReserved: Number(creditDebit.debited ?? 0),
+        internalRetries: retentativas,
+      },
+    });
+
+    // ── 8. Atualizar registro ──────────────────────────────────────────────
     await db.update(archAiRendersTable)
       .set({
         status:          "concluido",
