@@ -163,9 +163,6 @@ export function setupApiClient() {
     ) {
       try {
         const body = await response.clone().json();
-        if (body?.error === "ONBOARDING_REQUIRED") {
-          window.location.href = "/onboarding";
-        }
       } catch {
         // ignore parse errors
       }
