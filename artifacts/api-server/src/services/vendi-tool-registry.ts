@@ -27,6 +27,10 @@ import { sendOutgoingMessage } from "./omnichannel.js";
 import { getUpcomingRelationshipEvents } from "./customer-relationship-events.js";
 import { searchProspectorCompanies } from "./prospector-company-search.js";
 import { searchConstructionWorkSignals } from "./construction-radar-search.js";
+import { runAutonomousProspectingCycle } from "./vendi-autonomous-prospecting.js";
+import { listProspectingSources } from "./prospecting-source-catalog.js";
+import { summarizeProspectingSourceHealth } from "./prospecting-source-health.js";
+import { getProspectingSourcePerformance } from "./prospecting-source-performance.js";
 
 export type VendiToolRisk = "low" | "medium" | "high";
 export type VendiToolDomain =
@@ -233,6 +237,136 @@ register({
       evidence: {
         source: "prospector:construction-radar",
         count: data.works.length,
+      },
+    };
+  },
+});
+
+register({
+  id: "prospector.source_performance",
+  domain: "prospector",
+  description: "Compara desempenho por fonte de prospecção: leads, qualificados, propostas, vendas, receita e taxa lead→venda.",
+  risk: "low",
+  mutates: false,
+  externalEffect: false,
+  inputHint: "{days?:7..365}",
+  execute: async ({ tenantId }, input) => {
+    const days = Math.min(Math.max(Number(input.days ?? 90), 7), 365);
+    const data = await getProspectingSourcePerformance(tenantId, days);
+    return {
+      ok: true,
+      data,
+      evidence: {
+        source: "prospector:source-performance",
+        days,
+        sources: data.length,
+      },
+    };
+  },
+});
+
+register({
+  id: "prospector.sources_health",
+  domain: "prospector",
+  description: "Verifica quais fontes de prospecção estão operacionais, sem configuração ou ainda dependem de conector.",
+  risk: "low",
+  mutates: false,
+  externalEffect: false,
+  inputHint: "{}",
+  execute: async () => {
+    const data = summarizeProspectingSourceHealth();
+    return {
+      ok: true,
+      data,
+      evidence: {
+        source: "prospector:source-health",
+        operational: data.operational,
+        missingConfiguration: data.missingConfiguration,
+        connectorRequired: data.connectorRequired,
+      },
+    };
+  },
+});
+
+register({
+  id: "prospector.sources_catalog",
+  domain: "prospector",
+  description: "Lista todas as fontes de prospecção conhecidas, indicando se estão ativas, planejadas ou dependem de conector externo.",
+  risk: "low",
+  mutates: false,
+  externalEffect: false,
+  inputHint: "{}",
+  execute: async () => {
+    const data = listProspectingSources();
+    return {
+      ok: true,
+      data,
+      evidence: {
+        source: "prospector:source-catalog",
+        total: data.length,
+        active: data.filter((item) => item.status === "active").length,
+        connectorRequired: data.filter((item) => item.status === "connector_required").length,
+      },
+    };
+  },
+});
+
+register({
+  id: "prospector.autonomous_preview",
+  domain: "prospector",
+  description: "Executa uma prévia ponta a ponta da prospecção com fontes reais, sem criar fila, leads, deals ou sinais persistentes.",
+  risk: "low",
+  mutates: false,
+  externalEffect: false,
+  inputHint: "{maxPerConfig?:3..20}",
+  execute: async ({ tenantId }, input) => {
+    const data = await runAutonomousProspectingCycle({
+      tenantId,
+      log: logger.child({ subsystem: "vendi:prospecting-preview" }),
+      maxPerConfig: Math.min(Math.max(Number(input.maxPerConfig ?? 5), 3), 20),
+      dryRun: true,
+    });
+    return {
+      ok: true,
+      data,
+      evidence: {
+        source: "prospector:autonomous-preview",
+        dryRun: true,
+        googleFound: data.googleFound,
+        cnpjFound: data.cnpjFound,
+        constructionSignals: data.constructionSignals,
+        revenueOpportunities: data.revenueOpportunities,
+        sourceErrors: data.sourceErrors,
+      },
+    };
+  },
+});
+
+register({
+  id: "prospector.autonomous_cycle",
+  domain: "prospector",
+  description: "Executa um ciclo unificado de descoberta: Google Places, empresas recém-abertas/CNPJ, Radar de Obras quando aplicável e Revenue Scout; empresas estruturadas entram na fila oficial para deduplicação, distribuição e enriquecimento.",
+  risk: "medium",
+  mutates: true,
+  externalEffect: false,
+  inputHint: "{maxPerConfig?:3..20}",
+  execute: async ({ tenantId }, input) => {
+    const data = await runAutonomousProspectingCycle({
+      tenantId,
+      log: logger.child({ subsystem: "vendi:prospecting" }),
+      maxPerConfig: Math.min(Math.max(Number(input.maxPerConfig ?? 10), 3), 20),
+    });
+    return {
+      ok: true,
+      data,
+      evidence: {
+        source: "prospector:autonomous-cycle",
+        queued: data.queued,
+        googleFound: data.googleFound,
+        cnpjFound: data.cnpjFound,
+        constructionSignals: data.constructionSignals,
+        revenueOpportunities: data.revenueOpportunities,
+        sourceErrors: data.sourceErrors,
       },
     };
   },

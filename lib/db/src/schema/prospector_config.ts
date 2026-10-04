@@ -12,6 +12,7 @@ export const prospectorConfigTable = pgTable("prospector_config", {
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
   setor: text("setor"),
   cidade: text("cidade"),
+  cnaeAlvo: text("cnae_alvo").array().notNull().default([]),
   raioKm: integer("raio_km"),
   ritmoDiario: integer("ritmo_diario").notNull().default(10),
   autoDispatchThreshold: integer("auto_dispatch_threshold").notNull().default(80),
