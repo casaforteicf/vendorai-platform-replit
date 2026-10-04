@@ -69,7 +69,7 @@ function profileAppliesToTenantSegments(segmentKeys: string[], tenantSegments: s
 }
 
 router.post("/tenants/:tenantId/ai-keys/anthropic", authenticate, async (req, res) => {
-  const tenantId = req.params.tenantId;
+  const tenantId = String(req.params.tenantId);
   const { apiKey } = req.body as { apiKey?: string };
   if (!apiKey || !apiKey.startsWith("sk-")) return res.status(400).json({ error: "Invalid Anthropic API key format" });
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) return res.status(403).json({ error: "Access denied" });
@@ -85,7 +85,7 @@ router.post("/tenants/:tenantId/ai-keys/anthropic", authenticate, async (req, re
 });
 
 router.delete("/tenants/:tenantId/ai-keys/anthropic", authenticate, async (req, res) => {
-  const tenantId = req.params.tenantId;
+  const tenantId = String(req.params.tenantId);
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) return res.status(403).json({ error: "Access denied" });
   await db.update(tenantsTable).set({
     anthropicApiKeyEncrypted: null,
@@ -97,7 +97,7 @@ router.delete("/tenants/:tenantId/ai-keys/anthropic", authenticate, async (req, 
 });
 
 router.get("/tenants/:tenantId/ai-usage", authenticate, async (req, res) => {
-  const tenantId = req.params.tenantId;
+  const tenantId = String(req.params.tenantId);
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) return res.status(403).json({ error: "Access denied" });
 
   const [tenant] = await db.select({
@@ -201,7 +201,7 @@ router.get("/tenants/:tenantId/ai-usage", authenticate, async (req, res) => {
 /** Customer view: human units + Vendor Credits + entitlements. */
 router.get("/tenants/:tenantId/commercial-usage", authenticate, async (req, res) => {
   // tenant-audit: reviewed route tenant is immediately checked against signed-in tenant or super_admin
-  const tenantId = req.params.tenantId;
+  const tenantId = String(req.params.tenantId);
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) return res.status(403).json({ error: "Access denied" });
 
   const entitlements = await getActiveEntitlements(tenantId);
