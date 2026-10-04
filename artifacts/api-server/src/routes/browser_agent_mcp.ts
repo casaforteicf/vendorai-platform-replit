@@ -374,6 +374,49 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
         userFunction: servicePrincipal.userFunction ?? null,
         actorType: "ai",
       };
+    } else if (
+      String(process.env["HOMOLOGATION_AUTH_BOOTSTRAP_ENABLED"] ?? "").toLowerCase() === "true" &&
+      /^vendorai-homolog-frontend-[a-z0-9-]+\.up\.railway\.app$/i.test(firstPartyHost)
+    ) {
+      const principalSelect = {
+        id: usersTable.id,
+        email: usersTable.email,
+        name: usersTable.name,
+        platformRole: usersTable.platformRole,
+        role: usersTable.role,
+        userFunction: usersTable.userFunction,
+        active: usersTable.active,
+      };
+      const [platformPrincipal] = await db.select(principalSelect)
+        .from(usersTable)
+        .where(and(eq(usersTable.platformRole, "super_admin"), eq(usersTable.active, true)))
+        .limit(1);
+      const [tenantPrincipal] = platformPrincipal ? [] : await db.select(principalSelect)
+        .from(usersTable)
+        .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)))
+        .limit(1);
+      const servicePrincipal = platformPrincipal ?? tenantPrincipal;
+      if (!servicePrincipal) throw new Error("VENDI_AUTH_PRINCIPAL_NOT_FOUND");
+
+      firstPartyAuthToken = signToken({
+        sub: servicePrincipal.id,
+        email: servicePrincipal.email,
+        platformRole: servicePrincipal.platformRole,
+        tenantId,
+        role: servicePrincipal.role,
+        userFunction: servicePrincipal.userFunction ?? undefined,
+        actorType: "ai",
+      });
+      firstPartyAuthUserCache = {
+        id: servicePrincipal.id,
+        email: servicePrincipal.email,
+        name: servicePrincipal.name,
+        platformRole: servicePrincipal.platformRole,
+        tenantId,
+        role: servicePrincipal.role,
+        userFunction: servicePrincipal.userFunction ?? null,
+        actorType: "ai",
+      };
     } else if (firstPartyHost === "homolog.appvendorai.com") {
       // Gera primeiro uma credencial técnica válida na produção e a apresenta à
       // homologação. A homologação valida essa credencial contra /auth/me da
