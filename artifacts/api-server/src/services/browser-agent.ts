@@ -75,7 +75,7 @@ export function classifyBrowserError(error: unknown): BrowserFailureKind {
   if (/Navigation timeout|TimeoutError.*navigation|waiting for navigation/i.test(message)) return "navigation_timeout";
   if (/net::ERR_(?:TIMED_OUT|CONNECTION_RESET|CONNECTION_CLOSED|CONNECTION_REFUSED|NETWORK_CHANGED|INTERNET_DISCONNECTED)|socket hang up|ECONNRESET|ETIMEDOUT/i.test(message)) return "transient_network";
   if (/Target closed|Session closed|Protocol error.*Target|Connection closed/i.test(message)) return "target_closed";
-  if (/detached Frame|Attempted to use detached Frame|Cannot find context with specified id/i.test(message)) return "detached_frame";
+  if (/detached Frame|Attempted to use detached Frame|Cannot find context with specified id|Execution context was destroyed/i.test(message)) return "detached_frame";
   return "unknown";
 }
 
@@ -413,7 +413,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
 
     let selectorRecoveryNote = "";
     for (let index = 1; index <= maxSteps; index++) {
-      const state = await snapshotBrowserPage(page);
+      const state = await withBrowserRetry(() => snapshotBrowserPage(page));
       assertBrowserPageAccessible(state);
       const planningGoal = selectorRecoveryNote
         ? input.goal + "\nRECUPERAÇÃO DE NAVEGAÇÃO: " + selectorRecoveryNote
@@ -439,7 +439,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
       try {
         extracted = await executeBrowserAction(page, action, input);
         if (actionShouldChangePage(action.action)) {
-          const afterState = await snapshotBrowserPage(page);
+          const afterState = await withBrowserRetry(() => snapshotBrowserPage(page));
           const verification = verifyCheckpointTransition(checkpointFromState(state), checkpointFromState(afterState));
           if (!verification.changed) {
             selectorRecoveryNote =
@@ -462,7 +462,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
         throw error;
       }
       if (action.action === "extract" && extracted) {
-        const state2 = await snapshotBrowserPage(page);
+        const state2 = await withBrowserRetry(() => snapshotBrowserPage(page));
         assertBrowserPageAccessible(state2);
         const next = await planBrowserAction(
           input.tenantId,
