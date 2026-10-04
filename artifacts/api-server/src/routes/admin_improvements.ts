@@ -511,6 +511,7 @@ export async function reconcileGithubImprovements(actorName = "vendi:reconcile")
               source_type AS "sourceType",source_ref_id AS "sourceRefId",agent_status AS "agentStatus"
          FROM admin_improvements
         WHERE pr_number IS NOT NULL
+          AND status NOT IN ('producao_validada','cancelada')
         ORDER BY pr_number,updated_at DESC,created_at DESC`,
     );
 
@@ -560,9 +561,23 @@ export async function reconcileGithubImprovements(actorName = "vendi:reconcile")
         const isChainedLegacy = Boolean(baseBranch && !isPrimaryBase);
         const mergeRevision = String(pr?.merge_commit_sha ?? pr?.merged_commit_sha ?? "");
 
-        const check = headSha
+        const currentStatus = String(item.status ?? "solicitada");
+        const skipChecks =
+          isClosedWithoutMerge ||
+          isSuperseded ||
+          (isMerged && ["mergeado_main", "em_homologacao", "homologado", "aguardando_producao"].includes(currentStatus));
+        const check = !skipChecks && headSha
           ? await githubCheckSummary(config.owner, config.repo, headSha)
-          : { testStatus: "pending" as const, summary: JSON.stringify({ warning: "PR sem head SHA" }) };
+          : {
+              available: true,
+              source: "github-checks-skipped",
+              testStatus: String(item.testStatus) === "failed" ? "failed" as const : "passed" as const,
+              summary: JSON.stringify({
+                source: "github-checks-skipped",
+                reason: skipChecks ? "merged-or-closed-state" : "missing-head-sha",
+                checkedAt: new Date().toISOString(),
+              }),
+            };
 
         let nextStatus = String(item.status ?? "solicitada");
         let nextTestStatus: "pending" | "running" | "passed" | "failed" = check.testStatus;
