@@ -9,6 +9,12 @@ import { bufferToDataUrl } from "../lib/arch-render-pipeline.js";
 import { generateVeoVideo } from "./media-provider-execution.js";
 import { captureGeneratedMedia } from "./media-library.js";
 import {
+  authorizeVendorCredits,
+  debitVendorCredits,
+  refundVendorCredits,
+  recordCommercialUsage,
+} from "./commercial-usage.js";
+import {
   ARQDOR_NEGATIVE_PROMPTS,
   buildArqdorRenderToVideoPrompt,
   type ArqdorVideoMovement,
@@ -87,6 +93,13 @@ export async function startArqdorRenderVideo(input: {
   if (!render) throw new Error("RENDER_NOT_FOUND");
   if (render.status !== "concluido" || !render.result_image_url) throw new Error("RENDER_NOT_READY");
 
+  const creditAuthorization = await authorizeVendorCredits(input.tenantId, "video", 1);
+  if (!creditAuthorization.ok) {
+    throw new Error(
+      `INSUFFICIENT_VENDOR_CREDITS: required=${creditAuthorization.required} available=${creditAuthorization.includedRemaining + creditAuthorization.available}`,
+    );
+  }
+
   const insert = await pool.query(
     `INSERT INTO arch_render_videos (tenant_id, render_id, movement, aspect_ratio, status)
      VALUES ($1, $2, $3, $4, 'queued')
@@ -94,6 +107,16 @@ export async function startArqdorRenderVideo(input: {
     [input.tenantId, input.renderId, input.movement, input.aspectRatio],
   );
   const jobId = String(insert.rows[0].id);
+  const creditReferenceId = `arqdor-video:${jobId}`;
+  const creditDebit = await debitVendorCredits({
+    tenantId: input.tenantId,
+    credits: creditAuthorization.walletRequired,
+    commercialKey: "vendor.arqdor",
+    referenceId: creditReferenceId,
+    reason: "arqdor_render_video",
+    metadata: { renderId: input.renderId, jobId, durationSeconds: 5, metricKey: "video" },
+  });
+  const reservedVendorCredits = Number(creditDebit.debited ?? 0);
 
   void (async () => {
     try {
@@ -130,6 +153,29 @@ export async function startArqdorRenderVideo(input: {
         },
       });
       const videoUrl = captured.storageUrl;
+
+      await recordCommercialUsage({
+        tenantId: input.tenantId,
+        commercialKey: "vendor.arqdor",
+        metricKey: "video",
+        quantity: 1,
+        success: true,
+        billable: true,
+        billingStatus: "overage",
+        provider: generation.provider,
+        model: generation.model,
+        source: "arqdor_render_video",
+        sourceEventId: `commercial:${jobId}`,
+        requestId: jobId,
+        metadata: {
+          renderId: input.renderId,
+          durationSeconds: 5,
+          movement: input.movement,
+          aspectRatio: input.aspectRatio,
+          vendorCreditsReserved: reservedVendorCredits,
+        },
+      });
+
       await pool.query(
         `UPDATE arch_render_videos
             SET status='done', provider='replicate', model=$1, provider_prediction_id=$2,
@@ -139,6 +185,31 @@ export async function startArqdorRenderVideo(input: {
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+
+      await recordCommercialUsage({
+        tenantId: input.tenantId,
+        commercialKey: "vendor.arqdor",
+        metricKey: "video",
+        quantity: 1,
+        success: false,
+        billable: true,
+        billingStatus: "non_billable",
+        source: "arqdor_render_video",
+        sourceEventId: `commercial:${jobId}`,
+        requestId: jobId,
+        metadata: { renderId: input.renderId, error: message },
+      }).catch(() => null);
+
+      if (reservedVendorCredits > 0) {
+        await refundVendorCredits({
+          tenantId: input.tenantId,
+          credits: reservedVendorCredits,
+          commercialKey: "vendor.arqdor",
+          referenceId: creditReferenceId,
+          metadata: { renderId: input.renderId, jobId, providerFailure: true },
+        }).catch(() => null);
+      }
+
       input.logger?.error?.({ error, renderId: input.renderId, jobId }, "arqdor render video failed");
       await pool.query(
         `UPDATE arch_render_videos
