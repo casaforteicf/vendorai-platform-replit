@@ -1,4 +1,4 @@
-import { and, eq, gt, gte, isNull, or, sql } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import {
   consumptionPackDefinitionsTable,
   commercialProductProfilesTable,
@@ -349,7 +349,7 @@ export async function getMonthlyIncludedVendorCredits(tenantId: string, now = ne
     .from(commercialProductProfilesTable)
     .where(and(
       eq(commercialProductProfilesTable.active, true),
-      sql`${commercialProductProfilesTable.commercialKey} = any(${keys})`,
+      inArray(commercialProductProfilesTable.commercialKey, keys),
     ));
 
   return profiles.reduce((sum, profile) => {
