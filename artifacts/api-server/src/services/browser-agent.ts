@@ -100,6 +100,31 @@ async function withBrowserRetry<T>(
   throw lastError;
 }
 
+async function navigateBrowserPage(page: Page, target: string, timeout = 60_000) {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      await page.goto(target, { waitUntil: "domcontentloaded", timeout });
+      return;
+    } catch (error) {
+      lastError = error;
+      const kind = classifyBrowserError(error);
+      if (kind === "navigation_timeout") {
+        const current = page.url().replace(/\/$/, "");
+        const expected = target.replace(/\/$/, "");
+        if (current === expected) {
+          const state = await withBrowserRetry(() => snapshotBrowserPage(page), 2).catch(() => null);
+          if (state && (state.title || state.text || state.interactive.length > 0)) return;
+        }
+      }
+      if (!isRetryableBrowserError(error) || attempt === 2) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 350 * attempt));
+    }
+  }
+  throw lastError;
+}
+
+
 export function checkpointFromState(state: { url: string; title: string; text: string; interactive: unknown[] }): BrowserAgentCheckpoint {
   const normalized = state.text.replace(/\s+/g, " ").trim().slice(0, 600);
   let hash = 2166136261;
@@ -297,9 +322,7 @@ export async function executeBrowserAction(
   if (action.action === "finish") return action.answer;
 
   if (action.action === "navigate") {
-    await withBrowserRetry(() =>
-      page.goto(validateBrowserUrl(action.url, input.allowedHosts), { waitUntil: "domcontentloaded", timeout: 60_000 }),
-    );
+    await navigateBrowserPage(page, validateBrowserUrl(action.url, input.allowedHosts));
     return;
   }
 
@@ -385,10 +408,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
       }, { token: input.firstPartyAuthToken, userCache: input.firstPartyAuthUserCache ?? null });
     }
 
-    await withBrowserRetry(() => page.goto(validateBrowserUrl(input.startUrl, input.allowedHosts), {
-      waitUntil: "domcontentloaded",
-      timeout: 60_000,
-    }));
+    await navigateBrowserPage(page, validateBrowserUrl(input.startUrl, input.allowedHosts));
     if (await restoreBrowserProfileAfterNavigation(page, input.sessionProfile)) {
       await page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
     }
@@ -404,7 +424,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
       }, { token: input.firstPartyAuthToken, userCache: input.firstPartyAuthUserCache ?? null }));
       const target = validateBrowserUrl(input.startUrl, input.allowedHosts);
       if (page.url() !== target) {
-        await withBrowserRetry(() => page.goto(target, { waitUntil: "domcontentloaded", timeout: 60_000 }));
+        await navigateBrowserPage(page, target);
       } else {
         await withBrowserRetry(() => page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 }));
       }
@@ -455,7 +475,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
                 try {
                   const target = validateBrowserUrl(goalUrl, input.allowedHosts);
                   if (page.url() !== target) {
-                    await withBrowserRetry(() => page.goto(target, { waitUntil: "domcontentloaded", timeout: 60_000 }));
+                    await navigateBrowserPage(page, target);
                     await page.waitForNetworkIdle({ idleTime: 400, timeout: 5000 }).catch(() => undefined);
                     steps[steps.length - 1]!.detail = [steps[steps.length - 1]!.detail, "verified_no_change_direct_navigation"]
                       .filter(Boolean).join(" | ");
