@@ -439,6 +439,33 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
       await page.waitForNetworkIdle({ idleTime: 400, timeout: 5000 }).catch(() => undefined);
     }
 
+    // Read-only short missions are commonly used as health/snapshot checks.
+    // Avoid an unnecessary LLM planning round-trip after navigation: return the
+    // current DOM deterministically so connector calls stay within their request budget.
+    if (!input.allowWrite && maxSteps <= 3) {
+      const state = await withBrowserRetry(() => snapshotBrowserPage(page), 2);
+      assertBrowserPageAccessible(state);
+      if (input.onSessionPersist) await input.onSessionPersist(await page.cookies());
+      if (input.onProfilePersist) await input.onProfilePersist(await captureBrowserProfile(page));
+      const visibleText = state.text.slice(0, 6000);
+      return {
+        ok: true,
+        finalUrl: state.url,
+        answer: JSON.stringify({
+          title: state.title,
+          text: visibleText,
+          interactiveCount: state.interactive.length,
+        }),
+        steps: [{
+          index: 1,
+          action: "snapshot",
+          url: state.url,
+          detail: "readonly_fast_snapshot",
+          checkpoint: checkpointFromState(state),
+        }],
+      };
+    }
+
     let selectorRecoveryNote = "";
     let noChangeStreak = 0;
     for (let index = 1; index <= maxSteps; index++) {
