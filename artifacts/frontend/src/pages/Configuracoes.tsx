@@ -395,7 +395,7 @@ export default function Configuracoes() {
   }
 
   return (
-    <div className="vendor-settings-compact">
+    <div className="vendor-settings-compact vendor-page-canvas vendor-config-page">
       <SettingsUxCleanup />
       <section className="mx-auto mb-3 w-full max-w-7xl px-4 sm:px-6">
         <div className="settings-quick-panel border border-border bg-card shadow-sm">
