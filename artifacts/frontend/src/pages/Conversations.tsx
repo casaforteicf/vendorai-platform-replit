@@ -1581,8 +1581,8 @@ export default function Conversations() {
   }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-muted/10">
-      <div className="shrink-0 border-b border-border bg-background px-4 py-3">
+    <div className="vendor-page-canvas vendor-conversations-page flex h-full flex-col overflow-hidden bg-muted/10">
+      <div className="vendor-conversations-header shrink-0 border-b border-border/70 bg-background/95 px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -1591,7 +1591,7 @@ export default function Conversations() {
 
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h1 className="text-base font-semibold">Caixa de entrada</h1>
+                <h1 className="text-lg font-semibold tracking-tight">Caixa de entrada</h1>
                 <span className="hidden items-center gap-1 text-[11px] text-muted-foreground sm:inline-flex">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                   sincronização ativa
