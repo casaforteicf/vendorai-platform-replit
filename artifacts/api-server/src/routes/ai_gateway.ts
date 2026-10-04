@@ -24,6 +24,7 @@ import {
   getActiveEntitlements,
   getTenantUsageSnapshot,
   getVendorCreditBalance,
+  getVendorCreditSnapshot,
   getMonthlyVendorCreditUsage,
 } from "../services/commercial-usage.js";
 import { z } from "zod/v4";
@@ -208,11 +209,20 @@ router.get("/tenants/:tenantId/commercial-usage", authenticate, async (req, res)
   const commercialKey = requestedCommercialKey
     ?? (entitlements.some((item) => item.commercialKey === "vendor.growth") ? "vendor.growth" : entitlements[0]?.commercialKey)
     ?? "vendor.crm.free";
-  const [quotas, creditBalance] = await Promise.all([
+  const [quotas, creditSnapshot] = await Promise.all([
     getTenantUsageSnapshot(tenantId, commercialKey),
-    getVendorCreditBalance(tenantId),
+    getVendorCreditSnapshot(tenantId),
   ]);
-  return res.json({ tenantId, commercialKey, entitlements, vendorCreditsBalance: creditBalance, quotas, enforcementMode: "measure_only" });
+  return res.json({
+    tenantId,
+    commercialKey,
+    entitlements,
+    usageUnit: "vendor_credits",
+    vendorCreditsBalance: creditSnapshot.totalAvailable,
+    vendorCredits: creditSnapshot,
+    quotas,
+    enforcementMode: process.env["VENDOR_CREDITS_ENFORCEMENT"] === "enforce" ? "enforce" : "measure_only",
+  });
 });
 
 /**
