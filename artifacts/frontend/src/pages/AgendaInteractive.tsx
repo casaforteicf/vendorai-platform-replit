@@ -78,7 +78,6 @@ import {
   Bell,
   BellRing,
   CircleAlert,
-  ArrowRight,
   Sparkles,
   MessageCircle,
 } from "lucide-react";
