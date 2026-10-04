@@ -417,6 +417,42 @@ export async function debitVendorCredits(input: {
   });
 }
 
+export async function refundVendorCredits(input: {
+  tenantId: string;
+  credits: number;
+  commercialKey?: string | null;
+  referenceId: string;
+  reason?: string;
+  metadata?: Record<string, unknown>;
+}) {
+  const credits = Math.max(0, Math.ceil(input.credits));
+  if (credits === 0 || getVendorCreditEnforcementMode() !== "enforce") {
+    return { refunded: 0, balance: await getVendorCreditBalance(input.tenantId), mode: getVendorCreditEnforcementMode() };
+  }
+
+  const refundReferenceId = `refund:${input.referenceId}`;
+  const [row] = await db
+    .insert(vendorCreditTransactionsTable)
+    .values({
+      tenantId: input.tenantId,
+      creditsDelta: credits,
+      metricKey: null,
+      quantityDelta: null,
+      reason: input.reason ?? "usage_refund",
+      commercialKey: input.commercialKey ?? "vendor.credits",
+      referenceId: refundReferenceId,
+      metadata: input.metadata ?? {},
+    })
+    .onConflictDoNothing()
+    .returning();
+
+  return {
+    refunded: row ? credits : 0,
+    balance: await getVendorCreditBalance(input.tenantId),
+    mode: getVendorCreditEnforcementMode(),
+  };
+}
+
 export async function getActiveEntitlements(tenantId: string, now = new Date()) {
   return db
     .select()
