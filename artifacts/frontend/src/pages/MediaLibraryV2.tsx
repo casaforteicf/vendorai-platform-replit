@@ -134,6 +134,8 @@ export default function MediaLibraryV2() {
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [importUrl, setImportUrl] = useState("");
+  const [importingUrl, setImportingUrl] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
   const [folder, setFolder] = useState("Todas as mídias");
   const [search, setSearch] = useState("");
@@ -227,6 +229,30 @@ export default function MediaLibraryV2() {
     }
   }
 
+  async function importPresentationFromUrl() {
+    if (!tenantId || !importUrl.trim()) return;
+    setImportingUrl(true);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/media/assets/import-dropbox`, {
+        method: "POST",
+        headers: authHeaders(true),
+        body: JSON.stringify({
+          url: importUrl.trim(),
+          originalFilename: "VendorAI_MASTER_LOGO_CORRIGIDA_FINAL_V3-1.pptx",
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Falha ao importar apresentação");
+      setImportUrl("");
+      toast({ title: "Apresentação adicionada à Biblioteca" });
+      await load();
+    } catch (error) {
+      toast({ title: "Falha na importação", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setImportingUrl(false);
+    }
+  }
+
   async function patchAsset(asset: MediaAsset, metadataPatch: Record<string, unknown>) {
     setSaving(true);
     try {
@@ -269,6 +295,12 @@ export default function MediaLibraryV2() {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Biblioteca da Empresa</h1>
             <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">Centralize as referências que a IA deve conhecer: empresa e marca, produtos do catálogo, obras e projetos, equipe, campanhas, fotos, vídeos e documentos.</p>
+          </div>
+          <div className="flex w-full max-w-xl gap-2">
+            <input value={importUrl} onChange={(event) => setImportUrl(event.target.value)} placeholder="URL temporária do documento" className="h-11 min-w-0 flex-1 rounded-xl border bg-background px-3 text-sm outline-none focus:border-orange-300" />
+            <button type="button" onClick={() => void importPresentationFromUrl()} disabled={importingUrl || !importUrl.trim()} className="h-11 rounded-xl border bg-background px-4 text-sm font-medium disabled:opacity-50">
+              {importingUrl ? "Importando..." : "Importar"}
+            </button>
           </div>
           <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 font-semibold text-white shadow-sm transition hover:bg-orange-600 disabled:opacity-60">
             {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}Adicionar mídia
