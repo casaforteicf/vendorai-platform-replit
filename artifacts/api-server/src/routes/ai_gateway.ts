@@ -8,6 +8,7 @@ import {
   aiUsageLogsTable,
   tokenPurchasesTable,
   vendorTokenTransactionsTable,
+  vendorCreditTransactionsTable,
   commercialProductProfilesTable,
   productUsageQuotasTable,
   usageMetricsTable,
@@ -23,6 +24,7 @@ import {
   getActiveEntitlements,
   getTenantUsageSnapshot,
   getVendorCreditBalance,
+  getMonthlyVendorCreditUsage,
 } from "../services/commercial-usage.js";
 import { z } from "zod/v4";
 
@@ -120,6 +122,10 @@ router.get("/tenants/:tenantId/ai-usage", authenticate, async (req, res) => {
     .from(aiUsageLogsTable).where(and(eq(aiUsageLogsTable.tenantId, tenantId as string), gte(aiUsageLogsTable.createdAt, startOfMonth)));
   const spentThisMonthUsd = Number(monthlyRow?.totalCost ?? 0);
   const tokensUsed = Number(monthlyRow?.totalTokens ?? 0);
+  const [vendorCreditsBalance, vendorCreditsUsedThisMonth] = await Promise.all([
+    getVendorCreditBalance(tenantId),
+    getMonthlyVendorCreditUsage(tenantId),
+  ]);
   const monthlySpendCeilingUsd = Number(process.env["AI_MONTHLY_SPEND_CEILING_USD"] ?? 30);
   const totalCycleBudgetUsd = Math.max(0, (quotaUsd ?? 0) + Number(tenant.aiCreditsUsd ?? 0));
   const usagePercent = totalCycleBudgetUsd > 0
@@ -151,16 +157,35 @@ router.get("/tenants/:tenantId/ai-usage", authenticate, async (req, res) => {
 
   const publicUsage = {
     usagePercent,
-    tokensUsed,
+    usageUnit: "vendor_credits",
+    vendorCreditsBalance,
+    vendorCreditsUsed: vendorCreditsUsedThisMonth,
+    // Backward-compatible alias for legacy clients. This no longer exposes raw provider tokens.
+    tokensUsed: vendorCreditsUsedThisMonth,
     byok: { openai: tenant.openaiKeyStatus === "ativo", anthropic: tenant.anthropicKeyStatus === "ativo" },
-    featureBreakdown: featureRows,
-    recentLogs,
+    featureBreakdown: featureRows.map((row) => ({ feature: row.feature, calls: Number(row.calls ?? 0) })),
+    recentLogs: recentLogs.map((row) => ({
+      id: row.id,
+      provider: row.provider,
+      model: row.model,
+      feature: row.feature,
+      usedByok: row.usedByok,
+      success: row.success,
+      errorMessage: row.errorMessage,
+      requestId: row.requestId,
+      createdAt: row.createdAt,
+    })),
   };
 
   if (req.user?.platformRole !== "super_admin") return res.json(publicUsage);
 
   return res.json({
     ...publicUsage,
+    internalTechnical: {
+      rawTokensUsed: tokensUsed,
+      featureBreakdown: featureRows,
+      recentLogs,
+    },
     internalFinancial: {
       quotaUsd,
       creditsUsd: Number(tenant.aiCreditsUsd ?? 0),
@@ -457,20 +482,37 @@ router.post("/webhooks/asaas/credits", async (req, res) => {
     });
     if (!tenant) throw new Error("Tenant not found for paid purchase");
 
+    // Legacy write is preserved during the compatibility window.
     await tx.insert(vendorTokenTransactionsTable).values({
       tenantId: purchase.tenantId as string,
       tokensDelta: purchase.credits,
       kind: "purchase",
       source: "asaas_token_purchase",
       referenceId: purchase.id,
-      metadata: { paymentId, canonical: true },
+      metadata: { paymentId, canonical: false, compatibility: "vendor_credits" },
+    }).onConflictDoNothing();
+
+    // Canonical commercial wallet: customer-facing value is Vendor Credits.
+    await tx.insert(vendorCreditTransactionsTable).values({
+      tenantId: purchase.tenantId as string,
+      creditsDelta: purchase.credits,
+      metricKey: null,
+      quantityDelta: null,
+      reason: "purchase",
+      commercialKey: "vendor.credits",
+      referenceId: purchase.id,
+      metadata: { paymentId, source: "asaas_token_purchase", legacyTokenPurchase: true },
     }).onConflictDoNothing();
 
     return {
       kind: "credited" as const,
       tenantId: purchase.tenantId,
+      vendorCreditsAdded: purchase.credits,
+      vendorCreditsBalance: Number(tenant.tokenCredits),
+      // Deprecated aliases kept temporarily for clients that have not migrated.
       tokensAdded: purchase.credits,
       tokenBalance: Number(tenant.tokenCredits),
+      usageUnit: "vendor_credits",
     };
   });
 
