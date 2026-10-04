@@ -198,7 +198,7 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
           startUrl: normalizedStartUrl,
           allowedHosts: [start.hostname.toLowerCase()],
         })
-        .returning(browserMcpConnectionSelection);
+        .returning({ id: agentActionsLogTable.id, payload: agentActionsLogTable.payload });
     }
   }
 

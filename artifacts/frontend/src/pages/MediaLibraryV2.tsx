@@ -67,7 +67,14 @@ function inferType(file: File): MediaType | null {
   if (file.type.startsWith("image/")) return "image";
   if (file.type.startsWith("video/")) return "video";
   if (file.type.startsWith("audio/")) return "audio";
-  if (file.type === "application/pdf" || file.type.startsWith("text/")) return "document";
+  if (
+    file.type === "application/pdf"
+    || file.type === "application/vnd.ms-powerpoint"
+    || file.type === "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    || file.name.toLowerCase().endsWith(".ppt")
+    || file.name.toLowerCase().endsWith(".pptx")
+    || file.type.startsWith("text/")
+  ) return "document";
   return null;
 }
 
@@ -255,7 +262,7 @@ export default function MediaLibraryV2() {
 
   return (
     <div className="mx-auto w-full max-w-[1500px] px-3 pb-24 pt-4 sm:px-6 lg:px-8">
-      <input ref={inputRef} type="file" multiple className="hidden" accept="image/*,video/*,audio/*,.pdf,.txt" onChange={(event) => void upload(event.target.files)} />
+      <input ref={inputRef} type="file" multiple className="hidden" accept="image/*,video/*,audio/*,.pdf,.txt,.ppt,.pptx,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" onChange={(event) => void upload(event.target.files)} />
 
       <header className="mb-5 rounded-3xl border bg-card p-4 shadow-sm sm:p-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
