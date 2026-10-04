@@ -148,8 +148,8 @@ export default function AgentConfig() {
   }
 
   return (
-    <>
-      <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6 sm:pt-6">
+    <div className="vendor-product-page vendor-page-canvas vendor-agents-page" data-ai-accent="true">
+      <div className="mx-auto w-full max-w-6xl pt-1">
         <Card className="overflow-hidden border-primary/20 bg-primary/[0.025] shadow-sm">
           <div className="flex flex-col gap-5 p-5 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex min-w-0 gap-4">
@@ -197,7 +197,7 @@ export default function AgentConfig() {
         </Card>
       </div>
 
-      <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">
+      <div className="mx-auto mt-4 w-full max-w-6xl">
         <Card className="flex flex-col gap-3 border-primary/20 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="font-semibold">Vendi · Central de Operações</h3>
@@ -217,7 +217,7 @@ export default function AgentConfig() {
         </Card>
       </div>
 
-      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+      <div className="mx-auto mt-4 w-full max-w-6xl">
         <BrowserAgentPanel />
       </div>
 
@@ -239,7 +239,7 @@ export default function AgentConfig() {
           onComplete={handleGuidedComplete}
         />
       )}
-    </>
+    </div>
   );
 }
 
