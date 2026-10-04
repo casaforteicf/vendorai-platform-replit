@@ -2857,12 +2857,12 @@ export default function Deals() {
   );
 
   return (
-    <div className="flex flex-col h-full space-y-6 p-4 md:p-8">
+    <div className="vendor-product-page vendor-page-canvas vendor-deals-page flex h-full flex-col space-y-5">
       {/* Header */}
-      <div className="flex justify-between items-center shrink-0 gap-3">
+      <div className="vendor-product-hero flex justify-between items-end shrink-0 gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Negócios</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <h1 className="vendor-product-title">Negócios</h1>
+          <p className="vendor-product-subtitle">
             {deals.filter((d) => !["em_aquecimento", "parceiro", "em_execucao", "ganho", "entregue", "perdido"].includes(d.etapa)).length} negócios ativos na pipeline comercial
           </p>
         </div>
