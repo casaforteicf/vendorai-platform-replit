@@ -73,7 +73,7 @@ export function classifyBrowserError(error: unknown): BrowserFailureKind {
   if (message.startsWith("APPROVAL_REQUIRED:")) return "approval_required";
   if (/No element found for selector|failed to find element matching selector|No node found for selector|Node is detached from document/i.test(message)) return "selector_stale";
   if (/Navigation timeout|TimeoutError.*navigation|waiting for navigation/i.test(message)) return "navigation_timeout";
-  if (/net::ERR_(?:TIMED_OUT|CONNECTION_RESET|CONNECTION_CLOSED|CONNECTION_REFUSED|NETWORK_CHANGED|INTERNET_DISCONNECTED)|socket hang up|ECONNRESET|ETIMEDOUT/i.test(message)) return "transient_network";
+  if (/net::ERR_(?:TIMED_OUT|CONNECTION_RESET|CONNECTION_CLOSED|CONNECTION_REFUSED|NETWORK_CHANGED|INTERNET_DISCONNECTED)|socket hang up|ECONNRESET|ETIMEDOUT|Runtime\.callFunctionOn timed out|protocolTimeout/i.test(message)) return "transient_network";
   if (/Target closed|Session closed|Protocol error.*Target|Connection closed/i.test(message)) return "target_closed";
   if (/detached Frame|Attempted to use detached Frame|Cannot find context with specified id|Execution context was destroyed/i.test(message)) return "detached_frame";
   return "unknown";
@@ -395,18 +395,18 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
 
     if (input.firstPartyAuthToken) {
       // Garante compatibilidade com páginas já criadas/perfis restaurados.
-      await page.evaluate((payload) => {
+      await withBrowserRetry(() => page.evaluate((payload) => {
         localStorage.setItem("vendorai_token", payload.token);
         if (payload.userCache) {
           localStorage.setItem("vendorai_user_cache", JSON.stringify(payload.userCache));
         }
         sessionStorage.removeItem("vendorai_demo_session");
-      }, { token: input.firstPartyAuthToken, userCache: input.firstPartyAuthUserCache ?? null });
+      }, { token: input.firstPartyAuthToken, userCache: input.firstPartyAuthUserCache ?? null }));
       const target = validateBrowserUrl(input.startUrl, input.allowedHosts);
       if (page.url() !== target) {
-        await page.goto(target, { waitUntil: "domcontentloaded", timeout: 30000 });
+        await withBrowserRetry(() => page.goto(target, { waitUntil: "domcontentloaded", timeout: 60_000 }));
       } else {
-        await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 });
+        await withBrowserRetry(() => page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 }));
       }
       await page.waitForNetworkIdle({ idleTime: 400, timeout: 5000 }).catch(() => undefined);
     }
