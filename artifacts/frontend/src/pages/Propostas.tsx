@@ -469,7 +469,7 @@ function ProductInteractionsDialog({
         ) : error ? (
           <p className="py-8 text-center text-sm text-destructive">Não foi possível carregar as interações.</p>
         ) : (
-          <div className="vendor-product-page vendor-page-canvas vendor-proposals-page space-y-5">
+          <div className="space-y-6">
             <div className="grid gap-3 sm:grid-cols-3">
               <Card><CardContent className="pt-5"><p className="text-xs text-muted-foreground">Nota média</p><p className="mt-1 text-2xl font-bold">{average.toFixed(1)} / 10</p></CardContent></Card>
               <Card><CardContent className="pt-5"><p className="text-xs text-muted-foreground">Avaliações</p><p className="mt-1 text-2xl font-bold">{data?.reviews.length ?? 0}</p></CardContent></Card>
@@ -7241,7 +7241,7 @@ export default function Propostas() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="vendor-product-page vendor-page-canvas vendor-proposals-page space-y-5">
       {/* Header */}
       <div className="vendor-product-hero flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
