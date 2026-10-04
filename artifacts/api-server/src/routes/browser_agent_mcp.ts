@@ -106,6 +106,70 @@ router.get("/internal/browser-mcp/status", (_req, res) => {
   });
 });
 
+router.post("/internal/browser-mcp/bootstrap-auth", async (req, res) => {
+  const parsed = z.object({ tenantKey: tenantKeySchema }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const tenantId = await resolveTenantId(parsed.data.tenantKey);
+  if (!tenantId) {
+    res.status(404).json({ error: "tenant_not_found" });
+    return;
+  }
+
+  const principalSelect = {
+    id: usersTable.id,
+    email: usersTable.email,
+    name: usersTable.name,
+    platformRole: usersTable.platformRole,
+    role: usersTable.role,
+    userFunction: usersTable.userFunction,
+    active: usersTable.active,
+  };
+
+  const [platformPrincipal] = await db.select(principalSelect)
+    .from(usersTable)
+    .where(and(eq(usersTable.platformRole, "super_admin"), eq(usersTable.active, true)))
+    .limit(1);
+  const [tenantPrincipal] = platformPrincipal ? [] : await db.select(principalSelect)
+    .from(usersTable)
+    .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)))
+    .limit(1);
+  const servicePrincipal = platformPrincipal ?? tenantPrincipal;
+
+  if (!servicePrincipal) {
+    res.status(409).json({ error: "vendi_auth_principal_not_found" });
+    return;
+  }
+
+  const token = signToken({
+    sub: servicePrincipal.id,
+    email: servicePrincipal.email,
+    platformRole: servicePrincipal.platformRole,
+    tenantId,
+    role: servicePrincipal.role,
+    userFunction: servicePrincipal.userFunction ?? undefined,
+    actorType: "ai",
+  });
+
+  res.json({
+    token,
+    tenantId,
+    userCache: {
+      id: servicePrincipal.id,
+      email: servicePrincipal.email,
+      name: servicePrincipal.name,
+      platformRole: servicePrincipal.platformRole,
+      tenantId,
+      role: servicePrincipal.role,
+      userFunction: servicePrincipal.userFunction ?? null,
+      actorType: "ai",
+    },
+  });
+});
+
 router.post("/internal/browser-mcp/connections", async (req, res) => {
   const parsed = z.object({ tenantKey: tenantKeySchema }).safeParse(req.body);
   if (!parsed.success) {
@@ -232,8 +296,10 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
 
     let firstPartyAuthToken: string | undefined;
     let firstPartyAuthUserCache: Record<string, unknown> | undefined;
-    const firstPartyHost = new URL(startUrl).hostname.toLowerCase();
-    if (firstPartyHost === "app.appvendorai.com" || firstPartyHost === "homolog.appvendorai.com") {
+    const firstPartyUrl = new URL(startUrl);
+    const firstPartyHost = firstPartyUrl.hostname.toLowerCase();
+
+    if (firstPartyHost === "app.appvendorai.com") {
       const principalSelect = {
         id: usersTable.id,
         email: usersTable.email,
@@ -244,9 +310,6 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
         active: usersTable.active,
       };
 
-      // Para rotas internas (ex.: Central de Melhorias), a Vendi precisa de uma
-      // identidade técnica com as mesmas permissões de plataforma do superadmin.
-      // Preferimos um super_admin ativo e só fazemos fallback para um admin do tenant.
       const [platformPrincipal] = await db.select(principalSelect)
         .from(usersTable)
         .where(and(eq(usersTable.platformRole, "super_admin"), eq(usersTable.active, true)))
@@ -277,6 +340,33 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
         userFunction: servicePrincipal.userFunction ?? null,
         actorType: "ai",
       };
+    } else if (firstPartyHost === "homolog.appvendorai.com") {
+      const exchangeToken = process.env["BROWSER_MCP_ACCESS_TOKEN"]?.trim();
+      if (!exchangeToken) throw new Error("VENDI_HOMOLOG_AUTH_EXCHANGE_NOT_CONFIGURED");
+
+      const exchangeUrl = new URL("/api/internal/browser-mcp/bootstrap-auth", firstPartyUrl.origin);
+      const exchangeResponse = await fetch(exchangeUrl, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${exchangeToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ tenantKey: parsed.data.tenantKey }),
+      });
+
+      if (!exchangeResponse.ok) {
+        const detail = await exchangeResponse.text().catch(() => "");
+        throw new Error(`VENDI_HOMOLOG_AUTH_EXCHANGE_FAILED:${exchangeResponse.status}:${detail.slice(0, 200)}`);
+      }
+
+      const exchanged = await exchangeResponse.json() as {
+        token?: string;
+        userCache?: Record<string, unknown>;
+      };
+      if (!exchanged.token) throw new Error("VENDI_HOMOLOG_AUTH_EXCHANGE_INVALID_RESPONSE");
+
+      firstPartyAuthToken = exchanged.token;
+      firstPartyAuthUserCache = exchanged.userCache;
     }
 
     const agentInput: BrowserAgentInput = {
