@@ -24,13 +24,14 @@ const { Pool } = pg;
 const command = process.argv[2] ?? "up";
 
 const connectionString =
+  process.env.APP_DATABASE_URL ??
   process.env.MIGRATION_DATABASE_URL ??
   process.env.SUPABASE_DATABASE_URL ??
   process.env.DATABASE_URL;
 
 if (!connectionString) {
   console.error(
-    "❌  MIGRATION_DATABASE_URL, SUPABASE_DATABASE_URL or DATABASE_URL is required.",
+    "❌  APP_DATABASE_URL, MIGRATION_DATABASE_URL, SUPABASE_DATABASE_URL or DATABASE_URL is required.",
   );
   process.exit(1);
 }
