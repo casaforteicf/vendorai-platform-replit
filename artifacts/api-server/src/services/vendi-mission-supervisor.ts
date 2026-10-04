@@ -196,6 +196,11 @@ export async function executeVendiMission(input: {
 
   const approved = new Set(input.approvedToolIds ?? []);
   const outputs: Array<Record<string, unknown>> = [];
+  let recoveryCount = 0;
+  const maxRecoveries = 3;
+  let adaptiveReplanCount = 0;
+  const maxAdaptiveReplans = 3;
+  let currentSuccessCriteria = Array.isArray(mission.successCriteria) ? mission.successCriteria : [];
 
   for (let stepIndex = 0; stepIndex < plan.length; stepIndex++) {
     if (completedToolIndices.has(stepIndex)) continue;
@@ -297,6 +302,86 @@ export async function executeVendiMission(input: {
       });
 
       if (!executed.result.ok) throw new Error(executed.result.message ?? "VENDI_TOOL_FAILED:" + tool.id);
+
+      const hasUsefulObservation =
+        !tool.mutates &&
+        executed.result.data !== undefined &&
+        stepIndex < plan.length - 1 &&
+        adaptiveReplanCount < maxAdaptiveReplans;
+
+      if (hasUsefulObservation) {
+        try {
+          adaptiveReplanCount++;
+          const adaptive = await planVendiMission({
+            tenantId: input.tenantId,
+            objective: mission.objective,
+            context: {
+              ...(mission.context && typeof mission.context === "object" ? mission.context : {}),
+              adaptiveExecution: {
+                attempt: adaptiveReplanCount,
+                maxAdaptiveReplans,
+                completedSteps: outputs.slice(-8),
+                latestObservation: {
+                  toolId: tool.id,
+                  stepIndex,
+                  data: executed.result.data,
+                  evidence: executed.result.evidence,
+                },
+                instruction: [
+                  "Reavalie SOMENTE os próximos passos à luz dos dados reais observados.",
+                  "Não repita passos já concluídos.",
+                  "Prefira ações específicas para os IDs/itens encontrados.",
+                  "Não aumente risco nem contorne aprovação humana.",
+                  "Se o plano original restante já for adequado, mantenha-o semanticamente equivalente.",
+                ].join(" "),
+              },
+            },
+          });
+
+          if (adaptive.steps.length) {
+            const completedPrefix = plan.slice(0, stepIndex + 1);
+            plan = [...completedPrefix, ...adaptive.steps];
+            if (adaptive.successCriteria.length) currentSuccessCriteria = adaptive.successCriteria;
+
+            await db.update(vendiMissionsTable)
+              .set({
+                plan: plan as Array<Record<string, unknown>>,
+                successCriteria: currentSuccessCriteria,
+                updatedAt: new Date(),
+              })
+              .where(eq(vendiMissionsTable.id, mission.id));
+
+            await appendEvent({
+              tenantId: input.tenantId,
+              missionId: mission.id,
+              sequence: sequence++,
+              type: "adaptive_plan",
+              status: "executed",
+              toolId: tool.id,
+              output: {
+                stepIndex,
+                adaptiveReplanCount,
+                remainingSteps: adaptive.steps.map((item) => item.toolId),
+              },
+              evidence: {
+                strategy: "observation_driven_replan",
+                sourceTool: tool.id,
+              },
+            });
+          }
+        } catch (adaptiveError: any) {
+          await appendEvent({
+            tenantId: input.tenantId,
+            missionId: mission.id,
+            sequence: sequence++,
+            type: "adaptive_plan_error",
+            status: "failed",
+            toolId: tool.id,
+            output: { stepIndex, adaptiveReplanCount },
+            error: adaptiveError?.message ?? "VENDI_ADAPTIVE_PLAN_FAILED",
+          });
+        }
+      }
     } catch (error: any) {
       const message = error?.message ?? "VENDI_TOOL_FAILED";
       await appendEvent({
@@ -307,17 +392,106 @@ export async function executeVendiMission(input: {
         toolId: tool.id,
         status: "failed",
         toolInput: step.input,
-        output: { stepIndex },
+        output: { stepIndex, recoveryCount },
         error: message,
       });
+
+      if (recoveryCount < maxRecoveries) {
+        recoveryCount++;
+        try {
+          const recovery = await planVendiMission({
+            tenantId: input.tenantId,
+            objective: mission.objective,
+            context: {
+              ...(mission.context && typeof mission.context === "object" ? mission.context : {}),
+              recovery: {
+                attempt: recoveryCount,
+                maxRecoveries,
+                failedStep: { stepIndex, toolId: tool.id, input: step.input, reason: step.reason },
+                error: message,
+                completedOutputs: outputs.slice(-8),
+                instruction: "Replaneje a partir da falha. Prefira uma ferramenta/caminho alternativo; não repita cegamente a mesma ação que acabou de falhar.",
+              },
+            },
+          });
+
+          const replacement = recovery.steps;
+          if (recovery.successCriteria.length) currentSuccessCriteria = recovery.successCriteria;
+          if (replacement.length) {
+            plan = [...plan.slice(0, stepIndex), ...replacement];
+            await db.update(vendiMissionsTable)
+              .set({
+                plan: plan as Array<Record<string, unknown>>,
+                successCriteria: recovery.successCriteria.length
+                  ? recovery.successCriteria
+                  : currentSuccessCriteria,
+                status: "running",
+                lastError: message,
+                updatedAt: new Date(),
+              })
+              .where(eq(vendiMissionsTable.id, mission.id));
+
+            await appendEvent({
+              tenantId: input.tenantId,
+              missionId: mission.id,
+              sequence: sequence++,
+              type: "recovery_plan",
+              status: "executed",
+              output: {
+                failedStepIndex: stepIndex,
+                failedToolId: tool.id,
+                recoveryAttempt: recoveryCount,
+                replacementSteps: replacement.map((item) => item.toolId),
+              },
+              evidence: { strategy: "automatic_replan", previousError: message },
+            });
+
+            stepIndex--;
+            continue;
+          }
+        } catch (recoveryError: any) {
+          await appendEvent({
+            tenantId: input.tenantId,
+            missionId: mission.id,
+            sequence: sequence++,
+            type: "recovery_error",
+            status: "failed",
+            output: { stepIndex, recoveryAttempt: recoveryCount },
+            error: recoveryError?.message ?? "VENDI_RECOVERY_PLAN_FAILED",
+          });
+        }
+      }
+
       await db.update(vendiMissionsTable)
-        .set({ status: "failed", lastError: message, result: { outputs }, updatedAt: new Date() })
+        .set({
+          status: "failed",
+          lastError: message,
+          result: { outputs, recoveryCount, maxRecoveries },
+          updatedAt: new Date(),
+        })
         .where(eq(vendiMissionsTable.id, mission.id));
-      return { ok: false, status: "failed" as const, missionId: mission.id, error: message, outputs };
+      return {
+        ok: false,
+        status: "failed" as const,
+        missionId: mission.id,
+        error: message,
+        outputs,
+        recoveryCount,
+      };
     }
   }
 
-  const result = { outputs, executedSteps: outputs.length };
+  const result = {
+    outputs,
+    executedSteps: outputs.length,
+    recoveryCount,
+    adaptiveReplanCount,
+    verification: {
+      allExecutedStepsSucceeded: outputs.every((item) => item.ok === true),
+      evidenceCount: outputs.filter((item) => item.data !== undefined || item.message !== undefined).length,
+      successCriteria: currentSuccessCriteria,
+    },
+  };
   await db.update(vendiMissionsTable)
     .set({
       status: "completed",
