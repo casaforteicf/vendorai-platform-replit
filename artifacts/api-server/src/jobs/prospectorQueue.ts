@@ -288,6 +288,7 @@ async function processQueueItem(params: {
         websiteUrl: leadsTable.websiteUrl,
         metadata: leadsTable.metadata,
         mercadoSegmento: leadsTable.mercadoSegmento,
+        proximaAcao: leadsTable.proximaAcao,
         assignedTo: leadsTable.assignedTo,
       })
       .from(leadsTable)
@@ -318,6 +319,7 @@ async function processQueueItem(params: {
       if (!dup.endereco && item.endereco) patch.endereco = item.endereco;
       if (!dup.websiteUrl && item.website) patch.websiteUrl = item.website;
       if (!dup.mercadoSegmento && item.setor) patch.mercadoSegmento = item.setor;
+      if (!dup.proximaAcao) patch.proximaAcao = "Pesquisar o negócio, validar o decisor e preparar abordagem consultiva personalizada";
       if (!dup.assignedTo && autoAssignedTo) patch.assignedTo = autoAssignedTo;
 
       await db.update(leadsTable).set(patch).where(eq(leadsTable.id, dup.id));
@@ -374,6 +376,7 @@ async function processQueueItem(params: {
       tipoPessoa: "juridica",
       status:     "novo",
       mercadoSegmento: item.setor,
+      proximaAcao: "Pesquisar o negócio, validar o decisor e preparar abordagem consultiva personalizada",
       assignedTo,
       metadata: mergeProspectorMetadata({}, {
         setor: item.setor,
