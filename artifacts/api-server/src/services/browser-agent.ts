@@ -100,7 +100,7 @@ async function withBrowserRetry<T>(
   throw lastError;
 }
 
-async function navigateBrowserPage(page: Page, target: string, timeout = 60_000) {
+async function navigateBrowserPage(page: Page, target: string, timeout = 12_000) {
   let lastError: unknown;
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
@@ -112,13 +112,13 @@ async function navigateBrowserPage(page: Page, target: string, timeout = 60_000)
       if (kind === "navigation_timeout") {
         const current = page.url().replace(/\/$/, "");
         const expected = target.replace(/\/$/, "");
-        if (current === expected) {
-          const state = await withBrowserRetry(() => snapshotBrowserPage(page), 2).catch(() => null);
+        if (current === expected || current.startsWith(expected + "?") || current.startsWith(expected + "#")) {
+          const state = await snapshotBrowserPage(page).catch(() => null);
           if (state && (state.title || state.text || state.interactive.length > 0)) return;
         }
       }
       if (!isRetryableBrowserError(error) || attempt === 2) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 350 * attempt));
+      await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
     }
   }
   throw lastError;
