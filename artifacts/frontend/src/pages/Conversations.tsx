@@ -139,7 +139,7 @@ function ConvItem({
     lead?.empresa ||
     lead?.telefone ||
     lead?.email ||
-    channelLabel(conv.channel);
+    "Contato ainda não vinculado ao CRM";
 
   return (
     <button
@@ -172,7 +172,7 @@ function ConvItem({
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
             <span className="truncate text-sm font-semibold">
-              {lead?.nome ?? "Lead desconhecido"}
+              {lead?.nome ?? "Contato não vinculado"}
             </span>
             <span className="shrink-0 text-[11px] text-muted-foreground">
               {formatConvTime(conv.ultimaMensagemEm)}
@@ -888,7 +888,7 @@ function ChatPanel({
               )}
               <span className="inline-flex shrink-0 items-center gap-1">
                 <Wifi className="h-3.5 w-3.5 text-emerald-500" />
-                {conv.status}
+                {conv.status === "open" ? "Aberta" : conv.status === "closed" ? "Encerrada" : conv.status}
               </span>
             </div>
           </div>
@@ -1473,13 +1473,13 @@ export default function Conversations() {
   }[] = [
     {
       key: "all",
-      label: "Todas",
+      label: "Todas as conversas",
       count: conversations.length,
       icon: <Inbox className="h-3.5 w-3.5" />,
     },
     {
       key: "unread",
-      label: "Conversas não lidas",
+      label: "Não lidas",
       count: unreadConversationCount,
       icon: <Eye className="h-3.5 w-3.5" />,
     },
@@ -1604,34 +1604,9 @@ export default function Conversations() {
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="hidden items-center gap-2 lg:flex">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveView("inbox");
-                  setInboxFilter("unread");
-                }}
-                className="rounded-xl border bg-background px-3 py-2 text-left transition-colors hover:bg-muted"
-              >
-                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  Mensagens não lidas
-                </p>
-                <p className="text-sm font-semibold">{totalUnread}</p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveView("inbox");
-                  setInboxFilter("human");
-                }}
-                className="rounded-xl border bg-background px-3 py-2 text-left transition-colors hover:bg-muted"
-              >
-                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  Humano
-                </p>
-                <p className="text-sm font-semibold">{humanCount}</p>
-              </button>
+            <div className="hidden text-right lg:block">
+              <p className="text-xs font-medium">{conversations.length} conversas</p>
+              <p className="text-[11px] text-muted-foreground">{unreadConversationCount} não lidas · {totalUnread} mensagens pendentes</p>
             </div>
 
             <Button
