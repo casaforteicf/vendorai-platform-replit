@@ -469,7 +469,7 @@ function ProductInteractionsDialog({
         ) : error ? (
           <p className="py-8 text-center text-sm text-destructive">Não foi possível carregar as interações.</p>
         ) : (
-          <div className="space-y-6">
+          <div className="vendor-product-page vendor-page-canvas vendor-proposals-page space-y-5">
             <div className="grid gap-3 sm:grid-cols-3">
               <Card><CardContent className="pt-5"><p className="text-xs text-muted-foreground">Nota média</p><p className="mt-1 text-2xl font-bold">{average.toFixed(1)} / 10</p></CardContent></Card>
               <Card><CardContent className="pt-5"><p className="text-xs text-muted-foreground">Avaliações</p><p className="mt-1 text-2xl font-bold">{data?.reviews.length ?? 0}</p></CardContent></Card>
@@ -7243,10 +7243,10 @@ export default function Propostas() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+      <div className="vendor-product-hero flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Orçamentos</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">Gerencie orçamentos e propostas comerciais</p>
+          <h1 className="vendor-product-title">Orçamentos</h1>
+          <p className="vendor-product-subtitle">Gerencie orçamentos e propostas comerciais</p>
         </div>
         <div className="flex gap-2">
           <Button onClick={() => setModalOpen(true)} className="flex-1 sm:flex-none min-h-[44px]">
