@@ -600,6 +600,12 @@ export async function reconcileGithubImprovements(actorName = "vendi:reconcile")
             reason = "PR mergeado em main; aguardando confirmação do deploy/validação";
           }
           merged += 1;
+        } else if (isMerged && baseBranch === "staging") {
+          nextStatus = "cancelada";
+          nextTestStatus = "passed";
+          nextAgentStatus = "substituido_historico";
+          reason = "PR já mergeado em staging; etapa intermediária preservada apenas no histórico";
+          merged += 1;
         } else if (isSuperseded) {
           nextStatus = "cancelada";
           nextTestStatus = "pending";
