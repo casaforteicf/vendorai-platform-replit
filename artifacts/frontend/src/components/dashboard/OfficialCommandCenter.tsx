@@ -225,11 +225,11 @@ function MetricCard({ title, value, detail, icon: Icon, href, emphasis = false, 
   const content = (
     <Card
       title={explanation}
-      className={`h-full transition-all ${href ? "hover:-translate-y-0.5 hover:shadow-md" : ""} ${emphasis ? "border-primary/30 bg-primary/[0.03]" : ""}`}
+      className={`h-full rounded-2xl border-border/60 bg-card shadow-sm transition-all ${href ? "hover:-translate-y-0.5 hover:border-primary/20 hover:shadow-md" : ""} ${emphasis ? "border-primary/20 bg-primary/[0.025]" : ""}`}
     >
-      <CardContent className="p-5">
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <div className="rounded-xl border bg-background p-2.5 shadow-sm">
+      <CardContent className="p-4 md:p-5">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="rounded-xl border border-primary/10 bg-primary/[0.07] p-2.5">
             <Icon className="h-4 w-4 text-primary" />
           </div>
           {href ? <ArrowUpRight className="h-4 w-4 text-muted-foreground" /> : null}
@@ -358,21 +358,21 @@ export default function OfficialCommandCenter({ data, executive, loading, userNa
   const conversionCreated = commercial?.conversionDenominator ?? 0;
 
   return (
-    <div className="space-y-5 pb-10">
-      <header className="rounded-2xl border bg-card px-5 py-5 shadow-sm md:px-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
+    <div className="mx-auto max-w-[1600px] space-y-6 pb-12">
+      <header className="px-1 pt-1">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div className="min-w-0">
             <div className="mb-2 flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="gap-1.5"><Activity className="h-3 w-3" /> Central Executiva</Badge>
-              <Badge variant="secondary">Dados reais</Badge>
-              {goalsCount > 0 ? <Badge variant="secondary">{goalsCount} meta{goalsCount === 1 ? "" : "s"} ativa{goalsCount === 1 ? "" : "s"}</Badge> : null}
+              <Badge variant="outline" className="gap-1.5 border-primary/15 bg-primary/[0.04] text-primary"><Activity className="h-3 w-3" /> Command Center</Badge>
+              <Badge variant="secondary" className="bg-muted/70">Dados reais</Badge>
             </div>
-            <h1 className="text-2xl font-bold tracking-tight md:text-3xl">{greeting()}{firstName ? `, ${firstName}` : ""}</h1>
-            <p className="mt-1 text-sm capitalize text-muted-foreground">{dateLabel()}</p>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-[32px]">{greeting()}{firstName ? `, ${firstName}` : ""}</h1>
+            <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">Acompanhe resultados, prioridades e atuação da operação em uma visão executiva mais simples.</p>
+            <p className="mt-1 text-xs capitalize text-muted-foreground/80">{dateLabel()} · período {officialPeriod}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {goalsAction}
-            <button onClick={onRefresh} className="inline-flex w-fit items-center gap-2 rounded-xl border bg-background px-4 py-2.5 text-sm font-medium shadow-sm hover:bg-muted">
+            <button onClick={onRefresh} className="inline-flex w-fit items-center gap-2 rounded-xl border border-border/70 bg-background px-4 py-2.5 text-sm font-medium shadow-sm transition-colors hover:bg-muted">
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Atualizar
             </button>
           </div>
@@ -380,21 +380,15 @@ export default function OfficialCommandCenter({ data, executive, loading, userNa
       </header>
 
       <section>
-        <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-3 flex items-center justify-between gap-3">
           <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Visão executiva</h2>
-          <span className="text-xs text-muted-foreground">Período oficial: {officialPeriod} · estados atuais onde indicado</span>
+          {goalsCount > 0 ? <span className="text-xs text-muted-foreground">{goalsCount} meta{goalsCount === 1 ? "" : "s"} ativa{goalsCount === 1 ? "" : "s"}</span> : null}
         </div>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
-          <MetricCard title="Leads novos" value={String(commercial?.newLeads ?? 0)} detail={`Criados de ${officialPeriod}`} icon={Users} href="/leads" explanation="Leads válidos criados dentro do período oficial." />
-          <MetricCard title="Oportunidades ativas" value={String(commercial?.activeOpportunities ?? 0)} detail="Negócios comerciais abertos agora" icon={BriefcaseBusiness} href="/negocios" emphasis explanation="Deals que ainda não estão marcados como ganhos ou perdidos." />
-          <MetricCard title="Receita vendida" value={money(commercial?.soldRevenue)} detail={`${commercial?.confirmedSales ?? 0} vendas fechadas no período`} icon={CircleDollarSign} href="/relatorios/ganhos-mes" emphasis explanation="Soma do valor das vendas ganhas cuja data real de fechamento está no período oficial." />
-          <MetricCard title="Conversão" value={percentRatio(commercial?.commercialConversion)} detail={`${conversionWon} ganhos de ${conversionCreated} oportunidades criadas`} icon={Percent} href="/negocios" explanation="Deals ganhos criados no período divididos pelas oportunidades criadas no mesmo período." />
-          <MetricCard title="Ticket médio" value={(commercial?.confirmedSales ?? 0) > 0 ? money(commercial?.averageTicket) : "—"} detail="Média das vendas fechadas no período" icon={TrendingUp} explanation="Receita vendida dividida pela quantidade de vendas confirmadas no período." />
-          <MetricCard title="Execução ativa" value={String(operation?.executionActive ?? 0)} detail={`Cards operacionais abertos · ${operation?.unassignedActive ?? 0} sem responsável`} icon={Wrench} href="/pipeline-operacional/execucao" explanation="Cards da pipeline de execução que ainda não foram concluídos nem cancelados." />
-          <MetricCard title="Suporte ativo" value={String(operation?.supportActive ?? 0)} detail="Cards de assistência em andamento" icon={Headphones} href="/pipeline-operacional/suporte" explanation="Cards da pipeline de suporte ainda não encerrados ou cancelados." />
-          <MetricCard title="Mensagens hoje" value={String(aiUsage?.mensagensHoje ?? 0)} detail={`${aiUsage?.mensagensMes ?? 0} mensagens de IA no mês`} icon={MessageSquareText} href="/conversas" explanation="Mensagens enviadas por agentes de IA, separando hoje e mês corrente." />
-          <MetricCard title="Ações de IA" value={String(data.ai?.actionsExecuted ?? 0)} detail={`${data.ai?.actionsPending ?? 0} pendentes · ${data.ai?.actionsRejected ?? 0} rejeitadas`} icon={Bot} href="/metricas-ia" explanation="Ações executadas e rejeitadas usam o período oficial; pendentes representam o estado atual." />
-          <MetricCard title="Minha atenção" value={String(attentionCount)} detail="Ocorrências que exigem decisão humana" icon={AlertTriangle} href="#atencao-hoje" emphasis explanation="Soma tarefas vencidas, itens sem responsável, alertas do sistema e clientes em risco." />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricCard title="Leads ativos" value={String(commercial?.newLeads ?? 0)} detail={`Novos no período ${officialPeriod}`} icon={Users} href="/leads" explanation="Leads válidos criados dentro do período oficial." />
+          <MetricCard title="Negócios" value={String(commercial?.activeOpportunities ?? 0)} detail={`${money(executive?.negociacao?.dealsAbertosValor)} em pipeline`} icon={BriefcaseBusiness} href="/negocios" emphasis explanation="Deals que ainda não estão marcados como ganhos ou perdidos." />
+          <MetricCard title="Conversão" value={percentRatio(commercial?.commercialConversion)} detail={`${conversionWon} ganhos de ${conversionCreated} oportunidades`} icon={Percent} href="/negocios" explanation="Deals ganhos criados no período divididos pelas oportunidades criadas no mesmo período." />
+          <MetricCard title="Tarefas e atenção" value={String(attentionCount)} detail={`${operation?.overdueTasks ?? 0} vencidas · ${commercial?.unassignedLeads ?? 0} leads sem responsável`} icon={AlertTriangle} href="#atencao-hoje" emphasis explanation="Soma tarefas vencidas, itens sem responsável, alertas do sistema e clientes em risco." />
         </div>
       </section>
 
@@ -439,7 +433,12 @@ export default function OfficialCommandCenter({ data, executive, loading, userNa
         </Card>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-3">
+      <section>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Operação</h2>
+          <span className="text-xs text-muted-foreground">Indicadores complementares, sem competir com as prioridades da primeira dobra</span>
+        </div>
+        <div className="grid gap-4 xl:grid-cols-3">
         <Card>
           <CardContent className="p-5">
             <SectionHeader icon={BriefcaseBusiness} title="Comercial" description="Resultado e força do pipeline sem ocupar a tela com kanban." href="/negocios" />
@@ -477,6 +476,7 @@ export default function OfficialCommandCenter({ data, executive, loading, userNa
             </div>
           </CardContent>
         </Card>
+        </div>
       </section>
 
       <section className="grid gap-4 xl:grid-cols-2">
