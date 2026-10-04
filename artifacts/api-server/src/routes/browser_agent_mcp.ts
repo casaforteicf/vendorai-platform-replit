@@ -198,7 +198,7 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
           startUrl: normalizedStartUrl,
           allowedHosts: [start.hostname.toLowerCase()],
         })
-        .returning({ id: agentActionsLogTable.id, payload: agentActionsLogTable.payload });
+        .returning(browserMcpConnectionSelection);
     }
   }
 
@@ -223,7 +223,7 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
         allowWrite,
       },
     })
-    .returning(browserMcpConnectionSelection);
+    .returning({ id: agentActionsLogTable.id, payload: agentActionsLogTable.payload });
 
   try {
     const sessionCookies = connection?.cookiesEncrypted
