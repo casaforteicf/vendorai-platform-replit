@@ -1282,6 +1282,7 @@ export default function LeadDetail() {
   const [activityStatusEditId, setActivityStatusEditId] = useState<string | null>(null);
   const [activityStatusDraft, setActivityStatusDraft] = useState<string>("");
   const [activityResultadoDraft, setActivityResultadoDraft] = useState("");
+  const [activityNextActionDraft, setActivityNextActionDraft] = useState("");
   const [activityDueEditId, setActivityDueEditId] = useState<string | null>(null);
   const [activityDueDateDraft, setActivityDueDateDraft] = useState("");
 
@@ -1291,6 +1292,7 @@ export default function LeadDetail() {
         void queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }) });
         setActivityStatusEditId(null);
         setActivityResultadoDraft("");
+        setActivityNextActionDraft("");
         setActivityDueEditId(null);
         setActivityDueDateDraft("");
         toast({ title: "Atividade atualizada." });
@@ -1306,6 +1308,7 @@ export default function LeadDetail() {
       setActivityStatusEditId(activityId);
       setActivityStatusDraft("concluida");
       setActivityResultadoDraft("");
+      setActivityNextActionDraft("");
     } else {
       updateActivity({ id: activityId, data: { status: newStatus as "pendente" | "planejado" | "cancelada" } });
     }
@@ -1317,7 +1320,9 @@ export default function LeadDetail() {
       data: {
         status: "concluida",
         resultadoExecucao: activityResultadoDraft.trim() || undefined,
-      },
+        proximaAcaoTexto: activityNextActionDraft.trim() || undefined,
+        estadoExecucao: "concluida",
+      } as any,
     });
   }
 
@@ -1353,6 +1358,9 @@ export default function LeadDetail() {
   const [newActivityTipo, setNewActivityTipo] = useState<"ligacao" | "whatsapp" | "email" | "visita" | "tarefa" | "reuniao" | "assistencia">("tarefa");
   const [newActivityTitulo, setNewActivityTitulo] = useState("");
   const [newActivityDescricao, setNewActivityDescricao] = useState("");
+  const [newActivityObjetivo, setNewActivityObjetivo] = useState("");
+  const [newActivityResultadoEsperado, setNewActivityResultadoEsperado] = useState("");
+  const [newActivityPrioridade, setNewActivityPrioridade] = useState<"baixa" | "normal" | "alta" | "urgente">("normal");
   const [newActivityData, setNewActivityData] = useState("");
   const [newActivityResponsavelId, setNewActivityResponsavelId] = useState<string>("__ia__");
   // Reunião online
@@ -1389,6 +1397,9 @@ export default function LeadDetail() {
         setIsNewActivityOpen(false);
         setNewActivityTitulo("");
         setNewActivityDescricao("");
+        setNewActivityObjetivo("");
+        setNewActivityResultadoEsperado("");
+        setNewActivityPrioridade("normal");
         setNewActivityData("");
         setNewActivityTipo("tarefa");
         setNewActivityResponsavelId("__ia__");
@@ -1411,7 +1422,10 @@ export default function LeadDetail() {
   function openNewActivityDialog(prefillTitulo?: string) {
     setNewActivityTitulo(prefillTitulo ?? "");
     setNewActivityDescricao("");
-    setNewActivityData("");
+    setNewActivityObjetivo("");
+        setNewActivityResultadoEsperado("");
+        setNewActivityPrioridade("normal");
+        setNewActivityData("");
     setNewActivityTipo("tarefa");
     setNewActivityResponsavelId("__ia__");
     setNewActivityDataHoraInicio("");
@@ -1591,6 +1605,13 @@ export default function LeadDetail() {
       })(),
       dataVencimento: isReuniao ? undefined : (newActivityData || undefined),
       status: "planejado",
+      estadoExecucao: "planejada",
+      prioridade: newActivityPrioridade,
+      objetivo: newActivityObjetivo.trim() || undefined,
+      resultadoEsperado: newActivityResultadoEsperado.trim() || undefined,
+      categoriaExecucao: newActivityResponsavelId === "__ia__" ? "automatica" : "sugerida",
+      origem: "manual",
+      dealId: activeLeadDeal?.id || undefined,
       responsavelId,
       anexoNome,
       anexoUrl,
@@ -3158,6 +3179,22 @@ export default function LeadDetail() {
                                 Alterar status
                               </span>
                               <div className="flex flex-wrap gap-1.5">
+                                <button
+                                  type="button"
+                                  className="px-2.5 py-1 text-xs rounded border font-medium border-border text-muted-foreground hover:bg-muted"
+                                  disabled={isUpdatingActivity}
+                                  onClick={(e) => { e.stopPropagation(); updateActivity({ id: activity.id, data: { estadoExecucao: "em_execucao" } as any }); }}
+                                >
+                                  ▶ Iniciar
+                                </button>
+                                <button
+                                  type="button"
+                                  className="px-2.5 py-1 text-xs rounded border font-medium border-border text-muted-foreground hover:bg-muted"
+                                  disabled={isUpdatingActivity}
+                                  onClick={(e) => { e.stopPropagation(); updateActivity({ id: activity.id, data: { estadoExecucao: "aguardando" } as any }); }}
+                                >
+                                  ⏸ Aguardando
+                                </button>
                                 {(
                                   [
                                     { value: "planejado", label: "Planejado", cls: "bg-blue-100 text-blue-700 border-blue-200" },
@@ -3192,6 +3229,13 @@ export default function LeadDetail() {
                                     className="text-sm resize-none"
                                     onClick={(e) => e.stopPropagation()}
                                   />
+                                  <Input
+                                    placeholder="Próxima ação (opcional) — se preenchida, será criada automaticamente"
+                                    value={activityNextActionDraft}
+                                    onChange={(e) => setActivityNextActionDraft(e.target.value)}
+                                    className="text-sm"
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
                                   <div className="flex gap-2">
                                     <Button
                                       size="sm"
@@ -3206,7 +3250,7 @@ export default function LeadDetail() {
                                       size="sm"
                                       variant="ghost"
                                       className="h-7 text-xs"
-                                      onClick={(e) => { e.stopPropagation(); setActivityStatusEditId(null); setActivityResultadoDraft(""); }}
+                                      onClick={(e) => { e.stopPropagation(); setActivityStatusEditId(null); setActivityResultadoDraft(""); setActivityNextActionDraft(""); }}
                                     >
                                       Cancelar
                                     </Button>
@@ -4312,6 +4356,39 @@ export default function LeadDetail() {
                 data-testid="input-activity-descricao"
               />
             </div>
+            {newActivityTipo !== "assistencia" && (
+              <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+                <p className="text-xs font-semibold">Execução e resultado</p>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Objetivo <span className="text-xs text-muted-foreground">(opcional)</span></label>
+                  <Input
+                    placeholder="Ex.: conseguir uma definição sobre a proposta"
+                    value={newActivityObjetivo}
+                    onChange={(e) => setNewActivityObjetivo(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Resultado esperado <span className="text-xs text-muted-foreground">(opcional)</span></label>
+                  <Input
+                    placeholder="Ex.: aceite, pedido de alteração ou nova data de decisão"
+                    value={newActivityResultadoEsperado}
+                    onChange={(e) => setNewActivityResultadoEsperado(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Prioridade</label>
+                  <Select value={newActivityPrioridade} onValueChange={(v) => setNewActivityPrioridade(v as typeof newActivityPrioridade)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="baixa">Baixa</SelectItem>
+                      <SelectItem value="normal">Normal</SelectItem>
+                      <SelectItem value="alta">Alta</SelectItem>
+                      <SelectItem value="urgente">Urgente</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
 
             {/* Data de vencimento — apenas para tipos que não são reunião */}
             {newActivityTipo !== "reuniao" && (

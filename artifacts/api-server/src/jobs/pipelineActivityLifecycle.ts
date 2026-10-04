@@ -10,6 +10,7 @@ import {
 } from "@workspace/db";
 import { tenantIsWithinBusinessHours } from "../lib/proactiveMessageGuard.js";
 import { sendAgentAttachments, sendDirectWhatsAppMessage } from "../services/omnichannel.js";
+import { executarAcompanhamento } from "../services/orquestradorAcompanhamento.js";
 
 const DISTRIBUTED_LOCK_KEY = "vendorai:pipeline-activity-lifecycle:v1";
 const SUPPORT_TIME_ZONE = "America/Sao_Paulo";
@@ -74,7 +75,6 @@ export async function runPipelineActivityLifecycle(log: Logger): Promise<void> {
       .where(and(
         inArray(activitiesTable.status, ["pendente", "planejado"]),
         isNotNull(activitiesTable.dataVencimento),
-        isNotNull(activitiesTable.responsavelId),
         lte(activitiesTable.dataVencimento, now),
       ))
       .orderBy(asc(activitiesTable.dataVencimento))
@@ -86,9 +86,62 @@ export async function runPipelineActivityLifecycle(log: Logger): Promise<void> {
     for (const row of rows) {
       const activity = row.activity;
 
+      // Atividades automáticas atribuídas à IA usam o orquestrador oficial de
+      // acompanhamento. Ele respeita modo/canais da etapa, regras de risco e
+      // escalonamento humano; não cria um segundo mecanismo de mensagem.
+      if (activity.categoriaExecucao === "automatica" && activity.agenteResponsavelKey && !activity.responsavelId) {
+        try {
+          const execution = await executarAcompanhamento({
+            tenantId: activity.tenantId,
+            leadId: activity.leadId,
+            dealId: activity.dealId,
+            motivoDisparo: [
+              `atividade automática: ${activity.titulo}`,
+              activity.objetivo ? `objetivo: ${activity.objetivo}` : null,
+              activity.resultadoEsperado ? `resultado esperado: ${activity.resultadoEsperado}` : null,
+            ].filter(Boolean).join(" | "),
+            modoPadrao: "automatico",
+            log,
+          });
+
+          if (execution.executado) {
+            await tx.update(activitiesTable).set({
+              status: "concluida",
+              estadoExecucao: "concluida",
+              concluidaEm: new Date(),
+              resultadoExecucao: `Executada pela IA via ${execution.plano.canalPrincipal ?? "canal disponível"}: ${execution.plano.motivo || "acompanhamento realizado"}`,
+              updatedAt: new Date(),
+            }).where(eq(activitiesTable.id, activity.id));
+            log.info({ activityId: activity.id, tenantId: activity.tenantId }, "pipeline-activity-lifecycle: IA executou atividade");
+            continue;
+          }
+
+          await tx.update(activitiesTable).set({
+            estadoExecucao: execution.plano.requerHumano ? "aguardando" : "planejada",
+            resultadoExecucao: execution.plano.requerHumano
+              ? "A IA identificou necessidade de intervenção humana antes de executar."
+              : "A atividade automática não foi executada porque a configuração/canal da etapa não permite execução automática.",
+            updatedAt: new Date(),
+          }).where(eq(activitiesTable.id, activity.id));
+
+          // Se o plano pede humano, a notificação abaixo continua e pode ser
+          // entregue a um responsável humano quando a atividade for delegada.
+          if (!execution.plano.requerHumano) continue;
+        } catch (error) {
+          log.warn({ err: error, activityId: activity.id, tenantId: activity.tenantId }, "pipeline-activity-lifecycle: falha na execução IA");
+          await tx.update(activitiesTable).set({
+            estadoExecucao: "aguardando",
+            resultadoExecucao: "Falha temporária na execução automática; atividade preservada para nova análise.",
+            updatedAt: new Date(),
+          }).where(eq(activitiesTable.id, activity.id));
+          continue;
+        }
+      }
+
       // Assistências têm o fluxo dedicado de suporte, que já envia aviso
       // completo por card. Evita duplicar aviso da mesma ocorrência.
       if (activity.tipo === "assistencia") continue;
+      if (!activity.responsavelId) continue;
 
       let withinBusinessHours = businessHoursCache.get(activity.tenantId);
       if (withinBusinessHours === undefined) {
