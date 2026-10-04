@@ -71,7 +71,7 @@ export function classifyBrowserError(error: unknown): BrowserFailureKind {
   const message = String((error as any)?.message ?? error ?? "");
   if (message.startsWith("BROWSER_BLOCKED:")) return "blocked";
   if (message.startsWith("APPROVAL_REQUIRED:")) return "approval_required";
-  if (/No element found for selector|failed to find element matching selector|No node found for selector|Node is detached from document/i.test(message)) return "selector_stale";
+  if (/No element found for selector|failed to find element matching selector|No node found for selector|Node is detached from document|Node is either not clickable or not an Element/i.test(message)) return "selector_stale";
   if (/Navigation timeout|TimeoutError.*navigation|waiting for navigation/i.test(message)) return "navigation_timeout";
   if (/net::ERR_(?:TIMED_OUT|CONNECTION_RESET|CONNECTION_CLOSED|CONNECTION_REFUSED|NETWORK_CHANGED|INTERNET_DISCONNECTED)|socket hang up|ECONNRESET|ETIMEDOUT|Runtime\.callFunctionOn timed out|protocolTimeout/i.test(message)) return "transient_network";
   if (/Target closed|Session closed|Protocol error.*Target|Connection closed/i.test(message)) return "target_closed";
@@ -444,6 +444,26 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
       }
       if (!fastReadOnlySnapshot) {
         await page.waitForNetworkIdle({ idleTime: 400, timeout: 5000 }).catch(() => undefined);
+      }
+
+      const authProbe = await withBrowserRetry(() => page.evaluate(async (token) => {
+        try {
+          const response = await fetch("/api/auth/me", {
+            headers: { Authorization: `Bearer ${token}` },
+            credentials: "same-origin",
+          });
+          return { ok: response.ok, status: response.status };
+        } catch (error) {
+          return { ok: false, status: 0, error: String(error) };
+        }
+      }, input.firstPartyAuthToken), 2);
+
+      if (!authProbe.ok) {
+        throw new Error(
+          authProbe.status === 401 || authProbe.status === 403
+            ? `VENDI_AUTH_REJECTED:${authProbe.status}`
+            : `VENDI_AUTH_PROBE_FAILED:${authProbe.status}`,
+        );
       }
     }
 
