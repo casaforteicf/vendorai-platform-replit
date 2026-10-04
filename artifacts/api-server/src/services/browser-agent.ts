@@ -375,6 +375,7 @@ export async function executeBrowserAction(
 export async function runBrowserAgent(input: BrowserAgentInput) {
   const steps: BrowserAgentStep[] = [];
   const maxSteps = Math.min(Math.max(input.maxSteps ?? 12, 1), 30);
+  const fastReadOnlySnapshot = !input.allowWrite && maxSteps <= 3;
   const secretsAvailable = {
     login: Boolean(input.secrets?.login),
     passcode: Boolean(input.secrets?.passcode),
@@ -418,8 +419,13 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
       }, { token: input.firstPartyAuthToken, userCache: input.firstPartyAuthUserCache ?? null });
     }
 
-    await navigateBrowserPage(page, validateBrowserUrl(input.startUrl, input.allowedHosts));
-    if (await restoreBrowserProfileAfterNavigation(page, input.sessionProfile)) {
+    await navigateBrowserPage(
+      page,
+      validateBrowserUrl(input.startUrl, input.allowedHosts),
+      fastReadOnlySnapshot ? 5_000 : 12_000,
+    );
+    const profileNeedsReload = await restoreBrowserProfileAfterNavigation(page, input.sessionProfile);
+    if (profileNeedsReload && !fastReadOnlySnapshot) {
       await reloadBrowserPage(page);
     }
 
@@ -434,9 +440,11 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
       }, { token: input.firstPartyAuthToken, userCache: input.firstPartyAuthUserCache ?? null }));
       const target = validateBrowserUrl(input.startUrl, input.allowedHosts);
       if (page.url() !== target) {
-        await navigateBrowserPage(page, target);
+        await navigateBrowserPage(page, target, fastReadOnlySnapshot ? 5_000 : 12_000);
       }
-      await page.waitForNetworkIdle({ idleTime: 400, timeout: 5000 }).catch(() => undefined);
+      if (!fastReadOnlySnapshot) {
+        await page.waitForNetworkIdle({ idleTime: 400, timeout: 5000 }).catch(() => undefined);
+      }
     }
 
     // Read-only short missions are commonly used as health/snapshot checks.
@@ -445,8 +453,6 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
     if (!input.allowWrite && maxSteps <= 3) {
       const state = await withBrowserRetry(() => snapshotBrowserPage(page), 2);
       assertBrowserPageAccessible(state);
-      if (input.onSessionPersist) await input.onSessionPersist(await page.cookies());
-      if (input.onProfilePersist) await input.onProfilePersist(await captureBrowserProfile(page));
       const visibleText = state.text.slice(0, 6000);
       return {
         ok: true,
