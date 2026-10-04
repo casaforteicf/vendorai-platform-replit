@@ -11,7 +11,6 @@ import {
   BriefcaseBusiness,
   CalendarDays,
   CheckCircle2,
-  CircleDollarSign,
   Clock3,
   Database,
   Gauge,
@@ -23,7 +22,6 @@ import {
   RefreshCw,
   Sparkles,
   Target,
-  TrendingUp,
   Users,
   Wrench,
 } from "lucide-react";
