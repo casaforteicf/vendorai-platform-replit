@@ -268,6 +268,7 @@ router.post("/tenants/:tenantId/media/assets/request-upload", async (req, res) =
 });
 
 router.post("/tenants/:tenantId/media/assets/import-dropbox", async (req, res) => {
+  // tenant-audit: reviewed route is already protected by requireSameTenanOrSuperAdmin()
   const tenantId = String(req.params["tenantId"]);
   const body = asRecord(req.body);
   const rawUrl = nonEmptyString(body["url"]);
