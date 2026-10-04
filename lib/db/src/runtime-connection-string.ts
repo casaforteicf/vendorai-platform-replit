@@ -25,10 +25,13 @@ export function normalizeRuntimeConnectionString(
   try {
     const url = new URL(recovered);
     let projectRef: string | null = null;
+    const isSupabaseHost =
+      url.hostname.endsWith(".supabase.co") ||
+      url.hostname.endsWith(".pooler.supabase.com");
 
-    if (url.username === "postgres") {
+    if (isSupabaseHost && url.username === "postgres") {
       url.username = "vendorai_app";
-    } else if (url.username.startsWith("postgres.")) {
+    } else if (isSupabaseHost && url.username.startsWith("postgres.")) {
       projectRef = url.username.slice("postgres.".length);
       url.username = `vendorai_app.${projectRef}`;
     }
