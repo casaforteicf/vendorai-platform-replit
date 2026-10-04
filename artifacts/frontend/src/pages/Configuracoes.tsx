@@ -245,6 +245,7 @@ export default function Configuracoes() {
   const [showJarvis, setShowJarvis] = useState(false);
   const [showGovernance, setShowGovernance] = useState(false);
   const [showInstallationSettings, setShowInstallationSettings] = useState(false);
+  const [showFullSettings, setShowFullSettings] = useState(false);
   const [defaultsApplied, setDefaultsApplied] = useState(false);
 
   useEffect(() => {
@@ -442,9 +443,11 @@ export default function Configuracoes() {
           </div>
           <span className="settings-toggle-action">{showJarvis ? "Ocultar" : "Abrir"}</span>
         </summary>
-        <div className="settings-advanced-content mt-2.5">
-          <JarvisPermissionsCenter />
-        </div>
+        {showJarvis && (
+          <div className="settings-advanced-content mt-2.5">
+            <JarvisPermissionsCenter />
+          </div>
+        )}
       </details>
 
       <details
@@ -459,29 +462,37 @@ export default function Configuracoes() {
           </div>
           <span className="settings-toggle-action">{showGovernance ? "Ocultar" : "Abrir"}</span>
         </summary>
-        <div className="settings-advanced-content mt-2.5 space-y-2.5">
-          <ConfigurationSectionGuard />
-          <ConfigurationAccessPanel />
-          <ConfigurationGovernancePanel />
-          <ConfigurationImpactSimulator />
-          <ConfigurationPostChangeValidation />
-          <ConfigurationHistoryPanel />
-          <ConfigurationRollbackPanel />
-        </div>
+        {showGovernance && (
+          <div className="settings-advanced-content mt-2.5 space-y-2.5">
+            <ConfigurationSectionGuard />
+            <ConfigurationAccessPanel />
+            <ConfigurationGovernancePanel />
+            <ConfigurationImpactSimulator />
+            <ConfigurationPostChangeValidation />
+            <ConfigurationHistoryPanel />
+            <ConfigurationRollbackPanel />
+          </div>
+        )}
       </details>
 
-      <details className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6">
+      <details
+        open={showFullSettings}
+        onToggle={(event) => setShowFullSettings(event.currentTarget.open)}
+        className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6"
+      >
         <summary className="settings-toggle-summary flex cursor-pointer list-none items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5 shadow-sm [&::-webkit-details-marker]:hidden">
           <div className="min-w-0">
             <div className="settings-toggle-title">Configurações completas</div>
             <div className="settings-toggle-description">Empresa, equipe, integrações, catálogo e preferências detalhadas.</div>
           </div>
-          <span className="settings-toggle-action">Abrir</span>
+          <span className="settings-toggle-action">{showFullSettings ? "Ocultar" : "Abrir"}</span>
         </summary>
-        <div className="settings-advanced-content mt-2.5">
-          <ConfiguracoesNormalized />
-          <ConfigurationCatalogProductsBridge />
-        </div>
+        {showFullSettings && (
+          <div className="settings-advanced-content mt-2.5">
+            <ConfiguracoesNormalized />
+            <ConfigurationCatalogProductsBridge />
+          </div>
+        )}
       </details>
     </div>
   );

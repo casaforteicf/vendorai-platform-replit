@@ -197,31 +197,36 @@ export default function AgentConfig() {
         </Card>
       </div>
 
-      <div className="mx-auto mt-4 w-full max-w-6xl">
-        <Card className="flex flex-col gap-3 border-primary/20 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h3 className="font-semibold">Vendi · Central de Operações</h3>
-            <p className="mt-1 text-sm text-muted-foreground">Crie missões para o Vendi coordenar CRM, Marketing, Prospector, agentes, Agenda, propostas, obras, compras, Arqdor, omnichannel e web.</p>
-          </div>
-          <Button asChild className="shrink-0">
-            <Link href="/vendi/operacoes"><Bot className="mr-2 h-4 w-4" />Abrir Vendi</Link>
-          </Button>
-        </Card>
-      </div>
-
-      <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">
-        <Card className="space-y-2 p-4">
-          <h3 className="font-semibold">Conhecimento compartilhado da empresa</h3>
-          <p className="text-sm text-muted-foreground">Os blocos aprovados em Marca e Negócio complementam o conhecimento de cada agente, conforme sua função. As instruções e configurações individuais abaixo continuam editáveis.</p>
-          <a href="/configuracoes?tab=marketing" className="inline-block text-sm font-medium text-primary underline">Desenvolver o PN e visualizar a base dos agentes</a>
-        </Card>
-      </div>
-
-      <div className="mx-auto mt-4 w-full max-w-6xl">
-        <BrowserAgentPanel />
-      </div>
-
       <LegacyAgentConfig />
+
+      <details className="mx-auto mt-4 w-full max-w-6xl overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 [&::-webkit-details-marker]:hidden">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">Ferramentas avançadas</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Vendi, conhecimento compartilhado e Browser Agent ficam disponíveis sob demanda.</p>
+          </div>
+          <span className="text-xs font-medium text-primary">Abrir</span>
+        </summary>
+        <div className="space-y-4 border-t border-border/60 p-4">
+          <Card className="flex flex-col gap-3 border-primary/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="font-semibold">Vendi · Central de Operações</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Crie missões para o Vendi coordenar CRM, Marketing, Prospector, agentes, Agenda, propostas, obras, compras, Arqdor, omnichannel e web.</p>
+            </div>
+            <Button asChild className="shrink-0">
+              <Link href="/vendi/operacoes"><Bot className="mr-2 h-4 w-4" />Abrir Vendi</Link>
+            </Button>
+          </Card>
+
+          <Card className="space-y-2 p-4">
+            <h3 className="font-semibold">Conhecimento compartilhado da empresa</h3>
+            <p className="text-sm text-muted-foreground">Os blocos aprovados em Marca e Negócio complementam o conhecimento de cada agente, conforme sua função.</p>
+            <a href="/configuracoes?tab=marketing" className="inline-block text-sm font-medium text-primary underline">Visualizar base dos agentes</a>
+          </Card>
+
+          <BrowserAgentPanel />
+        </div>
+      </details>
 
       {guidedAgent && user?.tenantId && (
         <AgentGuidedSetup

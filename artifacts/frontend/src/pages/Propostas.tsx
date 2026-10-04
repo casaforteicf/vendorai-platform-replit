@@ -7257,18 +7257,20 @@ export default function Propostas() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {(["rascunho", "enviada", "pendente", "aceita", "rejeitada"] as const).map((k) => (
-          <Card key={k} className={`cursor-pointer transition-shadow ${statusFilter === k ? "ring-2 ring-primary" : "hover:shadow-md"}`} onClick={() => setStatusFilter(statusFilter === k ? "all" : k)}>
-            <CardContent className="pt-4 pb-3 px-4">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">
-                {STATUS_CONFIG[k].label}s
-              </p>
-              <p className="text-2xl font-bold mt-0.5">{counts[k]}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {propostas.length > 0 && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {(["rascunho", "enviada", "pendente", "aceita", "rejeitada"] as const).map((k) => (
+            <Card key={k} className={`cursor-pointer transition-shadow ${statusFilter === k ? "ring-2 ring-primary" : "hover:shadow-md"}`} onClick={() => setStatusFilter(statusFilter === k ? "all" : k)}>
+              <CardContent className="px-4 pb-3 pt-4">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                  {STATUS_CONFIG[k].label}
+                </p>
+                <p className="mt-0.5 text-2xl font-bold">{counts[k]}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {/* Table */}
       <Card>
@@ -7278,12 +7280,10 @@ export default function Propostas() {
               <Loader2 className="h-6 w-6 animate-spin mr-2" /> Carregando…
             </div>
           ) : propostas.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 py-20 text-muted-foreground">
+            <div className="flex flex-col items-center gap-2 py-20 text-center text-muted-foreground">
               <FileText className="h-10 w-10 opacity-25" />
-              <p className="text-sm">Nenhum orçamento criado ainda</p>
-              <Button variant="outline" size="sm" onClick={() => setModalOpen(true)}>
-                <Plus className="h-4 w-4 mr-1.5" /> Criar primeiro orçamento
-              </Button>
+              <p className="text-sm font-medium text-foreground">Nenhum orçamento criado ainda</p>
+              <p className="max-w-sm text-xs">Use “Novo Orçamento” no topo para criar o primeiro e acompanhar envio, negociação e aceite.</p>
             </div>
           ) : (
             <>
