@@ -223,7 +223,7 @@ export async function executeVendiMission(input: {
         .set({ status: "paused_approval", updatedAt: new Date() })
         .where(eq(vendiMissionsTable.id, mission.id));
 
-      const approvalMessage = `A missão "${mission.objective}" precisa da sua aprovação para executar ${tool.label ?? tool.id}. Motivo: ${step.reason || "ação de alto risco"}.`;
+      const approvalMessage = `A missão "${mission.objective}" precisa da sua aprovação para executar ${tool.description || tool.id}. Motivo: ${step.reason || "ação de alto risco"}.`;
       await db.insert(notificationsTable).values({
         tenantId: input.tenantId,
         recipientUserId: mission.createdByUserId ?? null,
