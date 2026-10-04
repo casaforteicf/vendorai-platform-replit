@@ -287,6 +287,23 @@ export async function getTenantUsageSnapshot(
   }));
 }
 
+export async function getMonthlyVendorCreditUsage(tenantId: string, now = new Date()) {
+  const start = monthStart(now);
+  const [row] = await db
+    .select({
+      used: sql<number>`coalesce(sum(${usageLedgerTable.vendorCredits}), 0)`,
+    })
+    .from(usageLedgerTable)
+    .where(and(
+      eq(usageLedgerTable.tenantId, tenantId),
+      eq(usageLedgerTable.success, true),
+      eq(usageLedgerTable.billable, true),
+      gte(usageLedgerTable.createdAt, start),
+    ));
+
+  return Number(row?.used ?? 0);
+}
+
 export async function getVendorCreditBalance(tenantId: string) {
   const [row] = await db
     .select({ balance: sql<number>`coalesce(sum(${vendorCreditTransactionsTable.creditsDelta}), 0)` })
