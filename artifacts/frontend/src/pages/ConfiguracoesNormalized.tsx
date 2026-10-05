@@ -3,7 +3,7 @@ import ConfiguracoesLegacy from "./ConfiguracoesLegacy";
 
 const SECTION_LABELS: Record<string, { label: string; title: string }> = {
   Perfil: { label: "Empresa", title: "Dados da empresa, marca, posicionamento e contexto institucional" },
-  Marketing: { label: "Identidade da Marca", title: "Logo, cores, linguagem visual e padrões de comunicação; estratégia e PN ficam em Diagnóstico & Planejamento" },
+  Marketing: { label: "Kit da Marca", title: "Logo, cores, linguagem visual e padrões de comunicação; estratégia e PN ficam em Diagnóstico & Planejamento" },
   "Análise": { label: "Comercial", title: "Parâmetros comerciais, análises e sinais usados pela inteligência" },
   "Calendário": { label: "Agenda e Automações", title: "Regras de agenda, disponibilidade, calendários e automações relacionadas" },
   "Integrações": { label: "Integrações", title: "WhatsApp, Meta, Google e demais conexões externas" },
