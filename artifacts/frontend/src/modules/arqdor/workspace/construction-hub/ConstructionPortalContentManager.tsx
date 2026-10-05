@@ -140,6 +140,7 @@ export default function ConstructionPortalContentManager({ tenantId, obraId }: {
           <select className="rounded-xl border px-3 py-2 text-sm" value={item.visibility} onChange={(e) => setItem({ ...item, visibility: e.target.value })}><option value="interno">Interno</option><option value="compartilhavel">Compartilhável</option><option value="publicado">Publicado</option><option value="arquivado">Arquivado</option></select>
           <textarea className="rounded-xl border px-3 py-2 text-sm lg:col-span-4" rows={2} placeholder="Descrição para o cliente" value={item.description} onChange={(e) => setItem({ ...item, description: e.target.value })} />
           <textarea className="rounded-xl border px-3 py-2 text-sm lg:col-span-4" rows={3} placeholder="Conteúdo / instruções / resumo" value={item.body} onChange={(e) => setItem({ ...item, body: e.target.value })} />
+          {item.kind === "briefing" ? <textarea className="rounded-xl border px-3 py-2 text-sm lg:col-span-4" rows={5} placeholder={"Uma pergunta por linha. Ex.:\nQual o objetivo principal da obra?\nQuais ambientes são prioridade?\nHá referências de estilo?"} value={briefingQuestions} onChange={(e) => setBriefingQuestions(e.target.value)} /> : null}
           <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Versão (ex.: R2)" value={item.version} onChange={(e) => setItem({ ...item, version: e.target.value })} />
           <input className="rounded-xl border px-3 py-2 text-sm" type="datetime-local" value={item.startsAt} onChange={(e) => setItem({ ...item, startsAt: e.target.value })} />
           <input className="rounded-xl border px-3 py-2 text-sm" type="datetime-local" value={item.dueAt} onChange={(e) => setItem({ ...item, dueAt: e.target.value })} />
@@ -155,6 +156,41 @@ export default function ConstructionPortalContentManager({ tenantId, obraId }: {
             <div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-800">{portalItem.title}</p><p className="text-xs text-slate-400">{portalItem.kind}{portalItem.version ? ` · ${portalItem.version}` : ""}{portalItem.requires_action ? " · exige ação" : ""}</p></div>
             <div className="flex flex-wrap gap-2">{["interno","compartilhavel","publicado","arquivado"].map((visibility) => <button key={visibility} onClick={() => void setItemVisibility(portalItem, visibility)} className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ${portalItem.visibility === visibility ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-500"}`}>{visibility}</button>)}</div>
           </div>) : <p className="p-5 text-center text-sm text-slate-400">Nenhum conteúdo adicional criado.</p>}
+        </div>
+      </section>
+      <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Acessos do cliente</p>
+        <h3 className="mt-1 text-lg font-semibold text-slate-950">Pessoas, perfis e permissões</h3>
+        <p className="mt-1 text-xs text-slate-500">Cada pessoa pode ter uma visão diferente do mesmo portal. Revogar o acesso encerra as sessões ativas.</p>
+        <div className="mt-4 space-y-3">
+          {portalUsers.length ? portalUsers.map((portalUser) => {
+            const permissions = portalUser.permissions && typeof portalUser.permissions === "object" ? portalUser.permissions : {};
+            const permissionOptions = [
+              ["showSchedule","Cronograma"],["showBudget","Orçamento"],["showProposals","Propostas"],
+              ["showFinancialSummary","Financeiro"],["showDocuments","Documentos"],["showContracts","Contratos"],
+              ["showProjectGallery","Projetos/Renders"],["showChat","Chat"],["showSupport","Suporte"],["showVendi","Vendi"],
+            ] as const;
+            return <div key={portalUser.id} className="rounded-2xl border p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div><p className="text-sm font-semibold text-slate-900">{portalUser.nome}</p><p className="text-xs text-slate-400">{portalUser.email}{portalUser.ultimo_login_em ? ` · último acesso ${new Date(portalUser.ultimo_login_em).toLocaleDateString("pt-BR")}` : ""}</p></div>
+                <div className="flex flex-wrap gap-2">
+                  <select className="rounded-lg border px-2 py-1.5 text-xs" value={portalUser.access_role ?? "proprietario"} onChange={(e) => void updatePortalUser(portalUser, { accessRole: e.target.value })}>
+                    <option value="proprietario">Proprietário</option><option value="conjuge">Cônjuge</option><option value="arquiteto">Arquiteto</option><option value="engenheiro">Engenheiro</option><option value="financeiro">Financeiro</option><option value="fornecedor">Fornecedor</option><option value="representante">Representante</option>
+                  </select>
+                  <button onClick={() => void updatePortalUser(portalUser, { status: portalUser.status === "ativo" ? "revogado" : "ativo" })} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${portalUser.status === "ativo" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>{portalUser.status === "ativo" ? "Ativo" : "Revogado"}</button>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {permissionOptions.map(([key,label]) => {
+                  const allowed = permissions[key] !== false;
+                  return <button key={key} onClick={() => void updatePortalUser(portalUser, { permissions: { ...permissions, [key]: !allowed } })} className={`rounded-full px-3 py-1 text-[11px] font-semibold ${allowed ? "bg-violet-50 text-violet-700" : "bg-slate-100 text-slate-400 line-through"}`}>{label}</button>;
+                })}
+              </div>
+              <label className="mt-3 flex max-w-sm items-center gap-2 text-xs text-slate-500">Expira em
+                <input type="datetime-local" className="rounded-lg border px-2 py-1.5 text-xs" value={portalUser.access_expires_at ? String(portalUser.access_expires_at).slice(0,16) : ""} onChange={(e) => void updatePortalUser(portalUser, { accessExpiresAt: e.target.value || null })} />
+              </label>
+            </div>;
+          }) : <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-400">Ainda não há usuários cadastrados neste portal.</p>}
         </div>
       </section>
       <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
