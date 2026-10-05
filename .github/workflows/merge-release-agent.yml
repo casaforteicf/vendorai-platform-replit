@@ -1,8 +1,6 @@
 name: Merge & Publish Agent
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -137,6 +135,17 @@ jobs:
 
       - name: Typecheck
         run: pnpm run typecheck
+
+      - name: P0 CRM regression
+        run: pnpm --filter @workspace/api-server exec vitest run --config vitest.config.ts src/__tests__/deals-isolation.test.ts
+
+      - name: P0 Obras regression
+        run: pnpm --filter @workspace/frontend exec vitest run --config vitest.config.ts src/pages/PortalObra.integration.test.tsx src/lib/portalTabStorage.test.ts
+
+      - name: Tenant and production integrity
+        run: |
+          pnpm --filter @workspace/api-server audit:tenant:baseline
+          pnpm --filter @workspace/api-server audit:production-integrity
 
       - name: Validate backend production contract
         if: steps.pr.outputs.backend == 'true'
