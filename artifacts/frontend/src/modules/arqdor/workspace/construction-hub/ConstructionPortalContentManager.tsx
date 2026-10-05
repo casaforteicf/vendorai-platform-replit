@@ -19,6 +19,7 @@ export default function ConstructionPortalContentManager({ tenantId, obraId }: {
   const [documents, setDocuments] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
   const [portalUsers, setPortalUsers] = useState<any[]>([]);
+  const [budgetItems, setBudgetItems] = useState<any[]>([]);
   const [briefingQuestions, setBriefingQuestions] = useState("");
   const [item, setItem] = useState({
     kind: "briefing", title: "", description: "", visibility: "interno",
@@ -34,15 +35,17 @@ export default function ConstructionPortalContentManager({ tenantId, obraId }: {
 
   async function load() {
     if (!tenantId || !obraId) return;
-    const [docs, support, publishedItems, users] = await Promise.all([
+    const [docs, support, publishedItems, users, budget] = await Promise.all([
       request<any>(`${base}/documents`),
       request<any>(`${base}/support`),
       request<any>(`${base}/items`),
       request<any>(`${base}/users`),
+      request<any>(`${base}/budget-items`),
     ]);
     setDocuments(docs.documents ?? []);
     setItems(publishedItems.items ?? []);
     setPortalUsers(users.users ?? []);
+    setBudgetItems(budget.items ?? []);
     setTickets(support.tickets ?? []);
     setMessages(support.messages ?? []);
   }
@@ -89,6 +92,14 @@ export default function ConstructionPortalContentManager({ tenantId, obraId }: {
     await request(`${base}/items/${portalItem.id}`, { method: "PATCH", body: JSON.stringify({ visibility }) });
     await load();
   }
+  async function updateBudgetItem(budgetItem: any, patch: Record<string, any>) {
+    await request(`${base}/budget-items/${budgetItem.id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+    await load();
+  }
+
   async function updatePortalUser(user: any, patch: Record<string, any>) {
     await request(`${base}/users/${user.id}`, {
       method: "PATCH",
@@ -156,6 +167,22 @@ export default function ConstructionPortalContentManager({ tenantId, obraId }: {
             <div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-800">{portalItem.title}</p><p className="text-xs text-slate-400">{portalItem.kind}{portalItem.version ? ` · ${portalItem.version}` : ""}{portalItem.requires_action ? " · exige ação" : ""}</p></div>
             <div className="flex flex-wrap gap-2">{["interno","compartilhavel","publicado","arquivado"].map((visibility) => <button key={visibility} onClick={() => void setItemVisibility(portalItem, visibility)} className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ${portalItem.visibility === visibility ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-500"}`}>{visibility}</button>)}</div>
           </div>) : <p className="p-5 text-center text-sm text-slate-400">Nenhum conteúdo adicional criado.</p>}
+        </div>
+      </section>
+      <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Visibilidade do orçamento</p>
+        <h3 className="mt-1 text-lg font-semibold text-slate-950">Escolha exatamente o que o cliente vê</h3>
+        <p className="mt-1 text-xs text-slate-500">Custos internos e BDI nunca são enviados ao portal. Você controla item, quantidade, preço unitário comercial e total.</p>
+        <div className="mt-4 divide-y overflow-hidden rounded-2xl border">
+          {budgetItems.length ? budgetItems.map((budgetItem) => <div key={budgetItem.id} className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0"><p className="text-sm font-semibold text-slate-800">{budgetItem.nome}</p><p className="text-xs text-slate-400">{budgetItem.etapa_nome} · {budgetItem.quantidade} {budgetItem.unidade}</p></div>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => void updateBudgetItem(budgetItem, { visibleToClient: !budgetItem.visible_to_client })} className={`rounded-full px-3 py-1 text-[11px] font-semibold ${budgetItem.visible_to_client ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-400"}`}>{budgetItem.visible_to_client ? "Item visível" : "Item oculto"}</button>
+              <button disabled={!budgetItem.visible_to_client} onClick={() => void updateBudgetItem(budgetItem, { showQuantity: !budgetItem.show_quantity })} className={`rounded-full px-3 py-1 text-[11px] font-semibold ${budgetItem.show_quantity ? "bg-violet-50 text-violet-700" : "bg-slate-100 text-slate-400"} disabled:opacity-40`}>Quantidade</button>
+              <button disabled={!budgetItem.visible_to_client} onClick={() => void updateBudgetItem(budgetItem, { showUnitPrice: !budgetItem.show_unit_price })} className={`rounded-full px-3 py-1 text-[11px] font-semibold ${budgetItem.show_unit_price ? "bg-violet-50 text-violet-700" : "bg-slate-100 text-slate-400"} disabled:opacity-40`}>Preço unitário</button>
+              <button disabled={!budgetItem.visible_to_client} onClick={() => void updateBudgetItem(budgetItem, { showTotal: !budgetItem.show_total })} className={`rounded-full px-3 py-1 text-[11px] font-semibold ${budgetItem.show_total ? "bg-violet-50 text-violet-700" : "bg-slate-100 text-slate-400"} disabled:opacity-40`}>Total</button>
+            </div>
+          </div>) : <p className="p-5 text-center text-sm text-slate-400">Nenhum orçamento enviado ou aprovado encontrado para esta obra.</p>}
         </div>
       </section>
       <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
