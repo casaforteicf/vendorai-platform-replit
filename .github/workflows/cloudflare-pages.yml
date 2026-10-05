@@ -1,6 +1,6 @@
 name: Cloudflare Pages
 # Production deploy: Pages frontend; Railway backend remains unchanged.
-# Redeploy marker: UI 2.0 direct production retry 2026-10-05T15:16Z.
+# Redeploy marker: pipeline warming fix 2026-10-05T16:00Z.
 
 on:
   push:
