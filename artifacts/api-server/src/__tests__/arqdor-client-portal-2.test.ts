@@ -39,4 +39,16 @@ describe("Arqdor Client Portal 2.0 contracts", () => {
     expect(source).toContain('"/tenants/:tenantId/obras/:obraId/portal/support"');
     expect(source).toContain('"/tenants/:tenantId/obras/:obraId/portal/messages"');
   });
+  it("supports the complete publication engine, client responses, audit and Vendi", () => {
+    expect(source).toContain("obra_portal_items");
+    expect(source).toContain("obra_portal_item_responses");
+    expect(source).toContain("obra_portal_audit");
+    expect(source).toContain('"/portal/obra/:token/items/:itemId/respond"');
+    expect(source).toContain('"/portal/obra/:token/vendi"');
+    expect(source).toContain('"/tenants/:tenantId/obras/:obraId/portal/items"');
+    expect(source).toContain('"/tenants/:tenantId/obras/:obraId/portal/audit"');
+    expect(source).toContain("itemIsPublishedByConfig");
+    expect(source).toContain("getOpenAIForTenant");
+  });
+
 });
