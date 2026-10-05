@@ -325,7 +325,7 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
 
 router.get("/tenants/:tenantId/deals", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
-  const { etapa, funilId, leadId } = req.query as Record<string, string | undefined>;
+  const { etapa, funilId, leadId, includeNaoLead } = req.query as Record<string, string | undefined>;
 
   const conditions = [eq(dealsTable.tenantId, tenantId)];
   if (etapa) conditions.push(eq(dealsTable.etapa, etapa as typeof dealsTable.etapa._.data));
@@ -334,18 +334,20 @@ router.get("/tenants/:tenantId/deals", async (req, res) => {
 
   conditions.push(...buildUserFunctionFilter(req, dealsTable));
 
-  // Negócios antigos continuam armazenados para auditoria, porém somem da
-  // pipeline assim que o contato é classificado como "Não lead". O NOT EXISTS
-  // preserva negócios sem lead vinculado e evita alterar o formato da resposta.
-  conditions.push(notExists(
-    db
-      .select({ id: leadsTable.id })
-      .from(leadsTable)
-      .where(and(
-        eq(leadsTable.id, dealsTable.leadId),
-        isNotNull(leadsTable.naoLeadTipo),
-      )),
-  ));
+  // Na pipeline comercial, contatos classificados como "Não Lead" ficam fora.
+  // Pipelines de relacionamento (Aquecimento/Parceiros) precisam enxergar esses
+  // registros para preservar o histórico e permitir retomada comercial.
+  if (includeNaoLead !== "true") {
+    conditions.push(notExists(
+      db
+        .select({ id: leadsTable.id })
+        .from(leadsTable)
+        .where(and(
+          eq(leadsTable.id, dealsTable.leadId),
+          isNotNull(leadsTable.naoLeadTipo),
+        )),
+    ));
+  }
 
   const deals = await db
     .select()
@@ -995,8 +997,7 @@ router.patch("/deals/:id", async (req, res) => {
       sourceModule: "deals",
       sourceId: deal.id,
       metadata: { previousStage: existing.etapa, stage: deal.etapa, assignedTo: deal.assignedTo ?? null },
-      log: req.log,
-    });
+      log: req.log,    });
 
     void evaluatePipelineAI({
       tenantId: existing.tenantId,
