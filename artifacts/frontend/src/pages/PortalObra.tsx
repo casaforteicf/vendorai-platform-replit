@@ -495,7 +495,7 @@ export default function PortalObra() {
   const chatMessages = data.chatMessages ?? [];
   const portalItems = data.portalItems ?? [];
   const portalResponses = data.portalResponses ?? [];
-  const globalSearchResults = useMemo(() => {
+  const globalSearchResults = (() => {
     const q = globalSearch.trim().toLocaleLowerCase("pt-BR");
     if (q.length < 2) return [] as Array<{ id: string; title: string; subtitle: string; tab?: TabId; url?: string }>;
     const kindTab: Record<string, TabId> = {
@@ -511,7 +511,7 @@ export default function PortalObra() {
       .filter((doc: any) => `${doc.nome ?? doc.titulo ?? doc.descricao ?? ""} ${doc.categoria ?? ""}`.toLocaleLowerCase("pt-BR").includes(q))
       .map((doc: any) => ({ id: `doc-${doc.id}`, title: doc.nome ?? doc.titulo ?? doc.descricao ?? "Documento", subtitle: doc.categoria ?? "Documento", url: doc.url ?? doc.documento_url }));
     return [...itemResults, ...docResults].slice(0, 12);
-  }, [globalSearch, portalItems, documentos, projectDocuments, contracts, manuals, invoices]);
+  })();
   const pendingPortalItems = portalItems.filter((item) => item.requires_action && !portalResponses.some((response) => response.item_id === item.id));
   const obraStatus = OBRA_STATUS[obra.status] ?? { label: obra.status, color: "bg-gray-100 text-gray-600", icon: null };
   const totalEtapas = etapas.length;
