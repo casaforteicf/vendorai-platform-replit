@@ -19,20 +19,23 @@ export default function ConstructionPortalContentManager({ tenantId, obraId }: {
   const [documents, setDocuments] = useState<any[]>([]);
   const [tickets, setTickets] = useState<any[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
-  const [doc, setDoc] = useState({ categoria: "documento", titulo: "", url: "", versao: "", publicadoCliente: true });
+  const [users, setUsers] = useState<any[]>([]);
+  const [doc, setDoc] = useState({ categoria: "documento", titulo: "", url: "", versao: "", publicationState: "publicado", allowDownload: true, visibleRoles: [] as string[] });
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const base = `/api/tenants/${tenantId}/obras/${obraId}/portal`;
 
   async function load() {
     if (!tenantId || !obraId) return;
-    const [docs, support] = await Promise.all([
+    const [docs, support, access] = await Promise.all([
       request<any>(`${base}/documents`),
       request<any>(`${base}/support`),
+      request<any>(`${base}/users`),
     ]);
     setDocuments(docs.documents ?? []);
     setTickets(support.tickets ?? []);
     setMessages(support.messages ?? []);
+    setUsers(access.users ?? []);
   }
 
   useEffect(() => { void load(); }, [tenantId, obraId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -42,16 +45,18 @@ export default function ConstructionPortalContentManager({ tenantId, obraId }: {
     setBusy(true);
     try {
       await request(`${base}/documents`, { method: "POST", body: JSON.stringify(doc) });
-      setDoc({ categoria: "documento", titulo: "", url: "", versao: "", publicadoCliente: true });
+      setDoc({ categoria: "documento", titulo: "", url: "", versao: "", publicationState: "publicado", allowDownload: true, visibleRoles: [] });
       await load();
     } finally { setBusy(false); }
   }
 
-  async function toggleDocument(item: any) {
-    await request(`${base}/documents/${item.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ publicadoCliente: !item.publicado_cliente }),
-    });
+  async function updateDocument(item: any, patch: any) {
+    await request(`${base}/documents/${item.id}`, { method: "PATCH", body: JSON.stringify(patch) });
+    await load();
+  }
+
+  async function updatePortalUser(userId: string, patch: any) {
+    await request(`${base}/users/${userId}`, { method: "PATCH", body: JSON.stringify(patch) });
     await load();
   }
 
@@ -72,22 +77,34 @@ export default function ConstructionPortalContentManager({ tenantId, obraId }: {
       <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Biblioteca do cliente</p>
         <h3 className="mt-1 text-lg font-semibold text-slate-950">Projetos, contratos próprios e de terceiros, documentos, manuais e garantias</h3>
-        <div className="mt-4 grid gap-3 md:grid-cols-[170px_1fr_1.2fr_100px_auto]">
+        <div className="mt-4 grid gap-3 md:grid-cols-[170px_1fr_1.2fr_100px_150px_auto]">
           <select className="rounded-xl border px-3 py-2 text-sm" value={doc.categoria} onChange={(e) => setDoc({ ...doc, categoria: e.target.value })}>
             <option value="projeto">Projeto</option><option value="contrato">Contrato próprio</option><option value="contrato_terceiro">Contrato de terceiro</option><option value="art_rrt">ART / RRT</option><option value="alvara">Alvará / Licença</option><option value="laudo">Laudo</option><option value="ata">Ata</option><option value="manual">Manual</option><option value="garantia">Garantia</option><option value="entrega">Documento de entrega</option><option value="documento">Documento</option>
           </select>
           <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Título" value={doc.titulo} onChange={(e) => setDoc({ ...doc, titulo: e.target.value })} />
           <input className="rounded-xl border px-3 py-2 text-sm" placeholder="URL do arquivo" value={doc.url} onChange={(e) => setDoc({ ...doc, url: e.target.value })} />
           <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Versão" value={doc.versao} onChange={(e) => setDoc({ ...doc, versao: e.target.value })} />
+          <select className="rounded-xl border px-3 py-2 text-sm" value={doc.publicationState} onChange={(e) => setDoc({ ...doc, publicationState: e.target.value })}>
+            <option value="interno">Interno</option><option value="compartilhavel">Compartilhável</option><option value="publicado">Publicado</option><option value="arquivado">Arquivado</option>
+          </select>
           <button disabled={busy} onClick={addDocument} className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Adicionar</button>
         </div>
         <div className="mt-4 divide-y overflow-hidden rounded-2xl border">
           {documents.length ? documents.map((item) => (
             <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
               <div><p className="text-sm font-semibold text-slate-800">{item.titulo}</p><p className="text-xs text-slate-400">{item.categoria}{item.versao ? ` · v${item.versao}` : ""}</p></div>
-              <div className="flex gap-2"><a href={item.url} target="_blank" rel="noreferrer" className="rounded-lg border px-3 py-1.5 text-xs font-semibold text-slate-600">Abrir</a><button onClick={() => void toggleDocument(item)} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${item.publicado_cliente ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{item.publicado_cliente ? "Publicado" : "Oculto"}</button></div>
+              <div className="flex flex-wrap items-center gap-2"><a href={item.url} target="_blank" rel="noreferrer" className="rounded-lg border px-3 py-1.5 text-xs font-semibold text-slate-600">Abrir</a><select value={item.publication_state ?? (item.publicado_cliente ? "publicado" : "interno")} onChange={(e) => void updateDocument(item,{ publicationState:e.target.value })} className="rounded-lg border px-2 py-1.5 text-xs font-semibold"><option value="interno">Interno</option><option value="compartilhavel">Compartilhável</option><option value="publicado">Publicado</option><option value="arquivado">Arquivado</option></select><label className="flex items-center gap-1.5 text-xs text-slate-500"><input type="checkbox" checked={item.allow_download !== false} onChange={(e)=>void updateDocument(item,{allowDownload:e.target.checked})}/>Download</label></div>
             </div>
           )) : <p className="p-5 text-center text-sm text-slate-400">Nenhum arquivo adicionado.</p>}
+        </div>
+      </section>
+
+      <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Acessos</p>
+        <h3 className="mt-1 text-lg font-semibold text-slate-950">Quem pode acessar o portal</h3>
+        <p className="mt-1 text-xs text-slate-500">Defina o perfil de cada pessoa e revogue o acesso quando necessário.</p>
+        <div className="mt-4 divide-y overflow-hidden rounded-2xl border">
+          {users.length ? users.map((user) => <div key={user.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"><div><p className="text-sm font-semibold text-slate-800">{user.nome}</p><p className="text-xs text-slate-400">{user.email}{user.access_expires_at ? ` · acesso até ${new Date(user.access_expires_at).toLocaleDateString("pt-BR")}` : ""}</p></div><div className="flex items-center gap-2"><select value={user.role_key ?? "proprietario"} onChange={(e)=>void updatePortalUser(user.id,{roleKey:e.target.value})} className="rounded-lg border px-2 py-1.5 text-xs"><option value="proprietario">Proprietário</option><option value="conjuge">Cônjuge</option><option value="arquiteto">Arquiteto</option><option value="engenheiro">Engenheiro</option><option value="financeiro">Financeiro</option><option value="fornecedor">Fornecedor</option><option value="representante">Representante</option></select><button onClick={()=>void updatePortalUser(user.id,{status:user.status==="ativo"?"revogado":"ativo"})} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${user.status==="ativo"?"bg-emerald-50 text-emerald-700":"bg-rose-50 text-rose-700"}`}>{user.status==="ativo"?"Ativo":"Revogado"}</button></div></div>) : <p className="p-5 text-center text-sm text-slate-400">Nenhum cliente cadastrou acesso privado ainda.</p>}
         </div>
       </section>
 
