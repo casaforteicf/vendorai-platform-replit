@@ -204,14 +204,18 @@ async function fetchPlacesPage(
 export async function searchAllPlaces(
   query: string,
   log?: { error: (o: unknown, m?: string) => void },
+  geo?: { lat: number; lng: number; radiusKm: number },
 ): Promise<PlacesResultWithId[]> {
   const all: PlacesResultWithId[] = [];
+  const effectiveQuery = geo
+    ? `${query} num raio de ${geo.radiusKm} km do ponto ${geo.lat}, ${geo.lng}`
+    : query;
   let pageToken: string | null = null;
   let pages = 0;
   const MAX_PAGES = 3; // Google Places (New) returns max 60 results total
 
   do {
-    const { items, nextPageToken } = await fetchPlacesPage(query, pageToken, log);
+    const { items, nextPageToken } = await fetchPlacesPage(effectiveQuery, pageToken, log);
     all.push(...items);
     pageToken = nextPageToken;
     pages++;
