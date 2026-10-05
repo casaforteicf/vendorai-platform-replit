@@ -724,6 +724,65 @@ router.get("/portal/obra/:token", async (req, res) => {
       )).rows
     : [];
 
+  let briefing: any = null;
+  if (config.showBriefing && obra.leadOrigemId) {
+    const briefingResult = await pool.query(
+      `SELECT id, situation_answers, problem_answers, implication_answers, need_answers,
+              objections, free_notes, ai_summary, next_step_type, next_step_date, updated_at
+         FROM lead_briefings
+        WHERE tenant_id = $1 AND lead_id = $2
+        LIMIT 1`,
+      [obra.tenantId, obra.leadOrigemId],
+    );
+    briefing = briefingResult.rows[0] ?? null;
+  }
+
+  let agenda: any[] = [];
+  if (config.showAgenda && obra.leadOrigemId) {
+    const agendaResult = await pool.query(
+      `SELECT id, tipo, modalidade, titulo, data_hora_inicio, data_hora_fim, local,
+              status, observacoes, meet_link, participantes
+         FROM agendamentos
+        WHERE tenant_id = $1
+          AND lead_id = $2
+          AND status <> 'cancelado'
+        ORDER BY data_hora_inicio ASC
+        LIMIT 100`,
+      [obra.tenantId, obra.leadOrigemId],
+    );
+    agenda = agendaResult.rows;
+  }
+
+  const nextActions: Array<{ id: string; kind: string; title: string; detail?: string | null; tab: string }> = [];
+  for (const decision of decisions.slice(0, 3)) {
+    nextActions.push({
+      id: `decision-${decision.id}`,
+      kind: "Aprovação",
+      title: decision.title,
+      detail: decision.due_date ? `Prazo: ${decision.due_date}` : decision.description ?? null,
+      tab: "dados",
+    });
+  }
+  const nowMs = Date.now();
+  for (const event of agenda.filter((item: any) => new Date(item.data_hora_inicio).getTime() >= nowMs).slice(0, 2)) {
+    nextActions.push({
+      id: `agenda-${event.id}`,
+      kind: "Agenda",
+      title: event.titulo,
+      detail: event.data_hora_inicio,
+      tab: "agenda",
+    });
+  }
+  if (!decisions.length && resumo?.proximasEtapas?.[0]) {
+    nextActions.push({
+      id: `stage-${resumo.proximasEtapas[0].id}`,
+      kind: "Próxima etapa",
+      title: resumo.proximasEtapas[0].nome,
+      detail: resumo.proximasEtapas[0].dataInicioPrevista ?? resumo.proximasEtapas[0].data_inicio_prevista ?? null,
+      tab: "cronograma",
+    });
+  }
+
   return res.json({
     publication: config,
     auth: {
@@ -778,6 +837,9 @@ router.get("/portal/obra/:token", async (req, res) => {
     invoices,
     supportTickets,
     chatMessages,
+    briefing,
+    agenda,
+    nextActions,
   });
 });
 
