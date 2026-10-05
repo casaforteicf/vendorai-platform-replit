@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, inArray, lte, or } from "drizzle-orm";
+import { and, eq, isNotNull, inArray, isNull, lte, or } from "drizzle-orm";
 import {
   agendasTable,
   db,
@@ -33,7 +33,7 @@ export async function runTokenGuardian(log: Logger): Promise<void> {
     expiresAt: agendasTable.googleTokenExpiresAt,
   }).from(agendasTable).where(and(
     isNotNull(agendasTable.googleRefreshToken),
-    or(lte(agendasTable.googleTokenExpiresAt, cutoff), isNotNull(agendasTable.googleAccessToken)),
+    or(isNull(agendasTable.googleTokenExpiresAt), lte(agendasTable.googleTokenExpiresAt, cutoff)),
   ));
 
   for (const agenda of calendars) {
@@ -65,7 +65,7 @@ export async function runTokenGuardian(log: Logger): Promise<void> {
     .where(and(
       inArray(searchConsoleConnectionsTable.status, ["active", "pending_verification"]),
       isNotNull(searchConsoleConnectionsTable.refreshToken),
-      lte(searchConsoleConnectionsTable.tokenExpiresAt, cutoff),
+      or(isNull(searchConsoleConnectionsTable.tokenExpiresAt), lte(searchConsoleConnectionsTable.tokenExpiresAt, cutoff)),
     ));
 
   for (const connection of searchConsole) {
@@ -84,7 +84,7 @@ export async function runTokenGuardian(log: Logger): Promise<void> {
     .where(and(
       inArray(googleAdsConnectionsTable.status, ["active", "pending_account_selection"]),
       isNotNull(googleAdsConnectionsTable.refreshToken),
-      lte(googleAdsConnectionsTable.tokenExpiresAt, cutoff),
+      or(isNull(googleAdsConnectionsTable.tokenExpiresAt), lte(googleAdsConnectionsTable.tokenExpiresAt, cutoff)),
     ));
 
   for (const connection of googleAds) {
@@ -106,7 +106,7 @@ export async function runTokenGuardian(log: Logger): Promise<void> {
     eq(socialConnectionsTable.status, "active"),
     inArray(socialConnectionsTable.provider, ["youtube", "tiktok", "linkedin"]),
     isNotNull(socialConnectionsTable.refreshToken),
-    lte(socialConnectionsTable.tokenExpiresAt, cutoff),
+    or(isNull(socialConnectionsTable.tokenExpiresAt), lte(socialConnectionsTable.tokenExpiresAt, cutoff)),
   ));
 
   for (const connection of social) {
