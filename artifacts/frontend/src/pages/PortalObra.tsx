@@ -25,6 +25,7 @@ import {
   Layers,
   Loader2,
   MapPin,
+  Sparkles,
   ThumbsUp,
 } from "lucide-react";
 import PortalClientDecisions from "./PortalClientDecisions";
