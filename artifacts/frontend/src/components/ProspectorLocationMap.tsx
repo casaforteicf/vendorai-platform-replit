@@ -21,7 +21,7 @@ const defaultIcon = L.icon({
 
 const DEFAULT_CENTER: [number, number] = [-27.0965, -52.6183];
 
-type GeoPoint = { lat: number; lng: number; label: string; radiusKm: number };
+export type ProspectorGeoArea = { lat: number; lng: number; label: string; radiusKm: number };
 
 function MapClick({ onPick }: { onPick: (lat: number, lng: number) => void }) {
   useMapEvents({ click: (event) => onPick(event.latlng.lat, event.latlng.lng) });
@@ -48,10 +48,12 @@ export function ProspectorLocationMap({
   values,
   onChange,
   maxItems = 20,
+  onAreaAdd,
 }: {
   values: string[];
   onChange: (values: string[]) => void;
   maxItems?: number;
+  onAreaAdd?: (area: ProspectorGeoArea) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -87,6 +89,7 @@ export function ProspectorLocationMap({
     if (!values.some((v) => v.toLocaleLowerCase("pt-BR") === normalized.toLocaleLowerCase("pt-BR"))) {
       onChange([...values, normalized].slice(0, maxItems));
     }
+    onAreaAdd?.({ lat: point.lat, lng: point.lng, label: normalized, radiusKm });
     setOpen(false);
   }
 
