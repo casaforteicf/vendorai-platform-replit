@@ -193,6 +193,18 @@ export async function planejarAcompanhamento(params: {
 }): Promise<PlanoAcompanhamento> {
   const context = await carregarContextoBasico(params.tenantId, params.leadId, params.dealId);
   const cfg = (context.stage?.acompanhamentoConfig ?? {}) as Record<string, unknown>;
+  const stageAIConfig = (context.stage?.aiConfig ?? {}) as {
+    mode?: string;
+    allowedActions?: string[];
+  };
+  const stageAgentAutonomous = Boolean(
+    context.stage?.responsavelAgenteKey
+    && stageAIConfig.mode === "autonoma"
+    && (
+      (stageAIConfig.allowedActions ?? []).includes("send_message")
+      || (stageAIConfig.allowedActions ?? []).includes("create_activity")
+    )
+  );
   const canaisConfigurados = normalizarCanais(cfg.canaisPermitidos);
   const disponiveis = canaisDisponiveis(context);
   const candidatos = (canaisConfigurados.length ? canaisConfigurados : disponiveis).filter((channel) => disponiveis.includes(channel));
@@ -201,7 +213,9 @@ export async function planejarAcompanhamento(params: {
     : objetivoPadrao(context.etapa);
   const modo = ["automatico", "gerar_aprovar", "somente_sugestao"].includes(String(cfg.modo))
     ? String(cfg.modo) as PlanoAcompanhamento["modo"]
-    : (params.modoPadrao ?? "gerar_aprovar");
+    : stageAgentAutonomous
+      ? "automatico"
+      : (params.modoPadrao ?? "gerar_aprovar");
 
   const contextoNegocio = await resolverContextoNegocio({
     tenantId: params.tenantId,
@@ -284,7 +298,7 @@ export async function planejarAcompanhamento(params: {
     .filter((channel) => channel !== canalPrincipal && disponiveis.includes(channel));
 
   return {
-    ativo: cfg.ativo === true,
+    ativo: cfg.ativo === true || stageAgentAutonomous,
     etapa: context.etapa,
     objetivo,
     modo,
