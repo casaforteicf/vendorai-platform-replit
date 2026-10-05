@@ -1,6 +1,6 @@
 name: Cloudflare Pages
 # Production deploy: Pages frontend; Railway backend remains unchanged.
-# Redeploy marker: lead attachments resilient loading production 2026-10-05.
+# Redeploy marker: AI metrics operational publish retry 2026-10-05.
 
 on:
   push:
