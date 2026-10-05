@@ -118,6 +118,42 @@ const activityTemplateSchema = z.object({
   condicao: z.enum(["sempre", "sem_resposta_cliente", "sem_atividade_aberta"]).default("sempre"),
 });
 
+
+const pipelineStageAIActionSchema = z.enum([
+  "create_activity",
+  "send_message",
+  "advance_stage",
+  "change_owner",
+  "generate_proposal",
+  "schedule_meeting",
+  "create_checkout",
+  "handoff_agent",
+  "move_to_warming",
+]);
+
+const pipelineStageAICriterionSchema = z.object({
+  field: z.string().trim().min(1).max(120),
+  operator: z.enum(["exists", "eq", "neq", "gt", "gte", "lt", "lte", "contains"]).default("exists"),
+  value: z.unknown().optional(),
+  required: z.boolean().default(true),
+});
+
+const pipelineStageAIConfigSchema = z.object({
+  mode: z.enum(["desativada", "assistida", "autonoma"]).default("desativada"),
+  allowedActions: z.array(pipelineStageAIActionSchema).max(20).default([]),
+  approvalRequiredActions: z.array(pipelineStageAIActionSchema).max(20).default([]),
+  entryCriteria: z.array(pipelineStageAICriterionSchema).max(30).default([]),
+  exitCriteria: z.array(pipelineStageAICriterionSchema).max(30).default([]),
+  nextBestActionEnabled: z.boolean().default(true),
+  instructions: z.string().trim().max(4000).nullable().optional(),
+}).superRefine((value, ctx) => {
+  for (const action of value.approvalRequiredActions) {
+    if (!value.allowedActions.includes(action)) {
+      ctx.addIssue({ code: "custom", message: `A ação ${action} exige aprovação, mas não está permitida na etapa.` });
+    }
+  }
+});
+
 const BUILTIN_FUNCTIONS = new Set([
   "vendedor",
   "representante_comercial",
@@ -361,6 +397,7 @@ router.post("/tenants/:tenantId/pipeline-stages", async (req, res) => {
     atividadePadraoDescricao: z.string().trim().max(2000).nullable().optional(),
     atividadePadraoPrazoMinutos: z.number().int().positive().nullable().optional(),
     atividadesPadrao: z.array(activityTemplateSchema).max(30).optional(),
+    aiConfig: pipelineStageAIConfigSchema.optional(),
   });
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
@@ -403,6 +440,7 @@ router.post("/tenants/:tenantId/pipeline-stages", async (req, res) => {
       atividadePadraoDescricao: parsed.data.atividadePadraoDescricao ?? null,
       atividadePadraoPrazoMinutos: parsed.data.atividadePadraoPrazoMinutos ?? null,
       atividadesPadrao: parsed.data.atividadesPadrao ?? [],
+      aiConfig: parsed.data.aiConfig ?? undefined,
     })
     .returning();
 
@@ -423,6 +461,13 @@ router.patch("/tenants/:tenantId/pipeline-stages/:id", async (req, res) => {
     parsed.data.atividadesPadrao = templates.data;
   }
   // atividadesPadrao validated templates
+
+  if (parsed.data.aiConfig !== undefined) {
+    const aiConfig = pipelineStageAIConfigSchema.safeParse(parsed.data.aiConfig);
+    if (!aiConfig.success) return res.status(422).json({ error: aiConfig.error.message });
+    parsed.data.aiConfig = aiConfig.data;
+  }
+  // aiConfig validated config
 
   let responsaveisFuncoes = parsed.data.responsaveisFuncoes;
   if (responsaveisFuncoes !== undefined) {
