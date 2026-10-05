@@ -113,7 +113,7 @@ export class MessengerScopedIdMissingError extends Error {
 export class EmailNotConfiguredError extends Error {
   readonly statusCode = 422;
   constructor() {
-    super("E-mail não configurado. Configure RESEND_API_KEY e o remetente do Vendor.ai antes de enviar.");
+    super("E-mail não configurado. Conecte uma caixa Google/Microsoft ou configure o fallback de e-mail do Vendor.ai.");
     this.name = "EmailNotConfiguredError";
   }
 }
@@ -701,7 +701,7 @@ async function sendOperationalEmail(params: {
   tenantId: string;
 }, log: Logger): Promise<string | undefined> {
   const connected = await sendConnectedEmail({
-    tenantId: (params as typeof params & { tenantId?: string }).tenantId ?? "",
+    tenantId: params.tenantId,
     to: params.to,
     subject: params.subject,
     text: params.text,
