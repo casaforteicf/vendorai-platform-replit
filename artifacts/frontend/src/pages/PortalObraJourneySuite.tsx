@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Bot, CheckCircle2, FileText, Search, Sparkles } from "lucide-react";
 
 function fmtDate(value?: string | null) {
@@ -7,19 +7,95 @@ function fmtDate(value?: string | null) {
   return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }
 
-export function PortalBriefing({ briefing }: { briefing: any }) {
-  if (!briefing) return <Empty text="Nenhum briefing publicado para este cliente." />;
+export function PortalBriefing({
+  token,
+  sessionToken,
+  briefing,
+  authenticated,
+  onRefresh,
+}: {
+  token: string;
+  sessionToken: string;
+  briefing: any;
+  authenticated: boolean;
+  onRefresh: () => void;
+}) {
+  const defaults = {
+    situation_answers: [
+      { question: "Qual é o objetivo principal deste projeto?", answer: "" },
+      { question: "Quem utilizará o espaço/obra no dia a dia?", answer: "" },
+    ],
+    problem_answers: [
+      { question: "Quais problemas ou limitações precisam ser resolvidos?", answer: "" },
+    ],
+    implication_answers: [
+      { question: "O que acontece se essas necessidades não forem atendidas?", answer: "" },
+    ],
+    need_answers: [
+      { question: "Quais são as prioridades e resultados esperados?", answer: "" },
+      { question: "Existe uma data ou prazo importante?", answer: "" },
+    ],
+    free_notes: "",
+  };
+  const [draft, setDraft] = useState<any>(briefing ?? defaults);
+  const [editing, setEditing] = useState(!briefing);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => { setDraft(briefing ?? defaults); setEditing(!briefing); }, [briefing]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const groups = [
-    ["Situação", briefing.situation_answers],
-    ["Problemas", briefing.problem_answers],
-    ["Implicações", briefing.implication_answers],
-    ["Necessidades", briefing.need_answers],
+    ["Situação", "situation_answers"],
+    ["Problemas", "problem_answers"],
+    ["Implicações", "implication_answers"],
+    ["Necessidades", "need_answers"],
   ] as const;
+
+  function setAnswer(group: string, index: number, answer: string) {
+    setDraft((current: any) => ({
+      ...current,
+      [group]: (current?.[group] ?? []).map((row: any, i: number) => i === index ? { ...row, answer } : row),
+    }));
+  }
+
+  async function save(approve = false) {
+    if (!authenticated) { setError("Entre na área privada para preencher, editar ou aprovar o briefing."); return; }
+    setSaving(true); setError("");
+    try {
+      const r = await fetch(`/api/portal/obra/${token}/briefing`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}) },
+        body: JSON.stringify({
+          situationAnswers: draft.situation_answers ?? [],
+          problemAnswers: draft.problem_answers ?? [],
+          implicationAnswers: draft.implication_answers ?? [],
+          needAnswers: draft.need_answers ?? [],
+          freeNotes: draft.free_notes ?? "",
+          approve,
+        }),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body.error ?? "Não foi possível salvar o briefing.");
+      setEditing(false); onRefresh();
+    } catch (e) { setError(e instanceof Error ? e.message : "Falha ao salvar briefing."); }
+    finally { setSaving(false); }
+  }
+
+  const approved = Boolean(briefing?.journey_checklist?.clientApproved);
   return <div className="space-y-5">
-    {briefing.ai_summary?.resumoCliente ? <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-5"><p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">Resumo do briefing</p><p className="mt-2 text-sm leading-6 text-indigo-950">{briefing.ai_summary.resumoCliente}</p></div> : null}
-    {groups.map(([title, rows]) => Array.isArray(rows) && rows.length ? <section key={title} className="overflow-hidden rounded-2xl border bg-white"><div className="bg-gray-50 px-4 py-3 text-sm font-semibold text-gray-800">{title}</div><div className="divide-y">{rows.map((row: any, index: number) => <div key={index} className="p-4"><p className="text-xs font-medium text-gray-500">{row.question}</p><p className="mt-1 text-sm text-gray-800">{row.answer || "—"}</p></div>)}</div></section> : null)}
-    {briefing.free_notes ? <div className="rounded-2xl border bg-white p-5"><p className="text-sm font-semibold text-gray-800">Observações</p><p className="mt-2 whitespace-pre-wrap text-sm text-gray-600">{briefing.free_notes}</p></div> : null}
-    <p className="text-xs text-gray-400">Última atualização: {fmtDate(briefing.updated_at)}</p>
+    {briefing?.ai_summary?.resumoCliente ? <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-5"><p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">Resumo do briefing</p><p className="mt-2 text-sm leading-6 text-indigo-950">{briefing.ai_summary.resumoCliente}</p></div> : null}
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-white p-4">
+      <div><p className="text-sm font-semibold text-gray-900">Briefing do projeto</p><p className="text-xs text-gray-500">{approved ? "Aprovado pelo cliente" : "Revise as informações e aprove quando estiver correto."}</p></div>
+      <div className="flex gap-2">{!editing ? <button onClick={()=>setEditing(true)} className="rounded-xl border px-3 py-2 text-xs font-semibold text-gray-700">Editar</button> : null}{approved ? <span className="rounded-full bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">✓ Aprovado</span> : null}</div>
+    </div>
+    {groups.map(([title, key]) => {
+      const rows = Array.isArray(draft?.[key]) ? draft[key] : [];
+      return rows.length ? <section key={title} className="overflow-hidden rounded-2xl border bg-white"><div className="bg-gray-50 px-4 py-3 text-sm font-semibold text-gray-800">{title}</div><div className="divide-y">{rows.map((row: any, index: number) => <div key={index} className="p-4"><p className="text-xs font-medium text-gray-500">{row.question}</p>{editing ? <textarea rows={2} value={row.answer ?? ""} onChange={(e)=>setAnswer(key,index,e.target.value)} className="mt-2 w-full rounded-xl border px-3 py-2 text-sm" /> : <p className="mt-1 whitespace-pre-wrap text-sm text-gray-800">{row.answer || "—"}</p>}</div>)}</div></section> : null;
+    })}
+    <div className="rounded-2xl border bg-white p-5"><p className="text-sm font-semibold text-gray-800">Observações</p>{editing ? <textarea rows={4} value={draft?.free_notes ?? ""} onChange={(e)=>setDraft((cur:any)=>({...cur,free_notes:e.target.value}))} className="mt-2 w-full rounded-xl border px-3 py-2 text-sm" /> : <p className="mt-2 whitespace-pre-wrap text-sm text-gray-600">{draft?.free_notes || "—"}</p>}</div>
+    {editing ? <div className="flex flex-wrap gap-2"><button disabled={saving} onClick={()=>void save(false)} className="rounded-xl border px-4 py-2 text-sm font-semibold text-gray-700 disabled:opacity-50">{saving ? "Salvando..." : "Salvar rascunho"}</button><button disabled={saving} onClick={()=>void save(true)} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Salvar e aprovar briefing</button></div> : null}
+    {error ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
+    {briefing?.updated_at ? <p className="text-xs text-gray-400">Última atualização: {fmtDate(briefing.updated_at)}</p> : null}
   </div>;
 }
 
