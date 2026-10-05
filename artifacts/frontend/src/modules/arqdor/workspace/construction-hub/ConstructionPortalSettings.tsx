@@ -33,6 +33,10 @@ type PortalConfig = {
   showSearch: boolean;
   showPostSale: boolean;
   showVendi: boolean;
+  showBudgetItems: boolean;
+  showBudgetQuantities: boolean;
+  showBudgetUnitPrices: boolean;
+  showBudgetStageTotals: boolean;
 };
 
 const DEFAULT_CONFIG: PortalConfig = {
@@ -63,6 +67,10 @@ const DEFAULT_CONFIG: PortalConfig = {
   showSearch: true,
   showPostSale: true,
   showVendi: true,
+  showBudgetItems: true,
+  showBudgetQuantities: true,
+  showBudgetUnitPrices: false,
+  showBudgetStageTotals: true,
 };
 
 function token() { return localStorage.getItem("vendorai_token") ?? ""; }
@@ -103,6 +111,10 @@ const ITEMS: Array<{ key: keyof PortalConfig; title: string; description: string
   { key: "showMilestones", title: "Marcos da obra", description: "Marcos previstos, concluídos e próximos eventos do cronograma.", dependsOn: "showSchedule" },
   { key: "showMeasurements", title: "Medições", description: "Histórico de evolução física registrada nas etapas.", dependsOn: "showSchedule" },
   { key: "showBudget", title: "Orçamento", description: "Somente orçamento enviado ou aprovado." },
+  { key: "showBudgetItems", title: "Itens do orçamento", description: "Exibe os itens comerciais do orçamento.", dependsOn: "showBudget" },
+  { key: "showBudgetQuantities", title: "Quantidades do orçamento", description: "Exibe quantidade e unidade de cada item.", dependsOn: "showBudgetItems" },
+  { key: "showBudgetUnitPrices", title: "Preços unitários comerciais", description: "Exibe preço unitário final ao cliente. Custos internos e margem nunca são enviados.", dependsOn: "showBudgetItems" },
+  { key: "showBudgetStageTotals", title: "Totais por etapa", description: "Exibe o total comercial calculado de cada etapa.", dependsOn: "showBudget" },
   { key: "showDiary", title: "Diário de obra", description: "Somente registros com status Aprovado." },
   { key: "showDiaryPhotos", title: "Fotos do diário", description: "Fotos e vídeos apenas de diários aprovados.", dependsOn: "showDiary" },
   { key: "showDocuments", title: "Documentos e anexos", description: "Anexos publicados em diários aprovados e documentos financeiros permitidos." },
