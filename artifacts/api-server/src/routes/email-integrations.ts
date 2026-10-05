@@ -8,6 +8,7 @@ import {
   emailProviderAvailability,
   exchangeEmailCode,
   listEmailConnections,
+  syncConnectedEmailInbox,
   type EmailProvider,
 } from "../services/email-platforms.js";
 
@@ -67,6 +68,22 @@ router.post("/tenants/:tenantId/email-connections/:provider/test", authenticate,
   const connections = await listEmailConnections(tenantId);
   const found = connections.find((connection) => connection.provider === selected);
   return found ? res.json({ ok: true, connection: found }) : res.status(404).json({ error: "connection_not_found" });
+});
+
+router.post("/tenants/:tenantId/email-connections/:provider/sync", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  const selected = provider(req.params.provider);
+  if (!selected) return res.status(404).json({ error: "provider_not_supported" });
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  try {
+    const result = await syncConnectedEmailInbox(tenantId, selected);
+    return res.json(result);
+  } catch (error) {
+    req.log?.error?.({ error, tenantId, provider: selected }, "email inbox sync failed");
+    const message = error instanceof Error ? error.message : "email_sync_failed";
+    if (message === "email_connection_not_found") return res.status(404).json({ error: message });
+    return res.status(422).json({ error: "email_sync_failed", detail: message });
+  }
 });
 
 callbackRouter.get("/auth/email/:provider/callback", async (req, res) => {
