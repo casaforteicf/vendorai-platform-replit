@@ -16,6 +16,9 @@ describe("email omnichannel implementation", () => {
     expect(omnichannel).toContain('if (canal === "email")');
     expect(omnichannel).toContain("sendConnectedEmail({");
     expect(omnichannel).toContain("new Resend(apiKey)");
+    expect(omnichannel).toContain("emailCc?: string[]");
+    expect(omnichannel).toContain("emailBcc?: string[]");
+    expect(omnichannel).toContain("attachments: params.attachment");
   });
 
   it("keeps unmatched inbound email outside the CRM pipeline and starts automatic sync", () => {
@@ -36,8 +39,9 @@ describe("email omnichannel implementation", () => {
     const routes = source("../routes/email-integrations.ts");
     const guardedAssignments = routes.match(/tenant-audit: reviewed guarded immediately by authenticated same-tenant\/super-admin access/g) ?? [];
 
-    expect(guardedAssignments).toHaveLength(7);
+    expect(guardedAssignments).toHaveLength(8);
     expect(routes).toContain("if (!canAccess(req, tenantId))");
     expect(routes).toContain('consumeOAuthState(state, stateProvider(selected))');
+    expect(routes).toContain('email-connections/:provider/settings');
   });
 });
