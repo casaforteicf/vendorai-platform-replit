@@ -434,7 +434,7 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'home':          return <ProjectHomeV2 arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'projeto':       return <SmartProjectModule arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'biblioteca':    return <LibraryModule/>
-    case 'especificacao': return <SmartSpecModule projectId={arqState.projectId} onBack={() => setActive('home')} />
+    case 'especificacao': return <SmartSpecModule projectId={arqState.projectId} onBack={() => setActive('home')} onOpenRender={() => setActive('renders')} />
     case 'specification':
     case 'especificacao-produto': return <SpecificationStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'prompt':        return <PromptPlaygroundModule/>
@@ -996,12 +996,8 @@ function WorkspaceInner() {
             {/* ✨ Gerar Render — CTA principal */}
             <button
               className="phx-cta"
-              onClick={() => {
-                setActiveModule('home')
-                // Pequeno delay para garantir que InstantRenderZone está montada antes do evento
-                setTimeout(() => window.dispatchEvent(new CustomEvent('arqdor:open-upload')), 80)
-              }}
-              title="Gerar Render com IA (✨)"
+              onClick={() => setActiveModule('renders')}
+              title="Abrir o fluxo oficial de Render IA"
             >
               <span style={{ fontSize:15 }}>✨</span>
               Gerar Render
