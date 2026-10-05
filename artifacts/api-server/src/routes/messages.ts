@@ -18,6 +18,8 @@ import {
   InstagramNotConnectedError,
   InstagramScopedIdMissingError,
   LeadNotFoundError,
+  EmailNotConfiguredError,
+  EmailAddressMissingError,
 } from "../services/omnichannel.js";
 
 const router: IRouter = Router();
@@ -119,10 +121,20 @@ router.post("/messages", async (req, res): Promise<void> => {
 
   // For outgoing WhatsApp / Instagram messages, dispatch via omnichannel
   // (which handles actual delivery + DB insert in one step).
-  if (direcao === "saida" && (canal === "whatsapp" || canal === "instagram") && leadId) {
+  if (direcao === "saida" && (canal === "whatsapp" || canal === "instagram" || canal === "email") && leadId) {
     try {
       const { message } = await sendOutgoingMessage(
-        { tenantId, leadId, conteudo, canal, midia, instagramConnectionId: typeof req.body?.instagramConnectionId === "string" ? req.body.instagramConnectionId : undefined },
+        {
+          tenantId,
+          leadId,
+          conteudo,
+          canal,
+          midia,
+          instagramConnectionId: typeof req.body?.instagramConnectionId === "string" ? req.body.instagramConnectionId : undefined,
+          emailSubject: typeof req.body?.emailSubject === "string" ? req.body.emailSubject : undefined,
+          emailCc: Array.isArray(req.body?.emailCc) ? req.body.emailCc.filter((value: unknown): value is string => typeof value === "string" && value.includes("@")).slice(0, 20) : undefined,
+          emailBcc: Array.isArray(req.body?.emailBcc) ? req.body.emailBcc.filter((value: unknown): value is string => typeof value === "string" && value.includes("@")).slice(0, 20) : undefined,
+        },
         req.log
       );
       res.status(201).json(message);
@@ -146,6 +158,14 @@ router.post("/messages", async (req, res): Promise<void> => {
       }
       if (err instanceof LeadNotFoundError) {
         res.status(404).json({ error: "Lead não encontrado." });
+        return;
+      }
+      if (err instanceof EmailNotConfiguredError) {
+        res.status(422).json({ error: "E-mail não configurado. Conecte Gmail/Google Workspace ou Microsoft 365 em Configurações > Integrações." });
+        return;
+      }
+      if (err instanceof EmailAddressMissingError) {
+        res.status(422).json({ error: "Este lead não possui e-mail cadastrado." });
         return;
       }
       req.log.error({ err }, "messages: unexpected error sending outgoing message");

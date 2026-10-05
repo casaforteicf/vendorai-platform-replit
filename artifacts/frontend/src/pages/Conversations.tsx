@@ -69,7 +69,7 @@ import {
 } from "@/components/media/MediaAssetPicker";
 
 type InboxFilter = "all" | "unread" | "human" | "ai";
-type ActiveView = "inbox" | "instagram" | "email" | "app" | "praca";
+type ActiveView = "inbox" | "instagram" | "email" | "unmatched" | "app" | "praca";
 
 function channelIcon(channel: string | null | undefined) {
   switch (channel) {
@@ -385,6 +385,9 @@ function ChatPanel({
   const [sendingLibraryAsset, setSendingLibraryAsset] = useState(false);
   const [togglingAgentDisabled, setTogglingAgentDisabled] = useState(false);
   const [instagramConnectionId, setInstagramConnectionId] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailCc, setEmailCc] = useState("");
+  const [emailBcc, setEmailBcc] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -413,6 +416,33 @@ function ChatPanel({
   const instagramAccounts = instagramConnectionStatus?.connections ?? [];
   const selectedInstagramConnectionId =
     instagramConnectionId || instagramConnectionStatus?.id || instagramAccounts[0]?.id || "";
+
+  useEffect(() => {
+    if (conv.channel !== "email") return;
+    const lastSubject = typeof conv.metadata?.["lastEmailSubject"] === "string"
+      ? String(conv.metadata["lastEmailSubject"]).trim()
+      : "";
+    setEmailSubject(lastSubject ? (lastSubject.toLowerCase().startsWith("re:") ? lastSubject : `Re: ${lastSubject}`) : "");
+    setEmailCc("");
+    setEmailBcc("");
+  }, [conv.id, conv.channel, conv.metadata]);
+
+  function parseEmailList(value: string) {
+    return value
+      .split(/[;,]/)
+      .map((item) => item.trim())
+      .filter((item) => item.includes("@"))
+      .slice(0, 20);
+  }
+
+  function emailComposerFields() {
+    if (conv.channel !== "email") return {};
+    return {
+      emailSubject: emailSubject.trim() || undefined,
+      emailCc: parseEmailList(emailCc),
+      emailBcc: parseEmailList(emailBcc),
+    };
+  }
 
   const isHumanLocked = lead?.activeAgentLock === "human";
   const isAgentDisabled = !!lead?.agenteDesativado;
@@ -637,6 +667,7 @@ function ChatPanel({
           enviadoPor: MessageEnviadoPor.humano,
           midia: { mediaAssetId: libraryAsset.id },
           ...(conv.channel === "instagram" && selectedInstagramConnectionId ? { instagramConnectionId: selectedInstagramConnectionId } : {}),
+          ...emailComposerFields(),
         }),
       });
 
@@ -750,6 +781,7 @@ function ChatPanel({
           enviadoPor: MessageEnviadoPor.humano,
           ...(midia ? { midia } : {}),
           ...(conv.channel === "instagram" && selectedInstagramConnectionId ? { instagramConnectionId: selectedInstagramConnectionId } : {}),
+          ...emailComposerFields(),
         },
       },
       {
@@ -1181,6 +1213,38 @@ function ChatPanel({
               </div>
             )}
 
+            {conv.channel === "email" && (
+              <div className="grid gap-2 rounded-xl border border-blue-200/70 bg-blue-50/40 p-3 dark:border-blue-900 dark:bg-blue-950/20 md:grid-cols-2">
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Assunto</label>
+                  <Input
+                    value={emailSubject}
+                    onChange={(event) => setEmailSubject(event.target.value)}
+                    placeholder="Assunto do e-mail"
+                    className="h-8 bg-background text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-medium text-muted-foreground">CC</label>
+                  <Input
+                    value={emailCc}
+                    onChange={(event) => setEmailCc(event.target.value)}
+                    placeholder="email@empresa.com, outro@empresa.com"
+                    className="h-8 bg-background text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-medium text-muted-foreground">CCO</label>
+                  <Input
+                    value={emailBcc}
+                    onChange={(event) => setEmailBcc(event.target.value)}
+                    placeholder="copia.oculta@empresa.com"
+                    className="h-8 bg-background text-xs"
+                  />
+                </div>
+              </div>
+            )}
+
             {conv.channel === "instagram" && instagramAccounts.length > 1 && (
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">Responder por</span>
@@ -1324,6 +1388,22 @@ export default function Conversations() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeView, setActiveView] = useState<ActiveView>("inbox");
   const [refreshing, setRefreshing] = useState(false);
+  const { data: unmatchedData = { items: [] as Array<{ id: string; title: string; message: string; createdAt: string; readAt?: string | null }> } } = useQuery({
+    queryKey: ["email-unmatched", tenantId],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const response = await fetch(`/api/tenants/${tenantId}/email-unmatched`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("Falha ao carregar e-mails não classificados");
+      return response.json();
+    },
+    enabled: !!tenantId,
+    refetchInterval: 15000,
+  });
+  const unmatchedItems = unmatchedData.items ?? [];
+  const unmatchedUnread = unmatchedItems.filter((item) => !item.readAt).length;
 
   const { data: conversations = [], isLoading: convsLoading } =
     useListTenantConversations(tenantId, {
@@ -1568,6 +1648,9 @@ export default function Conversations() {
         queryClient.invalidateQueries({
           queryKey: ["praca-perguntas-count", tenantId],
         }),
+        queryClient.invalidateQueries({
+          queryKey: ["email-unmatched", tenantId],
+        }),
       ]);
     } finally {
       setRefreshing(false);
@@ -1694,6 +1777,27 @@ export default function Conversations() {
 
           <button
             type="button"
+            onClick={() => setActiveView("unmatched")}
+            className={`inline-flex h-8 shrink-0 items-center gap-2 rounded-lg px-3 text-xs font-medium transition-colors ${
+              activeView === "unmatched"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <UserX className="h-3.5 w-3.5 text-amber-500" />
+            Não classificados
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px]">
+              {unmatchedItems.length}
+            </span>
+            {unmatchedUnread > 0 && (
+              <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] text-white">
+                {unmatchedUnread}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
             onClick={() => {
               setActiveView("app");
               setInboxFilter("all");
@@ -1740,6 +1844,58 @@ export default function Conversations() {
       {activeView === "praca" ? (
         <div className="flex-1 overflow-y-auto p-4 md:p-6">
           <PracaPerguntas />
+        </div>
+      ) : activeView === "unmatched" ? (
+        <div className="flex-1 overflow-y-auto p-4 md:p-6">
+          <div className="mx-auto max-w-5xl space-y-4">
+            <div className="rounded-2xl border bg-card p-5">
+              <h2 className="font-semibold">E-mails não classificados</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Mensagens recebidas de endereços que ainda não estão vinculados a um lead. Elas ficam fora da pipeline até revisão.
+              </p>
+            </div>
+            {unmatchedItems.length === 0 ? (
+              <div className="rounded-2xl border bg-background p-10 text-center text-sm text-muted-foreground">
+                Nenhum e-mail aguardando classificação.
+              </div>
+            ) : unmatchedItems.map((item) => {
+              const lines = String(item.message || "").split("\n");
+              const sender = lines[0]?.replace(/^De:\s*/, "") || "Remetente não identificado";
+              const body = lines.slice(2).join("\n").trim();
+              return (
+                <div key={item.id} className={`rounded-2xl border bg-background p-4 ${item.readAt ? "opacity-70" : ""}`}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-muted-foreground">{sender}</p>
+                      <h3 className="mt-1 font-semibold">{item.title || "E-mail sem assunto"}</h3>
+                      <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{body}</p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="text-[11px] text-muted-foreground">
+                        {formatDistanceToNow(new Date(item.createdAt), { locale: ptBR, addSuffix: true })}
+                      </span>
+                      {!item.readAt && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                            const token = localStorage.getItem("vendorai_token");
+                            await fetch(`/api/tenants/${tenantId}/email-unmatched/${item.id}/dismiss`, {
+                              method: "POST",
+                              headers: token ? { Authorization: `Bearer ${token}` } : {},
+                            });
+                            queryClient.invalidateQueries({ queryKey: ["email-unmatched", tenantId] });
+                          }}
+                        >
+                          Marcar revisado
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       ) : (
         <div className="flex flex-1 overflow-hidden">

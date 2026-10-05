@@ -14,12 +14,18 @@ type IntegrationStatus = {
   domain?: { configured?: boolean; active?: boolean; name?: string | null };
   searchConsole?: { connected?: boolean; verified?: boolean };
   social?: { linkedin?: boolean; tiktok?: boolean };
+  email?: {
+    google?: { connected?: boolean; address?: string | null };
+    microsoft?: { connected?: boolean; address?: string | null };
+  };
 };
 
 type IntegrationKey =
   | "whatsapp"
   | "instagram"
   | "google-calendar"
+  | "email-google"
+  | "email-microsoft"
   | "google-ads"
   | "asaas"
   | "zapsign"
@@ -77,12 +83,23 @@ export default function IntegrationSettingsHub() {
   const [busy, setBusy] = useState<string | null>(null);
   const [asaasKey, setAsaasKey] = useState("");
   const [zapsignKey, setZapsignKey] = useState("");
+  const [emailConnections, setEmailConnections] = useState<Array<{ provider: "google" | "microsoft"; email?: string | null; accountName?: string | null; signature?: string | null }>>([]);
+  const [emailSignatures, setEmailSignatures] = useState<Record<"google" | "microsoft", string>>({ google: "", microsoft: "" });
 
   const loadStatus = async () => {
     setLoading(true);
     try {
-      const data = await apiJson("/api/onboarding/integracoes");
+      const [data, emailData] = await Promise.all([
+        apiJson("/api/onboarding/integracoes"),
+        tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/email-connections`).catch(() => ({ connections: [] })) : Promise.resolve({ connections: [] }),
+      ]);
       setStatus(data as IntegrationStatus);
+      const connections = Array.isArray(emailData?.connections) ? emailData.connections : [];
+      setEmailConnections(connections);
+      setEmailSignatures({
+        google: connections.find((connection: any) => connection.provider === "google")?.signature ?? "",
+        microsoft: connections.find((connection: any) => connection.provider === "microsoft")?.signature ?? "",
+      });
     } catch (error) {
       toast({
         title: "Não foi possível carregar as integrações",
@@ -118,6 +135,20 @@ export default function IntegrationSettingsHub() {
       label: "Google Calendar",
       description: "Agenda, compromissos e disponibilidade.",
       connected: status?.googleCalendar?.connected === true,
+    },
+    {
+      key: "email-google",
+      label: "Gmail / Google Workspace",
+      description: "Caixa de entrada e saída integrada ao CRM e aos agentes.",
+      connected: emailConnections.some((connection) => connection.provider === "google"),
+      detail: emailConnections.find((connection) => connection.provider === "google")?.email || undefined,
+    },
+    {
+      key: "email-microsoft",
+      label: "Microsoft 365 / Outlook",
+      description: "E-mail corporativo integrado ao CRM e aos agentes.",
+      connected: emailConnections.some((connection) => connection.provider === "microsoft"),
+      detail: emailConnections.find((connection) => connection.provider === "microsoft")?.email || undefined,
     },
     {
       key: "google-ads",
@@ -167,7 +198,7 @@ export default function IntegrationSettingsHub() {
       attention: status?.domain?.configured === true && status?.domain?.active !== true,
       detail: status?.domain?.name || undefined,
     },
-  ], [status]);
+  ], [status, emailConnections]);
 
   const startConnection = async (key: IntegrationKey) => {
     if (key === "domain") {
@@ -179,6 +210,25 @@ export default function IntegrationSettingsHub() {
       return;
     }
     if (key === "asaas" || key === "zapsign") return;
+
+    if (key === "email-google" || key === "email-microsoft") {
+      if (!tenantId) return;
+      setBusy(key);
+      try {
+        const provider = key === "email-google" ? "google" : "microsoft";
+        const data = await apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/email-connections/${provider}/auth-url`);
+        if (!data?.url || typeof data.url !== "string") throw new Error("URL de autorização não retornada.");
+        window.location.assign(data.url);
+      } catch (error) {
+        toast({
+          title: "Não foi possível conectar o e-mail",
+          description: error instanceof Error ? error.message : undefined,
+          variant: "destructive",
+        });
+        setBusy(null);
+      }
+      return;
+    }
 
     const endpoint = OAUTH_ENDPOINTS[key];
     if (!endpoint) return;
@@ -249,6 +299,51 @@ export default function IntegrationSettingsHub() {
     } catch (error) {
       toast({
         title: "Não foi possível validar a credencial",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const syncEmail = async (key: "email-google" | "email-microsoft") => {
+    if (!tenantId) return;
+    setBusy(`${key}-sync`);
+    try {
+      const provider = key === "email-google" ? "google" : "microsoft";
+      const result = await apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/email-connections/${provider}/sync`, { method: "POST" });
+      toast({
+        title: "E-mails sincronizados",
+        description: `${result.imported ?? 0} vinculados ao CRM · ${result.unmatched ?? 0} contatos ainda não classificados.`,
+      });
+      await loadStatus();
+    } catch (error) {
+      toast({
+        title: "Não foi possível sincronizar o e-mail",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const saveEmailSignature = async (key: "email-google" | "email-microsoft") => {
+    if (!tenantId) return;
+    const provider = key === "email-google" ? "google" : "microsoft";
+    setBusy(`${key}-signature`);
+    try {
+      await apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/email-connections/${provider}/settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ signature: emailSignatures[provider] }),
+      });
+      toast({ title: "Assinatura de e-mail salva." });
+      await loadStatus();
+    } catch (error) {
+      toast({
+        title: "Não foi possível salvar a assinatura",
         description: error instanceof Error ? error.message : undefined,
         variant: "destructive",
       });
@@ -330,6 +425,44 @@ export default function IntegrationSettingsHub() {
                 <div className="mt-4 flex gap-2">
                   <Input type="password" value={zapsignKey} onChange={(event) => setZapsignKey(event.target.value)} placeholder="Token da API ZapSign" />
                   <Button disabled={!zapsignKey.trim() || busy === "zapsign"} onClick={() => void validateCredential("zapsign")}>Validar</Button>
+                </div>
+              ) : row.connected && (row.key === "email-google" || row.key === "email-microsoft") ? (
+                <div className="mt-4 space-y-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Assinatura automática</label>
+                    <textarea
+                      value={emailSignatures[row.key === "email-google" ? "google" : "microsoft"]}
+                      onChange={(event) => {
+                        const provider = row.key === "email-google" ? "google" : "microsoft";
+                        setEmailSignatures((current) => ({ ...current, [provider]: event.target.value }));
+                      }}
+                      placeholder={"Ex.: Marcos\nVendor.ai\n(49) ..."}
+                      rows={4}
+                      className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      disabled={busy === row.key}
+                      onClick={() => void handleRowAction(row)}
+                    >
+                      Reconectar
+                    </Button>
+                    <Button
+                      variant="outline"
+                      disabled={busy === `${row.key}-signature`}
+                      onClick={() => void saveEmailSignature(row.key)}
+                    >
+                      {busy === `${row.key}-signature` ? "Salvando..." : "Salvar assinatura"}
+                    </Button>
+                    <Button
+                      disabled={busy === `${row.key}-sync`}
+                      onClick={() => void syncEmail(row.key)}
+                    >
+                      {busy === `${row.key}-sync` ? "Sincronizando..." : "Sincronizar agora"}
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <Button

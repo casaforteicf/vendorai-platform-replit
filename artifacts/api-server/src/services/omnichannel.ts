@@ -13,9 +13,11 @@ import {
 } from "@workspace/db";
 import type { Message, Conversation } from "@workspace/db";
 import type { Logger } from "pino";
+import { Resend } from "resend";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { sendEvolutionWhatsAppMessage, sendEvolutionDocument, sendEvolutionMedia } from "./evolution-whatsapp.js";
 import { recordIntelligenceEvent, recordIntelligenceFact } from "./customer-intelligence-history.js";
+import { sendConnectedEmail } from "./email-platforms.js";
 
 export interface AgentAttachment {
   name: string;
@@ -51,6 +53,9 @@ export interface SendOutgoingMessageInput {
   canal: "whatsapp" | "instagram" | "messenger" | "email" | "chat";
   agentName?: string | null;
   instagramConnectionId?: string;
+  emailSubject?: string;
+  emailCc?: string[];
+  emailBcc?: string[];
   // Anexo do chat interno (botão de anexar) — quando presente, a
   // mensagem é enviada como mídia em vez de texto no canal escolhido.
   midia?: {
@@ -104,6 +109,22 @@ export class MessengerScopedIdMissingError extends Error {
   constructor(leadId: string) {
     super(`Lead "${leadId}" não tem Messenger PSID. O lead precisa ter enviado uma mensagem primeiro via Messenger.`);
     this.name = "MessengerScopedIdMissingError";
+  }
+}
+
+export class EmailNotConfiguredError extends Error {
+  readonly statusCode = 422;
+  constructor() {
+    super("E-mail não configurado. Conecte uma caixa Google/Microsoft ou configure o fallback de e-mail do Vendor.ai.");
+    this.name = "EmailNotConfiguredError";
+  }
+}
+
+export class EmailAddressMissingError extends Error {
+  readonly statusCode = 422;
+  constructor(leadId: string) {
+    super(`Lead "${leadId}" não tem e-mail cadastrado.`);
+    this.name = "EmailAddressMissingError";
   }
 }
 
@@ -674,6 +695,63 @@ export async function sendDirectWhatsAppMessage(
   }
 }
 
+async function sendOperationalEmail(params: {
+  to: string;
+  subject: string;
+  text: string;
+  tenantName: string;
+  tenantId: string;
+  cc?: string[];
+  bcc?: string[];
+  attachment?: { filename: string; mimeType: string; content: Buffer };
+}, log: Logger): Promise<string | undefined> {
+  const connected = await sendConnectedEmail({
+    tenantId: params.tenantId,
+    to: params.to,
+    subject: params.subject,
+    text: params.text,
+    cc: params.cc,
+    bcc: params.bcc,
+    attachment: params.attachment,
+  }).catch((error) => {
+    log.warn({ error, to: params.to }, "omnichannel: connected mailbox send failed, trying Resend fallback");
+    return { sent: false } as const;
+  });
+  if (connected.sent) {
+    log.info({ to: params.to, provider: connected.provider, externalId: connected.externalId }, "omnichannel: email sent via connected mailbox");
+    return connected.externalId;
+  }
+
+  const apiKey = process.env["RESEND_API_KEY"];
+  if (!apiKey) throw new EmailNotConfiguredError();
+
+  const configuredFrom = process.env["RESEND_FROM_EMAIL"];
+  const domain = process.env["RESEND_FROM_DOMAIN"] ?? "vendorai.app";
+  const fromAddress = configuredFrom ?? `atendimento@${domain}`;
+  const sender = `${params.tenantName} <${fromAddress}>`;
+  const resend = new Resend(apiKey);
+
+  const { data, error } = await resend.emails.send({
+    from: sender,
+    to: params.to,
+    subject: params.subject,
+    text: params.text,
+    cc: params.cc,
+    bcc: params.bcc,
+    attachments: params.attachment ? [{
+      filename: params.attachment.filename,
+      content: params.attachment.content,
+      contentType: params.attachment.mimeType,
+    }] : undefined,
+  });
+  if (error) {
+    log.error({ error, to: params.to }, "omnichannel: email send failed");
+    throw new Error(`Resend email error: ${error.message ?? "unknown error"}`);
+  }
+  log.info({ to: params.to, resendId: data?.id }, "omnichannel: email sent via Resend fallback");
+  return data?.id;
+}
+
 async function simulateTypingDelay(message: string, log: Logger): Promise<void> {
   const baseMs    = 3000;
   const perChar   = 40;
@@ -691,7 +769,7 @@ export async function sendOutgoingMessage(
 
   // ── 0. Demo tenant — no-op: simulate locally without external APIs
   const [tenant] = await db
-    .select({ isDemo: tenantsTable.isDemo })
+    .select({ isDemo: tenantsTable.isDemo, name: tenantsTable.name, nomeEmpresa: tenantsTable.nomeEmpresa })
     .from(tenantsTable)
     .where(eq(tenantsTable.id, tenantId))
     .limit(1);
@@ -1028,6 +1106,32 @@ export async function sendOutgoingMessage(
     }
   }
 
+  let providerExternalId: string | undefined;
+
+  // ── 3c. E-mail: envio transacional real via provedor configurado
+  // O canal já existia no CRM, mas antes deste bloco a mensagem era apenas
+  // persistida como "enviado" sem chamar nenhum provedor externo.
+  if (canal === "email") {
+    if (!lead.email) throw new EmailAddressMissingError(leadId);
+    const tenantName = tenant?.nomeEmpresa || tenant?.name || "Vendor.ai";
+    const subject = input.emailSubject?.trim() || `Mensagem de ${tenantName}`;
+    const attachment = input.midia ? {
+      filename: input.midia.fileName,
+      mimeType: input.midia.mimeType,
+      content: await fetchMidiaBuffer(input.midia.objectPath),
+    } : undefined;
+    providerExternalId = await sendOperationalEmail({
+      to: lead.email,
+      subject,
+      text: conteudo,
+      tenantName,
+      tenantId,
+      cc: input.emailCc,
+      bcc: input.emailBcc,
+      attachment,
+    }, log);
+  }
+
   // ── 4. Find or create conversation for leadId + canal
   let [conversation] = await db
     .select()
@@ -1070,6 +1174,7 @@ export async function sendOutgoingMessage(
       tipoConteudo: input.midia ? inferTipoConteudo(input.midia.mimeType) : "texto",
       midiaUrl: input.midia?.url ?? null,
       status: "enviado",
+      externalId: providerExternalId ?? null,
     })
     .returning();
 
