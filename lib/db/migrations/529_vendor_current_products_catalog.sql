@@ -106,7 +106,12 @@ upserted AS (
     now()
   FROM vendor_catalog vc
   CROSS JOIN offers o
-  ON CONFLICT DO NOTHING
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM produtos_catalogo existing
+    WHERE existing.tenant_id = vc.tenant_id
+      AND existing.sku = o.sku
+  )
   RETURNING id, sku
 )
 UPDATE produtos_catalogo p
