@@ -221,6 +221,13 @@ export default function LeadWorkspace() {
   const [advancedHandoffOpen, setAdvancedHandoffOpen] = useState(false);
 
   const targetStage = stages.find((s) => s.key === nextStage);
+  const targetStageAgent = (targetStage as { responsavelAgenteKey?: string | null } | undefined)?.responsavelAgenteKey ?? null;
+  const targetStageAI = (targetStage as { aiConfig?: { mode?: string; allowedActions?: string[] } | null } | undefined)?.aiConfig ?? null;
+  const targetAgentWillOperate = Boolean(
+    targetStageAgent
+    && targetStageAI?.mode === "autonoma"
+    && ((targetStageAI.allowedActions ?? []).includes("create_activity") || (targetStageAI.allowedActions ?? []).includes("send_message"))
+  );
   const eligibleIds = (targetStage as { elegiveisUserIds?: string[] | null } | undefined)?.elegiveisUserIds ?? null;
   const eligibleUsers = eligibleIds && eligibleIds.length > 0 ? users.filter((u) => eligibleIds.includes(u.id)) : users;
   const [draftEligible, setDraftEligible] = useState<string[]>([]);
@@ -695,6 +702,12 @@ export default function LeadWorkspace() {
               <div className="flex items-start justify-between gap-4">
                 <span className="text-muted-foreground">Prazo</span>
                 <strong className="text-right">{formatDeadline(due ? new Date(due).toISOString() : null)}</strong>
+              </div>
+              <div className="flex items-start justify-between gap-4">
+                <span className="text-muted-foreground">Execução</span>
+                <strong className="text-right">
+                  {targetAgentWillOperate ? `Agente IA · ${targetStageAgent}` : "Responsável humano"}
+                </strong>
               </div>
             </div>
             {description && <p className="mt-3 rounded-lg bg-background/70 p-3 text-xs text-muted-foreground">{description}</p>}
