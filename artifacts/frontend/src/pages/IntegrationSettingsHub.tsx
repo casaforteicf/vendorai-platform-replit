@@ -83,7 +83,8 @@ export default function IntegrationSettingsHub() {
   const [busy, setBusy] = useState<string | null>(null);
   const [asaasKey, setAsaasKey] = useState("");
   const [zapsignKey, setZapsignKey] = useState("");
-  const [emailConnections, setEmailConnections] = useState<Array<{ provider: "google" | "microsoft"; email?: string | null; accountName?: string | null }>>([]);
+  const [emailConnections, setEmailConnections] = useState<Array<{ provider: "google" | "microsoft"; email?: string | null; accountName?: string | null; signature?: string | null }>>([]);
+  const [emailSignatures, setEmailSignatures] = useState<Record<"google" | "microsoft", string>>({ google: "", microsoft: "" });
 
   const loadStatus = async () => {
     setLoading(true);
@@ -93,7 +94,12 @@ export default function IntegrationSettingsHub() {
         tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/email-connections`).catch(() => ({ connections: [] })) : Promise.resolve({ connections: [] }),
       ]);
       setStatus(data as IntegrationStatus);
-      setEmailConnections(Array.isArray(emailData?.connections) ? emailData.connections : []);
+      const connections = Array.isArray(emailData?.connections) ? emailData.connections : [];
+      setEmailConnections(connections);
+      setEmailSignatures({
+        google: connections.find((connection: any) => connection.provider === "google")?.signature ?? "",
+        microsoft: connections.find((connection: any) => connection.provider === "microsoft")?.signature ?? "",
+      });
     } catch (error) {
       toast({
         title: "Não foi possível carregar as integrações",
@@ -323,6 +329,29 @@ export default function IntegrationSettingsHub() {
     }
   };
 
+  const saveEmailSignature = async (key: "email-google" | "email-microsoft") => {
+    if (!tenantId) return;
+    const provider = key === "email-google" ? "google" : "microsoft";
+    setBusy(`${key}-signature`);
+    try {
+      await apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/email-connections/${provider}/settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ signature: emailSignatures[provider] }),
+      });
+      toast({ title: "Assinatura de e-mail salva." });
+      await loadStatus();
+    } catch (error) {
+      toast({
+        title: "Não foi possível salvar a assinatura",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const handleRowAction = async (row: IntegrationRow) => {
     if (row.key === "search-console" && (row.attention || row.connected)) {
       await verifySearchConsole();
@@ -398,20 +427,42 @@ export default function IntegrationSettingsHub() {
                   <Button disabled={!zapsignKey.trim() || busy === "zapsign"} onClick={() => void validateCredential("zapsign")}>Validar</Button>
                 </div>
               ) : row.connected && (row.key === "email-google" || row.key === "email-microsoft") ? (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    disabled={busy === row.key}
-                    onClick={() => void handleRowAction(row)}
-                  >
-                    Reconectar
-                  </Button>
-                  <Button
-                    disabled={busy === `${row.key}-sync`}
-                    onClick={() => void syncEmail(row.key)}
-                  >
-                    {busy === `${row.key}-sync` ? "Sincronizando..." : "Sincronizar agora"}
-                  </Button>
+                <div className="mt-4 space-y-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Assinatura automática</label>
+                    <textarea
+                      value={emailSignatures[row.key === "email-google" ? "google" : "microsoft"]}
+                      onChange={(event) => {
+                        const provider = row.key === "email-google" ? "google" : "microsoft";
+                        setEmailSignatures((current) => ({ ...current, [provider]: event.target.value }));
+                      }}
+                      placeholder={"Ex.: Marcos\nVendor.ai\n(49) ..."}
+                      rows={4}
+                      className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      disabled={busy === row.key}
+                      onClick={() => void handleRowAction(row)}
+                    >
+                      Reconectar
+                    </Button>
+                    <Button
+                      variant="outline"
+                      disabled={busy === `${row.key}-signature`}
+                      onClick={() => void saveEmailSignature(row.key)}
+                    >
+                      {busy === `${row.key}-signature` ? "Salvando..." : "Salvar assinatura"}
+                    </Button>
+                    <Button
+                      disabled={busy === `${row.key}-sync`}
+                      onClick={() => void syncEmail(row.key)}
+                    >
+                      {busy === `${row.key}-sync` ? "Sincronizando..." : "Sincronizar agora"}
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <Button
