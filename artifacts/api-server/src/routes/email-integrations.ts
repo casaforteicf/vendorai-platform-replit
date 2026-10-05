@@ -1,4 +1,6 @@
 import { Router, type IRouter, type Request } from "express";
+import { and, desc, eq } from "drizzle-orm";
+import { db, notificationsTable } from "@workspace/db";
 import { authenticate } from "../middlewares/auth.js";
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 import { consumeOAuthState, createOAuthState } from "../lib/oauth-state.js";
@@ -99,6 +101,36 @@ router.post("/tenants/:tenantId/email-connections/:provider/sync", authenticate,
     if (message === "email_connection_not_found") return res.status(404).json({ error: message });
     return res.status(422).json({ error: "email_sync_failed", detail: message });
   }
+});
+
+router.get("/tenants/:tenantId/email-unmatched", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const rows = await db.select().from(notificationsTable).where(and(
+    eq(notificationsTable.tenantId, tenantId),
+    eq(notificationsTable.category, "email_unmatched"),
+  )).orderBy(desc(notificationsTable.createdAt)).limit(200);
+  return res.json({
+    items: rows.map((row) => ({
+      id: row.id,
+      title: row.title.replace(/^\[email:[^\]]+\]\s*/, ""),
+      rawTitle: row.title,
+      message: row.message,
+      createdAt: row.createdAt,
+      readAt: row.readAt,
+    })),
+  });
+});
+
+router.post("/tenants/:tenantId/email-unmatched/:id/dismiss", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const [updated] = await db.update(notificationsTable).set({ readAt: new Date() }).where(and(
+    eq(notificationsTable.id, String(req.params.id)),
+    eq(notificationsTable.tenantId, tenantId),
+    eq(notificationsTable.category, "email_unmatched"),
+  )).returning({ id: notificationsTable.id });
+  return updated ? res.json({ success: true }) : res.status(404).json({ error: "not_found" });
 });
 
 callbackRouter.get("/auth/email/:provider/callback", async (req, res) => {
