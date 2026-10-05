@@ -13,6 +13,7 @@ import {
 } from "@workspace/db";
 import type { Message, Conversation } from "@workspace/db";
 import type { Logger } from "pino";
+import { Resend } from "resend";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { sendEvolutionWhatsAppMessage, sendEvolutionDocument, sendEvolutionMedia } from "./evolution-whatsapp.js";
 import { recordIntelligenceEvent, recordIntelligenceFact } from "./customer-intelligence-history.js";
@@ -51,6 +52,7 @@ export interface SendOutgoingMessageInput {
   canal: "whatsapp" | "instagram" | "messenger" | "email" | "chat";
   agentName?: string | null;
   instagramConnectionId?: string;
+  emailSubject?: string;
   // Anexo do chat interno (botão de anexar) — quando presente, a
   // mensagem é enviada como mídia em vez de texto no canal escolhido.
   midia?: {
@@ -104,6 +106,22 @@ export class MessengerScopedIdMissingError extends Error {
   constructor(leadId: string) {
     super(`Lead "${leadId}" não tem Messenger PSID. O lead precisa ter enviado uma mensagem primeiro via Messenger.`);
     this.name = "MessengerScopedIdMissingError";
+  }
+}
+
+export class EmailNotConfiguredError extends Error {
+  readonly statusCode = 422;
+  constructor() {
+    super("E-mail não configurado. Configure RESEND_API_KEY e o remetente do Vendor.ai antes de enviar.");
+    this.name = "EmailNotConfiguredError";
+  }
+}
+
+export class EmailAddressMissingError extends Error {
+  readonly statusCode = 422;
+  constructor(leadId: string) {
+    super(`Lead "${leadId}" não tem e-mail cadastrado.`);
+    this.name = "EmailAddressMissingError";
   }
 }
 
@@ -674,6 +692,35 @@ export async function sendDirectWhatsAppMessage(
   }
 }
 
+async function sendOperationalEmail(params: {
+  to: string;
+  subject: string;
+  text: string;
+  tenantName: string;
+}, log: Logger): Promise<string | undefined> {
+  const apiKey = process.env["RESEND_API_KEY"];
+  if (!apiKey) throw new EmailNotConfiguredError();
+
+  const configuredFrom = process.env["RESEND_FROM_EMAIL"];
+  const domain = process.env["RESEND_FROM_DOMAIN"] ?? "vendorai.app";
+  const fromAddress = configuredFrom ?? `atendimento@${domain}`;
+  const sender = `${params.tenantName} <${fromAddress}>`;
+  const resend = new Resend(apiKey);
+
+  const { data, error } = await resend.emails.send({
+    from: sender,
+    to: params.to,
+    subject: params.subject,
+    text: params.text,
+  });
+  if (error) {
+    log.error({ error, to: params.to }, "omnichannel: email send failed");
+    throw new Error(`Resend email error: ${error.message ?? "unknown error"}`);
+  }
+  log.info({ to: params.to, resendId: data?.id }, "omnichannel: email sent");
+  return data?.id;
+}
+
 async function simulateTypingDelay(message: string, log: Logger): Promise<void> {
   const baseMs    = 3000;
   const perChar   = 40;
@@ -691,7 +738,7 @@ export async function sendOutgoingMessage(
 
   // ── 0. Demo tenant — no-op: simulate locally without external APIs
   const [tenant] = await db
-    .select({ isDemo: tenantsTable.isDemo })
+    .select({ isDemo: tenantsTable.isDemo, name: tenantsTable.name, nomeEmpresa: tenantsTable.nomeEmpresa })
     .from(tenantsTable)
     .where(eq(tenantsTable.id, tenantId))
     .limit(1);
@@ -1026,6 +1073,21 @@ export async function sendOutgoingMessage(
         log
       );
     }
+  }
+
+  // ── 3c. E-mail: envio transacional real via provedor configurado
+  // O canal já existia no CRM, mas antes deste bloco a mensagem era apenas
+  // persistida como "enviado" sem chamar nenhum provedor externo.
+  if (canal === "email") {
+    if (!lead.email) throw new EmailAddressMissingError(leadId);
+    const tenantName = tenant?.nomeEmpresa || tenant?.name || "Vendor.ai";
+    const subject = input.emailSubject?.trim() || `Mensagem de ${tenantName}`;
+    await sendOperationalEmail({
+      to: lead.email,
+      subject,
+      text: conteudo,
+      tenantName,
+    }, log);
   }
 
   // ── 4. Find or create conversation for leadId + canal
