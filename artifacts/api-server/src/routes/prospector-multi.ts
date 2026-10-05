@@ -61,9 +61,17 @@ function validationStage(params: {
   return "below_validation_score";
 }
 
+const geoAreaSchema = z.object({
+  label: z.string().min(2).max(180),
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+  radiusKm: z.number().int().min(1).max(100),
+});
+
 const multiConfigSchema = z.object({
   setores: z.array(z.string()).max(10),
   cidades: z.array(z.string()).max(20),
+  geoAreas: z.array(geoAreaSchema).max(20).optional().default([]),
   ritmoDiario: z.number().int().min(1).max(500),
   ativo: z.boolean(),
   tenantId: z.string().optional(),
@@ -83,6 +91,22 @@ router.get("/prospector/config-multi", async (req, res) => {
     const cidades = cleanUnique(rows.map((row) => row.cidade ?? "").filter(Boolean));
     const ritmoDiario = rows[0]?.ritmoDiario ?? 10;
     const ativo = rows.some((row) => row.ativo);
+    const geoAreas = rows
+      .filter((row) => row.cidade && row.latitude != null && row.longitude != null && row.raioKm != null)
+      .map((row) => ({
+        label: row.cidade!,
+        lat: row.latitude!,
+        lng: row.longitude!,
+        radiusKm: row.raioKm!,
+      }))
+      .filter((area, index, all) =>
+        all.findIndex((item) =>
+          item.label.toLocaleLowerCase("pt-BR") === area.label.toLocaleLowerCase("pt-BR") &&
+          item.lat === area.lat &&
+          item.lng === area.lng &&
+          item.radiusKm === area.radiusKm
+        ) === index
+      );
 
     return res.status(200).json({
       config: {
@@ -90,6 +114,7 @@ router.get("/prospector/config-multi", async (req, res) => {
         cidades,
         ritmoDiario,
         ativo,
+        geoAreas,
         combinacoes: rows
           .filter((row) => row.setor && row.cidade)
           .map((row) => ({ id: row.id, setor: row.setor, cidade: row.cidade, ativo: row.ativo })),
@@ -324,6 +349,9 @@ router.put("/prospector/config-multi", async (req, res) => {
     const tenantId = resolveTenantId(req, parsed.data.tenantId);
     const setores = cleanUnique(parsed.data.setores);
     const cidades = cleanUnique(parsed.data.cidades);
+    const geoAreas = parsed.data.geoAreas.filter((area) =>
+      cidades.some((cidade) => cidade.toLocaleLowerCase("pt-BR") === area.label.toLocaleLowerCase("pt-BR"))
+    );
     const totalCombinacoes = setores.length * cidades.length;
 
     if (parsed.data.ativo && (setores.length === 0 || cidades.length === 0)) {
@@ -338,13 +366,19 @@ router.put("/prospector/config-multi", async (req, res) => {
 
       if (setores.length > 0 && cidades.length > 0) {
         const combinations = setores.flatMap((setor) =>
-          cidades.map((cidade) => ({
-            tenantId,
-            setor,
-            cidade,
-            ritmoDiario: parsed.data.ritmoDiario,
-            ativo: parsed.data.ativo,
-          })),
+          cidades.map((cidade) => {
+            const geo = geoAreas.find((area) => area.label.toLocaleLowerCase("pt-BR") === cidade.toLocaleLowerCase("pt-BR"));
+            return {
+              tenantId,
+              setor,
+              cidade,
+              raioKm: geo?.radiusKm ?? null,
+              latitude: geo?.lat ?? null,
+              longitude: geo?.lng ?? null,
+              ritmoDiario: parsed.data.ritmoDiario,
+              ativo: parsed.data.ativo,
+            };
+          }),
         );
         await tx.insert(prospectorConfigTable).values(combinations);
       } else {
@@ -364,6 +398,7 @@ router.put("/prospector/config-multi", async (req, res) => {
         cidades,
         ritmoDiario: parsed.data.ritmoDiario,
         ativo: parsed.data.ativo && totalCombinacoes > 0,
+        geoAreas,
         totalCombinacoes,
       },
     });
