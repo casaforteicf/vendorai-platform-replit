@@ -292,6 +292,7 @@ router.post(
   requireSameTenanOrSuperAdmin(),
   requireBillingAdmin,
   async (req, res) => {
+    // tenant-audit: reviewed protected by requireSameTenanOrSuperAdmin plus billing-admin role
     const tenantId = String(req.params["tenantId"]);
     const parsed = z.object({
       packKey: z.string().min(1).optional(),
@@ -403,6 +404,7 @@ router.get(
   "/tenants/:tenantId/vendor-credit-purchases",
   requireSameTenanOrSuperAdmin(),
   async (req, res) => {
+    // tenant-audit: reviewed protected by requireSameTenanOrSuperAdmin before tenant data access
     await sendVendorCreditPurchases(String(req.params["tenantId"]), res);
   },
 );
