@@ -1094,6 +1094,14 @@ export function CatalogoModal({
                 Tentar novamente
               </Button>
             </div>
+          ) : !tenantId ? (
+            <div className="flex flex-col items-center gap-3 py-12 text-center">
+              <AlertTriangle className="h-10 w-10 text-amber-500/80" />
+              <p className="text-sm font-medium">Não foi possível identificar a empresa atual</p>
+              <p className="max-w-xl text-xs text-muted-foreground">
+                O catálogo não será tratado como vazio sem um tenant válido. Recarregue a sessão ou selecione uma empresa real.
+              </p>
+            </div>
           ) : catalog.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-12 text-muted-foreground">
               <Package className="h-10 w-10 opacity-25" />
