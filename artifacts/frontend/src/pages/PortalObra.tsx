@@ -608,7 +608,7 @@ export default function PortalObra() {
 
         {activeTab === "briefing" && data.publication?.showBriefing !== false ? (
           <Section title="Briefing do Cliente" icon={<FileText className="h-5 w-5" />}>
-            <PortalBriefing briefing={briefing} />
+            <PortalBriefing token={token} sessionToken={portalSession} briefing={briefing} authenticated={Boolean(data.auth?.authenticated)} onRefresh={() => void loadPortal(portalSession)} />
           </Section>
         ) : null}
 
