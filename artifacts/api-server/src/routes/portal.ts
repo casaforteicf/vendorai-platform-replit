@@ -41,11 +41,13 @@ async function resolvePortalUser(req: any, obraId: string) {
   const token = portalBearer(req);
   if (!token) return null;
   const result = await pool.query(
-    `SELECT u.id, u.nome, u.email, u.telefone, u.obra_id, u.tenant_id
+    `SELECT u.id, u.nome, u.email, u.telefone, u.obra_id, u.tenant_id,
+              u.role_key, u.permissions, u.access_expires_at
        FROM obra_portal_sessions s
        INNER JOIN obra_portal_users u ON u.id = s.user_id
       WHERE s.token_hash = $1 AND s.expires_at > now()
         AND u.obra_id = $2 AND u.status = 'ativo'
+        AND (u.access_expires_at IS NULL OR u.access_expires_at > now())
       LIMIT 1`,
     [hashPortalToken(token), obraId],
   );
@@ -682,11 +684,17 @@ router.get("/portal/obra/:token", async (req, res) => {
   const canReadPrivateLibrary = !config.requireLogin || authenticated;
   const privateDocuments = (canReadPrivateLibrary && (config.showDocuments || config.showContracts || config.showManuals))
     ? (await pool.query(
-        `SELECT id,categoria,titulo,descricao,url,mime_type,versao,created_at
+        `SELECT id,categoria,titulo,descricao,url,mime_type,versao,publication_state,allow_download,visible_roles,created_at
            FROM obra_portal_documents
-          WHERE obra_id=$1 AND tenant_id=$2 AND publicado_cliente=true
+          WHERE obra_id=$1 AND tenant_id=$2
+            AND publication_state='publicado'
+            AND (
+              jsonb_array_length(COALESCE(visible_roles,'[]'::jsonb))=0
+              OR $3::text IS NULL
+              OR COALESCE(visible_roles,'[]'::jsonb) ? $3::text
+            )
           ORDER BY categoria ASC, created_at DESC`,
-        [obra.id, obra.tenantId],
+        [obra.id, obra.tenantId, portalUser?.role_key ?? null],
       )).rows
     : [];
 
@@ -854,7 +862,7 @@ router.get("/portal/obra/:token", async (req, res) => {
       required: config.requireLogin,
       authenticated,
       allowSelfRegistration: config.allowSelfRegistration,
-      user: portalUser ? { id: portalUser.id, nome: portalUser.nome, email: portalUser.email, telefone: portalUser.telefone } : null,
+      user: portalUser ? { id: portalUser.id, nome: portalUser.nome, email: portalUser.email, telefone: portalUser.telefone, roleKey: portalUser.role_key, permissions: portalUser.permissions ?? {} } : null,
     },
     locked: false,
     obra: {
