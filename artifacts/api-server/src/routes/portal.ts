@@ -724,17 +724,17 @@ router.get("/portal/obra/:token", async (req, res) => {
   const canReadPrivateLibrary = !config.requireLogin || authenticated;
   const privateDocuments = (canReadPrivateLibrary && (config.showDocuments || config.showContracts || config.showManuals))
     ? (await pool.query(
-        `SELECT id,categoria,titulo,descricao,url,mime_type,versao,created_at
+        `SELECT id,categoria,titulo,descricao,url,mime_type,versao,allow_download,created_at
            FROM obra_portal_documents
-          WHERE obra_id=$1 AND tenant_id=$2 AND publicado_cliente=true
+          WHERE obra_id=$1 AND tenant_id=$2 AND (publicado_cliente=true OR visibility=\'publicado\')
           ORDER BY categoria ASC, created_at DESC`,
         [obra.id, obra.tenantId],
       )).rows
     : [];
 
-  const contracts = config.showContracts ? privateDocuments.filter((item: any) => item.categoria === "contrato") : [];
+  const contracts = config.showContracts ? privateDocuments.filter((item: any) => ["contrato","contrato_terceiro"].includes(item.categoria)) : [];
   const manuals = config.showManuals ? privateDocuments.filter((item: any) => ["manual","garantia"].includes(item.categoria)) : [];
-  const projectDocuments = config.showDocuments ? privateDocuments.filter((item: any) => !["contrato","manual","garantia"].includes(item.categoria)) : [];
+  const projectDocuments = config.showDocuments ? privateDocuments.filter((item: any) => !["contrato","contrato_terceiro","manual","garantia"].includes(item.categoria)) : [];
 
   const invoices = (canReadPrivateLibrary && config.showInvoices)
     ? (await pool.query(
@@ -1140,12 +1140,14 @@ router.post("/tenants/:tenantId/obras/:obraId/portal/documents", authenticate, a
   if (!titulo || !url) return res.status(422).json({ error: "Título e URL são obrigatórios." });
   const result = await pool.query(
     `INSERT INTO obra_portal_documents
-      (id,tenant_id,obra_id,categoria,titulo,descricao,url,mime_type,versao,publicado_cliente)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      (id,tenant_id,obra_id,categoria,titulo,descricao,url,mime_type,versao,publicado_cliente,visibility,allow_download)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
     [
       crypto.randomUUID(), tenantId, obraId, categoria, titulo,
       req.body?.descricao ?? null, url, req.body?.mimeType ?? null,
       req.body?.versao ?? null, req.body?.publicadoCliente === true,
+      ["interno","compartilhavel","publicado","arquivado"].includes(String(req.body?.visibility)) ? String(req.body.visibility) : (req.body?.publicadoCliente === true ? "publicado" : "interno"),
+      req.body?.allowDownload !== false,
     ],
   );
   return res.status(201).json({ document: result.rows[0] });
@@ -1165,13 +1167,17 @@ router.patch("/tenants/:tenantId/obras/:obraId/portal/documents/:documentId", au
             mime_type=COALESCE($5,mime_type),
             versao=COALESCE($6,versao),
             publicado_cliente=COALESCE($7,publicado_cliente),
+            visibility=COALESCE($8,visibility),
+            allow_download=COALESCE($9,allow_download),
             updated_at=now()
-      WHERE id=$8 AND tenant_id=$9 AND obra_id=$10
+      WHERE id=$10 AND tenant_id=$11 AND obra_id=$12
       RETURNING *`,
     [
       req.body?.categoria ?? null, req.body?.titulo ?? null, req.body?.descricao ?? null,
       req.body?.url ?? null, req.body?.mimeType ?? null, req.body?.versao ?? null,
       typeof req.body?.publicadoCliente === "boolean" ? req.body.publicadoCliente : null,
+      ["interno","compartilhavel","publicado","arquivado"].includes(String(req.body?.visibility)) ? String(req.body.visibility) : null,
+      typeof req.body?.allowDownload === "boolean" ? req.body.allowDownload : null,
       documentId, tenantId, obraId,
     ],
   );
