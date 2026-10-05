@@ -773,12 +773,12 @@ router.get("/portal/obra/:token", async (req, res) => {
       tab: "agenda",
     });
   }
-  if (!decisions.length && resumo?.proximasEtapas?.[0]) {
+  if (!decisions.length && proximasEtapas?.[0]) {
     nextActions.push({
-      id: `stage-${resumo.proximasEtapas[0].id}`,
+      id: `stage-${proximasEtapas[0].id}`,
       kind: "Próxima etapa",
-      title: resumo.proximasEtapas[0].nome,
-      detail: resumo.proximasEtapas[0].dataInicioPrevista ?? resumo.proximasEtapas[0].data_inicio_prevista ?? null,
+      title: proximasEtapas[0].nome,
+      detail: proximasEtapas[0].dataInicioPrevista ?? proximasEtapas[0].data_inicio_prevista ?? null,
       tab: "cronograma",
     });
   }
