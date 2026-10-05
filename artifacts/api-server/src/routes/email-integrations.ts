@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 import { Resend } from "resend";
 import { db, activitiesTable, messagesTable, notificationsTable } from "@workspace/db";
 import { authenticate } from "../middlewares/auth.js";
+import { disconnectWebmail, getWebmailConnection, saveWebmailConnection, testWebmailImap, testWebmailSmtp, updateWebmailSettings, webmailConfigFromConnection } from "../services/webmail-email.js";
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 import { consumeOAuthState, createOAuthState } from "../lib/oauth-state.js";
 import {
@@ -23,16 +24,69 @@ const callbackRouter: IRouter = Router();
 
 function provider(value: unknown): EmailProvider | null {
   const candidate = String(value || "");
-  return candidate === "google" || candidate === "microsoft" ? candidate : null;
+  return candidate === "google" || candidate === "microsoft" || candidate === "webmail" ? candidate : null;
 }
 
 function stateProvider(selected: EmailProvider) {
+  if (selected === "webmail") throw new Error("webmail_does_not_use_oauth");
   return selected === "google" ? "email-google" as const : "email-microsoft" as const;
 }
 
 function canAccess(req: Request, tenantId: string) {
   return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
 }
+
+const webmailConfigSchema = z.object({
+  email: z.string().email(),
+  username: z.string().trim().min(1).max(320),
+  password: z.string().min(1).max(1024),
+  imapHost: z.string().trim().min(1).max(255),
+  imapPort: z.number().int().min(1).max(65535),
+  imapSecure: z.boolean(),
+  smtpHost: z.string().trim().min(1).max(255),
+  smtpPort: z.number().int().min(1).max(65535),
+  smtpSecure: z.boolean(),
+  smtpStartTls: z.boolean(),
+  signature: z.string().max(4000).optional(),
+});
+
+router.put("/tenants/:tenantId/email-connections/webmail", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId); // tenant-audit: reviewed guarded immediately by authenticated same-tenant/super-admin access
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = webmailConfigSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: "invalid_webmail_config", details: parsed.error.flatten() });
+  try {
+    const connection = await saveWebmailConnection(tenantId, parsed.data);
+    return res.json({
+      success: true,
+      connection: {
+        id: connection.id,
+        provider: "webmail",
+        email: connection.accountName,
+        status: connection.status,
+      },
+    });
+  } catch (error) {
+    req.log?.warn?.({ error, tenantId }, "webmail connection validation failed");
+    const detail = error instanceof Error ? error.message : "webmail_connection_failed";
+    return res.status(422).json({ error: "webmail_connection_failed", detail });
+  }
+});
+
+router.post("/tenants/:tenantId/email-connections/webmail/test", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId); // tenant-audit: reviewed guarded immediately by authenticated same-tenant/super-admin access
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = webmailConfigSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: "invalid_webmail_config", details: parsed.error.flatten() });
+  try {
+    await testWebmailImap(parsed.data);
+    await testWebmailSmtp(parsed.data);
+    return res.json({ ok: true, imap: true, smtp: true });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "webmail_connection_failed";
+    return res.status(422).json({ ok: false, error: "webmail_connection_failed", detail });
+  }
+});
 
 router.get("/tenants/:tenantId/email-connections", authenticate, async (req, res) => {
   const tenantId = String(req.params.tenantId); // tenant-audit: reviewed guarded immediately by authenticated same-tenant/super-admin access
@@ -43,7 +97,7 @@ router.get("/tenants/:tenantId/email-connections", authenticate, async (req, res
 router.get("/tenants/:tenantId/email-connections/:provider/auth-url", authenticate, async (req, res) => {
   const tenantId = String(req.params.tenantId); // tenant-audit: reviewed guarded immediately by authenticated same-tenant/super-admin access
   const selected = provider(req.params.provider);
-  if (!selected) return res.status(404).json({ error: "provider_not_supported" });
+  if (!selected || selected === "webmail") return res.status(404).json({ error: "provider_not_supported" });
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   if (!req.user?.sub) return res.status(401).json({ error: "Unauthorized" });
   const availability = emailProviderAvailability(selected);
@@ -62,7 +116,8 @@ router.delete("/tenants/:tenantId/email-connections/:provider", authenticate, as
   const selected = provider(req.params.provider);
   if (!selected) return res.status(404).json({ error: "provider_not_supported" });
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
-  await disconnectEmail(tenantId, selected);
+  if (selected === "webmail") await disconnectWebmail(tenantId);
+  else await disconnectEmail(tenantId, selected);
   return res.json({ success: true });
 });
 
@@ -73,7 +128,9 @@ router.patch("/tenants/:tenantId/email-connections/:provider/settings", authenti
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const parsed = z.object({ signature: z.string().max(4000).optional() }).safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: "invalid_email_settings" });
-  const updated = await updateEmailSettings(tenantId, selected, parsed.data);
+  const updated = selected === "webmail"
+    ? await updateWebmailSettings(tenantId, parsed.data)
+    : await updateEmailSettings(tenantId, selected, parsed.data);
   if (!updated) return res.status(404).json({ error: "connection_not_found" });
   return res.json({
     success: true,
@@ -87,6 +144,18 @@ router.post("/tenants/:tenantId/email-connections/:provider/test", authenticate,
   const selected = provider(req.params.provider);
   if (!selected) return res.status(404).json({ error: "provider_not_supported" });
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  if (selected === "webmail") {
+    const connection = await getWebmailConnection(tenantId);
+    if (!connection) return res.status(404).json({ error: "connection_not_found" });
+    try {
+      const config = webmailConfigFromConnection(connection);
+      await testWebmailImap(config);
+      await testWebmailSmtp(config);
+      return res.json({ ok: true, connection: { provider: "webmail", email: connection.accountName } });
+    } catch (error) {
+      return res.status(422).json({ ok: false, error: "webmail_connection_failed", detail: error instanceof Error ? error.message : "unknown" });
+    }
+  }
   const connections = await listEmailConnections(tenantId);
   const found = connections.find((connection) => connection.provider === selected);
   return found ? res.json({ ok: true, connection: found }) : res.status(404).json({ error: "connection_not_found" });
@@ -259,7 +328,7 @@ callbackRouter.post("/webhooks/email/resend", async (req, res) => {
 
 callbackRouter.get("/auth/email/:provider/callback", async (req, res) => {
   const selected = provider(req.params.provider);
-  if (!selected) return res.status(404).send("Provider not supported");
+  if (!selected || selected === "webmail") return res.status(404).send("Provider not supported");
   const { code, state, error } = req.query as Record<string, string>;
   const redirect = emailIntegrationRedirect();
   if (error || !code || !state) return res.redirect(`${redirect}?emailError=access_denied&provider=${selected}`);
