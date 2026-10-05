@@ -10,8 +10,8 @@ Status: implementation baseline, 2026-09-17.
 4. `commercial_product_profiles` maps a sellable product to technical modules.
 5. `product_usage_quotas` stores quotas as data, never hard-coded in UI.
 6. `usage_ledger` is the universal append-only source for consumption and cost.
-7. Customers see human units (images, videos, prospects, renders), not provider tokens.
-8. Vendor Credits normalize internal commercial weight and are independent of OpenAI/Anthropic token pricing.
+7. Customers see Vendor Credits and human usage units (images, videos, prospects, renders), never provider/raw tokens or provider cost.
+8. Vendor Credits normalize commercial usage and are independent of OpenAI/Anthropic token pricing.
 9. Failed provider calls can have technical cost, but they do not debit customer quota.
 10. Rollout starts in `measure_only`; enforcement comes only after coverage and margin validation.
 
@@ -19,9 +19,9 @@ Status: implementation baseline, 2026-09-17.
 
 | Offer | Commercial role | Users | Access |
 |---|---|---:|---|
-| Vendor CRM Free | acquisition | 1 | complete CRM, no artificial feature degradation |
-| Vendor CRM | first paid conversion | 5 | complete CRM + team use |
-| Individual modules | expansion | follows tenant/account | purchased capability only |
+| Vendor CRM Free | acquisition | unlimited | complete CRM, no artificial feature degradation |
+| Vendor CRM | first paid conversion | unlimited | complete CRM + team use |
+| Individual modules | expansion | unlimited | purchased capability only |
 | Growth free access | product experience | unlimited while Growth is active | 5 free access days/month |
 | Growth +5 days | prepaid | unlimited while pass is active | R$399 per additional 5-day block |
 | VendorAI Growth | umbrella subscription | unlimited | all standard software products applicable to the tenant segment |
@@ -75,13 +75,9 @@ Migration 246 normalizes legacy VendorAI rows that were incorrectly stored as `p
 
 ## User policy
 
-User limits are enforced at the database boundary so every current/future user creation path obeys the same commercial rule:
+Users are unlimited across every Vendor.ai plan and commercial product.
 
-- CRM Free: 1 active user.
-- Vendor CRM: 5 active users.
-- Growth: unlimited users.
-
-Growth has precedence over CRM limits. Existing legacy `plan_id` remains a compatibility fallback during rollout.
+There is no seat-based monetization and no database-level user cap. The commercial model is based on product subscriptions plus Vendor Credits for metered/high-cost usage. Legacy user-limit triggers and plan/profile limits are removed by migration 528.
 
 ## Growth Quota V1
 
