@@ -36,6 +36,13 @@ import {
   PortalSupportChat,
   portalSessionKey,
 } from "./PortalObraPrivateSuite";
+import {
+  PortalItemsSection,
+  PortalTimeline,
+  PortalVendi,
+  type PortalPublishedItem,
+  type PortalItemResponse,
+} from "./PortalExperienceSuite";
 
 const API = "/api";
 
@@ -96,6 +103,15 @@ type Publication = {
   showManuals?: boolean;
   showSupport?: boolean;
   showChat?: boolean;
+  showBriefing?: boolean;
+  showTimeline?: boolean;
+  showAgenda?: boolean;
+  showChangeOrders?: boolean;
+  showSignatures?: boolean;
+  showDelivery?: boolean;
+  showVendi?: boolean;
+  showNotifications?: boolean;
+  showClientTasks?: boolean;
 };
 
 interface PortalData {
@@ -269,6 +285,8 @@ interface PortalData {
   invoices?: any[];
   supportTickets?: any[];
   chatMessages?: any[];
+  portalItems?: PortalPublishedItem[];
+  portalResponses?: PortalItemResponse[];
 }
 
 const OBRA_STATUS: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -410,10 +428,16 @@ export default function PortalObra() {
     const p = data?.publication ?? {};
     return [
       p.showOverview !== false ? { id: "dados" as const, label: "Visão Geral", icon: <Building2 className="h-4 w-4" /> } : null,
+      p.showClientTasks !== false ? { id: "pendencias" as const, label: "Pendências", icon: <CheckCircle2 className="h-4 w-4" /> } : null,
+      p.showBriefing !== false ? { id: "briefing" as const, label: "Briefing", icon: <FileText className="h-4 w-4" /> } : null,
+      p.showTimeline !== false ? { id: "timeline" as const, label: "Linha do tempo", icon: <Clock className="h-4 w-4" /> } : null,
       p.showExecutiveBalance !== false ? { id: "executivo" as const, label: "Balanço Executivo", icon: <CircleDollarSign className="h-4 w-4" /> } : null,
       p.showSchedule !== false ? { id: "cronograma" as const, label: "Cronograma", icon: <Layers className="h-4 w-4" /> } : null,
       p.showMeasurements !== false && p.showSchedule !== false ? { id: "medicoes" as const, label: "Medições", icon: <CheckCircle2 className="h-4 w-4" /> } : null,
+      p.showAgenda !== false ? { id: "agenda" as const, label: "Agenda", icon: <Calendar className="h-4 w-4" /> } : null,
       p.showProposals !== false ? { id: "propostas" as const, label: "Propostas", icon: <CircleDollarSign className="h-4 w-4" /> } : null,
+      p.showChangeOrders !== false ? { id: "alteracoes" as const, label: "Alterações", icon: <FileText className="h-4 w-4" /> } : null,
+      p.showSignatures !== false ? { id: "assinaturas" as const, label: "Aceites", icon: <CheckCircle2 className="h-4 w-4" /> } : null,
       p.showDiary !== false ? { id: "diario" as const, label: "Diário", icon: <FileText className="h-4 w-4" /> } : null,
       p.showProjectGallery !== false || p.showDiaryPhotos !== false ? { id: "galeria" as const, label: "Fotos", icon: <Camera className="h-4 w-4" /> } : null,
       p.showDocuments !== false ? { id: "projetos" as const, label: "Projetos", icon: <FileText className="h-4 w-4" /> } : null,
@@ -424,6 +448,8 @@ export default function PortalObra() {
       p.showProcurementSummary !== false ? { id: "compras" as const, label: "Compras", icon: <Layers className="h-4 w-4" /> } : null,
       p.showFinancialSummary === true ? { id: "financeiro" as const, label: "Financeiro", icon: <CircleDollarSign className="h-4 w-4" /> } : null,
       p.showBudget !== false ? { id: "orcamento" as const, label: "Orçamento", icon: <CircleDollarSign className="h-4 w-4" /> } : null,
+      p.showDelivery !== false ? { id: "entrega" as const, label: "Entrega e pós-venda", icon: <CheckCircle2 className="h-4 w-4" /> } : null,
+      p.showVendi !== false ? { id: "vendi" as const, label: "Vendi", icon: <FileText className="h-4 w-4" /> } : null,
       p.showSupport !== false ? { id: "suporte" as const, label: "Suporte", icon: <FileText className="h-4 w-4" /> } : null,
       p.showChat !== false ? { id: "chat" as const, label: "Chat", icon: <FileText className="h-4 w-4" /> } : null,
     ].filter(Boolean) as Array<{ id: TabId; label: string; icon: React.ReactNode }>;
@@ -468,6 +494,9 @@ export default function PortalObra() {
   const invoices = data.invoices ?? [];
   const supportTickets = data.supportTickets ?? [];
   const chatMessages = data.chatMessages ?? [];
+  const portalItems = data.portalItems ?? [];
+  const portalResponses = data.portalResponses ?? [];
+  const pendingPortalItems = portalItems.filter((item) => item.requires_action && !portalResponses.some((response) => response.item_id === item.id));
   const obraStatus = OBRA_STATUS[obra.status] ?? { label: obra.status, color: "bg-gray-100 text-gray-600", icon: null };
   const totalEtapas = etapas.length;
   const avgProgress = Math.round(resumo?.progressoGeral ?? (totalEtapas > 0 ? etapas.reduce((s, e) => s + parseFloat(e.percentualExecutado ?? "0"), 0) / totalEtapas : 0));
@@ -518,8 +547,8 @@ export default function PortalObra() {
             </div>
             <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
               <p className="text-xs font-medium text-gray-500">Pendências</p>
-              <p className="mt-1 text-base font-semibold text-gray-900">{resumo.decisoesPendentes} decisão(ões)</p>
-              <p className="mt-1 text-xs text-gray-400">{resumo.ocorrenciasAbertas} ocorrência(s) publicada(s)</p>
+              <p className="mt-1 text-base font-semibold text-gray-900">{resumo.decisoesPendentes + pendingPortalItems.length} pendência(s)</p>
+              <p className="mt-1 text-xs text-gray-400">{resumo.decisoesPendentes} decisão(ões) · {pendingPortalItems.length} ação(ões) do portal</p>
             </div>
           </div>
         ) : null}
@@ -529,6 +558,65 @@ export default function PortalObra() {
         {ocorrencias.length > 0 ? <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 p-5"><h2 className="mb-3 flex items-center gap-2 font-semibold text-amber-800"><AlertTriangle className="h-5 w-5" />Ocorrências em aberto ({ocorrencias.length})</h2><div className="space-y-3">{ocorrencias.map((oc) => <div key={oc.id} className="rounded-lg border border-amber-100 bg-white p-3"><div className="mb-1 flex items-center justify-between text-xs text-gray-500"><span>{fmt(oc.data)}</span>{oc.responsavelNome ? <span>{oc.responsavelNome}</span> : null}</div><p className="text-sm text-gray-700">{oc.observacoes}</p></div>)}</div></div> : null}
 
         {visibleTabs.length > 0 ? <div className="mb-6"><div className="sm:hidden"><select value={activeTab} onChange={(e) => handleTabChange(e.target.value as TabId)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-700">{visibleTabs.map((tab) => <option key={tab.id} value={tab.id}>{tab.label}</option>)}</select></div><div className="hidden overflow-x-auto border-b border-gray-200 sm:flex">{visibleTabs.map((tab) => <button key={tab.id} onClick={() => handleTabChange(tab.id)} className={`flex items-center gap-2 whitespace-nowrap border-b-2 px-5 py-3 text-sm font-medium transition-colors ${activeTab === tab.id ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"}`}>{tab.icon}{tab.label}</button>)}</div></div> : null}
+
+        {activeTab === "pendencias" && data.publication?.showClientTasks !== false ? (
+          <Section title="Pendências para você" icon={<CheckCircle2 className="h-5 w-5" />}>
+            <PortalItemsSection token={token} sessionToken={portalSession} items={pendingPortalItems} responses={portalResponses}
+              kinds={["pendencia","briefing","agenda","aditivo","alteracao","assinatura","aceite","entrega"]}
+              emptyText="Você não tem nenhuma pendência publicada no momento."
+              onRefresh={() => void loadPortal(portalSession)} />
+          </Section>
+        ) : null}
+
+        {activeTab === "briefing" && data.publication?.showBriefing !== false ? (
+          <Section title="Briefing" icon={<FileText className="h-5 w-5" />}>
+            <PortalItemsSection token={token} sessionToken={portalSession} items={portalItems} responses={portalResponses}
+              kinds={["briefing"]} emptyText="Nenhum briefing foi publicado ainda."
+              onRefresh={() => void loadPortal(portalSession)} />
+          </Section>
+        ) : null}
+
+        {activeTab === "timeline" && data.publication?.showTimeline !== false ? (
+          <Section title="Linha do tempo" icon={<Clock className="h-5 w-5" />}><PortalTimeline items={portalItems} /></Section>
+        ) : null}
+
+        {activeTab === "agenda" && data.publication?.showAgenda !== false ? (
+          <Section title="Agenda" icon={<Calendar className="h-5 w-5" />}>
+            <PortalItemsSection token={token} sessionToken={portalSession} items={portalItems} responses={portalResponses}
+              kinds={["agenda"]} emptyText="Nenhum compromisso foi publicado."
+              onRefresh={() => void loadPortal(portalSession)} />
+          </Section>
+        ) : null}
+
+        {activeTab === "alteracoes" && data.publication?.showChangeOrders !== false ? (
+          <Section title="Alterações e aditivos" icon={<FileText className="h-5 w-5" />}>
+            <PortalItemsSection token={token} sessionToken={portalSession} items={portalItems} responses={portalResponses}
+              kinds={["aditivo","alteracao"]} emptyText="Nenhuma alteração ou aditivo publicado."
+              onRefresh={() => void loadPortal(portalSession)} />
+          </Section>
+        ) : null}
+
+        {activeTab === "assinaturas" && data.publication?.showSignatures !== false ? (
+          <Section title="Assinaturas e aceites" icon={<CheckCircle2 className="h-5 w-5" />}>
+            <PortalItemsSection token={token} sessionToken={portalSession} items={portalItems} responses={portalResponses}
+              kinds={["assinatura","aceite"]} emptyText="Nenhum aceite pendente ou publicado."
+              onRefresh={() => void loadPortal(portalSession)} />
+          </Section>
+        ) : null}
+
+        {activeTab === "entrega" && data.publication?.showDelivery !== false ? (
+          <Section title="Entrega, garantias e pós-venda" icon={<CheckCircle2 className="h-5 w-5" />}>
+            <PortalItemsSection token={token} sessionToken={portalSession} items={portalItems} responses={portalResponses}
+              kinds={["entrega","pos_venda"]} emptyText="Nenhum conteúdo de entrega ou pós-venda publicado."
+              onRefresh={() => void loadPortal(portalSession)} />
+          </Section>
+        ) : null}
+
+        {activeTab === "vendi" && data.publication?.showVendi !== false ? (
+          <Section title="Vendi — assistente do seu projeto" icon={<FileText className="h-5 w-5" />}>
+            <PortalVendi token={token} sessionToken={portalSession} />
+          </Section>
+        ) : null}
 
         {activeTab === "dados" && data.publication?.showOverview !== false ? (
           <Section title="Visão Geral da Obra" icon={<Building2 className="h-5 w-5" />}>
