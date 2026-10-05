@@ -1,7 +1,8 @@
 import { google } from "googleapis";
 import { and, eq, isNull } from "drizzle-orm";
-import { db, socialConnectionsTable } from "@workspace/db";
+import { db, socialConnectionsTable, leadsTable, conversationsTable, messagesTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { dispatchAgentBackground } from "./agent-dispatch.js";
 
 export type EmailProvider = "google" | "microsoft";
 
@@ -295,4 +296,162 @@ export async function sendConnectedEmail(input: {
 
 export function emailIntegrationRedirect() {
   return `${frontendOrigin()}/configuracoes`;
+}
+
+
+function headerValue(headers: Array<{ name?: string | null; value?: string | null }> | undefined, name: string) {
+  return headers?.find((header) => header.name?.toLowerCase() === name.toLowerCase())?.value ?? "";
+}
+
+function extractAddress(raw: string) {
+  const match = raw.match(/<([^>]+)>/);
+  return (match?.[1] || raw).trim().toLowerCase();
+}
+
+function decodeGmailBody(payload: any): string {
+  const direct = payload?.body?.data;
+  if (direct) return Buffer.from(String(direct), "base64url").toString("utf8");
+  for (const part of payload?.parts ?? []) {
+    if (part?.mimeType === "text/plain" && part?.body?.data) {
+      return Buffer.from(String(part.body.data), "base64url").toString("utf8");
+    }
+  }
+  for (const part of payload?.parts ?? []) {
+    const nested = decodeGmailBody(part);
+    if (nested) return nested;
+  }
+  return "";
+}
+
+async function persistInboundEmail(input: {
+  tenantId: string;
+  externalId: string;
+  from: string;
+  subject: string;
+  text: string;
+  receivedAt?: Date;
+  log: typeof logger;
+}) {
+  const [existingMessage] = await db.select({ id: messagesTable.id }).from(messagesTable).where(and(
+    eq(messagesTable.tenantId, input.tenantId),
+    eq(messagesTable.externalId, input.externalId),
+  )).limit(1);
+  if (existingMessage) return { status: "duplicate" as const };
+
+  const [lead] = await db.select().from(leadsTable).where(and(
+    eq(leadsTable.tenantId, input.tenantId),
+    eq(leadsTable.email, input.from),
+  )).limit(1);
+  if (!lead) return { status: "unmatched" as const, email: input.from };
+
+  let [conversation] = await db.select().from(conversationsTable).where(and(
+    eq(conversationsTable.tenantId, input.tenantId),
+    eq(conversationsTable.leadId, lead.id),
+    eq(conversationsTable.channel, "email"),
+  )).limit(1);
+
+  if (!conversation) {
+    [conversation] = await db.insert(conversationsTable).values({
+      tenantId: input.tenantId,
+      leadId: lead.id,
+      channel: "email",
+      status: "open",
+      naoLidas: 1,
+      lastInboundAt: input.receivedAt ?? new Date(),
+      ultimaMensagemEm: input.receivedAt ?? new Date(),
+      metadata: { lastEmailSubject: input.subject },
+    }).returning();
+  } else {
+    await db.update(conversationsTable).set({
+      naoLidas: (conversation.naoLidas ?? 0) + 1,
+      lastInboundAt: input.receivedAt ?? new Date(),
+      ultimaMensagemEm: input.receivedAt ?? new Date(),
+      updatedAt: new Date(),
+      metadata: { ...(conversation.metadata ?? {}), lastEmailSubject: input.subject },
+    }).where(eq(conversationsTable.id, conversation.id));
+  }
+
+  const content = input.subject ? `Assunto: ${input.subject}\n\n${input.text}` : input.text;
+  const [message] = await db.insert(messagesTable).values({
+    tenantId: input.tenantId,
+    conversationId: conversation.id,
+    leadId: lead.id,
+    direcao: "entrada",
+    canal: "email",
+    conteudo: content || "(e-mail sem corpo de texto)",
+    enviadoPor: "lead",
+    status: "entregue",
+    externalId: input.externalId,
+    createdAt: input.receivedAt ?? new Date(),
+  }).returning();
+
+  dispatchAgentBackground({
+    tenantId: input.tenantId,
+    leadId: lead.id,
+    mensagem: content || "(e-mail sem corpo de texto)",
+    log: input.log,
+    scenario: { canal: "email", subject: input.subject, externalId: input.externalId },
+  });
+
+  return { status: "imported" as const, leadId: lead.id, messageId: message.id };
+}
+
+export async function syncConnectedEmailInbox(tenantId: string, preferredProvider?: EmailProvider) {
+  const connection = await getConnection(tenantId, preferredProvider);
+  if (!connection) throw new Error("email_connection_not_found");
+  const accessToken = await refreshedAccessToken(connection);
+  const results: Array<Record<string, unknown>> = [];
+
+  if (connection.provider === GOOGLE_PROVIDER) {
+    const oauth = googleClient();
+    oauth.setCredentials({ access_token: accessToken, refresh_token: connection.refreshToken ?? undefined });
+    const gmail = google.gmail({ version: "v1", auth: oauth });
+    const list = await gmail.users.messages.list({ userId: "me", maxResults: 50, q: "newer_than:7d" });
+    for (const item of list.data.messages ?? []) {
+      if (!item.id) continue;
+      const full = await gmail.users.messages.get({ userId: "me", id: item.id, format: "full" });
+      const headers = full.data.payload?.headers;
+      const from = extractAddress(headerValue(headers, "From"));
+      const subject = headerValue(headers, "Subject");
+      if (!from) continue;
+      const receivedAt = full.data.internalDate ? new Date(Number(full.data.internalDate)) : new Date();
+      results.push(await persistInboundEmail({
+        tenantId,
+        externalId: `gmail:${item.id}`,
+        from,
+        subject,
+        text: decodeGmailBody(full.data.payload),
+        receivedAt,
+        log: logger,
+      }));
+    }
+  } else {
+    const response = await fetch("https://graph.microsoft.com/v1.0/me/messages?$top=50&$orderby=receivedDateTime%20desc&$select=id,subject,body,from,receivedDateTime", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const data = await response.json() as { value?: Array<any> };
+    if (!response.ok) throw new Error(`microsoft_email_sync_failed:${response.status}`);
+    for (const item of data.value ?? []) {
+      const from = String(item?.from?.emailAddress?.address || "").trim().toLowerCase();
+      if (!from || !item?.id) continue;
+      const text = String(item?.body?.content || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+      results.push(await persistInboundEmail({
+        tenantId,
+        externalId: `microsoft:${item.id}`,
+        from,
+        subject: String(item.subject || ""),
+        text,
+        receivedAt: item.receivedDateTime ? new Date(item.receivedDateTime) : new Date(),
+        log: logger,
+      }));
+    }
+  }
+
+  return {
+    provider: connection.provider === GOOGLE_PROVIDER ? "google" : "microsoft",
+    imported: results.filter((item) => item.status === "imported").length,
+    duplicates: results.filter((item) => item.status === "duplicate").length,
+    unmatched: results.filter((item) => item.status === "unmatched").length,
+    results,
+  };
 }
