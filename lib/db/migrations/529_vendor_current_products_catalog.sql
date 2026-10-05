@@ -61,7 +61,7 @@ upserted AS (
   INSERT INTO produtos_catalogo (
     id, tenant_id, categoria_id, nome, sku, product_type, descricao,
     preco_base, preco_mensalidade, unidade, ativo, destaque, recorrencia,
-    tags, especificacoes, inteligencia_comercial, project_library_enabled,
+    tags, especificacoes, project_library_enabled,
     created_at, updated_at
   )
   SELECT
@@ -87,19 +87,6 @@ upserted AS (
       jsonb_build_object('label','Vendor Credits incluídos','value',
         trim(to_char(o.credits, 'FM999G999G990')) || '/mês'),
       jsonb_build_object('label','Credits adicionais','value','Compra disponível sem troca de plano')
-    ),
-    jsonb_build_object(
-      'beneficios', jsonb_build_array('Usuários ilimitados', 'Vendor Credits mensais incluídos'),
-      'afirmacoesPermitidas', jsonb_build_array(
-        'Vendor Credits são a unidade comercial do Vendor.ai',
-        'Tokens técnicos e custos de provedor não são exibidos ao tenant'
-      ),
-      'notasComerciais', jsonb_build_array(
-        'Operações normais do software não consomem Vendor Credits',
-        'Credits adicionais podem ser comprados a qualquer momento'
-      ),
-      'origem', 'manual',
-      'aprovadoEm', now()::text
     ),
     false,
     now(),
@@ -133,19 +120,6 @@ SET nome = o.nome,
       jsonb_build_object('label','Vendor Credits incluídos','value',
         trim(to_char(o.credits, 'FM999G999G990')) || '/mês'),
       jsonb_build_object('label','Credits adicionais','value','Compra disponível sem troca de plano')
-    ),
-    inteligencia_comercial = coalesce(p.inteligencia_comercial, '{}'::jsonb) || jsonb_build_object(
-      'beneficios', jsonb_build_array('Usuários ilimitados', 'Vendor Credits mensais incluídos'),
-      'afirmacoesPermitidas', jsonb_build_array(
-        'Vendor Credits são a unidade comercial do Vendor.ai',
-        'Tokens técnicos e custos de provedor não são exibidos ao tenant'
-      ),
-      'notasComerciais', jsonb_build_array(
-        'Operações normais do software não consomem Vendor Credits',
-        'Credits adicionais podem ser comprados a qualquer momento'
-      ),
-      'origem', 'manual',
-      'aprovadoEm', now()::text
     ),
     project_library_enabled = false,
     updated_at = now()
