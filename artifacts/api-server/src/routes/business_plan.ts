@@ -232,13 +232,31 @@ router.put(`${base}/sections/:section`, async (req, res) => {
   const parsed = saveSchema.safeParse(req.body);
   if (!validSection(section) || !parsed.success) { res.status(422).json({ error: "Bloco ou campos inválidos" }); return; }
   if (new Set(parsed.data.records.map(r => r.id)).size !== parsed.data.records.length) { res.status(422).json({ error: "Cada ficha deve ter um identificador próprio" }); return; }
-  if (parsed.data.action === "approve" && (!parsed.data.records.length || parsed.data.records.some(r => !Object.values(r.values).some(v => v.trim()) || !r.source.trim()))) {
-    res.status(422).json({ error: "Preencha o conteúdo e a fonte de cada ficha antes de aprovar." }); return;
+
+  // Registros declarados pela própria empresa já têm uma origem conhecida.
+  // Normalizamos essa origem antes de validar para não bloquear fichas antigas
+  // que foram migradas sem o texto de fonte preenchido.
+  const normalizedRecords = parsed.data.records.map((record) => ({
+    ...record,
+    source: record.source.trim() || (record.evidence === "declared" ? "Informado pela empresa" : record.source),
+  }));
+  const incompleteRecords = normalizedRecords.filter((record) => {
+    const hasContent = Object.values(record.values).some((value) => value.trim());
+    const hasSource = Boolean(record.source.trim());
+    return !hasContent || !hasSource;
+  });
+
+  if (parsed.data.action === "approve" && (!normalizedRecords.length || incompleteRecords.length)) {
+    res.status(422).json({
+      error: "Existem fichas incompletas. Revise o conteúdo e a origem indicados antes de aprovar.",
+      incompleteRecordIds: incompleteRecords.map((record) => record.id),
+    });
+    return;
   }
   try {
     const tenantId = String(req.params.tenantId);
-    await validateBusinessReferences(tenantId, parsed.data.records);
-    const plan = await saveBusinessPlanSection({ ...parsed.data, tenantId, section, by: req.user!.sub });
+    await validateBusinessReferences(tenantId, normalizedRecords);
+    const plan = await saveBusinessPlanSection({ ...parsed.data, records: normalizedRecords, tenantId, section, by: req.user!.sub });
     res.json({ plan });
   } catch (error) { handleError(res, error); }
 });
