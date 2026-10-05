@@ -67,6 +67,7 @@ import {
   archConceptProjectsTable,
   leadsTable,
   dealsTable,
+  usersTable,
   insertArchConceptProjectSchema,
   updateArchConceptProjectSchema,
 } from "@workspace/db";
@@ -3953,7 +3954,7 @@ router.patch("/arch/projetos/:id", authenticate, async (req, res) => {
   const id = String((req.params.id as string));
 
   const [existing] = await db
-    .select({ tenantId: archProjetosTable.tenantId })
+    .select({ tenantId: archProjetosTable.tenantId, leadId: archProjetosTable.leadId })
     .from(archProjetosTable)
     .where(eq(archProjetosTable.id, id))
     .limit(1);
@@ -3968,6 +3969,24 @@ router.patch("/arch/projetos/:id", authenticate, async (req, res) => {
     return res.status(400).json({ error: parsed.error.flatten() });
   }
 
+  const incomingDealId = (parsed.data as any).dealId as string | null | undefined;
+  if (incomingDealId) {
+    const [targetDeal] = await db
+      .select({ id: dealsTable.id, tenantId: dealsTable.tenantId, leadId: dealsTable.leadId })
+      .from(dealsTable)
+      .where(and(eq(dealsTable.id, incomingDealId), eq(dealsTable.tenantId, existing.tenantId)))
+      .limit(1);
+
+    if (!targetDeal) {
+      return res.status(400).json({ error: "Negócio inválido para este tenant." });
+    }
+
+    const resolvedLeadId = ((parsed.data as any).leadId as string | null | undefined) ?? existing.leadId;
+    if (resolvedLeadId && targetDeal.leadId && resolvedLeadId !== targetDeal.leadId) {
+      return res.status(409).json({ error: "O negócio pertence a outro cliente." });
+    }
+  }
+
   const [updated] = await db
     .update(archProjetosTable)
     .set({ ...parsed.data, updatedAt: new Date() } as any)
@@ -3975,6 +3994,170 @@ router.patch("/arch/projetos/:id", authenticate, async (req, res) => {
     .returning();
 
   return res.json(updated);
+});
+
+// GET /api/arch/projetos/:id/negocios — negócios da pipeline do mesmo cliente
+router.get("/arch/projetos/:id/negocios", authenticate, async (req, res) => {
+  const id = String(req.params.id);
+
+  const [projeto] = await db
+    .select({
+      id: archProjetosTable.id,
+      tenantId: archProjetosTable.tenantId,
+      leadId: archProjetosTable.leadId,
+      dealId: archProjetosTable.dealId,
+    })
+    .from(archProjetosTable)
+    .where(eq(archProjetosTable.id, id))
+    .limit(1);
+
+  if (!projeto) return res.status(404).json({ error: "Projeto não encontrado." });
+  if (!canAccessTenant(req, projeto.tenantId)) {
+    return res.status(403).json({ error: "Acesso negado." });
+  }
+
+  const dealSelection = {
+    id: dealsTable.id,
+    titulo: dealsTable.titulo,
+    valor: dealsTable.valor,
+    etapa: dealsTable.etapa,
+    leadId: dealsTable.leadId,
+    assignedTo: dealsTable.assignedTo,
+    responsavelNome: usersTable.name,
+    createdAt: dealsTable.createdAt,
+  };
+
+  const currentRows = projeto.dealId
+    ? await db
+        .select(dealSelection)
+        .from(dealsTable)
+        .leftJoin(usersTable, and(
+          eq(usersTable.id, dealsTable.assignedTo),
+          eq(usersTable.tenantId, dealsTable.tenantId),
+        ))
+        .where(and(
+          eq(dealsTable.id, projeto.dealId),
+          eq(dealsTable.tenantId, projeto.tenantId),
+        ))
+        .limit(1)
+    : [];
+
+  const candidateRows = projeto.leadId
+    ? await db
+        .select(dealSelection)
+        .from(dealsTable)
+        .leftJoin(usersTable, and(
+          eq(usersTable.id, dealsTable.assignedTo),
+          eq(usersTable.tenantId, dealsTable.tenantId),
+        ))
+        .where(and(
+          eq(dealsTable.tenantId, projeto.tenantId),
+          eq(dealsTable.leadId, projeto.leadId),
+        ))
+        .orderBy(desc(dealsTable.updatedAt))
+    : [];
+
+  const serialize = (deal: any) => ({
+    ...deal,
+    active: !["perdido", "entregue"].includes(String(deal.etapa ?? "")),
+  });
+
+  return res.json({
+    current: currentRows[0] ? serialize(currentRows[0]) : null,
+    candidates: candidateRows.map(serialize),
+  });
+});
+
+// POST /api/arch/projetos/:id/negocio — vincula negócio existente ou cria um na pipeline
+router.post("/arch/projetos/:id/negocio", authenticate, async (req, res) => {
+  const id = String(req.params.id);
+  const body = (req.body ?? {}) as { dealId?: string; create?: boolean };
+
+  const [projeto] = await db
+    .select()
+    .from(archProjetosTable)
+    .where(eq(archProjetosTable.id, id))
+    .limit(1);
+
+  if (!projeto) return res.status(404).json({ error: "Projeto não encontrado." });
+  if (!canAccessTenant(req, projeto.tenantId)) {
+    return res.status(403).json({ error: "Acesso negado." });
+  }
+
+  let deal: any = null;
+
+  if (body.create) {
+    if (!projeto.leadId) {
+      return res.status(409).json({ error: "Vincule primeiro este projeto a um cliente do CRM." });
+    }
+
+    const [created] = await db
+      .insert(dealsTable)
+      .values({
+        tenantId: projeto.tenantId,
+        leadId: projeto.leadId,
+        titulo: projeto.titulo || projeto.clienteNome || "Novo negócio",
+        valor: projeto.orcamentoTotal && Number(projeto.orcamentoTotal) > 0 ? projeto.orcamentoTotal : null,
+        etapa: "novo",
+      })
+      .returning();
+
+    deal = created;
+  } else {
+    const dealId = String(body.dealId ?? "").trim();
+    if (!dealId) return res.status(400).json({ error: "Informe o negócio a vincular." });
+
+    const [existingDeal] = await db
+      .select()
+      .from(dealsTable)
+      .where(and(eq(dealsTable.id, dealId), eq(dealsTable.tenantId, projeto.tenantId)))
+      .limit(1);
+
+    if (!existingDeal) return res.status(404).json({ error: "Negócio não encontrado neste tenant." });
+
+    if (projeto.leadId && existingDeal.leadId && projeto.leadId !== existingDeal.leadId) {
+      return res.status(409).json({ error: "O negócio selecionado pertence a outro cliente." });
+    }
+
+    deal = existingDeal;
+  }
+
+  const nextLeadId = projeto.leadId ?? deal.leadId ?? null;
+  if (!nextLeadId) {
+    return res.status(409).json({ error: "O negócio precisa estar ligado a um cliente do CRM." });
+  }
+
+  const [updatedProject] = await db
+    .update(archProjetosTable)
+    .set({
+      dealId: deal.id,
+      leadId: nextLeadId,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(archProjetosTable.id, id), eq(archProjetosTable.tenantId, projeto.tenantId)))
+    .returning();
+
+  const [responsavel] = deal.assignedTo
+    ? await db
+        .select({ name: usersTable.name })
+        .from(usersTable)
+        .where(and(eq(usersTable.id, deal.assignedTo), eq(usersTable.tenantId, projeto.tenantId)))
+        .limit(1)
+    : [];
+
+  return res.status(body.create ? 201 : 200).json({
+    projeto: updatedProject,
+    deal: {
+      id: deal.id,
+      titulo: deal.titulo,
+      valor: deal.valor,
+      etapa: deal.etapa,
+      leadId: deal.leadId,
+      assignedTo: deal.assignedTo,
+      responsavelNome: responsavel?.name ?? null,
+      active: !["perdido", "entregue"].includes(String(deal.etapa ?? "")),
+    },
+  });
 });
 
 // DELETE /api/arch/projetos/:id — soft delete (status = cancelado)

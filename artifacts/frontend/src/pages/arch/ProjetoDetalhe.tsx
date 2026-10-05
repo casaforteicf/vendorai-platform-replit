@@ -145,6 +145,17 @@ type CatalogoProduto = {
   fornecedor: string | null;
 };
 
+type DealResumo = {
+  id: string;
+  titulo: string;
+  valor: string | null;
+  etapa: string;
+  leadId: string | null;
+  assignedTo: string | null;
+  responsavelNome: string | null;
+  active: boolean;
+};
+
 // ── Constants ──────────────────────────────────────────────────────────────
 const ESCOPO_ORCAMENTO_OPTIONS = [
   { value: "completo", label: "Projeto completo", description: "Tudo o que estiver confirmado na especificação." },
@@ -255,6 +266,11 @@ function SolicitacaoBadge({ status }: { status: string }) {
 function getToken() { return localStorage.getItem("vendorai_token"); }
 function getBase()  { return (import.meta.env.BASE_URL ?? "/").replace(/\/$/, ""); }
 function fmt(v: number) { return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
+function fmtDealStage(value: string) {
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
 function authH(): Record<string, string> {
   return { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` };
 }
@@ -325,6 +341,12 @@ export default function ProjetoDetalhe() {
   const [selectedProduto, setSelectedProduto]   = useState<CatalogoProduto | null>(null);
   const [vinculando, setVinculando]             = useState(false);
 
+  // ── Negócio / pipeline state
+  const [dealCurrent, setDealCurrent] = useState<DealResumo | null>(null);
+  const [dealOptions, setDealOptions] = useState<DealResumo[]>([]);
+  const [dealDialogOpen, setDealDialogOpen] = useState(false);
+  const [dealBusy, setDealBusy] = useState(false);
+
   // ── Ambiente dialog state
   const [addAmbienteOpen, setAddAmbienteOpen]     = useState(false);
   const [editingAmbiente, setEditingAmbiente]     = useState<Ambiente | null>(null);
@@ -364,6 +386,39 @@ export default function ProjetoDetalhe() {
   const solRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Data loaders ───────────────────────────────────────────────────────
+  const loadDealContext = useCallback(async (project?: Projeto | null, autoLink = true) => {
+    if (!projetoId) return;
+    const res = await fetch(`/api/arch/projetos/${projetoId}/negocios`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) return;
+
+    const data = await res.json() as { current?: DealResumo | null; candidates?: DealResumo[] };
+    const candidates = Array.isArray(data.candidates) ? data.candidates : [];
+    setDealCurrent(data.current ?? null);
+    setDealOptions(candidates);
+
+    if (autoLink && project && !project.dealId) {
+      const active = candidates.filter((deal) => deal.active);
+      if (active.length === 1) {
+        const linkRes = await fetch(`/api/arch/projetos/${projetoId}/negocio`, {
+          method: "POST",
+          headers: authH(),
+          body: JSON.stringify({ dealId: active[0].id }),
+        });
+        if (linkRes.ok) {
+          const linked = await linkRes.json();
+          setDealCurrent(linked.deal ?? active[0]);
+          setProjeto((current) => current ? {
+            ...current,
+            dealId: linked.deal?.id ?? active[0].id,
+            leadId: linked.projeto?.leadId ?? current.leadId,
+          } : current);
+        }
+      }
+    }
+  }, [projetoId]);
+
   const loadProjeto = useCallback(async () => {
     if (!projetoId) return;
     const res = await fetch(`/api/arch/projetos/${projetoId}`, {
@@ -378,6 +433,7 @@ export default function ProjetoDetalhe() {
     setProjeto(data.projeto ?? null);
     setAmbientes(nextAmbientes);
     setRenders(nextRenders);
+    void loadDealContext(data.projeto ?? null, true);
 
     // Render e Ambiente representam o mesmo cômodo do projeto. Se um render antigo
     // possui o ambiente preenchido, mas o cadastro de Ambientes ainda não existe,
@@ -431,7 +487,7 @@ export default function ProjetoDetalhe() {
         }
       }
     }
-  }, [projetoId]);
+  }, [projetoId, loadDealContext]);
 
   const loadOrcamento = useCallback(async () => {
     if (!projetoId) return;
@@ -612,6 +668,66 @@ export default function ProjetoDetalhe() {
     const key = g.ambienteId ?? "__sem__";
     if (!byAmbiente[key]) byAmbiente[key] = [];
     byAmbiente[key].push(g);
+  }
+
+  async function linkDeal(dealId: string) {
+    setDealBusy(true);
+    try {
+      const res = await fetch(`/api/arch/projetos/${projetoId}/negocio`, {
+        method: "POST",
+        headers: authH(),
+        body: JSON.stringify({ dealId }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload?.error ?? "Não foi possível vincular o negócio.");
+      setProjeto((current) => current ? {
+        ...current,
+        dealId: payload.deal?.id ?? dealId,
+        leadId: payload.projeto?.leadId ?? current.leadId,
+      } : current);
+      setDealCurrent(payload.deal ?? null);
+      setDealDialogOpen(false);
+      await loadDealContext(payload.projeto ?? projeto, false);
+      toast({ title: "Negócio vinculado ao projeto" });
+    } catch (error) {
+      toast({
+        title: "Não foi possível vincular",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setDealBusy(false);
+    }
+  }
+
+  async function createDealForProject() {
+    setDealBusy(true);
+    try {
+      const res = await fetch(`/api/arch/projetos/${projetoId}/negocio`, {
+        method: "POST",
+        headers: authH(),
+        body: JSON.stringify({ create: true }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload?.error ?? "Não foi possível criar o negócio.");
+      setProjeto((current) => current ? {
+        ...current,
+        dealId: payload.deal?.id ?? current.dealId,
+        leadId: payload.projeto?.leadId ?? current.leadId,
+      } : current);
+      setDealCurrent(payload.deal ?? null);
+      setDealDialogOpen(false);
+      await loadDealContext(payload.projeto ?? projeto, false);
+      toast({ title: "Negócio criado e vinculado à pipeline" });
+    } catch (error) {
+      toast({
+        title: "Não foi possível criar o negócio",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setDealBusy(false);
+    }
   }
 
   // ── Escopo real do cliente ────────────────────────────────────────────
@@ -1239,24 +1355,52 @@ export default function ProjetoDetalhe() {
           </div>
 
           <div className="rounded-lg border p-3">
-            <p className="text-xs font-medium text-muted-foreground">Negócio</p>
-            <p className="mt-1 text-sm font-semibold">{projeto.dealId ? "Negócio vinculado" : "Sem negócio"}</p>
-            {projeto.dealId ? (
-              projeto.leadId ? (
-                <Link href={`/trabalho/${projeto.leadId}?dealId=${projeto.dealId}&from=arqdor`}>
-                  <Button variant="outline" size="sm" className="mt-3 w-full">
-                    <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Abrir negócio
+            <p className="text-xs font-medium text-muted-foreground">Negócio / Pipeline</p>
+            <p className="mt-1 truncate text-sm font-semibold">
+              {dealCurrent?.titulo ?? (projeto.dealId ? "Negócio vinculado" : "Sem negócio")}
+            </p>
+            {dealCurrent ? (
+              <>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {fmtDealStage(dealCurrent.etapa)}
+                  {dealCurrent.valor && Number(dealCurrent.valor) > 0 ? ` · ${fmt(Number(dealCurrent.valor))}` : ""}
+                </p>
+                {dealCurrent.responsavelNome ? (
+                  <p className="mt-1 truncate text-xs text-muted-foreground">Responsável: {dealCurrent.responsavelNome}</p>
+                ) : null}
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {projeto.leadId ? (
+                    <Link href={`/trabalho/${projeto.leadId}?dealId=${dealCurrent.id}&from=arqdor`}>
+                      <Button variant="outline" size="sm" className="w-full">
+                        <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Abrir
+                      </Button>
+                    </Link>
+                  ) : (
+                    <Link href="/deals">
+                      <Button variant="outline" size="sm" className="w-full">
+                        <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Pipeline
+                      </Button>
+                    </Link>
+                  )}
+                  <Button variant="outline" size="sm" onClick={() => setDealDialogOpen(true)}>
+                    Trocar
                   </Button>
-                </Link>
-              ) : (
-                <Link href="/deals">
-                  <Button variant="outline" size="sm" className="mt-3 w-full">
-                    <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Abrir pipeline
-                  </Button>
-                </Link>
-              )
+                </div>
+              </>
             ) : (
-              <p className="mt-3 text-xs text-muted-foreground">Será ligado ao fluxo comercial quando houver negócio.</p>
+              <>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Vincule este projeto ao negócio comercial do mesmo cliente.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3 w-full"
+                  onClick={() => setDealDialogOpen(true)}
+                >
+                  <Link2 className="h-3.5 w-3.5 mr-1.5" /> Vincular negócio
+                </Button>
+              </>
             )}
           </div>
 
@@ -2301,6 +2445,70 @@ export default function ProjetoDetalhe() {
               </>
             );
           })() : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dealDialogOpen} onOpenChange={setDealDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Vincular à pipeline comercial</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Somente negócios do mesmo cliente e tenant podem ser vinculados a este projeto.
+            </p>
+
+            {dealOptions.length > 0 ? (
+              <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                {dealOptions.map((deal) => (
+                  <button
+                    key={deal.id}
+                    type="button"
+                    disabled={dealBusy}
+                    onClick={() => void linkDeal(deal.id)}
+                    className={`w-full rounded-lg border p-3 text-left transition-colors hover:bg-muted/40 ${dealCurrent?.id === deal.id ? "border-primary bg-primary/5" : ""}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">{deal.titulo}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {fmtDealStage(deal.etapa)}
+                          {deal.valor && Number(deal.valor) > 0 ? ` · ${fmt(Number(deal.valor))}` : ""}
+                        </p>
+                        {deal.responsavelNome ? (
+                          <p className="mt-1 truncate text-xs text-muted-foreground">Responsável: {deal.responsavelNome}</p>
+                        ) : null}
+                      </div>
+                      <span className={`rounded-full border px-2 py-0.5 text-[11px] ${deal.active ? "bg-emerald-50 text-emerald-700" : "bg-muted text-muted-foreground"}`}>
+                        {deal.active ? "Ativo" : "Encerrado"}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed p-5 text-center">
+                <p className="text-sm font-medium">Nenhum negócio encontrado para este cliente.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Você pode criar um novo negócio já ligado a este projeto.</p>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:justify-between">
+              <Link href="/deals">
+                <Button type="button" variant="ghost" className="w-full sm:w-auto">
+                  <ExternalLink className="mr-1.5 h-4 w-4" /> Abrir pipeline
+                </Button>
+              </Link>
+              <Button
+                type="button"
+                disabled={dealBusy || !projeto.leadId}
+                onClick={() => void createDealForProject()}
+              >
+                {dealBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                Criar negócio na pipeline
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
