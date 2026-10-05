@@ -374,7 +374,7 @@ export default function PlanoMidia() {
         <CardContent className="p-4 md:p-5">
           <p className="text-sm font-semibold">Planejamento = decisão, não execução</p>
           <p className="mt-1 text-xs text-muted-foreground">Preencha primeiro. A IA só cria uma proposta quando você mandar gerar.</p>
-          <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
+          <div className="planning-flow-grid mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
             {[
               ["1", "Informações", "Você define objetivo, público, oferta e limites"],
               ["2", "Proposta da IA", "Só aparece depois de clicar em gerar"],
