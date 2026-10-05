@@ -1101,14 +1101,19 @@ router.post("/tenants/:tenantId/obras/:obraId/portal/documents", authenticate, a
   const titulo = String(req.body?.titulo ?? "").trim();
   const url = String(req.body?.url ?? "").trim();
   if (!titulo || !url) return res.status(422).json({ error: "Título e URL são obrigatórios." });
+  const publicationState = ["interno","compartilhavel","publicado","arquivado"].includes(String(req.body?.publicationState))
+    ? String(req.body.publicationState)
+    : (req.body?.publicadoCliente === true ? "publicado" : "interno");
+  const allowDownload = req.body?.allowDownload !== false;
+  const visibleRoles = Array.isArray(req.body?.visibleRoles) ? req.body.visibleRoles.map(String).slice(0, 20) : [];
   const result = await pool.query(
     `INSERT INTO obra_portal_documents
-      (id,tenant_id,obra_id,categoria,titulo,descricao,url,mime_type,versao,publicado_cliente)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      (id,tenant_id,obra_id,categoria,titulo,descricao,url,mime_type,versao,publicado_cliente,publication_state,allow_download,visible_roles)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb) RETURNING *`,
     [
       crypto.randomUUID(), tenantId, obraId, categoria, titulo,
       req.body?.descricao ?? null, url, req.body?.mimeType ?? null,
-      req.body?.versao ?? null, req.body?.publicadoCliente === true,
+      req.body?.versao ?? null, publicationState === "publicado", publicationState, allowDownload, JSON.stringify(visibleRoles),
     ],
   );
   return res.status(201).json({ document: result.rows[0] });
@@ -1128,18 +1133,69 @@ router.patch("/tenants/:tenantId/obras/:obraId/portal/documents/:documentId", au
             mime_type=COALESCE($5,mime_type),
             versao=COALESCE($6,versao),
             publicado_cliente=COALESCE($7,publicado_cliente),
+            publication_state=COALESCE($8,publication_state),
+            allow_download=COALESCE($9,allow_download),
+            visible_roles=COALESCE($10::jsonb,visible_roles),
             updated_at=now()
-      WHERE id=$8 AND tenant_id=$9 AND obra_id=$10
+      WHERE id=$11 AND tenant_id=$12 AND obra_id=$13
       RETURNING *`,
     [
       req.body?.categoria ?? null, req.body?.titulo ?? null, req.body?.descricao ?? null,
       req.body?.url ?? null, req.body?.mimeType ?? null, req.body?.versao ?? null,
-      typeof req.body?.publicadoCliente === "boolean" ? req.body.publicadoCliente : null,
+      typeof req.body?.publicadoCliente === "boolean" ? req.body.publicadoCliente :
+        req.body?.publicationState ? req.body.publicationState === "publicado" : null,
+      ["interno","compartilhavel","publicado","arquivado"].includes(String(req.body?.publicationState)) ? String(req.body.publicationState) : null,
+      typeof req.body?.allowDownload === "boolean" ? req.body.allowDownload : null,
+      Array.isArray(req.body?.visibleRoles) ? JSON.stringify(req.body.visibleRoles.map(String).slice(0,20)) : null,
       documentId, tenantId, obraId,
     ],
   );
   if (!result.rows[0]) return res.status(404).json({ error: "Documento não encontrado." });
   return res.json({ document: result.rows[0] });
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/portal/users", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? "");
+  const obraId = String(req.params.obraId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
+  const result = await pool.query(
+    `SELECT id,nome,email,telefone,status,role_key,permissions,access_expires_at,ultimo_login_em,created_at
+       FROM obra_portal_users
+      WHERE tenant_id=$1 AND obra_id=$2
+      ORDER BY created_at ASC`,
+    [tenantId, obraId],
+  );
+  return res.json({ users: result.rows });
+});
+
+router.patch("/tenants/:tenantId/obras/:obraId/portal/users/:userId", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? "");
+  const obraId = String(req.params.obraId ?? "");
+  const userId = String(req.params.userId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
+
+  const roleKey = ["proprietario","conjuge","arquiteto","engenheiro","financeiro","fornecedor","representante"].includes(String(req.body?.roleKey))
+    ? String(req.body.roleKey) : null;
+  const status = ["ativo","revogado"].includes(String(req.body?.status)) ? String(req.body.status) : null;
+  const permissions = req.body?.permissions && typeof req.body.permissions === "object" ? JSON.stringify(req.body.permissions) : null;
+  const accessExpiresAt = req.body?.accessExpiresAt === null ? null : (req.body?.accessExpiresAt ? String(req.body.accessExpiresAt) : undefined);
+
+  const result = await pool.query(
+    `UPDATE obra_portal_users
+        SET role_key=COALESCE($1,role_key),
+            status=COALESCE($2,status),
+            permissions=COALESCE($3::jsonb,permissions),
+            access_expires_at=CASE WHEN $4::boolean THEN $5::timestamptz ELSE access_expires_at END,
+            updated_at=now()
+      WHERE id=$6 AND tenant_id=$7 AND obra_id=$8
+      RETURNING id,nome,email,telefone,status,role_key,permissions,access_expires_at,ultimo_login_em`,
+    [roleKey, status, permissions, accessExpiresAt !== undefined, accessExpiresAt ?? null, userId, tenantId, obraId],
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Usuário do portal não encontrado." });
+  if (status === "revogado") {
+    await pool.query(`DELETE FROM obra_portal_sessions WHERE user_id=$1`, [userId]);
+  }
+  return res.json({ user: result.rows[0] });
 });
 
 router.get("/tenants/:tenantId/obras/:obraId/portal/support", authenticate, async (req, res) => {
