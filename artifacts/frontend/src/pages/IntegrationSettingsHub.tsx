@@ -383,7 +383,7 @@ export default function IntegrationSettingsHub() {
 
   const saveEmailSignature = async (key: "email-google" | "email-microsoft" | "email-webmail") => {
     if (!tenantId) return;
-    const provider = key === "email-google" ? "google" : "microsoft";
+    const provider = key === "email-google" ? "google" : key === "email-microsoft" ? "microsoft" : "webmail";
     setBusy(`${key}-signature`);
     try {
       await apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/email-connections/${provider}/settings`, {
@@ -443,6 +443,19 @@ export default function IntegrationSettingsHub() {
         description: error instanceof Error ? error.message : undefined,
         variant: "destructive",
       });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const testConnectedWebmail = async () => {
+    if (!tenantId) return;
+    setBusy("email-webmail-connected-test");
+    try {
+      await apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/email-connections/webmail/test`, { method: "POST" });
+      toast({ title: "Webmail operacional", description: "IMAP e SMTP responderam corretamente." });
+    } catch (error) {
+      toast({ title: "Falha na conexão Webmail", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
     } finally {
       setBusy(null);
     }
@@ -599,6 +612,12 @@ export default function IntegrationSettingsHub() {
                       <>
                         <Button
                           variant="outline"
+                          disabled={busy === "email-webmail-connected-test"}
+                          onClick={() => void testConnectedWebmail()}
+                        >
+                          {busy === "email-webmail-connected-test" ? "Testando..." : "Testar conexão"}
+                        </Button>
+                        <Button
                           disabled={busy === "email-webmail-sync"}
                           onClick={() => void syncEmail("email-webmail")}
                         >
@@ -613,13 +632,21 @@ export default function IntegrationSettingsHub() {
                         </Button>
                       </>
                     ) : (
-                      <Button
-                        variant="outline"
-                        disabled={busy === row.key}
-                        onClick={() => void handleRowAction(row)}
-                      >
-                        Reconectar
-                      </Button>
+                      <>
+                        <Button
+                          variant="outline"
+                          disabled={busy === row.key}
+                          onClick={() => void handleRowAction(row)}
+                        >
+                          Reconectar
+                        </Button>
+                        <Button
+                          disabled={busy === `${row.key}-sync`}
+                          onClick={() => void syncEmail(row.key)}
+                        >
+                          {busy === `${row.key}-sync` ? "Sincronizando..." : "Sincronizar agora"}
+                        </Button>
+                      </>
                     )}
                     <Button
                       variant="outline"
@@ -627,12 +654,6 @@ export default function IntegrationSettingsHub() {
                       onClick={() => void saveEmailSignature(row.key)}
                     >
                       {busy === `${row.key}-signature` ? "Salvando..." : "Salvar assinatura"}
-                    </Button>
-                    <Button
-                      disabled={busy === `${row.key}-sync`}
-                      onClick={() => void syncEmail(row.key)}
-                    >
-                      {busy === `${row.key}-sync` ? "Sincronizando..." : "Sincronizar agora"}
                     </Button>
                   </div>
                 </div>
