@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   useGetTenantSubscription,
@@ -33,9 +33,27 @@ import {
   ExternalLink,
   FileText,
   Sparkles,
+  Coins,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+
+type CommercialUsageSnapshot = {
+  usageUnit?: "vendor_credits";
+  vendorCreditsBalance: number;
+  vendorCredits?: {
+    includedMonthly: number;
+    includedUsed: number;
+    includedRemaining: number;
+    purchasedBalance: number;
+    totalAvailable: number;
+  };
+};
+
+function authHeaders(): Record<string, string> {
+  const token = localStorage.getItem("vendorai_token") ?? "";
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function fmtDate(iso: string | null | undefined) {
@@ -87,7 +105,13 @@ const FILTER_TABS: Array<{ value: InvoiceStatus | "todas"; label: string }> = [
 ];
 
 // ── Subscription Card ────────────────────────────────────────────────────────────────
-function SubscriptionCard({ sub }: { sub: Subscription | null | undefined }) {
+function SubscriptionCard({
+  sub,
+  credits,
+}: {
+  sub: Subscription | null | undefined;
+  credits: CommercialUsageSnapshot["vendorCredits"] | null;
+}) {
   if (!sub) {
     return (
       <Card className="border-dashed">
@@ -143,6 +167,50 @@ function SubscriptionCard({ sub }: { sub: Subscription | null | undefined }) {
             </div>
           </div>
         </div>
+
+        {credits && (
+          <div className="mt-5 rounded-xl border bg-muted/25 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="flex items-center gap-2 text-sm font-semibold">
+                  <Coins className="h-4 w-4 text-amber-600" />
+                  Vendor Credits do seu plano
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Seu plano inclui <strong>{credits.includedMonthly.toLocaleString("pt-BR")} Vendor Credits por mês</strong>.
+                  A franquia mensal renova com o plano; Credits comprados ficam separados como saldo adicional.
+                </p>
+              </div>
+              <Badge variant="outline" className="text-xs">
+                {credits.totalAvailable.toLocaleString("pt-BR")} disponíveis agora
+              </Badge>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Incluídos/mês</p>
+                <p className="text-lg font-bold">{credits.includedMonthly.toLocaleString("pt-BR")}</p>
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Usados no mês</p>
+                <p className="text-lg font-bold">{credits.includedUsed.toLocaleString("pt-BR")}</p>
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Restantes da franquia</p>
+                <p className="text-lg font-bold">{credits.includedRemaining.toLocaleString("pt-BR")}</p>
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Saldo comprado</p>
+                <p className="text-lg font-bold">{credits.purchasedBalance.toLocaleString("pt-BR")}</p>
+              </div>
+            </div>
+
+            <p className="mt-3 text-[11px] leading-5 text-muted-foreground">
+              Operações normais do sistema não consomem Vendor Credits. Eles são usados apenas em trabalho digital de IA,
+              pesquisas/enriquecimentos, agentes, mídia, renders, vídeos e outras operações com custo variável.
+            </p>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -268,6 +336,32 @@ export function FaturamentoTab() {
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const [activeFilter, setActiveFilter] = useState<InvoiceStatus | "todas">("todas");
+  const [commercialUsage, setCommercialUsage] = useState<CommercialUsageSnapshot | null>(null);
+
+  useEffect(() => {
+    if (!tenantId) {
+      setCommercialUsage(null);
+      return;
+    }
+
+    let cancelled = false;
+    const loadCommercialUsage = async () => {
+      try {
+        const response = await fetch(`/api/tenants/${tenantId}/commercial-usage`, {
+          headers: authHeaders(),
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const data = await response.json() as CommercialUsageSnapshot;
+        if (!cancelled) setCommercialUsage(data);
+      } catch {
+        // Faturamento continua funcional mesmo se a telemetria comercial estiver indisponível.
+      }
+    };
+
+    void loadCommercialUsage();
+    return () => { cancelled = true; };
+  }, [tenantId]);
 
   const { data: subscription, isLoading: subLoading } = useGetTenantSubscription(tenantId, {
     query: {
@@ -325,7 +419,7 @@ export function FaturamentoTab() {
           </CardContent>
         </Card>
       ) : (
-        <SubscriptionCard sub={subscription} />
+        <SubscriptionCard sub={subscription} credits={commercialUsage?.vendorCredits ?? null} />
       )}
 
       {/* Summary chips */}
