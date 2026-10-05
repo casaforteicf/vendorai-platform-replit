@@ -1093,7 +1093,7 @@ router.patch("/tenants/:tenantId/obras/:obraId/portal/users/:userId", authentica
     );
   }
   await writePortalAudit({
-    tenantId, obraId, actorType: "equipe", actorName: String(req.user?.nome ?? req.user?.email ?? "Equipe"),
+    tenantId, obraId, actorType: "equipe", actorName: String(req.user?.email ?? "Equipe"),
     eventType: "portal_user_updated", entityType: "portal_user", entityId: userId,
     metadata: { accessRole: result.rows[0].access_role, status: result.rows[0].status, accessExpiresAt: result.rows[0].access_expires_at },
   });
@@ -1135,11 +1135,11 @@ router.post("/tenants/:tenantId/obras/:obraId/portal/items", authenticate, async
       visibility, req.body?.version ?? null, req.body?.dueAt ?? null, req.body?.startsAt ?? null,
       req.body?.endsAt ?? null, req.body?.requiresAction === true, req.body?.actionType ?? null,
       req.body?.allowDownload !== false, Number(req.body?.sortOrder ?? 0),
-      String(req.user?.id ?? req.user?.email ?? "staff"),
+      String(req.user?.sub ?? req.user?.email ?? "staff"),
     ],
   );
   await writePortalAudit({
-    tenantId, obraId, actorType: "equipe", actorName: String(req.user?.nome ?? req.user?.email ?? "Equipe"),
+    tenantId, obraId, actorType: "equipe", actorName: String(req.user?.email ?? "Equipe"),
     eventType: visibility === "publicado" ? "item_published" : "item_created",
     entityType: kind, entityId: result.rows[0]?.id, metadata: { visibility },
   });
@@ -1178,7 +1178,7 @@ router.patch("/tenants/:tenantId/obras/:obraId/portal/items/:itemId", authentica
   );
   if (!result.rows[0]) return res.status(404).json({ error: "Item não encontrado." });
   await writePortalAudit({
-    tenantId, obraId, actorType: "equipe", actorName: String(req.user?.nome ?? req.user?.email ?? "Equipe"),
+    tenantId, obraId, actorType: "equipe", actorName: String(req.user?.email ?? "Equipe"),
     eventType: visibility === "publicado" ? "item_published" : "item_updated",
     entityType: result.rows[0].kind, entityId: itemId, metadata: { visibility: result.rows[0].visibility },
   });
@@ -1307,7 +1307,7 @@ router.post("/tenants/:tenantId/obras/:obraId/portal/messages", authenticate, as
   if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
   const mensagem = String(req.body?.mensagem ?? "").trim();
   if (!mensagem) return res.status(422).json({ error: "Mensagem vazia." });
-  const autorNome = String(req.user?.nome ?? req.user?.email ?? "Equipe");
+  const autorNome = String(req.user?.email ?? "Equipe");
   const result = await pool.query(
     `INSERT INTO obra_portal_messages
       (id,tenant_id,obra_id,portal_user_id,autor_tipo,autor_nome,mensagem)
