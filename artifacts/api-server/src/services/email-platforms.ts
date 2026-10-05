@@ -2,7 +2,6 @@ import { google } from "googleapis";
 import { and, eq, isNull } from "drizzle-orm";
 import { db, socialConnectionsTable, leadsTable, conversationsTable, messagesTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
-import { dispatchAgentBackground } from "./agent-dispatch.js";
 
 export type EmailProvider = "google" | "microsoft";
 
@@ -385,15 +384,14 @@ async function persistInboundEmail(input: {
     createdAt: input.receivedAt ?? new Date(),
   }).returning();
 
-  dispatchAgentBackground({
-    tenantId: input.tenantId,
+  return {
+    status: "imported" as const,
     leadId: lead.id,
+    messageId: message.id,
     mensagem: content || "(e-mail sem corpo de texto)",
-    log: input.log,
-    scenario: { canal: "email", subject: input.subject, externalId: input.externalId },
-  });
-
-  return { status: "imported" as const, leadId: lead.id, messageId: message.id };
+    subject: input.subject,
+    externalId: input.externalId,
+  };
 }
 
 export async function syncConnectedEmailInbox(tenantId: string, preferredProvider?: EmailProvider) {
