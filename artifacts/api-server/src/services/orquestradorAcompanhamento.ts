@@ -37,6 +37,7 @@ export type PlanoAcompanhamento = {
   conteudo: string;
   motivo: string;
   requerHumano: boolean;
+  agenteResponsavelKey: string | null;
   fontes: Array<{
     id: string;
     tipo: string;
@@ -300,6 +301,7 @@ export async function planejarAcompanhamento(params: {
     conteudo: String(raw.conteudo ?? "").trim(),
     motivo: String(raw.motivo ?? "").trim(),
     requerHumano: Boolean(raw.requerHumano),
+    agenteResponsavelKey: context.stage?.responsavelAgenteKey ?? null,
     fontes: contextoNegocio.fontes.map((fonte) => ({
       id: fonte.id,
       tipo: fonte.tipo,
@@ -336,7 +338,7 @@ export async function executarAcompanhamento(params: {
     leadId: params.leadId,
     conteudo: plano.conteudo,
     canal: plano.canalPrincipal,
-    agentName: "followup",
+    agentName: plano.agenteResponsavelKey ?? "followup",
   }, params.log);
 
   return { executado: true, plano, mensagemId: result.message.id };
