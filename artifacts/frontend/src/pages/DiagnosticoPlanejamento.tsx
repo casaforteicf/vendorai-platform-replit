@@ -131,6 +131,7 @@ export default function DiagnosticoPlanejamento() {
   const [busy, setBusy] = useState("");
   const [publicLink, setPublicLink] = useState("");
   const [actionPlanSaved, setActionPlanSaved] = useState(false);
+  const [view, setView] = useState<"plan" | "overview" | "projections" | "execution" | "documents">("plan");
 
   const snapshot = useQuery<BusinessPlanSnapshot>({
     queryKey: ["diagnostico-planejamento", "business-plan", tenantId],
@@ -265,124 +266,159 @@ export default function DiagnosticoPlanejamento() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1560px] space-y-6 px-4 py-5 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-[1560px] space-y-5 px-4 py-5 sm:px-6 lg:px-8">
       <section className="overflow-hidden rounded-3xl border bg-card">
-        <div className="grid gap-6 p-6 lg:grid-cols-[1fr_auto] lg:items-center">
+        <div className="grid gap-5 p-5 lg:grid-cols-[1fr_auto] lg:items-center lg:p-6">
           <div>
-            <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-primary"><BrainCircuit className="h-4 w-4" />Diagnóstico & Planejamento</div>
+            <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-primary"><BrainCircuit className="h-4 w-4" />Inteligência do Negócio</div>
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{companyName}</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">Entrada única para Perfil Mestre, Plano de Negócios, histórico, diagnóstico, projeções, investimento em marketing e plano de ação.</p>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">Uma única base estratégica para orientar agentes, marketing, comercial, metas e execução.</p>
           </div>
-          <div className="grid min-w-[220px] gap-2 rounded-2xl border bg-muted/30 p-4">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Prontidão da inteligência</span>
-            <strong className={`text-4xl ${pctTone(score)}`}>{diagnostic.isLoading ? "—" : `${score}%`}</strong>
-            <span className="text-xs text-muted-foreground">{approvedSections} bloco(s) estratégicos aprovados · versão {snapshot.data?.plan.version ?? "—"}</span>
-            <Button variant="outline" size="sm" className="mt-1 gap-2" onClick={refresh}><RefreshCw className="h-4 w-4" /> Atualizar</Button>
+          <div className="flex items-center gap-3 rounded-2xl border bg-muted/20 px-4 py-3">
+            <div>
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Prontidão</p>
+              <div className="mt-1 flex items-end gap-2"><strong className={`text-2xl ${pctTone(score)}`}>{diagnostic.isLoading ? "—" : `${score}%`}</strong><span className="pb-0.5 text-xs text-muted-foreground">{approvedSections} blocos aprovados</span></div>
+            </div>
+            <Button variant="ghost" size="sm" className="gap-2" onClick={refresh}><RefreshCw className="h-4 w-4" /> Atualizar</Button>
           </div>
+        </div>
+        <div className="border-t px-4 sm:px-6">
+          <nav className="flex gap-1 overflow-x-auto py-2" aria-label="Áreas do planejamento">
+            {([
+              ["plan", "Plano de Negócios"],
+              ["overview", "Visão geral"],
+              ["projections", "Projeções"],
+              ["execution", "Execução"],
+              ["documents", "Documentos"],
+            ] as const).map(([key,label]) => (
+              <button key={key} type="button" onClick={() => setView(key)} className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition ${view===key ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>{label}</button>
+            ))}
+          </nav>
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Link2 className="h-4 w-4" /> Link de preenchimento</CardTitle></CardHeader><CardContent className="space-y-3 text-sm text-muted-foreground"><p>Envie um link seguro para o cliente completar o mesmo Perfil Mestre sem precisar entrar no sistema.</p><Button variant="outline" size="sm" onClick={generateLink} disabled={busy==="link"}>{busy==="link" ? "Gerando..." : "Gerar e copiar link"}</Button>{publicLink && <button className="flex w-full items-center gap-2 truncate text-left text-xs text-foreground" onClick={()=>navigator.clipboard?.writeText(publicLink)}><Copy className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{publicLink}</span></button>}</CardContent></Card>
-        <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><FileSpreadsheet className="h-4 w-4" /> Histórico de vendas</CardTitle></CardHeader><CardContent className="space-y-3 text-sm text-muted-foreground"><p>Importe CSV/XLS/XLSX com data, faturamento, vendas, leads e investimento. O sistema usa o histórico nos cenários.</p><input ref={fileRef} type="file" accept=".csv,.xls,.xlsx" className="hidden" onChange={(e)=>{const file=e.target.files?.[0]; if(file) void importHistory(file);}}/><Button variant="outline" size="sm" onClick={()=>fileRef.current?.click()} disabled={busy==="history"}>{busy==="history" ? "Importando..." : "Importar histórico"}</Button></CardContent></Card>
-        <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><BarChart3 className="h-4 w-4" /> BI e metas</CardTitle></CardHeader><CardContent className="space-y-3 text-sm text-muted-foreground"><p>Dados reais do CRM e metas oficiais alimentam a leitura; o BI existente continua sendo a fonte analítica.</p><Button variant="outline" size="sm" onClick={() => navigate("/analytics")}>Abrir Analytics</Button></CardContent></Card>
-        <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Megaphone className="h-4 w-4" /> Marketing e execução</CardTitle></CardHeader><CardContent className="space-y-3 text-sm text-muted-foreground"><p>Os cenários orientam orçamento; campanha e gasto continuam sujeitos às aprovações e limites existentes.</p><Button variant="outline" size="sm" onClick={() => navigate("/content?tab=planejamento")}>Abrir Planejamento de Mídia</Button></CardContent></Card>
-      </section>
+      {view === "plan" && (
+        <section id="perfil-mestre" className="scroll-mt-6">
+          <BusinessPlanPanel />
+        </section>
+      )}
 
-      <section>
-        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-          <div><h2 className="text-xl font-semibold">Cenários de crescimento</h2><p className="mt-1 text-sm text-muted-foreground">Projeções condicionadas ao histórico disponível. Confiança atual: <strong>{growth.data?.confidence ?? "—"}</strong>.</p></div>
-          <span className="text-xs text-muted-foreground">{growth.data?.source === "imported_sales_history" ? "Histórico importado" : "Negócios ganhos no CRM"}</span>
+      {view === "overview" && (
+        <div className="space-y-5">
+          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Link2 className="h-4 w-4" /> Compartilhar preenchimento</CardTitle></CardHeader><CardContent className="space-y-3 text-sm text-muted-foreground"><p>Envie um link seguro para complementar o Perfil Mestre.</p><Button variant="outline" size="sm" onClick={generateLink} disabled={busy==="link"}>{busy==="link" ? "Gerando..." : "Gerar e copiar link"}</Button>{publicLink && <button className="flex w-full items-center gap-2 truncate text-left text-xs text-foreground" onClick={()=>navigator.clipboard?.writeText(publicLink)}><Copy className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{publicLink}</span></button>}</CardContent></Card>
+            <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><FileSpreadsheet className="h-4 w-4" /> Histórico de vendas</CardTitle></CardHeader><CardContent className="space-y-3 text-sm text-muted-foreground"><p>Importe CSV/XLS/XLSX para melhorar cenários e indicadores.</p><input ref={fileRef} type="file" accept=".csv,.xls,.xlsx" className="hidden" onChange={(e)=>{const file=e.target.files?.[0]; if(file) void importHistory(file);}}/><Button variant="outline" size="sm" onClick={()=>fileRef.current?.click()} disabled={busy==="history"}>{busy==="history" ? "Importando..." : "Importar histórico"}</Button></CardContent></Card>
+            <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><BarChart3 className="h-4 w-4" /> BI e metas</CardTitle></CardHeader><CardContent className="space-y-3 text-sm text-muted-foreground"><p>Consulte metas oficiais e desempenho real do CRM.</p><Button variant="outline" size="sm" onClick={() => navigate("/analytics")}>Abrir Analytics</Button></CardContent></Card>
+            <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Megaphone className="h-4 w-4" /> Marketing</CardTitle></CardHeader><CardContent className="space-y-3 text-sm text-muted-foreground"><p>Leve públicos, ofertas e direcionamento aprovado para campanhas.</p><Button variant="outline" size="sm" onClick={() => navigate("/content?tab=planejamento")}>Abrir planejamento</Button></CardContent></Card>
+          </section>
+
+          <section className="grid gap-4 lg:grid-cols-[1.2fr_.8fr]">
+            <Card><CardHeader><CardTitle>Diagnóstico do Perfil Mestre</CardTitle></CardHeader><CardContent>{diagnostic.data?.lacunas?.length ? <div className="space-y-3">{diagnostic.data.lacunas.slice(0,8).map((item,index)=><div key={item.id} className="flex gap-3 rounded-xl border p-3"><div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{index+1}</div><div><p className="text-sm font-semibold">{item.titulo}</p><p className="mt-1 text-sm text-muted-foreground">{item.acao}</p></div></div>)}</div> : <div className="flex gap-3 rounded-xl border p-4"><CheckCircle2 className="h-5 w-5 text-emerald-700"/><p className="text-sm">Base essencial consistente.</p></div>}</CardContent></Card>
+            <Card><CardHeader><CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5" /> Fonte única</CardTitle></CardHeader><CardContent className="space-y-3 text-sm">{["CRM e vendas alimentam histórico real.","Agentes usam contexto aprovado.","Marketing consome público, oferta e restrições.","BI mede execução e metas."].map(text=><div key={text} className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary"/><span>{text}</span></div>)}</CardContent></Card>
+          </section>
         </div>
-        <div className="grid gap-4 lg:grid-cols-3">
-          {(growth.data?.scenarios ?? []).map((scenario) => (
-            <Card key={scenario.id}>
-              <CardHeader className="pb-2"><CardTitle className="text-base">{scenario.label}</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                <div><p className="text-xs text-muted-foreground">Receita mensal projetada</p><p className="text-2xl font-semibold">{money(scenario.projectedMonthlyRevenue)}</p></div>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <Metric label="Vendas" value={scenario.projectedSales.toLocaleString("pt-BR",{maximumFractionDigits:1})} />
-                  <Metric label="Leads necessários" value={scenario.leadsNeeded?.toLocaleString("pt-BR") ?? "Sem base"} />
-                  <Metric label="Investimento MKT" value={money(scenario.projectedMarketingInvestment)} />
-                  <Metric label="CAC projetado" value={money(scenario.projectedCAC)} />
-                  <Metric label="ROAS projetado" value={scenario.projectedROAS ? `${scenario.projectedROAS.toFixed(2)}x` : "—"} />
-                </div>
+      )}
+
+      {view === "projections" && (
+        <div className="space-y-5">
+          <section>
+            <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+              <div><h2 className="text-xl font-semibold">Cenários de crescimento</h2><p className="mt-1 text-sm text-muted-foreground">Projeções condicionadas ao histórico disponível. Confiança atual: <strong>{growth.data?.confidence ?? "—"}</strong>.</p></div>
+              <span className="text-xs text-muted-foreground">{growth.data?.source === "imported_sales_history" ? "Histórico importado" : "Negócios ganhos no CRM"}</span>
+            </div>
+            {(growth.data?.sample.months ?? 0) === 0 && (growth.data?.sample.liveWon ?? 0) === 0 ? (
+              <div className="rounded-2xl border border-dashed bg-card p-8 text-center">
+                <FileSpreadsheet className="mx-auto h-8 w-8 text-muted-foreground" />
+                <h3 className="mt-3 font-semibold">Ainda não há base suficiente para projetar</h3>
+                <p className="mx-auto mt-1 max-w-xl text-sm text-muted-foreground">Importe o histórico de vendas ou alimente negócios ganhos no CRM. Evitamos exibir três cenários vazios com R$ 0,00.</p>
+                <Button className="mt-4" variant="outline" onClick={() => setView("overview")}>Adicionar histórico</Button>
+              </div>
+            ) : (
+              <div className="grid gap-4 lg:grid-cols-3">
+                {(growth.data?.scenarios ?? []).map((scenario) => (
+                  <Card key={scenario.id}>
+                    <CardHeader className="pb-2"><CardTitle className="text-base">{scenario.label}</CardTitle></CardHeader>
+                    <CardContent className="space-y-3">
+                      <div><p className="text-xs text-muted-foreground">Receita mensal projetada</p><p className="text-2xl font-semibold">{money(scenario.projectedMonthlyRevenue)}</p></div>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <Metric label="Vendas" value={scenario.projectedSales.toLocaleString("pt-BR",{maximumFractionDigits:1})} />
+                        <Metric label="Leads necessários" value={scenario.leadsNeeded?.toLocaleString("pt-BR") ?? "Sem base"} />
+                        <Metric label="Investimento MKT" value={money(scenario.projectedMarketingInvestment)} />
+                        <Metric label="CAC projetado" value={money(scenario.projectedCAC)} />
+                        <Metric label="ROAS projetado" value={scenario.projectedROAS ? `${scenario.projectedROAS.toFixed(2)}x` : "—"} />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </section>
+          <Card>
+            <CardHeader><CardTitle className="flex items-center gap-2"><Target className="h-5 w-5" /> Base observada</CardTitle></CardHeader>
+            <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <Metric label="Faturamento médio/mês" value={money(growth.data?.baseline.avgMonthlyRevenue)} />
+              <Metric label="Ticket médio" value={money(growth.data?.baseline.avgTicket)} />
+              <Metric label="Conversão" value={growth.data ? `${growth.data.baseline.conversionPercent.toFixed(2)}%` : "—"} />
+              <Metric label="Mídia média/mês" value={money(growth.data?.baseline.avgMonthlyMarketingSpend)} />
+              <Metric label="CPL observado" value={money(growth.data?.baseline.cpl)} />
+              <Metric label="CAC observado" value={money(growth.data?.baseline.cac)} />
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {view === "execution" && (
+        <div className="space-y-5">
+          <section className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+            <Card>
+              <CardHeader><CardTitle>PN x execução / metas</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {(growth.data?.planVsExecution ?? []).length ? growth.data!.planVsExecution.map((goal) => (
+                  <div key={`${goal.metric_key}-${goal.ends_at}`} className="flex items-center justify-between gap-4 rounded-lg border p-3 text-sm">
+                    <div><p className="font-medium">{goal.label}</p><p className="text-xs text-muted-foreground">até {new Date(goal.ends_at).toLocaleDateString("pt-BR")}</p><p className="mt-1 text-xs text-muted-foreground">Realizado: {goal.actualBasis === "sem_mapeamento_automatico" ? "sem mapeamento automático" : `${goal.actualValue.toLocaleString("pt-BR")} ${goal.unit}`}</p></div>
+                    <div className="text-right"><strong>Meta: {Number(goal.target_value).toLocaleString("pt-BR")} {goal.unit}</strong><p className="text-xs text-muted-foreground">{goal.progressPercent == null ? "—" : `${goal.progressPercent.toFixed(1)}% da meta`}</p></div>
+                  </div>
+                )) : <p className="text-sm text-muted-foreground">Ainda não há metas oficiais ativas.</p>}
               </CardContent>
             </Card>
-          ))}
-        </div>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-        <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><Target className="h-5 w-5" /> Base observada</CardTitle></CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2">
-            <Metric label="Faturamento médio/mês" value={money(growth.data?.baseline.avgMonthlyRevenue)} />
-            <Metric label="Ticket médio" value={money(growth.data?.baseline.avgTicket)} />
-            <Metric label="Conversão" value={growth.data ? `${growth.data.baseline.conversionPercent.toFixed(2)}%` : "—"} />
-            <Metric label="Mídia média/mês" value={money(growth.data?.baseline.avgMonthlyMarketingSpend)} />
-            <Metric label="CPL observado" value={money(growth.data?.baseline.cpl)} />
-            <Metric label="CAC observado" value={money(growth.data?.baseline.cac)} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><Rocket className="h-5 w-5" /> Plano de ação recomendado</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            {(growth.data?.recommendations ?? []).map((item) => (
-              <div key={item.title} className="rounded-xl border p-3">
-                <div className="flex items-center justify-between gap-2"><p className="text-sm font-semibold">{item.title}</p><span className="text-[10px] uppercase text-muted-foreground">{item.priority}</span></div>
-                <p className="mt-1 text-sm">{item.action}</p><p className="mt-1 text-xs text-muted-foreground">{item.reason}</p>
+            <Card>
+              <CardHeader><CardTitle>Valor acompanhado</CardTitle></CardHeader>
+              <CardContent className="grid gap-3 sm:grid-cols-2">
+                <Metric label="Receita rastreada" value={money(growth.data?.valueGenerated.trackedRevenue)} />
+                <Metric label="Vendas rastreadas" value={growth.data?.valueGenerated.trackedOrders.toLocaleString("pt-BR") ?? "—"} />
+                <Metric label="Mídia rastreada" value={money(growth.data?.valueGenerated.trackedMarketingSpend)} />
+                <Metric label="Meses de histórico" value={growth.data?.valueGenerated.trackedMonths.toLocaleString("pt-BR") ?? "—"} />
+              </CardContent>
+            </Card>
+          </section>
+          <Card>
+            <CardHeader><CardTitle className="flex items-center gap-2"><Rocket className="h-5 w-5" /> Plano de ação recomendado</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              {(growth.data?.recommendations ?? []).map((item) => (
+                <div key={item.title} className="rounded-xl border p-3">
+                  <div className="flex items-center justify-between gap-2"><p className="text-sm font-semibold">{item.title}</p><span className="text-[10px] uppercase text-muted-foreground">{item.priority}</span></div>
+                  <p className="mt-1 text-sm">{item.action}</p><p className="mt-1 text-xs text-muted-foreground">{item.reason}</p>
+                </div>
+              ))}
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={() => void saveActionPlan()} disabled={busy === "action-plan" || !(growth.data?.recommendations?.length)}>{busy === "action-plan" ? "Salvando..." : actionPlanSaved ? "Plano salvo" : "Salvar Plano de Ação"}</Button>
+                <Button variant="outline" size="sm" onClick={() => navigate("/trabalho")}>Executar na Central de Trabalho</Button>
               </div>
-            ))}
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => void saveActionPlan()} disabled={busy === "action-plan" || !(growth.data?.recommendations?.length)}>{busy === "action-plan" ? "Salvando..." : actionPlanSaved ? "Plano salvo" : "Salvar Plano de Ação"}</Button>
-              <Button variant="outline" size="sm" onClick={() => navigate("/trabalho")}>Executar na Central de Trabalho</Button>
-            </div>
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-[1.15fr_.85fr]">
-        <Card>
-          <CardHeader><CardTitle>PN x execução / metas</CardTitle></CardHeader>
-          <CardContent className="space-y-2">
-            {(growth.data?.planVsExecution ?? []).length ? growth.data!.planVsExecution.map((goal) => (
-              <div key={`${goal.metric_key}-${goal.ends_at}`} className="flex items-center justify-between gap-4 rounded-lg border p-3 text-sm">
-                <div><p className="font-medium">{goal.label}</p><p className="text-xs text-muted-foreground">{goal.metric_key} · até {new Date(goal.ends_at).toLocaleDateString("pt-BR")}</p><p className="mt-1 text-xs text-muted-foreground">Realizado: {goal.actualBasis === "sem_mapeamento_automatico" ? "sem mapeamento automático" : `${goal.actualValue.toLocaleString("pt-BR")} ${goal.unit}`}</p></div>
-                <div className="text-right"><strong>Meta: {Number(goal.target_value).toLocaleString("pt-BR")} {goal.unit}</strong><p className="text-xs text-muted-foreground">{goal.progressPercent == null ? "—" : `${goal.progressPercent.toFixed(1)}% da meta`}</p></div>
-              </div>
-            )) : <p className="text-sm text-muted-foreground">Ainda não há metas oficiais ativas. Cadastre metas no BI para comparar plano x execução.</p>}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle>Valor acompanhado</CardTitle></CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2">
-            <Metric label="Receita rastreada" value={money(growth.data?.valueGenerated.trackedRevenue)} />
-            <Metric label="Vendas rastreadas" value={growth.data?.valueGenerated.trackedOrders.toLocaleString("pt-BR") ?? "—"} />
-            <Metric label="Mídia rastreada" value={money(growth.data?.valueGenerated.trackedMarketingSpend)} />
-            <Metric label="Meses de histórico" value={growth.data?.valueGenerated.trackedMonths.toLocaleString("pt-BR") ?? "—"} />
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-[1.2fr_.8fr]">
-        <Card><CardHeader><CardTitle>Diagnóstico do Perfil Mestre</CardTitle></CardHeader><CardContent>{diagnostic.data?.lacunas?.length ? <div className="space-y-3">{diagnostic.data.lacunas.slice(0,8).map((item,index)=><div key={item.id} className="flex gap-3 rounded-xl border p-3"><div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{index+1}</div><div><p className="text-sm font-semibold">{item.titulo}</p><p className="mt-1 text-sm text-muted-foreground">{item.acao}</p></div></div>)}</div> : <div className="flex gap-3 rounded-xl border p-4"><CheckCircle2 className="h-5 w-5 text-emerald-700"/><p className="text-sm">Base essencial consistente.</p></div>}</CardContent></Card>
-        <Card><CardHeader><CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5" /> Fonte única</CardTitle></CardHeader><CardContent className="space-y-3 text-sm">{["CRM e vendas alimentam histórico real.","Agentes usam contexto aprovado.","Marketing consome público, oferta e restrições.","BI mede execução e metas.","PN, manual e apresentação devem ser derivados desta mesma base."].map(text=><div key={text} className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary"/><span>{text}</span></div>)}</CardContent></Card>
-      </section>
-
-      <section>
-        <div className="mb-4"><h2 className="text-xl font-semibold">Documentos derivados</h2><p className="mt-1 text-sm text-muted-foreground">Gerados sempre da mesma fonte oficial, sem criar outro cadastro.</p></div>
-        <div className="flex flex-wrap gap-2 rounded-2xl border bg-card p-4">
-          <Button variant="outline" onClick={generateExecutiveSummary}>Gerar Resumo Executivo</Button>
-          <Button variant="outline" onClick={generateCompanyManual}>Gerar Manual da Empresa</Button>
-          <Button variant="outline" onClick={generateValueReport}>Gerar Relatório de Valor</Button>
+            </CardContent>
+          </Card>
         </div>
-      </section>
+      )}
 
-      <section id="perfil-mestre" className="scroll-mt-6">
-        <div className="mb-4"><h2 className="text-xl font-semibold">Perfil Mestre & Plano do Negócio</h2><p className="mt-1 text-sm text-muted-foreground">Única entrada estratégica. Documentos, PN e inteligência ficam consolidados aqui.</p></div>
-        <BusinessPlanPanel />
-      </section>
+      {view === "documents" && (
+        <section className="space-y-4">
+          <div><h2 className="text-xl font-semibold">Documentos derivados</h2><p className="mt-1 text-sm text-muted-foreground">Gerados a partir da mesma fonte oficial e das etapas aprovadas.</p></div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card><CardHeader><CardTitle className="text-base">Resumo Executivo</CardTitle></CardHeader><CardContent><p className="mb-4 text-sm text-muted-foreground">Síntese estratégica para leitura rápida.</p><Button variant="outline" onClick={generateExecutiveSummary}>Gerar resumo</Button></CardContent></Card>
+            <Card><CardHeader><CardTitle className="text-base">Manual da Empresa</CardTitle></CardHeader><CardContent><p className="mb-4 text-sm text-muted-foreground">Contexto operacional e institucional aprovado.</p><Button variant="outline" onClick={generateCompanyManual}>Gerar manual</Button></CardContent></Card>
+            <Card><CardHeader><CardTitle className="text-base">Relatório de Valor</CardTitle></CardHeader><CardContent><p className="mb-4 text-sm text-muted-foreground">Resultados, acompanhamento e planejamento.</p><Button variant="outline" onClick={generateValueReport}>Gerar relatório</Button></CardContent></Card>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
