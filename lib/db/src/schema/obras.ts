@@ -32,6 +32,10 @@ export type ObraPortalConfig = {
   showSearch: boolean;
   showPostSale: boolean;
   showVendi: boolean;
+  showBudgetItems: boolean;
+  showBudgetQuantities: boolean;
+  showBudgetUnitPrices: boolean;
+  showBudgetStageTotals: boolean;
 };
 
 export const DEFAULT_OBRA_PORTAL_CONFIG: ObraPortalConfig = {
@@ -62,6 +66,10 @@ export const DEFAULT_OBRA_PORTAL_CONFIG: ObraPortalConfig = {
   showSearch: true,
   showPostSale: true,
   showVendi: true,
+  showBudgetItems: true,
+  showBudgetQuantities: true,
+  showBudgetUnitPrices: false,
+  showBudgetStageTotals: true,
 };
 
 export const obrasTable = pgTable("obras", {
