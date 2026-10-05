@@ -71,10 +71,10 @@ export default function ConstructionPortalContentManager({ tenantId, obraId }: {
     <div className="space-y-5">
       <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Biblioteca do cliente</p>
-        <h3 className="mt-1 text-lg font-semibold text-slate-950">Projetos, contratos, manuais e anexos</h3>
+        <h3 className="mt-1 text-lg font-semibold text-slate-950">Projetos, contratos próprios e de terceiros, documentos, manuais e garantias</h3>
         <div className="mt-4 grid gap-3 md:grid-cols-[170px_1fr_1.2fr_100px_auto]">
           <select className="rounded-xl border px-3 py-2 text-sm" value={doc.categoria} onChange={(e) => setDoc({ ...doc, categoria: e.target.value })}>
-            <option value="projeto">Projeto</option><option value="contrato">Contrato</option><option value="manual">Manual</option><option value="garantia">Garantia</option><option value="documento">Documento</option>
+            <option value="projeto">Projeto</option><option value="contrato">Contrato próprio</option><option value="contrato_terceiro">Contrato de terceiro</option><option value="art_rrt">ART / RRT</option><option value="alvara">Alvará / Licença</option><option value="laudo">Laudo</option><option value="ata">Ata</option><option value="manual">Manual</option><option value="garantia">Garantia</option><option value="entrega">Documento de entrega</option><option value="documento">Documento</option>
           </select>
           <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Título" value={doc.titulo} onChange={(e) => setDoc({ ...doc, titulo: e.target.value })} />
           <input className="rounded-xl border px-3 py-2 text-sm" placeholder="URL do arquivo" value={doc.url} onChange={(e) => setDoc({ ...doc, url: e.target.value })} />
