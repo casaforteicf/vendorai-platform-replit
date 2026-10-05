@@ -180,7 +180,7 @@ export default function PlanoMidia() {
   const [generating, setGenerating] = useState(false);
   const [approving, setApproving] = useState(false);
   const [creatingCampaigns, setCreatingCampaigns] = useState(false);
-  const [campaignsGenerated, setCampaignsGenerated] = useState(false);
+  const [campaignsGenerated, setCampaignsGenerated] = useState(false);\n  const [wizardStep, setWizardStep] = useState(0);
 
   const campaigns = plan?.conteudo.campanhas ?? [];
   const approved = plan?.conteudo.statusPlanejamento === "aprovado";
@@ -368,7 +368,7 @@ export default function PlanoMidia() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="marketing-plan-responsive space-y-5">
       <Card className="border-primary/30 bg-primary/[0.02]">
         <CardContent className="p-4 md:p-5">
           <p className="text-sm font-semibold">Planejamento = decisão, não execução</p>
@@ -405,82 +405,201 @@ export default function PlanoMidia() {
         </Card>
       )}
 
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-start justify-between gap-3 flex-wrap">
-            <div>
-              <CardTitle className="text-base flex items-center gap-2"><Target className="h-4 w-4 text-primary" />1. Informações do planejamento</CardTitle>
-              <p className="mt-1 text-xs text-muted-foreground">Use uma opção rápida ou escreva do seu jeito. Estes dados serão usados na próxima proposta.</p>
+      <Card className="overflow-hidden border-border/70 shadow-sm">
+        <CardHeader className="border-b bg-muted/20 pb-4">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <CardTitle className="text-lg flex items-center gap-2"><Target className="h-5 w-5 text-primary" />Planejamento guiado</CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">Preencha uma etapa por vez. Você pode voltar e ajustar qualquer informação antes de gerar a proposta.</p>
+              </div>
+              <Badge variant="outline">{configuredCount}/7 informações</Badge>
             </div>
-            <Badge variant="outline">{configuredCount}/7 informações</Badge>
+            <div className="grid grid-cols-5 gap-2" aria-label="Progresso do planejamento">
+              {[
+                ["1", "Objetivo"],
+                ["2", "Público"],
+                ["3", "Período"],
+                ["4", "Canais"],
+                ["5", "Revisão"],
+              ].map(([number, label], index) => (
+                <button
+                  key={number}
+                  type="button"
+                  onClick={() => setWizardStep(index)}
+                  className={`rounded-xl border px-2 py-2 text-left transition ${index === wizardStep ? "border-primary bg-primary/10" : index < wizardStep ? "border-primary/30 bg-primary/[0.03]" : "bg-background"}`}
+                >
+                  <span className={`block text-[10px] font-semibold ${index <= wizardStep ? "text-primary" : "text-muted-foreground"}`}>ETAPA {number}</span>
+                  <span className="mt-0.5 block truncate text-xs font-medium">{label}</span>
+                </button>
+              ))}
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+              <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${((wizardStep + 1) / 5) * 100}%` }} />
+            </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-5">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="text-xs font-medium">Objetivo *</label>
-              <Input className="mt-1" value={config.objetivoPrincipal} onChange={(e) => setConfig({ ...config, objetivoPrincipal: e.target.value })} placeholder="Ex.: gerar oportunidades qualificadas" />
-              <QuickChoices options={OBJECTIVE_OPTIONS} onChoose={(value) => setConfig({ ...config, objetivoPrincipal: value })} />
-            </div>
-            <div>
-              <label className="text-xs font-medium">Produto ou serviço *</label>
-              <Input className="mt-1" value={config.produtoServicoPrioritario} onChange={(e) => setConfig({ ...config, produtoServicoPrioritario: e.target.value })} placeholder="Ex.: VendorAI para clínicas odontológicas" />
-              <p className="mt-2 text-[10px] text-muted-foreground">Digite o produto/serviço específico desta ação.</p>
-            </div>
-            <div>
-              <label className="text-xs font-medium">Público *</label>
-              <Input className="mt-1" value={config.publicoPrioritario} onChange={(e) => setConfig({ ...config, publicoPrioritario: e.target.value })} placeholder="Ex.: clínicas odontológicas privadas" />
-              <QuickChoices options={AUDIENCE_OPTIONS} onChoose={(value) => setConfig({ ...config, publicoPrioritario: value })} />
-            </div>
-            <div>
-              <label className="text-xs font-medium">Região</label>
-              <Input className="mt-1" value={config.regiao} onChange={(e) => setConfig({ ...config, regiao: e.target.value })} placeholder="Ex.: Brasil, Santa Catarina ou Chapecó" />
-              <QuickChoices options={REGION_OPTIONS} onChoose={(value) => setConfig({ ...config, regiao: value })} />
-            </div>
-            <div>
-              <label className="text-xs font-medium">Oferta / CTA</label>
-              <Input className="mt-1" value={config.ofertaPrincipal} onChange={(e) => setConfig({ ...config, ofertaPrincipal: e.target.value })} placeholder="Ex.: diagnóstico + demonstração" />
-              <QuickChoices options={OFFER_OPTIONS} onChoose={(value) => setConfig({ ...config, ofertaPrincipal: value })} />
-            </div>
-            <div>
-              <label className="text-xs font-medium">Orçamento total</label>
-              <Input className="mt-1" value={orcamentoTotal} onChange={(e) => setOrcamentoTotal(e.target.value)} placeholder="Opcional" inputMode="decimal" />
-              <p className="mt-2 text-[10px] text-muted-foreground">Pode ficar em branco para planejar sem verba definida.</p>
-            </div>
-          </div>
 
-          <div>
-            <label className="text-xs font-medium">Período</label>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {PERIODS.map((days) => <Button key={days} type="button" size="sm" variant={periodoDias === days ? "default" : "outline"} onClick={() => setPeriodoDias(days)}>{days} dias</Button>)}
-              <Input className="h-9 w-28" type="number" min={1} max={3650} value={periodoDias} onChange={(e) => setPeriodoDias(Math.max(1, Number(e.target.value) || 1))} />
+        <CardContent className="p-5 md:p-6">
+          {wizardStep === 0 && (
+            <div className="mx-auto max-w-3xl space-y-6">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">Etapa 1 de 5</p>
+                <h3 className="mt-1 text-xl font-semibold">Qual é o objetivo desta ação?</h3>
+                <p className="mt-1 text-sm text-muted-foreground">Comece pela intenção comercial e pelo produto ou serviço que será priorizado.</p>
+              </div>
+              <div className="grid gap-5 md:grid-cols-2">
+                <div>
+                  <label className="text-sm font-medium">Objetivo *</label>
+                  <Input className="mt-2 h-11" value={config.objetivoPrincipal} onChange={(e) => setConfig({ ...config, objetivoPrincipal: e.target.value })} placeholder="Ex.: gerar oportunidades qualificadas" />
+                  <QuickChoices options={OBJECTIVE_OPTIONS} onChoose={(value) => setConfig({ ...config, objetivoPrincipal: value })} />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Produto ou serviço *</label>
+                  <Input className="mt-2 h-11" value={config.produtoServicoPrioritario} onChange={(e) => setConfig({ ...config, produtoServicoPrioritario: e.target.value })} placeholder="Ex.: VendorAI para clínicas odontológicas" />
+                  <p className="mt-2 text-xs text-muted-foreground">Use o produto, serviço ou oferta específica desta ação.</p>
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Oferta / CTA</label>
+                <Input className="mt-2 h-11" value={config.ofertaPrincipal} onChange={(e) => setConfig({ ...config, ofertaPrincipal: e.target.value })} placeholder="Ex.: diagnóstico + demonstração" />
+                <QuickChoices options={OFFER_OPTIONS} onChoose={(value) => setConfig({ ...config, ofertaPrincipal: value })} />
+              </div>
             </div>
-          </div>
+          )}
 
-          <div>
-            <label className="text-xs font-medium">Canais que deseja considerar</label>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {CHANNELS.map((channel) => <Button key={channel} type="button" size="sm" variant={config.canaisPreferidos.includes(channel) ? "default" : "outline"} onClick={() => toggleChannel(channel)}>{channel}</Button>)}
+          {wizardStep === 1 && (
+            <div className="mx-auto max-w-3xl space-y-6">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">Etapa 2 de 5</p>
+                <h3 className="mt-1 text-xl font-semibold">Quem queremos alcançar?</h3>
+                <p className="mt-1 text-sm text-muted-foreground">Defina o público e a região sem misturar essa decisão com orçamento ou canais.</p>
+              </div>
+              <div className="grid gap-5 md:grid-cols-2">
+                <div>
+                  <label className="text-sm font-medium">Público *</label>
+                  <Input className="mt-2 h-11" value={config.publicoPrioritario} onChange={(e) => setConfig({ ...config, publicoPrioritario: e.target.value })} placeholder="Ex.: clínicas odontológicas privadas" />
+                  <QuickChoices options={AUDIENCE_OPTIONS} onChoose={(value) => setConfig({ ...config, publicoPrioritario: value })} />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Região</label>
+                  <Input className="mt-2 h-11" value={config.regiao} onChange={(e) => setConfig({ ...config, regiao: e.target.value })} placeholder="Ex.: Brasil, Santa Catarina ou Chapecó" />
+                  <QuickChoices options={REGION_OPTIONS} onChoose={(value) => setConfig({ ...config, regiao: value })} />
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
-          <div>
-            <label className="text-xs font-medium">Observações para a IA</label>
-            <textarea
-              className="mt-1 min-h-[90px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              value={config.observacoes}
-              onChange={(e) => setConfig({ ...config, observacoes: e.target.value })}
-              placeholder="Restrições, diferenciais, prioridades ou qualquer orientação importante."
-            />
-          </div>
+          {wizardStep === 2 && (
+            <div className="mx-auto max-w-3xl space-y-6">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">Etapa 3 de 5</p>
+                <h3 className="mt-1 text-xl font-semibold">Por quanto tempo e com qual investimento?</h3>
+                <p className="mt-1 text-sm text-muted-foreground">O orçamento continua opcional. A IA pode planejar mesmo quando a verba ainda não estiver definida.</p>
+              </div>
+              <div className="grid gap-5 md:grid-cols-2">
+                <div>
+                  <label className="text-sm font-medium">Período</label>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {PERIODS.map((days) => <Button key={days} type="button" size="sm" variant={periodoDias === days ? "default" : "outline"} onClick={() => setPeriodoDias(days)}>{days} dias</Button>)}
+                  </div>
+                  <Input className="mt-3 h-11 max-w-40" type="number" min={1} max={3650} value={periodoDias} onChange={(e) => setPeriodoDias(Math.max(1, Number(e.target.value) || 1))} />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Orçamento total</label>
+                  <Input className="mt-2 h-11" value={orcamentoTotal} onChange={(e) => setOrcamentoTotal(e.target.value)} placeholder="Opcional" inputMode="decimal" />
+                  <p className="mt-2 text-xs text-muted-foreground">Deixe em branco para planejar sem verba definida.</p>
+                </div>
+              </div>
+            </div>
+          )}
 
-          <div className="flex justify-end border-t pt-4">
+          {wizardStep === 3 && (
+            <div className="mx-auto max-w-4xl space-y-6">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">Etapa 4 de 5</p>
+                <h3 className="mt-1 text-xl font-semibold">Quais canais entram no planejamento?</h3>
+                <p className="mt-1 text-sm text-muted-foreground">Selecione os canais a considerar. A proposta poderá distribuir papéis diferentes entre eles.</p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {CHANNELS.map((channel) => {
+                  const selected = config.canaisPreferidos.includes(channel);
+                  return (
+                    <button
+                      key={channel}
+                      type="button"
+                      onClick={() => toggleChannel(channel)}
+                      className={`flex min-h-12 items-center justify-between rounded-xl border px-4 py-3 text-left text-sm font-medium transition ${selected ? "border-primary bg-primary/10 text-primary" : "bg-background hover:bg-muted/40"}`}
+                    >
+                      <span>{channel}</span>
+                      <span className={`flex h-5 w-5 items-center justify-center rounded-full border text-[10px] ${selected ? "border-primary bg-primary text-primary-foreground" : "text-transparent"}`}>✓</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground">{config.canaisPreferidos.length ? `${config.canaisPreferidos.length} canal(is) selecionado(s)` : "Nenhum canal selecionado. A IA poderá sugerir uma combinação na proposta."}</p>
+            </div>
+          )}
+
+          {wizardStep === 4 && (
+            <div className="mx-auto max-w-4xl space-y-6">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">Etapa 5 de 5</p>
+                <h3 className="mt-1 text-xl font-semibold">Revise antes de gerar</h3>
+                <p className="mt-1 text-sm text-muted-foreground">Confira o briefing. A IA ainda não executará campanhas; ela apenas criará a proposta para sua aprovação.</p>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                {[
+                  ["Objetivo", config.objetivoPrincipal || "Não informado"],
+                  ["Produto / serviço", config.produtoServicoPrioritario || "Não informado"],
+                  ["Público", config.publicoPrioritario || "Não informado"],
+                  ["Região", config.regiao || "Não informada"],
+                  ["Oferta / CTA", config.ofertaPrincipal || "Não informada"],
+                  ["Período", `${periodoDias} dias`],
+                  ["Orçamento", orcamentoTotal ? `R$ ${orcamentoTotal}` : "Sem verba definida"],
+                  ["Canais", config.canaisPreferidos.length ? config.canaisPreferidos.join(", ") : "A definir pela proposta"],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-xl border bg-muted/20 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+                    <p className="mt-1 text-sm font-medium">{value}</p>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <label className="text-sm font-medium">Observações para a IA</label>
+                <textarea
+                  className="mt-2 min-h-[110px] w-full rounded-xl border border-input bg-background px-3 py-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={config.observacoes}
+                  onChange={(e) => setConfig({ ...config, observacoes: e.target.value })}
+                  placeholder="Restrições, diferenciais, prioridades ou qualquer orientação importante."
+                />
+              </div>
+              <div className="rounded-xl border border-primary/20 bg-primary/[0.03] p-4">
+                <p className="text-sm font-semibold flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" />Próximo passo</p>
+                <p className="mt-1 text-xs text-muted-foreground">Gerar a proposta cria a estratégia recomendada e as sugestões de campanha. Nada será publicado ou ativado automaticamente nesta etapa.</p>
+              </div>
+            </div>
+          )}
+        </CardContent>
+
+        <div className="flex items-center justify-between gap-3 border-t bg-muted/10 px-5 py-4 md:px-6">
+          <Button type="button" variant="outline" onClick={() => setWizardStep((step) => Math.max(0, step - 1))} disabled={wizardStep === 0}>Voltar</Button>
+          <div className="text-xs text-muted-foreground">Etapa {wizardStep + 1} de 5</div>
+          {wizardStep < 4 ? (
+            <Button
+              type="button"
+              onClick={() => setWizardStep((step) => Math.min(4, step + 1))}
+              disabled={(wizardStep === 0 && (!config.objetivoPrincipal.trim() || !config.produtoServicoPrioritario.trim())) || (wizardStep === 1 && !config.publicoPrioritario.trim())}
+            >
+              Continuar <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          ) : (
             <Button onClick={generateProposal} disabled={generating}>
               {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
               Gerar proposta com IA
             </Button>
-          </div>
-        </CardContent>
+          )}
+        </div>
       </Card>
 
       {plan && (
