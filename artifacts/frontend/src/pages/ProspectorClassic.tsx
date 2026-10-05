@@ -56,6 +56,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { ProspectorAprovacoesContent } from "./ProspectorAprovacoes";
+import { ProspectorLocationMap, type ProspectorGeoArea } from "@/components/ProspectorLocationMap";
 
 type SearchFilter = "todos" | "fortes" | "com_contato";
 type QueueFilter = "todos" | "quentes" | "aquecendo" | "analisando";
@@ -122,6 +123,7 @@ type MultiConfigResponse = {
   config: {
     setores: string[];
     cidades: string[];
+    geoAreas?: ProspectorGeoArea[];
     ritmoDiario: number;
     ativo: boolean;
     combinacoes?: Array<{ id: string; setor: string; cidade: string; ativo: boolean }>;
@@ -341,6 +343,7 @@ function ProspectorAutoConfig({ tenantId, isSuperAdmin }: { tenantId: string; is
   const queryClient = useQueryClient();
   const [setores, setSetores] = useState<string[]>([]);
   const [cidades, setCidades] = useState<string[]>([]);
+  const [geoAreas, setGeoAreas] = useState<ProspectorGeoArea[]>([]);
   const [ritmoDiario, setRitmoDiario] = useState(10);
   const [ativo, setAtivo] = useState(false);
 
@@ -361,6 +364,7 @@ function ProspectorAutoConfig({ tenantId, isSuperAdmin }: { tenantId: string; is
     if (!config) return;
     setSetores(config.setores ?? []);
     setCidades(config.cidades ?? []);
+    setGeoAreas(config.geoAreas ?? []);
     setRitmoDiario(config.ritmoDiario ?? 10);
     setAtivo(Boolean(config.ativo));
   }, [configQuery.data]);
@@ -373,7 +377,7 @@ function ProspectorAutoConfig({ tenantId, isSuperAdmin }: { tenantId: string; is
       const response = await fetch("/api/prospector/config-multi", {
         method: "PUT",
         headers: authHeaders(),
-        body: JSON.stringify({ setores, cidades, ritmoDiario, ativo, ...(isSuperAdmin && tenantId ? { tenantId } : {}) }),
+        body: JSON.stringify({ setores, cidades, geoAreas, ritmoDiario, ativo, ...(isSuperAdmin && tenantId ? { tenantId } : {}) }),
       });
       const data = await response.json() as MultiConfigResponse & { error?: string };
       if (!response.ok) throw new Error(data.error ?? "Falha ao salvar configuração");
@@ -408,7 +412,7 @@ function ProspectorAutoConfig({ tenantId, isSuperAdmin }: { tenantId: string; is
           <div className="space-y-4">
             <div className="grid gap-3 lg:grid-cols-2">
               <MultiValueInput label="Nichos / ICP" values={setores} onChange={setSetores} placeholder="Ex: materiais de construção" maxItems={10} helper="Enter, vírgula ou ponto e vírgula adiciona outro nicho." />
-              <MultiValueInput label="Localidades" values={cidades} onChange={setCidades} placeholder="Ex: Chapecó, SC" maxItems={20} helper="Pode usar cidade, região ou praça comercial." />
+              <div className="space-y-2"><MultiValueInput label="Localidades" values={cidades} onChange={(values) => { setCidades(values); setGeoAreas((current) => current.filter((area) => values.some((value) => value.toLocaleLowerCase("pt-BR") === area.label.toLocaleLowerCase("pt-BR")))); }} placeholder="Ex: Chapecó, SC" maxItems={20} helper="Pode usar cidade, região ou praça comercial." /><ProspectorLocationMap values={cidades} onChange={setCidades} maxItems={20} onAreaAdd={(area) => setGeoAreas((current) => [...current.filter((item) => item.label.toLocaleLowerCase("pt-BR") !== area.label.toLocaleLowerCase("pt-BR")), area])} /></div>
             </div>
             <div className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
               <div className="space-y-1.5">
@@ -442,6 +446,7 @@ export default function ProspectorClassic() {
 
   const [nichos, setNichos] = useState<string[]>([]);
   const [localidades, setLocalidades] = useState<string[]>([]);
+  const [geoAreas, setGeoAreas] = useState<ProspectorGeoArea[]>([]);
   const [maxResults, setMaxResults] = useState(20);
   const [results, setResults] = useState<TaggedSearchResult[]>([]);
   const [searched, setSearched] = useState(false);
@@ -690,7 +695,7 @@ export default function ProspectorClassic() {
           const response = await fetch("/api/prospector/search", {
             method: "POST",
             headers: authHeaders(),
-            body: JSON.stringify({ atividade: combination.nicho, localidade: combination.localidade, maxResults: perCombination, ...tenantField() }),
+            body: JSON.stringify({ atividade: combination.nicho, localidade: combination.localidade, maxResults: perCombination, geo: geoAreas.find((area) => area.label.toLocaleLowerCase("pt-BR") === combination.localidade.toLocaleLowerCase("pt-BR")) ? (() => { const area = geoAreas.find((item) => item.label.toLocaleLowerCase("pt-BR") === combination.localidade.toLocaleLowerCase("pt-BR"))!; return { lat: area.lat, lng: area.lng, radiusKm: area.radiusKm }; })() : undefined, ...tenantField() }),
           });
           const data = await response.json() as { results?: ProspectorSearchResult[]; error?: string };
           if (!response.ok) throw new Error(data.error ?? "Falha na busca");
@@ -887,7 +892,7 @@ export default function ProspectorClassic() {
             <CardContent className="space-y-4">
               <div className="grid gap-3 lg:grid-cols-2">
                 <MultiValueInput label="Atividades / nichos" values={nichos} onChange={setNichos} placeholder="Ex: lojas de piscinas" maxItems={10} />
-                <MultiValueInput label="Localidades" values={localidades} onChange={setLocalidades} placeholder="Ex: Chapecó, SC" maxItems={20} />
+                <div className="space-y-2"><MultiValueInput label="Localidades" values={localidades} onChange={(values) => { setLocalidades(values); setGeoAreas((current) => current.filter((area) => values.some((value) => value.toLocaleLowerCase("pt-BR") === area.label.toLocaleLowerCase("pt-BR")))); }} placeholder="Ex: Chapecó, SC" maxItems={20} /><ProspectorLocationMap values={localidades} onChange={setLocalidades} maxItems={20} onAreaAdd={(area) => setGeoAreas((current) => [...current.filter((item) => item.label.toLocaleLowerCase("pt-BR") !== area.label.toLocaleLowerCase("pt-BR")), area])} /></div>
               </div>
               <div className="space-y-1.5">
                 <div className="flex flex-wrap items-center justify-between gap-2"><Label>Limite total de resultados</Label><div className="flex gap-2"><Badge variant="secondary">{maxResults} prospects</Badge><Badge variant="outline">{nichos.length * localidades.length} combinação(ões)</Badge></div></div>

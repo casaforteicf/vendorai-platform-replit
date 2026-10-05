@@ -25,6 +25,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import ConstructionRadar from "./ConstructionRadar";
+import { ProspectorLocationMap, type ProspectorGeoArea } from "@/components/ProspectorLocationMap";
 
 type WorkCategory = "residencial" | "comercial" | "empreendimentos" | "industrial" | "publica";
 
@@ -192,6 +193,7 @@ export default function ConstructionRadarWorkspace() {
   const [category, setCategory] = useState<WorkCategory>("residencial");
   const [model, setModel] = useState(MODELS.residencial[0]);
   const [locality, setLocality] = useState("");
+  const [geoArea, setGeoArea] = useState<ProspectorGeoArea | null>(null);
   const [intervention, setIntervention] = useState("nova obra");
   const [standard, setStandard] = useState("todos");
   const [phase, setPhase] = useState("todas");
@@ -283,7 +285,7 @@ export default function ConstructionRadarWorkspace() {
       fetch("/api/prospector/search", {
         method: "POST",
         headers: authHeaders(),
-        body: JSON.stringify({ atividade: companyTerms, localidade: locality.trim(), maxResults: 20, ...tenantField() }),
+        body: JSON.stringify({ atividade: companyTerms, localidade: locality.trim(), maxResults: 20, geo: geoArea ? { lat: geoArea.lat, lng: geoArea.lng, radiusKm: geoArea.radiusKm } : undefined, ...tenantField() }),
       }).then(async (response) => {
         const data = await response.json() as { results?: ProspectorSearchResult[]; error?: string };
         if (!response.ok) throw new Error(data.error ?? "Falha ao consultar empresas relacionadas");
@@ -310,6 +312,7 @@ export default function ConstructionRadarWorkspace() {
           phase,
           productInterest,
           maxResults: 12,
+          geo: geoArea ? { lat: geoArea.lat, lng: geoArea.lng, radiusKm: geoArea.radiusKm } : undefined,
           ...tenantField(),
         }),
       }).then(async (response) => {
@@ -558,7 +561,7 @@ export default function ConstructionRadarWorkspace() {
                 </div>
                 <div className="space-y-1.5 xl:col-span-2">
                   <Label>Cidade, região ou praça comercial</Label>
-                  <Input value={locality} onChange={(event) => setLocality(event.target.value)} placeholder="Ex: Chapecó, SC ou Oeste de Santa Catarina" />
+                  <Input value={locality} onChange={(event) => setLocality(event.target.value)} placeholder="Ex: Chapecó, SC ou Oeste de Santa Catarina" /><ProspectorLocationMap values={locality ? [locality] : []} onChange={(values) => { const next = values[values.length - 1] ?? ""; setLocality(next); if (!next) setGeoArea(null); }} maxItems={1} onAreaAdd={(area) => { setGeoArea(area); setLocality(area.label); }} />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Intervenção</Label>

@@ -2002,7 +2002,10 @@ async function runProspectorSync(log: Logger): Promise<void> {
       const query = `${config.setor} em ${config.cidade}`;
       log.info({ tenantId: config.tenantId, query }, "scheduler/prospector-sync: fetching places");
 
-      const places = await searchAllPlaces(query, log);
+      const geo = config.latitude != null && config.longitude != null && config.raioKm != null
+        ? { lat: config.latitude, lng: config.longitude, radiusKm: config.raioKm }
+        : undefined;
+      const places = await searchAllPlaces(query, log, geo);
       log.info({ tenantId: config.tenantId, found: places.length }, "scheduler/prospector-sync: places fetched");
 
       for (const place of places) {
