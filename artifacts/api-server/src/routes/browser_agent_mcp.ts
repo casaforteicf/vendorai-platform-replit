@@ -11,6 +11,7 @@ import {
 import { and, eq, or } from "drizzle-orm";
 import { decrypt, encrypt } from "../lib/crypto.js";
 import { runBrowserAgent, type BrowserAgentInput } from "../services/browser-agent.js";
+import { mergeBrowserProfiles, type BrowserProfileState } from "../services/browser-profile.js";
 import { signToken } from "../lib/jwt.js";
 
 import { createLiveBrowserSession, getLiveBrowserHandoff, startLiveBrowserMission } from "../services/browser-live-session.js";
@@ -142,6 +143,7 @@ const browserMcpConnectionSelection = {
   usernameEncrypted: browserAgentConnectionsTable.usernameEncrypted,
   passwordEncrypted: browserAgentConnectionsTable.passwordEncrypted,
   cookiesEncrypted: browserAgentConnectionsTable.cookiesEncrypted,
+  profileEncrypted: browserAgentConnectionsTable.profileEncrypted,
   lastUsedAt: browserAgentConnectionsTable.lastUsedAt,
   createdAt: browserAgentConnectionsTable.createdAt,
   updatedAt: browserAgentConnectionsTable.updatedAt,
@@ -157,6 +159,7 @@ type BrowserMcpConnection = Pick<
   | "usernameEncrypted"
   | "passwordEncrypted"
   | "cookiesEncrypted"
+  | "profileEncrypted"
   | "lastUsedAt"
   | "createdAt"
   | "updatedAt"
@@ -187,6 +190,7 @@ function safeConnection(connection: BrowserMcpConnection) {
     loginConfigured: Boolean(connection.usernameEncrypted),
     passcodeConfigured: Boolean(connection.passwordEncrypted),
     hasPersistentSession: Boolean(connection.cookiesEncrypted),
+    hasPersistentProfile: Boolean(connection.profileEncrypted),
     lastUsedAt: connection.lastUsedAt,
     createdAt: connection.createdAt,
     updatedAt: connection.updatedAt,
@@ -200,6 +204,8 @@ router.get("/internal/browser-mcp/status", (_req, res) => {
     runtime: "cdp",
     secureSecretInjection: true,
     persistentConnections: true,
+    persistentProfiles: true,
+    humanVerificationSessionReuse: true,
     vendiAutonomyEnabled: vendiAutonomyEnabled(),
   });
 });
@@ -327,6 +333,14 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
     const sessionCookies = connection?.cookiesEncrypted
       ? JSON.parse(decrypt(connection.cookiesEncrypted))
       : undefined;
+    let sessionProfile: BrowserProfileState | undefined;
+    if (connection?.profileEncrypted) {
+      try {
+        sessionProfile = JSON.parse(decrypt(connection.profileEncrypted)) as BrowserProfileState;
+      } catch {
+        sessionProfile = undefined;
+      }
+    }
 
     let firstPartyAuthToken: string | undefined;
     let firstPartyAuthUserCache: Record<string, unknown> | undefined;
@@ -486,6 +500,7 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
           }
         : undefined,
       sessionCookies,
+      sessionProfile,
       firstPartyAuthToken,
       firstPartyAuthUserCache,
       onSessionPersist: connection
@@ -494,6 +509,24 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
               .update(browserAgentConnectionsTable)
               .set({
                 cookiesEncrypted: encrypt(JSON.stringify(cookies)),
+                lastUsedAt: new Date(),
+                updatedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(browserAgentConnectionsTable.id, connection!.id),
+                  eq(browserAgentConnectionsTable.tenantId, tenantId),
+                ),
+              );
+          }
+        : undefined,
+      onProfilePersist: connection
+        ? async (profile) => {
+            sessionProfile = mergeBrowserProfiles(sessionProfile, profile);
+            await db
+              .update(browserAgentConnectionsTable)
+              .set({
+                profileEncrypted: encrypt(JSON.stringify(sessionProfile)),
                 lastUsedAt: new Date(),
                 updatedAt: new Date(),
               })
