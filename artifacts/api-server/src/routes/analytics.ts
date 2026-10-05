@@ -171,6 +171,59 @@ router.get("/tenants/:tenantId/analytics/agents", async (req, res) => {
   });
 });
 
+
+// ─── Agent Operational Actions ───────────────────────────────────────────────
+// Expõe os eventos recentes que explicam falhas/rejeições/pendências.
+// O payload é retornado para permitir diagnóstico e reexecução segura no frontend.
+
+router.get("/tenants/:tenantId/analytics/agent-actions", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccess(req, tid)) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const rows = await db
+    .select({
+      id: agentActionsLogTable.id,
+      agentName: agentActionsLogTable.agentName,
+      actionType: agentActionsLogTable.actionType,
+      status: agentActionsLogTable.status,
+      payload: agentActionsLogTable.payload,
+      createdAt: agentActionsLogTable.createdAt,
+    })
+    .from(agentActionsLogTable)
+    .where(and(
+      eq(agentActionsLogTable.tenantId, tid),
+      gte(agentActionsLogTable.createdAt, thirtyDaysAgo),
+    ))
+    .orderBy(desc(agentActionsLogTable.createdAt))
+    .limit(100);
+
+  const operational = rows.filter((row) => row.status === "rejected" || row.status === "pending");
+  const extractReason = (payload: unknown) => {
+    if (!payload || typeof payload !== "object") return null;
+    const p = payload as Record<string, any>;
+    return p.error
+      ?? p.result?.error
+      ?? p.result?.reason
+      ?? p.result?.message
+      ?? p.reason
+      ?? null;
+  };
+
+  res.json({
+    periodo: "30d",
+    items: operational.map((row) => ({
+      id: row.id,
+      agentName: row.agentName,
+      actionType: row.actionType,
+      status: row.status,
+      reason: extractReason(row.payload),
+      payload: row.payload,
+      createdAt: row.createdAt,
+    })),
+  });
+});
+
 // ─── Channel Conversion Analytics ───────────────────────────────────────────
 
 router.get("/tenants/:tenantId/analytics/channels", async (req, res) => {
