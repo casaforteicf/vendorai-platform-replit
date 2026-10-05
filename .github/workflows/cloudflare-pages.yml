@@ -1,6 +1,6 @@
 name: Cloudflare Pages
 # Production deploy: Pages frontend; Railway backend remains unchanged.
-# Redeploy marker: arqdor-smart-spec-back 2026-10-05T16:20Z.
+# Redeploy marker: login-ui-production 2026-10-05T16:42Z.
 
 on:
   push:
