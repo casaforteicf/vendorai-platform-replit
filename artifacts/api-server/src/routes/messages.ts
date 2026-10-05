@@ -124,7 +124,17 @@ router.post("/messages", async (req, res): Promise<void> => {
   if (direcao === "saida" && (canal === "whatsapp" || canal === "instagram" || canal === "email") && leadId) {
     try {
       const { message } = await sendOutgoingMessage(
-        { tenantId, leadId, conteudo, canal, midia, instagramConnectionId: typeof req.body?.instagramConnectionId === "string" ? req.body.instagramConnectionId : undefined, emailSubject: typeof req.body?.emailSubject === "string" ? req.body.emailSubject : undefined },
+        {
+          tenantId,
+          leadId,
+          conteudo,
+          canal,
+          midia,
+          instagramConnectionId: typeof req.body?.instagramConnectionId === "string" ? req.body.instagramConnectionId : undefined,
+          emailSubject: typeof req.body?.emailSubject === "string" ? req.body.emailSubject : undefined,
+          emailCc: Array.isArray(req.body?.emailCc) ? req.body.emailCc.filter((value: unknown): value is string => typeof value === "string" && value.includes("@")).slice(0, 20) : undefined,
+          emailBcc: Array.isArray(req.body?.emailBcc) ? req.body.emailBcc.filter((value: unknown): value is string => typeof value === "string" && value.includes("@")).slice(0, 20) : undefined,
+        },
         req.log
       );
       res.status(201).json(message);
