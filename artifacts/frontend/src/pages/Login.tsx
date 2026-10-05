@@ -34,7 +34,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import logoLight from "/logo-full-light.svg";
 
 const POST_LOGIN_PATH_KEY = "vendorai_post_login_path";
-const PUBLIC_MEDIA = "/media/vendorai-official";
+const PUBLIC_MEDIA = "https://appvendorai.com/media/vendorai-official";
 
 const PT_COPY = {
   invalidEmail: "Email inválido",
@@ -385,12 +385,13 @@ function RealProductImage({
 
   if (failed) {
     return (
-      <div className="flex h-full min-h-[240px] items-center justify-center bg-white/80 px-8 text-center">
-        <div>
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+      <div className="flex h-full min-h-[240px] items-center justify-center bg-[linear-gradient(145deg,#f8fafc_0%,#eef4ff_100%)] px-8 text-center">
+        <div className="max-w-sm rounded-2xl border border-slate-200/80 bg-white/90 px-7 py-6 shadow-sm">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-50 text-orange-500">
             <BarChart3 className="h-6 w-6" />
           </div>
-          <p className="mt-4 text-sm font-medium text-slate-500">{unavailable}</p>
+          <p className="mt-4 text-sm font-semibold text-slate-700">{alt}</p>
+          <p className="mt-2 text-xs leading-5 text-slate-500">{unavailable}</p>
         </div>
       </div>
     );
@@ -682,7 +683,7 @@ export default function Login() {
               type="button"
               onClick={onDemoLogin}
               disabled={demoLoginMutation.isPending}
-              className="font-medium text-slate-500 transition hover:text-slate-800 hover:underline disabled:opacity-50"
+              className="font-semibold text-slate-700 transition hover:text-orange-600 hover:underline disabled:opacity-50"
             >
               {demoLoginMutation.isPending ? copy.entering : copy.demo}
             </button>
@@ -717,7 +718,7 @@ export default function Login() {
             {copy.tourSubtitle}
           </p>
 
-          <div className="mt-6 flex gap-2 overflow-x-auto pb-2">
+          <div className="mt-6 flex gap-2 overflow-x-auto pb-2 pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {tour.map((item, index) => {
               const Icon = item.icon;
               const selected = index === activeIndex;
@@ -740,7 +741,7 @@ export default function Login() {
             })}
           </div>
 
-          <div className="mt-5 grid min-h-0 flex-1 grid-cols-[minmax(245px,0.62fr)_minmax(0,1.38fr)] items-center gap-6 xl:gap-8">
+          <div className="mt-4 grid min-h-0 flex-1 grid-cols-[minmax(245px,0.62fr)_minmax(0,1.38fr)] items-center gap-6 xl:gap-8">
             <div className="self-center">
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-500 text-white shadow-[0_12px_28px_rgba(249,115,22,0.22)]">
                 <ActiveIcon className="h-5 w-5" />
@@ -830,7 +831,7 @@ export default function Login() {
             </div>
           </div>
 
-          <footer className="mt-5 border-t border-slate-200/80 pt-5">
+          <footer className="mt-3 border-t border-slate-200/80 pt-4">
             <div className="flex items-start gap-4">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
                 <BookOpen className="h-5 w-5" />
