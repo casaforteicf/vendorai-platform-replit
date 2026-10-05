@@ -286,7 +286,7 @@ export default function ExecutiveDashboardModern({
       <section id="dashboard-comercial" className="grid scroll-mt-24 gap-4 xl:grid-cols-[1.7fr_1fr]">
         <Card className="rounded-2xl border-border/60 shadow-sm">
           <CardContent className="p-5 md:p-6">
-            <SectionTitle icon={BarChart3Icon} title="Pipeline por etapa" description="Comparação entre registros ativos e concluídos com base no histórico real das etapas." href="/negocios" />
+            <SectionTitle icon={BarChart3} title="Pipeline por etapa" description="Comparação entre registros ativos e concluídos com base no histórico real das etapas." href="/negocios" />
             {activeStageData.length ? (
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
