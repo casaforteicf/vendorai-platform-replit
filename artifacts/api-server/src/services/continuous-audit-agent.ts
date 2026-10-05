@@ -189,9 +189,9 @@ async function upsertFinding(finding: AuditFinding, log: Logger) {
   const id = randomUUID();
   await pool.query(
     `INSERT INTO admin_improvements
-      (id,title,description,module,priority,status,source_type,source_ref_id,change_scope,
+      (id,title,description,module,priority,status,source_type,source_ref_id,
        acceptance_criteria,risk_summary,owner_agent,agent_status,agent_summary,test_status,created_by)
-     VALUES ($1,$2,$3,$4,$5,'solicitada','audit',$6,'global',$7,$8,'audit_24x7','detected',$3,'pending','audit_24x7')`,
+     VALUES ($1,$2,$3,$4,$5,'solicitada','audit',$6,$7,$8,'audit_24x7','detected',$3,'pending','audit_24x7')`,
     [id, finding.title, finding.description, finding.module, finding.priority, sourceRefId, finding.acceptanceCriteria, finding.riskSummary],
   );
 
