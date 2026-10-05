@@ -11,7 +11,24 @@
   max-width: 100%;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px) {\n
+  .marketing-plan-responsive [aria-label="Progresso do planejamento"] {
+    display: flex;
+    grid-template-columns: none;
+    overflow-x: auto;
+    padding-bottom: .25rem;
+    scrollbar-width: thin;
+  }
+
+  .marketing-plan-responsive [aria-label="Progresso do planejamento"] > button {
+    min-width: 7rem;
+    flex: 0 0 auto;
+  }
+
+  .marketing-plan-responsive > [class*="Card"] {
+    border-radius: 1rem;
+  }
+
   .marketing-plan-responsive {
     width: 100%;
     overflow-x: clip;
