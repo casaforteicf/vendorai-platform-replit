@@ -32,13 +32,13 @@ function canAccess(req: Request, tenantId: string) {
 }
 
 router.get("/tenants/:tenantId/email-connections", authenticate, async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = String(req.params.tenantId); // tenant-audit: reviewed guarded immediately by authenticated same-tenant/super-admin access
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   return res.json({ connections: await listEmailConnections(tenantId) });
 });
 
 router.get("/tenants/:tenantId/email-connections/:provider/auth-url", authenticate, async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = String(req.params.tenantId); // tenant-audit: reviewed guarded immediately by authenticated same-tenant/super-admin access
   const selected = provider(req.params.provider);
   if (!selected) return res.status(404).json({ error: "provider_not_supported" });
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
@@ -55,7 +55,7 @@ router.get("/tenants/:tenantId/email-connections/:provider/auth-url", authentica
 });
 
 router.delete("/tenants/:tenantId/email-connections/:provider", authenticate, async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = String(req.params.tenantId); // tenant-audit: reviewed guarded immediately by authenticated same-tenant/super-admin access
   const selected = provider(req.params.provider);
   if (!selected) return res.status(404).json({ error: "provider_not_supported" });
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
@@ -64,7 +64,7 @@ router.delete("/tenants/:tenantId/email-connections/:provider", authenticate, as
 });
 
 router.post("/tenants/:tenantId/email-connections/:provider/test", authenticate, async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = String(req.params.tenantId); // tenant-audit: reviewed guarded immediately by authenticated same-tenant/super-admin access
   const selected = provider(req.params.provider);
   if (!selected) return res.status(404).json({ error: "provider_not_supported" });
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
@@ -74,7 +74,7 @@ router.post("/tenants/:tenantId/email-connections/:provider/test", authenticate,
 });
 
 router.post("/tenants/:tenantId/email-connections/:provider/sync", authenticate, async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = String(req.params.tenantId); // tenant-audit: reviewed guarded immediately by authenticated same-tenant/super-admin access
   const selected = provider(req.params.provider);
   if (!selected) return res.status(404).json({ error: "provider_not_supported" });
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
@@ -104,7 +104,7 @@ router.post("/tenants/:tenantId/email-connections/:provider/sync", authenticate,
 });
 
 router.get("/tenants/:tenantId/email-unmatched", authenticate, async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = String(req.params.tenantId); // tenant-audit: reviewed guarded immediately by authenticated same-tenant/super-admin access
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const rows = await db.select().from(notificationsTable).where(and(
     eq(notificationsTable.tenantId, tenantId),
@@ -123,7 +123,7 @@ router.get("/tenants/:tenantId/email-unmatched", authenticate, async (req, res) 
 });
 
 router.post("/tenants/:tenantId/email-unmatched/:id/dismiss", authenticate, async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = String(req.params.tenantId); // tenant-audit: reviewed guarded immediately by authenticated same-tenant/super-admin access
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const [updated] = await db.update(notificationsTable).set({ readAt: new Date() }).where(and(
     eq(notificationsTable.id, String(req.params.id)),
