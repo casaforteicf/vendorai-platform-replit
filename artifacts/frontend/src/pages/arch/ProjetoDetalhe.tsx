@@ -406,18 +406,26 @@ export default function ProjetoDetalhe() {
           headers: authH(),
           body: JSON.stringify({ dealId: active[0].id }),
         });
-        if (linkRes.ok) {
-          const linked = await linkRes.json();
-          setDealCurrent(linked.deal ?? active[0]);
-          setProjeto((current) => current ? {
-            ...current,
-            dealId: linked.deal?.id ?? active[0].id,
-            leadId: linked.projeto?.leadId ?? current.leadId,
-          } : current);
+        if (!linkRes.ok) {
+          const failure = await linkRes.json().catch(() => ({}));
+          toast({
+            title: "Não foi possível vincular automaticamente o negócio",
+            description: typeof failure?.error === "string" ? failure.error : "Use “Vincular negócio” para selecionar manualmente.",
+            variant: "destructive",
+          });
+          return;
         }
+
+        const linked = await linkRes.json();
+        setDealCurrent(linked.deal ?? active[0]);
+        setProjeto((current) => current ? {
+          ...current,
+          dealId: linked.deal?.id ?? active[0].id,
+          leadId: linked.projeto?.leadId ?? current.leadId,
+        } : current);
       }
     }
-  }, [projetoId]);
+  }, [projetoId, toast]);
 
   const loadProjeto = useCallback(async () => {
     if (!projetoId) return;
