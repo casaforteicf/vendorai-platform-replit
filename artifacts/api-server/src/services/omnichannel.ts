@@ -17,6 +17,7 @@ import { Resend } from "resend";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { sendEvolutionWhatsAppMessage, sendEvolutionDocument, sendEvolutionMedia } from "./evolution-whatsapp.js";
 import { recordIntelligenceEvent, recordIntelligenceFact } from "./customer-intelligence-history.js";
+import { sendConnectedEmail } from "./email-platforms.js";
 
 export interface AgentAttachment {
   name: string;
@@ -697,7 +698,22 @@ async function sendOperationalEmail(params: {
   subject: string;
   text: string;
   tenantName: string;
+  tenantId: string;
 }, log: Logger): Promise<string | undefined> {
+  const connected = await sendConnectedEmail({
+    tenantId: (params as typeof params & { tenantId?: string }).tenantId ?? "",
+    to: params.to,
+    subject: params.subject,
+    text: params.text,
+  }).catch((error) => {
+    log.warn({ error, to: params.to }, "omnichannel: connected mailbox send failed, trying Resend fallback");
+    return { sent: false } as const;
+  });
+  if (connected.sent) {
+    log.info({ to: params.to, provider: connected.provider, externalId: connected.externalId }, "omnichannel: email sent via connected mailbox");
+    return connected.externalId;
+  }
+
   const apiKey = process.env["RESEND_API_KEY"];
   if (!apiKey) throw new EmailNotConfiguredError();
 
@@ -717,7 +733,7 @@ async function sendOperationalEmail(params: {
     log.error({ error, to: params.to }, "omnichannel: email send failed");
     throw new Error(`Resend email error: ${error.message ?? "unknown error"}`);
   }
-  log.info({ to: params.to, resendId: data?.id }, "omnichannel: email sent");
+  log.info({ to: params.to, resendId: data?.id }, "omnichannel: email sent via Resend fallback");
   return data?.id;
 }
 
@@ -1087,6 +1103,7 @@ export async function sendOutgoingMessage(
       subject,
       text: conteudo,
       tenantName,
+      tenantId,
     }, log);
   }
 
