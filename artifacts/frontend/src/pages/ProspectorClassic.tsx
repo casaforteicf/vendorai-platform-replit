@@ -123,6 +123,7 @@ type MultiConfigResponse = {
   config: {
     setores: string[];
     cidades: string[];
+    geoAreas?: ProspectorGeoArea[];
     ritmoDiario: number;
     ativo: boolean;
     combinacoes?: Array<{ id: string; setor: string; cidade: string; ativo: boolean }>;
@@ -342,6 +343,7 @@ function ProspectorAutoConfig({ tenantId, isSuperAdmin }: { tenantId: string; is
   const queryClient = useQueryClient();
   const [setores, setSetores] = useState<string[]>([]);
   const [cidades, setCidades] = useState<string[]>([]);
+  const [geoAreas, setGeoAreas] = useState<ProspectorGeoArea[]>([]);
   const [ritmoDiario, setRitmoDiario] = useState(10);
   const [ativo, setAtivo] = useState(false);
 
@@ -362,6 +364,7 @@ function ProspectorAutoConfig({ tenantId, isSuperAdmin }: { tenantId: string; is
     if (!config) return;
     setSetores(config.setores ?? []);
     setCidades(config.cidades ?? []);
+    setGeoAreas(config.geoAreas ?? []);
     setRitmoDiario(config.ritmoDiario ?? 10);
     setAtivo(Boolean(config.ativo));
   }, [configQuery.data]);
@@ -374,7 +377,7 @@ function ProspectorAutoConfig({ tenantId, isSuperAdmin }: { tenantId: string; is
       const response = await fetch("/api/prospector/config-multi", {
         method: "PUT",
         headers: authHeaders(),
-        body: JSON.stringify({ setores, cidades, ritmoDiario, ativo, ...(isSuperAdmin && tenantId ? { tenantId } : {}) }),
+        body: JSON.stringify({ setores, cidades, geoAreas, ritmoDiario, ativo, ...(isSuperAdmin && tenantId ? { tenantId } : {}) }),
       });
       const data = await response.json() as MultiConfigResponse & { error?: string };
       if (!response.ok) throw new Error(data.error ?? "Falha ao salvar configuração");
@@ -409,7 +412,7 @@ function ProspectorAutoConfig({ tenantId, isSuperAdmin }: { tenantId: string; is
           <div className="space-y-4">
             <div className="grid gap-3 lg:grid-cols-2">
               <MultiValueInput label="Nichos / ICP" values={setores} onChange={setSetores} placeholder="Ex: materiais de construção" maxItems={10} helper="Enter, vírgula ou ponto e vírgula adiciona outro nicho." />
-              <div className="space-y-2"><MultiValueInput label="Localidades" values={cidades} onChange={setCidades} placeholder="Ex: Chapecó, SC" maxItems={20} helper="Pode usar cidade, região ou praça comercial." /><ProspectorLocationMap values={cidades} onChange={setCidades} maxItems={20} /></div>
+              <div className="space-y-2"><MultiValueInput label="Localidades" values={cidades} onChange={(values) => { setCidades(values); setGeoAreas((current) => current.filter((area) => values.some((value) => value.toLocaleLowerCase("pt-BR") === area.label.toLocaleLowerCase("pt-BR")))); }} placeholder="Ex: Chapecó, SC" maxItems={20} helper="Pode usar cidade, região ou praça comercial." /><ProspectorLocationMap values={cidades} onChange={setCidades} maxItems={20} onAreaAdd={(area) => setGeoAreas((current) => [...current.filter((item) => item.label.toLocaleLowerCase("pt-BR") !== area.label.toLocaleLowerCase("pt-BR")), area])} /></div>
             </div>
             <div className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
               <div className="space-y-1.5">
