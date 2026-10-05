@@ -517,7 +517,7 @@ router.get("/portal/obra/:token", async (req, res) => {
       `SELECT c.id, c.descricao, c.fornecedor, c.status, c.prioridade,
               c.data_prevista, c.data_efetuada, c.data_necessidade,
               c.prazo_fornecedor_dias,
-              CASE WHEN $3::boolean THEN c.valor_total ELSE NULL END AS valor_total,
+              NULL::numeric AS valor_total,
               e.nome AS etapa_nome
          FROM compras_obras c
          LEFT JOIN obra_etapas e ON e.id = c.etapa_id AND e.obra_id = c.obra_id
@@ -527,51 +527,20 @@ router.get("/portal/obra/:token", async (req, res) => {
           COALESCE(c.data_necessidade, e.data_inicio_prevista) ASC NULLS LAST,
           c.created_at DESC
         LIMIT 60`,
-      [obra.id, obra.tenantId, config.showFinancialSummary],
+      [obra.id, obra.tenantId],
     );
     compras = result.rows;
   }
-
-  const comprasRecebidas = config.showFinancialSummary
-    ? await pool.query(
-        `SELECT COALESCE(SUM(valor_total),0)::numeric AS total
-           FROM compras_obras
-          WHERE obra_id = $1 AND tenant_id = $2
-            AND lower(status) IN ('recebido','parcial')`,
-        [obra.id, obra.tenantId],
-      )
-    : null;
-
-  const maoObraExecutada = config.showFinancialSummary
-    ? etapaRows.reduce((sum: number, item: any) => {
-        const percentual = Math.max(0, Math.min(100, Number(item.percentualExecutado ?? item.percentual_executado ?? 0))) / 100;
-        if (percentual <= 0) return sum;
-        const inicio = item.dataInicioPrevista ?? item.data_inicio_prevista;
-        const fim = item.dataFimPrevista ?? item.data_fim_prevista;
-        if (!inicio || !fim) return sum;
-        const start = new Date(`${inicio}T12:00:00Z`);
-        const end = new Date(`${fim}T12:00:00Z`);
-        const dias = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1);
-        const planejado = dias
-          * Math.max(1, Number(item.equipeQuantidade ?? item.equipe_quantidade ?? 1))
-          * Math.max(0, Number(item.horasDia ?? item.horas_dia ?? 8))
-          * Math.max(0, Number(item.custoHoraPessoa ?? item.custo_hora_pessoa ?? 0));
-        return sum + planejado * percentual;
-      }, 0)
-    : 0;
-
-  const custoRealizadoCalculado = config.showFinancialSummary
-    ? Number(comprasRecebidas?.rows?.[0]?.total ?? 0) + maoObraExecutada
-    : Number(obra.custoRealizado ?? 0);
 
   let financeiro: any = null;
   if (config.showFinancialSummary) {
     const result = config.showFinancialDetails
       ? await pool.query(
-          `SELECT id, tipo, fornecedor, numero, valor, data_emissao, data_vencimento,
+          `SELECT id, tipo, numero, valor, data_emissao, data_vencimento,
                   descricao, status, documento_url, observacoes
              FROM obra_lancamentos
             WHERE obra_id = $1 AND tenant_id = $2
+              AND lower(COALESCE(tipo,'')) IN ('receita','recebimento','parcela','cliente','faturamento')
             ORDER BY COALESCE(data_vencimento, data_emissao) DESC NULLS LAST, created_at DESC
             LIMIT 100`,
           [obra.id, obra.tenantId],
@@ -579,20 +548,18 @@ router.get("/portal/obra/:token", async (req, res) => {
       : { rows: [] as any[] };
 
     const lancamentos = result.rows;
-    const totalLancado = lancamentos.reduce((sum: number, item: any) => sum + Number(item.valor ?? 0), 0);
     const totalPago = lancamentos
-      .filter((item: any) => ["pago", "recebido", "quitado"].includes(String(item.status ?? "").toLowerCase()))
+      .filter((item: any) => ["pago","recebido","quitado"].includes(String(item.status ?? "").toLowerCase()))
       .reduce((sum: number, item: any) => sum + Number(item.valor ?? 0), 0);
-    const totalPendente = lancamentos
-      .filter((item: any) => !["pago", "recebido", "quitado", "cancelado"].includes(String(item.status ?? "").toLowerCase()))
-      .reduce((sum: number, item: any) => sum + Number(item.valor ?? 0), 0);
+    const valorContratado = Number(obra.orcamentoTotal ?? orcamentoComEtapas?.valorTotalCliente ?? 0);
+    const totalPendente = Math.max(0, valorContratado - totalPago);
 
     if (config.showDocuments && config.showFinancialDetails) {
-      const financialDocs = result.rows
+      const financialDocs = lancamentos
         .filter((item: any) => Boolean(item.documento_url))
         .map((item: any) => ({
           id: `financeiro-${item.id}`,
-          nome: item.descricao ?? item.numero ?? item.tipo ?? "Documento financeiro",
+          nome: item.descricao ?? item.numero ?? "Documento financeiro",
           url: item.documento_url,
           mimeType: null,
           data: item.data_emissao ?? item.data_vencimento ?? null,
@@ -602,14 +569,9 @@ router.get("/portal/obra/:token", async (req, res) => {
     }
 
     financeiro = {
-      orcamentoTotal: Number(obra.orcamentoTotal ?? 0),
-      custoRealizado: custoRealizadoCalculado,
-      percentualConsumido: Number(obra.orcamentoTotal ?? 0) > 0
-        ? custoRealizadoCalculado / Number(obra.orcamentoTotal ?? 0) * 100
-        : 0,
-      totalLancado: config.showFinancialDetails ? totalLancado : null,
+      valorContratado,
       totalPago: config.showFinancialDetails ? totalPago : null,
-      totalPendente: config.showFinancialDetails ? totalPendente : null,
+      saldoContrato: config.showFinancialDetails ? totalPendente : null,
       lancamentos: config.showFinancialDetails ? lancamentos : [],
     };
   }
@@ -678,15 +640,12 @@ router.get("/portal/obra/:token", async (req, res) => {
       else if (today > start) plannedPercent = Math.max(0, Math.min(100, ((today.getTime() - start.getTime()) / Math.max(1, end.getTime() - start.getTime())) * 100));
     }
     const actualPercent = Math.max(0, Math.min(100, Number(item.percentualExecutado ?? item.percentual_executado ?? 0)));
-    const plannedCost = Number(item.custoPrevisto ?? item.custo_previsto ?? 0);
     return {
       etapaId: item.id,
       nome: item.nome,
       plannedPercent,
       actualPercent,
       variancePoints: actualPercent - plannedPercent,
-      plannedCost,
-      earnedValue: plannedCost * actualPercent / 100,
       status: item.status,
       dataInicioPrevista: startRaw ?? null,
       dataFimPrevista: endRaw ?? null,
@@ -700,8 +659,6 @@ router.get("/portal/obra/:token", async (req, res) => {
     plannedProgress,
     actualProgress: progressoGeral,
     progressVariancePoints: progressoGeral - plannedProgress,
-    plannedCost: etapaRows.reduce((sum, item) => sum + Number(item.custoPrevisto ?? item.custo_previsto ?? 0), 0),
-    actualCost: custoRealizadoCalculado,
     forecastDelivery: previsaoEntrega,
     stages: executiveStages,
   } : null;
