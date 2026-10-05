@@ -669,8 +669,9 @@ router.patch("/leads/:id", async (req, res) => {
     return;
   }
 
+  const isAdmin2 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+
   if (!representativeAccess2) {
-    const isAdmin2 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
     const userFn2 = req.user?.userFunction as UserFunction | undefined;
     if (!isAdmin2 && userFn2 === "vendedor" && existing.assignedTo !== req.user?.sub) {
       res.status(403).json({ error: "Access denied to this lead" });
@@ -679,7 +680,6 @@ router.patch("/leads/:id", async (req, res) => {
   }
 
   if (parsed.data.representativeFunctionId !== undefined) {
-    const isAdmin2 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
     if (!isOwnTenant2 || !isAdmin2) {
       res.status(403).json({ error: "Apenas administradores da empresa podem alterar a representação responsável." });
       return;
