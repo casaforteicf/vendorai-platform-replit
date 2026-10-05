@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, inArray, lte } from "drizzle-orm";
+import { and, eq, isNotNull, inArray, lte, or } from "drizzle-orm";
 import {
   agendasTable,
   db,
@@ -33,7 +33,7 @@ export async function runTokenGuardian(log: Logger): Promise<void> {
     expiresAt: agendasTable.googleTokenExpiresAt,
   }).from(agendasTable).where(and(
     isNotNull(agendasTable.googleRefreshToken),
-    lte(agendasTable.googleTokenExpiresAt, cutoff),
+    or(lte(agendasTable.googleTokenExpiresAt, cutoff), isNotNull(agendasTable.googleAccessToken)),
   ));
 
   for (const agenda of calendars) {
