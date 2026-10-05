@@ -767,7 +767,7 @@ export default function PortalObra() {
                       <div><p className="text-sm font-semibold text-gray-900">{compra.descricao}</p><p className="mt-0.5 text-xs text-gray-400">{compra.etapa_nome ?? "Sem etapa"}{compra.fornecedor ? ` · ${compra.fornecedor}` : ""}</p></div>
                       <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${entregue ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{entregue ? "Recebido" : status}</span>
                     </div>
-                    <div className="mt-3 grid grid-cols-2 gap-3 text-xs text-gray-500 md:grid-cols-4"><div><span className="block text-[10px] uppercase text-gray-400">Necessidade</span>{fmt(compra.data_necessidade)}</div><div><span className="block text-[10px] uppercase text-gray-400">Prev. entrega</span>{fmt(compra.data_prevista)}</div><div><span className="block text-[10px] uppercase text-gray-400">Prazo fornecedor</span>{Number(compra.prazo_fornecedor_dias ?? 0)} dias</div><div><span className="block text-[10px] uppercase text-gray-400">Valor</span>{fmtMoney(compra.valor_total)}</div></div>
+                    <div className="mt-3 grid grid-cols-2 gap-3 text-xs text-gray-500 md:grid-cols-3"><div><span className="block text-[10px] uppercase text-gray-400">Necessidade</span>{fmt(compra.data_necessidade)}</div><div><span className="block text-[10px] uppercase text-gray-400">Prev. entrega</span>{fmt(compra.data_prevista)}</div><div><span className="block text-[10px] uppercase text-gray-400">Prazo fornecedor</span>{Number(compra.prazo_fornecedor_dias ?? 0)} dias</div></div>
                   </div>;
                 })}
               </div>
@@ -780,19 +780,16 @@ export default function PortalObra() {
             {!financeiro ? <div className="py-8 text-center text-sm text-gray-400">Resumo financeiro indisponível.</div> : (
               <>
                 <InfoGrid items={[
-                  { label: "Orçamento", value: fmtMoney(financeiro.orcamentoTotal) },
-                  { label: "Custo realizado", value: fmtMoney(financeiro.custoRealizado) },
-                  { label: "% consumido", value: `${financeiro.percentualConsumido.toFixed(1)}%` },
+                  { label: "Valor contratado", value: fmtMoney(financeiro.valorContratado) },
+                  { label: "Pago/recebido", value: fmtMoney(financeiro.totalPago) },
+                  { label: "Pendente", value: fmtMoney(financeiro.totalPendente) },
                   ...(data.publication?.showFinancialDetails === true ? [
-                    { label: "Total lançado", value: fmtMoney(financeiro.totalLancado) },
-                    { label: "Pago/recebido", value: fmtMoney(financeiro.totalPago) },
-                    { label: "Pendente", value: fmtMoney(financeiro.totalPendente) },
+                    { label: "Total publicado", value: fmtMoney(financeiro.totalLancado) },
                   ] : []),
                 ]} />
-                <div className="mt-4"><ProgressBar value={financeiro.percentualConsumido} color={financeiro.percentualConsumido > 100 ? "#e11d48" : "#6366f1"} /></div>
                 {data.publication?.showFinancialDetails === true && financeiro.lancamentos.length ? (
                   <div className="mt-6 divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200 bg-white">
-                    {financeiro.lancamentos.map((item: any) => <div key={item.id} className="flex items-center justify-between gap-4 px-4 py-3"><div className="min-w-0"><p className="truncate text-sm font-medium text-gray-800">{item.descricao ?? item.tipo}</p><p className="text-xs text-gray-400">{item.fornecedor ?? "—"} · vence {fmt(item.data_vencimento)}</p></div><div className="text-right"><p className="text-sm font-semibold text-gray-900">{fmtMoney(item.valor)}</p><p className="text-[10px] text-gray-400">{item.status}</p>{item.documento_url ? <a href={item.documento_url} target="_blank" rel="noreferrer" className="text-[10px] font-semibold text-indigo-600">Documento</a> : null}</div></div>)}
+                    {financeiro.lancamentos.map((item: any) => <div key={item.id} className="flex items-center justify-between gap-4 px-4 py-3"><div className="min-w-0"><p className="truncate text-sm font-medium text-gray-800">{item.descricao ?? item.tipo}</p><p className="text-xs text-gray-400">vence {fmt(item.data_vencimento)}</p></div><div className="text-right"><p className="text-sm font-semibold text-gray-900">{fmtMoney(item.valor)}</p><p className="text-[10px] text-gray-400">{item.status}</p>{item.documento_url ? <a href={item.documento_url} target="_blank" rel="noreferrer" className="text-[10px] font-semibold text-indigo-600">Documento</a> : null}</div></div>)}
                   </div>
                 ) : null}
               </>
