@@ -1,6 +1,6 @@
 name: Cloudflare Pages
 # Production deploy: Pages frontend; Railway backend remains unchanged.
-# Redeploy marker: pipeline warming fix 2026-10-05T16:00Z.
+# Redeploy marker: client-first deal card 2026-10-05T16:02Z.
 
 on:
   push:
