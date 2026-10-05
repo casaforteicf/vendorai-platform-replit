@@ -269,31 +269,67 @@ export default function LeadAttachmentsTab() {
     if (!tenantId || !leadId) return;
     setLoading(true);
     try {
-      const [leadRow, activityRows, cardRows, mediaBody] = await Promise.all([
+      const [leadResult, activitiesResult, cardsResult, mediaResult] = await Promise.allSettled([
         requestJson<LeadRecord>(`/api/leads/${leadId}`),
         requestJson<Activity[]>(`/api/tenants/${tenantId}/activities?leadId=${encodeURIComponent(leadId)}`),
         requestJson<WorkCard[]>(`/api/tenants/${tenantId}/work-cards?leadId=${encodeURIComponent(leadId)}&includeClosed=1`),
         requestJson<{ assets: MediaAsset[] }>(`/api/tenants/${tenantId}/media/assets?limit=150`),
       ]);
 
-      const cardAttachmentRows = (await Promise.all(
-        cardRows.map(async (card) => {
-          try {
-            const rows = await requestJson<WorkAttachment[]>(`/api/work-cards/${card.id}/attachments`);
-            return rows.map((row) => ({ ...row, workCardId: card.id, pipeline: card.pipeline }));
-          } catch {
-            return [];
-          }
-        }),
-      )).flat();
+      const failures: string[] = [];
 
-      setLead(leadRow);
-      setActivities(activityRows);
-      setWorkCards(cardRows);
+      if (leadResult.status === "fulfilled") {
+        setLead(leadResult.value);
+      } else {
+        failures.push(`Dados do lead: ${String(leadResult.reason)}`);
+      }
+
+      if (activitiesResult.status === "fulfilled") {
+        setActivities(activitiesResult.value);
+      } else {
+        setActivities([]);
+        failures.push(`Atividades: ${String(activitiesResult.reason)}`);
+      }
+
+      const cardRows = cardsResult.status === "fulfilled" ? cardsResult.value : [];
+      if (cardsResult.status === "fulfilled") {
+        setWorkCards(cardRows);
+      } else {
+        setWorkCards([]);
+        failures.push(`Execução: ${String(cardsResult.reason)}`);
+      }
+
+      if (mediaResult.status === "fulfilled") {
+        setMediaAssets(mediaResult.value.assets ?? []);
+      } else {
+        setMediaAssets([]);
+        failures.push(`Mídias: ${String(mediaResult.reason)}`);
+      }
+
+      const attachmentResults = await Promise.allSettled(
+        cardRows.map(async (card) => {
+          const rows = await requestJson<WorkAttachment[]>(`/api/work-cards/${card.id}/attachments`);
+          return rows.map((row) => ({ ...row, workCardId: card.id, pipeline: card.pipeline }));
+        }),
+      );
+
+      const cardAttachmentRows = attachmentResults.flatMap((result, index) => {
+        if (result.status === "fulfilled") return result.value;
+        const card = cardRows[index];
+        failures.push(`Anexos de ${card?.codigo || card?.titulo || "card operacional"}: ${String(result.reason)}`);
+        return [];
+      });
       setWorkAttachments(cardAttachmentRows);
-      setMediaAssets(mediaBody.assets ?? []);
-    } catch (error) {
-      toast({ title: "Não foi possível carregar os anexos", description: String(error), variant: "destructive" });
+
+      if (failures.length > 0) {
+        toast({
+          title: leadResult.status === "rejected"
+            ? "Não foi possível carregar os dados principais do cliente"
+            : "Alguns dados não puderam ser carregados",
+          description: failures.join(" • "),
+          variant: leadResult.status === "rejected" ? "destructive" : "default",
+        });
+      }
     } finally {
       setLoading(false);
     }
