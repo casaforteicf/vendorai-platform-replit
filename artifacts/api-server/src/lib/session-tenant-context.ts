@@ -25,6 +25,7 @@ export async function resolveSessionTenantContext(input: {
   userId: string;
   baseTenantId: string;
   tokenTenantId: string;
+  platformRole?: string;
 }): Promise<SessionTenantResolution> {
   const activeTenantId = input.tokenTenantId || input.baseTenantId;
 
@@ -43,7 +44,7 @@ export async function resolveSessionTenantContext(input: {
     return { ok: false, reason: "tenant_not_found" };
   }
 
-  if (activeTenantId === input.baseTenantId) {
+  if (activeTenantId === input.baseTenantId || input.platformRole === "super_admin") {
     return { ok: true, tenant: activeTenant };
   }
 
