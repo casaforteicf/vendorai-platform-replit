@@ -28,6 +28,7 @@ import {
   ThumbsUp,
 } from "lucide-react";
 import PortalClientDecisions from "./PortalClientDecisions";
+import { PortalAgenda, PortalBriefing, PortalNextActions, PortalSearch } from "./PortalObraJourneySuite";
 import {
   PortalAuthGate,
   PortalCommercial,
@@ -96,6 +97,9 @@ type Publication = {
   showManuals?: boolean;
   showSupport?: boolean;
   showChat?: boolean;
+  showBriefing?: boolean;
+  showAgenda?: boolean;
+  showSearch?: boolean;
 };
 
 interface PortalData {
@@ -269,6 +273,9 @@ interface PortalData {
   invoices?: any[];
   supportTickets?: any[];
   chatMessages?: any[];
+  briefing?: any | null;
+  agenda?: any[];
+  nextActions?: any[];
 }
 
 const OBRA_STATUS: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -410,6 +417,8 @@ export default function PortalObra() {
     const p = data?.publication ?? {};
     return [
       p.showOverview !== false ? { id: "dados" as const, label: "Visão Geral", icon: <Building2 className="h-4 w-4" /> } : null,
+      p.showBriefing !== false ? { id: "briefing" as const, label: "Briefing", icon: <FileText className="h-4 w-4" /> } : null,
+      p.showAgenda !== false ? { id: "agenda" as const, label: "Agenda", icon: <Calendar className="h-4 w-4" /> } : null,
       p.showExecutiveBalance !== false ? { id: "executivo" as const, label: "Balanço Executivo", icon: <CircleDollarSign className="h-4 w-4" /> } : null,
       p.showSchedule !== false ? { id: "cronograma" as const, label: "Cronograma", icon: <Layers className="h-4 w-4" /> } : null,
       p.showMeasurements !== false && p.showSchedule !== false ? { id: "medicoes" as const, label: "Medições", icon: <CheckCircle2 className="h-4 w-4" /> } : null,
@@ -468,6 +477,9 @@ export default function PortalObra() {
   const invoices = data.invoices ?? [];
   const supportTickets = data.supportTickets ?? [];
   const chatMessages = data.chatMessages ?? [];
+  const briefing = data.briefing ?? null;
+  const agenda = data.agenda ?? [];
+  const nextActions = data.nextActions ?? [];
   const obraStatus = OBRA_STATUS[obra.status] ?? { label: obra.status, color: "bg-gray-100 text-gray-600", icon: null };
   const totalEtapas = etapas.length;
   const avgProgress = Math.round(resumo?.progressoGeral ?? (totalEtapas > 0 ? etapas.reduce((s, e) => s + parseFloat(e.percentualExecutado ?? "0"), 0) / totalEtapas : 0));
@@ -491,6 +503,7 @@ export default function PortalObra() {
       </header>
 
       <main className="mx-auto max-w-4xl px-4 py-8">
+        {data.publication?.showSearch !== false ? <div className="mb-5"><PortalSearch data={data} onNavigate={(tab) => handleTabChange(tab as TabId)} /></div> : null}
         <div className="mb-8 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
           <h1 className="mb-1 text-2xl font-bold text-gray-900">{obra.nome}</h1>
           {obra.clienteNome ? <p className="mb-3 text-sm text-gray-500">Cliente: <span className="font-medium text-gray-700">{obra.clienteNome}</span></p> : null}
@@ -523,6 +536,8 @@ export default function PortalObra() {
             </div>
           </div>
         ) : null}
+
+        <PortalNextActions actions={nextActions} onNavigate={(tab) => handleTabChange(tab as TabId)} />
 
         <PortalClientDecisions token={token} decisions={decisions} onResolved={(decisionId) => setData((current) => current ? { ...current, decisions: (current.decisions ?? []).filter((item) => item.id !== decisionId) } : current)} />
 
@@ -581,6 +596,18 @@ export default function PortalObra() {
                 </div>
               </div>
             ) : null}
+          </Section>
+        ) : null}
+
+        {activeTab === "briefing" && data.publication?.showBriefing !== false ? (
+          <Section title="Briefing do Cliente" icon={<FileText className="h-5 w-5" />}>
+            <PortalBriefing briefing={briefing} />
+          </Section>
+        ) : null}
+
+        {activeTab === "agenda" && data.publication?.showAgenda !== false ? (
+          <Section title="Agenda e Próximos Compromissos" icon={<Calendar className="h-5 w-5" />}>
+            <PortalAgenda agenda={agenda} />
           </Section>
         ) : null}
 
