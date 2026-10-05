@@ -88,11 +88,12 @@ export default function GrowthLabConnected() {
       for (const capability of detected.filter(item => item.status !== "available")) {
         const affected = promises.filter(p => p.capabilities.includes(capability.id)).length + 1;
         const priority = Math.min(100, (capability.status === "missing" ? 60 : 35) + affected * 12);
-        await fetch(`/api/tenants/${tenantId}/growth-lab/backlog/upsert`, {
+        const backlogResponse = await fetch(`/api/tenants/${tenantId}/growth-lab/backlog/upsert`, {
           method: "POST",
           headers,
           body: JSON.stringify({ capabilityId: capability.id, capabilityName: capability.name, module: capability.module, currentStatus: capability.status, affectedPromises: affected, priorityScore: priority, action: "complete_product", state: "open" }),
         });
+        if (!backlogResponse.ok) throw new Error("Não foi possível atualizar o backlog da promessa.");
       }
 
       setNewPromise("");
