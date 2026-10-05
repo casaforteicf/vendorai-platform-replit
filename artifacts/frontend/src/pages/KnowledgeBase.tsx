@@ -230,8 +230,11 @@ export default function KnowledgeBase() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) =>
-      fetch(`/api/knowledge-base/${id}`, { method: "DELETE", headers: authHeaders() }),
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/knowledge-base/${id}`, { method: "DELETE", headers: authHeaders() });
+      if (!response.ok) throw new Error("Não foi possível remover o item da base de conhecimento.");
+      return response;
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QK });
       qc.invalidateQueries({ queryKey: AGENTS_QK });
