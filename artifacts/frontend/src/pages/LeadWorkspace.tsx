@@ -218,6 +218,7 @@ export default function LeadWorkspace() {
   const [currentOwner, setCurrentOwner] = useState("");
   const [savingOwner, setSavingOwner] = useState(false);
   const [intelligenceOpen, setIntelligenceOpen] = useState(false);
+  const [advancedHandoffOpen, setAdvancedHandoffOpen] = useState(false);
 
   const targetStage = stages.find((s) => s.key === nextStage);
   const eligibleIds = (targetStage as { elegiveisUserIds?: string[] | null } | undefined)?.elegiveisUserIds ?? null;
@@ -266,10 +267,17 @@ export default function LeadWorkspace() {
     const stage = deal?.etapa === "em_aquecimento"
       ? "novo"
       : (requestedStage ?? stages[currentIndex + 1]?.key ?? "");
+    const aiAction = fullIntelligence?.health?.nextBestAction ?? fullIntelligence?.profile?.nextBestAction;
+    const aiReason = fullIntelligence?.health?.nextBestActionReason ?? fullIntelligence?.profile?.nextBestActionReason;
+
     setNextStage(stage);
     setOwner(deal?.assignedTo ?? user?.id ?? "");
-    setTitle(guidance[stage]?.[1] ?? "Dar continuidade ao atendimento");
+    setTitle(aiAction?.trim() || guidance[stage]?.[1] || "Dar continuidade ao atendimento");
+    setDescription(aiReason?.trim() || "");
+    setNote("");
+    setDue(tomorrow());
     setEditEligible(false);
+    setAdvancedHandoffOpen(false);
     setOpen(true);
   }
 
@@ -659,79 +667,104 @@ export default function LeadWorkspace() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Avançar e definir a sequência</DialogTitle>
+          <DialogTitle>Confirmar próxima etapa</DialogTitle>
           <DialogDescription>
-            Confirme a próxima etapa, o responsável e a atividade que ficará pendente após esta passagem.
+            O Vendor.ai preparou a sequência usando a etapa atual, o responsável e a inteligência disponível do lead.
           </DialogDescription>
         </DialogHeader>
+
         <div className="grid gap-4 py-2">
-          <div className="rounded-lg border bg-muted/40 p-3 text-sm">Atual: <strong>{currentStage?.label ?? deal?.etapa}</strong> — responsável: <strong>{displayUser(deal?.assignedTo)}</strong></div>
+          <div className="rounded-xl border border-primary/20 bg-primary/[0.03] p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <BrainCircuit className="h-4 w-4 text-primary" />
+              Sugestão da IA
+            </div>
+            <div className="mt-3 grid gap-2 text-sm">
+              <div className="flex items-start justify-between gap-4">
+                <span className="text-muted-foreground">Etapa</span>
+                <strong className="text-right">{currentStage?.label ?? deal?.etapa} → {targetStage?.label ?? nextStage}</strong>
+              </div>
+              <div className="flex items-start justify-between gap-4">
+                <span className="text-muted-foreground">Responsável</span>
+                <strong className="text-right">{displayUser(owner)}</strong>
+              </div>
+              <div className="flex items-start justify-between gap-4">
+                <span className="text-muted-foreground">Próxima ação</span>
+                <strong className="max-w-[65%] text-right">{title}</strong>
+              </div>
+              <div className="flex items-start justify-between gap-4">
+                <span className="text-muted-foreground">Prazo</span>
+                <strong className="text-right">{formatDeadline(due ? new Date(due).toISOString() : null)}</strong>
+              </div>
+            </div>
+            {description && <p className="mt-3 rounded-lg bg-background/70 p-3 text-xs text-muted-foreground">{description}</p>}
+          </div>
+
           {pending.length > 0 && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>Há {pending.length} atividade(s) pendente(s) neste atendimento{overduePendingCount > 0 ? `, sendo ${overduePendingCount} vencida(s)` : ""}. Ao avançar, elas continuam registradas; conclua ou cancele o que não fizer mais sentido para evitar uma fila duplicada.</span>
+              <span>Há {pending.length} atividade(s) pendente(s){overduePendingCount > 0 ? `, sendo ${overduePendingCount} vencida(s)` : ""}. Elas serão preservadas no histórico.</span>
             </div>
           )}
-          {(() => {
-            const perguntas = currentStage?.perguntas ?? [];
-            if (!perguntas.length) return null;
-            const respostas = (deal?.respostasEtapas as Record<string, Record<string, string>> | undefined)?.[currentStage?.key ?? ""] ?? {};
-            const faltando = perguntas.filter((p) => !respostas[p.id]?.trim()).length;
-            if (faltando === 0) return null;
-            return (
-              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{faltando} pergunta(s) da etapa atual ({currentStage?.label}) ainda não foram respondidas. Você pode avançar mesmo assim, mas vale registrar antes se possível.</span>
-              </div>
-            );
-          })()}
-          <Field label="Nova etapa">
-            <Select value={nextStage} onValueChange={(v) => { setNextStage(v); setTitle(guidance[v]?.[1] ?? "Dar continuidade ao atendimento"); setEditEligible(false); }}>
-              <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-              <SelectContent>{stages.filter((s, index) => {
-                if (deal?.etapa === "em_aquecimento") return s.key === "novo";
-                if (s.key === "perdido") return s.key !== deal?.etapa;
-                return index > currentIndex && !["em_aquecimento", "parceiro"].includes(s.key);
-              }).map((s) => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}</SelectContent>
-            </Select>
-          </Field>
 
-          <div className="grid gap-2">
-            <div className="flex items-center justify-between">
-              <Label>Responsável pela próxima atividade</Label>
-              <Button type="button" variant="ghost" size="sm" className="h-7 gap-1 text-xs text-muted-foreground" onClick={() => setEditEligible((v) => !v)}>
-                <Settings2 className="h-3.5 w-3.5" /> Quem pode ser responsável nesta etapa
-              </Button>
-            </div>
-            {editEligible && targetStage ? (
-              <div className="space-y-2 rounded-lg border p-3">
-                <p className="text-xs text-muted-foreground">Marque quem pode ser escolhido como responsável quando um negócio chega em <strong>{targetStage.label}</strong>. Deixe tudo desmarcado para permitir qualquer usuário.</p>
-                <div className="grid max-h-40 gap-1.5 overflow-y-auto">
-                  {users.map((u) => (
-                    <label key={u.id} className="flex items-center gap-2 text-sm">
-                      <Checkbox checked={draftEligible.includes(u.id)} onCheckedChange={(checked) => setDraftEligible((prev) => checked ? [...prev, u.id] : prev.filter((x) => x !== u.id))} />
-                      {u.name || u.email || u.id}
-                    </label>
-                  ))}
+          <Button type="button" variant="outline" onClick={() => setAdvancedHandoffOpen((v) => !v)}>
+            {advancedHandoffOpen ? "Ocultar ajustes" : "Editar antes de avançar"}
+          </Button>
+
+          {advancedHandoffOpen && (
+            <div className="grid gap-4 rounded-xl border p-4">
+              <Field label="Nova etapa">
+                <Select value={nextStage} onValueChange={(v) => { setNextStage(v); if (!fullIntelligence?.health?.nextBestAction && !fullIntelligence?.profile?.nextBestAction) setTitle(guidance[v]?.[1] ?? "Dar continuidade ao atendimento"); setEditEligible(false); }}>
+                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>{stages.filter((s, index) => {
+                    if (deal?.etapa === "em_aquecimento") return s.key === "novo";
+                    if (s.key === "perdido") return s.key !== deal?.etapa;
+                    return index > currentIndex && !["em_aquecimento", "parceiro"].includes(s.key);
+                  }).map((s) => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}</SelectContent>
+                </Select>
+              </Field>
+
+              <div className="grid gap-2">
+                <div className="flex items-center justify-between">
+                  <Label>Responsável</Label>
+                  <Button type="button" variant="ghost" size="sm" className="h-7 gap-1 text-xs text-muted-foreground" onClick={() => setEditEligible((v) => !v)}>
+                    <Settings2 className="h-3.5 w-3.5" /> Habilitados
+                  </Button>
                 </div>
-                <Button type="button" size="sm" disabled={updateStage.isPending} onClick={saveEligible}>{updateStage.isPending && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}Salvar habilitados</Button>
+                {editEligible && targetStage ? (
+                  <div className="space-y-2 rounded-lg border p-3">
+                    <div className="grid max-h-40 gap-1.5 overflow-y-auto">
+                      {users.map((u) => (
+                        <label key={u.id} className="flex items-center gap-2 text-sm">
+                          <Checkbox checked={draftEligible.includes(u.id)} onCheckedChange={(checked) => setDraftEligible((prev) => checked ? [...prev, u.id] : prev.filter((x) => x !== u.id))} />
+                          {u.name || u.email || u.id}
+                        </label>
+                      ))}
+                    </div>
+                    <Button type="button" size="sm" disabled={updateStage.isPending} onClick={saveEligible}>Salvar habilitados</Button>
+                  </div>
+                ) : (
+                  <Select value={owner} onValueChange={setOwner}>
+                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                    <SelectContent>{eligibleUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>)}</SelectContent>
+                  </Select>
+                )}
               </div>
-            ) : (
-              <Select value={owner} onValueChange={setOwner}>
-                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>{eligibleUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>)}</SelectContent>
-              </Select>
-            )}
-          </div>
 
-          <Field label="Próxima atividade"><Input value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
-          <Field label="Prazo"><Input type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} /></Field>
-          <Field label="Orientações"><Textarea value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
-          <Field label="Observação da passagem"><Textarea value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+              <Field label="Próxima atividade"><Input value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
+              <Field label="Prazo"><Input type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} /></Field>
+              <Field label="Orientações"><Textarea value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
+              <Field label="Observação da passagem"><Textarea value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+            </div>
+          )}
         </div>
+
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-          <Button disabled={saving} onClick={advance}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Confirmar passagem</Button>
+          <Button disabled={saving} onClick={advance}>
+            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Confirmar e avançar
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
