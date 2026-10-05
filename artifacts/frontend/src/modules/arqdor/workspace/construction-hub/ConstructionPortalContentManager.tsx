@@ -58,6 +58,14 @@ export default function ConstructionPortalContentManager({ tenantId, obraId }: {
       if (item.amount !== "") content.amount = Number(item.amount);
       if (item.scheduleImpactDays !== "") content.scheduleImpactDays = Number(item.scheduleImpactDays);
       if (item.nextAction.trim()) content.nextAction = item.nextAction.trim();
+      if (item.kind === "briefing" && briefingQuestions.trim()) {
+        content.fields = briefingQuestions.split("\n").map((line) => line.trim()).filter(Boolean).map((label, index) => ({
+          key: `q${index + 1}`,
+          label,
+          type: "text",
+          required: true,
+        }));
+      }
       await request(`${base}/items`, {
         method: "POST",
         body: JSON.stringify({
@@ -67,6 +75,7 @@ export default function ConstructionPortalContentManager({ tenantId, obraId }: {
           requiresAction: item.requiresAction, actionType: item.actionType || null, content,
         }),
       });
+      setBriefingQuestions("");
       setItem({
         kind: "briefing", title: "", description: "", visibility: "interno",
         version: "", dueAt: "", startsAt: "", endsAt: "", requiresAction: false,
@@ -80,6 +89,14 @@ export default function ConstructionPortalContentManager({ tenantId, obraId }: {
     await request(`${base}/items/${portalItem.id}`, { method: "PATCH", body: JSON.stringify({ visibility }) });
     await load();
   }
+  async function updatePortalUser(user: any, patch: Record<string, any>) {
+    await request(`${base}/users/${user.id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+    await load();
+  }
+
   async function addDocument() {
     if (!doc.titulo.trim() || !doc.url.trim()) return;
     setBusy(true);
