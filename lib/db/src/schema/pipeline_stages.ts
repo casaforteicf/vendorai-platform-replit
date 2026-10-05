@@ -141,7 +141,6 @@ export type NewPipelineStage = typeof pipelineStagesTable.$inferInsert;
 
 // Etapas comerciais oficiais (mesmos valores usados por deals.etapa).
 export const SYSTEM_PIPELINE_STAGES: Array<{ key: string; label: string; color: string; bg: string; ordem: number; perguntas?: PipelineStageQuestion[] }> = [
-  { key: "em_aquecimento",      label: "Em Aquecimento", color: "text-orange-600",  bg: "bg-orange-100",  ordem: 0 },
   {
     key: "novo", label: "Novo", color: "text-slate-600", bg: "bg-slate-100", ordem: 1,
     perguntas: [
@@ -186,5 +185,4 @@ export const SYSTEM_PIPELINE_STAGES: Array<{ key: string; label: string; color: 
   { key: "em_execucao",  label: "Em Execução", color: "text-cyan-600",    bg: "bg-cyan-100",    ordem: 7 },
   { key: "entregue",     label: "Entregue",    color: "text-teal-600",    bg: "bg-teal-100",    ordem: 8 },
   { key: "perdido",      label: "Perdido",     color: "text-red-600",     bg: "bg-red-100",     ordem: 9 },
-  { key: "parceiro",     label: "Parceiros",   color: "text-purple-600",  bg: "bg-purple-100",  ordem: 10 },
 ];

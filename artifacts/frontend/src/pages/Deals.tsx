@@ -998,7 +998,6 @@ function SaasDealCard({
     data: { deal },
   });
   const etapaCfg = ETAPAS_SAAS.find((e) => e.value === deal.etapaSaas);
-
   return (
     <div
       ref={setNodeRef}
@@ -1997,8 +1996,7 @@ function EditDealSheet({
           </Suspense>
         ) : null}
         {/* ── Quote attachment ──────────────────────────────────── */}
-        {quoteFileUrl && (
-          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-1.5">
+        {quoteFileUrl && (          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-1.5">
             <p className="text-xs font-medium text-slate-700 flex items-center gap-1.5">
               <Paperclip className="h-3.5 w-3.5 text-slate-500" />
               Orçamento importado
@@ -2256,7 +2254,12 @@ export default function Deals() {
 
   // Fonte oficial do pipeline comercial. Kanban, seletores, SLA e responsáveis
   // devem consumir exatamente esta mesma lista, na mesma ordem.
-  const deals = useMemo(() => allDeals.filter((deal) => (deal as Deal & { relationshipStage?: string | null }).relationshipStage !== "transferido_suporte"), [allDeals]);
+  const deals = useMemo(() => allDeals.filter((deal) => {
+    const relationshipStage = (deal as Deal & { relationshipStage?: string | null }).relationshipStage;
+    return relationshipStage !== "transferido_suporte"
+      && deal.etapa !== "em_aquecimento"
+      && deal.etapa !== "parceiro";
+  }), [allDeals]);
 
   const { data: pipelineStages = [] } = useListPipelineStages(tenantId, {
     request: { headers: { Authorization: "Bearer " + (token ?? "") } },
@@ -2295,6 +2298,7 @@ export default function Deals() {
     }
 
     return [...pipelineStages]
+      .filter((stage) => !["em_aquecimento", "parceiro"].includes(stage.key))
       .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
       .map((stage) => ({
         value: stage.key,
@@ -2320,6 +2324,7 @@ export default function Deals() {
     }
 
     return [...pipelineStages]
+      .filter((stage) => !["em_aquecimento", "parceiro"].includes(stage.key))
       .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
       .map((stage) => {
         const fallback = staticByKey.get(stage.key);
@@ -2990,8 +2995,7 @@ export default function Deals() {
                     )}
                   />
                 </div>
-                <FormField
-                  control={createForm.control}
+                <FormField                  control={createForm.control}
                   name="etapa"
                   render={({ field }) => (
                     <FormItem>
