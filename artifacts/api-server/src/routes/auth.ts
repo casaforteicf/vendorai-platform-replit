@@ -1045,6 +1045,7 @@ protectedRouter.get("/auth/me", async (req, res) => {
     userId: user.id,
     baseTenantId: user.tenantId,
     tokenTenantId: req.user!.tenantId,
+    platformRole: user.platformRole,
   });
 
   if (!sessionTenant.ok) {
@@ -1079,6 +1080,7 @@ protectedRouter.post("/auth/refresh", async (req, res) => {
     userId: user.id,
     baseTenantId: user.tenantId,
     tokenTenantId: req.user!.tenantId,
+    platformRole: user.platformRole,
   });
 
   if (!sessionTenant.ok) {
