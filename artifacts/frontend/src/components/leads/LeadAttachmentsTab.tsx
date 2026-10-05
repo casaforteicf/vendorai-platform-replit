@@ -188,7 +188,39 @@ function metadataString(metadata: Record<string, unknown> | null | undefined, ke
 function formatBytes(value?: number | null): string {
   if (!value) return "—";
   if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
-  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+  if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
+  return `${(value / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+function uploadLimitBytes(type: AttachmentType): number {
+  if (type === "image") return 50 * 1024 * 1024;
+  if (type === "video") return 2 * 1024 * 1024 * 1024;
+  return 500 * 1024 * 1024;
+}
+
+function uploadDirectWithProgress(
+  uploadURL: string,
+  file: File,
+  onProgress: (loaded: number, total: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", uploadURL);
+    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(event.loaded, event.total);
+    };
+    xhr.onerror = () => reject(new Error(`Falha de rede ao enviar ${file.name}`));
+    xhr.onabort = () => reject(new Error(`Upload cancelado: ${file.name}`));
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+        return;
+      }
+      reject(new Error(`Falha ao enviar ${file.name} (HTTP ${xhr.status})`));
+    };
+    xhr.send(file);
+  });
 }
 
 function formatDate(value?: string | null): string {
@@ -241,6 +273,7 @@ export default function LeadAttachmentsTab() {
   const [mediaAssets, setMediaAssets] = useState<MediaAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ name: string; loaded: number; total: number } | null>(null);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterType>("all");
@@ -501,18 +534,22 @@ export default function LeadAttachmentsTab() {
     try {
       const created: StoredLeadAttachment[] = [];
       for (const file of files) {
-        if (file.size > 50 * 1024 * 1024) throw new Error(`${file.name}: limite de 50 MB excedido`);
         const type = inferType(file.type, file.name);
+        const maxBytes = uploadLimitBytes(type);
+        if (file.size > maxBytes) {
+          throw new Error(`${file.name}: tamanho máximo para ${typeLabel({
+            key: "", sourceKind: "lead", sourceId: "", name: file.name, url: "", type,
+            origin: "", folderPath: "", marketingStatus: "only_attachment",
+          })} é ${formatBytes(maxBytes)}`);
+        }
+        setUploadProgress({ name: file.name, loaded: 0, total: file.size });
         const meta = await requestJson<{ uploadURL: string; objectPath: string }>("/api/storage/uploads/request-url", {
           method: "POST",
           body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || "application/octet-stream" }),
         });
-        const put = await fetch(meta.uploadURL, {
-          method: "PUT",
-          body: file,
-          headers: { "Content-Type": file.type || "application/octet-stream" },
+        await uploadDirectWithProgress(meta.uploadURL, file, (loaded, total) => {
+          setUploadProgress({ name: file.name, loaded, total });
         });
-        if (!put.ok) throw new Error(`Falha ao enviar ${file.name}`);
         created.push({
           id: crypto.randomUUID(),
           name: file.name,
@@ -528,9 +565,14 @@ export default function LeadAttachmentsTab() {
       await persistAttachmentState({ ...attachmentState, files: [...attachmentState.files, ...created] });
       toast({ title: created.length === 1 ? "Arquivo adicionado" : `${created.length} arquivos adicionados`, description: "Entraram em Anexos. Nada foi liberado para marketing automaticamente." });
     } catch (error) {
-      toast({ title: "Falha no upload", description: String(error), variant: "destructive" });
+      toast({
+        title: "Falha no upload",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
     } finally {
       setUploading(false);
+      setUploadProgress(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
@@ -648,7 +690,7 @@ export default function LeadAttachmentsTab() {
             <CardTitle className="flex items-center gap-2 text-base"><Paperclip className="h-4 w-4" />Anexos do cliente</CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">Arquivos enviados aqui, em atividades, execução e assistência aparecem juntos. Só os aprovados entram em Mídias.</p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <input
               ref={fileInputRef}
               type="file"
@@ -658,7 +700,10 @@ export default function LeadAttachmentsTab() {
               onChange={(event) => void uploadFiles(Array.from(event.target.files ?? []))}
             />
             <Button size="sm" className="gap-1.5" onClick={() => fileInputRef.current?.click()} disabled={uploading || saving}>
-              {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Adicionar arquivo
+              {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              {uploading && uploadProgress
+                ? ` Enviando ${Math.min(100, Math.round((uploadProgress.loaded / Math.max(1, uploadProgress.total)) * 100))}%`
+                : " Adicionar arquivo"}
             </Button>
             <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setFolderDialogOpen(true)} disabled={saving}>
               <Plus className="h-4 w-4" /> Nova pasta
@@ -666,6 +711,11 @@ export default function LeadAttachmentsTab() {
             <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => void refresh()} disabled={loading}>
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Atualizar
             </Button>
+            {uploading && uploadProgress && (
+              <span className="max-w-72 truncate text-xs text-muted-foreground" title={uploadProgress.name}>
+                {uploadProgress.name} · {formatBytes(uploadProgress.loaded)} de {formatBytes(uploadProgress.total)}
+              </span>
+            )}
           </div>
         </div>
       </CardHeader>
