@@ -1230,10 +1230,16 @@ function CommercialDeliveryPanel({
 }
 
 export default function CatalogoProdutos() {
-  const { user } = useAuth();
+  const { user, rawUser, tenantOverride } = useAuth();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
-  const tenantId = user?.tenantId ?? "";
+
+  // O preview de vertical do super_admin usa um ID sintético
+  // (__vertical_preview__:...). Esse ID não existe nas tabelas tenant-scoped
+  // e fazia o Catálogo parecer vazio mesmo quando o tenant real tinha produtos.
+  const tenantId = tenantOverride?.preview
+    ? (rawUser?.tenantId ?? "")
+    : (user?.tenantId ?? "");
   const [products, setProducts] = useState<CatalogProductSummary[]>([]);
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
   const [activeProduct, setActiveProduct] = useState<CatalogProductSummary | null>(null);
