@@ -66,6 +66,29 @@ describe("resolveSessionTenantContext", () => {
     expect(mockSelect).toHaveBeenCalledTimes(1);
   });
 
+  it("permite superadmin operar tenant alternado sem vínculo de organização", async () => {
+    selectRows([
+      {
+        id: "tenant-c",
+        vertical: "construcao",
+        logoUrl: null,
+        whiteLabelCompleto: false,
+        organizacaoId: "org-c",
+      },
+    ]);
+
+    const result = await resolveSessionTenantContext({
+      userId: "super-1",
+      baseTenantId: "platform-tenant",
+      tokenTenantId: "tenant-c",
+      platformRole: "super_admin",
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.tenant.id).toBe("tenant-c");
+    expect(mockSelect).toHaveBeenCalledTimes(1);
+  });
+
   it("preserva tenant alternado do JWT quando pertence à mesma organização e o usuário é membro", async () => {
     selectRows(
       [
