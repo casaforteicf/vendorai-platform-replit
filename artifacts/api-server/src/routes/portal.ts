@@ -373,9 +373,59 @@ router.get("/portal/obra/:token", async (req, res) => {
       const allItens = etapaIds.length > 0
         ? await db.select().from(obraOrcamentoItensTable).where(inArray(obraOrcamentoItensTable.etapaId, etapaIds)).orderBy(asc(obraOrcamentoItensTable.ordem))
         : [];
-      const byEtapa: Record<string, typeof allItens> = {};
-      for (const item of allItens) (byEtapa[item.etapaId] ??= []).push(item);
-      orcamentoComEtapas = { ...orcamento, etapas: orcEtapas.map((e) => ({ ...e, itens: byEtapa[e.id] ?? [] })) };
+      const byEtapa: Record<string, any[]> = {};
+      for (const item of allItens) {
+        if (item.visibleToClient === false) continue;
+        const quantidade = Number(item.quantidade ?? 0);
+        const bdi = Number(item.bdi ?? orcamento.bdiGlobal ?? 0);
+        const precoUnitarioCliente = Number(item.custoUnitario ?? 0) * (1 + bdi / 100);
+        const valorTotalCliente = quantidade * precoUnitarioCliente;
+        (byEtapa[item.etapaId] ??= []).push({
+          id: item.id,
+          nome: item.nome,
+          unidade: item.unidade,
+          quantidade: item.showQuantity !== false ? item.quantidade : null,
+          precoUnitario: item.showUnitPrice === true ? precoUnitarioCliente : null,
+          valorTotal: item.showTotal !== false ? valorTotalCliente : null,
+          ordem: item.ordem,
+        });
+      }
+      const snapshot = orcamento.linhaBaseSnapshot && typeof orcamento.linhaBaseSnapshot === "object"
+        ? orcamento.linhaBaseSnapshot as any
+        : null;
+      const presentation = snapshot?.apresentacao && typeof snapshot.apresentacao === "object"
+        ? snapshot.apresentacao
+        : null;
+      orcamentoComEtapas = {
+        id: orcamento.id,
+        status: orcamento.status,
+        versao: orcamento.versao,
+        titulo: orcamento.titulo,
+        propostaOrigemId: orcamento.propostaOrigemId,
+        valorTotal: presentation?.mostrarTotalGeral === false ? null : (snapshot?.valorTotal ?? obra.orcamentoTotal ?? null),
+        linhaBaseSnapshot: snapshot ? {
+          propostaId: snapshot.propostaId ?? null,
+          numero: snapshot.numero ?? null,
+          acceptedAt: snapshot.acceptedAt ?? null,
+          valorTotal: presentation?.mostrarTotalGeral === false ? null : (snapshot.valorTotal ?? null),
+          apresentacao: presentation ? {
+            entradaPercentual: presentation.entradaPercentual ?? null,
+            amortizacaoEntradaPercentual: presentation.amortizacaoEntradaPercentual ?? null,
+            mostrarAmortizacaoEntrada: presentation.mostrarAmortizacaoEntrada ?? null,
+            mostrarPortalCliente: presentation.mostrarPortalCliente ?? null,
+            previsaoInicio: presentation.previsaoInicio ?? null,
+            mostrarCronogramaExecucao: presentation.mostrarCronogramaExecucao ?? null,
+            mostrarFisicoFinanceiro: presentation.mostrarFisicoFinanceiro ?? null,
+            mostrarTotalGeral: presentation.mostrarTotalGeral ?? true,
+          } : null,
+        } : null,
+        etapas: orcEtapas.map((e) => ({
+          id: e.id,
+          nome: e.nome,
+          ordem: e.ordem,
+          itens: byEtapa[e.id] ?? [],
+        })),
+      };
     }
   }
 
