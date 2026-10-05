@@ -815,6 +815,11 @@ const constructionSignalsSearchBodySchema = z.object({
   standard: z.string().optional(),
   phase: z.string().optional(),
   productInterest: z.string().optional(),
+  geo: z.object({
+    lat: z.number().min(-90).max(90),
+    lng: z.number().min(-180).max(180),
+    radiusKm: z.number().min(1).max(100),
+  }).optional(),
   maxResults: z.number().int().min(1).max(15).optional().default(10),
   tenantId: z.string().optional(),
 });
@@ -833,6 +838,7 @@ router.post("/prospector/construction-signals/search", async (req, res) => {
     standard,
     phase,
     productInterest,
+    geo,
     maxResults,
     tenantId: bodyTenantId,
   } = parsed.data;
@@ -856,6 +862,7 @@ router.post("/prospector/construction-signals/search", async (req, res) => {
       standard,
       phase,
       productInterest,
+      geo,
       maxResults,
     });
 
