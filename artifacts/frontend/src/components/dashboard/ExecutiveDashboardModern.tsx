@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   ArrowRight,
   ArrowUpRight,
+  BarChart3,
   Bot,
   BriefcaseBusiness,
   CheckCircle2,
