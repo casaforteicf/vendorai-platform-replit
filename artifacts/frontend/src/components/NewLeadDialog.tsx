@@ -259,9 +259,14 @@ export function NewLeadDialog({
     },
   });
 
-  const assignableUsers = useMemo(
-    () => (tenantUsers as unknown as AssignmentUser[]).filter(canReceiveLeads),
+  const activeUsers = useMemo(
+    () => (tenantUsers as unknown as AssignmentUser[]).filter((user) => user.active !== false),
     [tenantUsers],
+  );
+
+  const assignableUsers = useMemo(
+    () => activeUsers.filter(canReceiveLeads),
+    [activeUsers],
   );
 
   const { data: representativeFunctions = [] } = useQuery({
@@ -733,7 +738,7 @@ export function NewLeadDialog({
                         <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                         <SelectContent>
                           <SelectItem value="__auto__">Distribuir automaticamente</SelectItem>
-                          {assignableUsers.map((user) => (
+                          {activeUsers.map((user) => (
                             <SelectItem key={user.id} value={user.id}>{user.name || user.email || user.id}</SelectItem>
                           ))}
                           {representativeFunctions.map((representative) => (
@@ -741,13 +746,13 @@ export function NewLeadDialog({
                               {representative.name} · empresa representante
                             </SelectItem>
                           ))}
-                          {assignableUsers.length === 0 && representativeFunctions.length === 0 && (
-                            <SelectItem value="__none_available__" disabled>Nenhum responsável habilitado</SelectItem>
+                          {activeUsers.length === 0 && representativeFunctions.length === 0 && (
+                            <SelectItem value="__none_available__" disabled>Nenhum usuário ativo disponível</SelectItem>
                           )}
                         </SelectContent>
                       </Select>
                       <p className="text-[11px] leading-relaxed text-muted-foreground">
-                        Automático: prioriza cidade e região configuradas para cada responsável; sem regra territorial, usa o rodízio geral. Empresas representantes autorizadas aparecem junto dos vendedores.
+                        Atribuição manual: mostra todos os usuários ativos. Automático: usa apenas usuários habilitados para receber leads e prioriza cidade, região e segmento configurados. Empresas representantes autorizadas aparecem junto da equipe.
                       </p>
                     </FormItem>
                   )}
