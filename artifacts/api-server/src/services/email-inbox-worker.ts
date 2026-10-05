@@ -21,11 +21,12 @@ export async function runEmailInboxSync(log: Logger) {
       or(
         eq(socialConnectionsTable.provider, "email_google"),
         eq(socialConnectionsTable.provider, "email_microsoft"),
+        eq(socialConnectionsTable.provider, "email_webmail"),
       ),
     ));
 
     for (const connection of connections) {
-      const provider: EmailProvider = connection.provider === "email_google" ? "google" : "microsoft";
+      const provider: EmailProvider = connection.provider === "email_google" ? "google" : connection.provider === "email_microsoft" ? "microsoft" : "webmail";
       try {
         const result = await syncConnectedEmailInbox(connection.tenantId, provider);
         for (const item of result.results) {
