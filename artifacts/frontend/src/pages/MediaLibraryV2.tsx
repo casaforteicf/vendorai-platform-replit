@@ -97,6 +97,11 @@ function descriptionOf(asset: MediaAsset) {
   return typeof value === "string" ? value : "";
 }
 
+function libraryFolderOf(asset: MediaAsset) {
+  const value = asset.metadata?.libraryFolder;
+  return typeof value === "string" && value.trim() ? value.trim() : "Sem pasta";
+}
+
 function isFavorite(asset: MediaAsset) {
   return asset.metadata?.favorite === true;
 }
@@ -143,6 +148,8 @@ export default function MediaLibraryV2() {
   const [saving, setSaving] = useState(false);
   const [description, setDescription] = useState("");
   const [tagDraft, setTagDraft] = useState("");
+  const [moveFolderOpen, setMoveFolderOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
 
   const inspected = assets.find((asset) => asset.id === inspectedId) ?? null;
 
@@ -164,7 +171,11 @@ export default function MediaLibraryV2() {
   };
 
   useEffect(() => { void load(); }, [tenantId]);
-  useEffect(() => { if (inspected) setDescription(descriptionOf(inspected)); }, [inspected?.id]);
+  useEffect(() => {
+    if (inspected) setDescription(descriptionOf(inspected));
+    setMoveFolderOpen(false);
+    setNewFolderName("");
+  }, [inspected?.id]);
 
   const folders = useMemo(() => {
     const counts = new Map<string, number>();
@@ -173,6 +184,11 @@ export default function MediaLibraryV2() {
       .filter((item) => item !== "Sem categoria" && !CORE_LIBRARY_CATEGORIES.includes(item))
       .sort((a, b) => a.localeCompare(b, "pt-BR"));
     return ["Todas as mídias", ...CORE_LIBRARY_CATEGORIES, ...dynamic];
+  }, [assets]);
+
+  const libraryFolders = useMemo(() => {
+    return Array.from(new Set(assets.map(libraryFolderOf).filter((item) => item !== "Sem pasta")))
+      .sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [assets]);
 
   const counts = useMemo(() => ({
@@ -382,9 +398,52 @@ export default function MediaLibraryV2() {
                 <button type="button" onClick={() => void patchAsset(inspected, { aiUsage: isAiApproved(inspected) ? "manual" : "approved", aiCollection: isAiApproved(inspected) ? "" : "Base IA da Empresa" })} className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl text-sm font-semibold ${isAiApproved(inspected) ? "border border-emerald-200 bg-emerald-50 text-emerald-700" : "bg-orange-500 text-white"}`}><Sparkles className="h-4 w-4" />{isAiApproved(inspected) ? "Na Base IA" : "Usar na IA"}</button>
                 <a href={mediaUrl(inspected.storageUrl)} download={inspected.originalFilename ?? undefined} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-medium"><Download className="h-4 w-4" />Baixar</a>
                 <button type="button" onClick={() => void patchAsset(inspected, { favorite: !isFavorite(inspected) })} className={`col-span-2 inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-medium ${isFavorite(inspected) ? "text-amber-600" : ""}`}><Star className="h-4 w-4" />{isFavorite(inspected) ? "Favorito" : "Adicionar aos favoritos"}</button>
+                <button type="button" onClick={() => setMoveFolderOpen((value) => !value)} className="col-span-2 inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-medium hover:bg-muted/50"><Folder className="h-4 w-4" />Mover para pasta</button>
               </div>
+              {moveFolderOpen && (
+                <div className="rounded-2xl border bg-muted/20 p-3">
+                  <p className="text-xs font-medium text-muted-foreground">Escolher pasta</p>
+                  <select
+                    value={libraryFolderOf(inspected)}
+                    onChange={(event) => void patchAsset(inspected, { libraryFolder: event.target.value === "Sem pasta" ? "" : event.target.value })}
+                    className="mt-2 h-10 w-full rounded-xl border bg-background px-3 text-sm outline-none focus:border-orange-300"
+                  >
+                    <option>Sem pasta</option>
+                    {libraryFolders.map((item) => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      value={newFolderName}
+                      onChange={(event) => setNewFolderName(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && newFolderName.trim()) {
+                          event.preventDefault();
+                          void patchAsset(inspected, { libraryFolder: newFolderName.trim() });
+                          setNewFolderName("");
+                        }
+                      }}
+                      placeholder="Nome da nova pasta"
+                      className="h-10 min-w-0 flex-1 rounded-xl border bg-background px-3 text-sm outline-none focus:border-orange-300"
+                    />
+                    <button
+                      type="button"
+                      disabled={!newFolderName.trim()}
+                      onClick={() => {
+                        const nextFolder = newFolderName.trim();
+                        if (!nextFolder) return;
+                        void patchAsset(inspected, { libraryFolder: nextFolder });
+                        setNewFolderName("");
+                      }}
+                      className="h-10 rounded-xl border bg-background px-3 text-xs font-semibold disabled:opacity-50"
+                    >
+                      + Nova pasta
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="border-t pt-4"><p className="mb-3 text-sm font-semibold text-orange-600">Informações</p><label className="block text-xs font-medium text-muted-foreground">Descrição<textarea value={description} onChange={(event) => setDescription(event.target.value)} onBlur={() => void patchAsset(inspected, { description })} rows={3} placeholder="Explique o que esta mídia representa: produto, obra, pessoa, ambiente, uso, benefício ou contexto." className="mt-1 w-full resize-none rounded-xl border bg-background p-3 text-sm text-foreground outline-none focus:border-orange-300" /></label></div>
               <div><p className="text-xs font-medium text-muted-foreground">Categoria da referência</p><div className="mt-2 flex flex-wrap gap-2"><span className="rounded-full bg-muted px-3 py-1.5 text-xs">{folderOf(inspected)}</span>{CORE_LIBRARY_CATEGORIES.filter((item) => item !== folderOf(inspected)).map((item) => <button key={item} type="button" onClick={() => void patchAsset(inspected, { folderPath: item })} className="rounded-full border px-3 py-1.5 text-xs">+ {item}</button>)}</div></div>
+              <div><p className="text-xs font-medium text-muted-foreground">Pasta</p><div className="mt-2 flex items-center gap-2"><span className="inline-flex items-center gap-2 rounded-full bg-muted px-3 py-1.5 text-xs"><Folder className="h-3.5 w-3.5" />{libraryFolderOf(inspected)}</span><button type="button" onClick={() => setMoveFolderOpen(true)} className="rounded-full border px-3 py-1.5 text-xs">Alterar</button></div></div>
               <div><p className="text-xs font-medium text-muted-foreground">Tags</p><div className="mt-2 flex flex-wrap gap-2">{tagsOf(inspected).map((tag) => <button key={tag} type="button" onClick={() => void patchAsset(inspected, { tags: tagsOf(inspected).filter((item) => item !== tag) })} className="rounded-full bg-muted px-3 py-1.5 text-xs">{tag} ×</button>)}</div><div className="mt-2 flex gap-2"><input value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && tagDraft.trim()) { event.preventDefault(); void patchAsset(inspected, { tags: Array.from(new Set([...tagsOf(inspected), tagDraft.trim()])) }); setTagDraft(""); } }} placeholder="Ex.: produto, obra, equipe, fachada" className="h-9 min-w-0 flex-1 rounded-lg border bg-background px-3 text-xs" /><button type="button" onClick={() => { if (!tagDraft.trim()) return; void patchAsset(inspected, { tags: Array.from(new Set([...tagsOf(inspected), tagDraft.trim()])) }); setTagDraft(""); }} className="rounded-lg border px-3 text-xs font-medium">Adicionar</button></div></div>
               <div className="rounded-2xl border bg-muted/30 p-3"><div className="flex items-start gap-2"><Bot className="mt-0.5 h-4 w-4 text-orange-500" /><div><p className="text-sm font-semibold">Como a IA usa esta biblioteca</p><p className="mt-1 text-xs leading-relaxed text-muted-foreground">A IA cruza estas mídias com os dados já cadastrados da empresa e do catálogo. Ao classificar produto, obra, equipe ou marca, a referência fica mais fácil de encontrar e reutilizar corretamente.</p></div></div></div>
               <button type="button" onClick={() => void remove(inspected)} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-red-200 text-sm font-semibold text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" />Excluir mídia</button>
