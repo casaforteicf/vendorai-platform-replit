@@ -59,6 +59,12 @@ ALTER TABLE public.obra_portal_documents
   ADD COLUMN IF NOT EXISTS visibility text NOT NULL DEFAULT 'interno',
   ADD COLUMN IF NOT EXISTS allow_download boolean NOT NULL DEFAULT true;
 
+ALTER TABLE public.obra_orcamento_itens
+  ADD COLUMN IF NOT EXISTS visible_to_client boolean NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS show_quantity boolean NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS show_unit_price boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS show_total boolean NOT NULL DEFAULT true;
+
 UPDATE public.obra_portal_documents
    SET visibility = CASE WHEN publicado_cliente THEN 'publicado' ELSE 'interno' END
  WHERE visibility = 'interno';
