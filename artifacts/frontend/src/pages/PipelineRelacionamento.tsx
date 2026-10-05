@@ -54,7 +54,7 @@ export default function PipelineRelacionamento() {
     return body as T;
   }
 
-  const dealsQuery = useQuery<Deal[]>({ queryKey: ["relationship-deals", tenantId], enabled: !!tenantId, queryFn: () => api(`/api/tenants/${tenantId}/deals`) });
+  const dealsQuery = useQuery<Deal[]>({ queryKey: ["relationship-deals", tenantId], enabled: !!tenantId, queryFn: () => api(`/api/tenants/${tenantId}/deals?includeNaoLead=true`) });
   const leadsQuery = useQuery<Lead[]>({ queryKey: ["relationship-leads", tenantId], enabled: !!tenantId, queryFn: () => api(`/api/tenants/${tenantId}/leads`) });
   const usersQuery = useQuery<User[]>({ queryKey: ["relationship-users", tenantId], enabled: !!tenantId, queryFn: () => api(`/api/tenants/${tenantId}/users`) });
 
