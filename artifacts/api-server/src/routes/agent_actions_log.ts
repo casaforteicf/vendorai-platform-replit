@@ -47,6 +47,7 @@ router.get("/tenants/:tenantId/agent-action-logs", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/pipeline-ai/pending", async (req, res) => {
+  // tenant-audit: reviewed route tenant is immediately checked against authenticated tenant; only super_admin may cross tenant boundaries
   const tenantId = String(req.params.tenantId);
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
     return res.status(403).json({ error: "Access denied to this tenant" });
