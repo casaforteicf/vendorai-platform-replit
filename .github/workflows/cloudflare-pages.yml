@@ -3,21 +3,6 @@ name: Cloudflare Pages
 # Redeploy marker: Cloudflare production retry 2026-09-30.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "artifacts/frontend/**"
-      - "artifacts/api-server/**"
-      - "lib/db/**"
-      - "lib/api-zod/**"
-      - "lib/api-client-react/**"
-      - "lib/vendor-brain/**"
-      - "backend/Dockerfile"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - "package.json"
-      - ".node-version"
-      - ".github/workflows/cloudflare-pages.yml"
   workflow_dispatch:
 
 permissions:
