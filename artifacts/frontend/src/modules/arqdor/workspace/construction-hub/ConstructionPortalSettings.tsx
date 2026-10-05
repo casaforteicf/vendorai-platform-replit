@@ -28,6 +28,9 @@ type PortalConfig = {
   showManuals: boolean;
   showSupport: boolean;
   showChat: boolean;
+  showBriefing: boolean;
+  showAgenda: boolean;
+  showSearch: boolean;
 };
 
 const DEFAULT_CONFIG: PortalConfig = {
@@ -53,6 +56,9 @@ const DEFAULT_CONFIG: PortalConfig = {
   showManuals: true,
   showSupport: true,
   showChat: true,
+  showBriefing: true,
+  showAgenda: true,
+  showSearch: true,
 };
 
 function token() { return localStorage.getItem("vendorai_token") ?? ""; }
@@ -84,6 +90,9 @@ function projectMeta(arqState: any, projectCtx: any) {
 
 const ITEMS: Array<{ key: keyof PortalConfig; title: string; description: string; dependsOn?: keyof PortalConfig }> = [
   { key: "showOverview", title: "Visão geral da obra", description: "Status, endereço, avanço físico, etapa atual, próximas etapas e previsão de entrega." },
+  { key: "showBriefing", title: "Briefing do cliente", description: "Exibe o briefing vinculado ao lead/negócio, com resumo e respostas publicáveis." },
+  { key: "showAgenda", title: "Agenda do cliente", description: "Reuniões, visitas, medições, instalações, vistorias e entregas vinculadas ao atendimento." },
+  { key: "showSearch", title: "Busca no portal", description: "Permite pesquisar documentos, contratos, etapas, propostas e compromissos publicados." },
   { key: "showSchedule", title: "Cronograma", description: "Etapas, datas previstas, responsáveis e avanço físico." },
   { key: "showMilestones", title: "Marcos da obra", description: "Marcos previstos, concluídos e próximos eventos do cronograma.", dependsOn: "showSchedule" },
   { key: "showMeasurements", title: "Medições", description: "Histórico de evolução física registrada nas etapas.", dependsOn: "showSchedule" },
