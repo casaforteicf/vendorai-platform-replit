@@ -1,6 +1,6 @@
 name: Cloudflare Pages
 # Production deploy: Pages frontend; Railway backend remains unchanged.
-# Redeploy marker: PN wizard production 2026-10-05.
+# Redeploy marker: lead responsible users production 2026-10-05.
 
 on:
   push:
