@@ -238,8 +238,19 @@ function SettingsUxCleanup() {
 
 export default function Configuracoes() {
   const params = new URLSearchParams(window.location.search);
-  const legacySiteDeepLink = params.get("tab") === "site";
-  const integrationsDeepLink = params.get("tab") === "integracoes";
+  const requestedTab = params.get("tab");
+  const legacySiteDeepLink = requestedTab === "site";
+  const integrationsDeepLink = requestedTab === "integracoes";
+  const normalizedSectionDeepLink = requestedTab !== null && [
+    "perfil",
+    "marketing",
+    "analise",
+    "calendario",
+    "ai",
+    "contrato",
+    "equipe",
+    "faturamento",
+  ].includes(requestedTab);
   const isInstallationMode = params.get("installation") === "1";
 
   const [showJarvis, setShowJarvis] = useState(false);
@@ -347,7 +358,7 @@ export default function Configuracoes() {
     return <IntegrationSettingsHub />;
   }
 
-  if (legacySiteDeepLink) {
+  if (legacySiteDeepLink || normalizedSectionDeepLink) {
     return <ConfiguracoesNormalized />;
   }
 
