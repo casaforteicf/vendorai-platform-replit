@@ -103,6 +103,11 @@ type Publication = {
   showSearch?: boolean;
   showPostSale?: boolean;
   showVendi?: boolean;
+  showBudgetItems?: boolean;
+  showBudgetQuantities?: boolean;
+  showBudgetUnitPrices?: boolean;
+  showBudgetStageTotals?: boolean;
+  showBudgetGrandTotal?: boolean;
 };
 
 interface PortalData {
@@ -149,18 +154,19 @@ interface PortalData {
         mostrarFisicoFinanceiro?: boolean;
       } | null;
     } | null;
-    bdiGlobal: string;
+    valorTotalCliente?: number | null;
     etapas: Array<{
       id: string;
       nome: string;
       ordem: number;
+      totalCliente?: number | null;
       itens: Array<{
         id: string;
         nome: string;
-        unidade: string;
-        quantidade: string;
-        custoUnitario: string;
-        bdi?: string | null;
+        unidade?: string | null;
+        quantidade?: string | null;
+        precoUnitario?: number | null;
+        valorTotalCliente?: number | null;
         ordem: number;
       }>;
     }>;
@@ -490,10 +496,9 @@ export default function PortalObra() {
   const obraStatus = OBRA_STATUS[obra.status] ?? { label: obra.status, color: "bg-gray-100 text-gray-600", icon: null };
   const totalEtapas = etapas.length;
   const avgProgress = Math.round(resumo?.progressoGeral ?? (totalEtapas > 0 ? etapas.reduce((s, e) => s + parseFloat(e.percentualExecutado ?? "0"), 0) / totalEtapas : 0));
-  const bdiGlobal = orcamento ? parseFloat(orcamento.bdiGlobal ?? "0") : 0;
-  const itemTotal = (item: NonNullable<PortalData["orcamento"]>["etapas"][0]["itens"][0]) => parseFloat(item.quantidade) * parseFloat(item.custoUnitario) * (1 + (item.bdi != null ? parseFloat(item.bdi) : bdiGlobal) / 100);
-  const etapaTotal = (etapa: NonNullable<PortalData["orcamento"]>["etapas"][0]) => etapa.itens.reduce((s, i) => s + itemTotal(i), 0);
-  const orcamentoTotalCalc = orcamento ? orcamento.etapas.reduce((s, e) => s + etapaTotal(e), 0) : 0;
+  const itemTotal = (item: NonNullable<PortalData["orcamento"]>["etapas"][0]["itens"][0]) => Number(item.valorTotalCliente ?? 0);
+  const etapaTotal = (etapa: NonNullable<PortalData["orcamento"]>["etapas"][0]) => Number(etapa.totalCliente ?? etapa.itens.reduce((sum, item) => sum + itemTotal(item), 0));
+  const orcamentoTotalCalc = Number(orcamento?.valorTotalCliente ?? 0);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -618,7 +623,7 @@ export default function PortalObra() {
           </Section>
         ) : null}
 
-        {activeTab === "orcamento" && data.publication?.showBudget !== false ? <Section title="Orçamento" icon={<CircleDollarSign className="h-5 w-5" />}>{!orcamento ? <div className="py-8 text-center text-gray-400"><FileText className="mx-auto mb-2 h-8 w-8 opacity-40" /><p className="text-sm">Nenhum orçamento disponível ainda.</p></div> : <><div className="mb-4 flex flex-wrap items-center justify-between gap-2"><span className="text-sm text-gray-500">{orcamento.titulo ?? `Orçamento v${orcamento.versao}`}{orcamento.bdiGlobal !== "0" ? ` · BDI ${orcamento.bdiGlobal}%` : ""}</span><div className="flex items-center gap-2">{orcamento.status === "aprovado" ? <span className="flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />Aprovado pelo cliente</span> : null}{orcamento.status === "enviado" && !approved ? <button onClick={handleAprovar} disabled={approving} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60">{approving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ThumbsUp className="h-4 w-4" />}Aprovar Orçamento</button> : null}</div></div><div className="space-y-3">{orcamento.etapas.map((etapa) => <div key={etapa.id} className="overflow-hidden rounded-xl border border-gray-200"><div className="flex items-center justify-between bg-gray-50 px-4 py-3"><span className="text-sm font-medium text-gray-800">{etapa.nome}</span><span className="text-sm font-semibold text-gray-900">{fmtMoney(etapaTotal(etapa))}</span></div>{etapa.itens.length > 0 ? <div className="divide-y divide-gray-100">{etapa.itens.map((item) => <div key={item.id} className="flex items-start justify-between gap-4 px-4 py-2.5 text-sm"><div className="min-w-0 flex-1"><p className="text-gray-700">{item.nome}</p><p className="text-xs text-gray-400">{item.quantidade} {item.unidade} × {fmtMoney(item.custoUnitario)}</p></div><span className="whitespace-nowrap font-medium text-gray-900">{fmtMoney(itemTotal(item))}</span></div>)}</div> : null}</div>)}</div><div className="mt-4 flex items-center justify-between rounded-xl bg-indigo-50 px-5 py-4"><span className="font-semibold text-indigo-800">Total do Orçamento</span><span className="text-xl font-bold text-indigo-700">{fmtMoney(orcamentoTotalCalc)}</span></div></>}</Section> : null}
+        {activeTab === "orcamento" && data.publication?.showBudget !== false ? <Section title="Orçamento" icon={<CircleDollarSign className="h-5 w-5" />}>{!orcamento ? <div className="py-8 text-center text-gray-400"><FileText className="mx-auto mb-2 h-8 w-8 opacity-40" /><p className="text-sm">Nenhum orçamento disponível ainda.</p></div> : <><div className="mb-4 flex flex-wrap items-center justify-between gap-2"><span className="text-sm text-gray-500">{orcamento.titulo ?? `Orçamento v${orcamento.versao}`}</span><div className="flex items-center gap-2">{orcamento.status === "aprovado" ? <span className="flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />Aprovado pelo cliente</span> : null}{orcamento.status === "enviado" && !approved ? <button onClick={handleAprovar} disabled={approving} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60">{approving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ThumbsUp className="h-4 w-4" />}Aprovar Orçamento</button> : null}</div></div><div className="space-y-3">{orcamento.etapas.map((etapa) => <div key={etapa.id} className="overflow-hidden rounded-xl border border-gray-200"><div className="flex items-center justify-between bg-gray-50 px-4 py-3"><span className="text-sm font-medium text-gray-800">{etapa.nome}</span>{data.publication?.showBudgetStageTotals !== false ? <span className="text-sm font-semibold text-gray-900">{fmtMoney(etapaTotal(etapa))}</span> : null}</div>{etapa.itens.length > 0 ? <div className="divide-y divide-gray-100">{etapa.itens.map((item) => <div key={item.id} className="flex items-start justify-between gap-4 px-4 py-2.5 text-sm"><div className="min-w-0 flex-1"><p className="text-gray-700">{item.nome}</p><p className="text-xs text-gray-400">{data.publication?.showBudgetQuantities !== false && item.quantidade != null ? `${item.quantidade} ${item.unidade ?? ""}` : "Item comercial"}{data.publication?.showBudgetUnitPrices === true && item.precoUnitario != null ? ` × ${fmtMoney(item.precoUnitario)}` : ""}</p></div><span className="whitespace-nowrap font-medium text-gray-900">{fmtMoney(itemTotal(item))}</span></div>)}</div> : null}</div>)}</div><div className="mt-4 flex items-center justify-between rounded-xl bg-indigo-50 px-5 py-4"><span className="font-semibold text-indigo-800">Total do Orçamento</span>{data.publication?.showBudgetGrandTotal !== false ? <span className="text-xl font-bold text-indigo-700">{fmtMoney(orcamentoTotalCalc)}</span> : <span className="text-sm text-indigo-600">Valor total oculto</span>}</div></>}</Section> : null}
 
         {activeTab === "cronograma" && data.publication?.showSchedule !== false ? <Section title="Cronograma Executivo e Financeiro" icon={<Layers className="h-5 w-5" />}>
           {orcamento?.propostaOrigemId ? <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">Linha de base contratada</p><p className="text-sm font-medium text-indigo-900">Versão {orcamento.versao}{orcamento.linhaBaseSnapshot?.numero ? ` · Proposta ${orcamento.linhaBaseSnapshot.numero}` : ""}</p></div>{orcamento.linhaBaseSnapshot?.acceptedAt ? <span className="text-xs text-indigo-600">Contratada em {fmt(orcamento.linhaBaseSnapshot.acceptedAt)}</span> : null}</div> : null}
