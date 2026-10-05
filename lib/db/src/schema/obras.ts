@@ -27,6 +27,9 @@ export type ObraPortalConfig = {
   showManuals: boolean;
   showSupport: boolean;
   showChat: boolean;
+  showBriefing: boolean;
+  showAgenda: boolean;
+  showSearch: boolean;
 };
 
 export const DEFAULT_OBRA_PORTAL_CONFIG: ObraPortalConfig = {
@@ -52,6 +55,9 @@ export const DEFAULT_OBRA_PORTAL_CONFIG: ObraPortalConfig = {
   showManuals: true,
   showSupport: true,
   showChat: true,
+  showBriefing: true,
+  showAgenda: true,
+  showSearch: true,
 };
 
 export const obrasTable = pgTable("obras", {
