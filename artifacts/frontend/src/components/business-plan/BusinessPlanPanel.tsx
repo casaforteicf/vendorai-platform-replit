@@ -35,6 +35,12 @@ type DiscoveryDocumentos = {
   status: "rascunho";
   aviso: string;
 };
+function entryValidation(record: Entry) {
+  const hasContent = Object.values(record.values).some((value) => value.trim().length > 0);
+  const hasSource = record.source.trim().length > 0 || record.evidence === "declared";
+  const normalizedSource = record.source.trim() || (record.evidence === "declared" ? "Informado pela empresa" : "");
+  return { hasContent, hasSource, ready: hasContent && hasSource, normalizedSource };
+}
 const selectClass = "w-full rounded-md border bg-background p-2 text-sm";
 const roleLabels: Record<string, string> = { marketing: "Marketing", prospector: "Prospector", sdr: "SDR", closer: "Closer", agendamento: "Agendamento", suporte: "Suporte", pos_venda: "Pós-venda", financeiro: "Financeiro", cobranca: "Cobrança", scout: "Revenue Scout" };
 export function BusinessPlanPanel() {
@@ -223,6 +229,8 @@ export function BusinessPlanPanel() {
       const stepNumber = isReview ? totalSteps : wizardIndex + 1;
       const progress = Math.round((stepNumber / totalSteps) * 100);
       const approved = saved?.approved ?? [];
+      const invalidRecords = records.filter((record) => !entryValidation(record).ready);
+      const canApprove = records.length > 0 && invalidRecords.length === 0;
       const knownRecords = approved.length ? approved : records.filter((item) => item.evidence !== "hypothesis");
       const goToIndex = (index: number) => {
         if (index >= data.sections.length) {
@@ -357,11 +365,15 @@ export function BusinessPlanPanel() {
                 <Button size="sm" variant="outline" disabled={!!busy || records.length >= 30} onClick={() => setDrafts(value => ({ ...value, [sectionId]: [...records, newEntry()] }))}>Adicionar informação</Button>
               </div>
               <div className="mt-3 space-y-2">
-                {records.length ? records.slice(0, 8).map((record, index) => (
-                  <details key={record.id} open={record.evidence === "hypothesis"} className="rounded-xl border bg-background p-3">
+                {records.length ? records.slice(0, 8).map((record, index) => {
+                  const validation = entryValidation(record);
+                  const statusLabel = !validation.hasContent ? "Falta conteúdo" : !validation.hasSource ? "Falta fonte" : record.evidence === "hypothesis" ? "Confirmar" : "OK";
+                  const statusOk = validation.ready && record.evidence !== "hypothesis";
+                  return (
+                  <details key={record.id} open={record.evidence === "hypothesis" || !validation.ready} className={`rounded-xl border bg-background p-3 ${!validation.ready ? "border-amber-300" : ""}`}>
                     <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
                       <div className="min-w-0"><p className="truncate text-sm font-medium">{record.title || "Informação sem título"}</p><p className="mt-0.5 text-[11px] text-muted-foreground">{record.evidence === "hypothesis" ? "Precisa de validação" : record.evidence === "verified" ? "Validado com evidência" : "Informado pela empresa"}</p></div>
-                      <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${record.evidence === "hypothesis" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>{record.evidence === "hypothesis" ? "Confirmar" : "OK"}</span>
+                      <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${statusOk ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{statusLabel}</span>
                     </summary>
                     <div className="mt-3 border-t pt-3">
                       <Input aria-label="Título da ficha" value={record.title} onChange={e => update(index, { title: e.target.value })} />
@@ -372,13 +384,14 @@ export function BusinessPlanPanel() {
                         <summary className="cursor-pointer text-xs font-medium text-muted-foreground">Fonte e status</summary>
                         <div className="mt-2 grid gap-2 sm:grid-cols-2">
                           <label className="text-xs font-medium">Situação<select className={selectClass} value={record.evidence} onChange={e => update(index, { evidence: e.target.value as Entry["evidence"] })}><option value="declared">Informado pela empresa</option><option value="verified">Validado com evidência</option><option value="hypothesis">Hipótese a validar</option></select></label>
-                          <label className="text-xs font-medium">Fonte<Input className="mt-1" value={record.source} onChange={e => update(index, { source: e.target.value })} placeholder="Documento, entrevista, CRM..." /></label>
+                          <label className="text-xs font-medium">Fonte<Input className="mt-1" value={record.source || (record.evidence === "declared" ? "Informado pela empresa" : "")} onChange={e => update(index, { source: e.target.value })} placeholder="Documento, entrevista, CRM..." /></label>
                         </div>
                       </details>
                       <Button className="mt-2" size="sm" variant="ghost" onClick={() => setDrafts(value => ({ ...value, [sectionId]: records.filter(item => item.id !== record.id) }))}>Remover</Button>
                     </div>
                   </details>
-                )) : <div className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">Nada para decidir ainda. Peça ao Vendi para preparar uma proposta desta etapa.</div>}
+                  );
+                }) : <div className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">Nada para decidir ainda. Peça ao Vendi para preparar uma proposta desta etapa.</div>}
               </div>
             </section>
           </div>
@@ -411,12 +424,14 @@ export function BusinessPlanPanel() {
             <div>
               <p className="text-sm font-semibold">Confirmar esta etapa</p>
               <p className="mt-1 text-xs text-muted-foreground">Salvar mantém como rascunho. Aprovar torna o conteúdo disponível automaticamente aos módulos e agentes compatíveis.</p>
+              {!!invalidRecords.length && <p className="mt-1 text-xs font-medium text-amber-700">{invalidRecords.length} ficha(s) ainda precisam de conteúdo ou fonte. Abra os cards destacados para corrigir.</p>}
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" disabled={!!busy || wizardIndex === 0} onClick={() => goToIndex(wizardIndex - 1)}>Anterior</Button>
               <Button variant="outline" disabled={!!busy} onClick={() => save("save")}>Salvar rascunho</Button>
-              <Button disabled={!!busy || !records.length} onClick={() => run("Aprovando etapa...", async () => {
-                const response = await request(`/sections/${sectionId}`, "PUT", { version: data!.plan.version, action: "approve", records });
+              <Button disabled={!!busy || !canApprove} onClick={() => run("Aprovando etapa...", async () => {
+                const normalizedRecords = records.map((record) => ({ ...record, source: entryValidation(record).normalizedSource }));
+                const response = await request(`/sections/${sectionId}`, "PUT", { version: data!.plan.version, action: "approve", records: normalizedRecords });
                 qc.setQueryData<Data>(queryKey, old => old ? { ...old, plan: response.plan } : old);
                 setDrafts(value => { const next = { ...value }; delete next[sectionId]; return next; });
                 setAgentContext("");
