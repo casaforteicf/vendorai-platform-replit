@@ -690,9 +690,9 @@ router.get("/portal/obra/:token", async (req, res) => {
       )).rows
     : [];
 
-  const contracts = config.showContracts ? privateDocuments.filter((item: any) => item.categoria === "contrato") : [];
+  const contracts = config.showContracts ? privateDocuments.filter((item: any) => ["contrato","contrato_terceiro"].includes(item.categoria)) : [];
   const manuals = config.showManuals ? privateDocuments.filter((item: any) => ["manual","garantia"].includes(item.categoria)) : [];
-  const projectDocuments = config.showDocuments ? privateDocuments.filter((item: any) => !["contrato","manual","garantia"].includes(item.categoria)) : [];
+  const projectDocuments = config.showDocuments ? privateDocuments.filter((item: any) => !["contrato","contrato_terceiro","manual","garantia"].includes(item.categoria)) : [];
 
   const invoices = (canReadPrivateLibrary && config.showInvoices)
     ? (await pool.query(
