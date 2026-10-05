@@ -128,6 +128,8 @@ type PlacesResult = {
   reviewCount: number | null;
   telefone: string | null;
   siteOficial: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 };
 
 type PlacesResultWithId = PlacesResult & { placeId: string };
@@ -275,10 +277,25 @@ async function searchPlaces(
   query: string,
   maxResults: number,
   log?: { error: (o: unknown, m?: string) => void },
+  geo?: { lat: number; lng: number; radiusKm: number },
 ): Promise<PlacesResult[]> {
   const apiKey = process.env["GOOGLE_PLACES_API_KEY"];
   if (!apiKey) {
     throw Object.assign(new Error("GOOGLE_PLACES_API_KEY não configurada"), { status: 500 });
+  }
+
+  const requestBody: Record<string, unknown> = {
+    textQuery: query,
+    languageCode: "pt-BR",
+    maxResultCount: Math.min(Math.max(maxResults, 1), 20),
+  };
+  if (geo) {
+    requestBody["locationBias"] = {
+      circle: {
+        center: { latitude: geo.lat, longitude: geo.lng },
+        radius: Math.min(Math.max(geo.radiusKm, 1), 100) * 1000,
+      },
+    };
   }
 
   const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
@@ -287,13 +304,9 @@ async function searchPlaces(
       "Content-Type": "application/json",
       "X-Goog-Api-Key": apiKey,
       "X-Goog-FieldMask":
-        "places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.nationalPhoneNumber,places.websiteUri",
+        "places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.nationalPhoneNumber,places.websiteUri,places.location",
     },
-    body: JSON.stringify({
-      textQuery: query,
-      languageCode: "pt-BR",
-      maxResultCount: Math.min(Math.max(maxResults, 1), 20),
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   if (!res.ok) {
@@ -310,17 +323,35 @@ async function searchPlaces(
       userRatingCount?: number;
       nationalPhoneNumber?: string;
       websiteUri?: string;
+      location?: { latitude?: number; longitude?: number };
     }>;
   };
 
-  return (data.places ?? []).map((place) => ({
+  const mapped = (data.places ?? []).map((place) => ({
     nomeEmpresa: place.displayName?.text ?? null,
     endereco: place.formattedAddress ?? null,
     rating: typeof place.rating === "number" ? place.rating : null,
     reviewCount: typeof place.userRatingCount === "number" ? place.userRatingCount : null,
     telefone: place.nationalPhoneNumber ?? null,
     siteOficial: place.websiteUri ?? null,
+    latitude: typeof place.location?.latitude === "number" ? place.location.latitude : null,
+    longitude: typeof place.location?.longitude === "number" ? place.location.longitude : null,
   }));
+
+  if (!geo) return mapped;
+
+  const earthRadiusKm = 6371;
+  const toRad = (value: number) => value * Math.PI / 180;
+  return mapped.filter((place) => {
+    if (place.latitude == null || place.longitude == null) return false;
+    const dLat = toRad(place.latitude - geo.lat);
+    const dLng = toRad(place.longitude - geo.lng);
+    const lat1 = toRad(geo.lat);
+    const lat2 = toRad(place.latitude);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+    const distanceKm = 2 * earthRadiusKm * Math.asin(Math.sqrt(a));
+    return distanceKm <= geo.radiusKm;
+  });
 }
 
 // ── ReceitaWS — consulta pública de CNPJ ──────────────────────────────────────
@@ -715,6 +746,11 @@ const searchBodySchema = z.object({
   atividade: z.string().min(2, "Informe a atividade comercial"),
   localidade: z.string().min(2, "Informe a localidade"),
   maxResults: z.number().int().min(1).max(20).optional().default(10),
+  geo: z.object({
+    lat: z.number().min(-90).max(90),
+    lng: z.number().min(-180).max(180),
+    radiusKm: z.number().min(1).max(100),
+  }).optional(),
   tenantId: z.string().optional(),
 });
 
@@ -723,7 +759,7 @@ router.post("/prospector/search", async (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten() });
   }
-  const { atividade, localidade, maxResults, tenantId: bodyTenantId } = parsed.data;
+  const { atividade, localidade, maxResults, geo, tenantId: bodyTenantId } = parsed.data;
 
   let tenantIdSearch: string;
   try {
@@ -746,7 +782,7 @@ router.post("/prospector/search", async (req, res) => {
 
   let places: Awaited<ReturnType<typeof searchPlaces>>;
   try {
-    places = await searchPlaces(query, maxResults, req.log);
+    places = await searchPlaces(query, maxResults, req.log, geo);
   } catch (err: unknown) {
     const status = (err as { status?: number }).status ?? 502;
     const message = err instanceof Error ? err.message : "Erro ao buscar no Google Places";
@@ -766,7 +802,7 @@ router.post("/prospector/search", async (req, res) => {
       siteOficial: p.siteOficial,
     }));
 
-  return res.status(200).json({ query, total: results.length, results });
+  return res.status(200).json({ query, total: results.length, results, geoApplied: geo ?? null });
 });
 
 
