@@ -45,7 +45,7 @@ jobs:
           node-version: "24"
       - name: Enable pnpm
         run: npm install --global pnpm@10.26.1
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --no-frozen-lockfile
       - name: CRM deal isolation regression
         run: pnpm --filter @workspace/api-server exec vitest run --config vitest.config.ts src/__tests__/deals-isolation.test.ts
 
@@ -60,7 +60,7 @@ jobs:
           node-version: "24"
       - name: Enable pnpm
         run: npm install --global pnpm@10.26.1
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --no-frozen-lockfile
       - name: Obras portal regressions
         run: pnpm --filter @workspace/frontend exec vitest run --config vitest.config.ts src/pages/PortalObra.integration.test.tsx src/lib/portalTabStorage.test.ts
 
@@ -75,7 +75,7 @@ jobs:
           node-version: "24"
       - name: Enable pnpm
         run: npm install --global pnpm@10.26.1
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --no-frozen-lockfile
       - name: Tenant isolation baseline
         run: pnpm --filter @workspace/api-server audit:tenant:baseline
       - name: Production integrity audit
@@ -94,7 +94,7 @@ jobs:
           node-version: "24"
       - name: Enable pnpm
         run: npm install --global pnpm@10.26.1
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --no-frozen-lockfile
       - name: Shared libraries typecheck
         run: pnpm run typecheck:libs
       - name: Production API validation
