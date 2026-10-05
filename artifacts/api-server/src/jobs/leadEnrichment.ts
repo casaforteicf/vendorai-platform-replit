@@ -18,6 +18,9 @@ import {
   segmentBenchmarksTable,
   sdrVerticalProfilesTable,
   prospectorConfigTable,
+  tenantAgentConfigsTable,
+  dealsTable,
+  activitiesTable,
 } from "@workspace/db";
 import { callOpenAI } from "../lib/ai-gateway.js";
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
@@ -26,6 +29,7 @@ import { getSimilarityBonus, storeConvertedEmbedding } from "../lib/prospectorMe
 import { logger as rootLogger } from "../lib/logger.js";
 import { checkHasMetaAds, checkGooglePresence } from "../services/cnpjService.js";
 import { evaluateColdProspectQuality } from "../lib/coldProspectQuality.js";
+import { resolveProspectorPlaybook } from "../lib/prospector-consultive.js";
 
 const COLD_OUTREACH_TRIGGER =
   "[PROSPECÇÃO AUTOMÁTICA] Novo lead enriquecido e priorizado. Use SOMENTE as evidências verificáveis do coldProspectDossier/enrichment_data para personalizar a primeira mensagem. Não afirme perdas, problemas internos ou fatos que não possam ser comprovados externamente.";
@@ -464,6 +468,25 @@ export async function enrichLead(
       .limit(1);
 
     const threshold = config?.autoDispatchThreshold ?? 80;
+    // Resolve o playbook comercial do tenant antes de decidir a próxima ação.
+    // O motor é universal, mas oferta, linguagem, critérios e próximo passo são
+    // sempre específicos do negócio configurado no tenant.
+    const [tenantProspectorConfig] = await db
+      .select({ parametros: tenantAgentConfigsTable.parametros })
+      .from(tenantAgentConfigsTable)
+      .where(and(
+        eq(tenantAgentConfigsTable.tenantId, tenantId),
+        eq(tenantAgentConfigsTable.agentKey, "prospector"),
+      ))
+      .limit(1);
+
+    const tenantProspectorParams = (tenantProspectorConfig?.parametros ?? {}) as Record<string, unknown>;
+    const tenantPlaybook = resolveProspectorPlaybook(
+      tenantProspectorParams["prospectorPlaybook"],
+      rawSegmento,
+      { ...leadMetadata, lead_source: lead.source ?? "" },
+    );
+
     const quality = evaluateColdProspectQuality({
       segmento: rawSegmento,
       telefone: lead.telefone,
@@ -493,6 +516,14 @@ export async function enrichLead(
       blockingReasons: quality.reasons,
       evidence: quality.evidence,
       playbook: quality.playbook,
+      tenantPlaybook: {
+        businessName: tenantPlaybook.identity.businessName,
+        sector: tenantPlaybook.identity.sector,
+        offer: tenantPlaybook.identity.offer,
+        finalCustomer: tenantPlaybook.identity.finalCustomer,
+        nextStep: tenantPlaybook.nextStep,
+        qualification: tenantPlaybook.qualification,
+      },
       publicDiagnosticPolicy: {
         factsOnly: true,
         financialEstimatesAreInternal: true,
@@ -513,9 +544,21 @@ export async function enrichLead(
       },
     };
 
+    const evidenceSummaryForAction = quality.evidence.slice(0, 2).map((item) => item.label).join("; ");
+    const nextAction = quality.ready
+      ? `Abordar de forma consultiva sobre ${tenantPlaybook.nextStep.offer}, usando apenas sinais verificados${evidenceSummaryForAction ? `: ${evidenceSummaryForAction}` : ""}`
+      : quality.reasons.includes("sem_contato_utilizavel")
+        ? "Enriquecer o contato e identificar um canal comercial válido antes da abordagem"
+        : quality.reasons.includes("evidencias_insuficientes")
+          ? "Pesquisar o negócio e reunir evidências públicas suficientes antes da abordagem"
+          : quality.reasons.includes("score_abaixo_do_threshold")
+            ? "Manter em aquecimento e buscar novos sinais de intenção ou oportunidade"
+            : "Revisar aderência ao ICP do tenant antes de iniciar contato";
+
     await db.update(leadsTable)
       .set({
         propensityScore: scoreResult.propensity_score,
+        proximaAcao: nextAction,
         roiEstimate: scoreResult.roi_estimate,
         priorityReason: scoreResult.priority_reason,
         metadata: {
@@ -533,6 +576,45 @@ export async function enrichLead(
         updatedAt: new Date(),
       })
       .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
+
+    // Sincroniza a Central de Trabalho: prospect automático nunca deve ficar
+    // com "Próxima atividade não definida". Se ainda não estiver pronto para
+    // abordagem, sai da etapa comercial "novo" e fica em aquecimento.
+    const [activeDeal] = await db
+      .select({ id: dealsTable.id, etapa: dealsTable.etapa })
+      .from(dealsTable)
+      .where(and(eq(dealsTable.tenantId, tenantId), eq(dealsTable.leadId, leadId)))
+      .limit(1);
+
+    if (activeDeal && !quality.ready && activeDeal.etapa === "novo") {
+      await db.update(dealsTable)
+        .set({ etapa: "em_aquecimento", aquecimentoTipo: "nao_cliente", updatedAt: new Date() })
+        .where(and(eq(dealsTable.id, activeDeal.id), eq(dealsTable.tenantId, tenantId)));
+    }
+
+    const pendingActivities = await db
+      .select({ id: activitiesTable.id })
+      .from(activitiesTable)
+      .where(and(
+        eq(activitiesTable.tenantId, tenantId),
+        eq(activitiesTable.leadId, leadId),
+        eq(activitiesTable.status, "pendente"),
+      ))
+      .limit(1);
+
+    if (pendingActivities.length === 0) {
+      await db.insert(activitiesTable).values({
+        tenantId,
+        leadId,
+        dealId: activeDeal?.id ?? null,
+        tipo: quality.ready && lead.telefone ? "whatsapp" : "tarefa",
+        titulo: quality.ready ? "Executar próxima melhor ação" : "Completar qualificação do prospect",
+        descricao: nextAction,
+        status: "pendente",
+        dataVencimento: new Date(Date.now() + (quality.ready ? 2 : 24) * 60 * 60 * 1000),
+        responsavelId: lead.assignedTo,
+      });
+    }
 
     log.info(
       {
