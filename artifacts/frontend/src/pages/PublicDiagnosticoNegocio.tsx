@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useRoute } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Input } from "@/components/ui/input";
+import { Input } from "@/components/ui/input";\nimport { CurrencyInput } from "@/components/ui/currency-input";
 import { Textarea } from "@/components/ui/textarea";
 
 type PublicData = {
@@ -85,9 +85,9 @@ export default function PublicDiagnosticoNegocio() {
           <Field label="Segmento"><Input value={form.vertical ?? ""} onChange={(e)=>set("vertical", e.target.value)} /></Field>
           <Field label="Telefone"><Input value={form.telefone ?? ""} onChange={(e)=>set("telefone", e.target.value)} /></Field>
           <Field label="E-mail"><Input value={form.email ?? ""} onChange={(e)=>set("email", e.target.value)} /></Field>
-          <Field label="Ticket médio"><Input type="number" value={form.ticketMedio ?? ""} onChange={(e)=>set("ticketMedio", e.target.value)} /></Field>
+          <Field label="Ticket médio"><CurrencyInput value={form.ticketMedio ?? ""} onValueChange={(value)=>set("ticketMedio", value)} /></Field>
           <Field label="Leads por mês"><Input type="number" value={form.leadsMes ?? ""} onChange={(e)=>set("leadsMes", e.target.value)} /></Field>
-          <Field label="Investimento mensal em marketing"><Input type="number" value={form.investimentoMarketingMes ?? ""} onChange={(e)=>set("investimentoMarketingMes", e.target.value)} /></Field>
+          <Field label="Investimento mensal em marketing"><CurrencyInput value={form.investimentoMarketingMes ?? ""} onValueChange={(value)=>set("investimentoMarketingMes", value)} /></Field>
           <Field label="Canais de venda"><Input value={Array.isArray(form.canaisVenda) ? form.canaisVenda.join(", ") : (form.canaisVenda ?? "")} onChange={(e)=>set("canaisVenda", e.target.value)} placeholder="WhatsApp, Instagram, Google..." /></Field>
           <Field label="Descrição do negócio" wide><Textarea rows={4} value={form.descricaoNegocio ?? ""} onChange={(e)=>set("descricaoNegocio", e.target.value)} /></Field>
           <Field label="Público-alvo" wide><Textarea rows={4} value={form.publicoAlvo ?? ""} onChange={(e)=>set("publicoAlvo", e.target.value)} /></Field>
