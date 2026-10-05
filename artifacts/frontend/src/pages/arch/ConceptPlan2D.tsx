@@ -533,21 +533,32 @@ export default function ConceptPlan2D({
       return { minX: 0, minY: 0, maxX: lotWidth, maxY: lotDepth, hasProject: false };
     }
 
+    // Never clamp imported/project geometry to the lot here.
+    // Imported plans can legitimately sit outside the lot origin while being
+    // calibrated. Clamping the bounds makes fit-to-screen center on the wrong
+    // area and leaves the actual drawing partially or completely off-screen.
     return {
-      minX: Math.max(0, Math.min(...xs)),
-      minY: Math.max(0, Math.min(...ys)),
-      maxX: Math.min(lotWidth, Math.max(...xs)),
-      maxY: Math.min(lotDepth, Math.max(...ys)),
+      minX: Math.min(...xs),
+      minY: Math.min(...ys),
+      maxX: Math.max(...xs),
+      maxY: Math.max(...ys),
       hasProject: true,
     };
   }, [rooms, geometry.walls, customWalls, closedSpaces, objects, previewObjects, lotWidth, lotDepth]);
 
   const fitView = useMemo(() => {
-    const margin = projectBounds.hasProject ? 1.9 : 2.6;
+    const projectWidth = Math.max(0.01, projectBounds.maxX - projectBounds.minX);
+    const projectHeight = Math.max(0.01, projectBounds.maxY - projectBounds.minY);
+    // Keep the drawing visually dominant (roughly 70–80% of the canvas)
+    // instead of wasting most of the viewport on empty grid.
+    const projectSpan = Math.max(projectWidth, projectHeight);
+    const margin = projectBounds.hasProject
+      ? Math.max(0.65, Math.min(1.5, projectSpan * 0.1))
+      : 2.2;
     const centerX = (projectBounds.minX + projectBounds.maxX) / 2;
     const centerY = (projectBounds.minY + projectBounds.maxY) / 2;
-    let width = Math.max(4, projectBounds.maxX - projectBounds.minX + margin * 2);
-    let height = Math.max(4, projectBounds.maxY - projectBounds.minY + margin * 2);
+    let width = Math.max(4, projectWidth + margin * 2);
+    let height = Math.max(4, projectHeight + margin * 2);
 
     if (width / height > viewportAspect) {
       height = width / viewportAspect;
@@ -707,7 +718,7 @@ export default function ConceptPlan2D({
   const zoomView = (factor: number, anchor?: { x: number; y: number }) => {
     setView((current) => {
       const minWidth = Math.max(2.5, fitView.width * 0.16);
-      const maxWidth = Math.max(fitView.width * 2.8, lotWidth + 8);
+      const maxWidth = fitView.width * 1.45;
       const nextWidth = Math.max(minWidth, Math.min(maxWidth, current.width * factor));
       const ratio = nextWidth / current.width;
       const nextHeight = current.height * ratio;
@@ -836,7 +847,7 @@ export default function ConceptPlan2D({
         const factor = pinchRef.current.startDistance / distance;
         const startView = pinchRef.current.startView;
         const minWidth = Math.max(2.5, fitView.width * 0.16);
-        const maxWidth = Math.max(fitView.width * 2.8, lotWidth + 8);
+        const maxWidth = fitView.width * 1.45;
         const nextWidth = Math.max(minWidth, Math.min(maxWidth, startView.width * factor));
         const ratio = nextWidth / startView.width;
         const nextHeight = startView.height * ratio;
@@ -2941,7 +2952,11 @@ export default function ConceptPlan2D({
             })()}
 
             {customWalls
-              .filter((wall) => wall.floor === activeFloor && wallLength(wall) >= 0.5)
+              .filter((wall) =>
+                wall.floor === activeFloor
+                && wallLength(wall) >= 0.5
+                && wall.id === selectedCustomWallId
+              )
               .map((wall) => {
                 const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
                 const length = wallLength(wall);
