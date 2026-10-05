@@ -9,7 +9,7 @@ const UPDATE_DISMISS_PREFIX = "vendorai_update_dismissed";
 const REFRESH_PROTECTION_SELECTOR = '[data-vendorai-refresh-protected="true"]';
 
 const CHUNK_ERROR_PATTERN =
-  /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|ChunkLoadError|Loading chunk|Unable to preload CSS|Expected a JavaScript-or-Wasm module script|module script.*MIME|MIME type.*text\/html|disallowed MIME type|server responded with a MIME type of ["']?text\/html|Cannot read properties of undefined \(reading ["']default["']\)/i;
+  /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|ChunkLoadError|Loading chunk|Unable to preload CSS|Expected a JavaScript-or-Wasm module script|module script.*MIME|MIME type.*text\/html|disallowed MIME type|server responded with a MIME type of ["']?text\/html|Cannot read properties of undefined \(reading ["'][A-Za-z0-9_$]+["']\)/i;
 
 function isFrontendRefreshProtected() {
   if (typeof document === "undefined") return false;
