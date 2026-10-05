@@ -101,7 +101,7 @@ class BufferedSocket {
       if (Date.now() - started > timeoutMs) throw new Error("mail_server_timeout");
       await Promise.race([
         new Promise<void>((resolve) => this.waiters.push(resolve)),
-        new Promise<void>((_, reject) => setTimeout(() => reject(new Error("mail_server_timeout")), Math.min(1000, timeoutMs))),
+        new Promise<void>((resolve) => setTimeout(resolve, Math.min(250, Math.max(25, timeoutMs - (Date.now() - started))))),
       ]);
     }
   }
