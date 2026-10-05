@@ -374,17 +374,17 @@ export default function PlanoMidia() {
         <CardContent className="p-4 md:p-5">
           <p className="text-sm font-semibold">Planejamento = decisão, não execução</p>
           <p className="mt-1 text-xs text-muted-foreground">Preencha primeiro. A IA só cria uma proposta quando você mandar gerar.</p>
-          <div className="mt-4 grid gap-2 md:grid-cols-4">
+          <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
             {[
               ["1", "Informações", "Você define objetivo, público, oferta e limites"],
               ["2", "Proposta da IA", "Só aparece depois de clicar em gerar"],
               ["3", "Aprovação", "Você revisa, nomeia e aprova as campanhas"],
               ["4", "Gerar Campanhas", "Só aqui começa a execução"],
             ].map(([n, title, description]) => (
-              <div key={n} className="rounded-xl border bg-background p-3">
+              <div key={n} className="rounded-xl border bg-background p-2.5 md:p-3">
                 <div className="mb-2 flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">{n}</div>
                 <p className="text-sm font-semibold">{title}</p>
-                <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{description}</p>
+                <p className="mt-1 text-[10px] leading-4 text-muted-foreground md:text-[11px]">{description}</p>
               </div>
             ))}
           </div>
