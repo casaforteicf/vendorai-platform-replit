@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request } from "express";
 import { authenticate } from "../middlewares/auth.js";
+import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 import { consumeOAuthState, createOAuthState } from "../lib/oauth-state.js";
 import {
   buildEmailOAuthUrl,
@@ -77,6 +78,20 @@ router.post("/tenants/:tenantId/email-connections/:provider/sync", authenticate,
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   try {
     const result = await syncConnectedEmailInbox(tenantId, selected);
+    for (const item of result.results) {
+      if (item.status !== "imported" || typeof item.leadId !== "string" || typeof item.mensagem !== "string") continue;
+      dispatchAgentBackground({
+        tenantId,
+        leadId: item.leadId,
+        mensagem: item.mensagem,
+        log: req.log,
+        scenario: {
+          canal: "email",
+          subject: typeof item.subject === "string" ? item.subject : "",
+          externalId: typeof item.externalId === "string" ? item.externalId : "",
+        },
+      });
+    }
     return res.json(result);
   } catch (error) {
     req.log?.error?.({ error, tenantId, provider: selected }, "email inbox sync failed");
