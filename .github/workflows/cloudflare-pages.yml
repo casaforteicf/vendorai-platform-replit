@@ -4,6 +4,10 @@ name: Cloudflare Pages
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/cloudflare-pages.yml"
 
 permissions:
   contents: read
