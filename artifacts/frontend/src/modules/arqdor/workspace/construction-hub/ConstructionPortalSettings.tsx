@@ -37,6 +37,7 @@ type PortalConfig = {
   showBudgetQuantities: boolean;
   showBudgetUnitPrices: boolean;
   showBudgetStageTotals: boolean;
+  showBudgetGrandTotal: boolean;
 };
 
 const DEFAULT_CONFIG: PortalConfig = {
@@ -71,6 +72,7 @@ const DEFAULT_CONFIG: PortalConfig = {
   showBudgetQuantities: true,
   showBudgetUnitPrices: false,
   showBudgetStageTotals: true,
+  showBudgetGrandTotal: true,
 };
 
 function token() { return localStorage.getItem("vendorai_token") ?? ""; }
@@ -114,7 +116,7 @@ const ITEMS: Array<{ key: keyof PortalConfig; title: string; description: string
   { key: "showBudgetItems", title: "Itens do orçamento", description: "Exibe os itens comerciais do orçamento.", dependsOn: "showBudget" },
   { key: "showBudgetQuantities", title: "Quantidades do orçamento", description: "Exibe quantidade e unidade de cada item.", dependsOn: "showBudgetItems" },
   { key: "showBudgetUnitPrices", title: "Preços unitários comerciais", description: "Exibe preço unitário final ao cliente. Custos internos e margem nunca são enviados.", dependsOn: "showBudgetItems" },
-  { key: "showBudgetStageTotals", title: "Totais por etapa", description: "Exibe o total comercial calculado de cada etapa.", dependsOn: "showBudget" },
+  { key: "showBudgetStageTotals", title: "Totais por etapa", description: "Exibe o total comercial calculado de cada etapa.", dependsOn: "showBudget" },\n  { key: "showBudgetGrandTotal", title: "Valor total do orçamento", description: "Exibe o valor comercial total ao cliente.", dependsOn: "showBudget" },
   { key: "showDiary", title: "Diário de obra", description: "Somente registros com status Aprovado." },
   { key: "showDiaryPhotos", title: "Fotos do diário", description: "Fotos e vídeos apenas de diários aprovados.", dependsOn: "showDiary" },
   { key: "showDocuments", title: "Documentos e anexos", description: "Anexos publicados em diários aprovados e documentos financeiros permitidos." },
