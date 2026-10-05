@@ -577,13 +577,35 @@ export function CatalogoModal({
   const [composicaoItens, setComposicaoItens] = useState<{ itemProdutoId: string; baseCalculo: "area" | "perimetro" }[]>([]);
   const [composicaoLoading, setComposicaoLoading] = useState(false);
 
-  const { data: catalog = [], isLoading } = useListProdutosCatalogo(tenantId, {
-    query: {
-      queryKey: getListProdutosCatalogoQueryKey(tenantId),
-      enabled: !!tenantId,
-      refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
-      staleTime: 300_000,
+  const {
+    data: catalog = [],
+    isLoading,
+    isError: catalogLoadError,
+    error: catalogError,
+    refetch: refetchCatalog,
+  } = useQuery<ProdutoCatalogo[]>({
+    queryKey: getListProdutosCatalogoQueryKey(tenantId),
+    enabled: !!tenantId && open,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token") ?? "";
+      const response = await fetch(`/api/tenants/${encodeURIComponent(tenantId)}/produtos-catalogo`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "");
+        throw new Error(detail || `Não foi possível carregar o catálogo (HTTP ${response.status}).`);
+      }
+
+      const data = await response.json();
+      if (!Array.isArray(data)) {
+        throw new Error("Resposta inválida ao carregar o catálogo.");
+      }
+      return data as ProdutoCatalogo[];
     },
   });
 
@@ -1060,6 +1082,17 @@ export function CatalogoModal({
           {isLoading ? (
             <div className="flex items-center justify-center py-12 text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin mr-2" /> Carregando…
+            </div>
+          ) : catalogLoadError ? (
+            <div className="flex flex-col items-center gap-3 py-12 text-center">
+              <AlertTriangle className="h-10 w-10 text-destructive/70" />
+              <p className="text-sm font-medium text-destructive">Não foi possível carregar o catálogo</p>
+              <p className="max-w-xl text-xs text-muted-foreground">
+                {catalogError instanceof Error ? catalogError.message : "Falha ao consultar os produtos deste tenant."}
+              </p>
+              <Button size="sm" variant="outline" onClick={() => void refetchCatalog()}>
+                Tentar novamente
+              </Button>
             </div>
           ) : catalog.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-12 text-muted-foreground">
