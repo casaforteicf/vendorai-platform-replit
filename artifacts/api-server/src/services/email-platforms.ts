@@ -173,10 +173,33 @@ export async function listEmailConnections(tenantId: string) {
     provider: row.provider === GOOGLE_PROVIDER ? "google" : "microsoft",
     email: typeof row.metadata?.["email"] === "string" ? row.metadata["email"] : row.accountName,
     accountName: row.accountName,
+    signature: typeof row.metadata?.["signature"] === "string" ? row.metadata["signature"] : "",
     status: row.status,
     connectedAt: row.connectedAt,
     updatedAt: row.updatedAt,
   }));
+}
+
+export async function updateEmailSettings(
+  tenantId: string,
+  provider: EmailProvider,
+  settings: { signature?: string },
+) {
+  const providerKey = provider === "google" ? GOOGLE_PROVIDER : MICROSOFT_PROVIDER;
+  const [connection] = await db.select().from(socialConnectionsTable).where(and(
+    eq(socialConnectionsTable.tenantId, tenantId),
+    eq(socialConnectionsTable.provider, providerKey),
+    isNull(socialConnectionsTable.disconnectedAt),
+  )).limit(1);
+  if (!connection) return null;
+  const metadata = {
+    ...(connection.metadata ?? {}),
+    ...(settings.signature !== undefined ? { signature: settings.signature.trim() } : {}),
+  };
+  return db.update(socialConnectionsTable).set({ metadata, updatedAt: new Date() })
+    .where(eq(socialConnectionsTable.id, connection.id))
+    .returning()
+    .then((rows) => rows[0] ?? null);
 }
 
 export async function disconnectEmail(tenantId: string, provider: EmailProvider) {
@@ -242,14 +265,46 @@ async function refreshedAccessToken(connection: typeof socialConnectionsTable.$i
   return String(tokens.access_token);
 }
 
-function gmailRaw(to: string, subject: string, text: string) {
-  const body = [
-    `To: ${to}`,
+function gmailRaw(input: {
+  to: string;
+  subject: string;
+  text: string;
+  cc?: string[];
+  bcc?: string[];
+  attachment?: { filename: string; mimeType: string; content: Buffer };
+}) {
+  const subject = `=?UTF-8?B?${Buffer.from(input.subject, "utf8").toString("base64")}?=`;
+  const headers = [
+    `To: ${input.to}`,
+    ...(input.cc?.length ? [`Cc: ${input.cc.join(", ")}`] : []),
+    ...(input.bcc?.length ? [`Bcc: ${input.bcc.join(", ")}`] : []),
     `Subject: ${subject}`,
     "MIME-Version: 1.0",
-    "Content-Type: text/plain; charset=UTF-8",
+  ];
+  if (!input.attachment) {
+    const body = [...headers, "Content-Type: text/plain; charset=UTF-8", "", input.text].join("\r\n");
+    return Buffer.from(body, "utf8").toString("base64url");
+  }
+
+  const boundary = `vendorai_${crypto.randomUUID().replace(/-/g, "")}`;
+  const base64 = input.attachment.content.toString("base64").replace(/(.{76})/g, "$1\r\n");
+  const body = [
+    ...headers,
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
     "",
-    text,
+    `--${boundary}`,
+    "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: 8bit",
+    "",
+    input.text,
+    `--${boundary}`,
+    `Content-Type: ${input.attachment.mimeType}; name="${input.attachment.filename.replace(/"/g, "")}"`,
+    "Content-Transfer-Encoding: base64",
+    `Content-Disposition: attachment; filename="${input.attachment.filename.replace(/"/g, "")}"`,
+    "",
+    base64,
+    `--${boundary}--`,
+    "",
   ].join("\r\n");
   return Buffer.from(body, "utf8").toString("base64url");
 }
@@ -259,17 +314,34 @@ export async function sendConnectedEmail(input: {
   to: string;
   subject: string;
   text: string;
+  cc?: string[];
+  bcc?: string[];
+  attachment?: { filename: string; mimeType: string; content: Buffer };
   preferredProvider?: EmailProvider;
 }): Promise<{ sent: boolean; provider?: EmailProvider; externalId?: string }> {
   const connection = await getConnection(input.tenantId, input.preferredProvider);
   if (!connection) return { sent: false };
   const accessToken = await refreshedAccessToken(connection);
+  const signature = typeof connection.metadata?.["signature"] === "string" ? connection.metadata["signature"].trim() : "";
+  const text = signature ? `${input.text}\n\n${signature}` : input.text;
 
   if (connection.provider === GOOGLE_PROVIDER) {
     const oauth = googleClient();
     oauth.setCredentials({ access_token: accessToken, refresh_token: connection.refreshToken ?? undefined });
     const gmail = google.gmail({ version: "v1", auth: oauth });
-    const result = await gmail.users.messages.send({ userId: "me", requestBody: { raw: gmailRaw(input.to, input.subject, input.text) } });
+    const result = await gmail.users.messages.send({
+      userId: "me",
+      requestBody: {
+        raw: gmailRaw({
+          to: input.to,
+          subject: input.subject,
+          text,
+          cc: input.cc,
+          bcc: input.bcc,
+          attachment: input.attachment,
+        }),
+      },
+    });
     return { sent: true, provider: "google", externalId: result.data.id ?? undefined };
   }
 
@@ -279,8 +351,16 @@ export async function sendConnectedEmail(input: {
     body: JSON.stringify({
       message: {
         subject: input.subject,
-        body: { contentType: "Text", content: input.text },
+        body: { contentType: "Text", content: text },
         toRecipients: [{ emailAddress: { address: input.to } }],
+        ccRecipients: (input.cc ?? []).map((address) => ({ emailAddress: { address } })),
+        bccRecipients: (input.bcc ?? []).map((address) => ({ emailAddress: { address } })),
+        attachments: input.attachment ? [{
+          "@odata.type": "#microsoft.graph.fileAttachment",
+          name: input.attachment.filename,
+          contentType: input.attachment.mimeType,
+          contentBytes: input.attachment.content.toString("base64"),
+        }] : undefined,
       },
       saveToSentItems: true,
     }),
