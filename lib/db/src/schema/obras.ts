@@ -36,6 +36,7 @@ export type ObraPortalConfig = {
   showBudgetQuantities: boolean;
   showBudgetUnitPrices: boolean;
   showBudgetStageTotals: boolean;
+  showBudgetGrandTotal: boolean;
 };
 
 export const DEFAULT_OBRA_PORTAL_CONFIG: ObraPortalConfig = {
@@ -70,6 +71,7 @@ export const DEFAULT_OBRA_PORTAL_CONFIG: ObraPortalConfig = {
   showBudgetQuantities: true,
   showBudgetUnitPrices: false,
   showBudgetStageTotals: true,
+  showBudgetGrandTotal: true,
 };
 
 export const obrasTable = pgTable("obras", {
