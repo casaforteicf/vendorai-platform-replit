@@ -33,6 +33,7 @@ import {
   ListChecks,
   Loader2,
   MessageCircle,
+  RefreshCw,
   RotateCcw,
   Wrench,
   ShieldAlert,
@@ -86,7 +87,13 @@ interface OperationalAction {
   actionType: string;
   status: string;
   reason: string | null;
-  payload: Record<string, any> | null;
+  resolutionHint: string;
+  isRetryable: boolean;
+  retry: {
+    goal: string;
+    startUrl?: string;
+    connectionId?: string;
+  } | null;
   createdAt: string;
 }
 
@@ -120,6 +127,17 @@ function operationalReason(action: OperationalAction): string {
   if (action.reason) return action.reason;
   if (action.status === "pending") return "Aguardando execução, aprovação ou continuidade.";
   return "A execução foi rejeitada sem motivo detalhado registrado.";
+}
+
+function actionTypeLabel(actionType: string): string {
+  const labels: Record<string, string> = {
+    browser_run: "Navegação web",
+    browser_action: "Ação no navegador",
+    pipeline_stage_transition: "Movimentação da pipeline",
+    send_message: "Envio de mensagem",
+    create_task: "Criação de tarefa",
+  };
+  return labels[actionType] ?? actionType.replaceAll("_", " ");
 }
 
 function formatSeconds(value: number | null | undefined): string {
@@ -204,6 +222,18 @@ function MetricCard({
     warning: "text-amber-600",
     danger: "text-red-600",
   }[tone];
+  const refreshMetrics = async () => {
+    setRefreshing(true);
+    try {
+      const jobs: Promise<unknown>[] = [agentsQuery.refetch(), operationalQuery.refetch()];
+      if (activeTab === "channels") jobs.push(channelsQuery.refetch());
+      if (activeTab === "intelligence") jobs.push(intelQuery.refetch());
+      if (activeTab === "flow") jobs.push(flowQuery.refetch());
+      await Promise.all(jobs);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   return (
     <Card className="shadow-sm">
@@ -256,6 +286,7 @@ export default function Analytics() {
   const [activeTab, setActiveTab] = useState("agents");
   const [retryingActionId, setRetryingActionId] = useState<string | null>(null);
   const [actionFeedback, setActionFeedback] = useState<Record<string, string>>({});
+  const [refreshing, setRefreshing] = useState(false);
 
   const agentsQuery = useGetTenantAnalyticsAgents(tenantId, {
     query: { enabled: !!tenantId && activeTab === "agents", queryKey: getGetTenantAnalyticsAgentsQueryKey(tenantId) },
@@ -303,12 +334,11 @@ export default function Analytics() {
   const pendingItems = useMemo(() => operationalItems.filter((item) => item.status === "pending"), [operationalItems]);
 
   const retryOperationalAction = async (action: OperationalAction) => {
-    const payload = action.payload ?? {};
-    const goal = String(payload.goal ?? "").trim();
-    const startUrl = typeof payload.startUrl === "string" ? payload.startUrl : undefined;
-    const connectionId = typeof payload.connectionId === "string" ? payload.connectionId : undefined;
+    const goal = String(action.retry?.goal ?? "").trim();
+    const startUrl = action.retry?.startUrl;
+    const connectionId = action.retry?.connectionId;
 
-    if (!goal || (!startUrl && !connectionId)) {
+    if (!action.isRetryable || !goal || (!startUrl && !connectionId)) {
       setActionFeedback((current) => ({ ...current, [action.id]: "Não há dados suficientes para repetir automaticamente. Abra o agente para resolver." }));
       return;
     }
@@ -362,9 +392,15 @@ export default function Analytics() {
             Acompanhe execução dos agentes, canais, inteligência de clientes e gargalos do fluxo.
           </p>
         </div>
-        <Badge variant="outline" className="w-fit px-3 py-1 text-xs font-medium">
-          {periodLabel}
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline" className="w-fit px-3 py-1 text-xs font-medium">
+            {periodLabel}
+          </Badge>
+          <Button variant="outline" size="sm" className="h-8 gap-1.5" disabled={refreshing} onClick={refreshMetrics}>
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+            Atualizar métricas
+          </Button>
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
@@ -575,6 +611,10 @@ export default function Analytics() {
                           <div className="flex items-center justify-center rounded-lg border border-dashed p-5">
                             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                           </div>
+                        ) : operationalQuery.isError ? (
+                          <div className="rounded-lg border border-red-200 bg-red-50/50 p-3 text-xs text-red-700">
+                            Não foi possível carregar o diagnóstico das ocorrências. Atualize as métricas ou abra a configuração do agente.
+                          </div>
                         ) : operationalItems.length === 0 ? (
                           <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
                             Os totais existem, mas ainda não há detalhe operacional disponível para estes registros.
@@ -591,11 +631,14 @@ export default function Analytics() {
                                         {action.status === "rejected" ? "Rejeitada" : "Pendente"}
                                       </Badge>
                                     </div>
-                                    <p className="mt-1 font-mono text-[10px] text-muted-foreground">
-                                      {action.agentName} · {action.actionType}
+                                    <p className="mt-1 text-[11px] font-medium text-muted-foreground">
+                                      {actionTypeLabel(action.actionType)}
                                     </p>
                                     <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-muted-foreground">
-                                      {operationalReason(action)}
+                                      <span className="font-medium text-foreground">Motivo: </span>{operationalReason(action)}
+                                    </p>
+                                    <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                                      <span className="font-medium text-foreground">Como resolver: </span>{action.resolutionHint}
                                     </p>
                                     <p className="mt-1 text-[10px] text-muted-foreground">
                                       {new Date(action.createdAt).toLocaleString("pt-BR")}
@@ -603,7 +646,7 @@ export default function Analytics() {
                                   </div>
                                 </div>
                                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                                  {action.status === "rejected" ? (
+                                  {action.status === "rejected" && action.isRetryable ? (
                                     <Button
                                       size="sm"
                                       variant="outline"
