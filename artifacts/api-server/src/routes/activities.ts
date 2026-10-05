@@ -416,6 +416,21 @@ router.patch("/activities/:id", async (req, res) => {
     log: req.log,
   });
 
+  if (data.status === "concluida") {
+    void analyzeLeadIntelligence({
+      tenantId: activity.tenantId,
+      leadId: activity.leadId,
+      triggeredBy: "auto",
+      log: req.log,
+    }).catch((err) => {
+      if (err instanceof AnalysisAlreadyInFlightError) return;
+      req.log.warn(
+        { err, tenantId: activity.tenantId, leadId: activity.leadId, activityId: activity.id },
+        "activity completion: customer intelligence refresh failed",
+      );
+    });
+  }
+
   // Async Google Calendar sync on update
   const agendaId = activity.agendaId ?? existing.agendaId;
   if (agendaId && activity.googleEventId) {
