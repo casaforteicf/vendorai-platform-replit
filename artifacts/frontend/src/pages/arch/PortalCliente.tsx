@@ -5,7 +5,7 @@ import PortalOfficialRenderHistory from "./PortalOfficialRenderHistory";
 import {
   MessageCircle, ImageIcon, DollarSign, Building2, ExternalLink,
   Download, ChevronDown, ChevronUp, Loader2, CheckCircle2, AlertCircle,
-  Sparkles, HardHat, CalendarDays,
+  Sparkles, HardHat, CalendarDays, Link2,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -14,6 +14,8 @@ type Projeto = {
   tipoObra: string | null; areaM2: string | null;
   orcamentoTotal: string | null; arquitetoResponsavel: string | null;
   status: string;
+  dealId?: string | null;
+  pipelineStage?: string | null;
 };
 type Ambiente  = { id: string; nome: string; areaM2: string | null; ordem: number };
 type OrcItem   = { id: string; ambienteId: string | null; categoria: string | null; descricao: string; quantidade: string | null; unidade: string | null; valorTotal: string | null };
@@ -95,6 +97,17 @@ async function downloadBlob(imageUrl: string, filename: string) {
 
 const STATUS_LABEL: Record<string, string> = { briefing:"Briefing", orcamento:"Orçamento", aprovado:"Aprovado", em_execucao:"Em Execução", entregue:"Entregue", cancelado:"Cancelado" };
 const STATUS_COLOR: Record<string, string> = { briefing:"bg-gray-100 text-gray-700", orcamento:"bg-blue-100 text-blue-700", aprovado:"bg-green-100 text-green-700", em_execucao:"bg-amber-100 text-amber-700", entregue:"bg-emerald-100 text-emerald-700", cancelado:"bg-red-100 text-red-700" };
+const PIPELINE_LABEL: Record<string, string> = {
+  lead: "Lead",
+  qualificacao: "Qualificação",
+  briefing: "Briefing",
+  proposta: "Proposta",
+  negociacao: "Negociação",
+  fechado: "Fechado",
+  ganho: "Ganho",
+  execucao: "Execução",
+  entregue: "Entregue",
+};
 
 // ── CenaCard ───────────────────────────────────────────────────────────────────
 function CenaCard({ cena, projetoNome }: { cena: Cena; projetoNome: string }) {
@@ -412,6 +425,32 @@ export default function PortalCliente() {
             {projeto.arquitetoResponsavel && <span>🎨 {projeto.arquitetoResponsavel}</span>}
           </div>
         </section>
+
+        {(projeto.dealId || projeto.pipelineStage) && (
+          <section className="rounded-2xl border border-violet-100 bg-white p-4 sm:p-5 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-violet-50 flex items-center justify-center shrink-0">
+                  <Link2 className="h-5 w-5 text-violet-600" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Acompanhamento comercial</p>
+                  <p className="text-sm font-semibold text-gray-900 mt-0.5">
+                    {projeto.dealId ? "Projeto conectado ao seu atendimento" : "Acompanhamento do projeto"}
+                  </p>
+                </div>
+              </div>
+              {projeto.pipelineStage && (
+                <span className="inline-flex items-center rounded-full bg-violet-50 text-violet-700 px-3 py-1 text-xs font-medium">
+                  {PIPELINE_LABEL[projeto.pipelineStage] ?? projeto.pipelineStage}
+                </span>
+              )}
+            </div>
+            <p className="mt-3 text-xs sm:text-sm text-gray-500">
+              Briefing, projeto, orçamento, proposta e execução permanecem vinculados ao mesmo atendimento, sem duplicar o cadastro do cliente.
+            </p>
+          </section>
+        )}
 
         {obra && (
           <section className="rounded-2xl border bg-white p-5 sm:p-6 shadow-sm">
