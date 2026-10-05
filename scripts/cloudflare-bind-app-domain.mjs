@@ -6,6 +6,7 @@ const PAGES_TARGET = "vendorai.pages.dev";
 
 const token = process.env.CLOUDFLARE_API_TOKEN;
 const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+const configuredZoneId = process.env.CLOUDFLARE_ZONE_ID;
 
 if (!token || !accountId) {
   throw new Error("CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are required");
@@ -45,7 +46,7 @@ async function readDomain() {
 }
 
 async function ensurePagesDomain() {
-  let current = await readDomain();
+  const current = await readDomain();
   if (current.payload?.success === true && current.payload?.result?.status === "active") {
     console.log(`Cloudflare Pages custom domain already active: ${DOMAIN}`);
     return "active";
@@ -63,12 +64,21 @@ async function ensurePagesDomain() {
   return current.payload?.result?.status || "pending";
 }
 
-async function ensureDns() {
+async function resolveZoneId() {
+  if (configuredZoneId) {
+    console.log(`Using configured Cloudflare zone id for ${ZONE_NAME}`);
+    return configuredZoneId;
+  }
+
   const zones = await cf(`/zones?name=${encodeURIComponent(ZONE_NAME)}`);
   const zonesPayload = assertSuccess("Read Cloudflare zone", zones);
   const zoneId = zonesPayload?.result?.[0]?.id;
   if (!zoneId) throw new Error(`Cloudflare zone not found: ${ZONE_NAME}`);
+  return zoneId;
+}
 
+async function ensureDns() {
+  const zoneId = await resolveZoneId();
   const records = await cf(`/zones/${zoneId}/dns_records?name=${encodeURIComponent(DOMAIN)}`);
   const recordsPayload = assertSuccess("Read production DNS", records);
   const existing = recordsPayload?.result?.[0];
@@ -124,10 +134,10 @@ async function waitUntilActive() {
 
 async function main() {
   const initialStatus = await ensurePagesDomain();
-  if (initialStatus === "active") return;
-
   await ensureDns();
-  await waitUntilActive();
+  if (initialStatus !== "active") {
+    await waitUntilActive();
+  }
 }
 
 main().catch((error) => {
