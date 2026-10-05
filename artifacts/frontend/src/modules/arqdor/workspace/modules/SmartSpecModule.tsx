@@ -530,8 +530,17 @@ function buildMemorial(items: SpecItem[]): string {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export function SmartSpecModule({ projectId, onBack }: { projectId?: string | null; onBack?: () => void }) {
+export function SmartSpecModule({
+  projectId,
+  onBack,
+  onOpenRender,
+}: {
+  projectId?: string | null
+  onBack?: () => void
+  onOpenRender?: () => void
+}) {
   const [renders,      setRenders]      = useState<GalleryRender[]>([])
+  const [loadingRenders, setLoadingRenders] = useState(false)
   const [selRender,    setSelRender]    = useState<GalleryRender | null>(null)
   const [spec,         setSpec]         = useState<Specification | null>(null)
   const [items,        setItems]        = useState<SpecItem[]>([])
@@ -551,32 +560,80 @@ export function SmartSpecModule({ projectId, onBack }: { projectId?: string | nu
   const effectiveProjectId = projectId ?? requestedProjectId
   const autoAnalyzeRef = useRef<string | null>(null)
 
-  // Load only renders from the active project. This prevents the specification
-  // studio from mixing scenes/specifications from different projects in a tenant.
+  // Fonte única de render para a especificação:
+  // usa o histórico persistente do Render Studio e aceita somente versões aprovadas.
+  // Assim o módulo Especificar nunca cria/usa um segundo caminho de renderização.
   useEffect(() => {
-    const qs = new URLSearchParams({ limit: '50' })
-    if (effectiveProjectId) qs.set('projetoId', effectiveProjectId)
+    let cancelled = false
 
-    fetch(`${BASE}/arch/renders/gallery?${qs.toString()}`, { headers: authHeaders() })
-      .then(r => r.json())
-      .then((data: GalleryRender[]) => {
-        const scoped = effectiveProjectId ? data.filter(render => render.projetoId === effectiveProjectId) : data
-        setRenders(scoped)
-        if (scoped.length === 0) {
+    if (!effectiveProjectId) {
+      setRenders([])
+      setSelRender(null)
+      setSpec(null)
+      setItems([])
+      return
+    }
+
+    setLoadingRenders(true)
+    setError(null)
+
+    const qs = new URLSearchParams({ project_id: effectiveProjectId })
+    fetch(`${BASE}/arch/ai-renders?${qs.toString()}`, { headers: authHeaders() })
+      .then(async r => {
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({}))
+          throw new Error(body?.error ?? `HTTP ${r.status}`)
+        }
+        return r.json()
+      })
+      .then((data: { versions?: any[] }) => {
+        if (cancelled) return
+        const approved = (Array.isArray(data?.versions) ? data.versions : [])
+          .filter((render: any) =>
+            render?.project_id === effectiveProjectId &&
+            render?.status === 'concluido' &&
+            Boolean(render?.approved_at) &&
+            render?.file_available !== false &&
+            Boolean(render?.display_url ?? render?.result_image_url)
+          )
+          .map((render: any): GalleryRender => ({
+            id: String(render.id),
+            imageUrl: render.display_url ?? render.result_image_url ?? null,
+            cenaNome: render.ambiente ?? 'Render aprovado',
+            createdAt: render.created_at ?? new Date().toISOString(),
+            projetoId: render.project_id ?? effectiveProjectId,
+            origem: render.operation_type ?? render.source ?? null,
+          }))
+          .sort((a: GalleryRender, b: GalleryRender) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
+        setRenders(approved)
+        if (approved.length === 0) {
           setSelRender(null)
           setSpec(null)
           setItems([])
           return
         }
+
         const preferred =
-          (requestedRenderId ? scoped.find(render => render.id === requestedRenderId) : undefined) ??
-          scoped[0]
+          (requestedRenderId ? approved.find(render => render.id === requestedRenderId) : undefined) ??
+          approved[0]
         setSelRender(preferred ?? null)
       })
-      .catch(() => {
+      .catch((cause: unknown) => {
+        if (cancelled) return
         setRenders([])
         setSelRender(null)
+        setSpec(null)
+        setItems([])
+        setError(cause instanceof Error ? cause.message : 'Não foi possível carregar os renders aprovados.')
       })
+      .finally(() => {
+        if (!cancelled) setLoadingRenders(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [requestedRenderId, effectiveProjectId])
 
   // Load existing spec when render selected
@@ -797,11 +854,29 @@ export function SmartSpecModule({ projectId, onBack }: { projectId?: string | nu
           <div style={{ padding:'10px', borderBottom:`1px solid ${T.border}`, flexShrink:0 }}>
             <p style={{ margin:'0 0 8px', fontSize:9, color:T.dim, fontWeight:700, letterSpacing:'0.06em' }}>SELECIONAR RENDER</p>
             <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:300, overflowY:'auto' }}>
-              {renders.length === 0 && (
+              {!loadingRenders && renders.length === 0 && (
                 <div style={{ padding:'20px 10px', textAlign:'center', color:T.dim, fontSize:11 }}>
                   <div style={{ fontSize:24, marginBottom:6 }}>🎬</div>
-                  Nenhum render encontrado.<br/>
-                  <a href={`${import.meta.env.BASE_URL}arch/render`} style={{ color:T.purpleL, fontWeight:700, textDecoration:'none' }}>Gerar renders →</a>
+                  {effectiveProjectId
+                    ? 'Este projeto ainda não possui um render aprovado.'
+                    : 'Selecione um projeto para continuar.'}
+                  <br/>
+                  {effectiveProjectId && (
+                    <button
+                      type="button"
+                      className="ss-btn"
+                      onClick={() => {
+                        if (onOpenRender) {
+                          onOpenRender()
+                          return
+                        }
+                        window.location.assign(`/arch/render?project_id=${encodeURIComponent(effectiveProjectId)}`)
+                      }}
+                      style={{ marginTop:8, border:'none', background:'transparent', color:T.purpleL, fontWeight:700, cursor:'pointer', fontSize:11 }}
+                    >
+                      Ir para Render IA →
+                    </button>
+                  )}
                 </div>
               )}
               {renders.map(r => (
@@ -908,8 +983,45 @@ export function SmartSpecModule({ projectId, onBack }: { projectId?: string | nu
             </div>
           )}
 
+          {/* No approved render */}
+          {!loadingRenders && !analyzing && !loadingSpec && renders.length === 0 && (
+            <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:14, padding:40, animation:'ss-fadeIn 0.4s ease' }}>
+              <div style={{ fontSize:42 }}>🎬</div>
+              <div style={{ textAlign:'center' }}>
+                <h3 style={{ margin:'0 0 6px', fontSize:17, fontWeight:900, color:'#fff' }}>
+                  {effectiveProjectId ? 'Aguardando render aprovado' : 'Selecione um projeto'}
+                </h3>
+                <p style={{ margin:0, fontSize:12, color:T.textSub, maxWidth:360, lineHeight:1.6 }}>
+                  {effectiveProjectId
+                    ? 'A especificação usa somente o render aprovado no Studio. Gere, revise e aprove uma versão para continuar.'
+                    : 'Escolha um projeto no topo para carregar o render aprovado e iniciar a especificação.'}
+                </p>
+              </div>
+              {effectiveProjectId && (
+                <button
+                  type="button"
+                  className="ss-btn"
+                  onClick={() => {
+                    if (onOpenRender) {
+                      onOpenRender()
+                      return
+                    }
+                    window.location.assign(`/arch/render?project_id=${encodeURIComponent(effectiveProjectId)}`)
+                  }}
+                  style={{
+                    padding:'10px 16px', borderRadius:9, border:`1px solid ${T.purple}`,
+                    background:'rgba(124,58,237,0.14)', color:T.purpleL,
+                    cursor:'pointer', fontSize:11, fontWeight:800,
+                  }}
+                >
+                  Ir para Render IA →
+                </button>
+              )}
+            </div>
+          )}
+
           {/* No render / no spec */}
-          {!analyzing && !loadingSpec && !spec && renders.length > 0 && (
+          {!loadingRenders && !analyzing && !loadingSpec && !spec && renders.length > 0 && (
             <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:16, padding:40, animation:'ss-fadeIn 0.4s ease' }}>
               <div style={{ fontSize:44 }}>✨</div>
               <div style={{ textAlign:'center' }}>

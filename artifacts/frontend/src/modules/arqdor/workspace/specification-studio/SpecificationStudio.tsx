@@ -7,7 +7,7 @@ type SpecificationStudioProps = {
   onNavigate?: (module: string) => void;
 };
 
-export default function SpecificationStudio({ arqState }: SpecificationStudioProps) {
+export default function SpecificationStudio({ arqState, onNavigate }: SpecificationStudioProps) {
   const project = useMemo(() => getProject(arqState), [arqState]);
   const projectId =
     project?.id ??
@@ -18,7 +18,7 @@ export default function SpecificationStudio({ arqState }: SpecificationStudioPro
 
   return (
     <div className="h-full min-h-0 bg-[#f7f7f8]">
-      <SmartSpecModule projectId={projectId} />
+      <SmartSpecModule projectId={projectId} onOpenRender={() => onNavigate?.("renders")} />
     </div>
   );
 }
