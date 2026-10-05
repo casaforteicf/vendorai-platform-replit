@@ -54,6 +54,8 @@ export interface SendOutgoingMessageInput {
   agentName?: string | null;
   instagramConnectionId?: string;
   emailSubject?: string;
+  emailCc?: string[];
+  emailBcc?: string[];
   // Anexo do chat interno (botão de anexar) — quando presente, a
   // mensagem é enviada como mídia em vez de texto no canal escolhido.
   midia?: {
@@ -699,12 +701,18 @@ async function sendOperationalEmail(params: {
   text: string;
   tenantName: string;
   tenantId: string;
+  cc?: string[];
+  bcc?: string[];
+  attachment?: { filename: string; mimeType: string; content: Buffer };
 }, log: Logger): Promise<string | undefined> {
   const connected = await sendConnectedEmail({
     tenantId: params.tenantId,
     to: params.to,
     subject: params.subject,
     text: params.text,
+    cc: params.cc,
+    bcc: params.bcc,
+    attachment: params.attachment,
   }).catch((error) => {
     log.warn({ error, to: params.to }, "omnichannel: connected mailbox send failed, trying Resend fallback");
     return { sent: false } as const;
@@ -728,6 +736,13 @@ async function sendOperationalEmail(params: {
     to: params.to,
     subject: params.subject,
     text: params.text,
+    cc: params.cc,
+    bcc: params.bcc,
+    attachments: params.attachment ? [{
+      filename: params.attachment.filename,
+      content: params.attachment.content,
+      contentType: params.attachment.mimeType,
+    }] : undefined,
   });
   if (error) {
     log.error({ error, to: params.to }, "omnichannel: email send failed");
@@ -1098,12 +1113,20 @@ export async function sendOutgoingMessage(
     if (!lead.email) throw new EmailAddressMissingError(leadId);
     const tenantName = tenant?.nomeEmpresa || tenant?.name || "Vendor.ai";
     const subject = input.emailSubject?.trim() || `Mensagem de ${tenantName}`;
+    const attachment = input.midia ? {
+      filename: input.midia.fileName,
+      mimeType: input.midia.mimeType,
+      content: await fetchMidiaBuffer(input.midia.objectPath),
+    } : undefined;
     await sendOperationalEmail({
       to: lead.email,
       subject,
       text: conteudo,
       tenantName,
       tenantId,
+      cc: input.emailCc,
+      bcc: input.emailBcc,
+      attachment,
     }, log);
   }
 
