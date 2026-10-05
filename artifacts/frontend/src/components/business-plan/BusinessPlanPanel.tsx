@@ -140,175 +140,61 @@ export function BusinessPlanPanel() {
   const approvedCount = Object.values(data.plan.sections).filter(s => s.approved.length).length;
   return <fieldset disabled={!!busy} className="min-w-0 space-y-4">
     {diagnosticoQuery.data && (
-      <section className="rounded-xl border bg-card p-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h2 className="text-base font-semibold">Inteligência do Negócio</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Cobertura atual das informações que o Vendi e os agentes podem consultar.
-            </p>
+      <section className="flex flex-col gap-3 rounded-xl border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold">Vendi está acompanhando o plano</span>
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">{diagnosticoQuery.data.percentual}% de contexto</span>
+            {!!diagnosticoQuery.data.lacunas.length && <span className="text-xs text-muted-foreground">{diagnosticoQuery.data.lacunas.length} ponto(s) para completar</span>}
           </div>
-          <div className="rounded-xl border bg-muted/30 px-4 py-3 text-center">
-            <div className="text-2xl font-semibold">{diagnosticoQuery.data.percentual}%</div>
-            <div className="text-xs capitalize text-muted-foreground">nível {diagnosticoQuery.data.nivel}</div>
-          </div>
+          <p className="mt-1 text-xs text-muted-foreground">O agente cruza Perfil Mestre, conteúdo aprovado e documentos para pedir somente o que ainda precisa de decisão.</p>
         </div>
+        <details className="shrink-0">
+          <summary className="cursor-pointer list-none rounded-md border bg-background px-3 py-2 text-sm font-medium">Ferramentas do Vendi</summary>
+          <div className="mt-2 w-full space-y-3 rounded-xl border bg-background p-3 sm:w-[420px]">
+            <input ref={documentInputRef} type="file" multiple accept=".pdf,.doc,.docx,.txt,.md,image/*" className="hidden" onChange={(event) => void analisarDocumentosDiscovery(event.target.files)} />
+            <Button className="w-full" variant="outline" disabled={!!busy} onClick={() => documentInputRef.current?.click()}>Analisar documentos</Button>
+            <label className="block text-xs font-medium">Foco opcional<Input value={focoDiscovery} onChange={(event) => setFocoDiscovery(event.target.value)} placeholder="Ex.: melhorar abordagem comercial" className="mt-1" /></label>
+            <Button className="w-full" variant="outline" disabled={!!busy} onClick={() => void executarDiscoveryInteligente()}>Analisar lacunas do negócio</Button>
+          </div>
+        </details>
+      </section>
+    )}
 
-        <div className="mt-4 grid gap-2 rounded-lg border bg-muted/20 p-3 lg:grid-cols-[minmax(0,1fr)_auto]">
-          <div>
-            <p className="text-xs font-semibold">Importar documentos para Discovery</p>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-              Envie PDF, Word, texto ou imagem. O Vendi extrai fatos e propõe rascunhos nos blocos corretos; nada é aprovado automaticamente.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              ref={documentInputRef}
-              type="file"
-              multiple
-              accept=".pdf,.doc,.docx,.txt,.md,image/*"
-              className="hidden"
-              onChange={(event) => void analisarDocumentosDiscovery(event.target.files)}
-            />
-            <Button variant="outline" disabled={!!busy} onClick={() => documentInputRef.current?.click()}>
-              Analisar documentos
-            </Button>
-          </div>
+    {discoveryDocumentos && (
+      <section className="rounded-xl border border-sky-200 bg-sky-50/50 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div><p className="text-sm font-semibold">Sugestões extraídas dos documentos</p><p className="mt-1 text-xs text-muted-foreground">{discoveryDocumentos.aviso}</p></div>
+          <Button variant="ghost" size="sm" onClick={() => setDiscoveryDocumentos(null)}>Fechar</Button>
         </div>
-
-        {discoveryDocumentos && (
-          <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50/50 p-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold">Sugestões extraídas dos documentos</p>
-                <p className="mt-1 text-xs text-muted-foreground">{discoveryDocumentos.aviso}</p>
-              </div>
-              <Button variant="ghost" size="sm" onClick={() => setDiscoveryDocumentos(null)}>Fechar</Button>
-            </div>
-            <div className="mt-3 grid gap-2 lg:grid-cols-2">
-              {discoveryDocumentos.sugestoes.map((grupo) => {
-                const secao = data.sections.find((item) => item.id === grupo.secao);
-                return (
-                  <article key={grupo.secao} className="rounded-lg border bg-background p-3">
-                    <p className="text-xs font-semibold">{secao?.title ?? grupo.secao}</p>
-                    <p className="mt-1 text-[11px] text-muted-foreground">{grupo.records.length} ficha(s) sugerida(s)</p>
-                    <div className="mt-2 space-y-2">
-                      {grupo.records.slice(0, 5).map((registro) => (
-                        <details key={registro.id} className="rounded-md border bg-muted/20 px-2 py-1.5">
-                          <summary className="cursor-pointer text-xs font-medium">{registro.title}</summary>
-                          {Object.entries(registro.values).map(([chave, valor]) => (
-                            <p key={chave} className="mt-1 whitespace-pre-wrap text-[11px] text-muted-foreground"><strong>{chave}: </strong>{valor}</p>
-                          ))}
-                        </details>
-                      ))}
-                    </div>
-                    <Button
-                      className="mt-3"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        const atuais = drafts[grupo.secao] ?? data.plan.sections[grupo.secao]?.draft ?? [];
-                        setDrafts((value) => ({
-                          ...value,
-                          [grupo.secao]: [...atuais, ...grupo.records].slice(0, 30),
-                        }));
-                        setTab("plan");
-                        setSectionId(grupo.secao);
-                      }}
-                    >
-                      Adicionar ao rascunho deste bloco
-                    </Button>
-                  </article>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        <div className="mt-4 flex flex-col gap-2 rounded-lg border bg-muted/20 p-3 sm:flex-row sm:items-end">
-          <label className="min-w-0 flex-1 text-xs font-medium">
-            Foco opcional do Discovery
-            <Input
-              value={focoDiscovery}
-              onChange={(event) => setFocoDiscovery(event.target.value)}
-              placeholder="Ex.: melhorar abordagem comercial para construtoras"
-              className="mt-1"
-            />
-          </label>
-          <Button variant="outline" disabled={!!busy} onClick={() => void executarDiscoveryInteligente()}>
-            Discovery Inteligente
-          </Button>
+        <div className="mt-3 grid gap-2 md:grid-cols-2">
+          {discoveryDocumentos.sugestoes.slice(0, 4).map((grupo) => (
+            <article key={grupo.secao} className="rounded-lg border bg-background p-3">
+              <p className="text-xs font-semibold">{data.sections.find((item) => item.id === grupo.secao)?.title ?? grupo.secao}</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">{grupo.records.length} informação(ões) encontradas</p>
+              <Button className="mt-3" size="sm" variant="outline" onClick={() => {
+                const atuais = drafts[grupo.secao] ?? data.plan.sections[grupo.secao]?.draft ?? [];
+                setDrafts((value) => ({ ...value, [grupo.secao]: [...atuais, ...grupo.records].slice(0, 30) }));
+                setTab("plan"); setSectionId(grupo.secao);
+              }}>Revisar nesta etapa</Button>
+            </article>
+          ))}
         </div>
+      </section>
+    )}
 
-        {discoveryInteligente && (
-          <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold">Prioridades sugeridas pelo Vendi</p>
-                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{discoveryInteligente.resumo}</p>
-              </div>
-              <Button variant="ghost" size="sm" onClick={() => setDiscoveryInteligente(null)}>Fechar</Button>
-            </div>
-            <div className="mt-3 grid gap-2 lg:grid-cols-2">
-              {discoveryInteligente.prioridades.map((prioridade, index) => (
-                <article key={`${prioridade.secao}:${index}`} className="rounded-lg border bg-background p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-semibold">{prioridade.titulo}</p>
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${prioridade.impacto === "alto" ? "bg-red-50 text-red-700" : prioridade.impacto === "medio" ? "bg-amber-50 text-amber-700" : "bg-sky-50 text-sky-700"}`}>
-                      impacto {prioridade.impacto}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{prioridade.motivo}</p>
-                  {!!prioridade.perguntas.length && (
-                    <div className="mt-2">
-                      <p className="text-[11px] font-semibold">Perguntas para completar</p>
-                      <ul className="mt-1 list-disc space-y-1 pl-4 text-[11px] text-muted-foreground">
-                        {prioridade.perguntas.map((pergunta) => <li key={pergunta}>{pergunta}</li>)}
-                      </ul>
-                    </div>
-                  )}
-                  {!!prioridade.evidenciasNecessarias.length && (
-                    <div className="mt-2">
-                      <p className="text-[11px] font-semibold">Evidências necessárias</p>
-                      <p className="mt-1 text-[11px] text-muted-foreground">{prioridade.evidenciasNecessarias.join(" · ")}</p>
-                    </div>
-                  )}
-                  <Button
-                    className="mt-3"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setTab("plan");
-                      setSectionId(prioridade.secao);
-                      setNotes([
-                        prioridade.titulo,
-                        prioridade.motivo,
-                        prioridade.perguntas.length ? `Perguntas a responder: ${prioridade.perguntas.join(" | ")}` : "",
-                        prioridade.evidenciasNecessarias.length ? `Evidências a buscar: ${prioridade.evidenciasNecessarias.join(" | ")}` : "",
-                      ].filter(Boolean).join("\n"));
-                    }}
-                  >
-                    Desenvolver este bloco
-                  </Button>
-                </article>
-              ))}
-            </div>
-            <p className="mt-3 text-[11px] text-muted-foreground">{discoveryInteligente.aviso}</p>
-          </div>
-        )}
-
-        <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-          {diagnosticoQuery.data.itens.map((item) => (
-            <div key={item.id} className="rounded-lg border bg-background px-3 py-3">
-              <div className="flex items-start justify-between gap-2">
-                <p className="text-sm font-medium">{item.titulo}</p>
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${item.concluido ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
-                  {item.concluido ? "Coberto" : "Melhorar"}
-                </span>
-              </div>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{item.detalhe}</p>
-              {!item.concluido && item.acao && <p className="mt-2 text-xs font-medium text-amber-800">{item.acao}</p>}
-            </div>
+    {discoveryInteligente && (
+      <section className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div><p className="text-sm font-semibold">Prioridades sugeridas pelo Vendi</p><p className="mt-1 text-xs text-muted-foreground">{discoveryInteligente.resumo}</p></div>
+          <Button variant="ghost" size="sm" onClick={() => setDiscoveryInteligente(null)}>Fechar</Button>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {discoveryInteligente.prioridades.slice(0, 5).map((prioridade, index) => (
+            <Button key={`${prioridade.secao}:${index}`} size="sm" variant="outline" onClick={() => {
+              setTab("plan"); setSectionId(prioridade.secao);
+              setNotes([prioridade.titulo, prioridade.motivo, prioridade.perguntas.length ? `Perguntas: ${prioridade.perguntas.join(" | ")}` : ""].filter(Boolean).join("\n"));
+            }}>{prioridade.titulo}</Button>
           ))}
         </div>
       </section>
@@ -443,84 +329,84 @@ export function BusinessPlanPanel() {
           </div>
         </section>
 
-        <div className="grid gap-4 xl:grid-cols-3">
-          <section className="rounded-xl border bg-card p-4">
-            <div className="flex items-center justify-between gap-2">
-              <h4 className="font-semibold">1. O que já sabemos</h4>
-              <span className="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground">{knownRecords.length || profileFacts.length} fonte(s)</span>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">Informações já existentes no Perfil Mestre ou aprovadas anteriormente. Não precisa digitar tudo de novo.</p>
-            <div className="mt-3 space-y-2">
-              {knownRecords.slice(0, 6).map((record) => (
-                <details key={record.id} className="rounded-lg border bg-muted/20 p-3">
-                  <summary className="cursor-pointer text-sm font-medium">{record.title}</summary>
-                  {Object.entries(record.values).filter(([, value]) => value).slice(0, 6).map(([key, value]) => (
-                    <p key={key} className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground"><strong>{key}: </strong>{value}</p>
-                  ))}
-                  <p className="mt-2 text-[11px] text-muted-foreground">Fonte: {record.source}</p>
-                </details>
-              ))}
-              {!knownRecords.length && sectionId === "company" && profileFacts.map(([key, value]) => (
-                <div key={key} className="rounded-lg border bg-muted/20 p-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{key.replace(/_/g, " ")}</p>
-                  <p className="mt-1 text-sm">{Array.isArray(value) ? value.join(", ") : String(value)}</p>
-                </div>
-              ))}
-              {!knownRecords.length && sectionId !== "company" && <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Ainda não há conteúdo oficial suficiente nesta etapa. O Vendi pode preparar uma primeira proposta.</div>}
-            </div>
-          </section>
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="space-y-4">
+            <section className="rounded-xl border bg-card p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div><h4 className="font-semibold">O que já sabemos</h4><p className="mt-1 text-xs text-muted-foreground">Contexto encontrado no Perfil Mestre ou já aprovado. Abra apenas o que quiser revisar.</p></div>
+                <span className="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground">{knownRecords.length || profileFacts.length} fonte(s)</span>
+              </div>
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                {knownRecords.slice(0, 6).map((record) => (
+                  <details key={record.id} className="rounded-lg border bg-muted/20 p-3">
+                    <summary className="cursor-pointer text-sm font-medium">{record.title}</summary>
+                    {Object.entries(record.values).filter(([, value]) => value).slice(0, 6).map(([key, value]) => <p key={key} className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground"><strong>{key}: </strong>{value}</p>)}
+                    <p className="mt-2 text-[11px] text-muted-foreground">Fonte: {record.source}</p>
+                  </details>
+                ))}
+                {!knownRecords.length && sectionId === "company" && profileFacts.map(([key, value]) => (
+                  <div key={key} className="rounded-lg border bg-muted/20 p-3"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{key.replace(/_/g, " ")}</p><p className="mt-1 text-sm">{Array.isArray(value) ? value.join(", ") : String(value)}</p></div>
+                ))}
+                {!knownRecords.length && sectionId !== "company" && <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground md:col-span-2">Ainda não há conteúdo oficial suficiente nesta etapa. O Vendi pode preparar uma primeira proposta.</div>}
+              </div>
+            </section>
 
-          <section className="rounded-xl border border-primary/20 bg-primary/[0.03] p-4">
-            <h4 className="font-semibold">2. O que o Vendi sugere</h4>
-            <p className="mt-1 text-xs text-muted-foreground">Peça uma sugestão usando o contexto da empresa. A IA gera rascunho; nada entra em operação sem sua confirmação.</p>
-            <label className="mt-3 block text-sm">
-              Orientação opcional
-              <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Ex.: considere os principais produtos, público atual e oportunidades comerciais." className="mt-1" />
-            </label>
-            <Button className="mt-2" disabled={!!busy} onClick={() => run("Desenvolvendo com IA...", async () => {
+            <section className="rounded-xl border bg-card p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div><h4 className="font-semibold">Confirme somente o necessário</h4><p className="mt-1 text-xs text-muted-foreground">Campos confiáveis podem permanecer fechados. Edite, confirme ou descarte apenas decisões que precisam virar referência oficial.</p></div>
+                <Button size="sm" variant="outline" disabled={!!busy || records.length >= 30} onClick={() => setDrafts(value => ({ ...value, [sectionId]: [...records, newEntry()] }))}>Adicionar informação</Button>
+              </div>
+              <div className="mt-3 space-y-2">
+                {records.length ? records.slice(0, 8).map((record, index) => (
+                  <details key={record.id} open={record.evidence === "hypothesis"} className="rounded-xl border bg-background p-3">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+                      <div className="min-w-0"><p className="truncate text-sm font-medium">{record.title || "Informação sem título"}</p><p className="mt-0.5 text-[11px] text-muted-foreground">{record.evidence === "hypothesis" ? "Precisa de validação" : record.evidence === "verified" ? "Validado com evidência" : "Informado pela empresa"}</p></div>
+                      <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${record.evidence === "hypothesis" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>{record.evidence === "hypothesis" ? "Confirmar" : "OK"}</span>
+                    </summary>
+                    <div className="mt-3 border-t pt-3">
+                      <Input aria-label="Título da ficha" value={record.title} onChange={e => update(index, { title: e.target.value })} />
+                      <div className="mt-2 grid gap-2 md:grid-cols-2">
+                        {spec?.fields.map((field) => <label key={field} className="text-xs font-medium">{field}<Textarea rows={2} className="mt-1" value={record.values[field] ?? ""} onChange={e => update(index, { values: { ...record.values, [field]: e.target.value } })} /></label>)}
+                      </div>
+                      <details className="mt-3">
+                        <summary className="cursor-pointer text-xs font-medium text-muted-foreground">Fonte e status</summary>
+                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                          <label className="text-xs font-medium">Situação<select className={selectClass} value={record.evidence} onChange={e => update(index, { evidence: e.target.value as Entry["evidence"] })}><option value="declared">Informado pela empresa</option><option value="verified">Validado com evidência</option><option value="hypothesis">Hipótese a validar</option></select></label>
+                          <label className="text-xs font-medium">Fonte<Input className="mt-1" value={record.source} onChange={e => update(index, { source: e.target.value })} placeholder="Documento, entrevista, CRM..." /></label>
+                        </div>
+                      </details>
+                      <Button className="mt-2" size="sm" variant="ghost" onClick={() => setDrafts(value => ({ ...value, [sectionId]: records.filter(item => item.id !== record.id) }))}>Remover</Button>
+                    </div>
+                  </details>
+                )) : <div className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">Nada para decidir ainda. Peça ao Vendi para preparar uma proposta desta etapa.</div>}
+              </div>
+            </section>
+          </div>
+
+          <aside className="rounded-xl border border-primary/20 bg-primary/[0.03] p-4 xl:sticky xl:top-4">
+            <div className="flex items-center justify-between gap-3"><h4 className="font-semibold">Vendi</h4><span className="rounded-full bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary">Copiloto da etapa</span></div>
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">Eu analiso o contexto existente, encontro lacunas e preparo uma sugestão. Nada é aprovado sem sua confirmação.</p>
+            <div className="mt-3 rounded-lg border bg-background p-3 text-xs">
+              <p className="font-semibold">Nesta etapa</p>
+              <p className="mt-1 text-muted-foreground">{knownRecords.length || profileFacts.length} fonte(s) encontradas · {records.filter((item) => item.evidence === "hypothesis").length} ponto(s) para validar.</p>
+            </div>
+            <label className="mt-3 block text-sm">O que você quer melhorar?<Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Opcional. Ex.: considere produtos principais, região e oportunidades comerciais." className="mt-1" /></label>
+            <Button className="mt-2 w-full" disabled={!!busy} onClick={() => run("Desenvolvendo com IA...", async () => {
               const r = await request(`/sections/${sectionId}/suggest`, "POST", { records, notes });
               setSuggestion(r.records);
-            })}>Gerar sugestão</Button>
+            })}>Analisar e sugerir</Button>
             {suggestion && <div className="mt-4 space-y-2">
-              {suggestion.map((record) => (
-                <details key={record.id} open className="rounded-lg border bg-background p-3">
-                  <summary className="cursor-pointer text-sm font-medium">{record.title}</summary>
-                  {Object.entries(record.values).filter(([, value]) => value).map(([key, value]) => <p key={key} className="mt-2 whitespace-pre-wrap text-xs"><strong>{key}: </strong>{value}</p>)}
-                </details>
+              <p className="text-xs font-semibold">Sugestão pronta</p>
+              {suggestion.slice(0, 4).map((record) => (
+                <details key={record.id} className="rounded-lg border bg-background p-3"><summary className="cursor-pointer text-sm font-medium">{record.title}</summary>{Object.entries(record.values).filter(([, value]) => value).map(([key, value]) => <p key={key} className="mt-2 whitespace-pre-wrap text-xs"><strong>{key}: </strong>{value}</p>)}</details>
               ))}
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" onClick={() => {
-                  setDrafts(value => ({ ...value, [sectionId]: [...records, ...suggestion].slice(0, 30) }));
-                  setSuggestion(null);
-                }}>Usar esta sugestão</Button>
-                <Button size="sm" variant="outline" onClick={() => setSuggestion(null)}>Descartar</Button>
-              </div>
+              <Button size="sm" className="w-full" onClick={() => { setDrafts(value => ({ ...value, [sectionId]: [...records, ...suggestion].slice(0, 30) })); setSuggestion(null); }}>Usar sugestão</Button>
+              <Button size="sm" className="w-full" variant="ghost" onClick={() => setSuggestion(null)}>Descartar</Button>
             </div>}
-          </section>
-
-          <section className="rounded-xl border bg-card p-4">
-            <h4 className="font-semibold">3. O que você precisa decidir</h4>
-            <p className="mt-1 text-xs text-muted-foreground">Confirme, corrija ou complemente apenas os pontos que precisam virar referência oficial.</p>
-            <div className="mt-3 space-y-2">
-              {records.length ? records.slice(0, 5).map((record, index) => (
-                <div key={record.id} className="rounded-lg border bg-muted/20 p-3">
-                  <Input aria-label="Título da ficha" value={record.title} onChange={e => update(index, { title: e.target.value })} />
-                  <div className="mt-2 grid gap-2">
-                    {spec?.fields.map((field) => <label key={field} className="text-xs font-medium">{field}<Textarea rows={2} className="mt-1" value={record.values[field] ?? ""} onChange={e => update(index, { values: { ...record.values, [field]: e.target.value } })} /></label>)}
-                  </div>
-                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                    <label className="text-xs font-medium">Situação<select className={selectClass} value={record.evidence} onChange={e => update(index, { evidence: e.target.value as Entry["evidence"] })}><option value="declared">Informado pela empresa</option><option value="verified">Validado com evidência</option><option value="hypothesis">Hipótese a validar</option></select></label>
-                    <label className="text-xs font-medium">Fonte<Input className="mt-1" value={record.source} onChange={e => update(index, { source: e.target.value })} placeholder="Documento, entrevista, CRM..." /></label>
-                  </div>
-                  <Button className="mt-2" size="sm" variant="ghost" onClick={() => setDrafts(value => ({ ...value, [sectionId]: records.filter(item => item.id !== record.id) }))}>Remover</Button>
-                </div>
-              )) : <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Nenhuma decisão adicionada ainda. Use a sugestão do Vendi ou adicione uma ficha manualmente.</div>}
-              <Button size="sm" variant="outline" disabled={!!busy || records.length >= 30} onClick={() => setDrafts(value => ({ ...value, [sectionId]: [...records, newEntry()] }))}>Adicionar informação</Button>
-            </div>
-          </section>
+          </aside>
         </div>
 
-        <section className="rounded-xl border bg-card p-4">
+        <section className="sticky bottom-3 z-20 rounded-xl border bg-card/95 p-4 shadow-lg backdrop-blur">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <p className="text-sm font-semibold">Confirmar esta etapa</p>
