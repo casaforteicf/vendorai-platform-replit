@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
@@ -33,6 +33,8 @@ import {
   ListChecks,
   Loader2,
   MessageCircle,
+  RotateCcw,
+  Wrench,
   ShieldAlert,
   Sparkles,
   Target,
@@ -75,6 +77,49 @@ function useFlowMetrics(tenantId: string, enabled: boolean) {
     },
     staleTime: 5 * 60 * 1000,
   });
+}
+
+
+interface OperationalAction {
+  id: string;
+  agentName: string;
+  actionType: string;
+  status: string;
+  reason: string | null;
+  payload: Record<string, any> | null;
+  createdAt: string;
+}
+
+interface OperationalActionsData {
+  periodo: string;
+  items: OperationalAction[];
+}
+
+function useOperationalActions(tenantId: string, enabled: boolean) {
+  return useQuery<OperationalActionsData>({
+    queryKey: ["agent-operational-actions", tenantId],
+    enabled: enabled && !!tenantId,
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/analytics/agent-actions`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("agent operational actions fetch failed");
+      return res.json() as Promise<OperationalActionsData>;
+    },
+    staleTime: 30 * 1000,
+  });
+}
+
+function agentDisplayName(agentName: string): string {
+  if (agentName === "browser" || agentName === "browser_mcp") return "Vendi — Navegação Web";
+  return agentName.replaceAll("_", " ");
+}
+
+function operationalReason(action: OperationalAction): string {
+  if (action.reason) return action.reason;
+  if (action.status === "pending") return "Aguardando execução, aprovação ou continuidade.";
+  return "A execução foi rejeitada sem motivo detalhado registrado.";
 }
 
 function formatSeconds(value: number | null | undefined): string {
@@ -209,6 +254,8 @@ export default function Analytics() {
   const [, setLocation] = useLocation();
   const tenantId = user?.tenantId ?? "";
   const [activeTab, setActiveTab] = useState("agents");
+  const [retryingActionId, setRetryingActionId] = useState<string | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<Record<string, string>>({});
 
   const agentsQuery = useGetTenantAnalyticsAgents(tenantId, {
     query: { enabled: !!tenantId && activeTab === "agents", queryKey: getGetTenantAnalyticsAgentsQueryKey(tenantId) },
@@ -220,6 +267,7 @@ export default function Analytics() {
     query: { enabled: !!tenantId && activeTab === "intelligence", queryKey: getGetTenantAnalyticsIntelligenceQueryKey(tenantId) },
   });
   const flowQuery = useFlowMetrics(tenantId, activeTab === "flow");
+  const operationalQuery = useOperationalActions(tenantId, activeTab === "agents");
 
   const agents = agentsQuery.data;
   const channels = channelsQuery.data;
@@ -250,6 +298,57 @@ export default function Analytics() {
   const taskRate = totalTasks > 0 ? completedTasks / totalTasks : null;
   const operationalAlerts = rejectedActions + failedTasks + pendingActions + pendingTasks;
   const hasOperationalAlerts = operationalAlerts > 0;
+  const operationalItems = operationalQuery.data?.items ?? [];
+  const rejectedItems = useMemo(() => operationalItems.filter((item) => item.status === "rejected"), [operationalItems]);
+  const pendingItems = useMemo(() => operationalItems.filter((item) => item.status === "pending"), [operationalItems]);
+
+  const retryOperationalAction = async (action: OperationalAction) => {
+    const payload = action.payload ?? {};
+    const goal = String(payload.goal ?? "").trim();
+    const startUrl = typeof payload.startUrl === "string" ? payload.startUrl : undefined;
+    const connectionId = typeof payload.connectionId === "string" ? payload.connectionId : undefined;
+
+    if (!goal || (!startUrl && !connectionId)) {
+      setActionFeedback((current) => ({ ...current, [action.id]: "Não há dados suficientes para repetir automaticamente. Abra o agente para resolver." }));
+      return;
+    }
+
+    setRetryingActionId(action.id);
+    setActionFeedback((current) => ({ ...current, [action.id]: "" }));
+    try {
+      const token = localStorage.getItem("vendorai_token");
+      const response = await fetch("/api/browser-agent/run", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          goal,
+          ...(startUrl ? { startUrl } : {}),
+          ...(connectionId ? { connectionId } : {}),
+          agentName: "browser",
+          mode: "autonomo",
+          allowWrite: true,
+          maxSteps: 20,
+          strategy: "browser",
+        }),
+      });
+
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || body?.ok === false) {
+        throw new Error(body?.error ?? body?.reason ?? "A nova tentativa não concluiu.");
+      }
+
+      setActionFeedback((current) => ({ ...current, [action.id]: "Nova tentativa executada. Métricas atualizadas." }));
+      await Promise.all([agentsQuery.refetch(), operationalQuery.refetch()]);
+    } catch (error: any) {
+      setActionFeedback((current) => ({ ...current, [action.id]: error?.message ?? "Não foi possível repetir a ação." }));
+    } finally {
+      setRetryingActionId(null);
+    }
+  };
+
 
   return (
     <div className="space-y-4">
@@ -413,7 +512,10 @@ export default function Analytics() {
                                   : { label: "Saudável", className: "border-emerald-200 bg-emerald-50 text-emerald-700" };
                               return (
                                 <tr key={agent.agentName} className="border-b last:border-0">
-                                  <td className="py-3 pr-4 font-medium">{agent.agentName}</td>
+                                  <td className="py-3 pr-4">
+                                    <div className="font-medium">{agentDisplayName(agent.agentName)}</div>
+                                    <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">{agent.agentName}</div>
+                                  </td>
                                   <td className="py-3 pr-4 text-right">{formatNumber(agent.actions.total)}</td>
                                   <td className="py-3 pr-4 text-right">{formatPercent(agentActionRate, true)}</td>
                                   <td className="py-3 pr-4 text-right">{formatNumber(agent.tasks.total)}</td>
@@ -436,12 +538,12 @@ export default function Analytics() {
                   </CardContent>
                 </Card>
 
-                <Card className="shadow-sm">
+                <Card className={`shadow-sm ${hasOperationalAlerts ? "border-red-200" : ""}`}>
                   <CardHeader className="pb-2.5">
                     <SectionTitle
                       icon={hasOperationalAlerts ? AlertTriangle : CheckCircle2}
                       title={hasOperationalAlerts ? "Atenção necessária" : "Operação saudável"}
-                      description={hasOperationalAlerts ? "Itens que podem exigir revisão do gestor." : "Nenhuma falha, rejeição ou pendência operacional registrada."}
+                      description={hasOperationalAlerts ? "Veja a causa e resolva diretamente daqui." : "Nenhuma falha, rejeição ou pendência operacional registrada."}
                       tone={hasOperationalAlerts ? "danger" : "success"}
                     />
                   </CardHeader>
@@ -454,27 +556,82 @@ export default function Analytics() {
                       </div>
                     ) : (
                       <div className="space-y-3">
-                        <div className="flex items-center justify-between rounded-lg border p-3">
-                          <div>
-                            <p className="text-sm font-medium">Falhas de tarefas</p>
-                            <p className="text-xs text-muted-foreground">Erros ou tarefas rejeitadas</p>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="rounded-lg border p-3">
+                            <p className="text-[11px] text-muted-foreground">Tarefas com falha</p>
+                            <p className="mt-1 text-xl font-semibold">{formatNumber(failedTasks)}</p>
                           </div>
-                          <Badge variant={failedTasks > 0 ? "destructive" : "secondary"}>{formatNumber(failedTasks)}</Badge>
-                        </div>
-                        <div className="flex items-center justify-between rounded-lg border p-3">
-                          <div>
-                            <p className="text-sm font-medium">Ações rejeitadas</p>
-                            <p className="text-xs text-muted-foreground">Ações que não seguiram para execução</p>
+                          <div className="rounded-lg border border-red-200 bg-red-50/50 p-3">
+                            <p className="text-[11px] text-red-700">Ações rejeitadas</p>
+                            <p className="mt-1 text-xl font-semibold text-red-700">{formatNumber(rejectedActions)}</p>
                           </div>
-                          <Badge variant={rejectedActions > 0 ? "destructive" : "secondary"}>{formatNumber(rejectedActions)}</Badge>
-                        </div>
-                        <div className="flex items-center justify-between rounded-lg border p-3">
-                          <div>
-                            <p className="text-sm font-medium">Pendências</p>
-                            <p className="text-xs text-muted-foreground">Aguardando aprovação, execução ou conclusão</p>
+                          <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3">
+                            <p className="text-[11px] text-amber-700">Pendências</p>
+                            <p className="mt-1 text-xl font-semibold text-amber-700">{formatNumber(pendingActions + pendingTasks)}</p>
                           </div>
-                          <Badge variant="outline">{formatNumber(pendingActions + pendingTasks)}</Badge>
                         </div>
+
+                        {operationalQuery.isLoading ? (
+                          <div className="flex items-center justify-center rounded-lg border border-dashed p-5">
+                            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                          </div>
+                        ) : operationalItems.length === 0 ? (
+                          <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+                            Os totais existem, mas ainda não há detalhe operacional disponível para estes registros.
+                          </div>
+                        ) : (
+                          <div className="max-h-[330px] space-y-2 overflow-y-auto pr-1">
+                            {[...rejectedItems, ...pendingItems].slice(0, 12).map((action) => (
+                              <div key={action.id} className="rounded-lg border p-3">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <p className="text-sm font-medium">{agentDisplayName(action.agentName)}</p>
+                                      <Badge variant={action.status === "rejected" ? "destructive" : "outline"}>
+                                        {action.status === "rejected" ? "Rejeitada" : "Pendente"}
+                                      </Badge>
+                                    </div>
+                                    <p className="mt-1 font-mono text-[10px] text-muted-foreground">
+                                      {action.agentName} · {action.actionType}
+                                    </p>
+                                    <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-muted-foreground">
+                                      {operationalReason(action)}
+                                    </p>
+                                    <p className="mt-1 text-[10px] text-muted-foreground">
+                                      {new Date(action.createdAt).toLocaleString("pt-BR")}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="mt-3 flex flex-wrap items-center gap-2">
+                                  {action.status === "rejected" ? (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-8 gap-1.5"
+                                      disabled={retryingActionId === action.id}
+                                      onClick={() => retryOperationalAction(action)}
+                                    >
+                                      {retryingActionId === action.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                                      Tentar novamente
+                                    </Button>
+                                  ) : null}
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-8 gap-1.5"
+                                    onClick={() => setLocation("/agents/config")}
+                                  >
+                                    <Wrench className="h-3.5 w-3.5" />
+                                    Resolver
+                                  </Button>
+                                </div>
+                                {actionFeedback[action.id] ? (
+                                  <p className="mt-2 text-xs text-muted-foreground">{actionFeedback[action.id]}</p>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </CardContent>
