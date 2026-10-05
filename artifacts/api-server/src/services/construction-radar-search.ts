@@ -616,6 +616,7 @@ export async function searchConstructionWorkSignals(input: {
   standard?: string;
   phase?: string;
   productInterest?: string;
+  geo?: { lat: number; lng: number; radiusKm: number };
   maxResults?: number;
 }): Promise<ConstructionWorkSearchResult> {
   const retrievedAt = new Date().toISOString();
@@ -652,6 +653,10 @@ export async function searchConstructionWorkSignals(input: {
 
   const commonUser = [
     `Localidade alvo: ${input.locality}`,
+    ...(input.geo ? [
+      `Centro geográfico: latitude ${input.geo.lat}, longitude ${input.geo.lng}`,
+      `Raio máximo: ${input.geo.radiusKm} km. Priorize e retorne somente obras compatíveis com essa área geográfica; descarte sinais claramente fora do raio.`,
+    ] : []),
     `Categoria: ${input.category}`,
     `Modelo/tipo: ${input.model}`,
     `Intervenção: ${input.intervention || "não especificada"}`,
