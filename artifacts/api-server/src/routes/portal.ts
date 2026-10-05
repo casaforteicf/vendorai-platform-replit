@@ -349,7 +349,44 @@ router.get("/portal/obra/:token", async (req, res) => {
         : [];
       const byEtapa: Record<string, typeof allItens> = {};
       for (const item of allItens) (byEtapa[item.etapaId] ??= []).push(item);
-      orcamentoComEtapas = { ...orcamento, etapas: orcEtapas.map((e) => ({ ...e, itens: byEtapa[e.id] ?? [] })) };
+      const etapasPublicas = orcEtapas.map((e) => {
+        const sourceItems = byEtapa[e.id] ?? [];
+        const commercialItems = sourceItems.map((item) => {
+          const quantidade = Number(item.quantidade ?? 0);
+          const custoInterno = Number(item.custoUnitario ?? 0);
+          const bdi = Number(item.bdi ?? orcamento.bdiGlobal ?? 0);
+          const precoUnitario = custoInterno * (1 + bdi / 100);
+          const valorTotalCliente = quantidade * precoUnitario;
+          return {
+            id: item.id,
+            nome: item.nome,
+            ordem: item.ordem,
+            unidade: config.showBudgetQuantities ? item.unidade : null,
+            quantidade: config.showBudgetQuantities ? item.quantidade : null,
+            precoUnitario: config.showBudgetUnitPrices ? precoUnitario : null,
+            valorTotalCliente,
+          };
+        });
+        const totalCliente = commercialItems.reduce((sum, item) => sum + Number(item.valorTotalCliente ?? 0), 0);
+        return {
+          id: e.id,
+          nome: e.nome,
+          ordem: e.ordem,
+          totalCliente: config.showBudgetStageTotals ? totalCliente : null,
+          itens: config.showBudgetItems ? commercialItems : [],
+        };
+      });
+      const valorTotalCliente = etapasPublicas.reduce((sum, etapa) => sum + Number(etapa.totalCliente ?? 0), 0);
+      orcamentoComEtapas = {
+        id: orcamento.id,
+        status: orcamento.status,
+        versao: orcamento.versao,
+        titulo: orcamento.titulo,
+        propostaOrigemId: orcamento.propostaOrigemId,
+        linhaBaseSnapshot: orcamento.linhaBaseSnapshot,
+        valorTotalCliente: config.showBudgetGrandTotal ? valorTotalCliente : null,
+        etapas: etapasPublicas,
+      };
     }
   }
 
