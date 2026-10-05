@@ -11,6 +11,9 @@ import {
 import { tenantIsWithinBusinessHours } from "../lib/proactiveMessageGuard.js";
 import { sendAgentAttachments, sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { executarAcompanhamento } from "../services/orquestradorAcompanhamento.js";
+import { recordIntelligenceEvent } from "../services/customer-intelligence-history.js";
+import { analyzeLeadIntelligence, AnalysisAlreadyInFlightError } from "../lib/analyze-intelligence.js";
+import { evaluatePipelineAI } from "../services/pipeline-ai-orchestrator.js";
 
 const DISTRIBUTED_LOCK_KEY = "vendorai:pipeline-activity-lifecycle:v1";
 const SUPPORT_TIME_ZONE = "America/Sao_Paulo";
@@ -33,6 +36,16 @@ function asSocios(value: unknown): Array<{ nome?: string | null; telefone?: stri
 }
 
 export async function runPipelineActivityLifecycle(log: Logger): Promise<void> {
+  const completedByAI: Array<{
+    activityId: string;
+    tenantId: string;
+    leadId: string;
+    dealId: string | null;
+    titulo: string;
+    resultado: string;
+    agentKey: string | null;
+  }> = [];
+
   await db.transaction(async (tx) => {
     const lockResult = await tx.execute<{ acquired: boolean }>(sql`
       select pg_try_advisory_xact_lock(hashtext(${DISTRIBUTED_LOCK_KEY})) as acquired
@@ -105,14 +118,26 @@ export async function runPipelineActivityLifecycle(log: Logger): Promise<void> {
           });
 
           if (execution.executado) {
+            const resultadoExecucao = `Executada pela IA via ${execution.plano.canalPrincipal ?? "canal disponível"}: ${execution.plano.motivo || "acompanhamento realizado"}`;
             await tx.update(activitiesTable).set({
               status: "concluida",
               estadoExecucao: "concluida",
               concluidaEm: new Date(),
-              resultadoExecucao: `Executada pela IA via ${execution.plano.canalPrincipal ?? "canal disponível"}: ${execution.plano.motivo || "acompanhamento realizado"}`,
+              resultadoExecucao,
               updatedAt: new Date(),
             }).where(eq(activitiesTable.id, activity.id));
-            log.info({ activityId: activity.id, tenantId: activity.tenantId }, "pipeline-activity-lifecycle: IA executou atividade");
+
+            completedByAI.push({
+              activityId: activity.id,
+              tenantId: activity.tenantId,
+              leadId: activity.leadId,
+              dealId: activity.dealId ?? null,
+              titulo: activity.titulo,
+              resultado: resultadoExecucao,
+              agentKey: activity.agenteResponsavelKey ?? execution.plano.agenteResponsavelKey ?? null,
+            });
+
+            log.info({ activityId: activity.id, tenantId: activity.tenantId, agentKey: activity.agenteResponsavelKey }, "pipeline-activity-lifecycle: IA executou atividade");
             continue;
           }
 
@@ -219,6 +244,54 @@ export async function runPipelineActivityLifecycle(log: Logger): Promise<void> {
       sent += 1;
     }
 
-    log.info({ eligible: rows.length, sent }, "pipeline-activity-lifecycle: complete");
+    log.info({ eligible: rows.length, sent, completedByAI: completedByAI.length }, "pipeline-activity-lifecycle: complete");
   });
+
+  // Fecha o ciclo operacional fora da transação principal: execução do agente
+  // -> histórico -> enriquecimento -> nova avaliação da pipeline.
+  const intelligenceRefresh = new Map<string, { tenantId: string; leadId: string }>();
+  for (const completed of completedByAI) {
+    void recordIntelligenceEvent({
+      tenantId: completed.tenantId,
+      leadId: completed.leadId,
+      eventType: "agent_activity_completed",
+      title: `Agente concluiu: ${completed.titulo}`,
+      summary: completed.resultado,
+      sourceModule: "pipeline_activity_lifecycle",
+      sourceId: completed.activityId,
+      metadata: {
+        dealId: completed.dealId,
+        agentKey: completed.agentKey,
+      },
+      log,
+    });
+
+    intelligenceRefresh.set(`${completed.tenantId}:${completed.leadId}`, {
+      tenantId: completed.tenantId,
+      leadId: completed.leadId,
+    });
+
+    if (completed.dealId) {
+      void evaluatePipelineAI({
+        tenantId: completed.tenantId,
+        dealId: completed.dealId,
+        trigger: "activity_completed",
+        log,
+      }).catch((err) => {
+        log.warn({ err, tenantId: completed.tenantId, dealId: completed.dealId }, "pipeline-activity-lifecycle: pipeline AI reevaluation failed");
+      });
+    }
+  }
+
+  for (const item of intelligenceRefresh.values()) {
+    void analyzeLeadIntelligence({
+      tenantId: item.tenantId,
+      leadId: item.leadId,
+      triggeredBy: "auto",
+      log,
+    }).catch((err) => {
+      if (err instanceof AnalysisAlreadyInFlightError) return;
+      log.warn({ err, tenantId: item.tenantId, leadId: item.leadId }, "pipeline-activity-lifecycle: intelligence enrichment failed");
+    });
+  }
 }
