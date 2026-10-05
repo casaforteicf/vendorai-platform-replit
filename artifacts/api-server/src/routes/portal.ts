@@ -1167,6 +1167,65 @@ router.patch("/tenants/:tenantId/obras/:obraId/portal/users/:userId", authentica
 });
 
 
+router.get("/tenants/:tenantId/obras/:obraId/portal/budget-items", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? "");
+  const obraId = String(req.params.obraId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
+  const result = await pool.query(
+    `WITH selected_budget AS (
+       SELECT id FROM obra_orcamentos
+        WHERE tenant_id=$1 AND obra_id=$2 AND status IN ('aprovado','enviado')
+        ORDER BY CASE WHEN status='aprovado' THEN 0 ELSE 1 END, versao DESC
+        LIMIT 1
+     )
+     SELECT i.id,i.nome,i.unidade,i.quantidade,e.nome AS etapa_nome,e.ordem AS etapa_ordem,i.ordem,
+            i.visible_to_client,i.show_quantity,i.show_unit_price,i.show_total
+       FROM obra_orcamento_itens i
+       INNER JOIN obra_orcamento_etapas e ON e.id=i.etapa_id
+       INNER JOIN selected_budget b ON b.id=e.orcamento_id
+      ORDER BY e.ordem ASC,i.ordem ASC`,
+    [tenantId, obraId],
+  );
+  return res.json({ items: result.rows });
+});
+
+router.patch("/tenants/:tenantId/obras/:obraId/portal/budget-items/:itemId", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? "");
+  const obraId = String(req.params.obraId ?? "");
+  const itemId = String(req.params.itemId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
+  const result = await pool.query(
+    `UPDATE obra_orcamento_itens i SET
+       visible_to_client=COALESCE($1,visible_to_client),
+       show_quantity=COALESCE($2,show_quantity),
+       show_unit_price=COALESCE($3,show_unit_price),
+       show_total=COALESCE($4,show_total),
+       updated_at=now()
+     WHERE i.id=$5
+       AND EXISTS (
+         SELECT 1 FROM obra_orcamento_etapas e
+         INNER JOIN obra_orcamentos o ON o.id=e.orcamento_id
+         WHERE e.id=i.etapa_id AND o.tenant_id=$6 AND o.obra_id=$7
+       )
+     RETURNING i.id,i.nome,i.visible_to_client,i.show_quantity,i.show_unit_price,i.show_total`,
+    [
+      typeof req.body?.visibleToClient === "boolean" ? req.body.visibleToClient : null,
+      typeof req.body?.showQuantity === "boolean" ? req.body.showQuantity : null,
+      typeof req.body?.showUnitPrice === "boolean" ? req.body.showUnitPrice : null,
+      typeof req.body?.showTotal === "boolean" ? req.body.showTotal : null,
+      itemId, tenantId, obraId,
+    ],
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Item do orçamento não encontrado." });
+  await writePortalAudit({
+    tenantId, obraId, actorType: "equipe", actorName: String(req.user?.email ?? "Equipe"),
+    eventType: "budget_item_visibility_updated", entityType: "budget_item", entityId: itemId,
+    metadata: result.rows[0],
+  });
+  return res.json({ item: result.rows[0] });
+});
+
+
 router.get("/tenants/:tenantId/obras/:obraId/portal/items", authenticate, async (req, res) => {
   const tenantId = String(req.params.tenantId ?? "");
   const obraId = String(req.params.obraId ?? "");
