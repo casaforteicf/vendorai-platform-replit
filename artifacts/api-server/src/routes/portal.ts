@@ -79,15 +79,26 @@ function itemIsPublishedByConfig(config: ObraPortalConfig, kind: string) {
   return key ? config[key] !== false : true;
 }
 
+function configForPortalUser(config: ObraPortalConfig, user: any | null): ObraPortalConfig {
+  if (!user?.permissions || typeof user.permissions !== "object" || Array.isArray(user.permissions)) return config;
+  const merged = { ...config } as any;
+  for (const [key, value] of Object.entries(user.permissions)) {
+    if (key in merged && typeof value === "boolean") merged[key] = value && merged[key] !== false;
+  }
+  return merged as ObraPortalConfig;
+}
+
 async function resolvePortalUser(req: any, obraId: string) {
   const token = portalBearer(req);
   if (!token) return null;
   const result = await pool.query(
-    `SELECT u.id, u.nome, u.email, u.telefone, u.obra_id, u.tenant_id
+    `SELECT u.id, u.nome, u.email, u.telefone, u.obra_id, u.tenant_id,
+            u.access_role, u.permissions, u.access_expires_at
        FROM obra_portal_sessions s
        INNER JOIN obra_portal_users u ON u.id = s.user_id
       WHERE s.token_hash = $1 AND s.expires_at > now()
         AND u.obra_id = $2 AND u.status = 'ativo'
+        AND (u.access_expires_at IS NULL OR u.access_expires_at > now())
       LIMIT 1`,
     [hashPortalToken(token), obraId],
   );
@@ -233,7 +244,10 @@ router.post("/portal/obra/:token/login", async (req, res) => {
   const email = String(req.body?.email ?? "").trim().toLowerCase();
   const password = String(req.body?.password ?? "");
   const result = await pool.query(
-    `SELECT * FROM obra_portal_users WHERE obra_id=$1 AND lower(email)=lower($2) AND status='ativo' LIMIT 1`,
+    `SELECT * FROM obra_portal_users
+      WHERE obra_id=$1 AND lower(email)=lower($2) AND status='ativo'
+        AND (access_expires_at IS NULL OR access_expires_at > now())
+      LIMIT 1`,
     [obra.id, email],
   );
   const user = result.rows[0];
@@ -242,7 +256,7 @@ router.post("/portal/obra/:token/login", async (req, res) => {
   }
   await pool.query(`UPDATE obra_portal_users SET ultimo_login_em=now(), updated_at=now() WHERE id=$1`, [user.id]);
   const sessionToken = await createPortalSession(user.id);
-  return res.json({ token: sessionToken, user: { id: user.id, nome: user.nome, email: user.email, telefone: user.telefone } });
+  return res.json({ token: sessionToken, user: { id: user.id, nome: user.nome, email: user.email, telefone: user.telefone, accessRole: user.access_role, permissions: user.permissions ?? {} } });
 });
 
 router.get("/portal/obra/:token/me", async (req, res) => {
@@ -260,7 +274,7 @@ router.post("/portal/obra/:token/support", async (req, res) => {
   if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
   const user = await resolvePortalUser(req, obra.id);
   if (!user) return res.status(401).json({ error: "Faça login para abrir uma solicitação." });
-  const config = portalConfig(obra.portalConfig);
+  const config = configForPortalUser(portalConfig(obra.portalConfig), user);
   if (!config.showSupport) return res.status(403).json({ error: "Suporte não está habilitado neste portal." });
 
   const assunto = String(req.body?.assunto ?? "").trim();
@@ -284,7 +298,7 @@ router.post("/portal/obra/:token/messages", async (req, res) => {
   if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
   const user = await resolvePortalUser(req, obra.id);
   if (!user) return res.status(401).json({ error: "Faça login para enviar mensagens." });
-  const config = portalConfig(obra.portalConfig);
+  const config = configForPortalUser(portalConfig(obra.portalConfig), user);
   if (!config.showChat) return res.status(403).json({ error: "Chat não está habilitado neste portal." });
 
   const mensagem = String(req.body?.mensagem ?? "").trim();
@@ -303,19 +317,20 @@ router.get("/portal/obra/:token", async (req, res) => {
   const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
   if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
 
-  const config = portalConfig(obra.portalConfig);
+  const baseConfig = portalConfig(obra.portalConfig);
   const portalUser = await resolvePortalUser(req, obra.id);
   const authenticated = Boolean(portalUser);
+  const config = configForPortalUser(baseConfig, portalUser);
   const [tenant] = await db.select({ id: tenantsTable.id, name: tenantsTable.name })
     .from(tenantsTable).where(eq(tenantsTable.id, obra.tenantId));
 
-  if (config.requireLogin && !authenticated) {
+  if (baseConfig.requireLogin && !authenticated) {
     return res.json({
-      publication: config,
+      publication: baseConfig,
       auth: {
         required: true,
         authenticated: false,
-        allowSelfRegistration: config.allowSelfRegistration,
+        allowSelfRegistration: baseConfig.allowSelfRegistration,
         user: null,
       },
       obra: {
@@ -799,7 +814,12 @@ router.get("/portal/obra/:token", async (req, res) => {
       required: config.requireLogin,
       authenticated,
       allowSelfRegistration: config.allowSelfRegistration,
-      user: portalUser ? { id: portalUser.id, nome: portalUser.nome, email: portalUser.email, telefone: portalUser.telefone } : null,
+      user: portalUser ? {
+        id: portalUser.id, nome: portalUser.nome, email: portalUser.email, telefone: portalUser.telefone,
+        accessRole: portalUser.access_role ?? "proprietario",
+        permissions: portalUser.permissions ?? {},
+        accessExpiresAt: portalUser.access_expires_at ?? null,
+      } : null,
     },
     locked: false,
     obra: {
@@ -862,8 +882,8 @@ router.post("/portal/obra/:token/items/:itemId/respond", async (req, res) => {
 
   const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
   if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
-  const config = portalConfig(obra.portalConfig);
   const user = await resolvePortalUser(req, obra.id);
+  const config = configForPortalUser(portalConfig(obra.portalConfig), user);
   if (config.requireLogin && !user) return res.status(401).json({ error: "Entre no portal para responder." });
 
   const itemResult = await pool.query(
@@ -901,9 +921,9 @@ router.post("/portal/obra/:token/vendi", async (req, res) => {
 
   const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
   if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
-  const config = portalConfig(obra.portalConfig);
-  if (config.showVendi === false) return res.status(403).json({ error: "Vendi não está habilitado neste portal." });
   const user = await resolvePortalUser(req, obra.id);
+  const config = configForPortalUser(portalConfig(obra.portalConfig), user);
+  if (config.showVendi === false) return res.status(403).json({ error: "Vendi não está habilitado neste portal." });
   if (config.requireLogin && !user) return res.status(401).json({ error: "Entre no portal para conversar com o Vendi." });
 
   const [stagesResult, itemsResult, docsResult] = await Promise.all([
@@ -1022,6 +1042,64 @@ router.post("/portal/obra/:token/decisions/:decisionId/respond", async (req, res
 function canManagePortal(req: any, tenantId: string) {
   return req?.user?.platformRole === "super_admin" || req?.user?.tenantId === tenantId;
 }
+
+router.get("/tenants/:tenantId/obras/:obraId/portal/users", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? "");
+  const obraId = String(req.params.obraId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
+  const result = await pool.query(
+    `SELECT id,nome,email,telefone,status,access_role,permissions,access_expires_at,ultimo_login_em,created_at,updated_at
+       FROM obra_portal_users
+      WHERE tenant_id=$1 AND obra_id=$2
+      ORDER BY nome ASC, created_at ASC`,
+    [tenantId, obraId],
+  );
+  return res.json({ users: result.rows });
+});
+
+router.patch("/tenants/:tenantId/obras/:obraId/portal/users/:userId", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? "");
+  const obraId = String(req.params.obraId ?? "");
+  const userId = String(req.params.userId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
+
+  const role = ["proprietario","conjuge","arquiteto","engenheiro","financeiro","fornecedor","representante"].includes(String(req.body?.accessRole))
+    ? String(req.body.accessRole) : null;
+  const status = ["ativo","revogado"].includes(String(req.body?.status)) ? String(req.body.status) : null;
+  const permissions = req.body?.permissions && typeof req.body.permissions === "object" && !Array.isArray(req.body.permissions)
+    ? JSON.stringify(req.body.permissions) : null;
+  const expiresAt = req.body?.accessExpiresAt === null
+    ? null
+    : typeof req.body?.accessExpiresAt === "string" && req.body.accessExpiresAt.trim()
+      ? req.body.accessExpiresAt.trim()
+      : undefined;
+
+  const result = await pool.query(
+    `UPDATE obra_portal_users SET
+       access_role=COALESCE($1,access_role),
+       status=COALESCE($2,status),
+       permissions=COALESCE($3::jsonb,permissions),
+       access_expires_at=CASE WHEN $4::text='__CLEAR__' THEN NULL WHEN $4::text IS NULL THEN access_expires_at ELSE $4::timestamptz END,
+       updated_at=now()
+     WHERE id=$5 AND tenant_id=$6 AND obra_id=$7
+     RETURNING id,nome,email,telefone,status,access_role,permissions,access_expires_at,ultimo_login_em,created_at,updated_at`,
+    [role, status, permissions, req.body?.accessExpiresAt === null ? "__CLEAR__" : (expiresAt ?? null), userId, tenantId, obraId],
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Usuário do portal não encontrado." });
+  if (status === "revogado") {
+    await pool.query(
+      `DELETE FROM obra_portal_sessions WHERE user_id=$1`,
+      [userId],
+    );
+  }
+  await writePortalAudit({
+    tenantId, obraId, actorType: "equipe", actorName: String(req.user?.nome ?? req.user?.email ?? "Equipe"),
+    eventType: "portal_user_updated", entityType: "portal_user", entityId: userId,
+    metadata: { accessRole: result.rows[0].access_role, status: result.rows[0].status, accessExpiresAt: result.rows[0].access_expires_at },
+  });
+  return res.json({ user: result.rows[0] });
+});
+
 
 router.get("/tenants/:tenantId/obras/:obraId/portal/items", authenticate, async (req, res) => {
   const tenantId = String(req.params.tenantId ?? "");
