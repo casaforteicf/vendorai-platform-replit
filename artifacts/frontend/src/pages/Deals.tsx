@@ -408,15 +408,20 @@ function DealCard({
         </div>
       )}
 
-      {/* Handle visual + title */}
+      {/* Cliente primeiro; título do negócio fica como contexto secundário */}
       <div className="flex items-start gap-2">
         <GripVertical
           className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors"
           data-testid={`deal-drag-${deal.id}`}
         />
-        <p className="text-sm font-medium leading-tight flex-1 line-clamp-2">
-          {deal.titulo}
-        </p>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold leading-tight truncate">
+            {leadName || "Cliente não informado"}
+          </p>
+          <p className="mt-0.5 text-[11px] leading-tight text-muted-foreground line-clamp-2">
+            {deal.titulo}
+          </p>
+        </div>
       </div>
 
       {/* Valor */}
@@ -430,14 +435,6 @@ function DealCard({
         <div className={`flex items-center gap-1.5 text-xs pl-6 ${isOverdue ? "text-yellow-700 font-semibold" : "text-muted-foreground"}`}>
           <Clock className="h-3 w-3 shrink-0" />
           <span>Prazo: {deadline.toLocaleDateString("pt-BR")}</span>
-        </div>
-      )}
-
-      {/* Lead name */}
-      {leadName && (
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground pl-6">
-          <User className="h-3 w-3 shrink-0" />
-          <span className="truncate">{leadName}</span>
         </div>
       )}
 
