@@ -434,7 +434,7 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'home':          return <ProjectHomeV2 arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'projeto':       return <SmartProjectModule arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'biblioteca':    return <LibraryModule/>
-    case 'especificacao': return <SmartSpecModule projectId={arqState.projectId} />
+    case 'especificacao': return <SmartSpecModule projectId={arqState.projectId} onBack={() => setActive('home')} />
     case 'specification':
     case 'especificacao-produto': return <SpecificationStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'prompt':        return <PromptPlaygroundModule/>

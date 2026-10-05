@@ -530,7 +530,7 @@ function buildMemorial(items: SpecItem[]): string {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export function SmartSpecModule({ projectId }: { projectId?: string | null }) {
+export function SmartSpecModule({ projectId, onBack }: { projectId?: string | null; onBack?: () => void }) {
   const [renders,      setRenders]      = useState<GalleryRender[]>([])
   const [selRender,    setSelRender]    = useState<GalleryRender | null>(null)
   const [spec,         setSpec]         = useState<Specification | null>(null)
@@ -742,6 +742,24 @@ export function SmartSpecModule({ projectId }: { projectId?: string | null }) {
         borderBottom:`1px solid ${T.border}`,
       }}>
         <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+          {onBack && (
+            <button
+              type="button"
+              className="ss-btn"
+              onClick={onBack}
+              aria-label="Voltar ao projeto"
+              title="Voltar ao projeto"
+              style={{
+                width:34, height:34, flexShrink:0, borderRadius:9,
+                border:`1px solid ${T.border}`,
+                background:'rgba(255,255,255,0.04)', color:'#fff',
+                display:'flex', alignItems:'center', justifyContent:'center',
+                cursor:'pointer', fontSize:18, fontWeight:800, lineHeight:1,
+              }}
+            >
+              ←
+            </button>
+          )}
           <div style={{ flex:1 }}>
             <h2 style={{ margin:'0 0 2px', fontSize:16, fontWeight:900, color:'#fff', letterSpacing:'-0.02em' }}>
               ✨ Smart Specification
