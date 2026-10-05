@@ -86,6 +86,7 @@ async function ensureCommercialStageTasks(deal: typeof dealsTable.$inferSelect) 
     .select({
       id: pipelineStagesTable.id,
       responsavelAgenteKey: pipelineStagesTable.responsavelAgenteKey,
+      aiConfig: pipelineStagesTable.aiConfig,
       atividadePadraoTitulo: pipelineStagesTable.atividadePadraoTitulo,
       atividadePadraoDescricao: pipelineStagesTable.atividadePadraoDescricao,
       atividadePadraoPrazoMinutos: pipelineStagesTable.atividadePadraoPrazoMinutos,
@@ -858,6 +859,31 @@ router.patch("/deals/:id", async (req, res) => {
   const assignedToChanged = nextAssignedTo !== existing.assignedTo;
   const etapaChanged = Boolean(parsed.data.etapa && parsed.data.etapa !== existing.etapa);
 
+  const [targetStageConfig] = etapaChanged && parsed.data.etapa
+    ? await db.select({
+        id: pipelineStagesTable.id,
+        key: pipelineStagesTable.key,
+        label: pipelineStagesTable.label,
+        responsavelAgenteKey: pipelineStagesTable.responsavelAgenteKey,
+        aiConfig: pipelineStagesTable.aiConfig,
+      }).from(pipelineStagesTable).where(and(
+        eq(pipelineStagesTable.tenantId, existing.tenantId),
+        eq(pipelineStagesTable.pipeline, "comercial"),
+        eq(pipelineStagesTable.key, parsed.data.etapa),
+      )).limit(1)
+    : [];
+
+  const targetAIConfig = targetStageConfig?.aiConfig;
+  const targetAgentCanOperate = Boolean(
+    handoff
+    && targetStageConfig?.responsavelAgenteKey
+    && targetAIConfig?.mode === "autonoma"
+    && (
+      (targetAIConfig.allowedActions ?? []).includes("create_activity")
+      || (targetAIConfig.allowedActions ?? []).includes("send_message")
+    )
+  );
+
   const deal = await db.transaction(async (tx) => {
     const [updatedDeal] = await tx.update(dealsTable).set({
       ...parsed.data,
@@ -869,10 +895,24 @@ router.patch("/deals/:id", async (req, res) => {
 
     if (handoff && updatedDeal.leadId) {
       await tx.insert(activitiesTable).values({
-        tenantId: existing.tenantId, leadId: updatedDeal.leadId, dealId: updatedDeal.id,
-        tipo: "tarefa", titulo: handoff.atividadeTitulo,
+        tenantId: existing.tenantId,
+        leadId: updatedDeal.leadId,
+        dealId: updatedDeal.id,
+        tipo: "tarefa",
+        titulo: handoff.atividadeTitulo,
         descricao: [handoff.atividadeDescricao, handoff.observacaoPassagem ? "Passagem: " + handoff.observacaoPassagem : null].filter(Boolean).join("\n") || null,
-        status: "pendente", dataVencimento: handoff.dataVencimento ?? null, responsavelId: handoff.responsavelId,
+        objetivo: handoff.atividadeTitulo,
+        resultadoEsperado: "Executar a próxima melhor ação e registrar o resultado no histórico do lead.",
+        status: targetAgentCanOperate ? "planejado" : "pendente",
+        estadoExecucao: targetAgentCanOperate ? "planejada_ia" : "planejada",
+        categoriaExecucao: targetAgentCanOperate ? "automatica" : "sugerida",
+        origem: "journey_next_best_action",
+        origemEtapaId: targetStageConfig?.id ?? null,
+        origemEtapaKey: updatedDeal.etapa,
+        origemTemplateKey: targetAgentCanOperate ? "journey-agent-next-best-action" : "journey-human-next-best-action",
+        agenteResponsavelKey: targetAgentCanOperate ? targetStageConfig?.responsavelAgenteKey ?? null : null,
+        dataVencimento: handoff.dataVencimento ?? null,
+        responsavelId: targetAgentCanOperate ? null : handoff.responsavelId,
       });
       await tx.insert(activitiesTable).values({
         tenantId: existing.tenantId, leadId: updatedDeal.leadId, dealId: updatedDeal.id,
@@ -931,14 +971,20 @@ router.patch("/deals/:id", async (req, res) => {
     }
   }
 
-  if (parsed.data.etapa && parsed.data.etapa !== existing.etapa && !handoff) {
+  if (parsed.data.etapa && parsed.data.etapa !== existing.etapa) {
     await recordDealJourney({
       tenantId: existing.tenantId, leadId: deal.leadId, dealId: deal.id,
       title: "Negócio avançou para " + (DEAL_STAGE_LABELS[parsed.data.etapa] ?? parsed.data.etapa),
-      description: "Etapa anterior: " + (DEAL_STAGE_LABELS[existing.etapa] ?? existing.etapa) + ". Nova etapa: " + (DEAL_STAGE_LABELS[parsed.data.etapa] ?? parsed.data.etapa) + ".",
+      description: [
+        "Etapa anterior: " + (DEAL_STAGE_LABELS[existing.etapa] ?? existing.etapa) + ".",
+        "Nova etapa: " + (DEAL_STAGE_LABELS[parsed.data.etapa] ?? parsed.data.etapa) + ".",
+        targetAgentCanOperate && targetStageConfig?.responsavelAgenteKey
+          ? "Agente da etapa assumiu automaticamente a próxima melhor ação: " + targetStageConfig.responsavelAgenteKey + "."
+          : null,
+      ].filter(Boolean).join(" "),
       responsavelId: req.user?.sub,
     });
-      await ensureCommercialStageTasks(deal);
+    await ensureCommercialStageTasks(deal);
 
     void recordIntelligenceEvent({
       tenantId: existing.tenantId,

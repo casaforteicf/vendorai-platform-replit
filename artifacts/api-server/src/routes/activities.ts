@@ -15,6 +15,7 @@ import { createGoogleEvent, updateGoogleEvent, deleteGoogleEvent } from "../lib/
 import { generateSpinForActivity } from "./spin.js";
 import { recordIntelligenceEvent } from "../services/customer-intelligence-history.js";
 import { evaluatePipelineAI } from "../services/pipeline-ai-orchestrator.js";
+import { analyzeLeadIntelligence, AnalysisAlreadyInFlightError } from "../lib/analyze-intelligence.js";
 
 const router: IRouter = Router();
 
@@ -85,7 +86,7 @@ router.post("/activities", async (req, res) => {
     .returning();
   res.status(201).json(activity);
 
-  if (data.status === "concluida" && activity.dealId) {
+  if (activity.status === "concluida" && activity.dealId) {
     void evaluatePipelineAI({
       tenantId: activity.tenantId,
       dealId: activity.dealId,
@@ -113,6 +114,23 @@ router.post("/activities", async (req, res) => {
     },
     log: req.log,
   });
+
+  // Jornada Inteligente: atividades concluídas são sinais fortes e devem
+  // enriquecer o perfil do lead sem exigir preenchimento manual.
+  if (activity.status === "concluida") {
+    void analyzeLeadIntelligence({
+      tenantId: activity.tenantId,
+      leadId: activity.leadId,
+      triggeredBy: "auto",
+      log: req.log,
+    }).catch((err) => {
+      if (err instanceof AnalysisAlreadyInFlightError) return;
+      req.log.warn(
+        { err, tenantId: activity.tenantId, leadId: activity.leadId, activityId: activity.id },
+        "activity: customer intelligence refresh failed",
+      );
+    });
+  }
 
   // Async tasks for reuniao (SPIN briefing + Google Calendar)
   if (activity.tipo === "reuniao") {
@@ -397,6 +415,21 @@ router.patch("/activities/:id", async (req, res) => {
     },
     log: req.log,
   });
+
+  if (data.status === "concluida") {
+    void analyzeLeadIntelligence({
+      tenantId: activity.tenantId,
+      leadId: activity.leadId,
+      triggeredBy: "auto",
+      log: req.log,
+    }).catch((err) => {
+      if (err instanceof AnalysisAlreadyInFlightError) return;
+      req.log.warn(
+        { err, tenantId: activity.tenantId, leadId: activity.leadId, activityId: activity.id },
+        "activity completion: customer intelligence refresh failed",
+      );
+    });
+  }
 
   // Async Google Calendar sync on update
   const agendaId = activity.agendaId ?? existing.agendaId;
