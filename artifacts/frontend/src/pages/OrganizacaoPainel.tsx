@@ -154,10 +154,11 @@ export default function OrganizacaoPainel() {
   async function unlinkTenant(tenantId: string) {
     if (!selectedOrg) return;
     try {
-      await fetch(`/api/organizacoes/${selectedOrg.id}/tenants/${tenantId}`, {
+      const response = await fetch(`/api/organizacoes/${selectedOrg.id}/tenants/${tenantId}`, {
         method: "DELETE",
         headers,
       });
+      if (!response.ok) throw new Error("unlink_tenant_failed");
       toast({ title: "Loja desvinculada" });
       await loadPainel(selectedOrg);
       await loadOrgs();
