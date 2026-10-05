@@ -117,6 +117,7 @@ const Analytics          = lazy(() => import("@/pages/Analytics"));
 const DiagnosticoPlanejamento = lazy(() => import("@/pages/DiagnosticoPlanejamento"));
 const AgentConfig        = lazy(() => import("@/pages/agents/AgentConfig"));
 const VendiOperations    = lazy(() => import("@/pages/agents/VendiOperations"));
+const VendiHandoff       = lazy(() => import("@/pages/agents/VendiHandoff"));
 const RelatoriosVisaoGeral = lazy(() => import("@/pages/RelatoriosVisaoGeral"));
 const RelatorioGanhosMes = lazy(() => import("@/pages/RelatorioGanhosMes"));
 const RelatorioTipoCliente = lazy(() => import("@/pages/RelatorioTipoCliente"));
@@ -612,6 +613,7 @@ function AppRoutes() {
         <Route path="/entrega/agente/:agentKey">{() => <PublicDeliveryRuntime />}</Route>
         <Route path="/entrega/simulador/sdr">{() => <PublicDeliveryRuntime />}</Route>
         <Route path="/entrega/arqdor/pre-projeto">{() => <PublicDeliveryRuntime />}</Route>
+        <Route path="/vendi/handoff">{() => <VendiHandoff />}</Route>
         <Route path="/onboarding"><OnboardingRoute /></Route>
         <Route path="/onboarding/integracoes"><RedirectPage to="/configuracoes" /></Route>
         <Route path="/"><PublicRoute component={Login} /></Route>

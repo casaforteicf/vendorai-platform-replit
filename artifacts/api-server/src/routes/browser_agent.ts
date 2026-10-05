@@ -42,6 +42,12 @@ const router: IRouter = Router();
 
 const vendiAutonomyEnabled = () => String(process.env["VENDI_AUTONOMY_ENABLED"] ?? "").toLowerCase() === "true";
 
+function vendiControlUrl(sessionId: string, handoffToken: string) {
+  const configured = (process.env["VENDI_CONTROL_BASE_URL"] ?? "https://app.appvendorai.com").trim().replace(/\/$/, "");
+  const base = configured || "https://app.appvendorai.com";
+  return `${base}/vendi/handoff?browserSession=${encodeURIComponent(sessionId)}&handoff=${encodeURIComponent(handoffToken)}`;
+}
+
 const connectionSchema = z.object({
   name: z.string().min(2).max(120),
   startUrl: z.string().url(),
@@ -1281,7 +1287,7 @@ router.post("/browser-agent/run", async (req, res) => {
       startLiveBrowserMission(tenantId, session.id, agentInput.goal, agentInput.maxSteps, true);
       const handoff = getLiveBrowserHandoff(session.id);
       return { sessionId: session.id,
-        controlUrl: `https://homolog.appvendorai.com/agents/config?browserSession=${encodeURIComponent(session.id)}&handoff=${encodeURIComponent(handoff.handoffToken)}` };
+        controlUrl: vendiControlUrl(session.id, handoff.handoffToken) };
     };
     const result = await runBrowserAgent(agentInput);
 
