@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { and, eq, desc } from "drizzle-orm";
 import { z } from "zod/v4";
-import { db, tenantsTable, tokenPurchasesTable } from "@workspace/db";
+import { db, tenantsTable, tokenPurchasesTable, commercialProductProfilesTable } from "@workspace/db";
 import { requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
 import { createOrGetCustomer, createCharge, getPixQrCode, isAsaasConfigured } from "../lib/asaas.js";
 import {
@@ -271,6 +271,50 @@ router.post(
       req.log.error({ error, tenantId }, "ai-credit-pack: failed to create Asaas charge");
       res.status(502).json({ error: "Não foi possível abrir a cobrança de créditos no Asaas. Tente novamente." });
     }
+  },
+);
+
+// ── GET /commercial-plans ───────────────────────────────────────────────────
+// Customer-facing current plan catalog. Prices and monthly Vendor Credits come
+// from commercial_product_profiles metadata so UI/checkout do not hard-code them.
+router.get(
+  "/commercial-plans",
+  async (_req, res) => {
+    const profiles = await db
+      .select({
+        commercialKey: commercialProductProfilesTable.commercialKey,
+        benefits: commercialProductProfilesTable.benefits,
+        displayOrder: commercialProductProfilesTable.displayOrder,
+        metadata: commercialProductProfilesTable.metadata,
+      })
+      .from(commercialProductProfilesTable)
+      .where(eq(commercialProductProfilesTable.active, true))
+      .orderBy(commercialProductProfilesTable.displayOrder);
+
+    const plans = profiles
+      .map((profile) => {
+        const metadata = (profile.metadata ?? {}) as Record<string, unknown>;
+        if (metadata["customerFacing"] !== true) return null;
+        return {
+          commercialKey: profile.commercialKey,
+          name: String(metadata["displayName"] ?? profile.commercialKey),
+          monthlyPriceBrl: Number(metadata["monthlyPriceBrl"] ?? 0),
+          includedVendorCreditsMonthly: Number(metadata["includedVendorCreditsMonthly"] ?? 0),
+          unlimitedUsers: metadata["unlimitedUsers"] === true,
+          transactionFeeApplies: metadata["transactionFeeApplies"] === true,
+          bundle: metadata["bundle"] === true,
+          benefits: profile.benefits ?? [],
+          displayOrder: profile.displayOrder,
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+
+    res.json({
+      currency: "BRL",
+      usageUnit: "vendor_credits",
+      catalogVersion: "2026-10",
+      plans,
+    });
   },
 );
 
