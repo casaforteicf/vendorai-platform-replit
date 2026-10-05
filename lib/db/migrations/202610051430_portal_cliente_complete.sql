@@ -65,6 +65,9 @@ ALTER TABLE public.obra_orcamento_itens
   ADD COLUMN IF NOT EXISTS show_unit_price boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS show_total boolean NOT NULL DEFAULT true;
 
+ALTER TABLE public.obra_lancamentos
+  ADD COLUMN IF NOT EXISTS visible_to_client boolean NOT NULL DEFAULT false;
+
 UPDATE public.obra_portal_documents
    SET visibility = CASE WHEN publicado_cliente THEN 'publicado' ELSE 'interno' END
  WHERE visibility = 'interno';
