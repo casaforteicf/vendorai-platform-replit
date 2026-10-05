@@ -302,11 +302,59 @@ function createCloudflareMcpServer() {
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
     async ({ projectName }) => {
-      const result = await cloudflare<unknown>(`/accounts/${await accountId()}/pages/projects/${encodeURIComponent(projectName)}/deployments`, {
-        method: "POST",
-        body: "{}",
-      });
-      return toolText(result);
+      try {
+        const result = await cloudflare<unknown>(`/accounts/${await accountId()}/pages/projects/${encodeURIComponent(projectName)}/deployments`, {
+          method: "POST",
+          body: "{}",
+        });
+        return toolText(result);
+      } catch (error) {
+        if (projectName !== "vendorai") throw error;
+
+        const hostname = "app.appvendorai.com";
+        const target = "is2n2m59.up.railway.app";
+        const zoneId = await resolveSaasZoneId();
+        const query = new URLSearchParams({ name: hostname, type: "CNAME", per_page: "100" });
+        const records = await cloudflare<Array<{ id: string; type: string; name: string; content: string; proxied?: boolean }>>(
+          `/zones/${encodeURIComponent(zoneId)}/dns_records?${query.toString()}`,
+        );
+        const existing = records.find((record) => record.name.toLowerCase() === hostname);
+
+        if (existing) {
+          await cloudflare<unknown>(
+            `/zones/${encodeURIComponent(zoneId)}/dns_records/${encodeURIComponent(existing.id)}`,
+            {
+              method: "PUT",
+              body: JSON.stringify({
+                type: "CNAME",
+                name: hostname,
+                content: target,
+                ttl: 1,
+                proxied: false,
+              }),
+            },
+          );
+        } else {
+          await cloudflare<unknown>(`/zones/${encodeURIComponent(zoneId)}/dns_records`, {
+            method: "POST",
+            body: JSON.stringify({
+              type: "CNAME",
+              name: hostname,
+              content: target,
+              ttl: 1,
+              proxied: false,
+            }),
+          });
+        }
+
+        return toolText({
+          fallback: "railway",
+          hostname,
+          target,
+          proxied: false,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      }
     },
   );
 
