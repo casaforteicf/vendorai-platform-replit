@@ -31,6 +31,8 @@ type PortalConfig = {
   showBriefing: boolean;
   showAgenda: boolean;
   showSearch: boolean;
+  showPostSale: boolean;
+  showVendi: boolean;
 };
 
 const DEFAULT_CONFIG: PortalConfig = {
@@ -59,6 +61,8 @@ const DEFAULT_CONFIG: PortalConfig = {
   showBriefing: true,
   showAgenda: true,
   showSearch: true,
+  showPostSale: true,
+  showVendi: true,
 };
 
 function token() { return localStorage.getItem("vendorai_token") ?? ""; }
@@ -93,6 +97,8 @@ const ITEMS: Array<{ key: keyof PortalConfig; title: string; description: string
   { key: "showBriefing", title: "Briefing do cliente", description: "Exibe o briefing vinculado ao lead/negócio, com resumo e respostas publicáveis." },
   { key: "showAgenda", title: "Agenda do cliente", description: "Reuniões, visitas, medições, instalações, vistorias e entregas vinculadas ao atendimento." },
   { key: "showSearch", title: "Busca no portal", description: "Permite pesquisar documentos, contratos, etapas, propostas e compromissos publicados." },
+  { key: "showPostSale", title: "Entrega e pós-venda", description: "Checklist final, termo de aceite, documentos finais, garantias e satisfação." },
+  { key: "showVendi", title: "Vendi no portal", description: "Assistente contextual limitado aos dados publicados deste cliente/obra." },
   { key: "showSchedule", title: "Cronograma", description: "Etapas, datas previstas, responsáveis e avanço físico." },
   { key: "showMilestones", title: "Marcos da obra", description: "Marcos previstos, concluídos e próximos eventos do cronograma.", dependsOn: "showSchedule" },
   { key: "showMeasurements", title: "Medições", description: "Histórico de evolução física registrada nas etapas.", dependsOn: "showSchedule" },
