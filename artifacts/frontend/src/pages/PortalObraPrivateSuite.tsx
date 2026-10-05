@@ -83,16 +83,15 @@ export function PortalExecutiveBalance({ balance }: { balance: any }) {
   const delta = Number(balance.progressVariancePoints ?? 0);
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 md:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-3">
         <Metric title="Planejado" value={`${Number(balance.plannedProgress ?? 0).toFixed(1)}%`} />
         <Metric title="Executado" value={`${Number(balance.actualProgress ?? 0).toFixed(1)}%`} />
         <Metric title="Desvio físico" value={`${delta >= 0 ? "+" : ""}${delta.toFixed(1)} p.p.`} danger={delta < -5} />
-        <Metric title="Custo realizado" value={money(balance.actualCost)} />
       </div>
       <div className="overflow-x-auto rounded-2xl border">
         <table className="min-w-[760px] w-full text-sm">
-          <thead className="bg-gray-50 text-left text-xs uppercase text-gray-400"><tr><th className="p-3">Etapa</th><th>Planejado</th><th>Executado</th><th>Desvio</th><th>Custo previsto</th><th>Período</th></tr></thead>
-          <tbody>{(balance.stages ?? []).map((stage: any) => <tr key={stage.etapaId} className="border-t"><td className="p-3 font-medium text-gray-800">{stage.nome}</td><td>{Number(stage.plannedPercent).toFixed(0)}%</td><td>{Number(stage.actualPercent).toFixed(0)}%</td><td className={Number(stage.variancePoints) < -5 ? "font-semibold text-rose-600" : "text-emerald-700"}>{Number(stage.variancePoints) >= 0 ? "+" : ""}{Number(stage.variancePoints).toFixed(0)} p.p.</td><td>{money(stage.plannedCost)}</td><td>{date(stage.dataInicioPrevista)} → {date(stage.dataFimPrevista)}</td></tr>)}</tbody>
+          <thead className="bg-gray-50 text-left text-xs uppercase text-gray-400"><tr><th className="p-3">Etapa</th><th>Planejado</th><th>Executado</th><th>Desvio</th><th>Período</th></tr></thead>
+          <tbody>{(balance.stages ?? []).map((stage: any) => <tr key={stage.etapaId} className="border-t"><td className="p-3 font-medium text-gray-800">{stage.nome}</td><td>{Number(stage.plannedPercent).toFixed(0)}%</td><td>{Number(stage.actualPercent).toFixed(0)}%</td><td className={Number(stage.variancePoints) < -5 ? "font-semibold text-rose-600" : "text-emerald-700"}>{Number(stage.variancePoints) >= 0 ? "+" : ""}{Number(stage.variancePoints).toFixed(0)} p.p.</td><td>{date(stage.dataInicioPrevista)} → {date(stage.dataFimPrevista)}</td></tr>)}</tbody>
         </table>
       </div>
     </div>
