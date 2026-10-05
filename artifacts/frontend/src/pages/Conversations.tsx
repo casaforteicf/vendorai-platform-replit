@@ -385,6 +385,9 @@ function ChatPanel({
   const [sendingLibraryAsset, setSendingLibraryAsset] = useState(false);
   const [togglingAgentDisabled, setTogglingAgentDisabled] = useState(false);
   const [instagramConnectionId, setInstagramConnectionId] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailCc, setEmailCc] = useState("");
+  const [emailBcc, setEmailBcc] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -413,6 +416,33 @@ function ChatPanel({
   const instagramAccounts = instagramConnectionStatus?.connections ?? [];
   const selectedInstagramConnectionId =
     instagramConnectionId || instagramConnectionStatus?.id || instagramAccounts[0]?.id || "";
+
+  useEffect(() => {
+    if (conv.channel !== "email") return;
+    const lastSubject = typeof conv.metadata?.["lastEmailSubject"] === "string"
+      ? String(conv.metadata["lastEmailSubject"]).trim()
+      : "";
+    setEmailSubject(lastSubject ? (lastSubject.toLowerCase().startsWith("re:") ? lastSubject : `Re: ${lastSubject}`) : "");
+    setEmailCc("");
+    setEmailBcc("");
+  }, [conv.id, conv.channel, conv.metadata]);
+
+  function parseEmailList(value: string) {
+    return value
+      .split(/[;,]/)
+      .map((item) => item.trim())
+      .filter((item) => item.includes("@"))
+      .slice(0, 20);
+  }
+
+  function emailComposerFields() {
+    if (conv.channel !== "email") return {};
+    return {
+      emailSubject: emailSubject.trim() || undefined,
+      emailCc: parseEmailList(emailCc),
+      emailBcc: parseEmailList(emailBcc),
+    };
+  }
 
   const isHumanLocked = lead?.activeAgentLock === "human";
   const isAgentDisabled = !!lead?.agenteDesativado;
@@ -637,6 +667,7 @@ function ChatPanel({
           enviadoPor: MessageEnviadoPor.humano,
           midia: { mediaAssetId: libraryAsset.id },
           ...(conv.channel === "instagram" && selectedInstagramConnectionId ? { instagramConnectionId: selectedInstagramConnectionId } : {}),
+          ...emailComposerFields(),
         }),
       });
 
@@ -750,6 +781,7 @@ function ChatPanel({
           enviadoPor: MessageEnviadoPor.humano,
           ...(midia ? { midia } : {}),
           ...(conv.channel === "instagram" && selectedInstagramConnectionId ? { instagramConnectionId: selectedInstagramConnectionId } : {}),
+          ...emailComposerFields(),
         },
       },
       {
@@ -1178,6 +1210,38 @@ function ChatPanel({
                 >
                   <X className="h-4 w-4" />
                 </button>
+              </div>
+            )}
+
+            {conv.channel === "email" && (
+              <div className="grid gap-2 rounded-xl border border-blue-200/70 bg-blue-50/40 p-3 dark:border-blue-900 dark:bg-blue-950/20 md:grid-cols-2">
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Assunto</label>
+                  <Input
+                    value={emailSubject}
+                    onChange={(event) => setEmailSubject(event.target.value)}
+                    placeholder="Assunto do e-mail"
+                    className="h-8 bg-background text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-medium text-muted-foreground">CC</label>
+                  <Input
+                    value={emailCc}
+                    onChange={(event) => setEmailCc(event.target.value)}
+                    placeholder="email@empresa.com, outro@empresa.com"
+                    className="h-8 bg-background text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-medium text-muted-foreground">CCO</label>
+                  <Input
+                    value={emailBcc}
+                    onChange={(event) => setEmailBcc(event.target.value)}
+                    placeholder="copia.oculta@empresa.com"
+                    className="h-8 bg-background text-xs"
+                  />
+                </div>
               </div>
             )}
 
