@@ -197,6 +197,12 @@ export default function Configuracoes() {
     };
 
     const normalizeLegacyUi = () => {
+      const pageTitle = Array.from(root.querySelectorAll<HTMLHeadingElement>("h1")).find((heading) => normalizeText(heading.textContent ?? "") === "configuracoes");
+      const pageSubtitle = pageTitle?.nextElementSibling as HTMLElement | null;
+      if (pageSubtitle && normalizeText(pageSubtitle.textContent ?? "").includes("gerencie")) {
+        pageSubtitle.textContent = "Gerencie sua empresa, equipe, integrações e preferências.";
+      }
+
       root.querySelectorAll<HTMLHeadingElement>("h2").forEach((heading) => {
         const label = heading.textContent?.replace(/\s+/g, " ").trim();
         if (label !== "Logo da Plataforma") return;
@@ -252,14 +258,14 @@ export default function Configuracoes() {
 
         const label = document.createElement("label");
         label.className = "config-search__label";
-        label.textContent = "Buscar configuração";
+        label.textContent = "Buscar nas configurações";
 
         const input = document.createElement("input");
         input.type = "search";
         input.className = "config-search__input";
         input.placeholder = "Ex.: desconto, WhatsApp, contrato, logo, comissão...";
         input.autocomplete = "off";
-        input.setAttribute("aria-label", "Buscar configuração");
+        input.setAttribute("aria-label", "Buscar nas configurações");
 
         const results = document.createElement("div");
         results.className = "config-search__results";
@@ -313,50 +319,6 @@ export default function Configuracoes() {
 
         search.append(label, input, results);
         primaryTabList.parentElement?.insertBefore(search, primaryTabList);
-      }
-
-      if (primaryTabList && !root.querySelector("[data-config-governance='true']")) {
-        const governance = document.createElement("section");
-        governance.dataset.configGovernance = "true";
-        governance.className = "config-governance";
-        governance.setAttribute("aria-label", "Governança das configurações");
-        governance.innerHTML = `
-          <div class="config-governance__copy">
-            <strong>Configuração central do negócio</strong>
-            <span>Cada informação deve ter uma única fonte oficial para evitar divergências entre CRM, IA, propostas, marketing e automações.</span>
-          </div>
-          <div class="config-governance__sources" aria-label="Fontes oficiais">
-            <span><b>Empresa</b> dados cadastrais e institucionais</span>
-            <span><b>Marketing</b> Kit da Marca e identidade de comunicação</span>
-            <span><b>Planejamento</b> Perfil Mestre, PN, diagnóstico e prioridades</span>
-            <span><b>Catálogo</b> produtos, serviços, preços e estoque</span>
-            <span><b>IA e Agentes</b> comportamento e limites</span>
-            <span><b>Integrações</b> conexões e saúde</span>
-            <span><b>Documentos</b> modelos e assinatura</span>
-          </div>
-        `;
-        primaryTabList.parentElement?.insertBefore(governance, primaryTabList);
-      }
-
-      if (primaryTabList && !root.querySelector("[data-integration-health='true']")) {
-        const health = document.createElement("section");
-        health.dataset.integrationHealth = "true";
-        health.className = "integration-health";
-        health.setAttribute("aria-label", "Saúde das integrações");
-        health.innerHTML = `
-          <div class="integration-health__header">
-            <div>
-              <strong>Saúde das integrações</strong>
-              <span data-integration-health-summary>Verificando conexões...</span>
-            </div>
-            <button type="button" class="integration-health__refresh">Atualizar status</button>
-          </div>
-          <div class="integration-health__grid" data-integration-health-grid></div>
-        `;
-        const refresh = health.querySelector<HTMLButtonElement>(".integration-health__refresh");
-        refresh?.addEventListener("click", () => void loadIntegrationHealth(health));
-        primaryTabList.parentElement?.insertBefore(health, primaryTabList);
-        void loadIntegrationHealth(health);
       }
 
       if (primaryTabList && !root.querySelector("[data-mobile-config-selector='true']")) {
@@ -520,49 +482,6 @@ export default function Configuracoes() {
         }
         .config-search__result:hover, .config-search__result:focus-visible { background: hsl(var(--muted)); }
         .config-search__empty { padding: .55rem .65rem; font-size: .78rem; color: hsl(var(--muted-foreground)); }
-        .config-governance {
-          display: grid; gap: .75rem; margin: .5rem 0 1rem; padding: .9rem 1rem; border: 1px solid hsl(var(--border));
-          border-radius: .8rem; background: hsl(var(--muted) / .3);
-        }
-        .config-governance__copy { display: grid; gap: .2rem; }
-        .config-governance__copy strong { font-size: .9rem; }
-        .config-governance__copy span { font-size: .78rem; line-height: 1.4; color: hsl(var(--muted-foreground)); }
-        .config-governance__sources { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .45rem; }
-        .config-governance__sources span {
-          display: grid; gap: .1rem; min-width: 0; padding: .55rem .65rem; border: 1px solid hsl(var(--border));
-          border-radius: .6rem; background: hsl(var(--background)); font-size: .7rem; line-height: 1.25; color: hsl(var(--muted-foreground));
-        }
-        .config-governance__sources b { color: hsl(var(--foreground)); font-size: .73rem; }
-        .integration-health {
-          display: grid; gap: .7rem; margin: .5rem 0 1rem; padding: .9rem 1rem; border: 1px solid hsl(var(--border));
-          border-radius: .8rem; background: hsl(var(--background));
-        }
-        .integration-health__header { display: flex; align-items: center; justify-content: space-between; gap: .8rem; }
-        .integration-health__header > div { display: grid; gap: .15rem; }
-        .integration-health__header strong { font-size: .9rem; }
-        .integration-health__header span { font-size: .75rem; color: hsl(var(--muted-foreground)); }
-        .integration-health__refresh {
-          flex: 0 0 auto; padding: .45rem .65rem; border: 1px solid hsl(var(--border)); border-radius: .55rem;
-          background: hsl(var(--muted) / .35); font-size: .73rem; font-weight: 600;
-        }
-        .integration-health__grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .45rem; }
-        .integration-health__item {
-          width: 100%; min-width: 0; padding: .55rem .6rem; border: 1px solid hsl(var(--border)); border-radius: .6rem;
-          text-align: left; cursor: pointer; transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
-        }
-        .integration-health__item:hover { transform: translateY(-1px); box-shadow: 0 6px 18px hsl(var(--foreground) / .07); }
-        .integration-health__item:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
-        .integration-health__item-header { display: flex; align-items: center; justify-content: space-between; gap: .4rem; }
-        .integration-health__item-header strong { min-width: 0; font-size: .72rem; }
-        .integration-health__badge { flex: 0 0 auto; font-size: .62rem; font-weight: 700; }
-        .integration-health__detail { display: block; margin-top: .2rem; font-size: .66rem; color: hsl(var(--muted-foreground)); }
-        .integration-health__action { display: block; margin-top: .35rem; font-size: .64rem; font-weight: 700; color: hsl(var(--foreground)); }
-        .integration-health__item.is-connected { background: hsl(142 70% 45% / .08); border-color: hsl(142 55% 45% / .3); }
-        .integration-health__item.is-connected .integration-health__badge { color: hsl(142 55% 35%); }
-        .integration-health__item.is-attention { background: hsl(38 90% 50% / .09); border-color: hsl(38 80% 50% / .35); }
-        .integration-health__item.is-attention .integration-health__badge { color: hsl(32 75% 38%); }
-        .integration-health__item.is-off .integration-health__badge { color: hsl(var(--muted-foreground)); }
-        .integration-health__loading { grid-column: 1 / -1; padding: .35rem 0; font-size: .74rem; color: hsl(var(--muted-foreground)); }
         .vendor-config-without-site [data-integration-focus-target="true"] {
           outline: 2px solid hsl(var(--ring)); outline-offset: 4px; border-radius: .75rem;
           scroll-margin-block: 7rem;
@@ -581,9 +500,6 @@ export default function Configuracoes() {
         .catalog-source-note a { margin-left: auto; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
         .external-source-note { margin-top: .4rem; font-size: .75rem; line-height: 1.35; color: hsl(var(--muted-foreground)); }
         .external-source-note a { font-weight: 600; text-decoration: underline; text-underline-offset: 3px; color: hsl(var(--foreground)); }
-        @media (max-width: 900px) {
-          .config-governance__sources, .integration-health__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        }
         @media (max-width: 640px) {
           .vendor-config-without-site { overflow-x: clip; padding-bottom: 9rem; }
           .vendor-config-without-site [role="tablist"] { display: none !important; }
@@ -593,10 +509,6 @@ export default function Configuracoes() {
             width: 100% !important; min-height: 2.75rem; padding: 0 .8rem; border: 1px solid hsl(var(--border));
             border-radius: .65rem; background: hsl(var(--background)); color: hsl(var(--foreground)); font-size: .95rem;
           }
-          .config-governance, .integration-health { padding: .8rem; }
-          .config-governance__sources, .integration-health__grid { grid-template-columns: 1fr; }
-          .integration-health__header { align-items: flex-start; }
-          .integration-health__refresh { white-space: nowrap !important; }
           .vendor-config-without-site [role="tabpanel"] { overflow-x: clip; }
           .vendor-config-without-site input,
           .vendor-config-without-site textarea,
