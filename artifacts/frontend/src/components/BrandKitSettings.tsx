@@ -16,7 +16,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Label } from "@/components/ui/label";
-import { Save, Palette, ImageIcon, Building2, Megaphone, Brain, Library, ExternalLink, Sparkles, Loader2, CheckCircle2, ChevronLeft, ChevronRight, Package2, Eye } from "lucide-react";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Save, Palette, ImageIcon, Building2, Megaphone, Brain, Library, ExternalLink, Sparkles, Loader2, CheckCircle2, ChevronLeft, ChevronRight, Package2, Eye, Bot, WandSparkles } from "lucide-react";
 
 type BrandStudioMode = "maintain" | "evolve" | "rebuild";
 
@@ -117,6 +118,9 @@ export function BrandKitSettings() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiProposal, setAiProposal] = useState<BrandStudioProposal | null>(null);
   const [activeStep, setActiveStep] = useState(0);
+  const [agentOpen, setAgentOpen] = useState(false);
+  const [agentPrompt, setAgentPrompt] = useState("");
+  const [logoLoadFailed, setLogoLoadFailed] = useState(false);
 
   const wizardSteps = [
     { label: "Empresa", description: "Contexto oficial", icon: Building2 },
@@ -142,8 +146,12 @@ export function BrandKitSettings() {
   }, [profile.data?.id, profile.data?.discoveryData]);
 
   useEffect(() => {
-    setPrimaryColor(tenant.data?.corPrimaria || "#A78BFA");
+    setPrimaryColor(tenant.data?.corPrimaria || "#111111");
   }, [tenant.data?.corPrimaria]);
+
+  useEffect(() => {
+    setLogoLoadFailed(false);
+  }, [profile.data?.logoUrl, tenant.data?.logoUrl]);
 
   const completeness = useMemo(() => {
     const checks = [
@@ -166,7 +174,61 @@ export function BrandKitSettings() {
   }, [profile.data, tenant.data, discovery, draft]);
 
 
-  const buildWithAI = async () => {
+  const applyProposalForStep = (proposal: BrandStudioProposal, step = activeStep) => {
+    const palette = (proposal.palette ?? [])
+      .map((item) => [item.name, item.hex, item.use].filter(Boolean).join(" — "))
+      .filter(Boolean)
+      .join("\n");
+    const typography = [
+      proposal.typography?.headline ? `Títulos: ${proposal.typography.headline}` : "",
+      proposal.typography?.body ? `Textos: ${proposal.typography.body}` : "",
+      proposal.typography?.notes || "",
+    ].filter(Boolean).join("\n");
+    const style = [
+      proposal.visualStyle ? `Visual: ${proposal.visualStyle}` : "",
+      proposal.photographyStyle ? `Fotografia: ${proposal.photographyStyle}` : "",
+      proposal.videoStyle ? `Vídeo: ${proposal.videoStyle}` : "",
+    ].filter(Boolean).join("\n");
+    const avoid = [
+      ...(proposal.wordsToAvoid ?? []),
+      ...(proposal.dontList ?? []),
+    ].filter(Boolean).join(", ");
+    const messages = [
+      proposal.valueProposition,
+      ...(proposal.keyMessages ?? []),
+    ].filter(Boolean).join("\n• ");
+    const references = [
+      ...(proposal.applications ?? []),
+      ...(proposal.doList ?? []),
+    ].filter(Boolean).join("\n");
+
+    setDraft((current) => ({
+      ...current,
+      ...(step === 1 || step === 5 ? {
+        estiloVisual: style || current.estiloVisual,
+        tipografia: typography || current.tipografia,
+        coresSecundarias: palette || current.coresSecundarias,
+      } : {}),
+      ...(step === 2 || step === 5 ? {
+        posicionamento: proposal.positioning || current.posicionamento,
+        tomVoz: (proposal.toneOfVoice ?? []).join(", ") || current.tomVoz,
+        mensagensChave: messages ? `• ${messages}` : current.mensagensChave,
+        palavrasEvitar: avoid || current.palavrasEvitar,
+      } : {}),
+      ...(step === 4 || step === 5 ? {
+        referenciasVisuais: references || current.referenciasVisuais,
+      } : {}),
+    }));
+
+    const firstPaletteHex = (proposal.palette ?? [])
+      .map((item) => item.hex?.trim())
+      .find((hex) => /^#[0-9A-Fa-f]{6}$/.test(hex || ""));
+    if ((step === 1 || step === 5) && firstPaletteHex && !tenant.data?.corPrimaria) {
+      setPrimaryColor(firstPaletteHex);
+    }
+  };
+
+  const buildWithAI = async (notes?: string) => {
     if (!tenantId || aiLoading) return;
     setAiLoading(true);
     try {
@@ -177,61 +239,19 @@ export function BrandKitSettings() {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ mode: aiMode }),
+        body: JSON.stringify({ mode: aiMode, notes: notes || undefined }),
       });
       const payload = await response.json().catch(() => ({})) as { proposal?: BrandStudioProposal; error?: string };
       if (!response.ok || !payload.proposal) throw new Error(payload.error || "Não foi possível montar o Kit da Marca com IA.");
 
       const proposal = payload.proposal;
       setAiProposal(proposal);
-
-      const palette = (proposal.palette ?? [])
-        .map((item) => [item.name, item.hex, item.use].filter(Boolean).join(" — "))
-        .filter(Boolean)
-        .join("\n");
-      const typography = [
-        proposal.typography?.headline ? `Títulos: ${proposal.typography.headline}` : "",
-        proposal.typography?.body ? `Textos: ${proposal.typography.body}` : "",
-        proposal.typography?.notes || "",
-      ].filter(Boolean).join("\n");
-      const style = [
-        proposal.visualStyle ? `Visual: ${proposal.visualStyle}` : "",
-        proposal.photographyStyle ? `Fotografia: ${proposal.photographyStyle}` : "",
-        proposal.videoStyle ? `Vídeo: ${proposal.videoStyle}` : "",
-      ].filter(Boolean).join("\n");
-      const avoid = [
-        ...(proposal.wordsToAvoid ?? []),
-        ...(proposal.dontList ?? []),
-      ].filter(Boolean).join(", ");
-      const messages = [
-        proposal.valueProposition,
-        ...(proposal.keyMessages ?? []),
-      ].filter(Boolean).join("\n• ");
-      const references = [
-        ...(proposal.applications ?? []),
-        ...(proposal.doList ?? []),
-      ].filter(Boolean).join("\n");
-
-      setDraft((current) => ({
-        ...current,
-        posicionamento: proposal.positioning || current.posicionamento,
-        tomVoz: (proposal.toneOfVoice ?? []).join(", ") || current.tomVoz,
-        mensagensChave: messages ? `• ${messages}` : current.mensagensChave,
-        estiloVisual: style || current.estiloVisual,
-        tipografia: typography || current.tipografia,
-        coresSecundarias: palette || current.coresSecundarias,
-        palavrasEvitar: avoid || current.palavrasEvitar,
-        referenciasVisuais: references || current.referenciasVisuais,
-      }));
-
-      const firstPaletteHex = (proposal.palette ?? [])
-        .map((item) => item.hex?.trim())
-        .find((hex) => /^#[0-9A-Fa-f]{6}$/.test(hex || ""));
-      if (firstPaletteHex && (!tenant.data?.corPrimaria || tenant.data.corPrimaria === "#A78BFA")) {
-        setPrimaryColor(firstPaletteHex);
+      if (!notes) {
+        applyProposalForStep(proposal, activeStep);
+        toast({ title: "A IA montou uma proposta para esta etapa. Revise antes de salvar." });
+      } else {
+        toast({ title: "O agente concluiu a análise. Revise a recomendação antes de aplicar." });
       }
-
-      toast({ title: "A IA montou uma proposta de marca. Revise os campos antes de salvar." });
     } catch (error) {
       toast({
         title: error instanceof Error ? error.message : "Falha ao montar o Kit da Marca com IA.",
@@ -240,6 +260,27 @@ export function BrandKitSettings() {
     } finally {
       setAiLoading(false);
     }
+  };
+
+  const runAgentAction = async (action: "analyze" | "improve" | "fill" | "compare" | "audit" | "custom") => {
+    const step = wizardSteps[activeStep];
+    const instructions: Record<typeof action, string> = {
+      analyze: "Analise a etapa atual e destaque o que está bom, o que falta e o que merece atenção.",
+      improve: "Sugira melhorias práticas para a etapa atual, preservando a identidade oficial e sem inventar fatos.",
+      fill: "Identifique apenas campos vazios ou fracos desta etapa e proponha conteúdo para completar. Não altere fontes oficiais.",
+      compare: "Compare esta etapa com o contexto, conhecimento e planejamento disponíveis do tenant e aponte divergências.",
+      audit: "Faça uma auditoria de consistência desta etapa e identifique conflitos entre marca, posicionamento, público, ofertas e mídias.",
+      custom: agentPrompt.trim() || "Ajude a melhorar esta etapa do Kit da Marca.",
+    };
+    const sourceRules = activeStep === 0 || activeStep === 3
+      ? "Esta etapa usa fontes oficiais. Não proponha edição direta de dados institucionais ou catálogo; indique a fonte oficial que deve ser atualizada."
+      : "Qualquer alteração é apenas sugestão e só deve ser aplicada após revisão humana.";
+    await buildWithAI([
+      `Etapa atual: ${activeStep + 1}. ${step.label} — ${step.description}.`,
+      instructions[action],
+      sourceRules,
+      "Nunca recrie, recorte, distorça ou substitua a logo oficial.",
+    ].join("\n"));
   };
 
   const saveBrandContext = async () => {
@@ -299,6 +340,8 @@ export function BrandKitSettings() {
   const logoUrl = profile.data?.logoUrl || tenant.data?.logoUrl || "";
   const companyName = profile.data?.nomeFantasia || profile.data?.razaoSocial || "Sua marca";
   const isSaving = updateProfile.isPending || updateTenant.isPending;
+  const hasOfficialPrimaryColor = Boolean(tenant.data?.corPrimaria);
+  const canApplyAgentSuggestion = Boolean(aiProposal) && ![0, 3].includes(activeStep);
 
   return (
     <div className="space-y-4">
@@ -308,15 +351,15 @@ export function BrandKitSettings() {
             <div className="flex flex-wrap items-center gap-2">
               <Megaphone className="h-5 w-5 text-primary" />
               <h1 className="text-xl font-semibold">Kit da Marca</h1>
-              <Badge variant="secondary">{completeness}% completo</Badge>
+              <Badge variant="secondary">{completeness === 100 ? "Kit configurado" : `${completeness}% configurado`}</Badge>
             </div>
             <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
               Central oficial da identidade do tenant. O que for definido aqui alimenta Marketing, conteúdos, anúncios, sites, propostas, vídeos e agentes.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" type="button" onClick={() => window.location.assign("/diagnostico-planejamento")}>
-              Diagnóstico & Planejamento
+            <Button variant="outline" type="button" onClick={() => setAgentOpen(true)}>
+              <Bot className="mr-2 h-4 w-4" />Apoio da IA
             </Button>
             <Button type="button" onClick={saveBrandContext} disabled={isSaving || !profile.data?.id}>
               <Save className="mr-2 h-4 w-4" />
@@ -372,28 +415,37 @@ export function BrandKitSettings() {
               </p>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
-              <div><Label>Empresa</Label><Input value={companyName} readOnly /></div>
-              <div><Label>Segmento</Label><Input value={profile.data?.vertical || ""} readOnly /></div>
-              <div className="md:col-span-2"><Label>Diferenciais</Label><Textarea value={profile.data?.diferenciais || ""} readOnly rows={3} /></div>
-              <div className="md:col-span-2"><Label>Público / ICP</Label><Textarea value={profile.data?.publicoAlvo || ""} readOnly rows={3} /></div>
+              <div className="rounded-xl border bg-muted/10 p-3"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Empresa</p><p className="mt-1 text-sm font-medium">{companyName}</p></div>
+              <div className="rounded-xl border bg-muted/10 p-3"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Segmento</p><p className="mt-1 text-sm font-medium">{profile.data?.vertical || "Não informado"}</p></div>
+              <div className="md:col-span-2 rounded-xl border bg-muted/10 p-3"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Diferenciais</p><p className="mt-1 line-clamp-3 whitespace-pre-line text-sm">{profile.data?.diferenciais || "Não informado"}</p></div>
+              <div className="md:col-span-2 rounded-xl border bg-muted/10 p-3"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Público / ICP</p><p className="mt-1 line-clamp-3 whitespace-pre-line text-sm">{profile.data?.publicoAlvo || "Não informado"}</p></div>
             </div>
-            <Button variant="outline" type="button" onClick={() => window.location.assign("/configuracoes?tab=perfil")}>
-              Editar dados institucionais <ExternalLink className="ml-2 h-4 w-4" />
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" type="button" onClick={() => window.location.assign("/configuracoes?tab=perfil")}>
+                Editar em Empresa <ExternalLink className="ml-2 h-4 w-4" />
+              </Button>
+              <Button variant="ghost" type="button" onClick={() => window.location.assign("/diagnostico-planejamento")}>
+                Ver Diagnóstico & Planejamento
+              </Button>
+            </div>
           </div>
 
           <div className="rounded-2xl border bg-card p-5">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Resumo da marca</p>
             <div className="mt-4 flex min-h-36 items-center justify-center rounded-xl border bg-muted/20 p-5">
-              {logoUrl ? (
-                <img src={logoUrl} alt="Logo oficial" className="max-h-24 max-w-full object-contain" />
+              {logoUrl && !logoLoadFailed ? (
+                <img src={logoUrl} alt="Logo oficial" className="max-h-24 max-w-full object-contain" onError={() => setLogoLoadFailed(true)} />
               ) : (
-                <div className="text-center text-sm text-muted-foreground">Logo oficial ainda não cadastrada</div>
+                <div className="text-center text-sm text-muted-foreground">
+                  {logoUrl ? "Não foi possível carregar a logo oficial. Verifique o arquivo cadastrado." : "Logo oficial ainda não cadastrada"}
+                </div>
               )}
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
               <div className="rounded-lg border p-3"><span className="text-muted-foreground">Marca</span><p className="mt-1 font-medium">{companyName}</p></div>
-              <div className="rounded-lg border p-3"><span className="text-muted-foreground">Cor principal</span><div className="mt-1 flex items-center gap-2 font-mono"><span className="h-4 w-4 rounded-full border" style={{ backgroundColor: primaryColor }} />{primaryColor}</div></div>
+              <div className="rounded-lg border p-3"><span className="text-muted-foreground">Cor principal</span><div className="mt-1 flex items-center gap-2 font-mono">{hasOfficialPrimaryColor ? <><span className="h-4 w-4 rounded-full border" style={{ backgroundColor: primaryColor }} />{primaryColor}</> : <span className="text-muted-foreground">Não definida</span>}</div></div>
+              <div className="rounded-lg border p-3"><span className="text-muted-foreground">Tipografia</span><p className="mt-1 line-clamp-2 font-medium">{draft.tipografia || "Não definida"}</p></div>
+              <div className="rounded-lg border p-3"><span className="text-muted-foreground">Tom de voz</span><p className="mt-1 line-clamp-2 font-medium">{draft.tomVoz || "Não definido"}</p></div>
             </div>
           </div>
         </section>
@@ -553,6 +605,65 @@ export function BrandKitSettings() {
           </div>
         </section>
       )}
+
+      <Sheet open={agentOpen} onOpenChange={setAgentOpen}>
+        <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2"><Bot className="h-5 w-5 text-primary" />Agente de apoio do Kit da Marca</SheetTitle>
+            <SheetDescription>
+              Contexto atual: etapa {activeStep + 1} de {wizardSteps.length} · {wizardSteps[activeStep].label}. O agente usa o contexto do tenant e não altera nada sem sua revisão.
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="mt-6 space-y-5">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button variant="outline" type="button" disabled={aiLoading} onClick={() => runAgentAction("analyze")}><Sparkles className="mr-2 h-4 w-4" />Analisar esta etapa</Button>
+              <Button variant="outline" type="button" disabled={aiLoading} onClick={() => runAgentAction("improve")}><WandSparkles className="mr-2 h-4 w-4" />Sugerir melhorias</Button>
+              <Button variant="outline" type="button" disabled={aiLoading} onClick={() => runAgentAction("fill")}>Completar lacunas</Button>
+              <Button variant="outline" type="button" disabled={aiLoading} onClick={() => runAgentAction("compare")}>Comparar com planejamento</Button>
+              <Button variant="outline" type="button" disabled={aiLoading} onClick={() => runAgentAction("audit")}>Verificar inconsistências</Button>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="brand-agent-prompt">Peça algo específico</Label>
+              <Textarea id="brand-agent-prompt" value={agentPrompt} onChange={(event) => setAgentPrompt(event.target.value)} placeholder="Ex.: deixe o posicionamento mais técnico, sem perder proximidade." rows={3} />
+              <Button type="button" disabled={aiLoading || !agentPrompt.trim()} onClick={() => runAgentAction("custom")}>
+                {aiLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                {aiLoading ? "Analisando..." : "Enviar ao agente"}
+              </Button>
+            </div>
+
+            {aiProposal ? (
+              <div className="space-y-3 rounded-2xl border bg-muted/20 p-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Diagnóstico</p>
+                  <p className="mt-1 text-sm leading-6">{aiProposal.diagnosis || "Análise concluída com o contexto disponível."}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recomendação</p>
+                  <p className="mt-1 text-sm leading-6">{aiProposal.rationale || "Revise as sugestões antes de aplicar."}</p>
+                </div>
+                {canApplyAgentSuggestion ? (
+                  <Button type="button" className="w-full" onClick={() => {
+                    applyProposalForStep(aiProposal, activeStep);
+                    toast({ title: "Sugestões aplicadas nesta etapa. Revise e salve quando estiver pronto." });
+                  }}>
+                    Aplicar sugestões nesta etapa
+                  </Button>
+                ) : (
+                  <div className="rounded-xl border border-dashed p-3 text-xs text-muted-foreground">
+                    Esta etapa usa fonte oficial. O agente pode analisar e indicar ajustes, mas a alteração deve ser feita em {activeStep === 0 ? "Empresa" : "Catálogo"}.
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
+                Escolha uma ação acima. O agente considera a etapa atual, o tenant, a base de conhecimento, o Kit da Marca e as mídias disponíveis.
+              </div>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <div className="sticky bottom-3 z-20 flex items-center justify-between rounded-2xl border bg-background/95 p-3 shadow-lg backdrop-blur">
         <Button variant="outline" type="button" onClick={() => goToStep(activeStep - 1)} disabled={activeStep === 0}>
