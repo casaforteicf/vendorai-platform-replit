@@ -13,8 +13,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: cloudflare-pages-production
-  cancel-in-progress: true
+  group: vendorai-production-release
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -261,3 +261,48 @@ jobs:
 
           echo "Custom domain was attached but is not active yet."
           exit 1
+
+
+      - name: Verify production bundle integrity
+        if: steps.deploy_primary.outcome == 'success' || steps.deploy_fallback.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="artifacts/frontend/dist/public"
+          public_base="https://app.appvendorai.com"
+
+          entry="$(grep -oE '/assets/index-[^" ]+\.js' "$root/index.html" | head -1)"
+          if [ -z "$entry" ]; then
+            echo "::error::Could not resolve frontend entry asset from built index.html."
+            exit 1
+          fi
+
+          echo "Waiting for production HTML to expose $entry"
+          matched=false
+          for attempt in {1..24}; do
+            html="$(curl -fsSL --connect-timeout 5 --max-time 20 "$public_base/?__vendorai_integrity=$RANDOM" || true)"
+            if grep -F -- "$entry" <<<"$html" >/dev/null; then
+              matched=true
+              break
+            fi
+            echo "Production still points to another bundle (attempt $attempt/24)."
+            sleep 5
+          done
+
+          if [ "$matched" != true ]; then
+            echo "::error::Production HTML did not switch to the newly deployed entry asset $entry."
+            exit 1
+          fi
+
+          echo "Verifying every published JS/CSS asset from this build."
+          find "$root/assets" -maxdepth 1 -type f \( -name '*.js' -o -name '*.css' \) -printf '%f\n' \
+            | sort \
+            | xargs -r -P 20 -n 1 sh -c '
+                file="$1"
+                if ! curl -fsS --connect-timeout 5 --max-time 20 -o /dev/null "'"$public_base"'/assets/$file"; then
+                  echo "::error::Published bundle is missing asset: $file"
+                  exit 1
+                fi
+              ' sh
+
+          echo "Production bundle integrity verified."
