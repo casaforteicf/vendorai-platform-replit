@@ -403,7 +403,8 @@ router.get(
   "/tenants/:tenantId/vendor-credit-purchases",
   requireSameTenanOrSuperAdmin(),
   async (req, res) => {
-    await sendVendorCreditPurchases(String(req.params["tenantId"]), res);
+    const tenantId = String(req.params["tenantId"]); // tenant-audit: reviewed protected by requireSameTenanOrSuperAdmin before tenant data access
+    await sendVendorCreditPurchases(tenantId, res);
   },
 );
 
@@ -412,7 +413,8 @@ router.get(
   "/tenants/:tenantId/token-purchases",
   requireSameTenanOrSuperAdmin(),
   async (req, res) => {
-    await sendVendorCreditPurchases(String(req.params["tenantId"]), res);
+    const tenantId = String(req.params["tenantId"]); // tenant-audit: reviewed protected by requireSameTenanOrSuperAdmin before tenant data access
+    await sendVendorCreditPurchases(tenantId, res);
   },
 );
 
