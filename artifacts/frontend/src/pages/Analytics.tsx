@@ -619,7 +619,7 @@ export default function Analytics() {
                                     size="sm"
                                     variant="ghost"
                                     className="h-8 gap-1.5"
-                                    onClick={() => setLocation("/agentes/config")}
+                                    onClick={() => setLocation("/agents/config")}
                                   >
                                     <Wrench className="h-3.5 w-3.5" />
                                     Resolver
