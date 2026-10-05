@@ -5,6 +5,7 @@ const ZONE_NAME = "appvendorai.com";
 const PAGES_TARGET = "vendorai.pages.dev";
 
 const token = process.env.CLOUDFLARE_API_TOKEN;
+const dnsToken = process.env.CLOUDFLARE_DNS_API_TOKEN || token;
 const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
 const configuredZoneId = process.env.CLOUDFLARE_ZONE_ID;
 
@@ -12,11 +13,11 @@ if (!token || !accountId) {
   throw new Error("CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are required");
 }
 
-async function cf(path, init = {}) {
+async function cf(path, init = {}, authToken = token) {
   const response = await fetch(`${API}${path}`, {
     ...init,
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${authToken}`,
       "Content-Type": "application/json",
       ...(init.headers || {}),
     },
@@ -70,7 +71,7 @@ async function resolveZoneId() {
     return configuredZoneId;
   }
 
-  const zones = await cf(`/zones?name=${encodeURIComponent(ZONE_NAME)}`);
+  const zones = await cf(`/zones?name=${encodeURIComponent(ZONE_NAME)}`, {}, dnsToken);
   const zonesPayload = assertSuccess("Read Cloudflare zone", zones);
   const zoneId = zonesPayload?.result?.[0]?.id;
   if (!zoneId) throw new Error(`Cloudflare zone not found: ${ZONE_NAME}`);
@@ -79,7 +80,11 @@ async function resolveZoneId() {
 
 async function ensureDns() {
   const zoneId = await resolveZoneId();
-  const records = await cf(`/zones/${zoneId}/dns_records?name=${encodeURIComponent(DOMAIN)}`);
+  const records = await cf(
+    `/zones/${zoneId}/dns_records?name=${encodeURIComponent(DOMAIN)}`,
+    {},
+    dnsToken,
+  );
   const recordsPayload = assertSuccess("Read production DNS", records);
   const existing = recordsPayload?.result?.[0];
 
@@ -98,17 +103,25 @@ async function ensureDns() {
   });
 
   if (existing?.id) {
-    const updated = await cf(`/zones/${zoneId}/dns_records/${existing.id}`, {
-      method: "PUT",
-      body: payload,
-    });
+    const updated = await cf(
+      `/zones/${zoneId}/dns_records/${existing.id}`,
+      {
+        method: "PUT",
+        body: payload,
+      },
+      dnsToken,
+    );
     assertSuccess("Update production DNS", updated);
     console.log(`Updated DNS: ${DOMAIN} -> ${PAGES_TARGET}`);
   } else {
-    const created = await cf(`/zones/${zoneId}/dns_records`, {
-      method: "POST",
-      body: payload,
-    });
+    const created = await cf(
+      `/zones/${zoneId}/dns_records`,
+      {
+        method: "POST",
+        body: payload,
+      },
+      dnsToken,
+    );
     assertSuccess("Create production DNS", created);
     console.log(`Created DNS: ${DOMAIN} -> ${PAGES_TARGET}`);
   }
