@@ -56,6 +56,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { ProspectorAprovacoesContent } from "./ProspectorAprovacoes";
+import { ProspectorLocationMap } from "@/components/ProspectorLocationMap";
 
 type SearchFilter = "todos" | "fortes" | "com_contato";
 type QueueFilter = "todos" | "quentes" | "aquecendo" | "analisando";
@@ -408,7 +409,7 @@ function ProspectorAutoConfig({ tenantId, isSuperAdmin }: { tenantId: string; is
           <div className="space-y-4">
             <div className="grid gap-3 lg:grid-cols-2">
               <MultiValueInput label="Nichos / ICP" values={setores} onChange={setSetores} placeholder="Ex: materiais de construção" maxItems={10} helper="Enter, vírgula ou ponto e vírgula adiciona outro nicho." />
-              <MultiValueInput label="Localidades" values={cidades} onChange={setCidades} placeholder="Ex: Chapecó, SC" maxItems={20} helper="Pode usar cidade, região ou praça comercial." />
+              <div className="space-y-2"><MultiValueInput label="Localidades" values={cidades} onChange={setCidades} placeholder="Ex: Chapecó, SC" maxItems={20} helper="Pode usar cidade, região ou praça comercial." /><ProspectorLocationMap values={cidades} onChange={setCidades} maxItems={20} /></div>
             </div>
             <div className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
               <div className="space-y-1.5">
@@ -887,7 +888,7 @@ export default function ProspectorClassic() {
             <CardContent className="space-y-4">
               <div className="grid gap-3 lg:grid-cols-2">
                 <MultiValueInput label="Atividades / nichos" values={nichos} onChange={setNichos} placeholder="Ex: lojas de piscinas" maxItems={10} />
-                <MultiValueInput label="Localidades" values={localidades} onChange={setLocalidades} placeholder="Ex: Chapecó, SC" maxItems={20} />
+                <div className="space-y-2"><MultiValueInput label="Localidades" values={localidades} onChange={setLocalidades} placeholder="Ex: Chapecó, SC" maxItems={20} /><ProspectorLocationMap values={localidades} onChange={setLocalidades} maxItems={20} /></div>
               </div>
               <div className="space-y-1.5">
                 <div className="flex flex-wrap items-center justify-between gap-2"><Label>Limite total de resultados</Label><div className="flex gap-2"><Badge variant="secondary">{maxResults} prospects</Badge><Badge variant="outline">{nichos.length * localidades.length} combinação(ões)</Badge></div></div>
