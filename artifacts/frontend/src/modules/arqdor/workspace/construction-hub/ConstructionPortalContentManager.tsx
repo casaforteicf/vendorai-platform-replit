@@ -18,6 +18,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export default function ConstructionPortalContentManager({ tenantId, obraId }: { tenantId: string; obraId: string }) {
   const [documents, setDocuments] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
+  const [portalUsers, setPortalUsers] = useState<any[]>([]);
+  const [briefingQuestions, setBriefingQuestions] = useState("");
   const [item, setItem] = useState({
     kind: "briefing", title: "", description: "", visibility: "interno",
     version: "", dueAt: "", startsAt: "", endsAt: "", requiresAction: false,
@@ -32,13 +34,15 @@ export default function ConstructionPortalContentManager({ tenantId, obraId }: {
 
   async function load() {
     if (!tenantId || !obraId) return;
-    const [docs, support, publishedItems] = await Promise.all([
+    const [docs, support, publishedItems, users] = await Promise.all([
       request<any>(`${base}/documents`),
       request<any>(`${base}/support`),
       request<any>(`${base}/items`),
+      request<any>(`${base}/users`),
     ]);
     setDocuments(docs.documents ?? []);
     setItems(publishedItems.items ?? []);
+    setPortalUsers(users.users ?? []);
     setTickets(support.tickets ?? []);
     setMessages(support.messages ?? []);
   }
