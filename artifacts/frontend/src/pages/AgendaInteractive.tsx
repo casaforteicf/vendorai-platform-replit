@@ -339,7 +339,7 @@ export default function AgendaPage() {
   const alertIcon = (kind: AlertKind) => kind === "conflict" ? <CircleAlert className="h-4 w-4 text-red-500" /> : kind === "overdue" ? <AlertTriangle className="h-4 w-4 text-amber-600" /> : kind === "unconfirmed" ? <BellRing className="h-4 w-4 text-amber-500" /> : <Clock className="h-4 w-4 text-blue-500" />;
 
   return (
-    <div className="vendor-product-page vendor-page-canvas vendor-agenda-page flex h-full min-h-0 flex-col gap-4 md:flex-row md:gap-5">
+    <div className="vendor-product-page vendor-agenda-page flex h-full min-h-0 flex-col gap-4 md:flex-row md:gap-5">
       <aside className="hidden md:flex w-52 shrink-0 flex-col gap-1">
         <div className="flex items-center justify-between mb-1 px-1"><span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Agendas</span><button onClick={openNewAgenda} className="p-1 rounded-md hover:bg-muted" title="Nova agenda"><Plus className="h-3.5 w-3.5 text-muted-foreground" /></button></div>
         <button className={`flex items-center gap-2 px-2.5 py-2 rounded-lg text-left transition-colors ${selectedAgendaId === null ? "bg-primary/10 font-semibold text-primary" : "hover:bg-muted"}`} onClick={() => setSelectedAgendaId(null)}><span className="w-2.5 h-2.5 rounded-full bg-muted-foreground/30" /><span className="text-sm">Todas</span></button>
