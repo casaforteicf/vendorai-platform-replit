@@ -28,7 +28,7 @@ import {
   ThumbsUp,
 } from "lucide-react";
 import PortalClientDecisions from "./PortalClientDecisions";
-import { PortalAgenda, PortalBriefing, PortalNextActions, PortalSearch } from "./PortalObraJourneySuite";
+import { PortalAgenda, PortalBriefing, PortalNextActions, PortalPostSale, PortalSearch, PortalVendi } from "./PortalObraJourneySuite";
 import {
   PortalAuthGate,
   PortalCommercial,
@@ -100,6 +100,8 @@ type Publication = {
   showBriefing?: boolean;
   showAgenda?: boolean;
   showSearch?: boolean;
+  showPostSale?: boolean;
+  showVendi?: boolean;
 };
 
 interface PortalData {
@@ -276,6 +278,7 @@ interface PortalData {
   briefing?: any | null;
   agenda?: any[];
   nextActions?: any[];
+  postSale?: any | null;
 }
 
 const OBRA_STATUS: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -433,6 +436,8 @@ export default function PortalObra() {
       p.showProcurementSummary !== false ? { id: "compras" as const, label: "Compras", icon: <Layers className="h-4 w-4" /> } : null,
       p.showFinancialSummary === true ? { id: "financeiro" as const, label: "Financeiro", icon: <CircleDollarSign className="h-4 w-4" /> } : null,
       p.showBudget !== false ? { id: "orcamento" as const, label: "Orçamento", icon: <CircleDollarSign className="h-4 w-4" /> } : null,
+      p.showPostSale !== false ? { id: "entrega" as const, label: "Entrega & Pós-venda", icon: <CheckCircle2 className="h-4 w-4" /> } : null,
+      p.showVendi !== false ? { id: "vendi" as const, label: "Vendi", icon: <Sparkles className="h-4 w-4" /> } : null,
       p.showSupport !== false ? { id: "suporte" as const, label: "Suporte", icon: <FileText className="h-4 w-4" /> } : null,
       p.showChat !== false ? { id: "chat" as const, label: "Chat", icon: <FileText className="h-4 w-4" /> } : null,
     ].filter(Boolean) as Array<{ id: TabId; label: string; icon: React.ReactNode }>;
@@ -480,6 +485,7 @@ export default function PortalObra() {
   const briefing = data.briefing ?? null;
   const agenda = data.agenda ?? [];
   const nextActions = data.nextActions ?? [];
+  const postSale = data.postSale ?? null;
   const obraStatus = OBRA_STATUS[obra.status] ?? { label: obra.status, color: "bg-gray-100 text-gray-600", icon: null };
   const totalEtapas = etapas.length;
   const avgProgress = Math.round(resumo?.progressoGeral ?? (totalEtapas > 0 ? etapas.reduce((s, e) => s + parseFloat(e.percentualExecutado ?? "0"), 0) / totalEtapas : 0));
@@ -777,6 +783,18 @@ export default function PortalObra() {
         {activeTab === "notas" && data.publication?.showInvoices !== false ? (
           <Section title="Notas Fiscais" icon={<FileText className="h-5 w-5" />}>
             <PortalDocumentLibrary title="Notas fiscais" items={invoices} />
+          </Section>
+        ) : null}
+
+        {activeTab === "entrega" && data.publication?.showPostSale !== false ? (
+          <Section title="Entrega e Pós-venda" icon={<CheckCircle2 className="h-5 w-5" />}>
+            <PortalPostSale token={token} sessionToken={portalSession} postSale={postSale} onRefresh={() => void loadPortal(portalSession)} />
+          </Section>
+        ) : null}
+
+        {activeTab === "vendi" && data.publication?.showVendi !== false ? (
+          <Section title="Vendi — Assistente do Projeto" icon={<Sparkles className="h-5 w-5" />}>
+            <PortalVendi data={data} onNavigate={(tab) => handleTabChange(tab as TabId)} />
           </Section>
         ) : null}
 
