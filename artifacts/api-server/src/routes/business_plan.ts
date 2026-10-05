@@ -254,7 +254,7 @@ router.put(`${base}/sections/:section`, async (req, res) => {
     return;
   }
   try {
-    const tenantId = String(req.params.tenantId);
+    const tenantId = String(req.params.tenantId); // tenant-audit: reviewed protected by base requireSameTenanOrSuperAdmin middleware
     await validateBusinessReferences(tenantId, normalizedRecords);
     const plan = await saveBusinessPlanSection({ ...parsed.data, records: normalizedRecords, tenantId, section, by: req.user!.sub });
     res.json({ plan });
