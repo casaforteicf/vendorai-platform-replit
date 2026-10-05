@@ -51,4 +51,14 @@ describe("Arqdor Client Portal 2.0 contracts", () => {
     expect(source).toContain("getOpenAIForTenant");
   });
 
+  it("keeps internal construction costs private and supports granular publication", () => {
+    expect(source).toContain("visible_to_client=true");
+    expect(source).toContain("showUnitPrice");
+    expect(source).toContain("showTotal");
+    expect(source).toContain("precoUnitarioCliente");
+    expect(source).toContain("valorTotalCliente");
+    expect(source).toContain('"/tenants/:tenantId/obras/:obraId/portal/budget-items"');
+    expect(source).not.toContain("Custo realizado");
+  });
+
 });
