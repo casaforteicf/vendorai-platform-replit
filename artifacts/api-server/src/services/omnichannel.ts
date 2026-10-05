@@ -1106,6 +1106,8 @@ export async function sendOutgoingMessage(
     }
   }
 
+  let providerExternalId: string | undefined;
+
   // ── 3c. E-mail: envio transacional real via provedor configurado
   // O canal já existia no CRM, mas antes deste bloco a mensagem era apenas
   // persistida como "enviado" sem chamar nenhum provedor externo.
@@ -1118,7 +1120,7 @@ export async function sendOutgoingMessage(
       mimeType: input.midia.mimeType,
       content: await fetchMidiaBuffer(input.midia.objectPath),
     } : undefined;
-    await sendOperationalEmail({
+    providerExternalId = await sendOperationalEmail({
       to: lead.email,
       subject,
       text: conteudo,
@@ -1172,6 +1174,7 @@ export async function sendOutgoingMessage(
       tipoConteudo: input.midia ? inferTipoConteudo(input.midia.mimeType) : "texto",
       midiaUrl: input.midia?.url ?? null,
       status: "enviado",
+      externalId: providerExternalId ?? null,
     })
     .returning();
 
