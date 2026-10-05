@@ -173,8 +173,8 @@ router.get("/tenants/:tenantId/analytics/agents", async (req, res) => {
 
 
 // ─── Agent Operational Actions ───────────────────────────────────────────────
-// Expõe os eventos recentes que explicam falhas/rejeições/pendências.
-// O payload é retornado para permitir diagnóstico e reexecução segura no frontend.
+// Expõe somente diagnóstico e dados mínimos necessários para uma nova tentativa.
+// Nunca devolve o payload bruto ao frontend, reduzindo risco de vazar contexto sensível.
 
 router.get("/tenants/:tenantId/analytics/agent-actions", async (req, res) => {
   const { tenantId: tid } = req.params;
@@ -210,17 +210,46 @@ router.get("/tenants/:tenantId/analytics/agent-actions", async (req, res) => {
       ?? null;
   };
 
+  const buildRetry = (payload: unknown) => {
+    if (!payload || typeof payload !== "object") return null;
+    const p = payload as Record<string, any>;
+    const goal = typeof p.goal === "string" ? p.goal.trim() : "";
+    const startUrl = typeof p.startUrl === "string" ? p.startUrl : undefined;
+    const connectionId = typeof p.connectionId === "string" ? p.connectionId : undefined;
+    if (!goal || (!startUrl && !connectionId)) return null;
+    return { goal, ...(startUrl ? { startUrl } : {}), ...(connectionId ? { connectionId } : {}) };
+  };
+
+  const resolutionHint = (status: string, reason: string | null, retryable: boolean) => {
+    const normalized = (reason ?? "").toLowerCase();
+    if (normalized.includes("auth") || normalized.includes("credential") || normalized.includes("token")) {
+      return "Revise a conexão ou credencial do agente e tente novamente.";
+    }
+    if (normalized.includes("timeout") || normalized.includes("timed out")) {
+      return retryable ? "Tente novamente; se persistir, revise a conexão e o tempo limite." : "Revise a conexão e execute novamente pelo agente.";
+    }
+    if (status === "pending") return "Abra o agente para concluir a aprovação ou a etapa que está aguardando continuidade.";
+    if (retryable) return "Tente novamente por aqui; se falhar de novo, abra a configuração do agente.";
+    return "Abra a configuração do agente para revisar os dados necessários e executar novamente.";
+  };
+
   res.json({
     periodo: "30d",
-    items: operational.map((row) => ({
-      id: row.id,
-      agentName: row.agentName,
-      actionType: row.actionType,
-      status: row.status,
-      reason: extractReason(row.payload),
-      payload: row.payload,
-      createdAt: row.createdAt,
-    })),
+    items: operational.map((row) => {
+      const reason = extractReason(row.payload);
+      const retry = buildRetry(row.payload);
+      return {
+        id: row.id,
+        agentName: row.agentName,
+        actionType: row.actionType,
+        status: row.status,
+        reason,
+        resolutionHint: resolutionHint(row.status, reason, Boolean(retry)),
+        isRetryable: Boolean(retry),
+        retry,
+        createdAt: row.createdAt,
+      };
+    }),
   });
 });
 
