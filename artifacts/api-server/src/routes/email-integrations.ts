@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request } from "express";
 import { and, desc, eq } from "drizzle-orm";
+import { z } from "zod/v4";
 import { db, notificationsTable } from "@workspace/db";
 import { authenticate } from "../middlewares/auth.js";
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
@@ -12,6 +13,7 @@ import {
   exchangeEmailCode,
   listEmailConnections,
   syncConnectedEmailInbox,
+  updateEmailSettings,
   type EmailProvider,
 } from "../services/email-platforms.js";
 
@@ -61,6 +63,22 @@ router.delete("/tenants/:tenantId/email-connections/:provider", authenticate, as
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   await disconnectEmail(tenantId, selected);
   return res.json({ success: true });
+});
+
+router.patch("/tenants/:tenantId/email-connections/:provider/settings", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId); // tenant-audit: reviewed guarded immediately by authenticated same-tenant/super-admin access
+  const selected = provider(req.params.provider);
+  if (!selected) return res.status(404).json({ error: "provider_not_supported" });
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = z.object({ signature: z.string().max(4000).optional() }).safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: "invalid_email_settings" });
+  const updated = await updateEmailSettings(tenantId, selected, parsed.data);
+  if (!updated) return res.status(404).json({ error: "connection_not_found" });
+  return res.json({
+    success: true,
+    provider: selected,
+    signature: typeof updated.metadata?.["signature"] === "string" ? updated.metadata["signature"] : "",
+  });
 });
 
 router.post("/tenants/:tenantId/email-connections/:provider/test", authenticate, async (req, res) => {
