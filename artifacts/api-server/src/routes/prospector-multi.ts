@@ -129,7 +129,7 @@ router.get("/prospector/config-multi", async (req, res) => {
 
 router.get("/prospector/pilot-validation", async (req, res) => {
   try {
-    const explicitTenantId = typeof req.query["tenantId"] === "string" ? req.query["tenantId"] : undefined;
+    const explicitTenantId = typeof req.query["tenantId"] === "string" ? req.query["tenantId"] : undefined; // tenant-audit: reviewed resolveTenantId accepts explicit tenant only for super_admin
     const tenantId = resolveTenantId(req, explicitTenantId);
     const coldSources = ["prospector", "prospector_auto", "cnpj", "recem_aberta", "ad_library"];
 
