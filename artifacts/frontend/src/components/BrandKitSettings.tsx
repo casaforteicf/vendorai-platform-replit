@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Label } from "@/components/ui/label";
-import { Save, Palette, ImageIcon, Building2, Megaphone, Brain, Library, ExternalLink, Sparkles, Loader2 } from "lucide-react";
+import { Save, Palette, ImageIcon, Building2, Megaphone, Brain, Library, ExternalLink, Sparkles, Loader2, CheckCircle2, ChevronLeft, ChevronRight, Package2, Eye } from "lucide-react";
 
 type BrandStudioMode = "maintain" | "evolve" | "rebuild";
 
@@ -116,6 +116,16 @@ export function BrandKitSettings() {
   const [aiMode, setAiMode] = useState<BrandStudioMode>("evolve");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiProposal, setAiProposal] = useState<BrandStudioProposal | null>(null);
+  const [activeStep, setActiveStep] = useState(0);
+
+  const wizardSteps = [
+    { label: "Empresa", description: "Contexto oficial", icon: Building2 },
+    { label: "Identidade", description: "Logo, cores e tipografia", icon: Palette },
+    { label: "Voz", description: "Posicionamento e linguagem", icon: Brain },
+    { label: "Ofertas", description: "Produtos e propostas", icon: Package2 },
+    { label: "Mídias", description: "Referências e bibliotecas", icon: Library },
+    { label: "Revisão", description: "Prévia e publicação", icon: Eye },
+  ] as const;
 
   useEffect(() => {
     setDraft({
@@ -281,184 +291,286 @@ export function BrandKitSettings() {
     </div>
   );
 
+  const goToStep = (index: number) => {
+    setActiveStep(Math.max(0, Math.min(wizardSteps.length - 1, index)));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const logoUrl = profile.data?.logoUrl || tenant.data?.logoUrl || "";
+  const companyName = profile.data?.nomeFantasia || profile.data?.razaoSocial || "Sua marca";
+  const isSaving = updateProfile.isPending || updateTenant.isPending;
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="mr-auto">
-          <h2 className="text-xl font-semibold">Identidade da marca</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Marca e identidade visual permanecem aqui; estratégia, PN e diagnóstico têm uma única fonte oficial.</p>
-        </div>
-        <Button variant="outline" onClick={() => window.location.assign("/diagnostico-planejamento")}>
-          Abrir Diagnóstico & Planejamento
-        </Button>
-      </div>
-      <div className="space-y-4">
-      <div className="rounded-xl border bg-card p-5 space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <div className="flex items-center gap-2">
+      <section className="rounded-2xl border bg-card p-5 shadow-sm">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
               <Megaphone className="h-5 w-5 text-primary" />
-              <h2 className="text-lg font-semibold">Kit da Marca</h2>
+              <h1 className="text-xl font-semibold">Kit da Marca</h1>
+              <Badge variant="secondary">{completeness}% completo</Badge>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Fonte única da identidade do tenant. Marketing, vídeos, anúncios, sites, documentos e agentes devem consumir este contexto.
+            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+              Central oficial da identidade do tenant. O que for definido aqui alimenta Marketing, conteúdos, anúncios, sites, propostas, vídeos e agentes.
             </p>
           </div>
-          <Badge variant="secondary">{completeness}% completo</Badge>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" type="button" onClick={() => window.location.assign("/diagnostico-planejamento")}>
+              Diagnóstico & Planejamento
+            </Button>
+            <Button type="button" onClick={saveBrandContext} disabled={isSaving || !profile.data?.id}>
+              <Save className="mr-2 h-4 w-4" />
+              {isSaving ? "Salvando..." : "Salvar Kit"}
+            </Button>
+          </div>
         </div>
-        <Progress value={completeness} />
+        <Progress value={completeness} className="mt-4" />
+      </section>
 
-        <div className="rounded-xl border border-primary/20 bg-primary/[0.03] p-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <section className="rounded-2xl border bg-card p-3 shadow-sm">
+        <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+          {wizardSteps.map((step, index) => {
+            const Icon = step.icon;
+            const active = index === activeStep;
+            const completed = index < activeStep;
+            return (
+              <button
+                key={step.label}
+                type="button"
+                onClick={() => goToStep(index)}
+                className={[
+                  "rounded-xl border p-3 text-left transition",
+                  active ? "border-primary bg-primary/[0.06] shadow-sm" : "bg-background hover:bg-muted/40",
+                ].join(" ")}
+              >
+                <div className="flex items-center gap-2">
+                  <span className={[
+                    "flex h-7 w-7 items-center justify-center rounded-full border",
+                    active ? "border-primary bg-primary text-primary-foreground" : completed ? "border-primary/30 bg-primary/10 text-primary" : "bg-muted/30 text-muted-foreground",
+                  ].join(" ")}>
+                    {completed ? <CheckCircle2 className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
+                  </span>
+                  <span className="text-xs font-semibold">{index + 1}. {step.label}</span>
+                </div>
+                <p className="mt-2 text-[11px] leading-snug text-muted-foreground">{step.description}</p>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {activeStep === 0 && (
+        <section className="grid gap-4 xl:grid-cols-[1.3fr_.7fr]">
+          <div className="rounded-2xl border bg-card p-5 space-y-4">
             <div>
               <div className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-primary" />
-                <strong className="text-sm">Assistente de Marca com IA</strong>
+                <Building2 className="h-4 w-4 text-primary" />
+                <h2 className="font-semibold">Empresa e posicionamento-base</h2>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                A IA lê dados da empresa, conhecimento, mídias e identidade atual para montar uma proposta completa. Nada é salvo sem sua revisão.
+                Dados institucionais vêm do Perfil da Empresa para evitar informações duplicadas.
               </p>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <select
-                value={aiMode}
-                onChange={(event) => setAiMode(event.target.value as BrandStudioMode)}
-                className="h-9 rounded-md border bg-background px-3 text-sm"
-                aria-label="Modo da IA para o Kit da Marca"
-              >
-                <option value="maintain">Manter identidade</option>
-                <option value="evolve">Evoluir identidade</option>
-                <option value="rebuild">Reconstruir identidade</option>
-              </select>
-              <Button type="button" onClick={buildWithAI} disabled={aiLoading || !tenantId} className="gap-2">
-                {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                {aiLoading ? "Analisando marca..." : "Montar com IA"}
-              </Button>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div><Label>Empresa</Label><Input value={companyName} readOnly /></div>
+              <div><Label>Segmento</Label><Input value={profile.data?.vertical || ""} readOnly /></div>
+              <div className="md:col-span-2"><Label>Diferenciais</Label><Textarea value={profile.data?.diferenciais || ""} readOnly rows={3} /></div>
+              <div className="md:col-span-2"><Label>Público / ICP</Label><Textarea value={profile.data?.publicoAlvo || ""} readOnly rows={3} /></div>
+            </div>
+            <Button variant="outline" type="button" onClick={() => window.location.assign("/configuracoes?tab=perfil")}>
+              Editar dados institucionais <ExternalLink className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
+
+          <div className="rounded-2xl border bg-card p-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Resumo da marca</p>
+            <div className="mt-4 flex min-h-36 items-center justify-center rounded-xl border bg-muted/20 p-5">
+              {logoUrl ? (
+                <img src={logoUrl} alt="Logo oficial" className="max-h-24 max-w-full object-contain" />
+              ) : (
+                <div className="text-center text-sm text-muted-foreground">Logo oficial ainda não cadastrada</div>
+              )}
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-lg border p-3"><span className="text-muted-foreground">Marca</span><p className="mt-1 font-medium">{companyName}</p></div>
+              <div className="rounded-lg border p-3"><span className="text-muted-foreground">Cor principal</span><div className="mt-1 flex items-center gap-2 font-mono"><span className="h-4 w-4 rounded-full border" style={{ backgroundColor: primaryColor }} />{primaryColor}</div></div>
             </div>
           </div>
-          {aiProposal && (
-            <div className="mt-3 grid gap-2 rounded-lg border bg-background/70 p-3 md:grid-cols-2">
-              <div>
-                <p className="text-xs font-semibold">Diagnóstico da IA</p>
-                <p className="mt-1 text-xs text-muted-foreground">{aiProposal.diagnosis || "Proposta criada com base no contexto disponível."}</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold">Direção recomendada</p>
-                <p className="mt-1 text-xs text-muted-foreground">{aiProposal.rationale || "Revise os campos preenchidos abaixo antes de salvar."}</p>
+        </section>
+      )}
+
+      {activeStep === 1 && (
+        <section className="rounded-2xl border bg-card p-5 space-y-5">
+          <div>
+            <div className="flex items-center gap-2"><Palette className="h-4 w-4 text-primary" /><h2 className="font-semibold">Identidade visual</h2></div>
+            <p className="mt-1 text-xs text-muted-foreground">Use somente arquivos oficiais da marca. O sistema não deve recriar, recortar ou distorcer a logo cadastrada.</p>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Cor principal</Label>
+              <div className="flex items-center gap-3">
+                <input type="color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="h-10 w-14 rounded-md border bg-transparent p-1" />
+                <Input value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="font-mono" />
               </div>
             </div>
-          )}
-        </div>
+            <div className="space-y-1.5">
+              <Label>Logo oficial</Label>
+              <div className="min-h-10 rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+                {logoUrl ? "Logo oficial cadastrada e compartilhada com as ferramentas." : "Nenhuma logo oficial cadastrada."}
+              </div>
+            </div>
+            {field("Cores secundárias", "coresSecundarias", "Ex.: #111827, #F97316, branco e cinza claro", 3)}
+            {field("Tipografia", "tipografia", "Ex.: Inter para interface; Montserrat para títulos", 3)}
+            <div className="lg:col-span-2">{field("Estilo visual", "estiloVisual", "Fotografia, iluminação, composição, cenários, acabamentos e padrões visuais.")}</div>
+          </div>
+        </section>
+      )}
 
-        <div className="grid gap-2 md:grid-cols-4">
-          <div className="rounded-lg border p-3"><strong className="text-sm">Empresa</strong><p className="text-xs text-muted-foreground">business_profiles</p></div>
-          <div className="rounded-lg border p-3"><strong className="text-sm">Identidade</strong><p className="text-xs text-muted-foreground">logo + cores do tenant</p></div>
-          <div className="rounded-lg border p-3"><strong className="text-sm">Vídeo</strong><p className="text-xs text-muted-foreground">{videoKit ? "Brand Video Kit conectado" : "Sem kit de vídeo ativo"}</p></div>
-          <div className="rounded-lg border p-3">
-            <strong className="text-sm">Propostas</strong>
-            <p className="text-xs text-muted-foreground">
-              {activeProposalBuilderTemplate
-                ? `Modelo inteligente ativo: ${String(activeProposalBuilderTemplate.name || "Modelo padrão")}`
-                : "O modelo inteligente será criado automaticamente ao salvar o Kit da Marca."}
+      {activeStep === 2 && (
+        <section className="space-y-4">
+          <div className="rounded-2xl border border-primary/20 bg-primary/[0.03] p-5">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" /><strong className="text-sm">Assistente de Marca com IA</strong></div>
+                <p className="mt-1 text-xs text-muted-foreground">A IA pode analisar o contexto atual e sugerir uma evolução. Nada é salvo sem sua revisão.</p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <select value={aiMode} onChange={(event) => setAiMode(event.target.value as BrandStudioMode)} className="h-9 rounded-md border bg-background px-3 text-sm" aria-label="Modo da IA para o Kit da Marca">
+                  <option value="maintain">Manter identidade</option>
+                  <option value="evolve">Evoluir identidade</option>
+                  <option value="rebuild">Reconstruir identidade</option>
+                </select>
+                <Button type="button" onClick={buildWithAI} disabled={aiLoading || !tenantId} className="gap-2">
+                  {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  {aiLoading ? "Analisando..." : "Analisar e completar"}
+                </Button>
+              </div>
+            </div>
+            {aiProposal && (
+              <div className="mt-4 grid gap-3 rounded-xl border bg-background/70 p-4 md:grid-cols-2">
+                <div><p className="text-xs font-semibold">Diagnóstico</p><p className="mt-1 text-xs text-muted-foreground">{aiProposal.diagnosis || "Proposta criada com base no contexto disponível."}</p></div>
+                <div><p className="text-xs font-semibold">Direção recomendada</p><p className="mt-1 text-xs text-muted-foreground">{aiProposal.rationale || "Revise os campos antes de salvar."}</p></div>
+              </div>
+            )}
+          </div>
+          <div className="rounded-2xl border bg-card p-5 space-y-4">
+            <div className="flex items-center gap-2"><Brain className="h-4 w-4 text-primary" /><h2 className="font-semibold">Voz, posicionamento e mensagens</h2></div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {field("Posicionamento", "posicionamento", "Como a marca deve ser percebida e qual proposta de valor deve sustentar.")}
+              {field("Tom de voz", "tomVoz", "Ex.: consultivo, claro, técnico sem ser complicado, direto e humano.")}
+              {field("Mensagens-chave", "mensagensChave", "Mensagens que devem aparecer com frequência nos materiais.")}
+              {field("CTA padrão", "ctaPadrao", "Ex.: Solicite uma análise / Fale com nossa equipe.", 2)}
+              <div className="md:col-span-2">{field("Palavras e abordagens a evitar", "palavrasEvitar", "Termos proibidos, promessas que não podem ser feitas e estilos inadequados.")}</div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {activeStep === 3 && (
+        <section className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-2xl border bg-card p-5 space-y-3">
+            <div className="flex items-center gap-2"><Package2 className="h-4 w-4 text-primary" /><h2 className="font-semibold">Produtos e ofertas</h2></div>
+            <p className="text-sm text-muted-foreground">
+              Produtos, serviços, preços, imagens e pacotes continuam no Catálogo oficial. O Kit da Marca usa essa fonte para campanhas, propostas e agentes sem duplicar cadastros.
             </p>
+            <Button variant="outline" type="button" onClick={() => window.location.assign("/catalogo")}>Abrir Catálogo</Button>
           </div>
-        </div>
-      </div>
-
-      <div className="rounded-xl border bg-card p-5 space-y-4">
-        <div className="flex items-center gap-2"><Building2 className="h-4 w-4 text-primary" /><h3 className="font-semibold">Dados oficiais da empresa</h3></div>
-        <p className="text-xs text-muted-foreground">Estes dados vêm do mesmo Perfil da Empresa; não existe uma segunda cópia no Marketing.</p>
-        <div className="grid gap-3 md:grid-cols-2">
-          <div><Label>Empresa</Label><Input value={profile.data?.nomeFantasia || profile.data?.razaoSocial || ""} readOnly /></div>
-          <div><Label>Segmento</Label><Input value={profile.data?.vertical || ""} readOnly /></div>
-          <div className="md:col-span-2"><Label>Diferenciais</Label><Textarea value={profile.data?.diferenciais || ""} readOnly rows={2} /></div>
-          <div className="md:col-span-2"><Label>Público-alvo</Label><Textarea value={profile.data?.publicoAlvo || ""} readOnly rows={2} /></div>
-        </div>
-        <Button variant="outline" type="button" onClick={() => window.location.assign("/configuracoes?tab=perfil")}>
-          Editar dados institucionais <ExternalLink className="ml-2 h-4 w-4" />
-        </Button>
-      </div>
-
-      <div className="rounded-xl border bg-card p-5 space-y-4">
-        <div className="flex items-center gap-2"><Palette className="h-4 w-4 text-primary" /><h3 className="font-semibold">Identidade visual</h3></div>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label>Cor principal</Label>
-            <div className="flex items-center gap-3">
-              <input type="color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="h-10 w-14 rounded-md border bg-transparent p-1" />
-              <Input value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="font-mono" />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Logo oficial</Label>
-            <div className="min-h-10 rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-              {(profile.data?.logoUrl || tenant.data?.logoUrl) ? "Logo cadastrada e compartilhada com as ferramentas." : "Nenhuma logo cadastrada."}
-            </div>
-          </div>
-          {field("Cores secundárias", "coresSecundarias", "Ex.: #111827, #F97316, branco e cinza claro", 2)}
-          {field("Tipografia", "tipografia", "Ex.: Inter para interface; Montserrat para títulos", 2)}
-          <div className="md:col-span-2">{field("Estilo visual", "estiloVisual", "Descreva fotografia, iluminação, composição, cenários, acabamentos e o que deve ser evitado.")}</div>
-          <div className="md:col-span-2">{field("Referências visuais", "referenciasVisuais", "Links, projetos de referência, padrões aprovados e orientações para imagens e vídeos.")}</div>
-        </div>
-      </div>
-
-      <div className="rounded-xl border bg-card p-5 space-y-4">
-        <div className="flex items-center gap-2"><Brain className="h-4 w-4 text-primary" /><h3 className="font-semibold">Comunicação da marca</h3></div>
-        <div className="grid gap-4 md:grid-cols-2">
-          {field("Posicionamento", "posicionamento", "Como a marca deve ser percebida e qual proposta de valor deve sustentar.")}
-          {field("Tom de voz", "tomVoz", "Ex.: consultivo, claro, técnico sem ser complicado, direto e humano.")}
-          {field("Mensagens-chave", "mensagensChave", "Mensagens que devem aparecer com frequência nos materiais.")}
-          {field("CTA padrão", "ctaPadrao", "Ex.: Solicite uma análise / Fale com nossa equipe.", 2)}
-          <div className="md:col-span-2">{field("Palavras e abordagens a evitar", "palavrasEvitar", "Termos proibidos, promessas que não podem ser feitas e estilos de comunicação inadequados.")}</div>
-        </div>
-      </div>
-
-      <div className="rounded-xl border bg-card p-5 space-y-3">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-primary" />
-          <h3 className="font-semibold">Modelo inteligente de proposta</h3>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          O VendorAI cria automaticamente um modelo modular a partir do segmento, diferenciais, público-alvo e Kit da Marca. A proposta usa esse padrão sem exigir uma configuração inicial separada.
-        </p>
-        {activeProposalBuilderTemplate ? (
-          <div className="rounded-lg border bg-muted/20 p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p className="text-sm font-medium">{String(activeProposalBuilderTemplate.name || "Modelo padrão")}</p>
-                <p className="text-xs text-muted-foreground">
-                  {proposalBuilderTemplates.length} versão(ões) · modelo ativo do tenant
-                </p>
+          <div className="rounded-2xl border bg-card p-5 space-y-3">
+            <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" /><h2 className="font-semibold">Modelo inteligente de proposta</h2></div>
+            {activeProposalBuilderTemplate ? (
+              <div className="rounded-xl border bg-muted/20 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div><p className="text-sm font-medium">{String(activeProposalBuilderTemplate.name || "Modelo padrão")}</p><p className="text-xs text-muted-foreground">{proposalBuilderTemplates.length} versão(ões) disponíveis</p></div>
+                  <Badge variant="secondary">Ativo</Badge>
+                </div>
               </div>
-              <Badge variant="secondary">Pronto</Badge>
+            ) : (
+              <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                Ao salvar o Kit da Marca, o sistema prepara automaticamente um modelo seguro para o segmento.
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {activeStep === 4 && (
+        <section className="rounded-2xl border bg-card p-5 space-y-5">
+          <div className="flex items-center gap-2"><Library className="h-4 w-4 text-primary" /><h2 className="font-semibold">Mídias, referências e conhecimento</h2></div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>{field("Referências visuais", "referenciasVisuais", "Links, projetos de referência, padrões aprovados e orientações para imagens e vídeos.", 5)}</div>
+            <div className="rounded-xl border bg-muted/20 p-4">
+              <p className="text-sm font-medium">Fontes conectadas</p>
+              <div className="mt-3 space-y-2 text-xs text-muted-foreground">
+                <div className="flex items-center justify-between rounded-lg border bg-background p-3"><span>Biblioteca de Mídias</span><Badge variant="secondary">Oficial</Badge></div>
+                <div className="flex items-center justify-between rounded-lg border bg-background p-3"><span>Base de Conhecimento</span><Badge variant="secondary">Conectada</Badge></div>
+                <div className="flex items-center justify-between rounded-lg border bg-background p-3"><span>Brand Video Kit</span><Badge variant="secondary">{videoKit ? "Conectado" : "Pendente"}</Badge></div>
+              </div>
             </div>
           </div>
-        ) : (
-          <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-            Ao salvar o Kit da Marca, o sistema prepara automaticamente o primeiro modelo de proposta. Se a IA estiver indisponível, um padrão seguro do segmento é aplicado para não bloquear o uso.
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" type="button" onClick={() => window.location.assign("/midias")}>Abrir Mídias</Button>
+            <Button variant="outline" type="button" onClick={() => window.location.assign("/base-conhecimento")}>Abrir Conhecimento</Button>
+            <Button variant="outline" type="button" onClick={() => window.location.assign("/content-studio/video")}><ImageIcon className="mr-2 h-4 w-4" />Abrir Vídeos</Button>
           </div>
-        )}
-      </div>
+        </section>
+      )}
 
-      <div className="rounded-xl border bg-card p-5 space-y-3">
-        <div className="flex items-center gap-2"><Library className="h-4 w-4 text-primary" /><h3 className="font-semibold">Mídia e conhecimento</h3></div>
-        <p className="text-sm text-muted-foreground">
-          Fotos, vídeos, catálogos e documentos permanecem nas bibliotecas oficiais do tenant. O Kit da Marca referencia essas fontes em vez de duplicar arquivos.
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" type="button" onClick={() => window.location.assign("/content")}>Abrir Conteúdo</Button>
-          <Button variant="outline" type="button" onClick={() => window.location.assign("/base-conhecimento")}>Abrir Conhecimento</Button>
-          <Button variant="outline" type="button" onClick={() => window.location.assign("/content-studio/video")}><ImageIcon className="mr-2 h-4 w-4" />Abrir Vídeo</Button>
-        </div>
-      </div>
+      {activeStep === 5 && (
+        <section className="grid gap-4 xl:grid-cols-[.85fr_1.15fr]">
+          <div className="rounded-2xl border bg-card p-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Prévia da identidade</p>
+            <div className="mt-4 rounded-2xl border p-5" style={{ borderTopColor: primaryColor, borderTopWidth: 4 }}>
+              <div className="flex min-h-28 items-center justify-center rounded-xl bg-muted/20 p-4">
+                {logoUrl ? <img src={logoUrl} alt="Logo oficial" className="max-h-20 max-w-full object-contain" /> : <span className="text-sm text-muted-foreground">Logo não cadastrada</span>}
+              </div>
+              <h3 className="mt-4 text-lg font-semibold">{companyName}</h3>
+              <p className="mt-1 text-sm text-muted-foreground">{draft.posicionamento || "Defina o posicionamento da marca."}</p>
+              <div className="mt-4 inline-flex rounded-lg px-3 py-2 text-sm font-semibold text-white" style={{ backgroundColor: primaryColor }}>
+                {draft.ctaPadrao || "CTA principal"}
+              </div>
+            </div>
+          </div>
+          <div className="rounded-2xl border bg-card p-5 space-y-4">
+            <div>
+              <h2 className="font-semibold">Revisar antes de salvar</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Confira os principais elementos que serão usados pelo restante da plataforma.</p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {[
+                ["Empresa", companyName],
+                ["Segmento", profile.data?.vertical || "Não informado"],
+                ["Cor principal", primaryColor],
+                ["Tom de voz", draft.tomVoz || "Não definido"],
+                ["CTA", draft.ctaPadrao || "Não definido"],
+                ["Logo", logoUrl ? "Oficial cadastrada" : "Pendente"],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-xl border p-3"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p><p className="mt-1 text-sm font-medium">{value}</p></div>
+              ))}
+            </div>
+            <Button className="w-full" type="button" onClick={saveBrandContext} disabled={isSaving || !profile.data?.id}>
+              <Save className="mr-2 h-4 w-4" />{isSaving ? "Salvando..." : "Salvar e aplicar Kit da Marca"}
+            </Button>
+          </div>
+        </section>
+      )}
 
-      <div className="sticky bottom-3 z-20 flex justify-end rounded-xl border bg-background/95 p-3 shadow-lg backdrop-blur">
-        <Button type="button" onClick={saveBrandContext} disabled={updateProfile.isPending || updateTenant.isPending || !profile.data?.id}>
-          <Save className="mr-2 h-4 w-4" />{updateProfile.isPending || updateTenant.isPending ? "Salvando..." : "Salvar Kit da Marca"}
+      <div className="sticky bottom-3 z-20 flex items-center justify-between rounded-2xl border bg-background/95 p-3 shadow-lg backdrop-blur">
+        <Button variant="outline" type="button" onClick={() => goToStep(activeStep - 1)} disabled={activeStep === 0}>
+          <ChevronLeft className="mr-2 h-4 w-4" />Anterior
         </Button>
-      </div>
+        <div className="hidden text-xs text-muted-foreground sm:block">
+          Etapa {activeStep + 1} de {wizardSteps.length} · {wizardSteps[activeStep].label}
+        </div>
+        {activeStep < wizardSteps.length - 1 ? (
+          <Button type="button" onClick={() => goToStep(activeStep + 1)}>
+            Próxima<ChevronRight className="ml-2 h-4 w-4" />
+          </Button>
+        ) : (
+          <Button type="button" onClick={saveBrandContext} disabled={isSaving || !profile.data?.id}>
+            <Save className="mr-2 h-4 w-4" />{isSaving ? "Salvando..." : "Concluir"}
+          </Button>
+        )}
       </div>
     </div>
   );
 }
-
