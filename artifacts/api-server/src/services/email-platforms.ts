@@ -2,11 +2,13 @@ import { google } from "googleapis";
 import { and, eq, isNull } from "drizzle-orm";
 import { db, socialConnectionsTable, leadsTable, conversationsTable, messagesTable, notificationsTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { fetchWebmailMessages, getWebmailConnection, sendWebmailEmail, webmailConfigFromConnection } from "./webmail-email.js";
 
-export type EmailProvider = "google" | "microsoft";
+export type EmailProvider = "google" | "microsoft" | "webmail";
 
 const GOOGLE_PROVIDER = "email_google";
 const MICROSOFT_PROVIDER = "email_microsoft";
+const WEBMAIL_PROVIDER = "email_webmail";
 
 function frontendOrigin() {
   return (process.env["FRONTEND_APP_URL"] || (process.env["NODE_ENV"] === "production" ? "https://app.appvendorai.com" : "http://localhost:3000")).replace(/\/$/, "");
@@ -77,7 +79,7 @@ async function upsertConnection(input: {
   expiresAt?: Date | null;
   scopes?: string[];
 }) {
-  const providerKey = input.provider === "google" ? GOOGLE_PROVIDER : MICROSOFT_PROVIDER;
+  const providerKey = input.provider === "google" ? GOOGLE_PROVIDER : input.provider === "microsoft" ? MICROSOFT_PROVIDER : WEBMAIL_PROVIDER;
   const existing = await db.select().from(socialConnectionsTable).where(and(
     eq(socialConnectionsTable.tenantId, input.tenantId),
     eq(socialConnectionsTable.provider, providerKey),
@@ -168,12 +170,22 @@ export async function listEmailConnections(tenantId: string) {
     eq(socialConnectionsTable.tenantId, tenantId),
     isNull(socialConnectionsTable.disconnectedAt),
   ));
-  return rows.filter((row) => row.provider === GOOGLE_PROVIDER || row.provider === MICROSOFT_PROVIDER).map((row) => ({
+  return rows.filter((row) => row.provider === GOOGLE_PROVIDER || row.provider === MICROSOFT_PROVIDER || row.provider === WEBMAIL_PROVIDER).map((row) => ({
     id: row.id,
-    provider: row.provider === GOOGLE_PROVIDER ? "google" : "microsoft",
+    provider: row.provider === GOOGLE_PROVIDER ? "google" : row.provider === MICROSOFT_PROVIDER ? "microsoft" : "webmail",
     email: typeof row.metadata?.["email"] === "string" ? row.metadata["email"] : row.accountName,
     accountName: row.accountName,
     signature: typeof row.metadata?.["signature"] === "string" ? row.metadata["signature"] : "",
+    ...(row.provider === WEBMAIL_PROVIDER ? {
+      username: typeof row.metadata?.["username"] === "string" ? row.metadata["username"] : "",
+      imapHost: typeof row.metadata?.["imapHost"] === "string" ? row.metadata["imapHost"] : "",
+      imapPort: Number(row.metadata?.["imapPort"] ?? 993),
+      imapSecure: row.metadata?.["imapSecure"] !== false,
+      smtpHost: typeof row.metadata?.["smtpHost"] === "string" ? row.metadata["smtpHost"] : "",
+      smtpPort: Number(row.metadata?.["smtpPort"] ?? 465),
+      smtpSecure: row.metadata?.["smtpSecure"] !== false,
+      smtpStartTls: row.metadata?.["smtpStartTls"] === true,
+    } : {}),
     status: row.status,
     connectedAt: row.connectedAt,
     updatedAt: row.updatedAt,
@@ -185,7 +197,7 @@ export async function updateEmailSettings(
   provider: EmailProvider,
   settings: { signature?: string },
 ) {
-  const providerKey = provider === "google" ? GOOGLE_PROVIDER : MICROSOFT_PROVIDER;
+  const providerKey = provider === "google" ? GOOGLE_PROVIDER : provider === "microsoft" ? MICROSOFT_PROVIDER : WEBMAIL_PROVIDER;
   const [connection] = await db.select().from(socialConnectionsTable).where(and(
     eq(socialConnectionsTable.tenantId, tenantId),
     eq(socialConnectionsTable.provider, providerKey),
@@ -203,7 +215,7 @@ export async function updateEmailSettings(
 }
 
 export async function disconnectEmail(tenantId: string, provider: EmailProvider) {
-  const providerKey = provider === "google" ? GOOGLE_PROVIDER : MICROSOFT_PROVIDER;
+  const providerKey = provider === "google" ? GOOGLE_PROVIDER : provider === "microsoft" ? MICROSOFT_PROVIDER : WEBMAIL_PROVIDER;
   await db.update(socialConnectionsTable).set({ status: "disconnected", disconnectedAt: new Date(), updatedAt: new Date() })
     .where(and(eq(socialConnectionsTable.tenantId, tenantId), eq(socialConnectionsTable.provider, providerKey)));
 }
@@ -213,9 +225,9 @@ async function getConnection(tenantId: string, preferred?: EmailProvider) {
     eq(socialConnectionsTable.tenantId, tenantId),
     isNull(socialConnectionsTable.disconnectedAt),
   ));
-  const filtered = rows.filter((row) => row.status === "active" && (row.provider === GOOGLE_PROVIDER || row.provider === MICROSOFT_PROVIDER));
+  const filtered = rows.filter((row) => row.status === "active" && (row.provider === GOOGLE_PROVIDER || row.provider === MICROSOFT_PROVIDER || row.provider === WEBMAIL_PROVIDER));
   if (preferred) {
-    const key = preferred === "google" ? GOOGLE_PROVIDER : MICROSOFT_PROVIDER;
+    const key = preferred === "google" ? GOOGLE_PROVIDER : preferred === "microsoft" ? MICROSOFT_PROVIDER : WEBMAIL_PROVIDER;
     return filtered.find((row) => row.provider === key) ?? null;
   }
   return filtered[0] ?? null;
@@ -321,6 +333,19 @@ export async function sendConnectedEmail(input: {
 }): Promise<{ sent: boolean; provider?: EmailProvider; externalId?: string }> {
   const connection = await getConnection(input.tenantId, input.preferredProvider);
   if (!connection) return { sent: false };
+  if (connection.provider === WEBMAIL_PROVIDER) {
+    const config = webmailConfigFromConnection(connection);
+    const result = await sendWebmailEmail(config, {
+      to: input.to,
+      subject: input.subject,
+      text: input.text,
+      cc: input.cc,
+      bcc: input.bcc,
+      attachment: input.attachment,
+    });
+    return { sent: true, provider: "webmail", externalId: result.externalId };
+  }
+
   const accessToken = await refreshedAccessToken(connection);
   const signature = typeof connection.metadata?.["signature"] === "string" ? connection.metadata["signature"].trim() : "";
   const text = signature ? `${input.text}\n\n${signature}` : input.text;
@@ -495,10 +520,26 @@ async function persistInboundEmail(input: {
 export async function syncConnectedEmailInbox(tenantId: string, preferredProvider?: EmailProvider) {
   const connection = await getConnection(tenantId, preferredProvider);
   if (!connection) throw new Error("email_connection_not_found");
-  const accessToken = await refreshedAccessToken(connection);
   const results: Array<Record<string, unknown>> = [];
 
-  if (connection.provider === GOOGLE_PROVIDER) {
+  if (connection.provider === WEBMAIL_PROVIDER) {
+    const config = webmailConfigFromConnection(connection);
+    const messages = await fetchWebmailMessages(config, 50);
+    for (const item of messages) {
+      if (!item.from) continue;
+      results.push(await persistInboundEmail({
+        tenantId,
+        externalId: `webmail:${connection.id}:${item.messageId || item.uid}`,
+        from: item.from,
+        subject: item.subject,
+        text: item.text,
+        receivedAt: item.receivedAt,
+        threadId: item.threadId,
+        log: logger,
+      }));
+    }
+  } else if (connection.provider === GOOGLE_PROVIDER) {
+    const accessToken = await refreshedAccessToken(connection);
     const oauth = googleClient();
     oauth.setCredentials({ access_token: accessToken, refresh_token: connection.refreshToken ?? undefined });
     const gmail = google.gmail({ version: "v1", auth: oauth });
@@ -523,6 +564,7 @@ export async function syncConnectedEmailInbox(tenantId: string, preferredProvide
       }));
     }
   } else {
+    const accessToken = await refreshedAccessToken(connection);
     const response = await fetch("https://graph.microsoft.com/v1.0/me/messages?$top=50&$orderby=receivedDateTime%20desc&$select=id,conversationId,subject,body,from,receivedDateTime", {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -546,7 +588,7 @@ export async function syncConnectedEmailInbox(tenantId: string, preferredProvide
   }
 
   return {
-    provider: connection.provider === GOOGLE_PROVIDER ? "google" : "microsoft",
+    provider: connection.provider === GOOGLE_PROVIDER ? "google" : connection.provider === MICROSOFT_PROVIDER ? "microsoft" : "webmail",
     imported: results.filter((item) => item.status === "imported").length,
     duplicates: results.filter((item) => item.status === "duplicate").length,
     unmatched: results.filter((item) => item.status === "unmatched").length,

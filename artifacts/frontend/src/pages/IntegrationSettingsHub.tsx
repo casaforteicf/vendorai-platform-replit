@@ -26,6 +26,7 @@ type IntegrationKey =
   | "google-calendar"
   | "email-google"
   | "email-microsoft"
+  | "email-webmail"
   | "google-ads"
   | "asaas"
   | "zapsign"
@@ -83,8 +84,34 @@ export default function IntegrationSettingsHub() {
   const [busy, setBusy] = useState<string | null>(null);
   const [asaasKey, setAsaasKey] = useState("");
   const [zapsignKey, setZapsignKey] = useState("");
-  const [emailConnections, setEmailConnections] = useState<Array<{ provider: "google" | "microsoft"; email?: string | null; accountName?: string | null; signature?: string | null }>>([]);
-  const [emailSignatures, setEmailSignatures] = useState<Record<"google" | "microsoft", string>>({ google: "", microsoft: "" });
+  const [emailConnections, setEmailConnections] = useState<Array<{
+    provider: "google" | "microsoft" | "webmail";
+    email?: string | null;
+    accountName?: string | null;
+    signature?: string | null;
+    username?: string | null;
+    imapHost?: string | null;
+    imapPort?: number | null;
+    imapSecure?: boolean | null;
+    smtpHost?: string | null;
+    smtpPort?: number | null;
+    smtpSecure?: boolean | null;
+    smtpStartTls?: boolean | null;
+  }>>([]);
+  const [emailSignatures, setEmailSignatures] = useState<Record<"google" | "microsoft" | "webmail", string>>({ google: "", microsoft: "", webmail: "" });
+  const [webmail, setWebmail] = useState({
+    email: "",
+    username: "",
+    password: "",
+    imapHost: "",
+    imapPort: 993,
+    imapSecure: true,
+    smtpHost: "",
+    smtpPort: 465,
+    smtpSecure: true,
+    smtpStartTls: false,
+    signature: "",
+  });
 
   const loadStatus = async () => {
     setLoading(true);
@@ -99,7 +126,25 @@ export default function IntegrationSettingsHub() {
       setEmailSignatures({
         google: connections.find((connection: any) => connection.provider === "google")?.signature ?? "",
         microsoft: connections.find((connection: any) => connection.provider === "microsoft")?.signature ?? "",
+        webmail: connections.find((connection: any) => connection.provider === "webmail")?.signature ?? "",
       });
+      const webmailConnection = connections.find((connection: any) => connection.provider === "webmail");
+      if (webmailConnection) {
+        setWebmail((current) => ({
+          ...current,
+          email: webmailConnection.email ?? "",
+          username: webmailConnection.username ?? webmailConnection.email ?? "",
+          password: "",
+          imapHost: webmailConnection.imapHost ?? "",
+          imapPort: Number(webmailConnection.imapPort ?? 993),
+          imapSecure: webmailConnection.imapSecure !== false,
+          smtpHost: webmailConnection.smtpHost ?? "",
+          smtpPort: Number(webmailConnection.smtpPort ?? 465),
+          smtpSecure: webmailConnection.smtpSecure !== false,
+          smtpStartTls: webmailConnection.smtpStartTls === true,
+          signature: webmailConnection.signature ?? "",
+        }));
+      }
     } catch (error) {
       toast({
         title: "Não foi possível carregar as integrações",
@@ -149,6 +194,13 @@ export default function IntegrationSettingsHub() {
       description: "E-mail corporativo integrado ao CRM e aos agentes.",
       connected: emailConnections.some((connection) => connection.provider === "microsoft"),
       detail: emailConnections.find((connection) => connection.provider === "microsoft")?.email || undefined,
+    },
+    {
+      key: "email-webmail",
+      label: "Webmail / Outro provedor",
+      description: "E-mail de domínio próprio via IMAP + SMTP (cPanel, Hostinger, Locaweb, KingHost e similares).",
+      connected: emailConnections.some((connection) => connection.provider === "webmail"),
+      detail: emailConnections.find((connection) => connection.provider === "webmail")?.email || undefined,
     },
     {
       key: "google-ads",
@@ -215,7 +267,7 @@ export default function IntegrationSettingsHub() {
       if (!tenantId) return;
       setBusy(key);
       try {
-        const provider = key === "email-google" ? "google" : "microsoft";
+        const provider = key === "email-google" ? "google" : key === "email-microsoft" ? "microsoft" : "webmail";
         const data = await apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/email-connections/${provider}/auth-url`);
         if (!data?.url || typeof data.url !== "string") throw new Error("URL de autorização não retornada.");
         window.location.assign(data.url);
@@ -307,11 +359,11 @@ export default function IntegrationSettingsHub() {
     }
   };
 
-  const syncEmail = async (key: "email-google" | "email-microsoft") => {
+  const syncEmail = async (key: "email-google" | "email-microsoft" | "email-webmail") => {
     if (!tenantId) return;
     setBusy(`${key}-sync`);
     try {
-      const provider = key === "email-google" ? "google" : "microsoft";
+      const provider = key === "email-google" ? "google" : key === "email-microsoft" ? "microsoft" : "webmail";
       const result = await apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/email-connections/${provider}/sync`, { method: "POST" });
       toast({
         title: "E-mails sincronizados",
@@ -329,9 +381,9 @@ export default function IntegrationSettingsHub() {
     }
   };
 
-  const saveEmailSignature = async (key: "email-google" | "email-microsoft") => {
+  const saveEmailSignature = async (key: "email-google" | "email-microsoft" | "email-webmail") => {
     if (!tenantId) return;
-    const provider = key === "email-google" ? "google" : "microsoft";
+    const provider = key === "email-google" ? "google" : key === "email-microsoft" ? "microsoft" : "webmail";
     setBusy(`${key}-signature`);
     try {
       await apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/email-connections/${provider}/settings`, {
@@ -347,6 +399,77 @@ export default function IntegrationSettingsHub() {
         description: error instanceof Error ? error.message : undefined,
         variant: "destructive",
       });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const saveWebmail = async () => {
+    if (!tenantId) return;
+    setBusy("email-webmail");
+    try {
+      await apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/email-connections/webmail`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(webmail),
+      });
+      toast({ title: "Webmail conectado com sucesso", description: "IMAP e SMTP foram validados antes de salvar." });
+      setWebmail((current) => ({ ...current, password: "" }));
+      await loadStatus();
+    } catch (error) {
+      toast({
+        title: "Não foi possível conectar o Webmail",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const testWebmail = async () => {
+    if (!tenantId) return;
+    setBusy("email-webmail-test");
+    try {
+      await apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/email-connections/webmail/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(webmail),
+      });
+      toast({ title: "Conexão Webmail validada", description: "IMAP e SMTP responderam corretamente." });
+    } catch (error) {
+      toast({
+        title: "Falha ao testar Webmail",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const testConnectedWebmail = async () => {
+    if (!tenantId) return;
+    setBusy("email-webmail-connected-test");
+    try {
+      await apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/email-connections/webmail/test`, { method: "POST" });
+      toast({ title: "Webmail operacional", description: "IMAP e SMTP responderam corretamente." });
+    } catch (error) {
+      toast({ title: "Falha na conexão Webmail", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const disconnectWebmail = async () => {
+    if (!tenantId) return;
+    setBusy("email-webmail-disconnect");
+    try {
+      await apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/email-connections/webmail`, { method: "DELETE" });
+      toast({ title: "Webmail desconectado." });
+      await loadStatus();
+    } catch (error) {
+      toast({ title: "Não foi possível desconectar o Webmail", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
     } finally {
       setBusy(null);
     }
@@ -426,14 +549,57 @@ export default function IntegrationSettingsHub() {
                   <Input type="password" value={zapsignKey} onChange={(event) => setZapsignKey(event.target.value)} placeholder="Token da API ZapSign" />
                   <Button disabled={!zapsignKey.trim() || busy === "zapsign"} onClick={() => void validateCredential("zapsign")}>Validar</Button>
                 </div>
-              ) : row.connected && (row.key === "email-google" || row.key === "email-microsoft") ? (
+              ) : row.key === "email-webmail" && !row.connected ? (
+                <div className="mt-4 space-y-3">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Input value={webmail.email} onChange={(e) => setWebmail((v) => ({ ...v, email: e.target.value }))} placeholder="E-mail (ex.: contato@empresa.com.br)" />
+                    <Input value={webmail.username} onChange={(e) => setWebmail((v) => ({ ...v, username: e.target.value }))} placeholder="Usuário do e-mail" />
+                    <Input type="password" value={webmail.password} onChange={(e) => setWebmail((v) => ({ ...v, password: e.target.value }))} placeholder="Senha ou senha de aplicativo" />
+                    <div />
+                    <Input value={webmail.imapHost} onChange={(e) => setWebmail((v) => ({ ...v, imapHost: e.target.value }))} placeholder="Servidor IMAP" />
+                    <Input type="number" value={webmail.imapPort} onChange={(e) => setWebmail((v) => ({ ...v, imapPort: Number(e.target.value) || 993 }))} placeholder="Porta IMAP" />
+                    <Input value={webmail.smtpHost} onChange={(e) => setWebmail((v) => ({ ...v, smtpHost: e.target.value }))} placeholder="Servidor SMTP" />
+                    <Input type="number" value={webmail.smtpPort} onChange={(e) => setWebmail((v) => ({ ...v, smtpPort: Number(e.target.value) || 465 }))} placeholder="Porta SMTP" />
+                  </div>
+                  <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                    <label className="inline-flex items-center gap-2">
+                      <input type="checkbox" checked={webmail.imapSecure} onChange={(e) => setWebmail((v) => ({ ...v, imapSecure: e.target.checked }))} />
+                      IMAP SSL/TLS
+                    </label>
+                    <label className="inline-flex items-center gap-2">
+                      <input type="checkbox" checked={webmail.smtpSecure} onChange={(e) => setWebmail((v) => ({ ...v, smtpSecure: e.target.checked }))} />
+                      SMTP SSL/TLS
+                    </label>
+                    <label className="inline-flex items-center gap-2">
+                      <input type="checkbox" checked={webmail.smtpStartTls} onChange={(e) => setWebmail((v) => ({ ...v, smtpStartTls: e.target.checked }))} />
+                      SMTP STARTTLS
+                    </label>
+                  </div>
+                  <textarea
+                    value={webmail.signature}
+                    onChange={(e) => setWebmail((v) => ({ ...v, signature: e.target.value }))}
+                    placeholder="Assinatura automática (opcional)"
+                    rows={3}
+                    className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" disabled={!webmail.password || busy === "email-webmail-test"} onClick={() => void testWebmail()}>
+                      {busy === "email-webmail-test" ? "Testando..." : "Testar conexão"}
+                    </Button>
+                    <Button disabled={!webmail.password || busy === "email-webmail"} onClick={() => void saveWebmail()}>
+                      {busy === "email-webmail" ? "Conectando..." : "Conectar Webmail"}
+                    </Button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">A senha é criptografada no servidor e nunca é devolvida pela API.</p>
+                </div>
+              ) : row.connected && (row.key === "email-google" || row.key === "email-microsoft" || row.key === "email-webmail") ? (
                 <div className="mt-4 space-y-3">
                   <div>
                     <label className="mb-1 block text-xs font-medium text-muted-foreground">Assinatura automática</label>
                     <textarea
-                      value={emailSignatures[row.key === "email-google" ? "google" : "microsoft"]}
+                      value={emailSignatures[row.key === "email-google" ? "google" : row.key === "email-microsoft" ? "microsoft" : "webmail"]}
                       onChange={(event) => {
-                        const provider = row.key === "email-google" ? "google" : "microsoft";
+                        const provider = row.key === "email-google" ? "google" : row.key === "email-microsoft" ? "microsoft" : "webmail";
                         setEmailSignatures((current) => ({ ...current, [provider]: event.target.value }));
                       }}
                       placeholder={"Ex.: Marcos\nVendor.ai\n(49) ..."}
@@ -442,25 +608,52 @@ export default function IntegrationSettingsHub() {
                     />
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      disabled={busy === row.key}
-                      onClick={() => void handleRowAction(row)}
-                    >
-                      Reconectar
-                    </Button>
+                    {row.key === "email-webmail" ? (
+                      <>
+                        <Button
+                          variant="outline"
+                          disabled={busy === "email-webmail-connected-test"}
+                          onClick={() => void testConnectedWebmail()}
+                        >
+                          {busy === "email-webmail-connected-test" ? "Testando..." : "Testar conexão"}
+                        </Button>
+                        <Button
+                          disabled={busy === "email-webmail-sync"}
+                          onClick={() => void syncEmail("email-webmail")}
+                        >
+                          {busy === "email-webmail-sync" ? "Sincronizando..." : "Sincronizar agora"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          disabled={busy === "email-webmail-disconnect"}
+                          onClick={() => void disconnectWebmail()}
+                        >
+                          Desconectar
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          variant="outline"
+                          disabled={busy === row.key}
+                          onClick={() => void handleRowAction(row)}
+                        >
+                          Reconectar
+                        </Button>
+                        <Button
+                          disabled={busy === `${row.key}-sync`}
+                          onClick={() => void syncEmail(row.key)}
+                        >
+                          {busy === `${row.key}-sync` ? "Sincronizando..." : "Sincronizar agora"}
+                        </Button>
+                      </>
+                    )}
                     <Button
                       variant="outline"
                       disabled={busy === `${row.key}-signature`}
                       onClick={() => void saveEmailSignature(row.key)}
                     >
                       {busy === `${row.key}-signature` ? "Salvando..." : "Salvar assinatura"}
-                    </Button>
-                    <Button
-                      disabled={busy === `${row.key}-sync`}
-                      onClick={() => void syncEmail(row.key)}
-                    >
-                      {busy === `${row.key}-sync` ? "Sincronizando..." : "Sincronizar agora"}
                     </Button>
                   </div>
                 </div>
