@@ -352,7 +352,7 @@ router.get("/portal/obra/:token", async (req, res) => {
     ? (await pool.query(
         `SELECT f.id, f.obra_id, f.etapa_id, f.origem_fase_id, f.nome, f.ordem,
                 f.data_inicio_prevista, f.data_fim_prevista, f.data_inicio_real, f.data_fim_real,
-                f.status, f.percentual_etapa, f.percentual_executado, f.custo_previsto
+                f.status, f.percentual_etapa, f.percentual_executado
            FROM obra_etapa_fases f
           WHERE f.obra_id = $1
           ORDER BY f.etapa_id, f.ordem`,
@@ -607,10 +607,10 @@ router.get("/portal/obra/:token", async (req, res) => {
   if (config.showFinancialSummary) {
     const result = config.showFinancialDetails
       ? await pool.query(
-          `SELECT id, tipo, fornecedor, numero, valor, data_emissao, data_vencimento,
-                  descricao, status, documento_url, observacoes
+          `SELECT id, tipo, numero, valor, data_emissao, data_vencimento,
+                  descricao, status, documento_url
              FROM obra_lancamentos
-            WHERE obra_id = $1 AND tenant_id = $2
+            WHERE obra_id = $1 AND tenant_id = $2 AND visible_to_client=true
             ORDER BY COALESCE(data_vencimento, data_emissao) DESC NULLS LAST, created_at DESC
             LIMIT 100`,
           [obra.id, obra.tenantId],
@@ -641,14 +641,10 @@ router.get("/portal/obra/:token", async (req, res) => {
     }
 
     financeiro = {
-      orcamentoTotal: Number(obra.orcamentoTotal ?? 0),
-      custoRealizado: custoRealizadoCalculado,
-      percentualConsumido: Number(obra.orcamentoTotal ?? 0) > 0
-        ? custoRealizadoCalculado / Number(obra.orcamentoTotal ?? 0) * 100
-        : 0,
-      totalLancado: config.showFinancialDetails ? totalLancado : null,
-      totalPago: config.showFinancialDetails ? totalPago : null,
-      totalPendente: config.showFinancialDetails ? totalPendente : null,
+      valorContratado: Number(obra.orcamentoTotal ?? 0),
+      totalLancado,
+      totalPago,
+      totalPendente,
       lancamentos: config.showFinancialDetails ? lancamentos : [],
     };
   }
@@ -717,15 +713,12 @@ router.get("/portal/obra/:token", async (req, res) => {
       else if (today > start) plannedPercent = Math.max(0, Math.min(100, ((today.getTime() - start.getTime()) / Math.max(1, end.getTime() - start.getTime())) * 100));
     }
     const actualPercent = Math.max(0, Math.min(100, Number(item.percentualExecutado ?? item.percentual_executado ?? 0)));
-    const plannedCost = Number(item.custoPrevisto ?? item.custo_previsto ?? 0);
     return {
       etapaId: item.id,
       nome: item.nome,
       plannedPercent,
       actualPercent,
       variancePoints: actualPercent - plannedPercent,
-      plannedCost,
-      earnedValue: plannedCost * actualPercent / 100,
       status: item.status,
       dataInicioPrevista: startRaw ?? null,
       dataFimPrevista: endRaw ?? null,
@@ -739,8 +732,6 @@ router.get("/portal/obra/:token", async (req, res) => {
     plannedProgress,
     actualProgress: progressoGeral,
     progressVariancePoints: progressoGeral - plannedProgress,
-    plannedCost: etapaRows.reduce((sum, item) => sum + Number(item.custoPrevisto ?? item.custo_previsto ?? 0), 0),
-    actualCost: custoRealizadoCalculado,
     forecastDelivery: previsaoEntrega,
     stages: executiveStages,
   } : null;
@@ -848,6 +839,32 @@ router.get("/portal/obra/:token", async (req, res) => {
     portalResponses = [];
   }
 
+  const etapasPortal = config.showSchedule
+    ? etapaRows.map((item: any) => ({
+        id: item.id,
+        nome: item.nome,
+        ordem: item.ordem,
+        status: item.status,
+        percentualExecutado: item.percentualExecutado ?? item.percentual_executado,
+        responsavel: item.responsavel ?? null,
+        dataInicioPrevista: item.dataInicioPrevista ?? item.data_inicio_prevista ?? null,
+        dataFimPrevista: item.dataFimPrevista ?? item.data_fim_prevista ?? null,
+        pesoFisico: item.pesoFisico ?? item.peso_fisico ?? null,
+        marco: Boolean(item.marco),
+      }))
+    : [];
+  const medicoesPortal = (medicoes ?? []).map((item: any) => config.showFinancialDetails ? item : ({
+    ...item,
+    valor_bruto: null,
+    amortizacao_entrada: null,
+    valor_liquido: null,
+    saldo_entrada_apos: null,
+  }));
+  const comprasPortal = (compras ?? []).map((item: any) => {
+    const { valor_total: _valorTotal, ...rest } = item;
+    return rest;
+  });
+
   const chatMessages = (authenticated && config.showChat)
     ? (await pool.query(
         `SELECT id,autor_tipo,autor_nome,mensagem,created_at
@@ -883,11 +900,10 @@ router.get("/portal/obra/:token", async (req, res) => {
       dataFimPrevista: config.showOverview ? obra.dataFimPrevista : null,
       dataFimReal: config.showOverview ? obra.dataFimReal : null,
       orcamentoTotal: config.showFinancialSummary ? obra.orcamentoTotal : null,
-      custoRealizado: config.showFinancialSummary ? String(custoRealizadoCalculado) : null,
     },
     tenant: tenant ?? { id: obra.tenantId, name: "Construtora" },
     orcamento: orcamentoComEtapas,
-    etapas: config.showSchedule ? etapas : [],
+    etapas: etapasPortal,
     fases,
     diario: config.showDiary ? diario : [],
     ocorrencias,
@@ -903,9 +919,9 @@ router.get("/portal/obra/:token", async (req, res) => {
       ocorrenciasAbertas: ocorrencias.length,
     } : null,
     marcos,
-    medicoes,
+    medicoes: medicoesPortal,
     documentos,
-    compras,
+    compras: comprasPortal,
     financeiro,
     galeriaProjeto,
     fotosRecentes,
