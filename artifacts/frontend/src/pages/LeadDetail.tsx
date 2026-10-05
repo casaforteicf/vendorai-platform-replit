@@ -280,6 +280,34 @@ function formatDate(iso: string | null | undefined) {
   });
 }
 
+const INTERNAL_PROSPECTOR_METADATA_KEYS = new Set([
+  "place_id",
+  "prospector_tags",
+  "prospector_tags_atualizadas_em",
+  "prospector_fontes",
+  "prospector_nichos",
+  "prospector_localidades",
+  "coldProspectDossier",
+]);
+
+function formatLeadMetadataValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => typeof item === "object" && item !== null
+        ? String((item as Record<string, unknown>)["valor"] ?? (item as Record<string, unknown>)["label"] ?? "")
+        : String(item))
+      .filter(Boolean)
+      .join(", ");
+  }
+  if (typeof value === "object" && value !== null) {
+    return Object.values(value as Record<string, unknown>)
+      .filter((item) => ["string", "number", "boolean"].includes(typeof item))
+      .map(String)
+      .join(" · ");
+  }
+  return String(value ?? "");
+}
+
 function formatDateTime(iso: string | null | undefined) {
   if (!iso) return "—";
   return new Date(iso).toLocaleString("pt-BR", {
@@ -1862,14 +1890,14 @@ export default function LeadDetail() {
                     metadata. donome/socios já têm exibição própria em
                     outro lugar da ficha, não repete aqui. */}
                 {Object.entries((lead as any).metadata ?? {})
-                  .filter(([key, value]) => !["donome", "socios"].includes(key) && value != null && String(value).trim() !== "")
+                  .filter(([key, value]) => !["donome", "socios"].includes(key) && !INTERNAL_PROSPECTOR_METADATA_KEYS.has(key) && value != null && formatLeadMetadataValue(value).trim() !== "")
                   .map(([key, value]) => (
                     <div key={key} className="grid grid-cols-[7rem_1fr] gap-x-2 items-start">
                       <dt className="flex items-center gap-1.5 text-muted-foreground shrink-0 pt-px">
                         <Tag className="h-3.5 w-3.5 shrink-0" />
                         <span className="text-xs capitalize">{key.replace(/_/g, " ")}</span>
                       </dt>
-                      <dd className="text-foreground">{String(value)}</dd>
+                      <dd className="text-foreground break-words">{formatLeadMetadataValue(value)}</dd>
                     </div>
                   ))}
                 {lead.urgencia && (
@@ -2876,7 +2904,7 @@ export default function LeadDetail() {
                       </>
                     ) : (
                       <p className="text-xs text-muted-foreground">
-                        Nenhuma ação definida. Clique para editar.
+                        {(lead as any)?.proximaAcao ?? "Análise comercial em andamento. A próxima ação será definida automaticamente."}
                       </p>
                     )}
                   </div>
@@ -2931,7 +2959,7 @@ export default function LeadDetail() {
                   >
                     {intelligence?.lastAnalyzedAt && lastAnalyzedRelative
                       ? `Última análise: há ${lastAnalyzedRelative}`
-                      : "Nunca analisado"}
+                      : ((lead as any)?.source === "prospector_auto" ? "Análise automática em processamento" : "Nunca analisado")}
                   </p>
                 </>
               )}
