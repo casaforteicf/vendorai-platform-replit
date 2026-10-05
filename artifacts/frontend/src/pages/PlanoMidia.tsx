@@ -180,7 +180,8 @@ export default function PlanoMidia() {
   const [generating, setGenerating] = useState(false);
   const [approving, setApproving] = useState(false);
   const [creatingCampaigns, setCreatingCampaigns] = useState(false);
-  const [campaignsGenerated, setCampaignsGenerated] = useState(false);\n  const [wizardStep, setWizardStep] = useState(0);
+  const [campaignsGenerated, setCampaignsGenerated] = useState(false);
+  const [wizardStep, setWizardStep] = useState(0);
 
   const campaigns = plan?.conteudo.campanhas ?? [];
   const approved = plan?.conteudo.statusPlanejamento === "aprovado";
