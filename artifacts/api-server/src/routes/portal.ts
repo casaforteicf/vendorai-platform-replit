@@ -54,6 +54,35 @@ async function resolvePortalUser(req: any, obraId: string) {
   return result.rows[0] ?? null;
 }
 
+async function recordPortalAudit(params: {
+  tenantId: string;
+  obraId: string;
+  portalUserId?: string | null;
+  eventType: string;
+  entityType?: string | null;
+  entityId?: string | null;
+  metadata?: Record<string, unknown>;
+}) {
+  await pool.query(
+    `INSERT INTO obra_portal_audit_events
+      (id,tenant_id,obra_id,portal_user_id,event_type,entity_type,entity_id,metadata,created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,now())`,
+    [
+      crypto.randomUUID(), params.tenantId, params.obraId, params.portalUserId ?? null,
+      params.eventType, params.entityType ?? null, params.entityId ?? null,
+      JSON.stringify(params.metadata ?? {}),
+    ],
+  ).catch(() => undefined);
+}
+
+function sanitizeAnswerRows(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 80).map((row: any) => ({
+    question: String(row?.question ?? "").trim().slice(0, 500),
+    answer: String(row?.answer ?? "").trim().slice(0, 5000),
+  })).filter((row) => row.question || row.answer);
+}
+
 async function createPortalSession(userId: string) {
   const raw = randomBytes(32).toString("hex");
   await pool.query(
@@ -915,6 +944,54 @@ router.get("/portal/obra/:token", async (req, res) => {
     nextActions,
     postSale,
   });
+});
+
+router.put("/portal/obra/:token/briefing", async (req, res) => {
+  const token = String(req.params.token ?? "");
+  const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
+  if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
+  const config = portalConfig(obra.portalConfig);
+  if (!config.showBriefing) return res.status(403).json({ error: "Briefing não está publicado neste portal." });
+  const portalUser = await resolvePortalUser(req, obra.id);
+  if (!portalUser) return res.status(401).json({ error: "Entre na área privada para editar o briefing." });
+  if (!obra.leadOrigemId) return res.status(409).json({ error: "Esta obra não possui lead de origem para o briefing." });
+
+  const situation = sanitizeAnswerRows(req.body?.situationAnswers);
+  const problem = sanitizeAnswerRows(req.body?.problemAnswers);
+  const implication = sanitizeAnswerRows(req.body?.implicationAnswers);
+  const need = sanitizeAnswerRows(req.body?.needAnswers);
+  const freeNotes = typeof req.body?.freeNotes === "string" ? req.body.freeNotes.trim().slice(0, 20000) : "";
+  const approve = req.body?.approve === true;
+
+  const existing = await pool.query(
+    `SELECT id,journey_checklist FROM lead_briefings WHERE tenant_id=$1 AND lead_id=$2 LIMIT 1`,
+    [obra.tenantId, obra.leadOrigemId],
+  );
+  let briefing;
+  if (existing.rows[0]) {
+    const checklist = { ...(existing.rows[0].journey_checklist ?? {}), clientApproved: approve, clientApprovedAt: approve ? new Date().toISOString() : null, clientApprovedBy: approve ? portalUser.nome : null };
+    const updated = await pool.query(
+      `UPDATE lead_briefings
+          SET situation_answers=$1::jsonb,problem_answers=$2::jsonb,implication_answers=$3::jsonb,
+              need_answers=$4::jsonb,free_notes=$5,journey_checklist=$6::jsonb,updated_at=now()
+        WHERE id=$7 AND tenant_id=$8 AND lead_id=$9
+        RETURNING *`,
+      [JSON.stringify(situation),JSON.stringify(problem),JSON.stringify(implication),JSON.stringify(need),freeNotes || null,JSON.stringify(checklist),existing.rows[0].id,obra.tenantId,obra.leadOrigemId],
+    );
+    briefing = updated.rows[0];
+  } else {
+    const checklist = { clientApproved: approve, clientApprovedAt: approve ? new Date().toISOString() : null, clientApprovedBy: approve ? portalUser.nome : null, source: "client_portal" };
+    const inserted = await pool.query(
+      `INSERT INTO lead_briefings
+        (id,tenant_id,lead_id,situation_answers,problem_answers,implication_answers,need_answers,free_notes,journey_checklist,journey_stage,created_at,updated_at)
+       VALUES ($1,$2,$3,$4::jsonb,$5::jsonb,$6::jsonb,$7::jsonb,$8,$9::jsonb,'briefing',now(),now())
+       RETURNING *`,
+      [crypto.randomUUID(),obra.tenantId,obra.leadOrigemId,JSON.stringify(situation),JSON.stringify(problem),JSON.stringify(implication),JSON.stringify(need),freeNotes || null,JSON.stringify(checklist)],
+    );
+    briefing = inserted.rows[0];
+  }
+  await recordPortalAudit({ tenantId: obra.tenantId, obraId: obra.id, portalUserId: portalUser.id, eventType: approve ? "briefing-approved" : "briefing-updated", entityType: "lead_briefing", entityId: briefing.id });
+  return res.json({ ok: true, briefing });
 });
 
 router.post("/portal/obra/:token/post-sale/terms/:termId/accept", async (req, res) => {
