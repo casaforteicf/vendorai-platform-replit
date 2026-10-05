@@ -314,14 +314,235 @@ export function BusinessPlanPanel() {
       </section>
     )}
 
-    <div className="rounded-xl border bg-card p-5"><h2 className="text-xl font-semibold">Plano de Negócios</h2><p className="mt-1 text-sm text-muted-foreground">Desenvolva sua estratégia com IA e transforme informações aprovadas em orientação para os agentes e campanhas.</p><p className="mt-3 text-sm">{approvedCount} de {data.sections.length} blocos aprovados · versão {data.plan.version}{dirty ? " · alterações não salvas" : ""}</p><div className="mt-4 flex flex-wrap gap-2">{[["plan", "Desenvolver plano"], ["agents", "Conexão com agentes"], ["campaign", "Criar campanha"], ["document", "Visualizar PN"]].map(([key, label]) => <Button key={key} variant={tab === key ? "default" : "outline"} onClick={() => setTab(key)}>{label}</Button>)}</div></div>
-    {tab === "plan" && <div className="grid gap-4 lg:grid-cols-[230px_minmax(0,1fr)]"><nav className="flex gap-2 overflow-x-auto lg:flex-col" aria-label="Blocos do plano">{data.sections.map((s,i) => <button key={s.id} disabled={!!busy} onClick={() => { setSectionId(s.id); setSuggestion(null); setNotes(""); }} className={`shrink-0 rounded-lg border p-3 text-left text-sm ${sectionId === s.id ? "border-primary bg-primary/5 font-semibold" : "bg-card"}`}>{i+1}. {s.title}<span className="block text-xs font-normal text-muted-foreground">{drafts[s.id] ? "Alterações não salvas" : data.plan.sections[s.id]?.approved.length ? "Versão aprovada disponível" : "Em desenvolvimento"}</span></button>)}</nav>
-      <div className="min-w-0 space-y-4"><div className="rounded-xl border bg-card p-4"><h3 className="font-semibold">{spec?.title}</h3><p className="mt-1 text-sm text-muted-foreground">Crie uma ficha por segmento, produto, oportunidade ou ação. Rascunhos e hipóteses não entram no atendimento dos agentes.</p><label className="mt-3 block text-sm">Como a IA pode ajudar?<Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Ex.: desenvolva oportunidades específicas para os públicos que atendemos" /></label><Button className="mt-2" disabled={!!busy} onClick={() => run("Desenvolvendo com IA...", async () => { const r = await request(`/sections/${sectionId}/suggest`, "POST", { records, notes }); setSuggestion(r.records); })}>Desenvolver com IA</Button></div>
-      {suggestion && <div className="rounded-xl border border-primary bg-card p-4"><h4 className="font-semibold">Sugestão para revisão</h4>{suggestion.map(r => <details key={r.id} className="mt-2"><summary>{r.title}</summary>{Object.entries(r.values).map(([k,v]) => <p key={k} className="mt-2 whitespace-pre-wrap text-sm"><strong>{k}: </strong>{v}</p>)}</details>)}<div className="mt-3 flex gap-2"><Button onClick={() => { setDrafts(v => ({ ...v, [sectionId]: [...records, ...suggestion].slice(0,30) })); setSuggestion(null); }}>Adicionar ao rascunho</Button><Button variant="outline" onClick={() => setSuggestion(null)}>Descartar sugestão</Button></div></div>}
-      {records.map((r,index) => <div key={r.id} className="space-y-4 rounded-xl border bg-card p-4"><div className="flex gap-2"><Input aria-label="Título da ficha" value={r.title} onChange={e => update(index, { title: e.target.value })} /><Button variant="outline" onClick={() => setDrafts(v => ({ ...v, [sectionId]: records.filter(x => x.id !== r.id) }))}>Remover</Button></div><div className="grid gap-4 xl:grid-cols-2">{spec?.fields.map(f => <label key={f} className="space-y-1 text-sm"><span>{f}</span><Textarea rows={3} value={r.values[f] ?? ""} onChange={e => update(index, { values: { ...r.values, [f]: e.target.value } })} /></label>)}</div><div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">Situação da informação<select className={selectClass} value={r.evidence} onChange={e => update(index, { evidence: e.target.value as Entry["evidence"] })}><option value="declared">Informado pela empresa</option><option value="verified">Validado com evidência</option><option value="hypothesis">Hipótese a validar</option></select></label><label className="text-sm">Fonte ou evidência<Input value={r.source} onChange={e => update(index, { source: e.target.value })} placeholder="Documento, case, entrevista ou responsável" /></label></div><details><summary className="cursor-pointer text-sm font-medium">Vincular produtos e imagens</summary><label className="mt-3 block text-sm">Produtos do catálogo<select multiple className={selectClass} value={r.productIds} onChange={e => update(index, { productIds: Array.from(e.target.selectedOptions, o => o.value) })}>{data.sources.products.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}</select></label><div className="mt-3">{mediaPicker(r.assetIds, assetIds => update(index, { assetIds }))}</div></details></div>)}
-      <Button variant="outline" disabled={!!busy || records.length >= 30} onClick={() => setDrafts(v => ({ ...v, [sectionId]: [...records, newEntry()] }))}>Adicionar ficha</Button>
-      <div className="flex flex-wrap gap-2 rounded-xl border bg-card p-4"><Button disabled={!!busy} onClick={() => save("save")}>Salvar e continuar</Button><Button variant="outline" disabled={!!busy || !records.length} onClick={() => save("approve")}>Aprovar bloco para uso</Button>{!!saved?.approved.length && <Button variant="outline" disabled={!!busy} onClick={() => save("revoke")}>Revogar uso nos agentes</Button>}<Button variant="ghost" disabled={!!busy} onClick={() => query.refetch()}>Recarregar versão salva</Button></div></div>
-    </div>}
+    <div className="rounded-xl border bg-card p-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold">Plano de Negócios Assistido</h2>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+            O Vendi organiza o que já sabemos, sugere o que falta e pede apenas as decisões necessárias. Informações aprovadas passam automaticamente a compor o contexto dos agentes compatíveis.
+          </p>
+          <p className="mt-3 text-sm">{approvedCount} de {data.sections.length} etapas estratégicas aprovadas · versão {data.plan.version}{dirty ? " · alterações não salvas" : ""}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {([["plan", "Desenvolver PN"], ["campaign", "Usar no Marketing"], ["document", "Revisar PN"]] as const).map(([key, label]) => (
+            <Button key={key} variant={tab === key ? "default" : "outline"} onClick={() => setTab(key)}>{label}</Button>
+          ))}
+        </div>
+      </div>
+    </div>
+    {tab === "plan" && (() => {
+      const wizardIndex = Math.max(0, data.sections.findIndex((item) => item.id === sectionId));
+      const isReview = sectionId === "__review__";
+      const totalSteps = data.sections.length + 1;
+      const stepNumber = isReview ? totalSteps : wizardIndex + 1;
+      const progress = Math.round((stepNumber / totalSteps) * 100);
+      const approved = saved?.approved ?? [];
+      const knownRecords = approved.length ? approved : records.filter((item) => item.evidence !== "hypothesis");
+      const goToIndex = (index: number) => {
+        if (index >= data.sections.length) {
+          setSectionId("__review__");
+          setSuggestion(null);
+          setNotes("");
+          return;
+        }
+        const next = data.sections[Math.max(0, index)];
+        if (!next) return;
+        setSectionId(next.id);
+        setSuggestion(null);
+        setNotes("");
+      };
+      const profileFacts = Object.entries(data.sources.profile ?? {})
+        .filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== "")
+        .slice(0, 8);
+
+      if (isReview) {
+        return <div className="space-y-4">
+          <section className="rounded-xl border bg-card p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">Etapa {stepNumber} de {totalSteps}</p>
+                <h3 className="mt-1 text-xl font-semibold">Revisão final e ativação do contexto</h3>
+                <p className="mt-1 text-sm text-muted-foreground">Revise o que foi aprovado. Os agentes compatíveis usam automaticamente apenas as informações aprovadas e permitidas para cada função.</p>
+              </div>
+              <div className="min-w-[220px]">
+                <div className="mb-1 flex justify-between text-xs text-muted-foreground"><span>Progresso do PN</span><span>{progress}%</span></div>
+                <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} /></div>
+              </div>
+            </div>
+          </section>
+
+          <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {data.sections.map((section, index) => {
+              const sectionData = data.plan.sections[section.id];
+              const count = sectionData?.approved?.length ?? 0;
+              return <button
+                key={section.id}
+                type="button"
+                onClick={() => goToIndex(index)}
+                className="rounded-xl border bg-card p-4 text-left transition hover:border-primary/40 hover:bg-primary/[0.02]"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground">Etapa {index + 1}</p>
+                    <h4 className="mt-1 font-semibold">{section.title}</h4>
+                  </div>
+                  <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${count ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                    {count ? "Aprovado" : "Pendente"}
+                  </span>
+                </div>
+                <p className="mt-3 text-xs text-muted-foreground">{count ? `${count} ficha(s) aprovadas` : "Complete esta etapa antes de concluir o PN."}</p>
+              </button>;
+            })}
+          </section>
+
+          <section className="rounded-xl border bg-card p-5">
+            <h4 className="font-semibold">O que acontece depois da aprovação</h4>
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <div className="rounded-lg border bg-muted/20 p-3"><p className="text-sm font-medium">Agentes</p><p className="mt-1 text-xs text-muted-foreground">Recebem automaticamente o recorte aprovado pertinente à função, sem alterar prompts individuais.</p></div>
+              <div className="rounded-lg border bg-muted/20 p-3"><p className="text-sm font-medium">Marketing</p><p className="mt-1 text-xs text-muted-foreground">Campanhas e conteúdos podem usar públicos, ofertas, posicionamento e identidade aprovados.</p></div>
+              <div className="rounded-lg border bg-muted/20 p-3"><p className="text-sm font-medium">BI e planejamento</p><p className="mt-1 text-xs text-muted-foreground">Metas, cenários e execução continuam conectados ao mesmo Perfil Mestre e PN.</p></div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => goToIndex(data.sections.length - 1)}>Voltar à última etapa</Button>
+              <Button onClick={() => setTab("document")}>Visualizar PN aprovado</Button>
+              <Button variant="outline" onClick={() => setTab("campaign")}>Usar no Marketing</Button>
+            </div>
+          </section>
+        </div>;
+      }
+
+      return <div className="space-y-4">
+        <section className="rounded-xl border bg-card p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-primary">Etapa {stepNumber} de {totalSteps}</p>
+              <h3 className="mt-1 text-xl font-semibold">{spec?.title}</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Revise o contexto existente, use a IA para preencher lacunas e confirme somente o que deve virar informação oficial.</p>
+            </div>
+            <div className="min-w-[220px]">
+              <div className="mb-1 flex justify-between text-xs text-muted-foreground"><span>Progresso</span><span>{progress}%</span></div>
+              <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} /></div>
+              <p className="mt-2 text-xs text-muted-foreground">{approved.length ? "Etapa com versão aprovada" : "Etapa ainda não aprovada"}</p>
+            </div>
+          </div>
+
+          <div className="mt-5 flex gap-2 overflow-x-auto pb-1" aria-label="Etapas do Plano de Negócios">
+            {data.sections.map((section, index) => {
+              const count = data.plan.sections[section.id]?.approved?.length ?? 0;
+              return <button
+                key={section.id}
+                type="button"
+                onClick={() => goToIndex(index)}
+                className={`min-w-9 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${section.id === sectionId ? "border-primary bg-primary text-primary-foreground" : count ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "bg-background text-muted-foreground"}`}
+                title={section.title}
+              >
+                {index + 1}
+              </button>;
+            })}
+            <button type="button" onClick={() => goToIndex(data.sections.length)} className="min-w-max rounded-full border bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground">Revisão</button>
+          </div>
+        </section>
+
+        <div className="grid gap-4 xl:grid-cols-3">
+          <section className="rounded-xl border bg-card p-4">
+            <div className="flex items-center justify-between gap-2">
+              <h4 className="font-semibold">1. O que já sabemos</h4>
+              <span className="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground">{knownRecords.length || profileFacts.length} fonte(s)</span>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">Informações já existentes no Perfil Mestre ou aprovadas anteriormente. Não precisa digitar tudo de novo.</p>
+            <div className="mt-3 space-y-2">
+              {knownRecords.slice(0, 6).map((record) => (
+                <details key={record.id} className="rounded-lg border bg-muted/20 p-3">
+                  <summary className="cursor-pointer text-sm font-medium">{record.title}</summary>
+                  {Object.entries(record.values).filter(([, value]) => value).slice(0, 6).map(([key, value]) => (
+                    <p key={key} className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground"><strong>{key}: </strong>{value}</p>
+                  ))}
+                  <p className="mt-2 text-[11px] text-muted-foreground">Fonte: {record.source}</p>
+                </details>
+              ))}
+              {!knownRecords.length && sectionId === "company" && profileFacts.map(([key, value]) => (
+                <div key={key} className="rounded-lg border bg-muted/20 p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{key.replace(/_/g, " ")}</p>
+                  <p className="mt-1 text-sm">{Array.isArray(value) ? value.join(", ") : String(value)}</p>
+                </div>
+              ))}
+              {!knownRecords.length && sectionId !== "company" && <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Ainda não há conteúdo oficial suficiente nesta etapa. O Vendi pode preparar uma primeira proposta.</div>}
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-primary/20 bg-primary/[0.03] p-4">
+            <h4 className="font-semibold">2. O que o Vendi sugere</h4>
+            <p className="mt-1 text-xs text-muted-foreground">Peça uma sugestão usando o contexto da empresa. A IA gera rascunho; nada entra em operação sem sua confirmação.</p>
+            <label className="mt-3 block text-sm">
+              Orientação opcional
+              <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Ex.: considere os principais produtos, público atual e oportunidades comerciais." className="mt-1" />
+            </label>
+            <Button className="mt-2" disabled={!!busy} onClick={() => run("Desenvolvendo com IA...", async () => {
+              const r = await request(`/sections/${sectionId}/suggest`, "POST", { records, notes });
+              setSuggestion(r.records);
+            })}>Gerar sugestão</Button>
+            {suggestion && <div className="mt-4 space-y-2">
+              {suggestion.map((record) => (
+                <details key={record.id} open className="rounded-lg border bg-background p-3">
+                  <summary className="cursor-pointer text-sm font-medium">{record.title}</summary>
+                  {Object.entries(record.values).filter(([, value]) => value).map(([key, value]) => <p key={key} className="mt-2 whitespace-pre-wrap text-xs"><strong>{key}: </strong>{value}</p>)}
+                </details>
+              ))}
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" onClick={() => {
+                  setDrafts(value => ({ ...value, [sectionId]: [...records, ...suggestion].slice(0, 30) }));
+                  setSuggestion(null);
+                }}>Usar esta sugestão</Button>
+                <Button size="sm" variant="outline" onClick={() => setSuggestion(null)}>Descartar</Button>
+              </div>
+            </div>}
+          </section>
+
+          <section className="rounded-xl border bg-card p-4">
+            <h4 className="font-semibold">3. O que você precisa decidir</h4>
+            <p className="mt-1 text-xs text-muted-foreground">Confirme, corrija ou complemente apenas os pontos que precisam virar referência oficial.</p>
+            <div className="mt-3 space-y-2">
+              {records.length ? records.slice(0, 5).map((record, index) => (
+                <div key={record.id} className="rounded-lg border bg-muted/20 p-3">
+                  <Input aria-label="Título da ficha" value={record.title} onChange={e => update(index, { title: e.target.value })} />
+                  <div className="mt-2 grid gap-2">
+                    {spec?.fields.map((field) => <label key={field} className="text-xs font-medium">{field}<Textarea rows={2} className="mt-1" value={record.values[field] ?? ""} onChange={e => update(index, { values: { ...record.values, [field]: e.target.value } })} /></label>)}
+                  </div>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <label className="text-xs font-medium">Situação<select className={selectClass} value={record.evidence} onChange={e => update(index, { evidence: e.target.value as Entry["evidence"] })}><option value="declared">Informado pela empresa</option><option value="verified">Validado com evidência</option><option value="hypothesis">Hipótese a validar</option></select></label>
+                    <label className="text-xs font-medium">Fonte<Input className="mt-1" value={record.source} onChange={e => update(index, { source: e.target.value })} placeholder="Documento, entrevista, CRM..." /></label>
+                  </div>
+                  <Button className="mt-2" size="sm" variant="ghost" onClick={() => setDrafts(value => ({ ...value, [sectionId]: records.filter(item => item.id !== record.id) }))}>Remover</Button>
+                </div>
+              )) : <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Nenhuma decisão adicionada ainda. Use a sugestão do Vendi ou adicione uma ficha manualmente.</div>}
+              <Button size="sm" variant="outline" disabled={!!busy || records.length >= 30} onClick={() => setDrafts(value => ({ ...value, [sectionId]: [...records, newEntry()] }))}>Adicionar informação</Button>
+            </div>
+          </section>
+        </div>
+
+        <section className="rounded-xl border bg-card p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-sm font-semibold">Confirmar esta etapa</p>
+              <p className="mt-1 text-xs text-muted-foreground">Salvar mantém como rascunho. Aprovar torna o conteúdo disponível automaticamente aos módulos e agentes compatíveis.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" disabled={!!busy || wizardIndex === 0} onClick={() => goToIndex(wizardIndex - 1)}>Anterior</Button>
+              <Button variant="outline" disabled={!!busy} onClick={() => save("save")}>Salvar rascunho</Button>
+              <Button disabled={!!busy || !records.length} onClick={() => run("Aprovando etapa...", async () => {
+                const response = await request(`/sections/${sectionId}`, "PUT", { version: data!.plan.version, action: "approve", records });
+                qc.setQueryData<Data>(queryKey, old => old ? { ...old, plan: response.plan } : old);
+                setDrafts(value => { const next = { ...value }; delete next[sectionId]; return next; });
+                setAgentContext("");
+                toast({ title: "Etapa aprovada e contexto atualizado." });
+                goToIndex(wizardIndex + 1);
+              })}>Aprovar e continuar</Button>
+              <Button variant="ghost" disabled={!!busy} onClick={() => goToIndex(wizardIndex + 1)}>Pular por enquanto</Button>
+            </div>
+          </div>
+        </section>
+      </div>;
+    })()}
     {tab === "agents" && <div className="space-y-4 rounded-xl border bg-card p-5"><h3 className="font-semibold">Base compartilhada, agentes editáveis</h3><p className="text-sm text-muted-foreground">Cada agente consulta os blocos aprovados pertinentes à sua função. Seus prompts, restrições e configurações individuais são preservados. Financeiro interno, SWOT e riscos não são enviados aos agentes de atendimento.</p><label className="block text-sm">Agente<select className={selectClass} value={role} onChange={e => { setRole(e.target.value); setAgentContext(""); }}>{Object.entries(roleLabels).map(([key,label]) => <option key={key} value={key}>{label}</option>)}</select></label><Button disabled={!!busy} onClick={() => run("Consultando base...", async () => { const r = await request(`/agent/${role}`); setAgentContext(r.context || "Nenhum conteúdo aprovado para este agente. Desenvolva e aprove os blocos do plano."); })}>Visualizar base utilizada</Button><a className="ml-3 text-sm underline" href="/agents/config">Editar agentes</a>{agentContext && <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-lg bg-muted p-4 text-xs">{agentContext}</pre>}</div>}
     {tab === "campaign" && <div className="space-y-4 rounded-xl border bg-card p-5"><h3 className="font-semibold">Campanha por público e produto</h3><div className="grid gap-4 sm:grid-cols-2"><label className="text-sm">Segmento aprovado<select className={selectClass} value={campaign.segmentId} onChange={e => patchCampaign({ segmentId: e.target.value })}><option value="">Escolha um segmento</option>{data.plan.sections.segments?.approved.filter(r => r.evidence !== "hypothesis").map(r => <option key={r.id} value={r.id}>{r.title}</option>)}</select></label><label className="text-sm">Produto do catálogo<select className={selectClass} value={campaign.productId} onChange={e => { const productId=e.target.value; const recommended=Object.values(data.plan.sections).flatMap(s=>s.approved).filter(r=>r.productIds.includes(productId)).flatMap(r=>r.assetIds); patchCampaign({ productId, assetIds:[...new Set(recommended)].slice(0,10) }); }}><option value="">Escolha um produto</option>{data.sources.products.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}</select></label><label className="text-sm">Objetivo<Input value={campaign.goal} onChange={e => patchCampaign({ goal: e.target.value })} placeholder="Ex.: solicitar uma demonstração" /></label><label className="text-sm">Canal<select className={selectClass} value={campaign.channel} onChange={e => patchCampaign({ channel: e.target.value })}><option value="instagram">Instagram</option><option value="email">E-mail</option><option value="whatsapp">WhatsApp</option></select></label></div>{mediaPicker(campaign.assetIds, assetIds => patchCampaign({ assetIds }))}<p className="text-xs text-muted-foreground">A primeira imagem será a capa da campanha. As demais ficam vinculadas ao briefing para composição dos materiais.</p><Button disabled={!!busy || !campaign.segmentId || !campaign.productId || campaign.goal.trim().length<3} onClick={() => run("Criando campanha...", async () => { const r = await request("/campaign/preview", "POST", { ...campaign, version: data.plan.version, requestId: campaignId.current }); setMessage(r.message); previewVersion.current = data.plan.version; setSavedCampaign(""); })}>Gerar texto com a base da empresa</Button>{message && <div className="space-y-3"><label className="block text-sm">Revise e edite o texto<Textarea rows={10} value={message} onChange={e => { setMessage(e.target.value); setSavedCampaign(""); campaignId.current=crypto.randomUUID(); }} /></label><Button disabled={!!busy || !!savedCampaign || !message.trim()} onClick={() => run("Salvando campanha...", async () => { const r = await request("/campaign/save", "POST", { ...campaign, message, version: previewVersion.current, requestId: campaignId.current }); setSavedCampaign(r.id); toast({ title: "Campanha salva como rascunho" }); })}>Salvar rascunho em Campanhas</Button>{savedCampaign && <p className="text-sm">Campanha salva. Revise os destinatários e o agendamento em <a className="underline" href="/campanhas">Campanhas</a>.</p>}</div>}</div>}
     {tab === "document" && <article className="space-y-6 rounded-xl border bg-card p-5"><h3 className="text-xl font-semibold">Plano de Negócios · versão {data.plan.version}</h3><Button variant="outline" onClick={exportPlan}>Baixar PN em HTML</Button><p className="text-sm text-muted-foreground">Visualização dos blocos aprovados. Hipóteses permanecem identificadas e não alimentam os agentes.</p>{data.sections.map(s => <section key={s.id}><h4 className="font-semibold">{s.title}</h4>{!data.plan.sections[s.id]?.approved.length && <p className="text-sm text-muted-foreground">Pendente de desenvolvimento e aprovação.</p>}{data.plan.sections[s.id]?.approved.map(r => <div key={r.id} className="mt-3 border-l-2 pl-4"><h5 className="font-medium">{r.title} {r.evidence === "hypothesis" ? "· Hipótese a validar" : ""}</h5>{Object.entries(r.values).map(([k,v]) => v && <p key={k} className="mt-2 whitespace-pre-wrap text-sm"><strong>{k}: </strong>{v}</p>)}<p className="mt-2 text-xs text-muted-foreground">Fonte: {r.source}</p></div>)}</section>)}<details><summary>Histórico recente</summary>{data.plan.history.slice().reverse().map((h,i)=><p key={i} className="mt-1 text-sm">{new Date(h.at).toLocaleString("pt-BR")} · {data.sections.find(s=>s.id===h.section)?.title} · {h.action === "approve" ? "Aprovado" : h.action === "revoke" ? "Revogado" : "Rascunho salvo"}</p>)}</details></article>}
