@@ -39,6 +39,43 @@ export type PipelineStageActivityTemplate = {
   condicao?: "sempre" | "sem_resposta_cliente" | "sem_atividade_aberta";
 };
 
+export type PipelineStageAICriterion = {
+  field: string;
+  operator?: "exists" | "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "contains";
+  value?: unknown;
+  required?: boolean;
+};
+
+export type PipelineStageAIAction =
+  | "create_activity"
+  | "send_message"
+  | "advance_stage"
+  | "change_owner"
+  | "generate_proposal"
+  | "schedule_meeting"
+  | "create_checkout"
+  | "handoff_agent"
+  | "move_to_warming";
+
+export type PipelineStageAIConfig = {
+  mode: "desativada" | "assistida" | "autonoma";
+  allowedActions: PipelineStageAIAction[];
+  approvalRequiredActions: PipelineStageAIAction[];
+  entryCriteria: PipelineStageAICriterion[];
+  exitCriteria: PipelineStageAICriterion[];
+  nextBestActionEnabled: boolean;
+  instructions?: string | null;
+};
+
+export const DEFAULT_PIPELINE_STAGE_AI_CONFIG: PipelineStageAIConfig = {
+  mode: "desativada",
+  allowedActions: [],
+  approvalRequiredActions: [],
+  entryCriteria: [],
+  exitCriteria: [],
+  nextBestActionEnabled: true,
+};
+
 export type PipelineStageQuestion = {
   id: string;
   texto: string;
@@ -80,6 +117,7 @@ export const pipelineStagesTable = pgTable("pipeline_stages", {
   // Perguntas-chave/playbook. Hoje são usadas principalmente na pipeline comercial.
   perguntas: jsonb("perguntas").$type<PipelineStageQuestion[]>().notNull().default([]),
   acompanhamentoConfig: jsonb("acompanhamento_config").$type<ConfiguracaoAcompanhamentoEtapa>().notNull().default({}),
+  aiConfig: jsonb("ai_config").$type<PipelineStageAIConfig>().notNull().default(DEFAULT_PIPELINE_STAGE_AI_CONFIG),
   // Compatibilidade com o modelo anterior de uma única atividade por etapa.
   atividadePadraoTitulo: text("atividade_padrao_titulo"),
   atividadePadraoDescricao: text("atividade_padrao_descricao"),

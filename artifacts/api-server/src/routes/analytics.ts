@@ -39,7 +39,7 @@ router.get("/tenants/:tenantId/analytics/agents", async (req, res) => {
 
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-  const [agentActions, agentTasks, messagesByAgent, dealConversions] = await Promise.all([
+  const [agentActions, agentTasks, messagesByAgent, dealConversions, pipelineAIActions] = await Promise.all([
     // Ações por agente (últimos 30 dias)
     db
       .select({
@@ -100,6 +100,25 @@ router.get("/tenants/:tenantId/analytics/agents", async (req, res) => {
         ),
       )
       .groupBy(leadsTable.source),
+
+    // Movimentações de pipeline executadas/sugeridas pela IA
+    db
+      .select({
+        agentName: agentActionsLogTable.agentName,
+        actionType: agentActionsLogTable.actionType,
+        total: count(),
+        executed: sql<number>`count(*) filter (where ${agentActionsLogTable.status} = 'executed')`.mapWith(Number),
+        pending: sql<number>`count(*) filter (where ${agentActionsLogTable.status} = 'pending')`.mapWith(Number),
+        approved: sql<number>`count(*) filter (where ${agentActionsLogTable.status} = 'approved')`.mapWith(Number),
+        rejected: sql<number>`count(*) filter (where ${agentActionsLogTable.status} = 'rejected')`.mapWith(Number),
+      })
+      .from(agentActionsLogTable)
+      .where(and(
+        eq(agentActionsLogTable.tenantId, tid),
+        eq(agentActionsLogTable.actionType, "pipeline_stage_transition"),
+        gte(agentActionsLogTable.createdAt, thirtyDaysAgo),
+      ))
+      .groupBy(agentActionsLogTable.agentName, agentActionsLogTable.actionType),
   ]);
 
   // Merge agent performance
@@ -140,6 +159,14 @@ router.get("/tenants/:tenantId/analytics/agents", async (req, res) => {
       source: d.source ?? "desconhecido",
       total: Number(d.total),
       valor: d.valor ?? "0",
+    })),
+    pipelineAI: pipelineAIActions.map((row) => ({
+      agentName: row.agentName,
+      total: Number(row.total),
+      executed: Number(row.executed),
+      pendingApprovalOrSuggestion: Number(row.pending),
+      approved: Number(row.approved),
+      rejected: Number(row.rejected),
     })),
   });
 });

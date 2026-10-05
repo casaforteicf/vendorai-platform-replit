@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { PipelineStageFunctionAccess } from "@/components/PipelineStageFunctionAccess";
 import { PipelineStageFollowupConfig, type ConfiguracaoAcompanhamento } from "@/components/PipelineStageFollowupConfig";
+import { PipelineStageAIConfig, type PipelineAIConfig } from "@/components/PipelineStageAIConfig";
 import "./pipeline-layout.css";
 
 export type PipelineTab = "comercial" | "execucao" | "suporte" | "aquecimento" | "parceiros" | "scout";
@@ -56,6 +57,7 @@ type PipelineStageSummary = {
   responsaveisFuncoes?: string[] | null;
   responsavelAgenteKey?: string | null;
   acompanhamentoConfig?: ConfiguracaoAcompanhamento | null;
+  aiConfig?: PipelineAIConfig | null;
   atividadePadraoTitulo?: string | null;
   atividadePadraoDescricao?: string | null;
   atividadePadraoPrazoMinutos?: number | null;
@@ -131,7 +133,7 @@ export function PipelineNav({ active }: { active: PipelineTab }) {
                   Etapas — {TABS.find((tab) => tab.key === active)?.label ?? "Pipeline"}
                 </DialogTitle>
                 <DialogDescription>
-                  Crie, renomeie, ordene, defina SLA, atividade padrão, responsáveis e o acompanhamento inteligente de cada etapa — incluindo Agentes IA, canais, cadência e regras de follow-up. Esta é a única configuração oficial das etapas da pipeline.
+                  Crie, renomeie, ordene, defina SLA, atividade padrão, responsáveis, acompanhamento inteligente e autonomia da IA por etapa — incluindo ações permitidas, aprovações, critérios, canais e cadência. Esta é a única configuração oficial das etapas da pipeline.
                 </DialogDescription>
               </DialogHeader>
               <PipelineStageManager
@@ -527,6 +529,15 @@ function PipelineStageManager({
                           stageId={stage.id}
                           stageLabel={stage.label}
                           value={stage.acompanhamentoConfig ?? null}
+                        />
+                      </div>
+                      <div className="mt-2">
+                        <PipelineStageAIConfig
+                          tenantId={tenantId}
+                          stageId={stage.id}
+                          stageLabel={stage.label}
+                          value={stage.aiConfig ?? null}
+                          onSaved={invalidate}
                         />
                       </div>
                     </div>

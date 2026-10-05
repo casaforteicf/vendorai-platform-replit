@@ -8,6 +8,7 @@
  */
 import { and, desc, eq, gt, gte, isNull, or, sql } from "drizzle-orm";
 import type { Logger } from "pino";
+import { evaluatePipelineAI } from "./pipeline-ai-orchestrator.js";
 import {
   db,
   agentConfigsTable,
@@ -2130,6 +2131,18 @@ export async function processAgentInternal(params: {
         resolvedAgentName === "sdr" ? (prospectorQuestionsForExtraction ?? spinQualificationForExtraction) : null,
       ).catch((err) => {
         log.warn({ err, leadId, tenantId }, "dispatch: SPIN briefing extraction failed");
+      });
+    }
+
+    const activeDealForPipeline = deals.find((d) => !["ganho", "perdido", "cancelado", "concluido"].includes(d.etapa));
+    if (activeDealForPipeline) {
+      void evaluatePipelineAI({
+        tenantId,
+        dealId: activeDealForPipeline.id,
+        trigger: "agent_message",
+        log,
+      }).catch((err) => {
+        log.warn({ err, tenantId, leadId, dealId: activeDealForPipeline.id }, "dispatch: pipeline AI evaluation failed");
       });
     }
 

@@ -58,6 +58,7 @@ import { z } from "zod";
 import { COMMERCIAL_STAGE_ORDER, PARTNER_STAGE_ORDER, SAAS_STAGE_ORDER, TERMINAL_DEAL_STAGES, isBackwardMove } from "../lib/pipeline-progress.js";
 import { recordIntelligenceEvent, recordStageAnswers } from "../services/customer-intelligence-history.js";
 import { suggestDynamicStageQuestions } from "../services/stage-question-intelligence.js";
+import { evaluatePipelineAI } from "../services/pipeline-ai-orchestrator.js";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -611,6 +612,24 @@ router.post("/deals/:id/resume-commercial", async (req, res) => {
   res.status(201).json({ deal: createdDeal, resumedDealId: existing.id, alreadyResumed: false });
 });
 
+router.post("/deals/:id/ai/evaluate", async (req, res) => {
+  const dealId = String(req.params.id);
+  const [deal] = await db.select({ id: dealsTable.id, tenantId: dealsTable.tenantId }).from(dealsTable)
+    .where(eq(dealsTable.id, dealId)).limit(1);
+  if (!deal) return res.status(404).json({ error: "Deal not found" });
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== deal.tenantId) {
+    return res.status(403).json({ error: "Access denied to this tenant" });
+  }
+
+  const result = await evaluatePipelineAI({
+    tenantId: deal.tenantId,
+    dealId,
+    trigger: "manual",
+    log: req.log,
+  });
+  return res.json(result);
+});
+
 router.patch("/deals/:id", async (req, res) => {
   const body = req.body as Record<string, unknown>;
   const { handoff: rawHandoff, ...dealBody } = body;
@@ -931,6 +950,15 @@ router.patch("/deals/:id", async (req, res) => {
       sourceId: deal.id,
       metadata: { previousStage: existing.etapa, stage: deal.etapa, assignedTo: deal.assignedTo ?? null },
       log: req.log,
+    });
+
+    void evaluatePipelineAI({
+      tenantId: existing.tenantId,
+      dealId: deal.id,
+      trigger: "stage_changed",
+      log: req.log,
+    }).catch((err) => {
+      req.log.warn({ err, tenantId: existing.tenantId, dealId: deal.id }, "deals: pipeline AI evaluation failed after stage change");
     });
 
     if (deal.leadId) {

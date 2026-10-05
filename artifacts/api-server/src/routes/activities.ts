@@ -14,6 +14,7 @@ import {
 import { createGoogleEvent, updateGoogleEvent, deleteGoogleEvent } from "../lib/google-calendar.js";
 import { generateSpinForActivity } from "./spin.js";
 import { recordIntelligenceEvent } from "../services/customer-intelligence-history.js";
+import { evaluatePipelineAI } from "../services/pipeline-ai-orchestrator.js";
 
 const router: IRouter = Router();
 
@@ -83,6 +84,17 @@ router.post("/activities", async (req, res) => {
     .values(insertData)
     .returning();
   res.status(201).json(activity);
+
+  if (data.status === "concluida" && activity.dealId) {
+    void evaluatePipelineAI({
+      tenantId: activity.tenantId,
+      dealId: activity.dealId,
+      trigger: "activity_completed",
+      log: req.log,
+    }).catch((err) => {
+      req.log.warn({ err, tenantId: activity.tenantId, dealId: activity.dealId }, "activity: pipeline AI evaluation failed");
+    });
+  }
 
   void recordIntelligenceEvent({
     tenantId: activity.tenantId,
