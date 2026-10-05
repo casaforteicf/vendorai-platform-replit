@@ -1,6 +1,6 @@
 import { google } from "googleapis";
 import { and, eq, isNull } from "drizzle-orm";
-import { db, socialConnectionsTable, leadsTable, conversationsTable, messagesTable } from "@workspace/db";
+import { db, socialConnectionsTable, leadsTable, conversationsTable, messagesTable, notificationsTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 
 export type EmailProvider = "google" | "microsoft";
@@ -329,6 +329,7 @@ async function persistInboundEmail(input: {
   subject: string;
   text: string;
   receivedAt?: Date;
+  threadId?: string | null;
   log: typeof logger;
 }) {
   const [existingMessage] = await db.select({ id: messagesTable.id }).from(messagesTable).where(and(
@@ -341,7 +342,24 @@ async function persistInboundEmail(input: {
     eq(leadsTable.tenantId, input.tenantId),
     eq(leadsTable.email, input.from),
   )).limit(1);
-  if (!lead) return { status: "unmatched" as const, email: input.from };
+  if (!lead) {
+    const notificationTitle = `[email:${input.externalId}] ${input.subject || "E-mail sem assunto"}`;
+    const [existingNotification] = await db.select({ id: notificationsTable.id }).from(notificationsTable).where(and(
+      eq(notificationsTable.tenantId, input.tenantId),
+      eq(notificationsTable.category, "email_unmatched"),
+      eq(notificationsTable.title, notificationTitle),
+    )).limit(1);
+    if (!existingNotification) {
+      await db.insert(notificationsTable).values({
+        tenantId: input.tenantId,
+        title: notificationTitle,
+        message: `De: ${input.from}\n\n${input.text || "(e-mail sem corpo de texto)"}`,
+        type: "info",
+        category: "email_unmatched",
+      });
+    }
+    return { status: "unmatched" as const, email: input.from, externalId: input.externalId, subject: input.subject };
+  }
 
   let [conversation] = await db.select().from(conversationsTable).where(and(
     eq(conversationsTable.tenantId, input.tenantId),
@@ -358,7 +376,7 @@ async function persistInboundEmail(input: {
       naoLidas: 1,
       lastInboundAt: input.receivedAt ?? new Date(),
       ultimaMensagemEm: input.receivedAt ?? new Date(),
-      metadata: { lastEmailSubject: input.subject },
+      metadata: { lastEmailSubject: input.subject, externalThreadId: input.threadId ?? null },
     }).returning();
   } else {
     await db.update(conversationsTable).set({
@@ -366,7 +384,7 @@ async function persistInboundEmail(input: {
       lastInboundAt: input.receivedAt ?? new Date(),
       ultimaMensagemEm: input.receivedAt ?? new Date(),
       updatedAt: new Date(),
-      metadata: { ...(conversation.metadata ?? {}), lastEmailSubject: input.subject },
+      metadata: { ...(conversation.metadata ?? {}), lastEmailSubject: input.subject, externalThreadId: input.threadId ?? conversation.metadata?.["externalThreadId"] ?? null },
     }).where(eq(conversationsTable.id, conversation.id));
   }
 
@@ -420,11 +438,12 @@ export async function syncConnectedEmailInbox(tenantId: string, preferredProvide
         subject,
         text: decodeGmailBody(full.data.payload),
         receivedAt,
+        threadId: full.data.threadId ?? null,
         log: logger,
       }));
     }
   } else {
-    const response = await fetch("https://graph.microsoft.com/v1.0/me/messages?$top=50&$orderby=receivedDateTime%20desc&$select=id,subject,body,from,receivedDateTime", {
+    const response = await fetch("https://graph.microsoft.com/v1.0/me/messages?$top=50&$orderby=receivedDateTime%20desc&$select=id,conversationId,subject,body,from,receivedDateTime", {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     const data = await response.json() as { value?: Array<any> };
@@ -440,6 +459,7 @@ export async function syncConnectedEmailInbox(tenantId: string, preferredProvide
         subject: String(item.subject || ""),
         text,
         receivedAt: item.receivedDateTime ? new Date(item.receivedDateTime) : new Date(),
+        threadId: item.conversationId ? String(item.conversationId) : null,
         log: logger,
       }));
     }
