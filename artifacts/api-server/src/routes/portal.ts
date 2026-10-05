@@ -783,6 +783,71 @@ router.get("/portal/obra/:token", async (req, res) => {
     });
   }
 
+  let postSale: any = null;
+  if (config.showPostSale) {
+    const projectResult = await pool.query(
+      `SELECT id, titulo
+         FROM arch_projetos
+        WHERE obra_id = $1 AND tenant_id = $2
+        ORDER BY updated_at DESC
+        LIMIT 1`,
+      [obra.id, obra.tenantId],
+    );
+    const portalProject = projectResult.rows[0] ?? null;
+    if (portalProject) {
+      const deliveryResult = await pool.query(
+        `SELECT id, status, delivery_date, accepted_at, nps, satisfaction_score, summary
+           FROM arch_deliveries
+          WHERE project_id = $1::uuid AND tenant_id::text = $2 AND deleted_at IS NULL
+          ORDER BY created_at DESC
+          LIMIT 1`,
+        [portalProject.id, obra.tenantId],
+      );
+      const delivery = deliveryResult.rows[0] ?? null;
+      if (delivery) {
+        const [checklistResult, termsResult, docsResult, surveyResult] = await Promise.all([
+          pool.query(
+            `SELECT id, category, label, done, required, responsible, notes, completed_at, sort_order
+               FROM arch_delivery_checklist
+              WHERE delivery_id = $1::uuid
+              ORDER BY sort_order ASC, created_at ASC`,
+            [delivery.id],
+          ),
+          pool.query(
+            `SELECT id, title, client_name, content, accepted, accepted_by, accepted_at, signature_url, created_at
+               FROM arch_delivery_terms
+              WHERE delivery_id = $1::uuid
+              ORDER BY created_at DESC`,
+            [delivery.id],
+          ),
+          pool.query(
+            `SELECT id, type, title, description, file_url, thumbnail_url, created_at
+               FROM arch_final_documents
+              WHERE delivery_id = $1::uuid AND visible_to_client = true
+              ORDER BY created_at DESC`,
+            [delivery.id],
+          ),
+          pool.query(
+            `SELECT id, status, nps, satisfaction_score, comment, answered_at, created_at
+               FROM arch_satisfaction_surveys
+              WHERE delivery_id = $1::uuid
+              ORDER BY created_at DESC
+              LIMIT 1`,
+            [delivery.id],
+          ),
+        ]);
+        postSale = {
+          project: portalProject,
+          delivery,
+          checklist: checklistResult.rows,
+          terms: termsResult.rows,
+          documents: docsResult.rows,
+          survey: surveyResult.rows[0] ?? null,
+        };
+      }
+    }
+  }
+
   return res.json({
     publication: config,
     auth: {
@@ -840,7 +905,112 @@ router.get("/portal/obra/:token", async (req, res) => {
     briefing,
     agenda,
     nextActions,
+    postSale,
   });
+});
+
+router.post("/portal/obra/:token/post-sale/terms/:termId/accept", async (req, res) => {
+  const token = String(req.params.token ?? "");
+  const termId = String(req.params.termId ?? "");
+  const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
+  if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
+  const config = portalConfig(obra.portalConfig);
+  if (!config.showPostSale) return res.status(403).json({ error: "Entrega e pós-venda não estão publicados neste portal." });
+  const portalUser = await resolvePortalUser(req, obra.id);
+  if (config.requireLogin && !portalUser) return res.status(401).json({ error: "Faça login para assinar o termo." });
+
+  const projectResult = await pool.query(
+    `SELECT id FROM arch_projetos WHERE obra_id=$1 AND tenant_id=$2 ORDER BY updated_at DESC LIMIT 1`,
+    [obra.id, obra.tenantId],
+  );
+  const projectId = projectResult.rows[0]?.id;
+  if (!projectId) return res.status(404).json({ error: "Projeto vinculado não encontrado." });
+
+  const result = await pool.query(
+    `UPDATE arch_delivery_terms t
+        SET accepted=true,
+            accepted_by=$1,
+            accepted_at=now()
+       FROM arch_deliveries d
+      WHERE t.id=$2::uuid
+        AND t.delivery_id=d.id
+        AND t.project_id=$3::uuid
+        AND d.tenant_id::text=$4
+        AND t.accepted=false
+      RETURNING t.id,t.title,t.accepted,t.accepted_by,t.accepted_at`,
+    [portalUser?.nome ?? obra.clienteNome ?? "Cliente", termId, projectId, obra.tenantId],
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Termo não encontrado ou já aceito." });
+
+  await pool.query(
+    `UPDATE arch_deliveries SET status='accepted', accepted_at=COALESCE(accepted_at,now()), updated_at=now()
+      WHERE project_id=$1::uuid AND tenant_id::text=$2 AND deleted_at IS NULL`,
+    [projectId, obra.tenantId],
+  );
+  await pool.query(
+    `INSERT INTO arch_post_sale_events (id,delivery_id,project_id,type,message,actor_type,metadata,created_at)
+      SELECT $1,t.delivery_id,t.project_id,'term-accepted','Cliente aceitou o termo de entrega.','client',$2::jsonb,now()
+        FROM arch_delivery_terms t WHERE t.id=$3::uuid`,
+    [crypto.randomUUID(), JSON.stringify({ portalUserId: portalUser?.id ?? null }), termId],
+  );
+  return res.json({ ok: true, term: result.rows[0] });
+});
+
+router.post("/portal/obra/:token/post-sale/satisfaction", async (req, res) => {
+  const token = String(req.params.token ?? "");
+  const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
+  if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
+  const config = portalConfig(obra.portalConfig);
+  if (!config.showPostSale) return res.status(403).json({ error: "Pós-venda não está publicado neste portal." });
+  const portalUser = await resolvePortalUser(req, obra.id);
+  if (config.requireLogin && !portalUser) return res.status(401).json({ error: "Faça login para responder." });
+
+  const nps = Number(req.body?.nps);
+  const satisfactionScore = Number(req.body?.satisfactionScore);
+  const comment = typeof req.body?.comment === "string" ? req.body.comment.trim().slice(0, 10000) : "";
+  if (!Number.isFinite(nps) || nps < 0 || nps > 10) return res.status(422).json({ error: "NPS deve estar entre 0 e 10." });
+  if (!Number.isFinite(satisfactionScore) || satisfactionScore < 1 || satisfactionScore > 5) return res.status(422).json({ error: "Satisfação deve estar entre 1 e 5." });
+
+  const projectResult = await pool.query(
+    `SELECT id FROM arch_projetos WHERE obra_id=$1 AND tenant_id=$2 ORDER BY updated_at DESC LIMIT 1`,
+    [obra.id, obra.tenantId],
+  );
+  const projectId = projectResult.rows[0]?.id;
+  if (!projectId) return res.status(404).json({ error: "Projeto vinculado não encontrado." });
+  const deliveryResult = await pool.query(
+    `SELECT id FROM arch_deliveries WHERE project_id=$1::uuid AND tenant_id::text=$2 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1`,
+    [projectId, obra.tenantId],
+  );
+  const deliveryId = deliveryResult.rows[0]?.id;
+  if (!deliveryId) return res.status(404).json({ error: "Entrega não encontrada." });
+
+  const existing = await pool.query(
+    `SELECT id FROM arch_satisfaction_surveys WHERE delivery_id=$1::uuid ORDER BY created_at DESC LIMIT 1`,
+    [deliveryId],
+  );
+  let survey;
+  if (existing.rows[0]) {
+    const updated = await pool.query(
+      `UPDATE arch_satisfaction_surveys
+          SET status='answered',nps=$1,satisfaction_score=$2,comment=$3,client_name=$4,answered_at=now()
+        WHERE id=$5::uuid RETURNING *`,
+      [nps, satisfactionScore, comment || null, portalUser?.nome ?? obra.clienteNome ?? null, existing.rows[0].id],
+    );
+    survey = updated.rows[0];
+  } else {
+    const inserted = await pool.query(
+      `INSERT INTO arch_satisfaction_surveys
+        (id,delivery_id,project_id,status,nps,satisfaction_score,comment,client_name,public_token,sent_at,answered_at,created_at)
+       VALUES ($1,$2,$3,'answered',$4,$5,$6,$7,$8,now(),now(),now()) RETURNING *`,
+      [crypto.randomUUID(), deliveryId, projectId, nps, satisfactionScore, comment || null, portalUser?.nome ?? obra.clienteNome ?? null, crypto.randomUUID().replace(/-/g,"")],
+    );
+    survey = inserted.rows[0];
+  }
+  await pool.query(
+    `UPDATE arch_deliveries SET nps=$1,satisfaction_score=$2,updated_at=now() WHERE id=$3::uuid`,
+    [nps, satisfactionScore, deliveryId],
+  );
+  return res.json({ ok: true, survey });
 });
 
 router.post("/portal/obra/:token/decisions/:decisionId/respond", async (req, res) => {
