@@ -235,7 +235,7 @@ export default function CompanyCenter() {
       let deal = [...deals].reverse().find((item: any) => !terminal.has(String(item.etapa))) ?? deals.at(-1);
 
       if (!deal) {
-        const createResponse = await fetch(`${getBase()}/api/deals`, {
+        const response = await fetch(`${getBase()}/api/deals`, {
           method: "POST",
           headers,
           body: JSON.stringify({
@@ -245,14 +245,14 @@ export default function CompanyCenter() {
             etapa: "novo",
           }),
         });
-        if (!createResponse.ok) {
-          const failed = await createResponse.json().catch(() => ({}));
+        if (!response.ok) {
+          const failed = await response.json().catch(() => ({}));
           throw new Error((failed as any)?.error ?? "Não foi possível iniciar o negócio para este lead.");
         }
-        deal = await createResponse.json().catch(() => ({}));
+        deal = await response.json().catch(() => ({}));
       }
 
-      const linkResponse = await fetch(`${getBase()}/api/crm/deals/${deal.id}/companies`, {
+      const res = await fetch(`${getBase()}/api/crm/deals/${deal.id}/companies`, {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -262,11 +262,11 @@ export default function CompanyCenter() {
           isPrimary: true,
         }),
       });
-      if (!linkResponse.ok) {
-        const failed = await linkResponse.json().catch(() => ({}));
+      if (!res.ok) {
+        const failed = await res.json().catch(() => ({}));
         throw new Error((failed as any)?.error ?? "Não foi possível vincular o lead a este cliente.");
       }
-      await linkResponse.json().catch(() => ({}));
+      await res.json().catch(() => ({}));
 
       setLinkLeadOpen(false);
       setSelectedLeadId("");
