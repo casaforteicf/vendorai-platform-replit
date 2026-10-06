@@ -322,11 +322,15 @@ export function SpecObjectEditorPanel({
         </button>
         <button
           type="button"
-          disabled={!selectedObject || sendingToBudget}
+          disabled={!selectedObject || sendingToBudget || selectedObject?.technicalApprovalStatus !== "approved"}
           onClick={() => selectedObject ? onSendToBudget(selectedObject) : undefined}
           className="rounded-xl bg-[var(--arq-accent)] px-5 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {sendingToBudget ? "Enviando..." : "Enviar ao orçamento"}
+          {sendingToBudget
+            ? "Enviando..."
+            : selectedObject && selectedObject.technicalApprovalStatus !== "approved"
+              ? "Aprovação técnica necessária"
+              : "Enviar ao orçamento"}
         </button>
       </div>
 
