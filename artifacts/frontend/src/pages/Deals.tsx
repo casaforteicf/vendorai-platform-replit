@@ -2638,6 +2638,17 @@ export default function Deals() {
   const createDeal = useCreateDeal();
 
   async function handleCreateQuoteUpload(file: File) {
+    const allowedExtensions = ["pdf", "png", "jpg", "jpeg", "webp", "docx", "doc"];
+    const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+    if (!allowedExtensions.includes(extension)) {
+      toast({ title: "Formato não suportado", description: "Use PDF, imagem, DOC ou DOCX.", variant: "destructive" });
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: "Arquivo muito grande", description: "O limite para importar orçamento é 10 MB.", variant: "destructive" });
+      return;
+    }
+
     setCreateExtracting(true);
     setCreateExtractedInfo(null);
     try {
