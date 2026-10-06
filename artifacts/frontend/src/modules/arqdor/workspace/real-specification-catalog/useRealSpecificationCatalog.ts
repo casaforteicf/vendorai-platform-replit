@@ -6,6 +6,7 @@ import {
   fetchCatalog,
   fetchSpecObjects,
   sendSpecObjectToBudget,
+  syncSpecObjectsFromProject,
   updateSpecObject,
 } from "./specCatalogApi";
 import type { CatalogItem, CatalogItemType, SpecObject, SpecObjectPayload } from "./specCatalogTypes";
@@ -25,6 +26,8 @@ export function useRealSpecificationCatalog(
   const [saving, setSaving] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [sendingToBudget, setSendingToBudget] = useState(false);
+  const [syncingProject, setSyncingProject] = useState(false);
+  const [lastSync, setLastSync] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const catalogEnabled = Boolean(options?.catalogEnabled);
 
@@ -86,9 +89,37 @@ export function useRealSpecificationCatalog(
     if (catalogEnabled) void loadCatalog();
   }, [catalogEnabled, loadCatalog]);
 
+  const syncProject = useCallback(async () => {
+    if (!projectId) return null;
+    setSyncingProject(true);
+    const result = await syncSpecObjectsFromProject(projectId);
+    if (!result.error && result.data) {
+      setSpecObjects(result.data.items || []);
+      setLastSync(result.data.sync || null);
+    }
+    setSyncingProject(false);
+    return result.data || null;
+  }, [projectId]);
+
   useEffect(() => {
-    void loadSpecObjects();
-  }, [loadSpecObjects]);
+    let active = true;
+    if (!projectId) return;
+    void (async () => {
+      setLoadingObjects(true);
+      const synced = await syncSpecObjectsFromProject(projectId);
+      if (!active) return;
+      if (!synced.error && synced.data) {
+        const list = synced.data.items || [];
+        setSpecObjects(list);
+        setLastSync(synced.data.sync || null);
+        setSelectedObject((current) => current && list.some((item) => item.id === current.id) ? current : list[0] || null);
+        setLoadingObjects(false);
+        return;
+      }
+      await loadSpecObjects();
+    })();
+    return () => { active = false; };
+  }, [loadSpecObjects, projectId]);
 
   const addObject = useCallback(
     async (payload: SpecObjectPayload) => {
@@ -210,10 +241,13 @@ export function useRealSpecificationCatalog(
     saving,
     extracting,
     sendingToBudget,
+    syncingProject,
+    lastSync,
     error,
     totals,
     reloadCatalog: loadCatalog,
     reloadSpecObjects: loadSpecObjects,
+    syncProject,
     addObject,
     saveObject,
     extractFromRender,
