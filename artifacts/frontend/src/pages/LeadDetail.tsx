@@ -586,16 +586,7 @@ export default function LeadDetail() {
     }
   }
 
-  const { mutateAsync: updateLeadDados, isPending: isUpdatingLeadDados } = useUpdateLead({
-    mutation: {
-      onSuccess: () => {
-        void queryClient.invalidateQueries({ queryKey: getGetLeadQueryKey(id) });
-      },
-      onError: () => {
-        toast({ title: "Erro ao salvar informações", variant: "destructive" });
-      },
-    },
-  });
+  const [isUpdatingLeadDados, setIsUpdatingLeadDados] = useState(false);
 
   async function classificarComoNaoLead() {
     if (!id) return;
@@ -647,10 +638,12 @@ export default function LeadDetail() {
         .filter(([key, value]) => key && value && !INTERNAL_PROSPECTOR_METADATA_KEYS.has(key)),
     );
 
+    setIsUpdatingLeadDados(true);
     try {
-      await updateLeadDados({
-        id,
-        data: {
+      const leadResponse = await fetch(`${getBase()}/api/leads/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({
           nome: leadDadosDraft.nome || undefined,
           telefone: leadDadosDraft.telefone || null,
           email: leadDadosDraft.email || null,
@@ -662,8 +655,10 @@ export default function LeadDetail() {
           logoUrl: leadDadosDraft.logoUrl || null,
           websiteUrl: leadDadosDraft.websiteUrl || null,
           metadata: { ...metadataAtual, ...metadataEditavel },
-        } as any,
+        }),
       });
+      const leadPayload = await leadResponse.json().catch(() => ({}));
+      if (!leadResponse.ok) throw new Error((leadPayload as any)?.error ?? "Falha ao atualizar o lead");
 
       if (leadDadosDraft.companyId) {
         const response = await fetch(`${getBase()}/api/crm/companies/${leadDadosDraft.companyId}/link-lead`, {
@@ -699,6 +694,8 @@ export default function LeadDetail() {
         description: err instanceof Error ? err.message : "Revise os dados e tente novamente.",
         variant: "destructive",
       });
+    } finally {
+      setIsUpdatingLeadDados(false);
     }
   }
 
