@@ -89,7 +89,12 @@ export async function syncSpecObjectToBudget(params: { tenantId: string | null; 
   const spec = specResult.rows[0];
   if (!spec) return null;
 
-  const ensured = await ensureDraftBudget(params.tenantId, spec.project_id, spec.render_id ?? null, spec.ambiente_id ?? null);
+  // Always use the SpecObject's persisted tenant as the source of truth.
+  // This prevents Super Admin flows (whose session tenant may be null) from
+  // creating a cross-tenant/global draft budget for a tenant-owned item.
+  const effectiveTenantId = spec.tenant_id ?? params.tenantId ?? null;
+
+  const ensured = await ensureDraftBudget(effectiveTenantId, spec.project_id, spec.render_id ?? null, spec.ambiente_id ?? null);
   const budget = ensured.budget;
 
   const quantity = Number(spec.quantity ?? 1);
@@ -141,21 +146,24 @@ export async function syncSpecObjectToBudget(params: { tenantId: string | null; 
          item, description, type, quantity, unit,
          material_value, labor_value, unit_total, total_material, total_labor, total,
          supplier_name, manufacturer_name, product_name, material_name,
+         specification_outdated, specification_revision, specification_impact,
          visible_to_client, sort_order, created_at, updated_at
        ) VALUES (
          $1,$2,$3,$4,$5,$6,$7,
          $8,$9,'product',$10,$11,
          $12,$13,$14,$15,$16,$17,
          $18,$19,$20,$21,
+         false,$22,NULL,
          true,0,now(),now()
        )`,
       [
-        budgetItemId, params.tenantId, budget.id, spec.id, spec.project_id,
+        budgetItemId, effectiveTenantId, budget.id, spec.id, spec.project_id,
         spec.ambiente_id ?? null, spec.render_id ?? null,
         spec.name, spec.description ?? null, quantity, spec.unit ?? "un",
         materialValue, laborValue, unitTotal, totalMaterial, totalLabor, total,
         spec.supplier_name ?? null, spec.manufacturer_name ?? null,
         spec.product_name ?? null, spec.material_name ?? null,
+        spec.project_revision ?? null,
       ],
     );
   }
