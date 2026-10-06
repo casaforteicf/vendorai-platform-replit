@@ -792,7 +792,7 @@ export function BrandKitSettings() {
         </SheetContent>
       </Sheet>
 
-      <div className="sticky bottom-3 z-20 flex items-center justify-between rounded-2xl border bg-background/95 p-3 shadow-lg backdrop-blur">
+      <div className="mt-4 flex items-center justify-between rounded-2xl border bg-card p-3 shadow-sm">
         <Button variant="outline" type="button" onClick={() => goToStep(activeStep - 1)} disabled={activeStep === 0}>
           <ChevronLeft className="mr-2 h-4 w-4" />Anterior
         </Button>
