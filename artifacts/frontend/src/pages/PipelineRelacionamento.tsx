@@ -32,6 +32,7 @@ type Lead = {
 };
 type User = { id: string; name?: string | null; email?: string | null };
 type NonLeadClassification = { id: string; label: string; active?: boolean };
+type PipelineStageConfig = { id: string; key: string; label: string; ordem: number; isSystem?: boolean };
 
 const PARTNER_STAGES = [
   ["parceiro_identificado", "Parceiro identificado"],
@@ -73,9 +74,39 @@ export default function PipelineRelacionamento() {
   const leadsQuery = useQuery<Lead[]>({ queryKey: ["relationship-leads", tenantId], enabled: !!tenantId, queryFn: () => api(`/api/tenants/${tenantId}/leads?incluirNaoLeads=incluir`) });
   const usersQuery = useQuery<User[]>({ queryKey: ["relationship-users", tenantId], enabled: !!tenantId, queryFn: () => api(`/api/tenants/${tenantId}/users`) });
   const classificationsQuery = useQuery<NonLeadClassification[]>({ queryKey: ["relationship-non-lead-classifications", tenantId], enabled: !!tenantId, queryFn: () => api(`/api/tenants/${tenantId}/non-lead-classifications`) });
+  const stagesQuery = useQuery<PipelineStageConfig[]>({
+    queryKey: ["relationship-pipeline-stages", tenantId, tab],
+    enabled: !!tenantId,
+    queryFn: () => api(`/api/tenants/${tenantId}/pipeline-stages?pipeline=${encodeURIComponent(tab)}`),
+    staleTime: 15_000,
+    refetchOnWindowFocus: false,
+  });
 
   const leadMap = useMemo(() => new Map((leadsQuery.data ?? []).map((l) => [l.id, l])), [leadsQuery.data]);
   const userMap = useMemo(() => new Map((usersQuery.data ?? []).map((u) => [u.id, u])), [usersQuery.data]);
+
+  const configuredStages = useMemo(
+    () => [...(stagesQuery.data ?? [])]
+      .filter((stage) => Boolean(stage.key))
+      .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0)),
+    [stagesQuery.data],
+  );
+
+  const partnerStages = useMemo<Array<readonly [string, string]>>(() => {
+    if (tab === "parceiros" && configuredStages.length > 0) {
+      return configuredStages.map((stage) => [stage.key, stage.label] as const);
+    }
+    return PARTNER_STAGES.map(([key, label]) => [key, label] as const);
+  }, [configuredStages, tab]);
+
+  const warmingLabels = useMemo(() => {
+    const labels = new Map(configuredStages.map((stage) => [stage.key, stage.label]));
+    return {
+      lead: labels.get("aquecimento_lead") ?? "Leads em aquecimento",
+      cliente: labels.get("aquecimento_cliente") ?? "Clientes em aquecimento",
+      nao_lead: labels.get("aquecimento_nao_lead") ?? "Não Leads",
+    };
+  }, [configuredStages]);
 
   const patchDeal = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) => api(`/api/deals/${id}`, { method: "PATCH", headers: jsonHeaders, body: JSON.stringify(data) }),
@@ -133,7 +164,7 @@ export default function PipelineRelacionamento() {
     return haystack.includes(normalizedSearch);
   });
 
-  const activeWarmingLabel = warmingTab === "cliente" ? "Clientes em aquecimento" : warmingTab === "nao_lead" ? "Não Leads" : "Leads em aquecimento";
+  const activeWarmingLabel = warmingLabels[warmingTab];
   const hasActiveFilters = Boolean(searchTerm.trim()) || responsibleFilter !== "all" || classificationFilter !== "all";
 
   const nav = (next: string) => {
@@ -171,9 +202,9 @@ export default function PipelineRelacionamento() {
           <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-2">
             {(
               [
-                ["lead", "Leads em aquecimento"],
-                ["cliente", "Clientes em aquecimento"],
-                ["nao_lead", "Não Leads"],
+                ["lead", warmingLabels.lead],
+                ["cliente", warmingLabels.cliente],
+                ["nao_lead", warmingLabels.nao_lead],
               ] as const
             ).map(([key, label]) => (
               <Button
@@ -360,13 +391,13 @@ export default function PipelineRelacionamento() {
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto pb-3">
-          {PARTNER_STAGES.map(([key, label]) => {
+          {partnerStages.map(([key, label]) => {
             const columnDeals = partnerDeals.filter((d) => (d.relationshipStage || "parceiro_identificado") === key);
             return (
               <section key={key} className={PIPELINE_COLUMN_CLASS} onDragOver={(e) => e.preventDefault()} onDrop={() => {
                 const dragged = partnerDeals.find((deal) => deal.id === draggedId);
-                const currentIndex = PARTNER_STAGES.findIndex(([stage]) => stage === (dragged?.relationshipStage || "parceiro_identificado"));
-                const targetIndex = PARTNER_STAGES.findIndex(([stage]) => stage === key);
+                const currentIndex = partnerStages.findIndex(([stage]) => stage === (dragged?.relationshipStage || "parceiro_identificado"));
+                const targetIndex = partnerStages.findIndex(([stage]) => stage === key);
                 if (dragged && targetIndex < currentIndex) {
                   toast({ title: "Movimento não permitido", description: "O card de parceiro só pode avançar. Etapas anteriores ficam no histórico.", variant: "destructive" });
                 } else if (draggedId && !patchDeal.isPending) {
