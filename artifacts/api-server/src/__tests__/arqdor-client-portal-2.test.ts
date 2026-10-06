@@ -62,5 +62,3 @@ describe("Arqdor Client Portal 2.0 contracts", () => {
   });
 
 });
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
