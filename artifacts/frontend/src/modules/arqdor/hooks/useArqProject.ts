@@ -1,3 +1,5 @@
+[Reading 308 lines from start (total: 308 lines, 0 remaining)]
+
 // ─── useArqProject ────────────────────────────────────────────────────────────
 // Loads/saves the active workspace project to the API.
 // Exposes: project, objects, materials + mutators that auto-sync to the server.
@@ -306,5 +308,3 @@ export function useArqProject(): ArqProjectState {
     getProjectContext,
   }
 }
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]

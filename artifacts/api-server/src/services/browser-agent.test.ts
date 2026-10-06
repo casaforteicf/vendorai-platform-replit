@@ -1,3 +1,5 @@
+[Reading 95 lines from start (total: 95 lines, 0 remaining)]
+
 import { describe, expect, it } from "vitest";
 import {
   canNavigateFromSnapshot,

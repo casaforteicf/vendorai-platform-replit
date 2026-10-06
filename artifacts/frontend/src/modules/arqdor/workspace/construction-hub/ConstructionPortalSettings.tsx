@@ -1,3 +1,5 @@
+[Reading 265 lines from start (total: 265 lines, 0 remaining)]
+
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkspaceProject } from "../WorkspaceContext";
@@ -263,5 +265,3 @@ export default function ConstructionPortalSettings({ arqState }: Props) {
     </div>
   );
 }
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]

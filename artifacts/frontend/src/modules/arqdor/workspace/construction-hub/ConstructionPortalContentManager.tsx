@@ -1,3 +1,5 @@
+[Reading 263 lines from start (total: 263 lines, 0 remaining)]
+
 import { useEffect, useState } from "react";
 
 function authToken() { return localStorage.getItem("vendorai_token") ?? ""; }
@@ -261,5 +263,3 @@ export default function ConstructionPortalContentManager({ tenantId, obraId }: {
     </div>
   );
 }
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]

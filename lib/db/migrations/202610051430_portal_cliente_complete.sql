@@ -1,3 +1,5 @@
+[Reading 103 lines from start (total: 103 lines, 0 remaining)]
+
 -- Portal do Cliente 2.0 completo — conteúdo publicável, permissões e auditoria
 
 CREATE TABLE IF NOT EXISTS public.obra_portal_items (
@@ -101,5 +103,3 @@ BEGIN
     EXECUTE format('GRANT SELECT,INSERT,UPDATE,DELETE ON public.%I TO vendorai_app', t);
   END LOOP;
 END $$;
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]

@@ -1,3 +1,5 @@
+[Reading 64 lines from start (total: 64 lines, 0 remaining)]
+
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";

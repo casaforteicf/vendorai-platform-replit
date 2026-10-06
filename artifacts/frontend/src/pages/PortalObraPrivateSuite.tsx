@@ -1,3 +1,5 @@
+[Reading 178 lines from start (total: 178 lines, 0 remaining)]
+
 import { useState } from "react";
 import { CircleDollarSign, FileText, Headphones, MessageCircle, ShieldCheck, UserRound } from "lucide-react";
 
@@ -176,5 +178,3 @@ function Card({ title, icon, children }: { title: string; icon: React.ReactNode;
 function Empty({ text }: { text: string }) {
   return <div className="rounded-2xl border border-dashed bg-gray-50 py-10 text-center text-sm text-gray-400">{text}</div>;
 }
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]

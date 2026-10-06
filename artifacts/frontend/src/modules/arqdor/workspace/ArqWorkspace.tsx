@@ -1,3 +1,5 @@
+[Reading 1000 lines from start (total: 1077 lines, 77 remaining)]
+
 // ─── ArqWorkspace — PROJECT PHOENIX: UX Redesign ─────────────────────────────
 // Antes: dashboard de IA complexo, escuro, muitos menus.
 // Depois: software premium para arquitetos. Figma + Notion + Linear.
@@ -998,84 +1000,3 @@ function WorkspaceInner() {
                 background:copilotCollapsed ? PHX.surface : `rgba(124,58,237,0.08)`,
                 color:copilotCollapsed ? PHX.textSub : PHX.purple,
                 cursor:'pointer', fontSize:10, fontWeight:600,
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
-                display:'flex', alignItems:'center', gap:5, flexShrink:0,
-                transition:'all 0.15s ease',
-              }}
-            >
-              🤖 {copilotCollapsed ? 'Assistente' : '▸'}
-            </button>
-
-            {/* ✨ Gerar Render — CTA principal */}
-            <button
-              className="phx-cta"
-              onClick={() => setActiveModule('renders')}
-              title="Abrir o fluxo oficial de Render IA"
-            >
-              <span style={{ fontSize:15 }}>✨</span>
-              Gerar Render
-            </button>
-
-            {/* Shortcuts hint */}
-            <button
-              onClick={() => setShortcutsVisible(p => !p)}
-              style={{ background:'none', border:'none', cursor:'pointer', color:PHX.dim, fontSize:11, padding:'4px' }}
-            >?</button>
-          </div>
-        </div>
-
-        {/* ── MODULE SUB-STEPS (when step has extras) ── */}
-        <SubStepNav activeModule={activeModule} activeFlow={activeFlow} onNavigate={setActiveModule} />
-
-        {/* ══════════════════════════════════════════════════════════
-            BODY ROW — content area + copilot sidebar side by side
-            ══════════════════════════════════════════════════════════ */}
-        <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'row', minHeight:0 }}>
-          {/* ── module content ── */}
-          <div style={{ flex:1, overflow:'hidden', position:'relative', minWidth:0 }}>
-            <div key={activeModule} className="phx-module-wrap" style={{ height:'100%', overflow:'hidden' }}>
-              <Suspense fallback={
-                <div style={{
-                  height:'100%', display:'flex', alignItems:'center', justifyContent:'center',
-                  background:PHX.bg, gap:10, flexDirection:'column',
-                }}>
-                  <div style={{ width:32, height:32, border:`3px solid ${PHX.border}`, borderTopColor:PHX.purple, borderRadius:'50%', animation:'phx-spin 0.8s linear infinite' }} />
-                  <p style={{ margin:0, fontSize:12, color:PHX.dim }}>Carregando…</p>
-                </div>
-              }>
-                {renderModule(activeModule, arqState, setActiveModule)}
-              </Suspense>
-            </div>
-          </div>
-
-          {/* ── ARQ COPILOT sidebar (right, same row as content) ── */}
-          <ArqCopilot
-            collapsed={copilotCollapsed}
-            onToggle={() => setCopilotCollapsed(p => !p)}
-            nextAction={computeNextAction(arqState, 0)}
-          />
-        </div>
-
-        {/* ── COMMAND PALETTE ── */}
-        <ArqCommandPalette
-          open={paletteOpen}
-          onClose={() => setPaletteOpen(false)}
-          onNavigate={m => { setActiveModule(m); setPaletteOpen(false) }}
-          onSelectProject={id => { arqState.selectProject(id); setPaletteOpen(false) }}
-          projects={arqState.projects}
-        />
-
-        {/* ── SHORTCUTS TOAST ── */}
-        <ShortcutsToast visible={shortcutsVisible} />
-
-        {/* ── RENDER PROGRESS MODAL ── */}
-        {showRenderProgress && (
-          <RenderProgressModal onClose={() => { setShowRenderProgress(false); setActiveModule('renders') }} />
-        )}
-      </div>
-    </ArqProjectContext.Provider>
-  )
-}
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]

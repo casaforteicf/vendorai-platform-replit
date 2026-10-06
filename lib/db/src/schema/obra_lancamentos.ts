@@ -1,3 +1,5 @@
+[Reading 51 lines from start (total: 51 lines, 0 remaining)]
+
 import { pgTable, text, timestamp, numeric, date, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";

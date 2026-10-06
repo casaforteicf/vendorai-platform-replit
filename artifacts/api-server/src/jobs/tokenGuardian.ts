@@ -1,3 +1,5 @@
+[Reading 132 lines from start (total: 132 lines, 0 remaining)]
+
 import { and, eq, isNotNull, inArray, isNull, lte, or } from "drizzle-orm";
 import {
   agendasTable,
