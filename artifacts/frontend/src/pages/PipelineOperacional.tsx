@@ -1477,7 +1477,7 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
       if (!response.ok) throw new Error(body.error || "Falha ao abrir assistência");
       const cardId = body.card.id as string;
       if (legacyOrder?.sourceFileUrl) {
-        const importedAttachment = await fetch(`/api/work-cards/${cardId}/attachments`, {
+        const result = await fetch(`/api/work-cards/${cardId}/attachments`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({
@@ -1490,8 +1490,8 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
             metadata: { importedOrder: true, confidence: legacyOrder.confidence ?? null },
           }),
         });
-        if (!importedAttachment.ok) {
-          const importedAttachmentError = await importedAttachment.json().catch(() => ({}));
+        if (!result.ok) {
+          const importedAttachmentError = await result.json().catch(() => ({}));
           throw new Error(importedAttachmentError.error || "Falha ao vincular o arquivo original do pedido antigo");
         }
       }
