@@ -130,5 +130,3 @@ export async function runTokenGuardian(log: Logger): Promise<void> {
 
   log.info(summary, "token-guardian: cycle complete");
 }
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
