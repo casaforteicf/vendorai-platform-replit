@@ -1,5 +1,6 @@
-import { and, desc, eq, gte, lte } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import {
+  adCampaignsTable,
   contentPublishedPostsTable,
   db,
   dealsTable,
@@ -14,6 +15,7 @@ import {
   normalizeMetaAdAccountId,
 } from "./meta-ads-oauth.js";
 import { getInstagramStoryFunnel } from "./instagram-story-funnel.js";
+import { isPaidMetaLead, summarizeMetaCommercialResults } from "./meta-growth-metrics.js";
 
 const IG_GRAPH_BASE = "https://graph.instagram.com/v26.0";
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -37,11 +39,6 @@ export type MetaGrowthAlert = {
 function isMetaSource(source: string | null | undefined) {
   const value = (source ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   return value.includes("instagram") || value.includes("facebook") || value.includes("meta");
-}
-
-function isPaidMetaLead(lead: { source: string; adCampaignId: string | null }) {
-  const value = lead.source.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  return Boolean(lead.adCampaignId) || value.includes("ads") || value.includes("anuncio") || value.includes("patrocin");
 }
 
 function isoDay(date = new Date()) {
@@ -202,8 +199,20 @@ export async function getMetaGrowthOverview(tenantId: string) {
     getInstagramConnectionByTenantId(tenantId),
     getMetaAdsConnectionByTenantId(tenantId),
     db
-      .select({ id: leadsTable.id, source: leadsTable.source, adCampaignId: leadsTable.adCampaignId })
+      .select({
+        id: leadsTable.id,
+        source: leadsTable.source,
+        adCampaignId: leadsTable.adCampaignId,
+        campaignPlatform: adCampaignsTable.plataforma,
+      })
       .from(leadsTable)
+      .leftJoin(
+        adCampaignsTable,
+        and(
+          eq(adCampaignsTable.id, leadsTable.adCampaignId),
+          eq(adCampaignsTable.tenantId, tenantId),
+        ),
+      )
       .where(and(eq(leadsTable.tenantId, tenantId), gte(leadsTable.createdAt, cutoff))),
     db
       .select()
@@ -253,13 +262,27 @@ export async function getMetaGrowthOverview(tenantId: string) {
 
   const relatedDeals = metaLeadIds.length
     ? await db
-        .select({ leadId: dealsTable.leadId, valor: dealsTable.valor })
+        .select({
+          leadId: dealsTable.leadId,
+          valor: dealsTable.valor,
+          etapa: dealsTable.etapa,
+          wonAt: dealsTable.wonAt,
+          dataFechamento: dealsTable.dataFechamento,
+          createdAt: dealsTable.createdAt,
+        })
         .from(dealsTable)
-        .where(and(eq(dealsTable.tenantId, tenantId), gte(dealsTable.createdAt, cutoff)))
+        .where(and(
+          eq(dealsTable.tenantId, tenantId),
+          inArray(dealsTable.leadId, metaLeadIds),
+        ))
     : [];
-  const metaLeadSet = new Set(metaLeadIds);
-  const metaDeals = relatedDeals.filter((deal) => deal.leadId && metaLeadSet.has(deal.leadId));
-  const pipelineValue30d = metaDeals.reduce((sum, deal) => sum + (deal.valor ? Number(deal.valor) || 0 : 0), 0);
+
+  const commercial = summarizeMetaCommercialResults({
+    metaLeadIds,
+    paidMetaLeadIds,
+    deals: relatedDeals,
+    cutoff,
+  });
 
   let paidSpend30d: number | null = null;
   let paidLeadsFromAds: number | null = null;
@@ -268,6 +291,13 @@ export async function getMetaGrowthOverview(tenantId: string) {
     paidSpend30d = paid.spend;
     paidLeadsFromAds = paid.leads;
   }
+
+  const paidCac30d = paidSpend30d != null && commercial.paidSales30d > 0
+    ? paidSpend30d / commercial.paidSales30d
+    : null;
+  const paidRoas30d = paidSpend30d != null && paidSpend30d > 0
+    ? commercial.paidRevenueClosed30d / paidSpend30d
+    : null;
 
   const topContent = recentPosts
     .map((post) => {
@@ -306,8 +336,14 @@ export async function getMetaGrowthOverview(tenantId: string) {
     profileVisits30d,
     engagedAccounts30d,
     leads30d: metaLeads.length,
-    opportunities30d: metaDeals.length,
-    pipelineValue30d,
+    opportunities30d: commercial.opportunities30d,
+    pipelineValue30d: commercial.pipelineValue30d,
+    sales30d: commercial.sales30d,
+    revenueClosed30d: commercial.revenueClosed30d,
+    paidSales30d: commercial.paidSales30d,
+    paidRevenueClosed30d: commercial.paidRevenueClosed30d,
+    paidCac30d,
+    paidRoas30d,
     paidSpend30d,
     paidLeads30d: paidMetaLeadIds.length || paidLeadsFromAds,
     organicLeads30d: organicMetaLeadIds.length,
