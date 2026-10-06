@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canNavigateFromSnapshot,
   checkpointFromState,
   classifyBrowserError,
   isRetryableBrowserError,
@@ -61,3 +62,36 @@ describe("browser recovery primitives", () => {
     expect(checkpoint.textSignature).toMatch(/^[0-9a-f]{8}$/);
   });
 });
+
+
+describe("internal navigation guard", () => {
+  const state = {
+    url: "https://app.appvendorai.com/admin/melhorias",
+    interactive: [
+      { href: "https://app.appvendorai.com/dashboard" },
+      { href: "https://app.appvendorai.com/admin/melhorias" },
+    ],
+  };
+
+  it("allows links present in the current snapshot", () => {
+    expect(canNavigateFromSnapshot("https://app.appvendorai.com/dashboard", "abrir dashboard", state)).toBe(true);
+  });
+
+  it("allows an explicit URL from the user goal", () => {
+    expect(canNavigateFromSnapshot(
+      "https://app.appvendorai.com/admin/melhorias/nova",
+      "Abra https://app.appvendorai.com/admin/melhorias/nova",
+      state,
+    )).toBe(true);
+  });
+
+  it("rejects invented internal routes", () => {
+    expect(canNavigateFromSnapshot(
+      "https://app.appvendorai.com/admin/melhorias/nova",
+      "Crie uma melhoria usando a interface atual",
+      state,
+    )).toBe(false);
+  });
+});
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
