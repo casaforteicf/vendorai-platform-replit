@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS pipeline_stage_event_runs (
   stage_key TEXT NOT NULL,
   gatilho TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'executing',
+  attempts INTEGER NOT NULL DEFAULT 1,
   error TEXT,
   executed_at TIMESTAMP,
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
