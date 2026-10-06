@@ -65,20 +65,32 @@ export default function RealRenderGalleryStudio({ arqState, onNavigate }: RealRe
         <header className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Sprint 029 • Real Render Gallery</p>
-              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[var(--arq-foreground)]">Render real, melhoria e versionamento</h1>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Render</p>
+              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[var(--arq-foreground)]">Galeria, versões e aprovação</h1>
               <p className="mt-1 text-sm text-[var(--arq-muted)]">
-                {projectTitle} • melhoria gera novo render, histórico preservado, material editável e envio para especificação.
+                {projectTitle} • histórico persistente, comparação, melhorias e especificação em um único lugar.
               </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={reload}
+                onClick={() => {
+                  const params = new URLSearchParams();
+                  if (projectId) params.set("project_id", projectId);
+                  const query = params.toString();
+                  window.location.assign(`/arch/render${query ? `?${query}` : ""}`);
+                }}
                 className="rounded-2xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
               >
-                Atualizar galeria
+                + Novo render
+              </button>
+              <button
+                type="button"
+                onClick={reload}
+                className="rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-2 text-sm font-semibold text-[var(--arq-foreground)] hover:border-violet-200 hover:text-[var(--arq-accent)]"
+              >
+                Atualizar
               </button>
               <button
                 type="button"
