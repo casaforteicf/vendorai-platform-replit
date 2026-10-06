@@ -10,7 +10,11 @@ permissions:
 
 jobs:
   registrar:
-    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main'
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'main' &&
+      !startsWith(github.event.pull_request.head.ref, 'automation/changelog-pr-') &&
+      !startsWith(github.event.pull_request.title, 'Novidades:')
     runs-on: ubuntu-latest
     steps:
       - name: Baixar versão principal
