@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, numeric, date } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, numeric, date, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { obrasTable, obraEtapasTable } from "./obras";
@@ -26,6 +26,7 @@ export const obraLancamentosTable = pgTable("obra_lancamentos", {
   documentoUrl: text("documento_url"),
   asaasPaymentId: text("asaas_payment_id"),
   observacoes: text("observacoes"),
+  visibleToClient: boolean("visible_to_client").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
@@ -48,3 +49,5 @@ export const updateObraLancamentoSchema = createSelectSchema(obraLancamentosTabl
 export type InsertObraLancamento = z.infer<typeof insertObraLancamentoSchema>;
 export type UpdateObraLancamento = z.infer<typeof updateObraLancamentoSchema>;
 export type ObraLancamento = typeof obraLancamentosTable.$inferSelect;
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
