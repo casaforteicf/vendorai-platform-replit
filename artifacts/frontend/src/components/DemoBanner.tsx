@@ -132,28 +132,39 @@ export function DemoBanner() {
   if (renewalRequired) {
     const due = renewal?.dueAt ? new Date(renewal.dueAt).toLocaleDateString("pt-BR") : null;
     return (
-      <div className="fixed inset-0 z-[10000] bg-background/95 backdrop-blur-sm flex items-center justify-center p-4" data-testid="subscription-renewal-gate">
-        <div className="w-full max-w-lg rounded-2xl border bg-card shadow-2xl p-6 md:p-8">
-          <div className="h-12 w-12 rounded-full bg-amber-100 text-amber-700 grid place-items-center mb-5 dark:bg-amber-950/40 dark:text-amber-300"><CreditCard className="h-6 w-6" /></div>
-          <h2 className="text-2xl font-bold">Renove para continuar</h2>
-          <p className="text-muted-foreground mt-2">Sua renovação do VendorAI está {renewal.reason === "overdue" ? "vencida" : "disponível para pagamento"}{due ? ` desde ${due}` : ""}. Assim que o Asaas confirmar o pagamento, o acesso é normalizado automaticamente.</p>
-
-          <div className="rounded-xl border bg-muted/30 p-4 mt-5 space-y-2 text-sm">
-            <div className="flex justify-between gap-4"><span className="text-muted-foreground">Plano</span><strong className="uppercase">{renewal.plan || "VendorAI"}</strong></div>
-            <div className="flex justify-between gap-4"><span className="text-muted-foreground">Pagamento</span><strong>Asaas</strong></div>
-            <div className="flex justify-between gap-4"><span className="text-muted-foreground">Status</span><strong>{renewal.reason === "overdue" ? "Vencido" : "Aguardando pagamento"}</strong></div>
+      <div
+        className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-amber-950 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200"
+        data-testid="subscription-renewal-warning"
+      >
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+              <CreditCard className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">
+                Renovação pendente{due ? ` desde ${due}` : ""}
+              </p>
+              <p className="mt-0.5 text-xs opacity-80">
+                Sua operação continua disponível. Regularize a cobrança ou peça uma nova verificação do Asaas.
+              </p>
+            </div>
           </div>
 
-          <div className="grid gap-2 mt-5">
+          <div className="flex flex-col gap-2 sm:flex-row lg:shrink-0">
             {renewal.paymentUrl ? (
-              <Button size="lg" asChild><a href={renewal.paymentUrl} target="_blank" rel="noreferrer"><CreditCard className="h-4 w-4 mr-2" />Pagar agora no Asaas</a></Button>
-            ) : (
-              <Button size="lg" disabled><CreditCard className="h-4 w-4 mr-2" />Gerando cobrança...</Button>
-            )}
-            <Button size="lg" variant="outline" onClick={() => loadRenewalState(true)} disabled={checkingPayment}><RefreshCw className={`h-4 w-4 mr-2 ${checkingPayment ? "animate-spin" : ""}`} />{checkingPayment ? "Consultando Asaas..." : "Já paguei — verificar agora"}</Button>
+              <Button size="sm" asChild>
+                <a href={renewal.paymentUrl} target="_blank" rel="noreferrer">
+                  <CreditCard className="mr-2 h-4 w-4" />
+                  Pagar no Asaas
+                </a>
+              </Button>
+            ) : null}
+            <Button size="sm" variant="outline" onClick={() => loadRenewalState(true)} disabled={checkingPayment}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${checkingPayment ? "animate-spin" : ""}`} />
+              {checkingPayment ? "Verificando..." : "Já paguei — verificar"}
+            </Button>
           </div>
-
-          <div className="flex items-start gap-2 text-xs text-muted-foreground mt-5"><ShieldCheck className="h-4 w-4 shrink-0" /><span>O VendorAI não armazena os dados do cartão nesta tela. A cobrança e a confirmação financeira ficam no Asaas.</span></div>
         </div>
       </div>
     );
