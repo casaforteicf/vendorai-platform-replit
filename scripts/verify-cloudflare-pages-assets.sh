@@ -10,13 +10,14 @@ if [ ! -d "$root/assets" ]; then
 fi
 
 echo "Verifying every published JS/CSS asset with propagation retries."
+export public_base
 
 find "$root/assets" -maxdepth 1 -type f \( -name '*.js' -o -name '*.css' \) -printf '%f\n' \
   | sort \
   | xargs -r -P 20 -n 1 bash -c '
       set -euo pipefail
       file="$1"
-      base="$2"
+      base="$public_base"
       for attempt in {1..12}; do
         if curl -fsS --connect-timeout 5 --max-time 20 -o /dev/null "$base/assets/$file"; then
           exit 0
@@ -27,6 +28,6 @@ find "$root/assets" -maxdepth 1 -type f \( -name '*.js' -o -name '*.css' \) -pri
       done
       echo "::error::Published bundle is missing asset after propagation retries: $file"
       exit 1
-    ' bash '{}' "$public_base"
+    ' bash
 
 echo "Production bundle integrity verified."
