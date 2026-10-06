@@ -24,12 +24,26 @@ export type ConfiguracaoAcompanhamentoEtapa = {
   instrucoes?: string;
 };
 
+export type PipelineStageActivityQuestion = {
+  id: string;
+  texto: string;
+  tipo?: "texto" | "texto_longo" | "sim_nao" | "numero" | "data" | "opcoes";
+  opcoes?: string[];
+  quemResponde?: "cliente" | "usuario" | "ambos" | "automatico";
+  obrigatoria?: boolean;
+  visivelCliente?: boolean;
+  entraRelatorio?: boolean;
+  editavelDepois?: boolean;
+  evidenciaExigida?: "nenhuma" | "foto" | "video" | "audio" | "documento" | "midia";
+};
+
 export type PipelineStageActivityTemplate = {
   id: string;
   titulo: string;
   descricao?: string | null;
   objetivo?: string | null;
   resultadoEsperado?: string | null;
+  perguntas?: PipelineStageActivityQuestion[];
   tipo?: "ligacao" | "whatsapp" | "email" | "visita" | "tarefa" | "reuniao";
   categoria: "obrigatoria" | "sugerida" | "automatica";
   prazoMinutos?: number | null;
