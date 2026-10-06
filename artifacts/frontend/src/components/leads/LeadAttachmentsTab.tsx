@@ -773,7 +773,7 @@ export default function LeadAttachmentsTab() {
       if (term && !`${item.name} ${item.origin} ${item.folderPath} ${typeLabel(item)}`.toLowerCase().includes(term)) return false;
       return true;
     });
-  }, [unified, search, folderFilter, filter]);
+  }, [unified, search, folderFilter, filter, folderLocks, unlockedUntil]);
 
   function openFilePicker(folder = "") {
     setUploadTargetFolder(normalizeFolder(folder));
