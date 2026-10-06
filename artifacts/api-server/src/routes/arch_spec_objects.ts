@@ -493,19 +493,28 @@ function buildProjectElements(concept: any): { revision: string; elements: Proje
     }
 
     if (room?.kind === "piscina") {
+      const poolDepthM = Number(room?.poolDepthM || 0);
+      const hasPoolDepth = Number.isFinite(poolDepthM) && poolDepthM > 0;
+      const volumeM3 = hasPoolDepth ? round(area * poolDepthM) : null;
+      const wallLiningM2 = hasPoolDepth ? round(perimeter * poolDepthM) : null;
+      const internalLiningM2 = hasPoolDepth ? round(area + Number(wallLiningM2 || 0)) : null;
+
       elements.push({
         sourceObjectId: `pool:${room.id}`,
         name: `Piscina — ${region}`,
-        description: "Quantitativo geométrico da projeção da piscina. Volume permanece pendente até existir profundidade técnica confirmada.",
+        description: hasPoolDepth
+          ? `Piscina com profundidade técnica de ${round(poolDepthM, 2)} m; volume e revestimento interno derivados da geometria.`
+          : "Quantitativo geométrico da projeção da piscina. Defina a profundidade técnica para calcular volume e revestimento interno.",
         category: "piscina",
         region,
         quantity: area,
         unit: "m²",
         widthMm: round(width * 1000, 1),
+        heightMm: hasPoolDepth ? round(poolDepthM * 1000, 1) : null,
         depthMm: round(depth * 1000, 1),
         areaM2: area,
         perimeterM: perimeter,
-        volumeM3: null,
+        volumeM3,
       });
       elements.push({
         sourceObjectId: `pool:${room.id}:edge`,
@@ -518,22 +527,72 @@ function buildProjectElements(concept: any): { revision: string; elements: Proje
         lengthMm: round(perimeter * 1000, 1),
         perimeterM: perimeter,
       });
+      if (hasPoolDepth && internalLiningM2 != null) {
+        elements.push({
+          sourceObjectId: `pool:${room.id}:lining`,
+          name: `Revestimento interno da piscina — ${region}`,
+          description: `Fundo ${area} m² + paredes internas ${wallLiningM2} m².`,
+          category: "revestimento_piscina",
+          region,
+          quantity: internalLiningM2,
+          unit: "m²",
+          areaM2: internalLiningM2,
+          volumeM3,
+        });
+      }
     }
 
     if (room?.kind === "escada") {
+      const levelHeightM = Number(configuration?.levelHeight ?? master?.levelHeight ?? 2.96);
+      const riserCount = Math.round(Number(room?.stairRiserCount || 0));
+      const treadDepthM = Number(room?.stairTreadDepthM || 0);
+      const hasVerticalDefinition = Number.isFinite(riserCount) && riserCount >= 2;
+      const hasTreadDefinition = Number.isFinite(treadDepthM) && treadDepthM > 0;
+      const riserHeightMm = hasVerticalDefinition ? round((levelHeightM / riserCount) * 1000, 1) : null;
+
       elements.push({
         sourceObjectId: `stair:${room.id}`,
         name: `Escada — ${region}`,
-        description: "Área de implantação da escada originada do projeto. Degraus/espelhos e guarda-corpo dependem da parametrização vertical da escada.",
+        description: hasVerticalDefinition
+          ? `Desnível de ${round(levelHeightM, 3)} m dividido em ${riserCount} espelhos de ${riserHeightMm} mm.`
+          : "Área de implantação da escada originada do projeto. Defina o número de espelhos para fechar a parametrização vertical.",
         category: "escada",
         region,
         quantity: area,
         unit: "m²",
         widthMm: round(width * 1000, 1),
         depthMm: round(depth * 1000, 1),
+        heightMm: round(levelHeightM * 1000, 1),
         areaM2: area,
         perimeterM: perimeter,
       });
+
+      if (hasVerticalDefinition) {
+        elements.push({
+          sourceObjectId: `stair:${room.id}:risers`,
+          name: `Espelhos da escada — ${region}`,
+          description: `${riserCount} espelhos para vencer ${round(levelHeightM, 3)} m de desnível.`,
+          category: "escada_espelho",
+          region,
+          quantity: riserCount,
+          unit: "un",
+          heightMm: riserHeightMm,
+        });
+      }
+
+      if (hasVerticalDefinition && hasTreadDefinition) {
+        const treadCount = Math.max(1, riserCount - 1);
+        elements.push({
+          sourceObjectId: `stair:${room.id}:treads`,
+          name: `Pisos dos degraus — ${region}`,
+          description: `${treadCount} pisos com profundidade técnica de ${round(treadDepthM * 1000, 1)} mm. A área de revestimento permanece pendente até a forma da escada (reta/L/U) estar parametrizada.`,
+          category: "escada_piso",
+          region,
+          quantity: treadCount,
+          unit: "un",
+          depthMm: round(treadDepthM * 1000, 1),
+        });
+      }
     }
   }
 
