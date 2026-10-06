@@ -39,6 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { LEAD_SOURCE_OPTIONS } from "@/lib/leadRegistration";
 
 const newLeadSchema = z.object({
   cadastroTipo: z.enum(["pessoa", "empresa", "negocio"]).default("pessoa"),
@@ -1091,14 +1092,9 @@ export function NewLeadDialog({
                     <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                       <SelectContent>
-                        <SelectItem value="manual">Cadastro manual</SelectItem>
-                        <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                        <SelectItem value="instagram">Instagram</SelectItem>
-                        <SelectItem value="site">Site / formulário</SelectItem>
-                        <SelectItem value="anuncio">Anúncio</SelectItem>
-                        <SelectItem value="indicacao">Indicação</SelectItem>
-                        <SelectItem value="prospeccao">Prospecção</SelectItem>
-                        <SelectItem value="outro">Outro</SelectItem>
+                        {LEAD_SOURCE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </FormItem>
