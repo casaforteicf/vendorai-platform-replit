@@ -17,7 +17,7 @@ const router: IRouter = Router();
 
 const personRoles = [
   "consumidor_final","proprietario","contratante","comprador","contato_comercial","decisor",
-  "responsavel_financeiro","arquiteto","engenheiro","representante","instalador","parceiro","outro",
+  "responsavel_financeiro","indicador","arquiteto","engenheiro","representante","instalador","parceiro","outro",
 ] as const;
 const companyRoles = [
   "contratante","construtora","incorporadora","imobiliaria","fornecedor","parceira","representante","outra",
@@ -157,6 +157,7 @@ const dealPersonSchema = z.object({
   contextualCompanyId: z.string().nullable().optional(),
   relationshipScope: z.enum(["deal_only", "persistent"]).default("deal_only"),
   notes: z.string().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 const dealCompanySchema = z.object({
@@ -185,6 +186,7 @@ router.get("/crm/deals/:dealId/participants", async (req, res) => {
       contextualCompanyId: crmDealPeopleTable.contextualCompanyId,
       relationshipScope: crmDealPeopleTable.relationshipScope,
       notes: crmDealPeopleTable.notes,
+      metadata: crmDealPeopleTable.metadata,
     }).from(crmDealPeopleTable)
       .innerJoin(crmPeopleMasterTable, eq(crmPeopleMasterTable.id, crmDealPeopleTable.personId))
       .where(and(eq(crmDealPeopleTable.tenantId, tenantId), eq(crmDealPeopleTable.dealId, req.params.dealId)));
@@ -240,6 +242,7 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
       contextualCompanyId: parsed.data.contextualCompanyId ?? null,
       relationshipScope: parsed.data.relationshipScope,
       notes: parsed.data.notes ?? null,
+      metadata: parsed.data.metadata ?? {},
       updatedAt: new Date(),
     }).onConflictDoUpdate({
       target: [crmDealPeopleTable.dealId, crmDealPeopleTable.personId],
@@ -249,6 +252,7 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
         contextualCompanyId: parsed.data.contextualCompanyId ?? null,
         relationshipScope: parsed.data.relationshipScope,
         notes: parsed.data.notes ?? null,
+        metadata: parsed.data.metadata ?? {},
         updatedAt: new Date(),
       },
     }).returning();

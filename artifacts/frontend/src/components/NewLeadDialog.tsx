@@ -111,6 +111,38 @@ type ExtraCompanyContact = {
   role: "comercial" | "decisor" | "compras" | "financeiro" | "tecnico" | "administrativo" | "suporte" | "outro";
 };
 
+type CommercialPartnerDraft = {
+  id: string;
+  mode: "existing" | "new";
+  personId: string;
+  nome: string;
+  telefone: string;
+  email: string;
+  documento: string;
+  role: "indicador" | "parceiro" | "arquiteto" | "engenheiro" | "representante" | "instalador" | "outro";
+  hasCommission: boolean;
+  commissionKind: "percent" | "fixed";
+  commissionValue: string;
+};
+
+type CrmPersonOption = {
+  id: string;
+  nome: string;
+  documento?: string | null;
+  telefones?: string[] | null;
+  emails?: string[] | null;
+};
+
+const COMMERCIAL_PARTNER_ROLES = [
+  ["indicador", "Indicador"],
+  ["parceiro", "Parceiro"],
+  ["arquiteto", "Arquiteto"],
+  ["engenheiro", "Engenheiro"],
+  ["representante", "Representante"],
+  ["instalador", "Instalador"],
+  ["outro", "Outro"],
+] as const;
+
 type CouponValidation = {
   valid: true;
   code: string;
@@ -222,6 +254,7 @@ export function NewLeadDialog({
   const [showMore, setShowMore] = useState(false);
   const [showCommercial, setShowCommercial] = useState(false);
   const [extraContacts, setExtraContacts] = useState<ExtraCompanyContact[]>([]);
+  const [commercialPartners, setCommercialPartners] = useState<CommercialPartnerDraft[]>([]);
   const [serverDuplicate, setServerDuplicate] = useState<{ lead: Lead; matchBy: string } | null>(null);
   const [couponValidation, setCouponValidation] = useState<CouponValidation | null>(null);
   const [couponError, setCouponError] = useState<string | null>(null);
@@ -284,6 +317,20 @@ export function NewLeadDialog({
     [activeUsers],
   );
 
+  const { data: crmPeople = { items: [] } } = useQuery<{ items: CrmPersonOption[] }>({
+    queryKey: ["crm-people", tenantId, "new-lead-partners", open],
+    enabled: Boolean(open && tenantId && commercialPartners.length > 0),
+    queryFn: async () => {
+      const response = await fetch(`/api/crm/people?tenantId=${encodeURIComponent(tenantId)}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) throw new Error("Não foi possível carregar parceiros já cadastrados.");
+      return response.json();
+    },
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+
   const { data: representativeFunctions = [] } = useQuery({
     queryKey: ["tenant-user-functions", tenantId, "lead-assignment"],
     enabled: !!tenantId && open && isAdmin,
@@ -338,6 +385,7 @@ export function NewLeadDialog({
     setShowMore(false);
     setShowCommercial(false);
     setExtraContacts([]);
+    setCommercialPartners([]);
     setServerDuplicate(null);
     resetCoupon();
     form.reset(DEFAULT_VALUES);
@@ -411,7 +459,14 @@ export function NewLeadDialog({
         method: "DELETE",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      if (!response.ok) throw new Error("O contato foi salvo, mas o negócio automático não pôde ser removido.");
+      if (!response.ok) {
+        toast({
+          title: "Negócio não removido",
+          description: "O contato foi salvo, mas o negócio automático não pôde ser removido.",
+          variant: "destructive",
+        });
+        throw new Error("O contato foi salvo, mas o negócio automático não pôde ser removido.");
+      }
       return null;
     }
 
@@ -561,6 +616,64 @@ export function NewLeadDialog({
     return { personId, companyId };
   }
 
+  async function syncCommercialPartners(leadId: string, dealId?: string) {
+    const synced: Array<Record<string, unknown>> = [];
+
+    for (const partner of commercialPartners) {
+      let personId = partner.personId;
+      let displayName = partner.nome.trim();
+
+      if (partner.mode === "existing") {
+        if (!personId) throw new Error("Selecione o parceiro existente ou remova a linha incompleta.");
+        const selected = crmPeople.items.find((item) => item.id === personId);
+        displayName = selected?.nome ?? displayName;
+      } else {
+        if (displayName.length < 2) throw new Error("Informe o nome do parceiro ou remova a linha incompleta.");
+        const personData = await crmPostJson<{ item?: { id?: string; nome?: string } }>("/api/crm/people", {
+          tenantId,
+          nome: displayName,
+          telefone: partner.telefone.trim() || undefined,
+          email: partner.email.trim() || undefined,
+          documento: partner.documento.trim() || undefined,
+          source: "manual",
+        });
+        personId = personData.item?.id ?? "";
+        displayName = personData.item?.nome ?? displayName;
+      }
+
+      if (!personId) throw new Error(`Não foi possível cadastrar ${displayName || "o parceiro"}.`);
+
+      const commission = partner.hasCommission
+        ? {
+            enabled: true,
+            kind: partner.commissionKind,
+            value: partner.commissionValue.trim() || null,
+            status: "prevista",
+          }
+        : { enabled: false };
+
+      if (dealId) {
+        await crmPostJson(`/api/crm/deals/${dealId}/people`, {
+          tenantId,
+          personId,
+          role: partner.role,
+          relationshipScope: "deal_only",
+          metadata: { leadId, commission },
+        });
+      }
+
+      synced.push({
+        personId,
+        nome: displayName,
+        role: partner.role,
+        commission,
+        relationshipScope: "deal_only",
+      });
+    }
+
+    return synced;
+  }
+
   async function onSubmit(values: NewLeadValues) {
     if (values.cadastroTipo === "empresa" && values.empresa.trim().length < 2) {
       form.setError("empresa", { message: "Informe a empresa" });
@@ -597,6 +710,7 @@ export function NewLeadDialog({
         assignedTo: selectedRepresentativeFunctionId ? values.assignedTo : (resolvedAssignee ?? values.assignedTo),
       };
 
+      // ui-integrity: error-propagates-to-caller — o catch deste submit exibe toast ao usuário.
       const newLead = await createLead.mutateAsync({
         data: {
           tenantId,
@@ -634,6 +748,38 @@ export function NewLeadDialog({
       const deal = await syncInitialDeal(leadId, submissionValues);
       const dealId = (deal as { id?: string } | null | undefined)?.id;
       await syncStructuredCrm(dealId, submissionValues);
+      const syncedPartners = await syncCommercialPartners(leadId, dealId);
+
+      if (syncedPartners.length > 0) {
+        const metadata = {
+          ...(coupon ? {
+            cupomCodigo: coupon.code,
+            descontoCupomPercentual: coupon.discountPercent,
+            cupomAplicacao: coupon.application,
+            parceiroIndicador: coupon.partnerName,
+            tipoParceiro: coupon.partnerType,
+            atribuicao: "cupom_parceiro",
+          } : {}),
+          envolvidosComerciais: syncedPartners,
+        };
+        const response = await fetch(`/api/leads/${leadId}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ metadata }),
+        });
+        if (!response.ok) {
+          toast({
+            title: "Parceiros não vinculados",
+            description: "O lead foi criado, mas os parceiros não puderam ser vinculados ao cadastro.",
+            variant: "destructive",
+          });
+          throw new Error("O lead foi criado, mas os parceiros não puderam ser vinculados ao cadastro.");
+        }
+      }
+
       queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
       queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
       queryClient.invalidateQueries({ queryKey: ["leads-overview-context", tenantId] });
@@ -671,6 +817,7 @@ export function NewLeadDialog({
           setShowMore(false);
           setShowCommercial(false);
           setExtraContacts([]);
+          setCommercialPartners([]);
           setServerDuplicate(null);
           resetCoupon();
           form.reset(DEFAULT_VALUES);
@@ -1087,6 +1234,170 @@ export function NewLeadDialog({
             )}
 
             <section className="space-y-3 border-t pt-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">Parceiros e envolvidos</p>
+                  <p className="text-xs text-muted-foreground">
+                    Indicador, arquiteto, parceiro ou outro profissional. Comissão é opcional e começa como sem comissão.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setCommercialPartners((items) => [...items, {
+                    id: crypto.randomUUID(),
+                    mode: "new",
+                    personId: "",
+                    nome: "",
+                    telefone: "",
+                    email: "",
+                    documento: "",
+                    role: "parceiro",
+                    hasCommission: false,
+                    commissionKind: "percent",
+                    commissionValue: "",
+                  }])}
+                >
+                  <Plus className="mr-1.5 h-3.5 w-3.5" />Adicionar parceiro
+                </Button>
+              </div>
+
+              {commercialPartners.length === 0 ? (
+                <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+                  Nenhum parceiro vinculado. Isso não impede o cadastro do lead.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {commercialPartners.map((partner, index) => (
+                    <div key={partner.id} className="space-y-3 rounded-lg border bg-muted/20 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs font-semibold text-muted-foreground">Envolvido {index + 1}</p>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          onClick={() => setCommercialPartners((items) => items.filter((item) => item.id !== partner.id))}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <Select
+                          value={partner.mode}
+                          onValueChange={(value) => setCommercialPartners((items) => items.map((item) => item.id === partner.id ? {
+                            ...item,
+                            mode: value as CommercialPartnerDraft["mode"],
+                            personId: "",
+                          } : item))}
+                        >
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="existing">Já cadastrado</SelectItem>
+                            <SelectItem value="new">Cadastrar novo</SelectItem>
+                          </SelectContent>
+                        </Select>
+
+                        <Select
+                          value={partner.role}
+                          onValueChange={(value) => setCommercialPartners((items) => items.map((item) => item.id === partner.id ? {
+                            ...item,
+                            role: value as CommercialPartnerDraft["role"],
+                          } : item))}
+                        >
+                          <SelectTrigger><SelectValue placeholder="Papel" /></SelectTrigger>
+                          <SelectContent>
+                            {COMMERCIAL_PARTNER_ROLES.map(([value, label]) => (
+                              <SelectItem key={value} value={value}>{label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {partner.mode === "existing" ? (
+                        <Select
+                          value={partner.personId}
+                          onValueChange={(value) => setCommercialPartners((items) => items.map((item) => item.id === partner.id ? { ...item, personId: value } : item))}
+                        >
+                          <SelectTrigger><SelectValue placeholder="Selecione a pessoa cadastrada" /></SelectTrigger>
+                          <SelectContent>
+                            {crmPeople.items.map((person) => (
+                              <SelectItem key={person.id} value={person.id}>
+                                {person.nome}{person.documento ? ` · ${person.documento}` : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <Input
+                            className="sm:col-span-2"
+                            placeholder="Nome do parceiro / profissional"
+                            value={partner.nome}
+                            onChange={(event) => setCommercialPartners((items) => items.map((item) => item.id === partner.id ? { ...item, nome: event.target.value } : item))}
+                          />
+                          <PhoneInput
+                            value={partner.telefone}
+                            onChange={(value) => setCommercialPartners((items) => items.map((item) => item.id === partner.id ? { ...item, telefone: value ?? "" } : item))}
+                          />
+                          <Input
+                            type="email"
+                            placeholder="email@empresa.com"
+                            value={partner.email}
+                            onChange={(event) => setCommercialPartners((items) => items.map((item) => item.id === partner.id ? { ...item, email: event.target.value } : item))}
+                          />
+                          <Input
+                            className="sm:col-span-2"
+                            placeholder="CPF / documento (opcional)"
+                            value={partner.documento}
+                            onChange={(event) => setCommercialPartners((items) => items.map((item) => item.id === partner.id ? { ...item, documento: event.target.value } : item))}
+                          />
+                        </div>
+                      )}
+
+                      <div className="space-y-2 rounded-md border bg-background p-3">
+                        <label className="flex cursor-pointer items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={partner.hasCommission}
+                            onChange={(event) => setCommercialPartners((items) => items.map((item) => item.id === partner.id ? { ...item, hasCommission: event.target.checked } : item))}
+                          />
+                          Possui comissão / ganho
+                        </label>
+                        <p className="text-[11px] text-muted-foreground">Opcional. Se não houver ganho, deixe desmarcado.</p>
+                        {partner.hasCommission && (
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <Select
+                              value={partner.commissionKind}
+                              onValueChange={(value) => setCommercialPartners((items) => items.map((item) => item.id === partner.id ? { ...item, commissionKind: value as CommercialPartnerDraft["commissionKind"] } : item))}
+                            >
+                              <SelectTrigger><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="percent">Percentual</SelectItem>
+                                <SelectItem value="fixed">Valor fixo</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Input
+                              inputMode="decimal"
+                              placeholder={partner.commissionKind === "percent" ? "Ex.: 15" : "Ex.: 1500,00"}
+                              value={partner.commissionValue}
+                              onChange={(event) => setCommercialPartners((items) => items.map((item) => item.id === partner.id ? { ...item, commissionValue: event.target.value } : item))}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-[11px] text-muted-foreground">
+                Sem negócio agora, os envolvidos ficam registrados no lead. Com negócio, também são vinculados como participantes do negócio.
+              </p>
+            </section>
+
+            <section className="space-y-3 border-t pt-4">
               {cadastroTipo !== "negocio" && (
               <label className="flex cursor-pointer items-start gap-3 rounded-lg border p-3">
                 <input
@@ -1198,7 +1509,7 @@ export function NewLeadDialog({
                   ? "Salvando..."
                   : createInitialDeal
                     ? cadastroTipo === "negocio" ? "Criar negócio e adicionar envolvidos" : "Salvar e iniciar negócio"
-                    : "Salvar contato"}
+                    : "Salvar lead"}
               </Button>
             </div>
           </form>
