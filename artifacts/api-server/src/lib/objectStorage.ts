@@ -128,13 +128,8 @@ class SupabaseFileHandle {
     if (error) throw error;
   }
 
-  getPublicUrl(): string {
-    const { data } = this.client.storage.from(this.bucketName).getPublicUrl(this.objectName);
-    return data.publicUrl;
-  }
-
   async getSignedUrl(expiresInSec: number = 300): Promise<string> {
-    const ttl = Math.max(60, Math.min(3600, Math.floor(expiresInSec)));
+    const ttl = Math.max(60, Math.min(7 * 24 * 60 * 60, Math.floor(expiresInSec)));
     const { data, error } = await this.client.storage.from(this.bucketName).createSignedUrl(this.objectName, ttl);
     if (error || !data?.signedUrl) {
       throw new Error(`Falha ao gerar URL assinada: ${error?.message ?? "erro desconhecido"}`);
