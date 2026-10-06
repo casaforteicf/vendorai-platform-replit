@@ -509,6 +509,8 @@ export default function Usuarios() {
   const [partnershipAuthorizedUsers, setPartnershipAuthorizedUsers] = useState<string[]>([]);
   const [partnershipCommission, setPartnershipCommission] = useState("15");
   const [creatingPartnership, setCreatingPartnership] = useState(false);
+  const [editingPartnership, setEditingPartnership] = useState<CommercialPartnership | null>(null);
+  const [deletePartnershipTarget, setDeletePartnershipTarget] = useState<CommercialPartnership | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -1023,12 +1025,24 @@ export default function Usuarios() {
   }
 
   function resetPartnershipForm() {
+    setEditingPartnership(null);
     setPartnershipSearch("");
     setPartnershipTenantId("");
     setPartnershipTenantCode("");
     setPartnershipTenantName("");
     setPartnershipAuthorizedUsers([]);
     setPartnershipCommission("15");
+  }
+
+  function openEditPartnership(partnership: CommercialPartnership) {
+    setEditingPartnership(partnership);
+    setPartnershipSearch("");
+    setPartnershipTenantId(partnership.partnerTenantId);
+    setPartnershipTenantCode(partnership.partnerTenantCode ?? "");
+    setPartnershipTenantName(partnership.partnerName || partnership.partnerTenantCode || partnership.partnerTenantId);
+    setPartnershipAuthorizedUsers(partnership.authorizedUserIds ?? []);
+    setPartnershipCommission(String(partnership.defaultCommissionPercent ?? 15));
+    setPartnershipDialogOpen(true);
   }
 
   async function createCommercialPartnership() {
@@ -1043,26 +1057,70 @@ export default function Usuarios() {
     }
     setCreatingPartnership(true);
     try {
-      await customFetch(`/api/tenants/${tenantId}/commercial-partnerships`, {
-        method: "POST",
-        body: JSON.stringify({
-          partnerTenantId: partnershipTenantId,
-          relationshipType: "representante_comercial",
-          defaultCommissionPercent: commission,
-          authorizedUserIds: partnershipAuthorizedUsers,
-          distributionMode: "partner_queue",
-          defaultPermissions: ["view_lead", "view_contacts", "create_activities", "move_pipeline", "create_proposal", "send_proposal", "negotiate", "close_deal", "assign_partner_user"],
-        }),
+      if (editingPartnership) {
+        await customFetch(`/api/commercial-partnerships/${editingPartnership.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            defaultCommissionPercent: commission,
+            authorizedUserIds: partnershipAuthorizedUsers,
+          }),
+          responseType: "json",
+        });
+      } else {
+        await customFetch(`/api/tenants/${tenantId}/commercial-partnerships`, {
+          method: "POST",
+          body: JSON.stringify({
+            partnerTenantId: partnershipTenantId,
+            relationshipType: "representante_comercial",
+            defaultCommissionPercent: commission,
+            authorizedUserIds: partnershipAuthorizedUsers,
+            distributionMode: "partner_queue",
+            defaultPermissions: ["view_lead", "view_contacts", "create_activities", "move_pipeline", "create_proposal", "send_proposal", "negotiate", "close_deal", "assign_partner_user"],
+          }),
+          responseType: "json",
+        });
+      }
+      await queryClient.invalidateQueries({ queryKey: ["commercial-partnerships", tenantId] });
+      setPartnershipDialogOpen(false);
+      const wasEditing = Boolean(editingPartnership);
+      resetPartnershipForm();
+      toast({
+        title: wasEditing ? "Vínculo atualizado" : "Empresa representante vinculada",
+        description: wasEditing
+          ? "Comissão e usuários autorizados foram atualizados."
+          : "Agora ela pode ser escolhida como responsável nos negócios compartilhados.",
+      });
+    } catch (err: any) {
+      toast({
+        title: editingPartnership ? "Erro ao atualizar representante" : "Erro ao vincular representante",
+        description: err?.message || copy.tryAgain,
+        variant: "destructive",
+      });
+    } finally {
+      setCreatingPartnership(false);
+    }
+  }
+
+  async function confirmRemovePartnership() {
+    if (!deletePartnershipTarget) return;
+    try {
+      await customFetch(`/api/commercial-partnerships/${deletePartnershipTarget.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "inactive" }),
         responseType: "json",
       });
       await queryClient.invalidateQueries({ queryKey: ["commercial-partnerships", tenantId] });
-      setPartnershipDialogOpen(false);
-      resetPartnershipForm();
-      toast({ title: "Empresa representante vinculada", description: "Agora ela pode ser escolhida como responsável nos negócios compartilhados." });
+      toast({
+        title: "Vínculo removido",
+        description: "A representação foi desativada. O histórico de negócios e comissões foi preservado.",
+      });
+      setDeletePartnershipTarget(null);
     } catch (err: any) {
-      toast({ title: "Erro ao vincular representante", description: err?.message || copy.tryAgain, variant: "destructive" });
-    } finally {
-      setCreatingPartnership(false);
+      toast({
+        title: "Erro ao remover vínculo",
+        description: err?.message || copy.tryAgain,
+        variant: "destructive",
+      });
     }
   }
 
@@ -1205,7 +1263,30 @@ export default function Usuarios() {
                         <p className="truncate font-medium">{partnership.partnerName || partnership.partnerTenantCode || partnership.partnerTenantId}</p>
                         <p className="mt-0.5 text-xs text-muted-foreground">Representante comercial</p>
                       </div>
-                      <Badge variant="outline" className="bg-cyan-50 text-cyan-700 border-cyan-200">Ativa</Badge>
+                      <div className="flex items-center gap-1">
+                        <Badge variant="outline" className="bg-cyan-50 text-cyan-700 border-cyan-200">Ativa</Badge>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button type="button" variant="ghost" size="icon" className="h-8 w-8" aria-label="Ações da empresa representante">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openEditPartnership(partnership)}>
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Editar vínculo
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => setDeletePartnershipTarget(partnership)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Remover vínculo
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
                       <div className="rounded-md bg-muted/40 px-2 py-1.5">
@@ -1410,54 +1491,58 @@ export default function Usuarios() {
       }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Vincular empresa representante</DialogTitle>
+            <DialogTitle>{editingPartnership ? "Editar empresa representante" : "Vincular empresa representante"}</DialogTitle>
             <DialogDescription>
-              Selecione outro tenant do Vendor.ai. Não será criado usuário duplicado: a representação será entre as duas empresas.
+              {editingPartnership
+                ? "Altere a comissão padrão e quais usuários da empresa representante podem atuar neste vínculo."
+                : "Selecione outro tenant do Vendor.ai. Não será criado usuário duplicado: a representação será entre as duas empresas."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-1.5">
-              <Label>Buscar empresa</Label>
-              <Input
-                value={partnershipSearch}
-                onChange={(event) => {
-                  setPartnershipSearch(event.target.value);
-                  setPartnershipTenantId("");
-                  setPartnershipTenantCode("");
-                  setPartnershipTenantName("");
-                  setPartnershipAuthorizedUsers([]);
-                }}
-                placeholder="Nome da empresa ou código Vendor.ai..."
-              />
-              {normalizedPartnershipSearch.length < 2 ? (
-                <p className="text-xs text-muted-foreground">Digite pelo menos 2 caracteres.</p>
-              ) : searchingPartnershipTenants ? (
-                <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Buscando...</p>
-              ) : (
-                <div className="max-h-44 overflow-y-auto rounded-md border">
-                  {partnershipTenantOptions.length === 0 ? (
-                    <p className="p-3 text-xs text-muted-foreground">Nenhum tenant ativo encontrado.</p>
-                  ) : partnershipTenantOptions.map((option) => (
-                    <button
-                      key={option.id}
-                      type="button"
-                      className={partnershipTenantId === option.id
-                        ? "flex w-full items-center justify-between gap-3 border-b bg-cyan-50 px-3 py-2 text-left text-sm last:border-b-0"
-                        : "flex w-full items-center justify-between gap-3 border-b px-3 py-2 text-left text-sm last:border-b-0 hover:bg-muted/50"}
-                      onClick={() => {
-                        setPartnershipTenantId(option.id);
-                        setPartnershipTenantCode(option.tenantCode);
-                        setPartnershipTenantName(option.name);
-                        setPartnershipAuthorizedUsers([]);
-                      }}
-                    >
-                      <span className="font-medium">{option.name}</span>
-                      <span className="text-xs text-muted-foreground">{option.tenantCode}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            {!editingPartnership && (
+              <div className="space-y-1.5">
+                <Label>Buscar empresa</Label>
+                <Input
+                  value={partnershipSearch}
+                  onChange={(event) => {
+                    setPartnershipSearch(event.target.value);
+                    setPartnershipTenantId("");
+                    setPartnershipTenantCode("");
+                    setPartnershipTenantName("");
+                    setPartnershipAuthorizedUsers([]);
+                  }}
+                  placeholder="Nome da empresa ou código Vendor.ai..."
+                />
+                {normalizedPartnershipSearch.length < 2 ? (
+                  <p className="text-xs text-muted-foreground">Digite pelo menos 2 caracteres.</p>
+                ) : searchingPartnershipTenants ? (
+                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Buscando...</p>
+                ) : (
+                  <div className="max-h-44 overflow-y-auto rounded-md border">
+                    {partnershipTenantOptions.length === 0 ? (
+                      <p className="p-3 text-xs text-muted-foreground">Nenhum tenant ativo encontrado.</p>
+                    ) : partnershipTenantOptions.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className={partnershipTenantId === option.id
+                          ? "flex w-full items-center justify-between gap-3 border-b bg-cyan-50 px-3 py-2 text-left text-sm last:border-b-0"
+                          : "flex w-full items-center justify-between gap-3 border-b px-3 py-2 text-left text-sm last:border-b-0 hover:bg-muted/50"}
+                        onClick={() => {
+                          setPartnershipTenantId(option.id);
+                          setPartnershipTenantCode(option.tenantCode);
+                          setPartnershipTenantName(option.name);
+                          setPartnershipAuthorizedUsers([]);
+                        }}
+                      >
+                        <span className="font-medium">{option.name}</span>
+                        <span className="text-xs text-muted-foreground">{option.tenantCode}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {partnershipTenantId && (
               <>
@@ -1503,11 +1588,34 @@ export default function Usuarios() {
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setPartnershipDialogOpen(false)}>Cancelar</Button>
             <Button type="button" onClick={createCommercialPartnership} disabled={!partnershipTenantId || creatingPartnership}>
-              {creatingPartnership && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Vincular empresa
+              {creatingPartnership && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {editingPartnership ? "Salvar alterações" : "Vincular empresa"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={Boolean(deletePartnershipTarget)} onOpenChange={(open) => { if (!open) setDeletePartnershipTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover vínculo com empresa representante?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A empresa {deletePartnershipTarget?.partnerName || deletePartnershipTarget?.partnerTenantCode || ""} deixará de receber novos negócios por este vínculo.
+              O histórico de leads, negócios, comissões e pagamentos já existentes será preservado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={confirmRemovePartnership}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Remover vínculo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={dialogOpen} onOpenChange={(open) => {
         setDialogOpen(open);
