@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-3164",
+    "titulo": "Admin pode excluir lead em qualquer estágio sem perder histórico",
+    "descricao": "restringe DELETE /leads/:id a superadmin, tenant_admin ou função administrador registra usuário/data/motivo da exclusão no metadata do lead adiciona ação reutilizável \"Excluir lead\" no workspace e nas pipelines Comercial, Aquecimento, Parceiros, Execução e Suporte mantém soft delete e restauração",
+    "tipo": "novidade",
+    "publicadoEm": "2026-10-06T19:32:03.000Z",
+    "pullRequest": 3164
+  },
+  {
     "id": "pr-3160",
     "titulo": "Assistência: importar pedido antigo com itens e arquivo original",
     "descricao": "adiciona a opção de importar pedido antigo na abertura de chamados de assistência; reutiliza a extração documental para PDF, imagem e Word; exibe prévia dos dados extraídos; permite selecionar os itens/produtos afetados; preserva a estrutura importada e vincula o arquivo original ao chamado para auditoria.",
