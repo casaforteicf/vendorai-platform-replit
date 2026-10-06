@@ -15,6 +15,7 @@ import {
   normalizeMetaAdAccountId,
 } from "./meta-ads-oauth.js";
 import { getInstagramStoryFunnel } from "./instagram-story-funnel.js";
+import { isPaidMetaLead, summarizeMetaCommercialResults } from "./meta-growth-metrics.js";
 
 const IG_GRAPH_BASE = "https://graph.instagram.com/v26.0";
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -38,70 +39,6 @@ export type MetaGrowthAlert = {
 function isMetaSource(source: string | null | undefined) {
   const value = (source ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   return value.includes("instagram") || value.includes("facebook") || value.includes("meta");
-}
-
-export function isPaidMetaLead(lead: {
-  source: string;
-  adCampaignId: string | null;
-  campaignPlatform?: string | null;
-}) {
-  const value = lead.source.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-
-  // When a CRM campaign link exists, the campaign platform is authoritative.
-  // This prevents a Google-attributed lead that later interacts on Instagram
-  // from being counted as paid Meta merely because adCampaignId is populated.
-  if (lead.adCampaignId && lead.campaignPlatform) {
-    return lead.campaignPlatform === "meta";
-  }
-
-  // Legacy/fallback attribution for Meta leads without a resolvable campaign.
-  return value.includes("meta ads")
-    || value.includes("facebook ads")
-    || value.includes("instagram ads")
-    || value.includes("anuncio")
-    || value.includes("patrocin");
-}
-
-type MetaDealForSummary = {
-  leadId: string | null;
-  valor: string | null;
-  etapa: string;
-  wonAt: Date | null;
-  dataFechamento: Date | null;
-  createdAt: Date;
-};
-
-export function summarizeMetaCommercialResults(params: {
-  metaLeadIds: string[];
-  paidMetaLeadIds: string[];
-  deals: MetaDealForSummary[];
-  cutoff: Date;
-}) {
-  const metaLeadSet = new Set(params.metaLeadIds);
-  const paidMetaLeadSet = new Set(params.paidMetaLeadIds);
-  const metaDeals = params.deals.filter((deal) => deal.leadId && metaLeadSet.has(deal.leadId));
-
-  const openDeals = metaDeals.filter((deal) => !["ganho", "perdido"].includes(deal.etapa));
-  const wonDeals = metaDeals.filter((deal) => {
-    if (deal.etapa !== "ganho") return false;
-    const closedAt = deal.dataFechamento ?? deal.wonAt ?? deal.createdAt;
-    return closedAt >= params.cutoff;
-  });
-  const paidWonDeals = wonDeals.filter((deal) => deal.leadId && paidMetaLeadSet.has(deal.leadId));
-
-  const sumValue = (rows: MetaDealForSummary[]) => rows.reduce(
-    (sum, deal) => sum + (deal.valor ? Number(deal.valor) || 0 : 0),
-    0,
-  );
-
-  return {
-    opportunities30d: openDeals.length,
-    pipelineValue30d: sumValue(openDeals),
-    sales30d: wonDeals.length,
-    revenueClosed30d: sumValue(wonDeals),
-    paidSales30d: paidWonDeals.length,
-    paidRevenueClosed30d: sumValue(paidWonDeals),
-  };
 }
 
 function isoDay(date = new Date()) {
