@@ -40,6 +40,7 @@ export interface MediaPlanCampaign {
   kpiPrincipal: string;
   metaPrincipal: string;
   materiaisPlanejados: number;
+  coverUrl?: string;
   status: "planejada" | "em_revisao" | "aprovada" | "em_producao" | "ativa" | "encerrada";
 }
 
