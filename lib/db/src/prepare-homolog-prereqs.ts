@@ -32,7 +32,7 @@ try {
     CREATE EXTENSION IF NOT EXISTS pgcrypto;
   `);
   console.log("[homolog-prereqs] sequence/extensions ready", {
-    database: url.pathname.replace(/^\\//, ""),
+    database: url.pathname.replace(/^\//, ""),
     projectId: currentRailwayProjectId,
   });
 } finally {
