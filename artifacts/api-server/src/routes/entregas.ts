@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request } from "express";
 import { requestCanAccessLockedObject, syncProtectedObjectsForLead } from "../lib/attachment-folder-access.js";
-import { and, desc, eq, gt, inArray, lt } from "drizzle-orm";
-import { createHash, randomUUID } from "node:crypto";
+import { and, asc, desc, eq, gt, inArray, lt } from "drizzle-orm";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod/v4";
 import {
   db,
@@ -22,6 +22,7 @@ import {
   usersTable,
   tenantsTable,
   tenantCalendarSettingsTable,
+  pipelineStagesTable,
   installationChecklistTemplatesTable,
   installationVisitsTable,
   installationChecklistItemsTable,
@@ -821,29 +822,222 @@ const WORK_STAGE_TASKS: Record<string, string> = {
   fechamento_assistencia: "Fechar assistência",
 };
 
-async function ensureWorkStageTask(card: typeof workCardsTable.$inferSelect) {
-  if (!card.leadId || !card.responsavelId) return;
-  const base = WORK_STAGE_TASKS[card.etapa];
-  if (!base) return;
-  const title = `${base} — ${card.codigo}`;
-  const [existingTask] = await db.select({ id: activitiesTable.id }).from(activitiesTable).where(and(
-    eq(activitiesTable.tenantId, card.tenantId),
-    eq(activitiesTable.leadId, card.leadId),
-    eq(activitiesTable.titulo, title),
-    eq(activitiesTable.status, "planejado"),
+type SupportQuestionSnapshot = {
+  id: string;
+  texto: string;
+  tipo?: "texto" | "texto_longo" | "sim_nao" | "numero" | "data" | "opcoes";
+  opcoes?: string[];
+  quemResponde?: "cliente" | "usuario" | "ambos" | "automatico";
+  obrigatoria?: boolean;
+  visivelCliente?: boolean;
+  entraRelatorio?: boolean;
+  editavelDepois?: boolean;
+  evidenciaExigida?: "nenhuma" | "foto" | "video" | "audio" | "documento" | "midia";
+};
+
+type SupportActivityTemplateRuntime = {
+  id: string;
+  titulo: string;
+  descricao?: string | null;
+  objetivo?: string | null;
+  resultadoEsperado?: string | null;
+  perguntas?: SupportQuestionSnapshot[];
+  tipo?: "ligacao" | "whatsapp" | "email" | "visita" | "tarefa" | "reuniao";
+  categoria: "obrigatoria" | "sugerida" | "automatica";
+  prazoMinutos?: number | null;
+  responsavel?: "deal_owner" | "stage_agent" | "unassigned";
+  prioridade?: "baixa" | "normal" | "alta" | "urgente";
+  bloqueiaAvanco?: boolean;
+  condicao?: "sempre" | "sem_resposta_cliente" | "sem_atividade_aberta";
+};
+
+function answerHasValue(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  return true;
+}
+
+function supportAnswerMap(raw: unknown): Record<string, any> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const answers = (raw as Record<string, unknown>).answers;
+  return answers && typeof answers === "object" && !Array.isArray(answers)
+    ? answers as Record<string, any>
+    : {};
+}
+
+async function supportStageConfig(tenantId: string, stageKey: string) {
+  const [stage] = await db.select().from(pipelineStagesTable).where(and(
+    eq(pipelineStagesTable.tenantId, tenantId),
+    eq(pipelineStagesTable.pipeline, "suporte"),
+    eq(pipelineStagesTable.key, stageKey),
   )).limit(1);
-  if (existingTask) return;
-  await db.insert(activitiesTable).values({
-    tenantId: card.tenantId,
-    leadId: card.leadId,
-    dealId: card.dealId,
-    tipo: card.pipeline === "suporte" ? "assistencia" : "tarefa",
-    titulo: title,
-    descricao: `Tarefa automática da etapa ${WORK_STAGE_LABELS[card.etapa] ?? card.etapa}.`,
-    status: "planejado",
-    responsavelId: card.responsavelId,
-    dataVencimento: card.dataFimPrevista ?? new Date(Date.now() + 24 * 60 * 60 * 1000),
-  });
+  return stage ?? null;
+}
+
+async function ensureWorkStageTask(card: typeof workCardsTable.$inferSelect) {
+  if (!card.leadId) return [];
+
+  const stageConfig = await supportStageConfig(card.tenantId, card.etapa);
+  const configured = card.pipeline === "suporte"
+    ? ((stageConfig?.atividadesPadrao ?? []) as SupportActivityTemplateRuntime[])
+    : [];
+  const fallback = WORK_STAGE_TASKS[card.etapa];
+
+  const templates: SupportActivityTemplateRuntime[] = configured.length > 0
+    ? configured
+    : fallback ? [{
+        id: "system-default",
+        titulo: fallback,
+        descricao: `Tarefa automática da etapa ${WORK_STAGE_LABELS[card.etapa] ?? card.etapa}.`,
+        categoria: "sugerida",
+        prazoMinutos: 24 * 60,
+        responsavel: "deal_owner",
+        prioridade: "normal",
+        bloqueiaAvanco: false,
+        condicao: "sempre",
+        tipo: "tarefa",
+        perguntas: [],
+      }] : [];
+
+  const result: Array<typeof activitiesTable.$inferSelect> = [];
+  for (const template of templates) {
+    const templateKey = template.id || template.titulo.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 80);
+    const [existingTask] = await db.select().from(activitiesTable).where(and(
+      eq(activitiesTable.tenantId, card.tenantId),
+      eq(activitiesTable.workCardId, card.id),
+      eq(activitiesTable.origemEtapaKey, card.etapa),
+      eq(activitiesTable.origemTemplateKey, templateKey),
+    )).limit(1);
+    if (existingTask) {
+      result.push(existingTask);
+      continue;
+    }
+
+    if (template.condicao === "sem_atividade_aberta") {
+      const [openActivity] = await db.select({ id: activitiesTable.id }).from(activitiesTable).where(and(
+        eq(activitiesTable.tenantId, card.tenantId),
+        eq(activitiesTable.workCardId, card.id),
+        inArray(activitiesTable.status, ["planejado", "pendente"]),
+      )).limit(1);
+      if (openActivity) continue;
+    }
+
+    const now = new Date();
+    const dueMinutes = template.prazoMinutos ?? 24 * 60;
+    const [created] = await db.insert(activitiesTable).values({
+      tenantId: card.tenantId,
+      leadId: card.leadId,
+      dealId: card.dealId,
+      workCardId: card.id,
+      tipo: template.tipo ?? (card.pipeline === "suporte" ? "assistencia" : "tarefa"),
+      titulo: `${template.titulo} — ${card.codigo}`,
+      descricao: template.descricao?.trim()
+        || `Atividade criada automaticamente ao entrar na etapa ${stageConfig?.label ?? WORK_STAGE_LABELS[card.etapa] ?? card.etapa}.`,
+      objetivo: template.objetivo ?? null,
+      resultadoEsperado: template.resultadoEsperado ?? null,
+      prioridade: template.prioridade ?? "normal",
+      estadoExecucao: template.categoria === "automatica" ? "planejada_ia" : "planejada",
+      categoriaExecucao: template.categoria,
+      origem: "pipeline_stage",
+      origemEtapaId: stageConfig?.id ?? null,
+      origemEtapaKey: card.etapa,
+      origemTemplateKey: templateKey,
+      bloqueiaAvanco: Boolean(template.bloqueiaAvanco || template.categoria === "obrigatoria"),
+      agenteResponsavelKey: template.responsavel === "stage_agent" ? stageConfig?.responsavelAgenteKey ?? null : null,
+      formularioSnapshot: {
+        version: 1,
+        capturedAt: now.toISOString(),
+        stageKey: card.etapa,
+        stageLabel: stageConfig?.label ?? WORK_STAGE_LABELS[card.etapa] ?? card.etapa,
+        activityTemplateId: templateKey,
+        activityTitle: template.titulo,
+        perguntas: template.perguntas ?? [],
+      },
+      formularioRespostas: { version: 1, answers: {}, updatedAt: null },
+      status: "planejado",
+      responsavelId: template.responsavel === "deal_owner" ? card.responsavelId : null,
+      dataVencimento: card.dataFimPrevista ?? new Date(now.getTime() + dueMinutes * 60 * 1000),
+    }).returning();
+    if (created) result.push(created);
+  }
+  return result;
+}
+
+async function missingSupportActivityRequirements(card: typeof workCardsTable.$inferSelect) {
+  if (card.pipeline !== "suporte") return [];
+  const activities = await db.select({
+    id: activitiesTable.id,
+    titulo: activitiesTable.titulo,
+    status: activitiesTable.status,
+  }).from(activitiesTable).where(and(
+    eq(activitiesTable.tenantId, card.tenantId),
+    eq(activitiesTable.workCardId, card.id),
+    eq(activitiesTable.origemEtapaKey, card.etapa),
+    eq(activitiesTable.bloqueiaAvanco, true),
+  ));
+  return activities.filter((activity) => activity.status !== "concluida");
+}
+
+async function notifySupportStageChange(
+  card: typeof workCardsTable.$inferSelect,
+  previousStage: string,
+  log: Request["log"],
+) {
+  if (card.pipeline !== "suporte" || !card.leadId) return;
+
+  const metadata = (card.metadata ?? {}) as Record<string, unknown>;
+  const access = metadata.supportPublicAccess && typeof metadata.supportPublicAccess === "object" && !Array.isArray(metadata.supportPublicAccess)
+    ? metadata.supportPublicAccess as Record<string, unknown>
+    : {};
+  const token = typeof access.token === "string" ? access.token : "";
+  if (!token || access.enabled === false) return;
+
+  const [lead] = await db.select({ telefone: leadsTable.telefone }).from(leadsTable)
+    .where(and(eq(leadsTable.id, card.leadId), eq(leadsTable.tenantId, card.tenantId))).limit(1);
+  const stage = await supportStageConfig(card.tenantId, card.etapa);
+  const previous = await supportStageConfig(card.tenantId, previousStage);
+  const stageLabel = stage?.label ?? WORK_STAGE_LABELS[card.etapa] ?? card.etapa;
+  const previousLabel = previous?.label ?? WORK_STAGE_LABELS[previousStage] ?? previousStage;
+  const baseUrl = (process.env.APP_URL || "https://app.appvendorai.com").replace(/\/$/, "");
+  const publicUrl = `${baseUrl}/assistencia/${encodeURIComponent(token)}`;
+  const now = new Date().toISOString();
+
+  const order = metadata.supportWorkOrder && typeof metadata.supportWorkOrder === "object" && !Array.isArray(metadata.supportWorkOrder)
+    ? metadata.supportWorkOrder as Record<string, unknown>
+    : {};
+  const timeline = Array.isArray(order.timeline) ? order.timeline : [];
+  const entry: SupportOrderTimelineEntry = {
+    at: now,
+    userName: "Equipe",
+    text: `Atendimento atualizado: ${previousLabel} → ${stageLabel}.`,
+    visibility: "cliente",
+    kind: "mudanca_etapa",
+  };
+  const nextMetadata = {
+    ...metadata,
+    supportPublicAccess: {
+      ...access,
+      lastNotifiedAt: now,
+      lastNotifiedStage: card.etapa,
+    },
+    supportWorkOrder: {
+      ...order,
+      updatedAt: now,
+      timeline: [...timeline, entry].slice(-500),
+    },
+  };
+  await db.update(workCardsTable).set({ metadata: nextMetadata, updatedAt: new Date() })
+    .where(eq(workCardsTable.id, card.id));
+
+  if (lead?.telefone) {
+    await sendDirectWhatsAppMessage(
+      card.tenantId,
+      lead.telefone,
+      `🛠️ Assistência ${card.codigo} atualizada.\nNova situação: ${stageLabel}.\n\nAcompanhe pelo mesmo link:\n${publicUrl}`,
+      log,
+    ).catch((error) => log.warn({ err: error, workCardId: card.id }, "support-stage: atualização do cliente não enviada"));
+  }
 }
 
 async function maybeCompleteOrder(parentOrChild: typeof workCardsTable.$inferSelect) {
@@ -1567,6 +1761,10 @@ router.post("/tenants/:tenantId/support-cases", async (req, res) => {
   }
 
   const codigo = workCode("AST");
+  const publicToken = randomBytes(32).toString("base64url");
+  const publicTokenHash = createHash("sha256").update(publicToken).digest("hex");
+  const publicBaseUrl = (process.env.APP_URL || "https://app.appvendorai.com").replace(/\/$/, "");
+  const publicSupportUrl = `${publicBaseUrl}/assistencia/${encodeURIComponent(publicToken)}`;
   const [card] = await db.insert(workCardsTable).values({
     tenantId,
     codigo,
@@ -1581,12 +1779,21 @@ router.post("/tenants/:tenantId/support-cases", async (req, res) => {
     propostaId: parsed.data.propostaId ?? null,
     responsavelId: parsed.data.responsavelId,
     dataFimPrevista: effectiveDataVencimento,
+    publicAccessTokenHash: publicTokenHash,
     metadata: {
       categoria: parsed.data.categoria,
       relato: parsed.data.relato,
       produtos: parsed.data.produtos,
       origem: parsed.data.origem,
       substatus: null,
+      supportPublicAccess: {
+        version: 1,
+        token: publicToken,
+        enabled: true,
+        createdAt: new Date().toISOString(),
+        lastSentAt: null,
+        lastViewedAt: null,
+      },
       supportWorkOrder: {
         version: 1,
         status: "aberta",
@@ -1614,24 +1821,8 @@ router.post("/tenants/:tenantId/support-cases", async (req, res) => {
     },
   }).returning();
 
-  const [activity] = await db.insert(activitiesTable).values({
-    tenantId,
-    leadId: parsed.data.leadId,
-    dealId: parsed.data.dealId ?? null,
-    tipo: "assistencia",
-    titulo: `${codigo} — ${parsed.data.titulo}`,
-    descricao: [
-      `Categoria: ${parsed.data.categoria}`,
-      parsed.data.produtos.length ? `Itens/produtos: ${parsed.data.produtos.join(", ")}` : null,
-      `Relato: ${parsed.data.relato}`,
-    ].filter(Boolean).join("\n"),
-    status: "planejado",
-    dataVencimento: effectiveDataVencimento,
-    responsavelId: parsed.data.responsavelId,
-    agendaId: effectiveAgendaId,
-    dataHoraInicio: parsed.data.dataHoraInicio ?? null,
-    dataHoraFim: parsed.data.dataHoraFim ?? null,
-  }).returning();
+  const supportActivities = await ensureWorkStageTask(card);
+  const activity = supportActivities[0] ?? null;
 
   let agendamento: typeof agendamentosTable.$inferSelect | null = null;
   if (parsed.data.dataHoraInicio && parsed.data.dataHoraFim) {
@@ -1688,7 +1879,31 @@ router.post("/tenants/:tenantId/support-cases", async (req, res) => {
     });
   }
 
-  res.status(201).json({ card, activity, agendamento });
+  if (lead.telefone) {
+    const clientMessage = [
+      `🛠️ Assistência ${codigo} aberta.`,
+      "Seu atendimento pode ser acompanhado e complementado pelo link abaixo.",
+      publicSupportUrl,
+      "",
+      "Este é o seu link permanente: ele continuará o mesmo até o encerramento da assistência.",
+    ].join("\n");
+    try {
+      await sendDirectWhatsAppMessage(tenantId, lead.telefone, clientMessage, req.log);
+      const sentAt = new Date().toISOString();
+      const latestMetadata = (card.metadata ?? {}) as Record<string, unknown>;
+      const supportPublicAccess = (latestMetadata.supportPublicAccess ?? {}) as Record<string, unknown>;
+      card.metadata = {
+        ...latestMetadata,
+        supportPublicAccess: { ...supportPublicAccess, lastSentAt: sentAt },
+      };
+      await db.update(workCardsTable).set({ metadata: card.metadata, updatedAt: new Date() })
+        .where(eq(workCardsTable.id, card.id));
+    } catch (err) {
+      req.log.warn({ err, workCardId: card.id }, "support-case: link público do cliente não enviado (não fatal)");
+    }
+  }
+
+  res.status(201).json({ card, activity, activities: supportActivities, agendamento, publicUrl: publicSupportUrl });
 });
 
 router.get("/work-cards/:id", async (req, res) => {
@@ -1747,9 +1962,16 @@ router.patch("/work-cards/:id", async (req, res) => {
     res.status(422).json({ error: "Etapa inválida para pipeline de execução" });
     return;
   }
-  if (targetPipeline === "suporte" && !SUPPORT_STAGES.includes(targetStage as typeof SUPPORT_STAGES[number])) {
-    res.status(422).json({ error: "Etapa inválida para pipeline de suporte" });
-    return;
+  if (targetPipeline === "suporte") {
+    const [targetSupportStage] = await db.select({ id: pipelineStagesTable.id }).from(pipelineStagesTable).where(and(
+      eq(pipelineStagesTable.tenantId, existing.tenantId),
+      eq(pipelineStagesTable.pipeline, "suporte"),
+      eq(pipelineStagesTable.key, targetStage),
+    )).limit(1);
+    if (!targetSupportStage && targetStage !== "cancelado") {
+      res.status(422).json({ error: "Etapa inválida para pipeline de suporte deste tenant" });
+      return;
+    }
   }
   if (targetPipeline === "suporte" && parsed.data.responsavelId === null) {
     res.status(422).json({ error: "Card de suporte não pode ficar sem responsável" });
@@ -1768,6 +1990,24 @@ router.patch("/work-cards/:id", async (req, res) => {
       res.status(409).json({
         error: "STAGE_REQUIREMENTS_PENDING",
         message: "Conclua os requisitos obrigatórios das etapas anteriores antes de avançar.",
+        stage: existing.etapa,
+        missing,
+      });
+      return;
+    }
+  }
+
+  const advancingSupportStage =
+    targetPipeline === "suporte"
+    && targetStage !== existing.etapa
+    && targetStage !== "cancelado"
+    && !manualAdminCorrection;
+  if (advancingSupportStage) {
+    const missing = await missingSupportActivityRequirements(existing);
+    if (missing.length > 0) {
+      res.status(409).json({
+        error: "SUPPORT_ACTIVITIES_PENDING",
+        message: "Conclua as atividades obrigatórias desta etapa antes de avançar.",
         stage: existing.etapa,
         missing,
       });
@@ -1901,6 +2141,9 @@ router.patch("/work-cards/:id", async (req, res) => {
       responsavelId: card.responsavelId,
     });
     await ensureWorkStageTask(card);
+    if (card.pipeline === "suporte") {
+      await notifySupportStageChange(card, existing.etapa, req.log);
+    }
     if (card.pipeline === "suporte" && card.etapa === "feedback_cliente") {
       void requestSupportFeedback(card.tenantId, card.id, req.log);
     }
@@ -2386,6 +2629,44 @@ function supportOrderTimeline(metadata: Record<string, unknown> | null | undefin
   return Array.isArray(timeline) ? timeline as SupportOrderTimelineEntry[] : [];
 }
 
+function supportActivityQuestions(activity: typeof activitiesTable.$inferSelect): SupportQuestionSnapshot[] {
+  const snapshot = activity.formularioSnapshot;
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return [];
+  const raw = (snapshot as Record<string, unknown>).perguntas;
+  return Array.isArray(raw) ? raw as SupportQuestionSnapshot[] : [];
+}
+
+function supportActivityReportEntries(
+  activity: typeof activitiesTable.$inferSelect,
+): SupportOrderTimelineEntry[] {
+  const answers = supportAnswerMap(activity.formularioRespostas);
+  const snapshot = activity.formularioSnapshot && typeof activity.formularioSnapshot === "object" && !Array.isArray(activity.formularioSnapshot)
+    ? activity.formularioSnapshot as Record<string, unknown>
+    : {};
+  const stageLabel = typeof snapshot.stageLabel === "string" ? snapshot.stageLabel : activity.origemEtapaKey ?? "Etapa";
+  const activityTitle = typeof snapshot.activityTitle === "string"
+    ? snapshot.activityTitle
+    : activity.titulo.replace(/\s+—\s+AST-[^\s]+$/i, "");
+
+  return supportActivityQuestions(activity)
+    .filter((question) => question.entraRelatorio !== false && answerHasValue(answers[question.id]?.value))
+    .map((question) => {
+      const answer = answers[question.id] as Record<string, any>;
+      const value = typeof answer.value === "boolean"
+        ? (answer.value ? "Sim" : "Não")
+        : Array.isArray(answer.value) ? answer.value.join(", ") : String(answer.value ?? "");
+      return {
+        at: typeof answer.answeredAt === "string" ? answer.answeredAt : activity.updatedAt.toISOString(),
+        userName: typeof answer.actorName === "string"
+          ? answer.actorName
+          : answer.actorType === "cliente" ? "Cliente" : "Equipe",
+        text: `${stageLabel} · ${activityTitle}\n${question.texto}: ${value}`,
+        visibility: question.visivelCliente ? "cliente" : "interno",
+        kind: "resposta_atividade",
+      } satisfies SupportOrderTimelineEntry;
+    });
+}
+
 async function supportOrderPdfInput(card: typeof workCardsTable.$inferSelect, final: boolean) {
   const [lead] = card.leadId
     ? await db.select({ nome: leadsTable.nome, empresa: leadsTable.empresa })
@@ -2414,8 +2695,16 @@ async function supportOrderPdfInput(card: typeof workCardsTable.$inferSelect, fi
     eq(workCardAttachmentsTable.workCardId, card.id),
   )).orderBy(desc(workCardAttachmentsTable.createdAt));
 
+  const activityRows = await db.select().from(activitiesTable).where(and(
+    eq(activitiesTable.tenantId, card.tenantId),
+    eq(activitiesTable.workCardId, card.id),
+  )).orderBy(asc(activitiesTable.createdAt));
+
   const metadata = (card.metadata ?? {}) as Record<string, unknown>;
   const report = (metadata.supportReport ?? metadata.supportReportDraft ?? {}) as Record<string, unknown>;
+  const activityTimeline = activityRows.flatMap(supportActivityReportEntries);
+  const combinedTimeline = [...supportOrderTimeline(metadata), ...activityTimeline]
+    .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
   return {
     code: card.codigo,
     title: card.titulo,
@@ -2432,7 +2721,7 @@ async function supportOrderPdfInput(card: typeof workCardsTable.$inferSelect, fi
     situation: typeof report.situacaoFinal === "string" ? report.situacaoFinal : null,
     recommendations: typeof report.recomendacoes === "string" ? report.recomendacoes : null,
     observations: typeof report.observacoes === "string" ? report.observacoes : null,
-    timeline: supportOrderTimeline(metadata),
+    timeline: combinedTimeline,
     attachments: attachments.map((a) => ({ name: a.nome, description: a.descricao, mimeType: a.mimeType })),
     final,
   };
@@ -2463,7 +2752,7 @@ router.post("/work-cards/:id/support-order/update", async (req, res) => {
     kind: parsed.data.kind,
   };
   const timeline = [...supportOrderTimeline(metadata), entry].slice(-500);
-  const nextMetadata = {
+  const nextMetadata: Record<string, any> = {
     ...metadata,
     supportWorkOrder: {
       ...current,
@@ -2496,7 +2785,7 @@ router.post("/work-cards/:id/support-order/update", async (req, res) => {
       await sendDirectWhatsAppMessage(
         card.tenantId,
         lead.telefone,
-        `🛠️ Atualização da assistência ${card.codigo}\n${parsed.data.text}\n\nAcompanhe pelo Portal do Cliente.`,
+        (() => { const access = (nextMetadata.supportPublicAccess ?? {}) as Record<string, unknown>; const publicToken = typeof access.token === "string" ? access.token : ""; const baseUrl = (process.env.APP_URL || "https://app.appvendorai.com").replace(/\/$/, ""); const suffix = publicToken ? `\n\nAcompanhe pelo mesmo link:\n${baseUrl}/assistencia/${encodeURIComponent(publicToken)}` : ""; return `🛠️ Atualização da assistência ${card.codigo}\n${parsed.data.text}${suffix}`; })(),
         req.log,
       ).catch((error) => req.log.warn({ err: error, workCardId: card.id }, "support-order: atualização do cliente não enviada"));
     }
