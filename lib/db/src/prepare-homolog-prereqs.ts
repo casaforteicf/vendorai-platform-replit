@@ -31,6 +31,11 @@ try {
   await pool.query("CREATE EXTENSION IF NOT EXISTS pgcrypto");
   await pool.query("DROP EXTENSION IF EXISTS vector CASCADE");
   await pool.query("CREATE EXTENSION vector WITH SCHEMA public");
+  await pool.query(`
+    DO $ BEGIN CREATE ROLE anon NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $;
+    DO $ BEGIN CREATE ROLE authenticated NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $;
+    DO $ BEGIN CREATE ROLE service_role NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $;
+  `);
   const check = await pool.query(`
     select
       current_database() as database,
