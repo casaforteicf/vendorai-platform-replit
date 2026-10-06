@@ -1136,7 +1136,10 @@ archProcurementRfqPublicRouter.post("/public/arqdor/rfq/:token/documents", publi
 
     const inv = bundle.invitation;
     const pkg = bundle.package;
-    if (["accepted","rejected","expired"].includes(String(inv.status))) {
+    if (
+      ["accepted","rejected","expired"].includes(String(inv.status))
+      || ["completed","cancelled"].includes(String(pkg.status))
+    ) {
       return res.status(409).json({ error: "Esta cotação já foi encerrada." });
     }
     const existingDocuments = Array.isArray(inv.response_documents) ? inv.response_documents : [];
