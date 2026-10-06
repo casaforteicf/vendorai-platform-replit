@@ -8,6 +8,7 @@ import { injectArqdorSiteButton } from "./arqdor_public_link.js";
 import { SITE_GENERATOR_SYSTEM_PROMPT, extractHtmlDocument, prepareSiteHtml, validateSiteHtml } from "../lib/site-html-quality.js";
 import { computeSiteSeoScore } from "../lib/site-seo-analysis.js";
 import { ensureRequiredImagesInHtml, normalizeRequiredImageUrls } from "../lib/site-required-images.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 
 // Prefer Anthropic when available; fallback to OpenAI
 const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
@@ -85,7 +86,6 @@ async function persistGenerationJob(jobId: string, job: GenerationJob) {
       updatedAt: new Date(),
     })
     .where(eq(siteGenerationJobsTable.id, jobId));
-import { ObjectStorageService } from "../lib/objectStorage.js";
 }
 
 export const publicSiteGeneratorRouter: IRouter = Router();
