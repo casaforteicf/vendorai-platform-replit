@@ -303,6 +303,7 @@ export default function LeadWorkspace() {
   const [selectedPartnershipId, setSelectedPartnershipId] = useState("");
   const [selectedPartnerUserId, setSelectedPartnerUserId] = useState("");
   const [partnerCommissionPercent, setPartnerCommissionPercent] = useState("15");
+  const [commissionEditorOpen, setCommissionEditorOpen] = useState(false);
   const [savingRepresentation, setSavingRepresentation] = useState(false);
   const [savingCommission, setSavingCommission] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState("");
@@ -813,12 +814,20 @@ export default function LeadWorkspace() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Comissão do negócio</Label>
-                <div className="relative">
-                  <Input type="number" min="0" max="100" step="0.01" value={partnerCommissionPercent} onChange={(event) => setPartnerCommissionPercent(event.target.value)} className="pr-8" />
-                  <span className="pointer-events-none absolute right-3 top-2.5 text-sm text-muted-foreground">%</span>
-                </div>
-                <p className="text-[11px] text-muted-foreground">Padrão da parceria: 15%, ajustável por negócio.</p>
+                <Button type="button" variant="ghost" className="h-9 px-2 text-muted-foreground" onClick={() => setCommissionEditorOpen((value) => !value)}>
+                  <HandCoins className="mr-2 h-4 w-4" />
+                  {commissionEditorOpen ? "Ocultar comissão" : activeParticipation ? "Editar comissão" : "Configurar comissão"}
+                </Button>
+                {commissionEditorOpen && (
+                  <div className="space-y-1.5 rounded-md border bg-muted/20 p-2">
+                    <Label>Comissão do negócio</Label>
+                    <div className="relative">
+                      <Input type="number" min="0" max="100" step="0.01" value={partnerCommissionPercent} onChange={(event) => setPartnerCommissionPercent(event.target.value)} className="pr-8" />
+                      <span className="pointer-events-none absolute right-3 top-2.5 text-sm text-muted-foreground">%</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">Informação restrita a usuários autorizados. O padrão da parceria pode ser ajustado por negócio.</p>
+                  </div>
+                )}
               </div>
               <Button type="button" onClick={saveRepresentationResponsibility} disabled={savingRepresentation || !selectedPartnershipId}>
                 {savingRepresentation && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -833,73 +842,81 @@ export default function LeadWorkspace() {
     {deal && activeParticipation?.commission && canEditOwner && (
       <Card className="border-border/70 shadow-sm">
         <CardContent className="p-4">
-          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <HandCoins className="h-4 w-4 text-emerald-700" />
-                <p className="text-sm font-semibold">Comissão inter-tenant</p>
-                <Badge variant="outline">{activeParticipation.commission.status.replaceAll("_", " ")}</Badge>
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {activeParticipation.partnerName || "Empresa representante"} · comissão específica deste negócio.
-              </p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <HandCoins className="h-4 w-4 text-muted-foreground" />
+              <p className="text-sm font-medium text-muted-foreground">Comissão da empresa representante</p>
             </div>
-            <div className="text-right text-xs">
-              <p className="font-semibold">{Number(activeParticipation.commission.amount || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
-              <p className="text-muted-foreground">
-                Pago {Number(activeParticipation.commission.paidAmount || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} ·
-                Saldo {Math.max(0, Number(activeParticipation.commission.amount || 0) - Number(activeParticipation.commission.paidAmount || 0)).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-              </p>
-            </div>
-          </div>
-
-          <div className="mb-4 grid gap-3 md:grid-cols-[180px_auto] md:items-end">
-            <div className="space-y-1.5">
-              <Label>Percentual acordado</Label>
-              <Input type="number" min="0" max="100" step="0.01" value={partnerCommissionPercent} onChange={(event) => setPartnerCommissionPercent(event.target.value)} />
-            </div>
-            <Button type="button" variant="outline" className="w-fit" onClick={saveIntercompanyCommission} disabled={savingCommission}>
-              {savingCommission && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Salvar comissão
+            <Button type="button" variant="ghost" size="sm" onClick={() => setCommissionEditorOpen((value) => !value)}>
+              {commissionEditorOpen ? "Ocultar comissão" : "Editar comissão"}
             </Button>
           </div>
 
-          <div className="rounded-lg border bg-muted/20 p-3">
-            <div className="mb-3 flex items-center gap-2">
-              <WalletCards className="h-4 w-4 text-primary" />
-              <p className="text-sm font-semibold">Registrar baixa parcial</p>
+          {commissionEditorOpen && (
+            <div className="mt-4 border-t pt-4">
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">{activeParticipation.partnerName || "Empresa representante"}</p>
+                  <Badge variant="outline" className="mt-1">{activeParticipation.commission.status.replaceAll("_", " ")}</Badge>
+                </div>
+                <div className="text-right text-xs">
+                  <p className="font-semibold">{Number(activeParticipation.commission.amount || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+                  <p className="text-muted-foreground">
+                    Pago {Number(activeParticipation.commission.paidAmount || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} ·
+                    Saldo {Math.max(0, Number(activeParticipation.commission.amount || 0) - Number(activeParticipation.commission.paidAmount || 0)).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mb-4 grid gap-3 md:grid-cols-[180px_auto] md:items-end">
+                <div className="space-y-1.5">
+                  <Label>Percentual acordado</Label>
+                  <Input type="number" min="0" max="100" step="0.01" value={partnerCommissionPercent} onChange={(event) => setPartnerCommissionPercent(event.target.value)} />
+                </div>
+                <Button type="button" variant="outline" className="w-fit" onClick={saveIntercompanyCommission} disabled={savingCommission}>
+                  {savingCommission && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Salvar comissão
+                </Button>
+              </div>
+
+              <div className="rounded-lg border bg-muted/20 p-3">
+                <div className="mb-3 flex items-center gap-2">
+                  <WalletCards className="h-4 w-4 text-primary" />
+                  <p className="text-sm font-semibold">Registrar baixa parcial</p>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5 lg:items-end">
+                  <div className="space-y-1.5">
+                    <Label>Valor pago</Label>
+                    <Input inputMode="decimal" placeholder="0,00" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Conta/caixa pagador</Label>
+                    <Input placeholder="Ex.: Sicredi" value={payerAccount} onChange={(event) => setPayerAccount(event.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Conta/caixa recebedor</Label>
+                    <Input placeholder="Ex.: Banco do Brasil" value={beneficiaryAccount} onChange={(event) => setBeneficiaryAccount(event.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Forma</Label>
+                    <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pix">Pix</SelectItem>
+                        <SelectItem value="transferencia">Transferência</SelectItem>
+                        <SelectItem value="boleto">Boleto</SelectItem>
+                        <SelectItem value="dinheiro">Dinheiro</SelectItem>
+                        <SelectItem value="outro">Outro</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button type="button" onClick={payIntercompanyCommission} disabled={payingCommission}>
+                    {payingCommission && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Dar baixa
+                  </Button>
+                </div>
+                <p className="mt-2 text-[11px] text-muted-foreground">Cada baixa gera saída no financeiro do pagador, entrada no financeiro da representante e mantém o saldo restante previsto.</p>
+              </div>
             </div>
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5 lg:items-end">
-              <div className="space-y-1.5">
-                <Label>Valor pago</Label>
-                <Input inputMode="decimal" placeholder="0,00" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Conta/caixa pagador</Label>
-                <Input placeholder="Ex.: Sicredi" value={payerAccount} onChange={(event) => setPayerAccount(event.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Conta/caixa recebedor</Label>
-                <Input placeholder="Ex.: Banco do Brasil" value={beneficiaryAccount} onChange={(event) => setBeneficiaryAccount(event.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Forma</Label>
-                <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pix">Pix</SelectItem>
-                    <SelectItem value="transferencia">Transferência</SelectItem>
-                    <SelectItem value="boleto">Boleto</SelectItem>
-                    <SelectItem value="dinheiro">Dinheiro</SelectItem>
-                    <SelectItem value="outro">Outro</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button type="button" onClick={payIntercompanyCommission} disabled={payingCommission}>
-                {payingCommission && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Dar baixa
-              </Button>
-            </div>
-            <p className="mt-2 text-[11px] text-muted-foreground">Cada baixa gera saída no financeiro do pagador, entrada no financeiro da representante e mantém o saldo restante previsto.</p>
-          </div>
+          )}
         </CardContent>
       </Card>
     )}
