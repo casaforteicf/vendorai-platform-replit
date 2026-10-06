@@ -17,8 +17,10 @@ import { enrichSiteGeneratorServicesContext, inspectGeneratedSite, resolveSiteCr
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { ensureTenantProposalBuilderTemplate } from "../lib/proposal-builder.js";
 import { resolverContextoNegocio } from "../services/resolvedorContextoNegocio.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 
 const router: IRouter = Router();
+const businessProfileStorage = new ObjectStorageService();
 
 function canAccessTenant(req: any, tenantId: string) {
   return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
@@ -290,13 +292,24 @@ router.get("/tenants/:tenantId/business-profile", async (req, res) => {
     }
   }
 
+  const canonicalLogoUrl = profile?.logoUrl || tenant?.logoUrl || null;
+  let logoAccessUrl = canonicalLogoUrl;
+  if (canonicalLogoUrl?.startsWith("/objects/")) {
+    try {
+      logoAccessUrl = await businessProfileStorage.getObjectEntitySignedUrl(canonicalLogoUrl, 900);
+    } catch {
+      logoAccessUrl = null;
+    }
+  }
+
   const mergedProfile = tenant || profile || whatsapp ? {
     ...(profile ?? {}),
     tenantId,
     razaoSocial: profile?.razaoSocial || tenant?.nomeEmpresa || tenant?.name || whatsapp?.businessName || "",
     nomeFantasia: profile?.nomeFantasia || tenant?.nomeEmpresa || tenant?.name || whatsapp?.businessName || null,
     vertical: profile?.vertical || tenant?.segmento || tenant?.vertical || null,
-    logoUrl: profile?.logoUrl || tenant?.logoUrl || null,
+    logoUrl: canonicalLogoUrl,
+    logoAccessUrl,
     telefone: profile?.telefone || whatsapp?.displayPhoneNumber || null,
     descricao: tenant?.descricao || null,
     site: tenant?.site || null,
