@@ -89,7 +89,7 @@ function mediaUrl(storageUrl: string): string {
 }
 
 function assetAccessUrl(asset: MediaAsset): string {
-  return asset.accessUrl || assetAccessUrl(asset);
+  return asset.accessUrl || mediaUrl(asset.storageUrl);
 }
 
 function aiUsage(asset: MediaAsset): AiUsage {
