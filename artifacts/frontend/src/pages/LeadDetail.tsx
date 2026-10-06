@@ -137,6 +137,17 @@ type CompanyContextContact = {
   metadata?: Record<string, unknown> | null;
 };
 
+type CompanyListItem = {
+  companyId: string;
+  leadId?: string | null;
+  cnpj: string;
+  razaoSocial?: string | null;
+  nomeFantasia?: string | null;
+  telefone?: string | null;
+  email?: string | null;
+  endereco?: Record<string, string | null> | null;
+};
+
 type CompanyContext = {
   company: {
     id: string;
@@ -494,26 +505,56 @@ export default function LeadDetail() {
     telefone: "",
     email: "",
     empresa: "",
+    cnpj: "",
+    companyId: "",
+    endereco: "",
+    assignedTo: "",
     objetivo: "",
     urgencia: "",
     logoUrl: "",
     websiteUrl: "",
+    extraFields: [] as Array<{ key: string; value: string }>,
   });
+  const { data: crmCompaniesData } = useQuery<{ items: CompanyListItem[] }>({
+    queryKey: ["crm-companies", tenantId],
+    enabled: Boolean(tenantId && editingLeadDados),
+    queryFn: async () => {
+      const response = await fetch(`${getBase()}/api/crm/companies?tenantId=${encodeURIComponent(tenantId)}`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!response.ok) throw new Error("Falha ao carregar empresas");
+      return response.json();
+    },
+  });
+  const crmCompanies = crmCompaniesData?.items ?? [];
   const [logoUploading, setLogoUploading] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const requestUploadUrl = useRequestUploadUrl();
 
   function openLeadDadosEdit() {
     if (!lead) return;
+    const metadata = ((lead as any).metadata ?? {}) as Record<string, unknown>;
+    const extraFields = Object.entries(metadata)
+      .filter(([key, value]) =>
+        !INTERNAL_PROSPECTOR_METADATA_KEYS.has(key) &&
+        !["donome", "socios"].includes(key) &&
+        (typeof value === "string" || typeof value === "number" || typeof value === "boolean"),
+      )
+      .map(([key, value]) => ({ key, value: String(value) }));
     setLeadDadosDraft({
       nome: lead.nome ?? "",
       telefone: lead.telefone ?? "",
       email: lead.email ?? "",
       empresa: lead.empresa ?? "",
+      cnpj: String((lead as any).dadosPj?.cnpj ?? ((lead as any).tipoPessoa === "juridica" ? lead.documento ?? "" : "")).replace(/\D/g, ""),
+      companyId: companyContext?.company.id ?? "",
+      endereco: (lead as any).endereco ?? "",
+      assignedTo: lead.assignedTo ?? "",
       objetivo: lead.objetivo ?? "",
       urgencia: lead.urgencia ?? "",
       logoUrl: (lead as any).logoUrl ?? "",
       websiteUrl: (lead as any).websiteUrl ?? "",
+      extraFields,
     });
     setEditingLeadDados(true);
   }
@@ -546,18 +587,7 @@ export default function LeadDetail() {
     }
   }
 
-  const { mutate: updateLeadDados, isPending: isUpdatingLeadDados } = useUpdateLead({
-    mutation: {
-      onSuccess: () => {
-        void queryClient.invalidateQueries({ queryKey: getGetLeadQueryKey(id) });
-        setEditingLeadDados(false);
-        toast({ title: "Informações do lead atualizadas." });
-      },
-      onError: () => {
-        toast({ title: "Erro ao salvar informações", variant: "destructive" });
-      },
-    },
-  });
+  const [isUpdatingLeadDados, setIsUpdatingLeadDados] = useState(false);
 
   async function classificarComoNaoLead() {
     if (!id) return;
@@ -600,21 +630,74 @@ export default function LeadDetail() {
     }
   }
 
-  function saveLeadDados() {
+  async function saveLeadDados() {
     if (!id) return;
-    updateLeadDados({
-      id,
-      data: {
-        nome: leadDadosDraft.nome || undefined,
-        telefone: leadDadosDraft.telefone || null,
-        email: leadDadosDraft.email || null,
-        empresa: leadDadosDraft.empresa || null,
-        objetivo: leadDadosDraft.objetivo || null,
-        urgencia: leadDadosDraft.urgencia || null,
-        logoUrl: leadDadosDraft.logoUrl || null,
-        websiteUrl: leadDadosDraft.websiteUrl || null,
-      },
-    });
+    const metadataAtual = (((lead as any)?.metadata ?? {}) as Record<string, unknown>);
+    const metadataEditavel = Object.fromEntries(
+      leadDadosDraft.extraFields
+        .map((item) => [item.key.trim(), item.value.trim()] as const)
+        .filter(([key, value]) => key && value && !INTERNAL_PROSPECTOR_METADATA_KEYS.has(key)),
+    );
+
+    setIsUpdatingLeadDados(true);
+    try {
+      const leadResponse = await fetch(`${getBase()}/api/leads/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({
+          nome: leadDadosDraft.nome || undefined,
+          telefone: leadDadosDraft.telefone || null,
+          email: leadDadosDraft.email || null,
+          empresa: leadDadosDraft.empresa || null,
+          endereco: leadDadosDraft.endereco || null,
+          assignedTo: leadDadosDraft.assignedTo || null,
+          objetivo: leadDadosDraft.objetivo || null,
+          urgencia: leadDadosDraft.urgencia || null,
+          logoUrl: leadDadosDraft.logoUrl || null,
+          websiteUrl: leadDadosDraft.websiteUrl || null,
+          metadata: { ...metadataAtual, ...metadataEditavel },
+        }),
+      });
+      const leadPayload = await leadResponse.json().catch(() => ({}));
+      if (!leadResponse.ok) throw new Error((leadPayload as any)?.error ?? "Falha ao atualizar o lead");
+
+      if (leadDadosDraft.companyId) {
+        const response = await fetch(`${getBase()}/api/crm/companies/${leadDadosDraft.companyId}/link-lead`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify({ tenantId, leadId: id, relationshipType: "lead" }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error((payload as any)?.error ?? "Falha ao vincular empresa");
+        setCompanyContext(payload as CompanyContext);
+      } else if (leadDadosDraft.cnpj.trim()) {
+        const cnpj = leadDadosDraft.cnpj.replace(/\D/g, "");
+        if (cnpj.length !== 14) throw new Error("Informe um CNPJ com 14 dígitos.");
+        const response = await fetch(`${getBase()}/api/crm/companies/enrich`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify({ tenantId, leadId: id, cnpj, relationshipType: "lead" }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error((payload as any)?.error ?? "Falha ao cadastrar/vincular empresa");
+        setCompanyContext(payload as CompanyContext);
+      }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getGetLeadQueryKey(id) }),
+        queryClient.invalidateQueries({ queryKey: ["crm-companies", tenantId] }),
+      ]);
+      setEditingLeadDados(false);
+      toast({ title: "Cadastro do lead atualizado." });
+    } catch (err) {
+      toast({
+        title: "Não foi possível salvar",
+        description: err instanceof Error ? err.message : "Revise os dados e tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdatingLeadDados(false);
+    }
   }
 
   // ── WhatsApp conversation starter ─────────────────────────────────────────
@@ -3619,136 +3702,171 @@ export default function LeadDetail() {
         </DialogContent>
       </Dialog>
 
-      {/* Dados do Lead — edit dialog */}
+      {/* Dados do Lead — cadastro completo */}
       <Dialog open={editingLeadDados} onOpenChange={setEditingLeadDados}>
-        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[88vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Editar Dados do Lead</DialogTitle>
+            <DialogTitle>Editar cadastro do lead</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Nome *</label>
-              <Input
-                placeholder="Nome completo"
-                value={leadDadosDraft.nome}
-                onChange={(e) => setLeadDadosDraft((d) => ({ ...d, nome: e.target.value }))}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Telefone</label>
-                <Input
-                  placeholder="(11) 99999-9999"
-                  value={leadDadosDraft.telefone}
-                  onChange={(e) => setLeadDadosDraft((d) => ({ ...d, telefone: e.target.value }))}
-                />
+          <div className="space-y-5 py-2">
+            <div className="rounded-lg border bg-muted/20 p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <UserRound className="h-4 w-4 text-primary" />
+                <p className="text-sm font-semibold">Contato</p>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">E-mail</label>
-                <Input
-                  placeholder="email@..."
-                  value={leadDadosDraft.email}
-                  onChange={(e) => setLeadDadosDraft((d) => ({ ...d, email: e.target.value }))}
-                />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5 sm:col-span-2">
+                  <label className="text-sm font-medium">Nome *</label>
+                  <Input value={leadDadosDraft.nome} onChange={(e) => setLeadDadosDraft((d) => ({ ...d, nome: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Telefone</label>
+                  <Input placeholder="(49) 99999-9999" value={leadDadosDraft.telefone} onChange={(e) => setLeadDadosDraft((d) => ({ ...d, telefone: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">E-mail</label>
+                  <Input placeholder="email@cliente.com.br" value={leadDadosDraft.email} onChange={(e) => setLeadDadosDraft((d) => ({ ...d, email: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <label className="text-sm font-medium flex items-center gap-1.5"><MapPin className="h-4 w-4 text-muted-foreground" />Endereço completo</label>
+                  <Input placeholder="Rua, número, bairro, cidade - UF, CEP" value={leadDadosDraft.endereco} onChange={(e) => setLeadDadosDraft((d) => ({ ...d, endereco: e.target.value }))} />
+                  <p className="text-[11px] text-muted-foreground">Este endereço também alimenta mapa, território e distribuição por proximidade.</p>
+                </div>
               </div>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Empresa</label>
-              <Input
-                placeholder="Nome da empresa"
-                value={leadDadosDraft.empresa}
-                onChange={(e) => setLeadDadosDraft((d) => ({ ...d, empresa: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Urgência</label>
-              <Select
-                value={leadDadosDraft.urgencia || "__none__"}
-                onValueChange={(v) =>
-                  setLeadDadosDraft((d) => ({ ...d, urgencia: v === "__none__" ? "" : v }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Não informado</SelectItem>
-                  <SelectItem value="baixa">Baixa</SelectItem>
-                  <SelectItem value="media">Média</SelectItem>
-                  <SelectItem value="alta">Alta</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Objetivo</label>
-              <Textarea
-                placeholder="Objetivo ou necessidade do lead..."
-                value={leadDadosDraft.objetivo}
-                onChange={(e) => setLeadDadosDraft((d) => ({ ...d, objetivo: e.target.value }))}
-                rows={3}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Logo do Cliente</label>
-              <div className="flex items-center gap-2">
-                {leadDadosDraft.logoUrl && (
-                  <img
-                    src={leadDadosDraft.logoUrl.startsWith("/objects/") ? `/api/storage${leadDadosDraft.logoUrl}` : leadDadosDraft.logoUrl}
-                    alt="Logo"
-                    className="h-8 w-8 object-contain rounded border bg-white shrink-0"
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+
+            <div className="rounded-lg border bg-muted/20 p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-primary" />
+                <p className="text-sm font-semibold">Empresa vinculada</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5 sm:col-span-2">
+                  <label className="text-sm font-medium">Vincular empresa já cadastrada</label>
+                  <Select
+                    value={leadDadosDraft.companyId || "__none__"}
+                    onValueChange={(value) => {
+                      const companyId = value === "__none__" ? "" : value;
+                      const company = crmCompanies.find((item) => item.companyId === companyId);
+                      setLeadDadosDraft((d) => ({
+                        ...d,
+                        companyId,
+                        empresa: company ? (company.nomeFantasia || company.razaoSocial || d.empresa) : d.empresa,
+                        cnpj: company?.cnpj || d.cnpj,
+                      }));
+                    }}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Selecione uma empresa..." /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Nenhuma / cadastrar pelo CNPJ</SelectItem>
+                      {crmCompanies.map((company) => (
+                        <SelectItem key={company.companyId} value={company.companyId}>
+                          {(company.nomeFantasia || company.razaoSocial || "Empresa")} · {company.cnpj}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Nome da empresa</label>
+                  <Input placeholder="Nome fantasia ou razão social" value={leadDadosDraft.empresa} onChange={(e) => setLeadDadosDraft((d) => ({ ...d, empresa: e.target.value, companyId: "" }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">CNPJ</label>
+                  <Input
+                    placeholder="00.000.000/0000-00"
+                    value={leadDadosDraft.cnpj}
+                    onChange={(e) => setLeadDadosDraft((d) => ({ ...d, cnpj: e.target.value, companyId: "" }))}
                   />
-                )}
-                <Input
-                  placeholder="https://... ou faça upload →"
-                  value={leadDadosDraft.logoUrl}
-                  onChange={(e) => setLeadDadosDraft((d) => ({ ...d, logoUrl: e.target.value }))}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0"
-                  disabled={logoUploading}
-                  onClick={() => logoInputRef.current?.click()}
-                >
-                  {logoUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                </Button>
-                <input
-                  ref={logoInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) void handleLeadLogoUpload(file);
-                    e.target.value = "";
-                  }}
-                />
+                  <p className="text-[11px] text-muted-foreground">Ao salvar com CNPJ, a empresa é cadastrada/enriquecida e vinculada ao lead.</p>
+                </div>
               </div>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium flex items-center gap-1.5">
-                <Globe className="h-4 w-4 text-muted-foreground" />
-                URL do Site
-              </label>
-              <Input
-                placeholder="https://www.cliente.com.br"
-                value={leadDadosDraft.websiteUrl}
-                onChange={(e) => setLeadDadosDraft((d) => ({ ...d, websiteUrl: e.target.value }))}
-              />
+
+            <div className="rounded-lg border bg-muted/20 p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <Briefcase className="h-4 w-4 text-primary" />
+                <p className="text-sm font-semibold">Comercial</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Vendedor responsável</label>
+                  <Select value={leadDadosDraft.assignedTo || "__none__"} onValueChange={(v) => setLeadDadosDraft((d) => ({ ...d, assignedTo: v === "__none__" ? "" : v }))}>
+                    <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Sem responsável</SelectItem>
+                      {(tenantUsers ?? []).filter((item) => item.active !== false).map((item) => (
+                        <SelectItem key={item.id} value={item.id}>{item.name || item.email}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground">A alteração respeita as permissões de reatribuição do tenant e fica registrada no histórico.</p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Urgência</label>
+                  <Select value={leadDadosDraft.urgencia || "__none__"} onValueChange={(v) => setLeadDadosDraft((d) => ({ ...d, urgencia: v === "__none__" ? "" : v }))}>
+                    <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Não informado</SelectItem>
+                      <SelectItem value="baixa">Baixa</SelectItem>
+                      <SelectItem value="media">Média</SelectItem>
+                      <SelectItem value="alta">Alta</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <label className="text-sm font-medium">Objetivo / necessidade</label>
+                  <Textarea rows={3} value={leadDadosDraft.objetivo} onChange={(e) => setLeadDadosDraft((d) => ({ ...d, objetivo: e.target.value }))} />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border bg-muted/20 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2"><Tag className="h-4 w-4 text-primary" /><p className="text-sm font-semibold">Dados adicionais</p></div>
+                <Button type="button" variant="outline" size="sm" onClick={() => setLeadDadosDraft((d) => ({ ...d, extraFields: [...d.extraFields, { key: "", value: "" }] }))}>
+                  <Plus className="mr-1 h-3.5 w-3.5" />Adicionar campo
+                </Button>
+              </div>
+              <div className="space-y-2">
+                {leadDadosDraft.extraFields.map((field, index) => (
+                  <div key={index} className="grid grid-cols-[1fr_1.6fr_auto] gap-2">
+                    <Input placeholder="Campo (ex.: cargo)" value={field.key} onChange={(e) => setLeadDadosDraft((d) => ({ ...d, extraFields: d.extraFields.map((item, i) => i === index ? { ...item, key: e.target.value } : item) }))} />
+                    <Input placeholder="Informação" value={field.value} onChange={(e) => setLeadDadosDraft((d) => ({ ...d, extraFields: d.extraFields.map((item, i) => i === index ? { ...item, value: e.target.value } : item) }))} />
+                    <Button type="button" variant="ghost" size="icon" onClick={() => setLeadDadosDraft((d) => ({ ...d, extraFields: d.extraFields.filter((_, i) => i !== index) }))} aria-label="Remover campo">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                {!leadDadosDraft.extraFields.length && <p className="text-xs text-muted-foreground">Adicione cargo, origem, preferência, observação ou qualquer dado específico deste lead.</p>}
+              </div>
+            </div>
+
+            <div className="rounded-lg border bg-muted/20 p-4">
+              <div className="mb-3 flex items-center gap-2"><Globe className="h-4 w-4 text-primary" /><p className="text-sm font-semibold">Identidade digital</p></div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">URL do site</label>
+                  <Input placeholder="https://www.cliente.com.br" value={leadDadosDraft.websiteUrl} onChange={(e) => setLeadDadosDraft((d) => ({ ...d, websiteUrl: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Logo do cliente</label>
+                  <div className="flex items-center gap-2">
+                    <Input placeholder="https://... ou faça upload" value={leadDadosDraft.logoUrl} onChange={(e) => setLeadDadosDraft((d) => ({ ...d, logoUrl: e.target.value }))} />
+                    <Button type="button" variant="outline" size="sm" className="shrink-0" disabled={logoUploading} onClick={() => logoInputRef.current?.click()}>
+                      {logoUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                    </Button>
+                    <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) void handleLeadLogoUpload(file); e.target.value = ""; }} />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingLeadDados(false)}>
-              Cancelar
-            </Button>
-            <Button
-              onClick={saveLeadDados}
-              disabled={!leadDadosDraft.nome.trim() || isUpdatingLeadDados}
-            >
+            <Button variant="outline" onClick={() => setEditingLeadDados(false)}>Cancelar</Button>
+            <Button onClick={() => void saveLeadDados()} disabled={!leadDadosDraft.nome.trim() || isUpdatingLeadDados}>
               {isUpdatingLeadDados && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Salvar
+              Salvar cadastro
             </Button>
           </DialogFooter>
         </DialogContent>
