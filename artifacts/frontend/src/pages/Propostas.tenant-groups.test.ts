@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
-const source = readFileSync(new URL("./Propostas.tsx", import.meta.url), "utf8");
+const source = readFileSync(join(process.cwd(), "src/pages/Propostas.tsx"), "utf8");
 const editEffectStart = source.indexOf('if (!open || !editingProposta || businessProfileLoading) return;');
 const editEffectEnd = source.indexOf('if (!open || editingProposta || !initialExternalBudget?.projectId) return;', editEffectStart);
 const editEffect = source.slice(editEffectStart, editEffectEnd);
