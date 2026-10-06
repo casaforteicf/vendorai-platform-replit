@@ -14,6 +14,8 @@ import {
   insumosTable,
   subscriptionsTable,
   tenantsTable,
+  mediaPlansTable,
+  contentCalendarItemsTable,
 } from "@workspace/db";
 import {
   generateFeedContent,
