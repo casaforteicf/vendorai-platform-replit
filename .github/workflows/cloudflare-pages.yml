@@ -1,6 +1,6 @@
 name: Cloudflare Pages
 # Production deploy: Pages frontend; Railway backend remains unchanged.
-# Redeploy marker: installation-template-builder-pr3173 2026-10-06T20:12Z.
+# Redeploy marker: budget-tenant-groups-pr3176 2026-10-06T20:26Z.
 
 on:
   push:
