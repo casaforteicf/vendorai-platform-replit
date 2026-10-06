@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request } from "express";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lt } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod/v4";
 import {
@@ -15,9 +15,12 @@ import {
   propostasTable,
   dealsTable,
   activitiesTable,
+  agendamentosTable,
+  agendasTable,
   leadsTable,
   usersTable,
   tenantsTable,
+  tenantCalendarSettingsTable,
   installationChecklistTemplatesTable,
   installationVisitsTable,
   installationChecklistItemsTable,
@@ -1437,7 +1440,19 @@ const supportCaseSchema = z.object({
   responsavelId: z.string().min(1),
   prioridade: z.enum(["baixa", "normal", "alta", "urgente"]).default("normal"),
   dataVencimento: z.coerce.date().optional(),
+  agendaId: z.string().optional().nullable(),
+  dataHoraInicio: z.coerce.date().optional(),
+  dataHoraFim: z.coerce.date().optional(),
   origem: z.enum(["humano", "ia", "whatsapp", "telefone", "presencial"]).default("humano"),
+}).superRefine((data, ctx) => {
+  const hasStart = !!data.dataHoraInicio;
+  const hasEnd = !!data.dataHoraFim;
+  if (hasStart !== hasEnd) {
+    ctx.addIssue({ code: "custom", message: "Informe início e fim do agendamento da assistência.", path: ["dataHoraInicio"] });
+  }
+  if (data.dataHoraInicio && data.dataHoraFim && data.dataHoraFim <= data.dataHoraInicio) {
+    ctx.addIssue({ code: "custom", message: "O fim do agendamento deve ser posterior ao início.", path: ["dataHoraFim"] });
+  }
 });
 
 router.post("/tenants/:tenantId/support-cases", async (req, res) => {
@@ -1484,6 +1499,71 @@ router.post("/tenants/:tenantId/support-cases", async (req, res) => {
     }
   }
 
+  let effectiveAgendaId = parsed.data.agendaId ?? null;
+  let effectiveDataVencimento = parsed.data.dataVencimento ?? null;
+
+  if (!effectiveDataVencimento || !effectiveAgendaId) {
+    const [calendarSettings] = await db
+      .select({ activityScheduleDefaults: tenantCalendarSettingsTable.activityScheduleDefaults })
+      .from(tenantCalendarSettingsTable)
+      .where(eq(tenantCalendarSettingsTable.tenantId, tenantId))
+      .limit(1);
+
+    const supportDefault = (calendarSettings?.activityScheduleDefaults ?? []).find(
+      (item) => item.activityType === "assistencia" && item.enabled,
+    );
+
+    if (supportDefault) {
+      if (!effectiveDataVencimento) {
+        const now = new Date();
+        let delta = (supportDefault.weekday - now.getUTCDay() + 7) % 7;
+        if (delta === 0 && now.getUTCHours() >= 21) delta = 7;
+        effectiveDataVencimento = new Date(Date.UTC(
+          now.getUTCFullYear(),
+          now.getUTCMonth(),
+          now.getUTCDate() + delta,
+          12,
+          0,
+          0,
+        ));
+      }
+      if (!effectiveAgendaId && supportDefault.agendaId) {
+        effectiveAgendaId = supportDefault.agendaId;
+      }
+    }
+  }
+
+  if (effectiveAgendaId) {
+    const [agenda] = await db.select({ id: agendasTable.id }).from(agendasTable)
+      .where(and(eq(agendasTable.id, effectiveAgendaId), eq(agendasTable.tenantId, tenantId)));
+    if (!agenda) {
+      effectiveAgendaId = null;
+    }
+  }
+
+  if (parsed.data.dataHoraInicio && parsed.data.dataHoraFim) {
+    const conflicts = await db.select({
+      id: agendamentosTable.id,
+      titulo: agendamentosTable.titulo,
+      dataHoraInicio: agendamentosTable.dataHoraInicio,
+      dataHoraFim: agendamentosTable.dataHoraFim,
+    }).from(agendamentosTable).where(and(
+      eq(agendamentosTable.tenantId, tenantId),
+      eq(agendamentosTable.responsavelId, parsed.data.responsavelId),
+      inArray(agendamentosTable.status, ["agendado", "confirmado"]),
+      // overlap: existing.start < requested.end && existing.end > requested.start
+      lt(agendamentosTable.dataHoraInicio, parsed.data.dataHoraFim),
+      gt(agendamentosTable.dataHoraFim, parsed.data.dataHoraInicio),
+    ));
+    if (conflicts.length) {
+      res.status(409).json({
+        error: "O responsável já possui compromisso neste horário.",
+        conflicts,
+      });
+      return;
+    }
+  }
+
   const codigo = workCode("AST");
   const [card] = await db.insert(workCardsTable).values({
     tenantId,
@@ -1498,13 +1578,24 @@ router.post("/tenants/:tenantId/support-cases", async (req, res) => {
     dealId: parsed.data.dealId ?? null,
     propostaId: parsed.data.propostaId ?? null,
     responsavelId: parsed.data.responsavelId,
-    dataFimPrevista: parsed.data.dataVencimento ?? null,
+    dataFimPrevista: effectiveDataVencimento,
     metadata: {
       categoria: parsed.data.categoria,
       relato: parsed.data.relato,
       produtos: parsed.data.produtos,
       origem: parsed.data.origem,
       substatus: null,
+      agendamento: parsed.data.dataHoraInicio && parsed.data.dataHoraFim ? {
+        agendaId: effectiveAgendaId,
+        dataHoraInicio: parsed.data.dataHoraInicio.toISOString(),
+        dataHoraFim: parsed.data.dataHoraFim.toISOString(),
+        responsavelId: parsed.data.responsavelId,
+      } : null,
+      preAgenda: !parsed.data.dataHoraInicio && effectiveDataVencimento ? {
+        data: effectiveDataVencimento.toISOString(),
+        agendaId: effectiveAgendaId,
+        origem: parsed.data.dataVencimento ? "manual" : "padrao_atividade",
+      } : null,
     },
   }).returning();
 
@@ -1520,9 +1611,30 @@ router.post("/tenants/:tenantId/support-cases", async (req, res) => {
       `Relato: ${parsed.data.relato}`,
     ].filter(Boolean).join("\n"),
     status: "planejado",
-    dataVencimento: parsed.data.dataVencimento ?? null,
+    dataVencimento: effectiveDataVencimento,
     responsavelId: parsed.data.responsavelId,
+    agendaId: effectiveAgendaId,
+    dataHoraInicio: parsed.data.dataHoraInicio ?? null,
+    dataHoraFim: parsed.data.dataHoraFim ?? null,
   }).returning();
+
+  let agendamento: typeof agendamentosTable.$inferSelect | null = null;
+  if (parsed.data.dataHoraInicio && parsed.data.dataHoraFim) {
+    [agendamento] = await db.insert(agendamentosTable).values({
+      tenantId,
+      agendaId: effectiveAgendaId,
+      leadId: parsed.data.leadId,
+      dealId: parsed.data.dealId ?? null,
+      tipo: "visita",
+      titulo: `${codigo} — ${parsed.data.titulo}`,
+      dataHoraInicio: parsed.data.dataHoraInicio,
+      dataHoraFim: parsed.data.dataHoraFim,
+      status: "agendado",
+      responsavelId: parsed.data.responsavelId,
+      observacoes: `Assistência ${codigo} | Categoria: ${parsed.data.categoria} | ${parsed.data.relato}`,
+      criadoPor: parsed.data.origem === "ia" ? "agente_ia" : "humano",
+    }).returning();
+  }
 
   if (responsavel.telefone) {
     const clienteNome = lead.empresa || lead.nome || "Cliente";
@@ -1531,9 +1643,18 @@ router.post("/tenants/:tenantId/support-cases", async (req, res) => {
       : [];
     const contatoNome = lead.empresa ? lead.nome : (lead.tipoPessoa === "juridica" ? socios[0]?.nome ?? null : null);
     const contatoTelefone = lead.telefone || socios[0]?.telefone || null;
-    const dataPrevista = parsed.data.dataVencimento
-      ? parsed.data.dataVencimento.toLocaleDateString("pt-BR", { timeZone: "UTC" })
-      : "Não informada";
+    const dataPrevista = parsed.data.dataHoraInicio
+      ? parsed.data.dataHoraInicio.toLocaleString("pt-BR", {
+          timeZone: "America/Sao_Paulo",
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : effectiveDataVencimento
+        ? effectiveDataVencimento.toLocaleDateString("pt-BR", { timeZone: "UTC" })
+        : "Não informada";
     const whatsappText = [
       `🛠️ Nova assistência ${codigo}`,
       `Cliente: ${clienteNome}`,
@@ -1552,7 +1673,7 @@ router.post("/tenants/:tenantId/support-cases", async (req, res) => {
     });
   }
 
-  res.status(201).json({ card, activity });
+  res.status(201).json({ card, activity, agendamento });
 });
 
 router.get("/work-cards/:id", async (req, res) => {
