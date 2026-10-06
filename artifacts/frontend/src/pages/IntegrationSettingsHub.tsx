@@ -645,10 +645,47 @@ export default function IntegrationSettingsHub() {
     }
   };
 
+  const refreshRecoverableIntegration = async (row: IntegrationRow) => {
+    if (!tenantId) return false;
+    const path =
+      row.key === "google-ads"
+        ? `/api/tenants/${encodeURIComponent(tenantId)}/google-ads-connection/refresh`
+        : row.key === "linkedin" || row.key === "tiktok"
+          ? `/api/tenants/${encodeURIComponent(tenantId)}/social-connections/${row.key}/test`
+          : null;
+    if (!path) return false;
+
+    setBusy(row.key);
+    try {
+      await apiJson(path, { method: "POST" });
+      toast({ title: `${row.label} renovado com sucesso` });
+      await loadStatus();
+      return true;
+    } catch (error) {
+      toast({
+        title: `${row.label} precisa ser reconectado`,
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const handleRowAction = async (row: IntegrationRow) => {
     if (row.key === "search-console" && (row.attention || row.connected)) {
       await verifySearchConsole();
       return;
+    }
+    const reason =
+      row.key === "google-ads" ? status?.googleAds?.reason
+      : row.key === "linkedin" ? status?.social?.linkedinReason
+      : row.key === "tiktok" ? status?.social?.tiktokReason
+      : null;
+    if (row.attention && reason === "token_expired") {
+      const recovered = await refreshRecoverableIntegration(row);
+      if (recovered) return;
     }
     await startConnection(row.key);
   };
@@ -658,8 +695,13 @@ export default function IntegrationSettingsHub() {
       if (row.key === "search-console") return row.connected ? "Enviando sitemap..." : "Verificando...";
       return "Abrindo...";
     }
-    if (row.key === "search-console" && row.attention) return "Verificar agora";
+    if (row.key === "search-console" && row.attention) return status?.searchConsole?.reason === "token_expired" ? "Renovar e verificar" : "Verificar agora";
     if (row.key === "search-console" && row.connected) return "Reenviar sitemap";
+    if (row.attention && (
+      status?.googleAds?.reason === "token_expired" && row.key === "google-ads"
+      || status?.social?.linkedinReason === "token_expired" && row.key === "linkedin"
+      || status?.social?.tiktokReason === "token_expired" && row.key === "tiktok"
+    )) return "Renovar conexão";
     if (row.key === "domain") return "Configurar domínio";
     if (row.connected) return "Reconectar / gerenciar";
     if (row.attention) return "Revisar integração";
