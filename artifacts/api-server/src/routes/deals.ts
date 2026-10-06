@@ -457,6 +457,29 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
   let sourceOperationalCard: typeof workCardsTable.$inferSelect | null = null;
   let destinationCard: typeof workCardsTable.$inferSelect | null = null;
 
+
+  if ((source.pipeline === "aquecimento" || source.pipeline === "parceiros") && source.pipeline !== parsed.data.targetPipeline) {
+    const blocking = await db
+      .select({ id: activitiesTable.id, titulo: activitiesTable.titulo })
+      .from(activitiesTable)
+      .where(and(
+        eq(activitiesTable.tenantId, deal.tenantId),
+        eq(activitiesTable.dealId, deal.id),
+        eq(activitiesTable.origemEtapaKey, source.stage),
+        eq(activitiesTable.bloqueiaAvanco, true),
+        inArray(activitiesTable.status, ["planejado", "pendente"]),
+      ))
+      .limit(20);
+    if (blocking.length > 0) {
+      res.status(409).json({
+        error: "ACTIVITIES_REQUIRED_BEFORE_PIPELINE_TRANSFER",
+        message: "Existem atividades obrigatórias pendentes antes de mover este processo para outra pipeline.",
+        activities: blocking,
+      });
+      return;
+    }
+  }
+
   const operationalSourcePipeline =
     deal.relationshipStage === "transferido_execucao"
       ? "execucao"
@@ -571,6 +594,14 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
       assignedTo: responsavelId,
       updatedAt: movedAt,
     }).where(eq(dealsTable.id, deal.id));
+  }
+
+
+  if (parsed.data.targetPipeline === "aquecimento" || parsed.data.targetPipeline === "parceiros") {
+    const [movedDeal] = await db.select().from(dealsTable).where(eq(dealsTable.id, deal.id)).limit(1);
+    if (movedDeal) {
+      await ensureRelationshipStageTasks(movedDeal, parsed.data.targetPipeline, parsed.data.targetStage);
+    }
   }
 
   await recordDealJourney({
@@ -1428,7 +1459,7 @@ router.patch("/deals/:id", async (req, res) => {
     const [updatedDeal] = await tx.update(dealsTable).set({
       ...parsed.data,
       assignedTo: nextAssignedTo,
-      ...((etapaChanged || assignedToChanged) ? { etapaAlteradaEm: new Date() } : {}),
+      ...((etapaChanged || relationshipStageChanged || assignedToChanged) ? { etapaAlteradaEm: new Date() } : {}),
       updatedAt: new Date(),
     }).where(eq(dealsTable.id, existing.id)).returning();
     if (!updatedDeal) throw new Error("Deal update failed");
