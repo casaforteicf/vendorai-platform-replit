@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Plus, Ticket, UserRound, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Plus, Ticket, Trash2, UserRound, XCircle } from "lucide-react";
 import {
   Lead,
   getListDealsQueryKey,
@@ -41,7 +41,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 
 const newLeadSchema = z.object({
-  cadastroTipo: z.enum(["pessoa", "empresa"]).default("pessoa"),
+  cadastroTipo: z.enum(["pessoa", "empresa", "negocio"]).default("pessoa"),
   nome: z.string().trim().min(2, "Nome é obrigatório"),
   telefone: z.string().optional().or(z.literal("")),
   email: z.string().email("Email inválido").optional().or(z.literal("")),
@@ -101,6 +101,15 @@ const REPRESENTATIVE_PREFIX = "__representative__:";
 function representativeFunctionId(value?: string | null) {
   return value?.startsWith(REPRESENTATIVE_PREFIX) ? value.slice(REPRESENTATIVE_PREFIX.length) : null;
 }
+
+type ExtraCompanyContact = {
+  id: string;
+  nome: string;
+  telefone: string;
+  email: string;
+  cargo: string;
+  role: "comercial" | "decisor" | "compras" | "financeiro" | "tecnico" | "administrativo" | "suporte" | "outro";
+};
 
 type CouponValidation = {
   valid: true;
@@ -211,6 +220,8 @@ export function NewLeadDialog({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [showMore, setShowMore] = useState(false);
+  const [showCommercial, setShowCommercial] = useState(false);
+  const [extraContacts, setExtraContacts] = useState<ExtraCompanyContact[]>([]);
   const [serverDuplicate, setServerDuplicate] = useState<{ lead: Lead; matchBy: string } | null>(null);
   const [couponValidation, setCouponValidation] = useState<CouponValidation | null>(null);
   const [couponError, setCouponError] = useState<string | null>(null);
@@ -325,6 +336,8 @@ export function NewLeadDialog({
   function closeAndReset() {
     setOpen(false);
     setShowMore(false);
+    setShowCommercial(false);
+    setExtraContacts([]);
     setServerDuplicate(null);
     resetCoupon();
     form.reset(DEFAULT_VALUES);
@@ -460,7 +473,7 @@ export function NewLeadDialog({
     };
 
     let companyId: string | null = null;
-    if (values.cadastroTipo === "empresa" && values.empresa.trim()) {
+    if (values.cadastroTipo !== "pessoa" && values.empresa.trim()) {
       const companyResponse = await fetch("/api/crm/companies/manual", {
         method: "POST",
         headers,
@@ -476,21 +489,62 @@ export function NewLeadDialog({
       companyId = companyData.company?.id ?? null;
     }
 
-    const personResponse = await fetch("/api/crm/people", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        tenantId,
-        nome: values.nome.trim(),
-        telefone: values.telefone || undefined,
-        email: values.email || undefined,
-        documento: values.documento || undefined,
-        source: values.source,
-      }),
-    });
-    const personData = await personResponse.json().catch(() => ({}));
-    if (!personResponse.ok) throw new Error(personData.error ?? "Não foi possível estruturar o cadastro da pessoa.");
-    const personId = personData.item?.id as string | undefined;
+    let personId: string | undefined;
+
+    if (companyId) {
+      const primaryContactResponse = await fetch(`/api/crm/companies/${companyId}/contacts`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          tenantId,
+          nome: values.nome.trim(),
+          telefone: values.telefone || undefined,
+          email: values.email || undefined,
+          documento: values.documento || undefined,
+          cargo: values.profissao || undefined,
+          roles: ["comercial"],
+          isPrimary: true,
+        }),
+      });
+      const primaryContactData = await primaryContactResponse.json().catch(() => ({}));
+      if (!primaryContactResponse.ok) throw new Error(primaryContactData.error ?? "Não foi possível vincular o contato principal à empresa.");
+      personId = primaryContactData?.contacts?.find((item: any) => item.isPrimary && item.nome === values.nome.trim())?.personId
+        ?? primaryContactData?.contacts?.find((item: any) => item.isPrimary)?.personId;
+
+      for (const contact of extraContacts.filter((item) => item.nome.trim().length >= 2)) {
+        const extraResponse = await fetch(`/api/crm/companies/${companyId}/contacts`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            tenantId,
+            nome: contact.nome.trim(),
+            telefone: contact.telefone.trim() || undefined,
+            email: contact.email.trim() || undefined,
+            cargo: contact.cargo.trim() || undefined,
+            roles: [contact.role],
+            isPrimary: false,
+          }),
+        });
+        const extraData = await extraResponse.json().catch(() => ({}));
+        if (!extraResponse.ok) throw new Error(extraData.error ?? `Não foi possível cadastrar o contato ${contact.nome}.`);
+      }
+    } else {
+      const personResponse = await fetch("/api/crm/people", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          tenantId,
+          nome: values.nome.trim(),
+          telefone: values.telefone || undefined,
+          email: values.email || undefined,
+          documento: values.documento || undefined,
+          source: values.source,
+        }),
+      });
+      const personData = await personResponse.json().catch(() => ({}));
+      if (!personResponse.ok) throw new Error(personData.error ?? "Não foi possível estruturar o cadastro da pessoa.");
+      personId = personData.item?.id as string | undefined;
+    }
 
     if (!dealId) return { personId, companyId };
 
@@ -516,7 +570,7 @@ export function NewLeadDialog({
         body: JSON.stringify({
           tenantId,
           personId,
-          role: values.cadastroTipo === "empresa" ? "contato_comercial" : "consumidor_final",
+          role: companyId ? "contato_comercial" : "consumidor_final",
           isPrimary: true,
           contextualCompanyId: companyId,
           relationshipScope: companyId ? "persistent" : "deal_only",
@@ -571,7 +625,7 @@ export function NewLeadDialog({
           nome: submissionValues.nome.trim(),
           telefone: submissionValues.telefone || null,
           email: submissionValues.email || null,
-          empresa: submissionValues.cadastroTipo === "empresa" ? (submissionValues.empresa || null) : null,
+          empresa: submissionValues.cadastroTipo !== "pessoa" ? (submissionValues.empresa || null) : null,
           objetivo: submissionValues.objetivo || null,
           source: coupon ? "indicacao" : submissionValues.source,
           indicadoPor: coupon?.partnerId,
@@ -637,6 +691,8 @@ export function NewLeadDialog({
         setOpen(next);
         if (!next) {
           setShowMore(false);
+          setShowCommercial(false);
+          setExtraContacts([]);
           setServerDuplicate(null);
           resetCoupon();
           form.reset(DEFAULT_VALUES);
@@ -653,7 +709,7 @@ export function NewLeadDialog({
         <DialogHeader>
           <DialogTitle>Novo lead</DialogTitle>
           <p className="text-sm text-muted-foreground">
-            Cadastre uma pessoa ou uma empresa. Empresas podem ter vários contatos e cada negócio pode ter envolvidos diferentes.
+            Escolha o cenário primeiro. Pessoa, empresa e negócio são cadastros diferentes e podem se relacionar sem duplicação.
           </p>
         </DialogHeader>
 
@@ -669,26 +725,38 @@ export function NewLeadDialog({
                 name="cadastroTipo"
                 render={({ field }) => (
                   <FormItem>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid gap-2 sm:grid-cols-3">
                       <Button
                         type="button"
                         variant={field.value === "pessoa" ? "default" : "outline"}
-                        className="h-auto justify-start py-3 text-left"
+                        className="h-auto min-h-20 justify-start whitespace-normal py-3 text-left"
                         onClick={() => {
                           field.onChange("pessoa");
                           form.setValue("empresa", "");
                           form.setValue("empresaCnpj", "");
+                          setExtraContacts([]);
                         }}
                       >
-                        <span><span className="block font-semibold">Pessoa / consumidor final</span><span className="block text-xs opacity-80">Cliente direto, sem empresa obrigatória</span></span>
+                        <span><span className="block font-semibold">Pessoa / consumidor final</span><span className="mt-1 block text-xs opacity-80">Cliente direto. Nenhuma empresa é obrigatória.</span></span>
                       </Button>
                       <Button
                         type="button"
                         variant={field.value === "empresa" ? "default" : "outline"}
-                        className="h-auto justify-start py-3 text-left"
+                        className="h-auto min-h-20 justify-start whitespace-normal py-3 text-left"
                         onClick={() => field.onChange("empresa")}
                       >
-                        <span><span className="block font-semibold">Empresa</span><span className="block text-xs opacity-80">PJ com um ou vários contatos</span></span>
+                        <span><span className="block font-semibold">Empresa</span><span className="mt-1 block text-xs opacity-80">PJ com um ou vários contatos independentes.</span></span>
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={field.value === "negocio" ? "default" : "outline"}
+                        className="h-auto min-h-20 justify-start whitespace-normal py-3 text-left"
+                        onClick={() => {
+                          field.onChange("negocio");
+                          form.setValue("createInitialDeal", true);
+                        }}
+                      >
+                        <span><span className="block font-semibold">Negócio com envolvidos</span><span className="mt-1 block text-xs opacity-80">Empresa, consumidor final e outros participantes.</span></span>
                       </Button>
                     </div>
                   </FormItem>
@@ -696,11 +764,11 @@ export function NewLeadDialog({
               />
             </section>
 
-            {cadastroTipo === "empresa" && (
+            {cadastroTipo !== "pessoa" && (
               <section className="space-y-3 rounded-lg border bg-muted/20 p-4">
                 <div>
-                  <p className="text-sm font-semibold">Empresa</p>
-                  <p className="text-xs text-muted-foreground">Cadastro da organização. A pessoa responsável será informada logo abaixo.</p>
+                  <p className="text-sm font-semibold">{cadastroTipo === "negocio" ? "Empresa relacionada (opcional)" : "Empresa"}</p>
+                  <p className="text-xs text-muted-foreground">{cadastroTipo === "negocio" ? "Informe somente se houver uma empresa participando deste negócio." : "Cadastre a organização uma única vez. Os contatos ficam vinculados separadamente."}</p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <FormField
@@ -708,7 +776,7 @@ export function NewLeadDialog({
                     name="empresa"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Nome da empresa *</FormLabel>
+                        <FormLabel>Nome da empresa {cadastroTipo === "empresa" ? "*" : ""}</FormLabel>
                         <FormControl><Input placeholder={companyPlaceholder || "Razão social ou nome fantasia"} {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
@@ -741,8 +809,8 @@ export function NewLeadDialog({
 
             <section className="space-y-3">
               <div>
-                <p className="text-sm font-semibold">{cadastroTipo === "empresa" ? "Pessoa de contato" : "Pessoa / consumidor final"}</p>
-                <p className="text-xs text-muted-foreground">{cadastroTipo === "empresa" ? "Toda empresa precisa de uma pessoa real para o atendimento. Depois você poderá adicionar outros contatos." : "Dados essenciais do cliente direto."}</p>
+                <p className="text-sm font-semibold">{cadastroTipo === "pessoa" ? "Pessoa / consumidor final" : cadastroTipo === "empresa" ? "Contato principal da empresa" : "Pessoa principal deste negócio"}</p>
+                <p className="text-xs text-muted-foreground">{cadastroTipo === "pessoa" ? "Dados essenciais do cliente direto." : cadastroTipo === "empresa" ? "A empresa pode ter vários contatos. Defina aqui quem é o contato principal." : "Pode ser consumidor final, contato comercial ou a pessoa que iniciou o atendimento."}</p>
               </div>
               <FormField
                 control={form.control}
@@ -779,9 +847,101 @@ export function NewLeadDialog({
                   )}
                 />
               </div>
+
+              {cadastroTipo !== "pessoa" && form.watch("empresa").trim() && (
+                <div className="space-y-3 rounded-lg border border-dashed p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium">Outros contatos da empresa</p>
+                      <p className="text-xs text-muted-foreground">Financeiro, compras, diretoria, obras e demais pessoas podem ser cadastradas agora.</p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setExtraContacts((items) => [...items, {
+                        id: crypto.randomUUID(),
+                        nome: "",
+                        telefone: "",
+                        email: "",
+                        cargo: "",
+                        role: "outro",
+                      }])}
+                    >
+                      <Plus className="mr-1.5 h-3.5 w-3.5" />Adicionar contato
+                    </Button>
+                  </div>
+
+                  {extraContacts.map((contact, index) => (
+                    <div key={contact.id} className="space-y-2 rounded-md bg-muted/30 p-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold text-muted-foreground">Contato {index + 2}</p>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          onClick={() => setExtraContacts((items) => items.filter((item) => item.id !== contact.id))}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <Input
+                          placeholder="Nome completo"
+                          value={contact.nome}
+                          onChange={(event) => setExtraContacts((items) => items.map((item) => item.id === contact.id ? { ...item, nome: event.target.value } : item))}
+                        />
+                        <Input
+                          placeholder="Cargo / função"
+                          value={contact.cargo}
+                          onChange={(event) => setExtraContacts((items) => items.map((item) => item.id === contact.id ? { ...item, cargo: event.target.value } : item))}
+                        />
+                        <PhoneInput
+                          value={contact.telefone}
+                          onChange={(value) => setExtraContacts((items) => items.map((item) => item.id === contact.id ? { ...item, telefone: value ?? "" } : item))}
+                        />
+                        <Input
+                          type="email"
+                          placeholder="email@empresa.com"
+                          value={contact.email}
+                          onChange={(event) => setExtraContacts((items) => items.map((item) => item.id === contact.id ? { ...item, email: event.target.value } : item))}
+                        />
+                        <div className="sm:col-span-2">
+                          <Select
+                            value={contact.role}
+                            onValueChange={(value) => setExtraContacts((items) => items.map((item) => item.id === contact.id ? { ...item, role: value as ExtraCompanyContact["role"] } : item))}
+                          >
+                            <SelectTrigger><SelectValue placeholder="Papel na empresa" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="comercial">Comercial</SelectItem>
+                              <SelectItem value="decisor">Decisor</SelectItem>
+                              <SelectItem value="compras">Compras</SelectItem>
+                              <SelectItem value="financeiro">Financeiro</SelectItem>
+                              <SelectItem value="tecnico">Técnico / obra</SelectItem>
+                              <SelectItem value="administrativo">Administrativo</SelectItem>
+                              <SelectItem value="suporte">Suporte</SelectItem>
+                              <SelectItem value="outro">Outro</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
 
-            <section className="space-y-3 border-t pt-4">
+            <Button type="button" variant="ghost" className="h-auto w-full justify-between border-t px-0 pt-4" onClick={() => setShowCommercial((value) => !value)}>
+              <span>
+                <span className="block text-sm font-semibold text-left">Configurações comerciais</span>
+                <span className="block text-xs font-normal text-muted-foreground text-left">Origem, indicação e responsável</span>
+              </span>
+              {showCommercial ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </Button>
+
+            {showCommercial && (
+            <section className="space-y-3 rounded-lg border bg-muted/20 p-4">
               <div>
                 <p className="text-sm font-semibold">Origem e atendimento</p>
                 <p className="text-xs text-muted-foreground">Origem, indicação e responsável pelo atendimento.</p>
@@ -894,6 +1054,7 @@ export function NewLeadDialog({
                 />
               )}
             </section>
+            )}
 
             <Button type="button" variant="ghost" className="h-auto w-full justify-between px-0 py-1" onClick={() => setShowMore((value) => !value)}>
               <span className="text-sm">Mais informações do contato</span>
@@ -948,6 +1109,7 @@ export function NewLeadDialog({
             )}
 
             <section className="space-y-3 border-t pt-4">
+              {cadastroTipo !== "negocio" && (
               <label className="flex cursor-pointer items-start gap-3 rounded-lg border p-3">
                 <input
                   type="checkbox"
@@ -960,6 +1122,14 @@ export function NewLeadDialog({
                   <span className="block text-xs text-muted-foreground">Desmarque se quiser apenas cadastrar o contato agora.</span>
                 </span>
               </label>
+              )}
+
+              {cadastroTipo === "negocio" && (
+                <div className="rounded-lg border bg-muted/20 p-3">
+                  <p className="text-sm font-semibold">Negócio com vários envolvidos</p>
+                  <p className="text-xs text-muted-foreground">Ao salvar, o negócio será aberto na Central de Trabalho para adicionar consumidor final, construtora, arquiteto, financeiro e outros participantes.</p>
+                </div>
+              )}
 
               {createInitialDeal && (
                 <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
@@ -1049,7 +1219,7 @@ export function NewLeadDialog({
                 {createLead.isPending
                   ? "Salvando..."
                   : createInitialDeal
-                    ? "Salvar e iniciar negócio"
+                    ? cadastroTipo === "negocio" ? "Criar negócio e adicionar envolvidos" : "Salvar e iniciar negócio"
                     : "Salvar contato"}
               </Button>
             </div>
