@@ -849,18 +849,35 @@ type ApprovalContext = "technical" | "architect" | "client" | "fabrication" | "i
 type ApprovalDecision = "approved" | "rejected" | "revision_requested";
 
 async function getSpecObjectApprovals(tId: string | null, specObjectId: string) {
-  const values: unknown[] = [specObjectId];
-  let where = "spec_object_id=$1";
+  const specValues: unknown[] = [specObjectId];
+  let specWhere = "id=$1";
   if (tId) {
-    values.push(tId);
-    where += ` AND (tenant_id=$${values.length} OR tenant_id IS NULL)`;
+    specValues.push(tId);
+    specWhere += ` AND tenant_id=${specValues.length}`;
   }
+
+  const specResult = await pool.query(
+    `SELECT id, tenant_id FROM arch_spec_objects WHERE ${specWhere} LIMIT 1`,
+    specValues,
+  );
+  const spec = specResult.rows[0];
+  if (!spec) return null;
+
+  const approvalValues: unknown[] = [specObjectId];
+  let approvalWhere = "spec_object_id=$1";
+  if (spec.tenant_id) {
+    approvalValues.push(spec.tenant_id);
+    approvalWhere += ` AND tenant_id=${approvalValues.length}`;
+  } else {
+    approvalWhere += " AND tenant_id IS NULL";
+  }
+
   const result = await pool.query(
     `SELECT id, spec_object_id, approval_context, decision, actor_id, actor_name, note, project_revision, created_at
        FROM arch_spec_object_approvals
-      WHERE ${where}
+      WHERE ${approvalWhere}
       ORDER BY created_at DESC`,
-    values,
+    approvalValues,
   );
   return result.rows;
 }
@@ -891,7 +908,7 @@ async function recordSpecObjectApproval(params: {
      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now())`,
     [
       crypto.randomUUID(),
-      params.tenantId,
+      spec.tenant_id ?? null,
       params.specObjectId,
       params.context,
       params.decision,
@@ -915,14 +932,21 @@ async function recordSpecObjectApproval(params: {
                 ELSE status
               END,
               updated_at=now()
-        WHERE id=$4`,
-      [params.decision, params.actorId, params.note ?? null, params.specObjectId],
+        WHERE id=$4
+          AND ($5::text IS NULL OR tenant_id::text=$5::text)`,
+      [params.decision, params.actorId, params.note ?? null, params.specObjectId, spec.tenant_id ?? null],
     );
   }
 
-  const item = await pool.query(`SELECT * FROM arch_spec_objects WHERE id=$1 LIMIT 1`, [params.specObjectId]);
+  const itemValues: unknown[] = [params.specObjectId];
+  let itemWhere = "id=$1";
+  if (spec.tenant_id) {
+    itemValues.push(spec.tenant_id);
+    itemWhere += ` AND tenant_id=${itemValues.length}`;
+  }
+  const item = await pool.query(`SELECT * FROM arch_spec_objects WHERE ${itemWhere} LIMIT 1`, itemValues);
   const approvals = await getSpecObjectApprovals(params.tenantId, params.specObjectId);
-  return { item: item.rows[0] ?? null, approvals };
+  return { item: item.rows[0] ?? null, approvals: approvals ?? [] };
 }
 
 const archSpecObjectsRouter = Router();
@@ -950,6 +974,10 @@ archSpecObjectsRouter.post("/arch/spec-objects/sync-project", async (req, res, n
 archSpecObjectsRouter.get("/arch/spec-objects/:id/approvals", async (req, res, next) => {
   try {
     const approvals = await getSpecObjectApprovals(tenantId(req), req.params["id"]!);
+    if (!approvals) {
+      res.status(404).json({ error: "SpecObject não encontrado" });
+      return;
+    }
     res.json({ approvals });
   } catch (err) {
     logger.error({ err }, "arch/spec-objects approvals GET error");
