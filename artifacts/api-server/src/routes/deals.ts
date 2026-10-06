@@ -55,7 +55,7 @@ import { captureLeadFeatureSnapshot, backfillResultadoSnapshots } from "../lib/m
 import { finalizeVehicleReservation } from "../services/vehicle-reservation.js";
 import { finalizeItemReservation } from "../services/item-reservation.js";
 import { z } from "zod";
-import { COMMERCIAL_STAGE_ORDER, PARTNER_STAGE_ORDER, SAAS_STAGE_ORDER, TERMINAL_DEAL_STAGES, TERMINAL_WORK_STAGES, isBackwardMove } from "../lib/pipeline-progress.js";
+import { COMMERCIAL_STAGE_ORDER, SAAS_STAGE_ORDER, TERMINAL_DEAL_STAGES, TERMINAL_WORK_STAGES, isBackwardMove } from "../lib/pipeline-progress.js";
 import { recordIntelligenceEvent, recordStageAnswers } from "../services/customer-intelligence-history.js";
 import { suggestDynamicStageQuestions } from "../services/stage-question-intelligence.js";
 import { evaluatePipelineAI } from "../services/pipeline-ai-orchestrator.js";
@@ -178,6 +178,125 @@ async function ensureCommercialStageTasks(deal: typeof dealsTable.$inferSelect) 
       dataVencimento: new Date(Date.now() + dueMinutes * 60 * 1000),
     });
   }
+}
+
+
+async function ensureRelationshipStageTasks(
+  deal: typeof dealsTable.$inferSelect,
+  pipeline: "aquecimento" | "parceiros",
+  stageKey: string,
+) {
+  if (!deal.leadId || !stageKey) return;
+
+  const [stageConfig] = await db
+    .select({
+      id: pipelineStagesTable.id,
+      label: pipelineStagesTable.label,
+      responsavelAgenteKey: pipelineStagesTable.responsavelAgenteKey,
+      atividadesPadrao: pipelineStagesTable.atividadesPadrao,
+      atividadePadraoTitulo: pipelineStagesTable.atividadePadraoTitulo,
+      atividadePadraoDescricao: pipelineStagesTable.atividadePadraoDescricao,
+      atividadePadraoPrazoMinutos: pipelineStagesTable.atividadePadraoPrazoMinutos,
+    })
+    .from(pipelineStagesTable)
+    .where(and(
+      eq(pipelineStagesTable.tenantId, deal.tenantId),
+      eq(pipelineStagesTable.pipeline, pipeline),
+      eq(pipelineStagesTable.key, stageKey),
+    ))
+    .limit(1);
+
+  if (!stageConfig) return;
+
+  const configured = stageConfig.atividadesPadrao ?? [];
+  const fallbackTitle = stageConfig.atividadePadraoTitulo?.trim();
+  const templates = configured.length > 0 ? configured : (fallbackTitle ? [{
+    id: "legacy-default",
+    titulo: fallbackTitle,
+    descricao: stageConfig.atividadePadraoDescricao ?? null,
+    categoria: "sugerida" as const,
+    prazoMinutos: stageConfig.atividadePadraoPrazoMinutos ?? 24 * 60,
+    responsavel: "deal_owner" as const,
+    prioridade: "normal" as const,
+    bloqueiaAvanco: false,
+    condicao: "sempre" as const,
+    tipo: "tarefa" as const,
+  }] : []);
+
+  for (const template of templates) {
+    const templateKey = template.id || template.titulo.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 80);
+    const [existingTask] = await db.select({ id: activitiesTable.id }).from(activitiesTable).where(and(
+      eq(activitiesTable.tenantId, deal.tenantId),
+      eq(activitiesTable.dealId, deal.id),
+      eq(activitiesTable.origemEtapaKey, stageKey),
+      eq(activitiesTable.origemTemplateKey, templateKey),
+      inArray(activitiesTable.status, ["planejado", "pendente", "concluida"]),
+    )).limit(1);
+    if (existingTask) continue;
+
+    if (template.condicao === "sem_atividade_aberta") {
+      const [openActivity] = await db.select({ id: activitiesTable.id }).from(activitiesTable).where(and(
+        eq(activitiesTable.tenantId, deal.tenantId),
+        eq(activitiesTable.dealId, deal.id),
+        inArray(activitiesTable.status, ["planejado", "pendente"]),
+      )).limit(1);
+      if (openActivity) continue;
+    }
+
+    const automatic = template.categoria === "automatica";
+    const dueMinutes = template.prazoMinutos ?? 24 * 60;
+    await db.insert(activitiesTable).values({
+      tenantId: deal.tenantId,
+      leadId: deal.leadId,
+      dealId: deal.id,
+      tipo: template.tipo ?? "tarefa",
+      titulo: `${template.titulo} — ${deal.titulo}`,
+      descricao: template.descricao?.trim()
+        || `Atividade criada automaticamente ao entrar em ${stageConfig.label} (${pipeline}).`,
+      objetivo: template.objetivo ?? null,
+      resultadoEsperado: template.resultadoEsperado ?? null,
+      prioridade: template.prioridade ?? "normal",
+      estadoExecucao: automatic ? "planejada_ia" : "planejada",
+      categoriaExecucao: template.categoria,
+      origem: "pipeline_stage",
+      origemEtapaId: stageConfig.id,
+      origemEtapaKey: stageKey,
+      origemTemplateKey: templateKey,
+      bloqueiaAvanco: Boolean(template.bloqueiaAvanco || template.categoria === "obrigatoria"),
+      agenteResponsavelKey: template.responsavel === "stage_agent" ? stageConfig.responsavelAgenteKey ?? null : null,
+      status: "planejado",
+      responsavelId: template.responsavel === "stage_agent" ? null : deal.assignedTo ?? null,
+      dataVencimento: new Date(Date.now() + dueMinutes * 60 * 1000),
+    });
+  }
+}
+
+async function configuredRelationshipStageMove(
+  tenantId: string,
+  pipeline: "aquecimento" | "parceiros",
+  currentStage: string,
+  targetStage: string,
+) {
+  const stages = await db
+    .select({
+      key: pipelineStagesTable.key,
+      label: pipelineStagesTable.label,
+      ordem: pipelineStagesTable.ordem,
+    })
+    .from(pipelineStagesTable)
+    .where(and(
+      eq(pipelineStagesTable.tenantId, tenantId),
+      eq(pipelineStagesTable.pipeline, pipeline),
+    ));
+
+  const ordered = [...stages].sort((a, b) => a.ordem - b.ordem);
+  const currentIndex = ordered.findIndex((stage) => stage.key === currentStage);
+  const targetIndex = ordered.findIndex((stage) => stage.key === targetStage);
+  return {
+    currentIndex,
+    targetIndex,
+    target: targetIndex >= 0 ? ordered[targetIndex] : null,
+  };
 }
 
 async function recordDealJourney(input: {
@@ -1154,9 +1273,66 @@ router.patch("/deals/:id", async (req, res) => {
       return;
     }
   }
-  if (existing.etapa === "parceiro" && parsed.data.relationshipStage && isBackwardMove(PARTNER_STAGE_ORDER, existing.relationshipStage || "parceiro_identificado", parsed.data.relationshipStage)) {
-    res.status(409).json({ error: "CARD_BACKWARD_FORBIDDEN", message: "O processo de parceiro só pode avançar." });
-    return;
+  const relationshipPipeline =
+    existing.etapa === "parceiro"
+      ? "parceiros"
+      : existing.etapa === "em_aquecimento"
+        ? "aquecimento"
+        : null;
+  const currentRelationshipStage = relationshipPipeline
+    ? (existing.relationshipStage
+      || (relationshipPipeline === "parceiros" ? "parceiro_identificado" : "aquecimento_lead"))
+    : null;
+  const relationshipStageChanged = Boolean(
+    relationshipPipeline
+    && parsed.data.relationshipStage
+    && parsed.data.relationshipStage !== currentRelationshipStage
+  );
+
+  let targetRelationshipStageLabel: string | null = null;
+  if (relationshipStageChanged && relationshipPipeline && parsed.data.relationshipStage && currentRelationshipStage) {
+    const move = await configuredRelationshipStageMove(
+      existing.tenantId,
+      relationshipPipeline,
+      currentRelationshipStage,
+      parsed.data.relationshipStage,
+    );
+    if (!move.target) {
+      res.status(422).json({
+        error: "INVALID_TENANT_STAGE",
+        message: "A etapa escolhida não pertence à pipeline configurada deste tenant.",
+      });
+      return;
+    }
+    targetRelationshipStageLabel = move.target.label;
+
+    if (relationshipPipeline === "parceiros" && move.currentIndex >= 0 && move.targetIndex < move.currentIndex) {
+      res.status(409).json({
+        error: "CARD_BACKWARD_FORBIDDEN",
+        message: "O processo de parceiro só pode avançar. Etapas anteriores permanecem no histórico.",
+      });
+      return;
+    }
+
+    const blocking = await db
+      .select({ id: activitiesTable.id, titulo: activitiesTable.titulo })
+      .from(activitiesTable)
+      .where(and(
+        eq(activitiesTable.tenantId, existing.tenantId),
+        eq(activitiesTable.dealId, existing.id),
+        eq(activitiesTable.origemEtapaKey, currentRelationshipStage),
+        eq(activitiesTable.bloqueiaAvanco, true),
+        inArray(activitiesTable.status, ["planejado", "pendente"]),
+      ))
+      .limit(20);
+    if (blocking.length > 0) {
+      res.status(409).json({
+        error: "ACTIVITIES_REQUIRED_BEFORE_STAGE_CHANGE",
+        message: "Existem atividades obrigatórias pendentes antes de avançar esta etapa.",
+        activities: blocking,
+      });
+      return;
+    }
   }
   if (parsed.data.etapaSaas && existing.etapaSaas && isBackwardMove(SAAS_STAGE_ORDER, existing.etapaSaas, parsed.data.etapaSaas)) {
     res.status(409).json({ error: "CARD_BACKWARD_FORBIDDEN", message: "O card SaaS só pode avançar." });
@@ -1384,6 +1560,23 @@ router.patch("/deals/:id", async (req, res) => {
         req.log.warn({ err, dealId: deal.id }, "customer-intelligence: dynamic stage question suggestion failed (non-fatal)");
       });
     }
+  }
+
+
+  if (relationshipStageChanged && relationshipPipeline && parsed.data.relationshipStage) {
+    await ensureRelationshipStageTasks(deal, relationshipPipeline, parsed.data.relationshipStage);
+    await recordDealJourney({
+      tenantId: existing.tenantId,
+      leadId: deal.leadId,
+      dealId: deal.id,
+      title: `Processo avançou para ${targetRelationshipStageLabel ?? parsed.data.relationshipStage}`,
+      description: [
+        `Pipeline: ${relationshipPipeline}.`,
+        `Etapa anterior: ${currentRelationshipStage ?? "não informada"}.`,
+        `Nova etapa: ${targetRelationshipStageLabel ?? parsed.data.relationshipStage}.`,
+      ].join(" "),
+      responsavelId: req.user?.sub,
+    });
   }
 
   // Notifica quando o negócio é repassado pra OUTRA pessoa (não pra si
