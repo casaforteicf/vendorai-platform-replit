@@ -95,7 +95,7 @@ router.get("/tenants/:tenantId/email-connections", authenticate, async (req, res
 });
 
 router.get("/tenants/:tenantId/email-connections/availability", authenticate, async (req, res) => {
-  const tenantId = String(req.params.tenantId);
+  const tenantId = String(req.params.tenantId); // tenant-audit: reviewed guarded immediately by authenticated same-tenant/super-admin access
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   return res.json({
     google: emailProviderAvailability("google"),
