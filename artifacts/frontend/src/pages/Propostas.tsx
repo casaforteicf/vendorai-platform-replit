@@ -3381,14 +3381,27 @@ function newFreeItem(): FreeItem {
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
             body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || "application/octet-stream" }),
           }),
-          (() => {
-            const body = new FormData();
-            body.append("file", file, file.name);
-            return fetch(`/api/tenants/${encodeURIComponent(tenantId)}/deals/extract-quote`, {
-              method: "POST",
-              headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
-              body,
-            });
+          (async () => {
+            const endpoint = `/api/tenants/${encodeURIComponent(tenantId)}/deals/extract-quote`;
+            let lastError: unknown = null;
+            for (let attempt = 1; attempt <= 3; attempt += 1) {
+              try {
+                const body = new FormData();
+                body.append("file", file, file.name);
+                const response = await fetch(endpoint, {
+                  method: "POST",
+                  headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+                  body,
+                });
+                if (![502, 503, 504].includes(response.status) || attempt === 3) return response;
+                lastError = new Error(`Serviço de leitura temporariamente indisponível (HTTP ${response.status})`);
+              } catch (error) {
+                lastError = error;
+                if (attempt === 3) throw error;
+              }
+              await new Promise((resolve) => window.setTimeout(resolve, attempt * 1200));
+            }
+            throw lastError instanceof Error ? lastError : new Error("Falha temporária ao ler o orçamento");
           })(),
         ]);
 
@@ -3398,7 +3411,14 @@ function newFreeItem(): FreeItem {
         if (!putRes.ok) throw new Error("Falha ao enviar arquivo");
         setImportArquivo({ url: `${window.location.origin}/api/storage${objectPath}`, nome: file.name });
 
-        if (!extractRes.ok) throw new Error("Arquivo salvo, mas a leitura automática falhou");
+        if (!extractRes.ok) {
+          const extractError = await extractRes.json().catch(() => ({})) as { error?: string; message?: string };
+          throw new Error(
+            extractError.message
+              || extractError.error
+              || `Arquivo salvo, mas a leitura automática falhou (HTTP ${extractRes.status})`,
+          );
+        }
         const extracted = await extractRes.json() as {
           titulo?: string | null;
           numeroDocumento?: string | null;
