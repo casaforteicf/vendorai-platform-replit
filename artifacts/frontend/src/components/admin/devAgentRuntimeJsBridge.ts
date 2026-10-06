@@ -138,12 +138,17 @@ function injectRuntimeEvidence(path: string, init?: RequestInit) {
   return init;
 }
 
+function isBenignResizeObserverError(event: ErrorEvent) {
+  return /ResizeObserver loop (?:limit exceeded|completed with undelivered notifications)/i.test(event.message || "");
+}
+
 function installRuntimeJsBridge() {
   if (installed || !originalFetch || typeof window === "undefined") return;
   installed = true;
 
   window.addEventListener("error", (event) => {
     if (event instanceof ErrorEvent) {
+      if (isBenignResizeObserverError(event)) return;
       recordSignal({
         kind: "js_error",
         name: safeErrorName(event.error),
