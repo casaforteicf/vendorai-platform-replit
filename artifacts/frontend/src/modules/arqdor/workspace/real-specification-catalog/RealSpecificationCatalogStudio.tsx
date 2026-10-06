@@ -6,6 +6,8 @@ import { SpecObjectListPanel } from "./SpecObjectListPanel";
 import { SpecSummaryCards } from "./SpecSummaryCards";
 import { useRealSpecificationCatalog } from "./useRealSpecificationCatalog";
 import { getProjectId, getProjectTitle } from "./specCatalogUtils";
+import { printSpecification } from "./printSpecification";
+import { useAuth } from "@/contexts/AuthContext";
 
 type RealSpecificationCatalogStudioProps = {
   arqState: any;
@@ -23,6 +25,7 @@ type PendingCatalogItem = {
 type WorkspacePanel = "details" | "catalog" | "budget" | null;
 
 export default function RealSpecificationCatalogStudio({ arqState, onNavigate }: RealSpecificationCatalogStudioProps) {
+  const { user } = useAuth();
   const projectId = useMemo(() => getProjectId(arqState), [arqState]);
   const projectTitle = useMemo(() => getProjectTitle(arqState), [arqState]);
   const [renderId, setRenderId] = useState("");
@@ -135,6 +138,18 @@ export default function RealSpecificationCatalogStudio({ arqState, onNavigate }:
                 className="rounded-xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-2 text-sm font-semibold hover:border-violet-200 hover:text-[var(--arq-accent)]"
               >
                 Orçamento
+              </button>
+              <button
+                type="button"
+                disabled={!specObjects.length}
+                onClick={() => void printSpecification({
+                  tenantId: user?.tenantId ?? null,
+                  projectTitle,
+                  items: specObjects,
+                }).catch((err) => console.error("Falha ao imprimir especificação", err))}
+                className="rounded-xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-2 text-sm font-semibold hover:border-violet-200 hover:text-[var(--arq-accent)] disabled:opacity-50"
+              >
+                Imprimir especificação
               </button>
               <button
                 type="button"
