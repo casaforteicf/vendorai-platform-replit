@@ -130,6 +130,13 @@ export default function RealSpecificationCatalogStudio({ arqState, onNavigate }:
               >
                 Orçamento
               </button>
+              <button
+                type="button"
+                onClick={() => onNavigate?.("procurement")}
+                className="rounded-xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-2 text-sm font-semibold hover:border-violet-200 hover:text-[var(--arq-accent)]"
+              >
+                Cotar fornecedores
+              </button>
             </div>
           </div>
         </header>
