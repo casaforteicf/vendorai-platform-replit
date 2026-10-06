@@ -4,6 +4,7 @@ import {
   db,
   dealsTable,
   leadsTable,
+  mediaAssetsTable,
   notificationsTable,
   pipelineStagesTable,
   scoutOportunidadesTable,
@@ -186,6 +187,95 @@ function dealPipelineAndStage(deal: typeof dealsTable.$inferSelect): { pipeline:
   return { pipeline: "comercial", stage: deal.etapa };
 }
 
+async function runStageContentInteractions(input: {
+  tenantId: string;
+  pipeline: PipelineKey;
+  stageKey: string;
+  stageLabel: string;
+  config: typeof pipelineStagesTable.$inferSelect | undefined;
+  enteredAt: Date | string | null | undefined;
+  lead: LeadContext | null;
+  processId: string;
+  log: Logger;
+}) {
+  const interactions = input.config?.interacoesConteudo ?? [];
+  const slaMinutes = input.config?.slaMinutos ?? null;
+  if (!interactions.length || !input.lead?.telefone) return;
+
+  const elapsedMinutes = minutesSince(input.enteredAt, new Date());
+  const progress = slaMinutes && slaMinutes > 0
+    ? Math.min(100, Math.max(0, (elapsedMinutes / slaMinutes) * 100))
+    : 0;
+
+  for (const interaction of interactions) {
+    if (interaction.ativo === false) continue;
+    if ((interaction.canal ?? "whatsapp") !== "whatsapp") continue;
+    if ((interaction.selecaoConteudo ?? "fixa") !== "fixa") continue;
+    if (interaction.requerAprovacao === true) continue;
+
+    const threshold = interaction.momento === "entrada"
+      ? 0
+      : interaction.momento === "final"
+        ? 100
+        : Number(interaction.percentualPrazo ?? 0);
+
+    if (threshold > 0 && (!slaMinutes || slaMinutes <= 0)) continue;
+    if (progress + 0.0001 < threshold) continue;
+
+    const category = `pipeline_stage_content:${input.pipeline}:${input.processId}:${input.stageKey}:${interaction.id}`;
+    if ((interaction.enviarUmaVez ?? true) && await hasNotification(input.tenantId, category)) continue;
+
+    const message = interaction.mensagem?.trim()
+      || `${interaction.titulo} — ${input.stageLabel}`;
+
+    try {
+      await sendDirectWhatsAppMessage(input.tenantId, input.lead.telefone, message, input.log);
+
+      const assetIds = interaction.assetIds ?? [];
+      if (assetIds.length > 0) {
+        const assets = await db.select({
+          id: mediaAssetsTable.id,
+          storageUrl: mediaAssetsTable.storageUrl,
+          mimeType: mediaAssetsTable.mimeType,
+          fileSize: mediaAssetsTable.fileSize,
+          originalFilename: mediaAssetsTable.originalFilename,
+        }).from(mediaAssetsTable).where(and(
+          eq(mediaAssetsTable.tenantId, input.tenantId),
+          inArray(mediaAssetsTable.id, assetIds),
+        ));
+
+        const attachments = assets
+          .filter((asset) => typeof asset.storageUrl === "string" && asset.storageUrl.startsWith("/objects/"))
+          .map((asset) => ({
+            name: asset.originalFilename || interaction.titulo,
+            objectPath: asset.storageUrl,
+            mimeType: asset.mimeType || "application/octet-stream",
+            size: asset.fileSize ?? undefined,
+          }));
+
+        if (attachments.length > 0) {
+          await sendAgentAttachments(input.tenantId, input.lead.telefone, attachments, input.log);
+        }
+      }
+
+      await markNotification({
+        tenantId: input.tenantId,
+        category,
+        title: `${pipelineLabel(input.pipeline)}: conteúdo enviado`,
+        message: `${interaction.titulo} enviado em ${threshold}% do prazo da etapa ${input.stageLabel}.`,
+      });
+    } catch (error) {
+      input.log.warn({
+        err: error,
+        tenantId: input.tenantId,
+        pipeline: input.pipeline,
+        stage: input.stageKey,
+        interactionId: interaction.id,
+      }, "pipeline-stage-lifecycle: falha ao enviar conteúdo programado");
+    }
+  }
+}
+
 function pipelineLabel(pipeline: PipelineKey): string {
   switch (pipeline) {
     case "comercial": return "Comercial";
@@ -263,6 +353,17 @@ export async function runPipelineStageLifecycle(log: Logger): Promise<void> {
       const config = stageMap.get(`${row.deal.tenantId}:${state.pipeline}:${state.stage}`);
       const stageLabel = config?.label || state.stage;
       const enteredAt = row.deal.etapaAlteradaEm || row.deal.updatedAt;
+      await runStageContentInteractions({
+        tenantId: row.deal.tenantId,
+        pipeline: state.pipeline,
+        stageKey: state.stage,
+        stageLabel,
+        config,
+        enteredAt,
+        lead: row.lead,
+        processId: row.deal.id,
+        log,
+      });
       const transitionCategory = `pipeline_stage_entered:${state.pipeline}:${row.deal.id}:${state.stage}`;
 
       if (minutesSince(enteredAt, now) <= RECENT_TRANSITION_MINUTES && !(await hasNotification(row.deal.tenantId, transitionCategory))) {
@@ -359,6 +460,17 @@ export async function runPipelineStageLifecycle(log: Logger): Promise<void> {
       const enteredAt = stageChanged ? card.updatedAt : trackedEnteredAt || card.updatedAt;
       const config = stageMap.get(`${card.tenantId}:execucao:${card.etapa}`);
       const stageLabel = config?.label || card.etapa;
+      await runStageContentInteractions({
+        tenantId: card.tenantId,
+        pipeline: "execucao",
+        stageKey: card.etapa,
+        stageLabel,
+        config,
+        enteredAt,
+        lead: row.lead,
+        processId: card.id,
+        log,
+      });
       const transitionCategory = `pipeline_stage_entered:execucao:${card.id}:${card.etapa}`;
 
       if (stageChanged || !trackedEnteredAt) {
