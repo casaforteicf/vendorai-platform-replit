@@ -153,6 +153,8 @@ export default function ExecutiveDashboardModern({
   const alerts = executive?.alertas ?? [];
   const stages = data?.stages ?? [];
   const goals = data?.goals ?? [];
+  const commercialReconciliation = data?.reconciliation?.commercial;
+  const commercialReconciled = commercialReconciliation?.consistent !== false;
 
   const activeStageData = useMemo(
     () => stages
@@ -247,6 +249,9 @@ export default function ExecutiveDashboardModern({
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <Badge variant="outline" className="border-primary/15 bg-primary/[0.05] text-primary"><Activity className="mr-1.5 h-3 w-3" /> Executivo</Badge>
               <Badge variant="secondary">Dados reais</Badge>
+              <Badge variant={commercialReconciled ? "secondary" : "destructive"}>
+                {commercialReconciled ? "Comercial reconciliado" : "Divergência detectada"}
+              </Badge>
             </div>
             <h1 className="text-2xl font-bold tracking-tight md:text-[30px]">Dashboard{firstName ? ` · ${firstName}` : ""}</h1>
             <p className="mt-1 text-sm text-muted-foreground">Visão completa do negócio em tempo real · {period}</p>
@@ -275,18 +280,35 @@ export default function ExecutiveDashboardModern({
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
           <MetricCard label="Novos leads" value={String(commercial?.newLeads ?? 0)} detail={`Criados em ${period}`} icon={Users} href="/leads" />
           <MetricCard label="Oportunidades" value={String(commercial?.activeOpportunities ?? 0)} detail="Negócios ativos no pipeline" icon={BriefcaseBusiness} href="/negocios" />
-          <MetricCard label="Pipeline" value={money(executive?.negociacao?.dealsAbertosValor)} detail={`${executive?.negociacao?.dealsAbertos ?? commercial?.activeOpportunities ?? 0} negócios abertos`} icon={WalletCards} href="/negocios" accent />
+          <MetricCard label="Pipeline comercial" value={money(commercial?.activePipelineValue)} detail={`${commercial?.activeOpportunities ?? 0} negócios comerciais ativos`} icon={WalletCards} href="/negocios" accent />
           <MetricCard label="Conversão" value={percentRatio(commercial?.commercialConversion)} detail={`${conversionWon} ganhos de ${conversionCreated} oportunidades`} icon={Percent} href="/negocios" />
           <MetricCard label="Receita" value={money(commercial?.soldRevenue)} detail={`${commercial?.confirmedSales ?? 0} vendas confirmadas`} icon={Target} href="/negocios" accent />
           <MetricCard label="Atenção" value={String(attentionCount)} detail={`${operation?.overdueTasks ?? 0} vencidas · ${commercial?.unassignedLeads ?? 0} sem responsável`} icon={AlertTriangle} href="#ia-recomenda" />
         </div>
       </section>
 
+      {!commercialReconciled ? (
+        <Card className="rounded-2xl border-destructive/30 bg-destructive/[0.03]">
+          <CardContent className="flex items-start gap-3 p-4">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+            <div>
+              <p className="text-sm font-semibold">Divergência nas métricas comerciais detectada automaticamente</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                O total oficial é {commercialReconciliation?.activeOpportunities ?? 0} e a soma das etapas é {commercialReconciliation?.stageActiveTotal ?? 0}.
+                O funil fica bloqueado até a reconciliação voltar a fechar.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <section id="dashboard-comercial" className="grid scroll-mt-24 gap-4 xl:grid-cols-[1.7fr_1fr]">
         <Card className="rounded-2xl border-border/60 shadow-sm">
           <CardContent className="p-5 md:p-6">
-            <SectionTitle icon={BarChart3} title="Pipeline por etapa" description="Comparação entre registros ativos e concluídos com base no histórico real das etapas." href="/negocios" />
-            {activeStageData.length ? (
+            <SectionTitle icon={BarChart3} title="Pipeline comercial por etapa" description="Somente negócios comerciais ativos; histórico concluído é exibido separadamente." href="/negocios" />
+            {!commercialReconciled ? (
+              <EmptyChart text="Funil temporariamente bloqueado por divergência de reconciliação." />
+            ) : activeStageData.length ? (
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
@@ -317,9 +339,9 @@ export default function ExecutiveDashboardModern({
 
         <Card className="rounded-2xl border-border/60 shadow-sm">
           <CardContent className="p-5 md:p-6">
-            <SectionTitle icon={Gauge} title="Funil comercial" description="Etapas com maior volume ativo no período." />
+            <SectionTitle icon={Gauge} title="Funil comercial" description="Somente etapas da pipeline Comercial; aquecimento, suporte e execução ficam fora deste funil." />
             <div className="space-y-3">
-              {funnelData.length ? funnelData.map((item, index) => {
+              {!commercialReconciled ? <p className="rounded-xl border border-destructive/20 bg-destructive/[0.03] p-4 text-sm text-muted-foreground">Funil ocultado até os totais comerciais voltarem a reconciliar.</p> : funnelData.length ? funnelData.map((item, index) => {
                 const max = Math.max(...funnelData.map((row) => row.ativos), 1);
                 const width = Math.max(28, (item.ativos / max) * 100);
                 return (
@@ -477,8 +499,8 @@ export default function ExecutiveDashboardModern({
       </section>
 
       <footer className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed px-4 py-3 text-xs text-muted-foreground">
-        <span className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Todos os números exibidos vêm de fontes transacionais oficiais.</span>
-        <span>Sem métricas simuladas · valores indisponíveis permanecem nulos.</span>
+        <span className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Métricas comerciais reconciliadas com a pipeline Comercial.</span>
+        <span>Sem mistura com Aquecimento, Suporte ou Execução · valores indisponíveis permanecem nulos.</span>
       </footer>
     </div>
   );

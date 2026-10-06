@@ -32,6 +32,7 @@ export type OfficialMetrics = {
   commercial?: {
     newLeads?: number;
     activeOpportunities?: number;
+    activePipelineValue?: number;
     confirmedSales?: number;
     soldRevenue?: number;
     averageTicket?: number;
@@ -73,8 +74,21 @@ export type OfficialMetrics = {
     medianDurationSeconds: number | null;
     slaBreaches: number;
     activeWithRealEntry: number;
+    activeValue?: number;
+    position?: number;
     historical: boolean;
   }>;
+  reconciliation?: {
+    commercial?: {
+      activeOpportunities: number;
+      stageActiveTotal: number;
+      pipelineValue: number;
+      stageValueTotal: number;
+      countMatches: boolean;
+      valueMatches: boolean;
+      consistent: boolean;
+    };
+  };
   goals?: Array<{
     id: string;
     metricKey: string;

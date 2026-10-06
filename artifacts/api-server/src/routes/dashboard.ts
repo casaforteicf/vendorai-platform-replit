@@ -887,15 +887,22 @@ router.get("/dashboard", authenticate, async (req, res) => {
       ORDER BY data ASC
     `),
 
-    // deals abertos (em negociação — not ganho/perdido)
+    // deals comerciais abertos — mesma definição usada pelo Command Center.
+    // Aquecimento, parceiros, execução e estados terminais não pertencem ao pipeline Comercial.
     db.select({
       total: count(),
       somaValor: sum(dealsTable.valor),
     })
       .from(dealsTable)
+      .innerJoin(leadsTable, and(
+        eq(dealsTable.leadId, leadsTable.id),
+        eq(leadsTable.tenantId, tenantId),
+      ))
       .where(and(
         eq(dealsTable.tenantId, tenantId),
-        notInArray(dealsTable.etapa, ["ganho", "perdido"]),
+        notInArray(dealsTable.etapa, ["em_aquecimento", "parceiro", "em_execucao", "ganho", "entregue", "perdido"]),
+        isNull(leadsTable.excluidoEm),
+        isNull(leadsTable.naoLeadTipo),
       )),
 
     // deals ganhos este mês

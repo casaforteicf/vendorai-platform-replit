@@ -92,6 +92,7 @@ async function calculateGoalActual(tenantId: string, goal: GoalRow): Promise<num
         FROM deals d
         WHERE d.tenant_id = ${tenantId}
           AND d.etapa = 'ganho'
+          AND ${validCommercialDealSql("d")}
           AND (${responsibleId}::text IS NULL OR d.assigned_to = ${responsibleId})
       )
       SELECT
@@ -114,6 +115,7 @@ async function calculateGoalActual(tenantId: string, goal: GoalRow): Promise<num
       FROM deals d
       WHERE d.tenant_id = ${tenantId}
         AND d.created_at >= ${start} AND d.created_at <= ${end}
+        AND d.etapa NOT IN ('em_aquecimento','parceiro','em_execucao','entregue')
         AND ${validCommercialDealSql("d")}
         AND (${responsibleId}::text IS NULL OR d.assigned_to = ${responsibleId})
     `);
@@ -155,16 +157,19 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
     : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const periodEnd = endParam && !Number.isNaN(endParam.getTime()) ? endParam : now;
 
-  const [core, operational, intelligence, ai, stageRows, goals, feedback, integrations, dataQuality] = await Promise.all([
+  const [core, operational, intelligence, ai, stageRows, currentCommercialStages, goals, feedback, integrations, dataQuality] = await Promise.all([
     db.execute(sql`
       WITH won AS (
         SELECT d.*, COALESCE(d.data_fechamento, d.won_at, d.updated_at) AS closed_at
         FROM deals d
-        WHERE d.tenant_id = ${tenantId} AND d.etapa = 'ganho'
+        WHERE d.tenant_id = ${tenantId}
+          AND d.etapa = 'ganho'
+          AND ${validCommercialDealSql("d")}
       ), created_deals AS (
         SELECT d.* FROM deals d
         WHERE d.tenant_id = ${tenantId}
           AND d.created_at >= ${periodStart} AND d.created_at <= ${periodEnd}
+          AND d.etapa NOT IN ('em_aquecimento','parceiro','em_execucao','entregue')
           AND ${validCommercialDealSql("d")}
       )
       SELECT
@@ -177,6 +182,10 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
           WHERE d.tenant_id = ${tenantId}
             AND d.etapa NOT IN ('em_aquecimento','parceiro','em_execucao','ganho','entregue','perdido')
             AND ${validCommercialDealSql("d")}) AS active_opportunities,
+        (SELECT COALESCE(sum(d.valor), 0)::numeric FROM deals d
+          WHERE d.tenant_id = ${tenantId}
+            AND d.etapa NOT IN ('em_aquecimento','parceiro','em_execucao','ganho','entregue','perdido')
+            AND ${validCommercialDealSql("d")}) AS active_pipeline_value,
         (SELECT count(*)::int FROM won w
           WHERE w.closed_at >= ${periodStart} AND w.closed_at <= ${periodEnd}) AS confirmed_sales,
         (SELECT COALESCE(sum(w.valor), 0)::numeric FROM won w
@@ -271,13 +280,55 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
             AND p.sla_minutes IS NOT NULL
             AND e.duration_seconds > p.sla_minutes * 60
         )::int AS sla_breaches,
-        count(*) FILTER (WHERE e.exited_at IS NULL AND e.origin <> 'backfill_current_state')::int AS active_with_real_entry
+        count(*) FILTER (WHERE e.exited_at IS NULL AND e.origin <> 'backfill_current_state')::int AS event_active_count
       FROM process_stage_events e
       LEFT JOIN process_stage_policies p
         ON p.tenant_id = e.tenant_id AND p.pipeline = e.pipeline AND p.stage_key = e.to_stage AND p.active = true
       WHERE e.tenant_id = ${tenantId}
+        AND e.pipeline = 'comercial'
+        AND e.to_stage NOT IN ('em_aquecimento','parceiro','em_execucao','ganho','entregue','perdido')
       GROUP BY e.pipeline, e.to_stage, p.label, p.sla_minutes, p.position
       ORDER BY e.pipeline, COALESCE(p.position, 999), e.to_stage
+    `),
+    db.execute(sql`
+      SELECT
+        d.etapa AS stage_key,
+        COALESCE(
+          p.label,
+          CASE d.etapa
+            WHEN 'novo' THEN 'Novo'
+            WHEN 'qualificado' THEN 'Qualificado'
+            WHEN 'proposta' THEN 'Orçamento'
+            WHEN 'negociacao' THEN 'Negociação'
+            WHEN 'conferencia_estoque' THEN 'Fechamento'
+            WHEN 'contrato' THEN 'Contrato'
+            ELSE initcap(replace(d.etapa::text, '_', ' '))
+          END
+        ) AS label,
+        count(*)::int AS active_count,
+        COALESCE(sum(d.valor), 0)::numeric AS active_value,
+        COALESCE(p.position,
+          CASE d.etapa
+            WHEN 'novo' THEN 10
+            WHEN 'qualificado' THEN 20
+            WHEN 'proposta' THEN 30
+            WHEN 'negociacao' THEN 40
+            WHEN 'conferencia_estoque' THEN 50
+            WHEN 'contrato' THEN 60
+            ELSE 900
+          END
+        ) AS position
+      FROM deals d
+      LEFT JOIN process_stage_policies p
+        ON p.tenant_id = d.tenant_id
+       AND p.pipeline = 'comercial'
+       AND p.stage_key = d.etapa::text
+       AND p.active = true
+      WHERE d.tenant_id = ${tenantId}
+        AND d.etapa NOT IN ('em_aquecimento','parceiro','em_execucao','ganho','entregue','perdido')
+        AND ${validCommercialDealSql("d")}
+      GROUP BY d.etapa, p.label, p.position
+      ORDER BY position, d.etapa
     `),
     db.execute(sql`
       SELECT g.id, g.metric_key, g.label, g.period_type, g.target_value, g.unit, g.starts_at, g.ends_at,
@@ -359,18 +410,42 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
     };
   }));
 
-  const stageMetrics = (stageRows.rows as any[]).map((row) => ({
-    pipeline: row.pipeline,
-    stageKey: row.stage_key,
-    label: row.label,
-    slaMinutes: row.sla_minutes == null ? null : Number(row.sla_minutes),
-    completedSamples: Number(row.completed_samples ?? 0),
-    avgDurationSeconds: row.avg_duration_seconds == null ? null : Number(row.avg_duration_seconds),
-    medianDurationSeconds: row.median_duration_seconds == null ? null : Number(row.median_duration_seconds),
-    slaBreaches: Number(row.sla_breaches ?? 0),
-    activeWithRealEntry: Number(row.active_with_real_entry ?? 0),
-    historical: Number(row.completed_samples ?? 0) > 0,
-  }));
+  const historicalStageMap = new Map(
+    (stageRows.rows as any[]).map((row) => [String(row.stage_key), row]),
+  );
+  const currentStageMap = new Map(
+    (currentCommercialStages.rows as any[]).map((row) => [String(row.stage_key), row]),
+  );
+  const stageKeys = Array.from(new Set([...historicalStageMap.keys(), ...currentStageMap.keys()]));
+
+  const stageMetrics = stageKeys
+    .map((stageKey) => {
+      const history = historicalStageMap.get(stageKey) as any;
+      const current = currentStageMap.get(stageKey) as any;
+      return {
+        pipeline: "comercial",
+        stageKey,
+        label: current?.label ?? history?.label ?? stageKey,
+        slaMinutes: history?.sla_minutes == null ? null : Number(history.sla_minutes),
+        completedSamples: Number(history?.completed_samples ?? 0),
+        avgDurationSeconds: history?.avg_duration_seconds == null ? null : Number(history.avg_duration_seconds),
+        medianDurationSeconds: history?.median_duration_seconds == null ? null : Number(history.median_duration_seconds),
+        slaBreaches: Number(history?.sla_breaches ?? 0),
+        activeWithRealEntry: Number(current?.active_count ?? 0),
+        activeValue: Number(current?.active_value ?? 0),
+        position: Number(current?.position ?? 999),
+        historical: Number(history?.completed_samples ?? 0) > 0,
+      };
+    })
+    .sort((a, b) => a.position - b.position || a.stageKey.localeCompare(b.stageKey));
+
+  const commercialStageTotal = stageMetrics.reduce((sum, row) => sum + row.activeWithRealEntry, 0);
+  const commercialStageValue = stageMetrics.reduce((sum, row) => sum + row.activeValue, 0);
+  const commercialActive = Number(c.active_opportunities ?? 0);
+  const commercialValue = Number(c.active_pipeline_value ?? 0);
+  const countMatches = commercialStageTotal === commercialActive;
+  const valueMatches = Math.abs(commercialStageValue - commercialValue) < 0.01;
+  const commercialReconciled = countMatches && valueMatches;
 
   return res.json({
     version: 1,
@@ -379,6 +454,7 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
     commercial: {
       newLeads: Number(c.new_leads ?? 0),
       activeOpportunities: Number(c.active_opportunities ?? 0),
+      activePipelineValue: Number(c.active_pipeline_value ?? 0),
       confirmedSales: Number(c.confirmed_sales ?? 0),
       soldRevenue: Number(c.sold_revenue ?? 0),
       averageTicket: Number(c.average_ticket ?? 0),
@@ -406,6 +482,17 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
       actionsRejected: Number(a.rejected ?? 0),
     },
     stages: stageMetrics,
+    reconciliation: {
+      commercial: {
+        activeOpportunities: commercialActive,
+        stageActiveTotal: commercialStageTotal,
+        pipelineValue: commercialValue,
+        stageValueTotal: commercialStageValue,
+        countMatches,
+        valueMatches,
+        consistent: commercialReconciled,
+      },
+    },
     goals: goalRows,
     feedback: {
       csat: Number(f.csat_responses ?? 0) > 0 ? Number(f.csat_average) : null,
