@@ -180,7 +180,7 @@ router.post(
           req.log.error({ err: libraryError, tenantId, projectId, jobId }, "media-library: failed to register edited video");
           await setMediaProjectStatus(tenantId, projectId, "draft").catch(() => undefined);
         });
-        await updateMediaJob(jobId, tenantId, { status: "done", videoUrl: `/api/storage${objPath}` });
+        await updateMediaJob(jobId, tenantId, { status: "done", videoUrl: objPath });
       } catch (err) {
         await setMediaProjectStatus(tenantId, projectId, "draft").catch(() => undefined);
         await updateMediaJob(jobId, tenantId, {
@@ -627,7 +627,7 @@ router.post(
           req.log.error({ err: libraryError, tenantId, projectId, jobId }, "media-library: failed to register captioned video");
           await setMediaProjectStatus(tenantId, projectId, "draft").catch(() => undefined);
         });
-        await updateMediaJob(jobId, tenantId, { status: "done", videoUrl: `/api/storage${objPath}` });
+        await updateMediaJob(jobId, tenantId, { status: "done", videoUrl: objPath });
       } catch (err) {
         await setMediaProjectStatus(tenantId, projectId, "draft").catch(() => undefined);
         await updateMediaJob(jobId, tenantId, {
