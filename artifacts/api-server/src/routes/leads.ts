@@ -54,7 +54,7 @@ import { reserveUniqueVehicle } from "../services/vehicle-reservation.js";
 import { reserveUniqueItem } from "../services/item-reservation.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 import { signAttachmentFolderUnlockToken } from "../lib/jwt.js";
-import { attachmentUnlockCookieName, normalizeAttachmentObjectPath, requestCanAccessLockedObject } from "../lib/attachment-folder-access.js";
+import { attachmentUnlockCookieName, normalizeAttachmentObjectPath } from "../lib/attachment-folder-access.js";
 
 const router: IRouter = Router();
 const attachmentUnlockLimiter = rateLimit({
@@ -748,8 +748,7 @@ router.put("/leads/:id/attachment-folder-lock", async (req, res) => {
 
   if (savedLock) {
     await db.delete(attachmentFolderLockObjectsTable).where(eq(attachmentFolderLockObjectsTable.lockId, savedLock.id));
-    const ownPrefix = `/objects/tenants/${lead.tenantId}/`;
-    const objectPaths = [...new Set(parsed.data.objectPaths.map(normalizeAttachmentObjectPath).filter((value) => value.startsWith(ownPrefix)))];
+    const objectPaths = [...new Set(parsed.data.objectPaths.map(normalizeAttachmentObjectPath).filter(Boolean))];
     if (objectPaths.length) {
       await db.insert(attachmentFolderLockObjectsTable).values(objectPaths.map((objectPath) => ({
         tenantId: lead.tenantId,
@@ -891,10 +890,7 @@ router.post("/leads/:id/attachment-folder-lock/sync", async (req, res) => {
     return;
   }
 
-  const ownPrefix = `/objects/tenants/${lead.tenantId}/`;
-  const objectPaths = [...new Set(parsed.data.objectPaths
-    .map(normalizeAttachmentObjectPath)
-    .filter((value) => value.startsWith(ownPrefix)))];
+  const objectPaths = [...new Set(parsed.data.objectPaths.map(normalizeAttachmentObjectPath).filter(Boolean))];
 
   await db.delete(attachmentFolderLockObjectsTable).where(eq(attachmentFolderLockObjectsTable.lockId, lock.id));
   if (objectPaths.length) {
