@@ -9,6 +9,7 @@ import {
   updateMessageSchema,
 } from "@workspace/db";
 import { maybeReanalyze } from "../lib/analyze-intelligence.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 import { recordIntelligenceEvent, recordIntelligenceFact } from "../services/customer-intelligence-history.js";
 import { resolveStageQuestionsFromInboundMessage } from "../services/stage-question-resolution.js";
 import {
@@ -23,6 +24,7 @@ import {
 } from "../services/omnichannel.js";
 
 const router: IRouter = Router();
+const messageStorage = new ObjectStorageService();
 
 // Anexo do botão de anexar do chat interno — não faz parte da tabela
 // messages em si (midiaUrl na tabela é preenchido pelo omnichannel
@@ -44,14 +46,6 @@ const libraryMidiaSchema = z.object({
 const midiaSchema = z.union([uploadedMidiaSchema, libraryMidiaSchema]);
 
 type ResolvedMidia = z.infer<typeof uploadedMidiaSchema>;
-
-function requestBaseOrigin(req: Request): string {
-  const forwardedProto = String(req.headers["x-forwarded-proto"] ?? "").split(",")[0]?.trim();
-  const forwardedHost = String(req.headers["x-forwarded-host"] ?? "").split(",")[0]?.trim();
-  const protocol = forwardedProto || req.protocol || "https";
-  const host = forwardedHost || req.get("host") || "localhost";
-  return `${protocol}://${host}`;
-}
 
 async function resolveMidia(
   req: Request,
@@ -83,7 +77,7 @@ async function resolveMidia(
   if (!asset.storageUrl?.startsWith("/objects/")) throw new Error("MEDIA_ASSET_NOT_INTERNAL");
 
   return {
-    url: `${requestBaseOrigin(req)}/api/storage${asset.storageUrl}`,
+    url: await messageStorage.getObjectEntitySignedUrl(asset.storageUrl, 3600),
     objectPath: asset.storageUrl,
     mimeType: asset.mimeType || "application/octet-stream",
     fileName: asset.originalFilename || `midia-${asset.id}`,
