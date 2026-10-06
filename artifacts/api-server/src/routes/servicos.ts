@@ -5,6 +5,7 @@ import {
   servicosPrestadoresTable,
   servicosTiposTable,
   servicosOrdensTable,
+  servicosOsModelosTable,
   leadsTable,
   dealsTable,
   type ServicoChecklistItem,
@@ -504,6 +505,121 @@ router.get("/tenants/:tenantId/servicos/ordens/:id/cliente-view", async (req, re
   });
 });
 
+// ─── Modelos configuráveis de OS ────────────────────────────────────────────
+
+router.get("/tenants/:tenantId/servicos/modelos-os", async (req, res) => {
+  const tenantId = routeTenantId(req);
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const rows = await db.select().from(servicosOsModelosTable)
+    .where(and(eq(servicosOsModelosTable.tenantId, tenantId), eq(servicosOsModelosTable.ativo, true)))
+    .orderBy(servicosOsModelosTable.tipo, servicosOsModelosTable.nome);
+
+  return res.json(rows);
+});
+
+router.post("/tenants/:tenantId/servicos/modelos-os", async (req, res) => {
+  const tenantId = routeTenantId(req);
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const {
+    nome,
+    descricao,
+    tipo = "assistencia",
+    padrao = false,
+    campos = [],
+    checklist = [],
+    clienteAcompanhaDefault = true,
+    compartilharStatusClienteDefault = true,
+  } = req.body ?? {};
+
+  if (!String(nome ?? "").trim()) return res.status(422).json({ error: "Nome do modelo é obrigatório." });
+  if (!MODELOS.includes(tipo as ModeloExecucao)) return res.status(422).json({ error: "Tipo de modelo inválido." });
+  if (!Array.isArray(checklist)) return res.status(422).json({ error: "Checklist inválido." });
+
+  if (padrao) {
+    await db.update(servicosOsModelosTable)
+      .set({ padrao: false, updatedAt: new Date() })
+      .where(and(
+        eq(servicosOsModelosTable.tenantId, tenantId),
+        eq(servicosOsModelosTable.tipo, tipo),
+        eq(servicosOsModelosTable.ativo, true),
+      ));
+  }
+
+  const [row] = await db.insert(servicosOsModelosTable).values({
+    tenantId,
+    nome: String(nome).trim(),
+    descricao: descricao ? String(descricao) : null,
+    tipo,
+    padrao: Boolean(padrao),
+    campos: Array.isArray(campos) ? campos : [],
+    checklist,
+    clienteAcompanhaDefault: Boolean(clienteAcompanhaDefault),
+    compartilharStatusClienteDefault: Boolean(compartilharStatusClienteDefault),
+    updatedAt: new Date(),
+  } as any).returning();
+
+  return res.status(201).json(row);
+});
+
+router.patch("/tenants/:tenantId/servicos/modelos-os/:id", async (req, res) => {
+  const tenantId = routeTenantId(req);
+  const id = String(req.params.id);
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [atual] = await db.select().from(servicosOsModelosTable)
+    .where(and(eq(servicosOsModelosTable.id, id), eq(servicosOsModelosTable.tenantId, tenantId)));
+  if (!atual) return res.status(404).json({ error: "Modelo de OS não encontrado." });
+
+  const patch: Record<string, any> = {};
+  const allowed = [
+    "nome", "descricao", "tipo", "padrao", "campos", "checklist",
+    "clienteAcompanhaDefault", "compartilharStatusClienteDefault",
+  ];
+  for (const [key, value] of Object.entries(req.body ?? {})) {
+    if (allowed.includes(key)) patch[key] = value;
+  }
+  if (patch.tipo && !MODELOS.includes(patch.tipo as ModeloExecucao)) {
+    return res.status(422).json({ error: "Tipo de modelo inválido." });
+  }
+  if (patch.checklist != null && !Array.isArray(patch.checklist)) {
+    return res.status(422).json({ error: "Checklist inválido." });
+  }
+
+  const tipoFinal = String(patch.tipo ?? atual.tipo);
+  if (patch.padrao === true) {
+    await db.update(servicosOsModelosTable)
+      .set({ padrao: false, updatedAt: new Date() })
+      .where(and(
+        eq(servicosOsModelosTable.tenantId, tenantId),
+        eq(servicosOsModelosTable.tipo, tipoFinal),
+        eq(servicosOsModelosTable.ativo, true),
+      ));
+  }
+
+  const [row] = await db.update(servicosOsModelosTable)
+    .set({ ...patch, updatedAt: new Date() } as any)
+    .where(and(eq(servicosOsModelosTable.id, id), eq(servicosOsModelosTable.tenantId, tenantId)))
+    .returning();
+
+  return res.json(row);
+});
+
+router.delete("/tenants/:tenantId/servicos/modelos-os/:id", async (req, res) => {
+  const tenantId = routeTenantId(req);
+  const id = String(req.params.id);
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [row] = await db.update(servicosOsModelosTable)
+    .set({ ativo: false, padrao: false, updatedAt: new Date() })
+    .where(and(eq(servicosOsModelosTable.id, id), eq(servicosOsModelosTable.tenantId, tenantId)))
+    .returning();
+
+  if (!row) return res.status(404).json({ error: "Modelo de OS não encontrado." });
+  return res.json({ ok: true });
+});
+
 router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
   const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
@@ -513,6 +629,7 @@ router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
     negocioId,
     tipoServicoId,
     modeloExecucao = "geral",
+    modeloOsId,
     enderecoAtendimento,
     prestadorId,
     observacoes,
@@ -523,6 +640,7 @@ router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
     negocioId?: string;
     tipoServicoId: string;
     modeloExecucao?: ModeloExecucao;
+    modeloOsId?: string;
     enderecoAtendimento: string;
     prestadorId?: string;
     observacoes?: string;
@@ -533,7 +651,18 @@ router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
   if (!clienteId || !tipoServicoId || !enderecoAtendimento) {
     return res.status(422).json({ error: "clienteId, tipoServicoId e enderecoAtendimento são obrigatórios" });
   }
-  if (!MODELOS.includes(modeloExecucao as ModeloExecucao)) {
+  let modeloSelecionado: any = null;
+  if (modeloOsId) {
+    [modeloSelecionado] = await db.select().from(servicosOsModelosTable)
+      .where(and(
+        eq(servicosOsModelosTable.id, modeloOsId),
+        eq(servicosOsModelosTable.tenantId, tenantId),
+        eq(servicosOsModelosTable.ativo, true),
+      ));
+    if (!modeloSelecionado) return res.status(404).json({ error: "Modelo de OS não encontrado." });
+  }
+  const modeloEfetivo = (modeloSelecionado?.tipo ?? modeloExecucao) as ModeloExecucao;
+  if (!MODELOS.includes(modeloEfetivo)) {
     return res.status(422).json({ error: "Modelo de execução inválido" });
   }
 
@@ -555,9 +684,26 @@ router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
   }
 
   const nascePronta = !tipoServico.requerVisitaTecnica && tipoServico.precoBase != null;
-  const checklist = buildChecklist(modeloExecucao);
-  const criacao = history(req, "criacao", `OS criada com modelo ${modeloExecucao}`, {
-    modeloExecucao,
+  const checklist = modeloSelecionado
+    ? (modeloSelecionado.checklist ?? []).map((item: any) => ({
+        id: item.id || crypto.randomUUID(),
+        titulo: String(item.titulo ?? "Etapa"),
+        descricao: item.descricao ?? null,
+        obrigatorio: item.obrigatorio !== false,
+        evidencia: item.evidencia ?? "confirmation",
+        visibilidade: item.visibilidade ?? "interno",
+        concluido: false,
+        observacao: null,
+        fotos: [],
+        concluidoPorId: null,
+        concluidoPorNome: null,
+        concluidoEm: null,
+      }))
+    : buildChecklist(modeloEfetivo);
+  const criacao = history(req, "criacao", `OS criada com modelo ${modeloSelecionado?.nome ?? modeloEfetivo}`, {
+    modeloExecucao: modeloEfetivo,
+    modeloOsId: modeloSelecionado?.id ?? null,
+    modeloOsNome: modeloSelecionado?.nome ?? null,
     negocioId: negocioId ?? null,
   });
 
@@ -568,7 +714,8 @@ router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
       clienteId,
       negocioId: negocioId ?? null,
       tipoServicoId,
-      modeloExecucao,
+      modeloExecucao: modeloEfetivo,
+      modeloOsId: modeloSelecionado?.id ?? null,
       enderecoAtendimento,
       prestadorId: prestadorId ?? null,
       observacoes: observacoes ?? null,
@@ -576,9 +723,9 @@ router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
       valorOrcado: nascePronta ? tipoServico.precoBase : null,
       checklistExecucao: checklist,
       historicoExecucao: [criacao],
-      clienteAcompanha,
-      compartilharStatusCliente,
-      portalToken: clienteAcompanha ? crypto.randomUUID() : null,
+      clienteAcompanha: modeloSelecionado ? modeloSelecionado.clienteAcompanhaDefault : clienteAcompanha,
+      compartilharStatusCliente: modeloSelecionado ? modeloSelecionado.compartilharStatusClienteDefault : compartilharStatusCliente,
+      portalToken: (modeloSelecionado ? modeloSelecionado.clienteAcompanhaDefault : clienteAcompanha) ? crypto.randomUUID() : null,
       updatedAt: new Date(),
     } as any)
     .returning();

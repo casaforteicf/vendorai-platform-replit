@@ -135,6 +135,7 @@ function NovaOrdemDialog({
   const qc = useQueryClient();
   const { toast } = useToast();
   const [modeloExecucao, setModeloExecucao] = useState("geral");
+  const [modeloOsId, setModeloOsId] = useState("");
   const [clienteSearch, setClienteSearch] = useState("");
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [negocioId, setNegocioId] = useState("");
@@ -148,6 +149,12 @@ function NovaOrdemDialog({
       fetch(`/api/tenants/${tenantId}/leads?limit=10&search=${encodeURIComponent(clienteSearch)}`, { headers: authHeaders() })
         .then((r) => r.json()).then((d) => Array.isArray(d) ? d : d.leads ?? []),
     enabled: !!tenantId && clienteSearch.length >= 2,
+  });
+
+  const { data: modelosOs = [] } = useQuery<any[]>({
+    queryKey: ["servicos-modelos-os", tenantId],
+    queryFn: () => fetch(`/api/tenants/${tenantId}/servicos/modelos-os`, { headers: authHeaders() }).then((r) => r.json()),
+    enabled: !!tenantId && open,
   });
 
   const { data: tipos = [] } = useQuery<any[]>({
@@ -182,6 +189,7 @@ function NovaOrdemDialog({
       toast({ title: "Ordem de serviço criada com checklist de execução." });
       onOpenChange(false);
       setModeloExecucao("geral");
+      setModeloOsId("");
       setClienteSearch("");
       setSelectedLead(null);
       setNegocioId("");
@@ -203,6 +211,7 @@ function NovaOrdemDialog({
       negocioId: negocioId || undefined,
       tipoServicoId,
       modeloExecucao,
+      modeloOsId: modeloOsId || undefined,
       enderecoAtendimento,
       observacoes: observacoes || undefined,
       clienteAcompanha: true,
@@ -218,14 +227,38 @@ function NovaOrdemDialog({
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
           <div className="space-y-1.5">
             <Label>Modelo da ordem <span className="text-destructive">*</span></Label>
-            <Select value={modeloExecucao} onValueChange={setModeloExecucao}>
+            <Select
+              value={modeloOsId ? `custom:${modeloOsId}` : `system:${modeloExecucao}`}
+              onValueChange={(value) => {
+                if (value.startsWith("custom:")) {
+                  const id = value.slice("custom:".length);
+                  const model = (Array.isArray(modelosOs) ? modelosOs : []).find((item: any) => item.id === id);
+                  setModeloOsId(id);
+                  if (model?.tipo) setModeloExecucao(model.tipo);
+                } else {
+                  setModeloOsId("");
+                  setModeloExecucao(value.slice("system:".length));
+                }
+              }}
+            >
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {MODELOS.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                {Array.isArray(modelosOs) && modelosOs.length > 0 && (
+                  <>
+                    {modelosOs.map((model: any) => (
+                      <SelectItem key={model.id} value={`custom:${model.id}`}>
+                        {model.nome}{model.padrao ? " · Padrão" : ""}
+                      </SelectItem>
+                    ))}
+                  </>
+                )}
+                {MODELOS.map(([value, label]) => (
+                  <SelectItem key={value} value={`system:${value}`}>{label} · modelo do sistema</SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              O modelo define o passo a passo, as evidências obrigatórias e o avanço automático.
+              Modelos personalizados do tenant definem o checklist, evidências e regras padrão da execução.
             </p>
           </div>
 
@@ -628,12 +661,312 @@ function ExecucaoDialog({
   );
 }
 
+function ModelosOsDialog({
+  tenantId,
+  open,
+  onOpenChange,
+}: {
+  tenantId: string;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [nome, setNome] = useState("");
+  const [descricao, setDescricao] = useState("");
+  const [tipo, setTipo] = useState("assistencia");
+  const [padrao, setPadrao] = useState(false);
+  const [clienteAcompanhaDefault, setClienteAcompanhaDefault] = useState(true);
+  const [compartilharStatusClienteDefault, setCompartilharStatusClienteDefault] = useState(true);
+  const [checklist, setChecklist] = useState<any[]>([]);
+
+  const QK = ["servicos-modelos-os", tenantId];
+  const { data: modelos = [], isLoading } = useQuery<any[]>({
+    queryKey: QK,
+    queryFn: () => fetch(`/api/tenants/${tenantId}/servicos/modelos-os`, { headers: authHeaders() }).then((r) => r.json()),
+    enabled: !!tenantId && open,
+  });
+
+  function resetForm() {
+    setEditingId(null);
+    setNome("");
+    setDescricao("");
+    setTipo("assistencia");
+    setPadrao(false);
+    setClienteAcompanhaDefault(true);
+    setCompartilharStatusClienteDefault(true);
+    setChecklist([]);
+  }
+
+  function edit(model: any) {
+    setEditingId(model.id);
+    setNome(model.nome ?? "");
+    setDescricao(model.descricao ?? "");
+    setTipo(model.tipo ?? "assistencia");
+    setPadrao(Boolean(model.padrao));
+    setClienteAcompanhaDefault(model.clienteAcompanhaDefault !== false);
+    setCompartilharStatusClienteDefault(model.compartilharStatusClienteDefault !== false);
+    setChecklist(Array.isArray(model.checklist) ? model.checklist.map((item: any) => ({ ...item })) : []);
+  }
+
+  function duplicate(model: any) {
+    setEditingId(null);
+    setNome(`${model.nome ?? "Modelo"} - cópia`);
+    setDescricao(model.descricao ?? "");
+    setTipo(model.tipo ?? "assistencia");
+    setPadrao(false);
+    setClienteAcompanhaDefault(model.clienteAcompanhaDefault !== false);
+    setCompartilharStatusClienteDefault(model.compartilharStatusClienteDefault !== false);
+    setChecklist(Array.isArray(model.checklist) ? model.checklist.map((item: any) => ({ ...item, id: crypto.randomUUID() })) : []);
+  }
+
+  const save = useMutation({
+    mutationFn: () => apiJson(
+      editingId
+        ? `/api/tenants/${tenantId}/servicos/modelos-os/${editingId}`
+        : `/api/tenants/${tenantId}/servicos/modelos-os`,
+      {
+        method: editingId ? "PATCH" : "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          nome,
+          descricao: descricao || undefined,
+          tipo,
+          padrao,
+          clienteAcompanhaDefault,
+          compartilharStatusClienteDefault,
+          checklist: checklist.map((item) => ({
+            id: item.id || crypto.randomUUID(),
+            titulo: String(item.titulo ?? "").trim(),
+            descricao: item.descricao || null,
+            obrigatorio: item.obrigatorio !== false,
+            evidencia: item.evidencia || "confirmation",
+            visibilidade: item.visibilidade || "interno",
+          })).filter((item) => item.titulo),
+          campos: [],
+        }),
+      },
+    ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QK });
+      toast({ title: editingId ? "Modelo de OS atualizado." : "Modelo de OS criado." });
+      resetForm();
+    },
+    onError: (e: any) => toast({ title: "Não foi possível salvar o modelo", description: e.message, variant: "destructive" }),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => apiJson(`/api/tenants/${tenantId}/servicos/modelos-os/${id}`, {
+      method: "DELETE",
+      headers: authHeaders(),
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QK });
+      toast({ title: "Modelo desativado." });
+      if (editingId) resetForm();
+    },
+    onError: (e: any) => toast({ title: "Não foi possível excluir o modelo", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(value) => { onOpenChange(value); if (!value) resetForm(); }}>
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Modelos de Ordem de Serviço</DialogTitle>
+        </DialogHeader>
+
+        <div className="grid gap-6 lg:grid-cols-[0.9fr_1.4fr]">
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm font-medium">Modelos cadastrados</p>
+              <p className="text-xs text-muted-foreground">Cada tenant pode manter modelos diferentes para assistência, instalação, suporte e outras execuções.</p>
+            </div>
+
+            {isLoading ? (
+              <Skeleton className="h-24 w-full" />
+            ) : !Array.isArray(modelos) || modelos.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                Nenhum modelo personalizado ainda.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {modelos.map((model: any) => (
+                  <div key={model.id} className="rounded-lg border p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium text-sm">{model.nome}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {MODELOS.find(([value]) => value === model.tipo)?.[1] ?? model.tipo}
+                          {model.padrao ? " · Padrão" : ""}
+                        </p>
+                      </div>
+                      <Badge variant="outline">{Array.isArray(model.checklist) ? model.checklist.length : 0} passos</Badge>
+                    </div>
+                    <div className="flex gap-2 mt-3 flex-wrap">
+                      <Button type="button" size="sm" variant="outline" onClick={() => edit(model)}>Editar</Button>
+                      <Button type="button" size="sm" variant="outline" onClick={() => duplicate(model)}>Duplicar</Button>
+                      <Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={() => remove.mutate(model.id)}>Excluir</Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="font-semibold">{editingId ? "Editar modelo" : "Novo modelo"}</p>
+                <p className="text-xs text-muted-foreground">Monte o passo a passo que será copiado para cada nova OS.</p>
+              </div>
+              {editingId && <Button type="button" variant="ghost" size="sm" onClick={resetForm}>Novo modelo</Button>}
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Nome do modelo</Label>
+                <Input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Assistência em garantia" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Tipo</Label>
+                <Select value={tipo} onValueChange={setTipo}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {MODELOS.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Descrição</Label>
+              <Textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={2} placeholder="Quando usar este modelo e qual é o objetivo da OS." />
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="flex items-center gap-2 rounded-lg border p-3 text-sm">
+                <input type="checkbox" checked={padrao} onChange={(e) => setPadrao(e.target.checked)} />
+                Modelo padrão deste tipo
+              </label>
+              <label className="flex items-center gap-2 rounded-lg border p-3 text-sm">
+                <input type="checkbox" checked={clienteAcompanhaDefault} onChange={(e) => setClienteAcompanhaDefault(e.target.checked)} />
+                Cliente acompanha
+              </label>
+              <label className="flex items-center gap-2 rounded-lg border p-3 text-sm">
+                <input type="checkbox" checked={compartilharStatusClienteDefault} onChange={(e) => setCompartilharStatusClienteDefault(e.target.checked)} />
+                Compartilhar status
+              </label>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <Label>Checklist de execução</Label>
+                  <p className="text-xs text-muted-foreground">Defina o que deve ser comprovado em cada passo.</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setChecklist((items) => [...items, {
+                    id: crypto.randomUUID(),
+                    titulo: "",
+                    descricao: "",
+                    obrigatorio: true,
+                    evidencia: "confirmation",
+                    visibilidade: "interno",
+                  }])}
+                >
+                  <Plus className="h-4 w-4 mr-2" /> Adicionar passo
+                </Button>
+              </div>
+
+              {checklist.length === 0 ? (
+                <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                  Adicione os passos que o responsável deverá validar durante a execução.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {checklist.map((item, index) => (
+                    <div key={item.id ?? index} className="rounded-lg border p-3 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary">{index + 1}</Badge>
+                        <Input
+                          value={item.titulo ?? ""}
+                          onChange={(e) => setChecklist((items) => items.map((x, i) => i === index ? { ...x, titulo: e.target.value } : x))}
+                          placeholder="Nome do passo"
+                        />
+                        <Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={() => setChecklist((items) => items.filter((_, i) => i !== index))}>
+                          Remover
+                        </Button>
+                      </div>
+                      <Input
+                        value={item.descricao ?? ""}
+                        onChange={(e) => setChecklist((items) => items.map((x, i) => i === index ? { ...x, descricao: e.target.value } : x))}
+                        placeholder="Instrução opcional para o executor"
+                      />
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        <Select
+                          value={item.evidencia ?? "confirmation"}
+                          onValueChange={(value) => setChecklist((items) => items.map((x, i) => i === index ? { ...x, evidencia: value } : x))}
+                        >
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="confirmation">Confirmação</SelectItem>
+                            <SelectItem value="text">Texto</SelectItem>
+                            <SelectItem value="photo">Foto</SelectItem>
+                            <SelectItem value="text_or_photo">Texto ou foto</SelectItem>
+                            <SelectItem value="text_and_photo">Texto + foto</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Select
+                          value={item.visibilidade ?? "interno"}
+                          onValueChange={(value) => setChecklist((items) => items.map((x, i) => i === index ? { ...x, visibilidade: value } : x))}
+                        >
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="interno">Interno</SelectItem>
+                            <SelectItem value="cliente">Cliente</SelectItem>
+                            <SelectItem value="cliente_parceiro">Cliente + parceiro</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <label className="flex items-center gap-2 rounded-md border px-3 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={item.obrigatorio !== false}
+                            onChange={(e) => setChecklist((items) => items.map((x, i) => i === index ? { ...x, obrigatorio: e.target.checked } : x))}
+                          />
+                          Obrigatório
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={resetForm}>Limpar</Button>
+              <Button type="button" onClick={() => save.mutate()} disabled={!nome.trim() || save.isPending}>
+                {save.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                {editingId ? "Salvar alterações" : "Criar modelo"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function ServicosOrdens() {
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const qc = useQueryClient();
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [modelosDialogOpen, setModelosDialogOpen] = useState(false);
   const [execucaoId, setExecucaoId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
@@ -702,6 +1035,9 @@ export default function ServicosOrdens() {
               ))}
             </SelectContent>
           </Select>
+          <Button variant="outline" onClick={() => setModelosDialogOpen(true)}>
+            Modelos de OS
+          </Button>
           <Button onClick={() => setDialogOpen(true)}>
             <Plus className="h-4 w-4 mr-2" /> Nova Ordem
           </Button>
@@ -818,6 +1154,7 @@ export default function ServicosOrdens() {
         </CardContent>
       </Card>
 
+      <ModelosOsDialog tenantId={tenantId} open={modelosDialogOpen} onOpenChange={setModelosDialogOpen} />
       <NovaOrdemDialog tenantId={tenantId} open={dialogOpen} onOpenChange={setDialogOpen} />
       {execucao && (
         <ExecucaoDialog
