@@ -331,8 +331,8 @@ archProcurementRfqRouter.get("/arch/procurement-rfq/:obraId", async (req, res, n
     const obraId = String(req.params["obraId"] || "");
     const obra = await ownedObra(tid, obraId);
     if (!obra) return res.status(404).json({ error: "Obra não encontrada." });
-    res.json({ obra, ...(await packageBundle(tid, obraId)) });
-  } catch (err) { logger.error({ err }, "rfq bundle error"); next(err); }
+    return res.json({ obra, ...(await packageBundle(tid, obraId)) });
+  } catch (err) { logger.error({ err }, "rfq bundle error"); return next(err); }
 });
 
 archProcurementRfqRouter.patch("/arch/procurement-rfq/suppliers/:supplierId/scope", async (req, res, next) => {
@@ -353,8 +353,8 @@ archProcurementRfqRouter.patch("/arch/procurement-rfq/suppliers/:supplierId/scop
       [JSON.stringify(categories), JSON.stringify(disciplines), JSON.stringify(regions), JSON.stringify(brands), leadTime, supplierId, tid],
     );
     if (!result.rows[0]) return res.status(404).json({ error: "Fornecedor não encontrado." });
-    res.json({ supplier: result.rows[0] });
-  } catch (err) { logger.error({ err }, "supplier scope update error"); next(err); }
+    return res.json({ supplier: result.rows[0] });
+  } catch (err) { logger.error({ err }, "supplier scope update error"); return next(err); }
 });
 
 archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async (req, res, next) => {
@@ -531,10 +531,10 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
       created.push({ ...pkg.rows[0], itemCount: requestIds.length, saleValue, commercialSource: commercial.saleSource });
     }
     await client.query("COMMIT");
-    res.status(201).json({ packages: created });
+    return res.status(201).json({ packages: created });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => undefined);
-    logger.error({ err }, "rfq from budget error"); next(err);
+    logger.error({ err }, "rfq from budget error"); return next(err);
   } finally { client.release(); }
 });
 
@@ -603,8 +603,8 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
     const failedCount = created.filter((item: any) => item.status === "failed").length;
     const packageStatus = sentCount === 0 ? "draft" : failedCount > 0 ? "partial" : "sent";
     await pool.query(`UPDATE arch_rfq_packages SET status=$1,updated_at=now() WHERE id=$2::uuid`, [packageStatus, packageId]);
-    res.status(201).json({ invitations: created, skipped: supplierIds.length - created.length, packageStatus });
-  } catch (err) { logger.error({ err }, "rfq invitations error"); next(err); }
+    return res.status(201).json({ invitations: created, skipped: supplierIds.length - created.length, packageStatus });
+  } catch (err) { logger.error({ err }, "rfq invitations error"); return next(err); }
 });
 
 
@@ -708,7 +708,7 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
     });
   } catch (err) {
     logger.error({ err }, "guest rfq invitation error");
-    next(err);
+    return next(err);
   }
 });
 
@@ -779,10 +779,10 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
     );
     await client.query(`UPDATE arch_rfq_packages SET status='completed',updated_at=now() WHERE id=$1::uuid`, [packageId]);
     await client.query("COMMIT");
-    res.json({ ok: true });
+    return res.json({ ok: true });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => undefined);
-    logger.error({ err }, "rfq selection error"); next(err);
+    logger.error({ err }, "rfq selection error"); return next(err);
   } finally { client.release(); }
 });
 
@@ -987,7 +987,7 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
   } catch (err) {
     await client.query("ROLLBACK").catch(() => undefined);
     logger.error({ err }, "rfq commercial revision error");
-    next(err);
+    return next(err);
   } finally { client.release(); }
 });
 
@@ -1011,6 +1011,17 @@ archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token", async (req, res,
     );
     const tenantBrand = tenantBrandResult.rows[0] ?? {};
     await pool.query(`SELECT public.arch_rfq_public_mark_viewed($1::uuid)`, [token]);
+    const quoteClosed = ["accepted","rejected","expired"].includes(String(inv.status))
+      || ["completed","cancelled"].includes(String(pkg.status));
+    const quoteClosedReason = String(inv.status) === "accepted"
+      ? "Cotação selecionada."
+      : String(inv.status) === "rejected"
+        ? "Cotação encerrada após seleção de outro fornecedor."
+        : ["completed","cancelled"].includes(String(pkg.status))
+          ? "Este pacote de cotação já foi encerrado."
+          : String(inv.status) === "expired"
+            ? "Esta cotação expirou."
+            : null;
 
     const itemRows = items.map((item:any)=>`<tr>
       <td><strong>${esc(item.descricao)}</strong><br><small>${esc(item.ambiente || "")}</small></td>
@@ -1026,16 +1037,6 @@ archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token", async (req, res,
     const responseDocRows = responseDocs.length
       ? responseDocs.map((doc:any)=>`<li>${esc(doc.name || "Anexo enviado")}</li>`).join("")
       : "<li class='muted'>Nenhum anexo enviado ainda.</li>";
-    const quoteClosed = ["accepted","rejected","expired"].includes(String(inv.status)) || ["completed","cancelled"].includes(String(pkg.status));
-    const quoteClosedReason = String(inv.status) === "accepted"
-      ? "Cotação selecionada."
-      : String(inv.status) === "rejected"
-        ? "Cotação encerrada após seleção de outro fornecedor."
-        : ["completed","cancelled"].includes(String(pkg.status))
-          ? "Este pacote de cotação já foi encerrado."
-          : String(inv.status) === "expired"
-            ? "Esta cotação expirou."
-            : null;
     const supplierAccountCard = inv.access_mode === "guest"
       ? `<div class="card" id="vendorAccount"><div class="muted">Opcional</div><h2>Quer usar o Vendor.ai como fornecedor?</h2>
           <p class="muted">Você pode responder esta cotação sem cadastro. Se quiser, crie sua conta e passe a ter seu próprio ambiente, histórico de cotações e recursos do sistema.</p>
@@ -1053,7 +1054,7 @@ archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token", async (req, res,
         ? `<div class="card"><div class="muted">Conta Vendor.ai vinculada</div><h2>Este fornecedor já possui acesso ao sistema</h2><p class="muted">O histórico desta cotação continua vinculado à conta. <a href="/login">Entrar no Vendor.ai</a>.</p></div>`
         : "";
 
-    res.type("html").send(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    return res.type("html").send(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <title>${esc(pkg.code)} — Cotação</title><style>
     body{font-family:Inter,Arial,sans-serif;background:#f6f7fb;color:#111827;margin:0}.wrap{max-width:1100px;margin:36px auto;padding:0 18px}.card{background:#fff;border:1px solid #e5e7eb;border-radius:22px;padding:24px;margin-bottom:18px}h1{margin:4px 0 8px;font-size:28px}small,.muted{color:#6b7280}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px;border-bottom:1px solid #eee;vertical-align:top}input,textarea{box-sizing:border-box;width:100%;padding:10px;border:1px solid #d1d5db;border-radius:10px}label{display:block;font-size:12px;font-weight:700;margin:12px 0 6px}button{background:#111827;color:#fff;border:0;border-radius:12px;padding:13px 18px;font-weight:700;cursor:pointer}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}@media(max-width:760px){.grid{grid-template-columns:1fr}table{font-size:12px}.wrap{margin:14px auto}}
     </style></head><body><div class="wrap"><div class="card">
@@ -1121,7 +1122,7 @@ archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token", async (req, res,
       setTimeout(()=>{location.href=d.demoUrl||'/app'},700);
     };
     </script></body></html>`);
-  } catch (err) { logger.error({ err }, "public rfq page error"); next(err); }
+  } catch (err) { logger.error({ err }, "public rfq page error"); return next(err); }
 });
 
 archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token/documents/:index", async (req, res, next) => {
@@ -1168,7 +1169,7 @@ archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token/documents/:index",
     return res.status(404).send("Documento não disponível.");
   } catch (err) {
     logger.error({ err }, "public rfq technical document error");
-    next(err);
+    return next(err);
   }
 });
 
@@ -1198,10 +1199,10 @@ archProcurementRfqPublicRouter.post("/public/arqdor/rfq/:token/documents", publi
 
     const document = await saveSupplierDocument(String(inv.tenant_id), String(pkg.obra_id), file);
     await pool.query(`SELECT public.arch_rfq_public_add_document($1::uuid,$2::jsonb)`, [token, JSON.stringify(document)]);
-    res.status(201).json({ document });
+    return res.status(201).json({ document });
   } catch (err) {
     logger.error({ err }, "public rfq document upload error");
-    next(err);
+    return next(err);
   }
 });
 
@@ -1209,14 +1210,14 @@ archProcurementRfqPublicRouter.post("/public/arqdor/rfq/:token/respond", async (
   try {
     const token = String(req.params["token"] || "");
     const result = await pool.query(`SELECT public.arch_rfq_public_submit($1::uuid,$2::jsonb) AS result`, [token, JSON.stringify(req.body ?? {})]);
-    res.json(result.rows[0]?.result ?? { ok: true });
+    return res.json(result.rows[0]?.result ?? { ok: true });
   } catch (err) {
     logger.error({ err }, "public rfq response error");
     const message = err instanceof Error ? err.message : "Não foi possível registrar a cotação.";
     if (/Cotação não encontrada|Cotação encerrada|Informe os itens|Item fora do escopo|todos os itens do escopo|todos os itens precisam ter preço/i.test(message)) {
       return res.status(400).json({ error: message.replace(/^.*?:\s*/, "") });
     }
-    next(err);
+    return next(err);
   }
 });
 
