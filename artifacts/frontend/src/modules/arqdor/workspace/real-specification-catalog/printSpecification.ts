@@ -44,10 +44,11 @@ async function tenantBrand(tenantId?: string | null) {
     const response = await fetch(`/api/tenants/${encodeURIComponent(tenantId)}`, { headers: getAuthHeaders() });
     if (!response.ok) return { name: "ARQDOR", logoUrl: "", primaryColor: "#111827" };
     const raw = await response.json();
+    const rawColor = String(raw?.corPrimaria || raw?.cor_primaria || "");
     return {
       name: raw?.name || raw?.nome || "ARQDOR",
       logoUrl: raw?.logoUrl || raw?.logo_url || "",
-      primaryColor: raw?.corPrimaria || raw?.cor_primaria || "#111827",
+      primaryColor: /^#[0-9a-f]{6}$/i.test(rawColor) ? rawColor : "#111827",
     };
   } catch {
     return { name: "ARQDOR", logoUrl: "", primaryColor: "#111827" };
@@ -91,8 +92,9 @@ export async function printSpecification(params: {
   `).join("");
 
   const createdAt = new Date().toLocaleString("pt-BR");
-  const win = window.open("", "_blank", "noopener,noreferrer");
+  const win = window.open("", "_blank");
   if (!win) throw new Error("O navegador bloqueou a janela de impressão.");
+  try { win.opener = null; } catch { /* browser may block assignment */ }
 
   win.document.write(`<!doctype html>
 <html lang="pt-BR">
