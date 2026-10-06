@@ -1481,51 +1481,9 @@ function EditSaasDealSheet({
               )}
             />
 
-            <div className="pt-2 border-t">
-              <Button type="button" variant="outline" className="w-full" onClick={() => {
-                setTransferResponsibleId(deal.assignedTo ?? "");
-                setTransferOpen(true);
-              }}>
-                Transferir para Suporte
-              </Button>
-            </div>
-
             <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700" disabled={updateDeal.isPending}>
               {updateDeal.isPending ? "Salvando..." : "Salvar alterações"}
             </Button>
-
-            <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Transferir para Suporte</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Responsável no suporte</label>
-                    <Select value={transferResponsibleId} onValueChange={setTransferResponsibleId}>
-                      <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                      <SelectContent>
-                        {transferUsers.map((u) => (
-                          <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Motivo / observação</label>
-                    <textarea
-                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-24"
-                      value={transferNote}
-                      onChange={(e) => setTransferNote(e.target.value)}
-                      placeholder="Contexto para a equipe de suporte..."
-                    />
-                  </div>
-                  <Button type="button" className="w-full" onClick={transferToSupport} disabled={transferring || !transferResponsibleId}>
-                    {transferring ? "Transferindo..." : "Confirmar transferência"}
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
           </form>
         </Form>
       </SheetContent>
@@ -1587,17 +1545,42 @@ function EditDealSheet({
   const [quoteFileName, setQuoteFileName] = useState<string | null>(null);
   const quoteFileRef = useRef<HTMLInputElement>(null);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [transferPipeline, setTransferPipeline] = useState("suporte");
+  const [transferStage, setTransferStage] = useState("");
   const [transferResponsibleId, setTransferResponsibleId] = useState("");
   const [transferNote, setTransferNote] = useState("");
   const [transferring, setTransferring] = useState(false);
+  const transferPipelineOptions = [
+    { key: "aquecimento", label: "Aquecimento" },
+    { key: "parceiros", label: "Parceiros" },
+    { key: "execucao", label: "Execução / Pedidos" },
+    { key: "suporte", label: "Suporte / Assistência" },
+  ];
   const { data: transferUsers = [] } = useListTenantUsers(tenantId, {
     request: { headers: { Authorization: "Bearer " + (token ?? "") } },
     query: { enabled: !!tenantId && transferOpen, queryKey: getListTenantUsersQueryKey(tenantId) },
   });
+  const { data: transferStages = [] } = useQuery<Array<{ id: string; key: string; label: string; ordem?: number }>>({
+    queryKey: ["pipeline-stages", tenantId, transferPipeline],
+    enabled: Boolean(tenantId && token && transferOpen && transferPipeline),
+    staleTime: 30_000,
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/pipeline-stages?pipeline=${encodeURIComponent(transferPipeline)}`, {
+        headers: { Authorization: "Bearer " + (token ?? "") },
+      });
+      if (!response.ok) throw new Error("Não foi possível carregar as etapas da pipeline.");
+      return response.json();
+    },
+  });
 
-  async function transferToSupport() {
-    if (!deal || !transferResponsibleId) {
-      toast({ title: "Selecione o responsável do suporte.", variant: "destructive" });
+  useEffect(() => {
+    const firstStage = [...transferStages].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))[0];
+    setTransferStage(firstStage?.key ?? "");
+  }, [transferPipeline, transferStages]);
+
+  async function transferToPipeline() {
+    if (!deal || !transferPipeline || !transferStage || !transferResponsibleId || transferNote.trim().length < 5) {
+      toast({ title: "Selecione pipeline, etapa e responsável e informe uma justificativa.", variant: "destructive" });
       return;
     }
     setTransferring(true);
@@ -1605,18 +1588,27 @@ function EditDealSheet({
       const response = await fetch(`/api/deals/${deal.id}/transfer-pipeline`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + (token ?? "") },
-        body: JSON.stringify({ targetPipeline: "suporte", responsavelId: transferResponsibleId, observacao: transferNote.trim() || undefined }),
+        body: JSON.stringify({
+          targetPipeline: transferPipeline,
+          targetStage: transferStage,
+          responsavelId: transferResponsibleId,
+          justificativa: transferNote.trim(),
+        }),
       });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || "Falha ao transferir");
-      toast({ title: "Lead transferido para Suporte", description: "Chamado criado em “Chamado cliente” e histórico preservado." });
-      queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
-      queryClient.invalidateQueries({ queryKey: ["work-cards", tenantId, "suporte"] });
+      if (!response.ok) throw new Error(body.error || body.message || "Falha ao transferir");
+      const pipelineLabel = transferPipelineOptions.find((item) => item.key === transferPipeline)?.label ?? transferPipeline;
+      const stageLabel = body?.destination?.stageLabel ?? transferStages.find((item) => item.key === transferStage)?.label ?? transferStage;
+      toast({ title: "Lead movido para outra pipeline", description: `Destino: ${pipelineLabel} / ${stageLabel}. O histórico foi preservado.` });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
+        queryClient.invalidateQueries({ queryKey: ["work-cards", tenantId, transferPipeline] }),
+      ]);
       setTransferOpen(false);
       setTransferNote("");
       onClose();
     } catch (error) {
-      toast({ title: "Não foi possível transferir", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+      toast({ title: "Não foi possível mover o lead", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
     } finally {
       setTransferring(false);
     }
@@ -1989,6 +1981,72 @@ function EditDealSheet({
                 </FormItem>
               )}
             />
+            <div className="pt-2 border-t">
+              <Button type="button" variant="outline" className="w-full" onClick={() => {
+                setTransferPipeline("suporte");
+                setTransferResponsibleId(deal.assignedTo ?? "");
+                setTransferNote("");
+                setTransferOpen(true);
+              }}>
+                Mover para outra pipeline
+              </Button>
+            </div>
+
+            <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Mover para outra pipeline</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Pipeline de destino</label>
+                    <Select value={transferPipeline} onValueChange={setTransferPipeline}>
+                      <SelectTrigger><SelectValue placeholder="Selecione a pipeline..." /></SelectTrigger>
+                      <SelectContent>
+                        {transferPipelineOptions.map((item) => (
+                          <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Etapa de destino</label>
+                    <Select value={transferStage} onValueChange={setTransferStage}>
+                      <SelectTrigger><SelectValue placeholder="Selecione a etapa..." /></SelectTrigger>
+                      <SelectContent>
+                        {[...transferStages].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0)).map((stage) => (
+                          <SelectItem key={stage.id} value={stage.key}>{stage.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Responsável no destino</label>
+                    <Select value={transferResponsibleId} onValueChange={setTransferResponsibleId}>
+                      <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                      <SelectContent>
+                        {transferUsers.map((u) => (
+                          <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Justificativa do movimento</label>
+                    <textarea
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-24"
+                      value={transferNote}
+                      onChange={(e) => setTransferNote(e.target.value)}
+                      placeholder="Explique por que o lead está sendo movido para esta pipeline..."
+                    />
+                  </div>
+                  <Button type="button" className="w-full" onClick={transferToPipeline} disabled={transferring || !transferPipeline || !transferStage || !transferResponsibleId || transferNote.trim().length < 5}>
+                    {transferring ? "Movendo..." : "Confirmar movimento"}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
             <Button
               type="submit"
               className="w-full"
