@@ -421,6 +421,7 @@ async function syncProjectSpecification(tId: string | null, projectId: string) {
   );
   const seen = new Set<string>();
   let created = 0, updated = 0, unchanged = 0, removed = 0;
+  const impactedSpecIds: string[] = [];
   const now = new Date();
 
   for (const element of elements) {
@@ -472,12 +473,16 @@ async function syncProjectSpecification(tId: string | null, projectId: string) {
         element.lengthMm ?? null, element.areaM2 ?? null, element.perimeterM ?? null, element.volumeM3 ?? null, now, current.id,
       ],
     );
-    if (changed) updated += 1; else unchanged += 1;
+    if (changed) {
+      updated += 1;
+      impactedSpecIds.push(String(current.id));
+    } else unchanged += 1;
   }
 
   for (const row of currentResult.rows) {
     const source = String(row.source_object_id || "");
     if (!source || seen.has(source)) continue;
+    const wasAlreadyRemoved = row.revision_impact === "removed" && row.removed_from_project_at;
     await pool.query(
       `UPDATE arch_spec_objects
           SET revision_impact='removed', removed_from_project_at=COALESCE(removed_from_project_at,$1),
@@ -485,10 +490,60 @@ async function syncProjectSpecification(tId: string | null, projectId: string) {
         WHERE id=$2`,
       [now, row.id],
     );
-    removed += 1;
+    if (!wasAlreadyRemoved) {
+      impactedSpecIds.push(String(row.id));
+      removed += 1;
+    }
   }
 
-  return { found: true, conceptProjectId: concept.id, revision, created, updated, removed, unchanged };
+  if (impactedSpecIds.length) {
+    await pool.query(
+      `UPDATE arch_budget_items
+          SET specification_outdated=TRUE,
+              specification_revision=$2,
+              specification_impact=aso.revision_impact,
+              updated_at=now()
+         FROM arch_spec_objects aso
+        WHERE arch_budget_items.spec_object_id=aso.id
+          AND aso.id = ANY($1::uuid[])
+          AND arch_budget_items.deleted_at IS NULL`,
+      [impactedSpecIds, revision],
+    );
+
+    await pool.query(
+      `UPDATE arch_budgets b
+          SET specification_outdated=TRUE,
+              specification_revision=$2,
+              updated_at=now()
+        WHERE EXISTS (
+          SELECT 1 FROM arch_budget_items bi
+           WHERE bi.budget_id=b.id
+             AND bi.spec_object_id = ANY($1::uuid[])
+             AND bi.deleted_at IS NULL
+        )`,
+      [impactedSpecIds, revision],
+    );
+
+    await pool.query(
+      `UPDATE compras_obras
+          SET cotacao_desatualizada=TRUE,
+              escopo_versao=escopo_versao+1,
+              updated_at=now()
+        WHERE spec_object_id = ANY($1::uuid[])`,
+      [impactedSpecIds],
+    ).catch(() => undefined);
+  }
+
+  return {
+    found: true,
+    conceptProjectId: concept.id,
+    revision,
+    created,
+    updated,
+    removed,
+    unchanged,
+    impacted: impactedSpecIds.length,
+  };
 }
 
 const archSpecObjectsRouter = Router();
