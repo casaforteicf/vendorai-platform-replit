@@ -20,6 +20,7 @@ type SpecObject = {
   unit?: string | null;
   product_name?: string | null;
   material_name?: string | null;
+  catalog_code?: string | null;
   manufacturer_name?: string | null;
   supplier_name?: string | null;
   material_value?: string | number | null;
@@ -42,6 +43,7 @@ type BudgetItem = {
   manufacturer_name?: string | null;
   product_name?: string | null;
   material_name?: string | null;
+  catalog_code?: string | null;
 };
 
 type BudgetResponse = {
@@ -173,9 +175,10 @@ export default function DocumentationStudio({ arqState, onNavigate }: Documentat
   const exportMaterials = () => downloadCsv(
     `caderno-materiais-${projectId || "projeto"}.csv`,
     [
-      ["Item", "Material", "Produto", "Fabricante", "Fornecedor", "Quantidade", "Unidade", "Região", "Status"],
+      ["Item", "Código / SKU", "Material", "Produto", "Fabricante", "Fornecedor", "Quantidade", "Unidade", "Região", "Status"],
       ...materialRows.map((s) => [
         s.name,
+        s.catalog_code ?? "",
         s.material_name ?? "",
         s.product_name ?? "",
         s.manufacturer_name ?? "",
@@ -191,9 +194,10 @@ export default function DocumentationStudio({ arqState, onNavigate }: Documentat
   const exportPurchases = () => downloadCsv(
     `lista-compras-${projectId || "projeto"}.csv`,
     [
-      ["Item", "Produto", "Material", "Fornecedor", "Quantidade", "Unidade", "Material R$", "Mão de obra R$", "Total R$"],
+      ["Item", "Código / SKU", "Produto", "Material", "Fornecedor", "Quantidade", "Unidade", "Material R$", "Mão de obra R$", "Total R$"],
       ...budget.items.map((item) => [
         item.item,
+        item.catalog_code ?? "",
         item.product_name ?? "",
         item.material_name ?? "",
         item.supplier_name ?? item.manufacturer_name ?? "",
