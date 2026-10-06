@@ -20,8 +20,10 @@ import {
   DEFAULT_OBRA_PORTAL_CONFIG,
   type ObraPortalConfig,
 } from "@workspace/db";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 
 const router = Router();
+const portalStorage = new ObjectStorageService();
 
 function portalConfig(raw: unknown): ObraPortalConfig {
   const value = raw && typeof raw === "object" ? raw as Partial<ObraPortalConfig> : {};
@@ -62,6 +64,37 @@ async function createPortalSession(userId: string) {
   return raw;
 }
 
+function portalObjectPath(value: unknown): string | null {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  if (raw.startsWith("/objects/")) return raw;
+  if (raw.startsWith("/api/storage/objects/")) {
+    return `/objects/${raw.slice("/api/storage/objects/".length)}`;
+  }
+  try {
+    const parsed = new URL(raw);
+    if (parsed.pathname.startsWith("/api/storage/objects/")) {
+      return `/objects/${parsed.pathname.slice("/api/storage/objects/".length)}`;
+    }
+    if (parsed.pathname.startsWith("/objects/")) return parsed.pathname;
+  } catch {
+    // not an absolute URL
+  }
+  return null;
+}
+
+async function streamPortalObject(res: any, value: unknown) {
+  const objectPath = portalObjectPath(value);
+  if (!objectPath) return false;
+  const file = await portalStorage.getObjectEntityFile(objectPath);
+  const objectResponse = await portalStorage.downloadObject(file, 300);
+  objectResponse.headers.forEach((headerValue, key) => res.setHeader(key, headerValue));
+  res.setHeader("Cache-Control", "private, max-age=300");
+  res.status(objectResponse.status);
+  res.send(Buffer.from(await objectResponse.arrayBuffer()));
+  return true;
+}
+
 async function getArqdorPortalProject(token: string) {
   const [project] = await db.select().from(archProjetosTable)
     .where(and(eq(archProjetosTable.portalToken, token), eq(archProjetosTable.portalAtivo, true)))
@@ -95,7 +128,16 @@ router.get("/portal/arqdor/:token/versions", async (req, res) => {
     eq(archAiRendersTable.status, "concluido"),
   )).orderBy(asc(archAiRendersTable.createdAt));
 
-  const numbered = versions.map((version, index) => ({ ...version, versionNumber: index + 1 }));
+  const numbered = versions.map((version, index) => ({
+    ...version,
+    resultImageUrl: version.resultImageUrl
+      ? `/api/portal/arqdor/${encodeURIComponent(token)}/renders/${encodeURIComponent(version.id)}/result`
+      : null,
+    originalImageUrl: version.originalImageUrl
+      ? `/api/portal/arqdor/${encodeURIComponent(token)}/renders/${encodeURIComponent(version.id)}/original`
+      : null,
+    versionNumber: index + 1,
+  }));
   const byEnvironment = numbered.reduce<Record<string, typeof numbered>>((acc, version) => {
     const key = version.ambiente || "sem_ambiente";
     (acc[key] ??= []).push(version);
@@ -103,6 +145,39 @@ router.get("/portal/arqdor/:token/versions", async (req, res) => {
   }, {});
 
   return res.json({ project: { id: project.id, title: project.titulo, clientName: project.clienteNome }, versions: numbered, byEnvironment });
+});
+
+router.get("/portal/arqdor/:token/renders/:renderId/:variant", async (req, res, next) => {
+  try {
+    const token = String(req.params.token ?? "");
+    const renderId = String(req.params.renderId ?? "");
+    const variant = String(req.params.variant ?? "");
+    if (!["result","original"].includes(variant)) return res.status(404).send("Arquivo não encontrado.");
+
+    const project = await getArqdorPortalProject(token);
+    if (!project) return res.status(404).send("Portal não encontrado ou inativo.");
+
+    const [render] = await db.select({
+      id: archAiRendersTable.id,
+      resultImageUrl: archAiRendersTable.resultImageUrl,
+      originalImageUrl: archAiRendersTable.originalImageUrl,
+      status: archAiRendersTable.status,
+    }).from(archAiRendersTable).where(and(
+      eq(archAiRendersTable.id, renderId),
+      eq(archAiRendersTable.tenantId, project.tenantId),
+      eq(archAiRendersTable.projectId, project.id),
+    )).limit(1);
+
+    if (!render || render.status !== "concluido") return res.status(404).send("Render não encontrado.");
+    const source = variant === "original" ? render.originalImageUrl : render.resultImageUrl;
+    if (!source) return res.status(404).send("Arquivo não encontrado.");
+
+    if (await streamPortalObject(res, source)) return;
+    if (/^https:\/\//i.test(String(source))) return res.redirect(302, String(source));
+    return res.status(404).send("Arquivo não disponível.");
+  } catch (err) {
+    next(err);
+  }
 });
 
 router.post("/portal/arqdor/:token/revisions", async (req, res) => {
