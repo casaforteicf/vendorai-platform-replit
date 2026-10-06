@@ -95,12 +95,12 @@ async function resolveValidatedPlannerContext(input: {
 }): Promise<ValidatedPlannerContext | null> {
   const [[plan], [calendarItem]] = await Promise.all([
     db
-      .select({ conteudo: mediaPlansTable.conteudo })
+      .select({ id: mediaPlansTable.id, tenantId: mediaPlansTable.tenantId, conteudo: mediaPlansTable.conteudo })
       .from(mediaPlansTable)
       .where(and(eq(mediaPlansTable.id, input.mediaPlanId), eq(mediaPlansTable.tenantId, input.tenantId)))
       .limit(1),
     db
-      .select({ mediaPlanId: contentCalendarItemsTable.mediaPlanId, pilar: contentCalendarItemsTable.pilar })
+      .select({ tenantId: contentCalendarItemsTable.tenantId, mediaPlanId: contentCalendarItemsTable.mediaPlanId, pilar: contentCalendarItemsTable.pilar })
       .from(contentCalendarItemsTable)
       .where(and(eq(contentCalendarItemsTable.id, input.calendarItemId), eq(contentCalendarItemsTable.tenantId, input.tenantId)))
       .limit(1),
@@ -114,7 +114,9 @@ async function resolveValidatedPlannerContext(input: {
 
   if (
     !plan ||
+    plan.tenantId !== input.tenantId ||
     !calendarItem ||
+    calendarItem.tenantId !== input.tenantId ||
     calendarItem.mediaPlanId !== input.mediaPlanId ||
     !campaign?.nome ||
     normalizeCampaignLabel(calendarCampaignName) !== normalizeCampaignLabel(campaign.nome)
