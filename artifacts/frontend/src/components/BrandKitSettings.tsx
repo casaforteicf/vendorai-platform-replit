@@ -78,9 +78,23 @@ export function BrandKitSettings() {
   const profile = useGetBusinessProfileByTenant(tenantId, {
     query: { queryKey: getGetBusinessProfileByTenantQueryKey(tenantId), enabled: !!tenantId, retry: false },
   });
+  const resolvedProfile = useQuery({
+    queryKey: ["brand-kit-resolved-business-profile", tenantId],
+    enabled: !!tenantId,
+    retry: 1,
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/business-profile`, {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return await response.json() as Record<string, any> | null;
+    },
+  });
   const tenant = useGetTenant(tenantId, {
     query: { queryKey: getGetTenantQueryKey(tenantId), enabled: !!tenantId, retry: false },
   });
+  const profileData = resolvedProfile.data ?? profile.data ?? null;
   const updateProfile = useUpdateBusinessProfile();
   const updateTenant = useUpdateTenant();
 
@@ -98,7 +112,7 @@ export function BrandKitSettings() {
     },
   });
 
-  const discovery = (profile.data?.discoveryData as Record<string, unknown> | null) ?? {};
+  const discovery = (profileData?.discoveryData as Record<string, unknown> | null) ?? {};
   const proposalBuilderTemplates = Array.isArray(discovery.proposalBuilderTemplates)
     ? (discovery.proposalBuilderTemplates as Array<Record<string, unknown>>).filter(
         (item) => item && typeof item.id === "string",
@@ -144,7 +158,7 @@ export function BrandKitSettings() {
       palavrasEvitar: stringValue(discovery.palavrasEvitar),
       referenciasVisuais: stringValue(discovery.referenciasVisuais),
     });
-  }, [profile.data?.id, profile.data?.discoveryData]);
+  }, [profileData?.id, profileData?.discoveryData]);
 
   useEffect(() => {
     setPrimaryColor(tenant.data?.corPrimaria || "#111111");
@@ -152,16 +166,16 @@ export function BrandKitSettings() {
 
   useEffect(() => {
     setLogoLoadFailed(false);
-  }, [profile.data?.logoUrl, tenant.data?.logoUrl]);
+  }, [profileData?.logoUrl, tenant.data?.logoUrl]);
 
   const completeness = useMemo(() => {
     const checks = [
-      profile.data?.razaoSocial,
-      profile.data?.nomeFantasia,
-      profile.data?.logoUrl || tenant.data?.logoUrl,
+      profileData?.razaoSocial,
+      profileData?.nomeFantasia,
+      profileData?.logoUrl || tenant.data?.logoUrl,
       tenant.data?.corPrimaria,
-      profile.data?.diferenciais,
-      profile.data?.publicoAlvo,
+      profileData?.diferenciais,
+      profileData?.publicoAlvo,
       discovery.missao,
       discovery.visao,
       discovery.historia,
@@ -172,7 +186,7 @@ export function BrandKitSettings() {
       draft.tipografia,
     ];
     return Math.round((checks.filter(Boolean).length / checks.length) * 100);
-  }, [profile.data, tenant.data, discovery, draft]);
+  }, [profileData, tenant.data, discovery, draft]);
 
 
   const applyProposalForStep = (proposal: BrandStudioProposal, step = activeStep) => {
@@ -285,13 +299,13 @@ export function BrandKitSettings() {
   };
 
   const saveBrandContext = async () => {
-    if (!profile.data?.id) {
+    if (!profileData?.id) {
       toast({ title: "Cadastre primeiro os dados básicos da empresa.", variant: "destructive" });
       return;
     }
     try {
       await updateProfile.mutateAsync({
-        id: profile.data.id,
+        id: profileData.id,
         data: {
           discoveryData: {
             ...discovery,
@@ -312,6 +326,7 @@ export function BrandKitSettings() {
       }
       await Promise.all([
         qc.invalidateQueries({ queryKey: getGetBusinessProfileByTenantQueryKey(tenantId) }),
+        qc.invalidateQueries({ queryKey: ["brand-kit-resolved-business-profile", tenantId] }),
         qc.invalidateQueries({ queryKey: getGetTenantQueryKey(tenantId) }),
         qc.invalidateQueries({ queryKey: ["tenant-plan", tenantId] }),
       ]);
@@ -338,13 +353,26 @@ export function BrandKitSettings() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const logoUrl = profile.data?.logoUrl || tenant.data?.logoUrl || "";
-  const companyName = profile.data?.nomeFantasia || profile.data?.razaoSocial || "Sua marca";
+  const logoUrl = profileData?.logoAccessUrl || profileData?.logoUrl || tenant.data?.logoUrl || "";
+  const companyName =
+    profileData?.nomeFantasia ||
+    profileData?.razaoSocial ||
+    (tenant.data as any)?.nomeEmpresa ||
+    tenant.data?.name ||
+    "Empresa não configurada";
+  const companySegment =
+    profileData?.vertical ||
+    (tenant.data as any)?.segmento ||
+    tenant.data?.vertical ||
+    "Não informado";
   const isSaving = updateProfile.isPending || updateTenant.isPending;
   const hasOfficialPrimaryColor = Boolean(tenant.data?.corPrimaria);
   const canApplyAgentSuggestion = Boolean(aiProposal) && ![0, 3].includes(activeStep);
-  const isContextLoading = !tenantId || profile.isLoading || tenant.isLoading;
-  const contextLoadFailed = Boolean(tenantId && (profile.isError || tenant.isError));
+  const isContextLoading = !tenantId || tenant.isLoading || (profile.isLoading && resolvedProfile.isLoading);
+  const contextLoadFailed = Boolean(
+    tenantId &&
+    (tenant.isError || (profile.isError && resolvedProfile.isError))
+  );
 
   if (isContextLoading) {
     return (
@@ -410,7 +438,7 @@ export function BrandKitSettings() {
               type="button"
               variant="outline"
               className="mt-4"
-              onClick={() => void Promise.all([profile.refetch(), tenant.refetch()])}
+              onClick={() => void Promise.all([profile.refetch(), resolvedProfile.refetch(), tenant.refetch()])}
             >
               <RefreshCw className="mr-2 h-4 w-4" />Tentar novamente
             </Button>
@@ -438,7 +466,7 @@ export function BrandKitSettings() {
             <Button variant="outline" type="button" onClick={() => setAgentOpen(true)}>
               <Bot className="mr-2 h-4 w-4" />Apoio da IA
             </Button>
-            <Button type="button" onClick={saveBrandContext} disabled={isSaving || !profile.data?.id}>
+            <Button type="button" onClick={saveBrandContext} disabled={isSaving || !profileData?.id}>
               <Save className="mr-2 h-4 w-4" />
               {isSaving ? "Salvando..." : "Salvar Kit"}
             </Button>
@@ -493,9 +521,9 @@ export function BrandKitSettings() {
             </div>
             <div className="grid gap-3 md:grid-cols-2">
               <div className="rounded-xl border bg-muted/10 p-3"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Empresa</p><p className="mt-1 text-sm font-medium">{companyName}</p></div>
-              <div className="rounded-xl border bg-muted/10 p-3"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Segmento</p><p className="mt-1 text-sm font-medium">{profile.data?.vertical || "Não informado"}</p></div>
-              <div className="md:col-span-2 rounded-xl border bg-muted/10 p-3"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Diferenciais</p><p className="mt-1 line-clamp-3 whitespace-pre-line text-sm">{profile.data?.diferenciais || "Não informado"}</p></div>
-              <div className="md:col-span-2 rounded-xl border bg-muted/10 p-3"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Público / ICP</p><p className="mt-1 line-clamp-3 whitespace-pre-line text-sm">{profile.data?.publicoAlvo || "Não informado"}</p></div>
+              <div className="rounded-xl border bg-muted/10 p-3"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Segmento</p><p className="mt-1 text-sm font-medium">{companySegment}</p></div>
+              <div className="md:col-span-2 rounded-xl border bg-muted/10 p-3"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Diferenciais</p><p className="mt-1 line-clamp-3 whitespace-pre-line text-sm">{profileData?.diferenciais || "Não informado"}</p></div>
+              <div className="md:col-span-2 rounded-xl border bg-muted/10 p-3"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Público / ICP</p><p className="mt-1 line-clamp-3 whitespace-pre-line text-sm">{profileData?.publicoAlvo || "Não informado"}</p></div>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" type="button" onClick={() => window.location.assign("/configuracoes?tab=perfil")}>
@@ -667,7 +695,7 @@ export function BrandKitSettings() {
             <div className="grid gap-2 sm:grid-cols-2">
               {[
                 ["Empresa", companyName],
-                ["Segmento", profile.data?.vertical || "Não informado"],
+                ["Segmento", companySegment],
                 ["Cor principal", primaryColor],
                 ["Tom de voz", draft.tomVoz || "Não definido"],
                 ["CTA", draft.ctaPadrao || "Não definido"],
@@ -676,7 +704,7 @@ export function BrandKitSettings() {
                 <div key={label} className="rounded-xl border p-3"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p><p className="mt-1 text-sm font-medium">{value}</p></div>
               ))}
             </div>
-            <Button className="w-full" type="button" onClick={saveBrandContext} disabled={isSaving || !profile.data?.id}>
+            <Button className="w-full" type="button" onClick={saveBrandContext} disabled={isSaving || !profileData?.id}>
               <Save className="mr-2 h-4 w-4" />{isSaving ? "Salvando..." : "Salvar e aplicar Kit da Marca"}
             </Button>
           </div>
@@ -754,7 +782,7 @@ export function BrandKitSettings() {
             Próxima<ChevronRight className="ml-2 h-4 w-4" />
           </Button>
         ) : (
-          <Button type="button" onClick={saveBrandContext} disabled={isSaving || !profile.data?.id}>
+          <Button type="button" onClick={saveBrandContext} disabled={isSaving || !profileData?.id}>
             <Save className="mr-2 h-4 w-4" />{isSaving ? "Salvando..." : "Concluir"}
           </Button>
         )}
