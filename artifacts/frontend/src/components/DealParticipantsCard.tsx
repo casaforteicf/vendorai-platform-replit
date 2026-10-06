@@ -22,6 +22,7 @@ type PersonParticipant = {
   isPrimary: boolean;
   contextualCompanyId?: string | null;
   relationshipScope: "deal_only" | "persistent";
+  metadata?: Record<string, unknown> | null;
 };
 
 type CompanyParticipant = {
@@ -57,6 +58,7 @@ const PERSON_ROLES = [
   ["contato_comercial", "Contato comercial"],
   ["decisor", "Decisor"],
   ["responsavel_financeiro", "Responsável financeiro"],
+  ["indicador", "Indicador"],
   ["arquiteto", "Arquiteto"],
   ["engenheiro", "Engenheiro"],
   ["representante", "Representante"],
@@ -103,6 +105,9 @@ export function DealParticipantsCard({
   const [personDocument, setPersonDocument] = useState("");
   const [contextCompanyId, setContextCompanyId] = useState("__none__");
   const [relationshipScope, setRelationshipScope] = useState<"deal_only" | "persistent">("deal_only");
+  const [hasCommission, setHasCommission] = useState(false);
+  const [commissionKind, setCommissionKind] = useState<"percent" | "fixed">("percent");
+  const [commissionValue, setCommissionValue] = useState("");
   const [companyMode, setCompanyMode] = useState<"existing" | "new">("existing");
   const [companyId, setCompanyId] = useState("");
   const [companyRole, setCompanyRole] = useState("contratante");
@@ -159,6 +164,9 @@ export function DealParticipantsCard({
     setPersonDocument("");
     setContextCompanyId("__none__");
     setRelationshipScope("deal_only");
+    setHasCommission(false);
+    setCommissionKind("percent");
+    setCommissionValue("");
     setCompanyMode("existing");
     setCompanyId("");
     setCompanyRole("contratante");
@@ -192,6 +200,11 @@ export function DealParticipantsCard({
           role: personRole,
           contextualCompanyId: contextCompanyId === "__none__" ? null : contextCompanyId,
           relationshipScope,
+          metadata: {
+            commission: hasCommission
+              ? { enabled: true, kind: commissionKind, value: commissionValue.trim() || null, status: "prevista" }
+              : { enabled: false },
+          },
         }),
       });
       const result = await response.json().catch(() => ({}));
@@ -311,6 +324,12 @@ export function DealParticipantsCard({
                           {roleLabel(person.role)}
                           {contextualCompany ? ` · ${contextualCompany.nomeFantasia || contextualCompany.razaoSocial}` : ""}
                           {person.relationshipScope === "deal_only" ? " · somente neste negócio" : " · vínculo permanente"}
+                          {(() => {
+                            const commission = person.metadata && typeof person.metadata === "object" ? (person.metadata as any).commission : null;
+                            if (!commission?.enabled) return " · sem comissão";
+                            const value = commission.value ? ` ${commission.value}` : "";
+                            return commission.kind === "fixed" ? ` · comissão fixa${value}` : ` · comissão %${value}`;
+                          })()}
                         </p>
                       </div>
                     </div>
@@ -372,6 +391,25 @@ export function DealParticipantsCard({
                   </SelectContent>
                 </Select>
                 <p className="text-[11px] text-muted-foreground">Ex.: consumidor final de um empreendimento. Isso não o transforma em funcionário da empresa.</p>
+              </div>
+              <div className="space-y-2 rounded-lg border p-3">
+                <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+                  <input type="checkbox" checked={hasCommission} onChange={(e) => setHasCommission(e.target.checked)} />
+                  Este envolvido possui comissão / ganho
+                </label>
+                <p className="text-[11px] text-muted-foreground">Opcional. Deixe desmarcado quando não houver ganho.</p>
+                {hasCommission && (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Select value={commissionKind} onValueChange={(v) => setCommissionKind(v as "percent" | "fixed")}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="percent">Percentual</SelectItem>
+                        <SelectItem value="fixed">Valor fixo</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input value={commissionValue} onChange={(e) => setCommissionValue(e.target.value)} placeholder={commissionKind === "percent" ? "Ex.: 15" : "Ex.: 1500,00"} />
+                  </div>
+                )}
               </div>
               {contextCompanyId !== "__none__" && (
                 <div className="space-y-1.5">
