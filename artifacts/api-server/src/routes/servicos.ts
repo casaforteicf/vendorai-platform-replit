@@ -11,8 +11,11 @@ import {
   type ServicoHistoricoItem,
 } from "@workspace/db";
 import { SERVICE_CATALOG, SERVICE_TEMPLATES } from "../lib/serviceCatalog";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 
 const router: IRouter = Router();
+export const servicosPublicRouter: IRouter = Router();
+const servicosPortalStorage = new ObjectStorageService();
 
 function routeTenantId(req: any): string {
   return String(req.params.tenantId ?? req.params["tenantId"]);
@@ -154,6 +157,37 @@ function history(
   };
 }
 
+function servicosPortalObjectPath(value: unknown): string | null {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  if (raw.startsWith("/objects/")) return raw;
+  if (raw.startsWith("/api/storage/objects/")) {
+    return `/objects/${raw.slice("/api/storage/objects/".length)}`;
+  }
+  try {
+    const parsed = new URL(raw);
+    if (parsed.pathname.startsWith("/api/storage/objects/")) {
+      return `/objects/${parsed.pathname.slice("/api/storage/objects/".length)}`;
+    }
+    if (parsed.pathname.startsWith("/objects/")) return parsed.pathname;
+  } catch {
+    // object path, not an absolute URL
+  }
+  return null;
+}
+
+async function streamServicoPortalObject(res: any, value: unknown) {
+  const objectPath = servicosPortalObjectPath(value);
+  if (!objectPath) return false;
+  const file = await servicosPortalStorage.getObjectEntityFile(objectPath);
+  const objectResponse = await servicosPortalStorage.downloadObject(file, 300);
+  objectResponse.headers.forEach((headerValue, key) => res.setHeader(key, headerValue));
+  res.setHeader("Cache-Control", "private, max-age=300");
+  res.status(objectResponse.status);
+  res.send(Buffer.from(await objectResponse.arrayBuffer()));
+  return true;
+}
+
 function evidenceOk(item: ServicoChecklistItem, observacao: string, fotos: string[]) {
   switch (item.evidencia) {
     case "confirmation":
@@ -169,6 +203,77 @@ function evidenceOk(item: ServicoChecklistItem, observacao: string, fotos: strin
       return observacao.trim().length > 0 || fotos.length > 0;
   }
 }
+
+// ─── Acompanhamento público da OS ───────────────────────────────────────────
+
+servicosPublicRouter.get("/portal/servicos/:token", async (req, res) => {
+  const token = String(req.params.token ?? "").trim();
+  if (!token) return res.status(404).json({ error: "Acompanhamento não encontrado." });
+
+  const [ordem] = await db.select().from(servicosOrdensTable)
+    .where(and(eq(servicosOrdensTable.portalToken, token), eq(servicosOrdensTable.clienteAcompanha, true)))
+    .limit(1);
+  if (!ordem) return res.status(404).json({ error: "Acompanhamento não encontrado ou desativado." });
+
+  const [[cliente], [tipoServico]] = await Promise.all([
+    db.select({ nome: leadsTable.nome }).from(leadsTable)
+      .where(and(eq(leadsTable.id, ordem.clienteId), eq(leadsTable.tenantId, ordem.tenantId))).limit(1),
+    db.select({ nome: servicosTiposTable.nome }).from(servicosTiposTable)
+      .where(and(eq(servicosTiposTable.id, ordem.tipoServicoId), eq(servicosTiposTable.tenantId, ordem.tenantId))).limit(1),
+  ]);
+
+  const atividades = (ordem.checklistExecucao ?? [])
+    .filter((item) => item.visibilidade === "cliente" || item.visibilidade === "cliente_parceiro")
+    .map((item) => ({
+      id: item.id,
+      titulo: item.titulo,
+      descricao: item.descricao ?? null,
+      concluido: item.concluido,
+      observacao: item.observacao ?? null,
+      fotos: (item.fotos ?? []).map((_, index) =>
+        `/api/portal/servicos/${encodeURIComponent(token)}/evidencias/${encodeURIComponent(item.id)}/${index}`
+      ),
+      concluidoPorNome: item.concluidoPorNome ?? null,
+      concluidoEm: item.concluidoEm ?? null,
+    }));
+
+  return res.json({
+    id: ordem.id,
+    cliente: cliente?.nome ?? null,
+    servico: tipoServico?.nome ?? null,
+    modeloExecucao: ordem.modeloExecucao,
+    status: ordem.compartilharStatusCliente ? ordem.status : null,
+    atualizadoEm: ordem.updatedAt,
+    atividades,
+  });
+});
+
+servicosPublicRouter.get("/portal/servicos/:token/evidencias/:itemId/:photoIndex", async (req, res, next) => {
+  try {
+    const token = String(req.params.token ?? "").trim();
+    const itemId = String(req.params.itemId ?? "").trim();
+    const photoIndex = Number(req.params.photoIndex);
+
+    const [ordem] = await db.select().from(servicosOrdensTable)
+      .where(and(eq(servicosOrdensTable.portalToken, token), eq(servicosOrdensTable.clienteAcompanha, true)))
+      .limit(1);
+    if (!ordem) return res.status(404).send("Acompanhamento não encontrado.");
+
+    const item = (ordem.checklistExecucao ?? []).find((entry) =>
+      entry.id === itemId && (entry.visibilidade === "cliente" || entry.visibilidade === "cliente_parceiro")
+    );
+    if (!item || !Number.isInteger(photoIndex) || photoIndex < 0) return res.status(404).send("Evidência não encontrada.");
+
+    const source = item.fotos?.[photoIndex];
+    if (!source) return res.status(404).send("Evidência não encontrada.");
+
+    if (await streamServicoPortalObject(res, source)) return;
+    if (/^https:\/\//i.test(String(source))) return res.redirect(302, String(source));
+    return res.status(404).send("Evidência não disponível.");
+  } catch (err) {
+    next(err);
+  }
+});
 
 // ─── Prestadores ────────────────────────────────────────────────────────────
 
@@ -472,6 +577,7 @@ router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
       historicoExecucao: [criacao],
       clienteAcompanha,
       compartilharStatusCliente,
+      portalToken: clienteAcompanha ? crypto.randomUUID() : null,
       updatedAt: new Date(),
     } as any)
     .returning();
@@ -499,7 +605,10 @@ router.patch("/tenants/:tenantId/servicos/ordens/:id", async (req, res) => {
     "clienteAcompanha",
     "compartilharStatusCliente",
   ];
-  const patch = Object.fromEntries(Object.entries(req.body).filter(([k]) => allowed.includes(k)));
+  const patch = Object.fromEntries(Object.entries(req.body).filter(([k]) => allowed.includes(k))) as Record<string, any>;
+  if (patch.clienteAcompanha === true && !atual.portalToken) {
+    patch.portalToken = crypto.randomUUID();
+  }
   const historico = [
     ...(atual.historicoExecucao ?? []),
     history(req, "edicao", "Dados da ordem atualizados", { campos: Object.keys(patch) }),
