@@ -35,13 +35,28 @@ type IntegrationKey =
   | "tiktok"
   | "domain";
 
+type IntegrationCategory = "Essenciais" | "Google" | "Marketing e social" | "Pagamentos e contratos" | "Domínio e web";
+
 type IntegrationRow = {
   key: IntegrationKey;
   label: string;
   description: string;
+  category: IntegrationCategory;
+  usedBy?: string;
   connected: boolean;
   attention?: boolean;
   detail?: string;
+};
+
+type CatalogIntegration = {
+  providerKey: string;
+  name: string;
+  category: string;
+  authType: string;
+  capabilities?: string[];
+  status?: string;
+  overallHealthPercent?: number;
+  lastErrorMessage?: string | null;
 };
 
 const OAUTH_ENDPOINTS: Partial<Record<IntegrationKey, string>> = {
@@ -82,6 +97,9 @@ export default function IntegrationSettingsHub() {
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [catalogIntegrations, setCatalogIntegrations] = useState<CatalogIntegration[]>([]);
+  const [showCustomGuide, setShowCustomGuide] = useState<"api" | "webhook" | "n8n" | null>(null);
   const [asaasKey, setAsaasKey] = useState("");
   const [zapsignKey, setZapsignKey] = useState("");
   const [emailConnections, setEmailConnections] = useState<Array<{
@@ -116,11 +134,15 @@ export default function IntegrationSettingsHub() {
   const loadStatus = async () => {
     setLoading(true);
     try {
-      const [data, emailData] = await Promise.all([
+      const [data, emailData, financeData] = await Promise.all([
         apiJson("/api/onboarding/integracoes"),
         tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/email-connections`).catch(() => ({ connections: [] })) : Promise.resolve({ connections: [] }),
+        tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/finance-integrations`).catch(() => ({ integrations: [] })) : Promise.resolve({ integrations: [] }),
       ]);
       setStatus(data as IntegrationStatus);
+      const hiddenTenantInfrastructure = new Set(["cloudflare", "railway", "supabase", "openai"]);
+      const financeCatalog = Array.isArray(financeData?.integrations) ? financeData.integrations : [];
+      setCatalogIntegrations(financeCatalog.filter((item: CatalogIntegration) => !hiddenTenantInfrastructure.has(item.providerKey)));
       const connections = Array.isArray(emailData?.connections) ? emailData.connections : [];
       setEmailConnections(connections);
       setEmailSignatures({
@@ -164,48 +186,62 @@ export default function IntegrationSettingsHub() {
     {
       key: "whatsapp",
       label: "WhatsApp",
-      description: "Conexão padrão via QR Code para atendimento e automações.",
+      description: "Atendimento, conversas, automações e vínculo com o CRM.",
+      category: "Essenciais",
+      usedBy: "Omnichannel · CRM · Agentes",
       connected: status?.whatsapp?.connected === true,
       detail: status?.whatsapp?.phone || undefined,
     },
     {
       key: "instagram",
       label: "Instagram",
-      description: "Mensagens, perfil e conteúdo.",
+      description: "Mensagens, perfil, conteúdo e publicação no Instagram.",
+      category: "Marketing e social",
+      usedBy: "Marketing · Omnichannel · CRM",
       connected: status?.instagram?.connected === true,
       detail: status?.instagram?.username ? `@${status.instagram.username.replace(/^@/, "")}` : undefined,
     },
     {
       key: "google-calendar",
       label: "Google Calendar",
-      description: "Agenda, compromissos e disponibilidade.",
+      description: "Sincroniza agenda, compromissos, reuniões e disponibilidade.",
+      category: "Google",
+      usedBy: "Agenda · CRM · Agente de Agendamento",
       connected: status?.googleCalendar?.connected === true,
     },
     {
       key: "email-google",
       label: "Gmail / Google Workspace",
-      description: "Caixa de entrada e saída integrada ao CRM e aos agentes.",
+      description: "Envia e recebe e-mails pelo Google Workspace dentro do Vendor.ai.",
+      category: "Google",
+      usedBy: "Omnichannel · CRM · Agentes",
       connected: emailConnections.some((connection) => connection.provider === "google"),
       detail: emailConnections.find((connection) => connection.provider === "google")?.email || undefined,
     },
     {
       key: "email-microsoft",
       label: "Microsoft 365 / Outlook",
-      description: "E-mail corporativo integrado ao CRM e aos agentes.",
+      description: "Conecta Outlook/Microsoft 365 ao e-mail, CRM e agentes.",
+      category: "Essenciais",
+      usedBy: "Omnichannel · CRM · Agentes",
       connected: emailConnections.some((connection) => connection.provider === "microsoft"),
       detail: emailConnections.find((connection) => connection.provider === "microsoft")?.email || undefined,
     },
     {
       key: "email-webmail",
       label: "Webmail / Outro provedor",
-      description: "E-mail de domínio próprio via IMAP + SMTP (cPanel, Hostinger, Locaweb, KingHost e similares).",
+      description: "Conecta e-mail de domínio próprio via IMAP/SMTP.",
+      category: "Essenciais",
+      usedBy: "Omnichannel · CRM · Agentes",
       connected: emailConnections.some((connection) => connection.provider === "webmail"),
       detail: emailConnections.find((connection) => connection.provider === "webmail")?.email || undefined,
     },
     {
       key: "google-ads",
       label: "Google Ads",
-      description: "Campanhas, mídia e conversões.",
+      description: "Campanhas, mídia, performance e conversões do Google.",
+      category: "Google",
+      usedBy: "Marketing · BI · CRM",
       connected: status?.googleAds?.connected === true && status?.googleAds?.pendingAccountSelection !== true,
       attention: status?.googleAds?.pendingAccountSelection === true,
       detail: status?.googleAds?.pendingAccountSelection ? "Seleção de conta pendente" : status?.googleAds?.descriptiveName || undefined,
@@ -213,19 +249,25 @@ export default function IntegrationSettingsHub() {
     {
       key: "asaas",
       label: "Asaas",
-      description: "Cobranças e pagamentos.",
+      description: "Pix, boleto, cartão, recorrência e confirmação de pagamentos.",
+      category: "Pagamentos e contratos",
+      usedBy: "Financeiro · Propostas · CRM",
       connected: status?.asaas?.connected === true,
     },
     {
       key: "zapsign",
       label: "ZapSign",
-      description: "Assinatura eletrônica de documentos.",
+      description: "Envia contratos e documentos para assinatura eletrônica.",
+      category: "Pagamentos e contratos",
+      usedBy: "Contratos · CRM · Portal",
       connected: status?.zapsign?.connected === true,
     },
     {
       key: "search-console",
       label: "Search Console",
-      description: "SEO, indexação e desempenho orgânico.",
+      description: "SEO, indexação, pesquisas no Google e saúde orgânica do site.",
+      category: "Google",
+      usedBy: "Marketing · Site · BI",
       connected: status?.searchConsole?.connected === true && status?.searchConsole?.verified === true,
       attention: status?.searchConsole?.connected === true && status?.searchConsole?.verified !== true,
       detail: status?.searchConsole?.connected && !status?.searchConsole?.verified ? "Conta autorizada · falta confirmar a propriedade" : undefined,
@@ -233,19 +275,25 @@ export default function IntegrationSettingsHub() {
     {
       key: "linkedin",
       label: "LinkedIn",
-      description: "Publicações, métricas e presença social.",
+      description: "Publicações, presença profissional, métricas e recursos B2B.",
+      category: "Marketing e social",
+      usedBy: "Marketing · Prospecção · BI",
       connected: status?.social?.linkedin === true,
     },
     {
       key: "tiktok",
       label: "TikTok",
-      description: "Publicações, métricas e mídia social.",
+      description: "Publicações, métricas, presença social e recursos de mídia TikTok.",
+      category: "Marketing e social",
+      usedBy: "Marketing · Conteúdo · BI",
       connected: status?.social?.tiktok === true,
     },
     {
       key: "domain",
-      label: "Domínio",
-      description: "Domínio personalizado do site.",
+      label: "Domínio próprio",
+      description: "Usa o domínio da empresa no site, portal, landing pages e links públicos.",
+      category: "Domínio e web",
+      usedBy: "Site · Portal · Landing pages",
       connected: status?.domain?.active === true,
       attention: status?.domain?.configured === true && status?.domain?.active !== true,
       detail: status?.domain?.name || undefined,
@@ -496,16 +544,31 @@ export default function IntegrationSettingsHub() {
     return "Conectar agora";
   };
 
+  const visibleRows = rows.filter((row) => {
+    const term = search.trim().toLowerCase();
+    if (!term) return true;
+    return [row.label, row.description, row.category, row.usedBy, row.detail].filter(Boolean).join(" ").toLowerCase().includes(term);
+  });
+  const groupedRows = visibleRows.reduce<Record<string, IntegrationRow[]>>((acc, row) => {
+    (acc[row.category] ||= []).push(row);
+    return acc;
+  }, {});
+  const tenantCatalog = catalogIntegrations.filter((item) => {
+    const term = search.trim().toLowerCase();
+    if (!term) return true;
+    return [item.name, item.category, ...(item.capabilities || [])].join(" ").toLowerCase().includes(term);
+  });
   const connectedCount = rows.filter((row) => row.connected).length;
+  const attentionCount = rows.filter((row) => row.attention).length;
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-5 px-4 pb-10 sm:px-6">
       <div className="flex flex-col gap-3 rounded-2xl border bg-card p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Configurações</div>
-          <h1 className="mt-1 text-2xl font-bold">Integrações</h1>
+          <h1 className="mt-1 text-2xl font-bold">Central de Conexões</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Acesso protegido pela sua sessão de administrador. Não é necessário informar a senha novamente.
+            Todas as conexões externas da empresa ficam aqui. O Vendor.ai orienta login, permissões, ativos e etapas adicionais.
           </p>
           {user?.email && <p className="mt-1 text-xs text-muted-foreground">Sessão: {user.email}</p>}
         </div>
@@ -516,22 +579,32 @@ export default function IntegrationSettingsHub() {
       </div>
 
       <div className="rounded-2xl border bg-card p-5">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="font-semibold">Saúde das integrações</h2>
+            <h2 className="font-semibold">Saúde das conexões</h2>
             <p className="text-sm text-muted-foreground">
-              {loading ? "Verificando conexões..." : `${connectedCount} de ${rows.length} conexões ativas`}
+              {loading ? "Verificando conexões..." : `${connectedCount} conectadas · ${attentionCount} precisam de atenção · ${tenantCatalog.length} opções no catálogo`}
             </p>
+          </div>
+          <div className="w-full lg:max-w-sm">
+            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar Google, ERP, Pix, API..." />
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {rows.map((row) => (
+        <div className="mt-5 space-y-6">
+          {Object.entries(groupedRows).map(([category, categoryRows]) => (
+            <section key={category}>
+              <div className="mb-2">
+                <h3 className="text-sm font-semibold">{category}</h3>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {categoryRows.map((row) => (
             <div key={row.key} className="rounded-xl border bg-background p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3 className="font-semibold">{row.label}</h3>
                   <p className="mt-1 text-xs text-muted-foreground">{row.description}</p>
+                  {row.usedBy && <p className="mt-2 text-[11px] text-muted-foreground"><span className="font-medium">Usado por:</span> {row.usedBy}</p>}
                 </div>
                 <span className={row.connected ? "text-xs font-semibold text-emerald-600" : row.attention ? "text-xs font-semibold text-amber-600" : "text-xs font-semibold text-muted-foreground"}>
                   {row.connected ? "Conectado" : row.attention ? "Atenção" : "Desconectado"}
@@ -666,6 +739,79 @@ export default function IntegrationSettingsHub() {
                 >
                   {rowActionLabel(row)}
                 </Button>
+              )}
+            </div>
+          ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border bg-card p-5">
+        <div>
+          <h2 className="font-semibold">Adicionar conexão</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Conectores de negócio disponíveis para o tenant. Infraestrutura interna do Vendor.ai não aparece aqui.
+          </p>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {tenantCatalog.slice(0, 18).map((item) => {
+            const configured = item.status && !["not_configured", "disabled"].includes(item.status);
+            const healthy = item.status === "connected" && Number(item.overallHealthPercent || 0) >= 80;
+            return (
+              <div key={item.providerKey} className="rounded-xl border bg-background p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-semibold">{item.name}</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">{(item.capabilities || []).slice(0, 5).join(" · ") || item.category}</p>
+                  </div>
+                  <span className={healthy ? "text-xs font-semibold text-emerald-600" : configured ? "text-xs font-semibold text-amber-600" : "text-xs font-semibold text-muted-foreground"}>
+                    {healthy ? "Conectado" : configured ? "Revisar" : "Disponível"}
+                  </span>
+                </div>
+                <p className="mt-3 text-[11px] text-muted-foreground">Autenticação: {item.authType.replaceAll("_", " ")}</p>
+                {item.lastErrorMessage && <p className="mt-2 text-xs text-destructive">{item.lastErrorMessage}</p>}
+                <Button className="mt-4" variant="outline" onClick={() => toast({
+                  title: configured ? `${item.name}: revisar conexão` : `${item.name}: configuração assistida`,
+                  description: configured
+                    ? "Use o health check da integração para validar autenticação, sincronização e webhooks."
+                    : "O conector está catalogado. A conexão só deve ser marcada como ativa depois de autenticação e teste real.",
+                })}>
+                  {configured ? "Revisar conexão" : "Configurar"}
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border bg-card p-5">
+        <div>
+          <h2 className="font-semibold">Integrações personalizadas</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Para sistemas sem conector nativo, use API direta, webhook ou n8n. Segredos nunca devem ser salvos sem criptografia e teste real.
+          </p>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          {[
+            { key: "api" as const, title: "API personalizada", text: "Conecte ERP, sistema legado ou serviço próprio por REST/API Key, Bearer ou OAuth." },
+            { key: "webhook" as const, title: "Webhook", text: "Receba ou envie eventos em tempo real entre o Vendor.ai e outro sistema." },
+            { key: "n8n" as const, title: "n8n", text: "Use workflows para transformar dados e orquestrar integrações quando não houver conector nativo." },
+          ].map((item) => (
+            <div key={item.key} className="rounded-xl border bg-background p-4">
+              <h3 className="font-semibold">{item.title}</h3>
+              <p className="mt-1 text-xs text-muted-foreground">{item.text}</p>
+              <Button className="mt-4" variant="outline" onClick={() => setShowCustomGuide(showCustomGuide === item.key ? null : item.key)}>
+                {showCustomGuide === item.key ? "Fechar orientação" : "Como conectar"}
+              </Button>
+              {showCustomGuide === item.key && (
+                <div className="mt-4 rounded-lg border bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">
+                  {item.key === "api" && <>1. Informe a URL base. 2. Escolha API Key, Bearer, Basic ou OAuth. 3. Defina escopos e direção. 4. Teste autenticação. 5. Só depois salve e ative a sincronização.</>}
+                  {item.key === "webhook" && <>1. Gere uma URL exclusiva do tenant. 2. Gere um segredo de assinatura. 3. Cadastre a URL no sistema externo. 4. Envie um evento de teste. 5. Ative somente após validar assinatura e payload.</>}
+                  {item.key === "n8n" && <>1. Crie uma credencial limitada do tenant. 2. Conecte o workflow n8n. 3. Escolha gatilhos e ações. 4. Teste ida e volta. 5. Ative logs, retry e health check.</>}
+                </div>
               )}
             </div>
           ))}
