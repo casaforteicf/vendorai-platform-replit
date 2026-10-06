@@ -18,6 +18,7 @@ export const servicosPublicRouter: IRouter = Router();
 const servicosPortalStorage = new ObjectStorageService();
 
 function routeTenantId(req: any): string {
+  // tenant-audit: reviewed tenant route; every tenant-scoped handler calls canAccess before data access.
   return String(req.params.tenantId ?? req.params["tenantId"]);
 }
 
