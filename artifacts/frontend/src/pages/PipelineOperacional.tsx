@@ -80,6 +80,21 @@ type Lead = { id: string; nome?: string | null; empresa?: string | null; telefon
 type User = { id: string; name?: string | null; email?: string | null; userFunction?: string | null };
 type Deal = { id: string; titulo: string; leadId?: string | null; etapa: string; valor?: string | null };
 type Proposal = { id: string; dealId?: string | null; leadId: string; titulo: string; status: string; itens?: Array<Record<string, unknown>> };
+type LegacyOrderImport = {
+  sourceFileName: string;
+  sourceFileUrl?: string | null;
+  sourceMimeType?: string | null;
+  sourceSize?: number | null;
+  importedAt: string;
+  confidence?: number | null;
+  title?: string | null;
+  customer?: string | null;
+  supplier?: string | null;
+  total?: number | string | null;
+  observations?: string | null;
+  items: Array<Record<string, unknown>>;
+  selectedItemIndexes: number[];
+};
 type BalanceItem = {
   index: number;
   nome: string;
@@ -1360,9 +1375,74 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
   const [data, setData] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
+  const [importingLegacyOrder, setImportingLegacyOrder] = useState(false);
+  const [legacyOrder, setLegacyOrder] = useState<LegacyOrderImport | null>(null);
+  const legacyOrderFileRef = useRef<HTMLInputElement>(null);
 
   const leadDeals = deals.filter((d) => d.leadId === leadId);
   const proposal = proposals.find((p) => p.dealId === dealId) ?? null;
+
+  function legacyItemLabel(item: Record<string, unknown>, index: number) {
+    return String(item.nome || item.name || item.descricao || item.produto || item.sku || `Item ${index + 1}`);
+  }
+
+  async function importLegacyOrder(file: File) {
+    setImportingLegacyOrder(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const response = await fetch(`/api/tenants/${tenantId}/deals/extract-quote`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Não foi possível ler o pedido antigo");
+      const items = Array.isArray(body.itens) ? body.itens.filter((item: unknown) => item && typeof item === "object") : [];
+      const imported: LegacyOrderImport = {
+        sourceFileName: body.originalName || file.name,
+        sourceFileUrl: body.quoteFileUrl ?? null,
+        sourceMimeType: file.type || null,
+        sourceSize: file.size,
+        importedAt: new Date().toISOString(),
+        confidence: typeof body.confianca === "number" ? body.confianca : null,
+        title: body.titulo ?? null,
+        customer: body.cliente ?? null,
+        supplier: body.fornecedor ?? null,
+        total: body.valorTotal ?? null,
+        observations: body.observacoes ?? null,
+        items,
+        selectedItemIndexes: items.map((_: unknown, index: number) => index),
+      };
+      setLegacyOrder(imported);
+      setDealId("");
+      if (items.length) {
+        setProdutos(items.map((item: Record<string, unknown>, index: number) => legacyItemLabel(item, index)).join(", "));
+      }
+      toast({
+        title: items.length ? "Pedido antigo importado" : "Pedido importado para revisão",
+        description: items.length ? `${items.length} item(ns) identificados. Confira e marque os afetados.` : "O arquivo original foi preservado. Confira os dados extraídos antes de abrir a assistência.",
+      });
+    } catch (error) {
+      toast({ title: "Erro ao importar pedido antigo", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
+    } finally {
+      setImportingLegacyOrder(false);
+      if (legacyOrderFileRef.current) legacyOrderFileRef.current.value = "";
+    }
+  }
+
+  function toggleLegacyItem(index: number) {
+    setLegacyOrder((current) => {
+      if (!current) return current;
+      const selected = current.selectedItemIndexes.includes(index)
+        ? current.selectedItemIndexes.filter((value) => value !== index)
+        : [...current.selectedItemIndexes, index].sort((a, b) => a - b);
+      const next = { ...current, selectedItemIndexes: selected };
+      const selectedNames = selected.map((itemIndex) => legacyItemLabel(current.items[itemIndex] ?? {}, itemIndex));
+      setProdutos(selectedNames.join(", "));
+      return next;
+    });
+  }
 
   async function submit() {
     if (!leadId || !responsavelId || !titulo.trim() || relato.trim().length < 10) {
@@ -1386,11 +1466,35 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
           prioridade,
           dataVencimento: data || undefined,
           origem: "humano",
+          legacyOrder: legacyOrder ? {
+            ...legacyOrder,
+            items: legacyOrder.items,
+            selectedItemIndexes: legacyOrder.selectedItemIndexes,
+          } : undefined,
         }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || "Falha ao abrir assistência");
       const cardId = body.card.id as string;
+      if (legacyOrder?.sourceFileUrl) {
+        const importedAttachment = await fetch(`/api/work-cards/${cardId}/attachments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            nome: legacyOrder.sourceFileName,
+            url: legacyOrder.sourceFileUrl,
+            mimeType: legacyOrder.sourceMimeType || "application/octet-stream",
+            tamanho: legacyOrder.sourceSize || undefined,
+            origem: "pedido_antigo_importado",
+            descricao: "Arquivo original do pedido antigo importado e vinculado à assistência.",
+            metadata: { importedOrder: true, confidence: legacyOrder.confidence ?? null },
+          }),
+        });
+        if (!importedAttachment.ok) {
+          const importedAttachmentError = await importedAttachment.json().catch(() => ({}));
+          throw new Error(importedAttachmentError.error || "Falha ao vincular o arquivo original do pedido antigo");
+        }
+      }
       for (const file of files) {
         const metaRes = await fetch("/api/storage/uploads/request-url", {
           method: "POST",
@@ -1412,7 +1516,7 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
         }
       }
       toast({ title: `Assistência ${body.card.codigo} aberta`, description: "O responsável recebeu o card para acompanhamento." });
-      setLeadId(""); setDealId(""); setTitulo(""); setRelato(""); setProdutos(""); setResponsavelId(""); setFiles([]); setData("");
+      setLeadId(""); setDealId(""); setTitulo(""); setRelato(""); setProdutos(""); setResponsavelId(""); setFiles([]); setData(""); setLegacyOrder(null);
       await onCreated();
     } catch (error) {
       toast({ title: "Erro ao abrir assistência", description: String(error), variant: "destructive" });
@@ -1427,8 +1531,60 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
         <DialogHeader><DialogTitle>Abrir chamado de assistência</DialogTitle></DialogHeader>
         <div className="grid gap-4 py-1 sm:grid-cols-2">
           <div className="space-y-1.5 sm:col-span-2"><label className="text-sm font-medium">Cliente *</label><Select value={leadId} onValueChange={(v) => { setLeadId(v); setDealId(""); }}><SelectTrigger><SelectValue placeholder="Selecionar cliente" /></SelectTrigger><SelectContent>{leads.map((l) => <SelectItem key={l.id} value={l.id}>{l.nome || l.empresa || l.id}</SelectItem>)}</SelectContent></Select></div>
-          <div className="space-y-1.5"><label className="text-sm font-medium">Pedido relacionado</label><Select value={dealId || "__none__"} onValueChange={(v) => setDealId(v === "__none__" ? "" : v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__none__">Sem pedido específico</SelectItem>{leadDeals.map((d) => <SelectItem key={d.id} value={d.id}>{d.titulo}</SelectItem>)}</SelectContent></Select></div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Pedido relacionado</label>
+            <Select value={dealId || "__none__"} onValueChange={(v) => { setDealId(v === "__none__" ? "" : v); if (v !== "__none__") setLegacyOrder(null); }}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="__none__">Sem pedido específico</SelectItem>{leadDeals.map((d) => <SelectItem key={d.id} value={d.id}>{d.titulo}</SelectItem>)}</SelectContent>
+            </Select>
+            <input ref={legacyOrderFileRef} type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) void importLegacyOrder(file); }} />
+            <Button type="button" variant="outline" size="sm" className="w-full gap-2" disabled={importingLegacyOrder} onClick={() => legacyOrderFileRef.current?.click()}>
+              {importingLegacyOrder ? <><Loader2 className="h-4 w-4 animate-spin" />Lendo pedido antigo...</> : <><Upload className="h-4 w-4" />Importar pedido antigo</>}
+            </Button>
+            <p className="text-[11px] text-muted-foreground">PDF, imagem ou Word. O arquivo original fica preservado e os dados são revisados antes da abertura.</p>
+          </div>
           <div className="space-y-1.5"><label className="text-sm font-medium">Categoria *</label><Select value={categoria} onValueChange={setCategoria}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{SUPPORT_CATEGORIES.map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent></Select></div>
+          {legacyOrder && (
+            <div className="sm:col-span-2 rounded-lg border bg-muted/20 p-3 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">Pedido antigo importado</p>
+                  <p className="text-xs text-muted-foreground">{legacyOrder.sourceFileName}{legacyOrder.confidence != null ? ` • confiança ${Math.round(legacyOrder.confidence * 100)}%` : ""}</p>
+                </div>
+                <Button type="button" variant="ghost" size="sm" onClick={() => { setLegacyOrder(null); setProdutos(""); }}>Remover</Button>
+              </div>
+              <div className="grid gap-2 text-xs sm:grid-cols-2">
+                {legacyOrder.customer && <p><span className="font-medium">Cliente:</span> {legacyOrder.customer}</p>}
+                {legacyOrder.supplier && <p><span className="font-medium">Fornecedor:</span> {legacyOrder.supplier}</p>}
+                {legacyOrder.title && <p><span className="font-medium">Pedido:</span> {legacyOrder.title}</p>}
+                {legacyOrder.total != null && <p><span className="font-medium">Valor identificado:</span> {String(legacyOrder.total)}</p>}
+              </div>
+              {legacyOrder.observations && <p className="text-xs"><span className="font-medium">Observações:</span> {legacyOrder.observations}</p>}
+              <div className="space-y-2">
+                <p className="text-xs font-medium">Marque os itens afetados pela assistência</p>
+                {legacyOrder.items.length ? legacyOrder.items.map((item, index) => {
+                  const checked = legacyOrder.selectedItemIndexes.includes(index);
+                  const quantity = item.quantidade ?? item.quantity ?? item.qtd;
+                  const sku = item.sku ?? item.codigo ?? item.code;
+                  const details = Object.entries(item)
+                    .filter(([key, value]) => !["nome","name","descricao","produto","quantidade","quantity","qtd","sku","codigo","code"].includes(key) && value !== null && value !== undefined && value !== "")
+                    .slice(0, 5)
+                    .map(([key, value]) => `${key}: ${typeof value === "object" ? JSON.stringify(value) : String(value)}`)
+                    .join(" • ");
+                  return (
+                    <label key={index} className="flex cursor-pointer items-start gap-2 rounded-md border bg-background p-2">
+                      <input type="checkbox" className="mt-1" checked={checked} onChange={() => toggleLegacyItem(index)} />
+                      <span className="min-w-0 text-xs">
+                        <strong>{legacyItemLabel(item, index)}</strong>
+                        {(quantity != null || sku) && <span className="block text-muted-foreground">{quantity != null ? `Qtd: ${String(quantity)}` : ""}{quantity != null && sku ? " • " : ""}{sku ? `Código/SKU: ${String(sku)}` : ""}</span>}
+                        {details && <span className="block break-words text-muted-foreground">{details}</span>}
+                      </span>
+                    </label>
+                  );
+                }) : <p className="text-xs text-amber-700">Nenhum item foi identificado automaticamente. O arquivo original será mantido para conferência manual.</p>}
+              </div>
+            </div>
+          )}
           <div className="space-y-1.5 sm:col-span-2"><label className="text-sm font-medium">Título *</label><Input value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ex: Porta da suíte não fecha corretamente" /></div>
           <div className="space-y-1.5 sm:col-span-2"><label className="text-sm font-medium">Relato claro do problema *</label><Textarea rows={5} value={relato} onChange={(e) => setRelato(e.target.value)} placeholder="Descreva o sintoma, quando começou, onde ocorre, o que já foi testado e qualquer detalhe útil para o técnico." /><p className="text-xs text-muted-foreground">A IA e o atendimento humano devem coletar informação suficiente antes de enviar ao suporte.</p></div>
           <div className="space-y-1.5 sm:col-span-2"><label className="text-sm font-medium">Itens/produtos afetados</label><Input value={produtos} onChange={(e) => setProdutos(e.target.value)} placeholder="Separe por vírgula: janela suíte, porta varanda..." /></div>
