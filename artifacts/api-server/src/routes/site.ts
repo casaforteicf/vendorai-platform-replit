@@ -14,6 +14,7 @@ import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 import { syncBehaviorIntentForLead } from "../jobs/behaviorIntentSync.js";
 import { notifyVisitorOnline } from "../services/visitorPushNotifications.js";
 import { resolveRequestGeo } from "../lib/requestGeo.js";
+import { leadRegistrationMetadata, normalizeLeadEmail, normalizeLeadName } from "../lib/lead-registration-standard.js";
 
 const router: IRouter = Router();
 
@@ -348,6 +349,20 @@ router.post("/site/contato", async (req, res) => {
             .returning({ id: leadsTable.id });
           attributedNow = updated.length > 0;
         }
+        await db
+          .update(leadsTable)
+          .set({
+            metadata: leadRegistrationMetadata(dedup.lead.metadata, {
+              entryChannel: "site",
+              entrySource: sourceLabel,
+              details: { siteOrigin: origem ?? null },
+            }),
+            updatedAt: new Date(),
+          })
+          .where(and(
+            eq(leadsTable.id, leadId),
+            eq(leadsTable.tenantId, INSTITUTIONAL_TENANT_ID),
+          ));
         logger.info({ leadId, nome }, "site/contato: lead já existe — usando existente");
       } else {
         const assignedTo = await pickNextVendedor(INSTITUTIONAL_TENANT_ID).catch(() => null);
@@ -363,15 +378,20 @@ router.post("/site/contato", async (req, res) => {
           .insert(leadsTable)
           .values({
             tenantId: INSTITUTIONAL_TENANT_ID,
-            nome,
-            email,
+            nome: normalizeLeadName(nome, "Contato do site"),
+            email: normalizeLeadEmail(email),
             telefone: telefoneSanitizado ?? null,
-            empresa: empresa ?? null,
+            empresa: empresa?.trim() || null,
             notasNutricao,
             source: sourceLabel,
             status: "novo",
             assignedTo: assignedTo ?? null,
             adCampaignId,
+            metadata: leadRegistrationMetadata(null, {
+              entryChannel: "site",
+              entrySource: sourceLabel,
+              details: { siteOrigin: origem ?? null },
+            }),
             discoveryData: {
               attribution: attributionRecord(attribution),
               siteOrigin: origem ?? null,
