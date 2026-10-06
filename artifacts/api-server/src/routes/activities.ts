@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { requestCanAccessLockedObject } from "../lib/attachment-folder-access.js";
+import { requestCanAccessLockedObject, syncProtectedObjectsForLead } from "../lib/attachment-folder-access.js";
 import { and, eq, lt, isNotNull } from "drizzle-orm";
 import {
   db,
@@ -85,6 +85,7 @@ router.post("/activities", async (req, res) => {
     .insert(activitiesTable)
     .values(insertData)
     .returning();
+  if (activity.anexoUrl) await syncProtectedObjectsForLead(activity.tenantId, activity.leadId);
   res.status(201).json(activity);
 
   if (activity.status === "concluida" && activity.dealId) {
@@ -233,6 +234,7 @@ router.get("/tenants/:tenantId/activities", async (req, res) => {
       eq(activitiesTable.status, status as typeof activitiesTable.status._.data)
     );
 
+  if (leadId) await syncProtectedObjectsForLead(tenantId, leadId);
   const activities = await db
     .select()
     .from(activitiesTable)
@@ -422,6 +424,7 @@ router.patch("/activities/:id", async (req, res) => {
     });
   }
 
+  if (activity.anexoUrl) await syncProtectedObjectsForLead(activity.tenantId, activity.leadId);
   res.json(activity);
 
   void recordIntelligenceEvent({
