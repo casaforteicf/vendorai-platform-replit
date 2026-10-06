@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   registrar:
@@ -24,11 +25,29 @@ jobs:
           PAYLOAD=$(node -e 'const p=JSON.parse(process.env.PR_PAYLOAD); process.stdout.write(Buffer.from(JSON.stringify({number:p.number,title:p.title,body:p.body,merged:p.merged,mergedAt:p.merged_at})).toString("base64"))')
           node scripts/register-changelog.mjs artifacts/api-server/src/data/automatic-changelog.ts "$PAYLOAD"
 
-      - name: Publicar registro em Novidades
+      - name: Criar PR do registro de Novidades
+        id: changelog_pr
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "Registra automaticamente novidade do PR #${{ github.event.pull_request.number }}"
+          branch: "automation/changelog-pr-${{ github.event.pull_request.number }}"
+          delete-branch: true
+          title: "Novidades: registrar PR #${{ github.event.pull_request.number }}"
+          body: |
+            Registro automático da melhoria incorporada pelo PR #${{ github.event.pull_request.number }}.
+            Este PR existe porque a branch main é protegida e não aceita push direto.
+          add-paths: |
+            artifacts/api-server/src/data/automatic-changelog.ts
+
+      - name: Mesclar registro quando permitido
+        if: steps.changelog_pr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHANGELOG_PR: ${{ steps.changelog_pr.outputs.pull-request-number }}
         run: |
-          if git diff --quiet; then exit 0; fi
-          git config user.name "VendorAI Novidades"
-          git config user.email "actions@users.noreply.github.com"
-          git add artifacts/api-server/src/data/automatic-changelog.ts
-          git commit -m "Registra automaticamente novidade do PR #${{ github.event.pull_request.number }}"
-          git push origin main
+          if gh pr merge "$CHANGELOG_PR" --squash --delete-branch; then
+            echo "Registro de Novidades incorporado automaticamente."
+          else
+            echo "::notice::O PR de Novidades foi criado e ficou aguardando as proteções obrigatórias da main."
+          fi
