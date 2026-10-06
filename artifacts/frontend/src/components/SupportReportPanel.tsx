@@ -249,10 +249,9 @@ export function SupportReportPanel({ card, token, onChanged }: {
           </div>
           <div className="space-y-1"><label className="text-xs font-medium">Recomendações</label><Textarea rows={2} value={draft.recomendacoes} disabled={confirmed} onChange={(e) => setDraft({ ...draft, recomendacoes: e.target.value })} /></div>
           <div className="space-y-1"><label className="text-xs font-medium">Observações</label><Textarea rows={2} value={draft.observacoes} disabled={confirmed} onChange={(e) => setDraft({ ...draft, observacoes: e.target.value })} /></div>
-          {!confirmed && !orderFinalized && (
+          {!orderFinalized && (
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" disabled={confirming} onClick={() => void confirm()}>{confirming && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Salvar relatório</Button>
-              <Button variant="outline" disabled={generating} onClick={() => void generate()}>{generating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Gerar novamente</Button>
+              {!confirmed && <Button variant="outline" disabled={generating} onClick={() => void generate()}>{generating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Gerar novamente</Button>}
               <Button className="gap-2" disabled={finalizing} onClick={() => void finalizeOrder()}>
                 {finalizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
                 Finalizar assistência e enviar OS
