@@ -687,6 +687,10 @@ export default function LeadAttachmentsTab() {
           folderPath: lockTarget,
           password: lockPassword,
           unlockMinutes: Math.min(240, Math.max(1, Number.parseInt(lockMinutes || "15", 10) || 15)),
+          objectPaths: unified
+            .filter((item) => item.folderPath === lockTarget)
+            .map((item) => canonicalStorageUrl(item.url))
+            .filter((url) => url.startsWith("/objects/")),
         }),
       });
       setLockDialogOpen(false);
@@ -751,8 +755,17 @@ export default function LeadAttachmentsTab() {
     }
   }
 
-  function lockFolderNow(folder: string) {
+  async function lockFolderNow(folder: string) {
     if (!leadId) return;
+    try {
+      await requestJson(`/api/leads/${leadId}/attachment-folder-lock/lock-now`, {
+        method: "POST",
+        body: JSON.stringify({ folderPath: folder }),
+      });
+    } catch {
+      // The local state still closes access immediately; a later refresh
+      // will reconcile with the server if the request failed.
+    }
     sessionStorage.removeItem(`vendorai_attachment_unlock:${leadId}:${folder}`);
     setUnlockedUntil((current) => {
       const next = { ...current };
@@ -762,6 +775,22 @@ export default function LeadAttachmentsTab() {
     if (folderFilter === folder) setFolderFilter("");
     toast({ title: "Pasta bloqueada" });
   }
+
+  useEffect(() => {
+    if (!leadId || folderLocks.length === 0 || unified.length === 0) return;
+    for (const lock of folderLocks) {
+      const objectPaths = unified
+        .filter((item) => item.folderPath === lock.folderPath)
+        .map((item) => canonicalStorageUrl(item.url))
+        .filter((url) => url.startsWith("/objects/"));
+      void requestJson(`/api/leads/${leadId}/attachment-folder-lock/sync`, {
+        method: "POST",
+        body: JSON.stringify({ folderPath: lock.folderPath, objectPaths }),
+      }).catch(() => undefined);
+    }
+    // Sync runs only when the attachment inventory or lock set changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadId, folderLocks, unified]);
 
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -1020,7 +1049,7 @@ export default function LeadAttachmentsTab() {
                       </Button>
                     )}
                     {lock && unlocked && (
-                      <Button type="button" size="sm" variant="ghost" className="h-7 gap-1 px-2 text-[11px]" onClick={() => lockFolderNow(folder)}>
+                      <Button type="button" size="sm" variant="ghost" className="h-7 gap-1 px-2 text-[11px]" onClick={() => void lockFolderNow(folder)}>
                         <Lock className="h-3.5 w-3.5" /> Bloquear
                       </Button>
                     )}
