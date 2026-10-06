@@ -1,7 +1,5 @@
 import { useMemo, type ReactNode } from "react";
 import {
-  Area,
-  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -158,7 +156,7 @@ export default function ExecutiveDashboardModern({
 
   const activeStageData = useMemo(
     () => stages
-      .filter((item) => item.activeWithRealEntry > 0 || item.completedSamples > 0)
+      .filter((item) => item.pipeline === "comercial" && (item.activeWithRealEntry > 0 || item.completedSamples > 0))
       .slice(0, 8)
       .map((item) => ({
         name: item.label,
@@ -291,20 +289,26 @@ export default function ExecutiveDashboardModern({
             {activeStageData.length ? (
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={activeStageData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="dashActive" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.28} />
-                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.02} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.25} />
-                    <XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} angle={activeStageData.length > 5 ? -18 : 0} textAnchor={activeStageData.length > 5 ? "end" : "middle"} height={activeStageData.length > 5 ? 55 : 30} />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <BarChart
+                    data={activeStageData}
+                    layout="vertical"
+                    margin={{ top: 6, right: 12, left: 16, bottom: 6 }}
+                    barCategoryGap="24%"
+                  >
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.22} />
+                    <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      width={128}
+                      tick={{ fontSize: 11 }}
+                      tickLine={false}
+                      axisLine={false}
+                    />
                     <Tooltip />
-                    <Area type="monotone" dataKey="ativos" name="Ativos" stroke="hsl(var(--primary))" fill="url(#dashActive)" strokeWidth={2.5} />
-                    <Area type="monotone" dataKey="concluidos" name="Concluídos" stroke="hsl(var(--muted-foreground))" fillOpacity={0} strokeWidth={1.5} />
-                  </AreaChart>
+                    <Bar dataKey="ativos" name="Ativos" fill="hsl(var(--primary))" radius={[0, 6, 6, 0]} maxBarSize={18} />
+                    <Bar dataKey="concluidos" name="Concluídos" fill="hsl(var(--muted-foreground))" radius={[0, 6, 6, 0]} maxBarSize={18} />
+                  </BarChart>
                 </ResponsiveContainer>
               </div>
             ) : <EmptyChart text="Sem histórico suficiente para desenhar a evolução do pipeline." />}
