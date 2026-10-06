@@ -27,18 +27,33 @@ function injectTenantMarketingTags(
   html: string,
   ids: {
     googleAdsConversionId?: string | null;
+    ga4MeasurementId?: string | null;
+    gtmContainerId?: string | null;
     metaPixelId?: string | null;
     linkedinInsightTagId?: string | null;
     tiktokPixelId?: string | null;
   },
 ): string {
   const googleAdsId = /^AW-\d+$/.test(ids.googleAdsConversionId ?? "") ? ids.googleAdsConversionId : null;
+  const ga4Id = /^G-[A-Z0-9]+$/i.test(ids.ga4MeasurementId ?? "") ? ids.ga4MeasurementId : null;
+  const gtmId = /^GTM-[A-Z0-9]+$/i.test(ids.gtmContainerId ?? "") ? ids.gtmContainerId : null;
   const metaPixelId = /^\d+$/.test(ids.metaPixelId ?? "") ? ids.metaPixelId : null;
   const linkedinId = /^\d+$/.test(ids.linkedinInsightTagId ?? "") ? ids.linkedinInsightTagId : null;
   const tiktokId = /^[A-Za-z0-9_-]+$/.test(ids.tiktokPixelId ?? "") ? ids.tiktokPixelId : null;
-  if (!googleAdsId && !metaPixelId && !linkedinId && !tiktokId) return html;
+  if (!googleAdsId && !ga4Id && !gtmId && !metaPixelId && !linkedinId && !tiktokId) return html;
 
   const scripts: string[] = [];
+  if (gtmId) {
+    scripts.push(
+      `<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${gtmId}');</script>`,
+    );
+  }
+  if (ga4Id) {
+    scripts.push(
+      `<script async src="https://www.googletagmanager.com/gtag/js?id=${ga4Id}"></script>` +
+        `<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${ga4Id}');</script>`,
+    );
+  }
   if (googleAdsId) {
     scripts.push(
       `<script async src="https://www.googletagmanager.com/gtag/js?id=${googleAdsId}"></script>` +
@@ -201,7 +216,7 @@ publicSiteGeneratorRouter.get("/sites/:siteSlug", async (req, res) => {
   }
 
   const [siteTenant] = await db
-    .select({ googleAdsConversionId: tenantsTable.googleAdsConversionId, metaPixelId: tenantsTable.metaPixelId, linkedinInsightTagId: tenantsTable.linkedinInsightTagId, tiktokPixelId: tenantsTable.tiktokPixelId })
+    .select({ googleAdsConversionId: tenantsTable.googleAdsConversionId, ga4MeasurementId: tenantsTable.ga4MeasurementId, gtmContainerId: tenantsTable.gtmContainerId, metaPixelId: tenantsTable.metaPixelId, linkedinInsightTagId: tenantsTable.linkedinInsightTagId, tiktokPixelId: tenantsTable.tiktokPixelId })
     .from(tenantsTable)
     .where(eq(tenantsTable.id, site.tenantId))
     .limit(1);
@@ -233,7 +248,7 @@ publicSiteGeneratorRouter.get("/public/:tenantSlug/site-html", async (req, res) 
       return;
     }
     const [tenantForSlug] = await db
-      .select({ googleAdsConversionId: tenantsTable.googleAdsConversionId, metaPixelId: tenantsTable.metaPixelId, linkedinInsightTagId: tenantsTable.linkedinInsightTagId, tiktokPixelId: tenantsTable.tiktokPixelId })
+      .select({ googleAdsConversionId: tenantsTable.googleAdsConversionId, ga4MeasurementId: tenantsTable.ga4MeasurementId, gtmContainerId: tenantsTable.gtmContainerId, metaPixelId: tenantsTable.metaPixelId, linkedinInsightTagId: tenantsTable.linkedinInsightTagId, tiktokPixelId: tenantsTable.tiktokPixelId })
       .from(tenantsTable)
       .where(eq(tenantsTable.id, siteBySlug.tenantId))
       .limit(1);
@@ -245,7 +260,7 @@ publicSiteGeneratorRouter.get("/public/:tenantSlug/site-html", async (req, res) 
   }
 
   const [tenant] = await db
-    .select({ id: tenantsTable.id, googleAdsConversionId: tenantsTable.googleAdsConversionId, metaPixelId: tenantsTable.metaPixelId, linkedinInsightTagId: tenantsTable.linkedinInsightTagId, tiktokPixelId: tenantsTable.tiktokPixelId })
+    .select({ id: tenantsTable.id, googleAdsConversionId: tenantsTable.googleAdsConversionId, ga4MeasurementId: tenantsTable.ga4MeasurementId, gtmContainerId: tenantsTable.gtmContainerId, metaPixelId: tenantsTable.metaPixelId, linkedinInsightTagId: tenantsTable.linkedinInsightTagId, tiktokPixelId: tenantsTable.tiktokPixelId })
     .from(tenantsTable)
     .where(or(eq(tenantsTable.slug, tenantSlug), eq(tenantsTable.subdomainSlug, tenantSlug)));
 
