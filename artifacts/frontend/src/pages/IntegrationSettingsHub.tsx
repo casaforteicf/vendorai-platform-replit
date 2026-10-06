@@ -994,7 +994,6 @@ export default function IntegrationSettingsHub() {
             </div>
           </div>
         )}
-        </div>
       </div>
     </div>
   );
