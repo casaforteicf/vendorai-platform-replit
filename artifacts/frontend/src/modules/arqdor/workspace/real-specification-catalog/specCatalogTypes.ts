@@ -46,6 +46,9 @@ export type SpecObject = {
   sourceObjectId?: string | null;
   sourceType?: SpecSourceType | null;
   projectRevision?: string | null;
+  revisionImpact?: "unchanged" | "quantity_changed" | "geometry_changed" | "new" | "removed" | "needs_review" | null;
+  geometryHash?: string | null;
+  removedFromProjectAt?: string | null;
 
   name: string;
   description?: string | null;
