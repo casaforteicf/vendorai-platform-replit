@@ -40,6 +40,7 @@ import {
   tenantsTable,
   attachmentFolderLocksTable,
   attachmentFolderAuditTable,
+  attachmentFolderLockObjectsTable,
 } from "@workspace/db";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { buildUserFunctionFilter, requireAdminOrUserFunction, type UserFunction } from "../middlewares/auth.js";
@@ -52,6 +53,8 @@ import { getActiveCatalogPreview, compactCatalogNames } from "../lib/catalog-rea
 import { reserveUniqueVehicle } from "../services/vehicle-reservation.js";
 import { reserveUniqueItem } from "../services/item-reservation.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
+import { signAttachmentFolderUnlockToken } from "../lib/jwt.js";
+import { attachmentUnlockCookieName, normalizeAttachmentObjectPath, requestCanAccessLockedObject } from "../lib/attachment-folder-access.js";
 
 const router: IRouter = Router();
 const attachmentUnlockLimiter = rateLimit({
@@ -691,6 +694,7 @@ router.put("/leads/:id/attachment-folder-lock", async (req, res) => {
     folderPath: attachmentFolderPathSchema,
     password: attachmentFolderPasswordSchema,
     unlockMinutes: z.number().int().min(1).max(240).optional().default(15),
+    objectPaths: z.array(z.string().max(1000)).max(500).optional().default([]),
   }).safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: "Informe uma pasta válida e uma senha com pelo menos 8 caracteres." });
@@ -730,6 +734,31 @@ router.put("/leads/:id/attachment-folder-lock", async (req, res) => {
       createdBy: req.user?.sub ?? null,
       updatedBy: req.user?.sub ?? null,
     });
+  }
+
+  const [savedLock] = await db
+    .select()
+    .from(attachmentFolderLocksTable)
+    .where(and(
+      eq(attachmentFolderLocksTable.tenantId, lead.tenantId),
+      eq(attachmentFolderLocksTable.leadId, lead.id),
+      eq(attachmentFolderLocksTable.folderPath, folderPath),
+    ))
+    .limit(1);
+
+  if (savedLock) {
+    await db.delete(attachmentFolderLockObjectsTable).where(eq(attachmentFolderLockObjectsTable.lockId, savedLock.id));
+    const ownPrefix = `/objects/tenants/${lead.tenantId}/`;
+    const objectPaths = [...new Set(parsed.data.objectPaths.map(normalizeAttachmentObjectPath).filter((value) => value.startsWith(ownPrefix)))];
+    if (objectPaths.length) {
+      await db.insert(attachmentFolderLockObjectsTable).values(objectPaths.map((objectPath) => ({
+        tenantId: lead.tenantId,
+        leadId: lead.id,
+        lockId: savedLock.id,
+        folderPath,
+        objectPath,
+      })));
+    }
   }
 
   await db.insert(attachmentFolderAuditTable).values({
@@ -818,8 +847,89 @@ router.post("/leads/:id/attachment-folder-unlock", attachmentUnlockLimiter, asyn
     return;
   }
 
-  const expiresAt = new Date(Date.now() + lock.unlockMinutes * 60_000).toISOString();
+  const expiresSeconds = lock.unlockMinutes * 60;
+  const expiresAt = new Date(Date.now() + expiresSeconds * 1000).toISOString();
+  const token = signAttachmentFolderUnlockToken({
+    purpose: "attachment_folder_unlock",
+    sub: String(req.user?.sub ?? ""),
+    tenantId: lead.tenantId,
+    leadId: lead.id,
+    lockId: lock.id,
+    folderPath,
+  }, expiresSeconds);
+  res.cookie(attachmentUnlockCookieName(lock.id), token, {
+    httpOnly: true,
+    sameSite: "strict",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: expiresSeconds * 1000,
+    path: "/api",
+  });
   res.json({ folderPath, unlocked: true, expiresAt });
+});
+
+router.post("/leads/:id/attachment-folder-lock/sync", async (req, res) => {
+  const lead = await getLeadForAttachmentFolder(req, res);
+  if (!lead) return;
+
+  const parsed = z.object({
+    folderPath: attachmentFolderPathSchema,
+    objectPaths: z.array(z.string().max(1000)).max(500),
+  }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: "Dados de sincronização inválidos." });
+    return;
+  }
+  const folderPath = parsed.data.folderPath.split("/").map((p) => p.trim()).filter(Boolean).join(" / ");
+  const [lock] = await db.select().from(attachmentFolderLocksTable).where(and(
+    eq(attachmentFolderLocksTable.tenantId, lead.tenantId),
+    eq(attachmentFolderLocksTable.leadId, lead.id),
+    eq(attachmentFolderLocksTable.folderPath, folderPath),
+  )).limit(1);
+
+  if (!lock) {
+    res.status(404).json({ error: "A pasta não está protegida." });
+    return;
+  }
+
+  const ownPrefix = `/objects/tenants/${lead.tenantId}/`;
+  const objectPaths = [...new Set(parsed.data.objectPaths
+    .map(normalizeAttachmentObjectPath)
+    .filter((value) => value.startsWith(ownPrefix)))];
+
+  await db.delete(attachmentFolderLockObjectsTable).where(eq(attachmentFolderLockObjectsTable.lockId, lock.id));
+  if (objectPaths.length) {
+    await db.insert(attachmentFolderLockObjectsTable).values(objectPaths.map((objectPath) => ({
+      tenantId: lead.tenantId,
+      leadId: lead.id,
+      lockId: lock.id,
+      folderPath,
+      objectPath,
+    })));
+  }
+
+  res.json({ folderPath, protectedObjects: objectPaths.length });
+});
+
+router.post("/leads/:id/attachment-folder-lock/lock-now", async (req, res) => {
+  const lead = await getLeadForAttachmentFolder(req, res);
+  if (!lead) return;
+  const parsed = z.object({ folderPath: attachmentFolderPathSchema }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: "Pasta inválida." });
+    return;
+  }
+  const folderPath = parsed.data.folderPath.split("/").map((p) => p.trim()).filter(Boolean).join(" / ");
+  const [lock] = await db.select().from(attachmentFolderLocksTable).where(and(
+    eq(attachmentFolderLocksTable.tenantId, lead.tenantId),
+    eq(attachmentFolderLocksTable.leadId, lead.id),
+    eq(attachmentFolderLocksTable.folderPath, folderPath),
+  )).limit(1);
+  if (!lock) {
+    res.status(404).json({ error: "A pasta não está protegida." });
+    return;
+  }
+  res.clearCookie(attachmentUnlockCookieName(lock.id), { path: "/api" });
+  res.status(204).send();
 });
 
 router.get("/leads/:id", async (req, res) => {
