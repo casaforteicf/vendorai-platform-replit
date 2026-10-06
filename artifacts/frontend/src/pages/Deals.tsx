@@ -3309,6 +3309,7 @@ export default function Deals() {
                   propostaByDealId={propostaByDealId}
                   propostaByLeadId={propostaByLeadId}
                   userMap={userMap}
+                  representationMap={representationMap}
                   isOver={overColumn === col.dropId}
                   onCardClick={handleCardClick}
                   onAgendar={(deal) => setAgendarDeal(deal)}
@@ -3327,6 +3328,7 @@ export default function Deals() {
                   leadName={activeDeal.leadId ? leadMap.get(activeDeal.leadId) : undefined}
                   briefing={activeDeal.leadId ? briefingMap.get(activeDeal.leadId) : undefined}
                   assignedToName={activeDeal.assignedTo ? userMap.get(activeDeal.assignedTo) : undefined}
+                  representation={representationMap.get(activeDeal.id)}
                   overlay
                 />
               ) : null}
