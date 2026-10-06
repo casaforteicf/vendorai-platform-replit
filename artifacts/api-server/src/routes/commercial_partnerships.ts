@@ -36,7 +36,10 @@ function isSuperAdmin(req: any) {
 function canManageOwnerTenant(req: any, tenantId: string) {
   return isSuperAdmin(req) || (
     req.user?.tenantId === tenantId &&
-    req.user?.platformRole === "tenant_admin"
+    (
+      req.user?.platformRole === "tenant_admin" ||
+      req.user?.userFunction === "administrador"
+    )
   );
 }
 
