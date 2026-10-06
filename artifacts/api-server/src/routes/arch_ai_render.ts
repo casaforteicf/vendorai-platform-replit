@@ -1,6 +1,6 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
-import { and, asc, eq, ne } from "drizzle-orm";
-import { db, pool, archAiRendersTable } from "@workspace/db";
+import { and, asc, desc, eq, ne } from "drizzle-orm";
+import { db, pool, archAiRendersTable, archRenderFidelityReviewsTable } from "@workspace/db";
 import { authenticate } from "../middlewares/auth.js";
 import { inferOperationType, renderOperationTypeSchema } from "../lib/arqdor-render-version-metadata.js";
 import { syncApprovedRenderSpecifications } from "../lib/arqdor-approved-render-spec.js";
@@ -10,6 +10,7 @@ import { RenderGalleryError, updateConceptRenderGallery } from "../services/arch
 import { getArqdorRenderVideo, startArqdorRenderVideo } from "../services/arqdor-render-video.js";
 import type { ArqdorVideoMovement } from "../lib/arqdor-render-prompts.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { reviewArqdorFidelity } from "../services/arqdor-fidelity-review.js";
 
 export const archAiRenderRouter = Router();
 const renderStorage = new ObjectStorageService();
@@ -61,6 +62,27 @@ async function renderFileAvailable(value: string | null | undefined): Promise<bo
 
 function tenantId(req: Request): string | null {
   return (req as any).user?.tenantId ?? null;
+}
+
+async function findTenantRender(renderId: string, tid: string) {
+  const [render] = await db.select().from(archAiRendersTable)
+    .where(and(eq(archAiRendersTable.id, renderId), eq(archAiRendersTable.tenantId, tid)))
+    .limit(1);
+  return render ?? null;
+}
+
+async function findRootBaseImage(render: typeof archAiRendersTable.$inferSelect, tid: string): Promise<string | null> {
+  let current = render;
+  const visited = new Set<string>();
+  for (let depth = 0; depth < 20; depth += 1) {
+    if (visited.has(current.id)) break;
+    visited.add(current.id);
+    if (!current.parentRenderId) return current.originalImageUrl ?? null;
+    const parent = await findTenantRender(current.parentRenderId, tid);
+    if (!parent) return current.originalImageUrl ?? null;
+    current = parent;
+  }
+  return current.originalImageUrl ?? null;
 }
 
 function asOptionalString(value: unknown): string | null {
@@ -315,6 +337,104 @@ archAiRenderRouter.get("/arch/ai-render-video/:id", authenticate, async (req, re
     created_at: job.created_at,
     completed_at: job.completed_at,
   });
+});
+
+archAiRenderRouter.get("/arch/ai-render/:id/reviews", authenticate, async (req: Request, res: Response) => {
+  const tid = tenantId(req);
+  if (!tid) return res.status(403).json({ success: false, error: "Tenant não identificado" });
+
+  const renderId = String(req.params["id"]);
+  const render = await findTenantRender(renderId, tid);
+  if (!render) return res.status(404).json({ success: false, error: "Render não encontrado" });
+
+  const reviews = await db.select().from(archRenderFidelityReviewsTable)
+    .where(and(
+      eq(archRenderFidelityReviewsTable.tenantId, tid),
+      eq(archRenderFidelityReviewsTable.renderId, renderId),
+    ))
+    .orderBy(desc(archRenderFidelityReviewsTable.createdAt));
+
+  return res.json({
+    success: true,
+    render_id: renderId,
+    reviews: reviews.map((row) => ({
+      id: row.id,
+      render_id: row.renderId,
+      project_id: row.projectId,
+      overall_score: row.overallScore,
+      requires_human_review: row.requiresHumanReview,
+      review: row.review,
+      model: row.model,
+      usage: {
+        input_tokens: row.inputTokens,
+        output_tokens: row.outputTokens,
+      },
+      reviewed_by: row.reviewedBy,
+      created_at: row.createdAt,
+    })),
+  });
+});
+
+archAiRenderRouter.post("/arch/ai-render/:id/review", authenticate, async (req: Request, res: Response) => {
+  const tid = tenantId(req);
+  if (!tid) return res.status(403).json({ success: false, error: "Tenant não identificado" });
+
+  const render = await findTenantRender(String(req.params["id"]), tid);
+  if (!render) return res.status(404).json({ success: false, error: "Render não encontrado" });
+  if (render.status !== "concluido" || !render.resultImageUrl) {
+    return res.status(409).json({ success: false, error: "Finalize o render antes de executar o Fidelity Review" });
+  }
+
+  const baseImageUrl = await findRootBaseImage(render, tid);
+  if (!baseImageUrl) {
+    return res.status(409).json({ success: false, error: "Imagem base do projeto não encontrada para comparação" });
+  }
+
+  try {
+    const result = await reviewArqdorFidelity({
+      tenantId: tid,
+      baseImageUrl,
+      renderImageUrl: render.resultImageUrl,
+      requestedChange: render.prompt,
+      log: req.log,
+    });
+
+    const [saved] = await db.insert(archRenderFidelityReviewsTable).values({
+      tenantId: tid,
+      renderId: render.id,
+      projectId: render.projectId,
+      baseImageUrl,
+      renderImageUrl: render.resultImageUrl,
+      requestedChange: render.prompt,
+      overallScore: Math.round(result.review.overallScore),
+      requiresHumanReview: result.review.requiresHumanReview,
+      review: result.review,
+      model: result.model,
+      costUsd: Number.isFinite(result.costUsd) ? String(result.costUsd) : null,
+      inputTokens: Number.isFinite(result.inputTokens) ? result.inputTokens : null,
+      outputTokens: Number.isFinite(result.outputTokens) ? result.outputTokens : null,
+      reviewedBy: String((req as any).user?.id ?? (req as any).user?.sub ?? "") || null,
+    }).returning();
+
+    return res.json({
+      success: true,
+      review_id: saved?.id,
+      render_id: render.id,
+      review: result.review,
+      usage: {
+        input_tokens: result.inputTokens,
+        output_tokens: result.outputTokens,
+      },
+      persisted: true,
+      created_at: saved?.createdAt,
+    });
+  } catch (error) {
+    req.log?.error?.({ err: error, renderId: render.id }, "arch/fidelity-review: falha");
+    return res.status(500).json({
+      success: false,
+      error: "Não foi possível concluir o Fidelity Review desta versão.",
+    });
+  }
 });
 
 // Fonte oficial do histórico persistente. Registrada antes do router legado para
