@@ -716,7 +716,7 @@ router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
       tipoServicoId,
       modeloExecucao: modeloEfetivo,
       modeloOsId: modeloSelecionado?.id ?? null,
-      enderecoAtendimento:
+      enderecoAtendimento,
       prestadorId: prestadorId ?? null,
       observacoes: observacoes ?? null,
       status: nascePronta ? "orcamento_enviado" : "orcamento_pendente",
@@ -725,7 +725,7 @@ router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
       historicoExecucao: [criacao],
       clienteAcompanha: modeloSelecionado ? modeloSelecionado.clienteAcompanhaDefault : clienteAcompanha,
       compartilharStatusCliente: modeloSelecionado ? modeloSelecionado.compartilharStatusClienteDefault : compartilharStatusCliente,
-      portalToken: clienteAcompanha ? crypto.randomUUID() : null,
+      portalToken: (modeloSelecionado ? modeloSelecionado.clienteAcompanhaDefault : clienteAcompanha) ? crypto.randomUUID() : null,
       updatedAt: new Date(),
     } as any)
     .returning();
