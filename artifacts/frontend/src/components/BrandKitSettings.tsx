@@ -71,7 +71,7 @@ function stringValue(value: unknown) {
 }
 
 export function BrandKitSettings() {
-  const { user, token } = useAuth();
+  const { user, token, isLoading: authLoading } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -136,6 +136,7 @@ export function BrandKitSettings() {
   const [agentOpen, setAgentOpen] = useState(false);
   const [agentPrompt, setAgentPrompt] = useState("");
   const [logoLoadFailed, setLogoLoadFailed] = useState(false);
+  const [contextLoadingTimedOut, setContextLoadingTimedOut] = useState(false);
 
   const wizardSteps = [
     { label: "Empresa", description: "Contexto oficial", icon: Building2 },
@@ -167,6 +168,17 @@ export function BrandKitSettings() {
   useEffect(() => {
     setLogoLoadFailed(false);
   }, [profileData?.logoUrl, tenant.data?.logoUrl]);
+
+  // Nunca deixe o Kit da Marca preso indefinidamente no skeleton.
+  // Se todas as fontes permanecerem pendentes por muito tempo, trocamos
+  // o loading eterno por um estado de erro recuperável com retry explícito.
+  useEffect(() => {
+    setContextLoadingTimedOut(false);
+    if (!tenantId || !(resolvedProfile.isLoading && profile.isLoading && tenant.isLoading)) return;
+
+    const timer = window.setTimeout(() => setContextLoadingTimedOut(true), 12_000);
+    return () => window.clearTimeout(timer);
+  }, [tenantId, resolvedProfile.isLoading, profile.isLoading, tenant.isLoading]);
 
   const completeness = useMemo(() => {
     const checks = [
@@ -372,15 +384,42 @@ export function BrandKitSettings() {
   // Não devemos manter a tela inteira em skeleton esperando useGetTenant:
   // em troca de tenant/superadmin essa consulta pode demorar ou falhar
   // independentemente, enquanto o perfil consolidado já está disponível.
+  const missingTenantContext = !authLoading && !tenantId;
+  const allContextQueriesLoading = Boolean(
+    tenantId &&
+    resolvedProfile.isLoading &&
+    profile.isLoading &&
+    tenant.isLoading
+  );
   const isContextLoading =
-    !tenantId ||
-    (resolvedProfile.isLoading && profile.isLoading && tenant.isLoading);
+    authLoading ||
+    (allContextQueriesLoading && !contextLoadingTimedOut);
   const contextLoadFailed = Boolean(
     tenantId &&
-    resolvedProfile.isError &&
-    profile.isError &&
-    tenant.isError
+    (
+      contextLoadingTimedOut ||
+      (resolvedProfile.isError && profile.isError && tenant.isError)
+    )
   );
+
+  if (missingTenantContext) {
+    return (
+      <section className="rounded-2xl border bg-card p-6 shadow-sm">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="mt-0.5 h-5 w-5 text-amber-600" />
+          <div className="min-w-0 flex-1">
+            <h2 className="font-semibold">Empresa ativa não identificada</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              O Kit da Marca não recebeu o tenant da sessão. Recarregue a página ou selecione novamente a empresa antes de continuar.
+            </p>
+            <Button type="button" variant="outline" className="mt-4" onClick={() => window.location.reload()}>
+              <RefreshCw className="mr-2 h-4 w-4" />Recarregar
+            </Button>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   if (isContextLoading) {
     return (
