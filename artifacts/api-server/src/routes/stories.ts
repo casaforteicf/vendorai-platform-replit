@@ -44,15 +44,12 @@ router.post("/tenants/:tenantId/stories", async (req, res) => {
     return res.status(422).json({ error: parsed.error.issues[0]?.message ?? "Dados inválidos" });
   }
 
-  // objectPath (ex: /objects/uploads/uuid) vira URL pública do Supabase Storage
-  // aqui, antes de gravar — assim o Praça.ai (outro app) só consome
-  // media_url direto, sem precisar rotear pelo backend do Vendor.ai pra
-  // exibir a imagem/vídeo.
+  // Stories expiram em 24h; usamos URL assinada pelo mesmo período em vez de
+  // tornar o objeto privado permanentemente público no bucket.
   const normalized = objectStorageService.normalizeObjectEntityPath(parsed.data.mediaUrl);
   let mediaUrl = parsed.data.mediaUrl;
   try {
-    const file = await objectStorageService.getObjectEntityFile(normalized);
-    mediaUrl = file.getPublicUrl();
+    mediaUrl = await objectStorageService.getObjectEntitySignedUrl(normalized, 24 * 60 * 60);
   } catch {
     // já veio como URL pública (ou formato inesperado) — usa como está
   }
