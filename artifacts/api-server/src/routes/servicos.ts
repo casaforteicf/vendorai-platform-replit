@@ -189,6 +189,34 @@ async function streamServicoPortalObject(res: any, value: unknown) {
   return true;
 }
 
+function normalizeCamposPersonalizados(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  const tipos = new Set(["text", "textarea", "number", "date", "checkbox"]);
+  return value
+    .slice(0, 50)
+    .map((raw: any) => {
+      const nome = String(raw?.nome ?? "").trim().slice(0, 120);
+      if (!nome) return null;
+      const tipo = tipos.has(String(raw?.tipo)) ? String(raw.tipo) : "text";
+      let valor: string | number | boolean | null = raw?.valor ?? null;
+      if (tipo === "checkbox") valor = Boolean(valor);
+      else if (tipo === "number") {
+        const parsed = Number(valor);
+        valor = Number.isFinite(parsed) ? parsed : null;
+      } else if (valor != null) {
+        valor = String(valor).slice(0, 5000);
+      }
+      return {
+        id: String(raw?.id ?? crypto.randomUUID()).slice(0, 120),
+        nome,
+        tipo,
+        valor,
+        obrigatorio: Boolean(raw?.obrigatorio),
+      };
+    })
+    .filter(Boolean);
+}
+
 function evidenceOk(item: ServicoChecklistItem, observacao: string, fotos: string[]) {
   switch (item.evidencia) {
     case "confirmation":
@@ -518,6 +546,7 @@ router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
     observacoes,
     clienteAcompanha = true,
     compartilharStatusCliente = true,
+    camposPersonalizados = [],
   } = req.body as {
     clienteId: string;
     negocioId?: string;
@@ -528,6 +557,7 @@ router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
     observacoes?: string;
     clienteAcompanha?: boolean;
     compartilharStatusCliente?: boolean;
+    camposPersonalizados?: unknown[];
   };
 
   if (!clienteId || !tipoServicoId || !enderecoAtendimento) {
@@ -576,6 +606,7 @@ router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
       valorOrcado: nascePronta ? tipoServico.precoBase : null,
       checklistExecucao: checklist,
       historicoExecucao: [criacao],
+      camposPersonalizados: normalizeCamposPersonalizados(camposPersonalizados),
       clienteAcompanha,
       compartilharStatusCliente,
       portalToken: clienteAcompanha ? crypto.randomUUID() : null,
@@ -605,8 +636,12 @@ router.patch("/tenants/:tenantId/servicos/ordens/:id", async (req, res) => {
     "observacoes",
     "clienteAcompanha",
     "compartilharStatusCliente",
+    "camposPersonalizados",
   ];
   const patch = Object.fromEntries(Object.entries(req.body).filter(([k]) => allowed.includes(k))) as Record<string, any>;
+  if (Object.prototype.hasOwnProperty.call(patch, "camposPersonalizados")) {
+    patch.camposPersonalizados = normalizeCamposPersonalizados(patch.camposPersonalizados);
+  }
   if (patch.clienteAcompanha === true && !atual.portalToken) {
     patch.portalToken = crypto.randomUUID();
   }
