@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SupportReportPanel } from "@/components/SupportReportPanel";
 import { SupportActivityExecutionPanel } from "@/components/SupportActivityExecutionPanel";
 import { OperationalStageFormDialog } from "@/components/OperationalStageFormDialog";
@@ -77,7 +77,7 @@ type Attachment = {
   createdAt?: string;
 };
 
-type Lead = { id: string; nome?: string | null; empresa?: string | null; telefone?: string | null };
+type Lead = { id: string; nome?: string | null; empresa?: string | null; telefone?: string | null; email?: string | null; endereco?: string | null };
 type User = { id: string; name?: string | null; email?: string | null; userFunction?: string | null };
 type Deal = { id: string; titulo: string; leadId?: string | null; etapa: string; valor?: string | null };
 type Proposal = { id: string; dealId?: string | null; leadId: string; titulo: string; status: string; itens?: Array<Record<string, unknown>> };
@@ -1407,6 +1407,7 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
 }) {
   const { toast } = useToast();
   const [leadId, setLeadId] = useState("");
+  const [leadSearch, setLeadSearch] = useState("");
   const [dealId, setDealId] = useState("");
   const [categoria, setCategoria] = useState("defeito");
   const [titulo, setTitulo] = useState("");
@@ -1422,6 +1423,32 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
   const legacyOrderFileRef = useRef<HTMLInputElement>(null);
 
   const leadDeals = deals.filter((d) => d.leadId === leadId);
+  const selectedLead = leads.find((lead) => lead.id === leadId) ?? null;
+  const leadGroups = useMemo(() => {
+    const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
+    const query = normalize(leadSearch);
+    const ordered = [...leads]
+      .filter((lead) => {
+        if (!query) return true;
+        return [lead.nome, lead.empresa, lead.telefone, lead.email, lead.endereco]
+          .filter(Boolean)
+          .some((value) => normalize(String(value)).includes(query));
+      })
+      .sort((a, b) => {
+        const aLabel = String(a.nome || a.empresa || a.id);
+        const bLabel = String(b.nome || b.empresa || b.id);
+        return aLabel.localeCompare(bLabel, "pt-BR", { sensitivity: "base" });
+      });
+    return ordered.reduce<Array<{ letter: string; leads: Lead[] }>>((groups, lead) => {
+      const label = String(lead.nome || lead.empresa || lead.id).trim();
+      const first = label.charAt(0).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+      const letter = /[A-Z0-9]/.test(first) ? first : "#";
+      const current = groups.at(-1);
+      if (current?.letter === letter) current.leads.push(lead);
+      else groups.push({ letter, leads: [lead] });
+      return groups;
+    }, []);
+  }, [leads, leadSearch]);
   const proposal = proposals.find((p) => p.dealId === dealId) ?? null;
 
   function legacyItemLabel(item: Record<string, unknown>, index: number) {
@@ -1456,6 +1483,14 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
         items,
         selectedItemIndexes: items.map((_: unknown, index: number) => index),
       };
+      if (!leadId && body.cliente) {
+        const normalizeCustomer = (value: unknown) => String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
+        const extractedCustomer = normalizeCustomer(body.cliente);
+        const matchedLead = leads.find((lead) =>
+          [lead.nome, lead.empresa].some((value) => normalizeCustomer(value) === extractedCustomer)
+        );
+        if (matchedLead) setLeadId(matchedLead.id);
+      }
       setLegacyOrder(imported);
       setDealId("");
       if (items.length) {
@@ -1572,7 +1607,39 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader><DialogTitle>Abrir chamado de assistência</DialogTitle></DialogHeader>
         <div className="grid gap-4 py-1 sm:grid-cols-2">
-          <div className="space-y-1.5 sm:col-span-2"><label className="text-sm font-medium">Cliente *</label><Select value={leadId} onValueChange={(v) => { setLeadId(v); setDealId(""); }}><SelectTrigger><SelectValue placeholder="Selecionar cliente" /></SelectTrigger><SelectContent>{leads.map((l) => <SelectItem key={l.id} value={l.id}>{l.nome || l.empresa || l.id}</SelectItem>)}</SelectContent></Select></div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <label className="text-sm font-medium">Cliente *</label>
+            <Input
+              value={leadSearch}
+              onChange={(event) => setLeadSearch(event.target.value)}
+              placeholder="Buscar por nome, empresa, telefone, e-mail ou endereço..."
+            />
+            <Select value={leadId} onValueChange={(v) => { setLeadId(v); setDealId(""); }}>
+              <SelectTrigger><SelectValue placeholder="Selecionar cliente" /></SelectTrigger>
+              <SelectContent>
+                {leadGroups.length ? leadGroups.map((group) => (
+                  <SelectGroup key={group.letter}>
+                    <SelectLabel>{group.letter}</SelectLabel>
+                    {group.leads.map((lead) => (
+                      <SelectItem key={lead.id} value={lead.id}>
+                        {lead.nome || lead.empresa || lead.id}{lead.telefone ? ` • ${lead.telefone}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                )) : (
+                  <div className="px-2 py-3 text-sm text-muted-foreground">Nenhum cliente encontrado.</div>
+                )}
+              </SelectContent>
+            </Select>
+            {selectedLead && (
+              <div className="rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                <strong className="text-foreground">{selectedLead.nome || selectedLead.empresa || "Cliente"}</strong>
+                {selectedLead.telefone ? ` • ${selectedLead.telefone}` : ""}
+                {selectedLead.email ? ` • ${selectedLead.email}` : ""}
+                {selectedLead.endereco ? <span className="mt-1 block">{selectedLead.endereco}</span> : null}
+              </div>
+            )}
+          </div>
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Pedido relacionado</label>
             <Select value={dealId || "__none__"} onValueChange={(v) => { setDealId(v === "__none__" ? "" : v); if (v !== "__none__") setLegacyOrder(null); }}>
@@ -1596,11 +1663,22 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
                 <Button type="button" variant="ghost" size="sm" onClick={() => { setLegacyOrder(null); setProdutos(""); }}>Remover</Button>
               </div>
               <div className="grid gap-2 text-xs sm:grid-cols-2">
-                {legacyOrder.customer && <p><span className="font-medium">Cliente:</span> {legacyOrder.customer}</p>}
+                {legacyOrder.customer && <p><span className="font-medium">Cliente lido no arquivo:</span> {legacyOrder.customer}</p>}
                 {legacyOrder.supplier && <p><span className="font-medium">Fornecedor:</span> {legacyOrder.supplier}</p>}
                 {legacyOrder.title && <p><span className="font-medium">Pedido:</span> {legacyOrder.title}</p>}
                 {legacyOrder.total != null && <p><span className="font-medium">Valor identificado:</span> {String(legacyOrder.total)}</p>}
               </div>
+              {selectedLead && (
+                <div className="rounded-md border bg-background p-2 text-xs">
+                  <p className="font-medium">Dados oficiais do cadastro usados na assistência</p>
+                  <p className="mt-1 text-muted-foreground">
+                    {selectedLead.nome || selectedLead.empresa || "Cliente"}
+                    {selectedLead.telefone ? ` • ${selectedLead.telefone}` : ""}
+                    {selectedLead.email ? ` • ${selectedLead.email}` : ""}
+                  </p>
+                  {selectedLead.endereco ? <p className="mt-1 text-muted-foreground">{selectedLead.endereco}</p> : null}
+                </div>
+              )}
               {legacyOrder.observations && <p className="text-xs"><span className="font-medium">Observações:</span> {legacyOrder.observations}</p>}
               <div className="space-y-2">
                 <p className="text-xs font-medium">Marque os itens afetados pela assistência</p>
