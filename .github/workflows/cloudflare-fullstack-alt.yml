@@ -1,5 +1,5 @@
 name: Cloudflare Fullstack Alternative
-# Manual alternative redeploy marker: 2026-10-05-pn-wizard
+# Manual alternative redeploy marker: 2026-10-06-vendi-followup-500
 
 on:
   push:
