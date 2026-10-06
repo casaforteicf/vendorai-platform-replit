@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
@@ -123,6 +123,88 @@ async function uploadEvidence(file: File): Promise<string> {
   return payload.objectPath;
 }
 
+type ServicoCampoForm = {
+  id: string;
+  label: string;
+  tipo: "text" | "textarea" | "number" | "date" | "select" | "checkbox" | "file";
+  valor: string | number | boolean | string[] | null;
+  obrigatorio: boolean;
+  placeholder?: string | null;
+  opcoes?: string[];
+  visibilidade?: "interno" | "cliente" | "cliente_parceiro";
+};
+
+function campoVazio(def?: Partial<ServicoCampoForm>): ServicoCampoForm {
+  const tipo = (def?.tipo ?? "text") as ServicoCampoForm["tipo"];
+  return {
+    id: def?.id ?? crypto.randomUUID(),
+    label: def?.label ?? "",
+    tipo,
+    valor: tipo === "checkbox" ? false : tipo === "file" ? [] : "",
+    obrigatorio: Boolean(def?.obrigatorio),
+    placeholder: def?.placeholder ?? null,
+    opcoes: Array.isArray(def?.opcoes) ? def!.opcoes : [],
+    visibilidade: def?.visibilidade ?? "interno",
+  };
+}
+
+function campoPreenchido(campo: ServicoCampoForm) {
+  if (campo.tipo === "checkbox") return typeof campo.valor === "boolean";
+  if (campo.tipo === "file") return Array.isArray(campo.valor) && campo.valor.length > 0;
+  if (campo.tipo === "number") return campo.valor !== "" && campo.valor != null && Number.isFinite(Number(campo.valor));
+  return String(campo.valor ?? "").trim().length > 0;
+}
+
+function CampoValorInput({
+  campo,
+  onChange,
+}: {
+  campo: ServicoCampoForm;
+  onChange: (valor: ServicoCampoForm["valor"]) => void;
+}) {
+  if (campo.tipo === "textarea") {
+    return <Textarea rows={2} value={String(campo.valor ?? "")} onChange={(e) => onChange(e.target.value)} placeholder={campo.placeholder ?? ""} />;
+  }
+  if (campo.tipo === "select") {
+    return (
+      <Select value={String(campo.valor ?? "")} onValueChange={onChange}>
+        <SelectTrigger><SelectValue placeholder={campo.placeholder ?? "Selecione..."} /></SelectTrigger>
+        <SelectContent>
+          {(campo.opcoes ?? []).map((opcao) => <SelectItem key={opcao} value={opcao}>{opcao}</SelectItem>)}
+        </SelectContent>
+      </Select>
+    );
+  }
+  if (campo.tipo === "checkbox") {
+    return (
+      <Select value={campo.valor === true ? "sim" : "nao"} onValueChange={(v) => onChange(v === "sim")}>
+        <SelectTrigger><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="sim">Sim</SelectItem>
+          <SelectItem value="nao">Não</SelectItem>
+        </SelectContent>
+      </Select>
+    );
+  }
+  if (campo.tipo === "file") {
+    return (
+      <Input
+        value={Array.isArray(campo.valor) ? campo.valor.join(", ") : ""}
+        onChange={(e) => onChange(e.target.value.split(/[,;\n]/).map((v) => v.trim()).filter(Boolean))}
+        placeholder="Links ou caminhos dos arquivos, separados por vírgula"
+      />
+    );
+  }
+  return (
+    <Input
+      type={campo.tipo === "number" ? "number" : campo.tipo === "date" ? "date" : "text"}
+      value={campo.valor == null ? "" : String(campo.valor)}
+      onChange={(e) => onChange(campo.tipo === "number" ? (e.target.value === "" ? "" : Number(e.target.value)) : e.target.value)}
+      placeholder={campo.placeholder ?? ""}
+    />
+  );
+}
+
 function NovaOrdemDialog({
   tenantId,
   open,
@@ -142,6 +224,7 @@ function NovaOrdemDialog({
   const [tipoServicoId, setTipoServicoId] = useState("");
   const [enderecoAtendimento, setEnderecoAtendimento] = useState("");
   const [observacoes, setObservacoes] = useState("");
+  const [camposPersonalizados, setCamposPersonalizados] = useState<ServicoCampoForm[]>([]);
 
   const { data: leads = [] } = useQuery<any[]>({
     queryKey: ["leads-search", tenantId, clienteSearch],
@@ -196,6 +279,7 @@ function NovaOrdemDialog({
       setTipoServicoId("");
       setEnderecoAtendimento("");
       setObservacoes("");
+      setCamposPersonalizados([]);
     },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
@@ -206,6 +290,13 @@ function NovaOrdemDialog({
       toast({ title: "Cliente, tipo de serviço e endereço são obrigatórios", variant: "destructive" });
       return;
     }
+    const camposInvalidos = camposPersonalizados.filter((campo) =>
+      !campo.label.trim() || (campo.obrigatorio && !campoPreenchido(campo))
+    );
+    if (camposInvalidos.length) {
+      toast({ title: "Revise os campos adicionais obrigatórios", variant: "destructive" });
+      return;
+    }
     create.mutate({
       clienteId: selectedLead.id,
       negocioId: negocioId || undefined,
@@ -214,6 +305,7 @@ function NovaOrdemDialog({
       modeloOsId: modeloOsId || undefined,
       enderecoAtendimento,
       observacoes: observacoes || undefined,
+      camposPersonalizados,
       clienteAcompanha: true,
     });
   }
@@ -235,9 +327,15 @@ function NovaOrdemDialog({
                   const model = (Array.isArray(modelosOs) ? modelosOs : []).find((item: any) => item.id === id);
                   setModeloOsId(id);
                   if (model?.tipo) setModeloExecucao(model.tipo);
+                  setCamposPersonalizados(
+                    Array.isArray(model?.campos)
+                      ? model.campos.map((campo: any) => campoVazio(campo))
+                      : [],
+                  );
                 } else {
                   setModeloOsId("");
                   setModeloExecucao(value.slice("system:".length));
+                  setCamposPersonalizados([]);
                 }
               }}
             >
@@ -339,6 +437,47 @@ function NovaOrdemDialog({
             />
           </div>
 
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <Label>Campos da ordem</Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  O modelo selecionado preenche esta estrutura automaticamente. Você também pode adicionar campos extras nesta OS.
+                </p>
+              </div>
+              <Button type="button" size="sm" variant="outline" onClick={() => setCamposPersonalizados((items) => [...items, campoVazio()])}>
+                <Plus className="h-4 w-4 mr-2" /> Adicionar campo
+              </Button>
+            </div>
+            {camposPersonalizados.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+                Nenhum campo adicional neste modelo.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {camposPersonalizados.map((campo, index) => (
+                  <div key={campo.id} className="rounded-lg border p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={campo.label}
+                        onChange={(e) => setCamposPersonalizados((items) => items.map((x, i) => i === index ? { ...x, label: e.target.value } : x))}
+                        placeholder="Nome do campo"
+                      />
+                      <Badge variant="outline">{campo.obrigatorio ? "Obrigatório" : "Opcional"}</Badge>
+                      <Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={() => setCamposPersonalizados((items) => items.filter((_, i) => i !== index))}>
+                        Remover
+                      </Button>
+                    </div>
+                    <CampoValorInput
+                      campo={campo}
+                      onChange={(valor) => setCamposPersonalizados((items) => items.map((x, i) => i === index ? { ...x, valor } : x))}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground flex gap-2">
             <Eye className="h-4 w-4 mt-0.5 shrink-0" />
             O acompanhamento do cliente fica ativo por padrão. Evidências e avanços da execução alimentam a timeline da OS.
@@ -371,6 +510,17 @@ function ExecucaoDialog({
   const { toast } = useToast();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [enderecoDraft, setEnderecoDraft] = useState(ordem?.enderecoAtendimento ?? "");
+  const [observacoesDraft, setObservacoesDraft] = useState(ordem?.observacoes ?? "");
+  const [camposDraft, setCamposDraft] = useState<ServicoCampoForm[]>(
+    Array.isArray(ordem?.camposPersonalizados) ? ordem.camposPersonalizados : [],
+  );
+
+  useEffect(() => {
+    setEnderecoDraft(ordem?.enderecoAtendimento ?? "");
+    setObservacoesDraft(ordem?.observacoes ?? "");
+    setCamposDraft(Array.isArray(ordem?.camposPersonalizados) ? ordem.camposPersonalizados : []);
+  }, [ordem?.id, ordem?.enderecoAtendimento, ordem?.observacoes, ordem?.camposPersonalizados]);
 
   const checklist = Array.isArray(ordem?.checklistExecucao) ? ordem.checklistExecucao : [];
   const obrigatorios = checklist.filter((i: any) => i.obrigatorio);
@@ -409,6 +559,27 @@ function ExecucaoDialog({
       toast({ title: "Compartilhamento atualizado." });
     },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const updateDados = useMutation({
+    mutationFn: () =>
+      apiJson(`/api/tenants/${tenantId}/servicos/ordens/${ordem.id}`, {
+        method: "PATCH",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          enderecoAtendimento: enderecoDraft,
+          observacoes: observacoesDraft || null,
+          camposPersonalizados: camposDraft,
+        }),
+      }),
+    onSuccess: (updated) => {
+      qc.setQueryData<any[]>(["servicos-ordens", tenantId], (rows = []) =>
+        rows.map((row) => row.id === updated.id ? { ...row, ...updated } : row),
+      );
+      qc.invalidateQueries({ queryKey: ["servicos-ordens", tenantId] });
+      toast({ title: "Dados da OS atualizados." });
+    },
+    onError: (e: any) => toast({ title: "Erro ao atualizar OS", description: e.message, variant: "destructive" }),
   });
 
   async function addPhoto(item: any, file: File | undefined) {
@@ -514,6 +685,72 @@ function ExecucaoDialog({
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+          </div>
+
+          <div className="rounded-lg border p-4 space-y-4">
+            <div>
+              <h3 className="font-semibold text-sm">Dados editáveis da ordem</h3>
+              <p className="text-xs text-muted-foreground mt-1">Atualize os dados da OS e os campos específicos do modelo.</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Endereço de atendimento</Label>
+              <Textarea rows={2} value={enderecoDraft} onChange={(e) => setEnderecoDraft(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Orientações / observações</Label>
+              <Textarea rows={3} value={observacoesDraft} onChange={(e) => setObservacoesDraft(e.target.value)} />
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <Label>Campos personalizados</Label>
+                <Button type="button" size="sm" variant="outline" onClick={() => setCamposDraft((items) => [...items, campoVazio()])}>
+                  <Plus className="h-4 w-4 mr-2" /> Campo
+                </Button>
+              </div>
+              {camposDraft.map((campo, index) => (
+                <div key={campo.id} className="rounded-lg border p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={campo.label}
+                      onChange={(e) => setCamposDraft((items) => items.map((x, i) => i === index ? { ...x, label: e.target.value } : x))}
+                      placeholder="Nome do campo"
+                    />
+                    <Badge variant="outline">{campo.obrigatorio ? "Obrigatório" : "Opcional"}</Badge>
+                    <Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={() => setCamposDraft((items) => items.filter((_, i) => i !== index))}>
+                      Remover
+                    </Button>
+                  </div>
+                  <CampoValorInput
+                    campo={campo}
+                    onChange={(valor) => setCamposDraft((items) => items.map((x, i) => i === index ? { ...x, valor } : x))}
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                onClick={() => {
+                  const invalidos = camposDraft.filter((campo) => !campo.label.trim() || (campo.obrigatorio && !campoPreenchido(campo)));
+                  if (!enderecoDraft.trim()) {
+                    toast({ title: "O endereço de atendimento é obrigatório", variant: "destructive" });
+                    return;
+                  }
+                  if (invalidos.length) {
+                    toast({ title: "Revise os campos obrigatórios", variant: "destructive" });
+                    return;
+                  }
+                  updateDados.mutate();
+                }}
+                disabled={updateDados.isPending}
+              >
+                {updateDados.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                Salvar dados da OS
+              </Button>
             </div>
           </div>
 
@@ -680,6 +917,7 @@ function ModelosOsDialog({
   const [clienteAcompanhaDefault, setClienteAcompanhaDefault] = useState(true);
   const [compartilharStatusClienteDefault, setCompartilharStatusClienteDefault] = useState(true);
   const [checklist, setChecklist] = useState<any[]>([]);
+  const [campos, setCampos] = useState<any[]>([]);
 
   const QK = ["servicos-modelos-os", tenantId];
   const { data: modelos = [], isLoading } = useQuery<any[]>({
@@ -697,6 +935,7 @@ function ModelosOsDialog({
     setClienteAcompanhaDefault(true);
     setCompartilharStatusClienteDefault(true);
     setChecklist([]);
+    setCampos([]);
   }
 
   function edit(model: any) {
@@ -708,6 +947,7 @@ function ModelosOsDialog({
     setClienteAcompanhaDefault(model.clienteAcompanhaDefault !== false);
     setCompartilharStatusClienteDefault(model.compartilharStatusClienteDefault !== false);
     setChecklist(Array.isArray(model.checklist) ? model.checklist.map((item: any) => ({ ...item })) : []);
+    setCampos(Array.isArray(model.campos) ? model.campos.map((item: any) => ({ ...item })) : []);
   }
 
   function duplicate(model: any) {
@@ -719,6 +959,7 @@ function ModelosOsDialog({
     setClienteAcompanhaDefault(model.clienteAcompanhaDefault !== false);
     setCompartilharStatusClienteDefault(model.compartilharStatusClienteDefault !== false);
     setChecklist(Array.isArray(model.checklist) ? model.checklist.map((item: any) => ({ ...item, id: crypto.randomUUID() })) : []);
+    setCampos(Array.isArray(model.campos) ? model.campos.map((item: any) => ({ ...item, id: crypto.randomUUID() })) : []);
   }
 
   const save = useMutation({
@@ -744,7 +985,15 @@ function ModelosOsDialog({
             evidencia: item.evidencia || "confirmation",
             visibilidade: item.visibilidade || "interno",
           })).filter((item) => item.titulo),
-          campos: [],
+          campos: campos.map((item) => ({
+            id: item.id || crypto.randomUUID(),
+            label: String(item.label ?? "").trim(),
+            tipo: item.tipo || "text",
+            obrigatorio: Boolean(item.obrigatorio),
+            placeholder: item.placeholder || null,
+            opcoes: Array.isArray(item.opcoes) ? item.opcoes : [],
+            visibilidade: item.visibilidade || "interno",
+          })).filter((item) => item.label),
         }),
       },
     ),
@@ -857,6 +1106,105 @@ function ModelosOsDialog({
                 <input type="checkbox" checked={compartilharStatusClienteDefault} onChange={(e) => setCompartilharStatusClienteDefault(e.target.checked)} />
                 Compartilhar status
               </label>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <Label>Campos do formulário da OS</Label>
+                  <p className="text-xs text-muted-foreground">Esses campos aparecem automaticamente ao cadastrar uma OS com este modelo.</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCampos((items) => [...items, {
+                    id: crypto.randomUUID(),
+                    label: "",
+                    tipo: "text",
+                    obrigatorio: false,
+                    placeholder: "",
+                    opcoes: [],
+                    visibilidade: "interno",
+                  }])}
+                >
+                  <Plus className="h-4 w-4 mr-2" /> Adicionar campo
+                </Button>
+              </div>
+
+              {campos.length === 0 ? (
+                <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                  Nenhum campo personalizado. O modelo usará apenas os dados padrão da OS.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {campos.map((item, index) => (
+                    <div key={item.id ?? index} className="rounded-lg border p-3 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={item.label ?? ""}
+                          onChange={(e) => setCampos((items) => items.map((x, i) => i === index ? { ...x, label: e.target.value } : x))}
+                          placeholder="Nome do campo"
+                        />
+                        <Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={() => setCampos((items) => items.filter((_, i) => i !== index))}>
+                          Remover
+                        </Button>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        <Select
+                          value={item.tipo ?? "text"}
+                          onValueChange={(value) => setCampos((items) => items.map((x, i) => i === index ? { ...x, tipo: value } : x))}
+                        >
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="text">Texto curto</SelectItem>
+                            <SelectItem value="textarea">Texto longo</SelectItem>
+                            <SelectItem value="number">Número</SelectItem>
+                            <SelectItem value="date">Data</SelectItem>
+                            <SelectItem value="select">Lista de opções</SelectItem>
+                            <SelectItem value="checkbox">Sim / Não</SelectItem>
+                            <SelectItem value="file">Arquivo / link</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Select
+                          value={item.visibilidade ?? "interno"}
+                          onValueChange={(value) => setCampos((items) => items.map((x, i) => i === index ? { ...x, visibilidade: value } : x))}
+                        >
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="interno">Interno</SelectItem>
+                            <SelectItem value="cliente">Cliente</SelectItem>
+                            <SelectItem value="cliente_parceiro">Cliente + parceiro</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <label className="flex items-center gap-2 rounded-md border px-3 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(item.obrigatorio)}
+                            onChange={(e) => setCampos((items) => items.map((x, i) => i === index ? { ...x, obrigatorio: e.target.checked } : x))}
+                          />
+                          Obrigatório
+                        </label>
+                      </div>
+                      <Input
+                        value={item.placeholder ?? ""}
+                        onChange={(e) => setCampos((items) => items.map((x, i) => i === index ? { ...x, placeholder: e.target.value } : x))}
+                        placeholder="Texto de ajuda / placeholder"
+                      />
+                      {item.tipo === "select" && (
+                        <Input
+                          value={Array.isArray(item.opcoes) ? item.opcoes.join(", ") : ""}
+                          onChange={(e) => setCampos((items) => items.map((x, i) => i === index ? {
+                            ...x,
+                            opcoes: e.target.value.split(",").map((v) => v.trim()).filter(Boolean),
+                          } : x))}
+                          placeholder="Opções separadas por vírgula"
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="space-y-3">
