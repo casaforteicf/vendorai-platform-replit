@@ -27,7 +27,7 @@ const VideoProjectsPanel = lazy(() => import("@/components/video/VideoProjectsPa
 const VideoPublishPanel = lazy(() => import("@/components/video/VideoPublishPanel"));
 const MediaPlanReviewWorkspace = lazy(() => import("@/components/video/MediaPlanReviewWorkspace"));
 
-type HomeView = "studio" | "create" | "projects" | "publish" | "more";
+type HomeView = "studio" | "origin" | "create" | "projects" | "publish" | "more";
 
 type MediaProject = {
   id: string;
@@ -179,7 +179,6 @@ export default function VideoHome() {
   const [openingProjectId, setOpeningProjectId] = useState("");
   const [identity, setIdentity] = useState<MediaIdentity | null>(null);
   const [identityLoading, setIdentityLoading] = useState(true);
-  const [showCreationOrigins, setShowCreationOrigins] = useState(false);
 
   useEffect(() => {
     if (!targetTenantId || !isSuperAdmin || targetTenantId === tenantId) return;
@@ -267,6 +266,47 @@ export default function VideoHome() {
     );
   }
 
+  if (view === "origin") {
+    return (
+      <div className="mx-auto max-w-5xl space-y-5 pb-12">
+        <button type="button" onClick={() => setView("studio")} className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="h-4 w-4" />Voltar ao Estúdio
+        </button>
+        <section className="rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-7">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Criar vídeo</p>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Como deseja começar?</h1>
+          <p className="mt-2 text-sm text-muted-foreground">Escolha apenas a origem. Depois o Estúdio conduz briefing, roteiro, cenas e produção no mesmo fluxo.</p>
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <button type="button" onClick={() => setView("create")} className="group rounded-2xl border border-border bg-background p-5 text-left transition hover:border-primary/35 hover:bg-primary/[0.025]">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary"><Sparkles className="h-5 w-5" /></div>
+              <p className="mt-4 text-base font-semibold text-foreground">Briefing livre</p>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">Comece do zero com objetivo, público, produto e canal.</p>
+              <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-primary">Começar<ArrowRight className="h-3.5 w-3.5" /></span>
+            </button>
+            <button type="button" onClick={() => navigate("/marketing/campanhas")} className="group rounded-2xl border border-border bg-background p-5 text-left transition hover:border-primary/35 hover:bg-primary/[0.025]">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary"><Send className="h-5 w-5" /></div>
+              <p className="mt-4 text-base font-semibold text-foreground">Da campanha</p>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">Use automaticamente objetivo, público, oferta e direção já definidos no Marketing.</p>
+              <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-primary">Selecionar campanha<ArrowRight className="h-3.5 w-3.5" /></span>
+            </button>
+            <button type="button" onClick={() => navigate("/produtos")} className="group rounded-2xl border border-border bg-background p-5 text-left transition hover:border-primary/35 hover:bg-primary/[0.025]">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary"><Package className="h-5 w-5" /></div>
+              <p className="mt-4 text-base font-semibold text-foreground">Do produto</p>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">Escolha um produto ou serviço e aproveite informações e mídias já cadastradas.</p>
+              <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-primary">Selecionar produto<ArrowRight className="h-3.5 w-3.5" /></span>
+            </button>
+            <button type="button" onClick={() => navigate("/midias")} className="group rounded-2xl border border-border bg-background p-5 text-left transition hover:border-primary/35 hover:bg-primary/[0.025]">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary"><Images className="h-5 w-5" /></div>
+              <p className="mt-4 text-base font-semibold text-foreground">Da Biblioteca</p>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">Comece por fotos ou vídeos reais que já estão disponíveis para a empresa.</p>
+              <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-primary">Abrir Biblioteca<ArrowRight className="h-3.5 w-3.5" /></span>
+            </button>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   if (view === "create") {
     return (
       <div className="space-y-4 pb-12">
@@ -329,27 +369,12 @@ export default function VideoHome() {
         </div>
 
         <div className="border-t border-border px-5 pb-5 pt-4 sm:px-7 sm:pb-7">
-          <button type="button" onClick={() => setShowCreationOrigins((value) => !value)} className="flex w-full items-center justify-center gap-3 rounded-2xl bg-primary px-5 py-4 text-base font-semibold text-primary-foreground shadow-sm transition hover:opacity-95">
+          <button type="button" onClick={() => setView("origin")} className="flex w-full items-center justify-center gap-3 rounded-2xl bg-primary px-5 py-4 text-base font-semibold text-primary-foreground shadow-sm transition hover:opacity-95">
             <Sparkles className="h-5 w-5" />Criar vídeo<ArrowRight className="h-5 w-5" />
           </button>
           <p className="mt-2 text-center text-xs text-muted-foreground">Escolha a origem na próxima etapa. O fluxo principal continua simples e guiado.</p>
 
-          {showCreationOrigins && (
-            <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              <button type="button" onClick={() => setView("create")} className="rounded-xl border border-border bg-background p-3 text-left transition hover:border-primary/30 hover:bg-muted/30">
-                <Sparkles className="h-4 w-4 text-primary" /><p className="mt-2 text-sm font-semibold text-foreground">Briefing livre</p><p className="mt-1 text-xs text-muted-foreground">Comece do zero.</p>
-              </button>
-              <button type="button" onClick={() => navigate("/marketing/campanhas")} className="rounded-xl border border-border bg-background p-3 text-left transition hover:border-primary/30 hover:bg-muted/30">
-                <Send className="h-4 w-4 text-primary" /><p className="mt-2 text-sm font-semibold text-foreground">Da campanha</p><p className="mt-1 text-xs text-muted-foreground">Use o contexto de Marketing.</p>
-              </button>
-              <button type="button" onClick={() => navigate("/produtos")} className="rounded-xl border border-border bg-background p-3 text-left transition hover:border-primary/30 hover:bg-muted/30">
-                <Package className="h-4 w-4 text-primary" /><p className="mt-2 text-sm font-semibold text-foreground">Do produto</p><p className="mt-1 text-xs text-muted-foreground">Comece a partir de um produto.</p>
-              </button>
-              <button type="button" onClick={() => navigate("/midias")} className="rounded-xl border border-border bg-background p-3 text-left transition hover:border-primary/30 hover:bg-muted/30">
-                <Images className="h-4 w-4 text-primary" /><p className="mt-2 text-sm font-semibold text-foreground">Da Biblioteca</p><p className="mt-1 text-xs text-muted-foreground">Use fotos e vídeos existentes.</p>
-              </button>
-            </div>
-          )}
+
         </div>
       </header>
 
@@ -443,7 +468,7 @@ export default function VideoHome() {
         </div>
       </section>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 px-2 py-2 shadow-[0_-8px_30px_rgba(15,23,42,0.08)] backdrop-blur sm:sticky sm:bottom-4 sm:mx-auto sm:max-w-xl sm:rounded-2xl sm:border">
+      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 px-2 py-2 shadow-[0_-8px_30px_rgba(15,23,42,0.08)] backdrop-blur lg:hidden">
         <div className="grid grid-cols-4 gap-1">
           {[
             { id: "studio" as const, label: "Estúdio", icon: Film },
@@ -452,7 +477,7 @@ export default function VideoHome() {
             { id: "more" as const, label: "Mais", icon: MoreHorizontal },
           ].map((item) => {
             const Icon = item.icon;
-            const active = item.id === "studio";
+            const active = item.id === view;
             return (
               <button key={item.id} type="button" onClick={() => item.id === "more" ? document.getElementById("video-studio-more")?.scrollIntoView({ behavior: "smooth" }) : setView(item.id)} className={cn("flex flex-col items-center gap-1 rounded-xl px-2 py-2 text-xs font-medium", active ? "bg-primary/8 text-primary" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground")}>
                 <Icon className="h-5 w-5" />{item.label}
