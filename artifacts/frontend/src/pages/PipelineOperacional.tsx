@@ -566,7 +566,9 @@ export default function PipelineOperacional() {
 
       <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto overflow-y-hidden pb-3">
         {stages.map(([key, label]) => {
-          const stageCards = cards.filter((card) => card.etapa === key);
+          const stageCards = cards.filter((card) =>
+            card.etapa === key && (!card.leadId || leadMap.has(card.leadId))
+          );
           return (
             <section
               key={key}
