@@ -6,6 +6,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { z } from "zod/v4";
 import { db, tenantCustomIntegrationsTable } from "@workspace/db";
 import { decrypt, encrypt } from "../lib/crypto.js";
+import { requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
 export const customIntegrationsPublicRouter: IRouter = Router();
@@ -24,9 +25,6 @@ const createSchema = z.object({
   healthPath: z.string().trim().max(300).default("/"),
 });
 
-function canAccess(req: Request, tenantId: string) {
-  return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
-}
 
 function safeRow(row: typeof tenantCustomIntegrationsTable.$inferSelect) {
   return {
@@ -85,18 +83,18 @@ function buildAuthHeaders(row: typeof tenantCustomIntegrationsTable.$inferSelect
   return headers;
 }
 
-router.get("/tenants/:tenantId/custom-integrations", async (req, res) => {
+router.get("/tenants/:tenantId/custom-integrations", requireSameTenanOrSuperAdmin(), async (req, res) => {
+  // tenant-audit: reviewed protected by requireSameTenanOrSuperAdmin before tenant data access
   const tenantId = String(req.params.tenantId);
-  if (!canAccess(req, tenantId)) return void res.status(403).json({ error: "Forbidden" });
   const rows = await db.select().from(tenantCustomIntegrationsTable)
     .where(eq(tenantCustomIntegrationsTable.tenantId, tenantId))
     .orderBy(desc(tenantCustomIntegrationsTable.updatedAt));
   res.json({ integrations: rows.map(safeRow) });
 });
 
-router.post("/tenants/:tenantId/custom-integrations", async (req, res) => {
+router.post("/tenants/:tenantId/custom-integrations", requireSameTenanOrSuperAdmin(), async (req, res) => {
+  // tenant-audit: reviewed protected by requireSameTenanOrSuperAdmin before tenant data access
   const tenantId = String(req.params.tenantId);
-  if (!canAccess(req, tenantId)) return void res.status(403).json({ error: "Forbidden" });
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return void res.status(422).json({ error: "invalid_custom_integration", issues: parsed.error.issues });
 
@@ -143,10 +141,10 @@ router.post("/tenants/:tenantId/custom-integrations", async (req, res) => {
   });
 });
 
-router.post("/tenants/:tenantId/custom-integrations/:id/test", async (req, res) => {
+router.post("/tenants/:tenantId/custom-integrations/:id/test", requireSameTenanOrSuperAdmin(), async (req, res) => {
+  // tenant-audit: reviewed protected by requireSameTenanOrSuperAdmin before tenant data access
   const tenantId = String(req.params.tenantId);
   const id = String(req.params.id);
-  if (!canAccess(req, tenantId)) return void res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db.select().from(tenantCustomIntegrationsTable).where(and(
     eq(tenantCustomIntegrationsTable.id, id),
@@ -201,10 +199,10 @@ router.post("/tenants/:tenantId/custom-integrations/:id/test", async (req, res) 
   }
 });
 
-router.post("/tenants/:tenantId/custom-integrations/:id/rotate-webhook-secret", async (req, res) => {
+router.post("/tenants/:tenantId/custom-integrations/:id/rotate-webhook-secret", requireSameTenanOrSuperAdmin(), async (req, res) => {
+  // tenant-audit: reviewed protected by requireSameTenanOrSuperAdmin before tenant data access
   const tenantId = String(req.params.tenantId);
   const id = String(req.params.id);
-  if (!canAccess(req, tenantId)) return void res.status(403).json({ error: "Forbidden" });
   const secret = randomBytes(24).toString("base64url");
   const [row] = await db.update(tenantCustomIntegrationsTable).set({
     webhookSecretEncrypted: encrypt(secret),
@@ -216,10 +214,10 @@ router.post("/tenants/:tenantId/custom-integrations/:id/rotate-webhook-secret", 
   res.json({ id: row.id, secret, secretHeader: "x-vendorai-webhook-secret" });
 });
 
-router.delete("/tenants/:tenantId/custom-integrations/:id", async (req, res) => {
+router.delete("/tenants/:tenantId/custom-integrations/:id", requireSameTenanOrSuperAdmin(), async (req, res) => {
+  // tenant-audit: reviewed protected by requireSameTenanOrSuperAdmin before tenant data access
   const tenantId = String(req.params.tenantId);
   const id = String(req.params.id);
-  if (!canAccess(req, tenantId)) return void res.status(403).json({ error: "Forbidden" });
   const [row] = await db.delete(tenantCustomIntegrationsTable).where(and(
     eq(tenantCustomIntegrationsTable.id, id),
     eq(tenantCustomIntegrationsTable.tenantId, tenantId),
@@ -229,6 +227,7 @@ router.delete("/tenants/:tenantId/custom-integrations/:id", async (req, res) => 
 });
 
 customIntegrationsPublicRouter.post("/webhooks/custom/:tenantId/:connectionId", async (req, res) => {
+  // tenant-audit: reviewed public webhook; tenant route value only establishes transaction-local RLS context and access still requires the per-connection secret.
   const tenantId = String(req.params.tenantId);
   const connectionId = String(req.params.connectionId);
   const provided = req.headers["x-vendorai-webhook-secret"];
