@@ -10,6 +10,7 @@ import {
   dealsTable,
   type ServicoChecklistItem,
   type ServicoHistoricoItem,
+  type ServicoMidiaItem,
 } from "@workspace/db";
 import { SERVICE_CATALOG, SERVICE_TEMPLATES } from "../lib/serviceCatalog";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -59,7 +60,7 @@ type ModeloExecucao = (typeof MODELOS)[number];
 
 type ChecklistSeed = Omit<
   ServicoChecklistItem,
-  "visibilidade" | "concluido" | "observacao" | "fotos" | "concluidoPorId" | "concluidoPorNome" | "concluidoEm"
+  "visibilidade" | "concluido" | "observacao" | "fotos" | "midias" | "concluidoPorId" | "concluidoPorNome" | "concluidoEm"
 >;
 
 const CHECKLISTS: Record<ModeloExecucao, ChecklistSeed[]> = {
@@ -135,6 +136,7 @@ function buildChecklist(modelo: string): ServicoChecklistItem[] {
     concluido: false,
     observacao: null,
     fotos: [],
+    midias: [],
     concluidoPorId: null,
     concluidoPorNome: null,
     concluidoEm: null,
@@ -244,19 +246,41 @@ function camposObrigatoriosPendentes(campos: any[]) {
   return campos.filter((campo) => campo.obrigatorio && !campoServicoPreenchido(campo));
 }
 
-function evidenceOk(item: ServicoChecklistItem, observacao: string, fotos: string[]) {
+function normalizeServicoMidias(value: unknown, req: Express.Request): ServicoMidiaItem[] {
+  if (!Array.isArray(value)) return [];
+  const a = actor(req);
+  const allowed = new Set(["image", "video", "audio"]);
+  return value.slice(0, 80).map((raw: any) => {
+    const url = String(raw?.url ?? "").trim();
+    if (!url) return null;
+    const tipo = allowed.has(String(raw?.tipo)) ? String(raw.tipo) : "image";
+    return {
+      id: String(raw?.id ?? crypto.randomUUID()).slice(0, 120),
+      url,
+      tipo: tipo as ServicoMidiaItem["tipo"],
+      nome: raw?.nome ? String(raw.nome).slice(0, 240) : null,
+      mimeType: raw?.mimeType ? String(raw.mimeType).slice(0, 120) : null,
+      criadoEm: raw?.criadoEm ? String(raw.criadoEm) : new Date().toISOString(),
+      criadoPorId: raw?.criadoPorId ? String(raw.criadoPorId) : a.id,
+      criadoPorNome: raw?.criadoPorNome ? String(raw.criadoPorNome) : a.nome,
+    } satisfies ServicoMidiaItem;
+  }).filter(Boolean) as ServicoMidiaItem[];
+}
+
+function evidenceOk(item: ServicoChecklistItem, observacao: string, midias: ServicoMidiaItem[]) {
+  const midiaVisual = midias.some((midia) => midia.tipo === "image" || midia.tipo === "video");
   switch (item.evidencia) {
     case "confirmation":
       return true;
     case "text":
       return observacao.trim().length > 0;
     case "photo":
-      return fotos.length > 0;
+      return midiaVisual;
     case "text_and_photo":
-      return observacao.trim().length > 0 && fotos.length > 0;
+      return observacao.trim().length > 0 && midiaVisual;
     case "text_or_photo":
     default:
-      return observacao.trim().length > 0 || fotos.length > 0;
+      return observacao.trim().length > 0 || midiaVisual;
   }
 }
 
@@ -930,19 +954,34 @@ router.patch("/tenants/:tenantId/servicos/ordens/:id/checklist/:itemId", async (
   const hasConcluido = Object.prototype.hasOwnProperty.call(req.body ?? {}, "concluido");
   const concluido = hasConcluido ? req.body.concluido !== false : atual.concluido;
   const observacao = String(req.body.observacao ?? atual.observacao ?? "").trim();
-  const fotos = Array.isArray(req.body.fotos)
+  const legacyFotos = Array.isArray(req.body.fotos)
     ? req.body.fotos.filter((url: unknown) => typeof url === "string" && url.trim())
     : (atual.fotos ?? []);
+  const midias = Object.prototype.hasOwnProperty.call(req.body ?? {}, "midias")
+    ? normalizeServicoMidias(req.body.midias, req)
+    : (Array.isArray(atual.midias) && atual.midias.length
+      ? atual.midias
+      : legacyFotos.map((url) => ({
+          id: crypto.randomUUID(),
+          url,
+          tipo: "image" as const,
+          nome: null,
+          mimeType: null,
+          criadoEm: null,
+          criadoPorId: null,
+          criadoPorNome: null,
+        })));
+  const fotos = midias.filter((midia) => midia.tipo === "image").map((midia) => midia.url);
   const visibilidade = ["interno", "cliente", "cliente_parceiro"].includes(String(req.body.visibilidade ?? ""))
     ? String(req.body.visibilidade)
     : (atual.visibilidade ?? "interno");
 
-  if (hasConcluido && concluido && !evidenceOk(atual, observacao, fotos)) {
+  if (hasConcluido && concluido && !evidenceOk(atual, observacao, midias)) {
     const mensagens: Record<string, string> = {
       text: "Escreva o que foi feito antes de concluir este passo.",
-      photo: "Adicione pelo menos uma foto antes de concluir este passo.",
-      text_and_photo: "Este passo exige descrição e foto.",
-      text_or_photo: "Adicione uma descrição ou foto para comprovar a execução.",
+      photo: "Adicione pelo menos uma imagem ou vídeo antes de concluir este passo.",
+      text_and_photo: "Este passo exige descrição e mídia visual (imagem ou vídeo).",
+      text_or_photo: "Adicione uma descrição ou mídia visual para comprovar a execução.",
       confirmation: "Confirme a execução para concluir.",
     };
     return res.status(422).json({ error: mensagens[atual.evidencia] ?? "Evidência obrigatória ausente." });
@@ -955,6 +994,7 @@ router.patch("/tenants/:tenantId/servicos/ordens/:id/checklist/:itemId", async (
     concluido,
     observacao: observacao || null,
     fotos,
+    midias,
     concluidoPorId: hasConcluido ? (concluido ? a.id : null) : atual.concluidoPorId,
     concluidoPorNome: hasConcluido ? (concluido ? a.nome : null) : atual.concluidoPorNome,
     concluidoEm: hasConcluido ? (concluido ? new Date().toISOString() : null) : atual.concluidoEm,
@@ -977,7 +1017,7 @@ router.patch("/tenants/:tenantId/servicos/ordens/:id/checklist/:itemId", async (
       hasConcluido
         ? `${concluido ? "Concluído" : "Reaberto"}: ${atual.titulo}`
         : `Compartilhamento atualizado: ${atual.titulo}`,
-      { itemId, fotos: fotos.length, temObservacao: Boolean(observacao), visibilidade },
+      { itemId, midias: midias.length, imagens: fotos.length, temObservacao: Boolean(observacao), visibilidade },
     ),
   ];
 
