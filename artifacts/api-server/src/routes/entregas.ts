@@ -1,4 +1,5 @@
 import { Router, type IRouter, type Request } from "express";
+import { requestCanAccessLockedObject } from "../lib/attachment-folder-access.js";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod/v4";
@@ -3093,7 +3094,13 @@ router.get("/work-cards/:id/attachments", async (req, res) => {
   const attachments = await db.select().from(workCardAttachmentsTable)
     .where(eq(workCardAttachmentsTable.workCardId, card.id))
     .orderBy(desc(workCardAttachmentsTable.createdAt));
-  res.json(attachments);
+  const visibleAttachments = [];
+  for (const attachment of attachments) {
+    if (await requestCanAccessLockedObject(req, card.tenantId, attachment.url)) {
+      visibleAttachments.push(attachment);
+    }
+  }
+  res.json(visibleAttachments);
 });
 
 router.post("/work-cards/:id/attachments", async (req, res) => {
