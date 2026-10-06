@@ -370,6 +370,40 @@ function outerRectilinearPerimeter(cells: RectCell[]) {
   return round(perimeter);
 }
 
+
+function overlap1d(a1: number, a2: number, b1: number, b2: number) {
+  const minA = Math.min(a1, a2), maxA = Math.max(a1, a2);
+  const minB = Math.min(b1, b2), maxB = Math.max(b1, b2);
+  return Math.max(0, Math.min(maxA, maxB) - Math.max(minA, minB));
+}
+
+function roomBoundaryWallCoverage(room: any, walls: any[]) {
+  const x1 = Number(room?.x || 0);
+  const y1 = Number(room?.y || 0);
+  const x2 = x1 + Number(room?.width || 0);
+  const y2 = y1 + Number(room?.depth || 0);
+  const floor = Number(room?.floor || 0);
+  const tolerance = 0.03;
+  const wallCoverage = new Map<string, number>();
+
+  for (const wall of walls.filter((item: any) => Number(item?.floor || 0) === floor)) {
+    const wx1 = Number(wall?.x1 || 0), wy1 = Number(wall?.y1 || 0);
+    const wx2 = Number(wall?.x2 || 0), wy2 = Number(wall?.y2 || 0);
+    let overlap = 0;
+    const horizontal = Math.abs(wy1 - wy2) <= tolerance;
+    const vertical = Math.abs(wx1 - wx2) <= tolerance;
+    if (horizontal && (Math.abs(wy1 - y1) <= tolerance || Math.abs(wy1 - y2) <= tolerance)) {
+      overlap = overlap1d(wx1, wx2, x1, x2);
+    } else if (vertical && (Math.abs(wx1 - x1) <= tolerance || Math.abs(wx1 - x2) <= tolerance)) {
+      overlap = overlap1d(wy1, wy2, y1, y2);
+    }
+    if (overlap > 0) wallCoverage.set(String(wall.id), overlap);
+  }
+
+  const covered = [...wallCoverage.values()].reduce((sum, value) => sum + value, 0);
+  const perimeter = (Number(room?.width || 0) + Number(room?.depth || 0)) * 2;
+  return { perimeter: round(perimeter), covered: round(covered), wallCoverage };
+}
 function buildProjectElements(concept: any): { revision: string; elements: ProjectSpecElement[] } {
   const configuration = concept?.configuration || {};
   const master = configuration?.projectMaster || null;
@@ -429,6 +463,34 @@ function buildProjectElements(concept: any): { revision: string; elements: Proje
       areaM2: area,
       perimeterM: perimeter,
     });
+
+    if (room?.kind !== "piscina" && room?.kind !== "escada") {
+      const boundary = roomBoundaryWallCoverage(room, walls);
+      const coverageRatio = boundary.perimeter > 0 ? boundary.covered / boundary.perimeter : 0;
+      if (coverageRatio >= 0.99) {
+        const doorWidthM = openings
+          .filter((opening: any) =>
+            opening?.type === "door"
+            && Number(opening?.floor || 0) === Number(room?.floor || 0)
+            && boundary.wallCoverage.has(String(opening?.wallId || ""))
+          )
+          .reduce((sum: number, opening: any) => sum + Math.max(0, Number(opening?.width || 0)), 0);
+        const baseboardLengthM = round(Math.max(0, boundary.perimeter - doorWidthM));
+        elements.push({
+          sourceObjectId: `room:${room.id}:baseboard`,
+          name: `Rodapé — ${region}`,
+          description: doorWidthM > 0
+            ? `Perímetro interno ${boundary.perimeter} m menos ${round(doorWidthM)} m de portas vinculadas ao contorno do ambiente.`
+            : `Perímetro interno ${boundary.perimeter} m; não há portas vinculadas ao contorno para desconto.`,
+          category: "rodape",
+          region,
+          quantity: baseboardLengthM,
+          unit: "m",
+          lengthMm: round(baseboardLengthM * 1000, 1),
+          perimeterM: boundary.perimeter,
+        });
+      }
+    }
 
     if (room?.kind === "piscina") {
       elements.push({
