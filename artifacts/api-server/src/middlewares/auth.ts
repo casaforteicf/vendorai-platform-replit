@@ -205,6 +205,11 @@ export const authenticate: RequestHandler = (req, res, next) => {
   const token = authHeader.slice(7);
   try {
     req.user = verifyToken(token);
+    const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+    res.setHeader(
+      "Set-Cookie",
+      `vendorai_storage_session=${encodeURIComponent(token)}; Path=/api/storage/; HttpOnly; SameSite=Lax; Max-Age=86400${secure}`,
+    );
     if (req.user.accessScope === "preprojeto") {
       void enforcePreProjectScope(req, res, next);
       return;
