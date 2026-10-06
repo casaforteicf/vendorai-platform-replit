@@ -134,6 +134,7 @@ export function normalizeSpecObject(raw: any): SpecObject {
     purchaseUnit: raw?.purchaseUnit || raw?.purchase_unit || raw?.unit || raw?.unidade || "un",
     catalogProductId: raw?.catalogProductId || raw?.catalog_product_id || null,
     catalogMaterialId: raw?.catalogMaterialId || raw?.catalog_material_id || null,
+    catalogCode: raw?.catalogCode || raw?.catalog_code || raw?.sku || raw?.codigo || null,
     manufacturerId: raw?.manufacturerId || raw?.manufacturer_id || null,
     supplierId: raw?.supplierId || raw?.supplier_id || null,
     productName: raw?.productName || raw?.product_name || raw?.produtoNome || null,
