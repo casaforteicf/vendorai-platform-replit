@@ -1,4 +1,6 @@
 import { Router, type IRouter } from "express";
+import bcrypt from "bcryptjs";
+import { rateLimit } from "express-rate-limit";
 import { and, eq, inArray, desc, ilike, isNull, isNotNull } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
@@ -36,6 +38,9 @@ import {
   leadResponsavelHistoricoTable,
   tenantUserFunctionsTable,
   tenantsTable,
+  attachmentFolderLocksTable,
+  attachmentFolderAuditTable,
+  attachmentFolderLockObjectsTable,
 } from "@workspace/db";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { buildUserFunctionFilter, requireAdminOrUserFunction, type UserFunction } from "../middlewares/auth.js";
@@ -48,8 +53,53 @@ import { getActiveCatalogPreview, compactCatalogNames } from "../lib/catalog-rea
 import { reserveUniqueVehicle } from "../services/vehicle-reservation.js";
 import { reserveUniqueItem } from "../services/item-reservation.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
+import { signAttachmentFolderUnlockToken } from "../lib/jwt.js";
+import { attachmentUnlockCookieName, requestCanAccessLockedObject, syncProtectedObjectsForLead } from "../lib/attachment-folder-access.js";
 
 const router: IRouter = Router();
+const attachmentUnlockLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." },
+});
+
+const attachmentFolderPathSchema = z.string().trim().min(1).max(240);
+const attachmentFolderPasswordSchema = z.string().min(8).max(128);
+
+async function getLeadForAttachmentFolder(req: any, res: any) {
+  const [lead] = await db
+    .select({
+      id: leadsTable.id,
+      tenantId: leadsTable.tenantId,
+      assignedTo: leadsTable.assignedTo,
+    })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, req.params.id))
+    .limit(1);
+
+  if (!lead) {
+    res.status(404).json({ error: "Lead not found" });
+    return null;
+  }
+
+  const isOwnTenant = req.user?.platformRole === "super_admin" || req.user?.tenantId === lead.tenantId;
+  if (!isOwnTenant) {
+    res.status(403).json({ error: "Access denied to this lead" });
+    return null;
+  }
+
+  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin" || req.user?.userFunction === "administrador";
+  const isSeller = req.user?.platformRole === "tenant_seller" || req.user?.userFunction === "vendedor";
+  if (!isAdmin && isSeller && lead.assignedTo !== req.user?.sub) {
+    res.status(403).json({ error: "Access denied to this lead" });
+    return null;
+  }
+
+  return { ...lead, isAdmin };
+}
+
 
 const DEFAULT_NON_LEAD_CLASSIFICATIONS = [
   { id: "colaborador", label: "Colaborador", active: true },
@@ -70,6 +120,42 @@ const nonLeadClassificationSchema = z.object({
 const nonLeadClassificationsBodySchema = z.object({
   classifications: z.array(nonLeadClassificationSchema).min(1).max(50),
 });
+
+async function sanitizeProtectedLeadAttachments(req: any, lead: typeof leadsTable.$inferSelect) {
+  const discovery = lead.discoveryData && typeof lead.discoveryData === "object" && !Array.isArray(lead.discoveryData)
+    ? { ...(lead.discoveryData as Record<string, unknown>) }
+    : null;
+  if (!discovery) return lead;
+
+  const rootValue = discovery["vendoraiAttachments"];
+  if (!rootValue || typeof rootValue !== "object" || Array.isArray(rootValue)) return lead;
+  const root = { ...(rootValue as Record<string, unknown>) };
+  const files = Array.isArray(root["files"]) ? root["files"] as Array<Record<string, unknown>> : [];
+  if (!files.length) return lead;
+
+  const kept: Array<Record<string, unknown>> = [];
+  const hiddenIds = new Set<string>();
+  for (const file of files) {
+    const storageUrl = typeof file["storageUrl"] === "string" ? file["storageUrl"] : "";
+    if (storageUrl && !(await requestCanAccessLockedObject(req, lead.tenantId, storageUrl))) {
+      if (typeof file["id"] === "string") hiddenIds.add(String(file["id"]));
+      continue;
+    }
+    kept.push(file);
+  }
+
+  if (hiddenIds.size === 0) return lead;
+  const overridesValue = root["overrides"];
+  const overrides = overridesValue && typeof overridesValue === "object" && !Array.isArray(overridesValue)
+    ? { ...(overridesValue as Record<string, unknown>) }
+    : {};
+  for (const id of hiddenIds) delete overrides[`lead:${id}`];
+
+  root["files"] = kept;
+  root["overrides"] = overrides;
+  discovery["vendoraiAttachments"] = root;
+  return { ...lead, discoveryData: discovery };
+}
 
 async function validateRepresentativeFunction(tenantId: string, functionId: string | null | undefined) {
   if (!functionId) return null;
@@ -609,6 +695,228 @@ router.post("/leads/:id/reclassificar-como-lead", async (req, res) => {
   res.json(lead);
 });
 
+router.get("/leads/:id/attachment-folder-locks", async (req, res) => {
+  const lead = await getLeadForAttachmentFolder(req, res);
+  if (!lead) return;
+
+  const rows = await db
+    .select({
+      folderPath: attachmentFolderLocksTable.folderPath,
+      unlockMinutes: attachmentFolderLocksTable.unlockMinutes,
+      createdAt: attachmentFolderLocksTable.createdAt,
+      updatedAt: attachmentFolderLocksTable.updatedAt,
+    })
+    .from(attachmentFolderLocksTable)
+    .where(and(
+      eq(attachmentFolderLocksTable.tenantId, lead.tenantId),
+      eq(attachmentFolderLocksTable.leadId, lead.id),
+    ));
+
+  res.json({
+    locks: rows.map((row) => ({ ...row, locked: true })),
+    canManage: lead.isAdmin,
+  });
+});
+
+router.put("/leads/:id/attachment-folder-lock", async (req, res) => {
+  const lead = await getLeadForAttachmentFolder(req, res);
+  if (!lead) return;
+  if (!lead.isAdmin) {
+    res.status(403).json({ error: "Somente o administrador do tenant pode proteger pastas." });
+    return;
+  }
+
+  const parsed = z.object({
+    folderPath: attachmentFolderPathSchema,
+    password: attachmentFolderPasswordSchema,
+    unlockMinutes: z.number().int().min(1).max(240).optional().default(15),
+  }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: "Informe uma pasta válida e uma senha com pelo menos 8 caracteres." });
+    return;
+  }
+
+  const folderPath = parsed.data.folderPath.split("/").map((p) => p.trim()).filter(Boolean).join(" / ");
+  const passwordHash = await bcrypt.hash(parsed.data.password, 12);
+  const now = new Date();
+
+  const [existing] = await db
+    .select({ id: attachmentFolderLocksTable.id })
+    .from(attachmentFolderLocksTable)
+    .where(and(
+      eq(attachmentFolderLocksTable.tenantId, lead.tenantId),
+      eq(attachmentFolderLocksTable.leadId, lead.id),
+      eq(attachmentFolderLocksTable.folderPath, folderPath),
+    ))
+    .limit(1);
+
+  if (existing) {
+    await db.update(attachmentFolderLocksTable)
+      .set({
+        passwordHash,
+        unlockMinutes: parsed.data.unlockMinutes,
+        updatedBy: req.user?.sub ?? null,
+        updatedAt: now,
+      })
+      .where(eq(attachmentFolderLocksTable.id, existing.id));
+  } else {
+    await db.insert(attachmentFolderLocksTable).values({
+      tenantId: lead.tenantId,
+      leadId: lead.id,
+      folderPath,
+      passwordHash,
+      unlockMinutes: parsed.data.unlockMinutes,
+      createdBy: req.user?.sub ?? null,
+      updatedBy: req.user?.sub ?? null,
+    });
+  }
+
+  await syncProtectedObjectsForLead(lead.tenantId, lead.id);
+
+  await db.insert(attachmentFolderAuditTable).values({
+    tenantId: lead.tenantId,
+    leadId: lead.id,
+    folderPath,
+    actorUserId: req.user?.sub ?? null,
+    action: existing ? "password_changed" : "locked",
+  });
+
+  res.json({ folderPath, locked: true, unlockMinutes: parsed.data.unlockMinutes });
+});
+
+router.delete("/leads/:id/attachment-folder-lock", async (req, res) => {
+  const lead = await getLeadForAttachmentFolder(req, res);
+  if (!lead) return;
+  if (!lead.isAdmin) {
+    res.status(403).json({ error: "Somente o administrador do tenant pode remover a proteção." });
+    return;
+  }
+
+  const parsed = z.object({ folderPath: attachmentFolderPathSchema }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: "Pasta inválida." });
+    return;
+  }
+  const folderPath = parsed.data.folderPath.split("/").map((p) => p.trim()).filter(Boolean).join(" / ");
+
+  await db.delete(attachmentFolderLocksTable).where(and(
+    eq(attachmentFolderLocksTable.tenantId, lead.tenantId),
+    eq(attachmentFolderLocksTable.leadId, lead.id),
+    eq(attachmentFolderLocksTable.folderPath, folderPath),
+  ));
+
+  await db.insert(attachmentFolderAuditTable).values({
+    tenantId: lead.tenantId,
+    leadId: lead.id,
+    folderPath,
+    actorUserId: req.user?.sub ?? null,
+    action: "lock_removed",
+  });
+
+  res.status(204).send();
+});
+
+router.post("/leads/:id/attachment-folder-unlock", attachmentUnlockLimiter, async (req, res) => {
+  const lead = await getLeadForAttachmentFolder(req, res);
+  if (!lead) return;
+
+  const parsed = z.object({
+    folderPath: attachmentFolderPathSchema,
+    password: z.string().min(1).max(128),
+  }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: "Informe a senha da pasta." });
+    return;
+  }
+  const folderPath = parsed.data.folderPath.split("/").map((p) => p.trim()).filter(Boolean).join(" / ");
+
+  const [lock] = await db
+    .select()
+    .from(attachmentFolderLocksTable)
+    .where(and(
+      eq(attachmentFolderLocksTable.tenantId, lead.tenantId),
+      eq(attachmentFolderLocksTable.leadId, lead.id),
+      eq(attachmentFolderLocksTable.folderPath, folderPath),
+    ))
+    .limit(1);
+
+  if (!lock) {
+    res.json({ folderPath, unlocked: true, expiresAt: null });
+    return;
+  }
+
+  const valid = await bcrypt.compare(parsed.data.password, lock.passwordHash);
+  await db.insert(attachmentFolderAuditTable).values({
+    tenantId: lead.tenantId,
+    leadId: lead.id,
+    folderPath,
+    actorUserId: req.user?.sub ?? null,
+    action: valid ? "unlocked" : "unlock_failed",
+  });
+
+  if (!valid) {
+    res.status(401).json({ error: "Senha incorreta." });
+    return;
+  }
+
+  const expiresSeconds = lock.unlockMinutes * 60;
+  const expiresAt = new Date(Date.now() + expiresSeconds * 1000).toISOString();
+  const token = signAttachmentFolderUnlockToken({
+    purpose: "attachment_folder_unlock",
+    sub: String(req.user?.sub ?? ""),
+    tenantId: lead.tenantId,
+    leadId: lead.id,
+    lockId: lock.id,
+    folderPath,
+  }, expiresSeconds);
+  res.cookie(attachmentUnlockCookieName(lock.id), token, {
+    httpOnly: true,
+    sameSite: "strict",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: expiresSeconds * 1000,
+    path: "/api",
+  });
+  res.json({ folderPath, unlocked: true, expiresAt });
+});
+
+router.post("/leads/:id/attachment-folder-lock/sync", async (req, res) => {
+  const lead = await getLeadForAttachmentFolder(req, res);
+  if (!lead) return;
+
+  const parsed = z.object({
+    folderPath: attachmentFolderPathSchema.optional(),
+  }).safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(422).json({ error: "Dados de sincronização inválidos." });
+    return;
+  }
+
+  await syncProtectedObjectsForLead(lead.tenantId, lead.id);
+  res.json({ synced: true, folderPath: parsed.data.folderPath ?? null });
+});
+
+router.post("/leads/:id/attachment-folder-lock/lock-now", async (req, res) => {
+  const lead = await getLeadForAttachmentFolder(req, res);
+  if (!lead) return;
+  const parsed = z.object({ folderPath: attachmentFolderPathSchema }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: "Pasta inválida." });
+    return;
+  }
+  const folderPath = parsed.data.folderPath.split("/").map((p) => p.trim()).filter(Boolean).join(" / ");
+  const [lock] = await db.select().from(attachmentFolderLocksTable).where(and(
+    eq(attachmentFolderLocksTable.tenantId, lead.tenantId),
+    eq(attachmentFolderLocksTable.leadId, lead.id),
+    eq(attachmentFolderLocksTable.folderPath, folderPath),
+  )).limit(1);
+  if (!lock) {
+    res.status(404).json({ error: "A pasta não está protegida." });
+    return;
+  }
+  res.clearCookie(attachmentUnlockCookieName(lock.id), { path: "/api" });
+  res.status(204).send();
+});
+
 router.get("/leads/:id", async (req, res) => {
   const [lead] = await db
     .select()
@@ -639,7 +947,7 @@ router.get("/leads/:id", async (req, res) => {
     }
   }
 
-  res.json(lead);
+  res.json(await sanitizeProtectedLeadAttachments(req, lead));
 });
 
 router.patch("/leads/:id", async (req, res) => {
@@ -706,6 +1014,10 @@ router.patch("/leads/:id", async (req, res) => {
     .set({ ...parsed.data, updatedAt: new Date() } as any)
     .where(eq(leadsTable.id, existing.id))
     .returning();
+
+  if ("discoveryData" in parsed.data) {
+    await syncProtectedObjectsForLead(existing.tenantId, existing.id);
+  }
 
   if ("assignedTo" in parsed.data && parsed.data.assignedTo && parsed.data.assignedTo !== existing.assignedTo) {
     recordResponsavelChange({

@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { requestCanAccessLockedObject, syncProtectedObjectsForLead } from "../lib/attachment-folder-access.js";
 import { and, eq, lt, isNotNull } from "drizzle-orm";
 import {
   db,
@@ -84,6 +85,7 @@ router.post("/activities", async (req, res) => {
     .insert(activitiesTable)
     .values(insertData)
     .returning();
+  if (activity.anexoUrl) await syncProtectedObjectsForLead(activity.tenantId, activity.leadId);
   res.status(201).json(activity);
 
   if (activity.status === "concluida" && activity.dealId) {
@@ -232,13 +234,29 @@ router.get("/tenants/:tenantId/activities", async (req, res) => {
       eq(activitiesTable.status, status as typeof activitiesTable.status._.data)
     );
 
+  if (leadId) await syncProtectedObjectsForLead(tenantId, leadId);
   const activities = await db
     .select()
     .from(activitiesTable)
     .where(and(...conditions))
     .orderBy(activitiesTable.dataVencimento, activitiesTable.createdAt);
 
-  res.json(activities);
+  const visibleActivities = [];
+  for (const activity of activities) {
+    if (activity.anexoUrl && !(await requestCanAccessLockedObject(req, tenantId, activity.anexoUrl))) {
+      visibleActivities.push({
+        ...activity,
+        anexoNome: null,
+        anexoUrl: null,
+        anexoMimeType: null,
+        anexoTamanho: null,
+        anexoCategoria: null,
+      });
+    } else {
+      visibleActivities.push(activity);
+    }
+  }
+  res.json(visibleActivities);
 });
 
 router.get("/tenants/:tenantId/activities/overdue", async (req, res) => {
@@ -301,6 +319,17 @@ router.get("/activities/:id", async (req, res) => {
     return;
   }
 
+  if (activity.anexoUrl && !(await requestCanAccessLockedObject(req, activity.tenantId, activity.anexoUrl))) {
+    res.json({
+      ...activity,
+      anexoNome: null,
+      anexoUrl: null,
+      anexoMimeType: null,
+      anexoTamanho: null,
+      anexoCategoria: null,
+    });
+    return;
+  }
   res.json(activity);
 });
 
@@ -395,6 +424,7 @@ router.patch("/activities/:id", async (req, res) => {
     });
   }
 
+  if (activity.anexoUrl) await syncProtectedObjectsForLead(activity.tenantId, activity.leadId);
   res.json(activity);
 
   void recordIntelligenceEvent({

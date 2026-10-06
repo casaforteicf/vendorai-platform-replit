@@ -17,6 +17,9 @@ import {
   FolderOpen,
   Image as ImageIcon,
   Loader2,
+  Lock,
+  LockOpen,
+  KeyRound,
   Paperclip,
   Pencil,
   Plus,
@@ -30,6 +33,14 @@ type AttachmentType = "image" | "video" | "audio" | "document";
 type FilterType = "all" | AttachmentType | "project";
 type MarketingStatus = "only_attachment" | "candidate" | "approved" | "blocked";
 type SourceKind = "lead" | "activity" | "work_card" | "media";
+
+type FolderLockInfo = {
+  folderPath: string;
+  locked: true;
+  unlockMinutes: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
 
 type StoredLeadAttachment = {
   id: string;
@@ -313,7 +324,7 @@ function statusClass(status: MarketingStatus): string {
 
 export default function LeadAttachmentsTab() {
   const { id: leadId } = useParams<{ id: string }>();
-  const { user, tenantOverride } = useAuth();
+  const { user, tenantOverride, isEffectiveAdmin } = useAuth();
   const tenantId = tenantOverride?.id ?? user?.tenantId ?? "";
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -331,6 +342,17 @@ export default function LeadAttachmentsTab() {
   const [filter, setFilter] = useState<FilterType>("all");
   const [folderFilter, setFolderFilter] = useState<string>("");
   const [uploadTargetFolder, setUploadTargetFolder] = useState<string>("");
+  const [folderLocks, setFolderLocks] = useState<FolderLockInfo[]>([]);
+  const [canManageFolderLocks, setCanManageFolderLocks] = useState(false);
+  const [unlockedUntil, setUnlockedUntil] = useState<Record<string, string>>({});
+  const [unlockDialogOpen, setUnlockDialogOpen] = useState(false);
+  const [unlockTarget, setUnlockTarget] = useState("");
+  const [unlockPassword, setUnlockPassword] = useState("");
+  const [lockDialogOpen, setLockDialogOpen] = useState(false);
+  const [lockTarget, setLockTarget] = useState("");
+  const [lockPassword, setLockPassword] = useState("");
+  const [lockPasswordConfirm, setLockPasswordConfirm] = useState("");
+  const [lockMinutes, setLockMinutes] = useState("15");
 
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [folderDraft, setFolderDraft] = useState("");
@@ -355,11 +377,12 @@ export default function LeadAttachmentsTab() {
     if (!tenantId || !leadId) return;
     setLoading(true);
     try {
-      const [leadResult, activitiesResult, cardsResult, mediaResult] = await Promise.allSettled([
+      const [leadResult, activitiesResult, cardsResult, mediaResult, locksResult] = await Promise.allSettled([
         requestJson<LeadRecord>(`/api/leads/${leadId}`),
         requestJson<Activity[]>(`/api/tenants/${tenantId}/activities?leadId=${encodeURIComponent(leadId)}`),
         requestJson<WorkCard[]>(`/api/tenants/${tenantId}/work-cards?leadId=${encodeURIComponent(leadId)}&includeClosed=1`),
         requestJson<{ assets: MediaAsset[] }>(`/api/tenants/${tenantId}/media/assets?limit=150`),
+        requestJson<{ locks: FolderLockInfo[]; canManage: boolean }>(`/api/leads/${leadId}/attachment-folder-locks`),
       ]);
 
       const failures: string[] = [];
@@ -390,6 +413,23 @@ export default function LeadAttachmentsTab() {
       } else {
         setMediaAssets([]);
         failures.push(`Mídias: ${String(mediaResult.reason)}`);
+      }
+
+      if (locksResult.status === "fulfilled") {
+        setFolderLocks(locksResult.value.locks ?? []);
+        setCanManageFolderLocks(Boolean(locksResult.value.canManage));
+        const restored: Record<string, string> = {};
+        for (const lock of locksResult.value.locks ?? []) {
+          const key = `vendorai_attachment_unlock:${leadId}:${lock.folderPath}`;
+          const expiry = sessionStorage.getItem(key);
+          if (expiry && new Date(expiry).getTime() > Date.now()) restored[lock.folderPath] = expiry;
+          else sessionStorage.removeItem(key);
+        }
+        setUnlockedUntil(restored);
+      } else {
+        setFolderLocks([]);
+        setCanManageFolderLocks(false);
+        failures.push(`Pastas protegidas: ${String(locksResult.reason)}`);
       }
 
       const attachmentResults = await Promise.allSettled(
@@ -600,16 +640,169 @@ export default function LeadAttachmentsTab() {
     return [...all].sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [attachmentState.folders, unified]);
 
+  function folderLock(folder: string): FolderLockInfo | undefined {
+    return folderLocks.find((item) => item.folderPath === folder);
+  }
+
+  function isFolderUnlocked(folder: string): boolean {
+    const expiry = unlockedUntil[folder];
+    return Boolean(expiry && new Date(expiry).getTime() > Date.now());
+  }
+
+  function openFolder(folder: string) {
+    const lock = folderLock(folder);
+    if (lock && !isFolderUnlocked(folder)) {
+      setUnlockTarget(folder);
+      setUnlockPassword("");
+      setUnlockDialogOpen(true);
+      return;
+    }
+    setFolderFilter(folder);
+  }
+
+  function openLockManager(folder: string) {
+    const lock = folderLock(folder);
+    setLockTarget(folder);
+    setLockPassword("");
+    setLockPasswordConfirm("");
+    setLockMinutes(String(lock?.unlockMinutes ?? 15));
+    setLockDialogOpen(true);
+  }
+
+  async function saveFolderLock() {
+    if (!leadId || !lockTarget) return;
+    if (lockPassword.length < 8) {
+      toast({ title: "Senha muito curta", description: "Use pelo menos 8 caracteres.", variant: "destructive" });
+      return;
+    }
+    if (lockPassword !== lockPasswordConfirm) {
+      toast({ title: "As senhas não conferem", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      await requestJson(`/api/leads/${leadId}/attachment-folder-lock`, {
+        method: "PUT",
+        body: JSON.stringify({
+          folderPath: lockTarget,
+          password: lockPassword,
+          unlockMinutes: Math.min(240, Math.max(1, Number.parseInt(lockMinutes || "15", 10) || 15)),
+          objectPaths: unified
+            .filter((item) => item.folderPath === lockTarget)
+            .map((item) => canonicalStorageUrl(item.url))
+            .filter((url) => url.startsWith("/objects/")),
+        }),
+      });
+      setLockDialogOpen(false);
+      setUnlockedUntil((current) => {
+        const next = { ...current };
+        delete next[lockTarget];
+        return next;
+      });
+      sessionStorage.removeItem(`vendorai_attachment_unlock:${leadId}:${lockTarget}`);
+      await refresh();
+      toast({ title: folderLock(lockTarget) ? "Senha da pasta alterada" : "Pasta protegida" });
+    } catch (error) {
+      toast({ title: "Não foi possível proteger a pasta", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeFolderLock() {
+    if (!leadId || !lockTarget) return;
+    setSaving(true);
+    try {
+      await requestJson(`/api/leads/${leadId}/attachment-folder-lock`, {
+        method: "DELETE",
+        body: JSON.stringify({ folderPath: lockTarget }),
+      });
+      sessionStorage.removeItem(`vendorai_attachment_unlock:${leadId}:${lockTarget}`);
+      setUnlockedUntil((current) => {
+        const next = { ...current };
+        delete next[lockTarget];
+        return next;
+      });
+      setLockDialogOpen(false);
+      await refresh();
+      toast({ title: "Proteção removida" });
+    } catch (error) {
+      toast({ title: "Não foi possível remover a proteção", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function unlockFolder() {
+    if (!leadId || !unlockTarget || !unlockPassword) return;
+    setSaving(true);
+    try {
+      const result = await requestJson<{ folderPath: string; unlocked: boolean; expiresAt: string | null }>(`/api/leads/${leadId}/attachment-folder-unlock`, {
+        method: "POST",
+        body: JSON.stringify({ folderPath: unlockTarget, password: unlockPassword }),
+      });
+      const expiry = result.expiresAt ?? new Date(Date.now() + 15 * 60_000).toISOString();
+      sessionStorage.setItem(`vendorai_attachment_unlock:${leadId}:${unlockTarget}`, expiry);
+      setUnlockedUntil((current) => ({ ...current, [unlockTarget]: expiry }));
+      setUnlockDialogOpen(false);
+      setUnlockPassword("");
+      setFolderFilter(unlockTarget);
+      toast({ title: "Pasta desbloqueada", description: `Acesso liberado temporariamente.` });
+    } catch (error) {
+      toast({ title: "Não foi possível desbloquear", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function lockFolderNow(folder: string) {
+    if (!leadId) return;
+    try {
+      await requestJson(`/api/leads/${leadId}/attachment-folder-lock/lock-now`, {
+        method: "POST",
+        body: JSON.stringify({ folderPath: folder }),
+      });
+    } catch {
+      // The local state still closes access immediately; a later refresh
+      // will reconcile with the server if the request failed.
+    }
+    sessionStorage.removeItem(`vendorai_attachment_unlock:${leadId}:${folder}`);
+    setUnlockedUntil((current) => {
+      const next = { ...current };
+      delete next[folder];
+      return next;
+    });
+    if (folderFilter === folder) setFolderFilter("");
+    toast({ title: "Pasta bloqueada" });
+  }
+
+  useEffect(() => {
+    if (!leadId || folderLocks.length === 0 || unified.length === 0) return;
+    for (const lock of folderLocks) {
+      const objectPaths = unified
+        .filter((item) => item.folderPath === lock.folderPath)
+        .map((item) => canonicalStorageUrl(item.url))
+        .filter((url) => url.startsWith("/objects/"));
+      void requestJson(`/api/leads/${leadId}/attachment-folder-lock/sync`, {
+        method: "POST",
+        body: JSON.stringify({ folderPath: lock.folderPath, objectPaths }),
+      }).catch(() => undefined);
+    }
+    // Sync runs only when the attachment inventory or lock set changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadId, folderLocks, unified]);
+
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
     return unified.filter((item) => {
       if (folderFilter && item.folderPath !== folderFilter) return false;
+      if (folderLock(item.folderPath) && !isFolderUnlocked(item.folderPath)) return false;
       if (filter === "project" && item.category !== "projeto") return false;
       if (filter !== "all" && filter !== "project" && item.type !== filter) return false;
       if (term && !`${item.name} ${item.origin} ${item.folderPath} ${typeLabel(item)}`.toLowerCase().includes(term)) return false;
       return true;
     });
-  }, [unified, search, folderFilter, filter]);
+  }, [unified, search, folderFilter, filter, folderLocks, unlockedUntil]);
 
   function openFilePicker(folder = "") {
     setUploadTargetFolder(normalizeFolder(folder));
@@ -838,15 +1031,34 @@ export default function LeadAttachmentsTab() {
               <button type="button" onClick={() => setFolderDialogOpen(true)} className="flex min-h-16 items-center justify-center gap-2 rounded-lg border border-dashed text-xs text-muted-foreground hover:bg-muted/40"><Folder className="h-4 w-4" />Criar primeira pasta</button>
             ) : folders.map((folder) => {
               const count = unified.filter((item) => item.folderPath === folder).length;
+              const lock = folderLock(folder);
+              const unlocked = lock ? isFolderUnlocked(folder) : true;
               return (
                 <div key={folder} className={`group rounded-lg border p-2 transition-colors hover:bg-muted/50 ${folderFilter === folder ? "border-primary bg-primary/5" : ""}`}>
-                  <button type="button" onClick={() => setFolderFilter(folder)} className="flex w-full items-center gap-3 p-1 text-left">
-                    <FolderOpen className="h-5 w-5 shrink-0 text-primary" />
-                    <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{folder}</p><p className="text-xs text-muted-foreground">{count} arquivo{count === 1 ? "" : "s"}</p></div>
+                  <button type="button" onClick={() => openFolder(folder)} className="flex w-full items-center gap-3 p-1 text-left">
+                    {lock && !unlocked ? <Lock className="h-5 w-5 shrink-0 text-amber-600" /> : lock ? <LockOpen className="h-5 w-5 shrink-0 text-emerald-600" /> : <FolderOpen className="h-5 w-5 shrink-0 text-primary" />}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{folder}</p>
+                      <p className="text-xs text-muted-foreground">{lock && !unlocked ? "Pasta protegida" : `${count} arquivo${count === 1 ? "" : "s"}`}</p>
+                    </div>
                   </button>
-                  <Button type="button" size="sm" variant="ghost" className="mt-1 h-7 w-full justify-start gap-1.5 px-2 text-[11px] text-muted-foreground group-hover:text-foreground" onClick={() => openFilePicker(folder)} disabled={uploading || saving}>
-                    <Plus className="h-3.5 w-3.5" /> Adicionar arquivo
-                  </Button>
+                  <div className="mt-1 flex gap-1">
+                    {(!lock || unlocked) && (
+                      <Button type="button" size="sm" variant="ghost" className="h-7 flex-1 justify-start gap-1.5 px-2 text-[11px] text-muted-foreground group-hover:text-foreground" onClick={() => openFilePicker(folder)} disabled={uploading || saving}>
+                        <Plus className="h-3.5 w-3.5" /> Adicionar
+                      </Button>
+                    )}
+                    {lock && unlocked && (
+                      <Button type="button" size="sm" variant="ghost" className="h-7 gap-1 px-2 text-[11px]" onClick={() => void lockFolderNow(folder)}>
+                        <Lock className="h-3.5 w-3.5" /> Bloquear
+                      </Button>
+                    )}
+                    {(canManageFolderLocks || isEffectiveAdmin) && (
+                      <Button type="button" size="sm" variant="ghost" className="h-7 gap-1 px-2 text-[11px]" onClick={() => openLockManager(folder)}>
+                        <KeyRound className="h-3.5 w-3.5" /> {lock ? "Senha" : "Proteger"}
+                      </Button>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -910,6 +1122,33 @@ export default function LeadAttachmentsTab() {
 
       <Dialog open={folderDialogOpen} onOpenChange={setFolderDialogOpen}>
         <DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>Nova pasta</DialogTitle></DialogHeader><div className="space-y-1.5"><label className="text-sm font-medium">Nome da pasta</label><Input value={folderDraft} onChange={(event) => setFolderDraft(event.target.value)} placeholder="Ex: Obras bonitas / Fachadas" onKeyDown={(event) => { if (event.key === "Enter") void createFolder(); }} /></div><DialogFooter><Button variant="outline" onClick={() => setFolderDialogOpen(false)}>Cancelar</Button><Button onClick={() => void createFolder()} disabled={!normalizeFolder(folderDraft) || saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Criar pasta</Button></DialogFooter></DialogContent>
+      </Dialog>
+
+      <Dialog open={unlockDialogOpen} onOpenChange={setUnlockDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><Lock className="h-4 w-4" />Pasta protegida</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">Digite a senha para acessar <strong>{unlockTarget}</strong>.</p>
+            <div className="space-y-1.5"><label className="text-sm font-medium">Senha</label><Input type="password" autoFocus value={unlockPassword} onChange={(event) => setUnlockPassword(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void unlockFolder(); }} /></div>
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setUnlockDialogOpen(false)}>Cancelar</Button><Button onClick={() => void unlockFolder()} disabled={!unlockPassword || saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Desbloquear</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={lockDialogOpen} onOpenChange={setLockDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><KeyRound className="h-4 w-4" />{folderLock(lockTarget) ? "Alterar proteção da pasta" : "Proteger pasta com senha"}</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">Pasta: <strong>{lockTarget}</strong>. A senha é armazenada somente como hash no servidor e não poderá ser exibida depois.</p>
+            <div className="space-y-1.5"><label className="text-sm font-medium">Nova senha</label><Input type="password" value={lockPassword} onChange={(event) => setLockPassword(event.target.value)} placeholder="Mínimo de 8 caracteres" /></div>
+            <div className="space-y-1.5"><label className="text-sm font-medium">Confirmar senha</label><Input type="password" value={lockPasswordConfirm} onChange={(event) => setLockPasswordConfirm(event.target.value)} /></div>
+            <div className="space-y-1.5"><label className="text-sm font-medium">Tempo desbloqueado (minutos)</label><Input type="number" min={1} max={240} value={lockMinutes} onChange={(event) => setLockMinutes(event.target.value)} /></div>
+          </div>
+          <DialogFooter className="sm:justify-between">
+            <div>{folderLock(lockTarget) && <Button variant="destructive" onClick={() => void removeFolderLock()} disabled={saving}>Remover proteção</Button>}</div>
+            <div className="flex gap-2"><Button variant="outline" onClick={() => setLockDialogOpen(false)}>Cancelar</Button><Button onClick={() => void saveFolderLock()} disabled={!lockPassword || !lockPasswordConfirm || saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{folderLock(lockTarget) ? "Alterar senha" : "Ativar proteção"}</Button></div>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
 
       <Dialog open={Boolean(editItem)} onOpenChange={(open) => { if (!open) setEditItem(null); }}>

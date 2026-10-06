@@ -79,3 +79,22 @@ export function signGuestConceptToken(input: {
 export function verifyToken(token: string): JwtPayload {
   return jwt.verify(token, secret!) as JwtPayload;
 }
+
+export interface AttachmentFolderUnlockPayload {
+  purpose: "attachment_folder_unlock";
+  sub: string;
+  tenantId: string;
+  leadId: string;
+  lockId: string;
+  folderPath: string;
+}
+
+export function signAttachmentFolderUnlockToken(payload: AttachmentFolderUnlockPayload, expiresInSeconds: number): string {
+  return jwt.sign(payload, secret!, { expiresIn: Math.max(60, Math.min(expiresInSeconds, 4 * 60 * 60)) });
+}
+
+export function verifyAttachmentFolderUnlockToken(token: string): AttachmentFolderUnlockPayload {
+  const payload = jwt.verify(token, secret!) as AttachmentFolderUnlockPayload;
+  if (payload.purpose !== "attachment_folder_unlock") throw new Error("Invalid attachment unlock token");
+  return payload;
+}
