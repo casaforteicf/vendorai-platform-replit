@@ -641,7 +641,7 @@ router.get("/portal/obra/:token", async (req, res) => {
         .map((item: any) => ({
           id: `financeiro-${item.id}`,
           nome: item.descricao ?? item.numero ?? item.tipo ?? "Documento financeiro",
-          url: item.documento_url,
+          url: `/api/portal/obra/${encodeURIComponent(String(token))}/financial/${encodeURIComponent(String(item.id))}/document`,
           mimeType: null,
           data: item.data_emissao ?? item.data_vencimento ?? null,
           tipo: "financeiro",
@@ -658,7 +658,14 @@ router.get("/portal/obra/:token", async (req, res) => {
       totalLancado: config.showFinancialDetails ? totalLancado : null,
       totalPago: config.showFinancialDetails ? totalPago : null,
       totalPendente: config.showFinancialDetails ? totalPendente : null,
-      lancamentos: config.showFinancialDetails ? lancamentos : [],
+      lancamentos: config.showFinancialDetails
+        ? lancamentos.map((item: any) => ({
+            ...item,
+            documento_url: item.documento_url
+              ? `/api/portal/obra/${encodeURIComponent(String(token))}/financial/${encodeURIComponent(String(item.id))}/document`
+              : null,
+          }))
+        : [],
     };
   }
 
@@ -1022,6 +1029,36 @@ router.get("/portal/obra/:token/documents/:documentId", async (req, res, next) =
 
     if (await streamPortalObject(res, doc.url)) return;
     if (/^https:\/\//i.test(String(doc.url))) return res.redirect(302, String(doc.url));
+    return res.status(404).send("Arquivo não disponível.");
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/portal/obra/:token/financial/:entryId/document", async (req, res, next) => {
+  try {
+    const token = String(req.params.token ?? "");
+    const entryId = String(req.params.entryId ?? "");
+    const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
+    if (!obra) return res.status(404).send("Portal não encontrado.");
+    const config = portalConfig(obra.portalConfig);
+    if (!(await requirePortalAssetAccess(req, res, obra, config))) return;
+    if (!config.showDocuments || !config.showFinancialDetails) {
+      return res.status(403).send("Documento financeiro não publicado.");
+    }
+
+    const result = await pool.query(
+      `SELECT documento_url
+         FROM obra_lancamentos
+        WHERE id=$1 AND obra_id=$2 AND tenant_id=$3
+        LIMIT 1`,
+      [entryId, obra.id, obra.tenantId],
+    );
+    const source = result.rows[0]?.documento_url;
+    if (!source) return res.status(404).send("Documento não encontrado.");
+
+    if (await streamPortalObject(res, source)) return;
+    if (/^https:\/\//i.test(String(source))) return res.redirect(302, String(source));
     return res.status(404).send("Arquivo não disponível.");
   } catch (err) {
     next(err);
