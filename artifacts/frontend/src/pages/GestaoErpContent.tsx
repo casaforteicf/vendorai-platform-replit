@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import FinanceIntegrationsPanel from "@/components/finance/FinanceIntegrationsPanel";
 import FinanceProcurementPanel from "@/components/finance/FinanceProcurementPanel";
 import ComissoesVendedor from "@/pages/ComissoesVendedor";
 import Estoque from "@/pages/Estoque";
@@ -130,7 +129,19 @@ export default function GestaoErp() {
 
       <TabsContent value="fiscal" className="mt-4"><Card><CardHeader className="flex-row items-center justify-between"><div><CardTitle className="text-base">Documentos fiscais e cobranças</CardTitle><p className="text-xs text-muted-foreground mt-1">NF-e, NFS-e, boleto e situação de emissão.</p></div><Button onClick={()=>setFiscalOpen(true)}><Plus className="h-4 w-4 mr-2"/>Novo documento</Button></CardHeader><CardContent><div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">{fiscal.map(d=><div key={d.id} className="rounded-lg border p-4"><div className="flex justify-between"><Badge variant="outline">{d.tipo.toUpperCase()}</Badge><Badge>{d.status}</Badge></div><p className="font-medium mt-3">{d.destinatario}</p><p className="text-sm text-muted-foreground mt-2">{d.numero||"Aguardando emissão"}</p></div>)}{!fiscal.length&&<p className="text-sm text-muted-foreground col-span-full text-center py-8">Nenhum documento fiscal cadastrado.</p>}</div></CardContent></Card></TabsContent>
 
-      <TabsContent value="integracoes" className="mt-4"><FinanceIntegrationsPanel tenantId={tenantId} /></TabsContent>
+      <TabsContent value="integracoes" className="mt-4">
+        <Card>
+          <CardHeader><CardTitle className="text-base">Central de Conexões</CardTitle></CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              Integrações financeiras, fiscais, cobrança e demais provedores são configurados somente na Central de Conexões.
+            </p>
+            <Button asChild className="mt-4">
+              <Link href="/configuracoes?tab=integracoes">Abrir Central de Conexões</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </TabsContent>
       <TabsContent value="comissoes" className="mt-4"><ComissoesVendedor embedded /></TabsContent>
       <TabsContent value="estoque" className="mt-4 -mx-4 md:-mx-6"><Estoque /></TabsContent>
       <TabsContent value="compras" className="mt-4"><FinanceProcurementPanel tenantId={tenantId} /></TabsContent>
