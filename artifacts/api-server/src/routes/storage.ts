@@ -4,9 +4,41 @@ import {
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+import { verifyToken } from "../lib/jwt.js";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
+
+function cookieValue(req: Request, name: string): string {
+  const cookieHeader = String(req.headers.cookie ?? "");
+  const match = cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`));
+  return match ? decodeURIComponent(match.slice(name.length + 1)) : "";
+}
+
+function storageSession(req: Request) {
+  const authHeader = String(req.headers.authorization ?? "");
+  const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+  const token = bearer || cookieValue(req, "vendorai_storage_session");
+  if (!token) return null;
+  try {
+    return verifyToken(token);
+  } catch {
+    return null;
+  }
+}
+
+function requireStorageSession(req: Request, res: Response): boolean {
+  const user = storageSession(req);
+  if (!user) {
+    res.status(401).json({ error: "Storage authentication required" });
+    return false;
+  }
+  (req as any).user = user;
+  return true;
+}
 
 /**
  * POST /storage/uploads/request-url
@@ -16,6 +48,7 @@ const objectStorageService = new ObjectStorageService();
  * Then uploads the file directly to the returned presigned URL via PUT.
  */
 router.post("/storage/uploads/request-url", async (req: Request, res: Response) => {
+  if (!requireStorageSession(req, res)) return;
   const parsed = RequestUploadUrlBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Missing or invalid required fields" });
@@ -92,6 +125,7 @@ router.get("/storage/public-objects/*filePath", async (req: Request, res: Respon
  * same application origin.
  */
 router.get("/storage/objects/*path", async (req: Request, res: Response) => {
+  if (!requireStorageSession(req, res)) return;
   try {
     const raw = req.params.path;
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
