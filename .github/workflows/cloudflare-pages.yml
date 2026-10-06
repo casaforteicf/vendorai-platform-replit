@@ -1,6 +1,6 @@
 name: Cloudflare Pages
 # Production deploy: Pages frontend; Railway backend remains unchanged.
-# Redeploy marker: brand-kit-pr3200 2026-10-06T23:08Z.
+# Redeploy marker: brand-kit-never-block-content 2026-10-06T23:16Z.
 
 on:
   push:
