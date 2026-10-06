@@ -628,6 +628,10 @@ export default function ConceptModel3D({
   const [walkResetToken, setWalkResetToken] = useState(0);
   const [cameraSnapshotToken, setCameraSnapshotToken] = useState(0);
   const [pendingSavedScene, setPendingSavedScene] = useState(false);
+  const [pendingRenderRequest, setPendingRenderRequest] = useState<null | {
+    lightingMode: "day" | "sunset" | "night";
+    renderView: "interior" | "exterior";
+  }>(null);
   const [activeSavedSceneId, setActiveSavedSceneId] = useState<string | null>(null);
   const [panoramaExportToken, setPanoramaExportToken] = useState(0);
   const [panoramaExportState, setPanoramaExportState] = useState<"idle" | "exporting" | "error">("idle");
@@ -726,18 +730,45 @@ export default function ConceptModel3D({
     position: { x: number; y: number; z: number };
     target: { x: number; y: number; z: number };
   }) => {
-    if (!pendingSavedScene) return;
-    const point = {
-      id: `scene-${Date.now()}`,
-      name: `Cena ${savedTourPoints.length + 1}`,
-      floor: activeFloor,
-      position: snapshot.position,
-      target: snapshot.target,
-    };
-    onSavedTourPointsChange?.([...savedTourPoints, point]);
-    setActiveSavedSceneId(point.id);
-    setPendingSavedScene(false);
-    setNavigationMode("orbit");
+    if (pendingSavedScene) {
+      const point = {
+        id: `scene-${Date.now()}`,
+        name: `Cena ${savedTourPoints.length + 1}`,
+        floor: activeFloor,
+        position: snapshot.position,
+        target: snapshot.target,
+      };
+      onSavedTourPointsChange?.([...savedTourPoints, point]);
+      setActiveSavedSceneId(point.id);
+      setPendingSavedScene(false);
+      setNavigationMode("orbit");
+    }
+
+    if (pendingRenderRequest) {
+      onRenderView?.(
+        pendingRenderRequest.lightingMode,
+        pendingRenderRequest.renderView,
+        {
+          sceneId: activeSavedScene?.id ?? null,
+          sceneName: activeSavedScene?.name ?? null,
+          cameraSnapshot: {
+            floor: activeFloor,
+            position: snapshot.position,
+            target: snapshot.target,
+          },
+        },
+      );
+      setPendingRenderRequest(null);
+    }
+  };
+
+  const requestRenderFromCurrentCamera = (
+    nextLightingMode: "day" | "sunset" | "night",
+    nextRenderView: "interior" | "exterior",
+  ) => {
+    if (!webglReady || pendingRenderRequest) return;
+    setPendingRenderRequest({ lightingMode: nextLightingMode, renderView: nextRenderView });
+    setCameraSnapshotToken((value) => value + 1);
   };
 
   const resetCamera = () => {
@@ -1485,20 +1516,9 @@ export default function ConceptModel3D({
           {onRenderView && (
             <button
               type="button"
-              onClick={() => onRenderView(
+              onClick={() => requestRenderFromCurrentCamera(
                 lightingMode,
                 interiorMode ? "interior" : "exterior",
-                activeSavedScene
-                  ? {
-                      sceneId: activeSavedScene.id,
-                      sceneName: activeSavedScene.name,
-                      cameraSnapshot: {
-                        floor: activeSavedScene.floor,
-                        position: activeSavedScene.position,
-                        target: activeSavedScene.target,
-                      },
-                    }
-                  : { sceneId: null, sceneName: null, cameraSnapshot: null },
               )}
               className="flex items-center gap-2 rounded-lg bg-orange-500 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-orange-600"
             >
