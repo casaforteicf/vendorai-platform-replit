@@ -13,6 +13,8 @@ import {
   partnerIndicatorsTable,
 } from "@workspace/db";
 import { requireRole, requirePartner } from "../middlewares/auth.js";
+import { findLeadByDedup, storePhone } from "../lib/dedup.js";
+import { leadRegistrationMetadata, normalizeLeadEmail, normalizeLeadName } from "../lib/lead-registration-standard.js";
 
 const router: IRouter = Router();
 
@@ -96,18 +98,47 @@ router.post("/partners/indicate", requirePartner, async (req, res) => {
     return;
   }
 
+  const dedup = await findLeadByDedup(tenantId, telefone, null, nome);
+  if (dedup.found) {
+    const [lead] = await db
+      .update(leadsTable)
+      .set({
+        telefone: dedup.lead.telefone ?? storePhone(telefone),
+        email: dedup.lead.email ?? normalizeLeadEmail(email),
+        empresa: dedup.lead.empresa ?? empresa?.trim() || null,
+        objetivo: dedup.lead.objetivo ?? objetivo?.trim() || null,
+        indicadoPor: dedup.lead.indicadoPor ?? partnerId,
+        partnerVisible: true,
+        metadata: leadRegistrationMetadata(dedup.lead.metadata, {
+          entryChannel: "parceiro",
+          entrySource: "indicacao_parceiro",
+          details: { partnerId },
+        }),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(leadsTable.id, dedup.lead.id), eq(leadsTable.tenantId, tenantId)))
+      .returning();
+    res.status(200).json({ ...lead, merged: true });
+    return;
+  }
+
   const [lead] = await db
     .insert(leadsTable)
     .values({
       tenantId,
-      nome,
-      telefone,
-      email,
-      empresa,
-      objetivo,
+      nome: normalizeLeadName(nome, "Lead indicado"),
+      telefone: storePhone(telefone),
+      email: normalizeLeadEmail(email),
+      empresa: empresa?.trim() || null,
+      objetivo: objetivo?.trim() || null,
       indicadoPor: partnerId,
       partnerVisible: true,
       source: "indicacao_parceiro",
+      metadata: leadRegistrationMetadata(null, {
+        entryChannel: "parceiro",
+        entrySource: "indicacao_parceiro",
+        details: { partnerId },
+      }),
     })
     .returning();
 
