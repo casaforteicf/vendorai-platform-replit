@@ -31,3 +31,16 @@ CREATE INDEX IF NOT EXISTS idx_arch_spec_objects_supplier
 
 CREATE INDEX IF NOT EXISTS idx_arch_spec_objects_revision_impact
   ON arch_spec_objects (tenant_id, project_id, revision_impact);
+
+ALTER TABLE arch_budgets
+  ADD COLUMN IF NOT EXISTS specification_outdated BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS specification_revision TEXT NULL;
+
+ALTER TABLE arch_budget_items
+  ADD COLUMN IF NOT EXISTS specification_outdated BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS specification_revision TEXT NULL,
+  ADD COLUMN IF NOT EXISTS specification_impact TEXT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_arch_budget_items_spec_outdated
+  ON arch_budget_items (budget_id, specification_outdated)
+  WHERE specification_outdated = TRUE;
