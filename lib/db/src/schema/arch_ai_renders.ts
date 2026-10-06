@@ -42,6 +42,16 @@ export const archAiRendersTable = pgTable("arch_ai_renders", {
   providerSubmissionStartedAt: timestamp("provider_submission_started_at", { withTimezone: true }),
   source:           varchar("source", { length: 20 }),
   renderView:       varchar("render_view", { length: 20 }),
+  // Proveniência técnica: qual revisão/cena/câmera originou esta imagem.
+  projectRevision:  text("project_revision"),
+  sceneId:          text("scene_id"),
+  sceneName:        text("scene_name"),
+  cameraSnapshot:   jsonb("camera_snapshot").$type<{
+    floor?: number;
+    position: { x: number; y: number; z: number };
+    target: { x: number; y: number; z: number };
+  }>(),
+  sourceModelVersion: text("source_model_version"),
   isPrimary:        boolean("is_primary").notNull().default(false),
   parentRenderId:   text("parent_render_id"),
   // 'preservar' = inpainting estrutural | 'criar' = geração livre
@@ -100,6 +110,11 @@ export const insertArchAiRenderSchema = createInsertSchema(archAiRendersTable, {
     surfaceKey: z.string().optional(),
   })).optional(),
   segmentationConfidence: z.record(z.string(), z.number()).optional(),
+  cameraSnapshot: z.object({
+    floor: z.number().int().optional(),
+    position: z.object({ x: z.number(), y: z.number(), z: z.number() }),
+    target: z.object({ x: z.number(), y: z.number(), z: z.number() }),
+  }).optional(),
 }).omit({ id: true, createdAt: true, isPrimary: true, jobInput: true, jobLeaseToken: true, jobLeaseUntil: true, jobAttempts: true, providerPredictionId: true, providerSubmissionStartedAt: true });
 
 export const updateArchAiRenderSchema = createSelectSchema(archAiRendersTable, {
@@ -113,6 +128,11 @@ export const updateArchAiRenderSchema = createSelectSchema(archAiRendersTable, {
     surfaceKey: z.string().optional(),
   })).optional(),
   segmentationConfidence: z.record(z.string(), z.number()).optional(),
+  cameraSnapshot: z.object({
+    floor: z.number().int().optional(),
+    position: z.object({ x: z.number(), y: z.number(), z: z.number() }),
+    target: z.object({ x: z.number(), y: z.number(), z: z.number() }),
+  }).optional(),
 })
   .omit({ id: true, tenantId: true, createdAt: true, isPrimary: true, jobInput: true, jobLeaseToken: true, jobLeaseUntil: true, jobAttempts: true, providerPredictionId: true, providerSubmissionStartedAt: true })
   .partial();
