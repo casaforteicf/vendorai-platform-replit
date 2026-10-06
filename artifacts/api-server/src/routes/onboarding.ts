@@ -1273,24 +1273,61 @@ router.get("/onboarding/integracoes", authenticate, async (req, res) => {
     .where(eq(agentConfigsTable.tenantId, tenantId));
 
   const [igConn] = await db
-    .select({ username: instagramConnectionsTable.username })
+    .select({
+      username: instagramConnectionsTable.username,
+      tokenExpiresAt: instagramConnectionsTable.tokenExpiresAt,
+      disconnectedAt: instagramConnectionsTable.disconnectedAt,
+    })
     .from(instagramConnectionsTable)
     .where(eq(instagramConnectionsTable.tenantId, tenantId));
 
   const [gcAgenda] = await db
-    .select({ id: agendasTable.id, googleCalendarId: agendasTable.googleCalendarId })
+    .select({
+      id: agendasTable.id,
+      googleCalendarId: agendasTable.googleCalendarId,
+      googleRefreshToken: agendasTable.googleRefreshToken,
+      googleTokenExpiresAt: agendasTable.googleTokenExpiresAt,
+    })
     .from(agendasTable)
     .where(and(eq(agendasTable.tenantId, tenantId)));
 
   const googleAdsConn = await getGoogleAdsConnectionByTenantId(tenantId);
   const [publishedSite] = await db.select({ id: generatedSitesTable.id }).from(generatedSitesTable).where(and(eq(generatedSitesTable.tenantId, tenantId), eq(generatedSitesTable.published, true))).limit(1);
   const [domain] = await db.select({ domain: tenantDomainsTable.domain, status: tenantDomainsTable.status }).from(tenantDomainsTable).where(eq(tenantDomainsTable.tenantId, tenantId)).limit(1);
-  const [searchConsole] = await db.select({ status: searchConsoleConnectionsTable.status, verified: searchConsoleConnectionsTable.verified }).from(searchConsoleConnectionsTable).where(eq(searchConsoleConnectionsTable.tenantId, tenantId)).limit(1);
-  const socialConnections = await db.select({ provider: socialConnectionsTable.provider, status: socialConnectionsTable.status }).from(socialConnectionsTable).where(eq(socialConnectionsTable.tenantId, tenantId));
+  const [searchConsole] = await db.select({
+    status: searchConsoleConnectionsTable.status,
+    verified: searchConsoleConnectionsTable.verified,
+    tokenExpiresAt: searchConsoleConnectionsTable.tokenExpiresAt,
+    disconnectedAt: searchConsoleConnectionsTable.disconnectedAt,
+  }).from(searchConsoleConnectionsTable).where(eq(searchConsoleConnectionsTable.tenantId, tenantId)).limit(1);
+  const socialConnections = await db.select({
+    provider: socialConnectionsTable.provider,
+    status: socialConnectionsTable.status,
+    tokenExpiresAt: socialConnectionsTable.tokenExpiresAt,
+    disconnectedAt: socialConnectionsTable.disconnectedAt,
+  }).from(socialConnectionsTable).where(eq(socialConnectionsTable.tenantId, tenantId));
 
   const [tenantData] = await db
     .select({ asaasApiKey: tenantsTable.asaasApiKey, zapsignApiKey: tenantsTable.zapsignApiKey, googleAdsConversionId: tenantsTable.googleAdsConversionId, ga4MeasurementId: tenantsTable.ga4MeasurementId, gtmContainerId: tenantsTable.gtmContainerId, metaPixelId: tenantsTable.metaPixelId, linkedinInsightTagId: tenantsTable.linkedinInsightTagId, tiktokPixelId: tenantsTable.tiktokPixelId })
     .from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+
+  const nowMs = Date.now();
+  const tokenExpired = (value: Date | string | null | undefined) => !!value && new Date(value).getTime() <= nowMs;
+  const instagramExpired = tokenExpired(igConn?.tokenExpiresAt);
+  const googleAdsExpired = tokenExpired(googleAdsConn?.tokenExpiresAt);
+  const searchConsoleExpired = tokenExpired(searchConsole?.tokenExpiresAt);
+  const socialHealth = (provider: "linkedin" | "tiktok") => {
+    const connection = socialConnections.find((item) => item.provider === provider && !item.disconnectedAt);
+    const expired = tokenExpired(connection?.tokenExpiresAt);
+    return {
+      connected: connection?.status === "active" && !expired,
+      attention: connection?.status === "active" && expired,
+      tokenExpiresAt: connection?.tokenExpiresAt ?? null,
+      reason: connection?.status === "active" && expired ? "token_expired" : null,
+    };
+  };
+  const linkedinHealth = socialHealth("linkedin");
+  const tiktokHealth = socialHealth("tiktok");
 
   return res.json({
     step: tenant?.step ?? 0,
@@ -1300,24 +1337,39 @@ router.get("/onboarding/integracoes", authenticate, async (req, res) => {
       phone: waConn?.displayPhoneNumber ?? evolutionConn?.phone ?? null,
     },
     googleCalendar: {
-      connected: !!(gcAgenda?.googleCalendarId),
+      connected: !!(gcAgenda?.googleCalendarId && gcAgenda?.googleRefreshToken),
+      attention: !!gcAgenda?.googleCalendarId && !gcAgenda?.googleRefreshToken,
       agendaId: gcAgenda?.id ?? null,
+      tokenExpiresAt: gcAgenda?.googleTokenExpiresAt ?? null,
+      reason: gcAgenda?.googleCalendarId && !gcAgenda?.googleRefreshToken ? "refresh_token_missing" : null,
     },
     instagram: {
-      connected: !!igConn?.username,
+      connected: !!igConn?.username && !igConn?.disconnectedAt && !instagramExpired,
+      attention: !!igConn?.username && !igConn?.disconnectedAt && instagramExpired,
       username: igConn?.username ?? null,
+      tokenExpiresAt: igConn?.tokenExpiresAt ?? null,
+      reason: instagramExpired ? "token_expired" : null,
     },
     googleAds: {
-      connected: !!googleAdsConn && googleAdsConn.status !== "disconnected" && !googleAdsConn.disconnectedAt,
+      connected: !!googleAdsConn && googleAdsConn.status !== "disconnected" && !googleAdsConn.disconnectedAt && !googleAdsExpired,
+      attention: googleAdsConn?.status === "pending_account_selection" || (!!googleAdsConn && googleAdsExpired),
       pendingAccountSelection: googleAdsConn?.status === "pending_account_selection",
       customerId: googleAdsConn?.customerId ?? null,
       descriptiveName: googleAdsConn?.descriptiveName ?? null,
+      tokenExpiresAt: googleAdsConn?.tokenExpiresAt ?? null,
+      reason: googleAdsExpired ? "token_expired" : googleAdsConn?.status === "pending_account_selection" ? "account_selection_pending" : null,
     },
     asaas: { connected: !!tenantData?.asaasApiKey },
     zapsign: { connected: !!tenantData?.zapsignApiKey },
     site: { published: !!publishedSite },
     domain: { configured: !!domain, active: domain?.status === "active", name: domain?.domain ?? null, status: domain?.status ?? null },
-    searchConsole: { connected: !!searchConsole && searchConsole.status !== "disconnected", verified: searchConsole?.verified === true },
+    searchConsole: {
+      connected: !!searchConsole && searchConsole.status !== "disconnected" && !searchConsole.disconnectedAt && !searchConsoleExpired,
+      attention: !!searchConsole && searchConsole.status !== "disconnected" && !searchConsole.disconnectedAt && (searchConsoleExpired || searchConsole.verified !== true),
+      verified: searchConsole?.verified === true,
+      tokenExpiresAt: searchConsole?.tokenExpiresAt ?? null,
+      reason: searchConsoleExpired ? "token_expired" : searchConsole?.verified !== true ? "verification_pending" : null,
+    },
     tracking: {
       googleAds: !!tenantData?.googleAdsConversionId,
       googleAdsConversionId: tenantData?.googleAdsConversionId ?? null,
@@ -1332,7 +1384,16 @@ router.get("/onboarding/integracoes", authenticate, async (req, res) => {
       tiktokPixel: /^[A-Za-z0-9_-]+$/.test(tenantData?.tiktokPixelId ?? ""),
       tiktokPixelId: tenantData?.tiktokPixelId ?? null,
     },
-    social: { linkedin: socialConnections.some((connection) => connection.provider === "linkedin" && connection.status === "active"), tiktok: socialConnections.some((connection) => connection.provider === "tiktok" && connection.status === "active") },
+    social: {
+      linkedin: linkedinHealth.connected,
+      linkedinAttention: linkedinHealth.attention,
+      linkedinTokenExpiresAt: linkedinHealth.tokenExpiresAt,
+      linkedinReason: linkedinHealth.reason,
+      tiktok: tiktokHealth.connected,
+      tiktokAttention: tiktokHealth.attention,
+      tiktokTokenExpiresAt: tiktokHealth.tokenExpiresAt,
+      tiktokReason: tiktokHealth.reason,
+    },
   });
 });
 

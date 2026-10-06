@@ -169,9 +169,13 @@ export async function listSocialConnections(tenantId: string) {
   const rows = await db.select().from(socialConnectionsTable).where(eq(socialConnectionsTable.tenantId, tenantId));
   return (["youtube", "linkedin", "tiktok"] as SocialProvider[]).map((provider) => {
     const row = rows.find((item) => item.provider === provider && item.status === "active" && !item.disconnectedAt);
+    const expired = Boolean(row?.tokenExpiresAt && row.tokenExpiresAt.getTime() <= Date.now());
     return {
       provider,
-      connected: Boolean(row),
+      connected: Boolean(row) && !expired,
+      attention: Boolean(row) && expired,
+      reason: expired ? "token_expired" : null,
+      tokenExpiresAt: row?.tokenExpiresAt ?? null,
       accountId: row?.externalAccountId,
       accountName: row?.accountName,
       identityRole: row ? identityRoleFromMetadata(provider, row.metadata) : defaultIdentityRole(provider),
