@@ -28,6 +28,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { LEAD_SOURCE_OPTIONS } from "@/lib/leadRegistration";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -3609,16 +3610,9 @@ export default function Deals() {
                           <Select value={field.value} onValueChange={field.onChange}>
                             <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                             <SelectContent>
-                              <SelectItem value="manual">Cadastro manual</SelectItem>
-                              <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                              <SelectItem value="instagram">Instagram</SelectItem>
-                              <SelectItem value="email">E-mail</SelectItem>
-                              <SelectItem value="site">Site / formulário</SelectItem>
-                              <SelectItem value="anuncio">Anúncio</SelectItem>
-                              <SelectItem value="indicacao">Indicação</SelectItem>
-                              <SelectItem value="prospeccao">Prospecção</SelectItem>
-                              <SelectItem value="pedido_importado">Pedido / orçamento importado</SelectItem>
-                              <SelectItem value="outro">Outro</SelectItem>
+                              {LEAD_SOURCE_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                         </FormItem>
