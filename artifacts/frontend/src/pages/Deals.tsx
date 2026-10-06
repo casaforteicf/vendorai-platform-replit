@@ -6,6 +6,7 @@ import {
   useListDeals,
   getListDealsQueryKey,
   useCreateDeal,
+  useCreateLead,
   useUpdateDeal,
   useListTenantLeads,
   getListTenantLeadsQueryKey,
@@ -31,6 +32,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import {
   Dialog,
   DialogContent,
@@ -1556,6 +1558,15 @@ const createSchema = z.object({
   titulo: z.string().min(2, "Título obrigatório"),
   valor: z.coerce.number().min(0).optional(),
   leadId: z.string().optional().or(z.literal("")),
+  leadMode: z.enum(["existing", "new"]).default("existing"),
+  leadNome: z.string().optional().or(z.literal("")),
+  leadTelefone: z.string().optional().or(z.literal("")),
+  leadEmail: z.string().email("Email inválido").optional().or(z.literal("")),
+  leadEmpresa: z.string().optional().or(z.literal("")),
+  leadDocumento: z.string().optional().or(z.literal("")),
+  leadEndereco: z.string().optional().or(z.literal("")),
+  leadSegmento: z.string().optional().or(z.literal("")),
+  assignedTo: z.string().optional().or(z.literal("")),
   etapa: z.string().min(1, "Etapa obrigatória"),
   probabilidade: z.coerce.number().min(0).max(100).optional(),
   tipoFechamento: z.enum(["pedido", "contrato", "pedido_e_contrato"]).optional(),
@@ -2408,8 +2419,14 @@ export default function Deals() {
     itens?: Array<{ descricao: string; quantidade?: number | null; valorUnitario?: number | null; valorTotal?: number | null }>;
     fornecedor?: string | null;
     cliente?: string | null;
+    clienteDocumento?: string | null;
+    clienteEndereco?: string | null;
+    clienteTelefone?: string | null;
+    clienteEmail?: string | null;
     observacoes?: string | null;
   } | null>(null);
+  const [createQuoteFileUrl, setCreateQuoteFileUrl] = useState<string | null>(null);
+  const [createQuoteFileName, setCreateQuoteFileName] = useState<string | null>(null);
   const createQuoteFileRef = useRef<HTMLInputElement>(null);
 
   const { data: allDeals = [], isLoading } = useListDeals(tenantId, undefined, {
@@ -2629,6 +2646,7 @@ export default function Deals() {
   const updateDeal = useUpdateDeal();
 
   const createDeal = useCreateDeal();
+  const createLead = useCreateLead();
 
   async function handleCreateQuoteUpload(file: File) {
     setCreateExtracting(true);
@@ -2649,7 +2667,43 @@ export default function Deals() {
         if (!current || current.trim() === "") createForm.setValue("titulo", data.titulo);
       }
       if (data.itens?.length || data.fornecedor || data.cliente || data.observacoes) {
-        setCreateExtractedInfo({ itens: data.itens, fornecedor: data.fornecedor, cliente: data.cliente, observacoes: data.observacoes });
+        setCreateExtractedInfo({
+          itens: data.itens,
+          fornecedor: data.fornecedor,
+          cliente: data.cliente,
+          clienteDocumento: data.clienteDocumento,
+          clienteEndereco: data.clienteEndereco,
+          clienteTelefone: data.clienteTelefone,
+          clienteEmail: data.clienteEmail,
+          observacoes: data.observacoes,
+        });
+      }
+      if (data.quoteFileUrl) {
+        setCreateQuoteFileUrl(data.quoteFileUrl);
+        setCreateQuoteFileName(data.originalName ?? file.name);
+      }
+
+      const normalize = (value: unknown) => String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
+      const digitsOnly = (value: unknown) => String(value ?? "").replace(/\D/g, "");
+      const extractedDocument = digitsOnly(data.clienteDocumento);
+      const extractedName = normalize(data.cliente);
+      const existingLead = leads.find((lead) => {
+        const sameDocument = extractedDocument.length >= 8 && digitsOnly((lead as any).documento) === extractedDocument;
+        const sameName = extractedName.length >= 3 && [lead.nome, (lead as any).empresa].some((value) => normalize(value) === extractedName);
+        return sameDocument || sameName;
+      });
+
+      if (existingLead) {
+        createForm.setValue("leadMode", "existing");
+        createForm.setValue("leadId", existingLead.id);
+      } else if (data.cliente || data.clienteDocumento || data.clienteEndereco || data.clienteTelefone || data.clienteEmail) {
+        createForm.setValue("leadMode", "new");
+        createForm.setValue("leadId", "");
+        if (data.cliente) createForm.setValue("leadNome", data.cliente);
+        if (data.clienteDocumento) createForm.setValue("leadDocumento", data.clienteDocumento);
+        if (data.clienteEndereco) createForm.setValue("leadEndereco", data.clienteEndereco);
+        if (data.clienteTelefone) createForm.setValue("leadTelefone", data.clienteTelefone);
+        if (data.clienteEmail) createForm.setValue("leadEmail", data.clienteEmail);
       }
       const confianca = data.confianca ?? 0;
       toast({ title: confianca >= 0.5 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)" });
@@ -2663,10 +2717,104 @@ export default function Deals() {
   type DealFormValues = z.infer<typeof createSchema>;
   const createForm = useForm<DealFormValues, any, DealFormValues>({
     resolver: zodResolver(createSchema),
-    defaultValues: { titulo: "", valor: undefined, leadId: "", etapa: "novo", probabilidade: undefined, tipoFechamento: tenantDefault ?? "pedido" },
+    defaultValues: {
+      titulo: "",
+      valor: undefined,
+      leadId: "",
+      leadMode: "existing",
+      leadNome: "",
+      leadTelefone: "",
+      leadEmail: "",
+      leadEmpresa: "",
+      leadDocumento: "",
+      leadEndereco: "",
+      leadSegmento: "",
+      assignedTo: "",
+      etapa: "novo",
+      probabilidade: undefined,
+      tipoFechamento: tenantDefault ?? "pedido",
+    },
   });
 
-  function onCreateSubmit(values: z.infer<typeof createSchema>) {
+  async function onCreateSubmit(values: z.infer<typeof createSchema>) {
+    let leadId = values.leadId || undefined;
+    const stage = stagesByKey[values.etapa];
+    const eligibleUsers = tenantUsers.filter((candidate) =>
+      isUserResponsibleForStage(candidate as StageResponsibleUser, stage)
+    );
+
+    if (!values.assignedTo || !eligibleUsers.some((candidate) => candidate.id === values.assignedTo)) {
+      createForm.setError("assignedTo", { message: "Selecione um responsável habilitado para a etapa inicial." });
+      toast({
+        title: "Responsável obrigatório",
+        description: "Escolha uma pessoa ativa configurada como responsável pela etapa inicial.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (values.leadMode === "new") {
+      if (!values.leadNome?.trim() || values.leadNome.trim().length < 2) {
+        createForm.setError("leadNome", { message: "Nome do cliente é obrigatório." });
+        return;
+      }
+
+      const normalize = (value: unknown) => String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
+      const digitsOnly = (value: unknown) => String(value ?? "").replace(/\D/g, "");
+      const document = digitsOnly(values.leadDocumento);
+      const phone = digitsOnly(values.leadTelefone);
+      const email = normalize(values.leadEmail);
+      const duplicate = leads.find((lead) =>
+        (document.length >= 8 && digitsOnly((lead as any).documento) === document) ||
+        (phone.length >= 8 && digitsOnly((lead as any).telefone) === phone) ||
+        (email && normalize((lead as any).email) === email)
+      );
+
+      if (duplicate) {
+        leadId = duplicate.id;
+        createForm.setValue("leadMode", "existing");
+        createForm.setValue("leadId", duplicate.id);
+        toast({
+          title: "Cliente já cadastrado",
+          description: `${duplicate.nome || (duplicate as any).empresa || "Cliente"} foi reutilizado para evitar duplicação.`,
+        });
+      } else {
+        try {
+          const createdLead = await createLead.mutateAsync({
+            data: {
+              tenantId,
+              nome: values.leadNome.trim(),
+              telefone: values.leadTelefone?.trim() || null,
+              email: values.leadEmail?.trim() || null,
+              empresa: values.leadEmpresa?.trim() || null,
+              documento: values.leadDocumento?.trim() || null,
+              endereco: values.leadEndereco?.trim() || null,
+              mercadoSegmento: values.leadSegmento?.trim() || null,
+              tipoPessoa: digitsOnly(values.leadDocumento).length === 14 ? "juridica" : "fisica",
+              source: createQuoteFileUrl ? "pedido_importado" : "manual",
+              assignedTo: values.assignedTo,
+            },
+          });
+          leadId = (createdLead as { id?: string }).id;
+          if (!leadId) throw new Error("Cliente criado sem identificador válido.");
+          await queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
+        } catch (error) {
+          toast({
+            title: "Não foi possível cadastrar o cliente",
+            description: error instanceof Error ? error.message : "Revise os dados do cliente e tente novamente.",
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+    }
+
+    if (!leadId) {
+      createForm.setError("leadId", { message: "Selecione um cliente existente ou cadastre um novo." });
+      toast({ title: "Cliente obrigatório", description: "Todo novo negócio deve ficar vinculado a um cliente.", variant: "destructive" });
+      return;
+    }
+
     createDeal.mutate(
       {
         data: {
@@ -2674,20 +2822,34 @@ export default function Deals() {
           titulo: values.titulo,
           valor: values.valor,
           etapa: values.etapa as DealEtapa,
-          leadId: values.leadId || undefined,
+          leadId,
+          assignedTo: values.assignedTo,
           probabilidade: values.probabilidade,
           tipoFechamento: values.tipoFechamento as TipoFechamento | undefined,
+          quoteFileUrl: createQuoteFileUrl ?? undefined,
         },
       },
       {
         onSuccess: () => {
-          toast({ title: "Negócio criado." });
+          toast({
+            title: "Negócio criado.",
+            description: createQuoteFileName
+              ? `Pedido/orçamento ${createQuoteFileName} preservado e vinculado ao negócio.`
+              : undefined,
+          });
           queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
           setIsCreateOpen(false);
+          setCreateExtractedInfo(null);
+          setCreateQuoteFileUrl(null);
+          setCreateQuoteFileName(null);
           createForm.reset();
         },
-        onError: () => {
-          toast({ title: "Erro ao criar negócio", variant: "destructive" });
+        onError: (error) => {
+          toast({
+            title: "Erro ao criar negócio",
+            description: error instanceof Error ? error.message : "Tente novamente.",
+            variant: "destructive",
+          });
         },
       }
     );
@@ -3155,14 +3317,22 @@ export default function Deals() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <Dialog open={isCreateOpen} onOpenChange={(open) => {
+          setIsCreateOpen(open);
+          if (!open) {
+            setCreateExtractedInfo(null);
+            setCreateQuoteFileUrl(null);
+            setCreateQuoteFileName(null);
+            createForm.reset();
+          }
+        }}>
           <DialogTrigger asChild>
             <Button data-testid="button-novo-negocio">
               <Plus className="h-4 w-4 mr-2" />
               Novo Negócio
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Criar Novo Negócio</DialogTitle>
             </DialogHeader>
@@ -3212,6 +3382,18 @@ export default function Deals() {
                     )}
                     {createExtractedInfo.cliente && (
                       <p className="text-xs text-violet-700">Cliente: <span className="font-medium">{createExtractedInfo.cliente}</span></p>
+                    )}
+                    {createExtractedInfo.clienteDocumento && (
+                      <p className="text-xs text-violet-700">CPF/CNPJ: <span className="font-medium">{createExtractedInfo.clienteDocumento}</span></p>
+                    )}
+                    {createExtractedInfo.clienteTelefone && (
+                      <p className="text-xs text-violet-700">Telefone: <span className="font-medium">{createExtractedInfo.clienteTelefone}</span></p>
+                    )}
+                    {createExtractedInfo.clienteEmail && (
+                      <p className="text-xs text-violet-700">E-mail: <span className="font-medium">{createExtractedInfo.clienteEmail}</span></p>
+                    )}
+                    {createExtractedInfo.clienteEndereco && (
+                      <p className="text-xs text-violet-700">Endereço: <span className="font-medium">{createExtractedInfo.clienteEndereco}</span></p>
                     )}
                     {createExtractedInfo.itens && createExtractedInfo.itens.length > 0 && (
                       <div className="space-y-1 mt-1">
@@ -3300,39 +3482,125 @@ export default function Deals() {
                     </FormItem>
                   )}
                 />
+                <section className="space-y-3 rounded-lg border bg-muted/20 p-4">
+                  <div>
+                    <p className="text-sm font-semibold">Cliente do negócio *</p>
+                    <p className="text-xs text-muted-foreground">Use um cadastro existente ou complete o cadastro do cliente sem sair deste fluxo.</p>
+                  </div>
+
+                  <FormField
+                    control={createForm.control}
+                    name="leadMode"
+                    render={({ field }) => (
+                      <FormItem>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button type="button" variant={field.value === "existing" ? "default" : "outline"} onClick={() => field.onChange("existing")}>
+                            Cliente existente
+                          </Button>
+                          <Button type="button" variant={field.value === "new" ? "default" : "outline"} onClick={() => { field.onChange("new"); createForm.setValue("leadId", ""); }}>
+                            Cadastrar cliente
+                          </Button>
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+
+                  {createForm.watch("leadMode") === "existing" ? (
+                    <FormField
+                      control={createForm.control}
+                      name="leadId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Cliente cadastrado</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value || ""}>
+                            <FormControl><SelectTrigger data-testid="select-lead"><SelectValue placeholder="Selecionar cliente..." /></SelectTrigger></FormControl>
+                            <SelectContent>
+                              {leads.map((lead) => (
+                                <SelectItem key={lead.id} value={lead.id}>
+                                  {lead.nome}{(lead as any).empresa && (lead as any).empresa !== lead.nome ? ` • ${(lead as any).empresa}` : ""}{(lead as any).telefone ? ` • ${(lead as any).telefone}` : ""}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  ) : (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <FormField control={createForm.control} name="leadNome" render={({ field }) => (
+                        <FormItem className="sm:col-span-2">
+                          <FormLabel>Nome / Razão social *</FormLabel>
+                          <FormControl><Input placeholder="Nome completo ou razão social" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={createForm.control} name="leadTelefone" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>WhatsApp / Telefone</FormLabel>
+                          <FormControl><PhoneInput {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={createForm.control} name="leadEmail" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>E-mail</FormLabel>
+                          <FormControl><Input type="email" placeholder="email@cliente.com" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={createForm.control} name="leadEmpresa" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Empresa / Nome fantasia</FormLabel>
+                          <FormControl><Input placeholder="Empresa" {...field} /></FormControl>
+                        </FormItem>
+                      )} />
+                      <FormField control={createForm.control} name="leadDocumento" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>CPF / CNPJ</FormLabel>
+                          <FormControl><Input placeholder="Documento" {...field} /></FormControl>
+                        </FormItem>
+                      )} />
+                      <FormField control={createForm.control} name="leadEndereco" render={({ field }) => (
+                        <FormItem className="sm:col-span-2">
+                          <FormLabel>Endereço</FormLabel>
+                          <FormControl><Input placeholder="Rua, número, bairro, cidade/UF, CEP" {...field} /></FormControl>
+                        </FormItem>
+                      )} />
+                      <FormField control={createForm.control} name="leadSegmento" render={({ field }) => (
+                        <FormItem className="sm:col-span-2">
+                          <FormLabel>Segmento</FormLabel>
+                          <FormControl><Input placeholder="Ex.: Serralheria, construção, varejo" {...field} /></FormControl>
+                        </FormItem>
+                      )} />
+                    </div>
+                  )}
+                </section>
+
                 <FormField
                   control={createForm.control}
-                  name="leadId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Lead associado</FormLabel>
-                      {leads.length > 0 ? (
-                        <Select
-                          onValueChange={(v) => field.onChange(v === "__none__" ? "" : v)}
-                          value={field.value || "__none__"}
-                        >
-                          <FormControl>
-                            <SelectTrigger data-testid="select-lead">
-                              <SelectValue placeholder="Selecionar lead..." />
-                            </SelectTrigger>
-                          </FormControl>
+                  name="assignedTo"
+                  render={({ field }) => {
+                    const selectedStage = stagesByKey[createForm.watch("etapa")];
+                    const eligible = tenantUsers.filter((candidate) => isUserResponsibleForStage(candidate as StageResponsibleUser, selectedStage));
+                    return (
+                      <FormItem>
+                        <FormLabel>Responsável *</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || ""}>
+                          <FormControl><SelectTrigger><SelectValue placeholder="Selecionar responsável..." /></SelectTrigger></FormControl>
                           <SelectContent>
-                            <SelectItem value="__none__">Nenhum</SelectItem>
-                            {leads.map((l) => (
-                              <SelectItem key={l.id} value={l.id}>
-                                {l.nome}
+                            {eligible.map((candidate) => (
+                              <SelectItem key={candidate.id} value={candidate.id}>
+                                {candidate.name || candidate.email || candidate.id}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
-                      ) : (
-                        <FormControl>
-                          <Input data-testid="input-leadId" placeholder="ID do lead" {...field} />
-                        </FormControl>
-                      )}
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                        <p className="text-[11px] text-muted-foreground">São exibidas apenas pessoas habilitadas como responsáveis pela etapa inicial.</p>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
                 />
                 <FormField
                   control={createForm.control}
