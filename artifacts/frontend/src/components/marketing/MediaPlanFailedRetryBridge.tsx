@@ -128,7 +128,7 @@ export function MediaPlanFailedRetryBridge() {
   const [projects, setProjects] = useState<MediaProject[]>([]);
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [running, setRunning] = useState(false);
-  const [retryError, setRetryError] = useState("");
+  const [retryFeedback, setRetryFeedback] = useState<{ error: string }>({ error: "" });
   const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
 
   const onContent = window.location.pathname === "/content";
@@ -196,11 +196,11 @@ export function MediaPlanFailedRetryBridge() {
       body: JSON.stringify({ status: "gerado", contentGenerationId: generationId, variationIdx: 0 }),
     });
     if (!response.ok) {
-      const message = "Falha ao sincronizar o rascunho com o calendário.";
-      setRetryError(message);
+      const message = retryFeedback.error || "Falha ao sincronizar o rascunho com o calendário.";
+      setRetryFeedback({ error: message });
       throw new Error(message);
     }
-  }, []);
+  }, [retryFeedback.error]);
 
   const patchProject = useCallback(async (project: MediaProject, patch: Record<string, unknown>) => {
     const context = { ...(project.context ?? {}), ...patch, updatedFromPlanAt: new Date().toISOString() };
@@ -341,7 +341,7 @@ export function MediaPlanFailedRetryBridge() {
   const retryAll = useCallback(async () => {
     if (running || failedItems.length === 0) return;
     setRunning(true);
-    setRetryError("");
+    setRetryFeedback({ error: "" });
     setProgress({ done: 0, total: failedItems.length, failed: 0 });
     let nextIndex = 0;
     let done = 0;
@@ -354,7 +354,7 @@ export function MediaPlanFailedRetryBridge() {
           await retryOne(failedItems[index]!);
         } catch (error) {
           failed += 1;
-          setRetryError(error instanceof Error ? error.message : "Falha ao reprocessar o item.");
+          setRetryFeedback({ error: error instanceof Error ? error.message : "Falha ao reprocessar o item." });
         }
         done += 1;
         setProgress({ done, total: failedItems.length, failed });
@@ -379,7 +379,7 @@ export function MediaPlanFailedRetryBridge() {
         {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
         {running ? `Refazendo ${progress.done}/${progress.total}${progress.failed ? ` · ${progress.failed} falha(s)` : ""}` : `Reprocessar falhas (${failedItems.length})`}
       </button>
-      {retryError ? <span className="max-w-72 text-[11px] text-red-600" role="alert">{retryError}</span> : null}
+      {retryFeedback.error ? <span className="max-w-72 text-[11px] text-red-600" role="alert">{retryFeedback.error}</span> : null}
     </div>,
     host,
   );
