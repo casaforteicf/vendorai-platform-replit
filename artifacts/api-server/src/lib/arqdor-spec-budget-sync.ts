@@ -117,7 +117,11 @@ export async function syncSpecObjectToBudget(params: { tenantId: string | null; 
               total_material = $10, total_labor = $11, total = $12,
               supplier_name = $13, manufacturer_name = $14,
               product_name = $15, material_name = $16,
-              render_id = $17, ambiente_id = $18, updated_at = now()
+              render_id = $17, ambiente_id = $18,
+              specification_outdated = FALSE,
+              specification_revision = $19,
+              specification_impact = NULL,
+              updated_at = now()
         WHERE id = $1 AND budget_id = $2`,
       [
         budgetItemId, budget.id, spec.name, spec.description ?? null,
@@ -126,6 +130,7 @@ export async function syncSpecObjectToBudget(params: { tenantId: string | null; 
         spec.supplier_name ?? null, spec.manufacturer_name ?? null,
         spec.product_name ?? null, spec.material_name ?? null,
         spec.render_id ?? null, spec.ambiente_id ?? null,
+        spec.project_revision ?? null,
       ],
     );
   } else {
@@ -155,6 +160,23 @@ export async function syncSpecObjectToBudget(params: { tenantId: string | null; 
     );
   }
 
+  const outdatedResult = await pool.query(
+    `SELECT EXISTS(
+       SELECT 1 FROM arch_budget_items
+        WHERE budget_id=$1 AND deleted_at IS NULL AND specification_outdated=TRUE
+     ) AS outdated`,
+    [budget.id],
+  );
+  const stillOutdated = Boolean(outdatedResult.rows[0]?.outdated);
+  await pool.query(
+    `UPDATE arch_budgets
+        SET specification_outdated=$2,
+            specification_revision=$3,
+            updated_at=now()
+      WHERE id=$1`,
+    [budget.id, stillOutdated, spec.project_revision ?? null],
+  );
+
   const totals = await recalculateBudget(budget.id);
-  return { budgetId: budget.id, budgetItemId, budgetCreated: ensured.created, totals };
+  return { budgetId: budget.id, budgetItemId, budgetCreated: ensured.created, totals, specificationOutdated: stillOutdated };
 }
