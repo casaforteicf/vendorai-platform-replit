@@ -5792,6 +5792,7 @@ function CalendarSettingsTab({ tenantId }: { tenantId: string }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: settings, isLoading } = useGetTenantCalendarSettings(tenantId);
+  const { data: agendas = [] } = useListAgendas(tenantId);
   const create = useCreateTenantCalendarSettings({
     mutation: {
       onSuccess: () => {
@@ -5815,9 +5816,11 @@ function CalendarSettingsTab({ tenantId }: { tenantId: string }) {
     enableSpouseGiftFlow: boolean;
     commercialDates: Array<{ name: string; active: boolean; daysBeforeToSend: number; movableDate?: boolean; targetGender?: string; month?: number; day?: number }>;
     professionalDates: Array<{ name: string; active: boolean; month: number; day: number; professions: string[] }>;
+    activityScheduleDefaults: Array<{ activityType: string; enabled: boolean; weekday: number; agendaId?: string | null }>;
   }>({
     enableSpouseGiftFlow: false,
     professionalDates: [],
+    activityScheduleDefaults: [{ activityType: "assistencia", enabled: false, weekday: 1, agendaId: null }],
     commercialDates: [
       { name: "Páscoa", active: true, daysBeforeToSend: 3, movableDate: true },
       { name: "Dia das Mães", active: true, daysBeforeToSend: 3, movableDate: true, targetGender: "feminino" },
@@ -5835,6 +5838,7 @@ function CalendarSettingsTab({ tenantId }: { tenantId: string }) {
         enableSpouseGiftFlow: settings.enableSpouseGiftFlow,
         commercialDates: settings.commercialDates ?? [],
         professionalDates: ((settings as any).professionalDates ?? []),
+        activityScheduleDefaults: ((settings as any).activityScheduleDefaults ?? [{ activityType: "assistencia", enabled: false, weekday: 1, agendaId: null }]),
       });
     }
   }, [settings]);
@@ -5862,10 +5866,39 @@ function CalendarSettingsTab({ tenantId }: { tenantId: string }) {
     }
   }
 
+
+  const weekDays = [
+    { value: 0, label: "Domingo" },
+    { value: 1, label: "Segunda-feira" },
+    { value: 2, label: "Terça-feira" },
+    { value: 3, label: "Quarta-feira" },
+    { value: 4, label: "Quinta-feira" },
+    { value: 5, label: "Sexta-feira" },
+    { value: 6, label: "Sábado" },
+  ];
+
+  const assistenciaScheduleDefault =
+    draft.activityScheduleDefaults.find((item) => item.activityType === "assistencia")
+    ?? { activityType: "assistencia", enabled: false, weekday: 1, agendaId: null };
+
+  function updateActivityScheduleDefault(
+    activityType: string,
+    patch: Partial<{ enabled: boolean; weekday: number; agendaId?: string | null }>,
+  ) {
+    setDraft((prev) => {
+      const current = prev.activityScheduleDefaults.find((item) => item.activityType === activityType);
+      const next = current
+        ? prev.activityScheduleDefaults.map((item) => item.activityType === activityType ? { ...item, ...patch } : item)
+        : [...prev.activityScheduleDefaults, { activityType, enabled: false, weekday: 1, agendaId: null, ...patch }];
+      return { ...prev, activityScheduleDefaults: next };
+    });
+  }
+
   function save() {
     const payload = {
       commercialDates: draft.commercialDates,
       professionalDates: draft.professionalDates,
+      activityScheduleDefaults: draft.activityScheduleDefaults,
       enableSpouseGiftFlow: draft.enableSpouseGiftFlow,
     };
     if (settings) {
@@ -5880,11 +5913,63 @@ function CalendarSettingsTab({ tenantId }: { tenantId: string }) {
       <div>
         <h2 className="font-semibold text-base flex items-center gap-2">
           <CalendarHeart className="h-4 w-4 text-primary" />
-          Calendário Comercial
+          Calendário e Pré-agendas
         </h2>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Ative as datas comerciais que o Agente Relacionamento usará para campanhas automáticas.
+          Configure dias padrão de atendimento e as datas comerciais usadas pelo Agente Relacionamento.
         </p>
+      </div>
+
+      <div className="rounded-xl border bg-muted/20 p-4 space-y-4">
+        <div>
+          <p className="font-medium text-sm">Pré-agenda padrão por atividade</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Define um dia padrão para sugerir atendimentos. A data é uma pré-agenda e pode ser alterada antes da confirmação.
+          </p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-[1fr_180px_1fr_auto] items-end">
+          <div>
+            <Label className="text-xs">Tipo de atividade</Label>
+            <Input value="Assistência" disabled className="mt-1.5" />
+          </div>
+          <div>
+            <Label className="text-xs">Dia padrão</Label>
+            <Select
+              value={String(assistenciaScheduleDefault.weekday)}
+              onValueChange={(value) => updateActivityScheduleDefault("assistencia", { weekday: Number(value) })}
+            >
+              <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {weekDays.map((day) => <SelectItem key={day.value} value={String(day.value)}>{day.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Agenda preferencial</Label>
+            <Select
+              value={assistenciaScheduleDefault.agendaId ?? "__auto__"}
+              onValueChange={(value) => updateActivityScheduleDefault("assistencia", { agendaId: value === "__auto__" ? null : value })}
+            >
+              <SelectTrigger className="mt-1.5"><SelectValue placeholder="Automática" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__auto__">Automática — priorizar Suporte/Assistência</SelectItem>
+                {agendas.map((agenda) => <SelectItem key={agenda.id} value={agenda.id}>{agenda.nome}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2 h-10">
+            <Switch
+              checked={assistenciaScheduleDefault.enabled}
+              onCheckedChange={(enabled) => updateActivityScheduleDefault("assistencia", { enabled })}
+            />
+            <span className="text-sm">Ativo</span>
+          </div>
+        </div>
+        {assistenciaScheduleDefault.enabled && (
+          <p className="text-xs text-primary">
+            Assistências novas serão pré-agendadas para a próxima {weekDays.find((day) => day.value === assistenciaScheduleDefault.weekday)?.label.toLowerCase()}.
+          </p>
+        )}
       </div>
 
       {isLoading ? (
