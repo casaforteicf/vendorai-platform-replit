@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { and, eq, or } from "drizzle-orm";
 import { z } from "zod/v4";
+import { requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
 import {
   db,
   dealsTable,
@@ -98,7 +99,8 @@ const createPartnershipSchema = z.object({
   notes: z.string().trim().max(4000).nullable().optional(),
 });
 
-router.get("/tenants/:tenantId/commercial-partnerships", async (req, res) => {
+router.get("/tenants/:tenantId/commercial-partnerships", requireSameTenanOrSuperAdmin(), async (req, res) => {
+  // tenant-audit: reviewed protected by requireSameTenanOrSuperAdmin before tenant data access
   const tenantId = String(req.params.tenantId);
   if (!isSuperAdmin(req) && currentTenantId(req) !== tenantId) {
     return res.status(403).json({ error: "FORBIDDEN" });
@@ -125,7 +127,8 @@ router.get("/tenants/:tenantId/commercial-partnerships", async (req, res) => {
   return res.json(enriched);
 });
 
-router.post("/tenants/:tenantId/commercial-partnerships", async (req, res) => {
+router.post("/tenants/:tenantId/commercial-partnerships", requireSameTenanOrSuperAdmin(), async (req, res) => {
+  // tenant-audit: reviewed protected by requireSameTenanOrSuperAdmin before tenant data access
   const ownerTenantId = String(req.params.tenantId);
   if (!canManageOwnerTenant(req, ownerTenantId)) return res.status(403).json({ error: "FORBIDDEN" });
 
@@ -381,7 +384,8 @@ router.post("/deals/:dealId/share-with-partner", async (req, res) => {
   return res.status(201).json(result);
 });
 
-router.get("/tenants/:tenantId/representation-work", async (req, res) => {
+router.get("/tenants/:tenantId/representation-work", requireSameTenanOrSuperAdmin(), async (req, res) => {
+  // tenant-audit: reviewed protected by requireSameTenanOrSuperAdmin before tenant data access
   const tenantId = String(req.params.tenantId);
   if (!isSuperAdmin(req) && currentTenantId(req) !== tenantId) return res.status(403).json({ error: "FORBIDDEN" });
 
@@ -667,7 +671,8 @@ router.post("/intercompany-commissions/:commissionId/payments", async (req, res)
   return res.status(201).json(result);
 });
 
-router.get("/tenants/:tenantId/intercompany-commissions", async (req, res) => {
+router.get("/tenants/:tenantId/intercompany-commissions", requireSameTenanOrSuperAdmin(), async (req, res) => {
+  // tenant-audit: reviewed protected by requireSameTenanOrSuperAdmin before tenant data access
   const tenantId = String(req.params.tenantId);
   if (!isSuperAdmin(req) && currentTenantId(req) !== tenantId) return res.status(403).json({ error: "FORBIDDEN" });
 
@@ -678,7 +683,8 @@ router.get("/tenants/:tenantId/intercompany-commissions", async (req, res) => {
   return res.json(rows);
 });
 
-router.get("/tenants/:tenantId/deal-participations", async (req, res) => {
+router.get("/tenants/:tenantId/deal-participations", requireSameTenanOrSuperAdmin(), async (req, res) => {
+  // tenant-audit: reviewed protected by requireSameTenanOrSuperAdmin before tenant data access
   const tenantId = String(req.params.tenantId);
   if (!isSuperAdmin(req) && currentTenantId(req) !== tenantId) return res.status(403).json({ error: "FORBIDDEN" });
 
