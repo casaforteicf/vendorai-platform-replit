@@ -267,42 +267,8 @@
       })();
     </script>
 
-    <!--
-      DIAGNÓSTICO TEMPORÁRIO — mostra qualquer erro de JavaScript direto na
-      tela (sem precisar de DevTools). Remover depois de identificar a causa
-      da tela branca em produção.
-    -->
-    <script>
-      (() => {
-        function showDiagError(label, detail) {
-          try {
-            let box = document.getElementById("__diag_error_box");
-            if (!box) {
-              box = document.createElement("div");
-              box.id = "__diag_error_box";
-              box.style.cssText =
-                "position:fixed;inset:0;z-index:999999;background:#1a0a0a;color:#ffdada;" +
-                "font:13px/1.5 monospace;padding:16px;overflow:auto;white-space:pre-wrap;word-break:break-word;";
-              document.body.appendChild(box);
-            }
-            const line = document.createElement("div");
-            line.style.cssText = "margin-bottom:16px;border-bottom:1px solid #552222;padding-bottom:12px;";
-            line.textContent = "[" + label + "] " + detail;
-            box.appendChild(line);
-          } catch (_) {
-            // best-effort
-          }
-        }
-        window.addEventListener("error", (event) => {
-          showDiagError("error", (event.message || "") + " @ " + (event.filename || "") + ":" + (event.lineno || "") + "\n" + (event.error && event.error.stack ? event.error.stack : ""));
-        });
-        window.addEventListener("unhandledrejection", (event) => {
-          const reason = event.reason;
-          const message = reason instanceof Error ? reason.message + "\n" + (reason.stack || "") : String(reason ?? "");
-          showDiagError("unhandledrejection", message);
-        });
-      })();
-    </script>
+    <!-- Diagnóstico temporário de tela removido de produção.
+         Erros de runtime continuam sendo coletados pelos bridges/telemetria sem bloquear a interface. -->
 
     <script type="module" src="/src/main.tsx"></script>
   </body>
