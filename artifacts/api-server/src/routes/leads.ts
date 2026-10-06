@@ -1133,7 +1133,7 @@ router.get("/leads/:id/responsavel-historico", async (req, res) => {
 
 router.delete("/leads/:id", async (req, res) => {
   const [existing] = await db
-    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo })
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo, metadata: leadsTable.metadata })
     .from(leadsTable)
     .where(eq(leadsTable.id, req.params.id));
 
@@ -1147,10 +1147,11 @@ router.delete("/leads/:id", async (req, res) => {
     return;
   }
 
-  const isAdmin3 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-  const userFn3 = req.user?.userFunction as UserFunction | undefined;
-  if (!isAdmin3 && userFn3 === "vendedor" && existing.assignedTo !== req.user?.sub) {
-    res.status(403).json({ error: "Access denied to this lead" });
+  const isAdmin3 = req.user?.platformRole === "super_admin"
+    || req.user?.platformRole === "tenant_admin"
+    || req.user?.userFunction === "administrador";
+  if (!isAdmin3) {
+    res.status(403).json({ error: "Apenas administradores do tenant podem excluir leads." });
     return;
   }
 
@@ -1164,7 +1165,21 @@ router.delete("/leads/:id", async (req, res) => {
   const motivo = typeof req.body?.motivo === "string" ? req.body.motivo.trim() || null : null;
   const [updated] = await db
     .update(leadsTable)
-    .set({ excluidoEm: new Date(), motivoExclusao: motivo, updatedAt: new Date() })
+    .set({
+      excluidoEm: new Date(),
+      motivoExclusao: motivo,
+      metadata: {
+        ...((existing.metadata && typeof existing.metadata === "object" && !Array.isArray(existing.metadata))
+          ? existing.metadata as Record<string, unknown>
+          : {}),
+        leadDeletion: {
+          deletedBy: req.user?.sub ?? null,
+          deletedAt: new Date().toISOString(),
+          reason: motivo,
+        },
+      },
+      updatedAt: new Date(),
+    })
     .where(and(eq(leadsTable.id, existing.id), eq(leadsTable.tenantId, existing.tenantId)))
     .returning();
 
