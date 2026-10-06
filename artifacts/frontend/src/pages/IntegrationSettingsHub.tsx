@@ -60,6 +60,21 @@ type CatalogIntegration = {
   lastErrorMessage?: string | null;
 };
 
+type EcosystemService = {
+  name: string;
+  state: "connected" | "attention" | "available" | "planned";
+  action?: IntegrationKey;
+  endpoint?: string;
+};
+
+type EcosystemDefinition = {
+  key: string;
+  name: string;
+  description: string;
+  connected: number;
+  services: EcosystemService[];
+};
+
 type CustomIntegration = {
   id: string;
   name: string;
@@ -649,7 +664,7 @@ export default function IntegrationSettingsHub() {
     }
   };
 
-  const ecosystems = [
+  const ecosystems: EcosystemDefinition[] = [
     {
       key: "google",
       name: "Google",
@@ -707,7 +722,7 @@ export default function IntegrationSettingsHub() {
     },
   ];
 
-  const startEcosystemService = async (service: { action?: IntegrationKey; endpoint?: string }) => {
+  const startEcosystemService = async (service: EcosystemService) => {
     if (service.action) {
       await startConnection(service.action);
       return;
