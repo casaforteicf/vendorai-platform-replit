@@ -9276,7 +9276,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         ))}
                       </select>
                     </label>
-                    {selected.kind === "piscina" ? (
+                    {selected?.kind === "piscina" ? (
                       <label className="text-[10px] font-semibold text-slate-500">
                         Prof. piscina (m)
                         <input
@@ -9284,14 +9284,14 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           min={0.2}
                           max={5}
                           step={0.05}
-                          value={selected.poolDepthM ?? ""}
+                          value={selected?.poolDepthM ?? ""}
                           placeholder="Definir"
                           onChange={(event) => updateSelected({ poolDepthM: event.target.value === "" ? undefined : Math.max(0.2, Number(event.target.value) || 0.2) })}
                           className="mt-1 h-9 w-[96px] rounded-lg border px-2 text-xs font-semibold"
                         />
                       </label>
                     ) : null}
-                    {selected.kind === "escada" ? (
+                    {selected?.kind === "escada" ? (
                       <>
                         <label className="text-[10px] font-semibold text-slate-500">
                           Espelhos
@@ -9300,7 +9300,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                             min={2}
                             max={40}
                             step={1}
-                            value={selected.stairRiserCount ?? ""}
+                            value={selected?.stairRiserCount ?? ""}
                             placeholder="Definir"
                             onChange={(event) => updateSelected({ stairRiserCount: event.target.value === "" ? undefined : Math.max(2, Math.round(Number(event.target.value) || 2)) })}
                             className="mt-1 h-9 w-[82px] rounded-lg border px-2 text-xs font-semibold"
@@ -9313,7 +9313,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                             min={0.18}
                             max={0.5}
                             step={0.01}
-                            value={selected.stairTreadDepthM ?? ""}
+                            value={selected?.stairTreadDepthM ?? ""}
                             placeholder="Definir"
                             onChange={(event) => updateSelected({ stairTreadDepthM: event.target.value === "" ? undefined : Math.max(0.18, Number(event.target.value) || 0.18) })}
                             className="mt-1 h-9 w-[82px] rounded-lg border px-2 text-xs font-semibold"
