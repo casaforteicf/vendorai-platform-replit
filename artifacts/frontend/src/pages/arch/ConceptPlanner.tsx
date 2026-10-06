@@ -126,6 +126,9 @@ type Room = {
   y: number;
   locked?: boolean;
   floorMaterialId?: string;
+  poolDepthM?: number;
+  stairRiserCount?: number;
+  stairTreadDepthM?: number;
 };
 
 type OpeningOverride = {
@@ -751,6 +754,9 @@ function normalizeLoadedRooms(input: unknown, floorCount: number): Room[] {
       y: finiteNumber(raw.y, 0, 0, 200),
       locked: Boolean(raw.locked),
       floorMaterialId: typeof raw.floorMaterialId === "string" ? raw.floorMaterialId : undefined,
+      poolDepthM: raw.kind === "piscina" && Number.isFinite(Number(raw.poolDepthM)) ? finiteNumber(raw.poolDepthM, 1.4, 0.2, 5) : undefined,
+      stairRiserCount: raw.kind === "escada" && Number.isFinite(Number(raw.stairRiserCount)) ? Math.round(finiteNumber(raw.stairRiserCount, 17, 2, 40)) : undefined,
+      stairTreadDepthM: raw.kind === "escada" && Number.isFinite(Number(raw.stairTreadDepthM)) ? finiteNumber(raw.stairTreadDepthM, 0.28, 0.18, 0.5) : undefined,
     }];
   }));
 }
@@ -6442,6 +6448,56 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     <label className="text-xs font-medium">Profundidade<input type="number" step="0.1" className="mt-1 h-10 w-full rounded-lg border bg-background px-3" value={selected.depth} onChange={(e) => updateSelected({ depth: Math.max(1, Number(e.target.value) || 1) })} /></label>
                     <label className="text-xs font-medium">Pavimento<select className="mt-1 h-10 w-full rounded-lg border bg-background px-3" value={selected.floor} onChange={(e) => updateSelected({ floor: Number(e.target.value) })}>{Array.from({ length: floors }).map((_, floor) => <option key={floor} value={floor}>{floor === 0 ? "Térreo" : floor === 1 ? "Superior" : `Pav. ${floor + 1}`}</option>)}</select></label>
                   </div>
+                  {selected.kind === "piscina" ? (
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <label className="text-xs font-medium">Profundidade técnica (m)
+                        <input
+                          type="number"
+                          min={0.2}
+                          max={5}
+                          step={0.05}
+                          className="mt-1 h-10 w-full rounded-lg border bg-background px-3"
+                          value={selected.poolDepthM ?? ""}
+                          placeholder="Definir"
+                          onChange={(e) => updateSelected({ poolDepthM: e.target.value === "" ? undefined : Math.max(0.2, Number(e.target.value) || 0.2) })}
+                        />
+                      </label>
+                      <div className="rounded-lg border bg-background p-3 text-xs text-muted-foreground">
+                        O volume só é calculado quando esta profundidade estiver definida.
+                      </div>
+                    </div>
+                  ) : null}
+                  {selected.kind === "escada" ? (
+                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                      <label className="text-xs font-medium">Espelhos / alturas
+                        <input
+                          type="number"
+                          min={2}
+                          max={40}
+                          step={1}
+                          className="mt-1 h-10 w-full rounded-lg border bg-background px-3"
+                          value={selected.stairRiserCount ?? ""}
+                          placeholder="Definir"
+                          onChange={(e) => updateSelected({ stairRiserCount: e.target.value === "" ? undefined : Math.max(2, Math.round(Number(e.target.value) || 2)) })}
+                        />
+                      </label>
+                      <label className="text-xs font-medium">Piso do degrau (m)
+                        <input
+                          type="number"
+                          min={0.18}
+                          max={0.5}
+                          step={0.01}
+                          className="mt-1 h-10 w-full rounded-lg border bg-background px-3"
+                          value={selected.stairTreadDepthM ?? ""}
+                          placeholder="Definir"
+                          onChange={(e) => updateSelected({ stairTreadDepthM: e.target.value === "" ? undefined : Math.max(0.18, Number(e.target.value) || 0.18) })}
+                        />
+                      </label>
+                      <div className="rounded-lg border bg-background p-3 text-xs text-muted-foreground">
+                        Desnível atual do modelo: 2,96 m entre pavimentos.
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               )}
             </div>
@@ -9220,6 +9276,51 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         ))}
                       </select>
                     </label>
+                    {selected.kind === "piscina" ? (
+                      <label className="text-[10px] font-semibold text-slate-500">
+                        Prof. piscina (m)
+                        <input
+                          type="number"
+                          min={0.2}
+                          max={5}
+                          step={0.05}
+                          value={selected.poolDepthM ?? ""}
+                          placeholder="Definir"
+                          onChange={(event) => updateSelected({ poolDepthM: event.target.value === "" ? undefined : Math.max(0.2, Number(event.target.value) || 0.2) })}
+                          className="mt-1 h-9 w-[96px] rounded-lg border px-2 text-xs font-semibold"
+                        />
+                      </label>
+                    ) : null}
+                    {selected.kind === "escada" ? (
+                      <>
+                        <label className="text-[10px] font-semibold text-slate-500">
+                          Espelhos
+                          <input
+                            type="number"
+                            min={2}
+                            max={40}
+                            step={1}
+                            value={selected.stairRiserCount ?? ""}
+                            placeholder="Definir"
+                            onChange={(event) => updateSelected({ stairRiserCount: event.target.value === "" ? undefined : Math.max(2, Math.round(Number(event.target.value) || 2)) })}
+                            className="mt-1 h-9 w-[82px] rounded-lg border px-2 text-xs font-semibold"
+                          />
+                        </label>
+                        <label className="text-[10px] font-semibold text-slate-500">
+                          Piso (m)
+                          <input
+                            type="number"
+                            min={0.18}
+                            max={0.5}
+                            step={0.01}
+                            value={selected.stairTreadDepthM ?? ""}
+                            placeholder="Definir"
+                            onChange={(event) => updateSelected({ stairTreadDepthM: event.target.value === "" ? undefined : Math.max(0.18, Number(event.target.value) || 0.18) })}
+                            className="mt-1 h-9 w-[82px] rounded-lg border px-2 text-xs font-semibold"
+                          />
+                        </label>
+                      </>
+                    ) : null}
                     <div className="mt-2 flex w-full items-center gap-1.5 md:ml-auto md:mt-0 md:w-auto">
                       <button type="button" onClick={openMaterialsForSelection} className="h-9 rounded-lg border border-orange-200 bg-orange-50 px-3 text-xs font-semibold text-orange-700">Materiais</button>
                       {editorView === "model3d" && (
