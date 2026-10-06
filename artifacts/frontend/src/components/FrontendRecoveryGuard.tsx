@@ -178,7 +178,7 @@ function installOrphanedModalOverlayGuard() {
     if (overlays.length === 0) return;
 
     const activeDialog = Array.from(
-      document.querySelectorAll('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]'),
+      document.querySelectorAll('[role="dialog"], [role="alertdialog"]'),
     ).some((element) => isVisible(element) && !element.hasAttribute("data-vendorai-modal-overlay"));
 
     if (activeDialog) {
@@ -199,9 +199,7 @@ function installOrphanedModalOverlayGuard() {
     const remainingOpenOverlays = document.querySelector(
       '[data-vendorai-modal-overlay="true"][data-state="open"]',
     );
-    const remainingDialog = document.querySelector(
-      '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]',
-    );
+    const remainingDialog = Array.from(document.querySelectorAll('[role="dialog"], [role="alertdialog"]')).some((element) => isVisible(element));
 
     if (!remainingOpenOverlays && !remainingDialog && document.body.style.pointerEvents === "none") {
       document.body.style.pointerEvents = "";
