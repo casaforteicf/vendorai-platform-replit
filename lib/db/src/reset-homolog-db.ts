@@ -14,11 +14,21 @@ if (!connectionString) {
 }
 
 const url = new URL(connectionString);
-if (!/homolog-db/i.test(url.hostname)) {
-  throw new Error(`Refusing homolog reset: unexpected host ${url.hostname}`);
-}
-if (!/homolog/i.test(url.pathname.replace(/^\//, ""))) {
-  throw new Error(`Refusing homolog reset: unexpected database ${url.pathname}`);
+const expectedRailwayProjectId = process.env.VENDORAI_HOMOLOGATION_PROJECT_ID?.trim();
+const currentRailwayProjectId = process.env.RAILWAY_PROJECT_ID?.trim();
+const explicitlyAuthorizedRailwayHomolog =
+  Boolean(expectedRailwayProjectId) &&
+  Boolean(currentRailwayProjectId) &&
+  expectedRailwayProjectId === currentRailwayProjectId;
+
+const legacyHomologNaming =
+  /homolog-db/i.test(url.hostname) &&
+  /homolog/i.test(url.pathname.replace(/^\//, ""));
+
+if (!legacyHomologNaming && !explicitlyAuthorizedRailwayHomolog) {
+  throw new Error(
+    `Refusing homolog reset: database is not an explicitly authorized homolog target (host=${url.hostname}, database=${url.pathname})`,
+  );
 }
 
 const pool = new Pool({ connectionString, max: 1 });
