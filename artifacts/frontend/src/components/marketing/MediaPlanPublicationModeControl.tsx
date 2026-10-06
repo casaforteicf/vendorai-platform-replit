@@ -199,7 +199,7 @@ export function MediaPlanPublicationModeControl() {
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <Send className="h-4 w-4 text-primary" />
-              <p className="text-sm font-semibold">7. Publicação</p>
+              <p className="text-sm font-semibold">Modo de publicação</p>
               <Badge variant="outline" className="text-[10px]">Instagram · Facebook · LinkedIn · TikTok · YouTube</Badge>
               {plan.conteudo.statusPlanejamento === "aprovado" && <Badge className="bg-emerald-600 text-[10px]">Plano aprovado</Badge>}
             </div>
@@ -258,7 +258,7 @@ export function MediaPlanPublicationModeControl() {
           <div className="rounded-xl border border-emerald-200/70 bg-emerald-50/50 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/10">
             <div className="flex flex-wrap items-center gap-2">
               <BrainCircuit className="h-4 w-4 text-emerald-700 dark:text-emerald-400" />
-              <p className="text-sm font-semibold">8. Resultados e aprendizado</p>
+              <p className="text-sm font-semibold">Resultados e aprendizado</p>
               <Badge variant="outline" className="text-[10px]">{performanceInsight.baseadoEmPosts} posts analisados</Badge>
               <Badge variant="outline" className="gap-1 text-[10px]"><TrendingUp className="h-3 w-3" /> Próximo ciclo</Badge>
             </div>

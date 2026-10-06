@@ -15,8 +15,24 @@ function canAccess(req: any, tenantId: string) {
   return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
 }
 
+function normalizeVertical(verticalRaw?: string | null) {
+  return (verticalRaw ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function toolMatchesVertical(toolKey: string, verticalRaw?: string | null) {
+  const vertical = normalizeVertical(verticalRaw);
+  const normalizedKey = toolKey.toLowerCase();
+
+  // Ferramentas explicitamente verticais nunca devem vazar para tenants de outro nicho.
+  if (normalizedKey.includes("farmacia") || normalizedKey.includes("pharmacy")) {
+    return vertical.includes("farm");
+  }
+
+  return true;
+}
+
 function suggestedTools(verticalRaw?: string | null) {
-  const vertical = (verticalRaw ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const vertical = normalizeVertical(verticalRaw);
   if (vertical.includes("constr") || vertical.includes("arquitet")) {
     return [
       {
@@ -55,10 +71,12 @@ router.get("/tenants/:tenantId/lead-capture", async (req, res) => {
     db.select().from(leadCaptureCampaignsTable).where(eq(leadCaptureCampaignsTable.tenantId, tenantId)).orderBy(desc(leadCaptureCampaignsTable.updatedAt)),
   ]);
 
+  const visibleTools = tools.filter((tool) => toolMatchesVertical(tool.toolKey, profile?.vertical));
+
   return res.json({
     vertical: profile?.vertical ?? null,
-    tools,
-    suggestedTools: tools.length ? [] : suggestedTools(profile?.vertical),
+    tools: visibleTools,
+    suggestedTools: visibleTools.length ? [] : suggestedTools(profile?.vertical),
     campaigns,
   });
 });

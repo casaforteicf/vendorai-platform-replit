@@ -14,6 +14,8 @@ import {
   insumosTable,
   subscriptionsTable,
   tenantsTable,
+  mediaPlansTable,
+  contentCalendarItemsTable,
 } from "@workspace/db";
 import {
   generateFeedContent,
@@ -65,6 +67,44 @@ const generateBodySchema = z.object({
   voiceTone: z.string().optional().nullable(),
   desiredCta: z.string().optional().nullable(),
 });
+
+function normalizeCampaignLabel(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+}
+
+async function plannerContextIsValid(input: {
+  tenantId: string;
+  mediaPlanId: string;
+  campaignId: string;
+  calendarItemId: string;
+}) {
+  const [[plan], [calendarItem]] = await Promise.all([
+    db
+      .select({ conteudo: mediaPlansTable.conteudo })
+      .from(mediaPlansTable)
+      .where(and(eq(mediaPlansTable.id, input.mediaPlanId), eq(mediaPlansTable.tenantId, input.tenantId)))
+      .limit(1),
+    db
+      .select({ mediaPlanId: contentCalendarItemsTable.mediaPlanId, pilar: contentCalendarItemsTable.pilar })
+      .from(contentCalendarItemsTable)
+      .where(and(eq(contentCalendarItemsTable.id, input.calendarItemId), eq(contentCalendarItemsTable.tenantId, input.tenantId)))
+      .limit(1),
+  ]);
+
+  const campaigns = Array.isArray((plan?.conteudo as { campanhas?: unknown[] } | null)?.campanhas)
+    ? ((plan?.conteudo as { campanhas?: Array<{ id?: string; nome?: string }> }).campanhas ?? [])
+    : [];
+  const campaign = campaigns.find((entry) => entry.id === input.campaignId);
+  const calendarCampaignName = String(calendarItem?.pilar ?? "").split(" · ")[0]?.trim() ?? "";
+
+  return Boolean(
+    plan &&
+    calendarItem &&
+    calendarItem.mediaPlanId === input.mediaPlanId &&
+    campaign?.nome &&
+    normalizeCampaignLabel(calendarCampaignName) === normalizeCampaignLabel(campaign.nome),
+  );
+}
 
 async function getMonthlyUsage(
   tenantId: string
@@ -121,6 +161,25 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
   }
 
   const { type, theme, productId, productSource, variations, imageCount, imageUrls: referenceImageUrls, contentFormat, aspectRatio, postMaterialUrls, customerPain, postObjective, voiceTone, desiredCta } = parsed.data;
+
+  const mediaPlanId = String(req.header("x-vendorai-media-plan-id") ?? "").trim();
+  const campaignId = String(req.header("x-vendorai-campaign-id") ?? "").trim();
+  const calendarItemId = String(req.header("x-vendorai-calendar-item-id") ?? "").trim();
+  const hasPlannerContext = Boolean(mediaPlanId || campaignId || calendarItemId);
+
+  if (hasPlannerContext) {
+    if (!mediaPlanId || !campaignId || !calendarItemId) {
+      res.status(422).json({ error: "Contexto da campanha incompleto. A geração foi bloqueada." });
+      return;
+    }
+
+    const validContext = await plannerContextIsValid({ tenantId, mediaPlanId, campaignId, calendarItemId });
+    if (!validContext) {
+      req.log.warn({ tenantId, mediaPlanId, campaignId, calendarItemId }, "content: contexto de campanha inválido");
+      res.status(409).json({ error: "A ação não pertence à campanha informada. A geração foi bloqueada." });
+      return;
+    }
+  }
 
   const { used, limit, configId } = await getMonthlyUsage(tenantId);
   if (used >= limit) {
