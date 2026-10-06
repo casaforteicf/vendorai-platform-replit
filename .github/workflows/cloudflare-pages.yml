@@ -295,6 +295,9 @@ jobs:
           fi
 
           echo "Verifying every published JS/CSS asset from this build."
+          # Cloudflare Pages can expose the new HTML before every lazy chunk has propagated globally.
+          # Keep the strict all-assets check below, but give the edge network a short settling window first.
+          sleep 30
           find "$root/assets" -maxdepth 1 -type f \( -name '*.js' -o -name '*.css' \) -printf '%f\n' \
             | sort \
             | xargs -r -P 20 -n 1 sh -c '
