@@ -47,6 +47,7 @@ import emailIntegrationsRouter, { emailIntegrationsCallbackRouter } from "./emai
 import sketchfabAuthRouter, { sketchfabCallbackRouter } from "./sketchfab-auth";
 import agendamentosRouter from "./agendamentos";
 import entregasRouter from "./entregas";
+import supportExecutionRouter, { publicSupportRouter } from "./support_execution.js";
 import bloqueiosAgendaRouter from "./bloqueios_agenda";
 import subscriptionsRouter from "./subscriptions";
 import invoicesRouter from "./invoices";
@@ -262,6 +263,7 @@ router.use(accessLicensePublicRouter);
 router.use(publicAgentSimulatorRouter);
 router.use(smartDeliveryPublicRouter);
 router.use(publicDeliveryRuntimeRouter);
+router.use(publicSupportRouter);
 
 router.use(arqdorPublicLinkRouter);
 router.use(servicosPublicRouter);
@@ -411,6 +413,7 @@ router.use(categoriasProdutoRouter);
 router.use(agendasRouter);
 router.use(agendamentosRouter);
 router.use(entregasRouter);
+router.use(supportExecutionRouter);
 router.use(bloqueiosAgendaRouter);
 
 // Billing Hub
