@@ -81,6 +81,7 @@ export const servicosOrdensTable = pgTable("servicos_ordens", {
   historicoExecucao:   jsonb("historico_execucao").$type<ServicoHistoricoItem[]>().notNull().default([]),
   clienteAcompanha:    boolean("cliente_acompanha").notNull().default(true),
   compartilharStatusCliente: boolean("compartilhar_status_cliente").notNull().default(true),
+  portalToken:          text("portal_token"),
   observacoes:         text("observacoes"),
   createdAt:           timestamp("created_at").notNull().defaultNow(),
   updatedAt:           timestamp("updated_at").notNull().defaultNow(),
