@@ -25,7 +25,7 @@ import {
   PipelineStage,
   TipoFechamento,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -299,6 +299,23 @@ function MotivosPerdaDialog({
 
 // ─── Draggable Deal Card ──────────────────────────────────────────────────────
 
+type DealRepresentationSnap = {
+  id: string;
+  dealId: string;
+  partnerTenantId: string;
+  partnerName?: string | null;
+  operationalUserName?: string | null;
+  role: "responsible" | "participant";
+  status: string;
+  commission?: {
+    id: string;
+    percent?: string | null;
+    amount?: string | null;
+    paidAmount?: string | null;
+    status?: string | null;
+  } | null;
+};
+
 type PropostaSnap = {
   id: string;
   titulo: string;
@@ -337,6 +354,7 @@ function DealCard({
   briefing,
   proposta,
   assignedToName,
+  representation,
   onClick,
   onAgendar,
   onAdvance,
@@ -351,6 +369,7 @@ function DealCard({
   briefing: LeadBriefing | undefined;
   proposta?: PropostaSnap;
   assignedToName?: string;
+  representation?: DealRepresentationSnap;
   onClick?: () => void;
   onAgendar?: () => void;
   onAdvance?: () => void;
@@ -439,12 +458,25 @@ function DealCard({
       )}
 
       {/* Responsável */}
-      {assignedToName && (
+      {representation?.role === "responsible" ? (
+        <div className="pl-6 space-y-1">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-cyan-700">
+            <Users className="h-3 w-3 shrink-0" />
+            <span className="truncate">Responsável: {representation.partnerName || "Empresa representante"}</span>
+          </div>
+          {representation.operationalUserName && (
+            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <UserRound className="h-3 w-3 shrink-0" />
+              <span className="truncate">Executor: {representation.operationalUserName}</span>
+            </div>
+          )}
+        </div>
+      ) : assignedToName ? (
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground pl-6">
           <UserRound className="h-3 w-3 shrink-0" />
           <span className="truncate">{assignedToName}</span>
         </div>
-      )}
+      ) : null}
 
       {/* Probabilidade */}
       {deal.probabilidade !== null && deal.probabilidade !== undefined && (
@@ -838,6 +870,7 @@ function KanbanColumn({
   propostaByDealId,
   propostaByLeadId,
   userMap,
+  representationMap,
   isOver,
   onCardClick,
   onAgendar,
@@ -854,6 +887,7 @@ function KanbanColumn({
   propostaByDealId: Map<string, PropostaSnap>;
   propostaByLeadId: Map<string, PropostaSnap>;
   userMap: Map<string, string>;
+  representationMap: Map<string, DealRepresentationSnap>;
   isOver: boolean;
   onCardClick: (deal: Deal) => void;
   onAgendar: (deal: Deal) => void;
@@ -953,6 +987,7 @@ function KanbanColumn({
               briefing={deal.leadId ? briefingMap.get(deal.leadId) : undefined}
               proposta={proposta}
               assignedToName={deal.assignedTo ? userMap.get(deal.assignedTo) : undefined}
+              representation={representationMap.get(deal.id)}
               onClick={() => onCardClick(deal)}
               onAgendar={() => onAgendar(deal)}
               onAdvance={() => onAdvance(deal)}
@@ -2373,6 +2408,24 @@ export default function Deals() {
   });
 
   const userMap = new Map(tenantUsers.map((u) => [u.id, u.name || u.email || u.id]));
+
+  const { data: dealParticipations = [] } = useQuery<DealRepresentationSnap[]>({
+    queryKey: ["deal-participations", tenantId],
+    enabled: !!tenantId && !!token,
+    staleTime: 15_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/deal-participations`, {
+        headers: { Authorization: "Bearer " + (token ?? "") },
+      });
+      if (!response.ok) throw new Error("Não foi possível carregar as representações dos negócios.");
+      return response.json();
+    },
+  });
+  const representationMap = useMemo(
+    () => new Map(dealParticipations.filter((item) => item.status === "active").map((item) => [item.dealId, item])),
+    [dealParticipations],
+  );
 
   const leadMap = new Map(leads.map((l) => [l.id, l.nome]));
 
