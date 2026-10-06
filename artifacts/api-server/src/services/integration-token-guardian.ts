@@ -1,5 +1,5 @@
 import type { Logger } from "pino";
-import { and, eq, isNull, lte } from "drizzle-orm";
+import { and, eq, gte, isNull, lte } from "drizzle-orm";
 import {
   db,
   googleAdsConnectionsTable,
@@ -7,6 +7,7 @@ import {
   instagramConnectionsTable,
   metaAdsConnectionsTable,
   socialConnectionsTable,
+  notificationsTable,
 } from "@workspace/db";
 import { refreshGoogleAdsToken } from "./google-ads-oauth.js";
 import { refreshSearchConsoleToken } from "./search-console-oauth.js";
@@ -29,6 +30,31 @@ type RefreshResult = {
   error?: string;
 };
 
+async function notifyRefreshFailure(input: { tenantId: string; provider: string; error: string; log: Logger }) {
+  const title = `Integração precisa ser reconectada: ${input.provider}`;
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [existing] = await db.select({ id: notificationsTable.id })
+    .from(notificationsTable)
+    .where(and(
+      eq(notificationsTable.tenantId, input.tenantId),
+      eq(notificationsTable.category, "integration_reconnect_required"),
+      eq(notificationsTable.title, title),
+      gte(notificationsTable.createdAt, since),
+    ))
+    .limit(1);
+  if (existing) return;
+
+  await db.insert(notificationsTable).values({
+    tenantId: input.tenantId,
+    title,
+    message: `A renovação automática falhou. Abra Configurações > Central de Conexões e reconecte ${input.provider}. Detalhe técnico: ${input.error.slice(0, 300)}`,
+    type: "warning",
+    category: "integration_reconnect_required",
+  }).catch((error) => {
+    input.log.warn({ error, tenantId: input.tenantId, provider: input.provider }, "integration-token-guardian: falha ao criar notificação");
+  });
+}
+
 async function safeRefresh(input: {
   provider: string;
   connectionId: string;
@@ -49,6 +75,7 @@ async function safeRefresh(input: {
       { error, provider: input.provider, connectionId: input.connectionId, tenantId: input.tenantId },
       "integration-token-guardian: falha ao renovar token",
     );
+    await notifyRefreshFailure({ tenantId: input.tenantId, provider: input.provider, error: message, log: input.log });
     return { provider: input.provider, connectionId: input.connectionId, tenantId: input.tenantId, ok: false, error: message };
   }
 }
