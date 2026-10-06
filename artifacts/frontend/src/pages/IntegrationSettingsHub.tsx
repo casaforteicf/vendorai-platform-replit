@@ -140,7 +140,11 @@ export default function IntegrationSettingsHub() {
         tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/finance-integrations`).catch(() => ({ integrations: [] })) : Promise.resolve({ integrations: [] }),
       ]);
       setStatus(data as IntegrationStatus);
-      const hiddenTenantInfrastructure = new Set(["cloudflare", "railway", "supabase", "openai"]);
+      const hiddenTenantInfrastructure = new Set([
+        "cloudflare", "railway", "supabase", "openai",
+        "whatsapp", "email", "meta", "google-ads", "asaas", "zapsign",
+        "n8n", "public-api",
+      ]);
       const financeCatalog = Array.isArray(financeData?.integrations) ? financeData.integrations : [];
       setCatalogIntegrations(financeCatalog.filter((item: CatalogIntegration) => !hiddenTenantInfrastructure.has(item.providerKey)));
       const connections = Array.isArray(emailData?.connections) ? emailData.connections : [];
