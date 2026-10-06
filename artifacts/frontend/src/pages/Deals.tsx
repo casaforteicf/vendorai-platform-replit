@@ -1566,6 +1566,10 @@ const createSchema = z.object({
   leadDocumento: z.string().optional().or(z.literal("")),
   leadEndereco: z.string().optional().or(z.literal("")),
   leadSegmento: z.string().optional().or(z.literal("")),
+  leadInstagram: z.string().optional().or(z.literal("")),
+  leadProfissao: z.string().optional().or(z.literal("")),
+  leadObjetivo: z.string().optional().or(z.literal("")),
+  leadSource: z.string().default("manual"),
   assignedTo: z.string().optional().or(z.literal("")),
   etapa: z.string().min(1, "Etapa obrigatória"),
   probabilidade: z.coerce.number().min(0).max(100).optional(),
@@ -2736,6 +2740,10 @@ export default function Deals() {
       leadDocumento: "",
       leadEndereco: "",
       leadSegmento: "",
+      leadInstagram: "",
+      leadProfissao: "",
+      leadObjetivo: "",
+      leadSource: "manual",
       assignedTo: "",
       etapa: "novo",
       probabilidade: undefined,
@@ -2797,8 +2805,11 @@ export default function Deals() {
               documento: values.leadDocumento?.trim() || null,
               endereco: values.leadEndereco?.trim() || null,
               mercadoSegmento: values.leadSegmento?.trim() || null,
-              tipoPessoa: digitsOnly(values.leadDocumento).length === 14 ? "juridica" : "fisica",
-              source: createQuoteFileUrl ? "pedido_importado" : "manual",
+              instagramHandle: values.leadInstagram?.trim() || null,
+              profissao: values.leadProfissao?.trim() || null,
+              objetivo: values.leadObjetivo?.trim() || null,
+              tipoPessoa: "fisica",
+              source: createQuoteFileUrl ? "pedido_importado" : (values.leadSource || "manual"),
               assignedTo: values.assignedTo,
             },
           });
@@ -3580,6 +3591,47 @@ export default function Deals() {
                           <FormControl><Input placeholder="Ex.: Serralheria, construção, varejo" {...field} /></FormControl>
                         </FormItem>
                       )} />
+                      <FormField control={createForm.control} name="leadInstagram" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Instagram</FormLabel>
+                          <FormControl><Input placeholder="@usuario" {...field} /></FormControl>
+                        </FormItem>
+                      )} />
+                      <FormField control={createForm.control} name="leadProfissao" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Cargo / função</FormLabel>
+                          <FormControl><Input placeholder="Ex.: Comprador, Diretor, Arquiteto" {...field} /></FormControl>
+                        </FormItem>
+                      )} />
+                      <FormField control={createForm.control} name="leadSource" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Origem do lead</FormLabel>
+                          <Select value={field.value} onValueChange={field.onChange}>
+                            <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                            <SelectContent>
+                              <SelectItem value="manual">Cadastro manual</SelectItem>
+                              <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                              <SelectItem value="instagram">Instagram</SelectItem>
+                              <SelectItem value="email">E-mail</SelectItem>
+                              <SelectItem value="site">Site / formulário</SelectItem>
+                              <SelectItem value="anuncio">Anúncio</SelectItem>
+                              <SelectItem value="indicacao">Indicação</SelectItem>
+                              <SelectItem value="prospeccao">Prospecção</SelectItem>
+                              <SelectItem value="pedido_importado">Pedido / orçamento importado</SelectItem>
+                              <SelectItem value="outro">Outro</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </FormItem>
+                      )} />
+                      <FormField control={createForm.control} name="leadObjetivo" render={({ field }) => (
+                        <FormItem className="sm:col-span-2">
+                          <FormLabel>Objetivo / necessidade</FormLabel>
+                          <FormControl><Input placeholder="O que este lead precisa?" {...field} /></FormControl>
+                        </FormItem>
+                      )} />
+                      <div className="sm:col-span-2 rounded-md border border-dashed bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                        Este cadastro segue o mesmo padrão do Novo Lead. Dados importados de pedido/orçamento preenchem os mesmos campos e o sistema reutiliza cadastros existentes quando encontra documento, telefone ou e-mail iguais.
+                      </div>
                     </div>
                   )}
                 </section>
