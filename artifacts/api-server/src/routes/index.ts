@@ -155,7 +155,7 @@ import mediaLibraryRouter from "./media_library";
 import mediaEngineRouter from "./media_engine";
 import mediaLipSyncRouter from "./media_lipsync";
 import beautyRouter from "./beauty";
-import servicosRouter from "./servicos";
+import servicosRouter, { servicosPublicRouter } from "./servicos";
 import foodRouter from "./food";
 import clinicRouter from "./clinic";
 import scoutRouter from "./scout";
@@ -264,6 +264,7 @@ router.use(smartDeliveryPublicRouter);
 router.use(publicDeliveryRuntimeRouter);
 
 router.use(arqdorPublicLinkRouter);
+router.use(servicosPublicRouter);
 
 // Protected — all routes below require a valid JWT
 router.use(authenticate);
