@@ -1640,6 +1640,21 @@ const supportCaseSchema = z.object({
   dataHoraInicio: z.coerce.date().optional(),
   dataHoraFim: z.coerce.date().optional(),
   origem: z.enum(["humano", "ia", "whatsapp", "telefone", "presencial"]).default("humano"),
+  legacyOrder: z.object({
+    sourceFileName: z.string().trim().min(1).max(500),
+    sourceFileUrl: z.string().trim().max(2000).optional().nullable(),
+    sourceMimeType: z.string().trim().max(200).optional().nullable(),
+    sourceSize: z.number().int().nonnegative().optional().nullable(),
+    importedAt: z.string().trim().min(1),
+    confidence: z.number().min(0).max(1).optional().nullable(),
+    title: z.string().max(1000).optional().nullable(),
+    customer: z.string().max(1000).optional().nullable(),
+    supplier: z.string().max(1000).optional().nullable(),
+    total: z.union([z.number(), z.string().max(200)]).optional().nullable(),
+    observations: z.string().max(20000).optional().nullable(),
+    items: z.array(z.record(z.string(), z.unknown())).max(500).default([]),
+    selectedItemIndexes: z.array(z.number().int().nonnegative()).max(500).default([]),
+  }).optional().nullable(),
 }).superRefine((data, ctx) => {
   const hasStart = !!data.dataHoraInicio;
   const hasEnd = !!data.dataHoraFim;
@@ -1785,6 +1800,7 @@ router.post("/tenants/:tenantId/support-cases", async (req, res) => {
       relato: parsed.data.relato,
       produtos: parsed.data.produtos,
       origem: parsed.data.origem,
+      legacyOrder: parsed.data.legacyOrder ?? null,
       substatus: null,
       supportPublicAccess: {
         version: 1,
