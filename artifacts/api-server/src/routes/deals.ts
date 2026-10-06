@@ -242,11 +242,25 @@ router.post("/deals", async (req, res) => {
   res.status(201).json(deal);
 });
 
+const MOVABLE_PIPELINES = ["comercial", "aquecimento", "parceiros", "execucao", "suporte"] as const;
+type MovablePipeline = (typeof MOVABLE_PIPELINES)[number];
+
 const transferDealPipelineSchema = z.object({
-  targetPipeline: z.literal("suporte"),
-  responsavelId: z.string().min(1),
-  observacao: z.string().trim().max(2000).optional(),
+  targetPipeline: z.enum(MOVABLE_PIPELINES),
+  targetStage: z.string().trim().min(1).max(120),
+  responsavelId: z.string().min(1).optional(),
+  justificativa: z.string().trim().min(5, "Informe a justificativa do movimento.").max(2000),
 });
+
+function currentDealPipeline(deal: typeof dealsTable.$inferSelect): { pipeline: MovablePipeline; stage: string } {
+  if (deal.etapa === "em_aquecimento") {
+    return { pipeline: "aquecimento", stage: deal.relationshipStage || deal.aquecimentoTipo || "aquecimento_lead" };
+  }
+  if (deal.etapa === "parceiro") {
+    return { pipeline: "parceiros", stage: deal.relationshipStage || "parceiro_identificado" };
+  }
+  return { pipeline: "comercial", stage: deal.etapa };
+}
 
 router.post("/deals/:id/transfer-pipeline", async (req, res) => {
   const parsed = transferDealPipelineSchema.safeParse(req.body);
@@ -265,62 +279,131 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
     return;
   }
   if (!deal.leadId) {
-    res.status(422).json({ error: "O negócio precisa estar vinculado a um lead para ser transferido." });
+    res.status(422).json({ error: "O negócio precisa estar vinculado a um lead para ser movido." });
     return;
   }
 
-  const [responsavel] = await db.select({ id: usersTable.id }).from(usersTable).where(and(
-    eq(usersTable.id, parsed.data.responsavelId),
-    eq(usersTable.tenantId, deal.tenantId),
+  const [targetStageConfig] = await db.select({
+    id: pipelineStagesTable.id,
+    key: pipelineStagesTable.key,
+    label: pipelineStagesTable.label,
+  }).from(pipelineStagesTable).where(and(
+    eq(pipelineStagesTable.tenantId, deal.tenantId),
+    eq(pipelineStagesTable.pipeline, parsed.data.targetPipeline),
+    eq(pipelineStagesTable.key, parsed.data.targetStage),
   )).limit(1);
-  if (!responsavel) {
-    res.status(422).json({ error: "Responsável do suporte inválido para este tenant." });
+
+  if (!targetStageConfig) {
+    res.status(422).json({ error: "A etapa escolhida não existe na pipeline de destino." });
     return;
   }
 
-  const [existingSupport] = await db.select().from(workCardsTable).where(and(
-    eq(workCardsTable.tenantId, deal.tenantId),
-    eq(workCardsTable.pipeline, "suporte"),
-    eq(workCardsTable.leadId, deal.leadId),
-    eq(workCardsTable.dealId, deal.id),
-  )).limit(1);
+  const responsavelId = parsed.data.responsavelId ?? deal.assignedTo ?? req.user?.sub ?? null;
+  if (responsavelId) {
+    const [responsavel] = await db.select({ id: usersTable.id }).from(usersTable).where(and(
+      eq(usersTable.id, responsavelId),
+      eq(usersTable.tenantId, deal.tenantId),
+    )).limit(1);
+    if (!responsavel) {
+      res.status(422).json({ error: "Responsável inválido para este tenant." });
+      return;
+    }
+  }
 
-  const supportCard = existingSupport ?? (await db.insert(workCardsTable).values({
-    tenantId: deal.tenantId,
-    pipeline: "suporte",
-    tipo: "assistencia",
-    etapa: "chamado_cliente",
-    titulo: `Suporte • ${deal.titulo}`,
-    descricao: parsed.data.observacao || "Transferido da pipeline Comercial para Suporte.",
-    prioridade: "normal",
-    leadId: deal.leadId,
-    dealId: deal.id,
-    responsavelId: parsed.data.responsavelId,
-    metadata: {
-      origemPipeline: "comercial",
-      origemDealEtapa: deal.etapa,
-      transferidoEm: new Date().toISOString(),
+  const source = currentDealPipeline(deal);
+  const movedAt = new Date();
+  let destinationCard: typeof workCardsTable.$inferSelect | null = null;
+
+  if (parsed.data.targetPipeline === "comercial") {
+    await db.update(dealsTable).set({
+      etapa: parsed.data.targetStage,
+      assignedTo: responsavelId,
+      relationshipStage: null,
+      updatedAt: movedAt,
+    }).where(eq(dealsTable.id, deal.id));
+  } else if (parsed.data.targetPipeline === "aquecimento") {
+    await db.update(dealsTable).set({
+      etapa: "em_aquecimento",
+      aquecimentoTipo: parsed.data.targetStage,
+      relationshipStage: parsed.data.targetStage,
+      assignedTo: responsavelId,
+      updatedAt: movedAt,
+    }).where(eq(dealsTable.id, deal.id));
+  } else if (parsed.data.targetPipeline === "parceiros") {
+    await db.update(dealsTable).set({
+      etapa: "parceiro",
+      relationshipStage: parsed.data.targetStage,
+      assignedTo: responsavelId,
+      updatedAt: movedAt,
+    }).where(eq(dealsTable.id, deal.id));
+  } else {
+    const [existingCard] = await db.select().from(workCardsTable).where(and(
+      eq(workCardsTable.tenantId, deal.tenantId),
+      eq(workCardsTable.pipeline, parsed.data.targetPipeline),
+      eq(workCardsTable.leadId, deal.leadId),
+      eq(workCardsTable.dealId, deal.id),
+    )).limit(1);
+
+    const metadata = {
+      ...(existingCard?.metadata ?? {}),
+      origemPipeline: source.pipeline,
+      origemEtapa: source.stage,
+      transferidoEm: movedAt.toISOString(),
       transferidoPor: req.user?.sub ?? null,
-    },
-  }).returning())[0];
+      justificativaMovimento: parsed.data.justificativa,
+    };
 
-  await db.update(dealsTable).set({
-    relationshipStage: "transferido_suporte",
-    updatedAt: new Date(),
-  }).where(eq(dealsTable.id, deal.id));
+    if (existingCard) {
+      [destinationCard] = await db.update(workCardsTable).set({
+        etapa: parsed.data.targetStage,
+        responsavelId,
+        descricao: parsed.data.justificativa,
+        metadata,
+        updatedAt: movedAt,
+      }).where(eq(workCardsTable.id, existingCard.id)).returning();
+    } else {
+      [destinationCard] = await db.insert(workCardsTable).values({
+        tenantId: deal.tenantId,
+        pipeline: parsed.data.targetPipeline,
+        tipo: parsed.data.targetPipeline === "suporte" ? "assistencia" : "pedido",
+        etapa: parsed.data.targetStage,
+        titulo: `${parsed.data.targetPipeline === "suporte" ? "Suporte" : "Execução"} • ${deal.titulo}`,
+        descricao: parsed.data.justificativa,
+        prioridade: "normal",
+        leadId: deal.leadId,
+        dealId: deal.id,
+        responsavelId,
+        metadata,
+      }).returning();
+    }
+
+    await db.update(dealsTable).set({
+      relationshipStage: `transferido_${parsed.data.targetPipeline}`,
+      assignedTo: responsavelId,
+      updatedAt: movedAt,
+    }).where(eq(dealsTable.id, deal.id));
+  }
 
   await recordDealJourney({
     tenantId: deal.tenantId,
     leadId: deal.leadId,
     dealId: deal.id,
-    title: "Transferido de Comercial para Suporte",
-    description: parsed.data.observacao
-      ? `Novo chamado: ${supportCard.codigo}. Observação: ${parsed.data.observacao}`
-      : `Novo chamado: ${supportCard.codigo}. O histórico comercial foi preservado.`,
-    responsavelId: parsed.data.responsavelId,
+    title: `Movido de ${source.pipeline} / ${source.stage} para ${parsed.data.targetPipeline} / ${targetStageConfig.label}`,
+    description: `Justificativa obrigatória: ${parsed.data.justificativa}`,
+    responsavelId,
   });
 
-  res.json({ ok: true, dealId: deal.id, supportCard });
+  res.json({
+    ok: true,
+    dealId: deal.id,
+    source,
+    destination: {
+      pipeline: parsed.data.targetPipeline,
+      stage: parsed.data.targetStage,
+      stageLabel: targetStageConfig.label,
+    },
+    workCard: destinationCard,
+  });
 });
 
 router.get("/tenants/:tenantId/deals", async (req, res) => {
