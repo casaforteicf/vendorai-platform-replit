@@ -13,7 +13,7 @@ import { tenantsTable } from "./tenants";
 import { leadsTable } from "./leads";
 import { dealsTable } from "./deals";
 import { servicosPrestadoresTable } from "./servicos_prestadores";
-import { servicosTiposTable } from "./servicos_tipos";
+import { servicosTiposTable } from "./servicos_tipos";\nimport { servicosOsModelosTable } from "./servicos_os_modelos";
 
 export type ServicoChecklistEvidenceMode =
   | "confirmation"
@@ -69,7 +69,7 @@ export const servicosOrdensTable = pgTable("servicos_ordens", {
   tipoServicoId: text("tipo_servico_id")
     .notNull()
     .references(() => servicosTiposTable.id, { onDelete: "restrict" }),
-  modeloExecucao: varchar("modelo_execucao", { length: 40 }).notNull().default("geral"),
+  modeloExecucao: varchar("modelo_execucao", { length: 40 }).notNull().default("geral"),\n  modeloOsId: text("modelo_os_id").references(() => servicosOsModelosTable.id, { onDelete: "set null" }),
   enderecoAtendimento: text("endereco_atendimento").notNull(),
   status:              varchar("status", { length: 30 }).default("orcamento_pendente"),
   dataHoraVisita:      timestamp("data_hora_visita"),
