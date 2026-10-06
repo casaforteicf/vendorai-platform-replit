@@ -8,7 +8,7 @@
  * token-keyed entry so it does not accumulate indefinitely.
  */
 
-export const TAB_VALUES = ["dados", "executivo", "cronograma", "medicoes", "propostas", "diario", "galeria", "projetos", "contratos", "documentos", "manuais", "notas", "compras", "financeiro", "orcamento", "suporte", "chat"] as const;
+export const TAB_VALUES = ["dados", "pendencias", "briefing", "timeline", "executivo", "cronograma", "medicoes", "agenda", "propostas", "alteracoes", "assinaturas", "diario", "galeria", "projetos", "contratos", "documentos", "manuais", "notas", "compras", "financeiro", "orcamento", "entrega", "vendi", "suporte", "chat"] as const;
 export type TabId = (typeof TAB_VALUES)[number];
 
 export const PORTAL_OBRA_PREFIX = "portal_tab_obra_";
@@ -84,3 +84,5 @@ function evictOldObraKeys(currentKey: string): void {
     }
   } catch { /* ignore */ }
 }
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
