@@ -32,7 +32,22 @@ function portalConfig(raw: unknown): ObraPortalConfig {
 
 function portalBearer(req: any) {
   const header = String(req.headers?.authorization ?? "");
-  return header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  if (header.startsWith("Bearer ")) return header.slice(7).trim();
+
+  const cookieHeader = String(req.headers?.cookie ?? "");
+  const sessionCookie = cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith("vendorai_obra_portal_session="));
+  return sessionCookie ? decodeURIComponent(sessionCookie.split("=").slice(1).join("=")) : "";
+}
+
+function setPortalSessionCookie(res: any, token: string) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  res.setHeader(
+    "Set-Cookie",
+    `vendorai_obra_portal_session=${encodeURIComponent(token)}; Path=/api/portal/obra/; HttpOnly; SameSite=Lax; Max-Age=2592000${secure}`,
+  );
 }
 
 function hashPortalToken(token: string) {
@@ -81,6 +96,14 @@ function portalObjectPath(value: unknown): string | null {
     // not an absolute URL
   }
   return null;
+}
+
+async function requirePortalAssetAccess(req: any, res: any, obra: any, config: ObraPortalConfig) {
+  if (!config.requireLogin) return true;
+  const user = await resolvePortalUser(req, obra.id);
+  if (user) return true;
+  res.status(401).send("Faça login para acessar este arquivo.");
+  return false;
 }
 
 async function streamPortalObject(res: any, value: unknown) {
@@ -255,6 +278,7 @@ router.post("/portal/obra/:token/register", async (req, res) => {
     [userId, obra.tenantId, obra.id, nome, email, telefone, passwordHash],
   );
   const sessionToken = await createPortalSession(userId);
+  setPortalSessionCookie(res, sessionToken);
   return res.status(201).json({ token: sessionToken, user: { id: userId, nome, email, telefone } });
 });
 
@@ -275,6 +299,7 @@ router.post("/portal/obra/:token/login", async (req, res) => {
   }
   await pool.query(`UPDATE obra_portal_users SET ultimo_login_em=now(), updated_at=now() WHERE id=$1`, [user.id]);
   const sessionToken = await createPortalSession(user.id);
+  setPortalSessionCookie(res, sessionToken);
   return res.json({ token: sessionToken, user: { id: user.id, nome: user.nome, email: user.email, telefone: user.telefone } });
 });
 
@@ -891,6 +916,7 @@ router.get("/portal/obra/:token/renders/:renderId", async (req, res, next) => {
     if (!obra) return res.status(404).send("Portal não encontrado.");
 
     const config = portalConfig(obra.portalConfig);
+    if (!(await requirePortalAssetAccess(req, res, obra, config))) return;
     if (!config.showProjectGallery) return res.status(403).send("Galeria não publicada.");
 
     const projectResult = await pool.query(
@@ -940,6 +966,7 @@ router.get("/portal/obra/:token/diary/:entryId/:kind/:index", async (req, res, n
     const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
     if (!obra) return res.status(404).send("Portal não encontrado.");
     const config = portalConfig(obra.portalConfig);
+    if (!(await requirePortalAssetAccess(req, res, obra, config))) return;
     if ((kind === "foto" || kind === "video") && !config.showDiaryPhotos) return res.status(403).send("Mídia não publicada.");
     if (kind === "anexo" && !config.showDocuments) return res.status(403).send("Documento não publicado.");
 
@@ -974,6 +1001,7 @@ router.get("/portal/obra/:token/documents/:documentId", async (req, res, next) =
     const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
     if (!obra) return res.status(404).send("Portal não encontrado.");
     const config = portalConfig(obra.portalConfig);
+    if (!(await requirePortalAssetAccess(req, res, obra, config))) return;
 
     const result = await pool.query(
       `SELECT id,categoria,url
@@ -1007,6 +1035,7 @@ router.get("/portal/obra/:token/invoices/:invoiceId/document", async (req, res, 
     const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
     if (!obra) return res.status(404).send("Portal não encontrado.");
     const config = portalConfig(obra.portalConfig);
+    if (!(await requirePortalAssetAccess(req, res, obra, config))) return;
     if (!config.showInvoices) return res.status(403).send("Notas fiscais não publicadas.");
 
     const result = await pool.query(
