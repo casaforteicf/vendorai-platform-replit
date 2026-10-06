@@ -347,6 +347,50 @@ function buildProjectElements(concept: any): { revision: string; elements: Proje
       areaM2: area,
       perimeterM: perimeter,
     });
+
+    if (room?.kind === "piscina") {
+      elements.push({
+        sourceObjectId: `pool:${room.id}`,
+        name: `Piscina — ${region}`,
+        description: "Quantitativo geométrico da projeção da piscina. Volume permanece pendente até existir profundidade técnica confirmada.",
+        category: "piscina",
+        region,
+        quantity: area,
+        unit: "m²",
+        widthMm: round(width * 1000, 1),
+        depthMm: round(depth * 1000, 1),
+        areaM2: area,
+        perimeterM: perimeter,
+        volumeM3: null,
+      });
+      elements.push({
+        sourceObjectId: `pool:${room.id}:edge`,
+        name: `Borda da piscina — ${region}`,
+        description: "Comprimento perimetral geométrico da borda da piscina.",
+        category: "borda_piscina",
+        region,
+        quantity: perimeter,
+        unit: "m",
+        lengthMm: round(perimeter * 1000, 1),
+        perimeterM: perimeter,
+      });
+    }
+
+    if (room?.kind === "escada") {
+      elements.push({
+        sourceObjectId: `stair:${room.id}`,
+        name: `Escada — ${region}`,
+        description: "Área de implantação da escada originada do projeto. Degraus/espelhos e guarda-corpo dependem da parametrização vertical da escada.",
+        category: "escada",
+        region,
+        quantity: area,
+        unit: "m²",
+        widthMm: round(width * 1000, 1),
+        depthMm: round(depth * 1000, 1),
+        areaM2: area,
+        perimeterM: perimeter,
+      });
+    }
   }
 
   for (const wall of walls) {
@@ -506,7 +550,13 @@ async function syncProjectSpecification(tId: string | null, projectId: string) {
         width_mm=$10, height_mm=$11, depth_mm=$12, length_mm=$13,
         area_m2=$14, perimeter_m=$15, volume_m3=$16,
         measurement_source='project', measurement_revision=$1,
-        removed_from_project_at=NULL, last_project_sync_at=$17, updated_at=$17
+        removed_from_project_at=NULL,
+        technical_approval_status=CASE WHEN $2 <> 'unchanged' THEN 'pending' ELSE technical_approval_status END,
+        technical_approved_at=CASE WHEN $2 <> 'unchanged' THEN NULL ELSE technical_approved_at END,
+        technical_approved_by=CASE WHEN $2 <> 'unchanged' THEN NULL ELSE technical_approved_by END,
+        technical_approval_note=CASE WHEN $2 <> 'unchanged' THEN NULL ELSE technical_approval_note END,
+        status=CASE WHEN $2 <> 'unchanged' AND status='approved' THEN 'specified' ELSE status END,
+        last_project_sync_at=$17, updated_at=$17
        WHERE id=$18`,
       [
         revision, impact, geometryHash, element.name, element.description ?? null, element.category, element.region ?? null,
@@ -527,6 +577,9 @@ async function syncProjectSpecification(tId: string | null, projectId: string) {
     await pool.query(
       `UPDATE arch_spec_objects
           SET revision_impact='removed', removed_from_project_at=COALESCE(removed_from_project_at,$1),
+              technical_approval_status='pending', technical_approved_at=NULL,
+              technical_approved_by=NULL, technical_approval_note=NULL,
+              status=CASE WHEN status='approved' THEN 'specified' ELSE status END,
               last_project_sync_at=$1, updated_at=$1
         WHERE id=$2`,
       [now, row.id],
