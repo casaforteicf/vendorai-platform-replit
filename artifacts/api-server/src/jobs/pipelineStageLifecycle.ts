@@ -262,7 +262,7 @@ export async function runPipelineStageLifecycle(log: Logger): Promise<void> {
 
       const config = stageMap.get(`${row.deal.tenantId}:${state.pipeline}:${state.stage}`);
       const stageLabel = config?.label || state.stage;
-      const enteredAt = state.pipeline === "comercial" ? row.deal.etapaAlteradaEm : row.deal.updatedAt;
+      const enteredAt = row.deal.etapaAlteradaEm || row.deal.updatedAt;
       const transitionCategory = `pipeline_stage_entered:${state.pipeline}:${row.deal.id}:${state.stage}`;
 
       if (minutesSince(enteredAt, now) <= RECENT_TRANSITION_MINUTES && !(await hasNotification(row.deal.tenantId, transitionCategory))) {
