@@ -768,7 +768,14 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
       );
     }
     await client.query(`UPDATE arch_rfq_invitations SET status='accepted',updated_at=now() WHERE id=$1::uuid`, [invitationId]);
-    await client.query(`UPDATE arch_rfq_invitations SET status='rejected',updated_at=now() WHERE package_id=$1::uuid AND id<>$2::uuid AND status='responded'`, [packageId,invitationId]);
+    await client.query(
+      `UPDATE arch_rfq_invitations
+          SET status='rejected',updated_at=now()
+        WHERE package_id=$1::uuid
+          AND id<>$2::uuid
+          AND status NOT IN ('accepted','rejected','expired')`,
+      [packageId,invitationId],
+    );
     await client.query(`UPDATE arch_rfq_packages SET status='completed',updated_at=now() WHERE id=$1::uuid`, [packageId]);
     await client.query("COMMIT");
     res.json({ ok: true });
