@@ -133,6 +133,10 @@ export default function IntegrationSettingsHub() {
   const [showCustomGuide, setShowCustomGuide] = useState<"api" | "webhook" | "n8n" | null>(null);
   const [customIntegrations, setCustomIntegrations] = useState<CustomIntegration[]>([]);
   const [metaAdsStatus, setMetaAdsStatus] = useState<{ connected?: boolean; pendingAccountSelection?: boolean; adAccountName?: string | null }>({});
+  const [accountPicker, setAccountPicker] = useState<{
+    provider: "google-ads" | "meta-ads";
+    accounts: Array<{ id: string; label: string }>;
+  } | null>(null);
   const [socialConnections, setSocialConnections] = useState<Array<{ provider: string; connected?: boolean; accountName?: string | null }>>([]);
   const [customDraft, setCustomDraft] = useState({
     name: "",
@@ -722,7 +726,60 @@ export default function IntegrationSettingsHub() {
     },
   ];
 
+  const loadAdsAccounts = async (provider: "google-ads" | "meta-ads") => {
+    if (!tenantId) return;
+    setBusy(`accounts-${provider}`);
+    try {
+      const path = provider === "google-ads"
+        ? `/api/tenants/${encodeURIComponent(tenantId)}/google-ads-connection/accounts`
+        : `/api/tenants/${encodeURIComponent(tenantId)}/meta-ads-connection/accounts`;
+      const data = await apiJson(path);
+      const accounts = Array.isArray(data?.accounts) ? data.accounts : [];
+      setAccountPicker({
+        provider,
+        accounts: accounts.map((account: any) => provider === "google-ads"
+          ? { id: String(account.customerId), label: `Google Ads · ${account.customerId}` }
+          : { id: String(account.adAccountId), label: `${account.name || account.adAccountId}${account.currency ? ` · ${account.currency}` : ""}` }),
+      });
+      if (!accounts.length) toast({ title: "Nenhuma conta acessível encontrada.", variant: "destructive" });
+    } catch (error) {
+      toast({ title: "Não foi possível listar as contas", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const selectAdsAccount = async (provider: "google-ads" | "meta-ads", id: string) => {
+    if (!tenantId) return;
+    setBusy(`select-${provider}`);
+    try {
+      const path = provider === "google-ads"
+        ? `/api/tenants/${encodeURIComponent(tenantId)}/google-ads-connection/select-account`
+        : `/api/tenants/${encodeURIComponent(tenantId)}/meta-ads-connection/select-account`;
+      await apiJson(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(provider === "google-ads" ? { customerId: id } : { adAccountId: id }),
+      });
+      toast({ title: provider === "google-ads" ? "Conta Google Ads selecionada." : "Conta Meta Ads selecionada." });
+      setAccountPicker(null);
+      await loadStatus();
+    } catch (error) {
+      toast({ title: "Não foi possível selecionar a conta", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const startEcosystemService = async (service: EcosystemService) => {
+    if (service.action === "google-ads" && status?.googleAds?.pendingAccountSelection) {
+      await loadAdsAccounts("google-ads");
+      return;
+    }
+    if (service.endpoint === "/api/auth/meta-ads" && metaAdsStatus.pendingAccountSelection) {
+      await loadAdsAccounts("meta-ads");
+      return;
+    }
     if (service.action) {
       await startConnection(service.action);
       return;
@@ -772,6 +829,34 @@ export default function IntegrationSettingsHub() {
           <Button variant="outline" onClick={() => void loadStatus()} disabled={loading}>Atualizar status</Button>
         </div>
       </div>
+
+      {accountPicker && (
+        <div className="rounded-2xl border bg-card p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Escolha a conta de anúncios</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                A autorização já foi concluída. Selecione qual conta pertence a este tenant.
+              </p>
+            </div>
+            <Button variant="outline" onClick={() => setAccountPicker(null)}>Fechar</Button>
+          </div>
+          <div className="mt-4 space-y-2">
+            {accountPicker.accounts.map((account) => (
+              <button
+                key={account.id}
+                type="button"
+                disabled={busy === `select-${accountPicker.provider}`}
+                onClick={() => void selectAdsAccount(accountPicker.provider, account.id)}
+                className="flex w-full items-center justify-between rounded-lg border bg-background px-4 py-3 text-left hover:bg-muted/40 disabled:opacity-50"
+              >
+                <span className="text-sm font-medium">{account.label}</span>
+                <span className="text-xs text-muted-foreground">Selecionar</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="rounded-2xl border bg-card p-5">
         <div>
