@@ -4,7 +4,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCreateDeal, useGetLead, useListActivities, useListDeals, useListPipelineStages, useListTenantUsers, useUpdatePipelineStage, getGetLeadQueryKey, getListActivitiesQueryKey, getListDealsQueryKey, getListPipelineStagesQueryKey, getListTenantUsersQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { DealParticipantsCard } from "@/components/DealParticipantsCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, ArrowRight, AlertTriangle, BrainCircuit, Building2, Clock3, HandCoins, Headset, Loader2, Pencil, Settings2, Sparkles, UserRound, WalletCards } from "lucide-react";
 
 const LeadDetail = lazy(() => import("@/pages/LeadDetail"));
+const DealParticipantsCard = lazy(() => import("@/components/DealParticipantsCard").then((m) => ({ default: m.DealParticipantsCard })));
 const StageQuestionsPanel = lazy(() => import("@/components/StageQuestionsPanel").then((m) => ({ default: m.StageQuestionsPanel })));
 
 const fallbackStages = [
@@ -761,7 +761,11 @@ export default function LeadWorkspace() {
       </CardContent>
     </Card>
 
-    {deal && <DealParticipantsCard tenantId={tenantId} dealId={deal.id} token={token} />}
+    {deal && (
+      <Suspense fallback={<Card className="border-border/70 shadow-sm"><CardContent className="p-4"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando envolvidos...</div></CardContent></Card>}>
+        <DealParticipantsCard tenantId={tenantId} dealId={deal.id} token={token} />
+      </Suspense>
+    )}
 
     {deal && canEditOwner && (
       <Card className="border-border/70 shadow-sm">
