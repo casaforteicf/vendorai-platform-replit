@@ -25,7 +25,9 @@ export function TenantBrand({
     },
   });
   const profile = businessProfile as any;
-  const logoUrl = normalizeTenantLogoUrl(pendingLogoUrl || profile?.logoUrl);
+  const logoUrl = pendingLogoUrl
+    ? normalizeTenantLogoUrl(pendingLogoUrl)
+    : (profile?.logoAccessUrl || normalizeTenantLogoUrl(profile?.logoUrl));
   const name = pendingName?.trim() || profile?.nomeFantasia || profile?.razaoSocial || "Empresa";
   const [imageFailed, setImageFailed] = useState(false);
 
