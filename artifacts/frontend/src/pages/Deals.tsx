@@ -63,7 +63,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Plus, GripVertical, DollarSign, User, UserRound, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake, FileText, Clock, CalendarDays, Pen, KanbanSquare, ArrowRight, UserMinus, Ruler, Bot, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, GripVertical, DollarSign, User, UserRound, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake, FileText, Clock, CalendarDays, Pen, KanbanSquare, ArrowRight, ArrowLeft, UserMinus, Ruler, Bot, ChevronDown, ChevronUp } from "lucide-react";
 import { PipelineNav } from "@/components/PipelineNav";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
@@ -360,6 +360,7 @@ function DealCard({
   onAdvance,
   onMove,
   onRemove,
+  onReturnToQualified,
   moveOptions = [],
   overlay = false,
   slaOverdue = false,
@@ -375,6 +376,7 @@ function DealCard({
   onAdvance?: () => void;
   onMove?: (stage: string) => void;
   onRemove?: () => void;
+  onReturnToQualified?: () => void;
   moveOptions?: Array<{ value: string; label: string }>;
   overlay?: boolean;
   /** Tempo na etapa atual estourou o SLA configurado pelo admin (distinto do prazo geral do negócio — ver isOverdue abaixo). */
@@ -572,6 +574,26 @@ function DealCard({
             <Ruler className="h-3.5 w-3.5" />
             Conferência de medidas
           </button>
+        </div>
+      )}
+
+      {!overlay && deal.etapa === "proposta" && onReturnToQualified && (
+        <div
+          className="pt-1 border-t border-border/50"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-full h-7 px-2 text-[10px] gap-1 text-blue-700 hover:text-blue-800 hover:bg-blue-50"
+            onClick={onReturnToQualified}
+            data-testid={`deal-return-qualified-${deal.id}`}
+          >
+            <ArrowLeft className="h-3 w-3" />
+            Faltam informações — voltar para Qualificado
+          </Button>
         </div>
       )}
 
@@ -877,6 +899,7 @@ function KanbanColumn({
   onAdvance,
   onMove,
   onRemove,
+  onReturnToQualified,
   getMoveOptions,
   stagesByKey,
 }: {
@@ -894,6 +917,7 @@ function KanbanColumn({
   onAdvance: (deal: Deal) => void;
   onMove: (deal: Deal, stage: string) => void;
   onRemove: (deal: Deal) => void;
+  onReturnToQualified: (deal: Deal) => void;
   getMoveOptions: (deal: Deal) => Array<{ value: string; label: string }>;
   stagesByKey: Record<string, PipelineStage>;
 }) {
@@ -993,6 +1017,7 @@ function KanbanColumn({
               onAdvance={() => onAdvance(deal)}
               onMove={(stage) => onMove(deal, stage)}
               onRemove={() => onRemove(deal)}
+              onReturnToQualified={deal.etapa === "proposta" ? () => onReturnToQualified(deal) : undefined}
               moveOptions={getMoveOptions(deal)}
               slaOverdue={isSlaOverdue(deal)}
             />
@@ -2320,6 +2345,12 @@ export default function Deals() {
   const [removeReason, setRemoveReason] = useState<"colaborador" | "fornecedor" | "parceiro" | "familiar" | "amigo" | "outro">("outro");
   const [removeNotes, setRemoveNotes] = useState("");
   const [removingFromPipeline, setRemovingFromPipeline] = useState(false);
+  const [returnQualifiedDialog, setReturnQualifiedDialog] = useState<{ open: boolean; deal: Deal | null }>({ open: false, deal: null });
+  const [returnQualifiedReason, setReturnQualifiedReason] = useState("");
+  const [returnQualifiedMissing, setReturnQualifiedMissing] = useState("");
+  const [returnQualifiedResponsibleId, setReturnQualifiedResponsibleId] = useState("");
+  const [returnQualifiedDueDate, setReturnQualifiedDueDate] = useState("");
+  const [returningToQualified, setReturningToQualified] = useState(false);
   // SaaS pipeline state
   const [saasActiveId, setSaasActiveId] = useState<string | null>(null);
   const [saasOverColumn, setSaasOverColumn] = useState<DealEtapaSaas | null>(null);
@@ -2647,6 +2678,64 @@ export default function Deals() {
       return;
     }
     requestStageMove(deal, next.stage.value);
+  }
+
+  function openReturnToQualified(deal: Deal) {
+    if (deal.etapa !== "proposta") return;
+    if (!deal.leadId) {
+      toast({ title: "Este negócio não possui lead vinculado.", variant: "destructive" });
+      return;
+    }
+    setReturnQualifiedReason("");
+    setReturnQualifiedMissing("");
+    setReturnQualifiedResponsibleId(deal.assignedTo ?? user?.id ?? "");
+    setReturnQualifiedDueDate("");
+    setReturnQualifiedDialog({ open: true, deal });
+  }
+
+  async function confirmReturnToQualified() {
+    const deal = returnQualifiedDialog.deal;
+    if (!deal?.leadId) return;
+    if (
+      returnQualifiedReason.trim().length < 3 ||
+      returnQualifiedMissing.trim().length < 3 ||
+      !returnQualifiedResponsibleId ||
+      !returnQualifiedDueDate
+    ) return;
+
+    setReturningToQualified(true);
+    try {
+      await customFetch(`/api/deals/${deal.id}/return-to-qualified`, {
+        method: "POST",
+        body: JSON.stringify({
+          motivo: returnQualifiedReason.trim(),
+          informacoesFaltantes: returnQualifiedMissing.trim(),
+          responsavelId: returnQualifiedResponsibleId,
+          dataVencimento: new Date(`${returnQualifiedDueDate}T23:59:59`).toISOString(),
+        }),
+        responseType: "json",
+      });
+
+      toast({
+        title: "Lead devolvido para Qualificado",
+        description: "A tarefa para completar as informações foi criada e ficará bloqueando o retorno ao Orçamento até ser concluída.",
+      });
+      setReturnQualifiedDialog({ open: false, deal: null });
+      setReturnQualifiedReason("");
+      setReturnQualifiedMissing("");
+      setReturnQualifiedResponsibleId("");
+      setReturnQualifiedDueDate("");
+      queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
+      queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
+    } catch (error) {
+      toast({
+        title: "Não foi possível devolver para Qualificado",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setReturningToQualified(false);
+    }
   }
 
   function openRemoveFromPipeline(deal: Deal) {
@@ -3294,6 +3383,17 @@ export default function Deals() {
                     <ArrowRight className="h-3.5 w-3.5" />
                     Avançar
                   </Button>
+                  {deal.etapa === "proposta" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs gap-1 text-blue-700 border-blue-200 hover:bg-blue-50"
+                      onClick={() => openReturnToQualified(deal)}
+                    >
+                      <ArrowLeft className="h-3.5 w-3.5" />
+                      Falta info
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="icon"
@@ -3374,6 +3474,7 @@ export default function Deals() {
                   onAdvance={advanceDeal}
                   onMove={requestStageMove}
                   onRemove={openRemoveFromPipeline}
+                  onReturnToQualified={openReturnToQualified}
                   getMoveOptions={getForwardMoveOptions}
                   stagesByKey={stagesByKey}
                 />
@@ -3401,6 +3502,101 @@ export default function Deals() {
         onConfirm={confirmarPerdido}
         onCancel={cancelarPerdido}
       />
+
+      {/* ── Orçamento → Qualificado por falta de informação ──────────────── */}
+      <Dialog
+        open={returnQualifiedDialog.open}
+        onOpenChange={(open) => {
+          if (!open && !returningToQualified) setReturnQualifiedDialog({ open: false, deal: null });
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowLeft className="h-5 w-5 text-blue-600" />
+              Voltar para Qualificado
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Use esta ação quando não for possível concluir o orçamento por falta de informação. O motivo fica no histórico e uma tarefa obrigatória é criada para resolver a pendência.
+          </p>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Motivo da devolução *</label>
+              <textarea
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none"
+                rows={2}
+                value={returnQualifiedReason}
+                onChange={(event) => setReturnQualifiedReason(event.target.value)}
+                placeholder="Ex.: não é possível calcular o orçamento sem as medidas finais."
+                data-testid="return-qualified-reason"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Quais informações estão faltando? *</label>
+              <textarea
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none"
+                rows={4}
+                value={returnQualifiedMissing}
+                onChange={(event) => setReturnQualifiedMissing(event.target.value)}
+                placeholder="Liste exatamente os dados que precisam ser obtidos antes de retornar ao Orçamento."
+                data-testid="return-qualified-missing"
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Responsável pela tarefa *</label>
+                <Select value={returnQualifiedResponsibleId} onValueChange={setReturnQualifiedResponsibleId}>
+                  <SelectTrigger data-testid="return-qualified-responsible">
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tenantUsers.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Prazo *</label>
+                <Input
+                  type="date"
+                  value={returnQualifiedDueDate}
+                  onChange={(event) => setReturnQualifiedDueDate(event.target.value)}
+                  data-testid="return-qualified-due-date"
+                />
+              </div>
+            </div>
+            <div className="rounded-md border border-blue-100 bg-blue-50 p-3 text-xs text-blue-800">
+              Enquanto esta tarefa estiver pendente, o negócio não poderá avançar novamente de Qualificado para Orçamento.
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={returningToQualified}
+                onClick={() => setReturnQualifiedDialog({ open: false, deal: null })}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                disabled={
+                  returningToQualified ||
+                  returnQualifiedReason.trim().length < 3 ||
+                  returnQualifiedMissing.trim().length < 3 ||
+                  !returnQualifiedResponsibleId ||
+                  !returnQualifiedDueDate
+                }
+                onClick={() => void confirmReturnToQualified()}
+                data-testid="confirm-return-qualified"
+              >
+                {returningToQualified ? "Devolvendo..." : "Voltar e criar tarefa"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Retirar da pipeline / enviar para Aquecimento / Não Lead ─────── */}
       <Dialog

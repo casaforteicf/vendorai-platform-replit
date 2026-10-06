@@ -762,6 +762,164 @@ router.post("/deals/:id/ai/evaluate", async (req, res) => {
   return res.json(result);
 });
 
+const returnBudgetToQualifiedSchema = z.object({
+  motivo: z.string().trim().min(3, "Informe o motivo da devolução.").max(1000),
+  informacoesFaltantes: z.string().trim().min(3, "Informe quais informações estão faltando.").max(4000),
+  responsavelId: z.string().min(1, "Selecione o responsável pela pendência."),
+  dataVencimento: z.coerce.date(),
+});
+
+router.post("/deals/:id/return-to-qualified", async (req, res) => {
+  const parsed = returnBudgetToQualifiedSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const [existing] = await db
+    .select({
+      id: dealsTable.id,
+      tenantId: dealsTable.tenantId,
+      leadId: dealsTable.leadId,
+      titulo: dealsTable.titulo,
+      etapa: dealsTable.etapa,
+      assignedTo: dealsTable.assignedTo,
+    })
+    .from(dealsTable)
+    .where(eq(dealsTable.id, String(req.params.id)))
+    .limit(1);
+
+  if (!existing) {
+    res.status(404).json({ error: "Deal not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userFn = req.user?.userFunction as UserFunction | undefined;
+  if (!isAdmin && (userFn === "vendedor" || userFn === "entrega") && existing.assignedTo && existing.assignedTo !== req.user?.sub) {
+    res.status(403).json({ error: "Access denied to this deal" });
+    return;
+  }
+
+  if (existing.etapa !== "proposta") {
+    res.status(409).json({
+      error: "RETURN_TO_QUALIFIED_ONLY_FROM_BUDGET",
+      message: "A devolução por falta de informação só pode ser feita a partir da etapa Orçamento.",
+    });
+    return;
+  }
+
+  if (!existing.leadId) {
+    res.status(422).json({ error: "O negócio precisa estar vinculado a um lead." });
+    return;
+  }
+
+  const [responsavel] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(and(
+      eq(usersTable.id, parsed.data.responsavelId),
+      eq(usersTable.tenantId, existing.tenantId),
+    ))
+    .limit(1);
+
+  if (!responsavel) {
+    res.status(422).json({ error: "O responsável selecionado não pertence a este tenant." });
+    return;
+  }
+
+  const result = await db.transaction(async (tx) => {
+    const now = new Date();
+
+    const [deal] = await tx
+      .update(dealsTable)
+      .set({
+        etapa: "qualificado",
+        probabilidade: 25,
+        etapaAlteradaEm: now,
+        updatedAt: now,
+      })
+      .where(eq(dealsTable.id, existing.id))
+      .returning();
+
+    if (!deal) throw new Error("Deal update failed");
+
+    const [task] = await tx
+      .insert(activitiesTable)
+      .values({
+        tenantId: existing.tenantId,
+        leadId: existing.leadId,
+        dealId: existing.id,
+        tipo: "tarefa",
+        titulo: `Completar informações para orçamento — ${existing.titulo}`,
+        descricao: [
+          `Motivo da devolução: ${parsed.data.motivo}`,
+          `Informações faltantes: ${parsed.data.informacoesFaltantes}`,
+        ].join("\n"),
+        objetivo: "Coletar e registrar as informações necessárias para concluir o orçamento.",
+        resultadoEsperado: "Informações pendentes preenchidas e prontas para o negócio retornar à etapa Orçamento.",
+        prioridade: "alta",
+        status: "pendente",
+        estadoExecucao: "planejada",
+        categoriaExecucao: "obrigatoria",
+        origem: "budget_return_missing_info",
+        origemEtapaKey: "qualificado",
+        origemTemplateKey: "budget-return-missing-info",
+        bloqueiaAvanco: true,
+        responsavelId: parsed.data.responsavelId,
+        dataVencimento: parsed.data.dataVencimento,
+      })
+      .returning();
+
+    await tx.insert(activitiesTable).values({
+      tenantId: existing.tenantId,
+      leadId: existing.leadId,
+      dealId: existing.id,
+      tipo: "tarefa",
+      titulo: "Orçamento devolvido para Qualificado por falta de informação",
+      descricao: [
+        "Etapa anterior: Orçamento.",
+        "Nova etapa: Qualificado.",
+        `Motivo: ${parsed.data.motivo}`,
+        `Informações faltantes: ${parsed.data.informacoesFaltantes}`,
+        `Tarefa criada: ${task?.titulo ?? "Completar informações para orçamento"}.`,
+      ].join(" "),
+      status: "concluida",
+      concluidaEm: now,
+      responsavelId: req.user?.sub ?? null,
+    });
+
+    return { deal, task };
+  });
+
+  void recordIntelligenceEvent({
+    tenantId: existing.tenantId,
+    leadId: existing.leadId,
+    eventType: "deal_stage_changed",
+    title: "Orçamento devolvido para Qualificado",
+    summary: `${parsed.data.motivo} — Pendências: ${parsed.data.informacoesFaltantes}`,
+    sourceModule: "deals",
+    sourceId: existing.id,
+    metadata: {
+      fromStage: "proposta",
+      toStage: "qualificado",
+      reason: parsed.data.motivo,
+      missingInformation: parsed.data.informacoesFaltantes,
+      taskId: result.task?.id ?? null,
+      responsavelId: parsed.data.responsavelId,
+      dataVencimento: parsed.data.dataVencimento.toISOString(),
+    },
+    log: req.log,
+  });
+
+  res.json(result);
+});
+
 router.patch("/deals/:id", async (req, res) => {
   const body = req.body as Record<string, unknown>;
   const { handoff: rawHandoff, ...dealBody } = body;
