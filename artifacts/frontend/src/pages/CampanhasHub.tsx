@@ -290,9 +290,10 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+        <Card><CardContent className="p-3 text-center"><p className="text-[10px] text-muted-foreground">Total</p><p className="mt-1 text-xl font-semibold">{summary.total}</p></CardContent></Card>
         <Card><CardContent className="p-3 text-center"><p className="text-[10px] text-muted-foreground">A preparar</p><p className="mt-1 text-xl font-semibold">{summary.ready}</p></CardContent></Card>
-        <Card><CardContent className="p-3 text-center"><p className="text-[10px] text-muted-foreground">Produção</p><p className="mt-1 text-xl font-semibold">{summary.production}</p></CardContent></Card>
+        <Card><CardContent className="p-3 text-center"><p className="text-[10px] text-muted-foreground">Em produção</p><p className="mt-1 text-xl font-semibold">{summary.production}</p></CardContent></Card>
         <Card><CardContent className="p-3 text-center"><p className="text-[10px] text-muted-foreground">Publicadas</p><p className="mt-1 text-xl font-semibold">{summary.published}</p></CardContent></Card>
       </div>
 
