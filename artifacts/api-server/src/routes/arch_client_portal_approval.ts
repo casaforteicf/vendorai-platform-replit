@@ -55,21 +55,70 @@ async function addEvent(
   );
 }
 
-async function getProposalBundleById(proposalId: string) {
-  const proposalResult = await pool.query(`SELECT * FROM arch_proposals WHERE id = $1`, [proposalId]);
+async function getProposalBundleById(proposalId: string, options: { publicView?: boolean } = {}) {
+  const proposalResult = await pool.query(
+    `SELECT p.*, t.name AS tenant_name, t.logo_url AS tenant_logo_url, t.cor_primaria AS tenant_primary_color
+       FROM arch_proposals p
+       LEFT JOIN tenants t ON t.id::text = p.tenant_id::text
+      WHERE p.id = $1`,
+    [proposalId],
+  );
   const proposal = proposalResult.rows[0] ?? null;
   if (!proposal) return { proposal: null, items: [], events: [], deliveries: [] };
 
+  const itemsSql = options.publicView
+    ? `SELECT pi.id, pi.proposal_id, pi.budget_item_id, pi.spec_object_id,
+              pi.item, pi.description, pi.quantity, pi.unit, pi.total,
+              pi.visible_to_client, pi.approval_status, pi.client_comment,
+              pi.approved_at, pi.rejected_at, pi.sort_order, pi.created_at, pi.updated_at,
+              aso.product_name, aso.material_name, aso.manufacturer_name,
+              aso.width_mm, aso.height_mm, aso.depth_mm, aso.length_mm,
+              aso.area_m2, aso.perimeter_m, aso.volume_m3,
+              aso.project_revision, aso.measurement_source, aso.measurement_revision
+         FROM arch_proposal_items pi
+         LEFT JOIN arch_spec_objects aso ON aso.id = pi.spec_object_id
+        WHERE pi.proposal_id = $1
+          AND pi.visible_to_client = true
+        ORDER BY pi.sort_order ASC, pi.created_at ASC`
+    : `SELECT pi.*, aso.product_name, aso.material_name, aso.manufacturer_name,
+              aso.width_mm, aso.height_mm, aso.depth_mm, aso.length_mm,
+              aso.area_m2, aso.perimeter_m, aso.volume_m3,
+              aso.project_revision, aso.measurement_source, aso.measurement_revision
+         FROM arch_proposal_items pi
+         LEFT JOIN arch_spec_objects aso ON aso.id = pi.spec_object_id
+        WHERE pi.proposal_id = $1
+        ORDER BY pi.sort_order ASC, pi.created_at ASC`;
+
   const [itemsResult, eventsResult, deliveriesResult] = await Promise.all([
-    pool.query(`SELECT * FROM arch_proposal_items WHERE proposal_id = $1 ORDER BY sort_order ASC, created_at ASC`, [proposalId]),
+    pool.query(itemsSql, [proposalId]),
     pool.query(`SELECT * FROM arch_proposal_events WHERE proposal_id = $1 ORDER BY created_at DESC`, [proposalId]),
-    pool.query(`SELECT * FROM arch_proposal_deliveries WHERE proposal_id = $1 ORDER BY created_at DESC`, [proposalId]),
+    options.publicView
+      ? Promise.resolve({ rows: [] as any[] })
+      : pool.query(`SELECT * FROM arch_proposal_deliveries WHERE proposal_id = $1 ORDER BY created_at DESC`, [proposalId]),
   ]);
+
+  if (options.publicView) {
+    // Never expose internal technical cost components, internal notes, delivery destinations
+    // or tenant-only fields through a public token.
+    delete proposal.subtotal_material;
+    delete proposal.subtotal_labor;
+    delete proposal.internal_notes;
+  }
 
   return {
     proposal,
     items: itemsResult.rows,
-    events: eventsResult.rows,
+    events: options.publicView
+      ? eventsResult.rows.map((event: any) => ({
+          id: event.id,
+          proposal_id: event.proposal_id,
+          type: event.type,
+          actor_type: event.actor_type,
+          actor_name: event.actor_type === "client" ? event.actor_name : null,
+          message: event.message,
+          created_at: event.created_at,
+        }))
+      : eventsResult.rows,
     deliveries: deliveriesResult.rows,
   };
 }
@@ -119,6 +168,23 @@ async function createProposalFromBudget(tId: string | null, payload: CreatePropo
   const budgetResult = await pool.query(`SELECT * FROM arch_budgets WHERE ${budgetWhere} AND deleted_at IS NULL LIMIT 1`, budgetValues);
   const budget = budgetResult.rows[0];
   if (!budget) throw new Error("Orçamento não encontrado");
+
+  const outdatedResult = await pool.query(
+    `SELECT id, item, specification_revision, specification_impact
+       FROM arch_budget_items
+      WHERE budget_id=$1
+        AND deleted_at IS NULL
+        AND specification_outdated=TRUE`,
+    [payload.budgetId],
+  );
+  if (outdatedResult.rows.length) {
+    const error = new Error("Existem itens com especificação desatualizada. Revise a especificação antes de gerar a proposta.");
+    (error as any).statusCode = 409;
+    (error as any).code = "SPECIFICATION_OUTDATED";
+    (error as any).items = outdatedResult.rows;
+    throw error;
+  }
+
   if (budget.sale_total == null || Number(budget.sale_total) <= 0) {
     const error = new Error("Defina o preço de venda comercial no orçamento antes de gerar a proposta.");
     (error as any).statusCode = 422;
@@ -272,7 +338,7 @@ async function getPublicProposal(portalToken: string) {
     await addEvent(proposal.id, "viewed", "client", "Cliente visualizou a proposta.");
   }
 
-  return getProposalBundleById(proposal.id);
+  return getProposalBundleById(proposal.id, { publicView: true });
 }
 
 async function clientItemDecision(portalToken: string, itemId: string, payload: ClientItemDecisionPayload) {
@@ -299,7 +365,7 @@ async function clientItemDecision(portalToken: string, itemId: string, payload: 
   await addEvent((bundle.proposal as any).id, eventType, "client", eventMsg, { itemId, comment: payload.comment ?? null });
 
   await refreshProposalStatus((bundle.proposal as any).id);
-  return getProposalBundleById((bundle.proposal as any).id);
+  return getProposalBundleById((bundle.proposal as any).id, { publicView: true });
 }
 
 async function clientFinalDecision(portalToken: string, payload: ClientDecisionPayload) {
@@ -325,7 +391,7 @@ async function clientFinalDecision(portalToken: string, payload: ClientDecisionP
   const eventMsg = payload.decision === "approve" ? "Cliente aprovou a proposta." : payload.decision === "reject" ? "Cliente reprovou a proposta." : "Cliente solicitou revisão da proposta.";
   await addEvent((bundle.proposal as any).id, eventType, "client", eventMsg, { comment: payload.comment ?? null }, payload.clientName ?? null);
 
-  return getProposalBundleById((bundle.proposal as any).id);
+  return getProposalBundleById((bundle.proposal as any).id, { publicView: true });
 }
 
 // ─── Router ───────────────────────────────────────────────────────────────────
@@ -351,7 +417,11 @@ archClientPortalApprovalRouter.post("/arch/propostas/from-budget", async (req, r
     logger.error({ err }, "arch/propostas/from-budget error");
     const statusCode = Number((err as any)?.statusCode || 0);
     if (statusCode >= 400 && statusCode < 500) {
-      res.status(statusCode).json({ error: err instanceof Error ? err.message : "Não foi possível gerar a proposta." });
+      res.status(statusCode).json({
+        error: err instanceof Error ? err.message : "Não foi possível gerar a proposta.",
+        code: (err as any)?.code,
+        items: (err as any)?.items,
+      });
       return;
     }
     next(err);
