@@ -30,8 +30,6 @@ const KnowledgeModule = lazy(() => import('./modules/KnowledgeModule').then((m) 
 const OfficeModule = lazy(() => import('./modules/OfficeModule').then((m) => ({ default: m.OfficeModule })))
 const LibraryModule = lazy(() => import('./modules/LibraryModule').then((m) => ({ default: m.LibraryModule })))
 const PromptPlaygroundModule = lazy(() => import('./modules/PromptPlaygroundModule').then((m) => ({ default: m.PromptPlaygroundModule })))
-const AIReviewModule = lazy(() => import('./modules/AIReviewModule').then((m) => ({ default: m.AIReviewModule })))
-const AICorrectionsModule = lazy(() => import('./modules/AICorrectionsModule').then((m) => ({ default: m.AICorrectionsModule })))
 const AIMemoryModule = lazy(() => import('./modules/AIMemoryModule').then((m) => ({ default: m.AIMemoryModule })))
 const SettingsModule = lazy(() => import('./modules/SettingsModule').then((m) => ({ default: m.SettingsModule })))
 const ArqHubView = lazy(() => import('../arqhub/ArqHubView').then((m) => ({ default: m.ArqHubView })))
@@ -140,7 +138,7 @@ const FLOW_STEPS: FlowStep[] = [
   { id:'criar',       icon:'✦',  label:'Projeto',      sublabel:'Cliente e projeto', primary:'home',          extras:['projeto'],                          color: PHX.purple },
   { id:'inspirar',    icon:'🖼️', label:'Inspirar',    sublabel:'Biblioteca',        primary:'biblioteca',    extras:[],                                   color: PHX.blue   },
   { id:'renderizar',  icon:'✨', label:'Renderizar',   sublabel:'Criar e editar render', primary:'renders', extras:['prompt'], color: PHX.purple },
-  { id:'melhorar',    icon:'🔄', label:'Melhorar',    sublabel:'Galeria, versões e aprovação', primary:'real-render-gallery', extras:[], color: PHX.amber  },
+  { id:'melhorar',    icon:'🔄', label:'Melhorar',    sublabel:'Galeria, versões e aprovação', primary:'real-render-gallery', extras:['correcoes','ai-review','render-gallery','post-render'], color: PHX.amber  },
   { id:'especificar', icon:'📋', label:'Especificar', sublabel:'Memorial técnico',  primary:'especificacao', extras:[],                                   color: '#16a34a'  },
   { id:'orcamento',   icon:'💰', label:'Orçamento',   sublabel:'Budget executivo',  primary:'orcamento',     extras:['orcamento-pro'],                    color: '#0369a1'  },
   { id:'apresentar',  icon:'👤', label:'Proposta',    sublabel:'Apresentar ao cliente',primary:'cliente',     extras:[],                                   color: PHX.cyan   },
