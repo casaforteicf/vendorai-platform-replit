@@ -111,6 +111,15 @@ type BalanceItem = {
 
 type BalanceResponse = { propostaId: string; propostaTitulo: string; itens: BalanceItem[] };
 
+type ConfiguredPipelineStage = {
+  id: string;
+  key?: string;
+  label: string;
+  ordem: number;
+  isSystem?: boolean;
+  slaMinutos?: number | null;
+};
+
 const EXECUTION_STAGES = [
   ["pedido_confirmado", "Pedido confirmado"],
   ["liberacao_financeira", "Liberação financeira"],
@@ -365,6 +374,14 @@ export default function PipelineOperacional() {
     staleTime: 15_000, refetchOnWindowFocus: false,
   });
 
+  const pipelineStagesQuery = useQuery<ConfiguredPipelineStage[]>({
+    queryKey: ["operational-pipeline-stages", tenantId, pipeline],
+    enabled: !!tenantId,
+    queryFn: () => api(`/api/tenants/${tenantId}/pipeline-stages?pipeline=${encodeURIComponent(pipeline)}`),
+    staleTime: 15_000,
+    refetchOnWindowFocus: false,
+  });
+
   useEffect(() => {
     const search = new URLSearchParams(window.location.search);
     const cardId = search.get("card");
@@ -482,7 +499,17 @@ export default function PipelineOperacional() {
     onError: (error) => toast({ title: "Não foi possível criar o retorno", description: String(error), variant: "destructive" }),
   });
 
-  const stages = pipeline === "suporte" ? SUPPORT_STAGES : EXECUTION_STAGES;
+  const stages = useMemo<Array<readonly [string, string]>>(() => {
+    const configured = (pipelineStagesQuery.data ?? [])
+      .filter((stage) => Boolean(stage.key))
+      .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
+      .map((stage) => [stage.key!, stage.label] as const);
+
+    if (configured.length > 0) return configured;
+    return pipeline === "suporte"
+      ? SUPPORT_STAGES.map(([key, label]) => [key, label] as const)
+      : EXECUTION_STAGES.map(([key, label]) => [key, label] as const);
+  }, [pipeline, pipelineStagesQuery.data]);
   const cards = cardsQuery.data ?? [];
   const isAdmin = (user as any)?.platformRole === "super_admin" || (user as any)?.platformRole === "tenant_admin" || (user as any)?.userFunction === "administrador";
   const stageIndex = (stage: string) => stages.findIndex(([key]) => key === stage);
@@ -816,17 +843,20 @@ export default function PipelineOperacional() {
                   </>
                 )}
 
+                {["execucao", "suporte"].includes(selectedCard.pipeline) && (
+                  <SupportActivityExecutionPanel
+                    card={selectedCard}
+                    token={token ?? ""}
+                    onChanged={async () => {
+                      const fresh = await api<WorkCard>(`/api/work-cards/${selectedCard.id}`);
+                      setSelectedCard(fresh);
+                      await queryClient.invalidateQueries({ queryKey: ["work-cards", tenantId, selectedCard.pipeline] });
+                    }}
+                  />
+                )}
+
                 {selectedCard.pipeline === "suporte" && (
                   <>
-                    <SupportActivityExecutionPanel
-                      card={selectedCard}
-                      token={token ?? ""}
-                      onChanged={async () => {
-                        const fresh = await api<WorkCard>(`/api/work-cards/${selectedCard.id}`);
-                        setSelectedCard(fresh);
-                        await queryClient.invalidateQueries({ queryKey: ["work-cards", tenantId, "suporte"] });
-                      }}
-                    />
                     <SupportReportPanel
                       card={selectedCard}
                       token={token ?? ""}

@@ -96,12 +96,52 @@ function completedStageGate(card: typeof workCardsTable.$inferSelect, key: strin
   return value === true || Boolean(value && typeof value === "object" && (value as Record<string, unknown>).completed === true);
 }
 
-function missingTransitionRequirements(card: typeof workCardsTable.$inferSelect, targetStage: string): Array<{ stage: string; key: string }> {
+async function configuredOperationalStages(tenantId: string, pipeline: string) {
+  return db.select({
+    id: pipelineStagesTable.id,
+    key: pipelineStagesTable.key,
+    label: pipelineStagesTable.label,
+    ordem: pipelineStagesTable.ordem,
+  }).from(pipelineStagesTable).where(and(
+    eq(pipelineStagesTable.tenantId, tenantId),
+    eq(pipelineStagesTable.pipeline, pipeline),
+  )).orderBy(asc(pipelineStagesTable.ordem));
+}
+
+async function configuredWorkCardMoveAllowed(
+  card: typeof workCardsTable.$inferSelect,
+  targetStage: string,
+): Promise<{ valid: boolean; forward: boolean }> {
+  if (targetStage === card.etapa) return { valid: true, forward: true };
+  if (targetStage === "cancelado") return { valid: true, forward: true };
+  if (TERMINAL_WORK_STAGES.has(card.etapa)) return { valid: true, forward: false };
+
+  const stages = await configuredOperationalStages(card.tenantId, card.pipeline);
+  const currentIndex = stages.findIndex((stage) => stage.key === card.etapa);
+  const targetIndex = stages.findIndex((stage) => stage.key === targetStage);
+
+  // Compatibilidade para cards antigos enquanto a configuração do tenant é semeada.
+  if (stages.length === 0 || currentIndex < 0) {
+    const legacyValid = card.pipeline === "suporte"
+      ? SUPPORT_STAGES.includes(targetStage as typeof SUPPORT_STAGES[number])
+      : EXECUTION_STAGES.includes(targetStage as typeof EXECUTION_STAGES[number]);
+    return { valid: legacyValid, forward: legacyValid && canAdvanceWorkCard(card.pipeline, card.etapa, targetStage) };
+  }
+
+  if (targetIndex < 0) return { valid: false, forward: false };
+  return { valid: true, forward: targetIndex >= currentIndex };
+}
+
+async function missingTransitionRequirements(card: typeof workCardsTable.$inferSelect, targetStage: string): Promise<Array<{ stage: string; key: string }>> {
   if (card.pipeline !== "execucao") return [];
-  const currentIndex = EXECUTION_STAGES.indexOf(card.etapa as typeof EXECUTION_STAGES[number]);
-  const targetIndex = EXECUTION_STAGES.indexOf(targetStage as typeof EXECUTION_STAGES[number]);
+
+  const configured = await configuredOperationalStages(card.tenantId, "execucao");
+  const order = configured.length > 0 ? configured.map((stage) => stage.key) : [...EXECUTION_STAGES];
+  const currentIndex = order.indexOf(card.etapa);
+  const targetIndex = order.indexOf(targetStage);
   if (currentIndex < 0 || targetIndex <= currentIndex) return [];
-  return EXECUTION_STAGES
+
+  return order
     .slice(currentIndex, targetIndex)
     .flatMap((stage) => (EXECUTION_STAGE_REQUIREMENTS[stage] ?? []).map((key) => ({ stage, key })))
     .filter(({ key }) => !completedStageGate(card, key));
@@ -217,7 +257,9 @@ const WORK_STAGE_LABELS: Record<string, string> = {
 };
 
 function isAdmin(req: Request) {
-  return req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  return req.user?.platformRole === "super_admin"
+    || req.user?.platformRole === "tenant_admin"
+    || req.user?.userFunction === "administrador";
 }
 
 function canAccessTenant(req: Request, tenantId: string) {
@@ -866,20 +908,24 @@ function supportAnswerMap(raw: unknown): Record<string, any> {
     : {};
 }
 
-async function supportStageConfig(tenantId: string, stageKey: string) {
+async function operationalStageConfig(tenantId: string, pipeline: string, stageKey: string) {
   const [stage] = await db.select().from(pipelineStagesTable).where(and(
     eq(pipelineStagesTable.tenantId, tenantId),
-    eq(pipelineStagesTable.pipeline, "suporte"),
+    eq(pipelineStagesTable.pipeline, pipeline),
     eq(pipelineStagesTable.key, stageKey),
   )).limit(1);
   return stage ?? null;
 }
 
+async function supportStageConfig(tenantId: string, stageKey: string) {
+  return operationalStageConfig(tenantId, "suporte", stageKey);
+}
+
 async function ensureWorkStageTask(card: typeof workCardsTable.$inferSelect) {
   if (!card.leadId) return [];
 
-  const stageConfig = await supportStageConfig(card.tenantId, card.etapa);
-  const configured = card.pipeline === "suporte"
+  const stageConfig = await operationalStageConfig(card.tenantId, card.pipeline, card.etapa);
+  const configured = ["suporte", "execucao"].includes(card.pipeline)
     ? ((stageConfig?.atividadesPadrao ?? []) as SupportActivityTemplateRuntime[])
     : [];
   const fallback = WORK_STAGE_TASKS[card.etapa];
@@ -964,8 +1010,8 @@ async function ensureWorkStageTask(card: typeof workCardsTable.$inferSelect) {
   return result;
 }
 
-async function missingSupportActivityRequirements(card: typeof workCardsTable.$inferSelect) {
-  if (card.pipeline !== "suporte") return [];
+async function missingOperationalActivityRequirements(card: typeof workCardsTable.$inferSelect) {
+  if (!["suporte", "execucao"].includes(card.pipeline)) return [];
   const activities = await db.select({
     id: activitiesTable.id,
     titulo: activitiesTable.titulo,
@@ -1965,65 +2011,59 @@ router.patch("/work-cards/:id", async (req, res) => {
     res.status(409).json({ error: "CARD_PIPELINE_IMMUTABLE", message: "Um card não muda de pipeline. A transferência cria um novo processo vinculado ao anterior." });
     return;
   }
+  const movement = targetStage !== existing.etapa
+    ? await configuredWorkCardMoveAllowed(existing, targetStage)
+    : { valid: true, forward: true };
   const manualAdminCorrection =
     targetStage !== existing.etapa
-    && !canAdvanceWorkCard(existing.pipeline, existing.etapa, targetStage)
+    && movement.valid
+    && !movement.forward
     && isAdmin(req);
 
-  if (targetStage !== existing.etapa && !canAdvanceWorkCard(existing.pipeline, existing.etapa, targetStage) && !manualAdminCorrection) {
+  if (!movement.valid) {
+    res.status(422).json({ error: "INVALID_TENANT_STAGE", message: "A etapa selecionada não pertence à pipeline configurada deste tenant." });
+    return;
+  }
+  if (targetStage !== existing.etapa && !movement.forward && !manualAdminCorrection) {
     res.status(409).json({ error: "CARD_BACKWARD_FORBIDDEN", message: "O card só pode avançar. Administradores podem corrigir manualmente a etapa quando necessário." });
     return;
-  }
-  if (targetPipeline === "execucao" && !EXECUTION_STAGES.includes(targetStage as typeof EXECUTION_STAGES[number])) {
-    res.status(422).json({ error: "Etapa inválida para pipeline de execução" });
-    return;
-  }
-  if (targetPipeline === "suporte") {
-    const [targetSupportStage] = await db.select({ id: pipelineStagesTable.id }).from(pipelineStagesTable).where(and(
-      eq(pipelineStagesTable.tenantId, existing.tenantId),
-      eq(pipelineStagesTable.pipeline, "suporte"),
-      eq(pipelineStagesTable.key, targetStage),
-    )).limit(1);
-    if (!targetSupportStage && targetStage !== "cancelado") {
-      res.status(422).json({ error: "Etapa inválida para pipeline de suporte deste tenant" });
-      return;
-    }
   }
   if (targetPipeline === "suporte" && parsed.data.responsavelId === null) {
     res.status(422).json({ error: "Card de suporte não pode ficar sem responsável" });
     return;
   }
 
-  const advancingExecutionStage =
-    targetPipeline === "execucao"
+  const advancingOperationalStage =
+    ["execucao", "suporte"].includes(targetPipeline)
     && targetStage !== existing.etapa
     && targetStage !== "cancelado"
-    && canAdvanceWorkCard(existing.pipeline, existing.etapa, targetStage)
+    && movement.forward
     && !manualAdminCorrection;
-  if (advancingExecutionStage) {
-    const missing = missingTransitionRequirements(existing, targetStage);
-    if (missing.length > 0) {
+
+  if (advancingOperationalStage) {
+    // Garante que uma configuração criada enquanto o card já estava na etapa
+    // passe a valer imediatamente, sem exigir sair e voltar para gerar demandas.
+    await ensureWorkStageTask(existing);
+
+    const activityMissing = await missingOperationalActivityRequirements(existing);
+    if (activityMissing.length > 0) {
       res.status(409).json({
-        error: "STAGE_REQUIREMENTS_PENDING",
-        message: "Conclua os requisitos obrigatórios das etapas anteriores antes de avançar.",
+        error: "STAGE_ACTIVITIES_PENDING",
+        message: "Conclua as atividades obrigatórias desta etapa antes de avançar.",
         stage: existing.etapa,
-        missing,
+        missing: activityMissing,
       });
       return;
     }
   }
 
-  const advancingSupportStage =
-    targetPipeline === "suporte"
-    && targetStage !== existing.etapa
-    && targetStage !== "cancelado"
-    && !manualAdminCorrection;
-  if (advancingSupportStage) {
-    const missing = await missingSupportActivityRequirements(existing);
+  const advancingExecutionStage = advancingOperationalStage && targetPipeline === "execucao";
+  if (advancingExecutionStage) {
+    const missing = await missingTransitionRequirements(existing, targetStage);
     if (missing.length > 0) {
       res.status(409).json({
-        error: "SUPPORT_ACTIVITIES_PENDING",
-        message: "Conclua as atividades obrigatórias desta etapa antes de avançar.",
+        error: "STAGE_REQUIREMENTS_PENDING",
+        message: "Conclua os requisitos operacionais obrigatórios das etapas anteriores antes de avançar.",
         stage: existing.etapa,
         missing,
       });
@@ -2144,14 +2184,20 @@ router.patch("/work-cards/:id", async (req, res) => {
   }
 
   if (card.etapa !== existing.etapa && card.leadId) {
+    const [previousConfig, currentConfig] = await Promise.all([
+      operationalStageConfig(card.tenantId, card.pipeline, existing.etapa),
+      operationalStageConfig(card.tenantId, card.pipeline, card.etapa),
+    ]);
+    const previousLabel = previousConfig?.label ?? WORK_STAGE_LABELS[existing.etapa] ?? existing.etapa;
+    const currentLabel = currentConfig?.label ?? WORK_STAGE_LABELS[card.etapa] ?? card.etapa;
     await recordWorkHistory({
       tenantId: card.tenantId,
       leadId: card.leadId,
       dealId: card.dealId,
       tipo: card.pipeline === "suporte" ? "assistencia" : "tarefa",
-      titulo: `${card.codigo}: ${WORK_STAGE_LABELS[card.etapa] ?? card.etapa}`,
+      titulo: `${card.codigo}: ${currentLabel}`,
       descricao: [
-        `Etapa anterior: ${WORK_STAGE_LABELS[existing.etapa] ?? existing.etapa}. Nova etapa: ${WORK_STAGE_LABELS[card.etapa] ?? card.etapa}.`,
+        `Etapa anterior: ${previousLabel}. Nova etapa: ${currentLabel}.`,
         manualAdminCorrection ? "Alteração manual/correção realizada por administrador." : null,
       ].filter(Boolean).join(" "),
       responsavelId: card.responsavelId,

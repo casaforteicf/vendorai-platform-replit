@@ -190,9 +190,9 @@ export function SupportActivityExecutionPanel({
     <div className="space-y-4 rounded-lg border p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold">Execução da etapa atual</p>
+          <p className="text-sm font-semibold">Atividades da etapa atual</p>
           <p className="text-xs text-muted-foreground">
-            Cliente e equipe alimentam o mesmo histórico. As respostas ficam vinculadas à atividade e ao relatório vivo.
+            As demandas, respostas e evidências ficam vinculadas ao processo e podem bloquear o avanço quando forem obrigatórias.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -239,7 +239,7 @@ export function SupportActivityExecutionPanel({
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <div className="flex items-center gap-2">
-                <p className="text-sm font-semibold">{activity.titulo.replace(/\s+—\s+AST-[^\s]+$/i, "")}</p>
+                <p className="text-sm font-semibold">{activity.titulo.replace(/\s+—\s+(?:AST|PED|ENT|OP)-[^\s]+$/i, "")}</p>
                 {activity.status === "concluida" ? (
                   <Badge variant="secondary" className="gap-1"><CheckCircle2 className="h-3 w-3" /> Concluída</Badge>
                 ) : activity.bloqueiaAvanco ? (

@@ -499,7 +499,7 @@ export const supportExecutionRouter: IRouter = Router();
 
 supportExecutionRouter.get("/work-cards/:id/support-activities", async (req, res) => {
   const [card] = await db.select().from(workCardsTable).where(eq(workCardsTable.id, String(req.params.id))).limit(1);
-  if (!card || card.pipeline !== "suporte") return res.status(404).json({ error: "Assistência não encontrada" });
+  if (!card || !["suporte", "execucao"].includes(card.pipeline)) return res.status(404).json({ error: "Processo operacional não encontrado" });
   if (req.user?.tenantId !== card.tenantId && req.user?.platformRole !== "super_admin") return res.status(403).json({ error: "Access denied" });
 
   const activities = await supportActivities(card);
@@ -515,7 +515,7 @@ supportExecutionRouter.post("/work-cards/:id/support-activities/:activityId/answ
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message, issues: parsed.error.issues });
 
   const [card] = await db.select().from(workCardsTable).where(eq(workCardsTable.id, String(req.params.id))).limit(1);
-  if (!card || card.pipeline !== "suporte") return res.status(404).json({ error: "Assistência não encontrada" });
+  if (!card || !["suporte", "execucao"].includes(card.pipeline)) return res.status(404).json({ error: "Processo operacional não encontrado" });
   if (req.user?.tenantId !== card.tenantId && req.user?.platformRole !== "super_admin") return res.status(403).json({ error: "Access denied" });
 
   const [activity] = await db.select().from(activitiesTable).where(and(
@@ -544,21 +544,24 @@ supportExecutionRouter.post("/work-cards/:id/support-activities/:activityId/answ
     const question = activityQuestions.find((item) => item.id === id);
     return Boolean(question && publicQuestion(question));
   });
-  const clientRelevant = visibleChanged || (parsed.data.complete === true && activityQuestions.some(publicQuestion));
-  const activityLabel = activity.titulo.replace(/\s+—\s+AST-[^\s]+$/i, "");
-  await appendSupportTimeline(
-    card,
-    {
-      userName: actor?.name ?? "Equipe",
-      text: result.activity.status === "concluida"
-        ? `Atividade concluída: ${activityLabel}.`
-        : `Atividade atualizada: ${activityLabel}.`,
-      visibility: clientRelevant ? "cliente" : "interno",
-      kind: result.activity.status === "concluida" ? "atividade_concluida" : "atividade_atualizada",
-    },
-    req.log,
-    clientRelevant,
-  );
+  const clientRelevant = card.pipeline === "suporte"
+    && (visibleChanged || (parsed.data.complete === true && activityQuestions.some(publicQuestion)));
+  const activityLabel = activity.titulo.replace(/\s+—\s+(?:AST|PED|ENT|OP)-[^\s]+$/i, "");
+  if (card.pipeline === "suporte") {
+    await appendSupportTimeline(
+      card,
+      {
+        userName: actor?.name ?? "Equipe",
+        text: result.activity.status === "concluida"
+          ? `Atividade concluída: ${activityLabel}.`
+          : `Atividade atualizada: ${activityLabel}.`,
+        visibility: clientRelevant ? "cliente" : "interno",
+        kind: result.activity.status === "concluida" ? "atividade_concluida" : "atividade_atualizada",
+      },
+      req.log,
+      clientRelevant,
+    );
+  }
 
   return res.json({
     activity: { ...result.activity, questions: questionsFrom(result.activity), answers: answerMap(result.activity) },
@@ -571,7 +574,7 @@ supportExecutionRouter.post(
   evidenceUpload.single("file"),
   async (req, res) => {
     const [card] = await db.select().from(workCardsTable).where(eq(workCardsTable.id, String(req.params.id))).limit(1);
-    if (!card || card.pipeline !== "suporte") return res.status(404).json({ error: "Assistência não encontrada" });
+    if (!card || !["suporte", "execucao"].includes(card.pipeline)) return res.status(404).json({ error: "Processo operacional não encontrado" });
     if (req.user?.tenantId !== card.tenantId && req.user?.platformRole !== "super_admin") return res.status(403).json({ error: "Access denied" });
     if (!req.file) return res.status(422).json({ error: "Selecione um arquivo" });
 
@@ -600,18 +603,20 @@ supportExecutionRouter.post(
         actorId: req.user?.sub ?? null,
         actorName: actor?.name ?? "Equipe",
       });
-      const clientRelevant = publicQuestion(question);
-      await appendSupportTimeline(
-        card,
-        {
-          userName: actor?.name ?? "Equipe",
-          text: `Nova evidência registrada em: ${question.texto}.`,
-          visibility: clientRelevant ? "cliente" : "interno",
-          kind: "evidencia_atividade",
-        },
-        req.log,
-        clientRelevant,
-      );
+      const clientRelevant = card.pipeline === "suporte" && publicQuestion(question);
+      if (card.pipeline === "suporte") {
+        await appendSupportTimeline(
+          card,
+          {
+            userName: actor?.name ?? "Equipe",
+            text: `Nova evidência registrada em: ${question.texto}.`,
+            visibility: clientRelevant ? "cliente" : "interno",
+            kind: "evidencia_atividade",
+          },
+          req.log,
+          clientRelevant,
+        );
+      }
       return res.status(201).json({
         attachment: result.attachment,
         activity: { ...result.activity, questions: questionsFrom(result.activity), answers: answerMap(result.activity) },
