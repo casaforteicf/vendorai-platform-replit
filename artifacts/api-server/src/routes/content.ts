@@ -68,6 +68,44 @@ const generateBodySchema = z.object({
   desiredCta: z.string().optional().nullable(),
 });
 
+function normalizeCampaignLabel(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+}
+
+async function plannerContextIsValid(input: {
+  tenantId: string;
+  mediaPlanId: string;
+  campaignId: string;
+  calendarItemId: string;
+}) {
+  const [[plan], [calendarItem]] = await Promise.all([
+    db
+      .select({ conteudo: mediaPlansTable.conteudo })
+      .from(mediaPlansTable)
+      .where(and(eq(mediaPlansTable.id, input.mediaPlanId), eq(mediaPlansTable.tenantId, input.tenantId)))
+      .limit(1),
+    db
+      .select({ mediaPlanId: contentCalendarItemsTable.mediaPlanId, pilar: contentCalendarItemsTable.pilar })
+      .from(contentCalendarItemsTable)
+      .where(and(eq(contentCalendarItemsTable.id, input.calendarItemId), eq(contentCalendarItemsTable.tenantId, input.tenantId)))
+      .limit(1),
+  ]);
+
+  const campaigns = Array.isArray((plan?.conteudo as { campanhas?: unknown[] } | null)?.campanhas)
+    ? ((plan?.conteudo as { campanhas?: Array<{ id?: string; nome?: string }> }).campanhas ?? [])
+    : [];
+  const campaign = campaigns.find((entry) => entry.id === input.campaignId);
+  const calendarCampaignName = String(calendarItem?.pilar ?? "").split(" · ")[0]?.trim() ?? "";
+
+  return Boolean(
+    plan &&
+    calendarItem &&
+    calendarItem.mediaPlanId === input.mediaPlanId &&
+    campaign?.nome &&
+    normalizeCampaignLabel(calendarCampaignName) === normalizeCampaignLabel(campaign.nome),
+  );
+}
+
 async function getMonthlyUsage(
   tenantId: string
 ): Promise<{ used: number; limit: number; configId: string | null }> {
