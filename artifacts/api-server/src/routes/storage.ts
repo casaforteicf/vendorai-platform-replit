@@ -40,6 +40,21 @@ function requireStorageSession(req: Request, res: Response): boolean {
   return true;
 }
 
+function requireStorageBearer(req: Request, res: Response): boolean {
+  const authHeader = String(req.headers.authorization ?? "");
+  if (!authHeader.startsWith("Bearer ")) {
+    res.status(401).json({ error: "Bearer authentication required" });
+    return false;
+  }
+  try {
+    (req as any).user = verifyToken(authHeader.slice(7).trim());
+    return true;
+  } catch {
+    res.status(401).json({ error: "Invalid or expired token" });
+    return false;
+  }
+}
+
 /**
  * POST /storage/uploads/request-url
  *
@@ -48,7 +63,7 @@ function requireStorageSession(req: Request, res: Response): boolean {
  * Then uploads the file directly to the returned presigned URL via PUT.
  */
 router.post("/storage/uploads/request-url", async (req: Request, res: Response) => {
-  if (!requireStorageSession(req, res)) return;
+  if (!requireStorageBearer(req, res)) return;
   const parsed = RequestUploadUrlBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Missing or invalid required fields" });
