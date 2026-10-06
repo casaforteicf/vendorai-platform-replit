@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
@@ -123,6 +123,121 @@ async function uploadEvidence(file: File): Promise<string> {
   return payload.objectPath;
 }
 
+type CampoPersonalizado = {
+  id: string;
+  nome: string;
+  tipo: "text" | "textarea" | "number" | "date" | "checkbox";
+  valor: string | number | boolean | null;
+  obrigatorio: boolean;
+};
+
+function novoCampo(): CampoPersonalizado {
+  return {
+    id: crypto.randomUUID(),
+    nome: "",
+    tipo: "text",
+    valor: "",
+    obrigatorio: false,
+  };
+}
+
+function campoTemValor(campo: CampoPersonalizado) {
+  if (campo.tipo === "checkbox") return typeof campo.valor === "boolean";
+  return String(campo.valor ?? "").trim().length > 0;
+}
+
+function CamposPersonalizadosEditor({
+  campos,
+  onChange,
+}: {
+  campos: CampoPersonalizado[];
+  onChange: (campos: CampoPersonalizado[]) => void;
+}) {
+  function patch(index: number, values: Partial<CampoPersonalizado>) {
+    onChange(campos.map((campo, i) => i === index ? { ...campo, ...values } : campo));
+  }
+
+  return (
+    <div className="space-y-3">
+      {campos.map((campo, index) => (
+        <div key={campo.id} className="rounded-lg border p-3 space-y-3 bg-muted/20">
+          <div className="grid gap-2 sm:grid-cols-[1fr_150px_130px_auto]">
+            <Input
+              value={campo.nome}
+              onChange={(e) => patch(index, { nome: e.target.value })}
+              placeholder="Nome do campo"
+            />
+            <Select
+              value={campo.tipo}
+              onValueChange={(tipo) => patch(index, {
+                tipo: tipo as CampoPersonalizado["tipo"],
+                valor: tipo === "checkbox" ? false : "",
+              })}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="text">Texto curto</SelectItem>
+                <SelectItem value="textarea">Texto longo</SelectItem>
+                <SelectItem value="number">Número</SelectItem>
+                <SelectItem value="date">Data</SelectItem>
+                <SelectItem value="checkbox">Sim / Não</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
+              value={campo.obrigatorio ? "obrigatorio" : "opcional"}
+              onValueChange={(v) => patch(index, { obrigatorio: v === "obrigatorio" })}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="opcional">Opcional</SelectItem>
+                <SelectItem value="obrigatorio">Obrigatório</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button type="button" variant="ghost" onClick={() => onChange(campos.filter((_, i) => i !== index))}>
+              Remover
+            </Button>
+          </div>
+
+          {campo.tipo === "textarea" ? (
+            <Textarea
+              rows={2}
+              value={String(campo.valor ?? "")}
+              onChange={(e) => patch(index, { valor: e.target.value })}
+              placeholder="Valor do campo"
+            />
+          ) : campo.tipo === "checkbox" ? (
+            <Select
+              value={campo.valor === true ? "sim" : "nao"}
+              onValueChange={(v) => patch(index, { valor: v === "sim" })}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="sim">Sim</SelectItem>
+                <SelectItem value="nao">Não</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input
+              type={campo.tipo === "number" ? "number" : campo.tipo === "date" ? "date" : "text"}
+              value={campo.valor == null ? "" : String(campo.valor)}
+              onChange={(e) => patch(index, {
+                valor: campo.tipo === "number"
+                  ? (e.target.value === "" ? "" : Number(e.target.value))
+                  : e.target.value,
+              })}
+              placeholder="Valor do campo"
+            />
+          )}
+        </div>
+      ))}
+
+      <Button type="button" variant="outline" size="sm" onClick={() => onChange([...campos, novoCampo()])}>
+        <Plus className="h-4 w-4 mr-2" /> Adicionar campo
+      </Button>
+    </div>
+  );
+}
+
 function NovaOrdemDialog({
   tenantId,
   open,
@@ -141,6 +256,7 @@ function NovaOrdemDialog({
   const [tipoServicoId, setTipoServicoId] = useState("");
   const [enderecoAtendimento, setEnderecoAtendimento] = useState("");
   const [observacoes, setObservacoes] = useState("");
+  const [camposPersonalizados, setCamposPersonalizados] = useState<CampoPersonalizado[]>([]);
 
   const { data: leads = [] } = useQuery<any[]>({
     queryKey: ["leads-search", tenantId, clienteSearch],
@@ -188,6 +304,7 @@ function NovaOrdemDialog({
       setTipoServicoId("");
       setEnderecoAtendimento("");
       setObservacoes("");
+      setCamposPersonalizados([]);
     },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
@@ -198,6 +315,13 @@ function NovaOrdemDialog({
       toast({ title: "Cliente, tipo de serviço e endereço são obrigatórios", variant: "destructive" });
       return;
     }
+    const camposInvalidos = camposPersonalizados.filter((campo) =>
+      !campo.nome.trim() || (campo.obrigatorio && !campoTemValor(campo))
+    );
+    if (camposInvalidos.length > 0) {
+      toast({ title: "Revise os campos adicionais obrigatórios", variant: "destructive" });
+      return;
+    }
     create.mutate({
       clienteId: selectedLead.id,
       negocioId: negocioId || undefined,
@@ -205,6 +329,7 @@ function NovaOrdemDialog({
       modeloExecucao,
       enderecoAtendimento,
       observacoes: observacoes || undefined,
+      camposPersonalizados,
       clienteAcompanha: true,
     });
   }
@@ -306,6 +431,16 @@ function NovaOrdemDialog({
             />
           </div>
 
+          <div className="space-y-2">
+            <div>
+              <Label>Campos adicionais</Label>
+              <p className="text-xs text-muted-foreground mt-1">
+                Adicione os dados específicos desta OS. Eles poderão ser editados depois na execução.
+              </p>
+            </div>
+            <CamposPersonalizadosEditor campos={camposPersonalizados} onChange={setCamposPersonalizados} />
+          </div>
+
           <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground flex gap-2">
             <Eye className="h-4 w-4 mt-0.5 shrink-0" />
             O acompanhamento do cliente fica ativo por padrão. Evidências e avanços da execução alimentam a timeline da OS.
@@ -338,6 +473,17 @@ function ExecucaoDialog({
   const { toast } = useToast();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [enderecoDraft, setEnderecoDraft] = useState(ordem?.enderecoAtendimento ?? "");
+  const [observacoesDraft, setObservacoesDraft] = useState(ordem?.observacoes ?? "");
+  const [camposDraft, setCamposDraft] = useState<CampoPersonalizado[]>(
+    Array.isArray(ordem?.camposPersonalizados) ? ordem.camposPersonalizados : [],
+  );
+
+  useEffect(() => {
+    setEnderecoDraft(ordem?.enderecoAtendimento ?? "");
+    setObservacoesDraft(ordem?.observacoes ?? "");
+    setCamposDraft(Array.isArray(ordem?.camposPersonalizados) ? ordem.camposPersonalizados : []);
+  }, [ordem?.id, ordem?.enderecoAtendimento, ordem?.observacoes, ordem?.camposPersonalizados]);
 
   const checklist = Array.isArray(ordem?.checklistExecucao) ? ordem.checklistExecucao : [];
   const obrigatorios = checklist.filter((i: any) => i.obrigatorio);
@@ -376,6 +522,27 @@ function ExecucaoDialog({
       toast({ title: "Compartilhamento atualizado." });
     },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const updateDados = useMutation({
+    mutationFn: () =>
+      apiJson(`/api/tenants/${tenantId}/servicos/ordens/${ordem.id}`, {
+        method: "PATCH",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          enderecoAtendimento: enderecoDraft,
+          observacoes: observacoesDraft || null,
+          camposPersonalizados: camposDraft,
+        }),
+      }),
+    onSuccess: (updated) => {
+      qc.setQueryData<any[]>(["servicos-ordens", tenantId], (rows = []) =>
+        rows.map((row) => row.id === updated.id ? { ...row, ...updated } : row),
+      );
+      qc.invalidateQueries({ queryKey: ["servicos-ordens", tenantId] });
+      toast({ title: "Dados da OS atualizados." });
+    },
+    onError: (e: any) => toast({ title: "Erro ao atualizar OS", description: e.message, variant: "destructive" }),
   });
 
   async function addPhoto(item: any, file: File | undefined) {
@@ -481,6 +648,54 @@ function ExecucaoDialog({
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+          </div>
+
+          <div className="rounded-lg border p-4 space-y-4">
+            <div>
+              <h3 className="font-semibold text-sm">Dados editáveis da ordem</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Ajuste os dados padrão ou crie campos específicos sem perder o histórico da OS.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Endereço de atendimento</Label>
+              <Textarea rows={2} value={enderecoDraft} onChange={(e) => setEnderecoDraft(e.target.value)} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Orientações / observações</Label>
+              <Textarea rows={3} value={observacoesDraft} onChange={(e) => setObservacoesDraft(e.target.value)} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Campos adicionais</Label>
+              <CamposPersonalizadosEditor campos={camposDraft} onChange={setCamposDraft} />
+            </div>
+
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                onClick={() => {
+                  const invalidos = camposDraft.filter((campo) =>
+                    !campo.nome.trim() || (campo.obrigatorio && !campoTemValor(campo))
+                  );
+                  if (!enderecoDraft.trim()) {
+                    toast({ title: "O endereço de atendimento é obrigatório", variant: "destructive" });
+                    return;
+                  }
+                  if (invalidos.length) {
+                    toast({ title: "Revise os campos adicionais obrigatórios", variant: "destructive" });
+                    return;
+                  }
+                  updateDados.mutate();
+                }}
+                disabled={updateDados.isPending}
+              >
+                {updateDados.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                <Save className="h-4 w-4 mr-2" /> Salvar dados da OS
+              </Button>
             </div>
           </div>
 
