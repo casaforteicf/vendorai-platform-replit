@@ -150,7 +150,7 @@ router.post("/tenants/:tenantId/campaigns/generate-image", async (req, res) => {
   const buf = Buffer.from(await imgRes.arrayBuffer());
 
   const storage = new ObjectStorageService();
-  const objectPath = await storage.savePrivateBuffer(buf, "image/jpeg", `campaign-img-${crypto.randomUUID()}.jpg`);
+  const objectPath = await storage.savePrivateBuffer(buf, "image/jpeg", `campaign-img-${crypto.randomUUID()}.jpg`, tenantId);
   const imageUrl = `/api/storage/objects${objectPath.replace(/^\/objects/, "")}`;
 
   res.json({ imageUrl, objectPath });
@@ -203,7 +203,7 @@ router.post("/tenants/:tenantId/campaigns/enhance-image", async (req, res) => {
   const outputBase64 = await callReplicateFluxKontext({ imageDataUrl, prompt });
   const buf = Buffer.from(outputBase64, "base64");
 
-  const outObjectPath = await storage.savePrivateBuffer(buf, "image/png", `campaign-img-enhanced-${crypto.randomUUID()}.png`);
+  const outObjectPath = await storage.savePrivateBuffer(buf, "image/png", `campaign-img-enhanced-${crypto.randomUUID()}.png`, tenantId);
   const imageUrl = `/api/storage/objects${outObjectPath.replace(/^\/objects/, "")}`;
 
   res.json({ imageUrl, objectPath: outObjectPath });
