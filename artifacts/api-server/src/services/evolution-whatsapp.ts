@@ -106,6 +106,61 @@ export interface EvolutionMediaResult {
   base64: string;
 }
 
+export interface EvolutionContactNames {
+  savedName: string | null;
+  whatsappName: string | null;
+}
+
+function nonEmptyContactName(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+/**
+ * Busca os nomes conhecidos do contato sincronizado pela Evolution.
+ *
+ * savedName representa o nome da agenda quando a versão/provedor da Evolution
+ * expõe esse campo. whatsappName representa o nome de perfil (pushName).
+ * Nem todas as versões da Evolution/Baileys disponibilizam o nome salvo no
+ * aparelho; por isso ambos são opcionais e o chamador mantém fallback seguro.
+ */
+export async function findEvolutionContactNames(
+  tenantId: string,
+  remoteJid: string,
+  instanceOverride?: string,
+): Promise<EvolutionContactNames> {
+  const instanceName = instanceOverride || instanceNameFor(tenantId);
+  const body = await evoFetch(`/chat/findContacts/${instanceName}`, {
+    method: "POST",
+    body: JSON.stringify({ where: { remoteJid } }),
+  });
+
+  const contacts: Array<Record<string, unknown>> =
+    Array.isArray(body) ? body :
+    Array.isArray(body?.contacts) ? body.contacts :
+    Array.isArray(body?.data) ? body.data :
+    Array.isArray(body?.response) ? body.response :
+    [];
+
+  const normalizedJid = remoteJid.replace(/\D/g, "");
+  const exact = contacts.find((contact) => {
+    const candidate = String(contact["remoteJid"] ?? contact["id"] ?? "");
+    return candidate === remoteJid || candidate.replace(/\D/g, "") === normalizedJid;
+  });
+  const contact = exact ?? contacts[0] ?? null;
+
+  if (!contact) return { savedName: null, whatsappName: null };
+
+  return {
+    savedName:
+      nonEmptyContactName(contact["savedName"]) ??
+      nonEmptyContactName(contact["contactName"]) ??
+      nonEmptyContactName(contact["name"]),
+    whatsappName:
+      nonEmptyContactName(contact["pushName"]) ??
+      nonEmptyContactName(contact["notifyName"]),
+  };
+}
+
 // Busca o conteúdo real (base64) de uma mensagem de mídia recebida —
 // usado pelo webhook ao processar áudio/imagem/documento. Preferido em
 // vez de configurar webhook_base64:true na criação da instância: o
