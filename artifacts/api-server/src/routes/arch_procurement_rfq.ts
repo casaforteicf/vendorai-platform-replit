@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { createHash } from "node:crypto";
 import multer from "multer";
 import { pool } from "@workspace/db";
-import { objectStorageClient } from "../lib/objectStorage.js";
+import { ObjectStorageService, objectStorageClient } from "../lib/objectStorage.js";
 import { logger } from "../lib/logger.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { sendJarvisEmail } from "../services/jarvis-email-provider.js";
@@ -10,6 +10,7 @@ import { sendJarvisEmail } from "../services/jarvis-email-provider.js";
 export const archProcurementRfqRouter: IRouter = Router();
 export const archProcurementRfqPublicRouter: IRouter = Router();
 const publicUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024, files: 5 } });
+const rfqStorage = new ObjectStorageService();
 
 function safeFilename(name: string) {
   return name.normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/-+/g, "-").slice(0, 120) || "documento";
@@ -1020,7 +1021,7 @@ archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token", async (req, res,
     </tr>`).join("");
     const itemMeta = JSON.stringify(items.map((x:any)=>({id:String(x.id),quantity:n(x.quantidade),unit:x.unidade||"un"})));
     const technicalDocRows = technicalDocs.length
-      ? technicalDocs.map((doc:any)=>`<li><a href="${esc(doc.url)}" target="_blank" rel="noopener">${esc(doc.title || doc.name || "Documento técnico")}</a>${doc.version ? ` <small>• ${esc(doc.version)}</small>` : ""}</li>`).join("")
+      ? technicalDocs.map((doc:any,index:number)=>`<li><a href="/api/public/arqdor/rfq/${esc(token)}/documents/${index}" target="_blank" rel="noopener">${esc(doc.title || doc.name || "Documento técnico")}</a>${doc.version ? ` <small>• ${esc(doc.version)}</small>` : ""}</li>`).join("")
       : "<li class='muted'>Nenhum arquivo técnico vinculado a este pacote.</li>";
     const responseDocRows = responseDocs.length
       ? responseDocs.map((doc:any)=>`<li>${esc(doc.name || "Anexo enviado")}</li>`).join("")
@@ -1121,6 +1122,54 @@ archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token", async (req, res,
     };
     </script></body></html>`);
   } catch (err) { logger.error({ err }, "public rfq page error"); next(err); }
+});
+
+archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token/documents/:index", async (req, res, next) => {
+  try {
+    const token = String(req.params["token"] || "");
+    const index = Number(req.params["index"]);
+    if (!Number.isInteger(index) || index < 0) return res.status(404).send("Documento não encontrado.");
+
+    const bundleResult = await pool.query(`SELECT public.arch_rfq_public_bundle($1::uuid) AS bundle`, [token]);
+    const bundle = bundleResult.rows[0]?.bundle;
+    if (!bundle) return res.status(404).send("Cotação não encontrada.");
+
+    const inv = bundle.invitation;
+    const pkg = bundle.package;
+    if (["cancelled"].includes(String(pkg.status))) return res.status(410).send("Pacote encerrado.");
+
+    const docs = Array.isArray(pkg.technical_documents_snapshot)
+      ? pkg.technical_documents_snapshot
+      : Array.isArray(pkg.documents) ? pkg.documents : [];
+    const doc = docs[index];
+    if (!doc?.url) return res.status(404).send("Documento não encontrado.");
+
+    const url = String(doc.url);
+    if (url.startsWith("/api/storage/objects/")) {
+      const objectPath = `/objects/${url.slice("/api/storage/objects/".length)}`;
+      const file = await rfqStorage.getObjectEntityFile(objectPath);
+      const objectResponse = await rfqStorage.downloadObject(file, 300);
+      objectResponse.headers.forEach((value, key) => res.setHeader(key, value));
+      res.setHeader("Cache-Control", "private, max-age=300");
+      res.status(objectResponse.status);
+      return res.send(Buffer.from(await objectResponse.arrayBuffer()));
+    }
+    if (url.startsWith("/objects/")) {
+      const file = await rfqStorage.getObjectEntityFile(url);
+      const objectResponse = await rfqStorage.downloadObject(file, 300);
+      objectResponse.headers.forEach((value, key) => res.setHeader(key, value));
+      res.setHeader("Cache-Control", "private, max-age=300");
+      res.status(objectResponse.status);
+      return res.send(Buffer.from(await objectResponse.arrayBuffer()));
+    }
+    if (/^https:\/\//i.test(url)) return res.redirect(302, url);
+
+    logger.warn({ token, index, tenantId: inv?.tenant_id, url }, "rfq document url rejected");
+    return res.status(404).send("Documento não disponível.");
+  } catch (err) {
+    logger.error({ err }, "public rfq technical document error");
+    next(err);
+  }
 });
 
 archProcurementRfqPublicRouter.post("/public/arqdor/rfq/:token/documents", publicUpload.single("documento"), async (req, res, next) => {
