@@ -153,6 +153,8 @@ export default function ExecutiveDashboardModern({
   const alerts = executive?.alertas ?? [];
   const stages = data?.stages ?? [];
   const goals = data?.goals ?? [];
+  const commercialReconciliation = data?.reconciliation?.commercial;
+  const commercialReconciled = commercialReconciliation?.consistent !== false;
 
   const activeStageData = useMemo(
     () => stages
@@ -247,6 +249,9 @@ export default function ExecutiveDashboardModern({
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <Badge variant="outline" className="border-primary/15 bg-primary/[0.05] text-primary"><Activity className="mr-1.5 h-3 w-3" /> Executivo</Badge>
               <Badge variant="secondary">Dados reais</Badge>
+              <Badge variant={commercialReconciled ? "secondary" : "destructive"}>
+                {commercialReconciled ? "Comercial reconciliado" : "Divergência detectada"}
+              </Badge>
             </div>
             <h1 className="text-2xl font-bold tracking-tight md:text-[30px]">Dashboard{firstName ? ` · ${firstName}` : ""}</h1>
             <p className="mt-1 text-sm text-muted-foreground">Visão completa do negócio em tempo real · {period}</p>
@@ -282,11 +287,28 @@ export default function ExecutiveDashboardModern({
         </div>
       </section>
 
+      {!commercialReconciled ? (
+        <Card className="rounded-2xl border-destructive/30 bg-destructive/[0.03]">
+          <CardContent className="flex items-start gap-3 p-4">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+            <div>
+              <p className="text-sm font-semibold">Divergência nas métricas comerciais detectada automaticamente</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                O total oficial é {commercialReconciliation?.activeOpportunities ?? 0} e a soma das etapas é {commercialReconciliation?.stageActiveTotal ?? 0}.
+                O funil fica bloqueado até a reconciliação voltar a fechar.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <section id="dashboard-comercial" className="grid scroll-mt-24 gap-4 xl:grid-cols-[1.7fr_1fr]">
         <Card className="rounded-2xl border-border/60 shadow-sm">
           <CardContent className="p-5 md:p-6">
             <SectionTitle icon={BarChart3} title="Pipeline comercial por etapa" description="Somente negócios comerciais ativos; histórico concluído é exibido separadamente." href="/negocios" />
-            {activeStageData.length ? (
+            {!commercialReconciled ? (
+              <EmptyChart text="Funil temporariamente bloqueado por divergência de reconciliação." />
+            ) : activeStageData.length ? (
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
@@ -319,7 +341,7 @@ export default function ExecutiveDashboardModern({
           <CardContent className="p-5 md:p-6">
             <SectionTitle icon={Gauge} title="Funil comercial" description="Somente etapas da pipeline Comercial; aquecimento, suporte e execução ficam fora deste funil." />
             <div className="space-y-3">
-              {funnelData.length ? funnelData.map((item, index) => {
+              {!commercialReconciled ? <p className="rounded-xl border border-destructive/20 bg-destructive/[0.03] p-4 text-sm text-muted-foreground">Funil ocultado até os totais comerciais voltarem a reconciliar.</p> : funnelData.length ? funnelData.map((item, index) => {
                 const max = Math.max(...funnelData.map((row) => row.ativos), 1);
                 const width = Math.max(28, (item.ativos / max) * 100);
                 return (
