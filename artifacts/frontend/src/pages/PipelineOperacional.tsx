@@ -843,17 +843,20 @@ export default function PipelineOperacional() {
                   </>
                 )}
 
+                {["execucao", "suporte"].includes(selectedCard.pipeline) && (
+                  <SupportActivityExecutionPanel
+                    card={selectedCard}
+                    token={token ?? ""}
+                    onChanged={async () => {
+                      const fresh = await api<WorkCard>(`/api/work-cards/${selectedCard.id}`);
+                      setSelectedCard(fresh);
+                      await queryClient.invalidateQueries({ queryKey: ["work-cards", tenantId, selectedCard.pipeline] });
+                    }}
+                  />
+                )}
+
                 {selectedCard.pipeline === "suporte" && (
                   <>
-                    <SupportActivityExecutionPanel
-                      card={selectedCard}
-                      token={token ?? ""}
-                      onChanged={async () => {
-                        const fresh = await api<WorkCard>(`/api/work-cards/${selectedCard.id}`);
-                        setSelectedCard(fresh);
-                        await queryClient.invalidateQueries({ queryKey: ["work-cards", tenantId, "suporte"] });
-                      }}
-                    />
                     <SupportReportPanel
                       card={selectedCard}
                       token={token ?? ""}
