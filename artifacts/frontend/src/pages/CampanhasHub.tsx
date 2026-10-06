@@ -243,7 +243,17 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
 
       <Card className="border-primary/20">
         <CardContent className="p-4 md:p-5">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="w-full overflow-hidden rounded-xl border bg-muted/30 lg:w-56">
+              {selectedCampaign.coverUrl ? (
+                <img src={selectedCampaign.coverUrl} alt="" className="h-32 w-full object-cover lg:h-36" />
+              ) : (
+                <div className="flex h-24 items-center justify-center gap-2 text-xs text-muted-foreground lg:h-36">
+                  <Megaphone className="h-4 w-4" />
+                  Capa da campanha
+                </div>
+              )}
+            </div>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{campaignStatus}</Badge><span className="text-xs text-muted-foreground">{plan.conteudo.periodoDias ?? 30} dias</span><Badge variant="secondary" className="max-w-full truncate">KPI: {selectedCampaign.kpiPrincipal}</Badge></div>
               <h2 className="mt-2 break-words text-xl font-semibold leading-tight md:text-2xl">{selectedCampaign.nome}</h2>
