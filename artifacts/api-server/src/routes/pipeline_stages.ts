@@ -133,6 +133,39 @@ const activityTemplateSchema = z.object({
   condicao: z.enum(["sempre", "sem_resposta_cliente", "sem_atividade_aberta"]).default("sempre"),
 });
 
+const pipelineStageEventSchema = z.object({
+  id: z.string().min(1).max(120),
+  nome: z.string().trim().min(1).max(200),
+  ativo: z.boolean().default(true),
+  gatilho: z.enum(["entrada", "atraso"]).default("entrada"),
+  tipo: z.enum(["mensagem", "imagem", "documento", "playbook", "demanda"]),
+  destinatario: z.enum(["cliente", "responsavel", "ambos"]).default("cliente"),
+  canal: z.enum(["whatsapp", "notificacao"]).default("whatsapp"),
+  mensagem: z.string().trim().max(8000).nullable().optional(),
+  anexo: z.object({
+    nome: z.string().trim().min(1).max(255),
+    url: z.string().trim().min(1).max(4000),
+    mimeType: z.string().trim().max(200).nullable().optional(),
+  }).nullable().optional(),
+  demanda: z.object({
+    titulo: z.string().trim().min(1).max(200),
+    descricao: z.string().trim().max(4000).nullable().optional(),
+    prazoMinutos: z.number().int().positive().max(525600).nullable().optional(),
+    prioridade: z.enum(["baixa", "normal", "alta", "urgente"]).default("normal"),
+    bloqueiaAvanco: z.boolean().default(false),
+  }).nullable().optional(),
+}).superRefine((event, ctx) => {
+  if (event.tipo === "demanda" && !event.demanda) {
+    ctx.addIssue({ code: "custom", message: "Evento de demanda exige a configuração da demanda." });
+  }
+  if (["imagem", "documento", "playbook"].includes(event.tipo) && !event.anexo) {
+    ctx.addIssue({ code: "custom", message: "Evento de mídia/documento/playbook exige um arquivo anexado." });
+  }
+  if (event.tipo === "mensagem" && !event.mensagem?.trim()) {
+    ctx.addIssue({ code: "custom", message: "Evento de mensagem exige um texto." });
+  }
+});
+
 
 const pipelineStageAIActionSchema = z.enum([
   "create_activity",
@@ -412,6 +445,7 @@ router.post("/tenants/:tenantId/pipeline-stages", async (req, res) => {
     atividadePadraoDescricao: z.string().trim().max(2000).nullable().optional(),
     atividadePadraoPrazoMinutos: z.number().int().positive().nullable().optional(),
     atividadesPadrao: z.array(activityTemplateSchema).max(30).optional(),
+    eventos: z.array(pipelineStageEventSchema).max(50).optional(),
     aiConfig: pipelineStageAIConfigSchema.optional(),
   });
   const parsed = bodySchema.safeParse(req.body);
@@ -455,6 +489,7 @@ router.post("/tenants/:tenantId/pipeline-stages", async (req, res) => {
       atividadePadraoDescricao: parsed.data.atividadePadraoDescricao ?? null,
       atividadePadraoPrazoMinutos: parsed.data.atividadePadraoPrazoMinutos ?? null,
       atividadesPadrao: parsed.data.atividadesPadrao ?? [],
+      eventos: parsed.data.eventos ?? [],
       aiConfig: parsed.data.aiConfig ?? undefined,
     })
     .returning();
@@ -476,6 +511,12 @@ router.patch("/tenants/:tenantId/pipeline-stages/:id", async (req, res) => {
     parsed.data.atividadesPadrao = templates.data;
   }
   // atividadesPadrao validated templates
+
+  if (parsed.data.eventos !== undefined) {
+    const events = z.array(pipelineStageEventSchema).max(50).safeParse(parsed.data.eventos);
+    if (!events.success) return res.status(422).json({ error: events.error.message });
+    parsed.data.eventos = events.data;
+  }
 
   if (parsed.data.aiConfig !== undefined) {
     const aiConfig = pipelineStageAIConfigSchema.safeParse(parsed.data.aiConfig);
