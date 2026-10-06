@@ -1,6 +1,6 @@
 name: Cloudflare Pages
 # Production deploy: Pages frontend; Railway backend remains unchanged.
-# Redeploy marker: brand-kit-footer-overlay 2026-10-06T23:35Z.
+# Redeploy marker: marketing-settings-only 2026-10-06T23:55Z.
 
 on:
   push:
