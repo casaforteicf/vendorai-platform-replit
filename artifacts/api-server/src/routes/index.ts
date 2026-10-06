@@ -10,6 +10,7 @@ import tenantsRouter from "./tenants";
 import usersRouter from "./users";
 import leadsRouter from "./leads";
 import crmCompanyMasterRouter from "./crm_company_master";
+import crmDealParticipantsRouter from "./crm_deal_participants";
 import conversationsRouter from "./conversations";
 import agentActionsLogRouter from "./agent_actions_log";
 import browserAgentRouter from "./browser_agent";
@@ -357,6 +358,7 @@ router.use(usersRouter);
 // Leads, conversations, consents, agent logs — any authenticated user
 router.use(leadsRouter);
 router.use(crmCompanyMasterRouter);
+router.use(crmDealParticipantsRouter);
 router.use(conversationsRouter);
 router.use(agentActionsLogRouter);
 router.use(browserAgentRouter);
