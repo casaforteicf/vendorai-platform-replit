@@ -18,7 +18,7 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Save, Palette, ImageIcon, Building2, Megaphone, Brain, Library, ExternalLink, Sparkles, Loader2, CheckCircle2, ChevronLeft, ChevronRight, Package2, Eye, Bot, WandSparkles } from "lucide-react";
+import { Save, Palette, ImageIcon, Building2, Megaphone, Brain, Library, ExternalLink, Sparkles, Loader2, CheckCircle2, ChevronLeft, ChevronRight, Package2, Eye, Bot, WandSparkles, AlertTriangle, RefreshCw } from "lucide-react";
 
 type BrandStudioMode = "maintain" | "evolve" | "rebuild";
 
