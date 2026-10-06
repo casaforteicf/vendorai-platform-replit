@@ -305,15 +305,24 @@ export class ObjectStorageService {
     return `/objects/media/${safeName}`;
   }
 
-  async savePrivateBuffer(buffer: Buffer, contentType: string, originalName: string): Promise<string> {
+  async savePrivateBuffer(
+    buffer: Buffer,
+    contentType: string,
+    originalName: string,
+    tenantId?: string | null,
+  ): Promise<string> {
     const privateDir = this.getPrivateObjectDir();
     const objectId = randomUUID();
     const ext = originalName.split(".").pop()?.toLowerCase() ?? "bin";
     const safeName = `${objectId}.${ext}`;
-    const fullPath = `${privateDir}/quotes/${safeName}`;
+    const tenantSegment = String(tenantId ?? "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
+    const relativePath = tenantSegment
+      ? `tenants/${tenantSegment}/generated/${safeName}`
+      : `quotes/${safeName}`;
+    const fullPath = `${privateDir}/${relativePath}`;
     const { bucketName, objectName } = parseObjectPath(fullPath);
     await objectStorageClient.bucket(bucketName).file(objectName).save(buffer, { contentType, resumable: false });
-    return `/objects/quotes/${safeName}`;
+    return `/objects/${relativePath}`;
   }
 
   // ACL por objeto não é usado; a fronteira público/privado é aplicada pelas
