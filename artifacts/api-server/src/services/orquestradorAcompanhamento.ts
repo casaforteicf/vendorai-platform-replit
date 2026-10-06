@@ -183,6 +183,47 @@ function objetivoPadrao(etapa: string): string {
   }
 }
 
+function criarPlanoFallback(params: {
+  context: Awaited<ReturnType<typeof carregarContextoBasico>>;
+  objetivo: string;
+  modo: PlanoAcompanhamento["modo"];
+  candidatos: CanalAcompanhamento[];
+  motivoTecnico: string;
+}): PlanoAcompanhamento {
+  const { context, objetivo, modo, candidatos } = params;
+  const canalPrincipal = candidatos[0] ?? null;
+  const nome = context.lead.nome?.trim();
+  const saudacao = nome ? `Olá, ${nome}.` : "Olá.";
+
+  const conteudoPorEtapa: Record<string, string> = {
+    novo: `${saudacao} Quero entender melhor sua necessidade para definir o próximo passo. Podemos conversar?`,
+    qualificado: `${saudacao} Estou acompanhando sua solicitação. Há alguma informação que possamos complementar para avançarmos?`,
+    proposta: `${saudacao} Estou acompanhando seu orçamento. Posso ajudar a revisar algum ponto ou combinar o próximo passo?`,
+    negociacao: `${saudacao} Estou acompanhando a negociação. Há algum ponto pendente que precisamos esclarecer para definir o próximo passo?`,
+    em_aquecimento: `${saudacao} Passando para manter o contato. Quando fizer sentido retomar este assunto, podemos continuar daqui.`,
+  };
+
+  return {
+    ativo: ((context.stage?.acompanhamentoConfig ?? {}) as Record<string, unknown>).ativo === true,
+    etapa: context.etapa,
+    objetivo,
+    modo,
+    canalPrincipal,
+    canaisAlternativos: candidatos.slice(1),
+    tipoConteudo: "texto",
+    argumento: "Retomar o contato de forma objetiva e sem inventar informações.",
+    beneficio: null,
+    diferencial: null,
+    prova: null,
+    chamadaParaAcao: "Confirmar o próximo passo com o cliente.",
+    conteudo: conteudoPorEtapa[context.etapa] ?? `${saudacao} Estou acompanhando seu atendimento. Podemos definir o próximo passo?`,
+    motivo: "Sugestão segura gerada com os dados do CRM enquanto a inteligência avançada está temporariamente indisponível.",
+    requerHumano: false,
+    agenteResponsavelKey: context.stage?.responsavelAgenteKey ?? null,
+    fontes: [],
+  };
+}
+
 export async function planejarAcompanhamento(params: {
   tenantId: string;
   leadId: string;
@@ -217,22 +258,36 @@ export async function planejarAcompanhamento(params: {
       ? "automatico"
       : (params.modoPadrao ?? "gerar_aprovar");
 
-  const contextoNegocio = await resolverContextoNegocio({
-    tenantId: params.tenantId,
-    query: [
-      context.lead.nome,
-      context.etapa,
+  let contextoNegocio: Awaited<ReturnType<typeof resolverContextoNegocio>>;
+  try {
+    contextoNegocio = await resolverContextoNegocio({
+      tenantId: params.tenantId,
+      query: [
+        context.lead.nome,
+        context.etapa,
+        objetivo,
+        context.ci?.intentAnalysis,
+        context.ci?.goalAnalysis,
+        context.ci?.nextBestAction,
+        context.ci?.nextBestActionMotivo,
+        ...context.mensagens.slice(0, 8).map((message) => message.conteudo),
+      ].filter(Boolean).join(" | "),
+      limit: 12,
+    });
+  } catch (error) {
+    params.log.warn({ error, tenantId: params.tenantId, leadId: params.leadId }, "acompanhamento: inteligência do negócio indisponível; usando fallback");
+    return criarPlanoFallback({
+      context,
       objetivo,
-      context.ci?.intentAnalysis,
-      context.ci?.goalAnalysis,
-      context.ci?.nextBestAction,
-      context.ci?.nextBestActionMotivo,
-      ...context.mensagens.slice(0, 8).map((message) => message.conteudo),
-    ].filter(Boolean).join(" | "),
-    limit: 12,
-  });
+      modo,
+      candidatos,
+      motivoTecnico: "contexto_negocio_indisponivel",
+    });
+  }
 
-  const result = await callOpenAI(
+  let result: Awaited<ReturnType<typeof callOpenAI>>;
+  try {
+    result = await callOpenAI(
     params.tenantId,
     "agent_followup",
     [
@@ -283,15 +338,37 @@ export async function planejarAcompanhamento(params: {
         }).slice(0, 65000),
       },
     ],
-    {
-      temperature: 0.2,
-      maxTokens: 1800,
-      responseFormat: { type: "json_object" },
-      log: params.log,
-    },
-  );
+      {
+        temperature: 0.2,
+        maxTokens: 1800,
+        responseFormat: { type: "json_object" },
+        log: params.log,
+      },
+    );
+  } catch (error) {
+    params.log.warn({ error, tenantId: params.tenantId, leadId: params.leadId }, "acompanhamento: IA indisponível; usando fallback");
+    return criarPlanoFallback({
+      context,
+      objetivo,
+      modo,
+      candidatos,
+      motivoTecnico: "ia_indisponivel",
+    });
+  }
 
-  const raw = JSON.parse(result.content || "{}") as Record<string, unknown>;
+  let raw: Record<string, unknown>;
+  try {
+    raw = JSON.parse(result.content || "{}") as Record<string, unknown>;
+  } catch (error) {
+    params.log.warn({ error, tenantId: params.tenantId, leadId: params.leadId }, "acompanhamento: resposta inválida da IA; usando fallback");
+    return criarPlanoFallback({
+      context,
+      objetivo,
+      modo,
+      candidatos,
+      motivoTecnico: "json_invalido",
+    });
+  }
   const suggested = String(raw.canalPrincipal ?? "") as CanalAcompanhamento;
   const canalPrincipal = candidatos.includes(suggested) ? suggested : (candidatos[0] ?? null);
   const alternatives = normalizarCanais(raw.canaisAlternativos)
