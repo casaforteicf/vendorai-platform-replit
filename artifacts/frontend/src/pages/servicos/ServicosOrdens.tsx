@@ -12,10 +12,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import {
+  AudioLines,
   Camera,
   CheckCircle2,
   ClipboardCheck,
   Eye,
+  Film,
+  Image as ImageIcon,
   Loader2,
   MapPin,
   Plus,
@@ -121,6 +124,64 @@ async function uploadEvidence(file: File): Promise<string> {
   }
   await checkedUpload(payload.uploadURL, file);
   return payload.objectPath;
+}
+
+type ServicoMidiaForm = {
+  id: string;
+  url: string;
+  tipo: "image" | "video" | "audio";
+  nome?: string | null;
+  mimeType?: string | null;
+  criadoEm?: string | null;
+  criadoPorNome?: string | null;
+};
+
+function tipoMidia(file: File): ServicoMidiaForm["tipo"] | null {
+  if (file.type.startsWith("image/")) return "image";
+  if (file.type.startsWith("video/")) return "video";
+  if (file.type.startsWith("audio/")) return "audio";
+  return null;
+}
+
+function mediaApiUrl(value: string) {
+  if (/^https?:\/\//i.test(value)) return value;
+  if (value.startsWith("/api/storage/objects/")) return value;
+  if (value.startsWith("/objects/")) return `/api/storage/objects/${value.slice("/objects/".length)}`;
+  return value;
+}
+
+function MidiaPreview({ midia }: { midia: ServicoMidiaForm }) {
+  const [src, setSrc] = useState("");
+  useEffect(() => {
+    let objectUrl = "";
+    let cancelled = false;
+    const raw = mediaApiUrl(midia.url);
+    if (/^https?:\/\//i.test(raw)) {
+      setSrc(raw);
+      return;
+    }
+    fetch(raw, { headers: authHeaders() })
+      .then((r) => {
+        if (!r.ok) throw new Error("Falha ao carregar mídia");
+        return r.blob();
+      })
+      .then((blob) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setSrc(objectUrl);
+      })
+      .catch(() => setSrc(""));
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [midia.url]);
+
+  const frame = "w-full rounded-md border bg-muted";
+  if (!src) return <div className={`${frame} aspect-video flex items-center justify-center text-xs text-muted-foreground`}>Carregando mídia…</div>;
+  if (midia.tipo === "video") return <video src={src} controls preload="metadata" className={`${frame} aspect-video object-contain`} />;
+  if (midia.tipo === "audio") return <audio src={src} controls preload="metadata" className="w-full" />;
+  return <img src={src} alt={midia.nome ?? "Mídia da assistência"} loading="lazy" className={`${frame} aspect-video object-cover`} />;
 }
 
 type ServicoCampoForm = {
@@ -526,6 +587,12 @@ function ExecucaoDialog({
   const obrigatorios = checklist.filter((i: any) => i.obrigatorio);
   const concluidos = obrigatorios.filter((i: any) => i.concluido).length;
   const percentual = obrigatorios.length ? Math.round((concluidos / obrigatorios.length) * 100) : 0;
+  const midiasAssistencia = checklist.flatMap((item: any) => {
+    const midias: ServicoMidiaForm[] = Array.isArray(item.midias) && item.midias.length
+      ? item.midias
+      : (item.fotos ?? []).map((url: string) => ({ id: `legacy-${item.id}-${url}`, url, tipo: "image" as const }));
+    return midias.map((midia) => ({ ...midia, checklistItemId: item.id, etapa: item.titulo, visibilidade: item.visibilidade ?? "interno" }));
+  });
 
   const updateItem = useMutation({
     mutationFn: ({ itemId, payload }: { itemId: string; payload: any }) =>
@@ -582,23 +649,39 @@ function ExecucaoDialog({
     onError: (e: any) => toast({ title: "Erro ao atualizar OS", description: e.message, variant: "destructive" }),
   });
 
-  async function addPhoto(item: any, file: File | undefined) {
+  async function addMedia(item: any, file: File | undefined) {
     if (!file) return;
+    const tipo = tipoMidia(file);
+    if (!tipo) {
+      toast({ title: "Formato não suportado", description: "Use imagem, vídeo ou áudio.", variant: "destructive" });
+      return;
+    }
     try {
       setUploadingId(item.id);
       const path = await uploadEvidence(file);
+      const atuais: ServicoMidiaForm[] = Array.isArray(item.midias) && item.midias.length
+        ? item.midias
+        : (item.fotos ?? []).map((url: string) => ({ id: crypto.randomUUID(), url, tipo: "image" as const }));
+      const midia: ServicoMidiaForm = {
+        id: crypto.randomUUID(),
+        url: path,
+        tipo,
+        nome: file.name,
+        mimeType: file.type || null,
+        criadoEm: new Date().toISOString(),
+      };
       await updateItem.mutateAsync({
         itemId: item.id,
         payload: {
           concluido: false,
           observacao: drafts[item.id] ?? item.observacao ?? "",
-          fotos: [...(item.fotos ?? []), path],
+          midias: [...atuais, midia],
           visibilidade: item.visibilidade ?? "interno",
         },
       });
-      toast({ title: "Foto anexada à atividade." });
+      toast({ title: tipo === "video" ? "Vídeo salvo em Mídias." : tipo === "audio" ? "Áudio salvo em Mídias." : "Imagem salva em Mídias." });
     } catch (e: any) {
-      toast({ title: "Erro ao anexar foto", description: e.message, variant: "destructive" });
+      toast({ title: "Erro ao salvar mídia", description: e.message, variant: "destructive" });
     } finally {
       setUploadingId(null);
     }
@@ -754,6 +837,38 @@ function ExecucaoDialog({
             </div>
           </div>
 
+          <div className="rounded-lg border p-4 space-y-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <h3 className="font-semibold text-sm">Mídias da assistência</h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Imagens, vídeos e áudios ficam aqui como evidências visuais da execução. Documentos continuam em Anexos.
+                </p>
+              </div>
+              <Badge variant="secondary">{midiasAssistencia.length} mídia(s)</Badge>
+            </div>
+            {midiasAssistencia.length === 0 ? (
+              <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                Nenhuma mídia registrada nesta assistência.
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {midiasAssistencia.map((midia: any) => (
+                  <div key={midia.id} className="rounded-lg border p-2 space-y-2">
+                    <MidiaPreview midia={midia} />
+                    <div className="flex items-center gap-2 min-w-0">
+                      {midia.tipo === "video" ? <Film className="h-4 w-4 shrink-0" /> : midia.tipo === "audio" ? <AudioLines className="h-4 w-4 shrink-0" /> : <ImageIcon className="h-4 w-4 shrink-0" />}
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium truncate">{midia.nome ?? (midia.tipo === "video" ? "Vídeo" : midia.tipo === "audio" ? "Áudio" : "Imagem")}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">{midia.etapa}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div>
             <div className="flex items-center gap-2 mb-3">
               <ClipboardCheck className="h-4 w-4" />
@@ -774,11 +889,11 @@ function ExecucaoDialog({
                           <p className="font-medium text-sm">{item.titulo}</p>
                           <p className="text-xs text-muted-foreground mt-0.5">
                             {item.obrigatorio ? "Obrigatório" : "Opcional"} · Evidência: {
-                              item.evidencia === "photo" ? "foto"
+                              item.evidencia === "photo" ? "mídia visual"
                               : item.evidencia === "text" ? "texto"
-                              : item.evidencia === "text_and_photo" ? "texto + foto"
+                              : item.evidencia === "text_and_photo" ? "texto + mídia visual"
                               : item.evidencia === "confirmation" ? "confirmação"
-                              : "texto ou foto"
+                              : "texto ou mídia visual"
                             }
                           </p>
                         </div>
@@ -817,22 +932,21 @@ function ExecucaoDialog({
                           <label className="inline-flex">
                             <input
                               type="file"
-                              accept="image/*"
-                              capture="environment"
+                              accept="image/*,video/*,audio/*"
                               className="hidden"
                               disabled={item.concluido || uploadingId === item.id}
-                              onChange={(e) => addPhoto(item, e.target.files?.[0])}
+                              onChange={(e) => addMedia(item, e.target.files?.[0])}
                             />
                             <span className="inline-flex h-9 cursor-pointer items-center rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted">
                               {uploadingId === item.id
                                 ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                                 : <Camera className="h-4 w-4 mr-2" />}
-                              Foto
+                              Adicionar mídia
                             </span>
                           </label>
 
-                          {(item.fotos?.length ?? 0) > 0 && (
-                            <Badge variant="secondary">{item.fotos.length} foto(s)</Badge>
+                          {((item.midias?.length ?? 0) || (item.fotos?.length ?? 0)) > 0 && (
+                            <Badge variant="secondary">{(item.midias?.length ?? item.fotos?.length ?? 0)} mídia(s)</Badge>
                           )}
 
                           {!item.concluido ? (
@@ -844,7 +958,7 @@ function ExecucaoDialog({
                                   payload: {
                                     concluido: true,
                                     observacao: text,
-                                    fotos: item.fotos ?? [],
+                                    midias: item.midias ?? (item.fotos ?? []).map((url: string) => ({ id: crypto.randomUUID(), url, tipo: "image" })),
                                     visibilidade: item.visibilidade ?? "interno",
                                   },
                                 })
@@ -863,7 +977,7 @@ function ExecucaoDialog({
                                   payload: {
                                     concluido: false,
                                     observacao: text,
-                                    fotos: item.fotos ?? [],
+                                    midias: item.midias ?? (item.fotos ?? []).map((url: string) => ({ id: crypto.randomUUID(), url, tipo: "image" })),
                                     visibilidade: item.visibilidade ?? "interno",
                                   },
                                 })
@@ -873,6 +987,16 @@ function ExecucaoDialog({
                             </Button>
                           )}
                         </div>
+
+                        {(((item.midias?.length ?? 0) || (item.fotos?.length ?? 0)) > 0) && (
+                          <div className="grid gap-2 sm:grid-cols-3">
+                            {(item.midias ?? (item.fotos ?? []).map((url: string) => ({ id: `legacy-${url}`, url, tipo: "image" }))).map((midia: ServicoMidiaForm) => (
+                              <div key={midia.id} className="rounded-md border p-2">
+                                <MidiaPreview midia={midia} />
+                              </div>
+                            ))}
+                          </div>
+                        )}
 
                         {item.concluido && (
                           <p className="text-xs text-muted-foreground">
@@ -890,7 +1014,7 @@ function ExecucaoDialog({
           </div>
 
           <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
-            Ao concluir todos os passos obrigatórios, a OS é concluída automaticamente e a pipeline avança. Cada ação registra responsável, data, hora e evidências. O tenant decide, por etapa e por ação, o que fica interno e o que o cliente/lead pode acompanhar.
+            Ao concluir todos os passos obrigatórios, a OS é concluída automaticamente e a pipeline avança. Cada ação registra responsável, data, hora e evidências. Imagens, vídeos e áudios são organizados em Mídias; documentos permanecem em Anexos. O tenant decide, por etapa e por ação, o que fica interno e o que o cliente/lead pode acompanhar.
           </div>
         </div>
       </DialogContent>
