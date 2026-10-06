@@ -167,7 +167,7 @@ function QuickChoices({ options, onChoose }: { options: QuickOption[]; onChoose:
 export default function PlanoMidia() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const tenantId = user?.tenantId ?? "";
 
   const [config, setConfig] = useState<PlanningConfig>(() => emptyConfig());
@@ -185,6 +185,19 @@ export default function PlanoMidia() {
 
   const campaigns = plan?.conteudo.campanhas ?? [];
   const approved = plan?.conteudo.statusPlanejamento === "aprovado";
+  const advancedPlanning = useMemo(() => {
+    const [, query = ""] = location.split("?");
+    return new URLSearchParams(query).get("advanced") === "1";
+  }, [location]);
+
+  function toggleAdvancedPlanning() {
+    const [path, query = ""] = location.split("?");
+    const params = new URLSearchParams(query);
+    if (advancedPlanning) params.delete("advanced");
+    else params.set("advanced", "1");
+    const nextQuery = params.toString();
+    navigate(nextQuery ? `${path}?${nextQuery}` : path);
+  }
 
   const configuredCount = useMemo(() => [
     config.objetivoPrincipal,
@@ -372,8 +385,15 @@ export default function PlanoMidia() {
     <div className="marketing-plan-responsive space-y-5">
       <Card className="border-primary/30 bg-primary/[0.02]">
         <CardContent className="p-4 md:p-5">
-          <p className="text-sm font-semibold">Planeje primeiro. Execute depois.</p>
-          <p className="mt-1 text-xs text-muted-foreground">O Vendi usa os dados da empresa para preparar uma proposta. Você revisa antes de qualquer execução.</p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold">Planeje primeiro. Execute depois.</p>
+              <p className="mt-1 text-xs text-muted-foreground">O Vendi usa os dados da empresa para preparar uma proposta. Você revisa antes de qualquer execução.</p>
+            </div>
+            <Button type="button" size="sm" variant="ghost" onClick={toggleAdvancedPlanning}>
+              {advancedPlanning ? "Ocultar opções avançadas" : "Opções avançadas"}
+            </Button>
+          </div>
           <div className="planning-flow-grid mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
             {[
               ["1", "Informações", "Você define objetivo, público, oferta e limites"],
