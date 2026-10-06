@@ -398,6 +398,16 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
           )}
         </CardContent>
       </Card>
+      <MediaAssetPicker
+        tenantId={tenantId}
+        open={coverPickerOpen}
+        onOpenChange={setCoverPickerOpen}
+        allowedTypes={["image"]}
+        maxSelection={1}
+        title="Escolher capa da campanha"
+        confirmLabel="Usar como capa"
+        onConfirm={(assets) => void saveCampaignCover(assets[0] ?? null)}
+      />
     </div>
   );
 }
@@ -445,16 +455,6 @@ export default function CampanhasHub() {
         <Card role="button" tabIndex={0} onClick={() => setLocation("/content?tab=campanhas&view=praca")} className="cursor-pointer transition hover:border-primary/50"><CardContent className="flex h-full flex-col p-4"><div className="flex items-center gap-2"><Store className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Praça.ai</h2></div><p className="mt-2 text-xs leading-5 text-muted-foreground">Conteúdo e ofertas do Praça.ai.</p><Button size="sm" variant="secondary" className="mt-3 w-full">Gerenciar <ArrowRight className="ml-1 h-3.5 w-3.5" /></Button></CardContent></Card>
         <Card role="button" tabIndex={0} onClick={() => setLocation("/content?tab=campanhas&view=mercados")} className="cursor-pointer transition hover:border-primary/50"><CardContent className="flex h-full flex-col p-4"><div className="flex items-center gap-2"><Layers3 className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Mercados & LPs</h2></div><p className="mt-2 text-xs leading-5 text-muted-foreground">Arquitetura comercial por segmento.</p><Button size="sm" className="mt-3 w-full">Abrir <ArrowRight className="ml-1 h-3.5 w-3.5" /></Button></CardContent></Card>
       </div>
-      <MediaAssetPicker
-        tenantId={tenantId}
-        open={coverPickerOpen}
-        onOpenChange={setCoverPickerOpen}
-        allowedTypes={["image"]}
-        maxSelection={1}
-        title="Escolher capa da campanha"
-        confirmLabel="Usar como capa"
-        onConfirm={(assets) => void saveCampaignCover(assets[0] ?? null)}
-      />
     </div>
   );
 }
