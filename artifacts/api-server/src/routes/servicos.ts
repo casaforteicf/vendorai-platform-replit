@@ -5,6 +5,7 @@ import {
   servicosPrestadoresTable,
   servicosTiposTable,
   servicosOrdensTable,
+  servicosModelosOsTable,
   leadsTable,
   dealsTable,
   type ServicoChecklistItem,
@@ -419,6 +420,63 @@ router.patch("/tenants/:tenantId/servicos/tipos/:id", async (req, res) => {
     .where(and(eq(servicosTiposTable.id, id), eq(servicosTiposTable.tenantId, tenantId)))
     .returning();
   if (!row) return res.status(404).json({ error: "Tipo de serviço not found" });
+  return res.json(row);
+});
+
+// ─── Modelos de Ordem de Serviço ────────────────────────────────────────────
+
+router.get("/tenants/:tenantId/servicos/modelos/:modeloExecucao", async (req, res) => {
+  const tenantId = routeTenantId(req);
+  const modeloExecucao = String(req.params.modeloExecucao ?? "");
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  if (!MODELOS.includes(modeloExecucao as ModeloExecucao)) {
+    return res.status(422).json({ error: "Modelo de execução inválido" });
+  }
+
+  const [row] = await db.select().from(servicosModelosOsTable)
+    .where(and(
+      eq(servicosModelosOsTable.tenantId, tenantId),
+      eq(servicosModelosOsTable.modeloExecucao, modeloExecucao),
+    ))
+    .limit(1);
+
+  return res.json({
+    modeloExecucao,
+    camposPersonalizados: row?.camposPersonalizados ?? [],
+  });
+});
+
+router.put("/tenants/:tenantId/servicos/modelos/:modeloExecucao", async (req, res) => {
+  const tenantId = routeTenantId(req);
+  const modeloExecucao = String(req.params.modeloExecucao ?? "");
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  if (!MODELOS.includes(modeloExecucao as ModeloExecucao)) {
+    return res.status(422).json({ error: "Modelo de execução inválido" });
+  }
+
+  const camposPersonalizados = normalizeCamposPersonalizados(req.body?.camposPersonalizados);
+
+  const [existente] = await db.select({ id: servicosModelosOsTable.id }).from(servicosModelosOsTable)
+    .where(and(
+      eq(servicosModelosOsTable.tenantId, tenantId),
+      eq(servicosModelosOsTable.modeloExecucao, modeloExecucao),
+    ))
+    .limit(1);
+
+  const [row] = existente
+    ? await db.update(servicosModelosOsTable)
+        .set({ camposPersonalizados, updatedAt: new Date() })
+        .where(eq(servicosModelosOsTable.id, existente.id))
+        .returning()
+    : await db.insert(servicosModelosOsTable)
+        .values({
+          tenantId,
+          modeloExecucao,
+          camposPersonalizados,
+          updatedAt: new Date(),
+        } as any)
+        .returning();
+
   return res.json(row);
 });
 
