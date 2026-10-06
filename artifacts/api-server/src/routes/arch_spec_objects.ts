@@ -292,6 +292,84 @@ function elementHash(element: ProjectSpecElement) {
     .digest("hex");
 }
 
+
+type RectCell = { x: number; y: number; width: number; depth: number; floor: number };
+
+function rectUnionArea(cells: RectCell[]) {
+  const valid = cells.filter((cell) => cell.width > 0 && cell.depth > 0);
+  if (!valid.length) return 0;
+  const xs = [...new Set(valid.flatMap((cell) => [cell.x, cell.x + cell.width]))].sort((a, b) => a - b);
+  const ys = [...new Set(valid.flatMap((cell) => [cell.y, cell.y + cell.depth]))].sort((a, b) => a - b);
+  let area = 0;
+  for (let xi = 0; xi < xs.length - 1; xi += 1) {
+    const x1 = xs[xi]!, x2 = xs[xi + 1]!;
+    const mx = (x1 + x2) / 2;
+    for (let yi = 0; yi < ys.length - 1; yi += 1) {
+      const y1 = ys[yi]!, y2 = ys[yi + 1]!;
+      const my = (y1 + y2) / 2;
+      if (valid.some((cell) => mx > cell.x - 1e-9 && mx < cell.x + cell.width + 1e-9 && my > cell.y - 1e-9 && my < cell.y + cell.depth + 1e-9)) {
+        area += (x2 - x1) * (y2 - y1);
+      }
+    }
+  }
+  return round(area);
+}
+
+function exposedRoofPlanArea(cells: RectCell[]) {
+  const floors = [...new Set(cells.map((cell) => cell.floor))].sort((a, b) => a - b);
+  let exposed = 0;
+  for (const floor of floors) {
+    const current = cells.filter((cell) => cell.floor === floor);
+    const above = cells.filter((cell) => cell.floor === floor + 1);
+    if (!above.length) {
+      exposed += rectUnionArea(current);
+      continue;
+    }
+    const all = [...current, ...above];
+    const xs = [...new Set(all.flatMap((cell) => [cell.x, cell.x + cell.width]))].sort((a, b) => a - b);
+    const ys = [...new Set(all.flatMap((cell) => [cell.y, cell.y + cell.depth]))].sort((a, b) => a - b);
+    for (let xi = 0; xi < xs.length - 1; xi += 1) {
+      const x1 = xs[xi]!, x2 = xs[xi + 1]!, mx = (x1 + x2) / 2;
+      for (let yi = 0; yi < ys.length - 1; yi += 1) {
+        const y1 = ys[yi]!, y2 = ys[yi + 1]!, my = (y1 + y2) / 2;
+        const inCurrent = current.some((cell) => mx >= cell.x && mx <= cell.x + cell.width && my >= cell.y && my <= cell.y + cell.depth);
+        const inAbove = above.some((cell) => mx >= cell.x && mx <= cell.x + cell.width && my >= cell.y && my <= cell.y + cell.depth);
+        if (inCurrent && !inAbove) exposed += (x2 - x1) * (y2 - y1);
+      }
+    }
+  }
+  return round(exposed);
+}
+
+function outerRectilinearPerimeter(cells: RectCell[]) {
+  const valid = cells.filter((cell) => cell.width > 0 && cell.depth > 0);
+  if (!valid.length) return 0;
+  const xs = [...new Set(valid.flatMap((cell) => [cell.x, cell.x + cell.width]))].sort((a, b) => a - b);
+  const ys = [...new Set(valid.flatMap((cell) => [cell.y, cell.y + cell.depth]))].sort((a, b) => a - b);
+  const occupied = new Set<string>();
+  for (let xi = 0; xi < xs.length - 1; xi += 1) {
+    const mx = (xs[xi]! + xs[xi + 1]!) / 2;
+    for (let yi = 0; yi < ys.length - 1; yi += 1) {
+      const my = (ys[yi]! + ys[yi + 1]!) / 2;
+      if (valid.some((cell) => mx >= cell.x && mx <= cell.x + cell.width && my >= cell.y && my <= cell.y + cell.depth)) {
+        occupied.add(`${xi}:${yi}`);
+      }
+    }
+  }
+  let perimeter = 0;
+  for (const key of occupied) {
+    const [xiRaw, yiRaw] = key.split(":");
+    const xi = Number(xiRaw), yi = Number(yiRaw);
+    const dx = xs[xi + 1]! - xs[xi]!;
+    const dy = ys[yi + 1]! - ys[yi]!;
+    if (!occupied.has(`${xi - 1}:${yi}`)) perimeter += dy;
+    if (!occupied.has(`${xi + 1}:${yi}`)) perimeter += dy;
+    if (!occupied.has(`${xi}:${yi - 1}`)) perimeter += dx;
+    if (!occupied.has(`${xi}:${yi + 1}`)) perimeter += dx;
+  }
+  return round(perimeter);
+}
+
 function buildProjectElements(concept: any): { revision: string; elements: ProjectSpecElement[] } {
   const configuration = concept?.configuration || {};
   const master = configuration?.projectMaster || null;
@@ -301,6 +379,10 @@ function buildProjectElements(concept: any): { revision: string; elements: Proje
   const openings = Array.isArray(master?.customOpenings) ? master.customOpenings : Array.isArray(configuration?.customOpenings) ? configuration.customOpenings : [];
   const objects = Array.isArray(master?.objects) ? master.objects : Array.isArray(configuration?.objects) ? configuration.objects : [];
   const wallMaterials = master?.wallMaterials || configuration?.wallMaterials || {};
+  const facadeDesign = master?.facadeDesign || configuration?.facadeDesign || concept?.facade_design || {};
+  const facadePreferences = master?.facadePreferences || concept?.facade_preferences || {};
+  const roofConfig = facadeDesign?.roofConfig || {};
+  const roofType = String(facadePreferences?.roof || "platibanda");
   const wallHeightM = Number(configuration?.wallHeight ?? master?.wallHeight ?? 2.8);
   const openingAreaByWall = new Map<string, number>();
   for (const opening of openings) {
@@ -472,12 +554,72 @@ function buildProjectElements(concept: any): { revision: string; elements: Proje
     });
   }
 
+  const roofCells: RectCell[] = rooms
+    .filter((room: any) => room?.kind !== "piscina")
+    .map((room: any) => ({
+      x: Number(room?.x || 0),
+      y: Number(room?.y || 0),
+      width: Number(room?.width || 0),
+      depth: Number(room?.depth || 0),
+      floor: Number(room?.floor || 0),
+    }))
+    .filter((cell: RectCell) => cell.width > 0 && cell.depth > 0);
+
+  if (roofCells.length) {
+    const horizontalAreaM2 = exposedRoofPlanArea(roofCells);
+    const pitchDegrees = roofType === "platibanda" ? 0 : Math.max(0, Math.min(55, Number(roofConfig?.pitchDegrees || 20)));
+    const pitchRadians = (pitchDegrees * Math.PI) / 180;
+    const inclinedAreaM2 = pitchDegrees > 0 ? round(horizontalAreaM2 / Math.cos(pitchRadians)) : horizontalAreaM2;
+
+    elements.push({
+      sourceObjectId: "roof:main",
+      name: roofType === "platibanda" ? "Cobertura / laje superior" : "Cobertura inclinada",
+      description: roofType === "platibanda"
+        ? "Área horizontal exposta calculada pela união exata das projeções dos ambientes, descontando pavimentos superiores."
+        : `Área inclinada calculada a partir da projeção horizontal exposta (${horizontalAreaM2} m²) e inclinação paramétrica de ${pitchDegrees}°.`,
+      category: "cobertura",
+      region: "Cobertura",
+      quantity: inclinedAreaM2,
+      unit: "m²",
+      areaM2: inclinedAreaM2,
+    });
+
+    const gutterEnabled = Boolean(roofConfig?.gutter);
+    const waters = Number(roofConfig?.waters || 2);
+    if (gutterEnabled && roofType !== "platibanda" && waters === 4) {
+      const topFloor = Math.max(...roofCells.map((cell) => cell.floor));
+      const topCells = roofCells.filter((cell) => cell.floor === topFloor);
+      const gutterLengthM = outerRectilinearPerimeter(topCells);
+      elements.push({
+        sourceObjectId: "roof:gutter",
+        name: "Calhas da cobertura",
+        description: "Comprimento calculado no perímetro externo da cobertura superior para configuração de 4 águas.",
+        category: "calha",
+        region: "Cobertura",
+        quantity: gutterLengthM,
+        unit: "m",
+        lengthMm: round(gutterLengthM * 1000, 1),
+        perimeterM: gutterLengthM,
+      });
+    } else if (gutterEnabled && roofType !== "platibanda") {
+      elements.push({
+        sourceObjectId: "roof:gutter",
+        name: "Calhas da cobertura",
+        description: "Calha habilitada no projeto, mas o comprimento exato depende da direção efetiva de cumeeira/beirais para esta configuração. Quantitativo mantido pendente.",
+        category: "calha",
+        region: "Cobertura",
+        quantity: 0,
+        unit: "m",
+      });
+    }
+  }
+
   return { revision, elements };
 }
 
 async function findConceptForProject(tId: string | null, projectId: string) {
   const values: unknown[] = [projectId];
-  let sql = `SELECT id, tenant_id, arch_projeto_id, configuration, rooms, updated_at
+  let sql = `SELECT id, tenant_id, arch_projeto_id, configuration, rooms, facade_preferences, updated_at
                FROM arch_concept_projects
                WHERE (arch_projeto_id = $1 OR id = $1)`;
   if (tId) {
