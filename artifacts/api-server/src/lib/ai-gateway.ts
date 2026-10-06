@@ -563,7 +563,7 @@ export async function callOpenAIFileExtraction(
           {
             type: "input_file",
             filename: file.filename,
-            file_data: \`data:\${file.mimeType};base64,\${file.buffer.toString("base64")}\`,
+            file_data: `data:${file.mimeType};base64,${file.buffer.toString("base64")}`,
           },
           { type: "input_text", text: instruction },
         ],
