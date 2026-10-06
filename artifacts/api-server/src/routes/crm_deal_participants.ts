@@ -44,6 +44,7 @@ function digits(value?: string | null) { return (value ?? "").replace(/\D/g, "")
 
 router.get("/crm/people", async (req, res) => {
   try {
+    // tenant-audit: reviewed tenantIdFromRequest enforces authenticated same-tenant access or explicit super_admin override.
     const tenantId = tenantIdFromRequest(req, typeof req.query.tenantId === "string" ? req.query.tenantId : undefined);
     const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
     const like = `%${q}%`;
@@ -168,6 +169,7 @@ const dealCompanySchema = z.object({
 
 router.get("/crm/deals/:dealId/participants", async (req, res) => {
   try {
+    // tenant-audit: reviewed tenantIdFromRequest enforces authenticated same-tenant access or explicit super_admin override.
     const tenantId = tenantIdFromRequest(req, typeof req.query.tenantId === "string" ? req.query.tenantId : undefined);
     await assertDeal(tenantId, req.params.dealId);
 
