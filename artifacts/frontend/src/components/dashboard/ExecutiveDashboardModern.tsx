@@ -275,7 +275,7 @@ export default function ExecutiveDashboardModern({
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
           <MetricCard label="Novos leads" value={String(commercial?.newLeads ?? 0)} detail={`Criados em ${period}`} icon={Users} href="/leads" />
           <MetricCard label="Oportunidades" value={String(commercial?.activeOpportunities ?? 0)} detail="Negócios ativos no pipeline" icon={BriefcaseBusiness} href="/negocios" />
-          <MetricCard label="Pipeline" value={money(executive?.negociacao?.dealsAbertosValor)} detail={`${executive?.negociacao?.dealsAbertos ?? commercial?.activeOpportunities ?? 0} negócios abertos`} icon={WalletCards} href="/negocios" accent />
+          <MetricCard label="Pipeline comercial" value={money(commercial?.activePipelineValue)} detail={`${commercial?.activeOpportunities ?? 0} negócios comerciais ativos`} icon={WalletCards} href="/negocios" accent />
           <MetricCard label="Conversão" value={percentRatio(commercial?.commercialConversion)} detail={`${conversionWon} ganhos de ${conversionCreated} oportunidades`} icon={Percent} href="/negocios" />
           <MetricCard label="Receita" value={money(commercial?.soldRevenue)} detail={`${commercial?.confirmedSales ?? 0} vendas confirmadas`} icon={Target} href="/negocios" accent />
           <MetricCard label="Atenção" value={String(attentionCount)} detail={`${operation?.overdueTasks ?? 0} vencidas · ${commercial?.unassignedLeads ?? 0} sem responsável`} icon={AlertTriangle} href="#ia-recomenda" />
@@ -285,7 +285,7 @@ export default function ExecutiveDashboardModern({
       <section id="dashboard-comercial" className="grid scroll-mt-24 gap-4 xl:grid-cols-[1.7fr_1fr]">
         <Card className="rounded-2xl border-border/60 shadow-sm">
           <CardContent className="p-5 md:p-6">
-            <SectionTitle icon={BarChart3} title="Pipeline por etapa" description="Comparação entre registros ativos e concluídos com base no histórico real das etapas." href="/negocios" />
+            <SectionTitle icon={BarChart3} title="Pipeline comercial por etapa" description="Somente negócios comerciais ativos; histórico concluído é exibido separadamente." href="/negocios" />
             {activeStageData.length ? (
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
@@ -317,7 +317,7 @@ export default function ExecutiveDashboardModern({
 
         <Card className="rounded-2xl border-border/60 shadow-sm">
           <CardContent className="p-5 md:p-6">
-            <SectionTitle icon={Gauge} title="Funil comercial" description="Etapas com maior volume ativo no período." />
+            <SectionTitle icon={Gauge} title="Funil comercial" description="Somente etapas da pipeline Comercial; aquecimento, suporte e execução ficam fora deste funil." />
             <div className="space-y-3">
               {funnelData.length ? funnelData.map((item, index) => {
                 const max = Math.max(...funnelData.map((row) => row.ativos), 1);
@@ -477,8 +477,8 @@ export default function ExecutiveDashboardModern({
       </section>
 
       <footer className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed px-4 py-3 text-xs text-muted-foreground">
-        <span className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Todos os números exibidos vêm de fontes transacionais oficiais.</span>
-        <span>Sem métricas simuladas · valores indisponíveis permanecem nulos.</span>
+        <span className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Métricas comerciais reconciliadas com a pipeline Comercial.</span>
+        <span>Sem mistura com Aquecimento, Suporte ou Execução · valores indisponíveis permanecem nulos.</span>
       </footer>
     </div>
   );
