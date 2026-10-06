@@ -10,6 +10,7 @@ import { sendPasswordResetEmail } from "../lib/email.js";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { getTenantCountryProfile } from "../lib/tenant-country-profile.js";
 import { resolveSessionTenantContext } from "../lib/session-tenant-context.js";
+import { leadRegistrationMetadata, normalizeLeadEmail, normalizeLeadName } from "../lib/lead-registration-standard.js";
 
 const router: IRouter = Router();
 const protectedRouter: IRouter = Router();
@@ -555,11 +556,15 @@ router.post("/auth/demo-signup", async (req, res) => {
             .insert(leadsTable)
             .values({
               tenantId: vendorai.id,
-              nome: nomePessoa,
+              nome: normalizeLeadName(nomePessoa, "Lead do trial"),
               empresa: nomeEmpresa,
-              email,
+              email: normalizeLeadEmail(email),
               telefone: normalizedPhone,
               source: "trial_signup",
+              metadata: leadRegistrationMetadata(null, {
+                entryChannel: "site",
+                entrySource: "trial_signup",
+              }),
               status: "novo",
               proximaAcao: "Acompanhar ativação do trial e ajudar o cliente a chegar ao primeiro valor.",
               notasNutricao: `Trial de 5 dias iniciado em ${now.toISOString()}. Tenant: ${tenant.id}.`,
@@ -757,7 +762,18 @@ router.post("/auth/praca-signup", async (req, res) => {
           .where(and(eq(funisTable.tenantId, vendorai.id), eq(funisTable.nome, "Funil de Vendas — VendorAI")));
         const [lead] = await db
           .insert(leadsTable)
-          .values({ tenantId: vendorai.id, nome: nomePessoa, empresa: nomeEmpresa, email, telefone: telefone ?? null, source: "praca_ai_signup" })
+          .values({
+            tenantId: vendorai.id,
+            nome: normalizeLeadName(nomePessoa, "Lead Praça.ai"),
+            empresa: nomeEmpresa,
+            email: normalizeLeadEmail(email),
+            telefone: storePhone(telefone),
+            source: "praca_ai_signup",
+            metadata: leadRegistrationMetadata(null, {
+              entryChannel: "site",
+              entrySource: "praca_ai_signup",
+            }),
+          })
           .returning();
         await db.insert(dealsTable).values({
           tenantId: vendorai.id,
