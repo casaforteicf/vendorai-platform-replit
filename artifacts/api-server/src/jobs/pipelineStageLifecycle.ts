@@ -20,7 +20,7 @@ const APP_BASE_URL = "https://app.appvendorai.com";
 const TIME_ZONE = "America/Sao_Paulo";
 const RECENT_TRANSITION_MINUTES = 65;
 
-type PipelineKey = "comercial" | "execucao" | "aquecimento" | "parceiros" | "scout";
+type PipelineKey = "comercial" | "execucao" | "suporte" | "aquecimento" | "parceiros" | "scout";
 
 type LeadContext = {
   nome: string | null;
@@ -280,6 +280,7 @@ function pipelineLabel(pipeline: PipelineKey): string {
   switch (pipeline) {
     case "comercial": return "Comercial";
     case "execucao": return "Execução / Pedidos";
+    case "suporte": return "Suporte / Assistência";
     case "aquecimento": return "Aquecimento";
     case "parceiros": return "Parceiros";
     case "scout": return "Scout";
@@ -444,13 +445,13 @@ export async function runPipelineStageLifecycle(log: Logger): Promise<void> {
     }).from(workCardsTable)
       .leftJoin(leadsTable, and(eq(leadsTable.id, workCardsTable.leadId), eq(leadsTable.tenantId, workCardsTable.tenantId)))
       .leftJoin(usersTable, eq(usersTable.id, workCardsTable.responsavelId))
-      .where(eq(workCardsTable.pipeline, "execucao"))
+      .where(inArray(workCardsTable.pipeline, ["execucao", "suporte"]))
       .orderBy(asc(workCardsTable.updatedAt))
       .limit(2000);
 
     for (const row of cards) {
       const card = row.card;
-      if (!card.responsavelId || ["concluido", "entrega_obra", "instalacao_finalizada"].includes(card.etapa)) continue;
+      if (!card.responsavelId || ["concluido", "entrega_obra", "instalacao_finalizada", "fechamento_assistencia", "cancelado"].includes(card.etapa)) continue;
       if (!(await canRunTenant(card.tenantId))) continue;
 
       const metadata = asRecord(card.metadata);
@@ -458,11 +459,12 @@ export async function runPipelineStageLifecycle(log: Logger): Promise<void> {
       const trackedEnteredAt = typeof metadata.pipelineStageEnteredAt === "string" ? metadata.pipelineStageEnteredAt : null;
       const stageChanged = trackedStage !== card.etapa;
       const enteredAt = stageChanged ? card.updatedAt : trackedEnteredAt || card.updatedAt;
-      const config = stageMap.get(`${card.tenantId}:execucao:${card.etapa}`);
+      const cardPipeline = card.pipeline === "suporte" ? "suporte" : "execucao";
+      const config = stageMap.get(`${card.tenantId}:${cardPipeline}:${card.etapa}`);
       const stageLabel = config?.label || card.etapa;
       await runStageContentInteractions({
         tenantId: card.tenantId,
-        pipeline: "execucao",
+        pipeline: cardPipeline,
         stageKey: card.etapa,
         stageLabel,
         config,
@@ -471,7 +473,7 @@ export async function runPipelineStageLifecycle(log: Logger): Promise<void> {
         processId: card.id,
         log,
       });
-      const transitionCategory = `pipeline_stage_entered:execucao:${card.id}:${card.etapa}`;
+      const transitionCategory = `pipeline_stage_entered:${cardPipeline}:${card.id}:${card.etapa}`;
 
       if (stageChanged || !trackedEnteredAt) {
         await tx.update(workCardsTable).set({
@@ -487,7 +489,7 @@ export async function runPipelineStageLifecycle(log: Logger): Promise<void> {
         await markNotification({
           tenantId: card.tenantId,
           category: transitionCategory,
-          title: "Execução: nova etapa",
+          title: `${pipelineLabel(cardPipeline)}: nova etapa`,
           message: `${clientName(row.lead)} entrou em ${stageLabel}.`,
         });
         try {
@@ -495,7 +497,7 @@ export async function runPipelineStageLifecycle(log: Logger): Promise<void> {
             tenantId: card.tenantId,
             owner: row.owner,
             lead: row.lead,
-            pipelineLabel: "Execução / Pedidos",
+            pipelineLabel: pipelineLabel(cardPipeline),
             stageLabel,
             title: "O processo entrou nesta etapa e está sob sua responsabilidade.",
             dueDate: card.dataFimPrevista,
