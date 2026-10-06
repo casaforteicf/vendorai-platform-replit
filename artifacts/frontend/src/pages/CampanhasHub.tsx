@@ -3,6 +3,7 @@ import { useLocation, useSearch } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { MediaAssetPicker, mediaAssetUrl, type MediaPickerAsset } from "@/components/media/MediaAssetPicker";
 import { Badge } from "@/components/ui/badge";
 import {
   MessageCircle,
@@ -118,6 +119,8 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
   const [error, setError] = useState<string | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [showBriefing, setShowBriefing] = useState(false);
+  const [coverPickerOpen, setCoverPickerOpen] = useState(false);
+  const [savingCover, setSavingCover] = useState(false);
 
   async function load() {
     if (!tenantId) return;
@@ -183,6 +186,30 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
     return Array.from(grouped.values()).sort((a, b) => b.total - a.total);
   }, [selectedItems]);
 
+  async function saveCampaignCover(asset: MediaPickerAsset | null) {
+    if (!plan || !selectedCampaign || !tenantId) return;
+    setSavingCover(true);
+    try {
+      const campaigns = (plan.conteudo.campanhas ?? []).map((campaign) =>
+        campaign.id === selectedCampaign.id
+          ? { ...campaign, coverUrl: asset?.storageUrl || undefined }
+          : campaign,
+      );
+      const response = await fetch(`/api/tenants/${tenantId}/media-plan/${plan.id}`, {
+        method: "PATCH",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ patch: { campanhas } }),
+      });
+      const body = await response.json().catch(() => ({})) as MediaPlan & { error?: string };
+      if (!response.ok) throw new Error(body.error || "Não foi possível salvar a capa.");
+      setPlan(body);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Não foi possível salvar a capa.");
+    } finally {
+      setSavingCover(false);
+    }
+  }
+
   const campaignStatus = useMemo(() => {
     if (summary.total === 0) return "Rascunho";
     if (summary.published === summary.total) return "Finalizada";
@@ -247,13 +274,24 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="w-full overflow-hidden rounded-xl border bg-muted/30 lg:w-56">
               {selectedCampaign.coverUrl ? (
-                <img src={selectedCampaign.coverUrl} alt="" className="h-32 w-full object-cover lg:h-36" />
+                <img src={mediaAssetUrl(selectedCampaign.coverUrl)} alt="" className="h-32 w-full object-cover lg:h-36" />
               ) : (
                 <div className="flex h-24 items-center justify-center gap-2 text-xs text-muted-foreground lg:h-36">
                   <Megaphone className="h-4 w-4" />
                   Capa da campanha
                 </div>
               )}
+              <div className="flex gap-1 border-t p-2">
+                <Button type="button" size="sm" variant="ghost" className="h-7 flex-1 text-xs" disabled={savingCover} onClick={() => setCoverPickerOpen(true)}>
+                  {savingCover ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Images className="mr-1 h-3 w-3" />}
+                  {selectedCampaign.coverUrl ? "Trocar capa" : "Adicionar capa"}
+                </Button>
+                {selectedCampaign.coverUrl && (
+                  <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={savingCover} onClick={() => void saveCampaignCover(null)}>
+                    Remover
+                  </Button>
+                )}
+              </div>
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{campaignStatus}</Badge><span className="text-xs text-muted-foreground">{plan.conteudo.periodoDias ?? 30} dias</span><Badge variant="secondary" className="max-w-full truncate">KPI: {selectedCampaign.kpiPrincipal}</Badge></div>
@@ -407,6 +445,16 @@ export default function CampanhasHub() {
         <Card role="button" tabIndex={0} onClick={() => setLocation("/content?tab=campanhas&view=praca")} className="cursor-pointer transition hover:border-primary/50"><CardContent className="flex h-full flex-col p-4"><div className="flex items-center gap-2"><Store className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Praça.ai</h2></div><p className="mt-2 text-xs leading-5 text-muted-foreground">Conteúdo e ofertas do Praça.ai.</p><Button size="sm" variant="secondary" className="mt-3 w-full">Gerenciar <ArrowRight className="ml-1 h-3.5 w-3.5" /></Button></CardContent></Card>
         <Card role="button" tabIndex={0} onClick={() => setLocation("/content?tab=campanhas&view=mercados")} className="cursor-pointer transition hover:border-primary/50"><CardContent className="flex h-full flex-col p-4"><div className="flex items-center gap-2"><Layers3 className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold">Mercados & LPs</h2></div><p className="mt-2 text-xs leading-5 text-muted-foreground">Arquitetura comercial por segmento.</p><Button size="sm" className="mt-3 w-full">Abrir <ArrowRight className="ml-1 h-3.5 w-3.5" /></Button></CardContent></Card>
       </div>
+      <MediaAssetPicker
+        tenantId={tenantId}
+        open={coverPickerOpen}
+        onOpenChange={setCoverPickerOpen}
+        allowedTypes={["image"]}
+        maxSelection={1}
+        title="Escolher capa da campanha"
+        confirmLabel="Usar como capa"
+        onConfirm={(assets) => void saveCampaignCover(assets[0] ?? null)}
+      />
     </div>
   );
 }
