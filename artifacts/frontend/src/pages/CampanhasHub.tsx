@@ -261,6 +261,11 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
             </div>
           </div>
 
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button size="sm" onClick={() => setLocation(executionUrl("conteudos"))}><Images className="mr-1 h-3.5 w-3.5" />Conteúdos</Button>
+            <Button size="sm" variant="outline" onClick={() => setLocation("/content?tab=resultados")}><Radar className="mr-1 h-3.5 w-3.5" />Resultados</Button>
+          </div>
+
           <button type="button" onClick={() => setShowBriefing((current) => !current)} className="mt-3 inline-flex min-h-9 items-center rounded-md border px-3 text-xs font-medium text-muted-foreground hover:bg-muted/40">
             {showBriefing ? <ChevronUp className="mr-1 h-3.5 w-3.5" /> : <ChevronDown className="mr-1 h-3.5 w-3.5" />}{showBriefing ? "Ocultar briefing" : "Ver briefing da campanha"}
           </button>
