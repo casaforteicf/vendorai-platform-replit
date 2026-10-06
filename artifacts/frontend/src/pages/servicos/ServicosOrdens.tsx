@@ -424,6 +424,22 @@ function ExecucaoDialog({
               <div className="h-full bg-primary transition-all" style={{ width: `${percentual}%` }} />
             </div>
 
+            {ordem?.clienteAcompanha && ordem?.portalToken && (
+              <div className="mt-4 flex items-center gap-2 flex-wrap">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => window.open(`/acompanhar/servico/${ordem.portalToken}`, "_blank", "noopener,noreferrer")}
+                >
+                  <Eye className="h-4 w-4 mr-2" /> Ver como o cliente
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  A visão pública mostra somente a etapa e as ações liberadas para o cliente.
+                </span>
+              </div>
+            )}
+
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>Compartilhar etapa atual com o cliente</Label>
