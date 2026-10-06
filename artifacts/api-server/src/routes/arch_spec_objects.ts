@@ -482,7 +482,7 @@ async function findConceptForProject(tId: string | null, projectId: string) {
                WHERE (arch_projeto_id = $1 OR id = $1)`;
   if (tId) {
     values.push(tId);
-    sql += ` AND tenant_id = ${values.length}`;
+    sql += ` AND tenant_id = $${values.length}`;
   }
   sql += ` ORDER BY updated_at DESC LIMIT 1`;
   const result = await pool.query(sql, values);
@@ -649,7 +649,7 @@ async function getSpecObjectApprovals(tId: string | null, specObjectId: string) 
   let where = "spec_object_id=$1";
   if (tId) {
     values.push(tId);
-    where += ` AND (tenant_id=${values.length} OR tenant_id IS NULL)`;
+    where += ` AND (tenant_id=$${values.length} OR tenant_id IS NULL)`;
   }
   const result = await pool.query(
     `SELECT id, spec_object_id, approval_context, decision, actor_id, actor_name, note, project_revision, created_at
@@ -674,7 +674,7 @@ async function recordSpecObjectApproval(params: {
   let specWhere = "id=$1";
   if (params.tenantId) {
     specValues.push(params.tenantId);
-    specWhere += ` AND tenant_id=${specValues.length}`;
+    specWhere += ` AND tenant_id=$${specValues.length}`;
   }
   const current = await pool.query(`SELECT * FROM arch_spec_objects WHERE ${specWhere} LIMIT 1`, specValues);
   const spec = current.rows[0];
@@ -849,7 +849,7 @@ archSpecObjectsRouter.post("/arch/spec-objects/:id/send-to-budget", async (req, 
     let currentWhere = "id=$1";
     if (tId) {
       currentValues.push(tId);
-      currentWhere += ` AND tenant_id=${currentValues.length}`;
+      currentWhere += ` AND tenant_id=$${currentValues.length}`;
     }
     const currentResult = await pool.query(
       `SELECT * FROM arch_spec_objects WHERE ${currentWhere} LIMIT 1`,
