@@ -42,6 +42,8 @@ interface SpecObjectPayload {
   wasteFactor?: number | null;
   purchaseQuantity?: number | null;
   packageYield?: number | null;
+  purchaseMode?: "same_unit" | "package" | "slab" | "piece" | "kit" | null;
+  purchaseUnit?: string | null;
   catalogProductId?: string | null;
   catalogMaterialId?: string | null;
   manufacturerId?: string | null;
@@ -109,6 +111,7 @@ async function createSpecObject(tId: string | null, payload: SpecObjectPayload) 
       name, description, category, region, quantity, unit, quantity_source,
       width_mm, height_mm, depth_mm, length_mm, area_m2, perimeter_m, volume_m3,
       measurement_source, measurement_revision, waste_factor, purchase_quantity, package_yield,
+      purchase_mode, purchase_unit,
       catalog_product_id, catalog_material_id, manufacturer_id, supplier_id,
       product_name, material_name, manufacturer_name, supplier_name,
       material_value, labor_value, total_value, notes, status, created_at, updated_at
@@ -116,9 +119,9 @@ async function createSpecObject(tId: string | null, payload: SpecObjectPayload) 
       $1,$2,$3,$4,$5,$6,$7,$8,$9,
       $10,$11,$12,$13,$14,$15,$16,
       $17,$18,$19,$20,$21,$22,$23,
-      $24,$25,$26,$27,$28,
-      $29,$30,$31,$32,$33,$34,$35,$36,
-      $37,$38,$39,$40,$41,$42,$43
+      $24,$25,$26,$27,$28,$29,$30,
+      $31,$32,$33,$34,$35,$36,$37,$38,
+      $39,$40,$41,$42,$43,$44,$45
     ) RETURNING *`,
     [
       id, tId, payload.projectId, payload.ambienteId ?? null, payload.cenaId ?? null, payload.renderId ?? null,
@@ -129,6 +132,7 @@ async function createSpecObject(tId: string | null, payload: SpecObjectPayload) 
       payload.areaM2 ?? null, payload.perimeterM ?? null, payload.volumeM3 ?? null,
       payload.measurementSource ?? "pending", payload.measurementRevision ?? null,
       Number(payload.wasteFactor ?? 0), payload.purchaseQuantity ?? null, payload.packageYield ?? null,
+      payload.purchaseMode ?? "same_unit", payload.purchaseUnit ?? payload.unit ?? "un",
       payload.catalogProductId ?? null, payload.catalogMaterialId ?? null, payload.manufacturerId ?? null,
       payload.supplierId ?? null, payload.productName ?? null, payload.materialName ?? null,
       payload.manufacturerName ?? null, payload.supplierName ?? null,
@@ -175,6 +179,8 @@ async function updateSpecObject(id: string, tId: string | null, payload: Partial
     wasteFactor: "waste_factor",
     purchaseQuantity: "purchase_quantity",
     packageYield: "package_yield",
+    purchaseMode: "purchase_mode",
+    purchaseUnit: "purchase_unit",
     catalogProductId: "catalog_product_id",
     catalogMaterialId: "catalog_material_id",
     manufacturerId: "manufacturer_id",
