@@ -14,8 +14,6 @@ import {
   insumosTable,
   subscriptionsTable,
   tenantsTable,
-  mediaPlansTable,
-  contentCalendarItemsTable,
 } from "@workspace/db";
 import {
   generateFeedContent,
@@ -40,6 +38,7 @@ import {
   normalizeInstagramCoverSource,
   renderInstagramProfileCover,
 } from "../services/instagram-cover.js";
+import { validateMediaPlanGenerationContext, type ValidatedMediaPlanContext } from "../services/marketingGenerationContext.js";
 
 const router: IRouter = Router();
 
@@ -48,79 +47,6 @@ const PLAN_LIMITS: Record<string, number> = {
   growth: 150,
   enterprise: 200,
 };
-
-type ValidatedMediaPlanContext = {
-  mediaPlanId: string;
-  campaignId: string;
-  calendarItemId: string;
-  campaign: {
-    id: string;
-    nome: string;
-    objetivo: string;
-    produtoServico: string;
-    publico: string;
-    oferta: string;
-    mensagemCentral: string;
-  };
-};
-
-function normalizedContextHeader(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed || null;
-}
-
-function normalizeContextText(value: string) {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
-}
-
-async function validateMediaPlanGenerationContext(
-  tenantId: string,
-  req: Express.Request,
-): Promise<ValidatedMediaPlanContext | null> {
-  const mediaPlanId = normalizedContextHeader(req.headers["x-vendorai-media-plan-id"]);
-  const campaignId = normalizedContextHeader(req.headers["x-vendorai-campaign-id"]);
-  const calendarItemId = normalizedContextHeader(req.headers["x-vendorai-calendar-item-id"]);
-  const supplied = [mediaPlanId, campaignId, calendarItemId].filter(Boolean).length;
-
-  if (supplied === 0) return null;
-  if (supplied !== 3) {
-    throw Object.assign(new Error("Contexto de Plano de Mídia incompleto."), { status: 422 });
-  }
-
-  const [[plan], [calendarItem]] = await Promise.all([
-    db.select({ id: mediaPlansTable.id, tenantId: mediaPlansTable.tenantId, conteudo: mediaPlansTable.conteudo })
-      .from(mediaPlansTable)
-      .where(and(eq(mediaPlansTable.id, mediaPlanId!), eq(mediaPlansTable.tenantId, tenantId)))
-      .limit(1),
-    db.select({
-      id: contentCalendarItemsTable.id,
-      tenantId: contentCalendarItemsTable.tenantId,
-      mediaPlanId: contentCalendarItemsTable.mediaPlanId,
-      pilar: contentCalendarItemsTable.pilar,
-    })
-      .from(contentCalendarItemsTable)
-      .where(and(eq(contentCalendarItemsTable.id, calendarItemId!), eq(contentCalendarItemsTable.tenantId, tenantId)))
-      .limit(1),
-  ]);
-
-  if (!plan || plan.tenantId !== tenantId) throw Object.assign(new Error("Plano de Mídia não pertence ao tenant atual."), { status: 422 });
-  if (!calendarItem || calendarItem.tenantId !== tenantId || calendarItem.mediaPlanId !== mediaPlanId) {
-    throw Object.assign(new Error("Ação do calendário não pertence ao Plano de Mídia informado."), { status: 422 });
-  }
-
-  const campaign = plan.conteudo.campanhas?.find((item) => item.id === campaignId);
-  if (!campaign) {
-    throw Object.assign(new Error("Campanha não pertence ao Plano de Mídia informado."), { status: 422 });
-  }
-
-  const plannedCampaignName = normalizeContextText(calendarItem.pilar.split(" · ")[0] || "");
-  if (!plannedCampaignName || plannedCampaignName !== normalizeContextText(campaign.nome)) {
-    throw Object.assign(new Error("Campanha informada não corresponde à ação atual do calendário."), { status: 422 });
-  }
-
-  return { mediaPlanId: mediaPlanId!, campaignId: campaignId!, calendarItemId: calendarItemId!, campaign };
-}
 
 const generateBodySchema = z.object({
   type: z.enum(["feed", "stories", "reels", "linkedin", "youtube", "tiktok"]),
@@ -199,7 +125,7 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
 
   let mediaPlanContext: ValidatedMediaPlanContext | null = null;
   try {
-    mediaPlanContext = await validateMediaPlanGenerationContext(tenantId, req);
+    mediaPlanContext = await validateMediaPlanGenerationContext(tenantId, req.headers);
   } catch (error) {
     const status = typeof (error as { status?: unknown })?.status === "number" ? Number((error as { status?: number }).status) : 422;
     res.status(status).json({ error: error instanceof Error ? error.message : "Contexto de Marketing inválido." });
