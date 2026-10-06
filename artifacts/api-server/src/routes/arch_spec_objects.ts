@@ -18,12 +18,27 @@ interface SpecObjectPayload {
   cenaId?: string | null;
   renderId?: string | null;
   sourceObjectId?: string | null;
+  sourceType?: string | null;
+  projectRevision?: string | null;
   name: string;
   description?: string | null;
   category?: string | null;
   region?: string | null;
   quantity?: number;
   unit?: string;
+  quantitySource?: string | null;
+  widthMm?: number | null;
+  heightMm?: number | null;
+  depthMm?: number | null;
+  lengthMm?: number | null;
+  areaM2?: number | null;
+  perimeterM?: number | null;
+  volumeM3?: number | null;
+  measurementSource?: string | null;
+  measurementRevision?: string | null;
+  wasteFactor?: number | null;
+  purchaseQuantity?: number | null;
+  packageYield?: number | null;
   catalogProductId?: string | null;
   catalogMaterialId?: string | null;
   manufacturerId?: string | null;
@@ -78,56 +93,41 @@ async function createSpecObject(tId: string | null, payload: SpecObjectPayload) 
   const result = await pool.query(
     `INSERT INTO arch_spec_objects (
       id, tenant_id, project_id, ambiente_id, cena_id, render_id, source_object_id,
-      name, description, category, region, quantity, unit,
+      source_type, project_revision,
+      name, description, category, region, quantity, unit, quantity_source,
+      width_mm, height_mm, depth_mm, length_mm, area_m2, perimeter_m, volume_m3,
+      measurement_source, measurement_revision, waste_factor, purchase_quantity, package_yield,
       catalog_product_id, catalog_material_id, manufacturer_id, supplier_id,
       product_name, material_name, manufacturer_name, supplier_name,
       material_value, labor_value, total_value, notes, status, created_at, updated_at
     ) VALUES (
-      $1,$2,$3,$4,$5,$6,$7,
-      $8,$9,$10,$11,$12,$13,
-      $14,$15,$16,$17,
-      $18,$19,$20,$21,
-      $22,$23,$24,$25,$26,$27,$28
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,
+      $10,$11,$12,$13,$14,$15,$16,
+      $17,$18,$19,$20,$21,$22,$23,
+      $24,$25,$26,$27,$28,
+      $29,$30,$31,$32,$33,$34,$35,$36,
+      $37,$38,$39,$40,$41,$42,$43
     ) RETURNING *`,
     [
-      id,
-      tId,
-      payload.projectId,
-      payload.ambienteId ?? null,
-      payload.cenaId ?? null,
-      payload.renderId ?? null,
-      payload.sourceObjectId ?? null,
-      payload.name,
-      payload.description ?? null,
-      payload.category ?? null,
-      payload.region ?? null,
-      Number(payload.quantity ?? 1),
-      payload.unit ?? "un",
-      payload.catalogProductId ?? null,
-      payload.catalogMaterialId ?? null,
-      payload.manufacturerId ?? null,
-      payload.supplierId ?? null,
-      payload.productName ?? null,
-      payload.materialName ?? null,
-      payload.manufacturerName ?? null,
-      payload.supplierName ?? null,
-      Number(payload.materialValue ?? 0),
-      Number(payload.laborValue ?? 0),
-      totalValue(payload),
-      payload.notes ?? null,
-      payload.status ?? "draft",
-      now,
-      now,
+      id, tId, payload.projectId, payload.ambienteId ?? null, payload.cenaId ?? null, payload.renderId ?? null,
+      payload.sourceObjectId ?? null, payload.sourceType ?? "manual", payload.projectRevision ?? null,
+      payload.name, payload.description ?? null, payload.category ?? null, payload.region ?? null,
+      Number(payload.quantity ?? 1), payload.unit ?? "un", payload.quantitySource ?? "pending",
+      payload.widthMm ?? null, payload.heightMm ?? null, payload.depthMm ?? null, payload.lengthMm ?? null,
+      payload.areaM2 ?? null, payload.perimeterM ?? null, payload.volumeM3 ?? null,
+      payload.measurementSource ?? "pending", payload.measurementRevision ?? null,
+      Number(payload.wasteFactor ?? 0), payload.purchaseQuantity ?? null, payload.packageYield ?? null,
+      payload.catalogProductId ?? null, payload.catalogMaterialId ?? null, payload.manufacturerId ?? null,
+      payload.supplierId ?? null, payload.productName ?? null, payload.materialName ?? null,
+      payload.manufacturerName ?? null, payload.supplierName ?? null,
+      Number(payload.materialValue ?? 0), Number(payload.laborValue ?? 0), totalValue(payload),
+      payload.notes ?? null, payload.status ?? "draft", now, now,
     ],
   );
   return result.rows[0];
 }
 
-async function updateSpecObject(
-  id: string,
-  tId: string | null,
-  payload: Partial<SpecObjectPayload>,
-) {
+async function updateSpecObject(id: string, tId: string | null, payload: Partial<SpecObjectPayload>) {
   const currentValues: unknown[] = [id];
   let currentWhere = `id = $1`;
   if (tId) {
@@ -139,12 +139,28 @@ async function updateSpecObject(
   if (!current) return null;
 
   const allowed: Record<string, string> = {
+    sourceObjectId: "source_object_id",
+    sourceType: "source_type",
+    projectRevision: "project_revision",
     name: "name",
     description: "description",
     category: "category",
     region: "region",
     quantity: "quantity",
     unit: "unit",
+    quantitySource: "quantity_source",
+    widthMm: "width_mm",
+    heightMm: "height_mm",
+    depthMm: "depth_mm",
+    lengthMm: "length_mm",
+    areaM2: "area_m2",
+    perimeterM: "perimeter_m",
+    volumeM3: "volume_m3",
+    measurementSource: "measurement_source",
+    measurementRevision: "measurement_revision",
+    wasteFactor: "waste_factor",
+    purchaseQuantity: "purchase_quantity",
+    packageYield: "package_yield",
     catalogProductId: "catalog_product_id",
     catalogMaterialId: "catalog_material_id",
     manufacturerId: "manufacturer_id",
@@ -182,50 +198,40 @@ async function updateSpecObject(
 
   values.push(id);
   let where = `id = $${values.length}`;
-
   if (tId) {
     values.push(tId);
     where += ` AND tenant_id = $${values.length}`;
   }
 
-  const result = await pool.query(
-    `UPDATE arch_spec_objects SET ${sets.join(", ")} WHERE ${where} RETURNING *`,
-    values,
-  );
+  const result = await pool.query(`UPDATE arch_spec_objects SET ${sets.join(", ")} WHERE ${where} RETURNING *`, values);
   return result.rows[0] ?? null;
 }
 
 async function createSpecObjectsFromRender(
   tId: string | null,
-  payload: {
-    projectId: string;
-    ambienteId?: string | null;
-    cenaId?: string | null;
-    renderId: string;
-  },
+  payload: { projectId: string; ambienteId?: string | null; cenaId?: string | null; renderId: string },
 ) {
-  const defaults: SpecObjectPayload[] = [
-    {
-      projectId: payload.projectId,
-      ambienteId: payload.ambienteId ?? null,
-      cenaId: payload.cenaId ?? null,
-      renderId: payload.renderId,
-      name: "Objeto identificado no render",
-      category: "a especificar",
-      region: "render aprovado",
-      quantity: 1,
-      unit: "un",
-      materialValue: 0,
-      laborValue: 0,
-      status: "identified",
-      notes: "Criado a partir do render aprovado. Especificar produto, material e fornecedor.",
-    },
-  ];
+  const defaults: SpecObjectPayload[] = [{
+    projectId: payload.projectId,
+    ambienteId: payload.ambienteId ?? null,
+    cenaId: payload.cenaId ?? null,
+    renderId: payload.renderId,
+    sourceType: "render",
+    measurementSource: "pending",
+    quantitySource: "pending",
+    name: "Objeto identificado no render",
+    category: "a especificar",
+    region: "render aprovado",
+    quantity: 1,
+    unit: "un",
+    materialValue: 0,
+    laborValue: 0,
+    status: "identified",
+    notes: "Criado a partir do render aprovado. Medidas devem vir do projeto ou ser confirmadas antes de uso técnico.",
+  }];
 
   const rows = [];
-  for (const item of defaults) {
-    rows.push(await createSpecObject(tId, item));
-  }
+  for (const item of defaults) rows.push(await createSpecObject(tId, item));
   return rows;
 }
 
@@ -275,11 +281,7 @@ archSpecObjectsRouter.post("/arch/spec-objects/bulk-from-render", async (req, re
 archSpecObjectsRouter.patch("/arch/spec-objects/:id", async (req, res, next) => {
   try {
     const tId = tenantId(req);
-    const item = await updateSpecObject(
-      req.params["id"]!,
-      tId,
-      req.body as Partial<SpecObjectPayload>,
-    );
+    const item = await updateSpecObject(req.params["id"]!, tId, req.body as Partial<SpecObjectPayload>);
     if (!item) {
       res.status(404).json({ error: "SpecObject não encontrado" });
       return;
@@ -297,9 +299,7 @@ archSpecObjectsRouter.patch("/arch/spec-objects/:id", async (req, res, next) => 
 archSpecObjectsRouter.post("/arch/spec-objects/:id/send-to-budget", async (req, res, next) => {
   try {
     const tId = tenantId(req);
-    const item = await updateSpecObject(req.params["id"]!, tId, {
-      status: "sent-to-budget",
-    });
+    const item = await updateSpecObject(req.params["id"]!, tId, { status: "sent-to-budget" });
     if (!item) {
       res.status(404).json({ error: "SpecObject não encontrado" });
       return;
