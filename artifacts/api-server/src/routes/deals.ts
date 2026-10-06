@@ -303,9 +303,10 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
     const [responsavel] = await db.select({ id: usersTable.id }).from(usersTable).where(and(
       eq(usersTable.id, responsavelId),
       eq(usersTable.tenantId, deal.tenantId),
+      eq(usersTable.active, true),
     )).limit(1);
     if (!responsavel) {
-      res.status(422).json({ error: "Responsável inválido para este tenant." });
+      res.status(422).json({ error: "O responsável precisa pertencer ao tenant e estar ativo." });
       return;
     }
   }
@@ -670,13 +671,14 @@ router.post("/deals/:id/resume-commercial", async (req, res) => {
     .where(and(
       eq(usersTable.id, parsed.data.responsavelId),
       eq(usersTable.tenantId, existing.tenantId),
+      eq(usersTable.active, true),
     ))
     .limit(1);
 
   if (!responsavel) {
     res.status(422).json({
       error: "INVALID_NEXT_OWNER",
-      message: "O próximo responsável não pertence a esta empresa.",
+      message: "O próximo responsável precisa pertencer à empresa e estar ativo.",
     });
     return;
   }
@@ -839,11 +841,12 @@ router.post("/deals/:id/return-to-qualified", async (req, res) => {
     .where(and(
       eq(usersTable.id, parsed.data.responsavelId),
       eq(usersTable.tenantId, existing.tenantId),
+      eq(usersTable.active, true),
     ))
     .limit(1);
 
   if (!responsavel) {
-    res.status(422).json({ error: "O responsável selecionado não pertence a este tenant." });
+    res.status(422).json({ error: "O responsável selecionado precisa pertencer ao tenant e estar ativo." });
     return;
   }
 
