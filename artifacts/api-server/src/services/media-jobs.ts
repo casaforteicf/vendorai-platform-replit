@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { db, mediaJobsTable } from "@workspace/db";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 
 export type MediaJobStatus = "running" | "done" | "error";
 
@@ -34,6 +35,46 @@ export interface CreateMediaJobInput {
 }
 
 const SNAPSHOT_CONTROL_FIELDS = new Set(["status", "progress", "total", "error"]);
+const mediaJobStorage = new ObjectStorageService();
+
+function mediaObjectPath(raw: string): string | null {
+  if (raw.startsWith("/objects/")) return raw;
+  if (raw.startsWith("/api/storage/objects/")) {
+    return `/objects/${raw.slice("/api/storage/objects/".length)}`;
+  }
+  try {
+    const parsed = new URL(raw);
+    if (parsed.pathname.startsWith("/api/storage/objects/")) {
+      return `/objects/${parsed.pathname.slice("/api/storage/objects/".length)}`;
+    }
+    if (parsed.pathname.startsWith("/objects/")) return parsed.pathname;
+  } catch {
+    // relative path
+  }
+  return null;
+}
+
+async function withSignedMediaAccess(value: unknown): Promise<unknown> {
+  if (typeof value === "string") {
+    const objectPath = mediaObjectPath(value);
+    if (!objectPath) return value;
+    try {
+      return await mediaJobStorage.getObjectEntitySignedUrl(objectPath, 900);
+    } catch {
+      return value;
+    }
+  }
+  if (Array.isArray(value)) {
+    return Promise.all(value.map((item) => withSignedMediaAccess(item)));
+  }
+  if (value && typeof value === "object") {
+    const entries = await Promise.all(
+      Object.entries(value as Record<string, unknown>).map(async ([key, item]) => [key, await withSignedMediaAccess(item)] as const),
+    );
+    return Object.fromEntries(entries);
+  }
+  return value;
+}
 
 function snapshotOutput(snapshot: MediaJobSnapshot): Record<string, unknown> {
   const output: Record<string, unknown> = {};
@@ -102,7 +143,7 @@ export async function getMediaJob(
 
   if (!job) return null;
 
-  const output = (job.output ?? {}) as Record<string, unknown>;
+  const output = await withSignedMediaAccess((job.output ?? {}) as Record<string, unknown>) as Record<string, unknown>;
   const status: MediaJobStatus = job.status === "done" || job.status === "error" ? job.status : "running";
   const snapshot: MediaJobSnapshot = {
     status,
