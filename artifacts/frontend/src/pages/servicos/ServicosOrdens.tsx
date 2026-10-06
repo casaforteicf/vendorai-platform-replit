@@ -28,6 +28,24 @@ function authHeaders() {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
+async function apiJson<T = any>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, init);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error((body as any)?.error ?? `Falha na requisição (HTTP ${response.status})`);
+  }
+  return body as T;
+}
+
+async function checkedUpload(url: string, file: File): Promise<void> {
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: { "Content-Type": file.type || "application/octet-stream" },
+    body: file,
+  });
+  if (!response.ok) throw new Error(`Falha ao enviar foto (HTTP ${response.status})`);
+}
+
 const STATUS_FLOW = [
   "orcamento_pendente",
   "orcamento_enviado",
@@ -85,21 +103,18 @@ function nextStatus(atual: string): string | null {
 
 async function uploadEvidence(file: File): Promise<string> {
   const token = localStorage.getItem("vendorai_token");
-  const requestRes = await fetch("/api/storage/uploads/request-url", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || "application/octet-stream" }),
-  });
-  const payload = await requestRes.json().catch(() => ({})) as { uploadURL?: string; objectPath?: string; error?: string };
-  if (!requestRes.ok || !payload.uploadURL || !payload.objectPath) {
-    throw new Error(payload.error || `Falha ao preparar upload (HTTP ${requestRes.status})`);
+  const payload = await apiJson<{ uploadURL?: string; objectPath?: string; error?: string }>(
+    "/api/storage/uploads/request-url",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || "application/octet-stream" }),
+    },
+  );
+  if (!payload.uploadURL || !payload.objectPath) {
+    throw new Error(payload.error || "Falha ao preparar upload.");
   }
-  const uploadRes = await fetch(payload.uploadURL, {
-    method: "PUT",
-    headers: { "Content-Type": file.type || "application/octet-stream" },
-    body: file,
-  });
-  if (!uploadRes.ok) throw new Error(`Falha ao enviar foto (HTTP ${uploadRes.status})`);
+  await checkedUpload(payload.uploadURL, file);
   return payload.objectPath;
 }
 
@@ -152,13 +167,10 @@ function NovaOrdemDialog({
 
   const create = useMutation({
     mutationFn: (payload: any) =>
-      fetch(`/api/tenants/${tenantId}/servicos/ordens`, {
+      apiJson(`/api/tenants/${tenantId}/servicos/ordens`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify(payload),
-      }).then(async (r) => {
-        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Erro");
-        return r.json();
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["servicos-ordens", tenantId] });
@@ -329,14 +341,10 @@ function ExecucaoDialog({
 
   const updateItem = useMutation({
     mutationFn: ({ itemId, payload }: { itemId: string; payload: any }) =>
-      fetch(`/api/tenants/${tenantId}/servicos/ordens/${ordem.id}/checklist/${itemId}`, {
+      apiJson(`/api/tenants/${tenantId}/servicos/ordens/${ordem.id}/checklist/${itemId}`, {
         method: "PATCH",
         headers: authHeaders(),
         body: JSON.stringify(payload),
-      }).then(async (r) => {
-        const body = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(body.error ?? "Não foi possível validar o passo.");
-        return body;
       }),
     onSuccess: (updated) => {
       qc.setQueryData<any[]>(["servicos-ordens", tenantId], (rows = []) =>
@@ -350,14 +358,10 @@ function ExecucaoDialog({
 
   const updateSharing = useMutation({
     mutationFn: (payload: { compartilharStatusCliente?: boolean; clienteAcompanha?: boolean }) =>
-      fetch(`/api/tenants/${tenantId}/servicos/ordens/${ordem.id}`, {
+      apiJson(`/api/tenants/${tenantId}/servicos/ordens/${ordem.id}`, {
         method: "PATCH",
         headers: authHeaders(),
         body: JSON.stringify(payload),
-      }).then(async (r) => {
-        const body = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(body.error ?? "Não foi possível atualizar o compartilhamento.");
-        return body;
       }),
     onSuccess: (updated) => {
       qc.setQueryData<any[]>(["servicos-ordens", tenantId], (rows = []) =>
@@ -644,14 +648,10 @@ export default function ServicosOrdens() {
 
   const changeStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
-      fetch(`/api/tenants/${tenantId}/servicos/ordens/${id}/status`, {
+      apiJson(`/api/tenants/${tenantId}/servicos/ordens/${id}/status`, {
         method: "PATCH",
         headers: authHeaders(),
         body: JSON.stringify({ status }),
-      }).then(async (r) => {
-        const body = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(body.error ?? "Erro");
-        return body;
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QK });
@@ -662,14 +662,10 @@ export default function ServicosOrdens() {
 
   const cancel = useMutation({
     mutationFn: (id: string) =>
-      fetch(`/api/tenants/${tenantId}/servicos/ordens/${id}/status`, {
+      apiJson(`/api/tenants/${tenantId}/servicos/ordens/${id}/status`, {
         method: "PATCH",
         headers: authHeaders(),
         body: JSON.stringify({ status: "cancelado" }),
-      }).then(async (r) => {
-        const body = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(body.error ?? "Não foi possível cancelar a ordem.");
-        return body;
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: QK }),
     onError: (error: Error) => toast({ title: "Erro ao cancelar ordem", description: error.message, variant: "destructive" }),
