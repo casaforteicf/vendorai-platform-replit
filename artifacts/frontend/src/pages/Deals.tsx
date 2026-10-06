@@ -1625,7 +1625,7 @@ function EditDealSheet({
       const pipelineLabel = transferPipelineOptions.find((item) => item.key === transferPipeline)?.label ?? transferPipeline;
       const stageLabel = body?.destination?.stageLabel ?? transferStages.find((item) => item.key === transferStage)?.label ?? transferStage;
       toast({ title: "Lead movido para outra pipeline", description: `Destino: ${pipelineLabel} / ${stageLabel}. O histórico foi preservado.` });
-      await Promise.all([
+      await Promise.allSettled([
         queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
         queryClient.invalidateQueries({ queryKey: ["work-cards", tenantId, transferPipeline] }),
       ]);
