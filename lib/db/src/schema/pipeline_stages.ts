@@ -53,6 +53,29 @@ export type PipelineStageActivityTemplate = {
   condicao?: "sempre" | "sem_resposta_cliente" | "sem_atividade_aberta";
 };
 
+export type PipelineStageEventTemplate = {
+  id: string;
+  nome: string;
+  ativo?: boolean;
+  gatilho: "entrada" | "atraso";
+  tipo: "mensagem" | "imagem" | "documento" | "playbook" | "demanda";
+  destinatario: "cliente" | "responsavel" | "ambos";
+  canal: "whatsapp" | "notificacao";
+  mensagem?: string | null;
+  anexo?: {
+    nome: string;
+    url: string;
+    mimeType?: string | null;
+  } | null;
+  demanda?: {
+    titulo: string;
+    descricao?: string | null;
+    prazoMinutos?: number | null;
+    prioridade?: "baixa" | "normal" | "alta" | "urgente";
+    bloqueiaAvanco?: boolean;
+  } | null;
+};
+
 export type PipelineStageAICriterion = {
   field: string;
   operator?: "exists" | "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "contains";
@@ -138,6 +161,8 @@ export const pipelineStagesTable = pgTable("pipeline_stages", {
   atividadePadraoPrazoMinutos: integer("atividade_padrao_prazo_minutos"),
   // Modelo V2: múltiplas atividades configuráveis por etapa.
   atividadesPadrao: jsonb("atividades_padrao").$type<PipelineStageActivityTemplate[]>().notNull().default([]),
+  // Eventos disparados pela etapa. Vazio mantém comportamento legado dos tenants existentes.
+  eventos: jsonb("eventos").$type<PipelineStageEventTemplate[]>().notNull().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
