@@ -79,6 +79,20 @@ const COMMERCIAL_STAGE_TASKS: Record<string, string> = {
   ganho: "Confirmar pedido e transferir para execução",
 };
 
+function userMatchesStageResponsibleFunctions(
+  user: { active: boolean | null; userFunction: string | null; customFunctionId: string | null },
+  responsibleFunctions: string[] | null | undefined,
+): boolean {
+  if (user.active !== true) return false;
+  const configured = responsibleFunctions ?? [];
+  if (configured.length === 0) return false;
+
+  const refs = new Set<string>();
+  if (user.userFunction) refs.add(`builtin:${user.userFunction}`);
+  if (user.customFunctionId) refs.add(`custom:${user.customFunctionId}`);
+  return configured.some((responsible) => refs.has(responsible));
+}
+
 async function ensureCommercialStageTasks(deal: typeof dealsTable.$inferSelect) {
   if (!deal.leadId) return;
 
@@ -287,6 +301,7 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
     id: pipelineStagesTable.id,
     key: pipelineStagesTable.key,
     label: pipelineStagesTable.label,
+    responsaveisFuncoes: pipelineStagesTable.responsaveisFuncoes,
   }).from(pipelineStagesTable).where(and(
     eq(pipelineStagesTable.tenantId, deal.tenantId),
     eq(pipelineStagesTable.pipeline, parsed.data.targetPipeline),
@@ -300,13 +315,20 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
 
   const responsavelId = parsed.data.responsavelId ?? deal.assignedTo ?? req.user?.sub ?? null;
   if (responsavelId) {
-    const [responsavel] = await db.select({ id: usersTable.id }).from(usersTable).where(and(
+    const [responsavel] = await db.select({
+      id: usersTable.id,
+      active: usersTable.active,
+      userFunction: usersTable.userFunction,
+      customFunctionId: usersTable.customFunctionId,
+    }).from(usersTable).where(and(
       eq(usersTable.id, responsavelId),
       eq(usersTable.tenantId, deal.tenantId),
-      eq(usersTable.active, true),
     )).limit(1);
-    if (!responsavel) {
-      res.status(422).json({ error: "O responsável precisa pertencer ao tenant e estar ativo." });
+    if (!responsavel || !userMatchesStageResponsibleFunctions(responsavel, targetStageConfig.responsaveisFuncoes)) {
+      res.status(422).json({
+        error: "STAGE_RESPONSIBLE_REQUIRED",
+        message: "O responsável precisa estar ativo e ter uma função configurada como responsável pela etapa de destino.",
+      });
       return;
     }
   }
@@ -835,18 +857,33 @@ router.post("/deals/:id/return-to-qualified", async (req, res) => {
     return;
   }
 
+  const [qualifiedStage] = await db.select({
+    responsaveisFuncoes: pipelineStagesTable.responsaveisFuncoes,
+  }).from(pipelineStagesTable).where(and(
+    eq(pipelineStagesTable.tenantId, existing.tenantId),
+    eq(pipelineStagesTable.pipeline, "comercial"),
+    eq(pipelineStagesTable.key, "qualificado"),
+  )).limit(1);
+
   const [responsavel] = await db
-    .select({ id: usersTable.id })
+    .select({
+      id: usersTable.id,
+      active: usersTable.active,
+      userFunction: usersTable.userFunction,
+      customFunctionId: usersTable.customFunctionId,
+    })
     .from(usersTable)
     .where(and(
       eq(usersTable.id, parsed.data.responsavelId),
       eq(usersTable.tenantId, existing.tenantId),
-      eq(usersTable.active, true),
     ))
     .limit(1);
 
-  if (!responsavel) {
-    res.status(422).json({ error: "O responsável selecionado precisa pertencer ao tenant e estar ativo." });
+  if (!qualifiedStage || !responsavel || !userMatchesStageResponsibleFunctions(responsavel, qualifiedStage.responsaveisFuncoes)) {
+    res.status(422).json({
+      error: "STAGE_RESPONSIBLE_REQUIRED",
+      message: "Selecione um usuário ativo cuja função esteja configurada como responsável pela etapa Qualificado.",
+    });
     return;
   }
 
@@ -1170,6 +1207,7 @@ router.patch("/deals/:id", async (req, res) => {
         id: pipelineStagesTable.id,
         key: pipelineStagesTable.key,
         label: pipelineStagesTable.label,
+        responsaveisFuncoes: pipelineStagesTable.responsaveisFuncoes,
         responsavelAgenteKey: pipelineStagesTable.responsavelAgenteKey,
         aiConfig: pipelineStagesTable.aiConfig,
       }).from(pipelineStagesTable).where(and(
@@ -1178,6 +1216,26 @@ router.patch("/deals/:id", async (req, res) => {
         eq(pipelineStagesTable.key, parsed.data.etapa),
       )).limit(1)
     : [];
+
+  if (etapaChanged && nextAssignedTo) {
+    const [nextOwner] = await db.select({
+      id: usersTable.id,
+      active: usersTable.active,
+      userFunction: usersTable.userFunction,
+      customFunctionId: usersTable.customFunctionId,
+    }).from(usersTable).where(and(
+      eq(usersTable.id, nextAssignedTo),
+      eq(usersTable.tenantId, existing.tenantId),
+    )).limit(1);
+
+    if (!targetStageConfig || !userMatchesStageResponsibleFunctions(nextOwner ?? { active: false, userFunction: null, customFunctionId: null }, targetStageConfig.responsaveisFuncoes)) {
+      res.status(422).json({
+        error: "STAGE_RESPONSIBLE_REQUIRED",
+        message: "O responsável precisa estar ativo e ter uma função configurada como responsável pela etapa de destino.",
+      });
+      return;
+    }
+  }
 
   const targetAIConfig = targetStageConfig?.aiConfig;
   const targetAgentCanOperate = Boolean(
