@@ -40,6 +40,7 @@ const SK = {
   renderUrl: "arq_studio_renderUrl",
   versions: "arq_studio_versions",
   imageUrl: "arq_studio_imageDataUrl",
+  context: "arq_studio_context",
 } as const;
 
 function normalizeRenderVersion(version: RenderVersion): RenderVersion {
@@ -380,12 +381,18 @@ export function useRenderStudioController() {
       return () => { cancelled = true; };
     }
 
-    const ss = sessionStorage.getItem(SK.step);
-    const sa = sessionStorage.getItem(SK.ambiente);
-    const sri = sessionStorage.getItem(SK.renderId);
-    const sru = sessionStorage.getItem(SK.renderUrl);
-    const sv = sessionStorage.getItem(SK.versions);
-    const siu = sessionStorage.getItem(SK.imageUrl);
+    const cachedProjectId = requestedProjectId || localStorage.getItem("arq_last_project_id") || "no-project";
+    const cachedAmbiente = requestedAmbiente || sessionStorage.getItem(SK.ambiente) || "";
+    const expectedCacheContext = `${cachedProjectId}:${cachedAmbiente}`;
+    const cacheMatchesContext = sessionStorage.getItem(SK.context) === expectedCacheContext;
+
+    const ss = cacheMatchesContext ? sessionStorage.getItem(SK.step) : null;
+    const sa = cacheMatchesContext ? sessionStorage.getItem(SK.ambiente) : null;
+    const sri = cacheMatchesContext ? sessionStorage.getItem(SK.renderId) : null;
+    const sru = cacheMatchesContext ? sessionStorage.getItem(SK.renderUrl) : null;
+    const sv = cacheMatchesContext ? sessionStorage.getItem(SK.versions) : null;
+    const siu = cacheMatchesContext ? sessionStorage.getItem(SK.imageUrl) : null;
+
     if (sa)  setAmbiente(sa);
     if (sri) setRenderId(sri);
     if (sru) setRenderUrl(normalizeRenderMediaUrl(sru));
@@ -478,12 +485,9 @@ export function useRenderStudioController() {
     if (renderUrl) sessionStorage.setItem(SK.renderUrl, renderUrl);
     else sessionStorage.removeItem(SK.renderUrl);
   }, [renderUrl]);
-  useEffect(() => {
-    try {
-      if (versions.length > 0) sessionStorage.setItem(SK.versions, JSON.stringify(versions));
-      else sessionStorage.removeItem(SK.versions);
-    } catch {}
-  }, [versions]);
+  // O histórico oficial vive no backend. O array de versões não é mais
+  // regravado continuamente no sessionStorage pelo controller; o cache legado
+  // é usado somente como ponte de bootstrap/recovery na entrada do Studio.
   useEffect(() => {
     try {
       if (imageDataUrl) sessionStorage.setItem(SK.imageUrl, imageDataUrl);
