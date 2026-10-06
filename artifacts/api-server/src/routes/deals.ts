@@ -55,7 +55,7 @@ import { captureLeadFeatureSnapshot, backfillResultadoSnapshots } from "../lib/m
 import { finalizeVehicleReservation } from "../services/vehicle-reservation.js";
 import { finalizeItemReservation } from "../services/item-reservation.js";
 import { z } from "zod";
-import { COMMERCIAL_STAGE_ORDER, PARTNER_STAGE_ORDER, SAAS_STAGE_ORDER, TERMINAL_DEAL_STAGES, isBackwardMove } from "../lib/pipeline-progress.js";
+import { COMMERCIAL_STAGE_ORDER, PARTNER_STAGE_ORDER, SAAS_STAGE_ORDER, TERMINAL_DEAL_STAGES, TERMINAL_WORK_STAGES, isBackwardMove } from "../lib/pipeline-progress.js";
 import { recordIntelligenceEvent, recordStageAnswers } from "../services/customer-intelligence-history.js";
 import { suggestDynamicStageQuestions } from "../services/stage-question-intelligence.js";
 import { evaluatePipelineAI } from "../services/pipeline-ai-orchestrator.js";
@@ -310,9 +310,52 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
     }
   }
 
-  const source = currentDealPipeline(deal);
   const movedAt = new Date();
+  let source = currentDealPipeline(deal);
+  let sourceOperationalCard: typeof workCardsTable.$inferSelect | null = null;
   let destinationCard: typeof workCardsTable.$inferSelect | null = null;
+
+  const operationalSourcePipeline =
+    deal.relationshipStage === "transferido_execucao"
+      ? "execucao"
+      : deal.relationshipStage === "transferido_suporte"
+        ? "suporte"
+        : null;
+
+  if (operationalSourcePipeline) {
+    const sourceCards = await db.select().from(workCardsTable).where(and(
+      eq(workCardsTable.tenantId, deal.tenantId),
+      eq(workCardsTable.pipeline, operationalSourcePipeline),
+      eq(workCardsTable.dealId, deal.id),
+    )).orderBy(desc(workCardsTable.updatedAt));
+
+    sourceOperationalCard = sourceCards.find((card) => !TERMINAL_WORK_STAGES.has(card.etapa)) ?? sourceCards[0] ?? null;
+    source = {
+      pipeline: operationalSourcePipeline,
+      stage: sourceOperationalCard?.etapa ?? operationalSourcePipeline,
+    };
+  }
+
+  if (
+    sourceOperationalCard
+    && source.pipeline !== parsed.data.targetPipeline
+    && !TERMINAL_WORK_STAGES.has(sourceOperationalCard.etapa)
+  ) {
+    await db.update(workCardsTable).set({
+      etapa: "cancelado",
+      metadata: {
+        ...(sourceOperationalCard.metadata ?? {}),
+        ativoNaPipeline: false,
+        etapaAntesTransferencia: sourceOperationalCard.etapa,
+        transferidoParaPipeline: parsed.data.targetPipeline,
+        transferidoParaEtapa: parsed.data.targetStage,
+        transferidoEm: movedAt.toISOString(),
+        transferidoPor: req.user?.sub ?? null,
+        justificativaMovimento: parsed.data.justificativa,
+      },
+      updatedAt: movedAt,
+    }).where(eq(workCardsTable.id, sourceOperationalCard.id));
+  }
 
   if (parsed.data.targetPipeline === "comercial") {
     await db.update(dealsTable).set({
@@ -346,8 +389,11 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
 
     const metadata = {
       ...(existingCard?.metadata ?? {}),
+      ativoNaPipeline: true,
       origemPipeline: source.pipeline,
       origemEtapa: source.stage,
+      transferidoParaPipeline: null,
+      transferidoParaEtapa: null,
       transferidoEm: movedAt.toISOString(),
       transferidoPor: req.user?.sub ?? null,
       justificativaMovimento: parsed.data.justificativa,
