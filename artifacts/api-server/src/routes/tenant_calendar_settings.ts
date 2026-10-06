@@ -21,13 +21,16 @@ function routeTenantId(req: any): string {
   return String(req.params.tenantId ?? req.params["tenantId"]);
 }
 
-function normalizeCalendarBody(body: Record<string, unknown>): { commercialDates?: CommercialDate[]; professionalDates?: ProfessionalDate[]; enableSpouseGiftFlow?: boolean } {
+function normalizeCalendarBody(body: Record<string, unknown>): { commercialDates?: CommercialDate[]; professionalDates?: ProfessionalDate[]; activityScheduleDefaults?: Array<{ activityType: string; enabled: boolean; weekday: number; agendaId?: string | null }>; enableSpouseGiftFlow?: boolean } {
   // Frontend remains the source of truth for commercialDates.
   // Professional dates are canonicalized by the backend so month/day and
   // profession mappings cannot drift from the VendorAI master catalog.
   return {
     commercialDates: Array.isArray(body.commercialDates) ? (body.commercialDates as CommercialDate[]) : undefined,
     professionalDates: Array.isArray(body.professionalDates) ? (body.professionalDates as ProfessionalDate[]) : undefined,
+    activityScheduleDefaults: Array.isArray(body.activityScheduleDefaults)
+      ? (body.activityScheduleDefaults as Array<{ activityType: string; enabled: boolean; weekday: number; agendaId?: string | null }>)
+      : undefined,
     enableSpouseGiftFlow: body.enableSpouseGiftFlow as boolean | undefined,
   };
 }
@@ -64,6 +67,7 @@ router.get("/tenants/:tenantId/calendar-settings", async (req, res) => {
       tenantId,
       commercialDates: mergeCommercialDates([]),
       professionalDates: buildRelevantProfessionalDates([], leadProfessions),
+      activityScheduleDefaults: [],
       enableSpouseGiftFlow: false,
       createdAt: null,
       updatedAt: null,
