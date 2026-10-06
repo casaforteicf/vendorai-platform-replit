@@ -755,10 +755,11 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
         `INSERT INTO arch_supplier_orders
          (id,tenant_id,project_id,obra_id,compra_id,supplier_name,item,quantity,unit,estimated_value,confirmed_value,
           freight_value,discount_value,tax_value,payment_terms,quote_valid_until,lead_time_days,status,requested_at,quoted_at,notes,documents,created_at,updated_at)
-         VALUES(gen_random_uuid(),$1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,0,0,0,$11,$12,$13,'approved',now(),now(),$14,'[]'::jsonb,now(),now()) RETURNING id`,
+         VALUES(gen_random_uuid(),$1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,0,0,0,$11,$12,$13,'approved',now(),now(),$14,$15::jsonb,now(),now()) RETURNING id`,
         [tid,inv.project_id,obraId,qi.compra_id,inv.supplier_name,row.descricao,String(qi.quantity),qi.unit,String(row.custo_estimado_snapshot||row.valor_total||0),
          String(confirmedCost),inv.payment_terms||null,inv.validity_date||null,inv.lead_time_days||null,
-         [qi.notes, allocatedExtras ? `Rateio de frete/impostos/desconto do pacote: ${allocatedExtras.toFixed(2)}` : ""].filter(Boolean).join(" • ") || null],
+         [qi.notes, allocatedExtras ? `Rateio de frete/impostos/desconto do pacote: ${allocatedExtras.toFixed(2)}` : ""].filter(Boolean).join(" • ") || null,
+         JSON.stringify(Array.isArray(inv.response_documents) ? inv.response_documents : [])],
       );
       await client.query(
         `UPDATE compras_obras SET fornecedor=$1,cotacao_selecionada_id=$2::uuid,custo_confirmado=$3,status='aprovado',cotacao_desatualizada=false,updated_at=now()
