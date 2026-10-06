@@ -5,6 +5,7 @@ ALTER TABLE servicos_ordens
   ADD COLUMN IF NOT EXISTS checklist_execucao jsonb NOT NULL DEFAULT '[]'::jsonb,
   ADD COLUMN IF NOT EXISTS historico_execucao jsonb NOT NULL DEFAULT '[]'::jsonb,
   ADD COLUMN IF NOT EXISTS cliente_acompanha boolean NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS compartilhar_status_cliente boolean NOT NULL DEFAULT true,
   ADD COLUMN IF NOT EXISTS updated_at timestamp NOT NULL DEFAULT now();
 
 ALTER TABLE servicos_ordens
@@ -14,10 +15,10 @@ ALTER TABLE servicos_ordens
 -- após a publicação desta migration.
 UPDATE servicos_ordens
 SET checklist_execucao = '[
-  {"id":"contexto","titulo":"Conferir informações do negócio e da OS","obrigatorio":true,"evidencia":"confirmation","concluido":false,"observacao":null,"fotos":[],"concluidoPorId":null,"concluidoPorNome":null,"concluidoEm":null},
-  {"id":"execucao","titulo":"Registrar o que foi executado","obrigatorio":true,"evidencia":"text_or_photo","concluido":false,"observacao":null,"fotos":[],"concluidoPorId":null,"concluidoPorNome":null,"concluidoEm":null},
-  {"id":"resultado","titulo":"Comprovar resultado final","obrigatorio":true,"evidencia":"text_and_photo","concluido":false,"observacao":null,"fotos":[],"concluidoPorId":null,"concluidoPorNome":null,"concluidoEm":null},
-  {"id":"aceite","titulo":"Validar conclusão com o cliente/responsável","obrigatorio":true,"evidencia":"text_or_photo","concluido":false,"observacao":null,"fotos":[],"concluidoPorId":null,"concluidoPorNome":null,"concluidoEm":null}
+  {"id":"contexto","titulo":"Conferir informações do negócio e da OS","obrigatorio":true,"evidencia":"confirmation","visibilidade":"interno","concluido":false,"observacao":null,"fotos":[],"concluidoPorId":null,"concluidoPorNome":null,"concluidoEm":null},
+  {"id":"execucao","titulo":"Registrar o que foi executado","obrigatorio":true,"evidencia":"text_or_photo","visibilidade":"interno","concluido":false,"observacao":null,"fotos":[],"concluidoPorId":null,"concluidoPorNome":null,"concluidoEm":null},
+  {"id":"resultado","titulo":"Comprovar resultado final","obrigatorio":true,"evidencia":"text_and_photo","visibilidade":"interno","concluido":false,"observacao":null,"fotos":[],"concluidoPorId":null,"concluidoPorNome":null,"concluidoEm":null},
+  {"id":"aceite","titulo":"Validar conclusão com o cliente/responsável","obrigatorio":true,"evidencia":"text_or_photo","visibilidade":"interno","concluido":false,"observacao":null,"fotos":[],"concluidoPorId":null,"concluidoPorNome":null,"concluidoEm":null}
 ]'::jsonb
 WHERE checklist_execucao = '[]'::jsonb;
 
