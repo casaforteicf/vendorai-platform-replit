@@ -5,19 +5,50 @@ import {
   timestamp,
   numeric,
   jsonb,
+  boolean,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { leadsTable } from "./leads";
+import { dealsTable } from "./deals";
 import { servicosPrestadoresTable } from "./servicos_prestadores";
 import { servicosTiposTable } from "./servicos_tipos";
 
-// status: orcamento_pendente | orcamento_enviado | aprovado | agendado |
-//         em_andamento | concluido | cancelado
-// Diferente de beauty/clinic: aqui o prestador vai até o endereço do
-// cliente, e normalmente passa por uma etapa de orçamento antes da
-// execução — não é hora marcada direto como corte de cabelo ou consulta.
+export type ServicoChecklistEvidenceMode =
+  | "confirmation"
+  | "text"
+  | "photo"
+  | "text_or_photo"
+  | "text_and_photo";
+
+export type ServicoChecklistItem = {
+  id: string;
+  titulo: string;
+  descricao?: string | null;
+  obrigatorio: boolean;
+  evidencia: ServicoChecklistEvidenceMode;
+  concluido: boolean;
+  observacao?: string | null;
+  fotos?: string[];
+  concluidoPorId?: string | null;
+  concluidoPorNome?: string | null;
+  concluidoEm?: string | null;
+};
+
+export type ServicoHistoricoItem = {
+  id: string;
+  tipo: "criacao" | "checklist" | "status" | "edicao" | "ocorrencia";
+  mensagem: string;
+  usuarioId?: string | null;
+  usuarioNome?: string | null;
+  criadoEm: string;
+  dados?: Record<string, unknown>;
+};
+
+// A OS é o documento e também a unidade executável da pipeline.
+// Cada passo do checklist guarda evidência, executor e horário; a conclusão
+// dos passos obrigatórios pode avançar automaticamente a ordem.
 export const servicosOrdensTable = pgTable("servicos_ordens", {
   id: text("id")
     .primaryKey()
@@ -28,20 +59,27 @@ export const servicosOrdensTable = pgTable("servicos_ordens", {
   clienteId: text("cliente_id")
     .notNull()
     .references(() => leadsTable.id, { onDelete: "restrict" }),
+  negocioId: text("negocio_id")
+    .references(() => dealsTable.id, { onDelete: "set null" }),
   prestadorId: text("prestador_id")
     .references(() => servicosPrestadoresTable.id, { onDelete: "set null" }),
   tipoServicoId: text("tipo_servico_id")
     .notNull()
     .references(() => servicosTiposTable.id, { onDelete: "restrict" }),
+  modeloExecucao: varchar("modelo_execucao", { length: 40 }).notNull().default("geral"),
   enderecoAtendimento: text("endereco_atendimento").notNull(),
-  status:              varchar("status", { length: 25 }).default("orcamento_pendente"),
+  status:              varchar("status", { length: 30 }).default("orcamento_pendente"),
   dataHoraVisita:      timestamp("data_hora_visita"),
   valorOrcado:         numeric("valor_orcado", { precision: 10, scale: 2 }),
   valorFinal:          numeric("valor_final",  { precision: 10, scale: 2 }),
   fotosAntes:          jsonb("fotos_antes").$type<string[]>(),
   fotosDepois:         jsonb("fotos_depois").$type<string[]>(),
+  checklistExecucao:   jsonb("checklist_execucao").$type<ServicoChecklistItem[]>().notNull().default([]),
+  historicoExecucao:   jsonb("historico_execucao").$type<ServicoHistoricoItem[]>().notNull().default([]),
+  clienteAcompanha:    boolean("cliente_acompanha").notNull().default(true),
   observacoes:         text("observacoes"),
   createdAt:           timestamp("created_at").notNull().defaultNow(),
+  updatedAt:           timestamp("updated_at").notNull().defaultNow(),
 });
 
 const STATUS_VALUES = [
@@ -50,26 +88,45 @@ const STATUS_VALUES = [
   "aprovado",
   "agendado",
   "em_andamento",
+  "aguardando_validacao",
   "concluido",
   "cancelado",
+] as const;
+
+const MODELO_VALUES = [
+  "geral",
+  "producao",
+  "expedicao",
+  "entrega",
+  "instalacao",
+  "assistencia",
+  "suporte",
+  "vistoria",
+  "manutencao",
 ] as const;
 
 export const insertServicosOrdemSchema = createInsertSchema(servicosOrdensTable, {
   valorOrcado: z.coerce.number().nonnegative().optional().nullable(),
   valorFinal: z.coerce.number().nonnegative().optional().nullable(),
   status: z.enum(STATUS_VALUES).optional(),
+  modeloExecucao: z.enum(MODELO_VALUES).optional(),
   fotosAntes: z.array(z.string()).optional(),
   fotosDepois: z.array(z.string()).optional(),
-}).omit({ id: true, createdAt: true });
+  checklistExecucao: z.array(z.any()).optional(),
+  historicoExecucao: z.array(z.any()).optional(),
+}).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const updateServicosOrdemSchema = createSelectSchema(servicosOrdensTable, {
   valorOrcado: z.coerce.number().nonnegative().optional().nullable(),
   valorFinal: z.coerce.number().nonnegative().optional().nullable(),
   status: z.enum(STATUS_VALUES).optional(),
+  modeloExecucao: z.enum(MODELO_VALUES).optional(),
   fotosAntes: z.array(z.string()).optional(),
   fotosDepois: z.array(z.string()).optional(),
+  checklistExecucao: z.array(z.any()).optional(),
+  historicoExecucao: z.array(z.any()).optional(),
 })
-  .omit({ id: true, tenantId: true, createdAt: true })
+  .omit({ id: true, tenantId: true, createdAt: true, updatedAt: true })
   .partial();
 
 export type InsertServicosOrdem = z.infer<typeof insertServicosOrdemSchema>;
