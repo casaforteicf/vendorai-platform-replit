@@ -57,6 +57,7 @@ type PlannedCampaign = {
   canais: CampaignChannel[];
   kpiPrincipal: string;
   metaPrincipal: string;
+  coverUrl?: string;
 };
 
 type MediaPlan = {
