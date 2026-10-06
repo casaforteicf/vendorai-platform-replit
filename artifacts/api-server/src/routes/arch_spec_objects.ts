@@ -845,6 +845,28 @@ archSpecObjectsRouter.patch("/arch/spec-objects/:id", async (req, res, next) => 
 archSpecObjectsRouter.post("/arch/spec-objects/:id/send-to-budget", async (req, res, next) => {
   try {
     const tId = tenantId(req);
+    const currentValues: unknown[] = [req.params["id"]!];
+    let currentWhere = "id=$1";
+    if (tId) {
+      currentValues.push(tId);
+      currentWhere += ` AND tenant_id=${currentValues.length}`;
+    }
+    const currentResult = await pool.query(
+      `SELECT * FROM arch_spec_objects WHERE ${currentWhere} LIMIT 1`,
+      currentValues,
+    );
+    const current = currentResult.rows[0];
+    if (!current) {
+      res.status(404).json({ error: "SpecObject não encontrado" });
+      return;
+    }
+    if (current.technical_approval_status !== "approved") {
+      res.status(409).json({
+        error: "A especificação precisa de aprovação técnica antes de ir para o orçamento.",
+        code: "TECHNICAL_APPROVAL_REQUIRED",
+      });
+      return;
+    }
     const item = await updateSpecObject(req.params["id"]!, tId, { status: "sent-to-budget" });
     if (!item) {
       res.status(404).json({ error: "SpecObject não encontrado" });
