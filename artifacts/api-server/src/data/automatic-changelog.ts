@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-3175",
+    "titulo": "impedir HTTP 500 no acompanhamento do Vendi",
+    "descricao": "falha na Inteligência do Negócio não derruba mais o endpoint; falha do provedor de IA não gera mais HTTP 500; JSON inválido da IA cai em fallback seguro; o fallback usa apenas dados do CRM/etapa e não inventa condições comerciais;",
+    "tipo": "correcao",
+    "publicadoEm": "2026-10-06T20:20:28.000Z",
+    "pullRequest": 3175
+  },
+  {
     "id": "pr-3164",
     "titulo": "Admin pode excluir lead em qualquer estágio sem perder histórico",
     "descricao": "restringe DELETE /leads/:id a superadmin, tenant_admin ou função administrador registra usuário/data/motivo da exclusão no metadata do lead adiciona ação reutilizável \"Excluir lead\" no workspace e nas pipelines Comercial, Aquecimento, Parceiros, Execução e Suporte mantém soft delete e restauração",
