@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, ArrowRight, AlertTriangle, BrainCircuit, Building2, Clock3, HandCoins, Loader2, Pencil, Settings2, Sparkles, UserRound, WalletCards } from "lucide-react";
+import { ArrowLeft, ArrowRight, AlertTriangle, BrainCircuit, Building2, Clock3, HandCoins, Headset, Loader2, Pencil, Settings2, Sparkles, UserRound, WalletCards } from "lucide-react";
 
 const LeadDetail = lazy(() => import("@/pages/LeadDetail"));
 const StageQuestionsPanel = lazy(() => import("@/components/StageQuestionsPanel").then((m) => ({ default: m.StageQuestionsPanel })));
@@ -309,6 +309,12 @@ export default function LeadWorkspace() {
   const [beneficiaryAccount, setBeneficiaryAccount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("pix");
   const [payingCommission, setPayingCommission] = useState(false);
+  const [pipelineTransferOpen, setPipelineTransferOpen] = useState(false);
+  const [targetPipeline, setTargetPipeline] = useState("suporte");
+  const [targetPipelineStage, setTargetPipelineStage] = useState("");
+  const [transferOwner, setTransferOwner] = useState("");
+  const [transferReason, setTransferReason] = useState("");
+  const [movingPipeline, setMovingPipeline] = useState(false);
 
   const { data: partnerUsers = [] } = useQuery<PartnerUserSnap[]>({
     queryKey: ["commercial-partnership-users", selectedPartnershipId],
@@ -333,11 +339,38 @@ export default function LeadWorkspace() {
   );
   const eligibleIds = (targetStage as { elegiveisUserIds?: string[] | null } | undefined)?.elegiveisUserIds ?? null;
   const eligibleUsers = eligibleIds && eligibleIds.length > 0 ? users.filter((u) => eligibleIds.includes(u.id)) : users;
+  const { data: targetPipelineStages = [] } = useQuery<Array<{ id: string; key: string; label: string; ordem?: number }>>({
+    queryKey: ["pipeline-stages", tenantId, targetPipeline],
+    enabled: Boolean(tenantId && token && pipelineTransferOpen),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/pipeline-stages?pipeline=${encodeURIComponent(targetPipeline)}`, {
+        headers: { Authorization: "Bearer " + token },
+      });
+      if (!response.ok) throw new Error("Não foi possível carregar as etapas da pipeline.");
+      return response.json();
+    },
+  });
+  const pipelineOptions = [
+    { key: "comercial", label: "Comercial" },
+    { key: "aquecimento", label: "Aquecimento" },
+    { key: "parceiros", label: "Parceiros" },
+    { key: "execucao", label: "Execução / Pedidos" },
+    { key: "suporte", label: "Suporte" },
+  ];
   const [draftEligible, setDraftEligible] = useState<string[]>([]);
   useEffect(() => { setDraftEligible(eligibleIds ?? []); }, [nextStage]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!ownerEditorOpen) setCurrentOwner(deal?.assignedTo ?? lead?.assignedTo ?? "");
   }, [deal?.assignedTo, lead?.assignedTo, ownerEditorOpen]);
+  useEffect(() => {
+    if (!transferOwner) setTransferOwner(deal?.assignedTo ?? users[0]?.id ?? "");
+  }, [deal?.assignedTo, transferOwner, users]);
+  useEffect(() => {
+    const firstStage = [...targetPipelineStages].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))[0];
+    setTargetPipelineStage(firstStage?.key ?? "");
+  }, [targetPipeline, targetPipelineStages]);
   useEffect(() => {
     if (activeParticipation?.partnershipId) {
       setSelectedPartnershipId(activeParticipation.partnershipId);
@@ -550,6 +583,58 @@ export default function LeadWorkspace() {
       toast({ title: "Erro ao registrar pagamento", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
     } finally {
       setPayingCommission(false);
+    }
+  }
+
+  async function transferPipeline() {
+    if (!deal || !targetPipeline || !targetPipelineStage || !transferOwner || transferReason.trim().length < 5) {
+      toast({ title: "Selecione a pipeline, a etapa, o responsável e informe a justificativa.", variant: "destructive" });
+      return;
+    }
+
+    setMovingPipeline(true);
+    try {
+      const response = await fetch("/api/deals/" + deal.id + "/transfer-pipeline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({
+          targetPipeline,
+          targetStage: targetPipelineStage,
+          responsavelId: transferOwner,
+          justificativa: transferReason.trim(),
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error ?? result.message ?? "Não foi possível mover o lead.");
+
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId, { leadId: id }) }),
+        qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
+        qc.invalidateQueries({ queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }) }),
+      ]);
+
+      setOpen(false);
+      setPipelineTransferOpen(false);
+      setTransferReason("");
+      toast({
+        title: "Lead movido",
+        description: `Destino: ${pipelineOptions.find((item) => item.key === targetPipeline)?.label ?? targetPipeline} / ${result?.destination?.stageLabel ?? targetPipelineStage}. A justificativa foi registrada no histórico.`,
+      });
+
+      const workCardId = result?.workCard?.id;
+      if (workCardId && ["execucao", "suporte"].includes(targetPipeline)) {
+        navigate(`/pipeline-operacional/${targetPipeline}?card=${encodeURIComponent(workCardId)}`);
+      } else if (["aquecimento", "parceiros"].includes(targetPipeline)) {
+        navigate(`/pipeline-relacionamento/${targetPipeline}`);
+      }
+    } catch (error) {
+      toast({
+        title: "Erro ao mover lead",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setMovingPipeline(false);
     }
   }
 
@@ -1068,9 +1153,81 @@ export default function LeadWorkspace() {
             </div>
           )}
 
-          <Button type="button" variant="outline" onClick={() => setAdvancedHandoffOpen((v) => !v)}>
-            {advancedHandoffOpen ? "Ocultar ajustes" : "Editar antes de avançar"}
-          </Button>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button type="button" variant="outline" onClick={() => setAdvancedHandoffOpen((v) => !v)}>
+              {advancedHandoffOpen ? "Ocultar ajustes" : "Editar antes de avançar"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="border-cyan-200 text-cyan-800 hover:bg-cyan-50 hover:text-cyan-900"
+              onClick={() => setPipelineTransferOpen((value) => !value)}
+            >
+              <Headset className="mr-2 h-4 w-4" />
+              {pipelineTransferOpen ? "Ocultar movimentação" : "Mover para outra pipeline"}
+            </Button>
+          </div>
+
+          {pipelineTransferOpen && (
+            <div className="grid gap-4 rounded-xl border border-cyan-200 bg-cyan-50/40 p-4">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-cyan-900">
+                  <Headset className="h-4 w-4" />
+                  Mover lead para outra pipeline
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Escolha a pipeline de destino, a posição dentro dela e registre obrigatoriamente o motivo da movimentação. O histórico anterior é preservado.
+                </p>
+              </div>
+              <Field label="Pipeline de destino">
+                <Select value={targetPipeline} onValueChange={setTargetPipeline}>
+                  <SelectTrigger><SelectValue placeholder="Selecione a pipeline" /></SelectTrigger>
+                  <SelectContent>
+                    {pipelineOptions.map((pipeline) => (
+                      <SelectItem key={pipeline.key} value={pipeline.key}>{pipeline.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Posição / etapa de destino">
+                <Select value={targetPipelineStage} onValueChange={setTargetPipelineStage}>
+                  <SelectTrigger><SelectValue placeholder="Selecione a etapa" /></SelectTrigger>
+                  <SelectContent>
+                    {[...targetPipelineStages].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0)).map((stage) => (
+                      <SelectItem key={stage.id} value={stage.key}>{stage.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Responsável após a movimentação">
+                <Select value={transferOwner} onValueChange={setTransferOwner}>
+                  <SelectTrigger><SelectValue placeholder="Selecione o responsável" /></SelectTrigger>
+                  <SelectContent>
+                    {users.map((targetUser) => (
+                      <SelectItem key={targetUser.id} value={targetUser.id}>
+                        {targetUser.name || targetUser.email || targetUser.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Justificativa da movimentação *">
+                <Textarea
+                  value={transferReason}
+                  onChange={(event) => setTransferReason(event.target.value)}
+                  placeholder="Explique por que este lead está sendo movido para outra pipeline/etapa."
+                />
+              </Field>
+              <Button
+                type="button"
+                onClick={transferPipeline}
+                disabled={movingPipeline || !targetPipelineStage || !transferOwner || transferReason.trim().length < 5}
+              >
+                {movingPipeline && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Confirmar movimentação
+              </Button>
+            </div>
+          )}
 
           {advancedHandoffOpen && (
             <div className="grid gap-4 rounded-xl border p-4">

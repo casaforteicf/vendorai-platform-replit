@@ -2288,7 +2288,7 @@ export default function Deals() {
   // devem consumir exatamente esta mesma lista, na mesma ordem.
   const deals = useMemo(() => allDeals.filter((deal) => {
     const relationshipStage = (deal as Deal & { relationshipStage?: string | null }).relationshipStage;
-    return relationshipStage !== "transferido_suporte"
+    return !relationshipStage?.startsWith("transferido_")
       && deal.etapa !== "em_aquecimento"
       && deal.etapa !== "parceiro";
   }), [allDeals]);
