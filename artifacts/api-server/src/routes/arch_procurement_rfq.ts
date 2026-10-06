@@ -344,6 +344,8 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
       `SELECT abi.*, aso.category AS spec_category, aso.region AS spec_region,
               aso.purchase_quantity AS spec_purchase_quantity,
               aso.package_yield AS spec_package_yield,
+              aso.purchase_mode AS spec_purchase_mode,
+              aso.purchase_unit AS spec_purchase_unit,
               aso.waste_factor AS spec_waste_factor,
               aso.measurement_source AS spec_measurement_source,
               aso.measurement_revision AS spec_measurement_revision,
@@ -392,11 +394,17 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
             : 0;
         saleValue += rowSale;
         const projectQuantity = n(row.quantity, 1);
+        const purchaseMode = String(row.spec_purchase_mode || "same_unit");
+        const purchaseYield = row.spec_package_yield != null ? Math.max(0, n(row.spec_package_yield)) : 0;
         const purchaseQuantity = row.spec_purchase_quantity != null
           ? Math.max(0, n(row.spec_purchase_quantity))
           : projectQuantity;
         const quoteQuantity = purchaseQuantity > 0 ? purchaseQuantity : projectQuantity;
-        const quoteTotal = n(row.unit_total) * quoteQuantity;
+        const quoteUnit = String(row.spec_purchase_unit || row.unit || "un");
+        const estimatedPurchaseUnitPrice = purchaseMode !== "same_unit" && purchaseYield > 0
+          ? n(row.unit_total) * purchaseYield
+          : n(row.unit_total);
+        const quoteTotal = estimatedPurchaseUnitPrice * quoteQuantity;
         const snapshot = {
           budgetItemId: row.id,
           specObjectId: row.spec_object_id,
@@ -406,9 +414,13 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
           ambiente: row.ambiente_nome || null,
           region: row.spec_region || null,
           projectQuantity,
+          projectUnit: row.unit || "un",
+          purchaseMode,
           purchaseQuantity: quoteQuantity,
+          purchaseUnit: quoteUnit,
           quantity: quoteQuantity,
-          unit: row.unit || "un",
+          unit: quoteUnit,
+          estimatedPurchaseUnitPrice,
           wasteFactor: row.spec_waste_factor != null ? n(row.spec_waste_factor) : null,
           packageYield: row.spec_package_yield != null ? n(row.spec_package_yield) : null,
           measurementSource: row.spec_measurement_source || null,
@@ -431,12 +443,13 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
           const changed = existing.rows[0].escopo_hash && existing.rows[0].escopo_hash !== hash;
           await client.query(
             `UPDATE compras_obras SET descricao=$1,ambiente=$2,disciplina=$3,categoria=$4,quantidade=$5,unidade=$6,
-               valor_total=$7,valor_venda_snapshot=$8,custo_estimado_snapshot=$7,escopo_snapshot=$9::jsonb,
-               escopo_hash=$10,cotacao_desatualizada=CASE WHEN $11 THEN true ELSE cotacao_desatualizada END,
-               escopo_versao=CASE WHEN $11 THEN escopo_versao+1 ELSE escopo_versao END,updated_at=now()
-             WHERE id=$12 AND tenant_id=$13`,
+               valor_unitario=$7,valor_total=$8,valor_venda_snapshot=$9,custo_estimado_snapshot=$8,escopo_snapshot=$10::jsonb,
+               escopo_hash=$11,cotacao_desatualizada=CASE WHEN $12 THEN true ELSE cotacao_desatualizada END,
+               escopo_versao=CASE WHEN $12 THEN escopo_versao+1 ELSE escopo_versao END,updated_at=now()
+             WHERE id=$13 AND tenant_id=$14`,
             [row.item, row.ambiente_nome || (row.ambiente_id ? String(row.ambiente_id) : null), group.discipline, group.category,
-             String(snapshot.quantity), row.unit || "un", String(snapshot.total), String(rowSale), JSON.stringify(snapshot), hash, Boolean(changed), finalRequestId, tid],
+             String(snapshot.quantity), snapshot.unit, String(estimatedPurchaseUnitPrice), String(snapshot.total), String(rowSale),
+             JSON.stringify(snapshot), hash, Boolean(changed), finalRequestId, tid],
           );
         } else {
           finalRequestId = requestId;
@@ -448,7 +461,7 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
              VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'media','pendente','budget_rfq','[]'::jsonb,
                     $13::uuid,$14::uuid,$15::uuid,1,$16,$17::jsonb,$18,$19,now(),now())`,
             [finalRequestId,tid,obraId,`BUD-${String(row.id).slice(0,8).toUpperCase()}`,row.item,row.ambiente_nome||(row.ambiente_id?String(row.ambiente_id):null),
-             group.discipline,group.category,String(snapshot.quantity),row.unit||"un",String(n(row.unit_total)),String(snapshot.total),
+             group.discipline,group.category,String(snapshot.quantity),snapshot.unit,String(estimatedPurchaseUnitPrice),String(snapshot.total),
              budgetId,row.id,row.spec_object_id||null,hash,JSON.stringify(snapshot),String(rowSale),String(snapshot.total)],
           );
         }
