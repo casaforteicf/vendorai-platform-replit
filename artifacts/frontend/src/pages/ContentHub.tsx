@@ -341,11 +341,9 @@ export default function ContentHub() {
   const journeySteps = [
     { n: 1, title: "Planejar", text: "Definir objetivo, público, oferta, canais, período e orçamento.", tab: "planejamento" as const },
     { n: 2, title: "Aprovar", text: "Revisar a estratégia preparada pela IA e liberar a execução.", tab: "planejamento" as const },
-    { n: 3, title: "Preparar", text: "Criar campanhas, conteúdos, anúncios, páginas e mensagens.", tab: "campanhas" as const },
-    { n: 4, title: "Revisar", text: "Conferir as peças, pedir ajustes ou aprovar para publicação.", tab: "conteudos" as const },
-    { n: 5, title: "Publicar", text: "Agendar ou publicar nos canais conectados.", tab: "conteudos" as const },
-    { n: 6, title: "Acompanhar", text: "Identificar a origem dos contatos e acompanhar a jornada no CRM.", tab: "rastreamento" as const },
-    { n: 7, title: "Melhorar", text: "Analisar resultados e usar os aprendizados no próximo ciclo.", tab: "resultados" as const },
+    { n: 3, title: "Executar", text: "Criar campanhas e produzir os conteúdos necessários.", tab: "campanhas" as const },
+    { n: 4, title: "Publicar", text: "Revisar, aprovar, agendar e publicar nos canais conectados.", tab: "conteudos" as const },
+    { n: 5, title: "Melhorar", text: "Analisar resultados, atribuição e aprendizados para o próximo ciclo.", tab: "resultados" as const },
   ];
 
   const overviewAction = currentJourneyStep === 1
@@ -361,7 +359,7 @@ export default function ContentHub() {
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Sparkles className="h-6 w-6 text-primary" /> Marketing
           </h1>
-          <p className="text-sm text-muted-foreground">Um fluxo simples: planejar, executar, criar, medir e rastrear.</p>
+          <p className="text-sm text-muted-foreground">Planeje, execute, publique e melhore com base nos resultados.</p>
         </div>
 
         <Tabs value={activeTab} onValueChange={handleTabChange}>
@@ -381,6 +379,7 @@ export default function ContentHub() {
               <Button size="sm" variant="outline" onClick={() => setLocation("/content-studio/video")}><Film className="h-3.5 w-3.5 mr-1.5"/>Vídeos com IA</Button>
               <Button size="sm" variant="outline" onClick={() => setLocation("/content?tab=campanhas&view=lp")}><Globe2 className="h-3.5 w-3.5 mr-1.5"/>Sites & LPs</Button>
               <Button size="sm" variant="outline" onClick={() => setLocation("/ads")}><Megaphone className="h-3.5 w-3.5 mr-1.5"/>Anúncios</Button>
+              <Button size="sm" variant="outline" onClick={() => setLocation("/content?tab=rastreamento")}><Radio className="h-3.5 w-3.5 mr-1.5"/>Rastreamento</Button>
             </div>
           )}
 
@@ -401,7 +400,7 @@ export default function ContentHub() {
                     <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
                       <div className="max-w-3xl">
                         <div className="mb-2 flex items-center gap-2">
-                          <Badge>Etapa {currentJourneyStep} de 7</Badge>
+                          <Badge>Etapa {currentJourneyStep} de 5</Badge>
                           <span className="text-xs text-muted-foreground">Próxima ação</span>
                         </div>
                         <h2 className="text-xl font-bold tracking-tight">{overviewAction.title}</h2>
