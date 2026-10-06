@@ -245,9 +245,11 @@ export default function CompanyCenter() {
             etapa: "novo",
           }),
         });
-        const created = await createResponse.json().catch(() => ({}));
-        if (!createResponse.ok) throw new Error((created as any)?.error ?? "Não foi possível iniciar o negócio para este lead.");
-        deal = created;
+        if (!createResponse.ok) {
+          const failed = await createResponse.json().catch(() => ({}));
+          throw new Error((failed as any)?.error ?? "Não foi possível iniciar o negócio para este lead.");
+        }
+        deal = await createResponse.json().catch(() => ({}));
       }
 
       const linkResponse = await fetch(`${getBase()}/api/crm/deals/${deal.id}/companies`, {
@@ -260,8 +262,11 @@ export default function CompanyCenter() {
           isPrimary: true,
         }),
       });
-      const linked = await linkResponse.json().catch(() => ({}));
-      if (!linkResponse.ok) throw new Error((linked as any)?.error ?? "Não foi possível vincular o lead a este cliente.");
+      if (!linkResponse.ok) {
+        const failed = await linkResponse.json().catch(() => ({}));
+        throw new Error((failed as any)?.error ?? "Não foi possível vincular o lead a este cliente.");
+      }
+      await linkResponse.json().catch(() => ({}));
 
       setLinkLeadOpen(false);
       setSelectedLeadId("");
