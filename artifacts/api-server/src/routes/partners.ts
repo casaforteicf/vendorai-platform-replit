@@ -105,8 +105,8 @@ router.post("/partners/indicate", requirePartner, async (req, res) => {
       .set({
         telefone: dedup.lead.telefone ?? storePhone(telefone),
         email: dedup.lead.email ?? normalizeLeadEmail(email),
-        empresa: dedup.lead.empresa ?? empresa?.trim() || null,
-        objetivo: dedup.lead.objetivo ?? objetivo?.trim() || null,
+        empresa: dedup.lead.empresa ?? (empresa?.trim() || null),
+        objetivo: dedup.lead.objetivo ?? (objetivo?.trim() || null),
         indicadoPor: dedup.lead.indicadoPor ?? partnerId,
         partnerVisible: true,
         metadata: leadRegistrationMetadata(dedup.lead.metadata, {
