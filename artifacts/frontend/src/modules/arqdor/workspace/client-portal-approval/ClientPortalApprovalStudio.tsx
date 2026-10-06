@@ -40,8 +40,8 @@ export default function ClientPortalApprovalStudio({ arqState, onNavigate }: Cli
         <header className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Sprint 032 • Client Portal Approval</p>
-              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[var(--arq-foreground)]">Proposta, portal público e aprovação do cliente</h1>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Portal do Cliente</p>
+              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[var(--arq-foreground)]">Proposta e aprovações</h1>
               <p className="mt-1 text-sm text-[var(--arq-muted)]">
                 {projectTitle} • orçamento vira proposta, link público com token, aprovação por item e decisão final.
               </p>
@@ -82,9 +82,9 @@ export default function ClientPortalApprovalStudio({ arqState, onNavigate }: Cli
           </div>
 
           <div className="mt-5 grid gap-3 md:grid-cols-3">
-            <Info label="Projeto" value={projectId || "não identificado"} />
-            <Info label="Budget ID" value={budgetId || "não identificado pelo estado"} />
-            <Info label="Proposta" value={proposal?.id || "ainda não criada"} />
+            <Info label="Projeto" value={projectTitle || "Projeto"} />
+            <Info label="Cliente" value={clientName || "A definir"} />
+            <Info label="Proposta" value={proposal ? proposalStatusLabel(proposal.status) : "Ainda não criada"} />
           </div>
         </header>
 
