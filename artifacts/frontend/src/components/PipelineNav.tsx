@@ -9,6 +9,7 @@ import {
   Plus,
   Settings2,
   Trash2,
+  Upload,
 } from "lucide-react";
 import { customFetch, getListPipelineStagesQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -16,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -61,6 +63,25 @@ type StageActivityTemplate = {
   condicao?: "sempre" | "sem_resposta_cliente" | "sem_atividade_aberta";
 };
 
+type StageEventTemplate = {
+  id: string;
+  nome: string;
+  ativo?: boolean;
+  gatilho: "entrada" | "atraso";
+  tipo: "mensagem" | "imagem" | "documento" | "playbook" | "demanda";
+  destinatario: "cliente" | "responsavel" | "ambos";
+  canal: "whatsapp" | "notificacao";
+  mensagem?: string | null;
+  anexo?: { nome: string; url: string; mimeType?: string | null } | null;
+  demanda?: {
+    titulo: string;
+    descricao?: string | null;
+    prazoMinutos?: number | null;
+    prioridade?: "baixa" | "normal" | "alta" | "urgente";
+    bloqueiaAvanco?: boolean;
+  } | null;
+};
+
 type PipelineStageSummary = {
   id: string;
   key?: string;
@@ -76,6 +97,7 @@ type PipelineStageSummary = {
   atividadePadraoDescricao?: string | null;
   atividadePadraoPrazoMinutos?: number | null;
   atividadesPadrao?: StageActivityTemplate[] | null;
+  eventos?: StageEventTemplate[] | null;
 };
 
 const TABS: Array<{ key: PipelineTab; label: string; href: string }> = [
@@ -186,6 +208,8 @@ function PipelineStageManager({
   const [editActivityDescription, setEditActivityDescription] = useState("");
   const [editActivityDueMinutes, setEditActivityDueMinutes] = useState("");
   const [editActivities, setEditActivities] = useState<StageActivityTemplate[]>([]);
+  const [editEvents, setEditEvents] = useState<StageEventTemplate[]>([]);
+  const [uploadingEventId, setUploadingEventId] = useState<string | null>(null);
 
   const invalidate = async () => {
     await Promise.all([
@@ -232,6 +256,7 @@ function PipelineStageManager({
     setEditActivityTitle(stage.atividadePadraoTitulo ?? "");
     setEditActivityDescription(stage.atividadePadraoDescricao ?? "");
     setEditActivityDueMinutes(stage.atividadePadraoPrazoMinutos == null ? "" : String(stage.atividadePadraoPrazoMinutos));
+    setEditEvents(stage.eventos ?? []);
     setEditActivities(
       stage.atividadesPadrao?.length
         ? stage.atividadesPadrao
@@ -269,6 +294,9 @@ function PipelineStageManager({
           atividadesPadrao: editActivities
             .filter((item) => item.titulo.trim())
             .map((item) => ({ ...item, titulo: item.titulo.trim() })),
+          eventos: editEvents
+            .filter((item) => item.nome.trim())
+            .map((item) => ({ ...item, nome: item.nome.trim() })),
         }),
         responseType: "json",
       });
@@ -283,6 +311,44 @@ function PipelineStageManager({
       });
     } finally {
       setSaving(null);
+    }
+  }
+
+  async function uploadEventAttachment(eventId: string, file: File) {
+    setUploadingEventId(eventId);
+    try {
+      const meta = await customFetch<{ uploadURL: string; objectPath: string }>("/api/storage/uploads/request-url", {
+        method: "POST",
+        body: JSON.stringify({
+          name: file.name,
+          size: file.size,
+          contentType: file.type || "application/octet-stream",
+        }),
+        responseType: "json",
+      });
+      const response = await fetch(meta.uploadURL, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+      });
+      if (!response.ok) throw new Error("Falha ao enviar o arquivo.");
+      setEditEvents((items) => items.map((item) => item.id === eventId ? {
+        ...item,
+        anexo: {
+          nome: file.name,
+          url: `/api/storage${meta.objectPath}`,
+          mimeType: file.type || "application/octet-stream",
+        },
+      } : item));
+      toast({ title: "Arquivo anexado ao evento." });
+    } catch (error) {
+      toast({
+        title: "Não foi possível anexar o arquivo",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingEventId(null);
     }
   }
 
@@ -652,6 +718,220 @@ function PipelineStageManager({
                         </div>
                       ))}
                     </div>
+                    <div className="space-y-3 rounded-md border bg-muted/20 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-medium">Eventos automáticos da etapa</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            Configure mensagens, fotos, documentos, playbooks e demandas disparados ao entrar na etapa ou quando ela atrasar.
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEditEvents((items) => [...items, {
+                            id: crypto.randomUUID(),
+                            nome: "",
+                            ativo: true,
+                            gatilho: "entrada",
+                            tipo: "mensagem",
+                            destinatario: "cliente",
+                            canal: "whatsapp",
+                            mensagem: "",
+                            anexo: null,
+                            demanda: null,
+                          }])}
+                        >
+                          <Plus className="mr-1 h-3.5 w-3.5" /> Evento
+                        </Button>
+                      </div>
+
+                      {editEvents.length === 0 ? (
+                        <p className="rounded border border-dashed p-3 text-xs text-muted-foreground">
+                          Nenhum evento configurado. Nada novo será enviado ou criado automaticamente para esta etapa.
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          {editEvents.map((eventItem, eventIndex) => (
+                            <div key={eventItem.id} className="space-y-2 rounded-md border bg-background p-3">
+                              <div className="flex gap-2">
+                                <Input
+                                  value={eventItem.nome}
+                                  onChange={(event) => setEditEvents((items) => items.map((row, index) => index === eventIndex ? { ...row, nome: event.target.value } : row))}
+                                  placeholder="Nome do evento"
+                                />
+                                <Button type="button" size="icon" variant="ghost" onClick={() => setEditEvents((items) => items.filter((_, index) => index !== eventIndex))}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+
+                              <div className="grid gap-2 sm:grid-cols-4">
+                                <select
+                                  className="h-9 rounded-md border bg-background px-2 text-xs"
+                                  value={eventItem.gatilho}
+                                  onChange={(event) => setEditEvents((items) => items.map((row, index) => index === eventIndex ? { ...row, gatilho: event.target.value as StageEventTemplate["gatilho"] } : row))}
+                                >
+                                  <option value="entrada">Ao entrar na etapa</option>
+                                  <option value="atraso">Quando atrasar / estourar SLA</option>
+                                </select>
+                                <select
+                                  className="h-9 rounded-md border bg-background px-2 text-xs"
+                                  value={eventItem.tipo}
+                                  onChange={(event) => {
+                                    const tipo = event.target.value as StageEventTemplate["tipo"];
+                                    setEditEvents((items) => items.map((row, index) => index === eventIndex ? {
+                                      ...row,
+                                      tipo,
+                                      demanda: tipo === "demanda" ? (row.demanda ?? { titulo: "", prazoMinutos: 1440, prioridade: "normal", bloqueiaAvanco: false }) : row.demanda,
+                                    } : row));
+                                  }}
+                                >
+                                  <option value="mensagem">Mensagem</option>
+                                  <option value="imagem">Foto / imagem</option>
+                                  <option value="documento">Documento</option>
+                                  <option value="playbook">Playbook</option>
+                                  <option value="demanda">Demanda / tarefa</option>
+                                </select>
+                                <select
+                                  className="h-9 rounded-md border bg-background px-2 text-xs"
+                                  value={eventItem.destinatario}
+                                  onChange={(event) => setEditEvents((items) => items.map((row, index) => index === eventIndex ? { ...row, destinatario: event.target.value as StageEventTemplate["destinatario"] } : row))}
+                                >
+                                  <option value="cliente">Cliente</option>
+                                  <option value="responsavel">Responsável</option>
+                                  <option value="ambos">Cliente + responsável</option>
+                                </select>
+                                <select
+                                  className="h-9 rounded-md border bg-background px-2 text-xs"
+                                  value={eventItem.canal}
+                                  disabled={eventItem.tipo === "demanda"}
+                                  onChange={(event) => setEditEvents((items) => items.map((row, index) => index === eventIndex ? { ...row, canal: event.target.value as StageEventTemplate["canal"] } : row))}
+                                >
+                                  <option value="whatsapp">WhatsApp</option>
+                                  <option value="notificacao">Notificação interna</option>
+                                </select>
+                              </div>
+
+                              {eventItem.tipo !== "demanda" && (
+                                <Textarea
+                                  rows={3}
+                                  value={eventItem.mensagem ?? ""}
+                                  onChange={(event) => setEditEvents((items) => items.map((row, index) => index === eventIndex ? { ...row, mensagem: event.target.value } : row))}
+                                  placeholder="Mensagem enviada neste evento. Pode acompanhar o arquivo quando houver."
+                                />
+                              )}
+
+                              {["imagem", "documento", "playbook"].includes(eventItem.tipo) && (
+                                <div className="rounded-md border border-dashed p-3">
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-medium">Arquivo do evento</p>
+                                      <p className="truncate text-[11px] text-muted-foreground">
+                                        {eventItem.anexo?.nome || "Nenhum arquivo anexado."}
+                                      </p>
+                                    </div>
+                                    <label className="inline-flex cursor-pointer items-center rounded-md border bg-background px-3 py-2 text-xs font-medium">
+                                      {uploadingEventId === eventItem.id
+                                        ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                        : <Upload className="mr-2 h-3.5 w-3.5" />}
+                                      {eventItem.anexo ? "Trocar arquivo" : "Anexar arquivo"}
+                                      <input
+                                        type="file"
+                                        className="hidden"
+                                        disabled={uploadingEventId === eventItem.id}
+                                        accept={eventItem.tipo === "imagem" ? "image/*" : ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,image/*"}
+                                        onChange={(inputEvent) => {
+                                          const file = inputEvent.currentTarget.files?.[0];
+                                          inputEvent.currentTarget.value = "";
+                                          if (file) void uploadEventAttachment(eventItem.id, file);
+                                        }}
+                                      />
+                                    </label>
+                                  </div>
+                                </div>
+                              )}
+
+                              {eventItem.tipo === "demanda" && (
+                                <div className="space-y-2 rounded-md border border-dashed p-3">
+                                  <Input
+                                    value={eventItem.demanda?.titulo ?? ""}
+                                    onChange={(event) => setEditEvents((items) => items.map((row, index) => index === eventIndex ? {
+                                      ...row,
+                                      demanda: { ...(row.demanda ?? { prioridade: "normal", bloqueiaAvanco: false }), titulo: event.target.value },
+                                    } : row))}
+                                    placeholder="Título da demanda"
+                                  />
+                                  <Textarea
+                                    rows={2}
+                                    value={eventItem.demanda?.descricao ?? ""}
+                                    onChange={(event) => setEditEvents((items) => items.map((row, index) => index === eventIndex ? {
+                                      ...row,
+                                      demanda: { ...(row.demanda ?? { titulo: "", prioridade: "normal", bloqueiaAvanco: false }), descricao: event.target.value },
+                                    } : row))}
+                                    placeholder="Descrição / instrução da demanda"
+                                  />
+                                  <div className="grid gap-2 sm:grid-cols-2">
+                                    <Input
+                                      inputMode="numeric"
+                                      value={eventItem.demanda?.prazoMinutos ?? ""}
+                                      onChange={(event) => setEditEvents((items) => items.map((row, index) => index === eventIndex ? {
+                                        ...row,
+                                        demanda: {
+                                          ...(row.demanda ?? { titulo: "", prioridade: "normal", bloqueiaAvanco: false }),
+                                          prazoMinutos: event.target.value ? Number(event.target.value.replace(/\D/g, "")) : null,
+                                        },
+                                      } : row))}
+                                      placeholder="Prazo em minutos"
+                                    />
+                                    <select
+                                      className="h-10 rounded-md border bg-background px-3 text-sm"
+                                      value={eventItem.demanda?.prioridade ?? "normal"}
+                                      onChange={(event) => setEditEvents((items) => items.map((row, index) => index === eventIndex ? {
+                                        ...row,
+                                        demanda: {
+                                          ...(row.demanda ?? { titulo: "", bloqueiaAvanco: false }),
+                                          prioridade: event.target.value as "baixa" | "normal" | "alta" | "urgente",
+                                        },
+                                      } : row))}
+                                    >
+                                      <option value="baixa">Baixa</option>
+                                      <option value="normal">Normal</option>
+                                      <option value="alta">Alta</option>
+                                      <option value="urgente">Urgente</option>
+                                    </select>
+                                  </div>
+                                  <label className="flex items-center gap-2 text-xs">
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(eventItem.demanda?.bloqueiaAvanco)}
+                                      onChange={(event) => setEditEvents((items) => items.map((row, index) => index === eventIndex ? {
+                                        ...row,
+                                        demanda: {
+                                          ...(row.demanda ?? { titulo: "", prioridade: "normal" }),
+                                          bloqueiaAvanco: event.target.checked,
+                                        },
+                                      } : row))}
+                                    />
+                                    Esta demanda bloqueia o avanço enquanto estiver pendente
+                                  </label>
+                                </div>
+                              )}
+
+                              <label className="flex items-center gap-2 text-xs">
+                                <input
+                                  type="checkbox"
+                                  checked={eventItem.ativo !== false}
+                                  onChange={(event) => setEditEvents((items) => items.map((row, index) => index === eventIndex ? { ...row, ativo: event.target.checked } : row))}
+                                />
+                                Evento ativo
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
                     <DialogFooter className="gap-2 sm:justify-end">
                       <Button type="button" variant="outline" onClick={() => setEditingId(null)}>
                         Cancelar
@@ -679,6 +959,11 @@ function PipelineStageManager({
                           : stage.atividadePadraoTitulo
                             ? `Atividade padrão: ${stage.atividadePadraoTitulo}${stage.atividadePadraoPrazoMinutos ? ` · prazo ${stage.atividadePadraoPrazoMinutos} min` : ""}`
                             : "Atividades padrão: usar sugestão do sistema / definir manualmente"}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {stage.eventos?.length
+                          ? `${stage.eventos.length} evento(s) automático(s) configurado(s)`
+                          : "Eventos automáticos: nenhum"}
                       </p>
                       <div className="mt-2">
                         <PipelineStageFunctionAccess
