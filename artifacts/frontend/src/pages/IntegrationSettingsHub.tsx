@@ -79,6 +79,8 @@ type CatalogIntegration = {
   capabilities?: string[];
   status?: string;
   overallHealthPercent?: number;
+  lastHealthCheckAt?: string | null;
+  lastSyncAt?: string | null;
   lastErrorMessage?: string | null;
 };
 
@@ -150,6 +152,7 @@ export default function IntegrationSettingsHub() {
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [checkingAll, setCheckingAll] = useState(false);
   const [search, setSearch] = useState("");
   const [catalogIntegrations, setCatalogIntegrations] = useState<CatalogIntegration[]>([]);
   const [showCustomGuide, setShowCustomGuide] = useState<"api" | "webhook" | "n8n" | null>(null);
@@ -977,6 +980,55 @@ export default function IntegrationSettingsHub() {
     }
   };
 
+  const lastHealthCheckAt = useMemo(() => {
+    const values = catalogIntegrations
+      .map((item) => item.lastHealthCheckAt ? new Date(item.lastHealthCheckAt) : null)
+      .filter((value): value is Date => Boolean(value) && !Number.isNaN(value.getTime()))
+      .sort((a, b) => b.getTime() - a.getTime());
+    return values[0]?.toLocaleString("pt-BR") ?? "Nunca";
+  }, [catalogIntegrations]);
+
+  const nextTokenExpiry = useMemo(() => {
+    const values = [
+      status?.googleCalendar?.tokenExpiresAt,
+      status?.instagram?.tokenExpiresAt,
+      status?.googleAds?.tokenExpiresAt,
+      status?.searchConsole?.tokenExpiresAt,
+      status?.social?.linkedinTokenExpiresAt,
+      status?.social?.tiktokTokenExpiresAt,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => new Date(value))
+      .filter((value) => !Number.isNaN(value.getTime()) && value.getTime() > Date.now())
+      .sort((a, b) => a.getTime() - b.getTime());
+    return values[0]?.toLocaleString("pt-BR") ?? "Nenhum vencimento próximo";
+  }, [status]);
+
+  const runAllHealthChecks = async () => {
+    if (!tenantId) return;
+    setCheckingAll(true);
+    try {
+      const result = await apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/finance-integrations/health-check`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      toast({
+        title: "Verificação concluída",
+        description: `${result?.checked ?? 0} integrações verificadas.`,
+      });
+      await loadStatus();
+    } catch (error) {
+      toast({
+        title: "Falha ao verificar integrações",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setCheckingAll(false);
+    }
+  };
+
   const visibleRows = rows.filter((row) => {
     const term = search.trim().toLowerCase();
     if (!term) return true;
@@ -1007,7 +1059,29 @@ export default function IntegrationSettingsHub() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => window.location.assign("/configuracoes")}>Voltar</Button>
+          <Button variant="outline" onClick={() => void runAllHealthChecks()} disabled={checkingAll || loading}>
+            {checkingAll ? "Verificando..." : "Verificar todas"}
+          </Button>
           <Button variant="outline" onClick={() => void loadStatus()} disabled={loading}>Atualizar status</Button>
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-xl border bg-card p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Conectadas</p>
+          <p className="mt-1 text-2xl font-bold">{connectedCount}</p>
+        </div>
+        <div className="rounded-xl border bg-card p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Precisam atenção</p>
+          <p className="mt-1 text-2xl font-bold">{attentionCount}</p>
+        </div>
+        <div className="rounded-xl border bg-card p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Última verificação</p>
+          <p className="mt-1 text-sm font-semibold">{lastHealthCheckAt}</p>
+        </div>
+        <div className="rounded-xl border bg-card p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Próximo vencimento</p>
+          <p className="mt-1 text-sm font-semibold">{nextTokenExpiry}</p>
         </div>
       </div>
 
@@ -1400,6 +1474,11 @@ export default function IntegrationSettingsHub() {
                   </span>
                 </div>
                 <p className="mt-3 text-[11px] text-muted-foreground">Autenticação: {item.authType.replaceAll("_", " ")}</p>
+                <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+                  <p>Saúde: {Math.round(Number(item.overallHealthPercent || 0))}%</p>
+                  <p>Última verificação: {item.lastHealthCheckAt ? new Date(item.lastHealthCheckAt).toLocaleString("pt-BR") : "Nunca"}</p>
+                  {item.lastSyncAt && <p>Última sincronização: {new Date(item.lastSyncAt).toLocaleString("pt-BR")}</p>}
+                </div>
                 {item.lastErrorMessage && <p className="mt-2 text-xs text-destructive">{item.lastErrorMessage}</p>}
                 <Button className="mt-4" variant="outline" onClick={() => toast({
                   title: configured ? `${item.name}: revisar conexão` : `${item.name}: configuração assistida`,
