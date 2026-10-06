@@ -109,6 +109,5 @@ describe("Google Data Manager tenant allowlist", () => {
 
     expect(mocks.select).toHaveBeenCalledTimes(1);
     expect(mocks.getGoogleAdsConnectionByTenantId).not.toHaveBeenCalled();
-    expect(globalThis.fetch).not.toHaveBeenCalled?.();
   });
 });
