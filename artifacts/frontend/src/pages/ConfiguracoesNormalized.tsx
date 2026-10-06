@@ -70,47 +70,7 @@ export default function Configuracoes() {
       .toLocaleLowerCase("pt-BR");
 
     const focusIntegration = (key: string) => {
-      if (key === "domain") {
-        window.location.assign("/content-autopilot?view=settings");
-        return;
-      }
-
-      const integrationTab = Array.from(root.querySelectorAll<HTMLElement>("[role='tab']")).find((tab) => {
-        const ariaLabel = normalizeText(tab.getAttribute("aria-label") ?? "");
-        const text = normalizeText(tab.textContent ?? "");
-        return ariaLabel === "integracoes" || text.includes("integracoes");
-      });
-      integrationTab?.click();
-
-      const url = new URL(window.location.href);
-      url.searchParams.set("tab", "integracoes");
-      url.searchParams.set("integration", key);
-      window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
-
-      window.setTimeout(() => {
-        const panel = root.querySelector<HTMLElement>("[role='tabpanel']:not([hidden])");
-        if (!panel) return;
-
-        const aliases = INTEGRATION_FOCUS_ALIASES[key] ?? [key];
-        const normalizedAliases = aliases.map(normalizeText);
-        const candidates = Array.from(panel.querySelectorAll<HTMLElement>("h2, h3, h4, strong, label, p, button"));
-        const match = candidates.find((element) => {
-          const text = normalizeText(element.textContent ?? "");
-          return normalizedAliases.some((alias) => text.includes(alias));
-        });
-        const target = match?.closest<HTMLElement>("section, article, .rounded-xl, .rounded-lg, .rounded-md, .border") ?? match;
-
-        if (!target) {
-          panel.scrollIntoView({ behavior: "smooth", block: "start" });
-          return;
-        }
-
-        target.dataset.integrationFocusTarget = "true";
-        target.scrollIntoView({ behavior: "smooth", block: "center" });
-        window.setTimeout(() => {
-          delete target.dataset.integrationFocusTarget;
-        }, 2200);
-      }, 140);
+      window.location.assign(`/configuracoes?tab=integracoes&integration=${encodeURIComponent(key)}`);
     };
 
     const loadIntegrationHealth = async (panel: HTMLElement) => {

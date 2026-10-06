@@ -3695,6 +3695,18 @@ export default function Configuracoes() {
 
         {/* ── Tab: Integrações ────────────────────────────────────────────── */}
         <TabsContent value="integracoes">
+          <div className="rounded-xl border bg-card p-6">
+            <h3 className="font-semibold">Central de Conexões</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Todas as integrações, credenciais, QR Codes, OAuth, testes e reconexões são administrados em um único lugar.
+            </p>
+            <Button className="mt-4" onClick={() => window.location.assign("/configuracoes?tab=integracoes")}>
+              Abrir Central de Conexões
+            </Button>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="integracoes-legacy-disabled">
           {/* ── Lock screen ─────────────────────────────────────────────── */}
           {!integracoesUnlocked ? (
             <div className="flex items-center justify-center py-16">

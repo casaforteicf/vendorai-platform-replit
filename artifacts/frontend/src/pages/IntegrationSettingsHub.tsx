@@ -71,6 +71,130 @@ type IntegrationRow = {
   detail?: string;
 };
 
+type IntegrationSupport = {
+  providerUrl?: string;
+  providerLabel?: string;
+  steps: string[];
+  note?: string;
+};
+
+const INTEGRATION_SUPPORT: Record<IntegrationKey, IntegrationSupport> = {
+  whatsapp: {
+    steps: [
+      "Clique em Conectar e gere o QR Code na Central.",
+      "No celular, abra o WhatsApp e acesse Aparelhos conectados.",
+      "Leia o QR Code e aguarde a confirmação automática do Vendor.ai.",
+    ],
+    note: "Se o QR expirar ou a sessão cair, a Central identifica o estado e permite reconectar.",
+  },
+  instagram: {
+    providerUrl: "https://business.facebook.com/settings/",
+    providerLabel: "Abrir Meta Business",
+    steps: [
+      "Clique em Conectar e autorize o login da Meta.",
+      "Escolha a conta profissional correta do Instagram e conceda as permissões solicitadas.",
+      "Volte ao Vendor.ai; a Central valida a conta, o token e o vencimento.",
+    ],
+  },
+  "google-calendar": {
+    providerUrl: "https://calendar.google.com/",
+    providerLabel: "Abrir Google Calendar",
+    steps: [
+      "Clique em Conectar e escolha a conta Google usada pela empresa.",
+      "Autorize acesso à agenda e disponibilidade.",
+      "Retorne ao Vendor.ai; a Central confirma o refresh token e a sincronização.",
+    ],
+  },
+  "email-google": {
+    providerUrl: "https://mail.google.com/",
+    providerLabel: "Abrir Gmail",
+    steps: [
+      "Clique em Conectar e escolha a conta Gmail/Workspace.",
+      "Autorize leitura e envio de e-mails.",
+      "Retorne ao Vendor.ai e use Sincronizar agora para validar a caixa.",
+    ],
+  },
+  "email-microsoft": {
+    providerUrl: "https://outlook.office.com/mail/",
+    providerLabel: "Abrir Outlook",
+    steps: [
+      "Confirme que o servidor Vendor.ai possui as credenciais OAuth Microsoft.",
+      "Clique em Conectar e autorize a conta Microsoft 365.",
+      "Retorne ao Vendor.ai e valide sincronização e envio.",
+    ],
+  },
+  "email-webmail": {
+    steps: [
+      "Tenha em mãos servidor IMAP, porta, SMTP, porta, usuário e senha de aplicativo.",
+      "Preencha os dados na Central e clique em Testar conexão.",
+      "Depois de validado, salve e sincronize a caixa.",
+    ],
+    note: "Se você não souber os dados IMAP/SMTP, solicite ao provedor de e-mail ou hospedagem.",
+  },
+  "google-ads": {
+    providerUrl: "https://ads.google.com/",
+    providerLabel: "Abrir Google Ads",
+    steps: [
+      "Clique em Conectar e autorize a conta Google Ads.",
+      "Se houver mais de uma conta, selecione a conta de anúncios correta.",
+      "A Central valida token, conta selecionada e saúde da conexão.",
+    ],
+  },
+  asaas: {
+    providerUrl: "https://app.asaas.com/",
+    providerLabel: "Abrir Asaas",
+    steps: [
+      "No Asaas, gere ou copie a chave de API da conta correta.",
+      "Cole a chave somente na Central de Conexões.",
+      "Clique em Validar; o Vendor.ai confirma a credencial antes de salvar.",
+    ],
+  },
+  zapsign: {
+    providerUrl: "https://app.zapsign.com.br/",
+    providerLabel: "Abrir ZapSign",
+    steps: [
+      "Acesse as configurações da ZapSign e obtenha o token/API key.",
+      "Cole o token somente na Central de Conexões.",
+      "Clique em Validar e aguarde a confirmação.",
+    ],
+  },
+  "search-console": {
+    providerUrl: "https://search.google.com/search-console",
+    providerLabel: "Abrir Search Console",
+    steps: [
+      "Clique em Conectar e autorize a conta Google.",
+      "Escolha ou confirme a propriedade do domínio/site.",
+      "Use Verificar na Central até o Google confirmar a propriedade.",
+    ],
+  },
+  linkedin: {
+    providerUrl: "https://www.linkedin.com/campaignmanager/",
+    providerLabel: "Abrir LinkedIn",
+    steps: [
+      "Clique em Conectar e autorize a conta LinkedIn.",
+      "Conceda as permissões solicitadas para publicação e dados.",
+      "Retorne ao Vendor.ai para validar token e vencimento.",
+    ],
+  },
+  tiktok: {
+    providerUrl: "https://ads.tiktok.com/",
+    providerLabel: "Abrir TikTok Business",
+    steps: [
+      "Clique em Conectar e autorize a conta TikTok.",
+      "Conceda as permissões necessárias para o uso escolhido.",
+      "Retorne ao Vendor.ai para validar token e saúde da conexão.",
+    ],
+  },
+  domain: {
+    steps: [
+      "Informe o domínio que será usado pela empresa.",
+      "A Central mostra quais registros DNS precisam ser criados no seu provedor.",
+      "Após alterar o DNS, volte e execute a verificação até o domínio ficar ativo.",
+    ],
+    note: "O provedor pode ser Registro.br, Cloudflare, GoDaddy ou outro serviço DNS.",
+  },
+};
+
 type CatalogIntegration = {
   providerKey: string;
   name: string;
@@ -156,6 +280,7 @@ export default function IntegrationSettingsHub() {
   const [search, setSearch] = useState("");
   const [catalogIntegrations, setCatalogIntegrations] = useState<CatalogIntegration[]>([]);
   const [showCustomGuide, setShowCustomGuide] = useState<"api" | "webhook" | "n8n" | null>(null);
+  const [helpKey, setHelpKey] = useState<IntegrationKey | null>(null);
   const [customIntegrations, setCustomIntegrations] = useState<CustomIntegration[]>([]);
   const [metaAdsStatus, setMetaAdsStatus] = useState<{ connected?: boolean; pendingAccountSelection?: boolean; adAccountName?: string | null }>({});
   const [accountPicker, setAccountPicker] = useState<{
@@ -298,6 +423,24 @@ export default function IntegrationSettingsHub() {
   useEffect(() => {
     void loadStatus();
   }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    const requested = new URLSearchParams(window.location.search).get("integration");
+    if (!requested) return;
+
+    setSearch("");
+    const timer = window.setTimeout(() => {
+      const safeKey = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(requested) : requested.replace(/[^a-zA-Z0-9_-]/g, "");
+      const target = document.querySelector<HTMLElement>(`[data-integration-key="${safeKey}"]`);
+      if (!target) return;
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      target.setAttribute("data-integration-focus", "true");
+      window.setTimeout(() => target.removeAttribute("data-integration-focus"), 2200);
+    }, 80);
+
+    return () => window.clearTimeout(timer);
+  }, [loading]);
 
   const rows = useMemo<IntegrationRow[]>(() => [
     {
@@ -1205,7 +1348,7 @@ export default function IntegrationSettingsHub() {
         </div>
       </div>
 
-      <div className="rounded-2xl border bg-card p-5">
+      <div data-integration-key="tracking" className="rounded-2xl border bg-card p-5 data-[integration-focus=true]:ring-2 data-[integration-focus=true]:ring-primary">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h2 className="font-semibold">Tracking e conversões</h2>
@@ -1354,7 +1497,7 @@ export default function IntegrationSettingsHub() {
               </div>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {categoryRows.map((row) => (
-            <div key={row.key} className="rounded-xl border bg-background p-4">
+            <div key={row.key} data-integration-key={row.key} className="rounded-xl border bg-background p-4 data-[integration-focus=true]:ring-2 data-[integration-focus=true]:ring-primary">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3 className="font-semibold">{row.label}</h3>
@@ -1494,6 +1637,47 @@ export default function IntegrationSettingsHub() {
                 >
                   {rowActionLabel(row)}
                 </Button>
+              )}
+
+              <div className="mt-3 flex flex-wrap gap-2 border-t pt-3">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setHelpKey(helpKey === row.key ? null : row.key)}
+                >
+                  {helpKey === row.key ? "Ocultar ajuda" : "Ajuda passo a passo"}
+                </Button>
+                {INTEGRATION_SUPPORT[row.key].providerUrl && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => window.open(INTEGRATION_SUPPORT[row.key].providerUrl, "_blank", "noopener,noreferrer")}
+                  >
+                    {INTEGRATION_SUPPORT[row.key].providerLabel ?? "Abrir provedor"}
+                  </Button>
+                )}
+              </div>
+
+              {helpKey === row.key && (
+                <div className="mt-3 rounded-lg border bg-muted/30 p-3">
+                  <p className="text-xs font-semibold">Como integrar</p>
+                  {row.attention && row.detail && (
+                    <p className="mt-2 rounded-md border border-amber-300/60 bg-amber-50/60 px-2.5 py-2 text-xs text-amber-900">
+                      Antes de continuar: {row.detail}
+                    </p>
+                  )}
+                  <ol className="mt-2 space-y-1.5 text-xs text-muted-foreground">
+                    {INTEGRATION_SUPPORT[row.key].steps.map((step, index) => (
+                      <li key={step}>{index + 1}. {step}</li>
+                    ))}
+                  </ol>
+                  {INTEGRATION_SUPPORT[row.key].note && (
+                    <p className="mt-2 text-[11px] text-muted-foreground">{INTEGRATION_SUPPORT[row.key].note}</p>
+                  )}
+                  <p className="mt-3 text-[11px] font-medium">
+                    O Vendor.ai acompanha o status e, quando identificar uma pendência, mostra o próximo passo necessário.
+                  </p>
+                </div>
               )}
             </div>
           ))}
