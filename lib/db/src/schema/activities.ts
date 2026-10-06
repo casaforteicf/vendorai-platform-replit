@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, pgEnum, boolean, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, pgEnum, boolean, integer, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -65,6 +65,12 @@ export const activitiesTable = pgTable("activities", {
   agenteResponsavelKey: text("agente_responsavel_key"),
   proximaAcaoTexto: text("proxima_acao_texto"),
   atividadePaiId: text("atividade_pai_id"),
+  // Vincula a atividade diretamente ao processo operacional (ex.: assistência).
+  workCardId: text("work_card_id"),
+  // Snapshot imutável do formulário/perguntas vigente quando a atividade foi criada.
+  formularioSnapshot: jsonb("formulario_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+  // Respostas estruturadas com histórico de autor/origem/alterações.
+  formularioRespostas: jsonb("formulario_respostas").$type<Record<string, unknown>>().notNull().default({}),
   responsavelId: text("responsavel_id").references(() => usersTable.id, {
     onDelete: "set null",
   }),
