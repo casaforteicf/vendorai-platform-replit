@@ -32,6 +32,7 @@ export type OfficialMetrics = {
   commercial?: {
     newLeads?: number;
     activeOpportunities?: number;
+    activePipelineValue?: number;
     confirmedSales?: number;
     soldRevenue?: number;
     averageTicket?: number;
