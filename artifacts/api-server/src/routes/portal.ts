@@ -402,11 +402,27 @@ router.get("/portal/obra/:token", async (req, res) => {
     diario = await db.select().from(obraDiarioTable)
       .where(and(eq(obraDiarioTable.obraId, obra.id), eq(obraDiarioTable.status, "aprovado")))
       .orderBy(desc(obraDiarioTable.data)).limit(12);
-    if (!config.showDiaryPhotos) diario = diario.map((entry) => ({
+
+    diario = diario.map((entry: any) => ({
       ...entry,
-      fotos: [],
-      videos: [],
-      anexos: config.showDocuments ? entry.anexos : [],
+      fotos: config.showDiaryPhotos
+        ? (Array.isArray(entry.fotos) ? entry.fotos : []).map((foto: any, index: number) => ({
+            ...foto,
+            url: `/api/portal/obra/${encodeURIComponent(String(token))}/diary/${encodeURIComponent(String(entry.id))}/foto/${index}`,
+          }))
+        : [],
+      videos: config.showDiaryPhotos
+        ? (Array.isArray(entry.videos) ? entry.videos : []).map((video: any, index: number) => ({
+            ...video,
+            url: `/api/portal/obra/${encodeURIComponent(String(token))}/diary/${encodeURIComponent(String(entry.id))}/video/${index}`,
+          }))
+        : [],
+      anexos: config.showDocuments
+        ? (Array.isArray(entry.anexos) ? entry.anexos : []).map((anexo: any, index: number) => ({
+            ...anexo,
+            url: `/api/portal/obra/${encodeURIComponent(String(token))}/diary/${encodeURIComponent(String(entry.id))}/anexo/${index}`,
+          }))
+        : [],
     }));
   }
 
@@ -765,7 +781,10 @@ router.get("/portal/obra/:token", async (req, res) => {
           WHERE obra_id=$1 AND tenant_id=$2 AND publicado_cliente=true
           ORDER BY categoria ASC, created_at DESC`,
         [obra.id, obra.tenantId],
-      )).rows
+      )).rows.map((item: any) => ({
+        ...item,
+        url: `/api/portal/obra/${encodeURIComponent(String(token))}/documents/${encodeURIComponent(String(item.id))}`,
+      }))
     : [];
 
   const contracts = config.showContracts ? privateDocuments.filter((item: any) => item.categoria === "contrato") : [];
@@ -779,7 +798,12 @@ router.get("/portal/obra/:token", async (req, res) => {
           WHERE obra_id=$1 AND tenant_id=$2 AND tipo='nota_fiscal'
           ORDER BY data_emissao DESC NULLS LAST, created_at DESC LIMIT 100`,
         [obra.id, obra.tenantId],
-      )).rows
+      )).rows.map((item: any) => ({
+        ...item,
+        documento_url: item.documento_url
+          ? `/api/portal/obra/${encodeURIComponent(String(token))}/invoices/${encodeURIComponent(String(item.id))}/document`
+          : null,
+      }))
     : [];
 
   const supportTickets = (authenticated && config.showSupport)
@@ -897,6 +921,106 @@ router.get("/portal/obra/:token/renders/:renderId", async (req, res, next) => {
 
     if (await streamPortalObject(res, render.resultImageUrl)) return;
     if (/^https:\/\//i.test(String(render.resultImageUrl))) return res.redirect(302, String(render.resultImageUrl));
+    return res.status(404).send("Arquivo não disponível.");
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/portal/obra/:token/diary/:entryId/:kind/:index", async (req, res, next) => {
+  try {
+    const token = String(req.params.token ?? "");
+    const entryId = String(req.params.entryId ?? "");
+    const kind = String(req.params.kind ?? "");
+    const index = Number(req.params.index);
+    if (!["foto","video","anexo"].includes(kind) || !Number.isInteger(index) || index < 0) {
+      return res.status(404).send("Arquivo não encontrado.");
+    }
+
+    const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
+    if (!obra) return res.status(404).send("Portal não encontrado.");
+    const config = portalConfig(obra.portalConfig);
+    if ((kind === "foto" || kind === "video") && !config.showDiaryPhotos) return res.status(403).send("Mídia não publicada.");
+    if (kind === "anexo" && !config.showDocuments) return res.status(403).send("Documento não publicado.");
+
+    const [entry] = await db.select().from(obraDiarioTable).where(and(
+      eq(obraDiarioTable.id, entryId),
+      eq(obraDiarioTable.obraId, obra.id),
+      eq(obraDiarioTable.status, "aprovado"),
+    )).limit(1);
+    if (!entry) return res.status(404).send("Registro não encontrado.");
+
+    const collection = kind === "foto"
+      ? (Array.isArray((entry as any).fotos) ? (entry as any).fotos : [])
+      : kind === "video"
+        ? (Array.isArray((entry as any).videos) ? (entry as any).videos : [])
+        : (Array.isArray((entry as any).anexos) ? (entry as any).anexos : []);
+    const asset = collection[index];
+    const source = asset?.url;
+    if (!source) return res.status(404).send("Arquivo não encontrado.");
+
+    if (await streamPortalObject(res, source)) return;
+    if (/^https:\/\//i.test(String(source))) return res.redirect(302, String(source));
+    return res.status(404).send("Arquivo não disponível.");
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/portal/obra/:token/documents/:documentId", async (req, res, next) => {
+  try {
+    const token = String(req.params.token ?? "");
+    const documentId = String(req.params.documentId ?? "");
+    const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
+    if (!obra) return res.status(404).send("Portal não encontrado.");
+    const config = portalConfig(obra.portalConfig);
+
+    const result = await pool.query(
+      `SELECT id,categoria,url
+         FROM obra_portal_documents
+        WHERE id=$1 AND obra_id=$2 AND tenant_id=$3 AND publicado_cliente=true
+        LIMIT 1`,
+      [documentId, obra.id, obra.tenantId],
+    );
+    const doc = result.rows[0];
+    if (!doc) return res.status(404).send("Documento não encontrado.");
+
+    const allowed = doc.categoria === "contrato"
+      ? config.showContracts
+      : ["manual","garantia"].includes(String(doc.categoria))
+        ? config.showManuals
+        : config.showDocuments;
+    if (!allowed) return res.status(403).send("Documento não publicado.");
+
+    if (await streamPortalObject(res, doc.url)) return;
+    if (/^https:\/\//i.test(String(doc.url))) return res.redirect(302, String(doc.url));
+    return res.status(404).send("Arquivo não disponível.");
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/portal/obra/:token/invoices/:invoiceId/document", async (req, res, next) => {
+  try {
+    const token = String(req.params.token ?? "");
+    const invoiceId = String(req.params.invoiceId ?? "");
+    const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
+    if (!obra) return res.status(404).send("Portal não encontrado.");
+    const config = portalConfig(obra.portalConfig);
+    if (!config.showInvoices) return res.status(403).send("Notas fiscais não publicadas.");
+
+    const result = await pool.query(
+      `SELECT documento_url
+         FROM obra_lancamentos
+        WHERE id=$1 AND obra_id=$2 AND tenant_id=$3 AND tipo='nota_fiscal'
+        LIMIT 1`,
+      [invoiceId, obra.id, obra.tenantId],
+    );
+    const source = result.rows[0]?.documento_url;
+    if (!source) return res.status(404).send("Documento não encontrado.");
+
+    if (await streamPortalObject(res, source)) return;
+    if (/^https:\/\//i.test(String(source))) return res.redirect(302, String(source));
     return res.status(404).send("Arquivo não disponível.");
   } catch (err) {
     next(err);
