@@ -11,9 +11,9 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 // nenhum dos ~11 arquivos que já usavam isso precisou mudar.
 //
 // Endereçamento: continua usando PRIVATE_OBJECT_DIR / PUBLIC_OBJECT_SEARCH_PATHS
-// no formato "/<bucket>/<prefixo>" (ex: /app-uploads/private). O primeiro
-// segmento agora é o nome real do bucket no Supabase Storage (criado
-// automaticamente na primeira vez que for usado).
+// no formato "/<bucket>/<prefixo>" (ex: /app-uploads/private). O bucket é
+// mantido PRIVADO; objetos explicitamente públicos são servidos pelas rotas
+// controladas do backend em PUBLIC_OBJECT_SEARCH_PATHS.
 // ─────────────────────────────────────────────────────────────────────────
 
 function getSupabaseClient(): SupabaseClient {
@@ -44,7 +44,7 @@ async function ensureBucketExists(client: SupabaseClient, bucketName: string): P
       const exists = buckets?.some((b) => b.name === bucketName);
       if (!exists) {
         const { error } = await client.storage.createBucket(bucketName, {
-          public: true,
+          public: false,
           fileSizeLimit: OBJECT_STORAGE_FILE_SIZE_LIMIT,
         });
         if (error && !/already exists/i.test(error.message)) {
@@ -55,7 +55,7 @@ async function ensureBucketExists(client: SupabaseClient, bucketName: string): P
         // por bucket compatível com o limite global para que a preparação do
         // upload nunca falhe antes de gerar a URL assinada.
         const { error } = await client.storage.updateBucket(bucketName, {
-          public: true,
+          public: false,
           fileSizeLimit: OBJECT_STORAGE_FILE_SIZE_LIMIT,
         });
         if (error) throw error;
@@ -318,8 +318,8 @@ export class ObjectStorageService {
     return `/objects/quotes/${safeName}`;
   }
 
-  // ACL não é usado por nenhum caller hoje (bucket é público); mantido como
-  // no-op só pra não quebrar import caso algo volte a chamar isso.
+  // ACL por objeto não é usado; a fronteira público/privado é aplicada pelas
+  // rotas do backend e URLs assinadas sobre um bucket privado.
   async trySetObjectEntityAclPolicy(rawPath: string): Promise<string> {
     return this.normalizeObjectEntityPath(rawPath);
   }
