@@ -311,6 +311,13 @@ router.post("/leads", async (req, res) => {
     });
   }
 
+  if (!resolvedAssignedTo && !data.representativeFunctionId) {
+    res.status(422).json({
+      error: "Responsável obrigatório. Selecione um usuário da equipe, uma empresa representante ou configure a distribuição automática com ao menos um responsável elegível.",
+    });
+    return;
+  }
+
   const [lead] = await db.insert(leadsTable).values({
     ...data,
     assignedTo: resolvedAssignedTo,
@@ -474,6 +481,9 @@ router.post("/tenants/:tenantId/leads/import", async (req, res) => {
         importAssignedTo = vendedor?.id ?? null;
       }
       if (!importAssignedTo) importAssignedTo = await pickNextVendedor(tenantId, { location: row.endereco });
+      if (!importAssignedTo) {
+        throw new Error("Responsável obrigatório: nenhum usuário elegível foi encontrado para este lead.");
+      }
 
       const [importedLead] = await db.insert(leadsTable).values({
         tenantId,
