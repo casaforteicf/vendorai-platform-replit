@@ -1008,14 +1008,38 @@ export default function IntegrationSettingsHub() {
     if (!tenantId) return;
     setCheckingAll(true);
     try {
-      const result = await apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/finance-integrations/health-check`, {
+      const financeCheck = apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/finance-integrations/health-check`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
+
+      const nativeChecks: Array<Promise<unknown>> = [];
+      if (status?.searchConsole?.connected || status?.searchConsole?.attention) {
+        nativeChecks.push(apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/search-console-connection/refresh`, { method: "POST" }));
+      }
+      if (status?.instagram?.connected || status?.instagram?.attention) {
+        nativeChecks.push(apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/instagram-connection/refresh`, { method: "POST" }));
+      }
+      if (metaAdsStatus.connected || metaAdsStatus.pendingAccountSelection) {
+        nativeChecks.push(apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/meta-ads-connection/refresh`, { method: "POST" }));
+      }
+      for (const connection of socialConnections.filter((item) => item.connected)) {
+        nativeChecks.push(apiJson(
+          `/api/tenants/${encodeURIComponent(tenantId)}/social-connections/${encodeURIComponent(connection.provider)}/test`,
+          { method: "POST" },
+        ));
+      }
+
+      const [financeResult, ...nativeResults] = await Promise.allSettled([financeCheck, ...nativeChecks]);
+      const financeChecked = financeResult.status === "fulfilled" ? Number((financeResult.value as any)?.checked ?? 0) : 0;
+      const nativeSucceeded = nativeResults.filter((item) => item.status === "fulfilled").length;
+      const nativeFailed = nativeResults.length - nativeSucceeded;
+
       toast({
-        title: "Verificação concluída",
-        description: `${result?.checked ?? 0} integrações verificadas.`,
+        title: nativeFailed ? "Verificação concluída com alertas" : "Verificação concluída",
+        description: `${financeChecked + nativeSucceeded} integrações validadas${nativeFailed ? ` · ${nativeFailed} precisam revisão` : ""}.`,
+        variant: nativeFailed ? "destructive" : "default",
       });
       await loadStatus();
     } catch (error) {
