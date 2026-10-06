@@ -37,13 +37,18 @@ async function apiJson<T = any>(url: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+async function checkedRequest(url: string, init?: RequestInit): Promise<Response> {
+  const response = await fetch(url, init);
+  if (!response.ok) throw new Error(`Falha na requisição (HTTP ${response.status})`);
+  return response;
+}
+
 async function checkedUpload(url: string, file: File): Promise<void> {
-  const response = await fetch(url, {
+  await checkedRequest(url, {
     method: "PUT",
     headers: { "Content-Type": file.type || "application/octet-stream" },
     body: file,
   });
-  if (!response.ok) throw new Error(`Falha ao enviar foto (HTTP ${response.status})`);
 }
 
 const STATUS_FLOW = [
