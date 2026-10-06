@@ -348,6 +348,27 @@ function ExecucaoDialog({
     onError: (e: any) => toast({ title: "Falta comprovação", description: e.message, variant: "destructive" }),
   });
 
+  const updateSharing = useMutation({
+    mutationFn: (payload: { compartilharStatusCliente?: boolean; clienteAcompanha?: boolean }) =>
+      fetch(`/api/tenants/${tenantId}/servicos/ordens/${ordem.id}`, {
+        method: "PATCH",
+        headers: authHeaders(),
+        body: JSON.stringify(payload),
+      }).then(async (r) => {
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(body.error ?? "Não foi possível atualizar o compartilhamento.");
+        return body;
+      }),
+    onSuccess: (updated) => {
+      qc.setQueryData<any[]>(["servicos-ordens", tenantId], (rows = []) =>
+        rows.map((row) => row.id === updated.id ? { ...row, ...updated } : row),
+      );
+      qc.invalidateQueries({ queryKey: ["servicos-ordens", tenantId] });
+      toast({ title: "Compartilhamento atualizado." });
+    },
+    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
   async function addPhoto(item: any, file: File | undefined) {
     if (!file) return;
     try {
@@ -359,6 +380,7 @@ function ExecucaoDialog({
           concluido: false,
           observacao: drafts[item.id] ?? item.observacao ?? "",
           fotos: [...(item.fotos ?? []), path],
+          visibilidade: item.visibilidade ?? "interno",
         },
       });
       toast({ title: "Foto anexada à atividade." });
@@ -401,6 +423,40 @@ function ExecucaoDialog({
             <div className="mt-3 h-2 rounded-full bg-muted overflow-hidden">
               <div className="h-full bg-primary transition-all" style={{ width: `${percentual}%` }} />
             </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Compartilhar etapa atual com o cliente</Label>
+                <Select
+                  value={ordem?.compartilharStatusCliente === false ? "interno" : "cliente"}
+                  onValueChange={(value) => updateSharing.mutate({ compartilharStatusCliente: value === "cliente" })}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cliente">Mostrar etapa/status ao cliente</SelectItem>
+                    <SelectItem value="interno">Manter etapa somente interna</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Acompanhamento da OS</Label>
+                <Select
+                  value={ordem?.clienteAcompanha === false ? "desativado" : "ativo"}
+                  onValueChange={(value) => updateSharing.mutate({ clienteAcompanha: value === "ativo" })}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ativo">Cliente pode acompanhar</SelectItem>
+                    <SelectItem value="desativado">Não compartilhar esta OS</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </div>
 
           <div>
@@ -430,6 +486,28 @@ function ExecucaoDialog({
                               : "texto ou foto"
                             }
                           </p>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Quem pode ver esta ação e suas evidências?</Label>
+                          <Select
+                            value={item.visibilidade ?? "interno"}
+                            onValueChange={(visibilidade) =>
+                              updateItem.mutate({
+                                itemId: item.id,
+                                payload: { visibilidade },
+                              })
+                            }
+                          >
+                            <SelectTrigger className="h-9">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="interno">Somente equipe interna</SelectItem>
+                              <SelectItem value="cliente">Compartilhar com o cliente/lead</SelectItem>
+                              <SelectItem value="cliente_parceiro">Cliente + parceiro responsável</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
 
                         <Textarea
@@ -472,6 +550,7 @@ function ExecucaoDialog({
                                     concluido: true,
                                     observacao: text,
                                     fotos: item.fotos ?? [],
+                                    visibilidade: item.visibilidade ?? "interno",
                                   },
                                 })
                               }
@@ -490,6 +569,7 @@ function ExecucaoDialog({
                                     concluido: false,
                                     observacao: text,
                                     fotos: item.fotos ?? [],
+                                    visibilidade: item.visibilidade ?? "interno",
                                   },
                                 })
                               }
@@ -515,7 +595,7 @@ function ExecucaoDialog({
           </div>
 
           <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
-            Ao concluir todos os passos obrigatórios, a OS é concluída automaticamente e a pipeline avança. Cada validação registra responsável, data, hora, texto e fotos anexadas.
+            Ao concluir todos os passos obrigatórios, a OS é concluída automaticamente e a pipeline avança. Cada ação registra responsável, data, hora e evidências. O tenant decide, por etapa e por ação, o que fica interno e o que o cliente/lead pode acompanhar.
           </div>
         </div>
       </DialogContent>
