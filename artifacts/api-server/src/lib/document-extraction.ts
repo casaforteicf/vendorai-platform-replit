@@ -13,6 +13,8 @@ export const quoteExtractionResultSchema = z.object({
   cliente: z.string().nullable().optional(),
   clienteDocumento: z.string().nullable().optional(),
   clienteEndereco: z.string().nullable().optional(),
+  clienteTelefone: z.string().nullable().optional(),
+  clienteEmail: z.string().nullable().optional(),
   fornecedor: z.string().nullable().optional(),
   fornecedorDocumento: z.string().nullable().optional(),
   fornecedorEndereco: z.string().nullable().optional(),
@@ -152,6 +154,7 @@ Regras obrigatórias:
 - Se o documento tiver grupos, capítulos, etapas ou seções, preserve essa hierarquia em "grupo" e/ou "etapa".
 - Quando houver valor total da linha, preserve-o. Quando houver quantidade e valor unitário, preserve ambos.
 - Extraia também as informações comerciais e contratuais disponíveis.
+- Quando houver telefone/WhatsApp ou e-mail do cliente no documento, preserve exatamente esses dados em clienteTelefone e clienteEmail.
 - Campos não encontrados devem ser omitidos ou null.
 - Datas devem usar YYYY-MM-DD quando for possível determinar a data com segurança.
 - Retorne SOMENTE JSON válido, sem texto fora dele.
@@ -165,6 +168,8 @@ Formato:
   "cliente": "nome/razão social do cliente",
   "clienteDocumento": "CPF/CNPJ/documento",
   "clienteEndereco": "endereço do cliente",
+  "clienteTelefone": "telefone/WhatsApp do cliente exatamente como aparece no documento",
+  "clienteEmail": "e-mail do cliente exatamente como aparece no documento",
   "fornecedor": "nome/razão social do fornecedor",
   "fornecedorDocumento": "CPF/CNPJ/documento",
   "fornecedorEndereco": "endereço do fornecedor",
