@@ -422,6 +422,7 @@ async function createBudgetFromSpecObjects(tId: string | null, payload: {
       manufacturerName: spec.manufacturer_name,
       productName: spec.product_name,
       materialName: spec.material_name,
+      catalogCode: spec.catalog_code,
       visibleToClient: true,
       sortOrder: 0,
     });
