@@ -998,6 +998,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 } = {}) {
   const [step, setStep] = useState(WORKSPACE_STEP);
   const [lotWidth, setLotWidth] = useState(12);
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
   const [lotDepth, setLotDepth] = useState(30);
   const [sitePlacement, setSitePlacement] = useState<SitePlacement>(DEFAULT_SITE_PLACEMENT);
   const [typology, setTypology] = useState<ConceptTypology>("terrea_3q");
@@ -1492,13 +1494,17 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           if (!cancelled) {
             setConceptId(null);
             conceptIdRef.current = null;
-            setProjectScope(null);
-            setStartWithTerrain(null);
+            // ARQ-PRE-001: entrada assistida, sem wizard obrigatório.
+            // Novo pré-projeto abre direto no seletor de origem e mantém o terreno opcional.
+            setProjectScope("house");
+            setStartWithTerrain(false);
             setTerrainDefined(false);
             setStartSourceChosen(false);
-            setStartWizardStage("kind");
-            setIntakeStage("kind");
+            setStartWizardStage("source");
+            setIntakeStage("source");
             setStartChooserDismissed(false);
+            setEditorView("plan");
+            setEditorLibraryTab("build");
             setSaveState("idle");
           }
           return;
@@ -1994,6 +2000,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const applyAiDevelopment = async (result: AIDevelopmentResponse) => {
     const before = snapshotEditor();
     const roomPatchById = new Map(
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
       (result.layoutSuggestion?.roomPatches ?? []).map((patch) => [patch.id, patch]),
     );
 
@@ -2994,6 +3002,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
     const existingOpenings = safeCustomOpenings.filter((opening) => opening.floor === activeFloor);
     const otherOpenings = safeCustomOpenings.filter((opening) => opening.floor !== activeFloor);
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
     const importedOpenings: CustomOpening[] = [];
 
     for (const opening of baseGeometry.openings) {
@@ -3994,6 +4004,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           y: horizontal ? py - 0.42 : py - width / 2 - 0.20,
           width: horizontal ? width + 0.40 : 0.84,
           height: horizontal ? 0.84 : width + 0.40,
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
         }];
       });
 
@@ -4994,6 +5006,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
     const importedWalls = preview.walls.map((wall, index) => ({
       id: wall.id || `trace-wall-${index + 1}`,
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
       floor: 0,
       x1: wall.x1,
       y1: wall.y1,
@@ -5994,6 +6008,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       ["Unidade", "Metros"],
                     ].map(([label, value]) => (
                       <div key={label} className="flex items-center justify-between rounded-lg px-2 py-2 text-xs">
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
                         <span className="text-slate-500">{label}</span>
                         <span className="font-semibold text-slate-800">{value}</span>
                       </div>
@@ -6930,8 +6946,17 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
                   {startWizardStage === "source" && (
                     <>
-                      <button type="button" onClick={() => { if (projectScope === "house") { setIntakeStage("terrain_choice"); setStartWizardStage("terrain"); } else { setProjectScope(null); setStartWithTerrain(null); setTerrainDefined(false); setIntakeStage("kind"); setStartWizardStage("kind"); } setStartChooserDismissed(false); }} className="mb-3 text-xs font-semibold text-slate-500 hover:text-slate-900">← Voltar</button>
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">{projectScope === "room" ? "Ambiente" : "Projeto"}</div>
+                      <div className="mb-4 flex flex-wrap items-center gap-2">
+                        <button type="button" onClick={() => { setProjectScope("house"); setStartWithTerrain(false); setTerrainDefined(false); }}
+                          className={projectScope === "house" ? "rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white" : "rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"}>
+                          Casa completa
+                        </button>
+                        <button type="button" onClick={() => { setProjectScope("room"); setStartWithTerrain(false); setTerrainDefined(false); setLotWidth(8); setLotDepth(8); setDesiredArea(25); setFloors(1); }}
+                          className={projectScope === "room" ? "rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white" : "rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"}>
+                          Um ambiente
+                        </button>
+                      </div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">Novo pré-projeto</div>
                       <h2 className="mt-1 text-2xl font-bold text-slate-950">Como você quer começar?</h2>
                       <p className="mt-1 text-sm leading-6 text-slate-500">
                         {projectScope === "room"
@@ -6985,15 +7010,36 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         </button>
 
                         <button type="button" onClick={() => projectStartReferenceInputRef.current?.click()}
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
                           className="group min-h-32 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm">
                           <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-800"><Camera className="h-5 w-5" /></span>
                             <span><span className="block text-base font-bold text-slate-950">{projectScope === "room" ? "Foto / croqui / planta" : "Croqui / pré-planta / foto"}</span>
                             <span className="mt-1 block text-xs leading-5 text-slate-600">Envie imagem ou PDF. Em imagens, a IA interpreta a referência e reconstrói paredes e aberturas como geometria editável.</span></span></div>
                         </button>
+
+                        <button type="button" onClick={() => {
+                          setStartSourceChosen(true); setIntakeStage("complete"); setStartChooserDismissed(true);
+                          setEditorExperienceMode("guided"); setEditorView("plan"); setEditorLibraryTab("models"); setLibraryOpen(true); setModelGalleryOpen(true);
+                        }}
+                          className="group min-h-32 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm">
+                          <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-800"><LayoutGrid className="h-5 w-5" /></span>
+                            <span><span className="block text-base font-bold text-slate-950">Usar modelo / inspiração</span>
+                            <span className="mt-1 block text-xs leading-5 text-slate-600">Escolha um projeto ou referência da biblioteca e adapte ao seu pré-projeto.</span></span></div>
+                        </button>
                       </div>
 
                       <div className="mt-5 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
                         A referência enviada não vira apenas uma imagem: primeiro é convertida em <strong className="font-semibold text-slate-800">geometria editável</strong>. Depois o mesmo projeto segue para 2D, 3D e Genius Render.
+                      </div>
+                      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+                        <span className="text-xs text-slate-500">Você pode informar terreno, briefing e referências depois, sem bloquear o início.</span>
+                        <button type="button" onClick={() => {
+                          setStartSourceChosen(true); setIntakeStage("complete"); setStartChooserDismissed(true);
+                          setEditorView("plan"); setEditorLibraryTab("build"); setLibraryOpen(true);
+                        }} className="rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100">
+                          Entrar direto no editor →
+                        </button>
                       </div>
                     </>
                   )}
@@ -7966,6 +8012,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                                       preset.kind,
                                       item.nome,
                                       preset.width,
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
                                       preset.depth,
                                       libraryInsertPoint,
                                       {
@@ -8966,6 +9014,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       rooms={safeRooms}
                       facade={facadePreferences}
                       design={facadeDesign}
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
                       onFacadeChange={handleFacadePreferencesChange}
                       onDesignChange={handleFacadeDesignChange}
                       realisticPreviewUrl={latestFacadeRenderUrl}
@@ -9966,6 +10016,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   <input
                     ref={dxfImportInputRef}
                     type="file"
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
                     accept=".dxf,application/dxf"
                     className="hidden"
                     onChange={(event) => {
@@ -10966,6 +11018,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                             onClick={() => void deleteConceptFromList(item)}
                             disabled={deletingProjectId === item.id}
                             className="min-h-9 rounded-xl bg-red-600 px-3 text-xs font-semibold text-white disabled:opacity-50"
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
                           >
                             {deletingProjectId === item.id ? "Excluindo…" : "Excluir"}
                           </button>
@@ -11000,3 +11054,5 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
 
 
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
