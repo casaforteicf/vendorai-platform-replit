@@ -8997,7 +8997,6 @@ router.post("/arch/partners/compartilhar", authenticate, async (req, res) => {
     .limit(1);
 
   if (!partner) return res.status(404).json({ error: "Parceiro não encontrado." });
-
   let enviadoEm: Date | undefined;
   if ((canal === "email") && partner.email) {
     const sent = await sendPartnerEmail({
@@ -10232,4 +10231,3 @@ router.get("/arch/office/indicators", authenticate, async (req, res) => {
 
 export { archPublicRouter };
 export default router;
-
