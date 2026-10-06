@@ -159,7 +159,7 @@ export function BusinessPlanPanel() {
     const url=URL.createObjectURL(new Blob([html],{type:"text/html;charset=utf-8"})); const a=document.createElement("a");a.href=url;a.download="Plano_de_Negocios.html";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
   const approvedCount = Object.values(data.plan.sections).filter(s => s.approved.length).length;
-  return <fieldset disabled={!!busy} className="min-w-0 space-y-4">
+  return <fieldset disabled={!!busy} className="min-w-0 space-y-3 pb-6">
     {diagnosticoQuery.data && (
       <section className="flex flex-col gap-3 rounded-xl border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
@@ -221,14 +221,14 @@ export function BusinessPlanPanel() {
       </section>
     )}
 
-    <div className="rounded-xl border bg-card p-5">
+    <div className="rounded-xl border bg-card p-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h2 className="text-xl font-semibold">Plano de Negócios Assistido</h2>
+          <h2 className="text-lg font-semibold">Plano de Negócios Assistido</h2>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
             O Vendi organiza o que já sabemos, sugere o que falta e pede apenas as decisões necessárias. Informações aprovadas passam automaticamente a compor o contexto dos agentes compatíveis.
           </p>
-          <p className="mt-3 text-sm">{approvedCount} de {data.sections.length} etapas estratégicas aprovadas · versão {data.plan.version}{dirty ? " · alterações não salvas" : ""}</p>
+          <p className="mt-2 text-sm">{approvedCount} de {data.sections.length} etapas estratégicas aprovadas · versão {data.plan.version}{dirty ? " · alterações não salvas" : ""}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {([["plan", "Desenvolver PN"], ["campaign", "Usar no Marketing"], ["document", "Revisar PN"]] as const).map(([key, label]) => (
@@ -333,7 +333,7 @@ export function BusinessPlanPanel() {
             </div>
           </div>
 
-          <div className="mt-5 flex gap-2 overflow-x-auto pb-1" aria-label="Etapas do Plano de Negócios">
+          <div className="mt-4 flex gap-2 overflow-x-auto pb-1" aria-label="Etapas do Plano de Negócios">
             {data.sections.map((section, index) => {
               const count = data.plan.sections[section.id]?.approved?.length ?? 0;
               return <button
@@ -350,7 +350,7 @@ export function BusinessPlanPanel() {
           </div>
         </section>
 
-        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="grid items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
           <div className="space-y-4">
             <section className="rounded-xl border bg-card p-4">
               <div className="flex items-center justify-between gap-3">
@@ -409,7 +409,7 @@ export function BusinessPlanPanel() {
             </section>
           </div>
 
-          <aside className="rounded-xl border border-primary/20 bg-primary/[0.03] p-4 xl:sticky xl:top-4">
+          <aside className="rounded-xl border border-primary/20 bg-primary/[0.03] p-4 2xl:sticky 2xl:top-4">
             <div className="flex items-center justify-between gap-3"><h4 className="font-semibold">Vendi</h4><span className="rounded-full bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary">Copiloto da etapa</span></div>
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground">Eu preparo os campos usando o contexto já existente da empresa. Você revisa, edita livremente e só depois aprova.</p>
             <div className="mt-3 rounded-lg border bg-background p-3 text-xs">
@@ -426,8 +426,8 @@ export function BusinessPlanPanel() {
           </aside>
         </div>
 
-        <section className="sticky bottom-3 z-20 rounded-xl border bg-card/95 p-4 shadow-lg backdrop-blur">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <section className="rounded-xl border bg-card p-4">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <p className="text-sm font-semibold">Confirmar esta etapa</p>
               <p className="mt-1 text-xs text-muted-foreground">Salvar mantém como rascunho. Aprovar torna o conteúdo disponível automaticamente aos módulos e agentes compatíveis.</p>
