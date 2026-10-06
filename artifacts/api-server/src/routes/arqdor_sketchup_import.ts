@@ -4,9 +4,172 @@ import { and, eq } from "drizzle-orm";
 import { db, archConceptProjectsTable } from "@workspace/db";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { convertSketchupToGlb } from "../services/sketchupConverterService.js";
+import { parseIfcEditableGeometry } from "../lib/arqdor-ifc-editable.js";
+import { parseDxfEditableGeometry } from "../lib/arqdor-dxf-editable.js";
 
 const router: IRouter = Router();
 const sketchupUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 45 * 1024 * 1024 } });
+const geometryUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 35 * 1024 * 1024 } });
+
+router.post("/arch/concept-projects/:id/import-geometry", geometryUpload.single("file"), async (req, res) => {
+  const tenantId = req.user?.tenantId ?? req.tenantId;
+  const userId = req.user?.sub;
+  const projectId = String(req.params.id);
+
+  if (!tenantId || !userId) return res.status(401).json({ error: "Sessão inválida." });
+  if (!req.file?.buffer?.length) return res.status(400).json({ error: "Envie o arquivo no campo file." });
+
+  const extension = req.file.originalname.split(".").pop()?.toLowerCase() ?? "";
+  if (!["ifc", "dxf", "dwg", "skp"].includes(extension)) {
+    return res.status(422).json({ error: "Use IFC, DXF, DWG ou SKP para importação de modelo." });
+  }
+  if (extension === "dwg") {
+    return res.status(422).json({
+      error: "DWG binário ainda não pode ser convertido com fidelidade neste servidor. Exporte para DXF e importe novamente.",
+      code: "DWG_REQUIRES_DXF",
+    });
+  }
+  if (extension === "skp") {
+    return res.status(422).json({
+      error: "SKP deve ser convertido para GLB pelo fluxo SketchUp existente. A geometria editável não será inferida silenciosamente.",
+      code: "SKP_REQUIRES_CONVERSION",
+    });
+  }
+
+  const [concept] = await db
+    .select({
+      id: archConceptProjectsTable.id,
+      status: archConceptProjectsTable.status,
+      configuration: archConceptProjectsTable.configuration,
+      rooms: archConceptProjectsTable.rooms,
+    })
+    .from(archConceptProjectsTable)
+    .where(and(
+      eq(archConceptProjectsTable.id, projectId),
+      eq(archConceptProjectsTable.tenantId, tenantId),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ))
+    .limit(1);
+
+  if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+  if (concept.status === "submitted" && (concept.configuration as any)?.projectMaster) {
+    return res.status(409).json({
+      error: "O Projeto Mestre está congelado. Crie uma revisão antes de importar outra geometria.",
+      code: "PROJECT_MASTER_FROZEN",
+    });
+  }
+
+  try {
+    const raw = req.file.buffer.toString("utf8");
+    const geometry = extension === "ifc"
+      ? parseIfcEditableGeometry(raw)
+      : parseDxfEditableGeometry(raw);
+
+    const summary = {
+      format: extension,
+      walls: geometry.walls.length,
+      openings: geometry.openings.length,
+      spaces: "spaces" in geometry ? geometry.spaces.length : 0,
+      bounds: geometry.bounds,
+      unit: geometry.unit,
+      warnings: geometry.warnings,
+    };
+
+    const mode = String(req.body?.mode ?? "preview").toLowerCase();
+    const confirmed = String(req.body?.confirm ?? "").toLowerCase() === "true";
+    if (mode !== "apply" || !confirmed) {
+      return res.json({
+        mode: "preview",
+        summary,
+        geometry,
+        message: "Prévia gerada. Nenhuma geometria foi alterada. Confirme explicitamente para aplicar.",
+      });
+    }
+
+    const storage = new ObjectStorageService();
+    const storagePath = await storage.savePrivateBuffer(
+      req.file.buffer,
+      req.file.mimetype || (extension === "ifc" ? "application/x-step" : "application/dxf"),
+      req.file.originalname,
+    );
+    const sourceUrl = `/api/storage/objects${storagePath.replace(/^\/objects/, "")}`;
+    const config = (concept.configuration ?? {}) as Record<string, any>;
+    const currentSources = Array.isArray(config.sourceFiles)
+      ? config.sourceFiles.filter((item: unknown) => item && typeof item === "object").slice(-9)
+      : [];
+    const importedAt = new Date().toISOString();
+
+    const nextConfig: Record<string, any> = {
+      ...config,
+      floors: Math.max(
+        Number(config.floors ?? 1),
+        ...geometry.walls.map((wall: any) => Number(wall.floor ?? 0) + 1),
+      ),
+      customWalls: geometry.walls,
+      customOpenings: geometry.openings,
+      wallMaterials: "wallMaterials" in geometry ? geometry.wallMaterials : (config.wallMaterials ?? {}),
+      sourceFiles: [
+        ...currentSources,
+        {
+          id: crypto.randomUUID(),
+          storagePath,
+          url: sourceUrl,
+          originalName: req.file.originalname,
+          mimeType: req.file.mimetype,
+          extension,
+          kind: "architectural_geometry",
+          uploadedAt: importedAt,
+          status: "parsed",
+          parserStatus: "ready_editable_geometry",
+          summary,
+        },
+      ],
+      lastGeometryImport: {
+        importedAt,
+        format: extension,
+        originalName: req.file.originalname,
+        summary,
+      },
+    };
+
+    if ("spaces" in geometry && geometry.spaces.length) {
+      nextConfig.spaceProfiles = geometry.spaces.map((space: any) => ({
+        id: space.id,
+        floor: space.floor,
+        label: space.label,
+        kind: space.kind,
+        centroid: { x: 0, y: 0 },
+        area: space.area,
+        floorMaterialId: space.floorMaterialId,
+        sourceIfcId: space.sourceIfcId,
+      }));
+    }
+
+    await db
+      .update(archConceptProjectsTable)
+      .set({
+        configuration: nextConfig as any,
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(archConceptProjectsTable.id, projectId),
+        eq(archConceptProjectsTable.tenantId, tenantId),
+        eq(archConceptProjectsTable.ownerUserId, userId),
+      ));
+
+    return res.json({
+      mode: "applied",
+      summary,
+      geometry,
+      source: { storagePath, url: sourceUrl, originalName: req.file.originalname },
+      message: "Geometria importada para edição. Revise paredes, aberturas, pavimentos e escala antes de continuar.",
+    });
+  } catch (error) {
+    return res.status(422).json({
+      error: error instanceof Error ? error.message : "Não foi possível interpretar a geometria do arquivo.",
+    });
+  }
+});
 
 router.post("/arch/concept-projects/:id/source-file/:sourceId/convert-sketchup", async (req, res) => {
   const tenantId = req.user?.tenantId ?? req.tenantId;

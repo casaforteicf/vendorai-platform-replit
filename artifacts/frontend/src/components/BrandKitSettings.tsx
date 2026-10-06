@@ -170,15 +170,27 @@ export function BrandKitSettings() {
   }, [profileData?.logoUrl, tenant.data?.logoUrl]);
 
   // Nunca deixe o Kit da Marca preso indefinidamente no skeleton.
-  // Se todas as fontes permanecerem pendentes por muito tempo, trocamos
-  // o loading eterno por um estado de erro recuperável com retry explícito.
+  // O guard também considera o loading da sessão para impedir espera infinita.
+  const allContextQueriesLoading = Boolean(
+    tenantId &&
+    resolvedProfile.isLoading &&
+    profile.isLoading &&
+    tenant.isLoading
+  );
+  const hasUsableContext = Boolean(profileData || tenant.data);
+
   useEffect(() => {
     setContextLoadingTimedOut(false);
-    if (!tenantId || !(resolvedProfile.isLoading && profile.isLoading && tenant.isLoading)) return;
 
-    const timer = window.setTimeout(() => setContextLoadingTimedOut(true), 12_000);
+    const waitingForContext =
+      authLoading ||
+      (!hasUsableContext && allContextQueriesLoading);
+
+    if (!waitingForContext) return;
+
+    const timer = window.setTimeout(() => setContextLoadingTimedOut(true), 10_000);
     return () => window.clearTimeout(timer);
-  }, [tenantId, resolvedProfile.isLoading, profile.isLoading, tenant.isLoading]);
+  }, [tenantId, authLoading, hasUsableContext, allContextQueriesLoading]);
 
   const completeness = useMemo(() => {
     const checks = [
@@ -384,18 +396,20 @@ export function BrandKitSettings() {
   // Não devemos manter a tela inteira em skeleton esperando useGetTenant:
   // em troca de tenant/superadmin essa consulta pode demorar ou falhar
   // independentemente, enquanto o perfil consolidado já está disponível.
-  const missingTenantContext = !authLoading && !tenantId;
-  const allContextQueriesLoading = Boolean(
-    tenantId &&
-    resolvedProfile.isLoading &&
-    profile.isLoading &&
-    tenant.isLoading
+  const missingTenantContext = Boolean(
+    !tenantId &&
+    (!authLoading || contextLoadingTimedOut)
   );
-  const isContextLoading =
-    authLoading ||
-    (allContextQueriesLoading && !contextLoadingTimedOut);
+  const isContextLoading = Boolean(
+    !contextLoadingTimedOut &&
+    (
+      authLoading ||
+      (!hasUsableContext && allContextQueriesLoading)
+    )
+  );
   const contextLoadFailed = Boolean(
     tenantId &&
+    !hasUsableContext &&
     (
       contextLoadingTimedOut ||
       (resolvedProfile.isError && profile.isError && tenant.isError)
