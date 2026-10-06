@@ -208,7 +208,12 @@ export async function sendSpecObjectToBudget(id: string): Promise<ApiResult<{ ok
 }
 
 export function applyCatalogItemToSpecObject(object: SpecObject, item: CatalogItem): SpecObjectPayload {
-  const materialValue = Number(item.price ?? object.materialValue ?? 0);
+  const catalogPrice = Number(item.price ?? object.materialValue ?? 0);
+  const purchaseYield = Number(object.packageYield || 0);
+  const materialValue =
+    object.purchaseMode && object.purchaseMode !== "same_unit" && purchaseYield > 0
+      ? catalogPrice / purchaseYield
+      : catalogPrice;
   const laborValue = Number(item.laborPrice ?? object.laborValue ?? 0);
   const quantity = Number(object.quantity || 1);
 
@@ -228,7 +233,7 @@ export function applyCatalogItemToSpecObject(object: SpecObject, item: CatalogIt
     category: object.category || item.category,
     region: object.region,
     quantity,
-    unit: item.unit || object.unit || "un",
+    unit: object.measurementSource === "project" ? object.unit : item.unit || object.unit || "un",
     quantitySource: object.quantitySource,
     widthMm: object.widthMm,
     heightMm: object.heightMm,
