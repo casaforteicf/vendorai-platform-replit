@@ -378,8 +378,9 @@ async function sendZapiMediaByUrl(
 
 /**
  * Send a PDF buffer as a WhatsApp document attachment.
- * Picks Z-API when configured, falls back to Meta Cloud API.
- * Silently skips (logs warn) when no credentials are available.
+ * QR/Evolution is the primary provider. Meta Cloud API remains only as a legacy
+ * fallback for already connected tenants; Z-API is intentionally not used.
+ * Silently skips (logs warn) when no supported credentials are available.
  */
 export async function sendDirectWhatsAppDocument(
   tenantId: string,
@@ -391,9 +392,6 @@ export async function sendDirectWhatsAppDocument(
 ): Promise<void> {
   const [config] = await db
     .select({
-      zapiInstanceId:    agentConfigsTable.zapiInstanceId,
-      zapiToken:         agentConfigsTable.zapiToken,
-      zapiClientToken:   agentConfigsTable.zapiClientToken,
       evolutionInstanceName: agentConfigsTable.evolutionInstanceName,
       evolutionConnected:    agentConfigsTable.evolutionConnected,
       metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
@@ -403,22 +401,16 @@ export async function sendDirectWhatsAppDocument(
     .where(eq(agentConfigsTable.tenantId, tenantId))
     .limit(1);
 
-  const hasZapi = !!(config?.zapiInstanceId && config?.zapiToken && config?.zapiClientToken);
   const hasEvolution = !!(config?.evolutionInstanceName && config?.evolutionConnected);
   const hasMeta = !!(config?.metaPhoneNumberId && config?.metaAccessToken);
 
-  if (!hasZapi && !hasEvolution && !hasMeta) {
+  if (!hasEvolution && !hasMeta) {
     log.warn({ tenantId }, "omnichannel: no credentials for document send — skipping PDF");
     return;
   }
 
   if (hasEvolution) {
     await sendEvolutionDocument(config!.evolutionInstanceName!, phone, pdfBuffer, fileName, caption, log);
-  } else if (hasZapi) {
-    await sendZapiDocument(
-      config!.zapiInstanceId!, config!.zapiToken!, config!.zapiClientToken!,
-      phone, pdfBuffer, fileName, caption, log,
-    );
   } else {
     // Meta: upload to Media API, then send as document message
     const mediaId = await uploadMediaToMeta(
@@ -664,9 +656,6 @@ export async function sendDirectWhatsAppMessage(
 ): Promise<string | undefined> {
   const [config] = await db
     .select({
-      zapiInstanceId: agentConfigsTable.zapiInstanceId,
-      zapiToken: agentConfigsTable.zapiToken,
-      zapiClientToken: agentConfigsTable.zapiClientToken,
       evolutionInstanceName: agentConfigsTable.evolutionInstanceName,
       evolutionConnected: agentConfigsTable.evolutionConnected,
       metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
@@ -676,19 +665,15 @@ export async function sendDirectWhatsAppMessage(
     .where(eq(agentConfigsTable.tenantId, tenantId))
     .limit(1);
 
-  const hasZapi = !!(config?.zapiInstanceId && config?.zapiToken && config?.zapiClientToken);
   const hasEvolution = !!(config?.evolutionInstanceName && config?.evolutionConnected);
   const hasMeta = !!(config?.metaPhoneNumberId && config?.metaAccessToken);
 
-  if (!hasZapi && !hasEvolution && !hasMeta) {
+  if (!hasEvolution && !hasMeta) {
     throw new WhatsAppNotConnectedError();
   }
 
   if (hasEvolution) {
     await sendEvolutionWhatsAppMessage(config!.evolutionInstanceName!, phone, message, log);
-    return undefined;
-  } else if (hasZapi) {
-    await sendZapiWhatsAppMessage(config!.zapiInstanceId!, config!.zapiToken!, config!.zapiClientToken!, phone, message, log);
     return undefined;
   } else {
     return sendMetaWhatsAppMessage(config!.metaPhoneNumberId!, config!.metaAccessToken!, phone, message, log);
@@ -850,13 +835,10 @@ export async function sendOutgoingMessage(
       connections[0] ??
       null;
   }
-  // ── 2. WhatsApp: QR/Evolution é o provedor padrão; Z-API e Meta são fallback legado
+  // ── 2. WhatsApp: QR/Evolution é o provedor padrão; Meta é fallback legado
   if (canal === "whatsapp") {
     const [config] = await db
       .select({
-        zapiInstanceId: agentConfigsTable.zapiInstanceId,
-        zapiToken: agentConfigsTable.zapiToken,
-        zapiClientToken: agentConfigsTable.zapiClientToken,
         evolutionInstanceName: agentConfigsTable.evolutionInstanceName,
         evolutionConnected: agentConfigsTable.evolutionConnected,
         metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
@@ -871,7 +853,6 @@ export async function sendOutgoingMessage(
       throw new WhatsAppPhoneMissingError(leadId);
     }
 
-    const hasZapi = !selectedWhatsappConnection && !!(config?.zapiInstanceId && config?.zapiToken && config?.zapiClientToken);
     const evolutionInstance = selectedWhatsappConnection?.provider === "evolution" ? selectedWhatsappConnection.evolutionInstanceName : config?.evolutionInstanceName;
     const hasEvolution = !!evolutionInstance && (
       selectedWhatsappConnection?.provider === "evolution" || config?.evolutionConnected === true
@@ -880,7 +861,7 @@ export async function sendOutgoingMessage(
     const metaAccessToken = selectedWhatsappConnection?.provider === "meta" ? selectedWhatsappConnection.accessToken : config?.metaAccessToken;
     const hasMeta = !!(metaPhoneNumberId && metaAccessToken);
 
-    if (!hasZapi && !hasEvolution && !hasMeta) {
+    if (!hasEvolution && !hasMeta) {
       throw new WhatsAppNotConnectedError();
     }
 
@@ -891,24 +872,6 @@ export async function sendOutgoingMessage(
         await sendEvolutionMedia(evolutionInstance!, lead.telefone, buffer, input.midia.mimeType, input.midia.fileName, conteudo, log);
       } else {
         await sendEvolutionWhatsAppMessage(evolutionInstance!, lead.telefone, conteudo, log);
-      }
-    } else if (hasZapi) {
-      // ── Z-API path legado (fallback) ──────────────────────────────────────
-      if (input.midia) {
-        await sendZapiMediaByUrl(
-          config!.zapiInstanceId!, config!.zapiToken!, config!.zapiClientToken!,
-          lead.telefone, input.midia.url, input.midia.mimeType, input.midia.fileName, conteudo, log,
-        );
-      } else {
-        await sendZapiWhatsAppMessage(
-          config!.zapiInstanceId!,
-          config!.zapiToken!,
-          config!.zapiClientToken!,
-          lead.telefone,
-          conteudo,
-          log,
-          !!agentName
-        );
       }
     } else {
       // ── Meta Cloud API path (24h window enforced) ─────────────────────────
