@@ -466,118 +466,96 @@ export function NewLeadDialog({
   }
 
 
-  async function syncStructuredCrm(dealId: string | undefined, values: NewLeadValues) {
-    const headers = {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    };
+  async function crmPostJson<T = any>(url: string, body: unknown): Promise<T> {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message = typeof (data as any)?.error === "string"
+        ? (data as any).error
+        : `Falha na operação CRM (HTTP ${response.status})`;
+      throw new Error(message);
+    }
+    return data as T;
+  }
 
+  async function syncStructuredCrm(dealId: string | undefined, values: NewLeadValues) {
     let companyId: string | null = null;
     if (values.cadastroTipo !== "pessoa" && values.empresa.trim()) {
-      const companyResponse = await fetch("/api/crm/companies/manual", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          tenantId,
-          razaoSocial: values.empresa.trim(),
-          nomeFantasia: values.empresa.trim(),
-          cnpj: values.empresaCnpj.trim() || undefined,
-        }),
+      const companyData = await crmPostJson("/api/crm/companies/manual", {
+        tenantId,
+        razaoSocial: values.empresa.trim(),
+        nomeFantasia: values.empresa.trim(),
+        cnpj: values.empresaCnpj.trim() || undefined,
       });
-      const companyData = await companyResponse.json().catch(() => ({}));
-      if (!companyResponse.ok) throw new Error(companyData.error ?? "Não foi possível estruturar o cadastro da empresa.");
       companyId = companyData.company?.id ?? null;
     }
 
     let personId: string | undefined;
 
     if (companyId) {
-      const primaryContactResponse = await fetch(`/api/crm/companies/${companyId}/contacts`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          tenantId,
-          nome: values.nome.trim(),
-          telefone: values.telefone || undefined,
-          email: values.email || undefined,
-          documento: values.documento || undefined,
-          cargo: values.profissao || undefined,
-          roles: ["comercial"],
-          isPrimary: true,
-        }),
+      const primaryContactData = await crmPostJson(`/api/crm/companies/${companyId}/contacts`, {
+        tenantId,
+        nome: values.nome.trim(),
+        telefone: values.telefone || undefined,
+        email: values.email || undefined,
+        documento: values.documento || undefined,
+        cargo: values.profissao || undefined,
+        roles: ["comercial"],
+        isPrimary: true,
       });
-      const primaryContactData = await primaryContactResponse.json().catch(() => ({}));
-      if (!primaryContactResponse.ok) throw new Error(primaryContactData.error ?? "Não foi possível vincular o contato principal à empresa.");
       personId = primaryContactData?.contacts?.find((item: any) => item.isPrimary && item.nome === values.nome.trim())?.personId
         ?? primaryContactData?.contacts?.find((item: any) => item.isPrimary)?.personId;
 
       for (const contact of extraContacts.filter((item) => item.nome.trim().length >= 2)) {
-        const extraResponse = await fetch(`/api/crm/companies/${companyId}/contacts`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            tenantId,
-            nome: contact.nome.trim(),
-            telefone: contact.telefone.trim() || undefined,
-            email: contact.email.trim() || undefined,
-            cargo: contact.cargo.trim() || undefined,
-            roles: [contact.role],
-            isPrimary: false,
-          }),
+        await crmPostJson(`/api/crm/companies/${companyId}/contacts`, {
+          tenantId,
+          nome: contact.nome.trim(),
+          telefone: contact.telefone.trim() || undefined,
+          email: contact.email.trim() || undefined,
+          cargo: contact.cargo.trim() || undefined,
+          roles: [contact.role],
+          isPrimary: false,
         });
-        const extraData = await extraResponse.json().catch(() => ({}));
-        if (!extraResponse.ok) throw new Error(extraData.error ?? `Não foi possível cadastrar o contato ${contact.nome}.`);
       }
     } else {
-      const personResponse = await fetch("/api/crm/people", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          tenantId,
-          nome: values.nome.trim(),
-          telefone: values.telefone || undefined,
-          email: values.email || undefined,
-          documento: values.documento || undefined,
-          source: values.source,
-        }),
+      const personData = await crmPostJson("/api/crm/people", {
+        tenantId,
+        nome: values.nome.trim(),
+        telefone: values.telefone || undefined,
+        email: values.email || undefined,
+        documento: values.documento || undefined,
+        source: values.source,
       });
-      const personData = await personResponse.json().catch(() => ({}));
-      if (!personResponse.ok) throw new Error(personData.error ?? "Não foi possível estruturar o cadastro da pessoa.");
       personId = personData.item?.id as string | undefined;
     }
 
     if (!dealId) return { personId, companyId };
 
     if (companyId) {
-      const companyLinkResponse = await fetch(`/api/crm/deals/${dealId}/companies`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          tenantId,
-          companyId,
-          role: "contratante",
-          isPrimary: true,
-        }),
+      await crmPostJson(`/api/crm/deals/${dealId}/companies`, {
+        tenantId,
+        companyId,
+        role: "contratante",
+        isPrimary: true,
       });
-      const companyLinkData = await companyLinkResponse.json().catch(() => ({}));
-      if (!companyLinkResponse.ok) throw new Error(companyLinkData.error ?? "Não foi possível vincular a empresa ao negócio.");
     }
 
     if (personId) {
-      const personLinkResponse = await fetch(`/api/crm/deals/${dealId}/people`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          tenantId,
-          personId,
-          role: companyId ? "contato_comercial" : "consumidor_final",
-          isPrimary: true,
-          contextualCompanyId: companyId,
-          relationshipScope: companyId ? "persistent" : "deal_only",
-        }),
+      await crmPostJson(`/api/crm/deals/${dealId}/people`, {
+        tenantId,
+        personId,
+        role: companyId ? "contato_comercial" : "consumidor_final",
+        isPrimary: true,
+        contextualCompanyId: companyId,
+        relationshipScope: companyId ? "persistent" : "deal_only",
       });
-      const personLinkData = await personLinkResponse.json().catch(() => ({}));
-      if (!personLinkResponse.ok) throw new Error(personLinkData.error ?? "Não foi possível vincular a pessoa ao negócio.");
     }
 
     return { personId, companyId };
