@@ -80,8 +80,9 @@ export const SYSTEM_STAGES_BY_PIPELINE: Record<PipelineKey, SystemStage[]> = {
     simpleStage("cancelado", "Cancelado", 6),
   ],
   aquecimento: [
-    simpleStage("aquecimento_lead", "Em Aquecimento — Leads", 0),
-    simpleStage("aquecimento_cliente", "Em Aquecimento — Clientes", 1),
+    simpleStage("aquecimento_lead", "Leads em aquecimento", 0),
+    simpleStage("aquecimento_cliente", "Clientes em aquecimento", 1),
+    simpleStage("aquecimento_nao_lead", "Não Leads", 2),
   ],
   parceiros: [
     simpleStage("parceiro_identificado", "Parceiro identificado", 0),

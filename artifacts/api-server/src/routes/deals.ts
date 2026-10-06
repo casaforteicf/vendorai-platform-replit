@@ -365,9 +365,10 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
       updatedAt: movedAt,
     }).where(eq(dealsTable.id, deal.id));
   } else if (parsed.data.targetPipeline === "aquecimento") {
+    const aquecimentoTipo = parsed.data.targetStage === "aquecimento_cliente" ? "cliente" : "nao_cliente";
     await db.update(dealsTable).set({
       etapa: "em_aquecimento",
-      aquecimentoTipo: parsed.data.targetStage,
+      aquecimentoTipo,
       relationshipStage: parsed.data.targetStage,
       assignedTo: responsavelId,
       updatedAt: movedAt,

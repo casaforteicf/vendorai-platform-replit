@@ -646,16 +646,42 @@ router.post("/leads/:id/classificar-nao-lead", async (req, res) => {
     return;
   }
 
+  const classifiedAt = new Date();
   const [lead] = await db
     .update(leadsTable)
     .set({
       naoLeadTipo: parsed.data.tipo,
       naoLeadNotas: parsed.data.notas ?? null,
-      naoLeadClassificadoEm: new Date(),
-      updatedAt: new Date(),
+      naoLeadClassificadoEm: classifiedAt,
+      updatedAt: classifiedAt,
     })
     .where(eq(leadsTable.id, id))
     .returning();
+
+  // Não Lead não deve ficar misturado na pipeline comercial nem no aquecimento
+  // comum. Preservamos o mesmo negócio/histórico, mas movemos os negócios
+  // comerciais ativos para a aba específica "Não Leads".
+  await db
+    .update(dealsTable)
+    .set({
+      etapa: "em_aquecimento",
+      aquecimentoTipo: "nao_cliente",
+      relationshipStage: "aquecimento_nao_lead",
+      updatedAt: classifiedAt,
+    })
+    .where(and(
+      eq(dealsTable.tenantId, existing.tenantId),
+      eq(dealsTable.leadId, id),
+      inArray(dealsTable.etapa, [
+        "em_aquecimento",
+        "novo",
+        "qualificado",
+        "proposta",
+        "negociacao",
+        "conferencia_estoque",
+        "contrato",
+      ]),
+    ));
 
   // Achado real do Marcos: score de churn calculado ANTES da classificação
   // continuava aparecendo no dashboard mesmo depois de virar não-lead --
@@ -669,8 +695,8 @@ router.post("/leads/:id/classificar-nao-lead", async (req, res) => {
   res.json(lead);
 });
 
-// Reverte a classificação -- volta a ser lead normal, reaparece na
-// pipeline como "novo".
+// Reverte a classificação -- volta a ser lead normal e retorna à
+// aba de Leads em aquecimento para retomada comercial explícita.
 router.post("/leads/:id/reclassificar-como-lead", async (req, res) => {
   const id = String(req.params["id"]);
   const [existing] = await db.select({ id: leadsTable.id, tenantId: leadsTable.tenantId }).from(leadsTable).where(eq(leadsTable.id, id));
@@ -683,16 +709,34 @@ router.post("/leads/:id/reclassificar-como-lead", async (req, res) => {
     return;
   }
 
+  const reclassifiedAt = new Date();
   const [lead] = await db
     .update(leadsTable)
     .set({
       naoLeadTipo: null,
       naoLeadNotas: null,
       naoLeadClassificadoEm: null,
-      updatedAt: new Date(),
+      updatedAt: reclassifiedAt,
     })
     .where(eq(leadsTable.id, id))
     .returning();
+
+  // Ao voltar a ser Lead, sai da aba "Não Leads" e retorna ao aquecimento
+  // normal. A retomada comercial continua sendo uma ação explícita do usuário.
+  await db
+    .update(dealsTable)
+    .set({
+      etapa: "em_aquecimento",
+      aquecimentoTipo: "nao_cliente",
+      relationshipStage: "aquecimento_lead",
+      updatedAt: reclassifiedAt,
+    })
+    .where(and(
+      eq(dealsTable.tenantId, existing.tenantId),
+      eq(dealsTable.leadId, id),
+      eq(dealsTable.relationshipStage, "aquecimento_nao_lead"),
+    ));
+
   res.json(lead);
 });
 
