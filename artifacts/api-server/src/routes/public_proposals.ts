@@ -29,6 +29,60 @@ type PublicProposalPortalContext = {
   sourceId: string;
 };
 
+function publicProposalAssetUrl(token: string, url: unknown) {
+  const raw = String(url || "");
+  if (raw.startsWith("/api/storage/objects/")) {
+    return `/api/public/proposals/${encodeURIComponent(token)}/assets/${raw.slice("/api/storage/objects/".length)}`;
+  }
+  if (raw.startsWith("/objects/")) {
+    return `/api/public/proposals/${encodeURIComponent(token)}/assets/${raw.slice("/objects/".length)}`;
+  }
+  return raw;
+}
+
+function sanitizePublicProposalItems(items: unknown, token: string) {
+  if (!Array.isArray(items)) return [];
+  return items.map((item: any) => {
+    const source = item?.sourceSnapshot && typeof item.sourceSnapshot === "object"
+      ? {
+          sourceType: item.sourceSnapshot.sourceType,
+          sourceId: item.sourceSnapshot.sourceId,
+          nome: item.sourceSnapshot.nome,
+          sku: item.sourceSnapshot.sku,
+          descricao: item.sourceSnapshot.descricao,
+          unidade: item.sourceSnapshot.unidade,
+          marca: item.sourceSnapshot.marca,
+          imagemUrl: publicProposalAssetUrl(token, item.sourceSnapshot.imagemUrl),
+          imagens: Array.isArray(item.sourceSnapshot.imagens)
+            ? item.sourceSnapshot.imagens.map((url: unknown) => publicProposalAssetUrl(token, url)).filter(Boolean)
+            : [],
+        }
+      : undefined;
+
+    return {
+      nome: item?.nome,
+      quantidade: item?.quantidade,
+      valorUnitario: item?.valorUnitario,
+      sku: item?.sku,
+      descricao: item?.descricao,
+      unidade: item?.unidade,
+      etapaNome: item?.etapaNome,
+      etapaOrdem: item?.etapaOrdem,
+      faseNome: item?.faseNome,
+      faseOrdem: item?.faseOrdem,
+      produtoId: item?.produtoId,
+      ...(source ? { sourceSnapshot: source } : {}),
+    };
+  });
+}
+
+function proposalItemsReferenceAsset(items: unknown, assetPath: string) {
+  const normalized = decodeURIComponent(assetPath).replace(/^\/+/, "");
+  const serialized = JSON.stringify(items ?? []);
+  return serialized.includes(`/api/storage/objects/${normalized}`)
+    || serialized.includes(`/objects/${normalized}`);
+}
+
 function hashPortalSessionToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
@@ -261,7 +315,11 @@ router.get("/public/proposals/:token", async (req, res) => {
     .limit(1);
 
   if (proposta) {
-    res.json({ kind: "budget", ...proposta });
+    res.json({
+      kind: "budget",
+      ...proposta,
+      itens: sanitizePublicProposalItems(proposta.itens, token),
+    });
     return;
   }
 
@@ -336,6 +394,38 @@ router.get("/public/proposals/:token", async (req, res) => {
     acceptedAt,
     client: lead ?? null,
   });
+});
+
+router.get("/public/proposals/:token/assets/*path", async (req, res, next) => {
+  try {
+    const token = String(req.params.token || "");
+    const raw = req.params.path;
+    const assetPath = Array.isArray(raw) ? raw.join("/") : String(raw || "");
+    if (!assetPath) return res.status(404).send("Arquivo não encontrado.");
+
+    const [proposal] = await db
+      .select({
+        id: propostasTable.id,
+        itens: propostasTable.itens,
+      })
+      .from(propostasTable)
+      .where(eq(propostasTable.publicToken, token))
+      .limit(1);
+
+    if (!proposal || !proposalItemsReferenceAsset(proposal.itens, assetPath)) {
+      return res.status(404).send("Arquivo não encontrado.");
+    }
+
+    const objectPath = `/objects/${decodeURIComponent(assetPath).replace(/^\/+/, "")}`;
+    const file = await proposalStorage.getObjectEntityFile(objectPath);
+    const objectResponse = await proposalStorage.downloadObject(file, 300);
+    objectResponse.headers.forEach((value, key) => res.setHeader(key, value));
+    res.setHeader("Cache-Control", "private, max-age=300");
+    res.status(objectResponse.status);
+    return res.send(Buffer.from(await objectResponse.arrayBuffer()));
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ── GET /public/generated-proposals/:id/html — stream exact proposal HTML ────
