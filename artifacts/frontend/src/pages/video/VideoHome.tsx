@@ -3,8 +3,6 @@ import { useLocation } from "wouter";
 import {
   ArrowLeft,
   ArrowRight,
-  CheckCircle2,
-  Clock3,
   Film,
   FolderOpen,
   Images,
@@ -479,7 +477,7 @@ export default function VideoHome() {
             const Icon = item.icon;
             const active = item.id === view;
             return (
-              <button key={item.id} type="button" onClick={() => item.id === "more" ? document.getElementById("video-studio-more")?.scrollIntoView({ behavior: "smooth" }) : setView(item.id)} className={cn("flex flex-col items-center gap-1 rounded-xl px-2 py-2 text-xs font-medium", active ? "bg-primary/8 text-primary" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground")}>
+              <button key={item.id} type="button" onClick={() => setView(item.id)} className={cn("flex flex-col items-center gap-1 rounded-xl px-2 py-2 text-xs font-medium", active ? "bg-primary/8 text-primary" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground")}>
                 <Icon className="h-5 w-5" />{item.label}
               </button>
             );
