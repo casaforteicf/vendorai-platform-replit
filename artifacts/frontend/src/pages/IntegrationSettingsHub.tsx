@@ -6,14 +6,23 @@ import { useToast } from "@/hooks/use-toast";
 
 type IntegrationStatus = {
   whatsapp?: { connected?: boolean; phone?: string | null };
-  googleCalendar?: { connected?: boolean };
-  instagram?: { connected?: boolean; username?: string | null };
-  googleAds?: { connected?: boolean; pendingAccountSelection?: boolean; descriptiveName?: string | null };
+  googleCalendar?: { connected?: boolean; attention?: boolean; reason?: string | null; tokenExpiresAt?: string | null };
+  instagram?: { connected?: boolean; attention?: boolean; username?: string | null; reason?: string | null; tokenExpiresAt?: string | null };
+  googleAds?: { connected?: boolean; attention?: boolean; pendingAccountSelection?: boolean; descriptiveName?: string | null; reason?: string | null; tokenExpiresAt?: string | null };
   asaas?: { connected?: boolean };
   zapsign?: { connected?: boolean };
   domain?: { configured?: boolean; active?: boolean; name?: string | null };
-  searchConsole?: { connected?: boolean; verified?: boolean };
-  social?: { linkedin?: boolean; tiktok?: boolean };
+  searchConsole?: { connected?: boolean; attention?: boolean; verified?: boolean; reason?: string | null; tokenExpiresAt?: string | null };
+  social?: {
+    linkedin?: boolean;
+    linkedinAttention?: boolean;
+    linkedinReason?: string | null;
+    linkedinTokenExpiresAt?: string | null;
+    tiktok?: boolean;
+    tiktokAttention?: boolean;
+    tiktokReason?: string | null;
+    tiktokTokenExpiresAt?: string | null;
+  };
   tracking?: {
     googleAds?: boolean;
     googleAdsConversionId?: string | null;
@@ -297,7 +306,10 @@ export default function IntegrationSettingsHub() {
       category: "Marketing e social",
       usedBy: "Marketing · Omnichannel · CRM",
       connected: status?.instagram?.connected === true,
-      detail: status?.instagram?.username ? `@${status.instagram.username.replace(/^@/, "")}` : undefined,
+      attention: status?.instagram?.attention === true,
+      detail: status?.instagram?.reason === "token_expired"
+        ? "Token expirado · reconecte a conta"
+        : status?.instagram?.username ? `@${status.instagram.username.replace(/^@/, "")}` : undefined,
     },
     {
       key: "google-calendar",
@@ -306,6 +318,10 @@ export default function IntegrationSettingsHub() {
       category: "Google",
       usedBy: "Agenda · CRM · Agente de Agendamento",
       connected: status?.googleCalendar?.connected === true,
+      attention: status?.googleCalendar?.attention === true,
+      detail: status?.googleCalendar?.reason === "refresh_token_missing"
+        ? "Reconexão necessária · token de renovação ausente"
+        : undefined,
     },
     {
       key: "email-google",
@@ -341,8 +357,10 @@ export default function IntegrationSettingsHub() {
       category: "Google",
       usedBy: "Marketing · BI · CRM",
       connected: status?.googleAds?.connected === true && status?.googleAds?.pendingAccountSelection !== true,
-      attention: status?.googleAds?.pendingAccountSelection === true,
-      detail: status?.googleAds?.pendingAccountSelection ? "Seleção de conta pendente" : status?.googleAds?.descriptiveName || undefined,
+      attention: status?.googleAds?.attention === true,
+      detail: status?.googleAds?.reason === "token_expired"
+        ? "Token expirado · reconecte o Google Ads"
+        : status?.googleAds?.pendingAccountSelection ? "Seleção de conta pendente" : status?.googleAds?.descriptiveName || undefined,
     },
     {
       key: "asaas",
@@ -367,8 +385,10 @@ export default function IntegrationSettingsHub() {
       category: "Google",
       usedBy: "Marketing · Site · BI",
       connected: status?.searchConsole?.connected === true && status?.searchConsole?.verified === true,
-      attention: status?.searchConsole?.connected === true && status?.searchConsole?.verified !== true,
-      detail: status?.searchConsole?.connected && !status?.searchConsole?.verified ? "Conta autorizada · falta confirmar a propriedade" : undefined,
+      attention: status?.searchConsole?.attention === true,
+      detail: status?.searchConsole?.reason === "token_expired"
+        ? "Token expirado · reconecte o Search Console"
+        : status?.searchConsole?.connected && !status?.searchConsole?.verified ? "Conta autorizada · falta confirmar a propriedade" : undefined,
     },
     {
       key: "linkedin",
@@ -377,6 +397,8 @@ export default function IntegrationSettingsHub() {
       category: "Marketing e social",
       usedBy: "Marketing · Prospecção · BI",
       connected: status?.social?.linkedin === true,
+      attention: status?.social?.linkedinAttention === true,
+      detail: status?.social?.linkedinReason === "token_expired" ? "Token expirado · reconecte o LinkedIn" : undefined,
     },
     {
       key: "tiktok",
@@ -385,6 +407,8 @@ export default function IntegrationSettingsHub() {
       category: "Marketing e social",
       usedBy: "Marketing · Conteúdo · BI",
       connected: status?.social?.tiktok === true,
+      attention: status?.social?.tiktokAttention === true,
+      detail: status?.social?.tiktokReason === "token_expired" ? "Token expirado · reconecte o TikTok" : undefined,
     },
     {
       key: "domain",
