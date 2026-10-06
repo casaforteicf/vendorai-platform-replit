@@ -205,7 +205,7 @@ export function MediaPlanFailedRetryBridge() {
       body: JSON.stringify({ status: "ready", context }),
     });
     if (!response.ok) throw new Error("Falha ao atualizar o histórico da produção.");
-  }, [tid]);
+  }, [plan?.id, tid]);
 
   const generate = useCallback(async (item: CalendarItem, campaign: MediaPlanCampaign, visual: boolean) => {
     const response = await fetch(`/api/tenants/${tid}/content/generate`, {
