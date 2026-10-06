@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import ConfiguracoesNormalized from "./ConfiguracoesNormalized";
+import { BrandKitSettings } from "@/components/BrandKitSettings";
 import IntegrationSettingsHub from "./IntegrationSettingsHub";
 import { ConfigurationHistoryPanel } from "@/components/ConfigurationHistoryPanel";
 import { ConfigurationAccessPanel } from "@/components/ConfigurationAccessPanel";
@@ -294,6 +295,16 @@ export default function Configuracoes() {
 
   if (integrationsDeepLink) {
     return <IntegrationSettingsHub />;
+  }
+
+  // Marketing tem uma tela própria. Não misture Kit da Marca com as
+  // configurações gerais da empresa, comercial, agenda, IA ou equipe.
+  if (requestedTab === "marketing") {
+    return (
+      <div className="vendor-page-canvas mx-auto w-full max-w-7xl px-4 py-4 sm:px-6">
+        <BrandKitSettings />
+      </div>
+    );
   }
 
   if (legacySiteDeepLink || normalizedSectionDeepLink) {
