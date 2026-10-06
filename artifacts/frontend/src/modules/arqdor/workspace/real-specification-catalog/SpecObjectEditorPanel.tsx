@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import type { SpecObject, SpecObjectPayload } from "./specCatalogTypes";
+import type { SpecApproval, SpecApprovalContext, SpecApprovalDecision, SpecObject, SpecObjectPayload } from "./specCatalogTypes";
 import { money, statusClass, statusLabel } from "./specCatalogUtils";
 import { CatalogoModal } from "@/pages/Propostas";
 import { useAuth } from "@/contexts/AuthContext";
@@ -12,6 +12,9 @@ export function SpecObjectEditorPanel({
   selectedObject,
   saving,
   sendingToBudget,
+  approvals,
+  approving,
+  onDecision,
   onCreate,
   onSave,
   onSendToBudget,
@@ -21,6 +24,9 @@ export function SpecObjectEditorPanel({
   selectedObject?: SpecObject | null;
   saving?: boolean;
   sendingToBudget?: boolean;
+  approvals?: SpecApproval[];
+  approving?: boolean;
+  onDecision?: (context: SpecApprovalContext, decision: SpecApprovalDecision, note?: string | null) => Promise<unknown>;
   onCreate: (payload: SpecObjectPayload) => Promise<unknown>;
   onSave: (id: string, payload: Partial<SpecObjectPayload>) => Promise<unknown>;
   onSendToBudget: (object: SpecObject) => Promise<unknown>;
@@ -28,6 +34,8 @@ export function SpecObjectEditorPanel({
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const [catalogEditorOpen, setCatalogEditorOpen] = useState(false);
+  const [approvalContext, setApprovalContext] = useState<SpecApprovalContext>("technical");
+  const [approvalNote, setApprovalNote] = useState("");
   const [form, setForm] = useState<SpecObjectPayload>(emptyPayload(projectId, renderId));
   const { data: categoriasProduto = [] } = useListCategoriasProduto(tenantId, {
     query: {
@@ -219,6 +227,79 @@ export function SpecObjectEditorPanel({
           </div>
         </div>
       </details>
+
+      {selectedObject ? (
+        <details className="mt-3 rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card-soft)] p-4">
+          <summary className="cursor-pointer text-sm font-semibold">Aprovações</summary>
+          <div className="mt-4 grid gap-3 md:grid-cols-[180px_1fr]">
+            <SelectField
+              label="Contexto"
+              value={approvalContext}
+              onChange={(value) => setApprovalContext(value as SpecApprovalContext)}
+              options={[
+                ["technical", "Técnica"],
+                ["architect", "Arquiteto"],
+                ["client", "Cliente"],
+                ["fabrication", "Fabricação"],
+                ["installation", "Instalação"],
+              ]}
+            />
+            <Field label="Observação da decisão" value={approvalNote} onChange={setApprovalNote} />
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={approving || !onDecision}
+              onClick={() => void onDecision?.(approvalContext, "approved", approvalNote || null)}
+              className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              Aprovar
+            </button>
+            <button
+              type="button"
+              disabled={approving || !onDecision}
+              onClick={() => void onDecision?.(approvalContext, "revision_requested", approvalNote || null)}
+              className="rounded-xl bg-amber-500 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              Solicitar revisão
+            </button>
+            <button
+              type="button"
+              disabled={approving || !onDecision}
+              onClick={() => void onDecision?.(approvalContext, "rejected", approvalNote || null)}
+              className="rounded-xl bg-rose-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              Reprovar
+            </button>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            {(approvals || []).slice(0, 8).map((approval) => (
+              <div key={approval.id} className="rounded-xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-3 py-2 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-semibold">
+                    {approval.context === "technical" ? "Técnica" : approval.context === "architect" ? "Arquiteto" : approval.context === "client" ? "Cliente" : approval.context === "fabrication" ? "Fabricação" : "Instalação"}
+                    {" · "}
+                    {approval.decision === "approved" ? "Aprovado" : approval.decision === "rejected" ? "Reprovado" : "Revisão solicitada"}
+                  </span>
+                  <span className="text-[var(--arq-muted)]">
+                    {approval.createdAt ? new Date(approval.createdAt).toLocaleString("pt-BR") : ""}
+                  </span>
+                </div>
+                <p className="mt-1 text-[var(--arq-muted)]">
+                  {approval.actorName || "Usuário"}
+                  {approval.projectRevision ? ` · revisão ${approval.projectRevision}` : ""}
+                  {approval.note ? ` · ${approval.note}` : ""}
+                </p>
+              </div>
+            ))}
+            {!(approvals || []).length ? (
+              <p className="text-xs text-[var(--arq-muted)]">Nenhuma decisão registrada para este item.</p>
+            ) : null}
+          </div>
+        </details>
+      ) : null}
 
       <label className="mt-4 block">
         <span className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">Observações</span>
