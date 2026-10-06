@@ -42,6 +42,7 @@ import { interpretImage, interpretPdf, interpretPdfBuffer } from "../services/me
 import { findEvolutionContactNames, getBase64FromMediaMessage } from "../services/evolution-whatsapp.js";
 
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
+import { leadRegistrationMetadata, normalizeLeadName } from "../lib/lead-registration-standard.js";
 import { handleAppointmentConfirmation } from "../jobs/appointmentReminders.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
@@ -282,10 +283,14 @@ async function ensureVoiceLeadForPhone(input: {
     .insert(leadsTable)
     .values({
       tenantId: input.tenantId,
-      nome: input.name?.trim() || input.phone,
+      nome: normalizeLeadName(input.name, input.phone),
       telefone: normalized,
       status: "novo",
       source: "whatsapp",
+      metadata: leadRegistrationMetadata(null, {
+        entryChannel: "whatsapp",
+        entrySource: "whatsapp_voice",
+      }),
     })
     .returning();
 
@@ -715,7 +720,17 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
   } else {
     [lead] = await db
       .insert(leadsTable)
-      .values({ tenantId, nome: nome ?? telefone, telefone: normalized, status: "novo", source: "whatsapp" })
+      .values({
+        tenantId,
+        nome: normalizeLeadName(nome, telefone),
+        telefone: normalized,
+        status: "novo",
+        source: "whatsapp",
+        metadata: leadRegistrationMetadata(null, {
+          entryChannel: "whatsapp",
+          entrySource: "whatsapp_webhook",
+        }),
+      })
       .returning();
     req.log.info({ leadId: lead.id, telefone: normalized }, "webhook: new lead created");
     await db.insert(dealsTable).values({ tenantId, leadId: lead.id, titulo: lead.nome, etapa: "em_aquecimento" });
@@ -1145,7 +1160,17 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
     } else {
       [lead] = await db
         .insert(leadsTable)
-        .values({ tenantId, nome, telefone: normalized, status: "novo", source: "whatsapp" })
+        .values({
+          tenantId,
+          nome: normalizeLeadName(nome, telefone),
+          telefone: normalized,
+          status: "novo",
+          source: "whatsapp",
+          metadata: leadRegistrationMetadata(null, {
+            entryChannel: "whatsapp",
+            entrySource: "whatsapp_zapi",
+          }),
+        })
         .returning();
       req.log.info({ leadId: lead.id, telefone: normalized }, "zapi-webhook: new lead created");
       await db.insert(dealsTable).values({ tenantId, leadId: lead.id, titulo: lead.nome, etapa: "em_aquecimento" });
