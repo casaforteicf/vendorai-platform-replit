@@ -27,6 +27,7 @@ const ContactSales       = lazy(() => import("@/pages/demo/contact-sales"));
 const PortalObra         = lazy(() => import("@/pages/PortalObra"));
 const ObraCampo           = lazy(() => import("@/pages/ObraCampo"));
 const PublicProposta     = lazy(() => import("@/pages/PublicProposta"));
+const ServicoAcompanhamentoPublico = lazy(() => import("@/pages/ServicoAcompanhamentoPublico"));
 const PublicDiagnosticoNegocio = lazy(() => import("@/pages/PublicDiagnosticoNegocio"));
 const PublicDeliveryRuntime = lazy(() => import("@/pages/PublicDeliveryRuntime"));
 const ForcePasswordChange= lazy(() => import("@/pages/ForcePasswordChange"));
@@ -610,6 +611,7 @@ function AppRoutes() {
         <Route path="/diagnostico-negocio/:token">{() => <PublicDiagnosticoNegocio />}</Route>
         <Route path="/rastreio/:id">{() => <RastreioFrete />}</Route>
         <Route path="/acompanhar-entrega/:token">{() => <AcompanharEntrega />}</Route>
+        <Route path="/acompanhar/servico/:token">{() => <ServicoAcompanhamentoPublico />}</Route>
         <Route path="/entrega/agente/:agentKey">{() => <PublicDeliveryRuntime />}</Route>
         <Route path="/entrega/simulador/sdr">{() => <PublicDeliveryRuntime />}</Route>
         <Route path="/entrega/arqdor/pre-projeto">{() => <PublicDeliveryRuntime />}</Route>
