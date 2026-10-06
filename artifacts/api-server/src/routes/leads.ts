@@ -54,6 +54,7 @@ import { reserveUniqueVehicle } from "../services/vehicle-reservation.js";
 import { reserveUniqueItem } from "../services/item-reservation.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 import { signAttachmentFolderUnlockToken } from "../lib/jwt.js";
+import { leadRegistrationMetadata, normalizeInstagramHandle, normalizeLeadEmail, normalizeLeadName } from "../lib/lead-registration-standard.js";
 import { attachmentUnlockCookieName,
   isAttachmentFolderSchemaMissingError, requestCanAccessLockedObject, syncProtectedObjectsForLead } from "../lib/attachment-folder-access.js";
 
@@ -320,11 +321,30 @@ router.post("/leads", async (req, res) => {
 
   const [lead] = await db.insert(leadsTable).values({
     ...data,
+    nome: normalizeLeadName(data.nome, "Lead"),
+    email: normalizeLeadEmail(data.email),
+    instagramHandle: normalizeInstagramHandle(data.instagramHandle),
     assignedTo: resolvedAssignedTo,
     latitude: geocoded?.lat ?? null,
     longitude: geocoded?.lng ?? null,
     telefone: storePhone(data.telefone),
     documento: data.documento ? data.documento.replace(/\D/g, "") : data.documento,
+    metadata: leadRegistrationMetadata(data.metadata, {
+      entryChannel: data.source === "whatsapp"
+        ? "whatsapp"
+        : data.source === "instagram"
+          ? "instagram"
+          : data.source === "email"
+            ? "email"
+            : data.source?.includes("site") || data.source?.includes("website")
+              ? "site"
+              : data.source?.includes("prospec")
+                ? "prospeccao"
+                : data.source?.includes("indicacao")
+                  ? "parceiro"
+                  : "manual",
+      entrySource: data.source || "manual",
+    }),
     possivelDuplicata: false,
     leadSimilarId: null,
   } as any).returning();
@@ -487,18 +507,22 @@ router.post("/tenants/:tenantId/leads/import", async (req, res) => {
 
       const [importedLead] = await db.insert(leadsTable).values({
         tenantId,
-        nome: row.nome,
+        nome: normalizeLeadName(row.nome, "Lead importado"),
         telefone: storePhone(row.telefone),
         documento: row.documento ? row.documento.replace(/\D/g, "") : null,
-        email: row.email || null,
-        endereco: row.endereco || null,
-        instagramHandle: row.instagram || null,
-        empresa: row.empresa || null,
+        email: normalizeLeadEmail(row.email),
+        endereco: row.endereco?.trim() || null,
+        instagramHandle: normalizeInstagramHandle(row.instagram),
+        empresa: row.empresa?.trim() || null,
         status: row.status?.trim() || "novo",
+        source: "importacao_planilha",
         possivelDuplicata: match.similar ? true : false,
         leadSimilarId: match.similar?.id ?? null,
         assignedTo: importAssignedTo,
-        metadata: row.camposExtras && Object.keys(row.camposExtras).length > 0 ? row.camposExtras : null,
+        metadata: leadRegistrationMetadata(row.camposExtras, {
+          entryChannel: "importacao",
+          entrySource: "importacao_planilha",
+        }),
       }).returning();
       if (importedLead) {
         await db.insert(dealsTable).values({ tenantId, leadId: importedLead.id, titulo: importedLead.nome, etapa: "em_aquecimento", assignedTo: importAssignedTo });
