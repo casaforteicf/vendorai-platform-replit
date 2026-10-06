@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
 import { rateLimit } from "express-rate-limit";
-import { and, eq, inArray, desc, ilike, isNull, isNotNull } from "drizzle-orm";
+import { and, eq, inArray, desc, ilike, isNull, isNotNull, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
@@ -54,7 +54,7 @@ import { reserveUniqueVehicle } from "../services/vehicle-reservation.js";
 import { reserveUniqueItem } from "../services/item-reservation.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 import { signAttachmentFolderUnlockToken } from "../lib/jwt.js";
-import { attachmentUnlockCookieName, normalizeAttachmentObjectPath } from "../lib/attachment-folder-access.js";
+import { attachmentUnlockCookieName, normalizeAttachmentObjectPath, requestCanAccessLockedObject } from "../lib/attachment-folder-access.js";
 
 const router: IRouter = Router();
 const attachmentUnlockLimiter = rateLimit({
@@ -120,6 +120,42 @@ const nonLeadClassificationSchema = z.object({
 const nonLeadClassificationsBodySchema = z.object({
   classifications: z.array(nonLeadClassificationSchema).min(1).max(50),
 });
+
+async function sanitizeProtectedLeadAttachments(req: any, lead: typeof leadsTable.$inferSelect) {
+  const discovery = lead.discoveryData && typeof lead.discoveryData === "object" && !Array.isArray(lead.discoveryData)
+    ? { ...(lead.discoveryData as Record<string, unknown>) }
+    : null;
+  if (!discovery) return lead;
+
+  const rootValue = discovery["vendoraiAttachments"];
+  if (!rootValue || typeof rootValue !== "object" || Array.isArray(rootValue)) return lead;
+  const root = { ...(rootValue as Record<string, unknown>) };
+  const files = Array.isArray(root["files"]) ? root["files"] as Array<Record<string, unknown>> : [];
+  if (!files.length) return lead;
+
+  const kept: Array<Record<string, unknown>> = [];
+  const hiddenIds = new Set<string>();
+  for (const file of files) {
+    const storageUrl = typeof file["storageUrl"] === "string" ? file["storageUrl"] : "";
+    if (storageUrl && !(await requestCanAccessLockedObject(req, lead.tenantId, storageUrl))) {
+      if (typeof file["id"] === "string") hiddenIds.add(String(file["id"]));
+      continue;
+    }
+    kept.push(file);
+  }
+
+  if (hiddenIds.size === 0) return lead;
+  const overridesValue = root["overrides"];
+  const overrides = overridesValue && typeof overridesValue === "object" && !Array.isArray(overridesValue)
+    ? { ...(overridesValue as Record<string, unknown>) }
+    : {};
+  for (const id of hiddenIds) delete overrides[`lead:${id}`];
+
+  root["files"] = kept;
+  root["overrides"] = overrides;
+  discovery["vendoraiAttachments"] = root;
+  return { ...lead, discoveryData: discovery };
+}
 
 async function validateRepresentativeFunction(tenantId: string, functionId: string | null | undefined) {
   if (!functionId) return null;
@@ -892,18 +928,29 @@ router.post("/leads/:id/attachment-folder-lock/sync", async (req, res) => {
 
   const objectPaths = [...new Set(parsed.data.objectPaths.map(normalizeAttachmentObjectPath).filter(Boolean))];
 
-  await db.delete(attachmentFolderLockObjectsTable).where(eq(attachmentFolderLockObjectsTable.lockId, lock.id));
   if (objectPaths.length) {
-    await db.insert(attachmentFolderLockObjectsTable).values(objectPaths.map((objectPath) => ({
-      tenantId: lead.tenantId,
-      leadId: lead.id,
-      lockId: lock.id,
-      folderPath,
-      objectPath,
-    })));
+    const existingObjects = await db
+      .select({ objectPath: attachmentFolderLockObjectsTable.objectPath })
+      .from(attachmentFolderLockObjectsTable)
+      .where(eq(attachmentFolderLockObjectsTable.lockId, lock.id));
+    const existingSet = new Set(existingObjects.map((row) => row.objectPath));
+    const missing = objectPaths.filter((objectPath) => !existingSet.has(objectPath));
+    if (missing.length) {
+      await db.insert(attachmentFolderLockObjectsTable).values(missing.map((objectPath) => ({
+        tenantId: lead.tenantId,
+        leadId: lead.id,
+        lockId: lock.id,
+        folderPath,
+        objectPath,
+      })));
+    }
   }
 
-  res.json({ folderPath, protectedObjects: objectPaths.length });
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(attachmentFolderLockObjectsTable)
+    .where(eq(attachmentFolderLockObjectsTable.lockId, lock.id));
+  res.json({ folderPath, protectedObjects: Number(count ?? 0) });
 });
 
 router.post("/leads/:id/attachment-folder-lock/lock-now", async (req, res) => {
@@ -958,7 +1005,7 @@ router.get("/leads/:id", async (req, res) => {
     }
   }
 
-  res.json(lead);
+  res.json(await sanitizeProtectedLeadAttachments(req, lead));
 });
 
 router.patch("/leads/:id", async (req, res) => {
