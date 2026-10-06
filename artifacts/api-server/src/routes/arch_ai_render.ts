@@ -33,14 +33,6 @@ function renderObjectPath(value: string | null | undefined): string | null {
   return null;
 }
 
-function renderDisplayUrl(value: string | null | undefined): string | null {
-  const raw = String(value ?? "").trim();
-  if (!raw) return null;
-  const objectPath = renderObjectPath(raw);
-  if (objectPath) return `/api/storage${objectPath}`;
-  return raw;
-}
-
 async function renderAccessUrl(value: string | null | undefined): Promise<string | null> {
   const raw = String(value ?? "").trim();
   if (!raw) return null;
