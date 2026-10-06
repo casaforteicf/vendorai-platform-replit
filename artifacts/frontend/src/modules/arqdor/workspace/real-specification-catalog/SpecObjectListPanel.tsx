@@ -64,7 +64,25 @@ export function SpecObjectListPanel({
             <p className="truncate text-sm font-medium">{item.supplierName || item.manufacturerName || "A definir"}</p>
           </div>
 
-          <div className="flex items-center justify-between gap-2 md:justify-end">
+          <div className="flex flex-wrap items-center justify-between gap-2 md:justify-end">
+            {item.revisionImpact && item.revisionImpact !== "unchanged" ? (
+              <span className={[
+                "rounded-full px-2.5 py-1 text-[11px] font-semibold",
+                item.revisionImpact === "removed"
+                  ? "bg-rose-50 text-rose-700"
+                  : item.revisionImpact === "new"
+                    ? "bg-emerald-50 text-emerald-700"
+                    : "bg-amber-50 text-amber-800",
+              ].join(" ")}>
+                {item.revisionImpact === "removed"
+                  ? "Removido do projeto"
+                  : item.revisionImpact === "new"
+                    ? "Novo"
+                    : item.revisionImpact === "quantity_changed"
+                      ? "Quantidade alterada"
+                      : "Geometria alterada"}
+              </span>
+            ) : null}
             <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusClass(item.status)}`}>
               {statusLabel(item.status)}
             </span>
