@@ -410,6 +410,7 @@ export default function Leads() {
     isChurnUrl ? "high_risk" : isQuenteUrl ? "quente" : "all",
   );
   const [churnSort, setChurnSort] = useState<"desc" | "asc" | null>(isChurnUrl ? "desc" : null);
+  const [budgetSort, setBudgetSort] = useState<"desc" | "asc" | null>(null);
   const [maturityFilter, setMaturityFilter] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"ativos" | "excluidos">("ativos");
 
@@ -670,6 +671,17 @@ export default function Leads() {
       return matchesSearch && matchesSegment && matchesStatus && matchesMaturity;
     })
     .sort((a, b) => {
+      if (budgetSort) {
+        const budgetA = Number.parseFloat(leadValorMap.get(a.id) ?? "");
+        const budgetB = Number.parseFloat(leadValorMap.get(b.id) ?? "");
+        const hasBudgetA = Number.isFinite(budgetA);
+        const hasBudgetB = Number.isFinite(budgetB);
+
+        if (!hasBudgetA && !hasBudgetB) return 0;
+        if (!hasBudgetA) return 1;
+        if (!hasBudgetB) return -1;
+        return budgetSort === "desc" ? budgetB - budgetA : budgetA - budgetB;
+      }
       if (isQuenteUrl) {
         const scoreA = a.status === "qualificado" ? 2 : a.status === "novo" ? 1 : 0;
         const scoreB = b.status === "qualificado" ? 2 : b.status === "novo" ? 1 : 0;
@@ -684,8 +696,14 @@ export default function Leads() {
       return churnSort === "desc" ? riskB - riskA : riskA - riskB;
     });
 
+  function toggleBudgetSort() {
+    setBudgetSort((previous) => (previous === "desc" ? "asc" : "desc"));
+    setChurnSort(null);
+  }
+
   function toggleChurnSort() {
     setChurnSort((previous) => (previous === "desc" ? "asc" : "desc"));
+    setBudgetSort(null);
   }
 
   return (
@@ -1022,7 +1040,25 @@ export default function Leads() {
                       <TableHead>Status do contato</TableHead>
                       <TableHead title="Um contato pode ter vários negócios simultâneos, e cada negócio pode ter vários processos operacionais.">Negócios / processos ativos</TableHead>
                       <TableHead>Responsável</TableHead>
-                      <TableHead className="text-right" title="Maior valor de orçamento registrado para este contato.">Maior orçamento</TableHead>
+                      <TableHead className="text-right" title="Maior valor de orçamento registrado para este contato.">
+                        <button
+                          type="button"
+                          data-testid="sort-largest-budget"
+                          onClick={toggleBudgetSort}
+                          className="flex w-full items-center justify-end gap-1 hover:text-foreground transition-colors"
+                          aria-label="Ordenar por maior orçamento"
+                          title={budgetSort === "desc" ? "Ordenado do maior para o menor" : budgetSort === "asc" ? "Ordenado do menor para o maior" : "Ordenar por orçamento"}
+                        >
+                          Maior orçamento
+                          {budgetSort === "desc" ? (
+                            <ArrowDown className="h-3.5 w-3.5" />
+                          ) : budgetSort === "asc" ? (
+                            <ArrowUp className="h-3.5 w-3.5" />
+                          ) : (
+                            <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />
+                          )}
+                        </button>
+                      </TableHead>
                       <TableHead>
                         <button
                           data-testid="sort-churn-risk"
