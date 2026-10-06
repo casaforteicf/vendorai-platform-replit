@@ -496,12 +496,8 @@ export function MediaPlanAutoProductionBridge() {
         postMaterialUrls: finalMaterials.map((asset) => mediaUrl(asset.storageUrl)),
       }),
     });
-    if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({})) as { error?: string };
-      throw new Error(errorBody.error ?? `O gerador falhou (HTTP ${response.status}).`);
-    }
     const payload = await response.json().catch(() => ({})) as ContentGeneration & { error?: string };
-    if (!payload.id) throw new Error(payload.error ?? "O gerador não criou o rascunho.");
+    if (!response.ok || !payload.id) throw new Error(payload.error ?? "O gerador não criou o rascunho.");
 
     let variation = (payload.result?.variations ?? [])[0] as GenerationVariation | undefined;
     const needsVisual = options.visual === true;
