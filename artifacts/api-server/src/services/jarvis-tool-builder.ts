@@ -272,7 +272,12 @@ export async function syncTenantLeadCaptureToolsFromExistingCapabilities(tenantI
   createdOrUpdated: number;
   skipped: number;
 }> {
-  const [apps, agentConfigs, commercialAccess] = await Promise.all([
+  const [[profile], apps, agentConfigs, commercialAccess] = await Promise.all([
+    db
+      .select({ vertical: businessProfilesTable.vertical })
+      .from(businessProfilesTable)
+      .where(eq(businessProfilesTable.tenantId, tenantId))
+      .limit(1),
     db
       .select({
         id: appInstancesTable.id,
@@ -385,8 +390,13 @@ export async function syncTenantLeadCaptureToolsFromExistingCapabilities(tenantI
     agendamento: "Agente de agendamento",
   };
 
+  const tenantVertical = normalize(profile?.vertical ?? "");
+
   for (const agent of agentConfigs) {
-    if (!Object.prototype.hasOwnProperty.call(publicAgentLabels, agent.agentKey)) {
+    const verticalCompatible =
+      agent.agentKey !== "farmacia" || tenantVertical.includes("farm");
+
+    if (!verticalCompatible || !Object.prototype.hasOwnProperty.call(publicAgentLabels, agent.agentKey)) {
       skipped += 1;
       continue;
     }

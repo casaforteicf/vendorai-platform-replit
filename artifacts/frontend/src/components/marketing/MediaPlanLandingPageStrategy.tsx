@@ -17,14 +17,14 @@ type BaseLandingPage = {
   tipo: "dor" | "marketing" | "crm";
   nome: string;
   objetivo: string;
-  obrigatoria: true;
+  obrigatoria: false;
 };
 
 type LandingPageStrategy = {
   versao: 1;
   segmento: string;
   nicho: string;
-  regra: "manter_3_lps_base";
+  regra: "templates_base_adaptaveis";
   base: BaseLandingPage[];
   estrategicas: string[];
   atualizadoEm?: string;
@@ -49,19 +49,19 @@ const BASE_LPS: BaseLandingPage[] = [
     tipo: "dor",
     nome: "LP Dor / Descoberta",
     objetivo: "Falar com quem sente os problemas do segmento, mas ainda não sabe que precisa de uma solução como o VendorAI. Deve trabalhar as 10 dores principais, sintomas, impacto e descoberta da solução.",
-    obrigatoria: true,
+    obrigatoria: false,
   },
   {
     tipo: "marketing",
     nome: "LP Marketing / Crescimento",
     objetivo: "Falar com quem quer atrair mais clientes e vender mais. Deve conectar conteúdo, Meta, Google, criativos, campanhas, páginas, WhatsApp, captação, rastreamento e conversão.",
-    obrigatoria: true,
+    obrigatoria: false,
   },
   {
     tipo: "crm",
     nome: "LP CRM / Alta intenção",
     objetivo: "Falar com quem já procura CRM, automação ou inteligência comercial. Deve apresentar CRM com IA, WhatsApp, pipeline, follow-up, agentes, prospecção, integrações e diferenciais.",
-    obrigatoria: true,
+    obrigatoria: false,
   },
 ];
 
@@ -88,7 +88,7 @@ function defaultStrategy(plan: MediaPlan): LandingPageStrategy {
     versao: 1,
     segmento: plan.contextoUsado?.configuracaoPlanejamento?.produtoServicoPrioritario?.trim() ?? "",
     nicho: "",
-    regra: "manter_3_lps_base",
+    regra: "templates_base_adaptaveis",
     base: BASE_LPS,
     estrategicas: [],
   };
@@ -101,7 +101,7 @@ function normalizeStrategy(plan: MediaPlan): LandingPageStrategy {
     versao: 1,
     segmento: current.segmento ?? "",
     nicho: current.nicho ?? "",
-    regra: "manter_3_lps_base",
+    regra: "templates_base_adaptaveis",
     base: BASE_LPS,
     estrategicas: Array.isArray(current.estrategicas) ? current.estrategicas.filter(Boolean) : [],
     atualizadoEm: current.atualizadoEm,
@@ -217,7 +217,7 @@ export function MediaPlanLandingPageStrategy() {
       ...strategy,
       base: BASE_LPS,
       estrategicas: extras,
-      regra: "manter_3_lps_base",
+      regra: "templates_base_adaptaveis",
       atualizadoEm: new Date().toISOString(),
     };
     setSaving(true);
@@ -261,10 +261,10 @@ export function MediaPlanLandingPageStrategy() {
             <div className="flex flex-wrap items-center gap-2">
               <Sparkles className="h-4 w-4 text-primary" />
               <p className="text-sm font-semibold">Estratégia de Landing Pages</p>
-              <Badge variant="outline" className="text-[10px]">3 LPs Base obrigatórias</Badge>
+              <Badge variant="outline" className="text-[10px]">3 modelos de LP</Badge>
             </div>
             <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
-              O planejamento sempre mantém uma LP de Dor, uma de Marketing e uma de CRM para cada segmento/nicho. Outras LPs podem ser criadas conforme campanhas e oportunidades, mas nunca substituem as três bases.
+              Use estes modelos como referência. O Vendi deve adaptar, combinar ou dispensar páginas conforme objetivo, oferta, público e estágio do funil.
             </p>
           </div>
           {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
@@ -299,7 +299,7 @@ export function MediaPlanLandingPageStrategy() {
                   <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                 </div>
                 <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{lp.objetivo}</p>
-                <Badge variant="secondary" className="mt-3 text-[10px]">Sempre gerar</Badge>
+                <Badge variant="secondary" className="mt-3 text-[10px]">Modelo sugerido</Badge>
               </div>
             );
           })}
@@ -323,7 +323,7 @@ export function MediaPlanLandingPageStrategy() {
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
           <p className="text-xs text-muted-foreground">
-            Regra fixa: <span className="font-medium text-foreground">LPs Estratégicas complementam, nunca substituem as 3 LPs Base.</span>
+            Regra: <span className="font-medium text-foreground">gere somente as páginas que fizerem sentido para a estratégia aprovada.</span>
           </p>
           <div className="flex flex-wrap gap-2">
             <Button type="button" size="sm" variant="outline" onClick={() => void persist(false)} disabled={!dirty || saving}>

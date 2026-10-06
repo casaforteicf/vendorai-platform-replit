@@ -167,7 +167,7 @@ function QuickChoices({ options, onChoose }: { options: QuickOption[]; onChoose:
 export default function PlanoMidia() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const tenantId = user?.tenantId ?? "";
 
   const [config, setConfig] = useState<PlanningConfig>(() => emptyConfig());
@@ -185,6 +185,19 @@ export default function PlanoMidia() {
 
   const campaigns = plan?.conteudo.campanhas ?? [];
   const approved = plan?.conteudo.statusPlanejamento === "aprovado";
+  const advancedPlanning = useMemo(() => {
+    const [, query = ""] = location.split("?");
+    return new URLSearchParams(query).get("advanced") === "1";
+  }, [location]);
+
+  function toggleAdvancedPlanning() {
+    const [path, query = ""] = location.split("?");
+    const params = new URLSearchParams(query);
+    if (advancedPlanning) params.delete("advanced");
+    else params.set("advanced", "1");
+    const nextQuery = params.toString();
+    navigate(nextQuery ? `${path}?${nextQuery}` : path);
+  }
 
   const configuredCount = useMemo(() => [
     config.objetivoPrincipal,
@@ -372,14 +385,21 @@ export default function PlanoMidia() {
     <div className="marketing-plan-responsive space-y-5">
       <Card className="border-primary/30 bg-primary/[0.02]">
         <CardContent className="p-4 md:p-5">
-          <p className="text-sm font-semibold">Planejamento = decisão, não execução</p>
-          <p className="mt-1 text-xs text-muted-foreground">Preencha primeiro. A IA só cria uma proposta quando você mandar gerar.</p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold">Planeje primeiro. Execute depois.</p>
+              <p className="mt-1 text-xs text-muted-foreground">O Vendi usa os dados da empresa para preparar uma proposta. Você revisa antes de qualquer execução.</p>
+            </div>
+            <Button type="button" size="sm" variant="ghost" onClick={toggleAdvancedPlanning}>
+              {advancedPlanning ? "Ocultar opções avançadas" : "Opções avançadas"}
+            </Button>
+          </div>
           <div className="planning-flow-grid mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
             {[
               ["1", "Informações", "Você define objetivo, público, oferta e limites"],
-              ["2", "Proposta da IA", "Só aparece depois de clicar em gerar"],
+              ["2", "Sugestão do Vendi", "O Vendi organiza a estratégia para você revisar"],
               ["3", "Aprovação", "Você revisa, nomeia e aprova as campanhas"],
-              ["4", "Gerar Campanhas", "Só aqui começa a execução"],
+              ["4", "Iniciar execução", "Cria as campanhas aprovadas e libera a produção"],
             ].map(([n, title, description]) => (
               <div key={n} className="rounded-xl border bg-background p-2.5 md:p-3">
                 <div className="mb-2 flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">{n}</div>
@@ -682,12 +702,12 @@ export default function PlanoMidia() {
               <div className="flex justify-end"><Button variant="outline" onClick={() => { setPlan(null); setShowingPrevious(false); }}>Voltar ao preenchimento</Button></div>
             ) : (
               <div className="rounded-xl border border-primary/30 bg-primary/[0.03] p-4">
-                <p className="text-sm font-semibold">4. Gerar Campanhas</p>
-                <p className="mt-1 text-xs text-muted-foreground">Somente depois deste botão começam calendário, produção, anúncios, LPs, mensagens e demais ações de execução.</p>
+                <p className="text-sm font-semibold">4. Iniciar execução</p>
+                <p className="mt-1 text-xs text-muted-foreground">Depois da aprovação, o sistema cria as campanhas e organiza as ações por canal. Nada é publicado automaticamente aqui.</p>
                 <div className="mt-3">
                   <Button onClick={generateCampaigns} disabled={!approved || creatingCampaigns}>
                     {creatingCampaigns ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRight className="mr-2 h-4 w-4" />}
-                    {campaignsGenerated ? "Abrir Campanhas" : "Gerar Campanhas e iniciar execução"}
+                    {campaignsGenerated ? "Abrir campanhas" : "Criar campanhas aprovadas"}
                   </Button>
                 </div>
               </div>

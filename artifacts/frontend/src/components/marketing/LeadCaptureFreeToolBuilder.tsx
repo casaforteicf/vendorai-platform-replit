@@ -57,7 +57,11 @@ export default function LeadCaptureFreeToolBuilder({ tenantId }: { tenantId: str
       setTools(Array.isArray(data.tools) ? data.tools : []);
       setSuggestedTools(Array.isArray(data.suggestedTools) ? data.suggestedTools : []);
       const available = (data.tools?.length ? data.tools : data.suggestedTools) ?? [];
-      setSelectedKeys((current) => current.length ? current : available.slice(0, 1).map((tool: Tool) => tool.toolKey));
+      const availableKeys = new Set(available.map((tool: Tool) => tool.toolKey));
+      setSelectedKeys((current) => {
+        const valid = current.filter((key) => availableKeys.has(key));
+        return valid.length ? valid : available.slice(0, 1).map((tool: Tool) => tool.toolKey);
+      });
     } catch (error) {
       toast({ title: "Erro ao carregar captação", description: error instanceof Error ? error.message : "Tente novamente", variant: "destructive" });
     } finally {
@@ -110,12 +114,12 @@ export default function LeadCaptureFreeToolBuilder({ tenantId }: { tenantId: str
         }),
       });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok && response.status !== 202) throw new Error(body.error || "O JARVIS não conseguiu preparar a entrega");
+      if (!response.ok && response.status !== 202) throw new Error(body.error || "O Vendi não conseguiu preparar a entrega");
 
       if (body.strategy === "requires_development") {
         toast({
           title: "Capacidade nova necessária",
-          description: body.summary || "O JARVIS identificou que falta uma capacidade real da plataforma antes de publicar esta ferramenta.",
+          description: body.summary || "O Vendi identificou que falta uma capacidade real da plataforma antes de publicar esta ferramenta.",
         });
         return;
       }
@@ -126,11 +130,11 @@ export default function LeadCaptureFreeToolBuilder({ tenantId }: { tenantId: str
       }
       setJarvisBrief("");
       toast({
-        title: body.strategy === "reuse" ? "JARVIS encontrou uma ferramenta existente" : "Ferramenta criada pelo JARVIS",
+        title: body.strategy === "reuse" ? "Vendi encontrou uma ferramenta existente" : "Ferramenta criada pelo Vendi",
         description: body.summary,
       });
     } catch (error) {
-      toast({ title: "Erro no JARVIS", description: error instanceof Error ? error.message : "Tente novamente", variant: "destructive" });
+      toast({ title: "Erro no Vendi", description: error instanceof Error ? error.message : "Tente novamente", variant: "destructive" });
     } finally {
       setJarvisBuilding(false);
     }
@@ -229,7 +233,7 @@ export default function LeadCaptureFreeToolBuilder({ tenantId }: { tenantId: str
         <div className="space-y-3">
           <div>
             <p className="text-sm font-medium">Entrega(s) gratuita(s)</p>
-            <p className="text-xs text-muted-foreground">Use ferramentas existentes ou peça ao JARVIS para reutilizar, compor ou criar uma nova experiência com as capacidades já disponíveis.</p>
+            <p className="text-xs text-muted-foreground">Use ferramentas existentes ou peça ao Vendi para reutilizar, compor ou criar uma nova experiência com as capacidades já disponíveis.</p>
           </div>
 
           <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
@@ -244,10 +248,10 @@ export default function LeadCaptureFreeToolBuilder({ tenantId }: { tenantId: str
               onChange={(e) => setJarvisBrief(e.target.value)}
             />
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <p className="text-[11px] text-muted-foreground">O JARVIS procura primeiro algo existente. Só cria uma nova experiência se conseguir usar capacidades reais e seguras do App Builder.</p>
+              <p className="text-[11px] text-muted-foreground">O Vendi procura primeiro algo existente. Só cria uma nova experiência quando puder usar capacidades reais e seguras da plataforma.</p>
               <Button type="button" size="sm" variant="outline" disabled={jarvisBuilding} onClick={() => void buildWithJarvis()}>
                 {jarvisBuilding ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Bot className="mr-1.5 h-3.5 w-3.5" />}
-                Desenvolver com JARVIS
+                Desenvolver com Vendi
               </Button>
             </div>
           </div>

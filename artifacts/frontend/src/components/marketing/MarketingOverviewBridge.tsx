@@ -10,7 +10,6 @@ import {
   LayoutDashboard,
   Loader2,
   Megaphone,
-  Radio,
   Sparkles,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -49,6 +48,7 @@ type PlannedCampaign = {
   canais: CampaignChannel[];
   kpiPrincipal?: string;
   metaPrincipal?: string;
+  coverUrl?: string;
 };
 
 type MediaPlan = {
@@ -479,6 +479,16 @@ export function MarketingOverviewBridge() {
                 <div className="vendor-marketing-campaign-grid mt-4">
                   {campaignRows.map(({ campaign, items: campaignItems, published, production, ready, status }) => (
                     <div key={campaign.id} className="vendor-marketing-campaign-card rounded-xl border bg-background p-4 transition hover:border-primary/45 hover:shadow-sm">
+                      <div className="mb-3 overflow-hidden rounded-lg border bg-muted/30">
+                        {campaign.coverUrl ? (
+                          <img src={campaign.coverUrl} alt="" className="h-32 w-full object-cover" />
+                        ) : (
+                          <div className="flex h-24 items-center justify-center gap-2 text-xs text-muted-foreground">
+                            <Megaphone className="h-4 w-4" />
+                            Capa da campanha
+                          </div>
+                        )}
+                      </div>
                       <div className="vendor-marketing-campaign-head flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
@@ -501,11 +511,20 @@ export function MarketingOverviewBridge() {
                         {campaign.canais.length > 5 && <Badge variant="secondary" className="text-[10px]">+{campaign.canais.length - 5}</Badge>}
                       </div>
 
-                      <div className="mt-3 grid grid-cols-4 gap-2 border-t pt-3 text-center">
-                        <div><p className="text-base font-semibold">{campaignItems.length}</p><p className="text-[10px] text-muted-foreground">ações</p></div>
-                        <div><p className="text-base font-semibold">{ready}</p><p className="text-[10px] text-muted-foreground">a preparar</p></div>
-                        <div><p className="text-base font-semibold">{production}</p><p className="text-[10px] text-muted-foreground">produção</p></div>
-                        <div><p className="text-base font-semibold">{published}</p><p className="text-[10px] text-muted-foreground">publicadas</p></div>
+                      <div className="mt-3 border-t pt-3">
+                        <div className="flex items-center justify-between gap-3 text-xs">
+                          <span className="text-muted-foreground">Progresso</span>
+                          <span className="font-medium">{published}/{campaignItems.length || 0} publicadas</span>
+                        </div>
+                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                          <div className="h-full bg-primary transition-all" style={{ width: `${campaignItems.length ? Math.round((published / campaignItems.length) * 100) : 0}%` }} />
+                        </div>
+                        <div className="mt-3 rounded-lg bg-muted/40 px-3 py-2 text-xs">
+                          <span className="text-muted-foreground">Próximo passo: </span>
+                          <span className="font-medium">
+                            {ready > 0 ? `Preparar ${ready} ${ready === 1 ? "ação" : "ações"}` : production > 0 ? `Revisar ${production} em produção` : campaignItems.length > 0 && published === campaignItems.length ? "Analisar resultados" : "Revisar campanha"}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -516,13 +535,10 @@ export function MarketingOverviewBridge() {
 
           <div className="vendor-marketing-bottom-links">
             <button type="button" onClick={() => navigate("/content?tab=conteudos")} className="rounded-xl border bg-background p-4 text-left transition hover:border-primary/40">
-              <div className="flex items-center gap-2"><Images className="h-4 w-4 text-primary" /><p className="text-sm font-semibold">Conteúdos & Criativos</p></div><p className="mt-1 text-xs text-muted-foreground">Produção, revisão e aprovações.</p>
-            </button>
-            <button type="button" onClick={() => navigate("/content?tab=rastreamento")} className="rounded-xl border bg-background p-4 text-left transition hover:border-primary/40">
-              <div className="flex items-center gap-2"><Radio className="h-4 w-4 text-primary" /><p className="text-sm font-semibold">Rastreamento</p></div><p className="mt-1 text-xs text-muted-foreground">Origem dos contatos e jornada até o CRM.</p>
+              <div className="flex items-center gap-2"><Images className="h-4 w-4 text-primary" /><p className="text-sm font-semibold">Conteúdos</p></div><p className="mt-1 text-xs text-muted-foreground">Produza, revise, aprove e publique.</p>
             </button>
             <button type="button" onClick={() => navigate("/content?tab=resultados")} className="rounded-xl border bg-background p-4 text-left transition hover:border-primary/40">
-              <div className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /><p className="text-sm font-semibold">Resultados</p></div><p className="mt-1 text-xs text-muted-foreground">Performance e aprendizado do próximo ciclo.</p>
+              <div className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /><p className="text-sm font-semibold">Resultados</p></div><p className="mt-1 text-xs text-muted-foreground">Veja o que funcionou e o que melhorar.</p>
             </button>
           </div>
         </>
