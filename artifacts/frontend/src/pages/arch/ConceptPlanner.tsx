@@ -466,10 +466,10 @@ type ProjectSourceFile = {
   originalName: string;
   mimeType: string;
   extension: string;
-  kind: "bim" | "cad" | "model3d";
+  kind: "bim" | "cad" | "model3d" | "architectural_geometry";
   uploadedAt: string;
-  status: "stored_only" | "converted";
-  parserStatus: "pending_ifc_parser" | "conversion_required" | "parsed_metadata" | "ready_model3d";
+  status: "stored_only" | "converted" | "parsed";
+  parserStatus: "pending_ifc_parser" | "conversion_required" | "parsed_metadata" | "ready_model3d" | "ready_editable_geometry";
   parsedAt?: string;
   convertedAt?: string;
   conversionEngine?: string;
@@ -1070,6 +1070,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [conceptId, setConceptId] = useState<string | null>(null);
   const conceptIdRef = useRef<string | null>(null);
   const dxfImportInputRef = useRef<HTMLInputElement | null>(null);
+  const geometryImportInputRef = useRef<HTMLInputElement | null>(null);
   const referencePlanInputRef = useRef<HTMLInputElement | null>(null);
   const sourceFileInputRef = useRef<HTMLInputElement | null>(null);
   const projectStartImportInputRef = useRef<HTMLInputElement | null>(null);
@@ -1097,6 +1098,30 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [ifcExportState, setIfcExportState] = useState<"idle" | "exporting" | "error">("idle");
   const [dxfImportState, setDxfImportState] = useState<"idle" | "importing" | "error" | "success">("idle");
   const [dxfImportMessage, setDxfImportMessage] = useState<string | null>(null);
+  const [geometryImportState, setGeometryImportState] = useState<"idle" | "reading" | "review" | "applying" | "error" | "success">("idle");
+  const [geometryImportMessage, setGeometryImportMessage] = useState<string | null>(null);
+  const [geometryImportFile, setGeometryImportFile] = useState<File | null>(null);
+  const [geometryImportPreview, setGeometryImportPreview] = useState<{
+    summary: {
+      format: string;
+      walls: number;
+      openings: number;
+      spaces: number;
+      bounds: { width: number; depth: number };
+      unit: string;
+      warnings: string[];
+    };
+    geometry: {
+      walls: Array<CustomWall & { sourceIfcId?: string; sourceLayer?: string; materialId?: string; wallType?: string }>;
+      openings: Array<CustomOpening & { sourceIfcId?: string }>;
+      spaces?: Array<{ id: string; floor: number; label: string; kind: string; area: number; floorMaterialId?: string; sourceIfcId?: string }>;
+      wallMaterials?: Record<string, string>;
+      storeys?: Array<{ name: string | null; floor: number }>;
+      bounds: { width: number; depth: number };
+      unit: string;
+      warnings: string[];
+    };
+  } | null>(null);
   const [referencePlan, setReferencePlan] = useState<ReferencePlan | null>(null);
   const [referencePlanState, setReferencePlanState] = useState<"idle" | "uploading" | "error" | "success">("idle");
   const [referencePlanMessage, setReferencePlanMessage] = useState<string | null>(null);
@@ -5274,6 +5299,200 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setDxfImportState("error");
     } finally {
       if (dxfImportInputRef.current) dxfImportInputRef.current.value = "";
+    }
+  };
+
+  const previewGeometryImport = async (file: File) => {
+    if (geometryImportState === "reading" || geometryImportState === "applying") return;
+    if (projectMaster) {
+      setGeometryImportState("error");
+      setGeometryImportMessage("Crie uma revisão antes de importar nova geometria.");
+      return;
+    }
+
+    const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+    if (!["ifc", "dxf", "dwg", "skp"].includes(extension)) {
+      setGeometryImportState("error");
+      setGeometryImportMessage("Use IFC, DXF, DWG ou SKP.");
+      return;
+    }
+    if (file.size <= 0) {
+      setGeometryImportState("error");
+      setGeometryImportMessage("O arquivo selecionado está vazio.");
+      return;
+    }
+    if (file.size > 35 * 1024 * 1024) {
+      setGeometryImportState("error");
+      setGeometryImportMessage("O limite para importação geométrica é 35 MB.");
+      return;
+    }
+
+    setGeometryImportFile(file);
+    setGeometryImportPreview(null);
+    setGeometryImportState("reading");
+    setGeometryImportMessage("Lendo o arquivo sem alterar a geometria atual...");
+    try {
+      const id = await saveConcept(4);
+      if (!id) throw new Error("Não foi possível salvar o pré-projeto antes da importação.");
+
+      const form = new FormData();
+      form.append("file", file, file.name);
+      form.append("mode", "preview");
+      const token = typeof window !== "undefined" ? localStorage.getItem("vendorai_token") : null;
+      const response = await fetch(`/api/arch/concept-projects/${encodeURIComponent(id)}/import-geometry`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: form,
+      });
+      const payload = await response.json().catch(() => ({})) as {
+        error?: string;
+        summary?: {
+          format: string;
+          walls: number;
+          openings: number;
+          spaces: number;
+          bounds: { width: number; depth: number };
+          unit: string;
+          warnings: string[];
+        };
+        geometry?: {
+          walls: Array<CustomWall & { sourceIfcId?: string; sourceLayer?: string; materialId?: string; wallType?: string }>;
+          openings: Array<CustomOpening & { sourceIfcId?: string }>;
+          spaces?: Array<{ id: string; floor: number; label: string; kind: string; area: number; floorMaterialId?: string; sourceIfcId?: string }>;
+          wallMaterials?: Record<string, string>;
+          storeys?: Array<{ name: string | null; floor: number }>;
+          bounds: { width: number; depth: number };
+          unit: string;
+          warnings: string[];
+        };
+      };
+      if (!response.ok || !payload.summary || !payload.geometry) {
+        throw new Error(payload.error ?? "Não foi possível gerar a prévia da geometria.");
+      }
+
+      setGeometryImportPreview({ summary: payload.summary, geometry: payload.geometry });
+      setGeometryImportState("review");
+      const warnings = payload.summary.warnings?.length ? ` · ${payload.summary.warnings.join(" ")}` : "";
+      setGeometryImportMessage(
+        `Prévia pronta: ${payload.summary.walls} paredes, ${payload.summary.openings} aberturas, ${payload.summary.spaces} espaços · ${payload.summary.bounds.width.toFixed(2)} × ${payload.summary.bounds.depth.toFixed(2)} m · unidade ${payload.summary.unit}.${warnings}`,
+      );
+    } catch (error) {
+      setGeometryImportState("error");
+      setGeometryImportMessage(error instanceof Error ? error.message : "Falha ao ler a geometria.");
+    } finally {
+      if (geometryImportInputRef.current) geometryImportInputRef.current.value = "";
+    }
+  };
+
+  const applyGeometryImport = async () => {
+    const file = geometryImportFile;
+    const preview = geometryImportPreview;
+    if (!file || !preview || geometryImportState === "applying" || projectMaster) return;
+
+    if (preview.summary.unit === "unknown") {
+      const confirmedUnit = window.confirm(
+        "A unidade do arquivo não foi identificada. Aplicar mesmo assim tratando os valores como metros? Para máxima fidelidade, prefira corrigir/exportar o arquivo com unidade definida.",
+      );
+      if (!confirmedUnit) return;
+    }
+
+    const hasCurrentGeometry = safeRooms.length > 0 || safeCustomWalls.length > 0 || safeCustomOpenings.length > 0;
+    if (hasCurrentGeometry) {
+      const confirmed = window.confirm(
+        `Aplicar a geometria importada e substituir a planta editável atual? Serão aplicadas ${preview.summary.walls} paredes e ${preview.summary.openings} aberturas. O briefing e o arquivo original serão preservados.`,
+      );
+      if (!confirmed) return;
+    }
+
+    setGeometryImportState("applying");
+    setGeometryImportMessage("Aplicando a geometria confirmada e preservando o arquivo original...");
+    try {
+      const id = conceptIdRef.current ?? conceptId ?? await saveConcept(4);
+      if (!id) throw new Error("Não foi possível identificar o pré-projeto.");
+
+      const form = new FormData();
+      form.append("file", file, file.name);
+      form.append("mode", "apply");
+      form.append("confirm", "true");
+      const token = typeof window !== "undefined" ? localStorage.getItem("vendorai_token") : null;
+      const response = await fetch(`/api/arch/concept-projects/${encodeURIComponent(id)}/import-geometry`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: form,
+      });
+      const payload = await response.json().catch(() => ({})) as {
+        error?: string;
+        summary?: typeof preview.summary;
+        geometry?: typeof preview.geometry;
+        source?: { storagePath: string; url: string; originalName: string };
+      };
+      if (!response.ok || !payload.geometry || !payload.summary) {
+        throw new Error(payload.error ?? "Não foi possível aplicar a geometria.");
+      }
+
+      const importedWalls = payload.geometry.walls.map(({ sourceIfcId: _sourceIfcId, sourceLayer: _sourceLayer, materialId: _materialId, wallType: _wallType, ...wall }) => wall);
+      const importedOpenings = (payload.geometry.openings ?? []).map(({ sourceIfcId: _sourceIfcId, ...opening }) => opening);
+      const importedFloors = Math.max(
+        1,
+        ...importedWalls.map((wall) => Number(wall.floor ?? 0) + 1),
+        ...importedOpenings.map((opening) => Number(opening.floor ?? 0) + 1),
+      );
+      const wallFirst = Array.from({ length: importedFloors }, (_, index) => index);
+      const importedSpaces = (payload.geometry.spaces ?? []).map(({ sourceIfcId: _sourceIfcId, ...space }) => ({
+        ...space,
+        centroid: { x: 0, y: 0 },
+      })) as SpaceProfile[];
+      const importedWallMaterials = payload.geometry.wallMaterials ?? Object.fromEntries(
+        payload.geometry.walls.flatMap((wall) => wall.materialId ? [[wall.id, wall.materialId] as const] : []),
+      );
+
+      setFloors(importedFloors);
+      setActiveFloor(0);
+      setRooms([]);
+      setCustomWalls(importedWalls);
+      setCustomOpenings(importedOpenings);
+      setOpeningOverrides({});
+      setWallFirstFloors(wallFirst);
+      setSpaceProfiles(importedSpaces);
+      setWallMaterials(importedWallMaterials);
+      setObjects([]);
+      setSelectedId(null);
+      setSelectedObjectId(null);
+      setSelectedOpeningId(null);
+      setSelectedWallId(null);
+      setSelectedCustomWallId(null);
+      setSelectedClosedSpaceId(null);
+      setInteractionMode("wall");
+      setEditorView("plan");
+      setEditorLibraryTab("build");
+      setStep(4);
+      setGeometryImportState("success");
+      setGeometryImportMessage(
+        `Geometria aplicada: ${importedWalls.length} paredes e ${importedOpenings.length} aberturas em ${importedFloors} pavimento(s). Revise medidas, conexões e escala antes de seguir.`,
+      );
+
+      if (payload.source?.url) {
+        const now = new Date().toISOString();
+        setSourceFiles((current) => [
+          ...current,
+          {
+            id: `geometry-${Date.now()}`,
+            storagePath: payload.source!.storagePath,
+            url: payload.source!.url,
+            originalName: payload.source!.originalName,
+            mimeType: file.type || "application/octet-stream",
+            extension: file.name.split(".").pop()?.toLowerCase() ?? payload.summary!.format,
+            kind: "architectural_geometry",
+            uploadedAt: now,
+            status: "parsed",
+            parserStatus: "ready_editable_geometry",
+          },
+        ].slice(-10));
+      }
+      window.setTimeout(() => setGeometryImportState("idle"), 7000);
+    } catch (error) {
+      setGeometryImportState("error");
+      setGeometryImportMessage(error instanceof Error ? error.message : "Falha ao aplicar a geometria.");
     }
   };
 
@@ -9964,24 +10183,28 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     {ifcExportState === "exporting" ? "Gerando IFC..." : ifcExportState === "error" ? "Tentar IFC novamente" : "Exportar IFC (BIM)"}
                   </button>
                   <input
-                    ref={dxfImportInputRef}
+                    ref={geometryImportInputRef}
                     type="file"
-                    accept=".dxf,application/dxf"
+                    accept=".ifc,.dxf,.dwg,.skp"
                     className="hidden"
                     onChange={(event) => {
                       const file = event.target.files?.[0];
-                      if (file) void importConceptDxf(file);
+                      if (file) void previewGeometryImport(file);
                     }}
                   />
                   <button
                     type="button"
-                    onClick={() => dxfImportInputRef.current?.click()}
-                    disabled={dxfImportState === "importing" || Boolean(projectMaster)}
+                    onClick={() => geometryImportInputRef.current?.click()}
+                    disabled={geometryImportState === "reading" || geometryImportState === "applying" || Boolean(projectMaster)}
                     className="inline-flex items-center gap-2 rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
-                    title={projectMaster ? "Crie uma revisão antes de importar nova geometria." : "Importar DXF ASCII como paredes editáveis"}
+                    title={projectMaster ? "Crie uma revisão antes de importar nova geometria." : "Ler IFC/DXF com prévia antes de alterar a planta; DWG e SKP seguem conversão segura"}
                   >
                     <FolderOpen className="h-4 w-4" />
-                    {dxfImportState === "importing" ? "Lendo DXF..." : "Importar DXF"}
+                    {geometryImportState === "reading"
+                      ? "Lendo geometria..."
+                      : geometryImportState === "applying"
+                        ? "Aplicando..."
+                        : "Importar geometria"}
                   </button>
                   <input
                     ref={referencePlanInputRef}
@@ -10033,6 +10256,43 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     </button>
                   )}
                 </div>
+                {geometryImportMessage && (
+                  <div className={geometryImportState === "error"
+                    ? "mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
+                    : geometryImportState === "review"
+                      ? "mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-900"
+                      : "mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800"}
+                  >
+                    <div>{geometryImportMessage}</div>
+                    {geometryImportState === "review" && geometryImportPreview && (
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void applyGeometryImport()}
+                          disabled={Boolean(projectMaster)}
+                          className="rounded-lg bg-emerald-700 px-3 py-1.5 font-semibold text-white disabled:opacity-50"
+                        >
+                          Confirmar e aplicar geometria
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setGeometryImportPreview(null);
+                            setGeometryImportFile(null);
+                            setGeometryImportState("idle");
+                            setGeometryImportMessage(null);
+                          }}
+                          className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 font-semibold text-amber-900"
+                        >
+                          Cancelar
+                        </button>
+                        <span className="text-[10px] text-amber-800">
+                          Nenhuma geometria foi alterada até você confirmar.
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {dxfImportMessage && (
                   <div className={dxfImportState === "error"
                     ? "mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
