@@ -282,6 +282,7 @@ async function configuredRelationshipStageMove(
       key: pipelineStagesTable.key,
       label: pipelineStagesTable.label,
       ordem: pipelineStagesTable.ordem,
+      responsaveisFuncoes: pipelineStagesTable.responsaveisFuncoes,
     })
     .from(pipelineStagesTable)
     .where(and(
@@ -1336,6 +1337,32 @@ router.patch("/deals/:id", async (req, res) => {
       return;
     }
     targetRelationshipStageLabel = move.target.label;
+
+    if ((move.target.responsaveisFuncoes ?? []).length > 0) {
+      if (!existing.assignedTo) {
+        res.status(422).json({
+          error: "STAGE_RESPONSIBLE_REQUIRED",
+          message: "Defina um responsável antes de mover o processo para esta etapa.",
+        });
+        return;
+      }
+      const [owner] = await db.select({
+        id: usersTable.id,
+        active: usersTable.active,
+        userFunction: usersTable.userFunction,
+        customFunctionId: usersTable.customFunctionId,
+      }).from(usersTable).where(and(
+        eq(usersTable.id, existing.assignedTo),
+        eq(usersTable.tenantId, existing.tenantId),
+      )).limit(1);
+      if (!owner || !userMatchesStageResponsibleFunctions(owner, move.target.responsaveisFuncoes)) {
+        res.status(422).json({
+          error: "STAGE_RESPONSIBLE_REQUIRED",
+          message: "O responsável atual não possui uma função autorizada para a etapa de destino.",
+        });
+        return;
+      }
+    }
 
     if (relationshipPipeline === "parceiros" && move.currentIndex >= 0 && move.targetIndex < move.currentIndex) {
       res.status(409).json({
