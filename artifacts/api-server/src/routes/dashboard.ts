@@ -1091,9 +1091,8 @@ router.get("/dashboard", authenticate, async (req, res) => {
   // separada, nunca pro campo evolutionConnected nem pra Z-API.
   const hasMeta   = !!(agentConfig?.metaPhoneNumberId);
   const hasEvolution = !!(agentConfig?.evolutionConnected);
-  const hasZapi   = !!(agentConfig?.zapiInstanceId);
-  const hasWaConn = whatsappConnRaw.length > 0 && whatsappConnRaw[0]?.status === "active";
-  if (!hasMeta && !hasEvolution && !hasZapi && !hasWaConn) {
+  const hasWaConn = whatsappConnRaw.some((connection) => connection.status === "active" && connection.provider === "evolution");
+  if (!hasMeta && !hasEvolution && !hasWaConn) {
     alertas.push({
       tipo: "whatsapp_desconectado",
       mensagem: "WhatsApp não está conectado. Configure na seção de agentes.",
