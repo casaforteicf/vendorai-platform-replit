@@ -299,6 +299,24 @@ export default function IntegrationSettingsHub() {
     void loadStatus();
   }, []);
 
+  useEffect(() => {
+    if (loading) return;
+    const requested = new URLSearchParams(window.location.search).get("integration");
+    if (!requested) return;
+
+    setSearch("");
+    const timer = window.setTimeout(() => {
+      const safeKey = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(requested) : requested.replace(/[^a-zA-Z0-9_-]/g, "");
+      const target = document.querySelector<HTMLElement>(`[data-integration-key="${safeKey}"]`);
+      if (!target) return;
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      target.setAttribute("data-integration-focus", "true");
+      window.setTimeout(() => target.removeAttribute("data-integration-focus"), 2200);
+    }, 80);
+
+    return () => window.clearTimeout(timer);
+  }, [loading]);
+
   const rows = useMemo<IntegrationRow[]>(() => [
     {
       key: "whatsapp",
@@ -1205,7 +1223,7 @@ export default function IntegrationSettingsHub() {
         </div>
       </div>
 
-      <div className="rounded-2xl border bg-card p-5">
+      <div data-integration-key="tracking" className="rounded-2xl border bg-card p-5 data-[integration-focus=true]:ring-2 data-[integration-focus=true]:ring-primary">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h2 className="font-semibold">Tracking e conversões</h2>
@@ -1354,7 +1372,7 @@ export default function IntegrationSettingsHub() {
               </div>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {categoryRows.map((row) => (
-            <div key={row.key} className="rounded-xl border bg-background p-4">
+            <div key={row.key} data-integration-key={row.key} className="rounded-xl border bg-background p-4 data-[integration-focus=true]:ring-2 data-[integration-focus=true]:ring-primary">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3 className="font-semibold">{row.label}</h3>
