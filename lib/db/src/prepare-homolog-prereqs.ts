@@ -27,10 +27,10 @@ if (!authorized) {
 
 const pool = new Pool({ connectionString, max: 1 });
 try {
-  await pool.query(`
-    CREATE SEQUENCE IF NOT EXISTS tenant_public_code_seq START WITH 1 INCREMENT BY 1;
-    CREATE EXTENSION IF NOT EXISTS pgcrypto;
-  `);
+  await pool.query("CREATE SEQUENCE IF NOT EXISTS tenant_public_code_seq START WITH 1 INCREMENT BY 1");
+  await pool.query("CREATE EXTENSION IF NOT EXISTS pgcrypto");
+  await pool.query("DROP EXTENSION IF EXISTS vector CASCADE");
+  await pool.query("CREATE EXTENSION vector WITH SCHEMA public");
   const check = await pool.query(`
     select
       current_database() as database,
