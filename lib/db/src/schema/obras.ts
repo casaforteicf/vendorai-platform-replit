@@ -27,6 +27,15 @@ export type ObraPortalConfig = {
   showManuals: boolean;
   showSupport: boolean;
   showChat: boolean;
+  showBriefing: boolean;
+  showTimeline: boolean;
+  showAgenda: boolean;
+  showChangeOrders: boolean;
+  showSignatures: boolean;
+  showDelivery: boolean;
+  showVendi: boolean;
+  showNotifications: boolean;
+  showClientTasks: boolean;
 };
 
 export const DEFAULT_OBRA_PORTAL_CONFIG: ObraPortalConfig = {
@@ -52,6 +61,15 @@ export const DEFAULT_OBRA_PORTAL_CONFIG: ObraPortalConfig = {
   showManuals: true,
   showSupport: true,
   showChat: true,
+  showBriefing: true,
+  showTimeline: true,
+  showAgenda: true,
+  showChangeOrders: true,
+  showSignatures: true,
+  showDelivery: true,
+  showVendi: true,
+  showNotifications: true,
+  showClientTasks: true,
 };
 
 export const obrasTable = pgTable("obras", {
@@ -327,6 +345,10 @@ export const obraOrcamentoItensTable = pgTable("obra_orcamento_itens", {
   origemPreco: text("origem_preco").notNull().default("manual"),
   precoAtualizadoEm: timestamp("preco_atualizado_em", { withTimezone: true }),
   bdi: numeric("bdi", { precision: 5, scale: 2 }),
+  visibleToClient: boolean("visible_to_client").notNull().default(true),
+  showQuantity: boolean("show_quantity").notNull().default(true),
+  showUnitPrice: boolean("show_unit_price").notNull().default(false),
+  showTotal: boolean("show_total").notNull().default(true),
   ordem: integer("ordem").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
@@ -347,3 +369,5 @@ export const updateObraOrcamentoItemSchema = createSelectSchema(obraOrcamentoIte
 export type InsertObraOrcamentoItem = z.infer<typeof insertObraOrcamentoItemSchema>;
 export type UpdateObraOrcamentoItem = z.infer<typeof updateObraOrcamentoItemSchema>;
 export type ObraOrcamentoItem = typeof obraOrcamentoItensTable.$inferSelect;
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
