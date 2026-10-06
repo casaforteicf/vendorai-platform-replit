@@ -88,6 +88,8 @@ export type SpecObject = {
   wasteFactor?: number | null;
   purchaseQuantity?: number | null;
   packageYield?: number | null;
+  purchaseMode?: "same_unit" | "package" | "slab" | "piece" | "kit" | null;
+  purchaseUnit?: string | null;
 
   catalogProductId?: string | null;
   catalogMaterialId?: string | null;
@@ -140,6 +142,8 @@ export type SpecObjectPayload = {
   wasteFactor?: number | null;
   purchaseQuantity?: number | null;
   packageYield?: number | null;
+  purchaseMode?: "same_unit" | "package" | "slab" | "piece" | "kit" | null;
+  purchaseUnit?: string | null;
   catalogProductId?: string | null;
   catalogMaterialId?: string | null;
   manufacturerId?: string | null;
