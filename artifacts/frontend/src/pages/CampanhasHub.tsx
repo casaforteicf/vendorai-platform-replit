@@ -151,7 +151,8 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
   const campaigns = plan?.conteudo.campanhas ?? [];
   const selectedCampaign = useMemo(() => {
     if (!campaigns.length) return null;
-    return campaigns.find((campaign) => campaign.id === campaignId) ?? campaigns[0] ?? null;
+    if (campaignId) return campaigns.find((campaign) => campaign.id === campaignId) ?? null;
+    return campaigns[0] ?? null;
   }, [campaignId, campaigns]);
 
   const selectedItems = useMemo(() => {
