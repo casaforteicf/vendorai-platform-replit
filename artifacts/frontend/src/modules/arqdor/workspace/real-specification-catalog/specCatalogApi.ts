@@ -251,6 +251,7 @@ export function applyCatalogItemToSpecObject(object: SpecObject, item: CatalogIt
     purchaseUnit: object.purchaseUnit,
     catalogProductId: item.type === "product" || item.type === "component" ? item.id : object.catalogProductId,
     catalogMaterialId: item.type === "material" || item.type === "finish" ? item.id : object.catalogMaterialId,
+    catalogCode: item.code || object.catalogCode,
     manufacturerId: item.type === "manufacturer" ? item.id : object.manufacturerId,
     supplierId: item.type === "supplier" ? item.id : object.supplierId,
     productName: item.type === "product" || item.type === "component" ? item.name : object.productName,
