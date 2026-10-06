@@ -54,7 +54,8 @@ import { reserveUniqueVehicle } from "../services/vehicle-reservation.js";
 import { reserveUniqueItem } from "../services/item-reservation.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 import { signAttachmentFolderUnlockToken } from "../lib/jwt.js";
-import { attachmentUnlockCookieName, requestCanAccessLockedObject, syncProtectedObjectsForLead } from "../lib/attachment-folder-access.js";
+import { attachmentUnlockCookieName,
+  isAttachmentFolderSchemaMissingError, requestCanAccessLockedObject, syncProtectedObjectsForLead } from "../lib/attachment-folder-access.js";
 
 const router: IRouter = Router();
 const attachmentUnlockLimiter = rateLimit({
@@ -743,23 +744,32 @@ router.get("/leads/:id/attachment-folder-locks", async (req, res) => {
   const lead = await getLeadForAttachmentFolder(req, res);
   if (!lead) return;
 
-  const rows = await db
-    .select({
-      folderPath: attachmentFolderLocksTable.folderPath,
-      unlockMinutes: attachmentFolderLocksTable.unlockMinutes,
-      createdAt: attachmentFolderLocksTable.createdAt,
-      updatedAt: attachmentFolderLocksTable.updatedAt,
-    })
-    .from(attachmentFolderLocksTable)
-    .where(and(
-      eq(attachmentFolderLocksTable.tenantId, lead.tenantId),
-      eq(attachmentFolderLocksTable.leadId, lead.id),
-    ));
+  try {
+    const rows = await db
+      .select({
+        folderPath: attachmentFolderLocksTable.folderPath,
+        unlockMinutes: attachmentFolderLocksTable.unlockMinutes,
+        createdAt: attachmentFolderLocksTable.createdAt,
+        updatedAt: attachmentFolderLocksTable.updatedAt,
+      })
+      .from(attachmentFolderLocksTable)
+      .where(and(
+        eq(attachmentFolderLocksTable.tenantId, lead.tenantId),
+        eq(attachmentFolderLocksTable.leadId, lead.id),
+      ));
 
-  res.json({
-    locks: rows.map((row) => ({ ...row, locked: true })),
-    canManage: lead.isAdmin,
-  });
+    res.json({
+      locks: rows.map((row) => ({ ...row, locked: true })),
+      canManage: lead.isAdmin,
+    });
+  } catch (error) {
+    if (!isAttachmentFolderSchemaMissingError(error)) throw error;
+    res.json({
+      locks: [],
+      canManage: false,
+      schemaPending: true,
+    });
+  }
 });
 
 router.put("/leads/:id/attachment-folder-lock", async (req, res) => {
@@ -998,3 +1008,956 @@ router.patch("/leads/:id", async (req, res) => {
   const parsed = updateLeadSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const [existing] = await db
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo, representativeFunctionId: leadsTable.representativeFunctionId })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, req.params.id));
+
+  if (!existing) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  const isOwnTenant2 = req.user?.platformRole === "super_admin" || existing.tenantId === req.user?.tenantId;
+  const representativeAccess2 = isOwnTenant2
+    ? null
+    : await findRepresentativeLeadAccess(req, existing.tenantId, existing.representativeFunctionId);
+
+  if (!isOwnTenant2 && (!representativeAccess2 || existing.representativeFunctionId !== representativeAccess2.id)) {
+    res.status(403).json({ error: "Access denied to this lead" });
+    return;
+  }
+
+  const isAdmin2 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+
+  if (!representativeAccess2) {
+    const userFn2 = req.user?.userFunction as UserFunction | undefined;
+    if (!isAdmin2 && userFn2 === "vendedor" && existing.assignedTo !== req.user?.sub) {
+      res.status(403).json({ error: "Access denied to this lead" });
+      return;
+    }
+  }
+
+  if (parsed.data.representativeFunctionId !== undefined) {
+    if (!isOwnTenant2 || !isAdmin2) {
+      res.status(403).json({ error: "Apenas administradores da empresa podem alterar a representação responsável." });
+      return;
+    }
+    if (parsed.data.representativeFunctionId) {
+      const representativeFunction = await validateRepresentativeFunction(existing.tenantId, parsed.data.representativeFunctionId);
+      if (!representativeFunction) {
+        res.status(422).json({ error: "Empresa representante inválida para este tenant." });
+        return;
+      }
+    }
+  }
+
+  // Reatribuir o responsável do lead (do início ao fim, salvo intervenção)
+  // é ação exclusiva do admin do tenant — um vendedor pode editar os próprios
+  // leads normalmente, mas não pode se tirar (ou tirar outro) da carteira.
+  if (!isAdmin2 && "assignedTo" in parsed.data && parsed.data.assignedTo !== existing.assignedTo) {
+    res.status(403).json({ error: "Só o admin do tenant pode reatribuir o responsável pelo lead" });
+    return;
+  }
+
+  const [lead] = await db
+    .update(leadsTable)
+    .set({ ...parsed.data, updatedAt: new Date() } as any)
+    .where(eq(leadsTable.id, existing.id))
+    .returning();
+
+  if ("discoveryData" in parsed.data) {
+    await syncProtectedObjectsForLead(existing.tenantId, existing.id);
+  }
+
+  if ("assignedTo" in parsed.data && parsed.data.assignedTo && parsed.data.assignedTo !== existing.assignedTo) {
+    recordResponsavelChange({
+      leadId: existing.id,
+      responsavelAnteriorId: existing.assignedTo,
+      responsavelNovoId: parsed.data.assignedTo,
+      alteradoPorId: req.user?.sub ?? null,
+      motivo: "manual",
+    }).catch(() => {});
+  }
+
+  // Feature store — captura o momento da mudança de status, primeiro passo
+  // real de ML (nada bloqueia por causa disso, é melhor esforço).
+  if (parsed.data.status) {
+    captureLeadFeatureSnapshot(existing.tenantId, existing.id, "status_change", undefined, req.log).catch(() => {});
+  }
+
+  res.json(lead);
+});
+
+router.get("/leads/:id/responsavel-historico", async (req, res) => {
+  const [existing] = await db
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, req.params.id));
+
+  if (!existing) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const isAdmin3 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userFn3 = req.user?.userFunction as UserFunction | undefined;
+  if (!isAdmin3 && userFn3 === "vendedor" && existing.assignedTo !== req.user?.sub) {
+    res.status(403).json({ error: "Access denied to this lead" });
+    return;
+  }
+
+  const historico = await db
+    .select({
+      id: leadResponsavelHistoricoTable.id,
+      responsavelAnteriorId: leadResponsavelHistoricoTable.responsavelAnteriorId,
+      responsavelNovoId: leadResponsavelHistoricoTable.responsavelNovoId,
+      alteradoPorId: leadResponsavelHistoricoTable.alteradoPorId,
+      motivo: leadResponsavelHistoricoTable.motivo,
+      criadoEm: leadResponsavelHistoricoTable.criadoEm,
+    })
+    .from(leadResponsavelHistoricoTable)
+    .where(eq(leadResponsavelHistoricoTable.leadId, existing.id))
+    .orderBy(desc(leadResponsavelHistoricoTable.criadoEm));
+
+  res.json(historico);
+});
+
+router.delete("/leads/:id", async (req, res) => {
+  const [existing] = await db
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, req.params.id));
+
+  if (!existing) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const isAdmin3 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userFn3 = req.user?.userFunction as UserFunction | undefined;
+  if (!isAdmin3 && userFn3 === "vendedor" && existing.assignedTo !== req.user?.sub) {
+    res.status(403).json({ error: "Access denied to this lead" });
+    return;
+  }
+
+  // Exclusão lógica — o lead nunca sai do banco de verdade, só some das
+  // listagens padrão e vira visível na aba "Excluídos" com o motivo.
+  // Sem isso, um clique errado apagava o lead e todo o histórico
+  // ligado a ele (prontuários, agendamentos, test-drives etc.) pra
+  // sempre, sem chance de reverter nem registro de por que foi
+  // excluído. A transação com as ~10 tabelas de FK RESTRICT que
+  // existia aqui não é mais necessária — nada é de fato apagado.
+  const motivo = typeof req.body?.motivo === "string" ? req.body.motivo.trim() || null : null;
+  const [updated] = await db
+    .update(leadsTable)
+    .set({ excluidoEm: new Date(), motivoExclusao: motivo, updatedAt: new Date() })
+    .where(and(eq(leadsTable.id, existing.id), eq(leadsTable.tenantId, existing.tenantId)))
+    .returning();
+
+  res.status(200).json(updated);
+});
+
+// ── GET /tenants/:tenantId/leads/duplicates ─────────────────────────────────
+// List leads flagged as "possible duplicates" for this tenant.
+router.get("/tenants/:tenantId/leads/duplicates", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const flagged = await db
+    .select()
+    .from(leadsTable)
+    .where(
+      and(
+        eq(leadsTable.tenantId, tenantId),
+        eq(leadsTable.possivelDuplicata, true),
+        ...buildUserFunctionFilter(req, leadsTable)
+      )
+    )
+    .orderBy(leadsTable.createdAt);
+
+  // Load similar lead for each
+  const withSimilar = await Promise.all(
+    flagged.map(async (lead) => {
+      if (!lead.leadSimilarId) return { lead, similar: null };
+      const [similar] = await db
+        .select()
+        .from(leadsTable)
+        .where(and(eq(leadsTable.id, lead.leadSimilarId), eq(leadsTable.tenantId, tenantId)))
+        .limit(1);
+      return { lead, similar: similar ?? null };
+    })
+  );
+
+  res.json(withSimilar);
+});
+
+// ── POST /leads/:id/merge ─────────────────────────────────────────────────
+// Merge a duplicate lead into the target lead. All related data (conversations,
+// messages, deals, propostas, lead_proposals, activities, intelligence, tasks, logs, consents, briefings)
+// is transferred to the target lead. The duplicate lead is then deleted.
+const mergeLeadSchema = z.object({
+  targetLeadId: z.string().uuid(),
+});
+
+router.post("/leads/:id/merge", async (req, res) => {
+  const duplicateId = String(req.params.id);
+  const parsed = mergeLeadSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { targetLeadId } = parsed.data;
+
+  if (duplicateId === targetLeadId) {
+    res.status(422).json({ error: "Cannot merge a lead into itself" });
+    return;
+  }
+
+  // Load both leads and verify same tenant + auth
+  const [duplicate] = await db
+    .select()
+    .from(leadsTable)
+    .where(eq(leadsTable.id, duplicateId));
+  const [target] = await db
+    .select()
+    .from(leadsTable)
+    .where(eq(leadsTable.id, targetLeadId));
+
+  if (!duplicate || !target) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  if (duplicate.tenantId !== target.tenantId) {
+    res.status(422).json({ error: "Leads belong to different tenants" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== duplicate.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  // Tenant sellers may only merge leads that are assigned to them
+  const isAdminMerge = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userFnMerge = req.user?.userFunction as UserFunction | undefined;
+  if (!isAdminMerge && userFnMerge === "vendedor") {
+    if (duplicate.assignedTo !== req.user?.sub || target.assignedTo !== req.user?.sub) {
+      res.status(403).json({ error: "Access denied: seller can only merge leads assigned to them" });
+      return;
+    }
+  }
+
+  const tenantId = duplicate.tenantId;
+
+    // Transfer all related data atomically
+  const [mergedLead] = await db.transaction(async (tx) => {
+    await tx
+      .update(conversationsTable)
+      .set({ leadId: targetLeadId, updatedAt: new Date() })
+      .where(and(eq(conversationsTable.tenantId, tenantId), eq(conversationsTable.leadId, duplicateId)));
+
+    await tx
+      .update(messagesTable)
+      .set({ leadId: targetLeadId })
+      .where(and(eq(messagesTable.tenantId, tenantId), eq(messagesTable.leadId, duplicateId)));
+
+    await tx
+      .update(dealsTable)
+      .set({ leadId: targetLeadId, updatedAt: new Date() })
+      .where(and(eq(dealsTable.tenantId, tenantId), eq(dealsTable.leadId, duplicateId)));
+
+    await tx
+      .update(propostasTable)
+      .set({ leadId: targetLeadId, updatedAt: new Date() })
+      .where(and(eq(propostasTable.tenantId, tenantId), eq(propostasTable.leadId, duplicateId)));
+
+    await tx
+      .update(leadProposalsTable)
+      .set({ leadId: targetLeadId, updatedAt: new Date() })
+      .where(and(eq(leadProposalsTable.tenantId, tenantId), eq(leadProposalsTable.leadId, duplicateId)));
+
+    await tx
+      .update(activitiesTable)
+      .set({ leadId: targetLeadId, updatedAt: new Date() })
+      .where(and(eq(activitiesTable.tenantId, tenantId), eq(activitiesTable.leadId, duplicateId)));
+
+    // customerIntelligenceTable.leadId is unique(): one row per lead.
+    // If both leads have rows, we must delete the duplicate row before any
+    // update to avoid a unique-constraint violation.
+    const [targetIntel] = await tx
+      .select({ id: customerIntelligenceTable.id })
+      .from(customerIntelligenceTable)
+      .where(and(eq(customerIntelligenceTable.tenantId, tenantId), eq(customerIntelligenceTable.leadId, targetLeadId)))
+      .limit(1);
+    const [dupIntel] = await tx
+      .select({ id: customerIntelligenceTable.id })
+      .from(customerIntelligenceTable)
+      .where(and(eq(customerIntelligenceTable.tenantId, tenantId), eq(customerIntelligenceTable.leadId, duplicateId)))
+      .limit(1);
+    if (dupIntel) {
+      if (targetIntel) {
+        // Target already has intel — delete duplicate row and keep target.
+        await tx
+          .delete(customerIntelligenceTable)
+          .where(eq(customerIntelligenceTable.id, dupIntel.id));
+      } else {
+        // Target has no intel — reassign duplicate row to target.
+        await tx
+          .update(customerIntelligenceTable)
+          .set({ leadId: targetLeadId, updatedAt: new Date() })
+          .where(eq(customerIntelligenceTable.id, dupIntel.id));
+      }
+    }
+
+    await tx
+      .update(agentTasksTable)
+      .set({ leadId: targetLeadId })
+      .where(and(eq(agentTasksTable.tenantId, tenantId), eq(agentTasksTable.leadId, duplicateId)));
+
+    await tx
+      .update(agentActionsLogTable)
+      .set({ leadId: targetLeadId })
+      .where(and(eq(agentActionsLogTable.tenantId, tenantId), eq(agentActionsLogTable.leadId, duplicateId)));
+
+    await tx
+      .update(consentsTable)
+      .set({ leadId: targetLeadId })
+      .where(and(eq(consentsTable.tenantId, tenantId), eq(consentsTable.leadId, duplicateId)));
+
+    await tx
+      .update(intelligenceAnalysisLogTable)
+      .set({ leadId: targetLeadId })
+      .where(and(eq(intelligenceAnalysisLogTable.tenantId, tenantId), eq(intelligenceAnalysisLogTable.leadId, duplicateId)));
+
+    await tx
+      .update(leadBriefingsTable)
+      .set({ leadId: targetLeadId, updatedAt: new Date() })
+      .where(and(eq(leadBriefingsTable.tenantId, tenantId), eq(leadBriefingsTable.leadId, duplicateId)));
+
+    // Delete the duplicate
+    await tx.delete(leadsTable).where(eq(leadsTable.id, duplicateId));
+
+    // Return the merged (target) lead
+    return tx.select().from(leadsTable).where(eq(leadsTable.id, targetLeadId)).limit(1);
+  });
+
+  res.json({
+    success: true,
+    lead: mergedLead,
+    duplicateId,
+    transferredTables: [
+      "conversations",
+      "messages",
+      "deals",
+      "propostas",
+      "lead_proposals",
+      "activities",
+      "customer_intelligence",
+      "agent_tasks",
+      "agent_actions_log",
+      "consents",
+      "intelligence_analysis_log",
+      "lead_briefings",
+    ],
+  });
+});
+
+// ── POST /leads/:id/dismiss-duplicate ─────────────────────────────────
+// Remove the duplicate flag from a lead (user decided to keep them separate).
+router.post("/leads/:id/dismiss-duplicate", async (req, res) => {
+  const leadId = String(req.params.id);
+
+  const [existing] = await db
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, leadId));
+
+  if (!existing) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const isAdmin4 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userFn4 = req.user?.userFunction as UserFunction | undefined;
+  if (!isAdmin4 && userFn4 === "vendedor" && existing.assignedTo !== req.user?.sub) {
+    res.status(403).json({ error: "Access denied to this lead" });
+    return;
+  }
+
+  const [lead] = await db
+    .update(leadsTable)
+    .set({ possivelDuplicata: false, leadSimilarId: null, updatedAt: new Date() })
+    .where(eq(leadsTable.id, leadId))
+    .returning();
+
+  res.json({ success: true, lead });
+});
+
+// ── GET /tenants/:tenantId/lead-briefings ─────────────────────────────────
+router.get("/tenants/:tenantId/lead-briefings", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+
+  const briefings = await db
+    .select()
+    .from(leadBriefingsTable)
+    .where(eq(leadBriefingsTable.tenantId, tenantId));
+
+  res.json(briefings);
+});
+
+// ── GET /leads/:leadId/briefing ────────────────────────────────────────────
+router.get("/leads/:leadId/briefing", async (req, res) => {
+  const leadId = String(req.params.leadId);
+
+  const [lead] = await db
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, leadId));
+
+  if (!lead) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && lead.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userFn = req.user?.userFunction as UserFunction | undefined;
+  if (!isAdmin && userFn === "vendedor" && lead.assignedTo !== req.user?.sub) {
+    res.status(403).json({ error: "Access denied to this lead" });
+    return;
+  }
+
+  const [briefing] = await db
+    .select()
+    .from(leadBriefingsTable)
+    .where(eq(leadBriefingsTable.leadId, leadId));
+
+  res.json(briefing ?? null);
+});
+
+// ── PUT /leads/:leadId/briefing ────────────────────────────────────────────
+// Upsert: create if not exists, update if exists
+router.put("/leads/:leadId/briefing", async (req, res) => {
+  const leadId = String(req.params.leadId);
+
+  const [lead] = await db
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, leadId));
+
+  if (!lead) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && lead.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userFn = req.user?.userFunction as UserFunction | undefined;
+  if (!isAdmin && userFn === "vendedor" && lead.assignedTo !== req.user?.sub) {
+    res.status(403).json({ error: "Access denied to this lead" });
+    return;
+  }
+
+  const parsed = updateLeadBriefingSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const data = parsed.data;
+  const tenantId = lead.tenantId;
+  const approachedBy = data.approachedBy ?? req.user?.sub ?? null;
+
+  const [existing] = await db
+    .select()
+    .from(leadBriefingsTable)
+    .where(eq(leadBriefingsTable.leadId, leadId));
+
+  if (existing) {
+    const [updated] = await db
+      .update(leadBriefingsTable)
+      .set({
+        channelsUsed: data.channelsUsed ?? existing.channelsUsed,
+        contactType: data.contactType ?? existing.contactType,
+        approachedBy: approachedBy ?? existing.approachedBy,
+        contactDate: data.contactDate ?? existing.contactDate,
+        situationAnswers: data.situationAnswers ?? existing.situationAnswers,
+        problemAnswers: data.problemAnswers ?? existing.problemAnswers,
+        problemMinimized: data.problemMinimized ?? existing.problemMinimized,
+        implicationAnswers: data.implicationAnswers ?? existing.implicationAnswers,
+        implicationEstimatedValue: data.implicationEstimatedValue ?? existing.implicationEstimatedValue,
+        needAnswers: data.needAnswers ?? existing.needAnswers,
+        needThermometer: data.needThermometer ?? existing.needThermometer,
+        objections: data.objections ?? existing.objections,
+        prospectSize: data.prospectSize ?? existing.prospectSize,
+        presentationSent: data.presentationSent ?? existing.presentationSent,
+        presentationSentDate: data.presentationSentDate ?? existing.presentationSentDate,
+        presentationLink: data.presentationLink ?? existing.presentationLink,
+        nextStepType: data.nextStepType ?? existing.nextStepType,
+        nextStepDate: data.nextStepDate ?? existing.nextStepDate,
+        freeNotes: data.freeNotes ?? existing.freeNotes,
+        journeyStage: data.journeyStage ?? existing.journeyStage,
+        journeyChecklist: data.journeyChecklist ?? existing.journeyChecklist,
+        updatedAt: new Date(),
+      })
+      .where(eq(leadBriefingsTable.id, existing.id))
+      .returning();
+    res.json(updated);
+  } else {
+    const [created] = await db
+      .insert(leadBriefingsTable)
+      .values({
+        tenantId,
+        leadId,
+        channelsUsed: data.channelsUsed,
+        contactType: data.contactType,
+        approachedBy,
+        contactDate: data.contactDate,
+        situationAnswers: data.situationAnswers,
+        problemAnswers: data.problemAnswers,
+        problemMinimized: data.problemMinimized,
+        implicationAnswers: data.implicationAnswers,
+        implicationEstimatedValue: data.implicationEstimatedValue,
+        needAnswers: data.needAnswers,
+        needThermometer: data.needThermometer,
+        objections: data.objections,
+        prospectSize: data.prospectSize,
+        presentationSent: data.presentationSent,
+        presentationSentDate: data.presentationSentDate,
+        presentationLink: data.presentationLink,
+        nextStepType: data.nextStepType,
+        nextStepDate: data.nextStepDate,
+        freeNotes: data.freeNotes,
+        journeyStage: data.journeyStage,
+        journeyChecklist: data.journeyChecklist,
+      })
+      .returning();
+    res.status(201).json(created);
+  }
+});
+
+// ── POST /leads/:leadId/briefing/generate-questions ─────────────────────────
+// Uses AI to generate SPIN questions deeply tailored to the lead's specific
+// business type and recent conversation context.
+router.post("/leads/:leadId/briefing/generate-questions", async (req, res) => {
+  const leadId = String(req.params.leadId);
+
+  const [lead] = await db
+    .select({
+      id: leadsTable.id,
+      tenantId: leadsTable.tenantId,
+      nome: leadsTable.nome,
+      empresa: leadsTable.empresa,
+      mercadoSegmento: leadsTable.mercadoSegmento,
+      objetivo: leadsTable.objetivo,
+      assignedTo: leadsTable.assignedTo,
+    })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, leadId));
+
+  if (!lead) {
+    res.status(404).json({ error: "Lead não encontrado" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && lead.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+
+  const tenantId = lead.tenantId;
+
+  const [profile, recentMessages, catalogPreview] = await Promise.all([
+    db
+      .select({
+        nomeFantasia: businessProfilesTable.nomeFantasia,
+        vertical: businessProfilesTable.vertical,
+        metodoVendas: businessProfilesTable.metodoVendas,
+        diferenciais: businessProfilesTable.diferenciais,
+        publicoAlvo: businessProfilesTable.publicoAlvo,
+      })
+      .from(businessProfilesTable)
+      .where(eq(businessProfilesTable.tenantId, tenantId))
+      .then((rows) => rows[0] ?? null),
+    db
+      .select({ direcao: messagesTable.direcao, conteudo: messagesTable.conteudo })
+      .from(messagesTable)
+      .where(and(eq(messagesTable.leadId, leadId), eq(messagesTable.tenantId, tenantId)))
+      .orderBy(desc(messagesTable.createdAt))
+      .limit(12),
+    getActiveCatalogPreview(tenantId, 5),
+  ]);
+
+  const metodoMap: Record<string, string> = {
+    consultiva: "Venda Consultiva (foco na dor e contexto do cliente)",
+    spin: "SPIN Selling (situação, problema, implicação, necessidade-solução)",
+    challenger: "Challenger Sale (provocação, ensino, customização)",
+    social: "Social Selling (relacionamento e conteúdo)",
+    outbound: "Outbound (prospecção ativa)",
+    inbound: "Inbound (educação e conteúdo)",
+  };
+  const abordagem = metodoMap[(profile?.metodoVendas ?? "")] ?? (profile?.metodoVendas ?? "Venda Consultiva");
+
+  const produtosDesc = compactCatalogNames(catalogPreview, 5).join(", ") || null;
+
+  const conversaTexto = recentMessages.length
+    ? recentMessages
+        .reverse()
+        .map((m) => `[${m.direcao === "entrada" ? "Cliente" : "Vendedor"}]: ${m.conteudo}`)
+        .join("\n")
+    : null;
+
+  const segmento = lead.mercadoSegmento?.trim() || lead.objetivo?.trim() || null;
+
+  const systemPrompt = `Você é um especialista em vendas consultivas com profundo conhecimento em diferentes setores de negócio.
+Sua tarefa é gerar perguntas de briefing SPIN altamente específicas para o tipo de negócio do CLIENTE — não perguntas genéricas sobre atendimento ou canais.
+
+REGRAS OBRIGATÓRIAS:
+1. As perguntas devem refletir o COTIDIANO OPERACIONAL real do segmento do cliente informado abaixo — nunca invente ou assuma um segmento diferente do que foi passado.
+2. Se o segmento do cliente vier como "não identificado" (campo vazio no CRM), NÃO assuma nenhum setor específico. Em vez disso, gere perguntas de DESCOBERTA que ajudem o vendedor a entender rapidamente que tipo de negócio é esse — como funciona a operação, quem são os clientes dele, qual o principal processo do dia a dia — pra só então, numa próxima rodada, aprofundar no segmento certo.
+3. NÃO pergunte sobre canais de atendimento (WhatsApp, Instagram etc.) — isso já está em outra parte do formulário.
+4. NÃO use linguagem corporativa genérica. As perguntas devem soar naturais numa conversa de WhatsApp ou ligação.
+5. Cada pergunta deve revelar algo diferente e complementar — evite variações da mesma dor.
+6. Use o contexto da conversa para tornar as perguntas ainda mais específicas ao momento atual do cliente.`;
+
+  const userPrompt = `## Cliente
+Empresa/Nome: ${lead.empresa ?? lead.nome ?? "não informado"}
+Segmento: ${segmento ?? "não identificado — peça pro vendedor descobrir isso na conversa, não assuma um setor"}
+Objetivo registrado: ${lead.objetivo ?? "não informado"}
+
+## Empresa vendedora
+Nome: ${profile?.nomeFantasia ?? "nossa empresa"}
+Segmento: ${profile?.vertical ?? "não especificado"}
+Método de vendas: ${abordagem}
+${produtosDesc ? `Catálogo oficial ativo: ${produtosDesc}` : ""}
+${profile?.diferenciais ? `Diferenciais: ${profile.diferenciais}` : ""}
+
+${conversaTexto ? `## Trechos recentes da conversa com o cliente\n${conversaTexto}\n` : ""}
+
+## Tarefa
+${segmento
+  ? `Gere exatamente 3 perguntas para cada bloco SPIN, específicas para um negócio do tipo "${segmento}". As perguntas devem explorar a realidade operacional, as dores e os processos internos típicos desse segmento.`
+  : `O segmento desse cliente ainda não foi identificado no CRM. Gere exatamente 3 perguntas para cada bloco SPIN focadas em DESCOBRIR o tipo de negócio e sua operação — nada específico de um setor que você não tem certeza que se aplica.`}
+
+Retorne APENAS JSON válido neste formato:
+{
+  "situationQuestions": ["pergunta 1", "pergunta 2", "pergunta 3"],
+  "problemQuestions": ["pergunta 1", "pergunta 2", "pergunta 3"],
+  "implicationQuestions": ["pergunta 1", "pergunta 2", "pergunta 3"],
+  "needQuestions": ["pergunta 1", "pergunta 2", "pergunta 3"]
+}`;
+
+  try {
+    const result = await callOpenAI(
+      tenantId,
+      "briefing_generator",
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      { model: "gpt-4o-mini", maxTokens: 1200, temperature: 0.6, responseFormat: { type: "json_object" }, log: req.log },
+    );
+
+    let parsed: Record<string, string[]>;
+    try {
+      parsed = JSON.parse(result.content);
+    } catch {
+      res.status(502).json({ error: "IA retornou formato inválido" });
+      return;
+    }
+
+    res.json({
+      situationQuestions: parsed.situationQuestions ?? [],
+      problemQuestions: parsed.problemQuestions ?? [],
+      implicationQuestions: parsed.implicationQuestions ?? [],
+      needQuestions: parsed.needQuestions ?? [],
+    });
+  } catch (err: any) {
+    req.log.error({ err }, "briefing/generate-questions error");
+    const status = (err as any)?.status ?? 500;
+    res.status(status).json({ error: err?.message ?? "Erro ao gerar perguntas com IA" });
+  }
+});
+
+// ── POST /leads/:leadId/briefing/summarize ────────────────────────────────────
+// Reads all briefing data + lead context and asks AI to produce a structured
+// "client summary" with pain points and the best closing arguments.
+router.post("/leads/:leadId/briefing/summarize", async (req, res) => {
+  const leadId = String(req.params.leadId);
+
+  const [lead] = await db
+    .select({
+      id: leadsTable.id,
+      tenantId: leadsTable.tenantId,
+      nome: leadsTable.nome,
+      empresa: leadsTable.empresa,
+      mercadoSegmento: leadsTable.mercadoSegmento,
+      objetivo: leadsTable.objetivo,
+    })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, leadId));
+
+  if (!lead) {
+    res.status(404).json({ error: "Lead não encontrado" });
+    return;
+  }
+  if (req.user?.platformRole !== "super_admin" && lead.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+
+  const tenantId = lead.tenantId;
+
+  const [briefing] = await db
+    .select()
+    .from(leadBriefingsTable)
+    .where(eq(leadBriefingsTable.leadId, leadId));
+
+  const [[profile], catalogPreview] = await Promise.all([
+    db
+      .select({
+        nomeFantasia: businessProfilesTable.nomeFantasia,
+        vertical: businessProfilesTable.vertical,
+        metodoVendas: businessProfilesTable.metodoVendas,
+        diferenciais: businessProfilesTable.diferenciais,
+      })
+      .from(businessProfilesTable)
+      .where(eq(businessProfilesTable.tenantId, tenantId)),
+    getActiveCatalogPreview(tenantId, 5),
+  ]);
+
+  // ── Format briefing sections for the prompt ──────────────────────────────
+  const fmt = (items: Array<{ question: string; answer: string }> | null | undefined) =>
+    (items ?? []).filter((i) => i.answer?.trim()).map((i) => `- P: ${i.question}\n  R: ${i.answer}`).join("\n");
+
+  const produtosDesc = compactCatalogNames(catalogPreview, 5).join(", ") || "produtos/serviços da empresa";
+
+  const objecoesText = (briefing?.objections ?? [])
+    .map((o: any) => `  • Objeção: ${o.objection} → Resposta dada: ${o.response ?? "—"}`)
+    .join("\n") || "Nenhuma registrada";
+
+  // ── Contexto coletado nas perguntas por etapa do funil (Central de
+  // Trabalho) — cobre o que o SPIN não pergunta: pré-contato, o que foi
+  // demonstrado/apresentado, feedback da proposta, objeções e condições
+  // em negociação. Opcional: só entra se o front mandar o dealId.
+  const dealId = typeof req.body?.dealId === "string" ? req.body.dealId : undefined;
+  let stageAnswersText = "";
+  if (dealId) {
+    const [deal] = await db
+      .select({ respostasEtapas: dealsTable.respostasEtapas })
+      .from(dealsTable)
+      .where(and(eq(dealsTable.id, dealId), eq(dealsTable.tenantId, tenantId)));
+    const respostas = (deal?.respostasEtapas ?? {}) as Record<string, Record<string, string>>;
+    if (Object.keys(respostas).length) {
+      const stages = await db
+        .select({ key: pipelineStagesTable.key, label: pipelineStagesTable.label, perguntas: pipelineStagesTable.perguntas })
+        .from(pipelineStagesTable)
+        .where(eq(pipelineStagesTable.tenantId, tenantId));
+      const blocks: string[] = [];
+      for (const stage of stages) {
+        const stageRespostas = respostas[stage.key];
+        if (!stageRespostas) continue;
+        const perguntas = (stage.perguntas ?? []) as { id: string; texto: string }[];
+        const lines = perguntas
+          .filter((p) => stageRespostas[p.id]?.trim())
+          .map((p) => `  - P: ${p.texto}\n    R: ${stageRespostas[p.id]}`);
+        if (lines.length) blocks.push(`[${stage.label}]\n${lines.join("\n")}`);
+      }
+      if (blocks.length) stageAnswersText = blocks.join("\n\n");
+    }
+  }
+
+  const prompt = `Você é um coach de vendas especialista em fechamento. Analise o briefing abaixo e produza um resumo executivo do cliente para o vendedor usar na próxima abordagem de fechamento.
+
+EMPRESA VENDEDORA: ${profile?.nomeFantasia ?? "nossa empresa"} | Segmento: ${profile?.vertical ?? "—"} | Diferencial: ${profile?.diferenciais ?? "—"} | Catálogo oficial ativo: ${produtosDesc}
+
+CLIENTE:
+- Nome/Empresa: ${lead.empresa ?? lead.nome}
+- Segmento: ${lead.mercadoSegmento ?? "não informado"}
+- Objetivo declarado: ${lead.objetivo ?? "não informado"}
+- Porte: ${briefing?.prospectSize ?? "não classificado"}
+- Canais usados: ${(briefing?.channelsUsed ?? []).join(", ") || "—"}
+
+SITUAÇÃO (SPIN):
+${fmt(briefing?.situationAnswers as any) || "Não preenchido"}
+
+PROBLEMAS IDENTIFICADOS:
+${fmt(briefing?.problemAnswers as any) || "Não preenchido"}
+Problema minimizado pelo cliente: ${briefing?.problemMinimized ? "Sim" : "Não"}
+
+IMPLICAÇÕES / IMPACTO FINANCEIRO:
+${fmt(briefing?.implicationAnswers as any) || "Não preenchido"}
+Valor estimado de perda: ${briefing?.implicationEstimatedValue ?? "não estimado"}
+
+NECESSIDADE / SOLUÇÃO DESEJADA:
+${fmt(briefing?.needAnswers as any) || "Não preenchido"}
+Termômetro de necessidade: ${briefing?.needThermometer ?? "—"}
+
+OBJEÇÕES:
+${objecoesText}
+
+CONTEXTO REGISTRADO PELO VENDEDOR AO LONGO DO FUNIL (pré-contato, demonstração, negociação):
+${stageAnswersText || "Nenhum registrado ainda"}
+
+PRÓXIMO PASSO COMBINADO: ${briefing?.nextStepType ?? "não definido"} | Data: ${briefing?.nextStepDate ?? "—"}
+
+NOTAS LIVRES: ${briefing?.freeNotes ?? "—"}
+
+TAREFA: Com base nesses dados, produza um JSON com o seguinte formato:
+{
+  "resumoCliente": "Parágrafo de 3-4 frases resumindo o perfil e momento do cliente",
+  "doresPrincipais": ["dor 1", "dor 2", "dor 3"],
+  "pontosDeForte": ["argumento de fechamento 1", "argumento 2", "argumento 3"],
+  "comoContornarObjecoes": [{"objecao": "texto da objeção", "argumento": "como rebater"}],
+  "abordagemRecomendada": "Frase curta com a estratégia ideal para fechar este cliente agora",
+  "alertas": ["alerta ou risco de perda 1", "alerta 2"]
+}
+
+Seja direto, prático e específico para este cliente. Não invente dados que não estão no briefing.`;
+
+  try {
+    const result = await callOpenAI(
+      tenantId,
+      "briefing_generator",
+      [{ role: "user", content: prompt }],
+      { model: "gpt-4o-mini", maxTokens: 1200, temperature: 0.5, responseFormat: { type: "json_object" }, log: req.log },
+    );
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(result.content);
+    } catch {
+      res.status(502).json({ error: "IA retornou formato inválido" });
+      return;
+    }
+
+    const summary = {
+      resumoCliente:          parsed.resumoCliente          ?? "",
+      doresPrincipais:        parsed.doresPrincipais        ?? [],
+      pontosDeForte:          parsed.pontosDeForte          ?? [],
+      comoContornarObjecoes:  parsed.comoContornarObjecoes  ?? [],
+      abordagemRecomendada:   parsed.abordagemRecomendada   ?? "",
+      alertas:                parsed.alertas                ?? [],
+    };
+
+    // Persist summary to DB so it shows on next load without re-generating
+    if (briefing) {
+      await db
+        .update(leadBriefingsTable)
+        .set({ aiSummary: summary, updatedAt: new Date() } as any)
+        .where(eq(leadBriefingsTable.id, briefing.id));
+    } else {
+      await db
+        .insert(leadBriefingsTable)
+        .values({ tenantId, leadId, aiSummary: summary } as any);
+    }
+
+    req.log.info({ tenantId, leadId }, "briefing/summarize: ok");
+    res.json(summary);
+  } catch (err: any) {
+    req.log.error({ err }, "briefing/summarize error");
+    const status = (err as any)?.status ?? 500;
+    res.status(status).json({ error: err?.message ?? "Erro ao gerar resumo com IA" });
+  }
+});
+
+// ── POST /api/leads/:id/conversation-starter — Sugere primeira mensagem via IA ──
+router.post("/leads/:id/conversation-starter", async (req, res) => {
+  const leadId = req.params.id!;
+  const tenantId = req.user?.tenantId;
+  if (!tenantId) { res.status(403).json({ error: "Tenant não identificado" }); return; }
+
+  const [lead] = await db
+    .select()
+    .from(leadsTable)
+    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!lead) { res.status(404).json({ error: "Lead não encontrado" }); return; }
+
+  const [intel] = await db
+    .select()
+    .from(customerIntelligenceTable)
+    .where(and(eq(customerIntelligenceTable.leadId, leadId), eq(customerIntelligenceTable.tenantId, tenantId)))
+    .limit(1);
+
+  const recentMsgs = await db
+    .select({ conteudo: messagesTable.conteudo, direcao: messagesTable.direcao })
+    .from(messagesTable)
+    .innerJoin(conversationsTable, eq(messagesTable.conversationId, conversationsTable.id))
+    .where(and(eq(conversationsTable.leadId, leadId), eq(conversationsTable.tenantId, tenantId)))
+    .orderBy(desc(messagesTable.createdAt))
+    .limit(5);
+
+  const ctx = [
+    `Nome: ${lead.nome}`,
+    lead.empresa ? `Empresa: ${lead.empresa}` : null,
+    (lead as any).segmento ? `Segmento: ${(lead as any).segmento}` : null,
+    intel?.nextBestAction ? `Próxima ação sugerida pela IA: ${intel.nextBestAction}` : null,
+    intel?.intentAnalysis ? `Intenção de compra: ${intel.intentAnalysis}` : null,
+    intel?.churnRisk != null ? `Risco de churn: ${intel.churnRisk}%` : null,
+    recentMsgs.length > 0
+      ? `Últimas mensagens: ${recentMsgs.map(m => `[${m.direcao}] ${(m.conteudo ?? "").slice(0, 80)}`).join(" | ")}`
+      : "Nenhuma conversa anterior registrada.",
+  ].filter(Boolean).join("\n");
+
+  try {
+    const result = await callOpenAI(
+      tenantId,
+      "content_generator",
+      [
+        {
+          role: "system",
+          content:
+            "Você é um assistente de vendas consultivo. Crie uma mensagem inicial de conversa personalizada para o lead, adequada para WhatsApp ou Instagram Direct. A mensagem deve ser: curta (no máximo 3 frases), cordial e natural, referir-se ao contexto do lead sem ser invasiva, e criar abertura para diálogo. Responda apenas com o texto da mensagem, sem aspas, prefixos ou explicações.",
+        },
+        { role: "user", content: `Contexto do lead:\n${ctx}` },
+      ],
+      { maxTokens: 250, temperature: 0.82, log: req.log },
+    );
+    res.json({ message: result.content.trim() });
+  } catch {
+    res.json({
+      message: `Olá, ${lead.nome}! Tudo bem? Estava pensando em você e gostaria de conversar sobre como posso ajudar.`,
+    });
+  }
+});
+
+export default router;
