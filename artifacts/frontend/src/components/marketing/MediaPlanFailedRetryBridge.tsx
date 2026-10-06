@@ -225,8 +225,12 @@ export function MediaPlanFailedRetryBridge() {
         desiredCta: campaign.oferta,
       }),
     });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({})) as { error?: string };
+      throw new Error(errorBody.error ?? `O gerador falhou (HTTP ${response.status}).`);
+    }
     const generation = await response.json().catch(() => ({})) as Generation & { error?: string };
-    if (!response.ok || !generation.id) throw new Error(generation.error ?? "O gerador não criou o rascunho.");
+    if (!generation.id) throw new Error(generation.error ?? "O gerador não criou o rascunho.");
     let variation = generation.result?.variations?.[0];
     if (visual && extractImages(variation).length === 0) {
       const imageResponse = await fetch(`/api/tenants/${tid}/content/${generation.id}/variations/0/regenerate-image`, {
