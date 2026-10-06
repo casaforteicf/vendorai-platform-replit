@@ -14,7 +14,20 @@ type IntegrationStatus = {
   domain?: { configured?: boolean; active?: boolean; name?: string | null };
   searchConsole?: { connected?: boolean; verified?: boolean };
   social?: { linkedin?: boolean; tiktok?: boolean };
-  tracking?: { googleAds?: boolean; metaPixel?: boolean; linkedinInsightTag?: boolean; tiktokPixel?: boolean };
+  tracking?: {
+    googleAds?: boolean;
+    googleAdsConversionId?: string | null;
+    ga4?: boolean;
+    ga4MeasurementId?: string | null;
+    gtm?: boolean;
+    gtmContainerId?: string | null;
+    metaPixel?: boolean;
+    metaPixelId?: string | null;
+    linkedinInsightTag?: boolean;
+    linkedinInsightTagId?: string | null;
+    tiktokPixel?: boolean;
+    tiktokPixelId?: string | null;
+  };
   email?: {
     google?: { connected?: boolean; address?: string | null };
     microsoft?: { connected?: boolean; address?: string | null };
@@ -147,6 +160,15 @@ export default function IntegrationSettingsHub() {
     healthPath: "/",
   });
   const [lastWebhookSetup, setLastWebhookSetup] = useState<{ path: string; secret: string; secretHeader: string } | null>(null);
+  const [trackingDraft, setTrackingDraft] = useState({
+    googleAdsConversionId: "",
+    ga4MeasurementId: "",
+    gtmContainerId: "",
+    metaPixelId: "",
+    linkedinInsightTagId: "",
+    tiktokPixelId: "",
+  });
+  const [trackingHydrated, setTrackingHydrated] = useState(false);
   const [asaasKey, setAsaasKey] = useState("");
   const [zapsignKey, setZapsignKey] = useState("");
   const [emailConnections, setEmailConnections] = useState<Array<{
@@ -190,6 +212,18 @@ export default function IntegrationSettingsHub() {
         tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/social-connections`).catch(() => ({ connections: [] })) : Promise.resolve({ connections: [] }),
       ]);
       setStatus(data as IntegrationStatus);
+      const integrationData = data as IntegrationStatus;
+      if (!trackingHydrated) {
+        setTrackingDraft({
+          googleAdsConversionId: integrationData.tracking?.googleAdsConversionId ?? "",
+          ga4MeasurementId: integrationData.tracking?.ga4MeasurementId ?? "",
+          gtmContainerId: integrationData.tracking?.gtmContainerId ?? "",
+          metaPixelId: integrationData.tracking?.metaPixelId ?? "",
+          linkedinInsightTagId: integrationData.tracking?.linkedinInsightTagId ?? "",
+          tiktokPixelId: integrationData.tracking?.tiktokPixelId ?? "",
+        });
+        setTrackingHydrated(true);
+      }
       const hiddenTenantInfrastructure = new Set([
         "cloudflare", "railway", "supabase", "openai",
         "whatsapp", "email", "meta", "google-ads", "asaas", "zapsign",
@@ -796,6 +830,31 @@ export default function IntegrationSettingsHub() {
     }
   };
 
+  const saveTracking = async () => {
+    setBusy("tracking-save");
+    try {
+      await apiJson("/api/onboarding/integracoes/tracking", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          googleAdsConversionId: trackingDraft.googleAdsConversionId.trim() || null,
+          ga4MeasurementId: trackingDraft.ga4MeasurementId.trim() || null,
+          gtmContainerId: trackingDraft.gtmContainerId.trim() || null,
+          metaPixelId: trackingDraft.metaPixelId.trim() || null,
+          linkedinInsightTagId: trackingDraft.linkedinInsightTagId.trim() || null,
+          tiktokPixelId: trackingDraft.tiktokPixelId.trim() || null,
+        }),
+      });
+      toast({ title: "Tracking salvo", description: "Os IDs válidos serão aplicados aos sites publicados pelo Vendor.ai." });
+      setTrackingHydrated(false);
+      await loadStatus();
+    } catch (error) {
+      toast({ title: "Não foi possível salvar o tracking", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const visibleRows = rows.filter((row) => {
     const term = search.trim().toLowerCase();
     if (!term) return true;
@@ -895,6 +954,73 @@ export default function IntegrationSettingsHub() {
             </div>
           ))}
         </div>
+      </div>
+
+      <div className="rounded-2xl border bg-card p-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="font-semibold">Tracking e conversões</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Centralize os identificadores de medição. Nos sites Vendor.ai, IDs válidos são instalados automaticamente.
+            </p>
+          </div>
+          <Button onClick={() => void saveTracking()} disabled={busy === "tracking-save"}>
+            {busy === "tracking-save" ? "Salvando..." : "Salvar tracking"}
+          </Button>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="rounded-xl border bg-background p-4">
+            <h3 className="font-semibold">Google Analytics 4</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Mede acessos, eventos, origem e conversões do site.</p>
+            <Input className="mt-3" value={trackingDraft.ga4MeasurementId} onChange={(e) => setTrackingDraft((v) => ({ ...v, ga4MeasurementId: e.target.value }))} placeholder="G-XXXXXXXXXX" />
+            <p className="mt-2 text-[11px] text-muted-foreground">{status?.tracking?.ga4 ? "Configurado" : "Informe o Measurement ID da propriedade GA4."}</p>
+          </div>
+
+          <div className="rounded-xl border bg-background p-4">
+            <h3 className="font-semibold">Google Tag Manager</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Centraliza tags e pixels no container da empresa.</p>
+            <Input className="mt-3" value={trackingDraft.gtmContainerId} onChange={(e) => setTrackingDraft((v) => ({ ...v, gtmContainerId: e.target.value }))} placeholder="GTM-XXXXXXX" />
+            <p className="mt-2 text-[11px] text-muted-foreground">{status?.tracking?.gtm ? "Configurado" : "Informe o ID do container GTM."}</p>
+          </div>
+
+          <div className="rounded-xl border bg-background p-4">
+            <h3 className="font-semibold">Google Ads Conversion</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Identifica conversões originadas de campanhas Google Ads.</p>
+            <Input className="mt-3" value={trackingDraft.googleAdsConversionId} onChange={(e) => setTrackingDraft((v) => ({ ...v, googleAdsConversionId: e.target.value }))} placeholder="AW-XXXXXXXXX" />
+            <p className="mt-2 text-[11px] text-muted-foreground">{status?.tracking?.googleAds ? "Configurado" : "Informe o Conversion ID."}</p>
+          </div>
+
+          <div className="rounded-xl border bg-background p-4">
+            <h3 className="font-semibold">Meta Pixel</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Mede visitas e eventos do site para Facebook e Instagram.</p>
+            <Input className="mt-3" value={trackingDraft.metaPixelId} onChange={(e) => setTrackingDraft((v) => ({ ...v, metaPixelId: e.target.value }))} placeholder="ID numérico do Pixel" />
+            <p className="mt-2 text-[11px] text-muted-foreground">{status?.tracking?.metaPixel ? "Configurado" : "Informe o ID do Pixel Meta."}</p>
+            {status?.tracking?.metaPixel && metaAdsStatus.connected && (
+              <p className="mt-2 text-[11px] text-emerald-600">CAPI: infraestrutura disponível via conexão Meta Ads; envio depende de consentimento e ativação controlada.</p>
+            )}
+          </div>
+
+          <div className="rounded-xl border bg-background p-4">
+            <h3 className="font-semibold">LinkedIn Insight Tag</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Mede visitas, públicos e conversões para campanhas LinkedIn.</p>
+            <Input className="mt-3" value={trackingDraft.linkedinInsightTagId} onChange={(e) => setTrackingDraft((v) => ({ ...v, linkedinInsightTagId: e.target.value }))} placeholder="Partner ID numérico" />
+            <p className="mt-2 text-[11px] text-muted-foreground">{status?.tracking?.linkedinInsightTag ? "Configurado" : "Informe o Partner ID."}</p>
+          </div>
+
+          <div className="rounded-xl border bg-background p-4">
+            <h3 className="font-semibold">TikTok Pixel</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Mede visitas e conversões para campanhas TikTok.</p>
+            <Input className="mt-3" value={trackingDraft.tiktokPixelId} onChange={(e) => setTrackingDraft((v) => ({ ...v, tiktokPixelId: e.target.value }))} placeholder="Pixel ID TikTok" />
+            <p className="mt-2 text-[11px] text-muted-foreground">{status?.tracking?.tiktokPixel ? "Configurado" : "Informe o Pixel ID."}</p>
+          </div>
+        </div>
+
+        {trackingDraft.gtmContainerId.trim() && (trackingDraft.metaPixelId.trim() || trackingDraft.linkedinInsightTagId.trim() || trackingDraft.tiktokPixelId.trim()) && (
+          <div className="mt-4 rounded-lg border border-amber-300/60 bg-amber-50/50 p-3 text-xs text-amber-900">
+            Atenção a duplicidade: se estes pixels já estiverem instalados dentro do GTM, não cadastre também o mesmo pixel diretamente aqui.
+          </div>
+        )}
       </div>
 
       <div className="rounded-2xl border bg-card p-5">
