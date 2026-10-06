@@ -18,6 +18,7 @@ import {
 import { searchByCnae, normalizeCnpj } from "../services/cnpjService.js";
 import { enrichLead } from "./leadEnrichment.js";
 import { logger as rootLogger } from "../lib/logger.js";
+import { leadRegistrationMetadata, normalizeLeadEmail, normalizeLeadName } from "../lib/lead-registration-standard.js";
 
 const BOOST_SCORE = 20;
 const DEFAULT_CNAES = [
@@ -121,7 +122,7 @@ export async function runRecemAbertas(log: Logger = rootLogger, onlyTenantId?: s
 
           const [lead] = await db.insert(leadsTable).values({
             tenantId: tenant.id,
-            nome: empresa.nomeFantasia || empresa.razaoSocial,
+            nome: normalizeLeadName(empresa.nomeFantasia || empresa.razaoSocial, "Empresa recém-aberta"),
             empresa: empresa.razaoSocial,
             telefone: empresa.telefone,
             email: empresa.email,
@@ -129,6 +130,12 @@ export async function runRecemAbertas(log: Logger = rootLogger, onlyTenantId?: s
             endereco: empresa.enderecoCompleto,
             tipoPessoa: "juridica",
             source: "recem_aberta",
+            email: normalizeLeadEmail(empresa.email),
+            metadata: leadRegistrationMetadata(null, {
+              entryChannel: "prospeccao",
+              entrySource: "recem_aberta",
+              details: { cnpj: normalizedCnpj },
+            }),
             enrichmentStatus: "pending",
             mercadoSegmento: empresa.cnaeDescricao,
             dadosPj: {
