@@ -81,13 +81,23 @@ export function BrandKitSettings() {
     queryKey: ["brand-kit-resolved-business-profile", tenantId],
     enabled: !!tenantId,
     retry: 1,
-    queryFn: async () => {
-      const response = await fetch(`/api/tenants/${tenantId}/business-profile`, {
-        credentials: "include",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return await response.json() as Record<string, any> | null;
+    queryFn: async ({ signal }) => {
+      const timeoutController = new AbortController();
+      const timeout = window.setTimeout(() => timeoutController.abort(), 6_000);
+      const abortFromQuery = () => timeoutController.abort();
+      signal.addEventListener("abort", abortFromQuery, { once: true });
+      try {
+        const response = await fetch(`/api/tenants/${tenantId}/business-profile`, {
+          credentials: "include",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          signal: timeoutController.signal,
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return await response.json() as Record<string, any> | null;
+      } finally {
+        window.clearTimeout(timeout);
+        signal.removeEventListener("abort", abortFromQuery);
+      }
     },
   });
   const tenant = useGetTenant(tenantId, {
