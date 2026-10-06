@@ -1,6 +1,6 @@
 name: Cloudflare Pages
 # Production deploy: Pages frontend; Railway backend remains unchanged.
-# Redeploy marker: marketing-audit-production 2026-10-06T12:48Z.
+# Redeploy marker: lead-registration-production 2026-10-06T14:26Z.
 
 on:
   push:
