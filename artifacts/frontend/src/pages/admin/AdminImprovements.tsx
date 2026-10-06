@@ -283,6 +283,16 @@ export default function AdminImprovements() {
     summary: "",
   });
 
+  const [filterSearch, setFilterSearch] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterSource, setFilterSource] = useState("all");
+  const [filterAgent, setFilterAgent] = useState("all");
+  const [filterPriority, setFilterPriority] = useState("all");
+  const [filterProgress, setFilterProgress] = useState("all");
+  const [filterDue, setFilterDue] = useState("all");
+  const [filterActivity, setFilterActivity] = useState("all");
+  const [filterPr, setFilterPr] = useState("all");
+
   const headers = useMemo(() => ({
     Authorization: "Bearer " + token,
     "Content-Type": "application/json",
@@ -370,6 +380,107 @@ export default function AdminImprovements() {
     }
     return [...byKey.values()];
   }, [items]);
+
+  const filteredItems = useMemo(() => {
+    const search = filterSearch.trim().toLowerCase();
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const tomorrowStart = todayStart + 24 * 60 * 60 * 1000;
+    const weekEnd = todayStart + 7 * 24 * 60 * 60 * 1000;
+
+    return items.filter((item) => {
+      const simple = improvementSimpleStatus(item);
+      const progress = operationalProgress(item);
+      const updatedAt = new Date(item.updatedAt).getTime();
+      const dueAt = item.dueAt ? new Date(item.dueAt).getTime() : null;
+      const agent = (item.ownerAgent || "Vendi").toLowerCase();
+
+      if (search) {
+        const haystack = [
+          item.title,
+          item.description,
+          item.module,
+          item.prNumber ? "PR #" + item.prNumber : "",
+          item.ownerAgent || "Vendi",
+          item.agentStatus || "",
+          item.agentSummary || "",
+        ].join(" ").toLowerCase();
+        if (!haystack.includes(search)) return false;
+      }
+
+      if (filterStatus !== "all" && simple !== filterStatus) return false;
+      if (filterSource !== "all" && (item.sourceType ?? "super_admin") !== filterSource) return false;
+      if (filterAgent !== "all" && agent !== filterAgent) return false;
+      if (filterPriority !== "all" && item.priority !== filterPriority) return false;
+
+      if (filterProgress === "0-25" && !(progress >= 0 && progress <= 25)) return false;
+      if (filterProgress === "26-50" && !(progress >= 26 && progress <= 50)) return false;
+      if (filterProgress === "51-75" && !(progress >= 51 && progress <= 75)) return false;
+      if (filterProgress === "76-99" && !(progress >= 76 && progress <= 99)) return false;
+      if (filterProgress === "100" && progress !== 100) return false;
+
+      if (filterDue === "overdue" && !(dueAt !== null && dueAt < todayStart && simple !== "Concluído")) return false;
+      if (filterDue === "today" && !(dueAt !== null && dueAt >= todayStart && dueAt < tomorrowStart)) return false;
+      if (filterDue === "week" && !(dueAt !== null && dueAt >= todayStart && dueAt < weekEnd)) return false;
+      if (filterDue === "none" && dueAt !== null) return false;
+
+      if (filterActivity === "today" && !(updatedAt >= todayStart)) return false;
+      if (filterActivity === "7d" && !(updatedAt >= todayStart - 7 * 24 * 60 * 60 * 1000)) return false;
+      if (filterActivity === "stale" && !isStaleActive(item)) return false;
+
+      if (filterPr === "with" && !item.prNumber) return false;
+      if (filterPr === "without" && !!item.prNumber) return false;
+      if (filterPr === "failed" && item.testStatus !== "failed") return false;
+      if (filterPr === "merged" && item.status !== "mergeado_main" && item.status !== "producao_validada") return false;
+
+      return true;
+    });
+  }, [
+    items,
+    filterSearch,
+    filterStatus,
+    filterSource,
+    filterAgent,
+    filterPriority,
+    filterProgress,
+    filterDue,
+    filterActivity,
+    filterPr,
+  ]);
+
+  const agentOptions = useMemo(
+    () => [...new Set(items.map((item) => (item.ownerAgent || "Vendi").toLowerCase()))].sort(),
+    [items],
+  );
+
+  const activeFilterCount = [
+    filterSearch.trim() ? "search" : "",
+    filterStatus !== "all" ? filterStatus : "",
+    filterSource !== "all" ? filterSource : "",
+    filterAgent !== "all" ? filterAgent : "",
+    filterPriority !== "all" ? filterPriority : "",
+    filterProgress !== "all" ? filterProgress : "",
+    filterDue !== "all" ? filterDue : "",
+    filterActivity !== "all" ? filterActivity : "",
+    filterPr !== "all" ? filterPr : "",
+  ].filter(Boolean).length;
+
+  function clearFilters() {
+    setFilterSearch("");
+    setFilterStatus("all");
+    setFilterSource("all");
+    setFilterAgent("all");
+    setFilterPriority("all");
+    setFilterProgress("all");
+    setFilterDue("all");
+    setFilterActivity("all");
+    setFilterPr("all");
+  }
+
+  function filterBySummaryStatus(status: string) {
+    setView("improvements");
+    setFilterStatus((current) => current === status ? "all" : status);
+  }
 
   const totalHistoryCount = items.length;
   const uniqueImprovementCount = canonicalItems.length;
@@ -628,26 +739,26 @@ export default function AdminImprovements() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
-          <p className="text-xs font-medium text-muted-foreground">Em andamento</p>
-          <p className="mt-1 text-2xl font-semibold">{inProgressCount}</p>
-        </div>
-        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
-          <p className="text-xs font-medium text-muted-foreground">Sua aprovação</p>
-          <p className="mt-1 text-2xl font-semibold">{awaitingApprovalCount}</p>
-        </div>
-        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
-          <p className="text-xs font-medium text-muted-foreground">Publicando</p>
-          <p className="mt-1 text-2xl font-semibold">{publishingCount}</p>
-        </div>
-        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
-          <p className="text-xs font-medium text-muted-foreground">Concluídas</p>
-          <p className="mt-1 text-2xl font-semibold">{completedCount}</p>
-        </div>
-        <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4">
-          <p className="text-xs font-medium text-muted-foreground">Precisa de atenção</p>
-          <p className="mt-1 text-2xl font-semibold">{attentionCount}</p>
-        </div>
+        {[
+          ["Em andamento", inProgressCount],
+          ["Aguardando sua aprovação", awaitingApprovalCount],
+          ["Publicando", publishingCount],
+          ["Concluído", completedCount],
+          ["Precisa de atenção", attentionCount],
+        ].map(([status, count]) => (
+          <button
+            key={String(status)}
+            type="button"
+            onClick={() => filterBySummaryStatus(String(status))}
+            className={"min-w-0 rounded-2xl border bg-card p-3 text-left transition hover:border-primary/40 hover:shadow-sm sm:p-4 " +
+              (filterStatus === status ? "border-primary ring-1 ring-primary/20" : "")}
+          >
+            <p className="text-xs font-medium text-muted-foreground">
+              {status === "Aguardando sua aprovação" ? "Sua aprovação" : status === "Concluído" ? "Concluídas" : String(status)}
+            </p>
+            <p className="mt-1 text-2xl font-semibold">{Number(count)}</p>
+          </button>
+        ))}
       </div>
 
       <div className="flex gap-2 border-b">
@@ -667,6 +778,84 @@ export default function AdminImprovements() {
 
       {view === "improvements" && (
         <>
+          <div className="rounded-2xl border bg-card p-3 sm:p-4">
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+              <div className="xl:col-span-2">
+                <Input
+                  value={filterSearch}
+                  onChange={(event) => setFilterSearch(event.target.value)}
+                  placeholder="Buscar melhoria, módulo, PR ou texto..."
+                  className="h-9"
+                />
+              </div>
+              <select className="h-9 rounded-md border bg-background px-3 text-sm" value={filterStatus} onChange={(event) => setFilterStatus(event.target.value)}>
+                <option value="all">Todos os status</option>
+                <option value="Em andamento">Em andamento</option>
+                <option value="Aguardando sua aprovação">Aguardando aprovação</option>
+                <option value="Publicando">Publicando</option>
+                <option value="Precisa de atenção">Precisa de atenção</option>
+                <option value="Concluído">Concluído</option>
+                <option value="Histórico">Histórico</option>
+              </select>
+              <select className="h-9 rounded-md border bg-background px-3 text-sm" value={filterSource} onChange={(event) => setFilterSource(event.target.value)}>
+                <option value="all">Todas as origens</option>
+                {Object.entries(SOURCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+              <select className="h-9 rounded-md border bg-background px-3 text-sm" value={filterAgent} onChange={(event) => setFilterAgent(event.target.value)}>
+                <option value="all">Todos os agentes</option>
+                {agentOptions.map((agent) => <option key={agent} value={agent}>{agent}</option>)}
+              </select>
+
+              <select className="h-9 rounded-md border bg-background px-3 text-sm" value={filterPriority} onChange={(event) => setFilterPriority(event.target.value)}>
+                <option value="all">Todas as prioridades</option>
+                <option value="urgente">Crítica</option>
+                <option value="alta">Alta</option>
+                <option value="media">Normal</option>
+                <option value="baixa">Baixa</option>
+              </select>
+              <select className="h-9 rounded-md border bg-background px-3 text-sm" value={filterProgress} onChange={(event) => setFilterProgress(event.target.value)}>
+                <option value="all">Qualquer progresso</option>
+                <option value="0-25">0–25%</option>
+                <option value="26-50">26–50%</option>
+                <option value="51-75">51–75%</option>
+                <option value="76-99">76–99%</option>
+                <option value="100">100%</option>
+              </select>
+              <select className="h-9 rounded-md border bg-background px-3 text-sm" value={filterDue} onChange={(event) => setFilterDue(event.target.value)}>
+                <option value="all">Qualquer prazo</option>
+                <option value="overdue">Atrasadas</option>
+                <option value="today">Prazo hoje</option>
+                <option value="week">Prazo em 7 dias</option>
+                <option value="none">Sem prazo</option>
+              </select>
+              <select className="h-9 rounded-md border bg-background px-3 text-sm" value={filterActivity} onChange={(event) => setFilterActivity(event.target.value)}>
+                <option value="all">Qualquer atividade</option>
+                <option value="today">Atualizadas hoje</option>
+                <option value="7d">Atualizadas em 7 dias</option>
+                <option value="stale">Sem atividade recente</option>
+              </select>
+              <select className="h-9 rounded-md border bg-background px-3 text-sm" value={filterPr} onChange={(event) => setFilterPr(event.target.value)}>
+                <option value="all">Qualquer PR</option>
+                <option value="with">Com PR</option>
+                <option value="without">Sem PR</option>
+                <option value="failed">Teste falhou</option>
+                <option value="merged">Mergeado / produção</option>
+              </select>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground">
+                Exibindo <span className="font-semibold text-foreground">{filteredItems.length}</span> de {items.length} melhoria(s)
+                {activeFilterCount > 0 ? " • " + activeFilterCount + " filtro(s) ativo(s)" : ""}
+              </p>
+              {activeFilterCount > 0 && (
+                <Button type="button" variant="ghost" size="sm" onClick={clearFilters}>
+                  <X className="mr-1 h-4 w-4" />
+                  Limpar filtros
+                </Button>
+              )}
+            </div>
+          </div>
+
           {selected.size > 0 && (
             <div className="sticky top-2 z-20 flex flex-col gap-3 rounded-2xl border bg-background/95 p-3 shadow-sm backdrop-blur-xl lg:flex-row lg:items-center lg:justify-between">
               <div>
@@ -685,7 +874,7 @@ export default function AdminImprovements() {
           )}
 
           <div className="grid min-w-0 gap-3 lg:hidden">
-            {items.map((item) => {
+            {filteredItems.map((item) => {
               const simple = improvementSimpleStatus(item);
               const progress = operationalProgress(item);
               return (
@@ -795,7 +984,7 @@ export default function AdminImprovements() {
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item) => {
+                  {filteredItems.map((item) => {
                     const simple = improvementSimpleStatus(item);
                     return (
                       <tr key={item.id} className="border-b last:border-0 hover:bg-muted/20">
@@ -873,10 +1062,10 @@ export default function AdminImprovements() {
                       </tr>
                     );
                   })}
-                  {!improvementsQuery.isLoading && items.length === 0 && (
+                  {!improvementsQuery.isLoading && filteredItems.length === 0 && (
                     <tr>
                       <td colSpan={8} className="px-6 py-14 text-center text-muted-foreground">
-                        Nenhuma melhoria cadastrada.
+                        {items.length === 0 ? "Nenhuma melhoria cadastrada." : "Nenhuma melhoria encontrada com os filtros atuais."}
                       </td>
                     </tr>
                   )}
