@@ -11,6 +11,7 @@ export type DealPersonRole =
   | "contato_comercial"
   | "decisor"
   | "responsavel_financeiro"
+  | "indicador"
   | "arquiteto"
   | "engenheiro"
   | "representante"
