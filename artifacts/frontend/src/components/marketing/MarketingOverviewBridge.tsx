@@ -10,7 +10,6 @@ import {
   LayoutDashboard,
   Loader2,
   Megaphone,
-  Radio,
   Sparkles,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
