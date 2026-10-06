@@ -1,6 +1,6 @@
 name: Cloudflare Pages
 # Production deploy: Pages frontend; Railway backend remains unchanged.
-# Redeploy marker: brand-kit-profile-timeout 2026-10-06T23:24Z.
+# Redeploy marker: brand-kit-footer-overlay 2026-10-06T23:35Z.
 
 on:
   push:
