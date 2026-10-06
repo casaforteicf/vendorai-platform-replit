@@ -12,6 +12,11 @@ export const quoteExtractionResultSchema = z.object({
   valorTotal: z.number().nullable().optional(),
   cliente: z.string().nullable().optional(),
   clienteDocumento: z.string().nullable().optional(),
+  clienteTelefone: z.string().nullable().optional(),
+  clienteEmail: z.string().nullable().optional(),
+  clienteCidade: z.string().nullable().optional(),
+  clienteEstado: z.string().nullable().optional(),
+  clienteCep: z.string().nullable().optional(),
   clienteEndereco: z.string().nullable().optional(),
   fornecedor: z.string().nullable().optional(),
   fornecedorDocumento: z.string().nullable().optional(),
@@ -151,7 +156,9 @@ Regras obrigatórias:
 - Extraia TODAS as linhas comerciais identificáveis do documento.
 - Se o documento tiver grupos, capítulos, etapas ou seções, preserve essa hierarquia em "grupo" e/ou "etapa".
 - Quando houver valor total da linha, preserve-o. Quando houver quantidade e valor unitário, preserve ambos.
-- Extraia também as informações comerciais e contratuais disponíveis.
+- Extraia também as informações comerciais, contratuais e cadastrais do CLIENTE, com atenção especial a nome/razão social, CPF/CNPJ, telefone/WhatsApp, e-mail, cidade, UF, CEP e endereço.
+- Não confunda dados do fornecedor/emitente com os dados do cliente/destinatário. Use o rótulo, posição e contexto do documento para decidir.
+- Se cidade/UF aparecerem dentro do endereço do cliente, extraia também nos campos clienteCidade e clienteEstado quando houver segurança.
 - Campos não encontrados devem ser omitidos ou null.
 - Datas devem usar YYYY-MM-DD quando for possível determinar a data com segurança.
 - Retorne SOMENTE JSON válido, sem texto fora dele.
@@ -164,7 +171,12 @@ Formato:
   "valorTotal": 0,
   "cliente": "nome/razão social do cliente",
   "clienteDocumento": "CPF/CNPJ/documento",
-  "clienteEndereco": "endereço do cliente",
+  "clienteTelefone": "telefone/WhatsApp do cliente exatamente como aparece no documento",
+  "clienteEmail": "e-mail do cliente",
+  "clienteCidade": "cidade do cliente",
+  "clienteEstado": "UF/estado do cliente",
+  "clienteCep": "CEP do cliente",
+  "clienteEndereco": "endereço completo do cliente",
   "fornecedor": "nome/razão social do fornecedor",
   "fornecedorDocumento": "CPF/CNPJ/documento",
   "fornecedorEndereco": "endereço do fornecedor",
@@ -363,7 +375,7 @@ export async function extractTextFromBuffer(
     const imageContent: import("openai").OpenAI.Chat.ChatCompletionContentPart[] = [
       {
         type: "text",
-        text: "Extraia todo o texto e informações relevantes desta imagem sobre o negócio: nome, produtos, serviços, missão, valores, diferenciais, público-alvo.",
+        text: "Transcreva fielmente TODO o texto visível desta imagem, preservando nomes, telefones, e-mails, CPF/CNPJ, endereços, cidades/UF, números de documento, itens, quantidades, unidades, preços, totais, condições de pagamento e observações. Não resuma, não interprete e não descarte dados cadastrais.",
       },
       {
         type: "image_url",
