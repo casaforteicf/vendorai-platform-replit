@@ -1,5 +1,3 @@
-[Reading 308 lines from start (total: 308 lines, 0 remaining)]
-
 // ─── useArqProject ────────────────────────────────────────────────────────────
 // Loads/saves the active workspace project to the API.
 // Exposes: project, objects, materials + mutators that auto-sync to the server.

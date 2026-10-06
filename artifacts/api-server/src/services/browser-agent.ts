@@ -1,5 +1,3 @@
-[Reading 709 lines from start (total: 709 lines, 0 remaining)]
-
 import { type Browser, type CookieData, type Page } from "puppeteer-core";
 import { acquireBrowserLease } from "./browser-fleet.js";
 import {

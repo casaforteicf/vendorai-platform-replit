@@ -1,5 +1,3 @@
-[Reading 265 lines from start (total: 265 lines, 0 remaining)]
-
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkspaceProject } from "../WorkspaceContext";

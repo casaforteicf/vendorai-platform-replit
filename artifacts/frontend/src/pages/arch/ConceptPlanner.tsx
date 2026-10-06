@@ -1,5 +1,3 @@
-[Reading 1000 lines from start (total: 11034 lines, 10034 remaining)]
-
 import { flushSync } from "react-dom";
 import { conceptReferenceSize } from "./conceptReferenceImage";
 import { lazy, useEffect, useMemo, useRef, useState } from "react";

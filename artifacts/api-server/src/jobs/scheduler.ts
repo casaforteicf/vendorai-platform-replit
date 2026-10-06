@@ -1,5 +1,3 @@
-[Reading 1000 lines from start (total: 2236 lines, 1236 remaining)]
-
 /**
  * Background scheduler — node-cron jobs running inside the API server process.
  *

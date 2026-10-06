@@ -1,5 +1,3 @@
-[Reading 371 lines from start (total: 371 lines, 0 remaining)]
-
 import { pgTable, text, timestamp, numeric, integer, date, boolean, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";

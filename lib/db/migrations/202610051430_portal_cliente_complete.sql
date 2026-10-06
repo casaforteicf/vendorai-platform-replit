@@ -1,5 +1,3 @@
-[Reading 103 lines from start (total: 103 lines, 0 remaining)]
-
 -- Portal do Cliente 2.0 completo — conteúdo publicável, permissões e auditoria
 
 CREATE TABLE IF NOT EXISTS public.obra_portal_items (

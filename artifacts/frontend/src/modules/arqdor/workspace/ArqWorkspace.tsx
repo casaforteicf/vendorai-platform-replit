@@ -1,5 +1,3 @@
-[Reading 1000 lines from start (total: 1077 lines, 77 remaining)]
-
 // ─── ArqWorkspace — PROJECT PHOENIX: UX Redesign ─────────────────────────────
 // Antes: dashboard de IA complexo, escuro, muitos menus.
 // Depois: software premium para arquitetos. Figma + Notion + Linear.

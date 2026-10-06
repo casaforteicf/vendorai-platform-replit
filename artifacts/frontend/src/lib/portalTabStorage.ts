@@ -1,5 +1,3 @@
-[Reading 86 lines from start (total: 86 lines, 0 remaining)]
-
 /**
  * Stable, obra-keyed localStorage helpers for the client portal tab preference.
  *

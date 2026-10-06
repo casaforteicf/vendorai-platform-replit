@@ -1,5 +1,3 @@
-[Reading 893 lines from start (total: 893 lines, 0 remaining)]
-
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useRoute, useSearch } from "wouter";
 import {

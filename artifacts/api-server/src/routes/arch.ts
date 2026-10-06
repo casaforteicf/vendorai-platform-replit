@@ -1,5 +1,3 @@
-[Reading 1000 lines from start (total: 10235 lines, 9235 remaining)]
-
 import { Router, type Request, type IRouter } from "express";
 import { and, eq, ilike, sql, desc, sum, ne, gte, lte, inArray, or } from "drizzle-orm";
 import multer from "multer";

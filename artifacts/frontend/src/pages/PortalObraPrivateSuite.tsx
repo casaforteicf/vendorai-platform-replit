@@ -1,5 +1,3 @@
-[Reading 178 lines from start (total: 178 lines, 0 remaining)]
-
 import { useState } from "react";
 import { CircleDollarSign, FileText, Headphones, MessageCircle, ShieldCheck, UserRound } from "lucide-react";
 

@@ -1,5 +1,3 @@
-[Reading 263 lines from start (total: 263 lines, 0 remaining)]
-
 import { useEffect, useState } from "react";
 
 function authToken() { return localStorage.getItem("vendorai_token") ?? ""; }

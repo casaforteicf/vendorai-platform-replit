@@ -1,5 +1,3 @@
-[Reading 242 lines from start (total: 242 lines, 0 remaining)]
-
 import { useMemo, useState } from "react";
 import { Bot, CalendarDays, CheckCircle2, Clock, FileText, Send, ShieldCheck } from "lucide-react";
 
