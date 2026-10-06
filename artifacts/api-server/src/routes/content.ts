@@ -68,42 +68,68 @@ const generateBodySchema = z.object({
   desiredCta: z.string().optional().nullable(),
 });
 
+type ValidatedPlannerContext = {
+  mediaPlanId: string;
+  campaignId: string;
+  calendarItemId: string;
+  campaign: {
+    id: string;
+    nome: string;
+    objetivo: string;
+    produtoServico: string;
+    publico: string;
+    oferta: string;
+    mensagemCentral: string;
+  };
+};
+
 function normalizeCampaignLabel(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
 }
 
-async function plannerContextIsValid(input: {
+async function resolveValidatedPlannerContext(input: {
   tenantId: string;
   mediaPlanId: string;
   campaignId: string;
   calendarItemId: string;
-}) {
+}): Promise<ValidatedPlannerContext | null> {
   const [[plan], [calendarItem]] = await Promise.all([
     db
-      .select({ conteudo: mediaPlansTable.conteudo })
+      .select({ id: mediaPlansTable.id, tenantId: mediaPlansTable.tenantId, conteudo: mediaPlansTable.conteudo })
       .from(mediaPlansTable)
       .where(and(eq(mediaPlansTable.id, input.mediaPlanId), eq(mediaPlansTable.tenantId, input.tenantId)))
       .limit(1),
     db
-      .select({ mediaPlanId: contentCalendarItemsTable.mediaPlanId, pilar: contentCalendarItemsTable.pilar })
+      .select({ tenantId: contentCalendarItemsTable.tenantId, mediaPlanId: contentCalendarItemsTable.mediaPlanId, pilar: contentCalendarItemsTable.pilar })
       .from(contentCalendarItemsTable)
       .where(and(eq(contentCalendarItemsTable.id, input.calendarItemId), eq(contentCalendarItemsTable.tenantId, input.tenantId)))
       .limit(1),
   ]);
 
   const campaigns = Array.isArray((plan?.conteudo as { campanhas?: unknown[] } | null)?.campanhas)
-    ? ((plan?.conteudo as { campanhas?: Array<{ id?: string; nome?: string }> }).campanhas ?? [])
+    ? ((plan?.conteudo as { campanhas?: ValidatedPlannerContext["campaign"][] }).campanhas ?? [])
     : [];
   const campaign = campaigns.find((entry) => entry.id === input.campaignId);
   const calendarCampaignName = String(calendarItem?.pilar ?? "").split(" · ")[0]?.trim() ?? "";
 
-  return Boolean(
-    plan &&
-    calendarItem &&
-    calendarItem.mediaPlanId === input.mediaPlanId &&
-    campaign?.nome &&
-    normalizeCampaignLabel(calendarCampaignName) === normalizeCampaignLabel(campaign.nome),
-  );
+  if (
+    !plan ||
+    plan.tenantId !== input.tenantId ||
+    !calendarItem ||
+    calendarItem.tenantId !== input.tenantId ||
+    calendarItem.mediaPlanId !== input.mediaPlanId ||
+    !campaign?.nome ||
+    normalizeCampaignLabel(calendarCampaignName) !== normalizeCampaignLabel(campaign.nome)
+  ) {
+    return null;
+  }
+
+  return {
+    mediaPlanId: input.mediaPlanId,
+    campaignId: input.campaignId,
+    calendarItemId: input.calendarItemId,
+    campaign,
+  };
 }
 
 async function getMonthlyUsage(
@@ -166,6 +192,7 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
   const campaignId = String(req.header("x-vendorai-campaign-id") ?? "").trim();
   const calendarItemId = String(req.header("x-vendorai-calendar-item-id") ?? "").trim();
   const hasPlannerContext = Boolean(mediaPlanId || campaignId || calendarItemId);
+  let plannerContext: ValidatedPlannerContext | null = null;
 
   if (hasPlannerContext) {
     if (!mediaPlanId || !campaignId || !calendarItemId) {
@@ -173,8 +200,8 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
       return;
     }
 
-    const validContext = await plannerContextIsValid({ tenantId, mediaPlanId, campaignId, calendarItemId });
-    if (!validContext) {
+    plannerContext = await resolveValidatedPlannerContext({ tenantId, mediaPlanId, campaignId, calendarItemId });
+    if (!plannerContext) {
       req.log.warn({ tenantId, mediaPlanId, campaignId, calendarItemId }, "content: contexto de campanha inválido");
       res.status(409).json({ error: "A ação não pertence à campanha informada. A geração foi bloqueada." });
       return;
@@ -242,22 +269,36 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
     }
   }
 
-  const [ownPerfBlock, refCreatorsBlock, libraryContext] = await Promise.all([
-    buildOwnPerformancePromptBlock(tenantId),
-    buildReferencePatternsPromptBlock(tenantId),
-    resolveContentContext({
-      tenantId,
-      query: [theme, productName, customerPain, postObjective].filter(Boolean).join(" "),
-      productIds: productId && productSource === "catalog" ? [productId] : [],
-      limit: 8,
-    }),
-  ]);
+  const [ownPerfBlock, refCreatorsBlock, libraryContext] = plannerContext
+    ? ["", "", { promptBlock: "", sources: [] as Array<Record<string, unknown>> }] as const
+    : await Promise.all([
+        buildOwnPerformancePromptBlock(tenantId),
+        buildReferencePatternsPromptBlock(tenantId),
+        resolveContentContext({
+          tenantId,
+          query: [theme, productName, customerPain, postObjective].filter(Boolean).join(" "),
+          productIds: productId && productSource === "catalog" ? [productId] : [],
+          limit: 8,
+        }),
+      ]);
+
+  if (plannerContext) {
+    productName = plannerContext.campaign.produtoServico || productName;
+  }
+
   const strategy = {
     customerPain: customerPain ?? undefined,
-    postObjective: postObjective ?? undefined,
+    postObjective: plannerContext?.campaign.objetivo ?? postObjective ?? undefined,
     voiceTone: voiceTone ?? undefined,
-    desiredCta: desiredCta ?? undefined,
-    referencePatterns: [libraryContext.promptBlock, ownPerfBlock, refCreatorsBlock].filter(Boolean).join("\n\n"),
+    desiredCta: plannerContext?.campaign.oferta ?? desiredCta ?? undefined,
+    referencePatterns: plannerContext
+      ? [
+          `Campanha validada: ${plannerContext.campaign.nome}`,
+          `Produto/serviço validado: ${plannerContext.campaign.produtoServico}`,
+          `Público validado: ${plannerContext.campaign.publico}`,
+          `Mensagem central validada: ${plannerContext.campaign.mensagemCentral}`,
+        ].join("\n")
+      : [libraryContext.promptBlock, ownPerfBlock, refCreatorsBlock].filter(Boolean).join("\n\n"),
   };
 
   let result: { result: { variations: unknown[] }; tokensUsed: number };
@@ -288,7 +329,23 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
     }
   }
 
-  const finalResult = result.result;
+  const finalResult = plannerContext
+    ? {
+        ...result.result,
+        contextAudit: {
+          source: "validated-media-plan",
+          tenantId,
+          mediaPlanId: plannerContext.mediaPlanId,
+          campaignId: plannerContext.campaignId,
+          calendarItemId: plannerContext.calendarItemId,
+          campaignName: plannerContext.campaign.nome,
+          productName: plannerContext.campaign.produtoServico,
+          allowedSources: ["business_profile", "validated_media_plan_campaign"],
+          blockedBroadSources: ["content_context_library", "own_performance_examples", "reference_creators"],
+          validatedAt: new Date().toISOString(),
+        },
+      }
+    : result.result;
 
   let saved: typeof contentGenerationsTable.$inferSelect | undefined;
   try {
