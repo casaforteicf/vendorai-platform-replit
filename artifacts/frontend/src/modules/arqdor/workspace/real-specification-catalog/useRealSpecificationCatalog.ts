@@ -189,11 +189,11 @@ export function useRealSpecificationCatalog(
         return null;
       }
 
-      await saveObject(object.id, { status: "sent-to-budget" } as any);
+      await loadSpecObjects();
       setSendingToBudget(false);
       return result.data || null;
     },
-    [saveObject],
+    [loadSpecObjects],
   );
 
   return {
