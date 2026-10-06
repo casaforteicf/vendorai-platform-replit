@@ -6,6 +6,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import type { ArqProjectState } from '../../hooks/useArqProject'
 import { PHX } from '../../shared/arqdor-theme'
+import { validateArqdorImport, type ArqdorImportKind } from '../../shared/import-guard'
 
 // ─── CSS ───────────────────────────────────────────────────────────────────────
 const CSS = `
@@ -120,25 +121,47 @@ function StepCard({ step, active, completed, onClick }: { step:Step; active:bool
 }
 
 // ─── Upload zone ───────────────────────────────────────────────────────────────
-function UploadZone({ onNavigate, onFile }: { onNavigate: NavFn; onFile: (file: File) => void }) {
+function UploadZone({
+  onNavigate,
+  onFile,
+}: {
+  onNavigate: NavFn
+  onFile: (file: File, kind: ArqdorImportKind) => void
+}) {
   const [dragging, setDragging] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [activeKind, setActiveKind] = useState<ArqdorImportKind>('reference')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [acceptStr, setAcceptStr] = useState('image/*,.pdf')
+
+  const acceptFile = useCallback((file: File, kind: ArqdorImportKind) => {
+    const result = validateArqdorImport(file, kind)
+    if (!result.ok) {
+      setError(result.message)
+      return
+    }
+    setError(null)
+    onFile(file, result.kind)
+    onNavigate('renders')
+  }, [onFile, onNavigate])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setDragging(false)
     const file = e.dataTransfer.files[0]
-    if (file) { onFile(file); onNavigate('renders') }
-  }, [onFile, onNavigate])
+    if (file) acceptFile(file, activeKind)
+  }, [acceptFile, activeKind])
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
-    if (file) { onFile(file); onNavigate('renders') }
+    if (file) acceptFile(file, activeKind)
+    e.currentTarget.value = ''
   }
 
   function handleUploadClick(opt: typeof UPLOAD_OPTS[0]) {
     setAcceptStr(opt.accept)
+    setActiveKind(opt.id === 'planta' ? 'floorplan' : opt.id === 'foto' ? 'photo' : opt.id === 'pdf' ? 'pdf' : 'reference')
+    setError(null)
     setTimeout(() => fileInputRef.current?.click(), 50)
   }
 
@@ -199,6 +222,16 @@ function UploadZone({ onNavigate, onFile }: { onNavigate: NavFn; onFile: (file: 
           <p style={{ margin:0, fontSize:10, color:PHX.dim }}>
             PNG · JPG · WEBP · PDF
           </p>
+          {error && (
+            <div style={{ margin:'12px auto 0', maxWidth:520, padding:'9px 12px', borderRadius:9, border:'1px solid #fecaca', background:'#fff1f2', color:'#be123c', fontSize:11, fontWeight:600 }}>
+              {error}
+            </div>
+          )}
+          {activeKind === 'floorplan' && !error && (
+            <div style={{ margin:'12px auto 0', maxWidth:560, padding:'10px 12px', borderRadius:9, border:'1px solid #fde68a', background:'#fffbeb', color:'#92400e', fontSize:11, lineHeight:1.45 }}>
+              Planta: o arquivo será tratado como referência arquitetônica. A geometria não deve ser alterada automaticamente sem conferência e, quando a escala não for segura, será necessária calibração por uma medida real.
+            </div>
+          )}
         </>
       )}
     </div>
@@ -357,7 +390,13 @@ export function ProjectHomePhoenix({
   const [selectedStyle, setSelectedStyle] = useState<string | null>(null)
   const [showProjects, setShowProjects] = useState(false)
   const [showProgress, setShowProgress] = useState(false)
-  const [droppedFile,  setDroppedFile]  = useState<File | null>(null)
+  const [droppedFile, setDroppedFile] = useState<File | null>(null)
+  const [droppedKind, setDroppedKind] = useState<ArqdorImportKind | null>(null)
+
+  const handleImportedFile = useCallback((file: File, kind: ArqdorImportKind) => {
+    setDroppedFile(file)
+    setDroppedKind(kind)
+  }, [])
 
   const hasProject  = !!arqState.projectId && !arqState.loading
   const projectName = arqState.projectMeta?.titulo ?? null
@@ -445,12 +484,15 @@ export function ProjectHomePhoenix({
 
       {/* ── UPLOAD ZONE ──────────────────────────────────────────────── */}
       <div className="phx-section" style={{ padding:'0 48px 20px', animationDelay:'.1s' }}>
-        <UploadZone onNavigate={onNavigate} onFile={setDroppedFile} />
+        <UploadZone onNavigate={onNavigate} onFile={handleImportedFile} />
         {droppedFile && (
           <div style={{ marginTop:8, padding:'8px 14px', borderRadius:8, background:`${PHX.green}10`, border:`1px solid ${PHX.green}25`, display:'flex', alignItems:'center', gap:8 }}>
             <span style={{ color:PHX.green }}>✓</span>
             <span style={{ fontSize:11, color:PHX.text }}>
-              Arquivo <strong>{droppedFile.name}</strong> carregado — indo para o módulo de renders
+              Arquivo <strong>{droppedFile.name}</strong> carregado
+              {droppedKind === 'floorplan'
+                ? ' como planta de referência — revisar escala/geometria antes de aplicar'
+                : ' como referência visual — indo para o módulo de renders'}
             </span>
           </div>
         )}
