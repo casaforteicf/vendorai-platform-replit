@@ -1,4 +1,5 @@
 import { Router, type IRouter, type Request } from "express";
+import { requestCanAccessLockedObject, syncProtectedObjectsForLead } from "../lib/attachment-folder-access.js";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod/v4";
@@ -3090,10 +3091,17 @@ router.get("/work-cards/:id/attachments", async (req, res) => {
     res.status(403).json({ error: "Este card pertence a outro responsável" });
     return;
   }
+  if (card.leadId) await syncProtectedObjectsForLead(card.tenantId, card.leadId);
   const attachments = await db.select().from(workCardAttachmentsTable)
     .where(eq(workCardAttachmentsTable.workCardId, card.id))
     .orderBy(desc(workCardAttachmentsTable.createdAt));
-  res.json(attachments);
+  const visibleAttachments = [];
+  for (const attachment of attachments) {
+    if (await requestCanAccessLockedObject(req, card.tenantId, attachment.url)) {
+      visibleAttachments.push(attachment);
+    }
+  }
+  res.json(visibleAttachments);
 });
 
 router.post("/work-cards/:id/attachments", async (req, res) => {
@@ -3142,6 +3150,7 @@ router.post("/work-cards/:id/attachments", async (req, res) => {
     });
   }
 
+  if (card.leadId) await syncProtectedObjectsForLead(card.tenantId, card.leadId);
   res.status(201).json(attachment);
 });
 

@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { requestCanAccessLockedObject, syncProtectedObjectsForLead } from "../lib/attachment-folder-access.js";
 import { and, desc, eq } from "drizzle-orm";
 import {
   db,
@@ -242,7 +243,21 @@ router.get("/tenants/:tenantId/media/assets", async (req, res) => {
     .orderBy(desc(mediaAssetsTable.createdAt))
     .limit(limit);
 
-  res.json({ assets: await withAccessUrls(assets) });
+  const leadIds = [...new Set(assets.map((asset) => {
+    const metadata = asset.metadata && typeof asset.metadata === "object" && !Array.isArray(asset.metadata)
+      ? asset.metadata as Record<string, unknown>
+      : {};
+    return typeof metadata["leadId"] === "string" ? metadata["leadId"] : "";
+  }).filter(Boolean))];
+  for (const leadId of leadIds) await syncProtectedObjectsForLead(tenantId, leadId);
+
+  const visibleAssets = [];
+  for (const asset of assets) {
+    if (await requestCanAccessLockedObject(req, tenantId, asset.storageUrl)) {
+      visibleAssets.push(asset);
+    }
+  }
+  res.json({ assets: await withAccessUrls(visibleAssets) });
 });
 
 router.post("/tenants/:tenantId/media/assets/request-upload", async (req, res) => {
@@ -447,6 +462,9 @@ router.post("/tenants/:tenantId/media/assets", async (req, res) => {
       .where(and(eq(mediaProjectsTable.id, projectId), eq(mediaProjectsTable.tenantId, tenantId)));
   }
 
+  const assetMetadata = asRecord(asset?.metadata);
+  const leadIdFromMetadata = nonEmptyString(assetMetadata["leadId"]);
+  if (leadIdFromMetadata) await syncProtectedObjectsForLead(tenantId, leadIdFromMetadata);
   res.status(201).json({ asset, version });
 });
 

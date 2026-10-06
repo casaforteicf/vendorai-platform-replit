@@ -258,3 +258,5 @@ export * from "./installation_checklists";
 export * from "./tenant_custom_integrations";
 
 export * from "./tenant_commercial_partnerships";
+
+export * from "./attachment_folder_locks";

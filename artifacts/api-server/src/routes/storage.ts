@@ -6,6 +6,7 @@ import {
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { verifyToken } from "../lib/jwt.js";
 import { pool } from "@workspace/db";
+import { requestCanAccessLockedObject } from "../lib/attachment-folder-access.js";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -236,6 +237,11 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
     const objectPath = `/objects/${wildcardPath}`;
     if (!(await requireStorageObjectAccess(req, res, objectPath))) return;
+    const tenantId = String((req as any).user?.tenantId ?? "");
+    if (!(await requestCanAccessLockedObject(req, tenantId, objectPath))) {
+      res.status(423).json({ error: "Pasta protegida. Desbloqueie a pasta para acessar este arquivo." });
+      return;
+    }
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
     const objectResponse = await objectStorageService.downloadObject(objectFile, 3600);
 
