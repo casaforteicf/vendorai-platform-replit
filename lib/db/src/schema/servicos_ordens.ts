@@ -50,6 +50,17 @@ export type ServicoHistoricoItem = {
   dados?: Record<string, unknown>;
 };
 
+export type ServicoCampoValor = {
+  id: string;
+  label: string;
+  tipo: "text" | "textarea" | "number" | "date" | "select" | "checkbox" | "file";
+  valor: string | number | boolean | string[] | null;
+  obrigatorio: boolean;
+  placeholder?: string | null;
+  opcoes?: string[];
+  visibilidade?: "interno" | "cliente" | "cliente_parceiro";
+};
+
 // A OS é o documento e também a unidade executável da pipeline.
 // Cada passo do checklist guarda evidência, executor e horário; a conclusão
 // dos passos obrigatórios pode avançar automaticamente a ordem.
@@ -81,6 +92,7 @@ export const servicosOrdensTable = pgTable("servicos_ordens", {
   fotosDepois:         jsonb("fotos_depois").$type<string[]>(),
   checklistExecucao:   jsonb("checklist_execucao").$type<ServicoChecklistItem[]>().notNull().default([]),
   historicoExecucao:   jsonb("historico_execucao").$type<ServicoHistoricoItem[]>().notNull().default([]),
+  camposPersonalizados: jsonb("campos_personalizados").$type<ServicoCampoValor[]>().notNull().default([]),
   clienteAcompanha:    boolean("cliente_acompanha").notNull().default(true),
   compartilharStatusCliente: boolean("compartilhar_status_cliente").notNull().default(true),
   portalToken:          text("portal_token"),
@@ -121,6 +133,7 @@ export const insertServicosOrdemSchema = createInsertSchema(servicosOrdensTable,
   fotosDepois: z.array(z.string()).optional(),
   checklistExecucao: z.array(z.any()).optional(),
   historicoExecucao: z.array(z.any()).optional(),
+  camposPersonalizados: z.array(z.any()).optional(),
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const updateServicosOrdemSchema = createSelectSchema(servicosOrdensTable, {
@@ -132,6 +145,7 @@ export const updateServicosOrdemSchema = createSelectSchema(servicosOrdensTable,
   fotosDepois: z.array(z.string()).optional(),
   checklistExecucao: z.array(z.any()).optional(),
   historicoExecucao: z.array(z.any()).optional(),
+  camposPersonalizados: z.array(z.any()).optional(),
 })
   .omit({ id: true, tenantId: true, createdAt: true, updatedAt: true })
   .partial();
