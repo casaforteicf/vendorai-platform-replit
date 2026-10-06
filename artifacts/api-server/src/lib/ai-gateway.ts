@@ -525,6 +525,93 @@ export async function callOpenAI(
   };
 }
 
+
+
+// ── OpenAI document/file extraction ─────────────────────────────────────────
+// Used when a document cannot be represented faithfully as plain text (for
+// example, scanned PDFs). The call remains inside the AI Gateway so quota,
+// BYOK resolution and usage logging are preserved.
+export async function callOpenAIFileExtraction(
+  tenantId: string,
+  feature: AiFeature,
+  file: { buffer: Buffer; mimeType: string; filename: string },
+  instruction: string,
+  options: { model?: string; maxTokens?: number; log?: Logger } = {},
+): Promise<{ content: string; inputTokens: number; outputTokens: number; costUsd: number; usedByok: boolean }> {
+  const model = resolveTextModel({
+    tenantId,
+    feature,
+    requestedModel: options.model ?? "gpt-4.1-mini",
+    legacyDefault: "gpt-4.1-mini",
+  });
+  const estimatedInputTokens = Math.ceil((instruction.length / 4) + Math.max(1500, file.buffer.length / 700));
+  const estimatedCost = estimateCost(model ?? "gpt-4.1-mini", estimatedInputTokens, options.maxTokens ?? 3500);
+  const quota = await checkQuota(tenantId, estimatedCost, options.log);
+  if (!quota.ok) {
+    throw new AiGatewayError(quota.reason, quota.httpStatus, quota.details);
+  }
+
+  const key = await resolveAIKey(tenantId, "openai");
+  const openai = new OpenAI({ apiKey: key.apiKey });
+  let response: any;
+  try {
+    response = await openai.responses.create({
+      model,
+      input: [{
+        role: "user",
+        content: [
+          {
+            type: "input_file",
+            filename: file.filename,
+            file_data: `data:${file.mimeType};base64,${file.buffer.toString("base64")}`,
+          },
+          { type: "input_text", text: instruction },
+        ],
+      }],
+      max_output_tokens: options.maxTokens ?? 3500,
+    } as any);
+  } catch (err: any) {
+    const errorMessage = err?.message ?? "OpenAI file extraction failed";
+    await logUsage({
+      tenantId,
+      provider: "openai",
+      model: model ?? "unknown",
+      feature,
+      inputTokens: estimatedInputTokens,
+      outputTokens: 0,
+      costEstimateUsd: estimateCost(model ?? "unknown", estimatedInputTokens, 0),
+      usedByok: key.usedByok,
+      success: false,
+      errorMessage,
+    });
+    throw err;
+  }
+
+  const inputTokens = Number(response?.usage?.input_tokens ?? estimatedInputTokens);
+  const outputTokens = Number(response?.usage?.output_tokens ?? 0);
+  const costUsd = estimateCost(model ?? "unknown", inputTokens, outputTokens);
+  await logUsage({
+    tenantId,
+    provider: "openai",
+    model: model ?? "unknown",
+    feature,
+    inputTokens,
+    outputTokens,
+    costEstimateUsd: costUsd,
+    usedByok: key.usedByok,
+    success: true,
+  });
+  if (!key.usedByok) await incrementDailySpend(tenantId, costUsd);
+
+  return {
+    content: String(response?.output_text ?? ""),
+    inputTokens,
+    outputTokens,
+    costUsd,
+    usedByok: key.usedByok,
+  };
+}
+
 // ── Unified Anthropic call ────────────────────────────────────────────────────
 
 export async function callAnthropic(

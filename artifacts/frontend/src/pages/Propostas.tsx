@@ -3320,8 +3320,11 @@ function newFreeItem(): FreeItem {
       quantidade: number;
       valorUnitario: number;
       valorTotal?: number;
+      valorTotalOriginal?: number;
       etapaNome?: string;
       observacoes?: string;
+      requiresReview?: boolean;
+      reviewReasons?: string[];
     }>>([]);
     const [importUploading, setImportUploading] = useState(false);
     const [importAnalyzing, setImportAnalyzing] = useState(false);
@@ -3404,22 +3407,30 @@ function newFreeItem(): FreeItem {
             const quantidade = Number(item.quantidade);
             const valorLinha = Number(item.valorTotal);
             const valorUnitarioOriginal = Number(item.valorUnitario);
-            const safeQuantidade = Number.isFinite(quantidade) && quantidade > 0 ? quantidade : 1;
-            const safeUnitario = Number.isFinite(valorUnitarioOriginal) && valorUnitarioOriginal >= 0
-              ? valorUnitarioOriginal
-              : Number.isFinite(valorLinha) && valorLinha >= 0
-                ? valorLinha / safeQuantidade
-                : 0;
+            const quantidadeValida = item.quantidade != null && Number.isFinite(quantidade) && quantidade > 0;
+            const unitarioValido = item.valorUnitario != null && Number.isFinite(valorUnitarioOriginal) && valorUnitarioOriginal >= 0;
+            const valorLinhaValido = item.valorTotal != null && Number.isFinite(valorLinha) && valorLinha >= 0;
+            const reviewReasons = [
+              !quantidadeValida ? "Quantidade não identificada no documento" : "",
+              !unitarioValido ? "Valor unitário não identificado no documento" : "",
+              !item.unidade?.trim() ? "Unidade não identificada no documento" : "",
+            ].filter(Boolean);
+
             return {
               codigo: item.codigo?.trim() || undefined,
               nome: item.descricao!.trim(),
               descricao: item.descricao!.trim(),
               unidade: item.unidade?.trim() || undefined,
-              quantidade: roundBudgetNumber(safeQuantidade),
-              valorUnitario: roundBudgetNumber(safeUnitario),
-              valorTotal: Number.isFinite(valorLinha) && valorLinha >= 0 ? roundBudgetNumber(valorLinha) : undefined,
+              // Importação rigorosa: nunca inventar quantidade=1 nem derivar
+              // unitário silenciosamente a partir do total da linha.
+              quantidade: quantidadeValida ? roundBudgetNumber(quantidade) : 0,
+              valorUnitario: unitarioValido ? roundBudgetNumber(valorUnitarioOriginal) : 0,
+              valorTotal: valorLinhaValido ? roundBudgetNumber(valorLinha) : undefined,
+              valorTotalOriginal: valorLinhaValido ? roundBudgetNumber(valorLinha) : undefined,
               etapaNome: item.etapa?.trim() || item.grupo?.trim() || undefined,
               observacoes: item.observacoes?.trim() || undefined,
+              requiresReview: reviewReasons.length > 0,
+              reviewReasons,
             };
           });
 
@@ -3468,6 +3479,10 @@ function newFreeItem(): FreeItem {
 
         if (normalizedItems.length === 0) {
           setImportError("O arquivo foi lido, mas nenhum item estruturado foi identificado. Revise o documento antes de confirmar.");
+        } else if (normalizedItems.some((item) => item.requiresReview)) {
+          setImportError("Há informações que não puderam ser identificadas com segurança. Os campos foram mantidos sem valor inventado e precisam ser conferidos antes de concluir.");
+        } else if (!(Number.isFinite(extractedTotal) && extractedTotal > 0)) {
+          setImportError("O documento não informou um total geral com segurança. O valor exibido foi calculado apenas para conferência e deve ser validado.");
         } else {
           toast({
             title: `${normalizedItems.length} item${normalizedItems.length === 1 ? "" : "s"} reconstruído${normalizedItems.length === 1 ? "" : "s"} do documento`,
@@ -3484,19 +3499,26 @@ function newFreeItem(): FreeItem {
     }
 
     function updateImportedItem(index: number, patch: Partial<(typeof importItens)[number]>) {
-      setImportItens((current) => {
-        const next = current.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item);
-        setImportValorTotal(roundBudgetNumber(next.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0)));
-        return next;
-      });
+      setImportItens((current) =>
+        current.map((item, itemIndex) => {
+          if (itemIndex !== index) return item;
+          const next = { ...item, ...patch };
+          const reviewReasons = [
+            !(Number.isFinite(next.quantidade) && next.quantidade > 0) ? "Quantidade precisa ser conferida" : "",
+            !(Number.isFinite(next.valorUnitario) && next.valorUnitario >= 0) ? "Valor unitário precisa ser conferido" : "",
+            !next.unidade?.trim() ? "Unidade precisa ser conferida" : "",
+          ].filter(Boolean);
+          return { ...next, requiresReview: reviewReasons.length > 0, reviewReasons };
+        })
+      );
+      // O total original do documento é independente da soma editável dos itens.
+      // Não o recalculamos silenciosamente ao editar uma linha importada.
     }
 
     function removeImportedItem(index: number) {
-      setImportItens((current) => {
-        const next = current.filter((_, itemIndex) => itemIndex !== index);
-        setImportValorTotal(roundBudgetNumber(next.reduce((sum, item) => sum + item.quantidade * item.valorUnitario, 0)));
-        return next;
-      });
+      setImportItens((current) => current.filter((_, itemIndex) => itemIndex !== index));
+      // Preservar o total original do documento; remover uma linha da prévia
+      // não altera automaticamente o valor total importado.
     }
 
     function saveDraftAndContinue() {
@@ -4405,6 +4427,13 @@ function newFreeItem(): FreeItem {
 
     if (mode === "importar") {
       if (!importValorTotal || importValorTotal <= 0) { setImportError("Informe o valor total do orçamento."); return; }
+      const unresolvedImportedItem = importItens.find((item) =>
+        item.requiresReview || item.quantidade <= 0 || item.valorUnitario < 0 || !item.unidade?.trim()
+      );
+      if (unresolvedImportedItem) {
+        setImportError(`Revise o item “${unresolvedImportedItem.nome}” antes de concluir. Nenhuma informação ausente será presumida automaticamente.`);
+        return;
+      }
       setImportError("");
       const paymentCompImport = vals.paymentCompositions?.filter((pc) => pc.forma && pc.valor > 0);
       createLivreMut.mutate(
@@ -4434,6 +4463,10 @@ function newFreeItem(): FreeItem {
                     descricao: item.descricao || undefined,
                     unidade: item.unidade || undefined,
                     precoAplicado: roundBudgetNumber(item.valorUnitario),
+                    pricingConfig: {
+                      importedDocumentLineTotal: item.valorTotalOriginal,
+                      importedDocumentNotes: item.observacoes,
+                    },
                   },
                 }))
               : [{ nome: "Orçamento importado de outro sistema", quantidade: 1, valorUnitario: importValorTotal }],
@@ -6129,6 +6162,7 @@ function newFreeItem(): FreeItem {
                             <TableHead className="w-24">Un.</TableHead>
                             <TableHead className="w-28">Qtd.</TableHead>
                             <TableHead className="w-40">Valor unit.</TableHead>
+                            <TableHead className="w-36">Total original</TableHead>
                             <TableHead className="w-24"></TableHead>
                           </TableRow>
                         </TableHeader>
@@ -6157,9 +6191,17 @@ function newFreeItem(): FreeItem {
                               </TableCell>
                               <TableCell>
                                 <BudgetMoneyInput
-                                  value={item.valorUnitario}
+                                  value={item.valorUnitario || undefined}
                                   onChange={(value) => updateImportedItem(index, { valorUnitario: value ?? 0 })}
                                 />
+                              </TableCell>
+                              <TableCell className="text-sm">
+                                {item.valorTotalOriginal !== undefined ? fmtCurrency(item.valorTotalOriginal) : "—"}
+                                {item.requiresReview && (
+                                  <p className="mt-1 text-[11px] text-destructive">
+                                    {item.reviewReasons?.join(" · ")}
+                                  </p>
+                                )}
                               </TableCell>
                               <TableCell>
                                 <Button type="button" variant="ghost" size="sm" onClick={() => removeImportedItem(index)}>

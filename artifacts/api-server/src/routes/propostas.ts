@@ -737,11 +737,13 @@ router.post("/propostas", async (req, res) => {
       ...parsed.data,
       itens: itensNormalizados,
       apresentacao: mergeBudgetPresentationSnapshot(parsed.data.apresentacao, sourceSnapshot),
-      ...(calculatedItemsTotal !== null
-        ? { valorTotal: calculatedItemsTotal.toFixed(2) }
-        : parsed.data.valorTotal !== undefined && parsed.data.valorTotal !== null
-          ? { valorTotal: roundOrcamentoNumber(parsed.data.valorTotal).toFixed(2) }
-          : {}),
+      ...(parsed.data.arquivoImportadoUrl && parsed.data.valorTotal !== undefined && parsed.data.valorTotal !== null
+        ? { valorTotal: roundOrcamentoNumber(parsed.data.valorTotal).toFixed(2) }
+        : calculatedItemsTotal !== null
+          ? { valorTotal: calculatedItemsTotal.toFixed(2) }
+          : parsed.data.valorTotal !== undefined && parsed.data.valorTotal !== null
+            ? { valorTotal: roundOrcamentoNumber(parsed.data.valorTotal).toFixed(2) }
+            : {}),
       ...(parsed.data.valorMensal !== undefined && parsed.data.valorMensal !== null
         ? { valorMensal: roundOrcamentoNumber(parsed.data.valorMensal).toFixed(2) }
         : {}),

@@ -1,6 +1,6 @@
 import pdfParse from "pdf-parse";
 import mammoth from "mammoth";
-import { callOpenAI as gatewayCallOpenAI } from "./ai-gateway.js";
+import { callOpenAI as gatewayCallOpenAI, callOpenAIFileExtraction } from "./ai-gateway.js";
 import { z } from "zod/v4";
 
 // ─── Quote / Budget extraction ────────────────────────────────────────────────
@@ -200,8 +200,13 @@ Formato:
 Validação:
 - valorTotal e demais valores monetários devem ser números sem símbolo de moeda e sem separador de milhar.
 - Se houver desconto, valorTotal deve refletir o total final apresentado no documento.
-- Se valorUnitario estiver ausente mas quantidade e valorTotal existirem, não invente o unitário.
+- Se valorUnitario estiver ausente mas quantidade e valorTotal existirem, NÃO calcule nem invente o unitário; deixe null.
 - Se quantidade estiver ausente, deixe null em vez de assumir 1.
+- Se unidade estiver ausente, deixe null; nunca deduza a unidade pelo tipo do produto.
+- Não corrija, normalize, resuma ou reescreva descrições comerciais.
+- Preserve a ordem em que os itens aparecem no documento.
+- Se subtotal/total da linha divergir da multiplicação matemática, preserve o valor apresentado no documento e não "corrija" silenciosamente.
+- Qualquer informação relevante sem campo próprio deve ser colocada em informacoesAdicionais; nunca descarte conteúdo.
 - confianca deve ser um número entre 0 e 1 indicando a confiança geral da reconstrução.
 `;
 
@@ -210,15 +215,56 @@ export async function extractQuoteData(
   tenantId: string
 ): Promise<QuoteExtractionResult> {
   const texts: string[] = [];
+  const scannedPdfs: Array<{ buffer: Buffer; mimeType: string; originalName: string }> = [];
 
   for (const file of files) {
     try {
       const text = await extractTextFromBuffer(file.buffer, file.mimeType, file.originalName, tenantId);
       if (text.trim().length > 20) {
         texts.push(`=== ${file.originalName} ===\n${text.trim()}`);
+      } else if (file.mimeType === "application/pdf" || file.originalName.toLowerCase().endsWith(".pdf")) {
+        scannedPdfs.push(file);
       }
     } catch {
-      // skip unreadable files
+      if (file.mimeType === "application/pdf" || file.originalName.toLowerCase().endsWith(".pdf")) {
+        scannedPdfs.push(file);
+      }
+    }
+  }
+
+  // PDF escaneado/sem camada de texto: enviar o arquivo original ao modelo com
+  // suporte nativo a PDF. Nunca preencher lacunas por suposição.
+  if (texts.length === 0 && scannedPdfs.length === 1) {
+    const file = scannedPdfs[0];
+    const visual = await callOpenAIFileExtraction(
+      tenantId,
+      "document_extraction",
+      { buffer: file.buffer, mimeType: file.mimeType || "application/pdf", filename: file.originalName },
+      QUOTE_EXTRACTION_SYSTEM_PROMPT + "\n\nAnalise o PDF visualmente página por página. Não presuma dados ausentes. Preserve a ordem original dos itens e retorne somente o JSON.",
+      { model: "gpt-4.1-mini", maxTokens: 5000 },
+    );
+    const cleaned = visual.content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+    try {
+      return quoteExtractionResultSchema.parse(JSON.parse(cleaned || "{}"));
+    } catch {
+      return { confianca: 0, informacoesAdicionais: ["PDF visual processado, mas a estrutura retornada precisa de conferência manual."] };
+    }
+  }
+
+  // Em importações compostas, incorpora a extração visual como contexto
+  // estruturado para que o consolidado final preserve todos os documentos.
+  for (const file of scannedPdfs) {
+    try {
+      const visual = await callOpenAIFileExtraction(
+        tenantId,
+        "document_extraction",
+        { buffer: file.buffer, mimeType: file.mimeType || "application/pdf", filename: file.originalName },
+        QUOTE_EXTRACTION_SYSTEM_PROMPT + "\n\nAnalise o PDF visualmente página por página. Preserve todos os itens e informações sem inventar campos.",
+        { model: "gpt-4.1-mini", maxTokens: 5000 },
+      );
+      if (visual.content.trim()) texts.push(`=== ${file.originalName} (extração visual estruturada) ===\n${visual.content.trim()}`);
+    } catch {
+      texts.push(`=== ${file.originalName} ===\n[PDF sem camada de texto; leitura visual indisponível. Exigir conferência manual.]`);
     }
   }
 
