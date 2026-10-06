@@ -11,6 +11,14 @@ export interface AutomaticChangelogEntry {
 // A edição manual continua disponível para comunicados que não nascem de uma entrega.
 export const automaticChangelogEntries: AutomaticChangelogEntry[] = [
   {
+    "id": "pr-3160",
+    "titulo": "Assistência: importar pedido antigo com itens e arquivo original",
+    "descricao": "adiciona a opção de importar pedido antigo na abertura de chamados de assistência; reutiliza a extração documental para PDF, imagem e Word; exibe prévia dos dados extraídos; permite selecionar os itens/produtos afetados; preserva a estrutura importada e vincula o arquivo original ao chamado para auditoria.",
+    "tipo": "melhoria",
+    "publicadoEm": "2026-10-06T19:17:24.000Z",
+    "pullRequest": 3160
+  },
+  {
     "id": "pr-1412",
     "titulo": "índice persistente de inteligência visual",
     "descricao": "adiciona **Media Intelligence Index** ao fluxo do Graphic Design Director; indexa fotos e vídeos da Biblioteca com sinais determinísticos de pixels e metadados existentes; persiste o resultado em `metadata.mediaIntelligence`, estrutura já consumida pelo `media-retrieval-director`; registra dimensões/orientação, grid de atividade, luminância, contraste, detalhe, ponto focal, espaço livre, paleta dominante, qualidade visual, crops 9:16/4:5/1:1/16:9 e tags pesquisáveis;",
