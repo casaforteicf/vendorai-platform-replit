@@ -49,8 +49,19 @@ export function BudgetItemsTable({
               >
                 <td className="px-4 py-4">
                   <button type="button" onClick={() => onSelect(item)} className="text-left">
-                    <p className="font-medium text-[var(--arq-foreground)]">{item.item}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium text-[var(--arq-foreground)]">{item.item}</p>
+                      {item.specificationOutdated ? (
+                        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800">Revisar especificação</span>
+                      ) : null}
+                    </div>
                     <p className="mt-1 text-xs text-[var(--arq-muted)]">{item.description || item.productName || item.materialName || "-"}</p>
+                    {item.specificationOutdated ? (
+                      <p className="mt-1 text-[11px] font-medium text-amber-700">
+                        {item.specificationImpact === "removed" ? "Item removido do projeto." : item.specificationImpact === "quantity_changed" ? "Quantidade alterada no projeto." : "Geometria alterada no projeto."}
+                        {item.specificationRevision ? ` Revisão ${item.specificationRevision}.` : ""}
+                      </p>
+                    ) : null}
                   </button>
                 </td>
                 <td className="px-4 py-4 text-[var(--arq-muted)]">{item.quantity}</td>
