@@ -292,6 +292,16 @@ function buildProjectElements(concept: any): { revision: string; elements: Proje
   const openings = Array.isArray(master?.customOpenings) ? master.customOpenings : Array.isArray(configuration?.customOpenings) ? configuration.customOpenings : [];
   const objects = Array.isArray(master?.objects) ? master.objects : Array.isArray(configuration?.objects) ? configuration.objects : [];
   const wallMaterials = master?.wallMaterials || configuration?.wallMaterials || {};
+  const wallHeightM = Number(configuration?.wallHeight ?? master?.wallHeight ?? 2.8);
+  const openingAreaByWall = new Map<string, number>();
+  for (const opening of openings) {
+    const wallId = String(opening?.wallId || "");
+    if (!wallId) continue;
+    const width = Number(opening?.width || 0);
+    const height = Number(opening?.height || 0);
+    const area = width > 0 && height > 0 ? width * height : 0;
+    openingAreaByWall.set(wallId, (openingAreaByWall.get(wallId) || 0) + area);
+  }
   const elements: ProjectSpecElement[] = [];
 
   for (const room of rooms) {
@@ -334,16 +344,38 @@ function buildProjectElements(concept: any): { revision: string; elements: Proje
     const x1 = Number(wall?.x1 || 0), y1 = Number(wall?.y1 || 0);
     const x2 = Number(wall?.x2 || 0), y2 = Number(wall?.y2 || 0);
     const lengthM = round(Math.hypot(x2 - x1, y2 - y1));
+    const grossAreaM2 = round(lengthM * wallHeightM);
+    const openingAreaM2 = round(openingAreaByWall.get(String(wall.id)) || 0);
+    const netAreaM2 = round(Math.max(0, grossAreaM2 - openingAreaM2));
+
     elements.push({
       sourceObjectId: `wall:${wall.id}`,
       name: `Parede ${wall.id}`,
-      description: "Parede originada da geometria do projeto. Área depende da altura/pé-direito técnico.",
+      description: "Elemento linear de parede originado da geometria do projeto.",
       category: "parede",
       region: `Pavimento ${Number(wall?.floor || 0) + 1}`,
       quantity: lengthM,
       unit: "m",
       lengthMm: round(lengthM * 1000, 1),
+      heightMm: round(wallHeightM * 1000, 1),
       depthMm: wall?.thickness != null ? round(Number(wall.thickness) * 1000, 1) : null,
+      areaM2: grossAreaM2,
+      materialName: wallMaterials?.[wall.id] || null,
+    });
+
+    elements.push({
+      sourceObjectId: `surface:${wall.id}:net`,
+      name: `Revestimento/Pintura — Parede ${wall.id}`,
+      description: openingAreaM2 > 0
+        ? `Área líquida da parede: ${grossAreaM2} m² brutos menos ${openingAreaM2} m² de vãos.`
+        : `Área líquida da parede sem vãos descontáveis: ${grossAreaM2} m².`,
+      category: "superficie_parede",
+      region: `Pavimento ${Number(wall?.floor || 0) + 1}`,
+      quantity: netAreaM2,
+      unit: "m²",
+      lengthMm: round(lengthM * 1000, 1),
+      heightMm: round(wallHeightM * 1000, 1),
+      areaM2: netAreaM2,
       materialName: wallMaterials?.[wall.id] || null,
     });
   }
