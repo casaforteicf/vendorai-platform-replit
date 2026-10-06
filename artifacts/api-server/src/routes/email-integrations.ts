@@ -94,6 +94,20 @@ router.get("/tenants/:tenantId/email-connections", authenticate, async (req, res
   return res.json({ connections: await listEmailConnections(tenantId) });
 });
 
+router.get("/tenants/:tenantId/email-connections/availability", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  return res.json({
+    google: emailProviderAvailability("google"),
+    microsoft: emailProviderAvailability("microsoft"),
+    resend: {
+      apiConfigured: Boolean(process.env["RESEND_API_KEY"]),
+      webhookConfigured: Boolean(process.env["RESEND_WEBHOOK_SECRET"]),
+      configured: Boolean(process.env["RESEND_API_KEY"] && process.env["RESEND_WEBHOOK_SECRET"]),
+    },
+  });
+});
+
 router.get("/tenants/:tenantId/email-connections/:provider/auth-url", authenticate, async (req, res) => {
   const tenantId = String(req.params.tenantId); // tenant-audit: reviewed guarded immediately by authenticated same-tenant/super-admin access
   const selected = provider(req.params.provider);
