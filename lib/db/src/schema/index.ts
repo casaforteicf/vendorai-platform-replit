@@ -3,6 +3,7 @@ export * from "./tenants";
 export * from "./users";
 export * from "./leads";
 export * from "./crm_company_master";
+export * from "./crm_deal_participants";
 export * from "./conversations";
 export * from "./agent_actions_log";
 export * from "./consents";
