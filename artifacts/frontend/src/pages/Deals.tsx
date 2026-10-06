@@ -3437,6 +3437,10 @@ export default function Deals() {
                   >
                     Ver →
                   </Button>
+                  <AdminDeleteLeadButton
+                    leadId={deal.leadId}
+                    leadName={deal.leadId ? leadMap.get(deal.leadId) : deal.titulo}
+                  />
                 </div>
               </div>
               );
