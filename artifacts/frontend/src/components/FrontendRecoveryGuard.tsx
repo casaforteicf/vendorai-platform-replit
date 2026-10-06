@@ -156,6 +156,68 @@ function warmCriticalRoutes() {
   ]);
 }
 
+function installOrphanedModalOverlayGuard() {
+  const firstSeen = new WeakMap<Element, number>();
+
+  const isVisible = (element: Element) => {
+    if (!(element instanceof HTMLElement)) return false;
+    const style = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    return style.display !== "none"
+      && style.visibility !== "hidden"
+      && Number(style.opacity || "1") > 0
+      && rect.width > 8
+      && rect.height > 8;
+  };
+
+  const sweep = () => {
+    const overlays = Array.from(
+      document.querySelectorAll('[data-vendorai-modal-overlay="true"][data-state="open"]'),
+    );
+
+    if (overlays.length === 0) return;
+
+    const activeDialog = Array.from(
+      document.querySelectorAll('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]'),
+    ).some((element) => isVisible(element) && !element.hasAttribute("data-vendorai-modal-overlay"));
+
+    if (activeDialog) {
+      overlays.forEach((overlay) => firstSeen.delete(overlay));
+      return;
+    }
+
+    const now = Date.now();
+    overlays.forEach((overlay) => {
+      const seenAt = firstSeen.get(overlay) ?? now;
+      firstSeen.set(overlay, seenAt);
+      if (now - seenAt < 1_500) return;
+
+      console.warn("[VendorAI] Overlay modal órfão removido para evitar tela preta.");
+      overlay.remove();
+    });
+
+    const remainingOpenOverlays = document.querySelector(
+      '[data-vendorai-modal-overlay="true"][data-state="open"]',
+    );
+    const remainingDialog = document.querySelector(
+      '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]',
+    );
+
+    if (!remainingOpenOverlays && !remainingDialog && document.body.style.pointerEvents === "none") {
+      document.body.style.pointerEvents = "";
+    }
+  };
+
+  const interval = window.setInterval(sweep, 500);
+  const observer = new MutationObserver(sweep);
+  observer.observe(document.body, { childList: true, subtree: true });
+
+  return () => {
+    window.clearInterval(interval);
+    observer.disconnect();
+  };
+}
+
 export function FrontendRecoveryGuard() {
   const [stalled, setStalled] = useState(false);
   const [availableDeployment, setAvailableDeployment] = useState("");
@@ -164,6 +226,7 @@ export function FrontendRecoveryGuard() {
   useEffect(() => {
     void clearObsoleteFrontendState();
     warmCriticalRoutes();
+    const removeOrphanedModalGuard = installOrphanedModalOverlayGuard();
 
     const checkForAvailableDeployment = () => {
       if (document.visibilityState !== "visible" || isFrontendRefreshProtected()) return;
@@ -251,6 +314,7 @@ export function FrontendRecoveryGuard() {
       document.removeEventListener("visibilitychange", onVisibilityOrFocus);
       window.clearInterval(versionInterval);
       window.clearInterval(interval);
+      removeOrphanedModalGuard();
     };
   }, []);
 
