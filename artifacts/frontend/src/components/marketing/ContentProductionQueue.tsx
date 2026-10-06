@@ -358,6 +358,9 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editorDraft, setEditorDraft] = useState<CalendarItemDraft | null>(null);
+  const [contentFilter, setContentFilter] = useState<"all" | "ready" | "review" | "approved" | "published">("all");
+  const [selectedContentIds, setSelectedContentIds] = useState<string[]>([]);
+  const [batchApproving, setBatchApproving] = useState(false);
 
   const planRef = useRef<MediaPlan | null>(null);
   const calendarRef = useRef<CalendarItem[]>([]);
@@ -606,6 +609,23 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
   const batchEligible = useMemo(
     () => visibleItems.filter((item) => item.status === "aprovado" && !item.contentGenerationId && DIRECT_GENERATOR_TYPES.has(item.tipo)),
     [visibleItems],
+  );
+
+  const filteredItems = useMemo(() => {
+    if (contentFilter === "all") return visibleItems;
+    return visibleItems.filter((item) => {
+      const label = derivedStatus(item).label;
+      if (contentFilter === "ready") return label === "Pronto para produzir";
+      if (contentFilter === "review") return label === "Em revisão" || label === "Em produção";
+      if (contentFilter === "approved") return label === "Conteúdo aprovado";
+      if (contentFilter === "published") return label === "Publicado";
+      return true;
+    });
+  }, [contentFilter, visibleItems]);
+
+  const approvableSelectedItems = useMemo(
+    () => visibleItems.filter((item) => selectedContentIds.includes(item.id) && item.status === "gerado" && Boolean(item.contentGenerationId)),
+    [selectedContentIds, visibleItems],
   );
 
   const ownImages = assets.filter((asset) => asset.type === "image" && ["upload", "imported"].includes(asset.source));
@@ -989,6 +1009,38 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     }
   }
 
+  async function approveSelectedContent() {
+    if (approvableSelectedItems.length === 0 || batchApproving) return;
+    setBatchApproving(true);
+    let approved = 0;
+    try {
+      for (const item of approvableSelectedItems) {
+        const campaign = campaignForItem(planRef.current, item);
+        const updated = await patchCalendar(item.id, { status: "aprovado" });
+        approved += 1;
+        await recordProjectEvent(updated, campaign, {
+          operation: "content_approval",
+          label: `Conteúdo aprovado · ${item.temaSugerido}`,
+          status: "approved",
+          contentGenerationId: item.contentGenerationId ?? undefined,
+          variationIndex: item.variationIdx ?? 0,
+        }).catch(() => undefined);
+      }
+      setSelectedContentIds([]);
+      await load();
+      toast({ title: "Conteúdos aprovados", description: `${approved} conteúdo(s) aprovados em lote.` });
+    } catch (error) {
+      toast({
+        title: "Aprovação em lote interrompida",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+      await load();
+    } finally {
+      setBatchApproving(false);
+    }
+  }
+
   async function runBatch() {
     if (!plan || batchEligible.length === 0) return;
     setBatchRunning(true);
@@ -1158,8 +1210,36 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
         </Card>
       )}
 
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-background p-2">
+        {[
+          ["all", "Todos", visibleItems.length],
+          ["ready", "A gerar", productionSummary.ready],
+          ["review", "Em revisão", productionSummary.review],
+          ["approved", "Aprovados", productionSummary.approved],
+          ["published", "Publicados", productionSummary.published],
+        ].map(([value, label, count]) => (
+          <Button
+            key={String(value)}
+            type="button"
+            size="sm"
+            variant={contentFilter === value ? "default" : "ghost"}
+            className="h-8"
+            onClick={() => setContentFilter(value as typeof contentFilter)}
+          >
+            {label} ({count})
+          </Button>
+        ))}
+        <div className="flex-1" />
+        {approvableSelectedItems.length > 0 && (
+          <Button type="button" size="sm" onClick={() => void approveSelectedContent()} disabled={batchApproving}>
+            {batchApproving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />}
+            Aprovar selecionados ({approvableSelectedItems.length})
+          </Button>
+        )}
+      </div>
+
       <div className="space-y-2">
-        {visibleItems.map((item) => {
+        {filteredItems.map((item) => {
           const status = derivedStatus(item);
           const project = projectByItem.get(item.id);
           const versionCount = Number(project?.context?.["versionCount"] ?? 0);
@@ -1176,6 +1256,17 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 flex-wrap">
+                    {item.status === "gerado" && item.contentGenerationId && (
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 accent-primary"
+                        aria-label="Selecionar conteúdo"
+                        checked={selectedContentIds.includes(item.id)}
+                        onChange={(event) => setSelectedContentIds((current) =>
+                          event.target.checked ? Array.from(new Set([...current, item.id])) : current.filter((id) => id !== item.id)
+                        )}
+                      />
+                    )}
                     <Badge variant="outline" className="text-[10px]">{item.canal}</Badge>
                     <Badge variant="outline" className="text-[10px]">{item.tipo.replaceAll("_", " ")}</Badge>
                     <Badge variant="outline" className={`text-[10px] ${statusClass(status.tone)}`}>{status.label}</Badge>
@@ -1379,8 +1470,8 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
             </div>
           );
         })}
-        {visibleItems.length === 0 && (
-          <div className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">Nenhuma ação de produção encontrada para este plano.</div>
+        {filteredItems.length === 0 && (
+          <div className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">Nenhum conteúdo neste status.</div>
         )}
       </div>
 
