@@ -294,6 +294,8 @@ export const tenantsTable = pgTable(
     // da tag do institucional appvendorai.com. Formato esperado:
     // googleAdsConversionId = "AW-XXXXXXXXX", metaPixelId = ID numérico do Meta.
     googleAdsConversionId: varchar("google_ads_conversion_id", { length: 40 }),
+    ga4MeasurementId: varchar("ga4_measurement_id", { length: 40 }),
+    gtmContainerId: varchar("gtm_container_id", { length: 40 }),
     metaPixelId: varchar("meta_pixel_id", { length: 40 }),
     linkedinInsightTagId: varchar("linkedin_insight_tag_id", { length: 40 }),
     tiktokPixelId: varchar("tiktok_pixel_id", { length: 80 }),
