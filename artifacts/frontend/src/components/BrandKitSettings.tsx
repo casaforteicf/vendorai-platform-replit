@@ -94,7 +94,7 @@ export function BrandKitSettings() {
   const tenant = useGetTenant(tenantId, {
     query: { queryKey: getGetTenantQueryKey(tenantId), enabled: !!tenantId, retry: false },
   });
-  const profileData = resolvedProfile.data ?? profileData ?? null;
+  const profileData = resolvedProfile.data ?? profile.data ?? null;
   const updateProfile = useUpdateBusinessProfile();
   const updateTenant = useUpdateTenant();
 
