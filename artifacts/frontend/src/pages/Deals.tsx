@@ -2408,6 +2408,13 @@ export default function Deals() {
     itens?: Array<{ descricao: string; quantidade?: number | null; valorUnitario?: number | null; valorTotal?: number | null }>;
     fornecedor?: string | null;
     cliente?: string | null;
+    clienteDocumento?: string | null;
+    clienteTelefone?: string | null;
+    clienteEmail?: string | null;
+    clienteCidade?: string | null;
+    clienteEstado?: string | null;
+    clienteCep?: string | null;
+    clienteEndereco?: string | null;
     observacoes?: string | null;
   } | null>(null);
   const createQuoteFileRef = useRef<HTMLInputElement>(null);
@@ -2631,6 +2638,17 @@ export default function Deals() {
   const createDeal = useCreateDeal();
 
   async function handleCreateQuoteUpload(file: File) {
+    const allowedExtensions = ["pdf", "png", "jpg", "jpeg", "webp", "docx", "doc"];
+    const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+    if (!allowedExtensions.includes(extension)) {
+      toast({ title: "Formato não suportado", description: "Use PDF, imagem, DOC ou DOCX.", variant: "destructive" });
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: "Arquivo muito grande", description: "O limite para importar orçamento é 10 MB.", variant: "destructive" });
+      return;
+    }
+
     setCreateExtracting(true);
     setCreateExtractedInfo(null);
     try {
@@ -2641,20 +2659,79 @@ export default function Deals() {
         headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
         body: fd,
       });
-      if (!res.ok) throw new Error("Falha");
-      const data = await res.json();
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload?.error || `Falha ao ler orçamento (HTTP ${res.status})`);
+      const data = payload;
+
       if (data.valorTotal != null) createForm.setValue("valor", data.valorTotal);
       if (data.titulo) {
         const current = createForm.getValues("titulo");
         if (!current || current.trim() === "") createForm.setValue("titulo", data.titulo);
       }
-      if (data.itens?.length || data.fornecedor || data.cliente || data.observacoes) {
-        setCreateExtractedInfo({ itens: data.itens, fornecedor: data.fornecedor, cliente: data.cliente, observacoes: data.observacoes });
+
+      const extractedCustomer = {
+        cliente: data.cliente ?? null,
+        clienteDocumento: data.clienteDocumento ?? null,
+        clienteTelefone: data.clienteTelefone ?? null,
+        clienteEmail: data.clienteEmail ?? null,
+        clienteCidade: data.clienteCidade ?? null,
+        clienteEstado: data.clienteEstado ?? null,
+        clienteCep: data.clienteCep ?? null,
+        clienteEndereco: data.clienteEndereco ?? null,
+      };
+
+      if (
+        data.itens?.length ||
+        data.fornecedor ||
+        data.observacoes ||
+        Object.values(extractedCustomer).some(Boolean)
+      ) {
+        setCreateExtractedInfo({
+          itens: data.itens,
+          fornecedor: data.fornecedor,
+          observacoes: data.observacoes,
+          ...extractedCustomer,
+        });
       }
+
+      const digits = (value?: string | null) => (value ?? "").replace(/\D/g, "");
+      const textKey = (value?: string | null) => (value ?? "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim()
+        .toLowerCase();
+
+      const importedPhone = digits(data.clienteTelefone);
+      const importedDocument = digits(data.clienteDocumento);
+      const importedEmail = textKey(data.clienteEmail);
+      const importedName = textKey(data.cliente);
+
+      const matchedLead = leads.find((lead) => {
+        if (importedDocument.length >= 8 && digits((lead as any).documento) === importedDocument) return true;
+        if (importedPhone.length >= 8 && digits(lead.telefone) === importedPhone) return true;
+        if (importedEmail && textKey(lead.email) === importedEmail) return true;
+        return importedName.length >= 3 && textKey(lead.nome) === importedName;
+      });
+
+      if (matchedLead) {
+        createForm.setValue("leadId", matchedLead.id, { shouldDirty: true, shouldValidate: true });
+      }
+
       const confianca = data.confianca ?? 0;
-      toast({ title: confianca >= 0.5 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)" });
-    } catch {
-      toast({ title: "Erro ao ler o orçamento", variant: "destructive" });
+      toast({
+        title: confianca >= 0.5 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)",
+        description: matchedLead
+          ? `Cliente identificado e vinculado: ${matchedLead.nome}`
+          : data.cliente
+            ? "Dados do cliente foram extraídos. Confira nome, telefone e cidade antes de criar o negócio."
+            : undefined,
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao ler o orçamento",
+        description: error instanceof Error ? error.message : "Não foi possível processar o arquivo.",
+        variant: "destructive",
+      });
     } finally {
       setCreateExtracting(false);
     }
@@ -3212,6 +3289,19 @@ export default function Deals() {
                     )}
                     {createExtractedInfo.cliente && (
                       <p className="text-xs text-violet-700">Cliente: <span className="font-medium">{createExtractedInfo.cliente}</span></p>
+                    )}
+                    {createExtractedInfo.clienteTelefone && (
+                      <p className="text-xs text-violet-700">Telefone: <span className="font-medium">{createExtractedInfo.clienteTelefone}</span></p>
+                    )}
+                    {(createExtractedInfo.clienteCidade || createExtractedInfo.clienteEstado) && (
+                      <p className="text-xs text-violet-700">
+                        Cidade: <span className="font-medium">
+                          {[createExtractedInfo.clienteCidade, createExtractedInfo.clienteEstado].filter(Boolean).join(" / ")}
+                        </span>
+                      </p>
+                    )}
+                    {createExtractedInfo.clienteEmail && (
+                      <p className="text-xs text-violet-700">E-mail: <span className="font-medium">{createExtractedInfo.clienteEmail}</span></p>
                     )}
                     {createExtractedInfo.itens && createExtractedInfo.itens.length > 0 && (
                       <div className="space-y-1 mt-1">

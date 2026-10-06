@@ -12,6 +12,11 @@ export const quoteExtractionResultSchema = z.object({
   valorTotal: z.number().nullable().optional(),
   cliente: z.string().nullable().optional(),
   clienteDocumento: z.string().nullable().optional(),
+  clienteTelefone: z.string().nullable().optional(),
+  clienteEmail: z.string().nullable().optional(),
+  clienteCidade: z.string().nullable().optional(),
+  clienteEstado: z.string().nullable().optional(),
+  clienteCep: z.string().nullable().optional(),
   clienteEndereco: z.string().nullable().optional(),
   fornecedor: z.string().nullable().optional(),
   fornecedorDocumento: z.string().nullable().optional(),
@@ -49,6 +54,85 @@ export const quoteExtractionResultSchema = z.object({
 });
 
 export type QuoteExtractionResult = z.infer<typeof quoteExtractionResultSchema>;
+
+function parseLooseNumber(value: unknown): number | null | undefined {
+  if (value === null || value === undefined || value === "") return value as null | undefined;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value !== "string") return null;
+  const raw = value.trim().replace(/R\$\s?/gi, "").replace(/\s/g, "");
+  if (!raw) return null;
+  const normalized = raw.includes(",")
+    ? raw.replace(/\./g, "").replace(",", ".")
+    : raw;
+  const parsed = Number(normalized.replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseLooseString(value: unknown): string | null | undefined {
+  if (value === null || value === undefined) return value as null | undefined;
+  if (typeof value === "string") return value.trim() || null;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return null;
+}
+
+function normalizeQuoteExtractionPayload(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const input = value as Record<string, unknown>;
+  const output: Record<string, unknown> = { ...input };
+
+  const stringFields = [
+    "titulo", "numeroDocumento", "dataEmissao", "cliente", "clienteDocumento",
+    "clienteTelefone", "clienteEmail", "clienteCidade", "clienteEstado", "clienteCep",
+    "clienteEndereco", "fornecedor", "fornecedorDocumento", "fornecedorEndereco",
+    "validade", "formaPagamento", "condPagamento", "prazoEntrega", "observacoes",
+  ];
+  for (const key of stringFields) output[key] = parseLooseString(input[key]);
+
+  const numericFields = ["valorTotal", "desconto", "acrescimos", "frete", "impostos", "confianca"];
+  for (const key of numericFields) output[key] = parseLooseNumber(input[key]);
+
+  if (Array.isArray(input.itens)) {
+    output.itens = input.itens
+      .filter((item) => item && typeof item === "object" && !Array.isArray(item))
+      .map((item) => {
+        const row = item as Record<string, unknown>;
+        return {
+          ...row,
+          codigo: parseLooseString(row.codigo),
+          descricao: parseLooseString(row.descricao),
+          unidade: parseLooseString(row.unidade),
+          quantidade: parseLooseNumber(row.quantidade),
+          valorUnitario: parseLooseNumber(row.valorUnitario),
+          valorTotal: parseLooseNumber(row.valorTotal),
+          grupo: parseLooseString(row.grupo),
+          etapa: parseLooseString(row.etapa),
+          observacoes: parseLooseString(row.observacoes),
+        };
+      })
+      .filter((item) => typeof item.descricao === "string" && item.descricao.length > 0);
+  }
+
+  for (const key of ["inclusoes", "exclusoes", "clausulas", "informacoesAdicionais"]) {
+    if (Array.isArray(input[key])) {
+      output[key] = (input[key] as unknown[])
+        .map(parseLooseString)
+        .filter((item): item is string => typeof item === "string" && item.length > 0);
+    }
+  }
+
+  return output;
+}
+
+function parseQuoteExtraction(raw: string): QuoteExtractionResult {
+  const parsed = JSON.parse(raw || "{}");
+  const normalized = normalizeQuoteExtractionPayload(parsed);
+  const result = quoteExtractionResultSchema.safeParse(normalized);
+  if (result.success) return result.data;
+  return {
+    confianca: 0,
+    informacoesAdicionais: ["A leitura retornou dados parcialmente inválidos. Revise o orçamento importado antes de salvar."],
+  };
+}
 
 // ─── Financial entry (lançamento) extraction — nota fiscal, recibo, boleto ───
 // D-004: novo lançamento no ERP por foto/upload -- IA identifica o tipo de
@@ -151,7 +235,9 @@ Regras obrigatórias:
 - Extraia TODAS as linhas comerciais identificáveis do documento.
 - Se o documento tiver grupos, capítulos, etapas ou seções, preserve essa hierarquia em "grupo" e/ou "etapa".
 - Quando houver valor total da linha, preserve-o. Quando houver quantidade e valor unitário, preserve ambos.
-- Extraia também as informações comerciais e contratuais disponíveis.
+- Extraia também as informações comerciais, contratuais e cadastrais do CLIENTE, com atenção especial a nome/razão social, CPF/CNPJ, telefone/WhatsApp, e-mail, cidade, UF, CEP e endereço.
+- Não confunda dados do fornecedor/emitente com os dados do cliente/destinatário. Use o rótulo, posição e contexto do documento para decidir.
+- Se cidade/UF aparecerem dentro do endereço do cliente, extraia também nos campos clienteCidade e clienteEstado quando houver segurança.
 - Campos não encontrados devem ser omitidos ou null.
 - Datas devem usar YYYY-MM-DD quando for possível determinar a data com segurança.
 - Retorne SOMENTE JSON válido, sem texto fora dele.
@@ -164,7 +250,12 @@ Formato:
   "valorTotal": 0,
   "cliente": "nome/razão social do cliente",
   "clienteDocumento": "CPF/CNPJ/documento",
-  "clienteEndereco": "endereço do cliente",
+  "clienteTelefone": "telefone/WhatsApp do cliente exatamente como aparece no documento",
+  "clienteEmail": "e-mail do cliente",
+  "clienteCidade": "cidade do cliente",
+  "clienteEstado": "UF/estado do cliente",
+  "clienteCep": "CEP do cliente",
+  "clienteEndereco": "endereço completo do cliente",
   "fornecedor": "nome/razão social do fornecedor",
   "fornecedorDocumento": "CPF/CNPJ/documento",
   "fornecedorEndereco": "endereço do fornecedor",
@@ -245,7 +336,7 @@ export async function extractQuoteData(
     );
     const cleaned = visual.content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
     try {
-      return quoteExtractionResultSchema.parse(JSON.parse(cleaned || "{}"));
+      return parseQuoteExtraction(cleaned || "{}");
     } catch {
       return { confianca: 0, informacoesAdicionais: ["PDF visual processado, mas a estrutura retornada precisa de conferência manual."] };
     }
@@ -287,10 +378,9 @@ export async function extractQuoteData(
 
   const raw = aiResult.content || "{}";
   try {
-    const parsed = JSON.parse(raw);
-    return quoteExtractionResultSchema.parse(parsed);
+    return parseQuoteExtraction(raw);
   } catch {
-    return { confianca: 0 };
+    return { confianca: 0, informacoesAdicionais: ["Não foi possível interpretar a resposta da leitura automática."] };
   }
 }
 
@@ -363,7 +453,7 @@ export async function extractTextFromBuffer(
     const imageContent: import("openai").OpenAI.Chat.ChatCompletionContentPart[] = [
       {
         type: "text",
-        text: "Extraia todo o texto e informações relevantes desta imagem sobre o negócio: nome, produtos, serviços, missão, valores, diferenciais, público-alvo.",
+        text: "Transcreva fielmente TODO o texto visível desta imagem, preservando nomes, telefones, e-mails, CPF/CNPJ, endereços, cidades/UF, números de documento, itens, quantidades, unidades, preços, totais, condições de pagamento e observações. Não resuma, não interprete e não descarte dados cadastrais.",
       },
       {
         type: "image_url",
