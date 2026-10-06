@@ -151,15 +151,30 @@ router.post("/tenants/:tenantId/commercial-partnerships", requireSameTenanOrSupe
     return res.status(422).json({ error: "Um ou mais usuários autorizados não pertencem à empresa representante ou estão inativos." });
   }
 
-  const [existing] = await db.select({ id: tenantCommercialPartnershipsTable.id })
-    .from(tenantCommercialPartnershipsTable)
+  const [existing] = await db.select().from(tenantCommercialPartnershipsTable)
     .where(and(
       eq(tenantCommercialPartnershipsTable.ownerTenantId, ownerTenantId),
       eq(tenantCommercialPartnershipsTable.partnerTenantId, parsed.data.partnerTenantId),
       eq(tenantCommercialPartnershipsTable.relationshipType, parsed.data.relationshipType),
     )).limit(1);
 
-  if (existing) return res.status(409).json({ error: "Esta representação já está cadastrada." });
+  if (existing?.status === "active") {
+    return res.status(409).json({ error: "Esta representação já está cadastrada." });
+  }
+
+  if (existing) {
+    const [reactivated] = await db.update(tenantCommercialPartnershipsTable).set({
+      status: "active",
+      defaultCommissionPercent: String(parsed.data.defaultCommissionPercent),
+      defaultPermissions: [...new Set(parsed.data.defaultPermissions)],
+      authorizedUserIds: [...new Set(parsed.data.authorizedUserIds)],
+      distributionMode: parsed.data.distributionMode,
+      notes: parsed.data.notes ?? null,
+      updatedAt: new Date(),
+    }).where(eq(tenantCommercialPartnershipsTable.id, existing.id)).returning();
+
+    return res.status(200).json(reactivated);
+  }
 
   const [created] = await db.insert(tenantCommercialPartnershipsTable).values({
     ownerTenantId,
@@ -177,7 +192,10 @@ router.post("/tenants/:tenantId/commercial-partnerships", requireSameTenanOrSupe
   return res.status(201).json(created);
 });
 
-const updatePartnershipSchema = createPartnershipSchema.omit({ partnerTenantId: true }).partial();
+const updatePartnershipSchema = createPartnershipSchema
+  .omit({ partnerTenantId: true })
+  .partial()
+  .extend({ status: z.enum(["active", "inactive"]).optional() });
 
 router.patch("/commercial-partnerships/:partnershipId", async (req, res) => {
   const partnershipId = String(req.params.partnershipId);
@@ -200,6 +218,7 @@ router.patch("/commercial-partnerships/:partnershipId", async (req, res) => {
     ...(parsed.data.authorizedUserIds !== undefined ? { authorizedUserIds: [...new Set(parsed.data.authorizedUserIds)] } : {}),
     ...(parsed.data.distributionMode !== undefined ? { distributionMode: parsed.data.distributionMode } : {}),
     ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes } : {}),
+    ...(parsed.data.status !== undefined ? { status: parsed.data.status } : {}),
     updatedAt: new Date(),
   }).where(eq(tenantCommercialPartnershipsTable.id, partnershipId)).returning();
 
