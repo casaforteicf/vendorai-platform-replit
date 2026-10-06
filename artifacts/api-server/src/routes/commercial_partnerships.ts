@@ -232,6 +232,13 @@ router.post("/deals/:dealId/share-with-partner", async (req, res) => {
     if (!ok) return res.status(422).json({ error: "O responsável operacional precisa pertencer à empresa representante." });
   }
 
+  const [ownerTenantForFinance] = await db.select({ name: tenantsTable.name })
+    .from(tenantsTable).where(eq(tenantsTable.id, deal.tenantId)).limit(1);
+  const [partnerTenantForFinance] = await db.select({ name: tenantsTable.name })
+    .from(tenantsTable).where(eq(tenantsTable.id, partnership.partnerTenantId)).limit(1);
+  const ownerTenantNameForFinance = ownerTenantForFinance?.name ?? deal.tenantId;
+  const partnerTenantNameForFinance = partnerTenantForFinance?.name ?? partnership.partnerTenantId;
+
   const commissionPercent = parsed.data.commissionPercent ?? Number(partnership.defaultCommissionPercent ?? 15);
   const baseAmount = money(deal.valor);
   const fixedAmount = parsed.data.commissionFixedAmount ?? null;
@@ -239,6 +246,19 @@ router.post("/deals/:dealId/share-with-partner", async (req, res) => {
   const permissions = [...new Set(parsed.data.permissions ?? partnership.defaultPermissions ?? DEFAULT_PARTNER_PERMISSIONS)];
 
   const result = await db.transaction(async (tx) => {
+    // Only one company can be the primary responsible at a time. Previous
+    // representatives remain participants so their history/commission is preserved.
+    if (parsed.data.role === "responsible") {
+      await tx.update(dealTenantParticipationsTable).set({
+        role: "participant",
+        updatedAt: new Date(),
+      }).where(and(
+        eq(dealTenantParticipationsTable.dealId, dealId),
+        eq(dealTenantParticipationsTable.status, "active"),
+        eq(dealTenantParticipationsTable.role, "responsible"),
+      ));
+    }
+
     const [current] = await tx.select().from(dealTenantParticipationsTable)
       .where(and(
         eq(dealTenantParticipationsTable.dealId, dealId),
@@ -302,7 +322,60 @@ router.post("/deals/:dealId/share-with-partner", async (req, res) => {
           adjustedByUserId: req.user?.sub ?? null,
         }).returning())[0];
 
-    return { participation, commission };
+    // Financeiro/fluxo de caixa nasce junto com a comissão prevista, não só
+    // na primeira baixa. Os dois títulos compartilham a mesma origem lógica.
+    let commissionWithFinance = commission;
+    let payerTitleId = commission.payerTitleId;
+    let beneficiaryTitleId = commission.beneficiaryTitleId;
+    const dueAt = commission.dueAt ?? deal.dataFechamentoPrevista ?? new Date();
+
+    if (!payerTitleId) {
+      const [payerTitle] = await tx.insert(erpTitulosTable).values({
+        tenantId: deal.tenantId,
+        tipo: "pagar",
+        categoria: "despesa",
+        descricao: `Comissão de representação • ${deal.titulo}`,
+        pessoa: partnerTenantNameForFinance,
+        valorOriginal: String(amount.toFixed(2)),
+        valorPago: String(money(commission.paidAmount).toFixed(2)),
+        vencimento: dueAt,
+        status: money(commission.paidAmount) >= amount && amount > 0 ? "pago" : "pendente",
+        origemTipo: "intercompany_commission",
+        origemId: commission.id,
+        observacoes: "Comissão inter-tenant prevista a partir do negócio compartilhado.",
+      }).returning();
+      payerTitleId = payerTitle?.id ?? null;
+    }
+
+    if (!beneficiaryTitleId) {
+      const [beneficiaryTitle] = await tx.insert(erpTitulosTable).values({
+        tenantId: partnership.partnerTenantId,
+        tipo: "receber",
+        categoria: "receita",
+        descricao: `Comissão de representação • ${deal.titulo}`,
+        pessoa: ownerTenantNameForFinance,
+        valorOriginal: String(amount.toFixed(2)),
+        valorPago: String(money(commission.paidAmount).toFixed(2)),
+        vencimento: dueAt,
+        status: money(commission.paidAmount) >= amount && amount > 0 ? "pago" : "pendente",
+        origemTipo: "intercompany_commission",
+        origemId: commission.id,
+        observacoes: "Comissão inter-tenant prevista a partir do negócio compartilhado.",
+      }).returning();
+      beneficiaryTitleId = beneficiaryTitle?.id ?? null;
+    }
+
+    if (payerTitleId !== commission.payerTitleId || beneficiaryTitleId !== commission.beneficiaryTitleId) {
+      const [synced] = await tx.update(intercompanyCommissionsTable).set({
+        payerTitleId,
+        beneficiaryTitleId,
+        dueAt,
+        updatedAt: new Date(),
+      }).where(eq(intercompanyCommissionsTable.id, commission.id)).returning();
+      if (synced) commissionWithFinance = synced;
+    }
+
+    return { participation, commission: commissionWithFinance };
   });
 
   return res.status(201).json(result);
@@ -424,6 +497,28 @@ router.patch("/intercompany-commissions/:commissionId", async (req, res) => {
     commissionFixedAmount: parsed.data.fixedAmount == null ? null : String(parsed.data.fixedAmount),
     updatedAt: new Date(),
   }).where(eq(dealTenantParticipationsTable.id, commission.participationId));
+
+  // Keep both forecast titles synchronized with the negotiated amount.
+  const paidAmount = money(commission.paidAmount);
+  const titleStatus = paidAmount >= amount && amount > 0 ? "pago" : "pendente";
+  if (commission.payerTitleId) {
+    await db.update(erpTitulosTable).set({
+      valorOriginal: String(amount.toFixed(2)),
+      valorPago: String(paidAmount.toFixed(2)),
+      vencimento: parsed.data.dueAt ?? commission.dueAt ?? new Date(),
+      status: titleStatus,
+      updatedAt: new Date(),
+    }).where(eq(erpTitulosTable.id, commission.payerTitleId));
+  }
+  if (commission.beneficiaryTitleId) {
+    await db.update(erpTitulosTable).set({
+      valorOriginal: String(amount.toFixed(2)),
+      valorPago: String(paidAmount.toFixed(2)),
+      vencimento: parsed.data.dueAt ?? commission.dueAt ?? new Date(),
+      status: titleStatus,
+      updatedAt: new Date(),
+    }).where(eq(erpTitulosTable.id, commission.beneficiaryTitleId));
+  }
 
   return res.json(updated);
 });
