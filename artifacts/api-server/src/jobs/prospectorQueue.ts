@@ -35,6 +35,7 @@ import {
 import { pickNextVendedor } from "../lib/round-robin.js";
 import { recordResponsavelChange } from "../lib/leadResponsavelHistorico.js";
 import { enrichLead } from "./leadEnrichment.js";
+import { leadRegistrationMetadata } from "../lib/lead-registration-standard.js";
 
 /** Returns the start-of-day in UTC for "now" (for counting daily processed leads). */
 function todayStart(): Date {
@@ -378,13 +379,21 @@ async function processQueueItem(params: {
       mercadoSegmento: item.setor,
       proximaAcao: "Pesquisar o negócio, validar o decisor e preparar abordagem consultiva personalizada",
       assignedTo,
-      metadata: mergeProspectorMetadata({}, {
-        setor: item.setor,
-        cidade: item.cidade,
-        fonte: source,
-        placeId: item.placeId,
-        prospectadoEm: now.toISOString(),
-      }),
+      metadata: leadRegistrationMetadata(
+        mergeProspectorMetadata({}, {
+          setor: item.setor,
+          cidade: item.cidade,
+          fonte: source,
+          placeId: item.placeId,
+          prospectadoEm: now.toISOString(),
+        }),
+        {
+          entryChannel: "prospeccao",
+          entrySource: "prospector_auto",
+          capturedAt: now.toISOString(),
+          details: { sourceProvider: source },
+        },
+      ),
     })
     .returning({ id: leadsTable.id });
 
