@@ -1506,6 +1506,19 @@ router.post("/tenants/:tenantId/support-cases", async (req, res) => {
       produtos: parsed.data.produtos,
       origem: parsed.data.origem,
       substatus: null,
+      supportWorkOrder: {
+        version: 1,
+        status: "aberta",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        timeline: [{
+          at: new Date().toISOString(),
+          userName: responsavel.name || "Equipe",
+          text: `Assistência criada. Relato inicial: ${parsed.data.relato}`,
+          visibility: "cliente",
+          kind: "abertura",
+        }],
+      },
     },
   }).returning();
 
