@@ -79,10 +79,11 @@ export function AgendarReuniaoModal({
   const [participanteIds, setParticipanteIds] = useState<string[]>(responsavelId ? [responsavelId] : []);
   const [clientesExtras, setClientesExtras] = useState<Array<{ nome: string; email: string }>>([]);
   const [enviarCliente, setEnviarCliente]   = useState<boolean>(true);
+  const [selectedAgendaId, setSelectedAgendaId] = useState<string>("");
 
   const { data: agendas = [] } = useListAgendas(tenantId);
   const { data: users = [] }   = useListTenantUsers(tenantId);
-  const defaultAgenda          = agendas[0];
+  const selectedAgenda         = agendas.find((agenda) => agenda.id === selectedAgendaId) ?? agendas[0];
   const createAgendamento      = useCreateAgendamento();
 
   const resolvedResponsavelId = participanteIds[0] ?? undefined;
@@ -94,7 +95,7 @@ export function AgendarReuniaoModal({
     setLoadingSlots(true);
 
     const params = new URLSearchParams({ date, duracao });
-    if (defaultAgenda?.id) params.set("agendaId", defaultAgenda.id);
+    if (selectedAgenda?.id) params.set("agendaId", selectedAgenda.id);
     if (participanteIds.length) params.set("responsavelIds", participanteIds.join(","));
 
     const token = localStorage.getItem("vendorai_token");
@@ -110,7 +111,7 @@ export function AgendarReuniaoModal({
         setSlots([]);
       })
       .finally(() => setLoadingSlots(false));
-  }, [open, date, duracao, defaultAgenda?.id, participanteIds, tenantId]);
+  }, [open, date, duracao, selectedAgenda?.id, participanteIds, tenantId]);
 
   // Reset when modal opens
   useEffect(() => {
@@ -118,13 +119,14 @@ export function AgendarReuniaoModal({
       setParticipanteIds(responsavelId ? [responsavelId] : []);
       setClientesExtras([]);
       setEnviarCliente(true);
+      setSelectedAgendaId(agendas[0]?.id ?? "");
       setModalidade("meet");
       setDate(tomorrowISO());
       setDuracao("30");
       setObservacoes("");
       setSelectedSlot(null);
     }
-  }, [open, responsavelId]);
+  }, [open, responsavelId, agendas]);
 
   function handleConfirm() {
     if (!selectedSlot) {
@@ -162,7 +164,7 @@ export function AgendarReuniaoModal({
           tenantId,
           dealId,
           leadId,
-          agendaId: defaultAgenda?.id ?? undefined,
+          agendaId: selectedAgenda?.id ?? undefined,
           responsavelId: resolvedResponsavelId ?? undefined,
           tipo: "reuniao",
           gerarMeet: modalidade === "meet",
@@ -429,10 +431,27 @@ export function AgendarReuniaoModal({
             />
           </div>
 
-          {/* ── Agenda conectada ── */}
-          {defaultAgenda?.googleEmail && (
+          {/* ── Agenda interna ── */}
+          <div className="space-y-1.5">
+            <Label>Agenda interna *</Label>
+            <Select value={selectedAgenda?.id ?? ""} onValueChange={setSelectedAgendaId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione a agenda..." />
+              </SelectTrigger>
+              <SelectContent>
+                {agendas.map((agenda) => (
+                  <SelectItem key={agenda.id} value={agenda.id}>
+                    {agenda.nome}{agenda.googleEmail ? ` (${agenda.googleEmail})` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">Os horários disponíveis são recalculados conforme a agenda e os responsáveis selecionados.</p>
+          </div>
+
+          {selectedAgenda?.googleEmail && (
             <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-              <span className="font-medium">Agenda conectada:</span> {defaultAgenda.googleEmail}
+              <span className="font-medium">Calendário conectado:</span> {selectedAgenda.googleEmail}
               {modalidade === "meet" && (
                 <span className="block mt-0.5 text-emerald-600 font-medium">✓ Link do Google Meet será gerado automaticamente</span>
               )}
@@ -447,7 +466,7 @@ export function AgendarReuniaoModal({
             <Button
               className="flex-1"
               onClick={handleConfirm}
-              disabled={!selectedSlot || createAgendamento.isPending}
+              disabled={!selectedSlot || !selectedAgenda?.id || createAgendamento.isPending}
               type="button"
             >
               {createAgendamento.isPending ? (
