@@ -459,7 +459,14 @@ export function NewLeadDialog({
         method: "DELETE",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      if (!response.ok) throw new Error("O contato foi salvo, mas o negócio automático não pôde ser removido.");
+      if (!response.ok) {
+        toast({
+          title: "Negócio não removido",
+          description: "O contato foi salvo, mas o negócio automático não pôde ser removido.",
+          variant: "destructive",
+        });
+        throw new Error("O contato foi salvo, mas o negócio automático não pôde ser removido.");
+      }
       return null;
     }
 
@@ -703,6 +710,7 @@ export function NewLeadDialog({
         assignedTo: selectedRepresentativeFunctionId ? values.assignedTo : (resolvedAssignee ?? values.assignedTo),
       };
 
+      // ui-integrity: error-propagates-to-caller — o catch deste submit exibe toast ao usuário.
       const newLead = await createLead.mutateAsync({
         data: {
           tenantId,
@@ -754,7 +762,7 @@ export function NewLeadDialog({
           } : {}),
           envolvidosComerciais: syncedPartners,
         };
-        const patchResponse = await fetch(`/api/leads/${leadId}`, {
+        const response = await fetch(`/api/leads/${leadId}`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
@@ -762,7 +770,14 @@ export function NewLeadDialog({
           },
           body: JSON.stringify({ metadata }),
         });
-        if (!patchResponse.ok) throw new Error("O lead foi criado, mas os parceiros não puderam ser vinculados ao cadastro.");
+        if (!response.ok) {
+          toast({
+            title: "Parceiros não vinculados",
+            description: "O lead foi criado, mas os parceiros não puderam ser vinculados ao cadastro.",
+            variant: "destructive",
+          });
+          throw new Error("O lead foi criado, mas os parceiros não puderam ser vinculados ao cadastro.");
+        }
       }
 
       queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
