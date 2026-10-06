@@ -356,6 +356,10 @@ function installVisitorOnlineAlerts() {
   };
 }
 
+function isBenignResizeObserverMessage(message: string) {
+  return /ResizeObserver loop (?:limit exceeded|completed with undelivered notifications)/i.test(message);
+}
+
 function installRuntimeErrorTelemetry() {
   if (typeof window === "undefined") return () => {};
 
@@ -370,7 +374,9 @@ function installRuntimeErrorTelemetry() {
   };
 
   const onError = (event: ErrorEvent) => {
-    sendRuntimeError(event.message || event.error?.name || "Erro de execução", "window.error");
+    const message = event.message || event.error?.name || "Erro de execução";
+    if (isBenignResizeObserverMessage(message)) return;
+    sendRuntimeError(message, "window.error");
   };
 
   const onUnhandledRejection = (event: PromiseRejectionEvent) => {
