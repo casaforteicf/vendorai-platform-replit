@@ -6448,7 +6448,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     <label className="text-xs font-medium">Profundidade<input type="number" step="0.1" className="mt-1 h-10 w-full rounded-lg border bg-background px-3" value={selected.depth} onChange={(e) => updateSelected({ depth: Math.max(1, Number(e.target.value) || 1) })} /></label>
                     <label className="text-xs font-medium">Pavimento<select className="mt-1 h-10 w-full rounded-lg border bg-background px-3" value={selected.floor} onChange={(e) => updateSelected({ floor: Number(e.target.value) })}>{Array.from({ length: floors }).map((_, floor) => <option key={floor} value={floor}>{floor === 0 ? "Térreo" : floor === 1 ? "Superior" : `Pav. ${floor + 1}`}</option>)}</select></label>
                   </div>
-                  {selected.kind === "piscina" ? (
+                  {selected?.kind === "piscina" ? (
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
                       <label className="text-xs font-medium">Profundidade técnica (m)
                         <input
@@ -6457,7 +6457,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           max={5}
                           step={0.05}
                           className="mt-1 h-10 w-full rounded-lg border bg-background px-3"
-                          value={selected.poolDepthM ?? ""}
+                          value={selected?.poolDepthM ?? ""}
                           placeholder="Definir"
                           onChange={(e) => updateSelected({ poolDepthM: e.target.value === "" ? undefined : Math.max(0.2, Number(e.target.value) || 0.2) })}
                         />
@@ -6467,7 +6467,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       </div>
                     </div>
                   ) : null}
-                  {selected.kind === "escada" ? (
+                  {selected?.kind === "escada" ? (
                     <div className="mt-3 grid gap-3 sm:grid-cols-3">
                       <label className="text-xs font-medium">Espelhos / alturas
                         <input
@@ -6476,7 +6476,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           max={40}
                           step={1}
                           className="mt-1 h-10 w-full rounded-lg border bg-background px-3"
-                          value={selected.stairRiserCount ?? ""}
+                          value={selected?.stairRiserCount ?? ""}
                           placeholder="Definir"
                           onChange={(e) => updateSelected({ stairRiserCount: e.target.value === "" ? undefined : Math.max(2, Math.round(Number(e.target.value) || 2)) })}
                         />
@@ -6488,7 +6488,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           max={0.5}
                           step={0.01}
                           className="mt-1 h-10 w-full rounded-lg border bg-background px-3"
-                          value={selected.stairTreadDepthM ?? ""}
+                          value={selected?.stairTreadDepthM ?? ""}
                           placeholder="Definir"
                           onChange={(e) => updateSelected({ stairTreadDepthM: e.target.value === "" ? undefined : Math.max(0.18, Number(e.target.value) || 0.18) })}
                         />
