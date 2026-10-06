@@ -462,6 +462,19 @@ router.get("/tenants/:tenantId/deals", async (req, res) => {
   if (funilId) conditions.push(eq(dealsTable.funilId, funilId));
   if (leadId) conditions.push(eq(dealsTable.leadId, leadId));
 
+  // Lead excluído permanece com os negócios preservados para histórico e
+  // restauração, mas nenhum desses negócios pode continuar aparecendo nas
+  // pipelines ativas enquanto o lead estiver em "Excluídos".
+  conditions.push(notExists(
+    db
+      .select({ id: leadsTable.id })
+      .from(leadsTable)
+      .where(and(
+        eq(leadsTable.id, dealsTable.leadId),
+        isNotNull(leadsTable.excluidoEm),
+      )),
+  ));
+
   conditions.push(...buildUserFunctionFilter(req, dealsTable));
 
   // Na pipeline comercial, contatos classificados como "Não Lead" ficam fora.
