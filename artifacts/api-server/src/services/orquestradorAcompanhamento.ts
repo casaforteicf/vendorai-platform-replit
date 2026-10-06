@@ -111,7 +111,12 @@ async function carregarContextoBasico(tenantId: string, leadId: string, dealId?:
     .limit(1);
 
   const [ci] = await db
-    .select()
+    .select({
+      intentAnalysis: customerIntelligenceTable.intentAnalysis,
+      goalAnalysis: customerIntelligenceTable.goalAnalysis,
+      nextBestAction: customerIntelligenceTable.nextBestAction,
+      nextBestActionReason: customerIntelligenceTable.nextBestActionReason,
+    })
     .from(customerIntelligenceTable)
     .where(and(
       eq(customerIntelligenceTable.tenantId, tenantId),
@@ -268,7 +273,7 @@ export async function planejarAcompanhamento(params: {
         context.ci?.intentAnalysis,
         context.ci?.goalAnalysis,
         context.ci?.nextBestAction,
-        context.ci?.nextBestActionMotivo,
+        context.ci?.nextBestActionReason,
         ...context.mensagens.slice(0, 8).map((message) => message.conteudo),
       ].filter(Boolean).join(" | "),
       limit: 12,
