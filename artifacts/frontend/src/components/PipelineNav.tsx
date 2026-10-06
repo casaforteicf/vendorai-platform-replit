@@ -28,6 +28,7 @@ import {
 import { PipelineStageFunctionAccess } from "@/components/PipelineStageFunctionAccess";
 import { PipelineStageFollowupConfig, type ConfiguracaoAcompanhamento } from "@/components/PipelineStageFollowupConfig";
 import { PipelineStageAIConfig, type PipelineAIConfig } from "@/components/PipelineStageAIConfig";
+import { MediaAssetPicker, type MediaPickerAsset } from "@/components/media/MediaAssetPicker";
 import "./pipeline-layout.css";
 
 export type PipelineTab = "comercial" | "execucao" | "suporte" | "aquecimento" | "parceiros" | "scout";
@@ -61,6 +62,22 @@ type StageActivityTemplate = {
   condicao?: "sempre" | "sem_resposta_cliente" | "sem_atividade_aberta";
 };
 
+type StageContentInteraction = {
+  id: string;
+  titulo: string;
+  ativo?: boolean;
+  objetivo?: string | null;
+  momento: "entrada" | "percentual" | "final";
+  percentualPrazo?: number | null;
+  canal?: "whatsapp" | "email";
+  mensagem?: string | null;
+  assetIds?: string[];
+  selecaoConteudo?: "fixa" | "ia_recomenda" | "ia_autonoma";
+  requerAprovacao?: boolean;
+  enviarUmaVez?: boolean;
+  instrucoesIA?: string | null;
+};
+
 type PipelineStageSummary = {
   id: string;
   key?: string;
@@ -76,6 +93,7 @@ type PipelineStageSummary = {
   atividadePadraoDescricao?: string | null;
   atividadePadraoPrazoMinutos?: number | null;
   atividadesPadrao?: StageActivityTemplate[] | null;
+  interacoesConteudo?: StageContentInteraction[] | null;
 };
 
 const TABS: Array<{ key: PipelineTab; label: string; href: string }> = [
@@ -186,6 +204,8 @@ function PipelineStageManager({
   const [editActivityDescription, setEditActivityDescription] = useState("");
   const [editActivityDueMinutes, setEditActivityDueMinutes] = useState("");
   const [editActivities, setEditActivities] = useState<StageActivityTemplate[]>([]);
+  const [editContentInteractions, setEditContentInteractions] = useState<StageContentInteraction[]>([]);
+  const [contentPickerIndex, setContentPickerIndex] = useState<number | null>(null);
 
   const invalidate = async () => {
     await Promise.all([
@@ -251,6 +271,8 @@ function PipelineStageManager({
             }]
           : [],
     );
+
+    setEditContentInteractions(stage.interacoesConteudo ?? []);
   }
 
   async function saveEdit(stage: PipelineStageSummary) {
@@ -269,6 +291,13 @@ function PipelineStageManager({
           atividadesPadrao: editActivities
             .filter((item) => item.titulo.trim())
             .map((item) => ({ ...item, titulo: item.titulo.trim() })),
+          interacoesConteudo: editContentInteractions
+            .filter((item) => item.titulo.trim())
+            .map((item) => ({
+              ...item,
+              titulo: item.titulo.trim(),
+              percentualPrazo: item.momento === "entrada" ? 0 : item.momento === "final" ? 100 : Math.min(99, Math.max(1, Number(item.percentualPrazo ?? 50))),
+            })),
         }),
         responseType: "json",
       });
@@ -652,6 +681,168 @@ function PipelineStageManager({
                         </div>
                       ))}
                     </div>
+
+                    <div className="space-y-3 rounded-md border bg-muted/20 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-medium">Conteúdos e interações ao longo do prazo da etapa</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            Use o SLA como linha do tempo: entrada = 0%, durante = percentual do prazo e final = 100%.
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEditContentInteractions((items) => [...items, {
+                            id: crypto.randomUUID(),
+                            titulo: "",
+                            ativo: true,
+                            objetivo: "",
+                            momento: "entrada",
+                            percentualPrazo: 0,
+                            canal: "whatsapp",
+                            mensagem: "",
+                            assetIds: [],
+                            selecaoConteudo: "fixa",
+                            requerAprovacao: false,
+                            enviarUmaVez: true,
+                            instrucoesIA: "",
+                          }])}
+                        >
+                          <Plus className="mr-1 h-3.5 w-3.5" /> Conteúdo
+                        </Button>
+                      </div>
+
+                      {editContentInteractions.length === 0 ? (
+                        <p className="rounded border border-dashed p-3 text-xs text-muted-foreground">
+                          Nenhum conteúdo programado nesta etapa.
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          {editContentInteractions.map((item, interactionIndex) => (
+                            <div key={item.id} className="space-y-2 rounded-md border bg-background p-3">
+                              <div className="flex gap-2">
+                                <Input
+                                  value={item.titulo}
+                                  onChange={(event) => setEditContentInteractions((items) => items.map((row, index) => index === interactionIndex ? { ...row, titulo: event.target.value } : row))}
+                                  placeholder="Ex.: E-book de introdução"
+                                />
+                                <Button type="button" size="icon" variant="ghost" onClick={() => setEditContentInteractions((items) => items.filter((_, index) => index !== interactionIndex))}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+
+                              <div className="grid gap-2 sm:grid-cols-4">
+                                <select
+                                  className="h-10 rounded-md border bg-background px-3 text-sm"
+                                  value={item.momento}
+                                  onChange={(event) => {
+                                    const momento = event.target.value as StageContentInteraction["momento"];
+                                    setEditContentInteractions((items) => items.map((row, index) => index === interactionIndex ? {
+                                      ...row,
+                                      momento,
+                                      percentualPrazo: momento === "entrada" ? 0 : momento === "final" ? 100 : (row.percentualPrazo && row.percentualPrazo > 0 && row.percentualPrazo < 100 ? row.percentualPrazo : 50),
+                                    } : row));
+                                  }}
+                                >
+                                  <option value="entrada">Entrada · 0%</option>
+                                  <option value="percentual">Durante a etapa</option>
+                                  <option value="final">Final · 100%</option>
+                                </select>
+                                <Input
+                                  value={item.momento === "percentual" ? item.percentualPrazo ?? 50 : item.momento === "entrada" ? 0 : 100}
+                                  disabled={item.momento !== "percentual"}
+                                  inputMode="numeric"
+                                  onChange={(event) => setEditContentInteractions((items) => items.map((row, index) => index === interactionIndex ? { ...row, percentualPrazo: Math.min(99, Math.max(1, Number(event.target.value.replace(/\D/g, "") || 1))) } : row))}
+                                  placeholder="% do prazo"
+                                />
+                                <select
+                                  className="h-10 rounded-md border bg-background px-3 text-sm"
+                                  value={item.canal ?? "whatsapp"}
+                                  onChange={(event) => setEditContentInteractions((items) => items.map((row, index) => index === interactionIndex ? { ...row, canal: event.target.value as StageContentInteraction["canal"] } : row))}
+                                >
+                                  <option value="whatsapp">WhatsApp</option>
+                                  <option value="email">E-mail</option>
+                                </select>
+                                <select
+                                  className="h-10 rounded-md border bg-background px-3 text-sm"
+                                  value={item.selecaoConteudo ?? "fixa"}
+                                  onChange={(event) => setEditContentInteractions((items) => items.map((row, index) => index === interactionIndex ? { ...row, selecaoConteudo: event.target.value as StageContentInteraction["selecaoConteudo"] } : row))}
+                                >
+                                  <option value="fixa">Conteúdo fixo</option>
+                                  <option value="ia_recomenda">IA recomenda</option>
+                                  <option value="ia_autonoma">IA escolhe automaticamente</option>
+                                </select>
+                              </div>
+
+                              <Input
+                                value={item.objetivo ?? ""}
+                                onChange={(event) => setEditContentInteractions((items) => items.map((row, index) => index === interactionIndex ? { ...row, objetivo: event.target.value } : row))}
+                                placeholder="Objetivo: educar, gerar confiança, responder objeção..."
+                              />
+                              <textarea
+                                className="min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                                value={item.mensagem ?? ""}
+                                onChange={(event) => setEditContentInteractions((items) => items.map((row, index) => index === interactionIndex ? { ...row, mensagem: event.target.value } : row))}
+                                placeholder="Mensagem padrão que acompanha o conteúdo"
+                              />
+
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Button type="button" size="sm" variant="outline" onClick={() => setContentPickerIndex(interactionIndex)}>
+                                  Escolher da Biblioteca
+                                </Button>
+                                <span className="text-xs text-muted-foreground">
+                                  {(item.assetIds ?? []).length} arquivo(s) vinculado(s)
+                                </span>
+                              </div>
+
+                              {(item.selecaoConteudo ?? "fixa") !== "fixa" && (
+                                <textarea
+                                  className="min-h-16 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                                  value={item.instrucoesIA ?? ""}
+                                  onChange={(event) => setEditContentInteractions((items) => items.map((row, index) => index === interactionIndex ? { ...row, instrucoesIA: event.target.value } : row))}
+                                  placeholder="Orientações para a IA escolher o material mais adequado ao contexto do lead"
+                                />
+                              )}
+
+                              <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs">
+                                <label className="flex items-center gap-1.5">
+                                  <input
+                                    type="checkbox"
+                                    checked={item.enviarUmaVez !== false}
+                                    onChange={(event) => setEditContentInteractions((items) => items.map((row, index) => index === interactionIndex ? { ...row, enviarUmaVez: event.target.checked } : row))}
+                                  />
+                                  Enviar uma única vez nesta etapa
+                                </label>
+                                <label className="flex items-center gap-1.5">
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(item.requerAprovacao)}
+                                    onChange={(event) => setEditContentInteractions((items) => items.map((row, index) => index === interactionIndex ? { ...row, requerAprovacao: event.target.checked } : row))}
+                                  />
+                                  Exigir aprovação antes do envio
+                                </label>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <MediaAssetPicker
+                        tenantId={tenantId}
+                        open={contentPickerIndex !== null}
+                        onOpenChange={(open) => { if (!open) setContentPickerIndex(null); }}
+                        maxSelection={8}
+                        initialSelectedIds={contentPickerIndex == null ? [] : editContentInteractions[contentPickerIndex]?.assetIds ?? []}
+                        title="Selecionar conteúdo da Biblioteca"
+                        confirmLabel="Vincular à etapa"
+                        onConfirm={(assets: MediaPickerAsset[]) => {
+                          if (contentPickerIndex == null) return;
+                          setEditContentInteractions((items) => items.map((row, index) => index === contentPickerIndex ? { ...row, assetIds: assets.map((asset) => asset.id) } : row));
+                        }}
+                      />
+                    </div>
                     <DialogFooter className="gap-2 sm:justify-end">
                       <Button type="button" variant="outline" onClick={() => setEditingId(null)}>
                         Cancelar
@@ -679,6 +870,11 @@ function PipelineStageManager({
                           : stage.atividadePadraoTitulo
                             ? `Atividade padrão: ${stage.atividadePadraoTitulo}${stage.atividadePadraoPrazoMinutos ? ` · prazo ${stage.atividadePadraoPrazoMinutos} min` : ""}`
                             : "Atividades padrão: usar sugestão do sistema / definir manualmente"}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {stage.interacoesConteudo?.length
+                          ? `${stage.interacoesConteudo.length} interação(ões) de conteúdo no prazo da etapa`
+                          : "Sem conteúdo programado na linha do tempo"}
                       </p>
                       <div className="mt-2">
                         <PipelineStageFunctionAccess

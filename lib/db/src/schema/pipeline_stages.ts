@@ -37,6 +37,22 @@ export type PipelineStageActivityQuestion = {
   evidenciaExigida?: "nenhuma" | "foto" | "video" | "audio" | "documento" | "midia";
 };
 
+export type PipelineStageContentInteraction = {
+  id: string;
+  titulo: string;
+  ativo?: boolean;
+  objetivo?: string | null;
+  momento: "entrada" | "percentual" | "final";
+  percentualPrazo?: number | null;
+  canal?: "whatsapp" | "email";
+  mensagem?: string | null;
+  assetIds?: string[];
+  selecaoConteudo?: "fixa" | "ia_recomenda" | "ia_autonoma";
+  requerAprovacao?: boolean;
+  enviarUmaVez?: boolean;
+  instrucoesIA?: string | null;
+};
+
 export type PipelineStageActivityTemplate = {
   id: string;
   titulo: string;
@@ -138,6 +154,9 @@ export const pipelineStagesTable = pgTable("pipeline_stages", {
   atividadePadraoPrazoMinutos: integer("atividade_padrao_prazo_minutos"),
   // Modelo V2: múltiplas atividades configuráveis por etapa.
   atividadesPadrao: jsonb("atividades_padrao").$type<PipelineStageActivityTemplate[]>().notNull().default([]),
+  // Conteúdos/interações vinculados à linha do tempo do SLA da etapa.
+  // 0% = entrada, 1..99% = durante, 100%/final = fim do prazo.
+  interacoesConteudo: jsonb("interacoes_conteudo").$type<PipelineStageContentInteraction[]>().notNull().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
