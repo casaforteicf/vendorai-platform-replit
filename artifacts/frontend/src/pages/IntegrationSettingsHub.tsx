@@ -6,14 +6,23 @@ import { useToast } from "@/hooks/use-toast";
 
 type IntegrationStatus = {
   whatsapp?: { connected?: boolean; phone?: string | null };
-  googleCalendar?: { connected?: boolean };
-  instagram?: { connected?: boolean; username?: string | null };
-  googleAds?: { connected?: boolean; pendingAccountSelection?: boolean; descriptiveName?: string | null };
+  googleCalendar?: { connected?: boolean; attention?: boolean; reason?: string | null; tokenExpiresAt?: string | null };
+  instagram?: { connected?: boolean; attention?: boolean; username?: string | null; reason?: string | null; tokenExpiresAt?: string | null };
+  googleAds?: { connected?: boolean; attention?: boolean; pendingAccountSelection?: boolean; descriptiveName?: string | null; reason?: string | null; tokenExpiresAt?: string | null };
   asaas?: { connected?: boolean };
   zapsign?: { connected?: boolean };
   domain?: { configured?: boolean; active?: boolean; name?: string | null };
-  searchConsole?: { connected?: boolean; verified?: boolean };
-  social?: { linkedin?: boolean; tiktok?: boolean };
+  searchConsole?: { connected?: boolean; attention?: boolean; verified?: boolean; reason?: string | null; tokenExpiresAt?: string | null };
+  social?: {
+    linkedin?: boolean;
+    linkedinAttention?: boolean;
+    linkedinReason?: string | null;
+    linkedinTokenExpiresAt?: string | null;
+    tiktok?: boolean;
+    tiktokAttention?: boolean;
+    tiktokReason?: string | null;
+    tiktokTokenExpiresAt?: string | null;
+  };
   tracking?: {
     googleAds?: boolean;
     googleAdsConversionId?: string | null;
@@ -70,6 +79,8 @@ type CatalogIntegration = {
   capabilities?: string[];
   status?: string;
   overallHealthPercent?: number;
+  lastHealthCheckAt?: string | null;
+  lastSyncAt?: string | null;
   lastErrorMessage?: string | null;
 };
 
@@ -141,6 +152,7 @@ export default function IntegrationSettingsHub() {
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [checkingAll, setCheckingAll] = useState(false);
   const [search, setSearch] = useState("");
   const [catalogIntegrations, setCatalogIntegrations] = useState<CatalogIntegration[]>([]);
   const [showCustomGuide, setShowCustomGuide] = useState<"api" | "webhook" | "n8n" | null>(null);
@@ -297,7 +309,10 @@ export default function IntegrationSettingsHub() {
       category: "Marketing e social",
       usedBy: "Marketing · Omnichannel · CRM",
       connected: status?.instagram?.connected === true,
-      detail: status?.instagram?.username ? `@${status.instagram.username.replace(/^@/, "")}` : undefined,
+      attention: status?.instagram?.attention === true,
+      detail: status?.instagram?.reason === "token_expired"
+        ? "Token expirado · reconecte a conta"
+        : status?.instagram?.username ? `@${status.instagram.username.replace(/^@/, "")}` : undefined,
     },
     {
       key: "google-calendar",
@@ -306,6 +321,10 @@ export default function IntegrationSettingsHub() {
       category: "Google",
       usedBy: "Agenda · CRM · Agente de Agendamento",
       connected: status?.googleCalendar?.connected === true,
+      attention: status?.googleCalendar?.attention === true,
+      detail: status?.googleCalendar?.reason === "refresh_token_missing"
+        ? "Reconexão necessária · token de renovação ausente"
+        : undefined,
     },
     {
       key: "email-google",
@@ -341,8 +360,10 @@ export default function IntegrationSettingsHub() {
       category: "Google",
       usedBy: "Marketing · BI · CRM",
       connected: status?.googleAds?.connected === true && status?.googleAds?.pendingAccountSelection !== true,
-      attention: status?.googleAds?.pendingAccountSelection === true,
-      detail: status?.googleAds?.pendingAccountSelection ? "Seleção de conta pendente" : status?.googleAds?.descriptiveName || undefined,
+      attention: status?.googleAds?.attention === true,
+      detail: status?.googleAds?.reason === "token_expired"
+        ? "Token expirado · reconecte o Google Ads"
+        : status?.googleAds?.pendingAccountSelection ? "Seleção de conta pendente" : status?.googleAds?.descriptiveName || undefined,
     },
     {
       key: "asaas",
@@ -367,8 +388,10 @@ export default function IntegrationSettingsHub() {
       category: "Google",
       usedBy: "Marketing · Site · BI",
       connected: status?.searchConsole?.connected === true && status?.searchConsole?.verified === true,
-      attention: status?.searchConsole?.connected === true && status?.searchConsole?.verified !== true,
-      detail: status?.searchConsole?.connected && !status?.searchConsole?.verified ? "Conta autorizada · falta confirmar a propriedade" : undefined,
+      attention: status?.searchConsole?.attention === true,
+      detail: status?.searchConsole?.reason === "token_expired"
+        ? "Token expirado · reconecte o Search Console"
+        : status?.searchConsole?.connected && !status?.searchConsole?.verified ? "Conta autorizada · falta confirmar a propriedade" : undefined,
     },
     {
       key: "linkedin",
@@ -377,6 +400,8 @@ export default function IntegrationSettingsHub() {
       category: "Marketing e social",
       usedBy: "Marketing · Prospecção · BI",
       connected: status?.social?.linkedin === true,
+      attention: status?.social?.linkedinAttention === true,
+      detail: status?.social?.linkedinReason === "token_expired" ? "Token expirado · reconecte o LinkedIn" : undefined,
     },
     {
       key: "tiktok",
@@ -385,6 +410,8 @@ export default function IntegrationSettingsHub() {
       category: "Marketing e social",
       usedBy: "Marketing · Conteúdo · BI",
       connected: status?.social?.tiktok === true,
+      attention: status?.social?.tiktokAttention === true,
+      detail: status?.social?.tiktokReason === "token_expired" ? "Token expirado · reconecte o TikTok" : undefined,
     },
     {
       key: "domain",
@@ -621,10 +648,47 @@ export default function IntegrationSettingsHub() {
     }
   };
 
+  const refreshRecoverableIntegration = async (row: IntegrationRow) => {
+    if (!tenantId) return false;
+    const path =
+      row.key === "google-ads"
+        ? `/api/tenants/${encodeURIComponent(tenantId)}/google-ads-connection/refresh`
+        : row.key === "linkedin" || row.key === "tiktok"
+          ? `/api/tenants/${encodeURIComponent(tenantId)}/social-connections/${row.key}/test`
+          : null;
+    if (!path) return false;
+
+    setBusy(row.key);
+    try {
+      await apiJson(path, { method: "POST" });
+      toast({ title: `${row.label} renovado com sucesso` });
+      await loadStatus();
+      return true;
+    } catch (error) {
+      toast({
+        title: `${row.label} precisa ser reconectado`,
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const handleRowAction = async (row: IntegrationRow) => {
     if (row.key === "search-console" && (row.attention || row.connected)) {
       await verifySearchConsole();
       return;
+    }
+    const reason =
+      row.key === "google-ads" ? status?.googleAds?.reason
+      : row.key === "linkedin" ? status?.social?.linkedinReason
+      : row.key === "tiktok" ? status?.social?.tiktokReason
+      : null;
+    if (row.attention && reason === "token_expired") {
+      const recovered = await refreshRecoverableIntegration(row);
+      if (recovered) return;
     }
     await startConnection(row.key);
   };
@@ -634,8 +698,13 @@ export default function IntegrationSettingsHub() {
       if (row.key === "search-console") return row.connected ? "Enviando sitemap..." : "Verificando...";
       return "Abrindo...";
     }
-    if (row.key === "search-console" && row.attention) return "Verificar agora";
+    if (row.key === "search-console" && row.attention) return status?.searchConsole?.reason === "token_expired" ? "Renovar e verificar" : "Verificar agora";
     if (row.key === "search-console" && row.connected) return "Reenviar sitemap";
+    if (row.attention && (
+      status?.googleAds?.reason === "token_expired" && row.key === "google-ads"
+      || status?.social?.linkedinReason === "token_expired" && row.key === "linkedin"
+      || status?.social?.tiktokReason === "token_expired" && row.key === "tiktok"
+    )) return "Renovar conexão";
     if (row.key === "domain") return "Configurar domínio";
     if (row.connected) return "Reconectar / gerenciar";
     if (row.attention) return "Revisar integração";
@@ -911,6 +980,79 @@ export default function IntegrationSettingsHub() {
     }
   };
 
+  const lastHealthCheckAt = useMemo(() => {
+    const values = catalogIntegrations
+      .map((item) => item.lastHealthCheckAt ? new Date(item.lastHealthCheckAt) : null)
+      .filter((value): value is Date => Boolean(value) && !Number.isNaN(value.getTime()))
+      .sort((a, b) => b.getTime() - a.getTime());
+    return values[0]?.toLocaleString("pt-BR") ?? "Nunca";
+  }, [catalogIntegrations]);
+
+  const nextTokenExpiry = useMemo(() => {
+    const values = [
+      status?.googleCalendar?.tokenExpiresAt,
+      status?.instagram?.tokenExpiresAt,
+      status?.googleAds?.tokenExpiresAt,
+      status?.searchConsole?.tokenExpiresAt,
+      status?.social?.linkedinTokenExpiresAt,
+      status?.social?.tiktokTokenExpiresAt,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => new Date(value))
+      .filter((value) => !Number.isNaN(value.getTime()) && value.getTime() > Date.now())
+      .sort((a, b) => a.getTime() - b.getTime());
+    return values[0]?.toLocaleString("pt-BR") ?? "Nenhum vencimento próximo";
+  }, [status]);
+
+  const runAllHealthChecks = async () => {
+    if (!tenantId) return;
+    setCheckingAll(true);
+    try {
+      const financeCheck = apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/finance-integrations/health-check`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+
+      const nativeChecks: Array<Promise<unknown>> = [];
+      if (status?.searchConsole?.connected || status?.searchConsole?.attention) {
+        nativeChecks.push(apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/search-console-connection/refresh`, { method: "POST" }));
+      }
+      if (status?.instagram?.connected || status?.instagram?.attention) {
+        nativeChecks.push(apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/instagram-connection/refresh`, { method: "POST" }));
+      }
+      if (metaAdsStatus.connected || metaAdsStatus.pendingAccountSelection) {
+        nativeChecks.push(apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/meta-ads-connection/refresh`, { method: "POST" }));
+      }
+      for (const connection of socialConnections.filter((item) => item.connected)) {
+        nativeChecks.push(apiJson(
+          `/api/tenants/${encodeURIComponent(tenantId)}/social-connections/${encodeURIComponent(connection.provider)}/test`,
+          { method: "POST" },
+        ));
+      }
+
+      const [financeResult, ...nativeResults] = await Promise.allSettled([financeCheck, ...nativeChecks]);
+      const financeChecked = financeResult.status === "fulfilled" ? Number((financeResult.value as any)?.checked ?? 0) : 0;
+      const nativeSucceeded = nativeResults.filter((item) => item.status === "fulfilled").length;
+      const nativeFailed = nativeResults.length - nativeSucceeded;
+
+      toast({
+        title: nativeFailed ? "Verificação concluída com alertas" : "Verificação concluída",
+        description: `${financeChecked + nativeSucceeded} integrações validadas${nativeFailed ? ` · ${nativeFailed} precisam revisão` : ""}.`,
+        variant: nativeFailed ? "destructive" : "default",
+      });
+      await loadStatus();
+    } catch (error) {
+      toast({
+        title: "Falha ao verificar integrações",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setCheckingAll(false);
+    }
+  };
+
   const visibleRows = rows.filter((row) => {
     const term = search.trim().toLowerCase();
     if (!term) return true;
@@ -941,7 +1083,29 @@ export default function IntegrationSettingsHub() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => window.location.assign("/configuracoes")}>Voltar</Button>
+          <Button variant="outline" onClick={() => void runAllHealthChecks()} disabled={checkingAll || loading}>
+            {checkingAll ? "Verificando..." : "Verificar todas"}
+          </Button>
           <Button variant="outline" onClick={() => void loadStatus()} disabled={loading}>Atualizar status</Button>
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-xl border bg-card p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Conectadas</p>
+          <p className="mt-1 text-2xl font-bold">{connectedCount}</p>
+        </div>
+        <div className="rounded-xl border bg-card p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Precisam atenção</p>
+          <p className="mt-1 text-2xl font-bold">{attentionCount}</p>
+        </div>
+        <div className="rounded-xl border bg-card p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Última verificação</p>
+          <p className="mt-1 text-sm font-semibold">{lastHealthCheckAt}</p>
+        </div>
+        <div className="rounded-xl border bg-card p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Próximo vencimento</p>
+          <p className="mt-1 text-sm font-semibold">{nextTokenExpiry}</p>
         </div>
       </div>
 
@@ -1334,6 +1498,11 @@ export default function IntegrationSettingsHub() {
                   </span>
                 </div>
                 <p className="mt-3 text-[11px] text-muted-foreground">Autenticação: {item.authType.replaceAll("_", " ")}</p>
+                <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+                  <p>Saúde: {Math.round(Number(item.overallHealthPercent || 0))}%</p>
+                  <p>Última verificação: {item.lastHealthCheckAt ? new Date(item.lastHealthCheckAt).toLocaleString("pt-BR") : "Nunca"}</p>
+                  {item.lastSyncAt && <p>Última sincronização: {new Date(item.lastSyncAt).toLocaleString("pt-BR")}</p>}
+                </div>
                 {item.lastErrorMessage && <p className="mt-2 text-xs text-destructive">{item.lastErrorMessage}</p>}
                 <Button className="mt-4" variant="outline" onClick={() => toast({
                   title: configured ? `${item.name}: revisar conexão` : `${item.name}: configuração assistida`,

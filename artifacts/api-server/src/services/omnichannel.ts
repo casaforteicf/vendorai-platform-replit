@@ -262,124 +262,11 @@ function normalizePhoneBR(raw: string): string {
   return "55" + digits;
 }
 
-// ── Z-API send ────────────────────────────────────────────────────────────────
-
-async function sendZapiWhatsAppMessage(
-  instanceId: string,
-  token: string,
-  clientToken: string,
-  phone: string,
-  message: string,
-  log: Logger,
-  isAiResponse = false
-): Promise<void> {
-  if (isAiResponse) await simulateTypingDelay(message, log);
-
-  const digits = phone.replace(/\D/g, "").replace(/^0+/, "");
-  const normalized = digits.startsWith("55") ? digits : "55" + digits;
-
-  const url = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-text`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Client-Token": clientToken,
-    },
-    body: JSON.stringify({ phone: normalized, message }),
-  });
-
-  const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-  if (!res.ok) {
-    log.error({ body, phone: normalized, instanceId }, "omnichannel: zapi send failed");
-    throw new Error(`Z-API error ${res.status}: ${JSON.stringify(body)}`);
-  }
-
-  const zapiMessageId = (body as { zaapId?: string }).zaapId ?? null;
-  log.info({ phone: normalized, zapiMessageId }, "omnichannel: whatsapp message sent via z-api");
-}
-
-// ── Z-API document send ───────────────────────────────────────────────────────
-
-async function sendZapiDocument(
-  instanceId: string,
-  token: string,
-  clientToken: string,
-  phone: string,
-  pdfBuffer: Buffer,
-  fileName: string,
-  caption: string,
-  log: Logger,
-): Promise<void> {
-  const digits = phone.replace(/\D/g, "").replace(/^0+/, "");
-  const normalized = digits.startsWith("55") ? digits : "55" + digits;
-  const base64 = pdfBuffer.toString("base64");
-  const url = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-document/pdf`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Client-Token": clientToken },
-    body: JSON.stringify({
-      phone: normalized,
-      document: `data:application/pdf;base64,${base64}`,
-      fileName,
-      caption,
-    }),
-  });
-  const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-  if (!res.ok) {
-    log.error({ body, phone: normalized }, "omnichannel: zapi document send failed");
-    throw new Error(`Z-API document error ${res.status}: ${JSON.stringify(body)}`);
-  }
-  log.info({ phone: normalized, fileName }, "omnichannel: document sent via z-api");
-}
-
-// Z-API aceita URL pública direta (não precisa baixar+base64) pra
-// imagem/áudio/vídeo — confirmado na doc oficial (developer.z-api.io).
-// Documento usa /send-document/{ext} com base64 (padrão já validado em
-// produção via sendZapiDocument); os outros usam endpoint próprio por
-// tipo com o campo nomeado igual ao tipo (image/audio/video).
-async function sendZapiMediaByUrl(
-  instanceId: string,
-  token: string,
-  clientToken: string,
-  phone: string,
-  mediaUrl: string,
-  mimeType: string,
-  fileName: string,
-  caption: string,
-  log: Logger,
-): Promise<void> {
-  const digits = phone.replace(/\D/g, "").replace(/^0+/, "");
-  const normalized = digits.startsWith("55") ? digits : "55" + digits;
-  const base = `https://api.z-api.io/instances/${instanceId}/token/${token}`;
-
-  let endpoint: string;
-  let field: string;
-  if (mimeType.startsWith("image/")) { endpoint = "send-image"; field = "image"; }
-  else if (mimeType.startsWith("video/")) { endpoint = "send-video"; field = "video"; }
-  else if (mimeType.startsWith("audio/")) { endpoint = "send-audio"; field = "audio"; }
-  else {
-    const ext = (fileName.split(".").pop() || "pdf").toLowerCase();
-    endpoint = `send-document/${ext}`;
-    field = "document";
-  }
-
-  const res = await fetch(`${base}/${endpoint}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Client-Token": clientToken },
-    body: JSON.stringify({ phone: normalized, [field]: mediaUrl, ...(field === "document" ? { fileName, caption } : { caption }) }),
-  });
-  const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-  if (!res.ok) {
-    log.error({ body, phone: normalized, endpoint }, "omnichannel: zapi media send failed");
-    throw new Error(`Z-API ${endpoint} error ${res.status}: ${JSON.stringify(body)}`);
-  }
-  log.info({ phone: normalized, fileName, endpoint }, "omnichannel: media sent via z-api");
-}
-
 /**
  * Send a PDF buffer as a WhatsApp document attachment.
- * Picks Z-API when configured, falls back to Meta Cloud API.
- * Silently skips (logs warn) when no credentials are available.
+ * QR/Evolution is the primary provider. Meta Cloud API remains only as a legacy
+ * fallback for already connected tenants; Z-API is intentionally not used.
+ * Silently skips (logs warn) when no supported credentials are available.
  */
 export async function sendDirectWhatsAppDocument(
   tenantId: string,
@@ -391,9 +278,6 @@ export async function sendDirectWhatsAppDocument(
 ): Promise<void> {
   const [config] = await db
     .select({
-      zapiInstanceId:    agentConfigsTable.zapiInstanceId,
-      zapiToken:         agentConfigsTable.zapiToken,
-      zapiClientToken:   agentConfigsTable.zapiClientToken,
       evolutionInstanceName: agentConfigsTable.evolutionInstanceName,
       evolutionConnected:    agentConfigsTable.evolutionConnected,
       metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
@@ -403,22 +287,16 @@ export async function sendDirectWhatsAppDocument(
     .where(eq(agentConfigsTable.tenantId, tenantId))
     .limit(1);
 
-  const hasZapi = !!(config?.zapiInstanceId && config?.zapiToken && config?.zapiClientToken);
   const hasEvolution = !!(config?.evolutionInstanceName && config?.evolutionConnected);
   const hasMeta = !!(config?.metaPhoneNumberId && config?.metaAccessToken);
 
-  if (!hasZapi && !hasEvolution && !hasMeta) {
+  if (!hasEvolution && !hasMeta) {
     log.warn({ tenantId }, "omnichannel: no credentials for document send — skipping PDF");
     return;
   }
 
   if (hasEvolution) {
     await sendEvolutionDocument(config!.evolutionInstanceName!, phone, pdfBuffer, fileName, caption, log);
-  } else if (hasZapi) {
-    await sendZapiDocument(
-      config!.zapiInstanceId!, config!.zapiToken!, config!.zapiClientToken!,
-      phone, pdfBuffer, fileName, caption, log,
-    );
   } else {
     // Meta: upload to Media API, then send as document message
     const mediaId = await uploadMediaToMeta(
@@ -664,9 +542,6 @@ export async function sendDirectWhatsAppMessage(
 ): Promise<string | undefined> {
   const [config] = await db
     .select({
-      zapiInstanceId: agentConfigsTable.zapiInstanceId,
-      zapiToken: agentConfigsTable.zapiToken,
-      zapiClientToken: agentConfigsTable.zapiClientToken,
       evolutionInstanceName: agentConfigsTable.evolutionInstanceName,
       evolutionConnected: agentConfigsTable.evolutionConnected,
       metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
@@ -676,19 +551,15 @@ export async function sendDirectWhatsAppMessage(
     .where(eq(agentConfigsTable.tenantId, tenantId))
     .limit(1);
 
-  const hasZapi = !!(config?.zapiInstanceId && config?.zapiToken && config?.zapiClientToken);
   const hasEvolution = !!(config?.evolutionInstanceName && config?.evolutionConnected);
   const hasMeta = !!(config?.metaPhoneNumberId && config?.metaAccessToken);
 
-  if (!hasZapi && !hasEvolution && !hasMeta) {
+  if (!hasEvolution && !hasMeta) {
     throw new WhatsAppNotConnectedError();
   }
 
   if (hasEvolution) {
     await sendEvolutionWhatsAppMessage(config!.evolutionInstanceName!, phone, message, log);
-    return undefined;
-  } else if (hasZapi) {
-    await sendZapiWhatsAppMessage(config!.zapiInstanceId!, config!.zapiToken!, config!.zapiClientToken!, phone, message, log);
     return undefined;
   } else {
     return sendMetaWhatsAppMessage(config!.metaPhoneNumberId!, config!.metaAccessToken!, phone, message, log);
@@ -850,13 +721,10 @@ export async function sendOutgoingMessage(
       connections[0] ??
       null;
   }
-  // ── 2. WhatsApp: QR/Evolution é o provedor padrão; Z-API e Meta são fallback legado
+  // ── 2. WhatsApp: QR/Evolution é o provedor padrão; Meta é fallback legado
   if (canal === "whatsapp") {
     const [config] = await db
       .select({
-        zapiInstanceId: agentConfigsTable.zapiInstanceId,
-        zapiToken: agentConfigsTable.zapiToken,
-        zapiClientToken: agentConfigsTable.zapiClientToken,
         evolutionInstanceName: agentConfigsTable.evolutionInstanceName,
         evolutionConnected: agentConfigsTable.evolutionConnected,
         metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
@@ -871,7 +739,6 @@ export async function sendOutgoingMessage(
       throw new WhatsAppPhoneMissingError(leadId);
     }
 
-    const hasZapi = !selectedWhatsappConnection && !!(config?.zapiInstanceId && config?.zapiToken && config?.zapiClientToken);
     const evolutionInstance = selectedWhatsappConnection?.provider === "evolution" ? selectedWhatsappConnection.evolutionInstanceName : config?.evolutionInstanceName;
     const hasEvolution = !!evolutionInstance && (
       selectedWhatsappConnection?.provider === "evolution" || config?.evolutionConnected === true
@@ -880,7 +747,7 @@ export async function sendOutgoingMessage(
     const metaAccessToken = selectedWhatsappConnection?.provider === "meta" ? selectedWhatsappConnection.accessToken : config?.metaAccessToken;
     const hasMeta = !!(metaPhoneNumberId && metaAccessToken);
 
-    if (!hasZapi && !hasEvolution && !hasMeta) {
+    if (!hasEvolution && !hasMeta) {
       throw new WhatsAppNotConnectedError();
     }
 
@@ -891,24 +758,6 @@ export async function sendOutgoingMessage(
         await sendEvolutionMedia(evolutionInstance!, lead.telefone, buffer, input.midia.mimeType, input.midia.fileName, conteudo, log);
       } else {
         await sendEvolutionWhatsAppMessage(evolutionInstance!, lead.telefone, conteudo, log);
-      }
-    } else if (hasZapi) {
-      // ── Z-API path legado (fallback) ──────────────────────────────────────
-      if (input.midia) {
-        await sendZapiMediaByUrl(
-          config!.zapiInstanceId!, config!.zapiToken!, config!.zapiClientToken!,
-          lead.telefone, input.midia.url, input.midia.mimeType, input.midia.fileName, conteudo, log,
-        );
-      } else {
-        await sendZapiWhatsAppMessage(
-          config!.zapiInstanceId!,
-          config!.zapiToken!,
-          config!.zapiClientToken!,
-          lead.telefone,
-          conteudo,
-          log,
-          !!agentName
-        );
       }
     } else {
       // ── Meta Cloud API path (24h window enforced) ─────────────────────────
