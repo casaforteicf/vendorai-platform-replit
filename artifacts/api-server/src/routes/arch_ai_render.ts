@@ -175,7 +175,7 @@ archAiRenderRouter.post("/arch/ai-render/:id/approve", authenticate, async (req,
   const approvalNote = asOptionalString(req.body?.notes ?? req.body?.approval_note);
   const authenticatedUser = (req as any).user ?? {};
   const approvedBy = String(authenticatedUser.id ?? authenticatedUser.email ?? authenticatedUser.name ?? "authenticated-user");
-  captureJson(req, res, async (body) => {
+  return captureJson(req, res, async (body) => {
     const renderId = asOptionalString(body?.render_id) ?? asOptionalString(req.params["id"]);
     if (!tid || !renderId) return;
 
