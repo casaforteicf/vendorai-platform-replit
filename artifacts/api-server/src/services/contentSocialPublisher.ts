@@ -149,6 +149,9 @@ async function resolveInstagramMediaUrl(rawUrl: string): Promise<string> {
     const entityPath = `/objects/${decodeURIComponent(parsed.pathname.slice(storagePrefix.length))}`;
     return contentObjectStorage.getObjectEntitySignedUrl(entityPath, 3600);
   }
+  if (parsed.pathname.startsWith("/objects/")) {
+    return contentObjectStorage.getObjectEntitySignedUrl(parsed.pathname, 3600);
+  }
 
   if (/^https:\/\//i.test(rawUrl)) return rawUrl;
 
