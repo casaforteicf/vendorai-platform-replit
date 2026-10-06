@@ -552,6 +552,14 @@ type ConceptDraftResponse = {
     generatedAt?: string;
     source?: "facade" | "model3d";
     renderView?: "exterior" | "interior";
+    projectRevision?: string | null;
+    sceneId?: string | null;
+    sceneName?: string | null;
+    cameraSnapshot?: {
+      floor?: number;
+      position: { x: number; y: number; z: number };
+      target: { x: number; y: number; z: number };
+    } | null;
     history?: Array<{
       renderId: string;
       canRegenerate?: boolean;
@@ -561,6 +569,14 @@ type ConceptDraftResponse = {
       generatedAt: string;
       source: "facade" | "model3d";
       renderView: "exterior" | "interior";
+      projectRevision?: string | null;
+      sceneId?: string | null;
+      sceneName?: string | null;
+      cameraSnapshot?: {
+        floor?: number;
+        position: { x: number; y: number; z: number };
+        target: { x: number; y: number; z: number };
+      } | null;
     }>;
     error?: string;
   };
@@ -5582,6 +5598,14 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             ambiente?: string | null;
             source?: "facade" | "model3d" | null;
             render_view?: "exterior" | "interior" | null;
+            project_revision?: string | null;
+            scene_id?: string | null;
+            scene_name?: string | null;
+            camera_snapshot?: {
+              floor?: number;
+              position: { x: number; y: number; z: number };
+              target: { x: number; y: number; z: number };
+            } | null;
             created_at?: string | null;
             concluido_em?: string | null;
           }>;
@@ -5597,6 +5621,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           generatedAt: item.concluido_em ?? item.created_at ?? "",
           source: item.source ?? (item.ambiente === "interior" ? "model3d" as const : "facade" as const),
           renderView: item.render_view ?? (item.ambiente === "interior" ? "interior" as const : "exterior" as const),
+          projectRevision: item.project_revision ?? null,
+          sceneId: item.scene_id ?? null,
+          sceneName: item.scene_name ?? null,
+          cameraSnapshot: item.camera_snapshot ?? null,
         }));
         setPrimaryRenderId(versions.find((item) => item.is_primary)?.id ?? null);
         const newest = versions[versions.length - 1];
@@ -8960,6 +8988,18 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                                     : "Render atual"}
                                   <span className="mx-1.5">•</span>
                                   preservação estrutural do projeto
+                                  {displayedRender.projectRevision ? (
+                                    <>
+                                      <span className="mx-1.5">•</span>
+                                      revisão {displayedRender.projectRevision}
+                                    </>
+                                  ) : null}
+                                  {displayedRender.sceneName ? (
+                                    <>
+                                      <span className="mx-1.5">•</span>
+                                      {displayedRender.sceneName}
+                                    </>
+                                  ) : null}
                                 </div>
                               </div>
                               <div className="flex items-center gap-2">
