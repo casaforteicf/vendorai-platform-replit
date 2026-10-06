@@ -46,6 +46,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { USER_MODULES, modulesForFunction, type UserModuleKey } from "@/lib/moduleAccess";
+import { ProspectorLocationMap, type ProspectorGeoArea } from "@/components/ProspectorLocationMap";
 import {
   Select,
   SelectContent,
@@ -500,6 +501,8 @@ export default function Usuarios() {
     leadAssignmentRegions: "",
     leadAssignmentSegments: "",
     leadAssignmentBaseAddress: "",
+    leadAssignmentLat: null as number | null,
+    leadAssignmentLng: null as number | null,
     leadAssignmentRaioKm: "",
   });
 
@@ -637,6 +640,8 @@ export default function Usuarios() {
       leadAssignmentRegions: "",
       leadAssignmentSegments: "",
       leadAssignmentBaseAddress: "",
+      leadAssignmentLat: null,
+      leadAssignmentLng: null,
       leadAssignmentRaioKm: "",
     });
     setEditingUser(null);
@@ -668,6 +673,8 @@ export default function Usuarios() {
         ? targetUser.leadAssignmentSegments.join(", ")
         : "",
       leadAssignmentBaseAddress: "",
+      leadAssignmentLat: targetUser.leadAssignmentLat != null ? Number(targetUser.leadAssignmentLat) : null,
+      leadAssignmentLng: targetUser.leadAssignmentLng != null ? Number(targetUser.leadAssignmentLng) : null,
       leadAssignmentRaioKm:
         targetUser.leadAssignmentRaioKm != null ? String(targetUser.leadAssignmentRaioKm) : "",
     });
@@ -906,6 +913,8 @@ export default function Usuarios() {
           leadAssignmentCities,
           leadAssignmentRegions,
           leadAssignmentSegments,
+          leadAssignmentLat: formData.leadAssignmentLat,
+          leadAssignmentLng: formData.leadAssignmentLng,
           leadAssignmentRaioKm,
         };
         if (formData.password) payload.password = formData.password;
@@ -928,6 +937,8 @@ export default function Usuarios() {
             leadAssignmentCities,
             leadAssignmentRegions,
             leadAssignmentSegments,
+            leadAssignmentLat: formData.leadAssignmentLat,
+            leadAssignmentLng: formData.leadAssignmentLng,
             leadAssignmentRaioKm,
             ...(baseAddress ? { leadAssignmentBaseAddress: baseAddress } : {}),
           } as any,
@@ -1414,13 +1425,35 @@ export default function Usuarios() {
                 {formData.leadAssignmentEnabled && (
                   <>
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
+                      <div className="space-y-2">
                         <Label>{copy.cities}</Label>
                         <Input
                           value={formData.leadAssignmentCities}
                           onChange={(event) => setFormData((current) => ({ ...current, leadAssignmentCities: event.target.value }))}
                           placeholder={copy.citiesPlaceholder}
                         />
+                        <ProspectorLocationMap
+                          values={parseTerritories(formData.leadAssignmentCities)}
+                          onChange={(values) => setFormData((current) => ({
+                            ...current,
+                            leadAssignmentCities: values.join(", "),
+                          }))}
+                          onAreaAdd={(area: ProspectorGeoArea) => setFormData((current) => ({
+                            ...current,
+                            leadAssignmentBaseAddress: area.label,
+                            leadAssignmentLat: area.lat,
+                            leadAssignmentLng: area.lng,
+                            leadAssignmentRaioKm: String(area.radiusKm),
+                          }))}
+                        />
+                        {formData.leadAssignmentLat != null && formData.leadAssignmentLng != null && formData.leadAssignmentRaioKm && (
+                          <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                            <MapPin className="h-3.5 w-3.5 shrink-0" />
+                            <span>
+                              {locale === "pt-BR" ? "Área definida no mapa" : "Área definida en el mapa"} · {formData.leadAssignmentRaioKm} km
+                            </span>
+                          </div>
+                        )}
                       </div>
                       <div>
                         <Label>{copy.regions}</Label>
@@ -1441,32 +1474,11 @@ export default function Usuarios() {
                       />
                       <p className="text-xs text-muted-foreground mt-1">{copy.segmentsHelp}</p>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <Label>{copy.baseAddress}</Label>
-                        <Input
-                          value={formData.leadAssignmentBaseAddress}
-                          onChange={(event) => setFormData((current) => ({ ...current, leadAssignmentBaseAddress: event.target.value }))}
-                          placeholder={copy.baseAddressPlaceholder}
-                        />
-                        {editingUser?.leadAssignmentLat != null && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {copy.currentPoint}: {Number(editingUser.leadAssignmentLat).toFixed(4)}, {Number(editingUser.leadAssignmentLng).toFixed(4)}
-                          </p>
-                        )}
-                      </div>
-                      <div>
-                        <Label>{copy.raioKm}</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          value={formData.leadAssignmentRaioKm}
-                          onChange={(event) => setFormData((current) => ({ ...current, leadAssignmentRaioKm: event.target.value }))}
-                          placeholder={copy.raioKmPlaceholder}
-                        />
-                      </div>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{copy.raioHelp}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {locale === "pt-BR"
+                        ? "O raio agora é definido diretamente no mapa para evitar dúvida sobre qual cidade ou área ele pertence."
+                        : "El radio ahora se define directamente en el mapa para evitar dudas sobre a qué ciudad o zona pertenece."}
+                    </p>
                   </>
                 )}
               </div>
