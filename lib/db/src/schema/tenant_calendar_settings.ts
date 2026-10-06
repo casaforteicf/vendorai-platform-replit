@@ -21,12 +21,26 @@ export type ProfessionalDate = {
   professions: string[];
 };
 
+export type ActivityScheduleDefault = {
+  activityType: string;
+  enabled: boolean;
+  weekday: number; // 0=domingo ... 6=sábado
+  agendaId?: string | null;
+};
+
 const professionalDatesSchema = z.array(z.object({
   name: z.string().min(1),
   active: z.boolean(),
   month: z.number().int().min(1).max(12),
   day: z.number().int().min(1).max(31),
   professions: z.array(z.string().min(1)).min(1),
+}));
+
+const activityScheduleDefaultsSchema = z.array(z.object({
+  activityType: z.string().min(1),
+  enabled: z.boolean(),
+  weekday: z.number().int().min(0).max(6),
+  agendaId: z.string().nullable().optional(),
 }));
 
 export const tenantCalendarSettingsTable = pgTable(
@@ -46,6 +60,10 @@ export const tenantCalendarSettingsTable = pgTable(
       .$type<ProfessionalDate[]>()
       .notNull()
       .default([]),
+    activityScheduleDefaults: jsonb("activity_schedule_defaults")
+      .$type<ActivityScheduleDefault[]>()
+      .notNull()
+      .default([]),
     enableSpouseGiftFlow: boolean("enable_spouse_gift_flow").notNull().default(false),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -57,6 +75,7 @@ export const insertTenantCalendarSettingsSchema = createInsertSchema(
   tenantCalendarSettingsTable,
   {
     professionalDates: professionalDatesSchema.optional(),
+    activityScheduleDefaults: activityScheduleDefaultsSchema.optional(),
     commercialDates: z.array(
       z.object({
         name: z.string(),
@@ -75,6 +94,7 @@ export const updateTenantCalendarSettingsSchema = createSelectSchema(
   tenantCalendarSettingsTable,
   {
     professionalDates: professionalDatesSchema.optional(),
+    activityScheduleDefaults: activityScheduleDefaultsSchema.optional(),
     commercialDates: z.array(
       z.object({
         name: z.string(),
