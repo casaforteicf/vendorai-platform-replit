@@ -14,6 +14,7 @@ type IntegrationStatus = {
   domain?: { configured?: boolean; active?: boolean; name?: string | null };
   searchConsole?: { connected?: boolean; verified?: boolean };
   social?: { linkedin?: boolean; tiktok?: boolean };
+  tracking?: { googleAds?: boolean; metaPixel?: boolean; linkedinInsightTag?: boolean; tiktokPixel?: boolean };
   email?: {
     google?: { connected?: boolean; address?: string | null };
     microsoft?: { connected?: boolean; address?: string | null };
@@ -116,6 +117,8 @@ export default function IntegrationSettingsHub() {
   const [catalogIntegrations, setCatalogIntegrations] = useState<CatalogIntegration[]>([]);
   const [showCustomGuide, setShowCustomGuide] = useState<"api" | "webhook" | "n8n" | null>(null);
   const [customIntegrations, setCustomIntegrations] = useState<CustomIntegration[]>([]);
+  const [metaAdsStatus, setMetaAdsStatus] = useState<{ connected?: boolean; pendingAccountSelection?: boolean; adAccountName?: string | null }>({});
+  const [socialConnections, setSocialConnections] = useState<Array<{ provider: string; connected?: boolean; accountName?: string | null }>>([]);
   const [customDraft, setCustomDraft] = useState({
     name: "",
     baseUrl: "",
@@ -159,11 +162,13 @@ export default function IntegrationSettingsHub() {
   const loadStatus = async () => {
     setLoading(true);
     try {
-      const [data, emailData, financeData, customData] = await Promise.all([
+      const [data, emailData, financeData, customData, metaAdsData, socialData] = await Promise.all([
         apiJson("/api/onboarding/integracoes"),
         tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/email-connections`).catch(() => ({ connections: [] })) : Promise.resolve({ connections: [] }),
         tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/finance-integrations`).catch(() => ({ integrations: [] })) : Promise.resolve({ integrations: [] }),
         tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/custom-integrations`).catch(() => ({ integrations: [] })) : Promise.resolve({ integrations: [] }),
+        tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/meta-ads-connection`).catch(() => ({ connected: false })) : Promise.resolve({ connected: false }),
+        tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/social-connections`).catch(() => ({ connections: [] })) : Promise.resolve({ connections: [] }),
       ]);
       setStatus(data as IntegrationStatus);
       const hiddenTenantInfrastructure = new Set([
@@ -174,6 +179,8 @@ export default function IntegrationSettingsHub() {
       const financeCatalog = Array.isArray(financeData?.integrations) ? financeData.integrations : [];
       setCatalogIntegrations(financeCatalog.filter((item: CatalogIntegration) => !hiddenTenantInfrastructure.has(item.providerKey)));
       setCustomIntegrations(Array.isArray(customData?.integrations) ? customData.integrations : []);
+      setMetaAdsStatus(metaAdsData || {});
+      setSocialConnections(Array.isArray(socialData?.connections) ? socialData.connections : []);
       const connections = Array.isArray(emailData?.connections) ? emailData.connections : [];
       setEmailConnections(connections);
       setEmailSignatures({
@@ -642,6 +649,81 @@ export default function IntegrationSettingsHub() {
     }
   };
 
+  const ecosystems = [
+    {
+      key: "google",
+      name: "Google",
+      description: "Conta Google e serviços usados por comunicação, agenda, mídia, SEO e conteúdo.",
+      connected: [
+        emailConnections.some((connection) => connection.provider === "google"),
+        status?.googleCalendar?.connected === true,
+        status?.googleAds?.connected === true && status?.googleAds?.pendingAccountSelection !== true,
+        status?.searchConsole?.connected === true && status?.searchConsole?.verified === true,
+        socialConnections.some((connection) => connection.provider === "youtube" && connection.connected),
+      ].filter(Boolean).length,
+      services: [
+        { name: "Gmail", state: emailConnections.some((connection) => connection.provider === "google") ? "connected" : "available", action: "email-google" as IntegrationKey },
+        { name: "Calendar", state: status?.googleCalendar?.connected ? "connected" : "available", action: "google-calendar" as IntegrationKey },
+        { name: "Google Ads", state: status?.googleAds?.pendingAccountSelection ? "attention" : status?.googleAds?.connected ? "connected" : "available", action: "google-ads" as IntegrationKey },
+        { name: "Search Console", state: status?.searchConsole?.verified ? "connected" : status?.searchConsole?.connected ? "attention" : "available", action: "search-console" as IntegrationKey },
+        { name: "YouTube", state: socialConnections.some((connection) => connection.provider === "youtube" && connection.connected) ? "connected" : "planned" },
+        { name: "GA4", state: "planned" },
+        { name: "Tag Manager", state: "planned" },
+        { name: "Drive", state: "planned" },
+        { name: "Business Profile", state: "planned" },
+      ],
+    },
+    {
+      key: "meta",
+      name: "Meta",
+      description: "Facebook, Instagram, anúncios, Pixel e ativos comerciais da empresa.",
+      connected: [
+        status?.instagram?.connected === true,
+        metaAdsStatus.connected === true && metaAdsStatus.pendingAccountSelection !== true,
+        status?.tracking?.metaPixel === true,
+      ].filter(Boolean).length,
+      services: [
+        { name: "Instagram", state: status?.instagram?.connected ? "connected" : "available", action: "instagram" as IntegrationKey },
+        { name: "Meta Ads", state: metaAdsStatus.pendingAccountSelection ? "attention" : metaAdsStatus.connected ? "connected" : "available", endpoint: "/api/auth/meta-ads" },
+        { name: "Meta Pixel", state: status?.tracking?.metaPixel ? "connected" : "planned" },
+        { name: "Conversions API", state: "planned" },
+        { name: "Facebook Page", state: metaAdsStatus.connected ? "available" : "planned" },
+        { name: "Lead Ads", state: "planned" },
+        { name: "Catálogo", state: "planned" },
+      ],
+    },
+    {
+      key: "microsoft",
+      name: "Microsoft",
+      description: "Microsoft 365 para e-mail, agenda, arquivos e colaboração.",
+      connected: emailConnections.some((connection) => connection.provider === "microsoft") ? 1 : 0,
+      services: [
+        { name: "Outlook", state: emailConnections.some((connection) => connection.provider === "microsoft") ? "connected" : "available", action: "email-microsoft" as IntegrationKey },
+        { name: "Calendar", state: "planned" },
+        { name: "OneDrive", state: "planned" },
+        { name: "SharePoint", state: "planned" },
+        { name: "Teams", state: "planned" },
+      ],
+    },
+  ];
+
+  const startEcosystemService = async (service: { action?: IntegrationKey; endpoint?: string }) => {
+    if (service.action) {
+      await startConnection(service.action);
+      return;
+    }
+    if (!service.endpoint) return;
+    setBusy(service.endpoint);
+    try {
+      const data = await apiJson(service.endpoint);
+      if (!data?.url || typeof data.url !== "string") throw new Error("URL de autorização não retornada.");
+      window.location.assign(data.url);
+    } catch (error) {
+      toast({ title: "Não foi possível abrir a conexão", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+      setBusy(null);
+    }
+  };
+
   const visibleRows = rows.filter((row) => {
     const term = search.trim().toLowerCase();
     if (!term) return true;
@@ -673,6 +755,45 @@ export default function IntegrationSettingsHub() {
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => window.location.assign("/configuracoes")}>Voltar</Button>
           <Button variant="outline" onClick={() => void loadStatus()} disabled={loading}>Atualizar status</Button>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border bg-card p-5">
+        <div>
+          <h2 className="font-semibold">Ecossistemas conectados</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Entre pelo provedor e veja quais serviços já estão ativos, quais precisam de atenção e quais ainda serão habilitados.
+          </p>
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+          {ecosystems.map((ecosystem) => (
+            <div key={ecosystem.key} className="rounded-xl border bg-background p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold">{ecosystem.name}</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">{ecosystem.description}</p>
+                </div>
+                <span className="text-xs font-semibold text-muted-foreground">{ecosystem.connected} ativos</span>
+              </div>
+              <div className="mt-4 space-y-2">
+                {ecosystem.services.map((service) => (
+                  <div key={service.name} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
+                    <div>
+                      <p className="text-sm font-medium">{service.name}</p>
+                      <p className={service.state === "connected" ? "text-[11px] text-emerald-600" : service.state === "attention" ? "text-[11px] text-amber-600" : "text-[11px] text-muted-foreground"}>
+                        {service.state === "connected" ? "Conectado" : service.state === "attention" ? "Atenção necessária" : service.state === "available" ? "Disponível para conectar" : "Preparado para próxima etapa"}
+                      </p>
+                    </div>
+                    {(service.action || service.endpoint) && service.state !== "connected" && (
+                      <Button size="sm" variant="outline" onClick={() => void startEcosystemService(service)}>
+                        {service.state === "attention" ? "Continuar" : "Conectar"}
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
