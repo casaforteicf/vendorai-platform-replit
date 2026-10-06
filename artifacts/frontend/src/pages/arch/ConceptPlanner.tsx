@@ -998,8 +998,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 } = {}) {
   const [step, setStep] = useState(WORKSPACE_STEP);
   const [lotWidth, setLotWidth] = useState(12);
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
   const [lotDepth, setLotDepth] = useState(30);
   const [sitePlacement, setSitePlacement] = useState<SitePlacement>(DEFAULT_SITE_PLACEMENT);
   const [typology, setTypology] = useState<ConceptTypology>("terrea_3q");
@@ -2000,8 +1998,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const applyAiDevelopment = async (result: AIDevelopmentResponse) => {
     const before = snapshotEditor();
     const roomPatchById = new Map(
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
       (result.layoutSuggestion?.roomPatches ?? []).map((patch) => [patch.id, patch]),
     );
 
@@ -3002,8 +2998,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
     const existingOpenings = safeCustomOpenings.filter((opening) => opening.floor === activeFloor);
     const otherOpenings = safeCustomOpenings.filter((opening) => opening.floor !== activeFloor);
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
     const importedOpenings: CustomOpening[] = [];
 
     for (const opening of baseGeometry.openings) {
@@ -4004,8 +3998,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           y: horizontal ? py - 0.42 : py - width / 2 - 0.20,
           width: horizontal ? width + 0.40 : 0.84,
           height: horizontal ? 0.84 : width + 0.40,
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
         }];
       });
 
@@ -5006,8 +4998,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
     const importedWalls = preview.walls.map((wall, index) => ({
       id: wall.id || `trace-wall-${index + 1}`,
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
       floor: 0,
       x1: wall.x1,
       y1: wall.y1,
@@ -6008,8 +5998,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       ["Unidade", "Metros"],
                     ].map(([label, value]) => (
                       <div key={label} className="flex items-center justify-between rounded-lg px-2 py-2 text-xs">
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
                         <span className="text-slate-500">{label}</span>
                         <span className="font-semibold text-slate-800">{value}</span>
                       </div>
@@ -7010,8 +6998,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         </button>
 
                         <button type="button" onClick={() => projectStartReferenceInputRef.current?.click()}
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
                           className="group min-h-32 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm">
                           <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-800"><Camera className="h-5 w-5" /></span>
                             <span><span className="block text-base font-bold text-slate-950">{projectScope === "room" ? "Foto / croqui / planta" : "Croqui / pré-planta / foto"}</span>
@@ -8012,8 +7998,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                                       preset.kind,
                                       item.nome,
                                       preset.width,
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
                                       preset.depth,
                                       libraryInsertPoint,
                                       {
@@ -9014,8 +8998,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       rooms={safeRooms}
                       facade={facadePreferences}
                       design={facadeDesign}
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
                       onFacadeChange={handleFacadePreferencesChange}
                       onDesignChange={handleFacadeDesignChange}
                       realisticPreviewUrl={latestFacadeRenderUrl}
@@ -10016,8 +9998,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   <input
                     ref={dxfImportInputRef}
                     type="file"
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
                     accept=".dxf,application/dxf"
                     className="hidden"
                     onChange={(event) => {
@@ -11018,8 +10998,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                             onClick={() => void deleteConceptFromList(item)}
                             disabled={deletingProjectId === item.id}
                             className="min-h-9 rounded-xl bg-red-600 px-3 text-xs font-semibold text-white disabled:opacity-50"
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
                           >
                             {deletingProjectId === item.id ? "Excluindo…" : "Excluir"}
                           </button>
@@ -11051,8 +11029,3 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     </div>
   );
 }
-
-
-
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
