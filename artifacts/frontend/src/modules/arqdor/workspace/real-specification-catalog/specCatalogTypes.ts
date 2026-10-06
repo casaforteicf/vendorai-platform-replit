@@ -45,6 +45,9 @@ export type CatalogItem = {
   unit?: string | null;
   price?: number | null;
   laborPrice?: number | null;
+  width?: number | null;
+  height?: number | null;
+  depth?: number | null;
   imageUrl?: string | null;
   description?: string | null;
   metadata?: Record<string, unknown>;
