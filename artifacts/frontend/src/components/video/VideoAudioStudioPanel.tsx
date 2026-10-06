@@ -27,6 +27,8 @@ type MediaAsset = {
   role?: string | null;
   storageUrl?: string | null;
   storage_url?: string | null;
+  accessUrl?: string | null;
+  access_url?: string | null;
   originalFilename?: string | null;
   original_filename?: string | null;
   mimeType?: string | null;
@@ -73,7 +75,7 @@ function authHeaders(json = false): Record<string, string> {
 }
 
 function assetUrl(asset: MediaAsset): string {
-  return mediaUrl(asset.storageUrl ?? asset.storage_url ?? "");
+  return asset.accessUrl ?? asset.access_url ?? mediaUrl(asset.storageUrl ?? asset.storage_url ?? "");
 }
 
 function mediaUrl(raw: string): string {
