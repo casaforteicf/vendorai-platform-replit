@@ -131,7 +131,15 @@ async function assertPackageStillCurrent(tid: string, obraId: string, packageId:
   const snapshotItems = Array.isArray(snapshot.items) ? snapshot.items : [];
   for (const snap of snapshotItems) {
     const currentResult = await pool.query(
-      `SELECT abi.*,aso.category AS spec_category,aso.region AS spec_region,aa.nome AS ambiente_nome
+      `SELECT abi.*,aso.category AS spec_category,aso.region AS spec_region,
+              aso.purchase_quantity AS spec_purchase_quantity,
+              aso.package_yield AS spec_package_yield,
+              aso.purchase_mode AS spec_purchase_mode,
+              aso.purchase_unit AS spec_purchase_unit,
+              aso.waste_factor AS spec_waste_factor,
+              aso.measurement_source AS spec_measurement_source,
+              aso.measurement_revision AS spec_measurement_revision,
+              aa.nome AS ambiente_nome
          FROM arch_budget_items abi
          LEFT JOIN arch_spec_objects aso ON aso.id=abi.spec_object_id
          LEFT JOIN arch_ambientes aa ON aa.id::text=abi.ambiente_id::text
@@ -141,7 +149,22 @@ async function assertPackageStillCurrent(tid: string, obraId: string, packageId:
     );
     const row = currentResult.rows[0];
     if (!row) return { ok: false as const, reason: `Item removido do orçamento: ${snap.item || snap.budgetItemId}` };
+    if (row.specification_outdated) {
+      return { ok: false as const, reason: `Especificação desatualizada: ${row.item}` };
+    }
     const scope = inferScope(row);
+    const projectQuantity = n(row.quantity, 1);
+    const purchaseMode = String(row.spec_purchase_mode || "same_unit");
+    const purchaseYield = row.spec_package_yield != null ? Math.max(0, n(row.spec_package_yield)) : 0;
+    const purchaseQuantity = row.spec_purchase_quantity != null
+      ? Math.max(0, n(row.spec_purchase_quantity))
+      : projectQuantity;
+    const quoteQuantity = purchaseQuantity > 0 ? purchaseQuantity : projectQuantity;
+    const quoteUnit = String(row.spec_purchase_unit || row.unit || "un");
+    const estimatedPurchaseUnitPrice = purchaseMode !== "same_unit" && purchaseYield > 0
+      ? n(row.unit_total) * purchaseYield
+      : n(row.unit_total);
+    const quoteTotal = estimatedPurchaseUnitPrice * quoteQuantity;
     const currentSnapshot = {
       budgetItemId: row.id,
       specObjectId: row.spec_object_id,
@@ -150,12 +173,23 @@ async function assertPackageStillCurrent(tid: string, obraId: string, packageId:
       ambienteId: row.ambiente_id,
       ambiente: row.ambiente_nome || null,
       region: row.spec_region || null,
-      quantity: n(row.quantity, 1),
-      unit: row.unit || "un",
+      projectQuantity,
+      projectUnit: row.unit || "un",
+      purchaseMode,
+      purchaseQuantity: quoteQuantity,
+      purchaseUnit: quoteUnit,
+      quantity: quoteQuantity,
+      unit: quoteUnit,
+      estimatedPurchaseUnitPrice,
+      wasteFactor: row.spec_waste_factor != null ? n(row.spec_waste_factor) : null,
+      packageYield: row.spec_package_yield != null ? n(row.spec_package_yield) : null,
+      measurementSource: row.spec_measurement_source || null,
+      measurementRevision: row.spec_measurement_revision || null,
+      specificationRevision: row.specification_revision || null,
       productName: row.product_name,
       materialName: row.material_name,
       manufacturerName: row.manufacturer_name,
-      total: n(row.total),
+      total: quoteTotal,
       category: scope.category,
       discipline: scope.discipline,
     };
