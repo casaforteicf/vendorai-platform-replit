@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SupportReportPanel } from "@/components/SupportReportPanel";
+import { SupportActivityExecutionPanel } from "@/components/SupportActivityExecutionPanel";
 import { OperationalStageFormDialog } from "@/components/OperationalStageFormDialog";
 import { ExpeditionChecklistPanel, type ExpeditionChecklist } from "@/components/ExpeditionChecklistPanel";
 import { TransportChecklistPanel, type TransportChecklist } from "@/components/TransportChecklistPanel";
@@ -789,15 +790,26 @@ export default function PipelineOperacional() {
                 )}
 
                 {selectedCard.pipeline === "suporte" && (
-                  <SupportReportPanel
-                    card={selectedCard}
-                    token={token ?? ""}
-                    onChanged={async () => {
-                      const fresh = await api<WorkCard>(`/api/work-cards/${selectedCard.id}`);
-                      setSelectedCard(fresh);
-                      await queryClient.invalidateQueries({ queryKey: ["work-cards", tenantId, "suporte"] });
-                    }}
-                  />
+                  <>
+                    <SupportActivityExecutionPanel
+                      card={selectedCard}
+                      token={token ?? ""}
+                      onChanged={async () => {
+                        const fresh = await api<WorkCard>(`/api/work-cards/${selectedCard.id}`);
+                        setSelectedCard(fresh);
+                        await queryClient.invalidateQueries({ queryKey: ["work-cards", tenantId, "suporte"] });
+                      }}
+                    />
+                    <SupportReportPanel
+                      card={selectedCard}
+                      token={token ?? ""}
+                      onChanged={async () => {
+                        const fresh = await api<WorkCard>(`/api/work-cards/${selectedCard.id}`);
+                        setSelectedCard(fresh);
+                        await queryClient.invalidateQueries({ queryKey: ["work-cards", tenantId, "suporte"] });
+                      }}
+                    />
+                  </>
                 )}
 
                 {isInstallationStage(selectedCard.etapa) && safeItems(selectedCard).length > 0 ? (
