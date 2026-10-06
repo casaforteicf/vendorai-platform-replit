@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { and, desc, eq, or } from "drizzle-orm";
-import { db, generatedSitesTable, siteGenerationJobsTable, businessProfilesTable, tenantsTable, produtosCatalogoTable, inventoryItemsTable } from "@workspace/db";
+import { db, generatedSitesTable, siteGenerationJobsTable, businessProfilesTable, tenantsTable, produtosCatalogoTable, inventoryItemsTable, mediaAssetsTable } from "@workspace/db";
 import type { SiteGeneratorConfig, SiteGeneratorProduct } from "@workspace/db";
 import Anthropic from "@anthropic-ai/sdk";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
@@ -255,7 +255,11 @@ publicSiteGeneratorRouter.get("/public/:tenantSlug/site-html", async (req, res) 
   }
 
   const [site] = await db
-    .select({ html: generatedSitesTable.html })
+    .select({
+      html: generatedSitesTable.html,
+      config: generatedSitesTable.config,
+      siteSlug: generatedSitesTable.siteSlug,
+    })
     .from(generatedSitesTable)
     .where(and(eq(generatedSitesTable.tenantId, tenant.id), eq(generatedSitesTable.published, true)))
     .orderBy(desc(generatedSitesTable.updatedAt))
@@ -268,7 +272,8 @@ publicSiteGeneratorRouter.get("/public/:tenantSlug/site-html", async (req, res) 
 
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
-  res.send(await injectArqdorSiteButton(injectTenantMarketingTags(site.html, tenant), tenant.id));
+  const publicHtml = await rewritePublishedSiteMedia(site.html, tenant.id, site.siteSlug || tenantSlug);
+  res.send(await injectArqdorSiteButton(injectTenantMarketingTags(publicHtml, tenant), tenant.id));
 });
 
 const router: IRouter = Router();
