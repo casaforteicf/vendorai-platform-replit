@@ -5371,6 +5371,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       }
 
       setGeometryImportPreview({ summary: payload.summary, geometry: payload.geometry });
+      setActiveFloor(0);
+      setEditorView("plan");
+      setEditorLibraryTab("build");
+      setStep(4);
       setGeometryImportState("review");
       const warnings = payload.summary.warnings?.length ? ` · ${payload.summary.warnings.join(" ")}` : "";
       setGeometryImportMessage(
@@ -5394,6 +5398,17 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         "A unidade do arquivo não foi identificada. Aplicar mesmo assim tratando os valores como metros? Para máxima fidelidade, prefira corrigir/exportar o arquivo com unidade definida.",
       );
       if (!confirmedUnit) return;
+    }
+
+    const exceedsLot =
+      preview.summary.bounds.width > lotWidth + 0.01
+      || preview.summary.bounds.depth > lotDepth + 0.01;
+    if (exceedsLot) {
+      setGeometryImportState("review");
+      setGeometryImportMessage(
+        `A geometria mede aproximadamente ${preview.summary.bounds.width.toFixed(2)} × ${preview.summary.bounds.depth.toFixed(2)} m e não cabe no terreno atual de ${lotWidth.toFixed(2)} × ${lotDepth.toFixed(2)} m. Ajuste o terreno antes de aplicar para não cortar a planta importada.`,
+      );
+      return;
     }
 
     const hasCurrentGeometry = safeRooms.length > 0 || safeCustomWalls.length > 0 || safeCustomOpenings.length > 0;
@@ -8843,6 +8858,45 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
                   {editorView === "plan" && (
                     <>
+                      {geometryImportState === "review" && geometryImportPreview && (
+                        <div className="absolute left-1/2 top-16 z-[66] w-[min(680px,calc(100%-24px))] -translate-x-1/2 rounded-2xl border border-amber-300 bg-amber-50/95 px-4 py-3 shadow-xl backdrop-blur">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-sm font-bold text-amber-950">
+                                Prévia da geometria importada — nenhuma alteração aplicada
+                              </div>
+                              <div className="mt-1 text-xs leading-5 text-amber-900/80">
+                                {geometryImportPreview.summary.format.toUpperCase()} · {geometryImportPreview.summary.walls} paredes · {geometryImportPreview.summary.openings} aberturas · {geometryImportPreview.summary.spaces} espaços · {geometryImportPreview.summary.bounds.width.toFixed(2)} × {geometryImportPreview.summary.bounds.depth.toFixed(2)} m
+                              </div>
+                              <div className="mt-1 text-[11px] text-amber-800">
+                                O traçado destacado é somente uma sobreposição de conferência. Revise escala, pavimentos e encaixe no terreno antes de aplicar.
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => void applyGeometryImport()}
+                                disabled={Boolean(projectMaster)}
+                                className="rounded-xl bg-emerald-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                              >
+                                Confirmar e aplicar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setGeometryImportPreview(null);
+                                  setGeometryImportFile(null);
+                                  setGeometryImportState("idle");
+                                  setGeometryImportMessage(null);
+                                }}
+                                className="rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900"
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       {paintTool && (
                         <div className="absolute left-1/2 top-16 z-[65] flex max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-3 rounded-2xl border border-orange-200 bg-white/95 px-3 py-2 shadow-xl backdrop-blur">
                           <span className="h-7 w-7 shrink-0 rounded-lg border" style={{ background: paintTool.swatch }} />
@@ -8887,8 +8941,20 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           width: referencePlan.widthMeters,
                           height: referencePlan.depthMeters,
                         } : null}
-                        previewWalls={showReferenceVector && referenceTraceState === "ready" ? referenceTracePreview?.walls ?? [] : []}
-                        previewOpenings={showReferenceVector && referenceTraceState === "ready" ? referenceTracePreview?.openings ?? [] : []}
+                        previewWalls={
+                          geometryImportState === "review" && geometryImportPreview
+                            ? geometryImportPreview.geometry.walls.filter((wall) => Number(wall.floor ?? 0) === activeFloor)
+                            : showReferenceVector && referenceTraceState === "ready"
+                              ? referenceTracePreview?.walls ?? []
+                              : []
+                        }
+                        previewOpenings={
+                          geometryImportState === "review" && geometryImportPreview
+                            ? geometryImportPreview.geometry.openings.filter((opening) => Number(opening.floor ?? 0) === activeFloor)
+                            : showReferenceVector && referenceTraceState === "ready"
+                              ? referenceTracePreview?.openings ?? []
+                              : []
+                        }
                         closedSpaces={terrainOnly || hideCurrentGeometryForReferenceReview ? [] : closedSpaces}
                         selectedClosedSpaceId={selectedClosedSpaceId}
                         onSelectClosedSpace={(spaceId) => {
