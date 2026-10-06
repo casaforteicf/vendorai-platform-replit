@@ -60,7 +60,8 @@ function readSession() {
 function isPlanPath(location: string) {
   const [path, query = ""] = location.split("?");
   if (["/marketing/plano-de-midia", "/marketing/media-plan", "/plano-de-midia"].includes(path)) return true;
-  return path === "/content" && (new URLSearchParams(query).get("tab") ?? "") === "planejamento";
+  const params = new URLSearchParams(query);
+  return path === "/content" && (params.get("tab") ?? "") === "planejamento" && params.get("advanced") === "1";
 }
 
 function money(value: number | null | undefined) {
