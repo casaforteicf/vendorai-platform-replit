@@ -81,6 +81,8 @@ type PlannerCampaign = {
   canais: PlannerChannel[];
   kpiPrincipal: string;
   metaPrincipal: string;
+  materiaisPlanejados?: number;
+  coverUrl?: string;
 };
 
 type PlannerPlan = {
@@ -544,10 +546,10 @@ export default function ContentHub() {
                           <h2 className="text-xl font-semibold">Campanhas</h2>
                           <Badge variant="outline">{plannerCampaigns.length} campanhas</Badge>
                         </div>
-                        <p className="mt-1 text-sm text-muted-foreground">Cada campanha tem nome, público, oferta, canais e execução próprios. Elas podem acontecer em paralelo.</p>
+                        <p className="mt-1 text-sm text-muted-foreground">Escolha uma campanha para ver o próximo passo, os conteúdos e os resultados.</p>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <Button variant="outline" onClick={() => handleTabChange("planejamento")}>Gerar do Planejamento</Button>
+                        <Button variant="outline" onClick={() => handleTabChange("planejamento")}>Revisar planejamento</Button>
                         <Button onClick={() => setLocation("/content?tab=campanhas")}><Plus className="h-4 w-4 mr-2"/>Nova campanha</Button>
                       </div>
                     </div>
@@ -569,6 +571,16 @@ export default function ContentHub() {
                             onClick={() => openPlannerCampaign(campaign.id)}
                             className="rounded-xl border bg-background p-4 text-left transition hover:border-primary/50 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
+                            <div className="mb-3 overflow-hidden rounded-lg border bg-muted/30">
+                              {campaign.coverUrl ? (
+                                <img src={campaign.coverUrl} alt="" className="h-28 w-full object-cover" />
+                              ) : (
+                                <div className="flex h-20 items-center justify-center gap-2 text-xs text-muted-foreground">
+                                  <Megaphone className="h-4 w-4" />
+                                  Capa da campanha
+                                </div>
+                              )}
+                            </div>
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
                                 <p className="font-semibold truncate">{campaign.nome}</p>
@@ -585,11 +597,24 @@ export default function ContentHub() {
                               {campaign.canais.slice(0, 5).map((channel) => <Badge key={channel.canal} variant="outline" className="text-[10px]">{channel.canal}</Badge>)}
                               {campaign.canais.length > 5 && <Badge variant="outline" className="text-[10px]">+{campaign.canais.length - 5}</Badge>}
                             </div>
-                            <div className="mt-4 border-t pt-3 text-xs font-medium text-primary">Abrir campanha →</div>
+                            <div className="mt-4 rounded-lg bg-muted/40 px-3 py-2 text-xs">
+                              <span className="text-muted-foreground">Próximo passo: </span>
+                              <span className="font-medium">{plannerApproved ? `Preparar ${campaign.materiaisPlanejados ?? campaign.canais.reduce((sum, channel) => sum + (channel.quantidadeMateriais || 0), 0)} ações` : "Revisar e aprovar a campanha"}</span>
+                            </div>
+                            <div className="mt-3 border-t pt-3 text-xs font-medium text-primary">Abrir campanha →</div>
                           </button>
                         ))}
                       </div>
                     )}
+                    <details className="rounded-xl border bg-background">
+                      <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium">
+                        Ferramentas de captação
+                        <span className="ml-2 text-xs font-normal text-muted-foreground">Formulários, simuladores e entregas gratuitas</span>
+                      </summary>
+                      <div className="border-t p-4">
+                        <LeadCaptureFreeToolBuilder tenantId={tenantId} />
+                      </div>
+                    </details>
                   </div>
                 )}
               </div>
@@ -608,7 +633,6 @@ export default function ContentHub() {
           </TabsContent>
 
           <TabsContent value="conteudos" className="-mx-4 md:-mx-6">
-            <div className="px-4 pt-4 md:px-6 md:pt-6"><LeadCaptureFreeToolBuilder tenantId={tenantId} /></div>
             {manualCreation ? (
               <>
                 <div className="px-4 pt-4 md:px-6 flex items-start justify-between gap-3 flex-wrap">
@@ -626,7 +650,12 @@ export default function ContentHub() {
           </TabsContent>
 
           <TabsContent value="resultados" className="mt-5">
-            <SearchConsoleInsightsPanel tenantId={tenantId} />
+            <Card className="border-primary/20 bg-primary/[0.02]">
+              <CardContent className="py-5">
+                <p className="text-sm font-semibold">O que merece atenção agora?</p>
+                <p className="mt-1 text-sm text-muted-foreground">Compare campanhas, conteúdos, anúncios e conversões. Os detalhes técnicos de rastreamento ficam abaixo.</p>
+              </CardContent>
+            </Card>
             <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <Card><CardContent className="py-5"><p className="text-xs text-muted-foreground">Campanhas</p><p className="mt-1 font-semibold">Compare o desempenho entre campanhas.</p><Button variant="link" className="px-0" onClick={() => handleTabChange("campanhas")}>Abrir campanhas</Button></CardContent></Card>
               <Card><CardContent className="py-5"><p className="text-xs text-muted-foreground">Conteúdos</p><p className="mt-1 font-semibold">Veja quais peças e criativos estão alimentando as ações.</p><Button variant="link" className="px-0" onClick={() => handleTabChange("conteudos")}>Abrir conteúdos</Button></CardContent></Card>
@@ -635,10 +664,19 @@ export default function ContentHub() {
             </div>
             <Card className="mt-4">
               <CardContent className="py-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div><p className="font-semibold">Resultados é o fechamento do ciclo.</p><p className="text-sm text-muted-foreground">O que funcionar aqui deve alimentar o próximo Planejamento e melhorar as próximas Campanhas.</p></div>
-                <Button variant="outline" onClick={() => handleTabChange("planejamento")}><CalendarDays className="h-4 w-4 mr-2"/>Voltar ao Planejamento</Button>
+                <div><p className="font-semibold">Use os resultados no próximo ciclo.</p><p className="text-sm text-muted-foreground">O que funcionar melhor deve orientar o próximo planejamento.</p></div>
+                <Button variant="outline" onClick={() => handleTabChange("planejamento")}><CalendarDays className="h-4 w-4 mr-2"/>Criar próximo planejamento</Button>
               </CardContent>
             </Card>
+            <details className="mt-4 rounded-xl border bg-background">
+              <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium">
+                Rastreamento e integrações
+                <span className="ml-2 text-xs font-normal text-muted-foreground">Search Console e fontes de atribuição</span>
+              </summary>
+              <div className="border-t p-4">
+                <SearchConsoleInsightsPanel tenantId={tenantId} />
+              </div>
+            </details>
           </TabsContent>
 
           <TabsContent value="rastreamento" className="-mx-4 md:-mx-6">
