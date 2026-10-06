@@ -25,8 +25,9 @@ const DrawerOverlay = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Overlay>
 >(({ className, ...props }, ref) => (
   <DrawerPrimitive.Overlay
+    data-vendorai-modal-overlay="true"
     ref={ref}
-    className={cn("fixed inset-0 z-50 bg-black/80", className)}
+    className={cn("fixed inset-0 z-50 bg-slate-950/35 backdrop-blur-[2px]", className)}
     {...props}
   />
 ))
