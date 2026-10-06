@@ -30,6 +30,15 @@ function validateOnly(): boolean {
   return process.env["GOOGLE_DATA_MANAGER_VALIDATE_ONLY"] !== "false";
 }
 
+function allowedTenantIds(): Set<string> {
+  return new Set(
+    (process.env["GOOGLE_DATA_MANAGER_TENANT_IDS"] ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? value as Record<string, unknown> : {};
 }
@@ -119,6 +128,12 @@ async function patchEventMetadata(
 export async function runGoogleDataManagerConversionSync(log: Logger): Promise<void> {
   if (!enabled()) return;
 
+  const allowlist = allowedTenantIds();
+  if (allowlist.size === 0) {
+    log.warn("server-conversions/google-data-manager: feature flag ativa, mas nenhum tenant está na allowlist; nenhum evento será validado/enviado");
+    return;
+  }
+
   const since = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
   const events = await db
     .select({
@@ -133,6 +148,7 @@ export async function runGoogleDataManagerConversionSync(log: Logger): Promise<v
     .innerJoin(adCampaignsTable, eq(adCampaignsTable.id, adCampaignEventsTable.campaignId))
     .where(and(
       eq(adCampaignsTable.plataforma, "google"),
+      inArray(adCampaignEventsTable.tenantId, [...allowlist]),
       inArray(adCampaignEventsTable.eventType, [...ELIGIBLE_EVENT_TYPES]),
       gte(adCampaignEventsTable.createdAt, since),
     ))
@@ -146,6 +162,10 @@ export async function runGoogleDataManagerConversionSync(log: Logger): Promise<v
 
   for (const event of events) {
     const metadata = asRecord(event.metadata);
+    if (!allowlist.has(event.tenantId)) {
+      skipped++;
+      continue;
+    }
     const completedKey = isValidateOnly ? "googleDataManagerValidatedAt" : "googleDataManagerSentAt";
     if (text(metadata[completedKey])) {
       skipped++;
@@ -294,6 +314,6 @@ export async function runGoogleDataManagerConversionSync(log: Logger): Promise<v
   }
 
   if (validatedOrSent > 0 || failed > 0) {
-    log.info({ validatedOrSent, skipped, failed, validateOnly: isValidateOnly }, "server-conversions/google-data-manager: sync complete");
+    log.info({ validatedOrSent, skipped, failed, validateOnly: isValidateOnly, allowlistedTenants: allowlist.size }, "server-conversions/google-data-manager: sync complete");
   }
 }
