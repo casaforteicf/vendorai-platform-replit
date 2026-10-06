@@ -59,6 +59,21 @@ type CatalogIntegration = {
   lastErrorMessage?: string | null;
 };
 
+type CustomIntegration = {
+  id: string;
+  name: string;
+  kind: "api" | "webhook" | "n8n";
+  status: "connected" | "attention" | "error" | "disabled" | "not_configured";
+  baseUrl?: string | null;
+  authType: "none" | "api_key" | "bearer" | "basic";
+  hasCredential?: boolean;
+  hasWebhookSecret?: boolean;
+  lastTestAt?: string | null;
+  lastSuccessAt?: string | null;
+  lastEventAt?: string | null;
+  lastError?: string | null;
+};
+
 const OAUTH_ENDPOINTS: Partial<Record<IntegrationKey, string>> = {
   instagram: "/api/auth/instagram",
   "google-calendar": "/api/onboarding/integracoes/google-url",
@@ -100,6 +115,16 @@ export default function IntegrationSettingsHub() {
   const [search, setSearch] = useState("");
   const [catalogIntegrations, setCatalogIntegrations] = useState<CatalogIntegration[]>([]);
   const [showCustomGuide, setShowCustomGuide] = useState<"api" | "webhook" | "n8n" | null>(null);
+  const [customIntegrations, setCustomIntegrations] = useState<CustomIntegration[]>([]);
+  const [customDraft, setCustomDraft] = useState({
+    name: "",
+    baseUrl: "",
+    authType: "none" as "none" | "api_key" | "bearer" | "basic",
+    credential: "",
+    apiKeyHeader: "X-API-Key",
+    healthPath: "/",
+  });
+  const [lastWebhookSetup, setLastWebhookSetup] = useState<{ path: string; secret: string; secretHeader: string } | null>(null);
   const [asaasKey, setAsaasKey] = useState("");
   const [zapsignKey, setZapsignKey] = useState("");
   const [emailConnections, setEmailConnections] = useState<Array<{
@@ -134,10 +159,11 @@ export default function IntegrationSettingsHub() {
   const loadStatus = async () => {
     setLoading(true);
     try {
-      const [data, emailData, financeData] = await Promise.all([
+      const [data, emailData, financeData, customData] = await Promise.all([
         apiJson("/api/onboarding/integracoes"),
         tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/email-connections`).catch(() => ({ connections: [] })) : Promise.resolve({ connections: [] }),
         tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/finance-integrations`).catch(() => ({ integrations: [] })) : Promise.resolve({ integrations: [] }),
+        tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/custom-integrations`).catch(() => ({ integrations: [] })) : Promise.resolve({ integrations: [] }),
       ]);
       setStatus(data as IntegrationStatus);
       const hiddenTenantInfrastructure = new Set([
@@ -147,6 +173,7 @@ export default function IntegrationSettingsHub() {
       ]);
       const financeCatalog = Array.isArray(financeData?.integrations) ? financeData.integrations : [];
       setCatalogIntegrations(financeCatalog.filter((item: CatalogIntegration) => !hiddenTenantInfrastructure.has(item.providerKey)));
+      setCustomIntegrations(Array.isArray(customData?.integrations) ? customData.integrations : []);
       const connections = Array.isArray(emailData?.connections) ? emailData.connections : [];
       setEmailConnections(connections);
       setEmailSignatures({
@@ -548,6 +575,73 @@ export default function IntegrationSettingsHub() {
     return "Conectar agora";
   };
 
+  const createCustomIntegration = async (kind: "api" | "webhook" | "n8n") => {
+    if (!tenantId || !customDraft.name.trim()) {
+      toast({ title: "Informe um nome para a conexão.", variant: "destructive" });
+      return;
+    }
+    if (kind !== "webhook" && !customDraft.baseUrl.trim()) {
+      toast({ title: "Informe a URL HTTPS do serviço.", variant: "destructive" });
+      return;
+    }
+    setBusy(`custom-${kind}`);
+    try {
+      const data = await apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/custom-integrations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: customDraft.name.trim(),
+          kind,
+          baseUrl: kind === "webhook" ? null : customDraft.baseUrl.trim(),
+          authType: kind === "webhook" ? "none" : customDraft.authType,
+          credential: kind === "webhook" || customDraft.authType === "none" ? null : customDraft.credential,
+          apiKeyHeader: customDraft.apiKeyHeader,
+          healthPath: customDraft.healthPath || "/",
+        }),
+      });
+      setLastWebhookSetup(data?.webhook || null);
+      setCustomDraft({ name: "", baseUrl: "", authType: "none", credential: "", apiKeyHeader: "X-API-Key", healthPath: "/" });
+      toast({
+        title: kind === "webhook" ? "Webhook criado" : "Conexão salva",
+        description: kind === "webhook" ? "Copie a URL e o segredo agora; o segredo não será exibido novamente." : "Use “Testar conexão” para validar o endpoint.",
+      });
+      await loadStatus();
+    } catch (error) {
+      toast({ title: "Não foi possível criar a conexão", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const testCustomIntegration = async (connection: CustomIntegration) => {
+    if (!tenantId) return;
+    setBusy(`custom-test-${connection.id}`);
+    try {
+      const result = await apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/custom-integrations/${encodeURIComponent(connection.id)}/test`, { method: "POST" });
+      toast({ title: result.ok ? "Conexão validada" : "Conexão precisa de atenção", description: result.message });
+      await loadStatus();
+    } catch (error) {
+      toast({ title: "Teste falhou", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+      await loadStatus();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const removeCustomIntegration = async (connection: CustomIntegration) => {
+    if (!tenantId) return;
+    setBusy(`custom-delete-${connection.id}`);
+    try {
+      await apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/custom-integrations/${encodeURIComponent(connection.id)}`, { method: "DELETE" });
+      toast({ title: "Conexão removida." });
+      await loadStatus();
+    } catch (error) {
+      toast({ title: "Não foi possível remover", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const visibleRows = rows.filter((row) => {
     const term = search.trim().toLowerCase();
     if (!term) return true;
@@ -800,25 +894,106 @@ export default function IntegrationSettingsHub() {
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           {[
-            { key: "api" as const, title: "API personalizada", text: "Conecte ERP, sistema legado ou serviço próprio por REST/API Key, Bearer ou OAuth." },
-            { key: "webhook" as const, title: "Webhook", text: "Receba ou envie eventos em tempo real entre o Vendor.ai e outro sistema." },
-            { key: "n8n" as const, title: "n8n", text: "Use workflows para transformar dados e orquestrar integrações quando não houver conector nativo." },
+            { key: "api" as const, title: "API personalizada", text: "Conecte ERP, sistema legado ou serviço próprio por HTTPS com autenticação segura." },
+            { key: "webhook" as const, title: "Webhook", text: "Gere uma URL exclusiva do tenant e valide eventos assinados em tempo real." },
+            { key: "n8n" as const, title: "n8n", text: "Conecte uma instância n8n e use workflows para orquestrar sistemas sem conector nativo." },
           ].map((item) => (
             <div key={item.key} className="rounded-xl border bg-background p-4">
               <h3 className="font-semibold">{item.title}</h3>
               <p className="mt-1 text-xs text-muted-foreground">{item.text}</p>
-              <Button className="mt-4" variant="outline" onClick={() => setShowCustomGuide(showCustomGuide === item.key ? null : item.key)}>
-                {showCustomGuide === item.key ? "Fechar orientação" : "Como conectar"}
+              <Button className="mt-4" variant="outline" onClick={() => {
+                setShowCustomGuide(showCustomGuide === item.key ? null : item.key);
+                setLastWebhookSetup(null);
+              }}>
+                {showCustomGuide === item.key ? "Fechar configuração" : "Configurar"}
               </Button>
+
               {showCustomGuide === item.key && (
-                <div className="mt-4 rounded-lg border bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">
-                  {item.key === "api" && <>1. Informe a URL base. 2. Escolha API Key, Bearer, Basic ou OAuth. 3. Defina escopos e direção. 4. Teste autenticação. 5. Só depois salve e ative a sincronização.</>}
-                  {item.key === "webhook" && <>1. Gere uma URL exclusiva do tenant. 2. Gere um segredo de assinatura. 3. Cadastre a URL no sistema externo. 4. Envie um evento de teste. 5. Ative somente após validar assinatura e payload.</>}
-                  {item.key === "n8n" && <>1. Crie uma credencial limitada do tenant. 2. Conecte o workflow n8n. 3. Escolha gatilhos e ações. 4. Teste ida e volta. 5. Ative logs, retry e health check.</>}
+                <div className="mt-4 space-y-3 rounded-lg border bg-muted/30 p-3">
+                  <Input value={customDraft.name} onChange={(e) => setCustomDraft((v) => ({ ...v, name: e.target.value }))} placeholder="Nome da conexão" />
+
+                  {item.key !== "webhook" && (
+                    <>
+                      <Input value={customDraft.baseUrl} onChange={(e) => setCustomDraft((v) => ({ ...v, baseUrl: e.target.value }))} placeholder={item.key === "n8n" ? "https://n8n.suaempresa.com" : "https://api.sistema.com"} />
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <select
+                          value={customDraft.authType}
+                          onChange={(e) => setCustomDraft((v) => ({ ...v, authType: e.target.value as typeof v.authType }))}
+                          className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                        >
+                          <option value="none">Sem autenticação</option>
+                          <option value="api_key">API Key</option>
+                          <option value="bearer">Bearer Token</option>
+                          <option value="basic">Basic Auth</option>
+                        </select>
+                        <Input value={customDraft.healthPath} onChange={(e) => setCustomDraft((v) => ({ ...v, healthPath: e.target.value }))} placeholder="/health" />
+                      </div>
+                      {customDraft.authType === "api_key" && (
+                        <Input value={customDraft.apiKeyHeader} onChange={(e) => setCustomDraft((v) => ({ ...v, apiKeyHeader: e.target.value }))} placeholder="Header da API Key, ex.: X-API-Key" />
+                      )}
+                      {customDraft.authType !== "none" && (
+                        <Input type="password" value={customDraft.credential} onChange={(e) => setCustomDraft((v) => ({ ...v, credential: e.target.value }))} placeholder={customDraft.authType === "basic" ? "usuario:senha" : "Credencial"} />
+                      )}
+                    </>
+                  )}
+
+                  {item.key === "webhook" && (
+                    <p className="text-xs text-muted-foreground">O Vendor.ai gerará uma URL exclusiva e um segredo. O sistema externo deverá enviar esse segredo no header indicado.</p>
+                  )}
+
+                  <Button disabled={busy === `custom-${item.key}`} onClick={() => void createCustomIntegration(item.key)}>
+                    {busy === `custom-${item.key}` ? "Salvando..." : item.key === "webhook" ? "Gerar webhook seguro" : "Salvar conexão"}
+                  </Button>
+
+                  {item.key === "webhook" && lastWebhookSetup && (
+                    <div className="rounded-md border bg-background p-3 text-xs">
+                      <p className="font-medium">Copie estes dados agora</p>
+                      <p className="mt-2 break-all"><strong>URL:</strong> {window.location.origin}{lastWebhookSetup.path}</p>
+                      <p className="mt-2 break-all"><strong>Header:</strong> {lastWebhookSetup.secretHeader}</p>
+                      <p className="mt-2 break-all"><strong>Segredo:</strong> {lastWebhookSetup.secret}</p>
+                      <p className="mt-2 text-muted-foreground">O segredo não será exibido novamente.</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           ))}
+        </div>
+
+        {customIntegrations.length > 0 && (
+          <div className="mt-6">
+            <h3 className="text-sm font-semibold">Conexões personalizadas salvas</h3>
+            <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {customIntegrations.map((connection) => (
+                <div key={connection.id} className="rounded-xl border bg-background p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h4 className="font-semibold">{connection.name}</h4>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {connection.kind.toUpperCase()} {connection.baseUrl ? `· ${connection.baseUrl}` : "· webhook de entrada"}
+                      </p>
+                    </div>
+                    <span className={connection.status === "connected" ? "text-xs font-semibold text-emerald-600" : connection.status === "error" ? "text-xs font-semibold text-red-600" : "text-xs font-semibold text-amber-600"}>
+                      {connection.status === "connected" ? "Conectado" : connection.status === "error" ? "Erro" : "Atenção"}
+                    </span>
+                  </div>
+                  {connection.lastError && <p className="mt-3 text-xs text-destructive">{connection.lastError}</p>}
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button variant="outline" disabled={busy === `custom-test-${connection.id}`} onClick={() => void testCustomIntegration(connection)}>
+                      {busy === `custom-test-${connection.id}` ? "Testando..." : "Testar conexão"}
+                    </Button>
+                    <Button variant="outline" disabled={busy === `custom-delete-${connection.id}`} onClick={() => void removeCustomIntegration(connection)}>
+                      Remover
+                    </Button>
+                  </div>
+                  {connection.kind === "webhook" && !connection.lastEventAt && (
+                    <p className="mt-3 text-[11px] text-muted-foreground">Aguardando o primeiro evento assinado para confirmar a conexão.</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         </div>
       </div>
     </div>
