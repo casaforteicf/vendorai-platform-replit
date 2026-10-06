@@ -338,7 +338,7 @@ export default function ProductCatalogKnowledgeLibraryV2() {
     } finally { setLoading(false); }
   };
 
-  useEffect(() => { if (tenantId) void load(); }, [tenantId]);
+  useEffect(() => { if (tenantId && open) void load(); }, [tenantId, open]);
   useEffect(() => { if (selected) setForm(formFromProduct(selected)); }, [selected?.id]);
 
   async function sugerirInteligenciaComercial() {
