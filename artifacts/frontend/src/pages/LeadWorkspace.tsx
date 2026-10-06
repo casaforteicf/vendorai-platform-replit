@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCreateDeal, useGetLead, useListActivities, useListDeals, useListPipelineStages, useListTenantUsers, useUpdatePipelineStage, getGetLeadQueryKey, getListActivitiesQueryKey, getListDealsQueryKey, getListPipelineStagesQueryKey, getListTenantUsersQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { DealParticipantsCard } from "@/components/DealParticipantsCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -759,6 +760,8 @@ export default function LeadWorkspace() {
         </div>
       </CardContent>
     </Card>
+
+    {deal && <DealParticipantsCard tenantId={tenantId} dealId={deal.id} token={token} />}
 
     {deal && canEditOwner && (
       <Card className="border-border/70 shadow-sm">
