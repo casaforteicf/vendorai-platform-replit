@@ -137,7 +137,7 @@ export default function Dashboard() {
           <JarvisObserverCaseSync token={token} />
 
           <div className="mx-auto mt-6 max-w-[1600px] space-y-3">
-            <details className="group overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
+            <details open className="group overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-muted/40 [&::-webkit-details-marker]:hidden">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-foreground">Inteligência avançada</p>

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { CircleMarker, MapContainer, Popup, TileLayer, useMap } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -254,6 +256,24 @@ function svgFill(score: number): string {
   if (score >= 70) return "fill-emerald-500";
   if (score >= 45) return "fill-amber-500";
   return "fill-slate-400";
+}
+
+function FitMapToCities({ cities }: { cities: CityMetric[] }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const points = cities
+      .filter((city) => city.lat != null && city.long != null)
+      .map((city) => [city.lat as number, city.long as number] as [number, number]);
+    if (!points.length) return;
+    if (points.length === 1) {
+      map.setView(points[0], 11);
+      return;
+    }
+    map.fitBounds(points, { padding: [28, 28], maxZoom: 11 });
+  }, [cities, map]);
+
+  return null;
 }
 
 async function getJson<T>(url: string, token: string): Promise<T> {
@@ -706,27 +726,7 @@ export default function StrategicObserver({
 
   const selected = analysis.cities.find((city) => city.city === selectedCity) ?? analysis.cities[0] ?? null;
   const geoCities = analysis.cities.filter((city) => city.lat != null && city.long != null).slice(0, 30);
-  const geoBounds = useMemo(() => {
-    if (!geoCities.length) return null;
-    const lats = geoCities.map((city) => city.lat as number);
-    const longs = geoCities.map((city) => city.long as number);
-    return {
-      minLat: Math.min(...lats),
-      maxLat: Math.max(...lats),
-      minLong: Math.min(...longs),
-      maxLong: Math.max(...longs),
-    };
-  }, [geoCities]);
 
-  const mapPoint = (city: CityMetric) => {
-    if (!geoBounds || city.lat == null || city.long == null) return { x: 400, y: 180 };
-    const longSpan = Math.max(0.01, geoBounds.maxLong - geoBounds.minLong);
-    const latSpan = Math.max(0.01, geoBounds.maxLat - geoBounds.minLat);
-    return {
-      x: 70 + ((city.long - geoBounds.minLong) / longSpan) * 660,
-      y: 45 + ((geoBounds.maxLat - city.lat) / latSpan) * 255,
-    };
-  };
 
   if (!tenantId || !token) return null;
 
@@ -738,7 +738,7 @@ export default function StrategicObserver({
             <div className="max-w-3xl">
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <Badge variant="outline" className="gap-1.5"><Binoculars className="h-3.5 w-3.5" /> Observador Estratégico</Badge>
-                <Badge variant="secondary">Inteligência de governança</Badge>
+                <Badge variant="secondary">Inteligência comercial contínua</Badge>
                 <Badge variant="secondary">90 dias + pipeline atual</Badge>
                 {loading ? <Badge variant="outline" className="gap-1.5"><RefreshCw className="h-3 w-3 animate-spin" /> atualizando</Badge> : null}
               </div>
@@ -749,9 +749,9 @@ export default function StrategicObserver({
             </div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:min-w-[520px]">
               <div className="rounded-xl border bg-background/80 p-3.5">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground"><Gauge className="h-3.5 w-3.5" /> Governança</div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground"><Gauge className="h-3.5 w-3.5" /> Saúde comercial</div>
                 <p className="mt-1 text-xl font-bold">{analysis.governanceScore == null ? "—" : `${analysis.governanceScore}/100`}</p>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">score analítico</p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">visão consolidada</p>
               </div>
               <div className="rounded-xl border bg-background/80 p-3.5">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground"><Sparkles className="h-3.5 w-3.5" /> Oportunidades</div>
@@ -774,7 +774,7 @@ export default function StrategicObserver({
             <div className="mt-4 flex items-center gap-3 rounded-xl border bg-background/70 px-4 py-3">
               <ShieldCheck className="h-4 w-4 text-primary" />
               <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-3 text-xs"><span className="font-medium">Índice analítico de governança</span><span className="text-muted-foreground">qualidade + conversão + operação + risco</span></div>
+                <div className="flex items-center justify-between gap-3 text-xs"><span className="font-medium">Índice de saúde comercial</span><span className="text-muted-foreground">qualidade + conversão + operação + risco</span></div>
                 <Progress value={analysis.governanceScore} className="mt-2 h-2" />
               </div>
             </div>
@@ -782,13 +782,40 @@ export default function StrategicObserver({
         </CardContent>
       </Card>
 
+      {analysis.signals[0] ? (
+        <Card className="overflow-hidden border-primary/20">
+          <CardContent className="p-5 md:p-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="secondary" className="gap-1.5"><Sparkles className="h-3.5 w-3.5" /> Vendi recomenda agora</Badge>
+                  <Badge variant="outline" className={signalTone(analysis.signals[0].severity)}>
+                    {analysis.signals[0].severity === "risk" ? "Prioridade alta" : analysis.signals[0].severity === "attention" ? "Atenção" : "Oportunidade"}
+                  </Badge>
+                  <span className="text-[11px] text-muted-foreground">evidência {analysis.signals[0].confidence}%</span>
+                </div>
+                <h3 className="mt-2 text-sm font-semibold">{analysis.signals[0].title}</h3>
+                <p className="mt-1 max-w-4xl text-xs leading-5 text-muted-foreground">{analysis.signals[0].detail}</p>
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+                  <span className="text-muted-foreground">Impacto observado: <strong className="text-foreground">{analysis.signals[0].metric}</strong></span>
+                  <span className="text-muted-foreground">Base: dados transacionais oficiais + pipeline atual</span>
+                </div>
+              </div>
+              <a href={analysis.signals[0].href} className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90">
+                Ver oportunidade <ArrowUpRight className="h-3.5 w-3.5" />
+              </a>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <div className="grid gap-4 xl:grid-cols-[1.45fr_0.55fr]">
         <Card className="overflow-hidden">
           <CardContent className="p-0">
             <div className="flex flex-col gap-3 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between md:px-6">
               <div>
                 <div className="flex items-center gap-2"><MapPinned className="h-4 w-4 text-primary" /><h3 className="text-sm font-semibold">Mapa inteligente de oportunidades</h3></div>
-                <p className="mt-1 text-xs text-muted-foreground">Posicionamento relativo por coordenadas reais dos contatos geocodificados. Verde = maior oportunidade observada.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Mapa geográfico real com base nas coordenadas dos contatos geocodificados. Clique em uma região para abrir sua leitura.</p>
               </div>
               <div className="flex flex-wrap gap-2 text-[11px]">
                 <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">Alta oportunidade</Badge>
@@ -798,35 +825,55 @@ export default function StrategicObserver({
             </div>
 
             {geoCities.length ? (
-              <div className="relative min-h-[360px] bg-muted/10 p-3 md:p-5">
-                <svg viewBox="0 0 800 360" className="h-[340px] w-full" role="img" aria-label="Mapa relativo das cidades com oportunidades">
-                  <g className="stroke-border" strokeWidth="1" opacity="0.65">
-                    {[80, 160, 240, 320, 400, 480, 560, 640, 720].map((x) => <line key={`v-${x}`} x1={x} x2={x} y1="25" y2="325" />)}
-                    {[60, 120, 180, 240, 300].map((y) => <line key={`h-${y}`} x1="45" x2="755" y1={y} y2={y} />)}
-                  </g>
-                  {geoCities.map((city) => {
-                    const point = mapPoint(city);
-                    const selectedPoint = selected?.city === city.city;
-                    const radius = 10 + Math.min(18, city.score / 5 + Math.log10(Math.max(1, city.pipelineValue)) * 1.5);
-                    return (
-                      <g key={city.city} className="cursor-pointer" onClick={() => setSelectedCity(city.city)}>
-                        <circle cx={point.x} cy={point.y} r={radius + (selectedPoint ? 5 : 0)} className={`${svgFill(city.score)} opacity-15`} />
-                        <circle cx={point.x} cy={point.y} r={Math.max(7, radius * 0.55)} className={`${svgFill(city.score)} opacity-90`} />
-                        <text x={point.x} y={point.y + radius + 15} textAnchor="middle" className="fill-foreground text-[10px] font-semibold">{city.city.length > 18 ? `${city.city.slice(0, 16)}…` : city.city}</text>
-                        <title>{`${city.city}: score ${city.score}/100 · ${money(city.pipelineValue)} no pipeline`}</title>
-                      </g>
-                    );
-                  })}
-                </svg>
-                <div className="absolute bottom-3 left-4 rounded-lg border bg-background/90 px-3 py-2 text-[11px] text-muted-foreground shadow-sm">
-                  {geoCities.length} cidade{geoCities.length === 1 ? "" : "s"} no mapa · cobertura geográfica {(analysis.geoCoverage * 100).toFixed(0)}%
+              <div className="relative h-[390px] overflow-hidden bg-muted/10">
+                <MapContainer
+                  center={[geoCities[0].lat as number, geoCities[0].long as number]}
+                  zoom={6}
+                  scrollWheelZoom
+                  className="h-full w-full"
+                >
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  <FitMapToCities cities={geoCities} />
+                  {geoCities.map((city) => (
+                    <CircleMarker
+                      key={city.city}
+                      center={[city.lat as number, city.long as number]}
+                      radius={8 + Math.min(12, city.score / 8)}
+                      pathOptions={{
+                        color: city.score >= 70 ? "#059669" : city.score >= 45 ? "#d97706" : "#64748b",
+                        fillColor: city.score >= 70 ? "#10b981" : city.score >= 45 ? "#f59e0b" : "#94a3b8",
+                        fillOpacity: selected?.city === city.city ? 0.92 : 0.7,
+                        weight: selected?.city === city.city ? 4 : 2,
+                      }}
+                      eventHandlers={{ click: () => setSelectedCity(city.city) }}
+                    >
+                      <Popup>
+                        <div className="min-w-[190px] text-xs">
+                          <strong className="text-sm">{city.city}</strong>
+                          <div className="mt-2 space-y-1">
+                            <div>Score: <strong>{city.score}/100</strong></div>
+                            <div>Pipeline: <strong>{money(city.pipelineValue)}</strong></div>
+                            <div>Leads novos: <strong>{city.leads}</strong></div>
+                            <div>Conversão 90d: <strong>{pct(city.conversion)}</strong></div>
+                            <div>Evidência: <strong>{city.confidence}%</strong></div>
+                          </div>
+                        </div>
+                      </Popup>
+                    </CircleMarker>
+                  ))}
+                </MapContainer>
+                <div className="pointer-events-none absolute bottom-3 left-3 z-[500] rounded-lg border bg-background/90 px-3 py-2 text-[11px] text-muted-foreground shadow-sm backdrop-blur">
+                  {geoCities.length} regiões geocodificadas · mapa geográfico real
                 </div>
               </div>
             ) : (
-              <div className="flex min-h-[330px] flex-col items-center justify-center px-6 text-center">
+              <div className="flex min-h-[360px] flex-col items-center justify-center p-8 text-center">
                 <MapPin className="h-9 w-9 text-muted-foreground/40" />
                 <p className="mt-3 text-sm font-medium">Ainda não há coordenadas suficientes para desenhar o mapa</p>
-                <p className="mt-1 max-w-lg text-xs leading-5 text-muted-foreground">O Observador continua analisando cidades pelo endereço/metadados. Conforme os contatos forem geocodificados, os pontos aparecem automaticamente.</p>
+                <p className="mt-1 max-w-lg text-xs leading-5 text-muted-foreground">A inteligência continua analisando cidades pelo endereço e metadados. Quando os contatos forem geocodificados, as regiões aparecem automaticamente.</p>
                 <a href="/leads" className="mt-4 inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium hover:bg-muted">Revisar dados dos leads <ArrowUpRight className="h-3.5 w-3.5" /></a>
               </div>
             )}
@@ -855,7 +902,7 @@ export default function StrategicObserver({
                   <div className="flex justify-between"><span className="text-muted-foreground">Leads novos</span><strong>{selected.leads}</strong></div>
                   <div className="flex justify-between"><span className="text-muted-foreground">Negócios abertos</span><strong>{selected.openDeals}</strong></div>
                   <div className="flex justify-between"><span className="text-muted-foreground">Ganhos / perdidos</span><strong>{selected.won} / {selected.lost}</strong></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Robustez do sinal</span><strong>{selected.confidence}%</strong></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Nível de evidência</span><strong>{selected.confidence}%</strong></div>
                 </div>
                 <div className="max-h-36 space-y-1 overflow-y-auto border-t pt-3">
                   {analysis.cities.slice(0, 8).map((city) => (
@@ -878,7 +925,7 @@ export default function StrategicObserver({
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" /><h3 className="text-sm font-semibold">O que o Observador descobriu</h3></div>
-                <p className="mt-1 text-xs text-muted-foreground">Sinais ordenados por risco, impacto observado e robustez da amostra.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Sinais ordenados por risco, impacto observado e nível de evidência.</p>
               </div>
               <Badge variant="outline">{analysis.signals.length} sinais ativos</Badge>
             </div>
@@ -889,7 +936,7 @@ export default function StrategicObserver({
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="outline" className={signalTone(signal.severity)}>{signal.category}</Badge>
-                        <span className="text-[11px] text-muted-foreground">robustez {signal.confidence}%</span>
+                        <span className="text-[11px] text-muted-foreground">evidência {signal.confidence}%</span>
                       </div>
                       <p className="mt-2 text-sm font-semibold">{signal.title}</p>
                       <p className="mt-1 text-xs leading-5 text-muted-foreground">{signal.detail}</p>
@@ -955,7 +1002,7 @@ export default function StrategicObserver({
       </div>
 
       <div className="flex flex-col gap-2 rounded-xl border border-dashed px-4 py-3 text-[11px] leading-5 text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-        <span className="flex items-center gap-2"><Binoculars className="h-3.5 w-3.5" /> O score de oportunidade é analítico: pondera volume recente de leads, pipeline aberto e lacuna de conversão; não é receita prevista.</span>
+        <span className="flex items-center gap-2"><Binoculars className="h-3.5 w-3.5" /> O score é analítico: combina volume recente, pipeline, conversão, qualidade operacional e risco. Passe pela leitura territorial para entender a amostra e a evidência antes de agir.</span>
         <span className="flex items-center gap-2"><Percent className="h-3.5 w-3.5" /> Desconto considera solicitações de aprovação registradas; negociações sem esse registro não são inferidas.</span>
       </div>
 
