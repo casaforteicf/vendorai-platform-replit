@@ -290,6 +290,7 @@ export default function DocumentationStudio({ arqState, onNavigate }: Documentat
                       </span>
                     </div>
                     <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      <Info label="Código / SKU" value={textOrPending(s.catalog_code)} />
                       <Info label="Material" value={textOrPending(s.material_name)} />
                       <Info label="Produto" value={textOrPending(s.product_name)} />
                       <Info label="Fabricante" value={textOrPending(s.manufacturer_name)} />
@@ -321,8 +322,8 @@ export default function DocumentationStudio({ arqState, onNavigate }: Documentat
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
-                  <thead><tr className="border-b text-xs uppercase text-slate-400"><th className="p-3">Item</th><th className="p-3">Material / Produto</th><th className="p-3">Fabricante</th><th className="p-3">Fornecedor</th><th className="p-3">Qtd.</th><th className="p-3">Região</th></tr></thead>
-                  <tbody>{materialRows.map((s) => <tr key={s.id} className="border-b border-slate-100"><td className="p-3 font-medium text-slate-900">{s.name}</td><td className="p-3 text-slate-600">{s.material_name ?? s.product_name ?? "Pendente"}</td><td className="p-3 text-slate-600">{s.manufacturer_name ?? "—"}</td><td className="p-3 text-slate-600">{s.supplier_name ?? "—"}</td><td className="p-3 text-slate-600">{Number(s.quantity ?? 1)} {s.unit ?? "un"}</td><td className="p-3 text-slate-600">{s.region ?? "—"}</td></tr>)}</tbody>
+                  <thead><tr className="border-b text-xs uppercase text-slate-400"><th className="p-3">Item</th><th className="p-3">Código / SKU</th><th className="p-3">Material / Produto</th><th className="p-3">Fabricante</th><th className="p-3">Fornecedor</th><th className="p-3">Qtd.</th><th className="p-3">Região</th></tr></thead>
+                  <tbody>{materialRows.map((s) => <tr key={s.id} className="border-b border-slate-100"><td className="p-3 font-medium text-slate-900">{s.name}</td><td className="p-3 text-slate-600">{s.catalog_code ?? "—"}</td><td className="p-3 text-slate-600">{s.material_name ?? s.product_name ?? "Pendente"}</td><td className="p-3 text-slate-600">{s.manufacturer_name ?? "—"}</td><td className="p-3 text-slate-600">{s.supplier_name ?? "—"}</td><td className="p-3 text-slate-600">{Number(s.quantity ?? 1)} {s.unit ?? "un"}</td><td className="p-3 text-slate-600">{s.region ?? "—"}</td></tr>)}</tbody>
                 </table>
               </div>
             )}
@@ -344,8 +345,8 @@ export default function DocumentationStudio({ arqState, onNavigate }: Documentat
               <>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm">
-                    <thead><tr className="border-b text-xs uppercase text-slate-400"><th className="p-3">Item</th><th className="p-3">Produto / Material</th><th className="p-3">Fornecedor</th><th className="p-3">Qtd.</th><th className="p-3 text-right">Material</th><th className="p-3 text-right">Mão de obra</th><th className="p-3 text-right">Total</th></tr></thead>
-                    <tbody>{budget.items.map((item) => <tr key={item.id} className="border-b border-slate-100"><td className="p-3 font-medium text-slate-900">{item.item}</td><td className="p-3 text-slate-600">{item.product_name ?? item.material_name ?? "—"}</td><td className="p-3 text-slate-600">{item.supplier_name ?? item.manufacturer_name ?? "—"}</td><td className="p-3 text-slate-600">{Number(item.quantity ?? 1)} {item.unit ?? "un"}</td><td className="p-3 text-right text-slate-600">{money(item.material_value)}</td><td className="p-3 text-right text-slate-600">{money(item.labor_value)}</td><td className="p-3 text-right font-semibold text-slate-900">{money(item.total)}</td></tr>)}</tbody>
+                    <thead><tr className="border-b text-xs uppercase text-slate-400"><th className="p-3">Item</th><th className="p-3">Código / SKU</th><th className="p-3">Produto / Material</th><th className="p-3">Fornecedor</th><th className="p-3">Qtd.</th><th className="p-3 text-right">Material</th><th className="p-3 text-right">Mão de obra</th><th className="p-3 text-right">Total</th></tr></thead>
+                    <tbody>{budget.items.map((item) => <tr key={item.id} className="border-b border-slate-100"><td className="p-3 font-medium text-slate-900">{item.item}</td><td className="p-3 text-slate-600">{item.catalog_code ?? "—"}</td><td className="p-3 text-slate-600">{item.product_name ?? item.material_name ?? "—"}</td><td className="p-3 text-slate-600">{item.supplier_name ?? item.manufacturer_name ?? "—"}</td><td className="p-3 text-slate-600">{Number(item.quantity ?? 1)} {item.unit ?? "un"}</td><td className="p-3 text-right text-slate-600">{money(item.material_value)}</td><td className="p-3 text-right text-slate-600">{money(item.labor_value)}</td><td className="p-3 text-right font-semibold text-slate-900">{money(item.total)}</td></tr>)}</tbody>
                   </table>
                 </div>
                 <div className="mt-5 ml-auto max-w-sm space-y-2 rounded-3xl bg-slate-50 p-5 text-sm">
