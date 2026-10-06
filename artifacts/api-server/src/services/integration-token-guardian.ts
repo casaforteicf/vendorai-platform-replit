@@ -160,7 +160,7 @@ export async function runIntegrationTokenGuardian(log: Logger): Promise<RefreshR
         provider,
         connectionId: row.id,
         tenantId: row.tenantId,
-        run: async () => { await resolveValidSocialConnection(row.tenantId, provider, row.id); },
+        run: async () => { await resolveValidSocialConnection(row.tenantId, provider, row.id, true); },
         log,
       }));
     }
