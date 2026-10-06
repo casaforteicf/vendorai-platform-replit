@@ -149,6 +149,32 @@ const pipelineStageAIActionSchema = z.enum([
   "move_to_warming",
 ]);
 
+const pipelineStageContentInteractionSchema = z.object({
+  id: z.string().min(1).max(120),
+  titulo: z.string().trim().min(1).max(200),
+  ativo: z.boolean().default(true),
+  objetivo: z.string().trim().max(1000).nullable().optional(),
+  momento: z.enum(["entrada", "percentual", "final"]),
+  percentualPrazo: z.number().int().min(0).max(100).nullable().optional(),
+  canal: z.enum(["whatsapp", "email"]).default("whatsapp"),
+  mensagem: z.string().trim().max(4000).nullable().optional(),
+  assetIds: z.array(z.string().min(1)).max(20).default([]),
+  selecaoConteudo: z.enum(["fixa", "ia_recomenda", "ia_autonoma"]).default("fixa"),
+  requerAprovacao: z.boolean().default(false),
+  enviarUmaVez: z.boolean().default(true),
+  instrucoesIA: z.string().trim().max(4000).nullable().optional(),
+}).superRefine((value, ctx) => {
+  if (value.momento === "entrada" && value.percentualPrazo != null && value.percentualPrazo !== 0) {
+    ctx.addIssue({ code: "custom", message: "Interação de entrada deve usar 0% do prazo." });
+  }
+  if (value.momento === "final" && value.percentualPrazo != null && value.percentualPrazo !== 100) {
+    ctx.addIssue({ code: "custom", message: "Interação final deve usar 100% do prazo." });
+  }
+  if (value.momento === "percentual" && (value.percentualPrazo == null || value.percentualPrazo <= 0 || value.percentualPrazo >= 100)) {
+    ctx.addIssue({ code: "custom", message: "Interação durante a etapa deve usar percentual entre 1 e 99." });
+  }
+});
+
 const pipelineStageAICriterionSchema = z.object({
   field: z.string().trim().min(1).max(120),
   operator: z.enum(["exists", "eq", "neq", "gt", "gte", "lt", "lte", "contains"]).default("exists"),
@@ -415,6 +441,7 @@ router.post("/tenants/:tenantId/pipeline-stages", async (req, res) => {
     atividadePadraoDescricao: z.string().trim().max(2000).nullable().optional(),
     atividadePadraoPrazoMinutos: z.number().int().positive().nullable().optional(),
     atividadesPadrao: z.array(activityTemplateSchema).max(30).optional(),
+    interacoesConteudo: z.array(pipelineStageContentInteractionSchema).max(30).optional(),
     aiConfig: pipelineStageAIConfigSchema.optional(),
   });
   const parsed = bodySchema.safeParse(req.body);
@@ -458,6 +485,7 @@ router.post("/tenants/:tenantId/pipeline-stages", async (req, res) => {
       atividadePadraoDescricao: parsed.data.atividadePadraoDescricao ?? null,
       atividadePadraoPrazoMinutos: parsed.data.atividadePadraoPrazoMinutos ?? null,
       atividadesPadrao: parsed.data.atividadesPadrao ?? [],
+      interacoesConteudo: parsed.data.interacoesConteudo ?? [],
       aiConfig: parsed.data.aiConfig ?? undefined,
     })
     .returning();
@@ -479,6 +507,12 @@ router.patch("/tenants/:tenantId/pipeline-stages/:id", async (req, res) => {
     parsed.data.atividadesPadrao = templates.data;
   }
   // atividadesPadrao validated templates
+
+  if (parsed.data.interacoesConteudo !== undefined) {
+    const interactions = z.array(pipelineStageContentInteractionSchema).max(30).safeParse(parsed.data.interacoesConteudo);
+    if (!interactions.success) return res.status(422).json({ error: interactions.error.message });
+    parsed.data.interacoesConteudo = interactions.data;
+  }
 
   if (parsed.data.aiConfig !== undefined) {
     const aiConfig = pipelineStageAIConfigSchema.safeParse(parsed.data.aiConfig);
