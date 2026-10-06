@@ -1,5 +1,5 @@
 import type { Logger } from "pino";
-import { and, eq, gte, isNull, lte } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, lte } from "drizzle-orm";
 import {
   db,
   googleAdsConnectionsTable,
@@ -96,7 +96,7 @@ export async function runIntegrationTokenGuardian(log: Logger): Promise<RefreshR
         tenantId: googleAdsConnectionsTable.tenantId,
         refreshToken: googleAdsConnectionsTable.refreshToken,
       }).from(googleAdsConnectionsTable).where(and(
-        eq(googleAdsConnectionsTable.status, "active"),
+        inArray(googleAdsConnectionsTable.status, ["active", "pending_account_selection"]),
         isNull(googleAdsConnectionsTable.disconnectedAt),
         lte(googleAdsConnectionsTable.tokenExpiresAt, refreshBefore),
       )),
