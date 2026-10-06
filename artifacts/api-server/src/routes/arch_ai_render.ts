@@ -149,7 +149,7 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, (req, res, n
   }, next);
 });
 
-archAiRenderRouter.post("/arch/ai-render/:id/approve", authenticate, async (req, res, next) => {
+archAiRenderRouter.post("/arch/ai-render/:id/approve", authenticate, async (req, res) => {
   const tid = tenantId(req);
   if (!tid) return res.status(403).json({ success: false, error: "Tenant não identificado" });
 
@@ -172,13 +172,13 @@ archAiRenderRouter.post("/arch/ai-render/:id/approve", authenticate, async (req,
     });
   }
 
+  const renderId = String(req.params["id"]);
   const approvalNote = asOptionalString(req.body?.notes ?? req.body?.approval_note);
   const authenticatedUser = (req as any).user ?? {};
   const approvedBy = String(authenticatedUser.id ?? authenticatedUser.email ?? authenticatedUser.name ?? "authenticated-user");
-  return captureJson(req, res, async (body) => {
-    const renderId = asOptionalString(body?.render_id) ?? asOptionalString(req.params["id"]);
-    if (!tid || !renderId) return;
+  const approvedAt = new Date();
 
+  try {
     const scope = candidate.projectId
       ? and(
           eq(archAiRendersTable.tenantId, tid),
@@ -201,18 +201,37 @@ archAiRenderRouter.post("/arch/ai-render/:id/approve", authenticate, async (req,
         .where(scope);
     }
 
-    await db.update(archAiRendersTable)
+    const [updated] = await db.update(archAiRendersTable)
       .set({
         approvedBy,
-        approvedAt: new Date(),
+        approvedAt,
         approvalNote,
         versionTag: "aprovado",
       })
-      .where(and(eq(archAiRendersTable.id, renderId), eq(archAiRendersTable.tenantId, tid)));
+      .where(and(eq(archAiRendersTable.id, renderId), eq(archAiRendersTable.tenantId, tid)))
+      .returning();
 
     const specSync = await syncApprovedRenderSpecifications({ tenantId: tid, renderId });
-    req.log?.info?.({ renderId, approvedBy, ...specSync }, "arch/ai-render approve: especificações sincronizadas");
-  }, next);
+    req.log?.info?.({ renderId, approvedBy, ...specSync }, "arch/ai-render approve: aprovação e especificações persistidas");
+
+    return res.json({
+      success: true,
+      render_id: updated?.id ?? candidate.id,
+      status: updated?.status ?? candidate.status,
+      result_image_url: updated?.resultImageUrl ?? candidate.resultImageUrl,
+      version_tag: updated?.versionTag ?? "aprovado",
+      approved_by: updated?.approvedBy ?? approvedBy,
+      approved_at: updated?.approvedAt ?? approvedAt,
+      approval_note: updated?.approvalNote ?? approvalNote,
+      specification_sync: specSync,
+    });
+  } catch (error) {
+    req.log?.error?.({ err: error, renderId }, "arch/ai-render approve: falha ao persistir aprovação");
+    return res.status(500).json({
+      success: false,
+      error: "Não foi possível concluir a aprovação desta versão. Nenhuma confirmação foi enviada ao Studio.",
+    });
+  }
 });
 
 // These actions operate only on tenant-owned concept renders.
