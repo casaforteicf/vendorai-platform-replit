@@ -113,6 +113,7 @@ import {
   Send,
   Tag,
   Wrench,
+  ExternalLink,
 } from "lucide-react";
 
 function getBase()  { return (import.meta.env.BASE_URL ?? "/").replace(/\/$/, ""); }
@@ -1668,6 +1669,84 @@ export default function LeadDetail() {
 
   const leadConversations = (conversations ?? []).filter((c) => c.leadId === id);
 
+  function getActivityOpenLabel(activity: any): string {
+    const text = `${activity?.tipo ?? ""} ${activity?.origem ?? ""} ${activity?.titulo ?? ""}`.toLowerCase();
+    if (text.includes("assistencia") || text.includes("assistência")) return "Abrir assistência";
+    if (text.includes("orcamento") || text.includes("orçamento")) return "Abrir orçamento";
+    if (text.includes("proposta")) return "Abrir proposta";
+    if (activity?.tipo === "reuniao" || text.includes("reunião") || text.includes("reuniao")) return "Abrir agendamento";
+    if (text.includes("instalacao") || text.includes("instalação")) return "Abrir instalação";
+    if (text.includes("entrega")) return "Abrir entrega";
+    return "Abrir tarefa";
+  }
+
+  async function openActivityObject(activity: any) {
+    const text = `${activity?.tipo ?? ""} ${activity?.origem ?? ""} ${activity?.titulo ?? ""}`.toLowerCase();
+
+    if (text.includes("assistencia") || text.includes("assistência") || activity?.tipo === "assistencia") {
+      try {
+        const response = await fetch(`/api/tenants/${tenantId}/work-cards?pipeline=suporte`, {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        });
+        if (response.ok) {
+          const cards = await response.json() as Array<{ id: string; codigo?: string | null; leadId?: string | null; dealId?: string | null }>;
+          const codeMatch = String(activity?.titulo ?? "").match(/\bAST-[A-Z0-9-]+\b/i)?.[0]?.toUpperCase();
+          const exact = codeMatch
+            ? cards.find((card) => String(card.codigo ?? "").toUpperCase() === codeMatch)
+            : undefined;
+          const related = exact ?? cards.find((card) =>
+            card.leadId === id && (!activity?.dealId || card.dealId === activity.dealId)
+          );
+          if (related?.id) {
+            setLocation(`/pipeline-operacional/suporte?card=${encodeURIComponent(related.id)}`);
+            return;
+          }
+        }
+      } catch {
+        // Fallback abaixo mantém a navegação disponível mesmo se a busca do card falhar.
+      }
+      setLocation("/pipeline-operacional/suporte");
+      return;
+    }
+
+    if (text.includes("orcamento") || text.includes("orçamento")) {
+      if (orcamentoExistente?.id) {
+        const returnTo = `/leads/${id}`;
+        setLocation(`/propostas?edit=${encodeURIComponent(orcamentoExistente.id)}&returnTo=${encodeURIComponent(returnTo)}`);
+        return;
+      }
+      setPropostaModalOpen(true);
+      return;
+    }
+
+    if (text.includes("proposta")) {
+      setLeadWorkspaceTab("proposta");
+      requestAnimationFrame(() => {
+        document.getElementById("lead-workspace-tabs")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+      return;
+    }
+
+    if (activity?.tipo === "reuniao" || text.includes("reunião") || text.includes("reuniao")) {
+      setLocation(`/agenda?activity=${encodeURIComponent(activity.id)}`);
+      return;
+    }
+
+    if (text.includes("instalacao") || text.includes("instalação") || text.includes("entrega")) {
+      setLocation(activity?.dealId
+        ? `/pipeline-operacional?dealId=${encodeURIComponent(activity.dealId)}`
+        : "/pipeline-operacional");
+      return;
+    }
+
+    if (activity?.dealId) {
+      setLocation(`/negocios?dealId=${encodeURIComponent(activity.dealId)}`);
+      return;
+    }
+
+    setOpenActivityId(activity.id);
+  }
+
   if (leadLoading) {
     return (
       <div className="space-y-6">
@@ -3056,6 +3135,20 @@ export default function LeadDetail() {
                             )}
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2.5 text-xs gap-1"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void openActivityObject(activity);
+                              }}
+                              data-testid={`btn-open-activity-${activity.id}`}
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              {getActivityOpenLabel(activity)}
+                            </Button>
                             <Badge
                               variant="outline"
                               className={
