@@ -104,12 +104,26 @@ export const SYSTEM_STAGES_BY_PIPELINE: Record<PipelineKey, SystemStage[]> = {
   ],
 };
 
+const activityQuestionSchema = z.object({
+  id: z.string().min(1).max(120),
+  texto: z.string().trim().min(1).max(1000),
+  tipo: z.enum(["texto", "texto_longo", "sim_nao", "numero", "data", "opcoes"]).default("texto"),
+  opcoes: z.array(z.string().trim().min(1).max(200)).max(50).default([]),
+  quemResponde: z.enum(["cliente", "usuario", "ambos", "automatico"]).default("usuario"),
+  obrigatoria: z.boolean().default(false),
+  visivelCliente: z.boolean().default(false),
+  entraRelatorio: z.boolean().default(true),
+  editavelDepois: z.boolean().default(true),
+  evidenciaExigida: z.enum(["nenhuma", "foto", "video", "audio", "documento", "midia"]).default("nenhuma"),
+});
+
 const activityTemplateSchema = z.object({
   id: z.string().min(1).max(120),
   titulo: z.string().trim().min(1).max(200),
   descricao: z.string().trim().max(2000).nullable().optional(),
   objetivo: z.string().trim().max(1000).nullable().optional(),
   resultadoEsperado: z.string().trim().max(1000).nullable().optional(),
+  perguntas: z.array(activityQuestionSchema).max(50).default([]),
   tipo: z.enum(["ligacao", "whatsapp", "email", "visita", "tarefa", "reuniao"]).default("tarefa"),
   categoria: z.enum(["obrigatoria", "sugerida", "automatica"]),
   prazoMinutos: z.number().int().positive().max(525600).nullable().optional(),
