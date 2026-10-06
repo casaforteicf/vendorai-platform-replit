@@ -26,6 +26,7 @@ import {
   RefreshCw,
   Search,
   Sparkles,
+  Trash2,
   Upload,
 } from "lucide-react";
 
@@ -65,6 +66,7 @@ type AttachmentOverride = {
 type AttachmentState = {
   files: StoredLeadAttachment[];
   folders: string[];
+  hiddenFolders: string[];
   overrides: Record<string, AttachmentOverride>;
 };
 
@@ -134,7 +136,7 @@ type UnifiedAttachment = {
   mediaAssetId?: string;
 };
 
-const EMPTY_STATE: AttachmentState = { files: [], folders: [], overrides: {} };
+const EMPTY_STATE: AttachmentState = { files: [], folders: [], hiddenFolders: [], overrides: {} };
 
 const CORE_FOLDERS = [
   "Documentos / Contratos",
@@ -239,8 +241,11 @@ function parseAttachmentState(lead: LeadRecord | null): AttachmentState {
   const folders = Array.isArray(root.folders)
     ? root.folders.filter((item): item is string => typeof item === "string").map(normalizeFolder).filter(Boolean)
     : [];
+  const hiddenFolders = Array.isArray(root.hiddenFolders)
+    ? root.hiddenFolders.filter((item): item is string => typeof item === "string").map(normalizeFolder).filter(Boolean)
+    : [];
   const overrides = asRecord(root.overrides) as Record<string, AttachmentOverride>;
-  return { files, folders: [...new Set(folders)], overrides };
+  return { files, folders: [...new Set(folders)], hiddenFolders: [...new Set(hiddenFolders)], overrides };
 }
 
 function metadataString(metadata: Record<string, unknown> | null | undefined, key: string): string {
@@ -356,6 +361,8 @@ export default function LeadAttachmentsTab() {
 
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [folderDraft, setFolderDraft] = useState("");
+  const [deleteFolderDialogOpen, setDeleteFolderDialogOpen] = useState(false);
+  const [deleteFolderTarget, setDeleteFolderTarget] = useState("");
   const [editItem, setEditItem] = useState<UnifiedAttachment | null>(null);
   const [editName, setEditName] = useState("");
   const [editFolder, setEditFolder] = useState("");
@@ -635,10 +642,14 @@ export default function LeadAttachmentsTab() {
   }, [attachmentState, activities, workAttachments, mediaAssets, leadId]);
 
   const folders = useMemo(() => {
+    const occupied = new Set(unified.map((item) => item.folderPath).filter(Boolean));
+    const hidden = new Set(attachmentState.hiddenFolders);
     const all = new Set<string>([...CORE_FOLDERS, ...attachmentState.folders]);
     unified.forEach((item) => { if (item.folderPath) all.add(item.folderPath); });
-    return [...all].sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [attachmentState.folders, unified]);
+    return [...all]
+      .filter((folder) => !hidden.has(folder) || occupied.has(folder))
+      .sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [attachmentState.folders, attachmentState.hiddenFolders, unified]);
 
   function folderLock(folder: string): FolderLockInfo | undefined {
     return folderLocks.find((item) => item.folderPath === folder);
@@ -871,14 +882,68 @@ export default function LeadAttachmentsTab() {
     const folder = normalizeFolder(folderDraft);
     if (!folder) return;
     const nextFolders = [...new Set([...attachmentState.folders, folder])];
+    const hiddenFolders = attachmentState.hiddenFolders.filter((item) => item !== folder);
     try {
-      await persistAttachmentState({ ...attachmentState, folders: nextFolders });
+      await persistAttachmentState({ ...attachmentState, folders: nextFolders, hiddenFolders });
       setFolderFilter(folder);
       setFolderDraft("");
       setFolderDialogOpen(false);
       toast({ title: "Pasta criada" });
     } catch (error) {
       toast({ title: "Não foi possível criar a pasta", description: String(error), variant: "destructive" });
+    }
+  }
+
+  function requestDeleteFolder(folder: string) {
+    setDeleteFolderTarget(folder);
+    setDeleteFolderDialogOpen(true);
+  }
+
+  async function deleteFolder() {
+    if (!deleteFolderTarget) return;
+    const target = deleteFolderTarget;
+    const targetItems = unified.filter((item) => item.folderPath === target);
+    const overrides = { ...attachmentState.overrides };
+
+    for (const item of targetItems) {
+      overrides[item.key] = {
+        ...overrides[item.key],
+        folderPath: "Outros",
+      };
+    }
+
+    const folders = attachmentState.folders.filter((item) => item !== target);
+    const hiddenFolders = [...new Set([...attachmentState.hiddenFolders, target])];
+
+    setSaving(true);
+    try {
+      const lock = folderLock(target);
+      if (lock && leadId) {
+        await requestJson(`/api/leads/${leadId}/attachment-folder-lock`, {
+          method: "DELETE",
+          body: JSON.stringify({ folderPath: target }),
+        });
+        sessionStorage.removeItem(`vendorai_attachment_unlock:${leadId}:${target}`);
+      }
+
+      await persistAttachmentState({ ...attachmentState, folders, hiddenFolders, overrides });
+      if (folderFilter === target) setFolderFilter("");
+      setDeleteFolderDialogOpen(false);
+      setDeleteFolderTarget("");
+      toast({
+        title: "Pasta excluída",
+        description: targetItems.length > 0
+          ? `${targetItems.length} arquivo${targetItems.length === 1 ? "" : "s"} movido${targetItems.length === 1 ? "" : "s"} para Outros.`
+          : "A pasta foi removida deste cliente.",
+      });
+    } catch (error) {
+      toast({
+        title: "Não foi possível excluir a pasta",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -1058,6 +1123,17 @@ export default function LeadAttachmentsTab() {
                         <KeyRound className="h-3.5 w-3.5" /> {lock ? "Senha" : "Proteger"}
                       </Button>
                     )}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 gap-1 px-2 text-[11px] text-destructive hover:text-destructive"
+                      onClick={() => requestDeleteFolder(folder)}
+                      disabled={saving}
+                      title="Excluir pasta"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
                   </div>
                 </div>
               );
@@ -1119,6 +1195,27 @@ export default function LeadAttachmentsTab() {
           <p className="mt-1 text-blue-700">Fotos de problemas, manutenção, evidências técnicas e registros internos permanecem em Anexos. A Central de Mídias e os geradores de marketing recebem somente arquivos explicitamente aprovados.</p>
         </div>
       </CardContent>
+
+      <Dialog open={deleteFolderDialogOpen} onOpenChange={setDeleteFolderDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Excluir pasta</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 text-sm text-muted-foreground">
+            <p>Excluir <strong className="text-foreground">{deleteFolderTarget}</strong> deste cliente?</p>
+            {unified.some((item) => item.folderPath === deleteFolderTarget) && (
+              <p>Os arquivos desta pasta serão movidos para <strong className="text-foreground">Outros</strong>. Nenhum arquivo será apagado.</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDeleteFolderDialogOpen(false)} disabled={saving}>Cancelar</Button>
+            <Button type="button" variant="destructive" onClick={() => void deleteFolder()} disabled={saving}>
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+              Excluir pasta
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={folderDialogOpen} onOpenChange={setFolderDialogOpen}>
         <DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>Nova pasta</DialogTitle></DialogHeader><div className="space-y-1.5"><label className="text-sm font-medium">Nome da pasta</label><Input value={folderDraft} onChange={(event) => setFolderDraft(event.target.value)} placeholder="Ex: Obras bonitas / Fachadas" onKeyDown={(event) => { if (event.key === "Enter") void createFolder(); }} /></div><DialogFooter><Button variant="outline" onClick={() => setFolderDialogOpen(false)}>Cancelar</Button><Button onClick={() => void createFolder()} disabled={!normalizeFolder(folderDraft) || saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Criar pasta</Button></DialogFooter></DialogContent>

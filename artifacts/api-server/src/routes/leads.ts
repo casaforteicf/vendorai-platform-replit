@@ -54,7 +54,8 @@ import { reserveUniqueVehicle } from "../services/vehicle-reservation.js";
 import { reserveUniqueItem } from "../services/item-reservation.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 import { signAttachmentFolderUnlockToken } from "../lib/jwt.js";
-import { attachmentUnlockCookieName, requestCanAccessLockedObject, syncProtectedObjectsForLead } from "../lib/attachment-folder-access.js";
+import { attachmentUnlockCookieName,
+  isAttachmentFolderSchemaMissingError, requestCanAccessLockedObject, syncProtectedObjectsForLead } from "../lib/attachment-folder-access.js";
 
 const router: IRouter = Router();
 const attachmentUnlockLimiter = rateLimit({
@@ -699,23 +700,32 @@ router.get("/leads/:id/attachment-folder-locks", async (req, res) => {
   const lead = await getLeadForAttachmentFolder(req, res);
   if (!lead) return;
 
-  const rows = await db
-    .select({
-      folderPath: attachmentFolderLocksTable.folderPath,
-      unlockMinutes: attachmentFolderLocksTable.unlockMinutes,
-      createdAt: attachmentFolderLocksTable.createdAt,
-      updatedAt: attachmentFolderLocksTable.updatedAt,
-    })
-    .from(attachmentFolderLocksTable)
-    .where(and(
-      eq(attachmentFolderLocksTable.tenantId, lead.tenantId),
-      eq(attachmentFolderLocksTable.leadId, lead.id),
-    ));
+  try {
+    const rows = await db
+      .select({
+        folderPath: attachmentFolderLocksTable.folderPath,
+        unlockMinutes: attachmentFolderLocksTable.unlockMinutes,
+        createdAt: attachmentFolderLocksTable.createdAt,
+        updatedAt: attachmentFolderLocksTable.updatedAt,
+      })
+      .from(attachmentFolderLocksTable)
+      .where(and(
+        eq(attachmentFolderLocksTable.tenantId, lead.tenantId),
+        eq(attachmentFolderLocksTable.leadId, lead.id),
+      ));
 
-  res.json({
-    locks: rows.map((row) => ({ ...row, locked: true })),
-    canManage: lead.isAdmin,
-  });
+    res.json({
+      locks: rows.map((row) => ({ ...row, locked: true })),
+      canManage: lead.isAdmin,
+    });
+  } catch (error) {
+    if (!isAttachmentFolderSchemaMissingError(error)) throw error;
+    res.json({
+      locks: [],
+      canManage: false,
+      schemaPending: true,
+    });
+  }
 });
 
 router.put("/leads/:id/attachment-folder-lock", async (req, res) => {
