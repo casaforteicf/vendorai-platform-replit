@@ -1764,6 +1764,7 @@ function EditDealSheet({
       const confianca = data.confianca ?? 0;
       toast({ title: confianca >= 0.5 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)" });
     } catch (error) {
+      setCreateQuoteStatus("error");
       toast({
         title: "Erro ao ler o orçamento",
         description: error instanceof Error ? error.message : "Não foi possível processar o arquivo.",
@@ -2456,6 +2457,8 @@ export default function Deals() {
   const [saasOverColumn, setSaasOverColumn] = useState<DealEtapaSaas | null>(null);
   const [isCreateSaasOpen, setIsCreateSaasOpen] = useState(false);
   const [createExtracting, setCreateExtracting] = useState(false);
+  const [createQuoteFile, setCreateQuoteFile] = useState<File | null>(null);
+  const [createQuoteStatus, setCreateQuoteStatus] = useState<"idle" | "processing" | "review" | "partial" | "error">("idle");
   const [createExtractedInfo, setCreateExtractedInfo] = useState<{
     itens?: Array<{ descricao: string; quantidade?: number | null; valorUnitario?: number | null; valorTotal?: number | null }>;
     fornecedor?: string | null;
@@ -2468,6 +2471,9 @@ export default function Deals() {
     clienteCep?: string | null;
     clienteEndereco?: string | null;
     observacoes?: string | null;
+    confianca?: number | null;
+    quoteFileUrl?: string | null;
+    originalName?: string | null;
   } | null>(null);
   const createQuoteFileRef = useRef<HTMLInputElement>(null);
 
@@ -2692,12 +2698,19 @@ export default function Deals() {
   async function handleCreateQuoteUpload(file: File) {
     const validationError = validateQuoteImportFile(file);
     if (validationError) {
+      setCreateQuoteStatus("error");
       toast({ title: "Não foi possível importar", description: validationError, variant: "destructive" });
       return;
     }
 
+    const isNewFile = !createQuoteFile
+      || createQuoteFile.name !== file.name
+      || createQuoteFile.size !== file.size
+      || createQuoteFile.lastModified !== file.lastModified;
+    setCreateQuoteFile(file);
+    if (isNewFile) setCreateExtractedInfo(null);
+    setCreateQuoteStatus("processing");
     setCreateExtracting(true);
-    setCreateExtractedInfo(null);
     try {
       const data = await extractQuoteWithRetry(tenantId, file);
 
@@ -2728,6 +2741,9 @@ export default function Deals() {
           itens: data.itens,
           fornecedor: data.fornecedor,
           observacoes: data.observacoes,
+          confianca: data.confianca ?? 0,
+          quoteFileUrl: data.quoteFileUrl ?? null,
+          originalName: data.originalName ?? file.name,
           ...extractedCustomer,
         });
       }
@@ -2756,8 +2772,9 @@ export default function Deals() {
       }
 
       const confianca = data.confianca ?? 0;
+      setCreateQuoteStatus(confianca >= 0.7 ? "review" : "partial");
       toast({
-        title: confianca >= 0.5 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)",
+        title: confianca >= 0.7 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)",
         description: matchedLead
           ? `Cliente identificado e vinculado: ${matchedLead.nome}`
           : data.cliente
@@ -2792,6 +2809,7 @@ export default function Deals() {
           leadId: values.leadId || undefined,
           probabilidade: values.probabilidade,
           tipoFechamento: values.tipoFechamento as TipoFechamento | undefined,
+          quoteFileUrl: createExtractedInfo?.quoteFileUrl ?? undefined,
         },
       },
       {
@@ -2800,6 +2818,9 @@ export default function Deals() {
           queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
           setIsCreateOpen(false);
           createForm.reset();
+          setCreateExtractedInfo(null);
+          setCreateQuoteFile(null);
+          setCreateQuoteStatus("idle");
         },
         onError: () => {
           toast({ title: "Erro ao criar negócio", variant: "destructive" });
@@ -3306,14 +3327,42 @@ export default function Deals() {
                     onClick={() => createQuoteFileRef.current?.click()}
                   >
                     {createExtracting ? (
-                      <><Loader2 className="h-4 w-4 animate-spin" />Lendo orçamento...</>
+                      <><Loader2 className="h-4 w-4 animate-spin" />Enviando e lendo orçamento...</>
                     ) : (
                       <><FileUp className="h-4 w-4" />Importar Orçamento</>
                     )}
                   </Button>
                   <p className="text-[11px] text-muted-foreground text-center">
-                    PDF, imagem ou Word — IA extrai o valor e itens automaticamente
+                    PDF, imagem ou Word — o sistema valida, lê e traz os dados para conferência antes de salvar
                   </p>
+
+                  {createQuoteFile && (
+                    <div className="rounded-md bg-background/80 border px-2.5 py-2 text-[11px] space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium truncate">{createQuoteFile.name}</span>
+                        <span className="text-muted-foreground whitespace-nowrap">
+                          {(createQuoteFile.size / 1024 / 1024).toFixed(2)} MB
+                        </span>
+                      </div>
+                      <div className="text-muted-foreground">
+                        {createQuoteStatus === "processing" && "1/3 Arquivo validado • 2/3 Lendo cliente, itens e valores…"}
+                        {createQuoteStatus === "review" && "3/3 Leitura concluída • confira os dados abaixo antes de criar"}
+                        {createQuoteStatus === "partial" && "3/3 Leitura parcial • confira os campos destacados antes de criar"}
+                        {createQuoteStatus === "error" && "A leitura falhou, mas o arquivo foi mantido para tentar novamente"}
+                      </div>
+                      {!createExtracting && createQuoteFile && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => handleCreateQuoteUpload(createQuoteFile)}
+                        >
+                          Reler orçamento
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {createExtractedInfo && (
@@ -3322,11 +3371,34 @@ export default function Deals() {
                       <Sparkles className="h-3.5 w-3.5" />
                       Dados extraídos do orçamento
                     </p>
+                    {createExtractedInfo.confianca != null && (
+                      <div className={cn(
+                        "rounded px-2 py-1.5 text-[11px]",
+                        createExtractedInfo.confianca >= 0.7
+                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                          : "bg-amber-50 text-amber-800 border border-amber-200"
+                      )}>
+                        Confiança da leitura: {Math.round(createExtractedInfo.confianca * 100)}%
+                        {createExtractedInfo.confianca < 0.7 && " — revise os dados antes de continuar."}
+                      </div>
+                    )}
+                    {(!createExtractedInfo.cliente || !createExtractedInfo.clienteTelefone || !createExtractedInfo.clienteCidade) && (
+                      <div className="rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
+                        Conferir:
+                        {!createExtractedInfo.cliente && " nome do cliente;"}
+                        {!createExtractedInfo.clienteTelefone && " telefone;"}
+                        {!createExtractedInfo.clienteCidade && " cidade;"}
+                        {" "}a ausência de um campo não impede o aproveitamento dos demais dados.
+                      </div>
+                    )}
                     {createExtractedInfo.fornecedor && (
                       <p className="text-xs text-violet-700">Fornecedor: <span className="font-medium">{createExtractedInfo.fornecedor}</span></p>
                     )}
                     {createExtractedInfo.cliente && (
                       <p className="text-xs text-violet-700">Cliente: <span className="font-medium">{createExtractedInfo.cliente}</span></p>
+                    )}
+                    {createExtractedInfo.clienteDocumento && (
+                      <p className="text-xs text-violet-700">CPF/CNPJ: <span className="font-medium">{createExtractedInfo.clienteDocumento}</span></p>
                     )}
                     {createExtractedInfo.clienteTelefone && (
                       <p className="text-xs text-violet-700">Telefone: <span className="font-medium">{createExtractedInfo.clienteTelefone}</span></p>
@@ -3340,6 +3412,12 @@ export default function Deals() {
                     )}
                     {createExtractedInfo.clienteEmail && (
                       <p className="text-xs text-violet-700">E-mail: <span className="font-medium">{createExtractedInfo.clienteEmail}</span></p>
+                    )}
+                    {createExtractedInfo.clienteCep && (
+                      <p className="text-xs text-violet-700">CEP: <span className="font-medium">{createExtractedInfo.clienteCep}</span></p>
+                    )}
+                    {createExtractedInfo.clienteEndereco && (
+                      <p className="text-xs text-violet-700">Endereço: <span className="font-medium">{createExtractedInfo.clienteEndereco}</span></p>
                     )}
                     {createExtractedInfo.itens && createExtractedInfo.itens.length > 0 && (
                       <div className="space-y-1 mt-1">
