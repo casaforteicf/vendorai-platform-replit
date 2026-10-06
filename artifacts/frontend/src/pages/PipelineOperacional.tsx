@@ -17,6 +17,7 @@ import { ExpeditionChecklistPanel, type ExpeditionChecklist } from "@/components
 import { TransportChecklistPanel, type TransportChecklist } from "@/components/TransportChecklistPanel";
 import { PipelineNav, PIPELINE_CARD_CLASS, PIPELINE_COLUMN_CLASS, PIPELINE_COLUMN_HEADER_CLASS } from "@/components/PipelineNav";
 import { InstallationTemplateDialog } from "@/components/InstallationTemplateDialog";
+import { AdminDeleteLeadButton } from "@/components/AdminDeleteLeadButton";
 import {
   AlertTriangle,
   CalendarDays,
@@ -565,7 +566,9 @@ export default function PipelineOperacional() {
 
       <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto overflow-y-hidden pb-3">
         {stages.map(([key, label]) => {
-          const stageCards = cards.filter((card) => card.etapa === key);
+          const stageCards = cards.filter((card) =>
+            card.etapa === key && (!card.leadId || leadMap.has(card.leadId))
+          );
           return (
             <section
               key={key}
@@ -608,7 +611,16 @@ export default function PipelineOperacional() {
                           <p className="text-[10px] font-bold uppercase tracking-wide text-primary">{card.codigo}</p>
                           <p className="mt-0.5 text-sm font-semibold leading-tight">{card.titulo}</p>
                         </div>
-                        {card.prioridade === "urgente" || card.prioridade === "alta" ? <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" /> : null}
+                        <div className="flex shrink-0 items-center gap-1">
+                          {card.prioridade === "urgente" || card.prioridade === "alta" ? <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" /> : null}
+                          <AdminDeleteLeadButton
+                            leadId={card.leadId}
+                            leadName={lead || card.titulo}
+                            onDeleted={() => {
+                              if (selectedCard?.leadId === card.leadId) setSelectedCard(null);
+                            }}
+                          />
+                        </div>
                       </div>
                       {lead && <p className="mt-2 truncate text-xs text-muted-foreground">{lead}</p>}
                       {responsible ? (

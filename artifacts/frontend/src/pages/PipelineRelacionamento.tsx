@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserRound, ArrowRight, CalendarDays, Search, X } from "lucide-react";
 import { PipelineNav, PIPELINE_CARD_CLASS, PIPELINE_COLUMN_CLASS, PIPELINE_COLUMN_HEADER_CLASS } from "@/components/PipelineNav";
+import { AdminDeleteLeadButton } from "@/components/AdminDeleteLeadButton";
 
 type Deal = {
   id: string;
@@ -146,7 +147,10 @@ export default function PipelineRelacionamento() {
     const responsible = deal.assignedTo ? userMap.get(deal.assignedTo) : undefined;
     return (
       <article draggable onDragStart={() => setDraggedId(deal.id)} onDragEnd={() => setDraggedId(null)} onClick={() => deal.leadId && navigate(`/leads/${deal.leadId}`)} className={PIPELINE_CARD_CLASS}>
-        <p className="text-sm font-semibold">{deal.titulo}</p>
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-sm font-semibold">{deal.titulo}</p>
+          <AdminDeleteLeadButton leadId={deal.leadId} leadName={lead?.nome || lead?.empresa || deal.titulo} />
+        </div>
         <p className="mt-1 text-xs text-muted-foreground">{lead?.nome || lead?.empresa || "Sem cliente vinculado"}</p>
         {responsible && <p className="mt-2 flex items-center gap-1 text-xs text-muted-foreground"><UserRound className="h-3 w-3" />{responsible.name || responsible.email}</p>}
         {deal.dataFechamentoPrevista && <p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground"><CalendarDays className="h-3 w-3" />{new Date(deal.dataFechamentoPrevista).toLocaleDateString("pt-BR")}</p>}
