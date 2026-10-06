@@ -210,7 +210,12 @@ export function MediaPlanFailedRetryBridge() {
   const generate = useCallback(async (item: CalendarItem, campaign: MediaPlanCampaign, visual: boolean) => {
     const response = await fetch(`/api/tenants/${tid}/content/generate`, {
       method: "POST",
-      headers: headers(true),
+      headers: {
+        ...headers(true),
+        "x-vendorai-calendar-item-id": item.id,
+        "x-vendorai-media-plan-id": plan?.id ?? "",
+        "x-vendorai-campaign-id": campaign.id,
+      },
       body: JSON.stringify({
         type: generatorType(item),
         theme: promptFor(campaign, item).slice(0, 8000),
