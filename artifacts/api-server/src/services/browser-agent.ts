@@ -258,6 +258,51 @@ export async function snapshotBrowserPage(page: Page) {
   });
 }
 
+
+
+export function canNavigateFromSnapshot(
+  actionUrl: string,
+  goal: string,
+  state: { url: string; interactive?: Array<{ href?: string | null }> },
+): boolean {
+  try {
+    const target = new URL(actionUrl, state.url);
+    const current = new URL(state.url);
+    if (target.origin !== current.origin) return true;
+
+    const explicitGoalUrls = [...goal.matchAll(/https?:\/\/[^\s)]+/g)]
+      .map((match) => {
+        try { return new URL(match[0]).toString(); } catch { return null; }
+      })
+      .filter((value): value is string => Boolean(value));
+
+    if (explicitGoalUrls.includes(target.toString())) return true;
+    if (target.toString() === current.toString()) return true;
+
+    const snapshotHrefs = (state.interactive ?? [])
+      .map((item) => item.href)
+      .filter((href): href is string => Boolean(href))
+      .map((href) => {
+        try { return new URL(href, state.url).toString(); } catch { return null; }
+      })
+      .filter((value): value is string => Boolean(value));
+
+    return snapshotHrefs.includes(target.toString());
+  } catch {
+    return false;
+  }
+}
+
+async function stabilizeSparseFirstPartyPage(page: Page) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const state = await withBrowserRetry(() => snapshotBrowserPage(page), 2);
+    if (state.interactive.length > 0 || state.text.replace(/\s+/g, " ").trim().length > 180) return state;
+    await page.waitForNetworkIdle({ idleTime: 500, timeout: 2500 }).catch(() => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+  }
+  return withBrowserRetry(() => snapshotBrowserPage(page), 2);
+}
+
 export async function planBrowserAction(
   tenantId: string,
   goal: string,
@@ -495,13 +540,29 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
     let selectorRecoveryNote = "";
     let noChangeStreak = 0;
     for (let index = 1; index <= maxSteps; index++) {
-      const state = await withBrowserRetry(() => snapshotBrowserPage(page));
+      const state = input.firstPartyAuthToken
+        ? await stabilizeSparseFirstPartyPage(page)
+        : await withBrowserRetry(() => snapshotBrowserPage(page));
       assertBrowserPageAccessible(state);
       const planningGoal = selectorRecoveryNote
         ? input.goal + "\nRECUPERAÇÃO DE NAVEGAÇÃO: " + selectorRecoveryNote
         : input.goal;
       selectorRecoveryNote = "";
       const action = await planBrowserAction(input.tenantId, planningGoal, state, steps, secretsAvailable);
+      if (action.action === "navigate" && !canNavigateFromSnapshot(action.url, input.goal, state)) {
+        selectorRecoveryNote =
+          "A navegação anterior tentou inventar uma rota interna que não existe no snapshot. " +
+          "Use SOMENTE uma URL explícita no objetivo ou um href presente em page.interactive[].href. " +
+          "Se o objetivo exige criar/editar algo, use os botões e campos reais da página atual.";
+        steps.push({
+          index,
+          action: "navigate_rejected",
+          url: state.url,
+          detail: "invented_internal_route:" + action.url,
+          checkpoint: checkpointFromState(state),
+        });
+        continue;
+      }
       steps.push({
         index,
         action: action.action,
@@ -608,3 +669,5 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
     if (!transferred) releaseBrowser?.(true);
   }
 }
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
