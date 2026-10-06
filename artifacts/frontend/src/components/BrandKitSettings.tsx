@@ -368,10 +368,18 @@ export function BrandKitSettings() {
   const isSaving = updateProfile.isPending || updateTenant.isPending;
   const hasOfficialPrimaryColor = Boolean(tenant.data?.corPrimaria);
   const canApplyAgentSuggestion = Boolean(aiProposal) && ![0, 3].includes(activeStep);
-  const isContextLoading = !tenantId || tenant.isLoading || (profile.isLoading && resolvedProfile.isLoading);
+  // O endpoint consolidado já resolve perfil + dados básicos do tenant.
+  // Não devemos manter a tela inteira em skeleton esperando useGetTenant:
+  // em troca de tenant/superadmin essa consulta pode demorar ou falhar
+  // independentemente, enquanto o perfil consolidado já está disponível.
+  const isContextLoading =
+    !tenantId ||
+    (resolvedProfile.isLoading && profile.isLoading && tenant.isLoading);
   const contextLoadFailed = Boolean(
     tenantId &&
-    (tenant.isError || (profile.isError && resolvedProfile.isError))
+    resolvedProfile.isError &&
+    profile.isError &&
+    tenant.isError
   );
 
   if (isContextLoading) {
