@@ -46,11 +46,14 @@ export default function RealSpecificationCatalogStudio({ arqState, onNavigate }:
     sendingToBudget,
     syncingProject,
     lastSync,
+    approvals,
+    approving,
     error,
     totals,
     reloadCatalog,
     reloadSpecObjects,
     syncProject,
+    decideApproval,
     addObject,
     saveObject,
     extractFromRender,
@@ -250,6 +253,9 @@ export default function RealSpecificationCatalogStudio({ arqState, onNavigate }:
                       selectedObject={selectedObject}
                       saving={saving}
                       sendingToBudget={sendingToBudget}
+                      approvals={approvals}
+                      approving={approving}
+                      onDecision={decideApproval}
                       onCreate={addObject}
                       onSave={saveObject}
                       onSendToBudget={sendToBudget}
