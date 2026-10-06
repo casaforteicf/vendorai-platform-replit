@@ -22,12 +22,15 @@ export type ServicoChecklistEvidenceMode =
   | "text_or_photo"
   | "text_and_photo";
 
+export type ServicoChecklistVisibility = "interno" | "cliente" | "cliente_parceiro";
+
 export type ServicoChecklistItem = {
   id: string;
   titulo: string;
   descricao?: string | null;
   obrigatorio: boolean;
   evidencia: ServicoChecklistEvidenceMode;
+  visibilidade: ServicoChecklistVisibility;
   concluido: boolean;
   observacao?: string | null;
   fotos?: string[];
@@ -77,6 +80,7 @@ export const servicosOrdensTable = pgTable("servicos_ordens", {
   checklistExecucao:   jsonb("checklist_execucao").$type<ServicoChecklistItem[]>().notNull().default([]),
   historicoExecucao:   jsonb("historico_execucao").$type<ServicoHistoricoItem[]>().notNull().default([]),
   clienteAcompanha:    boolean("cliente_acompanha").notNull().default(true),
+  compartilharStatusCliente: boolean("compartilhar_status_cliente").notNull().default(true),
   observacoes:         text("observacoes"),
   createdAt:           timestamp("created_at").notNull().defaultNow(),
   updatedAt:           timestamp("updated_at").notNull().defaultNow(),
