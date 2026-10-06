@@ -999,6 +999,8 @@ router.get("/arch/concept-projects", authenticate, async (req, res) => {
     .orderBy(desc(archConceptProjectsTable.updatedAt))
     .limit(200);
 
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
+
   return res.json(rows.map((row) => {
     const customer = (row.customerProfile ?? {}) as { name?: string };
     const render = (row.conceptRender ?? {}) as { resultImageUrl?: string; history?: Array<{ resultImageUrl?: string }> };
@@ -1998,6 +2000,8 @@ NÃO aceite a primeira solução mental: critique e refine antes de responder.`;
 
     for (let attempt = 1; attempt <= 4; attempt += 1) {
       const seedContext = evolutionarySeed
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
         ? `\n\nBASE GEOMÉTRICA DA MELHOR ITERAÇÃO ATÉ AGORA (PASSE ${evolutionarySeed.pass}, SCORE ${evolutionarySeed.score}/100):\n${JSON.stringify(evolutionarySeed.rooms.map((room) => ({
             id: room.id,
             floor: room.floor,
@@ -2998,6 +3002,8 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
   const areaByFloor = new Map<number, number>();
   for (const room of indoorRooms) {
     const floor = Math.max(0, Number(room.floor ?? 0));
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
     areaByFloor.set(floor, (areaByFloor.get(floor) ?? 0) + roomArea(room));
   }
   const groundFloorArea = Math.max(1, areaByFloor.get(0) ?? effectiveArea / floors);
@@ -3998,6 +4004,8 @@ router.patch("/arch/projetos/:id", authenticate, async (req, res) => {
 
 // GET /api/arch/projetos/:id/negocios — negócios da pipeline do mesmo cliente
 router.get("/arch/projetos/:id/negocios", authenticate, async (req, res) => {
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
   const id = String(req.params.id);
 
   const [projeto] = await db
@@ -4998,6 +5006,8 @@ router.patch("/arch/catalogo/:id", authenticate, async (req, res) => {
     .limit(1);
 
   if (master) {
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
     const legacySpecs = req.body?.especificacoes && typeof req.body.especificacoes === "object"
       ? req.body.especificacoes as Record<string, unknown>
       : null;
@@ -5998,6 +6008,8 @@ router.patch("/arch/orcamento/:itemId", authenticate, async (req, res) => {
       valorUnitario: archOrcamentoItensTable.valorUnitario,
     })
     .from(archOrcamentoItensTable)
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
     .where(eq(archOrcamentoItensTable.id, itemId))
     .limit(1);
 
@@ -6998,6 +7010,8 @@ router.post("/arch/render", async (req, res) => {
       },
     });
     const servePath = captured.storageUrl.replace(/^\/objects\//, "");
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
     const imageUrl = `/api/storage/objects/${servePath}`;
 
     req.log.info({ tenantId: tid, lighting, angle, motor, assetId: captured.assetId }, "arch/render: concluído");
@@ -7657,19 +7671,66 @@ router.post("/arch/surfaces/:surfaceId/material", async (req, res) => {
 // GET /arq/projects — list workspace projects for tenant
 router.get("/arq/projects", authenticate, async (req, res) => {
   const tid = tenantId(req);
+  const clientProjectId = typeof req.query.clientProjectId === "string"
+    ? req.query.clientProjectId.trim()
+    : "";
+
+  const conditions = [eq(archProjetosTable.tenantId, tid)];
+
+  if (clientProjectId) {
+    const [anchor] = await db
+      .select({
+        id: archProjetosTable.id,
+        leadId: archProjetosTable.leadId,
+        dealId: archProjetosTable.dealId,
+        clienteNome: archProjetosTable.clienteNome,
+        clienteEmail: archProjetosTable.clienteEmail,
+        clienteTelefone: archProjetosTable.clienteTelefone,
+      })
+      .from(archProjetosTable)
+      .where(and(
+        eq(archProjetosTable.id, clientProjectId),
+        eq(archProjetosTable.tenantId, tid),
+      ))
+      .limit(1);
+
+    if (!anchor) return res.status(404).json({ error: "Projeto de referência não encontrado." });
+
+    if (anchor.leadId) {
+      conditions.push(eq(archProjetosTable.leadId, anchor.leadId));
+    } else if (anchor.dealId) {
+      conditions.push(eq(archProjetosTable.dealId, anchor.dealId));
+    } else if (anchor.clienteEmail?.trim()) {
+      const email = anchor.clienteEmail.trim().toLowerCase();
+      conditions.push(sql<boolean>`lower(trim(coalesce(${archProjetosTable.clienteEmail}, ''))) = ${email}`);
+    } else if (anchor.clienteTelefone?.trim()) {
+      const phone = anchor.clienteTelefone.replace(/\D/g, "");
+      conditions.push(sql<boolean>`regexp_replace(coalesce(${archProjetosTable.clienteTelefone}, ''), '[^0-9]', '', 'g') = ${phone}`);
+    } else if (anchor.clienteNome?.trim()) {
+      const name = anchor.clienteNome.trim().toLowerCase().replace(/\s+/g, " ");
+      conditions.push(sql<boolean>`regexp_replace(lower(trim(coalesce(${archProjetosTable.clienteNome}, ''))), '\s+', ' ', 'g') = ${name}`);
+    } else {
+      conditions.push(eq(archProjetosTable.id, anchor.id));
+    }
+  }
+
   const projetos = await db
     .select({
-      id:          archProjetosTable.id,
-      titulo:      archProjetosTable.titulo,
-      clienteNome: archProjetosTable.clienteNome,
-      status:      archProjetosTable.status,
-      tipoObra:    archProjetosTable.tipoObra,
-      areaM2:      archProjetosTable.areaM2,
-      createdAt:   archProjetosTable.createdAt,
-      updatedAt:   archProjetosTable.updatedAt,
+      id:               archProjetosTable.id,
+      leadId:           archProjetosTable.leadId,
+      dealId:           archProjetosTable.dealId,
+      titulo:           archProjetosTable.titulo,
+      clienteNome:      archProjetosTable.clienteNome,
+      clienteEmail:     archProjetosTable.clienteEmail,
+      clienteTelefone:  archProjetosTable.clienteTelefone,
+      status:           archProjetosTable.status,
+      tipoObra:         archProjetosTable.tipoObra,
+      areaM2:           archProjetosTable.areaM2,
+      createdAt:        archProjetosTable.createdAt,
+      updatedAt:        archProjetosTable.updatedAt,
     })
     .from(archProjetosTable)
-    .where(eq(archProjetosTable.tenantId, tid))
+    .where(and(...conditions))
     .orderBy(desc(archProjetosTable.updatedAt));
   return res.json(projetos);
 });
@@ -7951,6 +8012,8 @@ router.post("/arch/prompt-variations", authenticate, async (req, res) => {
 
   if (!body.success) {
     return res.status(400).json({ error: "Dados inválidos", details: body.error.issues });
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
   }
 
   const [row] = await db
@@ -8951,6 +9014,8 @@ router.post("/arch/partners/compartilhar", authenticate, async (req, res) => {
 
   if (!partner) return res.status(404).json({ error: "Parceiro não encontrado." });
 
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
   let enviadoEm: Date | undefined;
   if ((canal === "email") && partner.email) {
     const sent = await sendPartnerEmail({
@@ -9951,6 +10016,8 @@ router.get("/arch/office/dna", authenticate, async (req, res) => {
       categoria: archCatalogoTable.categoria,
       fornecedor:archCatalogoTable.fornecedor,
     }).from(archCatalogoTable)
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
       .where(eq(archCatalogoTable.tenantId, tid))
       .limit(60),
   ]);
@@ -10186,3 +10253,5 @@ router.get("/arch/office/indicators", authenticate, async (req, res) => {
 export { archPublicRouter };
 export default router;
 
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
