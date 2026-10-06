@@ -1,4 +1,4 @@
-import { Clock, ArrowRight, AlertTriangle, Sparkles, CreditCard, RefreshCw, ShieldCheck, CheckCircle2 } from "lucide-react";
+import { Clock, ArrowRight, AlertTriangle, Sparkles, CreditCard, RefreshCw, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
