@@ -5339,7 +5339,18 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     }
   };
 
-  const generateConceptRender = async (options?: { source?: "facade" | "model3d"; renderView?: "exterior" | "interior"; lightingMode?: "day" | "sunset" | "night" }) => {
+  const generateConceptRender = async (options?: {
+    source?: "facade" | "model3d";
+    renderView?: "exterior" | "interior";
+    lightingMode?: "day" | "sunset" | "night";
+    sceneId?: string | null;
+    sceneName?: string | null;
+    cameraSnapshot?: {
+      floor?: number;
+      position: { x: number; y: number; z: number };
+      target: { x: number; y: number; z: number };
+    } | null;
+  }) => {
     if (projectMaster) {
       setRenderError("Este Projeto Mestre está congelado. Crie uma revisão para gerar um novo render com alterações.");
       return;
@@ -5485,6 +5496,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           iluminacao: lightingMode,
           source,
           render_view: renderView,
+          scene_id: options?.sceneId || undefined,
+          scene_name: options?.sceneName || undefined,
+          camera_snapshot: options?.cameraSnapshot || undefined,
+          source_model_version: source === "model3d" ? "concept_webgl_current" : "derived_facade_current",
           ambiente: renderView === "interior" ? "interior" : "fachada",
           // O resumo curto vem primeiro e separado: é o único trecho que o motor lê por inteiro.
           user_notes: [
@@ -8806,7 +8821,14 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       onSavedTourPointActivate={(point) => {
                         setActiveFloor(Math.max(0, Math.min(floors - 1, point.floor)));
                       }}
-                      onRenderView={(lightingMode, renderView) => void generateConceptRender({ source: "model3d", renderView, lightingMode })}
+                      onRenderView={(lightingMode, renderView, provenance) => void generateConceptRender({
+                        source: "model3d",
+                        renderView,
+                        lightingMode,
+                        sceneId: provenance?.sceneId,
+                        sceneName: provenance?.sceneName,
+                        cameraSnapshot: provenance?.cameraSnapshot,
+                      })}
                       onSelectWall={(wallId) => {
                         setSelectedWallId(wallId);
                         if (wallId) {
