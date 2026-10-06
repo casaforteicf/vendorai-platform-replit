@@ -1,3 +1,4 @@
+import { validateRenderImage } from "../../shared/import-guard"
 // ─── ARQDOR Studio — Experiência unificada de render ─────────────────────────
 // Fluxo: Upload + Configurar → Gerar Render → Resultado + Painel de ajustes
 //        → Aplicar → Novo Render → Comparar → Baixar
@@ -304,9 +305,17 @@ export function InstantRenderZone({ arqState }: Props) {
 
   // ── File handling ──────────────────────────────────────────────────────────
   async function handleFile(file: File) {
-    if (!file.type.startsWith('image/')) { setErrorMsg('Envie uma imagem: JPG, PNG ou WEBP'); return }
+    const validationError = validateRenderImage(file)
+    if (validationError) {
+      setErrorMsg(validationError)
+      return
+    }
     setErrorMsg(null)
-    setImageDataUrl(await fileToDataUrl(file))
+    try {
+      setImageDataUrl(await fileToDataUrl(file))
+    } catch {
+      setErrorMsg('Não foi possível abrir esta imagem. Tente outro arquivo.')
+    }
   }
 
   const onDrop = useCallback((e: React.DragEvent) => {
