@@ -1627,10 +1627,23 @@ function EditDealSheet({
     },
   });
 
+  const transferStageKeys = useMemo(
+    () => [...transferStages]
+      .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
+      .map((stage) => stage.key)
+      .join("|"),
+    [transferStages],
+  );
+  const firstTransferStageKey = transferStageKeys.split("|").filter(Boolean)[0] ?? "";
+
   useEffect(() => {
-    const firstStage = [...transferStages].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))[0];
-    setTransferStage(firstStage?.key ?? "");
-  }, [transferPipeline, transferStages]);
+    if (!transferOpen) return;
+    setTransferStage((current) => {
+      const available = transferStageKeys ? transferStageKeys.split("|") : [];
+      if (current && available.includes(current)) return current;
+      return firstTransferStageKey;
+    });
+  }, [transferOpen, transferPipeline, transferStageKeys, firstTransferStageKey]);
 
   const transferTargetStage = transferStages.find((stage) => stage.key === transferStage);
   const eligibleTransferUsers = useMemo(
@@ -2496,11 +2509,19 @@ export default function Deals() {
       });
   }, [pipelineStages]);
 
+  const mobileColumnKeys = useMemo(
+    () => kanbanColumns.map((column) => column.dropId).join("|"),
+    [kanbanColumns],
+  );
+  const firstMobileColumnKey = mobileColumnKeys.split("|").filter(Boolean)[0] ?? "";
+
   useEffect(() => {
-    if (kanbanColumns.length > 0 && !kanbanColumns.some((column) => column.dropId === mobileCol)) {
-      setMobileCol(kanbanColumns[0].dropId);
+    if (!firstMobileColumnKey) return;
+    const available = mobileColumnKeys.split("|");
+    if (!available.includes(mobileCol)) {
+      setMobileCol(firstMobileColumnKey);
     }
-  }, [kanbanColumns, mobileCol]);
+  }, [firstMobileColumnKey, mobileColumnKeys, mobileCol]);
 
   const { data: leads = [] } = useListTenantLeads(tenantId, {
     query: {
