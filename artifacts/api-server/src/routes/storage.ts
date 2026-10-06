@@ -151,6 +151,7 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
     objectResponse.headers.forEach((value, key) => {
       res.setHeader(key, value);
     });
+    res.setHeader("Cache-Control", "private, max-age=900");
     res.status(objectResponse.status);
     res.send(Buffer.from(await objectResponse.arrayBuffer()));
   } catch (error) {
