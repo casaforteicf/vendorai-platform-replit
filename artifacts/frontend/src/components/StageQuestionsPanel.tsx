@@ -86,6 +86,11 @@ export function StageQuestionsPanel({
   const answeredCount = perguntas.filter((p) => draft[p.id]?.trim()).length;
 
   function saveQuestionSet() {
+    if (!isEffectiveAdmin) {
+      toast({ title: "Apenas administradores podem configurar o modelo da etapa.", variant: "destructive" });
+      setEditing(false);
+      return;
+    }
     updateStage.mutate(
       { tenantId, id: stage.id, data: { perguntas: editList, acompanhamentoConfig: followupConfig } as any },
       {
@@ -113,7 +118,7 @@ export function StageQuestionsPanel({
           {isEffectiveAdmin && (
             <Button size="sm" variant="ghost" className="h-7 w-fit shrink-0 gap-1 px-2 text-xs text-muted-foreground" onClick={() => setEditing(true)}>
               <Settings2 className="h-3.5 w-3.5" />
-              Configurar perguntas
+              Configurar modelo da etapa
             </Button>
           )}
         </CardContent>
@@ -142,7 +147,7 @@ export function StageQuestionsPanel({
           {isEffectiveAdmin && (
             <Button size="sm" variant="ghost" className="h-7 shrink-0 gap-1 px-2 text-xs text-muted-foreground" onClick={() => setEditing((v) => !v)}>
               <Settings2 className="h-3.5 w-3.5" />
-              Editar perguntas
+              Configurar modelo da etapa
             </Button>
           )}
         </div>
@@ -150,6 +155,12 @@ export function StageQuestionsPanel({
       <CardContent className="px-4 pb-3 pt-1">
         {editing ? (
           <div className="space-y-2">
+            <div className="mb-3 rounded-lg border border-primary/20 bg-primary/[0.04] px-3 py-2">
+              <p className="text-xs font-semibold">Configuração do modelo da etapa</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Disponível somente para administradores do tenant. As alterações ficam como padrão desta etapa para todos os negócios.
+              </p>
+            </div>
             {editList.map((p, i) => (
               <div key={p.id} className="flex items-center gap-2">
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-semibold text-muted-foreground">{i + 1}</span>
@@ -272,7 +283,7 @@ export function StageQuestionsPanel({
             <div className="flex items-center gap-2 pt-1">
               <Button size="sm" disabled={updateStage.isPending} onClick={saveQuestionSet}>
                 {updateStage.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-                Salvar perguntas
+                Salvar modelo da etapa
               </Button>
               <Button size="sm" variant="ghost" onClick={() => { setEditing(false); setEditList(stage.perguntas ?? []); }}>Cancelar</Button>
             </div>
