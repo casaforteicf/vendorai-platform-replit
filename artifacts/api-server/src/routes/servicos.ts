@@ -54,7 +54,7 @@ type ModeloExecucao = (typeof MODELOS)[number];
 
 type ChecklistSeed = Omit<
   ServicoChecklistItem,
-  "concluido" | "observacao" | "fotos" | "concluidoPorId" | "concluidoPorNome" | "concluidoEm"
+  "visibilidade" | "concluido" | "observacao" | "fotos" | "concluidoPorId" | "concluidoPorNome" | "concluidoEm"
 >;
 
 const CHECKLISTS: Record<ModeloExecucao, ChecklistSeed[]> = {
@@ -126,6 +126,7 @@ function buildChecklist(modelo: string): ServicoChecklistItem[] {
   const key = MODELOS.includes(modelo as ModeloExecucao) ? (modelo as ModeloExecucao) : "geral";
   return CHECKLISTS[key].map((item) => ({
     ...item,
+    visibilidade: "interno",
     concluido: false,
     observacao: null,
     fotos: [],
@@ -360,6 +361,43 @@ router.get("/tenants/:tenantId/servicos/ordens", async (req, res) => {
   })));
 });
 
+router.get("/tenants/:tenantId/servicos/ordens/:id/cliente-view", async (req, res) => {
+  const tenantId = routeTenantId(req);
+  const id = req.params.id as string;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [ordem] = await db.select().from(servicosOrdensTable)
+    .where(and(eq(servicosOrdensTable.id, id), eq(servicosOrdensTable.tenantId, tenantId)));
+  if (!ordem) return res.status(404).json({ error: "Ordem de serviço not found" });
+
+  const itensVisiveis = (ordem.checklistExecucao ?? [])
+    .filter((item) => item.visibilidade === "cliente" || item.visibilidade === "cliente_parceiro")
+    .map((item) => ({
+      id: item.id,
+      titulo: item.titulo,
+      descricao: item.descricao ?? null,
+      concluido: item.concluido,
+      observacao: item.observacao ?? null,
+      fotos: item.fotos ?? [],
+      concluidoPorNome: item.concluidoPorNome ?? null,
+      concluidoEm: item.concluidoEm ?? null,
+    }));
+
+  return res.json({
+    id: ordem.id,
+    modeloExecucao: ordem.modeloExecucao,
+    enderecoAtendimento: ordem.enderecoAtendimento,
+    status: ordem.compartilharStatusCliente ? ordem.status : null,
+    progresso: itensVisiveis.length
+      ? {
+          concluidos: itensVisiveis.filter((item) => item.concluido).length,
+          total: itensVisiveis.length,
+        }
+      : null,
+    atividades: itensVisiveis,
+  });
+});
+
 router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
   const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
@@ -373,6 +411,7 @@ router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
     prestadorId,
     observacoes,
     clienteAcompanha = true,
+    compartilharStatusCliente = true,
   } = req.body as {
     clienteId: string;
     negocioId?: string;
@@ -382,6 +421,7 @@ router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
     prestadorId?: string;
     observacoes?: string;
     clienteAcompanha?: boolean;
+    compartilharStatusCliente?: boolean;
   };
 
   if (!clienteId || !tipoServicoId || !enderecoAtendimento) {
@@ -431,6 +471,7 @@ router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
       checklistExecucao: checklist,
       historicoExecucao: [criacao],
       clienteAcompanha,
+      compartilharStatusCliente,
       updatedAt: new Date(),
     } as any)
     .returning();
@@ -456,6 +497,7 @@ router.patch("/tenants/:tenantId/servicos/ordens/:id", async (req, res) => {
     "valorFinal",
     "observacoes",
     "clienteAcompanha",
+    "compartilharStatusCliente",
   ];
   const patch = Object.fromEntries(Object.entries(req.body).filter(([k]) => allowed.includes(k)));
   const historico = [
@@ -536,13 +578,17 @@ router.patch("/tenants/:tenantId/servicos/ordens/:id/checklist/:itemId", async (
   if (index < 0) return res.status(404).json({ error: "Passo do checklist não encontrado" });
 
   const atual = checklist[index];
-  const concluido = req.body.concluido !== false;
+  const hasConcluido = Object.prototype.hasOwnProperty.call(req.body ?? {}, "concluido");
+  const concluido = hasConcluido ? req.body.concluido !== false : atual.concluido;
   const observacao = String(req.body.observacao ?? atual.observacao ?? "").trim();
   const fotos = Array.isArray(req.body.fotos)
     ? req.body.fotos.filter((url: unknown) => typeof url === "string" && url.trim())
     : (atual.fotos ?? []);
+  const visibilidade = ["interno", "cliente", "cliente_parceiro"].includes(String(req.body.visibilidade ?? ""))
+    ? String(req.body.visibilidade)
+    : (atual.visibilidade ?? "interno");
 
-  if (concluido && !evidenceOk(atual, observacao, fotos)) {
+  if (hasConcluido && concluido && !evidenceOk(atual, observacao, fotos)) {
     const mensagens: Record<string, string> = {
       text: "Escreva o que foi feito antes de concluir este passo.",
       photo: "Adicione pelo menos uma foto antes de concluir este passo.",
@@ -556,28 +602,33 @@ router.patch("/tenants/:tenantId/servicos/ordens/:id/checklist/:itemId", async (
   const a = actor(req);
   checklist[index] = {
     ...atual,
+    visibilidade: visibilidade as any,
     concluido,
     observacao: observacao || null,
     fotos,
-    concluidoPorId: concluido ? a.id : null,
-    concluidoPorNome: concluido ? a.nome : null,
-    concluidoEm: concluido ? new Date().toISOString() : null,
+    concluidoPorId: hasConcluido ? (concluido ? a.id : null) : atual.concluidoPorId,
+    concluidoPorNome: hasConcluido ? (concluido ? a.nome : null) : atual.concluidoPorNome,
+    concluidoEm: hasConcluido ? (concluido ? new Date().toISOString() : null) : atual.concluidoEm,
   };
 
   const required = checklist.filter((item) => item.obrigatorio);
   const allDone = required.length > 0 && required.every((item) => item.concluido);
   let nextStatus = ordem.status ?? "orcamento_pendente";
 
-  if (concluido && ["aprovado", "agendado"].includes(nextStatus)) nextStatus = "em_andamento";
-  if (allDone && nextStatus !== "cancelado") nextStatus = "concluido";
+  if (hasConcluido) {
+    if (concluido && ["aprovado", "agendado"].includes(nextStatus)) nextStatus = "em_andamento";
+    if (allDone && nextStatus !== "cancelado") nextStatus = "concluido";
+  }
 
   const historico = [
     ...(ordem.historicoExecucao ?? []),
     history(
       req,
       "checklist",
-      `${concluido ? "Concluído" : "Reaberto"}: ${atual.titulo}`,
-      { itemId, fotos: fotos.length, temObservacao: Boolean(observacao) },
+      hasConcluido
+        ? `${concluido ? "Concluído" : "Reaberto"}: ${atual.titulo}`
+        : `Compartilhamento atualizado: ${atual.titulo}`,
+      { itemId, fotos: fotos.length, temObservacao: Boolean(observacao), visibilidade },
     ),
   ];
 
