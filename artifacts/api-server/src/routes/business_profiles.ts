@@ -22,6 +22,20 @@ import { ObjectStorageService } from "../lib/objectStorage.js";
 const router: IRouter = Router();
 const businessProfileStorage = new ObjectStorageService();
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 function canAccessTenant(req: any, tenantId: string) {
   return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
 }
@@ -246,58 +260,60 @@ router.post("/tenants/:tenantId/inteligencia-negocio/resolver", async (req, res)
 
 router.get("/tenants/:tenantId/business-profile", async (req, res) => {
   const tenantId = String(req.params.tenantId);
+  if (!canAccessTenant(req, tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const [profileResult, tenantResult, whatsappResult] = await Promise.allSettled([
-    db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId)).limit(1),
-    db.select({
-      id: tenantsTable.id,
-      name: tenantsTable.name,
-      nomeEmpresa: tenantsTable.nomeEmpresa,
-      vertical: tenantsTable.vertical,
-      segmento: tenantsTable.segmento,
-      logoUrl: tenantsTable.logoUrl,
-      site: tenantsTable.site,
-      descricao: tenantsTable.descricao,
-    }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
-    db.select({
-      displayPhoneNumber: whatsappConnectionsTable.displayPhoneNumber,
-      businessName: whatsappConnectionsTable.businessName,
-      isDefault: whatsappConnectionsTable.isDefault,
-      updatedAt: whatsappConnectionsTable.updatedAt,
-    }).from(whatsappConnectionsTable)
-      .where(and(eq(whatsappConnectionsTable.tenantId, tenantId), eq(whatsappConnectionsTable.status, "active")))
-      .orderBy(desc(whatsappConnectionsTable.isDefault), desc(whatsappConnectionsTable.updatedAt))
-      .limit(1),
+    withTimeout(
+      db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId)).limit(1),
+      3_500,
+      "business profile query",
+    ),
+    withTimeout(
+      db.select({
+        id: tenantsTable.id,
+        name: tenantsTable.name,
+        nomeEmpresa: tenantsTable.nomeEmpresa,
+        vertical: tenantsTable.vertical,
+        segmento: tenantsTable.segmento,
+        logoUrl: tenantsTable.logoUrl,
+        site: tenantsTable.site,
+        descricao: tenantsTable.descricao,
+      }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
+      3_500,
+      "tenant query",
+    ),
+    withTimeout(
+      db.select({
+        displayPhoneNumber: whatsappConnectionsTable.displayPhoneNumber,
+        businessName: whatsappConnectionsTable.businessName,
+        isDefault: whatsappConnectionsTable.isDefault,
+        updatedAt: whatsappConnectionsTable.updatedAt,
+      }).from(whatsappConnectionsTable)
+        .where(and(eq(whatsappConnectionsTable.tenantId, tenantId), eq(whatsappConnectionsTable.status, "active")))
+        .orderBy(desc(whatsappConnectionsTable.isDefault), desc(whatsappConnectionsTable.updatedAt))
+        .limit(1),
+      3_500,
+      "whatsapp connection query",
+    ),
   ]);
   let profile = profileResult.status === "fulfilled" ? profileResult.value[0] ?? null : null;
   const tenant = tenantResult.status === "fulfilled" ? tenantResult.value[0] ?? null : null;
   const whatsapp = whatsappResult.status === "fulfilled" ? whatsappResult.value[0] ?? null : null;
 
-  const profileDiscovery = (profile?.discoveryData ?? {}) as Record<string, unknown>;
-  const hasBuilderTemplates =
-    Array.isArray(profileDiscovery.proposalBuilderTemplates)
-    && profileDiscovery.proposalBuilderTemplates.length > 0;
-  if (profile && hasBuilderTemplates) {
-    try {
-      const ensured = await ensureTenantProposalBuilderTemplate({ tenantId, log: req.log });
-      profile = {
-        ...profile,
-        discoveryData: {
-          ...profileDiscovery,
-          proposalBuilderTemplates: ensured.templates,
-          activeProposalBuilderTemplateId: ensured.activeTemplateId,
-        },
-      };
-    } catch (err) {
-      req.log?.warn({ err, tenantId }, "business-profile: failed to synchronize proposal presets");
-    }
-  }
-
   const canonicalLogoUrl = profile?.logoUrl || tenant?.logoUrl || null;
   let logoAccessUrl = canonicalLogoUrl;
   if (canonicalLogoUrl?.startsWith("/objects/")) {
     try {
-      logoAccessUrl = await businessProfileStorage.getObjectEntitySignedUrl(canonicalLogoUrl, 900);
-    } catch {
+      logoAccessUrl = await withTimeout(
+        businessProfileStorage.getObjectEntitySignedUrl(canonicalLogoUrl, 900),
+        2_500,
+        "logo signed url",
+      );
+    } catch (error) {
+      req.log?.warn({ error, tenantId }, "business-profile: logo signed URL unavailable");
       logoAccessUrl = null;
     }
   }
