@@ -3407,9 +3407,9 @@ function newFreeItem(): FreeItem {
             const quantidade = Number(item.quantidade);
             const valorLinha = Number(item.valorTotal);
             const valorUnitarioOriginal = Number(item.valorUnitario);
-            const quantidadeValida = Number.isFinite(quantidade) && quantidade > 0;
-            const unitarioValido = Number.isFinite(valorUnitarioOriginal) && valorUnitarioOriginal >= 0;
-            const valorLinhaValido = Number.isFinite(valorLinha) && valorLinha >= 0;
+            const quantidadeValida = item.quantidade != null && Number.isFinite(quantidade) && quantidade > 0;
+            const unitarioValido = item.valorUnitario != null && Number.isFinite(valorUnitarioOriginal) && valorUnitarioOriginal >= 0;
+            const valorLinhaValido = item.valorTotal != null && Number.isFinite(valorLinha) && valorLinha >= 0;
             const reviewReasons = [
               !quantidadeValida ? "Quantidade não identificada no documento" : "",
               !unitarioValido ? "Valor unitário não identificado no documento" : "",
@@ -4463,6 +4463,10 @@ function newFreeItem(): FreeItem {
                     descricao: item.descricao || undefined,
                     unidade: item.unidade || undefined,
                     precoAplicado: roundBudgetNumber(item.valorUnitario),
+                    pricingConfig: {
+                      importedDocumentLineTotal: item.valorTotalOriginal,
+                      importedDocumentNotes: item.observacoes,
+                    },
                   },
                 }))
               : [{ nome: "Orçamento importado de outro sistema", quantidade: 1, valorUnitario: importValorTotal }],
