@@ -31,6 +31,7 @@ type MediaAsset = {
   type: MediaType;
   role?: string | null;
   storageUrl: string;
+  accessUrl?: string | null;
   originalFilename?: string | null;
   source?: string | null;
   metadata?: Record<string, unknown> | null;
@@ -85,6 +86,10 @@ function authHeaders(json = false): Record<string, string> {
 
 function mediaUrl(storageUrl: string): string {
   return storageUrl.startsWith("/objects/") ? `/api/storage${storageUrl}` : storageUrl;
+}
+
+function assetAccessUrl(asset: MediaAsset): string {
+  return asset.accessUrl || assetAccessUrl(asset);
 }
 
 function aiUsage(asset: MediaAsset): AiUsage {
@@ -157,7 +162,7 @@ export function MediaAiBaseBridge() {
   const syncApprovedCache = useCallback((nextAssets: MediaAsset[]) => {
     const approved = nextAssets.filter((asset) => aiUsage(asset) === "approved");
     const ids = approved.map((asset) => asset.id);
-    const urls = Array.from(new Set(approved.flatMap((asset) => [asset.storageUrl, mediaUrl(asset.storageUrl)])));
+    const urls = Array.from(new Set(approved.flatMap((asset) => [asset.storageUrl, mediaUrl(asset.storageUrl), assetAccessUrl(asset)])));
     approvedIdsRef.current = new Set(ids);
     approvedUrlsRef.current = new Set(urls);
     try {
@@ -431,8 +436,8 @@ export function MediaAiBaseBridge() {
                         className={`overflow-hidden rounded-xl border bg-background text-left shadow-sm transition ${isSelected ? "border-primary ring-2 ring-primary/20" : "hover:border-primary/30"}`}
                       >
                         <div className="relative aspect-[4/3] bg-muted">
-                          {asset.type === "image" ? <img src={mediaUrl(asset.storageUrl)} alt={asset.originalFilename ?? "Mídia"} className="h-full w-full object-cover" />
-                            : asset.type === "video" ? <video src={mediaUrl(asset.storageUrl)} className="h-full w-full object-cover" muted preload="metadata" />
+                          {asset.type === "image" ? <img src={assetAccessUrl(asset)} alt={asset.originalFilename ?? "Mídia"} className="h-full w-full object-cover" />
+                            : asset.type === "video" ? <video src={assetAccessUrl(asset)} className="h-full w-full object-cover" muted preload="metadata" />
                             : <div className="flex h-full items-center justify-center"><Icon className="h-9 w-9 text-muted-foreground" /></div>}
                           <span className="absolute right-2 top-2 rounded-md bg-background/90 p-1.5 shadow-sm">{isSelected ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4 text-muted-foreground" />}</span>
                           {usage === "approved" && <span className="absolute bottom-2 left-2 rounded-full bg-emerald-600 px-2 py-1 text-[9px] font-bold text-white">BASE IA</span>}
