@@ -341,10 +341,30 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
     let filter = "";
     if (selectedIds.length) { params.push(selectedIds); filter = ` AND id = ANY($3::uuid[])`; }
     const itemResult = await client.query(
-      `SELECT abi.*, aso.category AS spec_category, aso.region AS spec_region, aa.nome AS ambiente_nome\n       FROM arch_budget_items abi\n       LEFT JOIN arch_spec_objects aso ON aso.id=abi.spec_object_id\n       LEFT JOIN arch_ambientes aa ON aa.id::text=abi.ambiente_id::text\n      WHERE abi.budget_id=$1::uuid AND abi.tenant_id::text=$2 AND abi.deleted_at IS NULL ${filter.replace(" id ", " abi.id ")}\n      ORDER BY abi.sort_order,abi.created_at`,
+      `SELECT abi.*, aso.category AS spec_category, aso.region AS spec_region,
+              aso.purchase_quantity AS spec_purchase_quantity,
+              aso.package_yield AS spec_package_yield,
+              aso.waste_factor AS spec_waste_factor,
+              aso.measurement_source AS spec_measurement_source,
+              aso.measurement_revision AS spec_measurement_revision,
+              aa.nome AS ambiente_nome\n       FROM arch_budget_items abi\n       LEFT JOIN arch_spec_objects aso ON aso.id=abi.spec_object_id\n       LEFT JOIN arch_ambientes aa ON aa.id::text=abi.ambiente_id::text\n      WHERE abi.budget_id=$1::uuid AND abi.tenant_id::text=$2 AND abi.deleted_at IS NULL ${filter.replace(" id ", " abi.id ")}\n      ORDER BY abi.sort_order,abi.created_at`,
       params,
     );
     if (!itemResult.rows.length) return res.status(422).json({ error: "O orçamento não possui itens para cotação." });
+
+    const outdatedItems = itemResult.rows.filter((row: any) => Boolean(row.specification_outdated));
+    if (outdatedItems.length) {
+      return res.status(409).json({
+        error: "Existem itens com especificação desatualizada. Revise a especificação antes de gerar a cotação.",
+        code: "SPECIFICATION_OUTDATED",
+        items: outdatedItems.map((row: any) => ({
+          id: row.id,
+          item: row.item,
+          specificationRevision: row.specification_revision ?? null,
+          specificationImpact: row.specification_impact ?? null,
+        })),
+      });
+    }
 
     const groups = new Map<string, { category: string; discipline: string; rows: any[] }>();
     for (const row of itemResult.rows) {
@@ -371,11 +391,35 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
             ? commercial.saleTotal * (total / budgetCostBase)
             : 0;
         saleValue += rowSale;
+        const projectQuantity = n(row.quantity, 1);
+        const purchaseQuantity = row.spec_purchase_quantity != null
+          ? Math.max(0, n(row.spec_purchase_quantity))
+          : projectQuantity;
+        const quoteQuantity = purchaseQuantity > 0 ? purchaseQuantity : projectQuantity;
+        const quoteTotal = n(row.unit_total) * quoteQuantity;
         const snapshot = {
-          budgetItemId: row.id, specObjectId: row.spec_object_id, item: row.item, description: row.description,
-          ambienteId: row.ambiente_id, ambiente: row.ambiente_nome || null, region: row.spec_region || null, quantity: n(row.quantity, 1), unit: row.unit || "un",
-          productName: row.product_name, materialName: row.material_name, manufacturerName: row.manufacturer_name,
-          total, category: group.category, discipline: group.discipline,
+          budgetItemId: row.id,
+          specObjectId: row.spec_object_id,
+          item: row.item,
+          description: row.description,
+          ambienteId: row.ambiente_id,
+          ambiente: row.ambiente_nome || null,
+          region: row.spec_region || null,
+          projectQuantity,
+          purchaseQuantity: quoteQuantity,
+          quantity: quoteQuantity,
+          unit: row.unit || "un",
+          wasteFactor: row.spec_waste_factor != null ? n(row.spec_waste_factor) : null,
+          packageYield: row.spec_package_yield != null ? n(row.spec_package_yield) : null,
+          measurementSource: row.spec_measurement_source || null,
+          measurementRevision: row.spec_measurement_revision || null,
+          specificationRevision: row.specification_revision || null,
+          productName: row.product_name,
+          materialName: row.material_name,
+          manufacturerName: row.manufacturer_name,
+          total: quoteTotal,
+          category: group.category,
+          discipline: group.discipline,
         };
         const hash = scopeHash(snapshot);
         const existing = await client.query(
@@ -392,7 +436,7 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
                escopo_versao=CASE WHEN $11 THEN escopo_versao+1 ELSE escopo_versao END,updated_at=now()
              WHERE id=$12 AND tenant_id=$13`,
             [row.item, row.ambiente_nome || (row.ambiente_id ? String(row.ambiente_id) : null), group.discipline, group.category,
-             String(n(row.quantity,1)), row.unit || "un", String(total), String(rowSale), JSON.stringify(snapshot), hash, Boolean(changed), finalRequestId, tid],
+             String(snapshot.quantity), row.unit || "un", String(snapshot.total), String(rowSale), JSON.stringify(snapshot), hash, Boolean(changed), finalRequestId, tid],
           );
         } else {
           finalRequestId = requestId;
@@ -404,8 +448,8 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
              VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'media','pendente','budget_rfq','[]'::jsonb,
                     $13::uuid,$14::uuid,$15::uuid,1,$16,$17::jsonb,$18,$19,now(),now())`,
             [finalRequestId,tid,obraId,`BUD-${String(row.id).slice(0,8).toUpperCase()}`,row.item,row.ambiente_nome||(row.ambiente_id?String(row.ambiente_id):null),
-             group.discipline,group.category,String(n(row.quantity,1)),row.unit||"un",String(n(row.unit_total)),String(total),
-             budgetId,row.id,row.spec_object_id||null,hash,JSON.stringify(snapshot),String(rowSale),String(total)],
+             group.discipline,group.category,String(snapshot.quantity),row.unit||"un",String(n(row.unit_total)),String(snapshot.total),
+             budgetId,row.id,row.spec_object_id||null,hash,JSON.stringify(snapshot),String(rowSale),String(snapshot.total)],
           );
         }
         requestIds.push(finalRequestId);
