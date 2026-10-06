@@ -425,6 +425,20 @@ interface RepresentativeTenantUser {
   userFunction?: UserFunction | null;
 }
 
+interface CommercialPartnership {
+  id: string;
+  ownerTenantId: string;
+  partnerTenantId: string;
+  partnerName?: string | null;
+  partnerTenantCode?: string | null;
+  relationshipType: string;
+  status: string;
+  defaultCommissionPercent: string;
+  defaultPermissions: string[];
+  authorizedUserIds: string[];
+  distributionMode: string;
+}
+
 interface TenantUserFunction {
   id: string;
   tenantId: string;
@@ -487,6 +501,14 @@ export default function Usuarios() {
   const [newFunctionRepresentativeUserIds, setNewFunctionRepresentativeUserIds] = useState<string[]>([]);
   const [newFunctionLeadAccessScope, setNewFunctionLeadAccessScope] = useState<"assigned" | "territory" | "all_authorized">("assigned");
   const [creatingFunction, setCreatingFunction] = useState(false);
+  const [partnershipDialogOpen, setPartnershipDialogOpen] = useState(false);
+  const [partnershipSearch, setPartnershipSearch] = useState("");
+  const [partnershipTenantId, setPartnershipTenantId] = useState("");
+  const [partnershipTenantCode, setPartnershipTenantCode] = useState("");
+  const [partnershipTenantName, setPartnershipTenantName] = useState("");
+  const [partnershipAuthorizedUsers, setPartnershipAuthorizedUsers] = useState<string[]>([]);
+  const [partnershipCommission, setPartnershipCommission] = useState("15");
+  const [creatingPartnership, setCreatingPartnership] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -507,6 +529,28 @@ export default function Usuarios() {
   });
 
   const { data: users, isLoading } = useListTenantUsers(tenantId);
+  const { data: commercialPartnerships = [] } = useQuery<CommercialPartnership[]>({
+    queryKey: ["commercial-partnerships", tenantId],
+    enabled: Boolean(tenantId),
+    queryFn: () => customFetch<CommercialPartnership[]>(`/api/tenants/${tenantId}/commercial-partnerships`, { responseType: "json" }),
+  });
+  const normalizedPartnershipSearch = partnershipSearch.trim();
+  const { data: partnershipTenantOptions = [], isFetching: searchingPartnershipTenants } = useQuery({
+    queryKey: ["commercial-partnership-tenant-search", tenantId, normalizedPartnershipSearch],
+    enabled: Boolean(tenantId) && partnershipDialogOpen && normalizedPartnershipSearch.length >= 2,
+    queryFn: () => customFetch<RepresentativeTenantOption[]>(
+      `/api/tenants/${tenantId}/representative-tenants?search=${encodeURIComponent(normalizedPartnershipSearch)}`,
+      { responseType: "json" },
+    ),
+  });
+  const { data: partnershipTenantUsers = [], isFetching: loadingPartnershipUsers } = useQuery({
+    queryKey: ["commercial-partnership-users-picker", tenantId, partnershipTenantId],
+    enabled: Boolean(tenantId) && partnershipDialogOpen && Boolean(partnershipTenantId),
+    queryFn: () => customFetch<RepresentativeTenantUser[]>(
+      `/api/tenants/${tenantId}/representative-tenants/${partnershipTenantId}/users`,
+      { responseType: "json" },
+    ),
+  });
   const { data: tenantFunctions = [] } = useQuery({
     queryKey: userFunctionsQueryKey,
     enabled: Boolean(tenantId),
@@ -975,6 +1019,50 @@ export default function Usuarios() {
       toast({ title: copy.saveError, description: err?.message || copy.tryAgain, variant: "destructive" });
     } finally {
       setStatusUpdatingUserId(null);
+    }
+  }
+
+  function resetPartnershipForm() {
+    setPartnershipSearch("");
+    setPartnershipTenantId("");
+    setPartnershipTenantCode("");
+    setPartnershipTenantName("");
+    setPartnershipAuthorizedUsers([]);
+    setPartnershipCommission("15");
+  }
+
+  async function createCommercialPartnership() {
+    if (!partnershipTenantId) {
+      toast({ title: "Selecione a empresa representante.", variant: "destructive" });
+      return;
+    }
+    const commission = Number(partnershipCommission || 15);
+    if (!Number.isFinite(commission) || commission < 0 || commission > 100) {
+      toast({ title: "Informe uma comissão válida entre 0% e 100%.", variant: "destructive" });
+      return;
+    }
+    setCreatingPartnership(true);
+    try {
+      await customFetch(`/api/tenants/${tenantId}/commercial-partnerships`, {
+        method: "POST",
+        body: JSON.stringify({
+          partnerTenantId: partnershipTenantId,
+          relationshipType: "representante_comercial",
+          defaultCommissionPercent: commission,
+          authorizedUserIds: partnershipAuthorizedUsers,
+          distributionMode: "partner_queue",
+          defaultPermissions: ["view_lead", "view_contacts", "create_activities", "move_pipeline", "create_proposal", "send_proposal", "negotiate", "close_deal", "assign_partner_user"],
+        }),
+        responseType: "json",
+      });
+      await queryClient.invalidateQueries({ queryKey: ["commercial-partnerships", tenantId] });
+      setPartnershipDialogOpen(false);
+      resetPartnershipForm();
+      toast({ title: "Empresa representante vinculada", description: "Agora ela pode ser escolhida como responsável nos negócios compartilhados." });
+    } catch (err: any) {
+      toast({ title: "Erro ao vincular representante", description: err?.message || copy.tryAgain, variant: "destructive" });
+    } finally {
+      setCreatingPartnership(false);
     }
   }
 
