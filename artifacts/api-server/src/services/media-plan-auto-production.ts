@@ -18,8 +18,6 @@ import {
   generateYouTubeScript,
 } from "../lib/content-generation.js";
 import { logger } from "../lib/logger.js";
-import { buildReferencePatternsPromptBlock } from "./content-reference-creators.js";
-import { buildOwnPerformancePromptBlock } from "./content-performance.js";
 import { createVendorAiMediaGenerationJob } from "./vendorai-media-engine.js";
 
 const PLAN_LIMITS: Record<string, number> = {
@@ -115,9 +113,7 @@ function providerSupported(canal: string) {
 
 function campaignForItem(content: PlanContent, pilar: string) {
   const name = normalize(pilar.split(" · ")[0] || "");
-  return content.campanhas?.find((campaign) => normalize(campaign.nome) === name)
-    ?? content.campanhas?.[0]
-    ?? null;
+  return content.campanhas?.find((campaign) => normalize(campaign.nome) === name) ?? null;
 }
 
 function directionText(campaign: Campaign, item: { temaSugerido: string; canal: string; tipo: string; pilar: string }) {
@@ -184,14 +180,17 @@ async function generateDraft(input: {
 
   const [profile] = await db.select().from(businessProfilesTable)
     .where(eq(businessProfilesTable.tenantId, input.tenantId)).limit(1);
-  const [ownPerformance, references] = await Promise.all([
-    buildOwnPerformancePromptBlock(input.tenantId),
-    buildReferencePatternsPromptBlock(input.tenantId),
-  ]);
   const strategy = {
     postObjective: input.campaign.objetivo,
     desiredCta: input.campaign.oferta,
-    referencePatterns: ownPerformance + references,
+    // Automated media-plan production must not import examples from unrelated
+    // campaigns/products. Keep the generation bounded to the validated campaign.
+    referencePatterns: [
+      `Campanha validada: ${input.campaign.nome}`,
+      `Produto/serviço validado: ${input.campaign.produtoServico}`,
+      `Público validado: ${input.campaign.publico}`,
+      `Mensagem central validada: ${input.campaign.mensagemCentral}`,
+    ].join("\n"),
   };
 
   let generated: { result: { variations: unknown[] }; tokensUsed: number };
@@ -256,6 +255,17 @@ async function generateDraft(input: {
     result: {
       ...result,
       variations,
+      contextAudit: {
+        source: "validated-media-plan-worker",
+        tenantId: input.tenantId,
+        campaignId: input.campaign.id,
+        calendarItemId: input.calendarItemId,
+        campaignName: input.campaign.nome,
+        productName: input.campaign.produtoServico,
+        allowedSources: ["business_profile", "validated_media_plan_campaign"],
+        blockedBroadSources: ["own_performance_examples", "reference_creators"],
+        validatedAt: new Date().toISOString(),
+      },
       automation: {
         source: "media-plan",
         calendarItemId: input.calendarItemId,
