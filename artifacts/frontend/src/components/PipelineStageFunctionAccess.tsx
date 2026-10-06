@@ -142,7 +142,7 @@ export function PipelineStageFunctionAccess({
       ]);
     } catch (error) {
       setSelectedAgent(previous);
-      console.error("Falha ao salvar Agente IA responsável da etapa", error);
+      console.error("Falha ao salvar Agente de IA da etapa", error);
     } finally {
       setSaving(false);
     }
@@ -220,7 +220,7 @@ export function PipelineStageFunctionAccess({
           <div className="mb-2 flex items-center gap-2">
             <Bot className="h-4 w-4 text-primary" />
             <div>
-              <p className="text-xs font-semibold">Agente IA responsável</p>
+              <p className="text-xs font-semibold">Agente de IA</p>
               <p className="text-[11px] text-muted-foreground">Executa automaticamente o trabalho operacional desta etapa.</p>
             </div>
           </div>
@@ -234,7 +234,7 @@ export function PipelineStageFunctionAccess({
                 selectedAgent === null && "bg-muted font-medium",
               )}
             >
-              <span>Sem Agente IA</span>
+              <span>Sem agente de IA</span>
               {selectedAgent === null && <Check className="h-3.5 w-3.5 text-primary" />}
             </button>
             {activeAgents.map((agent) => (
@@ -255,7 +255,7 @@ export function PipelineStageFunctionAccess({
           </div>
           {activeAgents.length === 0 && (
             <p className="px-2 py-1 text-[11px] text-muted-foreground">
-              Ative um agente em Agentes IA para vinculá-lo à etapa.
+              Ative um agente em Agentes de IA para vinculá-lo à etapa.
             </p>
           )}
         </div>
