@@ -42,7 +42,6 @@ const ProductionStudio = lazy(() => import('./production-studio/ProductionStudio
 const ExecutiveBudgetStudio = lazy(() => import('./executive-budget-studio/ExecutiveBudgetStudio'))
 const ProcurementStudio = lazy(() => import('./procurement-studio/ProcurementStudio'))
 const MarketplaceEnterprise = lazy(() => import('./marketplace-enterprise/MarketplaceEnterprise'))
-const ClientExperience = lazy(() => import('./client-experience/ClientExperience'))
 const OperationsCenter = lazy(() => import('./operations-center/OperationsCenter'))
 const AutomationAuditCenter = lazy(() => import('./operations-center/automation-audit/AutomationAuditCenter'))
 const AICommandIntelligence = lazy(() => import('./operations-center/ai-command-intelligence/AICommandIntelligence'))
@@ -451,7 +450,7 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'integracao-legado': return <IntegrationModule/>
     case 'cliente':
     case 'client':
-    case 'portal-cliente': return <ClientExperience arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'portal-cliente': return <ClientPortalApprovalStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'operations':
     case 'command-center':
     case 'operacoes':       return <OperationsCenter arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
