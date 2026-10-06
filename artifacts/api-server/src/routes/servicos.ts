@@ -190,6 +190,60 @@ async function streamServicoPortalObject(res: any, value: unknown) {
   return true;
 }
 
+const SERVICO_CAMPO_TIPOS = new Set(["text", "textarea", "number", "date", "select", "checkbox", "file"]);
+const SERVICO_CAMPO_VISIBILIDADES = new Set(["interno", "cliente", "cliente_parceiro"]);
+
+function normalizeServicoCampos(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 100).map((raw: any) => {
+    const label = String(raw?.label ?? raw?.nome ?? "").trim().slice(0, 160);
+    if (!label) return null;
+    const tipo = SERVICO_CAMPO_TIPOS.has(String(raw?.tipo)) ? String(raw.tipo) : "text";
+    const visibilidade = SERVICO_CAMPO_VISIBILIDADES.has(String(raw?.visibilidade))
+      ? String(raw.visibilidade)
+      : "interno";
+    let valor: string | number | boolean | string[] | null = raw?.valor ?? null;
+    if (tipo === "checkbox") {
+      valor = Boolean(valor);
+    } else if (tipo === "number") {
+      if (valor === "" || valor == null) valor = null;
+      else {
+        const parsed = Number(valor);
+        valor = Number.isFinite(parsed) ? parsed : null;
+      }
+    } else if (tipo === "file") {
+      valor = Array.isArray(valor)
+        ? valor.filter((item: unknown) => typeof item === "string" && item.trim()).slice(0, 20)
+        : [];
+    } else {
+      valor = valor == null ? "" : String(valor).slice(0, 5000);
+    }
+    return {
+      id: String(raw?.id ?? crypto.randomUUID()).slice(0, 120),
+      label,
+      tipo,
+      valor,
+      obrigatorio: Boolean(raw?.obrigatorio),
+      placeholder: raw?.placeholder ? String(raw.placeholder).slice(0, 240) : null,
+      opcoes: Array.isArray(raw?.opcoes)
+        ? raw.opcoes.map((item: unknown) => String(item).trim()).filter(Boolean).slice(0, 100)
+        : [],
+      visibilidade,
+    };
+  }).filter(Boolean);
+}
+
+function campoServicoPreenchido(campo: any) {
+  if (campo.tipo === "checkbox") return typeof campo.valor === "boolean";
+  if (campo.tipo === "file") return Array.isArray(campo.valor) && campo.valor.length > 0;
+  if (campo.tipo === "number") return typeof campo.valor === "number" && Number.isFinite(campo.valor);
+  return String(campo.valor ?? "").trim().length > 0;
+}
+
+function camposObrigatoriosPendentes(campos: any[]) {
+  return campos.filter((campo) => campo.obrigatorio && !campoServicoPreenchido(campo));
+}
+
 function evidenceOk(item: ServicoChecklistItem, observacao: string, fotos: string[]) {
   switch (item.evidencia) {
     case "confirmation":
@@ -247,6 +301,14 @@ servicosPublicRouter.get("/portal/servicos/:token", async (req, res) => {
     status: ordem.compartilharStatusCliente ? ordem.status : null,
     atualizadoEm: ordem.updatedAt,
     atividades,
+    campos: normalizeServicoCampos(ordem.camposPersonalizados ?? [])
+      .filter((campo: any) => campo.visibilidade === "cliente" || campo.visibilidade === "cliente_parceiro")
+      .map((campo: any) => ({
+        id: campo.id,
+        label: campo.label,
+        tipo: campo.tipo,
+        valor: campo.valor,
+      })),
   });
 });
 
@@ -502,6 +564,8 @@ router.get("/tenants/:tenantId/servicos/ordens/:id/cliente-view", async (req, re
         }
       : null,
     atividades: itensVisiveis,
+    campos: normalizeServicoCampos(ordem.camposPersonalizados ?? [])
+      .filter((campo: any) => campo.visibilidade === "cliente" || campo.visibilidade === "cliente_parceiro"),
   });
 });
 
@@ -633,6 +697,7 @@ router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
     enderecoAtendimento,
     prestadorId,
     observacoes,
+    camposPersonalizados,
     clienteAcompanha = true,
     compartilharStatusCliente = true,
   } = req.body as {
@@ -644,6 +709,7 @@ router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
     enderecoAtendimento: string;
     prestadorId?: string;
     observacoes?: string;
+    camposPersonalizados?: unknown[];
     clienteAcompanha?: boolean;
     compartilharStatusCliente?: boolean;
   };
@@ -700,11 +766,25 @@ router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
         concluidoEm: null,
       }))
     : buildChecklist(modeloEfetivo);
+  const camposDaOrdem = normalizeServicoCampos(
+    Array.isArray(camposPersonalizados)
+      ? camposPersonalizados
+      : (modeloSelecionado?.campos ?? []),
+  );
+  const camposPendentes = camposObrigatoriosPendentes(camposDaOrdem);
+  if (camposPendentes.length) {
+    return res.status(422).json({
+      error: "Preencha os campos obrigatórios da ordem de serviço.",
+      campos: camposPendentes.map((campo: any) => ({ id: campo.id, label: campo.label })),
+    });
+  }
+
   const criacao = history(req, "criacao", `OS criada com modelo ${modeloSelecionado?.nome ?? modeloEfetivo}`, {
     modeloExecucao: modeloEfetivo,
     modeloOsId: modeloSelecionado?.id ?? null,
     modeloOsNome: modeloSelecionado?.nome ?? null,
     negocioId: negocioId ?? null,
+    camposPersonalizados: camposDaOrdem.length,
   });
 
   const [ordem] = await db
@@ -723,6 +803,7 @@ router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
       valorOrcado: nascePronta ? tipoServico.precoBase : null,
       checklistExecucao: checklist,
       historicoExecucao: [criacao],
+      camposPersonalizados: camposDaOrdem,
       clienteAcompanha: modeloSelecionado ? modeloSelecionado.clienteAcompanhaDefault : clienteAcompanha,
       compartilharStatusCliente: modeloSelecionado ? modeloSelecionado.compartilharStatusClienteDefault : compartilharStatusCliente,
       portalToken: (modeloSelecionado ? modeloSelecionado.clienteAcompanhaDefault : clienteAcompanha) ? crypto.randomUUID() : null,
@@ -752,8 +833,19 @@ router.patch("/tenants/:tenantId/servicos/ordens/:id", async (req, res) => {
     "observacoes",
     "clienteAcompanha",
     "compartilharStatusCliente",
+    "camposPersonalizados",
   ];
   const patch = Object.fromEntries(Object.entries(req.body).filter(([k]) => allowed.includes(k))) as Record<string, any>;
+  if (Object.prototype.hasOwnProperty.call(patch, "camposPersonalizados")) {
+    patch.camposPersonalizados = normalizeServicoCampos(patch.camposPersonalizados);
+    const pendentes = camposObrigatoriosPendentes(patch.camposPersonalizados);
+    if (pendentes.length) {
+      return res.status(422).json({
+        error: "Preencha os campos obrigatórios da ordem de serviço.",
+        campos: pendentes.map((campo: any) => ({ id: campo.id, label: campo.label })),
+      });
+    }
+  }
   if (patch.clienteAcompanha === true && !atual.portalToken) {
     patch.portalToken = crypto.randomUUID();
   }
