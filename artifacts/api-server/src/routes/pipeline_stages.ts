@@ -9,6 +9,9 @@ import {
   tenantAgentConfigsTable,
   agentDefaultsTable,
   tenantsTable,
+  dealsTable,
+  workCardsTable,
+  scoutOportunidadesTable,
 } from "@workspace/db";
 import { z } from "zod/v4";
 import { logger } from "../lib/logger.js";
@@ -512,6 +515,40 @@ router.patch("/tenants/:tenantId/pipeline-stages/:id", async (req, res) => {
   return res.json(updated);
 });
 
+
+async function stageUsageCount(tenantId: string, pipeline: PipelineKey, stageKey: string): Promise<number> {
+  if (pipeline === "execucao" || pipeline === "suporte") {
+    const rows = await db.select({ id: workCardsTable.id }).from(workCardsTable).where(and(
+      eq(workCardsTable.tenantId, tenantId),
+      eq(workCardsTable.pipeline, pipeline),
+      eq(workCardsTable.etapa, stageKey),
+    )).limit(1);
+    return rows.length;
+  }
+
+  if (pipeline === "aquecimento" || pipeline === "parceiros") {
+    const rows = await db.select({ id: dealsTable.id }).from(dealsTable).where(and(
+      eq(dealsTable.tenantId, tenantId),
+      eq(dealsTable.relationshipStage, stageKey),
+    )).limit(1);
+    return rows.length;
+  }
+
+  if (pipeline === "scout") {
+    const rows = await db.select({ id: scoutOportunidadesTable.id }).from(scoutOportunidadesTable).where(and(
+      eq(scoutOportunidadesTable.tenantId, tenantId),
+      eq(scoutOportunidadesTable.pipelineStage, stageKey),
+    )).limit(1);
+    return rows.length;
+  }
+
+  const rows = await db.select({ id: dealsTable.id }).from(dealsTable).where(and(
+    eq(dealsTable.tenantId, tenantId),
+    eq(dealsTable.etapa, stageKey as typeof dealsTable.etapa._.data),
+  )).limit(1);
+  return rows.length;
+}
+
 router.delete("/tenants/:tenantId/pipeline-stages/:id", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!hasAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
@@ -525,6 +562,16 @@ router.delete("/tenants/:tenantId/pipeline-stages/:id", async (req, res) => {
   if (!stage) return res.status(404).json({ error: "Etapa não encontrada." });
   if (stage.isSystem) {
     return res.status(403).json({ error: "Etapas do sistema não podem ser excluídas. Você pode editar o rótulo, SLA e funções responsáveis." });
+  }
+
+  const usageCount = await stageUsageCount(tenantId, stage.pipeline as PipelineKey, stage.key);
+  if (usageCount > 0) {
+    return res.status(409).json({
+      error: "PIPELINE_STAGE_IN_USE",
+      message: "Esta etapa possui registros vinculados. Mova ou arquive os registros antes de excluir a etapa.",
+      pipeline: stage.pipeline,
+      stageKey: stage.key,
+    });
   }
 
   await db.delete(pipelineStagesTable).where(eq(pipelineStagesTable.id, stage.id));
