@@ -100,8 +100,11 @@ async function getProposalBundleById(proposalId: string, options: { publicView?:
   if (options.publicView) {
     // Never expose internal technical cost components, internal notes, delivery destinations
     // or tenant-only fields through a public token.
+    proposal.public_view = true;
     delete proposal.subtotal_material;
     delete proposal.subtotal_labor;
+    delete proposal.subtotal;
+    delete proposal.discount_total;
     delete proposal.internal_notes;
   }
 
