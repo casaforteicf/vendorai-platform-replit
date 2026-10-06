@@ -41,6 +41,7 @@ import {
   normalizeCnpj,
   normalizeName,
 } from "../services/cnpjService.js";
+import { leadRegistrationMetadata, normalizeInstagramHandle, normalizeLeadEmail, normalizeLeadName } from "../lib/lead-registration-standard.js";
 
 // Quantidade de aprovações (approved + edited) para liberar a automação.
 const AUTOMATION_THRESHOLD = 50;
@@ -628,12 +629,12 @@ router.post("/prospector/enrich", async (req, res) => {
         .insert(leadsTable)
         .values({
           tenantId,
-          nome,
+          nome: normalizeLeadName(nome, "Lead prospectado"),
           telefone,
           documento: cnpjDigits ?? null,
           empresa: collected.razaoSocial ?? nome,
           endereco: ender,
-          instagramHandle: igHandle,
+          instagramHandle: normalizeInstagramHandle(igHandle),
           websiteUrl: site,
           source: "prospector",
           tipoPessoa: "juridica",
@@ -642,11 +643,15 @@ router.post("/prospector/enrich", async (req, res) => {
             razaoSocial: collected.razaoSocial ?? null,
             segmento: collected.atividadePrincipal ?? null,
           },
-          metadata: {
+          metadata: leadRegistrationMetadata({
             rating: place?.rating ?? null,
             total_ratings: place?.reviewCount ?? null,
             prospectado_em: new Date().toISOString(),
-          },
+          }, {
+            entryChannel: "prospeccao",
+            entrySource: "prospector",
+            details: { provider: "google_places" },
+          }),
         })
         .returning({ id: leadsTable.id });
       resolvedLeadId = created?.id ?? null;
@@ -1115,7 +1120,7 @@ router.post("/prospector/construction-signals/prospect", async (req, res) => {
 
   const [lead] = await db.insert(leadsTable).values({
     tenantId,
-    nome: actorLabel,
+    nome: normalizeLeadName(actorLabel, "Oportunidade Radar de Obras"),
     empresa: actorType === "empresa" ? actorName ?? undefined : undefined,
     telefone: telefone ?? undefined,
     websiteUrl: websiteUrl ?? undefined,
@@ -1130,7 +1135,11 @@ router.post("/prospector/construction-signals/prospect", async (req, res) => {
       ? "Prospecctor: pesquisar contexto e iniciar diagnóstico consultivo"
       : "Identificar proprietário, arquiteto/engenheiro ou empresa responsável antes da abordagem",
     tipoPessoa: actorType === "empresa" ? "juridica" : "fisica",
-    metadata: metadataPatch,
+    metadata: leadRegistrationMetadata(metadataPatch, {
+      entryChannel: "prospeccao",
+      entrySource: "construction_radar",
+      details: { sourceUrl: work.sourceUrl ?? null },
+    }),
   }).returning({ id: leadsTable.id });
 
   if (!lead) return res.status(500).json({ error: "Falha ao enviar a obra ao Prospecctor" });
@@ -2345,10 +2354,10 @@ router.post("/prospector/cnpj/prospectar", async (req, res) => {
 
   const [lead] = await db.insert(leadsTable).values({
     tenantId,
-    nome: d.nomeFantasia || d.razaoSocial,
+    nome: normalizeLeadName(d.nomeFantasia || d.razaoSocial, "Empresa prospectada"),
     empresa: d.razaoSocial,
     telefone: d.telefone ?? undefined,
-    email: d.email ?? undefined,
+    email: normalizeLeadEmail(d.email),
     documento: cnpjClean,
     endereco: d.endereco,
     tipoPessoa: "juridica",
@@ -2362,14 +2371,18 @@ router.post("/prospector/cnpj/prospectar", async (req, res) => {
       segmento: d.cnaeDescricao,
       socios: d.socios.map((s) => ({ nome: s.nome })),
     },
-    metadata: {
+    metadata: leadRegistrationMetadata({
       origem: d.source,
       prospectado_em: new Date().toISOString(),
       cnae: d.cnaeCode,
       data_abertura: d.dataAbertura,
       dias_aberto: diasAberto,
       cidade: d.municipio,
-    },
+    }, {
+      entryChannel: "prospeccao",
+      entrySource: isRecemAberta ? "recem_aberta" : d.source,
+      details: { cnpj: cnpjClean },
+    }),
   }).returning({ id: leadsTable.id });
 
   if (!lead) return res.status(500).json({ error: "Falha ao criar lead" });

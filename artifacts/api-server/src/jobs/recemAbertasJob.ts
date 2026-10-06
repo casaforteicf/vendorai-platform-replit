@@ -18,6 +18,7 @@ import {
 import { searchByCnae, normalizeCnpj } from "../services/cnpjService.js";
 import { enrichLead } from "./leadEnrichment.js";
 import { logger as rootLogger } from "../lib/logger.js";
+import { leadRegistrationMetadata, normalizeLeadEmail, normalizeLeadName } from "../lib/lead-registration-standard.js";
 
 const BOOST_SCORE = 20;
 const DEFAULT_CNAES = [
@@ -121,14 +122,14 @@ export async function runRecemAbertas(log: Logger = rootLogger, onlyTenantId?: s
 
           const [lead] = await db.insert(leadsTable).values({
             tenantId: tenant.id,
-            nome: empresa.nomeFantasia || empresa.razaoSocial,
+            nome: normalizeLeadName(empresa.nomeFantasia || empresa.razaoSocial, "Empresa recém-aberta"),
             empresa: empresa.razaoSocial,
             telefone: empresa.telefone,
-            email: empresa.email,
             documento: cnpjClean,
             endereco: empresa.enderecoCompleto,
             tipoPessoa: "juridica",
             source: "recem_aberta",
+            email: normalizeLeadEmail(empresa.email),
             enrichmentStatus: "pending",
             mercadoSegmento: empresa.cnaeDescricao,
             dadosPj: {
@@ -137,14 +138,18 @@ export async function runRecemAbertas(log: Logger = rootLogger, onlyTenantId?: s
               segmento: empresa.cnaeDescricao,
               socios: empresa.socios.map((s) => ({ nome: s.nome } as any)),
             },
-            metadata: {
+            metadata: leadRegistrationMetadata({
               origem: "recem_aberta",
               prospectado_em: new Date().toISOString(),
               cnae: empresa.cnaeCode,
               data_abertura: empresa.dataAbertura,
               dias_aberto: diasAberto,
               cidade: empresa.municipio,
-            },
+            }, {
+              entryChannel: "prospeccao",
+              entrySource: "recem_aberta",
+              details: { cnpj: cnpjClean },
+            }),
             priorityReason: diasAberto != null
               ? `Empresa aberta há ${diasAberto} dias — montando operação`
               : "Empresa recém-aberta — montando operação",

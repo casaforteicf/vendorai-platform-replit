@@ -16,6 +16,7 @@ import { resolveAdCampaignFromUtm } from "../lib/adAttribution.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 import { syncBehaviorIntentForLead } from "../jobs/behaviorIntentSync.js";
 import { signToken } from "../lib/jwt.js";
+import { leadRegistrationMetadata, normalizeLeadEmail, normalizeLeadName } from "../lib/lead-registration-standard.js";
 
 export const intakeRouter: IRouter = Router();
 
@@ -302,11 +303,17 @@ intakeRouter.post("/public/:tenantSlug/intake", async (req, res) => {
       .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenant.id)))
       .limit(1);
     const updateData: Record<string, unknown> = {
-      nome: d.nome,
-      email: d.email || null,
+      nome: normalizeLeadName(d.nome, "Lead do formulário"),
+      email: normalizeLeadEmail(d.email),
       telefone: storePhone(d.telefone),
-      empresa: d.empresa || null,
+      empresa: d.empresa?.trim() || null,
       objetivo: d.objetivo6meses || null,
+      mercadoSegmento: d.segmento || null,
+      profissao: d.cargo || null,
+      metadata: leadRegistrationMetadata(match.lead.metadata, {
+        entryChannel: "site",
+        entrySource: slug === "vendorai" ? "website_warmup" : "website",
+      }),
       dorPrincipal: d.desafioPrincipal || null,
       discoveryData: { ...asRecord(current?.discoveryData), ...discoveryData },
       updatedAt: new Date(),
@@ -319,12 +326,14 @@ intakeRouter.post("/public/:tenantSlug/intake", async (req, res) => {
   } else {
     const [lead] = await db.insert(leadsTable).values({
       tenantId: tenant.id,
-      nome: d.nome,
-      email: d.email || null,
+      nome: normalizeLeadName(d.nome, "Lead do formulário"),
+      email: normalizeLeadEmail(d.email),
       telefone: storePhone(d.telefone),
       documento: storeDocument(d.documento),
-      empresa: d.empresa || null,
+      empresa: d.empresa?.trim() || null,
       objetivo: d.objetivo6meses || null,
+      mercadoSegmento: d.segmento || null,
+      profissao: d.cargo || null,
       dorPrincipal: d.desafioPrincipal || null,
       urgencia: d.urgencia || null,
       orcamento: d.orcamento || null,
@@ -332,6 +341,10 @@ intakeRouter.post("/public/:tenantSlug/intake", async (req, res) => {
       status: "novo",
       source: slug === "vendorai" ? "website_warmup" : "website",
       adCampaignId,
+      metadata: leadRegistrationMetadata(null, {
+        entryChannel: "site",
+        entrySource: slug === "vendorai" ? "website_warmup" : "website",
+      }),
       discoveryData,
       possivelDuplicata: match.similar ? true : false,
       leadSimilarId: match.similar?.id ?? null,

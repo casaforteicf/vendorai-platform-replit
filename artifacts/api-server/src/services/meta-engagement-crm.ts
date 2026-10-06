@@ -8,6 +8,7 @@ import {
   messagesTable,
 } from "@workspace/db";
 import { recordIntelligenceEvent, recordIntelligenceFact } from "./customer-intelligence-history.js";
+import { leadRegistrationMetadata, normalizeInstagramHandle } from "../lib/lead-registration-standard.js";
 
 export type MetaEngagementInput = {
   externalEventId: string;
@@ -90,10 +91,16 @@ async function findOrCreateLead(tenantId: string, input: MetaEngagementInput) {
       .values({
         tenantId,
         nome: input.username ? `@${input.username.replace(/^@/, "")}` : `Instagram @${input.instagramScopedId.slice(0, 8)}`,
+        instagramHandle: normalizeInstagramHandle(input.username),
         instagramScopedId: input.instagramScopedId,
         status: "novo",
         source: input.eventType === "comment" ? "instagram_comment" : "instagram",
         adCampaignId: input.campaignId ?? null,
+        metadata: leadRegistrationMetadata(input.metadata, {
+          entryChannel: "instagram",
+          entrySource: input.eventType === "comment" ? "instagram_comment" : input.eventType === "mention" ? "instagram_mention" : "instagram_dm",
+          details: { instagramScopedId: input.instagramScopedId },
+        }),
       })
       .returning();
     created = true;
