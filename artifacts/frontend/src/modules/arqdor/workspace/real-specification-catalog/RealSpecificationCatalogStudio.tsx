@@ -44,10 +44,13 @@ export default function RealSpecificationCatalogStudio({ arqState, onNavigate }:
     saving,
     extracting,
     sendingToBudget,
+    syncingProject,
+    lastSync,
     error,
     totals,
     reloadCatalog,
     reloadSpecObjects,
+    syncProject,
     addObject,
     saveObject,
     extractFromRender,
@@ -154,6 +157,12 @@ export default function RealSpecificationCatalogStudio({ arqState, onNavigate }:
           <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{error}</div>
         ) : null}
 
+        {lastSync && (Number(lastSync["created"] || 0) > 0 || Number(lastSync["updated"] || 0) > 0 || Number(lastSync["removed"] || 0) > 0) ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Projeto sincronizado: {Number(lastSync["created"] || 0)} novo(s), {Number(lastSync["updated"] || 0)} alterado(s) e {Number(lastSync["removed"] || 0)} removido(s). Revise os itens afetados antes de atualizar orçamento ou cotação.
+          </div>
+        ) : null}
+
         <SpecSummaryCards
           count={totals.count}
           specified={totals.specified}
@@ -173,6 +182,14 @@ export default function RealSpecificationCatalogStudio({ arqState, onNavigate }:
               />
             </div>
             <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={syncingProject}
+                onClick={() => void syncProject()}
+                className="rounded-xl border border-[var(--arq-border)] px-3 py-2 text-sm font-semibold disabled:opacity-50"
+              >
+                {syncingProject ? "Sincronizando..." : "Sincronizar projeto"}
+              </button>
               <button
                 type="button"
                 onClick={() => void reloadSpecObjects()}
