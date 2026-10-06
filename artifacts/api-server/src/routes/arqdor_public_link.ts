@@ -6,6 +6,7 @@ import { db, pool, leadsTable } from "@workspace/db";
 import { signGuestConceptToken } from "../lib/jwt.js";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { pickNextVendedor } from "../lib/round-robin.js";
+import { leadRegistrationMetadata, normalizeInstagramHandle, normalizeLeadEmail, normalizeLeadName } from "../lib/lead-registration-standard.js";
 
 // Link público do pré-projeto (Arqdor).
 // O cliente final abre o link no site do profissional, informa os dados pessoais, vira lead
@@ -189,14 +190,18 @@ arqdorPublicLinkRouter.post("/public/arqdor/:slug/cadastro", signupLimiter, asyn
     const assignedTo = await pickNextVendedor(tenantId, {});
     const [lead] = await db.insert(leadsTable).values({
       tenantId,
-      nome: data.nome,
+      nome: normalizeLeadName(data.nome, "Lead Arqdor"),
       telefone: storePhone(data.telefone),
-      email: data.email,
-      instagramHandle: data.instagram,
+      email: normalizeLeadEmail(data.email),
+      instagramHandle: normalizeInstagramHandle(data.instagram),
       endereco: address,
       source: "arqdor_link_publico",
       objetivo: "Projeto residencial (pré-projeto online)",
       assignedTo,
+      metadata: leadRegistrationMetadata(null, {
+        entryChannel: "site",
+        entrySource: "arqdor_link_publico",
+      }),
     }).returning({ id: leadsTable.id });
     leadId = lead?.id ?? null;
   }
