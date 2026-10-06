@@ -39,7 +39,7 @@ import { resolveStageQuestionsFromInboundMessage } from "../services/stage-quest
 import { runAutoQuotePipeline } from "../services/auto-quote.js";
 import { transcribeAudio, transcribeAudioBuffer } from "../services/audio-transcription.js";
 import { interpretImage, interpretPdf, interpretPdfBuffer } from "../services/media-interpretation.js";
-import { getBase64FromMediaMessage } from "../services/evolution-whatsapp.js";
+import { findEvolutionContactNames, getBase64FromMediaMessage } from "../services/evolution-whatsapp.js";
 
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { handleAppointmentConfirmation } from "../jobs/appointmentReminders.js";
@@ -1635,9 +1635,6 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
     res.status(200).json({ supportFeedback: true, ...supportFeedback });
     return;
   }
-  const nome = (data as { pushName?: string }).pushName ?? telefone;
-
-  req.log.info({ telefone, nome, tipoConteudo }, "evolution-webhook: processing message");
 
   let lead: typeof leadsTable.$inferSelect;
   let conversation: typeof conversationsTable.$inferSelect;
@@ -1647,9 +1644,68 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
     const match = await findLeadByDedup(tenantId, telefone, null, null);
 
     if (match.found) {
+      // Nome já existente no CRM é soberano: sincronizações futuras do
+      // WhatsApp nunca sobrescrevem correções/confirmações feitas pelo usuário.
       lead = match.lead;
       await db.update(leadsTable).set({ updatedAt: new Date(), ...(evolutionConnection?.assignedUserId ? { assignedTo: evolutionConnection.assignedUserId } : {}) }).where(eq(leadsTable.id, lead.id));
     } else {
+      const asName = (value: unknown): string | null =>
+        typeof value === "string" && value.trim() ? value.trim() : null;
+      const nestedContact =
+        data["contact"] && typeof data["contact"] === "object"
+          ? data["contact"] as Record<string, unknown>
+          : null;
+
+      // Prioridade oficial no primeiro cadastro:
+      // 1) nome salvo na agenda do celular (quando a conexão QR expõe);
+      // 2) nome de perfil do WhatsApp (pushName);
+      // 3) telefone.
+      const payloadSavedName =
+        asName(data["savedName"]) ??
+        asName(data["contactName"]) ??
+        asName(nestedContact?.["savedName"]) ??
+        asName(nestedContact?.["contactName"]) ??
+        asName(nestedContact?.["name"]);
+      const payloadWhatsappName =
+        asName(data["pushName"]) ??
+        asName(data["notifyName"]) ??
+        asName(nestedContact?.["pushName"]) ??
+        asName(nestedContact?.["notifyName"]);
+
+      let syncedSavedName: string | null = null;
+      let syncedWhatsappName: string | null = null;
+      if (!payloadSavedName) {
+        try {
+          const synced = await findEvolutionContactNames(tenantId, remoteJid, body.instance);
+          syncedSavedName = synced.savedName;
+          syncedWhatsappName = synced.whatsappName;
+        } catch (contactErr) {
+          // Falha ao consultar contatos não pode bloquear entrada de lead.
+          req.log.warn({ err: contactErr, tenantId, remoteJid }, "evolution-webhook: não foi possível consultar nome salvo do contato");
+        }
+      }
+
+      const nome =
+        payloadSavedName ??
+        syncedSavedName ??
+        payloadWhatsappName ??
+        syncedWhatsappName ??
+        telefone;
+
+      req.log.info(
+        {
+          telefone,
+          nome,
+          nomeSource: payloadSavedName || syncedSavedName
+            ? "phone_contact"
+            : payloadWhatsappName || syncedWhatsappName
+              ? "whatsapp_profile"
+              : "phone",
+          tipoConteudo,
+        },
+        "evolution-webhook: creating lead from first contact",
+      );
+
       [lead] = await db
         .insert(leadsTable)
         .values({ tenantId, nome, telefone: normalized, status: "novo", source: "whatsapp", assignedTo: evolutionConnection?.assignedUserId ?? null })
