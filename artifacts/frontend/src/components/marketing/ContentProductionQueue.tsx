@@ -198,7 +198,7 @@ function campaignForItem(plan: MediaPlan | null, item: CalendarItem | null | und
   const campaignName = campaignNameFromPilar(item.pilar);
   return (plan.conteudo.campanhas ?? []).find(
     (campaign) => normalize(campaign.nome) === normalize(campaignName),
-  ) ?? (plan.conteudo.campanhas ?? [])[0] ?? null;
+  ) ?? null;
 }
 
 function textTokens(value: string) {
@@ -565,7 +565,7 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     if (!plan) return [];
     if (!requestedCampaignId) return calendar;
     const campaign = (plan.conteudo.campanhas ?? []).find((entry) => entry.id === requestedCampaignId);
-    if (!campaign) return calendar;
+    if (!campaign) return [];
     return calendar.filter((item) => normalize(campaignNameFromPilar(item.pilar)) === normalize(campaign.nome));
   }, [calendar, plan, requestedCampaignId]);
 
@@ -680,7 +680,16 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     }
     const campaign = campaignForItem(currentPlan, item);
     const generatedType = calendarTypeToGenerator(item.tipo);
-    if (!campaign || !generatedType) return false;
+    if (!campaign || !generatedType) {
+      if (!silent) {
+        toast({
+          title: "Campanha não identificada",
+          description: "A geração foi bloqueada para evitar usar contexto de outra campanha.",
+          variant: "destructive",
+        });
+      }
+      return false;
+    }
     if (!["aprovado", "gerado"].includes(item.status)) return false;
 
     setActionBusy(item.id);
@@ -804,7 +813,14 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
       return;
     }
     const campaign = campaignForItem(currentPlan, item);
-    if (!campaign) return;
+    if (!campaign) {
+      toast({
+        title: "Campanha não identificada",
+        description: "Esta ação não será aberta até o vínculo com a campanha correta ser confirmado.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     if (DIRECT_GENERATOR_TYPES.has(item.tipo)) {
       void generateDirectItem(item);
@@ -1047,9 +1063,9 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
                 <Badge className={planApproved ? "bg-emerald-600" : ""}>{planApproved ? "Plano aprovado" : "Novo lote em revisão"}</Badge>
                 <span className="text-xs text-muted-foreground">{plan.conteudo.periodoDias ?? 30} dias</span>
               </div>
-              <p className="mt-2 text-sm font-semibold">Produção automática do planejamento</p>
+              <p className="mt-2 text-sm font-semibold">Conteúdos da campanha</p>
               <p className="text-xs text-muted-foreground mt-0.5 max-w-3xl">
-                O briefing já vem completo do Plano de Mídia. Você não precisa informar novamente oferta, público, objetivo, canal, data ou KPI. Fotos e vídeos próprios relacionados ao tema são buscados automaticamente na Central de Mídias.
+                O Vendi usa somente o briefing da campanha vinculada a cada ação. Revise, aprove ou gere novamente sem preencher tudo outra vez.
               </p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -1062,7 +1078,7 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
               {batchEligible.length > 0 && planApproved && (
                 <Button type="button" size="sm" onClick={() => void runBatch()} disabled={batchRunning}>
                   {batchRunning ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 mr-1" />}
-                  {batchRunning ? `${batchProgress.done}/${batchProgress.total}` : `Produzir automaticamente (${batchEligible.length})`}
+                  {batchRunning ? `${batchProgress.done}/${batchProgress.total}` : `Gerar conteúdos (${batchEligible.length})`}
                 </Button>
               )}
             </div>
