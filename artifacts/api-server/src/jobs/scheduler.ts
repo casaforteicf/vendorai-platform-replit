@@ -25,6 +25,7 @@ import { runRevenueScoutJob } from "../services/revenueScout.js";
 import { runContentAutopilotJob } from "../services/contentAutopilotJob.js";
 import { runAppointmentReminders } from "./appointmentReminders.js";
 import { runReviewRequests } from "./reviewRequests.js";
+import { runTokenGuardian } from "./tokenGuardian.js";
 import { runAdsReviewSync } from "./adsReviewSync.js";
 import { runAdsWasteGuard } from "./adsWasteGuard.js";
 import { pollPendingRenders } from "../services/blenderService.js";
@@ -997,6 +998,8 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
             if (professionalDate.month !== todayMonth || professionalDate.day !== todayDay) continue;
             if (!professionMatches(lead.profissao, professionalDate.professions)) continue;
 
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
             const campaignKey = `professional-${professionalDate.name.replace(/\s+/g, "-")}-${yearStr}`;
             scenario = {
               type: "professional_day",
@@ -1676,6 +1679,11 @@ async function runNoResponseClosingMessage(log: Logger): Promise<void> {
 }
 
 export function startScheduler(log: Logger): void {
+  // Token Guardian: refresh expiring OAuth credentials without browser interaction.
+  runTokenGuardian(log).catch((err) => log.error({ err }, "scheduler/token-guardian: startup failure"));
+  cron.schedule("10 * * * *", () => {
+    runTokenGuardian(log).catch((err) => log.error({ err }, "scheduler/token-guardian: unhandled error"));
+  });
   // Veículos únicos: ao vencer o SLA, bloqueia alterações até o vendedor
   // justificar manter, avançar ou perder a negociação.
   cron.schedule("*/15 * * * *", () => {
@@ -1992,6 +2000,8 @@ async function runProspectorSync(log: Logger): Promise<void> {
   let totalInserted = 0;
   let totalUpdated = 0;
 
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
   for (const config of configs) {
     try {
       if (!config.setor || !config.cidade) {
@@ -2228,3 +2238,5 @@ async function resetDemoTenants(log: Logger): Promise<void> {
 
   log.info({ count: demoTenants.length }, "scheduler/demo-reset: complete");
 }
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
