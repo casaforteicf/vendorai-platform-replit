@@ -177,6 +177,10 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
           WHERE d.tenant_id = ${tenantId}
             AND d.etapa NOT IN ('em_aquecimento','parceiro','em_execucao','ganho','entregue','perdido')
             AND ${validCommercialDealSql("d")}) AS active_opportunities,
+        (SELECT COALESCE(sum(d.valor), 0)::numeric FROM deals d
+          WHERE d.tenant_id = ${tenantId}
+            AND d.etapa NOT IN ('em_aquecimento','parceiro','em_execucao','ganho','entregue','perdido')
+            AND ${validCommercialDealSql("d")}) AS active_pipeline_value,
         (SELECT count(*)::int FROM won w
           WHERE w.closed_at >= ${periodStart} AND w.closed_at <= ${periodEnd}) AS confirmed_sales,
         (SELECT COALESCE(sum(w.valor), 0)::numeric FROM won w
@@ -271,11 +275,20 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
             AND p.sla_minutes IS NOT NULL
             AND e.duration_seconds > p.sla_minutes * 60
         )::int AS sla_breaches,
-        count(*) FILTER (WHERE e.exited_at IS NULL AND e.origin <> 'backfill_current_state')::int AS active_with_real_entry
+        (
+          SELECT count(*)::int
+          FROM deals d
+          WHERE d.tenant_id = ${tenantId}
+            AND d.etapa = e.to_stage
+            AND d.etapa NOT IN ('em_aquecimento','parceiro','em_execucao','ganho','entregue','perdido')
+            AND ${validCommercialDealSql("d")}
+        ) AS active_with_real_entry
       FROM process_stage_events e
       LEFT JOIN process_stage_policies p
         ON p.tenant_id = e.tenant_id AND p.pipeline = e.pipeline AND p.stage_key = e.to_stage AND p.active = true
       WHERE e.tenant_id = ${tenantId}
+        AND e.pipeline = 'comercial'
+        AND e.to_stage NOT IN ('em_aquecimento','parceiro','em_execucao','ganho','entregue','perdido')
       GROUP BY e.pipeline, e.to_stage, p.label, p.sla_minutes, p.position
       ORDER BY e.pipeline, COALESCE(p.position, 999), e.to_stage
     `),
@@ -379,6 +392,7 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
     commercial: {
       newLeads: Number(c.new_leads ?? 0),
       activeOpportunities: Number(c.active_opportunities ?? 0),
+      activePipelineValue: Number(c.active_pipeline_value ?? 0),
       confirmedSales: Number(c.confirmed_sales ?? 0),
       soldRevenue: Number(c.sold_revenue ?? 0),
       averageTicket: Number(c.average_ticket ?? 0),
