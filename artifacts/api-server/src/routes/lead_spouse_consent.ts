@@ -10,6 +10,8 @@ import {
 } from "@workspace/db";
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 import type { Logger } from "pino";
+import { findLeadByDedup, storePhone } from "../lib/dedup.js";
+import { leadRegistrationMetadata, normalizeLeadEmail, normalizeLeadName } from "../lib/lead-registration-standard.js";
 
 const router: IRouter = Router();
 
@@ -34,20 +36,50 @@ async function handleSpouseConsentGranted(
     return null;
   }
 
-  const [spouseLead] = await db
-    .insert(leadsTable)
-    .values({
-      tenantId: lead.tenantId,
-      nome: lead.conjugeNome,
-      telefone: lead.conjugeTelefone ?? null,
-      email: lead.conjugeEmail ?? null,
-      source: "spouse_referral",
-      pipelineExempt: true,
-      status: "novo",
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning();
+  const duplicate = await findLeadByDedup(
+    lead.tenantId,
+    lead.conjugeTelefone ?? null,
+    null,
+    lead.conjugeNome,
+  );
+
+  let spouseLead: typeof leadsTable.$inferSelect | undefined;
+  if (duplicate.found) {
+    [spouseLead] = await db
+      .update(leadsTable)
+      .set({
+        telefone: duplicate.lead.telefone ?? storePhone(lead.conjugeTelefone),
+        email: duplicate.lead.email ?? normalizeLeadEmail(lead.conjugeEmail),
+        metadata: leadRegistrationMetadata(duplicate.lead.metadata, {
+          entryChannel: "parceiro",
+          entrySource: "spouse_referral",
+          details: { referrerLeadId: lead.id },
+        }),
+        updatedAt: now,
+      })
+      .where(eq(leadsTable.id, duplicate.lead.id))
+      .returning();
+  } else {
+    [spouseLead] = await db
+      .insert(leadsTable)
+      .values({
+        tenantId: lead.tenantId,
+        nome: normalizeLeadName(lead.conjugeNome, "Contato indicado"),
+        telefone: storePhone(lead.conjugeTelefone),
+        email: normalizeLeadEmail(lead.conjugeEmail),
+        source: "spouse_referral",
+        pipelineExempt: true,
+        status: "novo",
+        metadata: leadRegistrationMetadata(null, {
+          entryChannel: "parceiro",
+          entrySource: "spouse_referral",
+          details: { referrerLeadId: lead.id },
+        }),
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+  }
 
   if (!spouseLead) {
     return null;
