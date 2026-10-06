@@ -254,3 +254,5 @@ export * from "./vendi_missions";
 export * from "./installation_checklists";
 
 export * from "./tenant_custom_integrations";
+
+export * from "./tenant_commercial_partnerships";
