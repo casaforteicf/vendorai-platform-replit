@@ -998,8 +998,6 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
             if (professionalDate.month !== todayMonth || professionalDate.day !== todayDay) continue;
             if (!professionMatches(lead.profissao, professionalDate.professions)) continue;
 
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
             const campaignKey = `professional-${professionalDate.name.replace(/\s+/g, "-")}-${yearStr}`;
             scenario = {
               type: "professional_day",
@@ -2000,8 +1998,6 @@ async function runProspectorSync(log: Logger): Promise<void> {
   let totalInserted = 0;
   let totalUpdated = 0;
 
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
   for (const config of configs) {
     try {
       if (!config.setor || !config.cidade) {
@@ -2238,5 +2234,3 @@ async function resetDemoTenants(log: Logger): Promise<void> {
 
   log.info({ count: demoTenants.length }, "scheduler/demo-reset: complete");
 }
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
