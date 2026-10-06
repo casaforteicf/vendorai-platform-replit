@@ -327,6 +327,7 @@ export default function GuidedVideoCreationPanel() {
   const [channel, setChannel] = useState<Channel>("Instagram / Reels");
   const [duration, setDuration] = useState<Duration>(20);
   const [sourceMode, setSourceMode] = useState<VideoSourceMode>("hybrid");
+  const [showSourceOptions, setShowSourceOptions] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [showAudio, setShowAudio] = useState(false);
 
@@ -1092,19 +1093,44 @@ export default function GuidedVideoCreationPanel() {
             ))}
           </div>
 
-          <div className="space-y-2">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">Como criar os visuais?</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">Escolha a política de mídia deste projeto. Você poderá revisar cena por cena antes de gerar.</p>
+          <div className="rounded-2xl border border-primary/20 bg-primary/[0.035] p-3.5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Sparkles className="h-4 w-4" /></div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-semibold text-foreground">
+                      {sourceMode === "hybrid" ? "Automático recomendado" : sourceMode === "real_only" ? "Usar só minhas fotos e vídeos" : "Criar os visuais com IA"}
+                    </p>
+                    {sourceMode === "hybrid" && <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">Recomendado</span>}
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    {sourceMode === "hybrid"
+                      ? "A VendorAI usa primeiro as mídias da empresa e cria com IA somente o que estiver faltando."
+                      : sourceMode === "real_only"
+                        ? "Nenhuma imagem nova será criada. Todas as cenas precisam usar arquivos da Biblioteca."
+                        : "A VendorAI pode criar os visuais necessários seguindo o roteiro e o storyboard aprovados."}
+                  </p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setShowSourceOptions((value) => !value)} className="shrink-0 rounded-xl border border-border bg-background px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground">
+                {showSourceOptions ? "Fechar opções" : "Alterar"}
+              </button>
             </div>
-            <div className="grid gap-2 md:grid-cols-3">
-              {SOURCE_MODES.map((item) => (
-                <button key={item.id} type="button" onClick={() => setSourceMode(item.id)} className={cn("rounded-xl border p-3 text-left transition", sourceMode === item.id ? "border-primary/45 bg-primary/[0.07]" : "border-border bg-background/40 hover:border-primary/25")}>
-                  <p className="text-sm font-semibold text-foreground">{item.title}</p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{item.description}</p>
-                </button>
-              ))}
-            </div>
+
+            {showSourceOptions && (
+              <div className="mt-3 grid gap-2 border-t border-border/70 pt-3 md:grid-cols-3">
+                {SOURCE_MODES.map((item) => (
+                  <button key={item.id} type="button" onClick={() => { setSourceMode(item.id); setShowSourceOptions(false); }} className={cn("rounded-xl border p-3 text-left transition", sourceMode === item.id ? "border-primary/45 bg-primary/[0.07]" : "border-border bg-background hover:border-primary/25")}>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold text-foreground">{item.id === "hybrid" ? "Automático" : item.id === "real_only" ? "Só minhas mídias" : "Criar com IA"}</p>
+                      {sourceMode === item.id && <Check className="h-3.5 w-3.5 text-primary" />}
+                    </div>
+                    <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{item.description}</p>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
