@@ -2057,7 +2057,9 @@ function EditDealSheet({
                     <Select value={transferResponsibleId} onValueChange={setTransferResponsibleId}>
                       <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                       <SelectContent>
-                        {transferUsers.map((u) => (
+                        {transferUsers
+                          .filter((u) => u.active === true)
+                          .map((u) => (
                           <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>
                         ))}
                       </SelectContent>
@@ -2503,6 +2505,14 @@ export default function Deals() {
     query: { enabled: !!tenantId, queryKey: getListTenantUsersQueryKey(tenantId), staleTime: 60_000, refetchOnWindowFocus: false },
   });
 
+  // Somente usuários ativos podem receber novas tarefas ou passagens.
+  // Mantemos tenantUsers completo no userMap para exibir corretamente
+  // responsáveis históricos que tenham sido desativados depois.
+  const eligibleResponsibleUsers = useMemo(
+    () => tenantUsers.filter((u) => u.active === true),
+    [tenantUsers],
+  );
+
   const userMap = new Map(tenantUsers.map((u) => [u.id, u.name || u.email || u.id]));
 
   const { data: dealParticipations = [] } = useQuery<DealRepresentationSnap[]>({
@@ -2695,7 +2705,10 @@ export default function Deals() {
     }
     setReturnQualifiedReason("");
     setReturnQualifiedMissing("");
-    setReturnQualifiedResponsibleId(deal.assignedTo ?? user?.id ?? "");
+    const preferredResponsibleId = [deal.assignedTo, user?.id].find(
+      (candidateId) => candidateId && eligibleResponsibleUsers.some((candidate) => candidate.id === candidateId),
+    );
+    setReturnQualifiedResponsibleId(preferredResponsibleId ?? "");
     setReturnQualifiedDueDate("");
     setReturnQualifiedDialog({ open: true, deal });
   }
@@ -2709,6 +2722,15 @@ export default function Deals() {
       !returnQualifiedResponsibleId ||
       !returnQualifiedDueDate
     ) return;
+
+    if (!eligibleResponsibleUsers.some((candidate) => candidate.id === returnQualifiedResponsibleId)) {
+      toast({
+        title: "Responsável indisponível",
+        description: "Selecione uma pessoa ativa e habilitada para receber esta tarefa.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setReturningToQualified(true);
     try {
@@ -3562,7 +3584,7 @@ export default function Deals() {
                     <SelectValue placeholder="Selecione..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {tenantUsers.map((u) => (
+                    {eligibleResponsibleUsers.map((u) => (
                       <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>
                     ))}
                   </SelectContent>
@@ -3689,15 +3711,17 @@ export default function Deals() {
             {assignDialog.deal?.titulo} — o prazo de resposta reinicia a partir de agora pra quem for escolhido.
           </p>
           <div className="space-y-1.5 max-h-72 overflow-y-auto">
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full justify-start"
-              onClick={() => confirmarAtribuicao(user?.id ?? "")}
-            >
-              Comigo mesmo
-            </Button>
-            {tenantUsers
+            {eligibleResponsibleUsers.some((candidate) => candidate.id === user?.id) && (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full justify-start"
+                onClick={() => confirmarAtribuicao(user?.id ?? "")}
+              >
+                Comigo mesmo
+              </Button>
+            )}
+            {eligibleResponsibleUsers
               .filter((u) => u.id !== user?.id)
               .map((u) => (
                 <Button
