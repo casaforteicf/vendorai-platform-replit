@@ -583,4 +583,82 @@ router.get("/tenants/:tenantId/intercompany-commissions", async (req, res) => {
   return res.json(rows);
 });
 
+router.get("/tenants/:tenantId/deal-participations", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!isSuperAdmin(req) && currentTenantId(req) !== tenantId) return res.status(403).json({ error: "FORBIDDEN" });
+
+  const rows = await db.select({
+    participation: dealTenantParticipationsTable,
+    commission: intercompanyCommissionsTable,
+  }).from(dealTenantParticipationsTable)
+    .leftJoin(intercompanyCommissionsTable, eq(intercompanyCommissionsTable.participationId, dealTenantParticipationsTable.id))
+    .where(and(
+      eq(dealTenantParticipationsTable.status, "active"),
+      or(
+        eq(dealTenantParticipationsTable.ownerTenantId, tenantId),
+        eq(dealTenantParticipationsTable.partnerTenantId, tenantId),
+      ),
+    ));
+
+  const enriched = [];
+  for (const row of rows) {
+    const [partner] = await db.select({ name: tenantsTable.name, tenantCode: tenantsTable.tenantCode })
+      .from(tenantsTable).where(eq(tenantsTable.id, row.participation.partnerTenantId)).limit(1);
+    const [operator] = row.participation.operationalUserId
+      ? await db.select({ name: usersTable.name, email: usersTable.email })
+          .from(usersTable).where(eq(usersTable.id, row.participation.operationalUserId)).limit(1)
+      : [null];
+    enriched.push({
+      ...row.participation,
+      partnerName: partner?.name ?? null,
+      partnerTenantCode: partner?.tenantCode ?? null,
+      operationalUserName: operator?.name ?? operator?.email ?? null,
+      commission: row.commission ?? null,
+    });
+  }
+  return res.json(enriched);
+});
+
+router.get("/commercial-partnerships/:partnershipId/users", async (req, res) => {
+  const partnershipId = String(req.params.partnershipId);
+  const [partnership] = await db.select().from(tenantCommercialPartnershipsTable)
+    .where(eq(tenantCommercialPartnershipsTable.id, partnershipId)).limit(1);
+  if (!partnership) return res.status(404).json({ error: "Representação não encontrada." });
+
+  const tenantId = currentTenantId(req);
+  if (!isSuperAdmin(req) && tenantId !== partnership.ownerTenantId && tenantId !== partnership.partnerTenantId) {
+    return res.status(403).json({ error: "FORBIDDEN" });
+  }
+
+  const rows = await db.select({
+    id: usersTable.id,
+    name: usersTable.name,
+    email: usersTable.email,
+    active: usersTable.active,
+    userFunction: usersTable.userFunction,
+  }).from(usersTable).where(and(
+    eq(usersTable.tenantId, partnership.partnerTenantId),
+    eq(usersTable.active, true),
+  ));
+
+  const authorizedIds = partnership.authorizedUserIds ?? [];
+  return res.json(authorizedIds.length > 0 ? rows.filter((user) => authorizedIds.includes(user.id)) : rows);
+});
+
+router.get("/intercompany-commissions/:commissionId/payments", async (req, res) => {
+  const commissionId = String(req.params.commissionId);
+  const [commission] = await db.select().from(intercompanyCommissionsTable)
+    .where(eq(intercompanyCommissionsTable.id, commissionId)).limit(1);
+  if (!commission) return res.status(404).json({ error: "Comissão não encontrada." });
+
+  const tenantId = currentTenantId(req);
+  if (!isSuperAdmin(req) && tenantId !== commission.payerTenantId && tenantId !== commission.beneficiaryTenantId) {
+    return res.status(403).json({ error: "FORBIDDEN" });
+  }
+
+  const payments = await db.select().from(intercompanyCommissionPaymentsTable)
+    .where(eq(intercompanyCommissionPaymentsTable.commissionId, commissionId));
+  return res.json(payments);
+});
+
 export default router;
