@@ -1679,6 +1679,9 @@ function buildCriarPrompt(p: {
   maskZones:  string[];
   materials:  { zone: string; promptFragment: string }[];
   userNotes:  string | undefined;
+  renderView?: "interior" | "exterior";
+  source?: "facade" | "model3d";
+  renderPresets?: ArqdorRenderPreset[];
 }): string {
   const parts: string[] = [
     `Professional architectural visualization of a ${p.ambiente ?? "interior"}.`,
