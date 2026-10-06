@@ -32,12 +32,26 @@ import "./pipeline-layout.css";
 
 export type PipelineTab = "comercial" | "execucao" | "suporte" | "aquecimento" | "parceiros" | "scout";
 
+type StageActivityQuestion = {
+  id: string;
+  texto: string;
+  tipo?: "texto" | "texto_longo" | "sim_nao" | "numero" | "data" | "opcoes";
+  opcoes?: string[];
+  quemResponde?: "cliente" | "usuario" | "ambos" | "automatico";
+  obrigatoria?: boolean;
+  visivelCliente?: boolean;
+  entraRelatorio?: boolean;
+  editavelDepois?: boolean;
+  evidenciaExigida?: "nenhuma" | "foto" | "video" | "audio" | "documento" | "midia";
+};
+
 type StageActivityTemplate = {
   id: string;
   titulo: string;
   descricao?: string | null;
   objetivo?: string | null;
   resultadoEsperado?: string | null;
+  perguntas?: StageActivityQuestion[];
   tipo?: "ligacao" | "whatsapp" | "email" | "visita" | "tarefa" | "reuniao";
   categoria: "obrigatoria" | "sugerida" | "automatica";
   prazoMinutos?: number | null;
@@ -227,6 +241,7 @@ function PipelineStageManager({
               titulo: stage.atividadePadraoTitulo,
               descricao: stage.atividadePadraoDescricao ?? null,
               categoria: "sugerida",
+              perguntas: [],
               prazoMinutos: stage.atividadePadraoPrazoMinutos ?? 1440,
               responsavel: "deal_owner",
               prioridade: "normal",
@@ -398,6 +413,7 @@ function PipelineStageManager({
                             id: crypto.randomUUID(),
                             titulo: "",
                             categoria: "sugerida",
+                            perguntas: [],
                             prazoMinutos: 1440,
                             responsavel: "deal_owner",
                             prioridade: "normal",
@@ -462,6 +478,158 @@ function PipelineStageManager({
                             onChange={(event) => setEditActivities((items) => items.map((row, index) => index === activityIndex ? { ...row, resultadoEsperado: event.target.value } : row))}
                             placeholder="Resultado esperado"
                           />
+                          <div className="space-y-2 rounded-md border border-dashed p-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <p className="text-xs font-medium">Perguntas / informações da atividade</p>
+                                <p className="text-[11px] text-muted-foreground">
+                                  Defina quem preenche, o que o cliente enxerga e o que entra no relatório vivo.
+                                </p>
+                              </div>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setEditActivities((items) => items.map((row, index) => index === activityIndex ? {
+                                  ...row,
+                                  perguntas: [...(row.perguntas ?? []), {
+                                    id: crypto.randomUUID(),
+                                    texto: "",
+                                    tipo: "texto",
+                                    opcoes: [],
+                                    quemResponde: "usuario",
+                                    obrigatoria: false,
+                                    visivelCliente: false,
+                                    entraRelatorio: true,
+                                    editavelDepois: true,
+                                    evidenciaExigida: "nenhuma",
+                                  }],
+                                } : row))}
+                              >
+                                <Plus className="mr-1 h-3.5 w-3.5" /> Pergunta
+                              </Button>
+                            </div>
+
+                            {(item.perguntas ?? []).length === 0 ? (
+                              <p className="text-xs text-muted-foreground">Nenhuma pergunta configurada para esta atividade.</p>
+                            ) : (
+                              <div className="space-y-2">
+                                {(item.perguntas ?? []).map((question, questionIndex) => (
+                                  <div key={question.id} className="space-y-2 rounded-md border bg-muted/20 p-2.5">
+                                    <div className="flex gap-2">
+                                      <Input
+                                        value={question.texto}
+                                        onChange={(event) => setEditActivities((items) => items.map((row, index) => index === activityIndex ? {
+                                          ...row,
+                                          perguntas: (row.perguntas ?? []).map((q, qIndex) => qIndex === questionIndex ? { ...q, texto: event.target.value } : q),
+                                        } : row))}
+                                        placeholder="Ex.: Qual problema o cliente está percebendo?"
+                                      />
+                                      <Button
+                                        type="button"
+                                        size="icon"
+                                        variant="ghost"
+                                        title="Remover pergunta"
+                                        onClick={() => setEditActivities((items) => items.map((row, index) => index === activityIndex ? {
+                                          ...row,
+                                          perguntas: (row.perguntas ?? []).filter((_, qIndex) => qIndex !== questionIndex),
+                                        } : row))}
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                    <div className="grid gap-2 sm:grid-cols-3">
+                                      <select
+                                        className="h-9 rounded-md border bg-background px-2 text-xs"
+                                        value={question.tipo ?? "texto"}
+                                        onChange={(event) => setEditActivities((items) => items.map((row, index) => index === activityIndex ? {
+                                          ...row,
+                                          perguntas: (row.perguntas ?? []).map((q, qIndex) => qIndex === questionIndex ? { ...q, tipo: event.target.value as StageActivityQuestion["tipo"] } : q),
+                                        } : row))}
+                                      >
+                                        <option value="texto">Texto curto</option>
+                                        <option value="texto_longo">Texto longo</option>
+                                        <option value="sim_nao">Sim / não</option>
+                                        <option value="numero">Número</option>
+                                        <option value="data">Data</option>
+                                        <option value="opcoes">Opções</option>
+                                      </select>
+                                      <select
+                                        className="h-9 rounded-md border bg-background px-2 text-xs"
+                                        value={question.quemResponde ?? "usuario"}
+                                        onChange={(event) => {
+                                          const responder = event.target.value as StageActivityQuestion["quemResponde"];
+                                          setEditActivities((items) => items.map((row, index) => index === activityIndex ? {
+                                            ...row,
+                                            perguntas: (row.perguntas ?? []).map((q, qIndex) => qIndex === questionIndex ? {
+                                              ...q,
+                                              quemResponde: responder,
+                                              visivelCliente: responder === "cliente" || responder === "ambos" ? true : q.visivelCliente,
+                                            } : q),
+                                          } : row));
+                                        }}
+                                      >
+                                        <option value="usuario">Usuário interno</option>
+                                        <option value="cliente">Cliente</option>
+                                        <option value="ambos">Cliente e usuário</option>
+                                        <option value="automatico">Automático / IA</option>
+                                      </select>
+                                      <select
+                                        className="h-9 rounded-md border bg-background px-2 text-xs"
+                                        value={question.evidenciaExigida ?? "nenhuma"}
+                                        onChange={(event) => setEditActivities((items) => items.map((row, index) => index === activityIndex ? {
+                                          ...row,
+                                          perguntas: (row.perguntas ?? []).map((q, qIndex) => qIndex === questionIndex ? { ...q, evidenciaExigida: event.target.value as StageActivityQuestion["evidenciaExigida"] } : q),
+                                        } : row))}
+                                      >
+                                        <option value="nenhuma">Sem evidência obrigatória</option>
+                                        <option value="foto">Exigir foto</option>
+                                        <option value="video">Exigir vídeo</option>
+                                        <option value="audio">Exigir áudio</option>
+                                        <option value="documento">Exigir documento</option>
+                                        <option value="midia">Exigir mídia</option>
+                                      </select>
+                                    </div>
+
+                                    {question.tipo === "opcoes" && (
+                                      <Input
+                                        value={(question.opcoes ?? []).join(", ")}
+                                        onChange={(event) => setEditActivities((items) => items.map((row, index) => index === activityIndex ? {
+                                          ...row,
+                                          perguntas: (row.perguntas ?? []).map((q, qIndex) => qIndex === questionIndex ? {
+                                            ...q,
+                                            opcoes: event.target.value.split(",").map((v) => v.trim()).filter(Boolean),
+                                          } : q),
+                                        } : row))}
+                                        placeholder="Opções separadas por vírgula"
+                                      />
+                                    )}
+
+                                    <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs">
+                                      {[
+                                        ["obrigatoria", "Obrigatória"],
+                                        ["visivelCliente", "Visível ao cliente"],
+                                        ["entraRelatorio", "Entra no relatório"],
+                                        ["editavelDepois", "Permitir edição posterior"],
+                                      ].map(([field, label]) => (
+                                        <label key={field} className="flex items-center gap-1.5">
+                                          <input
+                                            type="checkbox"
+                                            checked={Boolean(question[field as keyof StageActivityQuestion])}
+                                            onChange={(event) => setEditActivities((items) => items.map((row, index) => index === activityIndex ? {
+                                              ...row,
+                                              perguntas: (row.perguntas ?? []).map((q, qIndex) => qIndex === questionIndex ? { ...q, [field]: event.target.checked } : q),
+                                            } : row))}
+                                          />
+                                          {label}
+                                        </label>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                           <div className="flex flex-wrap items-center gap-3 text-xs">
                             <label className="flex items-center gap-2">
                               <input
