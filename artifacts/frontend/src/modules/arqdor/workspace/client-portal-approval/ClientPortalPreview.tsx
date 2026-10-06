@@ -107,11 +107,3 @@ export function ClientPortalPreview({
   );
 }
 
-function Line({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between text-sm text-slate-600">
-      <span>{label}</span>
-      <span className="font-medium">{value}</span>
-    </div>
-  );
-}
