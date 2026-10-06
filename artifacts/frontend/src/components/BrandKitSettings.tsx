@@ -15,7 +15,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Save, Palette, ImageIcon, Building2, Megaphone, Brain, Library, ExternalLink, Sparkles, Loader2, CheckCircle2, ChevronLeft, ChevronRight, Package2, Eye, Bot, WandSparkles, AlertTriangle, RefreshCw } from "lucide-react";
@@ -435,82 +434,34 @@ export function BrandKitSettings() {
     );
   }
 
-  if (isContextLoading) {
-    return (
-      <div className="space-y-4" aria-busy="true" aria-label="Carregando Kit da Marca">
-        <section className="rounded-2xl border bg-card p-5 shadow-sm">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="space-y-2">
-              <Skeleton className="h-7 w-48" />
-              <Skeleton className="h-4 w-[min(44rem,80vw)] max-w-full" />
+  return (
+    <div className="space-y-4">
+      {(isContextLoading || contextLoadFailed) && (
+        <section className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm dark:border-amber-900/40 dark:bg-amber-950/20">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <div>
+                <div className="font-medium">
+                  {contextLoadFailed ? "Alguns dados da empresa não carregaram." : "Carregando dados da empresa…"}
+                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  O Kit da Marca permanece disponível. Campos dependentes dos dados oficiais serão preenchidos assim que a consulta responder.
+                </p>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <Skeleton className="h-9 w-28" />
-              <Skeleton className="h-9 w-24" />
-            </div>
-          </div>
-          <Skeleton className="mt-4 h-2 w-full" />
-        </section>
-
-        <section className="rounded-2xl border bg-card p-3 shadow-sm">
-          <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
-            {Array.from({ length: 6 }).map((_, index) => (
-              <Skeleton key={index} className="h-[76px] rounded-xl" />
-            ))}
-          </div>
-        </section>
-
-        <section className="grid gap-4 xl:grid-cols-[1.3fr_.7fr]">
-          <div className="rounded-2xl border bg-card p-5 space-y-4">
-            <Skeleton className="h-6 w-72 max-w-full" />
-            <Skeleton className="h-4 w-96 max-w-full" />
-            <div className="grid gap-3 md:grid-cols-2">
-              <Skeleton className="h-16 rounded-xl" />
-              <Skeleton className="h-16 rounded-xl" />
-              <Skeleton className="h-16 rounded-xl md:col-span-2" />
-              <Skeleton className="h-16 rounded-xl md:col-span-2" />
-            </div>
-          </div>
-          <div className="rounded-2xl border bg-card p-5 space-y-4">
-            <Skeleton className="h-4 w-32" />
-            <Skeleton className="h-32 rounded-xl" />
-            <div className="grid grid-cols-2 gap-2">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <Skeleton key={index} className="h-14 rounded-lg" />
-              ))}
-            </div>
-          </div>
-        </section>
-      </div>
-    );
-  }
-
-  if (contextLoadFailed) {
-    return (
-      <section className="rounded-2xl border bg-card p-6 shadow-sm">
-        <div className="flex items-start gap-3">
-          <AlertTriangle className="mt-0.5 h-5 w-5 text-amber-600" />
-          <div className="min-w-0 flex-1">
-            <h2 className="font-semibold">Não foi possível carregar o Kit da Marca</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Os dados oficiais da empresa não foram carregados. Para evitar mostrar informações vazias ou incorretas, o conteúdo fica protegido até a consulta responder.
-            </p>
             <Button
               type="button"
               variant="outline"
-              className="mt-4"
+              size="sm"
               onClick={() => void Promise.all([profile.refetch(), resolvedProfile.refetch(), tenant.refetch()])}
             >
-              <RefreshCw className="mr-2 h-4 w-4" />Tentar novamente
+              <RefreshCw className="mr-2 h-4 w-4" />Atualizar dados
             </Button>
           </div>
-        </div>
-      </section>
-    );
-  }
+        </section>
+      )}
 
-  return (
-    <div className="space-y-4">
       <section className="rounded-2xl border bg-card p-5 shadow-sm">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0">
