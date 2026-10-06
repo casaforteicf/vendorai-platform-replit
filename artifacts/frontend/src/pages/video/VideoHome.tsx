@@ -1,147 +1,163 @@
-import { lazy, Suspense, useEffect, useState, type ElementType } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type ElementType } from "react";
 import { useLocation } from "wouter";
 import {
+  ArrowLeft,
   ArrowRight,
-  BarChart3,
-  Captions,
-  Check,
-  ChevronDown,
-  ChevronUp,
-  Clapperboard,
+  Film,
   FolderOpen,
+  Images,
   LayoutGrid,
+  Loader2,
   Mic2,
-  Palette,
-  Send,
-  Settings2,
-  ShieldCheck,
-  ShoppingBag,
-  Sparkles,
+  MoreHorizontal,
+  Package,
+  PlaySquare,
   Scissors,
-  SlidersHorizontal,
-  WandSparkles,
+  Send,
+  Sparkles,
+  UserRound,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 
-const GraphicDesignDirectorPanel = lazy(() => import("@/components/video/GraphicDesignDirectorPanel"));
-const GraphicDesignTimelineHandoff = lazy(() => import("@/components/video/GraphicDesignTimelineHandoff"));
 const GuidedVideoCreationPanel = lazy(() => import("@/components/video/GuidedVideoCreationPanel"));
 const VideoProjectsPanel = lazy(() => import("@/components/video/VideoProjectsPanel"));
 const VideoPublishPanel = lazy(() => import("@/components/video/VideoPublishPanel"));
-const VideoPerformancePanel = lazy(() => import("@/components/video/VideoPerformancePanel"));
-const ProfessionalVideoStudioPanel = lazy(() => import("@/components/video/ProfessionalVideoStudioPanel"));
-const VideoGeneratePanel = lazy(() => import("@/components/video/VideoGeneratePanel"));
-const BrandVideoKitPanel = lazy(() => import("@/components/video/BrandVideoKitPanel"));
 const MediaPlanReviewWorkspace = lazy(() => import("@/components/video/MediaPlanReviewWorkspace"));
 
-interface VideoCard {
+type HomeView = "studio" | "origin" | "create" | "projects" | "publish" | "more";
+
+type MediaProject = {
+  id: string;
+  title: string;
+  kind: string;
+  status: string;
+  context?: Record<string, unknown> | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
+type MediaAsset = {
+  id: string;
+  type: string;
+  role?: string | null;
+  storageUrl?: string | null;
+  storage_url?: string | null;
+  accessUrl?: string | null;
+  access_url?: string | null;
+};
+
+type MediaVersion = {
+  assetId?: string | null;
+  operation?: string | null;
+  createdAt?: string | null;
+};
+
+type MediaJob = {
+  status: string;
+  output?: { videoAssetId?: string; assetId?: string } | null;
+  updatedAt?: string | null;
+};
+
+type RecentProject = {
+  key: string;
+  title: string;
+  project: MediaProject;
+  versionCount: number;
+  latestVersionNumber: number | null;
+  previewUrl: string;
+  assetId: string;
+};
+
+type MediaIdentity = {
+  id: string;
+  display_name: string;
+  status: string;
+  face_reference_asset_id?: string | null;
+  voice_profile_count?: number;
+  active_consent_count?: number;
+};
+
+type ResourceCard = {
   title: string;
   description: string;
-  icon: ElementType;
   route: string;
-  action: string;
+  icon: ElementType;
+};
+
+const RESOURCES: ResourceCard[] = [
+  { title: "Dublê Digital", description: "Gerencie seu apresentador", route: "/content-studio/video/avatar", icon: UserRound },
+  { title: "Editor", description: "Ajuste vídeos quando precisar", route: "/content-studio/video/edicao", icon: Scissors },
+  { title: "Clipes", description: "Transforme vídeos em cortes curtos", route: "/content-studio/video/clipes", icon: PlaySquare },
+  { title: "Vídeos em lote", description: "Produza várias versões de uma vez", route: "/content-studio/video/lote", icon: LayoutGrid },
+];
+
+function authHeaders(): Record<string, string> {
+  return { Authorization: `Bearer ${localStorage.getItem("vendorai_token") ?? ""}` };
 }
 
-type AdvancedSection = "design" | "duble" | "broll" | "brand" | null;
-type WorkspaceTab = "projects" | "create" | "publish" | "results";
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
 
-// frontend deploy marker: video tenant deep-link
-const WORKFLOW_STEPS = ["Briefing", "Roteiro", "Storyboard", "Produção", "Finalização"];
+function timestamp(project: MediaProject) {
+  const value = new Date(project.updatedAt || project.createdAt || "").getTime();
+  return Number.isFinite(value) ? value : 0;
+}
 
-const WORKSPACE_TABS: Array<{
-  id: WorkspaceTab;
-  label: string;
-  description: string;
-  icon: ElementType;
-}> = [
-  { id: "projects", label: "Projetos", description: "Retomar e acompanhar", icon: FolderOpen },
-  { id: "create", label: "Criar vídeo", description: "Fluxo guiado", icon: Sparkles },
-  { id: "publish", label: "Publicar", description: "Publicar ou agendar", icon: Send },
-  { id: "results", label: "Resultados", description: "Desempenho e aprendizado", icon: BarChart3 },
-];
+function assetUrl(asset?: MediaAsset | null) {
+  const raw = asset?.accessUrl ?? asset?.access_url ?? asset?.storageUrl ?? asset?.storage_url ?? "";
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw) || raw.startsWith("/api/")) return raw;
+  if (raw.startsWith("/objects/")) return `/api/storage${raw}`;
+  return raw;
+}
 
-const CARDS: VideoCard[] = [
-  { title: "Pessoas & Vozes", description: "Gerencie Dublês autorizados, vozes e consentimentos.", icon: Mic2, route: "/content-studio/video/avatar", action: "Gerenciar" },
-  { title: "Vídeo de Produto", description: "Transforme fotos e vídeos reais do produto em peças comerciais.", icon: ShoppingBag, route: "/content-studio/video/produto", action: "Criar" },
-  { title: "Editor de vídeo", description: "Ajuste timeline, áudio, música, textos, cortes e finalização.", icon: Scissors, route: "/content-studio/video/edicao", action: "Editar" },
-  { title: "Legendas", description: "Transcreva e aplique legendas automaticamente.", icon: Captions, route: "/content-studio/video/legenda", action: "Gerar" },
-  { title: "Clipes automáticos", description: "Transforme vídeos longos em cortes curtos para redes sociais.", icon: Clapperboard, route: "/content-studio/video/clipes", action: "Criar" },
-  { title: "Vídeos em lote", description: "Produza várias versões a partir de dados estruturados.", icon: LayoutGrid, route: "/content-studio/video/lote", action: "Iniciar" },
-];
+function projectStatusLabel(status: string) {
+  if (status === "ready") return "Pronto";
+  if (status === "processing") return "Em produção";
+  if (status === "archived") return "Arquivado";
+  return "Em edição";
+}
 
-const ADVANCED_SECTIONS: Array<{
-  id: Exclude<AdvancedSection, null>;
-  title: string;
-  description: string;
-  icon: ElementType;
-}> = [
-  {
-    id: "design",
-    title: "Direção visual avançada",
-    description: "Controle de layout, tipografia, hierarquia, paleta e safe area.",
-    icon: Palette,
-  },
-  {
-    id: "duble",
-    title: "Produção com Dublê Digital",
-    description: "Fluxo especializado para apresentador, voz, lip-sync e Fidelity Score.",
-    icon: Mic2,
-  },
-  {
-    id: "broll",
-    title: "Gerar cena ou B-roll com IA",
-    description: "Use apenas quando a Biblioteca e o catálogo não tiverem mídia adequada.",
-    icon: WandSparkles,
-  },
-  {
-    id: "brand",
-    title: "Padrão visual e sonoro",
-    description: "Logo, abertura, encerramento, trilha, B-roll e legendas da marca.",
-    icon: Settings2,
-  },
-];
+function projectStatusClass(status: string) {
+  if (status === "ready") return "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+  if (status === "processing") return "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300";
+  return "border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-300";
+}
+
+function groupRecent(projects: MediaProject[]) {
+  const groups = new Map<string, MediaProject[]>();
+  for (const project of projects) {
+    const context = asRecord(project.context);
+    const seriesId = String(context.guidedVideoSeriesId ?? "").trim();
+    const key = seriesId ? `guided:${seriesId}` : `project:${project.id}`;
+    const current = groups.get(key) ?? [];
+    current.push(project);
+    groups.set(key, current);
+  }
+  return Array.from(groups.entries())
+    .map(([key, items]) => {
+      const sorted = [...items].sort((a, b) => timestamp(b) - timestamp(a));
+      const project = sorted[0]!;
+      const context = asRecord(project.context);
+      const explicitTitle = String(context.guidedVideoTitle ?? "").trim();
+      const cleanTitle = project.title.replace(/\s*[·-]\s*V\d+\s*$/i, "").trim();
+      const versions = sorted.map((item) => Math.max(1, Number(asRecord(item.context).guidedVideoVersion ?? 1) || 1));
+      return {
+        key,
+        project,
+        title: explicitTitle || cleanTitle || project.title,
+        versionCount: sorted.length,
+        latestVersionNumber: key.startsWith("guided:") ? Math.max(...versions) : null,
+      };
+    })
+    .sort((a, b) => timestamp(b.project) - timestamp(a.project))
+    .slice(0, 3);
+}
 
 function LoadingPanel({ label }: { label: string }) {
-  return <div className="rounded-2xl border border-border bg-card px-5 py-10 text-center text-sm text-muted-foreground">{label}</div>;
-}
-
-function AdvancedPanel({ section }: { section: Exclude<AdvancedSection, null> }) {
-  if (section === "design") {
-    return (
-      <div className="space-y-4">
-        <Suspense fallback={<LoadingPanel label="Carregando direção visual…" />}>
-          <GraphicDesignDirectorPanel />
-        </Suspense>
-        <Suspense fallback={null}>
-          <GraphicDesignTimelineHandoff />
-        </Suspense>
-      </div>
-    );
-  }
-
-  if (section === "duble") {
-    return (
-      <Suspense fallback={<LoadingPanel label="Carregando produção com Dublê…" />}>
-        <ProfessionalVideoStudioPanel />
-      </Suspense>
-    );
-  }
-
-  if (section === "broll") {
-    return (
-      <Suspense fallback={<LoadingPanel label="Carregando geração visual…" />}>
-        <VideoGeneratePanel />
-      </Suspense>
-    );
-  }
-
-  return (
-    <Suspense fallback={<LoadingPanel label="Carregando padrão da marca…" />}>
-      <BrandVideoKitPanel />
-    </Suspense>
-  );
+  return <div className="rounded-2xl border border-border bg-card px-5 py-10 text-center text-sm text-muted-foreground"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />{label}</div>;
 }
 
 export default function VideoHome() {
@@ -151,57 +167,94 @@ export default function VideoHome() {
   const query = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
   const targetTenantId = query.get("tenantId")?.trim() ?? "";
   const targetTenantName = query.get("tenantName")?.trim() || "Tenant selecionado";
-  const targetProjectId = query.get("projectId")?.trim() ?? "";
   const isSuperAdmin = user?.platformRole === "super_admin";
   const planExecution = query.get("from") === "media-calendar";
   const advancedMode = query.get("advanced") === "1";
-  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("projects");
-  const [resultsAvailable, setResultsAvailable] = useState<boolean | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [advancedSection, setAdvancedSection] = useState<AdvancedSection>(null);
-  const [showTools, setShowTools] = useState(false);
+
+  const [view, setView] = useState<HomeView>("studio");
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [openingProjectId, setOpeningProjectId] = useState("");
+  const [identity, setIdentity] = useState<MediaIdentity | null>(null);
+  const [identityLoading, setIdentityLoading] = useState(true);
 
   useEffect(() => {
     if (!targetTenantId || !isSuperAdmin || targetTenantId === tenantId) return;
-    setTenantOverride({
-      id: targetTenantId,
-      name: targetTenantName,
-      vertical: "",
-    });
+    setTenantOverride({ id: targetTenantId, name: targetTenantName, vertical: "" });
   }, [targetTenantId, targetTenantName, isSuperAdmin, tenantId, setTenantOverride]);
 
-  useEffect(() => {
-    if (!tenantId || planExecution) return;
-    let disposed = false;
+  const loadStudioSummary = useCallback(async () => {
+    if (!tenantId) return;
+    setProjectsLoading(true);
+    setIdentityLoading(true);
 
-    const checkResults = async () => {
-      try {
-        const response = await fetch(`/api/tenants/${tenantId}/social-publications`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token") ?? ""}` },
-        });
-        if (!response.ok) return;
-        const body = await response.json().catch(() => ({})) as { publications?: Array<{ metadata?: Record<string, unknown> | null }> };
-        const available = (body.publications ?? []).some((publication) => publication.metadata?.source === "video-studio");
-        if (!disposed) setResultsAvailable(available);
-      } catch {
-        if (!disposed) setResultsAvailable((current) => current ?? false);
-      }
-    };
+    const projectsPromise = fetch(`/api/tenants/${tenantId}/media/projects?limit=50`, { headers: authHeaders() })
+      .then(async (response) => {
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body?.error ?? "Falha ao carregar projetos");
+        const projects = (Array.isArray(body.projects) ? body.projects : []) as MediaProject[];
+        const videoProjects = projects.filter((project) => ["video", "reel", "story", "mixed"].includes(project.kind));
+        const groups = groupRecent(videoProjects);
+        const enriched = await Promise.all(groups.map(async (group) => {
+          try {
+            const detailResponse = await fetch(`/api/tenants/${tenantId}/media/projects/${group.project.id}`, { headers: authHeaders() });
+            const detail = await detailResponse.json().catch(() => ({})) as { assets?: MediaAsset[]; versions?: MediaVersion[]; jobs?: MediaJob[] };
+            if (!detailResponse.ok) throw new Error("Falha ao abrir projeto");
+            const outputAsset = (detail.assets ?? []).find((asset) => asset.type === "video" && asset.role === "output")
+              ?? (detail.assets ?? []).find((asset) => asset.type === "video")
+              ?? null;
+            const latestVersion = [...(detail.versions ?? [])]
+              .sort((a, b) => String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? "")))
+              .find((item) => item.assetId && item.operation !== "video_generate_scene");
+            const latestJob = [...(detail.jobs ?? [])]
+              .sort((a, b) => String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? "")))
+              .find((item) => item.status === "done" && (item.output?.videoAssetId || item.output?.assetId));
+            return {
+              ...group,
+              previewUrl: assetUrl(outputAsset),
+              assetId: latestVersion?.assetId || latestJob?.output?.videoAssetId || latestJob?.output?.assetId || outputAsset?.id || "",
+            } satisfies RecentProject;
+          } catch {
+            return { ...group, previewUrl: "", assetId: "" } satisfies RecentProject;
+          }
+        }));
+        setRecentProjects(enriched);
+      })
+      .catch(() => setRecentProjects([]))
+      .finally(() => setProjectsLoading(false));
 
-    void checkResults();
-    const timer = window.setInterval(() => { void checkResults(); }, 12_000);
-    const handleFocus = () => { void checkResults(); };
-    window.addEventListener("focus", handleFocus);
-    return () => {
-      disposed = true;
-      window.clearInterval(timer);
-      window.removeEventListener("focus", handleFocus);
-    };
-  }, [tenantId, planExecution]);
+    const identityPromise = fetch(`/api/tenants/${tenantId}/media-engine/identities`, { headers: authHeaders() })
+      .then(async (response) => {
+        const body = await response.json().catch(() => ({})) as { identities?: MediaIdentity[] };
+        if (!response.ok) throw new Error("Falha ao carregar Dublê");
+        const identities = (body.identities ?? []).filter((item) => item.status !== "archived");
+        setIdentity(identities.find((item) => item.status === "active") ?? identities[0] ?? null);
+      })
+      .catch(() => setIdentity(null))
+      .finally(() => setIdentityLoading(false));
 
-  useEffect(() => {
-    if (workspaceTab === "results" && resultsAvailable === false) setWorkspaceTab("projects");
-  }, [workspaceTab, resultsAvailable]);
+    await Promise.allSettled([projectsPromise, identityPromise]);
+  }, [tenantId]);
+
+  useEffect(() => { void loadStudioSummary(); }, [loadStudioSummary]);
+
+  const openRecentProject = (project: RecentProject) => {
+    if (openingProjectId) return;
+    setOpeningProjectId(project.key);
+    if (project.assetId) {
+      navigate(`/content-studio/video/edicao?mediaAssetId=${encodeURIComponent(project.assetId)}`);
+    } else {
+      setView("projects");
+      setOpeningProjectId("");
+    }
+  };
+
+  const identityReady = useMemo(() => Boolean(
+    identity
+    && identity.status === "active"
+    && (identity.voice_profile_count ?? 0) > 0
+    && (identity.active_consent_count ?? 0) > 0,
+  ), [identity]);
 
   if (planExecution && !advancedMode) {
     return (
@@ -211,235 +264,236 @@ export default function VideoHome() {
     );
   }
 
-  const openAdvanced = (section: Exclude<AdvancedSection, null>) => {
-    setAdvancedSection((current) => (current === section ? null : section));
-  };
+  if (view === "origin") {
+    return (
+      <div className="mx-auto max-w-5xl space-y-5 pb-12">
+        <button type="button" onClick={() => setView("studio")} className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="h-4 w-4" />Voltar ao Estúdio
+        </button>
+        <section className="rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-7">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Criar vídeo</p>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Como deseja começar?</h1>
+          <p className="mt-2 text-sm text-muted-foreground">Escolha apenas a origem. Depois o Estúdio conduz briefing, roteiro, cenas e produção no mesmo fluxo.</p>
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <button type="button" onClick={() => setView("create")} className="group rounded-2xl border border-border bg-background p-5 text-left transition hover:border-primary/35 hover:bg-primary/[0.025]">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary"><Sparkles className="h-5 w-5" /></div>
+              <p className="mt-4 text-base font-semibold text-foreground">Briefing livre</p>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">Comece do zero com objetivo, público, produto e canal.</p>
+              <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-primary">Começar<ArrowRight className="h-3.5 w-3.5" /></span>
+            </button>
+            <button type="button" onClick={() => navigate("/marketing/campanhas")} className="group rounded-2xl border border-border bg-background p-5 text-left transition hover:border-primary/35 hover:bg-primary/[0.025]">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary"><Send className="h-5 w-5" /></div>
+              <p className="mt-4 text-base font-semibold text-foreground">Da campanha</p>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">Use automaticamente objetivo, público, oferta e direção já definidos no Marketing.</p>
+              <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-primary">Selecionar campanha<ArrowRight className="h-3.5 w-3.5" /></span>
+            </button>
+            <button type="button" onClick={() => navigate("/produtos")} className="group rounded-2xl border border-border bg-background p-5 text-left transition hover:border-primary/35 hover:bg-primary/[0.025]">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary"><Package className="h-5 w-5" /></div>
+              <p className="mt-4 text-base font-semibold text-foreground">Do produto</p>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">Escolha um produto ou serviço e aproveite informações e mídias já cadastradas.</p>
+              <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-primary">Selecionar produto<ArrowRight className="h-3.5 w-3.5" /></span>
+            </button>
+            <button type="button" onClick={() => navigate("/midias")} className="group rounded-2xl border border-border bg-background p-5 text-left transition hover:border-primary/35 hover:bg-primary/[0.025]">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary"><Images className="h-5 w-5" /></div>
+              <p className="mt-4 text-base font-semibold text-foreground">Da Biblioteca</p>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">Comece por fotos ou vídeos reais que já estão disponíveis para a empresa.</p>
+              <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-primary">Abrir Biblioteca<ArrowRight className="h-3.5 w-3.5" /></span>
+            </button>
+          </div>
+        </section>
+      </div>
+    );
+  }
 
-  const visibleTabs = WORKSPACE_TABS.filter((tab) => tab.id !== "results" || resultsAvailable === true);
+  if (view === "create") {
+    return (
+      <div className="space-y-4 pb-12">
+        <button type="button" onClick={() => setView("studio")} className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="h-4 w-4" />Voltar ao Estúdio
+        </button>
+        <Suspense fallback={<LoadingPanel label="Carregando criador de vídeo…" />}>
+          <GuidedVideoCreationPanel />
+        </Suspense>
+      </div>
+    );
+  }
+
+  if (view === "projects") {
+    return (
+      <div className="space-y-4 pb-12">
+        <button type="button" onClick={() => setView("studio")} className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="h-4 w-4" />Voltar ao Estúdio
+        </button>
+        <Suspense fallback={<LoadingPanel label="Carregando projetos…" />}>
+          <VideoProjectsPanel />
+        </Suspense>
+      </div>
+    );
+  }
+
+  if (view === "publish") {
+    return (
+      <div className="space-y-4 pb-12">
+        <button type="button" onClick={() => setView("studio")} className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="h-4 w-4" />Voltar ao Estúdio
+        </button>
+        <Suspense fallback={<LoadingPanel label="Carregando publicações…" />}>
+          <VideoPublishPanel />
+        </Suspense>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-5 pb-28 sm:pb-10">
-      {targetTenantId && !isSuperAdmin && targetTenantId !== tenantId ? (
+    <div className="mx-auto max-w-7xl space-y-7 pb-28 sm:pb-12">
+      {targetTenantId && !isSuperAdmin && targetTenantId !== tenantId && (
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
           Este link aponta para um projeto de outro tenant. Entre com um usuário autorizado nesse tenant para visualizar o projeto.
         </div>
-      ) : null}
-      {targetProjectId ? (
-        <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 px-4 py-3 text-sm text-muted-foreground">
-          Projeto solicitado: <span className="font-mono text-xs text-foreground">{targetProjectId}</span>
-        </div>
-      ) : null}
-      <header className="overflow-hidden rounded-3xl border border-violet-500/20 bg-gradient-to-br from-violet-500/[0.08] via-card to-card p-5 shadow-sm sm:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex items-start gap-4">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-500/12 text-violet-600 dark:text-violet-300">
-              <Clapperboard className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-2xl font-semibold tracking-tight text-foreground">Vídeos com IA</h1>
-                <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">Modo guiado</span>
-              </div>
-              <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-                Crie, publique e acompanhe vídeos profissionais sem precisar dominar ferramentas técnicas.
-              </p>
-              <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-                {WORKFLOW_STEPS.map((step, index) => (
-                  <span key={step} className="inline-flex items-center gap-1.5">
-                    {index > 0 && <ArrowRight className="h-3 w-3 opacity-45" />}
-                    <span>{step}</span>
-                  </span>
-                ))}
-              </div>
+      )}
+
+      <header className="overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
+        <div className="grid gap-5 p-5 sm:p-7 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-center">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Estúdio de Vídeo</p>
+            <h1 className="mt-2 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Crie vídeos que vendem</h1>
+            <p className="mt-2 max-w-2xl text-base leading-relaxed text-muted-foreground">Com IA, suas mídias e o Dublê Digital da sua empresa.</p>
+          </div>
+          <div className="hidden h-40 items-center justify-center rounded-3xl border border-primary/10 bg-gradient-to-br from-primary/[0.06] via-background to-primary/[0.03] lg:flex">
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-background shadow-lg ring-1 ring-border">
+              <Film className="h-9 w-9 text-primary" />
             </div>
           </div>
+        </div>
 
-          {planExecution && (
-            <Button
-              variant="outline"
-              onClick={() => {
-                const params = new URLSearchParams(window.location.search);
-                params.delete("advanced");
-                navigate(`${window.location.pathname}?${params.toString()}`);
-              }}
-              className="rounded-xl"
-            >
-              Voltar à revisão
-            </Button>
-          )}
+        <div className="border-t border-border px-5 pb-5 pt-4 sm:px-7 sm:pb-7">
+          <button type="button" onClick={() => setView("origin")} className="flex w-full items-center justify-center gap-3 rounded-2xl bg-primary px-5 py-4 text-base font-semibold text-primary-foreground shadow-sm transition hover:opacity-95">
+            <Sparkles className="h-5 w-5" />Criar vídeo<ArrowRight className="h-5 w-5" />
+          </button>
+          <p className="mt-2 text-center text-xs text-muted-foreground">Escolha a origem na próxima etapa. O fluxo principal continua simples e guiado.</p>
+
+
         </div>
       </header>
 
-      <section className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.035] px-4 py-3 sm:px-5">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2 text-sm">
-            <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-600" />
-            <span className="font-semibold text-foreground">Qualidade automática nos bastidores</span>
-            <span className="hidden text-muted-foreground md:inline">Mídia real primeiro, roteiro aprovado, marca consistente e verificação antes de gerar.</span>
+      <section>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold text-foreground">Projetos recentes</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">Continue exatamente de onde parou.</p>
           </div>
-          <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground md:hidden">
-            {["Mídia real primeiro", "Roteiro aprovado", "Verificação final"].map((item) => (
-              <span key={item} className="inline-flex items-center gap-1"><Check className="h-3 w-3 text-emerald-600" />{item}</span>
+          <button type="button" onClick={() => setView("projects")} className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary">Ver todos<ArrowRight className="h-4 w-4" /></button>
+        </div>
+
+        {projectsLoading ? (
+          <LoadingPanel label="Carregando projetos recentes…" />
+        ) : recentProjects.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-border bg-card px-5 py-10 text-center">
+            <Film className="mx-auto h-7 w-7 text-muted-foreground" />
+            <p className="mt-2 text-sm font-semibold text-foreground">Nenhum projeto de vídeo ainda</p>
+            <p className="mt-1 text-xs text-muted-foreground">Crie o primeiro vídeo e ele aparecerá aqui automaticamente.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {recentProjects.map((item) => (
+              <button key={item.key} type="button" onClick={() => openRecentProject(item)} className="flex w-full items-center gap-3 rounded-2xl border border-border bg-card p-3 text-left shadow-sm transition hover:border-primary/25 hover:bg-muted/20 sm:p-4">
+                <div className="flex h-20 w-32 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted">
+                  {item.previewUrl ? <video src={item.previewUrl} muted preload="metadata" className="h-full w-full object-cover" /> : <Film className="h-6 w-6 text-muted-foreground" />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-base font-semibold text-foreground">{item.title}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{item.project.kind}{item.latestVersionNumber ? ` · V${item.latestVersionNumber}` : ""}{item.versionCount > 1 ? ` · ${item.versionCount} versões` : ""}</p>
+                  <span className={cn("mt-2 inline-flex rounded-full border px-2 py-1 text-[11px] font-semibold", projectStatusClass(item.project.status))}>{projectStatusLabel(item.project.status)}</span>
+                </div>
+                {openingProjectId === item.key ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /> : <MoreHorizontal className="h-5 w-5 text-muted-foreground" />}
+              </button>
             ))}
           </div>
+        )}
+      </section>
+
+      <section className="rounded-2xl border border-border bg-card p-4 sm:p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <UserRound className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground">Seu Dublê Digital</p>
+              {identityLoading ? (
+                <p className="mt-1 text-xs text-muted-foreground">Carregando apresentador…</p>
+              ) : identity ? (
+                <>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <p className="text-base font-semibold text-foreground">{identity.display_name}</p>
+                    <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-semibold", identityReady ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300")}>{identityReady ? "Pronto" : "Precisa concluir"}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">Seu apresentador para os vídeos da empresa.</p>
+                </>
+              ) : (
+                <>
+                  <p className="mt-1 text-sm font-medium text-foreground">Nenhum Dublê configurado</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Crie uma vez e reutilize nos próximos vídeos.</p>
+                </>
+              )}
+            </div>
+          </div>
+          <button type="button" onClick={() => navigate("/content-studio/video/avatar")} className="inline-flex items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-muted/40">
+            {identity ? "Gerenciar" : "Criar Dublê"}<ArrowRight className="h-4 w-4" />
+          </button>
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-        <div className="grid gap-1 border-b border-border bg-muted/20 p-2 sm:grid-cols-2 lg:grid-cols-4">
-          {visibleTabs.map((tab) => {
-            const Icon = tab.icon;
-            const active = workspaceTab === tab.id;
+      <section>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold text-foreground">Recursos do Estúdio</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">Ferramentas secundárias ficam disponíveis sem poluir o fluxo principal.</p>
+          </div>
+          <button type="button" onClick={() => setView("more")} className="hidden items-center gap-1.5 text-sm font-semibold text-primary sm:inline-flex">Ver todos<ArrowRight className="h-4 w-4" /></button>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {RESOURCES.map((resource) => {
+            const Icon = resource.icon;
             return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setWorkspaceTab(tab.id)}
-                className={cn(
-                  "flex items-center gap-3 rounded-xl px-3 py-3 text-left transition",
-                  active ? "bg-background text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
-                )}
-              >
-                <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground")}>
-                  <Icon className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold">{tab.label}</p>
-                  <p className="mt-0.5 truncate text-[11px] opacity-75">{tab.description}</p>
-                </div>
+              <button key={resource.route} type="button" onClick={() => navigate(resource.route)} className="rounded-2xl border border-border bg-card p-4 text-left transition hover:border-primary/25 hover:bg-muted/30">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/8 text-primary"><Icon className="h-5 w-5" /></div>
+                <p className="mt-3 text-sm font-semibold text-foreground">{resource.title}</p>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{resource.description}</p>
               </button>
             );
           })}
         </div>
+      </section>
 
-        <div className="p-3 sm:p-4">
-          {workspaceTab === "projects" && (
-            <Suspense fallback={<LoadingPanel label="Carregando projetos de vídeo…" />}>
-              <VideoProjectsPanel />
-            </Suspense>
-          )}
-
-          {workspaceTab === "create" && (
-            <section className="space-y-3">
-              <div className="flex flex-col gap-1 px-1 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-foreground">Criar vídeo</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Preencha o essencial, aprove o roteiro e deixe a VendorAI conduzir o restante.</p>
-                </div>
-                <span className="text-xs font-medium text-muted-foreground">Rascunho salvo automaticamente</span>
-              </div>
-              <Suspense fallback={<LoadingPanel label="Carregando criador de vídeo…" />}>
-                <GuidedVideoCreationPanel />
-              </Suspense>
-            </section>
-          )}
-
-          {workspaceTab === "publish" && (
-            <Suspense fallback={<LoadingPanel label="Carregando publicação e agendamento…" />}>
-              <VideoPublishPanel />
-            </Suspense>
-          )}
-
-          {workspaceTab === "results" && resultsAvailable === true && (
-            <Suspense fallback={<LoadingPanel label="Carregando resultados e aprendizado…" />}>
-              <VideoPerformancePanel />
-            </Suspense>
-          )}
+      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 px-2 py-2 shadow-[0_-8px_30px_rgba(15,23,42,0.08)] backdrop-blur lg:hidden">
+        <div className="grid grid-cols-4 gap-1">
+          {[
+            { id: "studio" as const, label: "Estúdio", icon: Film },
+            { id: "projects" as const, label: "Projetos", icon: FolderOpen },
+            { id: "publish" as const, label: "Publicações", icon: Send },
+            { id: "more" as const, label: "Mais", icon: MoreHorizontal },
+          ].map((item) => {
+            const Icon = item.icon;
+            const active = item.id === view;
+            return (
+              <button key={item.id} type="button" onClick={() => setView(item.id)} className={cn("flex flex-col items-center gap-1 rounded-xl px-2 py-2 text-xs font-medium", active ? "bg-primary/8 text-primary" : "text-muted-foreground hover:bg-muted/40 hover:text-foreground")}>
+                <Icon className="h-5 w-5" />{item.label}
+              </button>
+            );
+          })}
         </div>
-      </section>
+      </nav>
 
-      <section className="overflow-hidden rounded-2xl border border-border bg-card">
-        <button
-          type="button"
-          onClick={() => {
-            setShowAdvanced((value) => !value);
-            if (showAdvanced) setAdvancedSection(null);
-          }}
-          className="flex w-full items-center gap-3 px-4 py-4 text-left transition hover:bg-muted/40 sm:px-5"
-        >
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-foreground"><SlidersHorizontal className="h-5 w-5" /></div>
-          <div className="min-w-0 flex-1">
-            <p className="font-semibold text-foreground">Opções avançadas</p>
-            <p className="mt-0.5 text-sm text-muted-foreground">Direção visual, Dublê, geração de cena e padrão da marca.</p>
+      {view === "more" && (
+        <section id="video-studio-more" className="rounded-2xl border border-border bg-card p-4">
+          <div className="flex items-center gap-2"><Mic2 className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold text-foreground">Mais recursos</h2></div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <button type="button" onClick={() => navigate("/content-studio/video/legenda")} className="rounded-xl border border-border p-3 text-left text-sm font-medium hover:bg-muted/40">Legendas automáticas</button>
+            <button type="button" onClick={() => navigate("/content-studio/video/produto")} className="rounded-xl border border-border p-3 text-left text-sm font-medium hover:bg-muted/40">Vídeo de produto</button>
           </div>
-          <span className="hidden rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground sm:inline">Opcional</span>
-          {showAdvanced ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-        </button>
-
-        {showAdvanced && (
-          <div className="border-t border-border p-3 sm:p-4">
-            <div className="grid gap-2 md:grid-cols-2">
-              {ADVANCED_SECTIONS.map((item) => {
-                const Icon = item.icon;
-                const active = advancedSection === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => openAdvanced(item.id)}
-                    className={`rounded-2xl border p-4 text-left transition ${active ? "border-primary/40 bg-primary/[0.045]" : "border-border hover:bg-muted/40"}`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted text-foreground"><Icon className="h-4 w-4" /></div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-foreground">{item.title}</p>
-                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{item.description}</p>
-                      </div>
-                      <ArrowRight className={`mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform ${active ? "rotate-90" : ""}`} />
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {advancedSection && (
-              <div className="mt-4 border-t border-border pt-4">
-                <AdvancedPanel section={advancedSection} />
-              </div>
-            )}
-          </div>
-        )}
-      </section>
-
-      <section className="overflow-hidden rounded-2xl border border-border bg-card">
-        <button
-          type="button"
-          onClick={() => setShowTools((value) => !value)}
-          className="flex w-full items-center gap-3 px-4 py-4 text-left transition hover:bg-muted/40 sm:px-5"
-        >
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-foreground"><Settings2 className="h-5 w-5" /></div>
-          <div className="min-w-0 flex-1">
-            <p className="font-semibold text-foreground">Ferramentas específicas</p>
-            <p className="mt-0.5 text-sm text-muted-foreground">Editor, legendas, clipes, lote e recursos especializados.</p>
-          </div>
-          {showTools ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-        </button>
-
-        {showTools && (
-          <div className="grid gap-2 border-t border-border p-3 sm:p-4 md:grid-cols-2 xl:grid-cols-3">
-            {CARDS.map((card) => {
-              const Icon = card.icon;
-              return (
-                <button
-                  key={card.route}
-                  type="button"
-                  onClick={() => navigate(card.route)}
-                  className="group rounded-2xl border border-border p-4 text-left transition hover:border-primary/30 hover:bg-muted/40"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted text-foreground"><Icon className="h-4 w-4" /></div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-foreground">{card.title}</p>
-                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{card.description}</p>
-                      <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-primary">{card.action}<ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" /></span>
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </section>
+        </section>
+      )}
     </div>
   );
 }
