@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
 import { rateLimit } from "express-rate-limit";
-import { and, eq, inArray, desc, ilike, isNull, isNotNull, sql } from "drizzle-orm";
+import { and, eq, inArray, desc, ilike, isNull, isNotNull } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
@@ -54,7 +54,7 @@ import { reserveUniqueVehicle } from "../services/vehicle-reservation.js";
 import { reserveUniqueItem } from "../services/item-reservation.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 import { signAttachmentFolderUnlockToken } from "../lib/jwt.js";
-import { attachmentUnlockCookieName, normalizeAttachmentObjectPath, requestCanAccessLockedObject } from "../lib/attachment-folder-access.js";
+import { attachmentUnlockCookieName, requestCanAccessLockedObject, syncProtectedObjectsForLead } from "../lib/attachment-folder-access.js";
 
 const router: IRouter = Router();
 const attachmentUnlockLimiter = rateLimit({
@@ -730,7 +730,6 @@ router.put("/leads/:id/attachment-folder-lock", async (req, res) => {
     folderPath: attachmentFolderPathSchema,
     password: attachmentFolderPasswordSchema,
     unlockMinutes: z.number().int().min(1).max(240).optional().default(15),
-    objectPaths: z.array(z.string().max(1000)).max(500).optional().default([]),
   }).safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: "Informe uma pasta válida e uma senha com pelo menos 8 caracteres." });
@@ -772,29 +771,7 @@ router.put("/leads/:id/attachment-folder-lock", async (req, res) => {
     });
   }
 
-  const [savedLock] = await db
-    .select()
-    .from(attachmentFolderLocksTable)
-    .where(and(
-      eq(attachmentFolderLocksTable.tenantId, lead.tenantId),
-      eq(attachmentFolderLocksTable.leadId, lead.id),
-      eq(attachmentFolderLocksTable.folderPath, folderPath),
-    ))
-    .limit(1);
-
-  if (savedLock) {
-    await db.delete(attachmentFolderLockObjectsTable).where(eq(attachmentFolderLockObjectsTable.lockId, savedLock.id));
-    const objectPaths = [...new Set(parsed.data.objectPaths.map(normalizeAttachmentObjectPath).filter(Boolean))];
-    if (objectPaths.length) {
-      await db.insert(attachmentFolderLockObjectsTable).values(objectPaths.map((objectPath) => ({
-        tenantId: lead.tenantId,
-        leadId: lead.id,
-        lockId: savedLock.id,
-        folderPath,
-        objectPath,
-      })));
-    }
-  }
+  await syncProtectedObjectsForLead(lead.tenantId, lead.id);
 
   await db.insert(attachmentFolderAuditTable).values({
     tenantId: lead.tenantId,
@@ -907,50 +884,15 @@ router.post("/leads/:id/attachment-folder-lock/sync", async (req, res) => {
   if (!lead) return;
 
   const parsed = z.object({
-    folderPath: attachmentFolderPathSchema,
-    objectPaths: z.array(z.string().max(1000)).max(500),
-  }).safeParse(req.body);
+    folderPath: attachmentFolderPathSchema.optional(),
+  }).safeParse(req.body ?? {});
   if (!parsed.success) {
     res.status(422).json({ error: "Dados de sincronização inválidos." });
     return;
   }
-  const folderPath = parsed.data.folderPath.split("/").map((p) => p.trim()).filter(Boolean).join(" / ");
-  const [lock] = await db.select().from(attachmentFolderLocksTable).where(and(
-    eq(attachmentFolderLocksTable.tenantId, lead.tenantId),
-    eq(attachmentFolderLocksTable.leadId, lead.id),
-    eq(attachmentFolderLocksTable.folderPath, folderPath),
-  )).limit(1);
 
-  if (!lock) {
-    res.status(404).json({ error: "A pasta não está protegida." });
-    return;
-  }
-
-  const objectPaths = [...new Set(parsed.data.objectPaths.map(normalizeAttachmentObjectPath).filter(Boolean))];
-
-  if (objectPaths.length) {
-    const existingObjects = await db
-      .select({ objectPath: attachmentFolderLockObjectsTable.objectPath })
-      .from(attachmentFolderLockObjectsTable)
-      .where(eq(attachmentFolderLockObjectsTable.lockId, lock.id));
-    const existingSet = new Set(existingObjects.map((row) => row.objectPath));
-    const missing = objectPaths.filter((objectPath) => !existingSet.has(objectPath));
-    if (missing.length) {
-      await db.insert(attachmentFolderLockObjectsTable).values(missing.map((objectPath) => ({
-        tenantId: lead.tenantId,
-        leadId: lead.id,
-        lockId: lock.id,
-        folderPath,
-        objectPath,
-      })));
-    }
-  }
-
-  const [{ count }] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(attachmentFolderLockObjectsTable)
-    .where(eq(attachmentFolderLockObjectsTable.lockId, lock.id));
-  res.json({ folderPath, protectedObjects: Number(count ?? 0) });
+  await syncProtectedObjectsForLead(lead.tenantId, lead.id);
+  res.json({ synced: true, folderPath: parsed.data.folderPath ?? null });
 });
 
 router.post("/leads/:id/attachment-folder-lock/lock-now", async (req, res) => {
@@ -1072,6 +1014,10 @@ router.patch("/leads/:id", async (req, res) => {
     .set({ ...parsed.data, updatedAt: new Date() } as any)
     .where(eq(leadsTable.id, existing.id))
     .returning();
+
+  if ("discoveryData" in parsed.data) {
+    await syncProtectedObjectsForLead(existing.tenantId, existing.id);
+  }
 
   if ("assignedTo" in parsed.data && parsed.data.assignedTo && parsed.data.assignedTo !== existing.assignedTo) {
     recordResponsavelChange({
