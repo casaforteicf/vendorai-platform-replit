@@ -70,6 +70,13 @@ const PUBLIC_FIELDS = {
  * (zera lat/lng); chave ausente = não mexe no que já estava salvo.
  */
 async function resolveBaseAddressGeocode(req: any): Promise<{ leadAssignmentLat?: number | null; leadAssignmentLng?: number | null }> {
+  const directLat = Number(req.body?.leadAssignmentLat);
+  const directLng = Number(req.body?.leadAssignmentLng);
+  // Quando o usuário escolhe o ponto no mapa, as coordenadas do pino são a
+  // fonte mais precisa. Não geocodifique novamente o rótulo da cidade, pois
+  // isso deslocaria o ponto para o centro do município e alteraria o raio.
+  if (Number.isFinite(directLat) && Number.isFinite(directLng)) return {};
+
   const raw = req.body?.leadAssignmentBaseAddress;
   if (typeof raw !== "string") return {};
   const address = raw.trim();
