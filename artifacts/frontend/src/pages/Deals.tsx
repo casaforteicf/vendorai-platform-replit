@@ -208,6 +208,28 @@ function formatCurrency(value: string | null | undefined): string {
   return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+type StageResponsibleUser = {
+  id: string;
+  active?: boolean | null;
+  userFunction?: string | null;
+  customFunctionId?: string | null;
+};
+
+function isUserResponsibleForStage(
+  user: StageResponsibleUser,
+  stage?: Pick<PipelineStage, "responsaveisFuncoes"> | null,
+): boolean {
+  if (user.active !== true) return false;
+  const responsibleFunctions = stage?.responsaveisFuncoes ?? [];
+  if (responsibleFunctions.length === 0) return false;
+
+  const refs = new Set<string>();
+  if (user.userFunction) refs.add(`builtin:${user.userFunction}`);
+  if (user.customFunctionId) refs.add(`custom:${user.customFunctionId}`);
+
+  return responsibleFunctions.some((responsible) => refs.has(responsible));
+}
+
 // ─── Motivos de Perda Dialog ─────────────────────────────────────────────────
 
 function MotivosPerdaDialog({
@@ -1592,7 +1614,7 @@ function EditDealSheet({
     request: { headers: { Authorization: "Bearer " + (token ?? "") } },
     query: { enabled: !!tenantId && transferOpen, queryKey: getListTenantUsersQueryKey(tenantId) },
   });
-  const { data: transferStages = [] } = useQuery<Array<{ id: string; key: string; label: string; ordem?: number }>>({
+  const { data: transferStages = [] } = useQuery<Array<{ id: string; key: string; label: string; ordem?: number; responsaveisFuncoes?: string[] | null }>>({
     queryKey: ["pipeline-stages", tenantId, transferPipeline],
     enabled: Boolean(tenantId && token && transferOpen && transferPipeline),
     staleTime: 30_000,
@@ -1609,6 +1631,12 @@ function EditDealSheet({
     const firstStage = [...transferStages].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))[0];
     setTransferStage(firstStage?.key ?? "");
   }, [transferPipeline, transferStages]);
+
+  const transferTargetStage = transferStages.find((stage) => stage.key === transferStage);
+  const eligibleTransferUsers = useMemo(
+    () => transferUsers.filter((candidate) => isUserResponsibleForStage(candidate as StageResponsibleUser, transferTargetStage as PipelineStage | undefined)),
+    [transferUsers, transferTargetStage],
+  );
 
   async function transferToPipeline() {
     if (!deal || !transferPipeline || !transferStage || !transferResponsibleId || transferNote.trim().length < 5) {
@@ -2057,9 +2085,7 @@ function EditDealSheet({
                     <Select value={transferResponsibleId} onValueChange={setTransferResponsibleId}>
                       <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                       <SelectContent>
-                        {transferUsers
-                          .filter((u) => u.active === true)
-                          .map((u) => (
+                        {eligibleTransferUsers.map((u) => (
                           <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>
                         ))}
                       </SelectContent>
@@ -2505,12 +2531,21 @@ export default function Deals() {
     query: { enabled: !!tenantId, queryKey: getListTenantUsersQueryKey(tenantId), staleTime: 60_000, refetchOnWindowFocus: false },
   });
 
-  // Somente usuários ativos podem receber novas tarefas ou passagens.
-  // Mantemos tenantUsers completo no userMap para exibir corretamente
-  // responsáveis históricos que tenham sido desativados depois.
-  const eligibleResponsibleUsers = useMemo(
-    () => tenantUsers.filter((u) => u.active === true),
-    [tenantUsers],
+  // Novas tarefas/passagens só podem ser atribuídas a usuários ativos cuja
+  // função esteja configurada como responsável pela etapa de destino.
+  // tenantUsers completo permanece no mapa para preservar responsáveis históricos.
+  const qualifiedResponsibleUsers = useMemo(
+    () => tenantUsers.filter((candidate) => isUserResponsibleForStage(candidate as StageResponsibleUser, stagesByKey.qualificado)),
+    [tenantUsers, stagesByKey.qualificado],
+  );
+  const assignTargetStageKey = typeof assignDialog.updateData?.etapa === "string"
+    ? assignDialog.updateData.etapa
+    : null;
+  const assignResponsibleUsers = useMemo(
+    () => assignTargetStageKey
+      ? tenantUsers.filter((candidate) => isUserResponsibleForStage(candidate as StageResponsibleUser, stagesByKey[assignTargetStageKey]))
+      : [],
+    [tenantUsers, assignTargetStageKey, stagesByKey],
   );
 
   const userMap = new Map(tenantUsers.map((u) => [u.id, u.name || u.email || u.id]));
@@ -2706,7 +2741,7 @@ export default function Deals() {
     setReturnQualifiedReason("");
     setReturnQualifiedMissing("");
     const preferredResponsibleId = [deal.assignedTo, user?.id].find(
-      (candidateId) => candidateId && eligibleResponsibleUsers.some((candidate) => candidate.id === candidateId),
+      (candidateId) => candidateId && qualifiedResponsibleUsers.some((candidate) => candidate.id === candidateId),
     );
     setReturnQualifiedResponsibleId(preferredResponsibleId ?? "");
     setReturnQualifiedDueDate("");
@@ -2723,10 +2758,10 @@ export default function Deals() {
       !returnQualifiedDueDate
     ) return;
 
-    if (!eligibleResponsibleUsers.some((candidate) => candidate.id === returnQualifiedResponsibleId)) {
+    if (!qualifiedResponsibleUsers.some((candidate) => candidate.id === returnQualifiedResponsibleId)) {
       toast({
         title: "Responsável indisponível",
-        description: "Selecione uma pessoa ativa e habilitada para receber esta tarefa.",
+        description: "Selecione uma pessoa ativa configurada como responsável pela etapa Qualificado.",
         variant: "destructive",
       });
       return;
@@ -3584,7 +3619,7 @@ export default function Deals() {
                     <SelectValue placeholder="Selecione..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {eligibleResponsibleUsers.map((u) => (
+                    {qualifiedResponsibleUsers.map((u) => (
                       <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>
                     ))}
                   </SelectContent>
@@ -3711,7 +3746,7 @@ export default function Deals() {
             {assignDialog.deal?.titulo} — o prazo de resposta reinicia a partir de agora pra quem for escolhido.
           </p>
           <div className="space-y-1.5 max-h-72 overflow-y-auto">
-            {eligibleResponsibleUsers.some((candidate) => candidate.id === user?.id) && (
+            {assignResponsibleUsers.some((candidate) => candidate.id === user?.id) && (
               <Button
                 type="button"
                 variant="outline"
@@ -3721,7 +3756,7 @@ export default function Deals() {
                 Comigo mesmo
               </Button>
             )}
-            {eligibleResponsibleUsers
+            {assignResponsibleUsers
               .filter((u) => u.id !== user?.id)
               .map((u) => (
                 <Button
