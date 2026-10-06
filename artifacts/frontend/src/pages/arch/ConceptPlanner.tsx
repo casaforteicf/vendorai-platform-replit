@@ -1101,6 +1101,17 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [geometryImportState, setGeometryImportState] = useState<"idle" | "reading" | "review" | "applying" | "error" | "success">("idle");
   const [geometryImportMessage, setGeometryImportMessage] = useState<string | null>(null);
   const [geometryImportFile, setGeometryImportFile] = useState<File | null>(null);
+  const [geometryImportBackup, setGeometryImportBackup] = useState<{
+    floors: number;
+    rooms: Room[];
+    customWalls: CustomWall[];
+    customOpenings: CustomOpening[];
+    openingOverrides: Record<string, OpeningOverride>;
+    wallFirstFloors: number[];
+    spaceProfiles: SpaceProfile[];
+    wallMaterials: Record<string, string>;
+    objects: ConceptPlanObject[];
+  } | null>(null);
   const [geometryImportPreview, setGeometryImportPreview] = useState<{
     summary: {
       format: string;
@@ -5419,6 +5430,17 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       if (!confirmed) return;
     }
 
+    setGeometryImportBackup({
+      floors,
+      rooms: [...safeRooms],
+      customWalls: [...safeCustomWalls],
+      customOpenings: [...safeCustomOpenings],
+      openingOverrides: { ...openingOverrides },
+      wallFirstFloors: [...wallFirstFloors],
+      spaceProfiles: [...spaceProfiles],
+      wallMaterials: { ...wallMaterials },
+      objects: [...safeObjects],
+    });
     setGeometryImportState("applying");
     setGeometryImportMessage("Aplicando a geometria confirmada e preservando o arquivo original...");
     try {
@@ -5508,6 +5530,53 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     } catch (error) {
       setGeometryImportState("error");
       setGeometryImportMessage(error instanceof Error ? error.message : "Falha ao aplicar a geometria.");
+    }
+  };
+
+  const restoreGeometryBeforeImport = async () => {
+    const backup = geometryImportBackup;
+    if (!backup || projectMaster) return;
+
+    const confirmed = window.confirm(
+      "Restaurar a geometria que existia antes da última importação? O arquivo importado continuará preservado no histórico do projeto.",
+    );
+    if (!confirmed) return;
+
+    setGeometryImportState("applying");
+    setGeometryImportMessage("Restaurando a geometria anterior...");
+    try {
+      setFloors(backup.floors);
+      setActiveFloor(0);
+      setRooms(backup.rooms);
+      setCustomWalls(backup.customWalls);
+      setCustomOpenings(backup.customOpenings);
+      setOpeningOverrides(backup.openingOverrides);
+      setWallFirstFloors(backup.wallFirstFloors);
+      setSpaceProfiles(backup.spaceProfiles);
+      setWallMaterials(backup.wallMaterials);
+      setObjects(backup.objects);
+
+      const saved = await saveConcept(4, undefined, {
+        floors: backup.floors,
+        rooms: backup.rooms,
+        customWalls: backup.customWalls,
+        customOpenings: backup.customOpenings,
+        wallFirstFloors: backup.wallFirstFloors,
+        spaceProfiles: backup.spaceProfiles,
+        wallMaterials: backup.wallMaterials,
+        objects: backup.objects,
+      });
+      if (!saved) throw new Error("Não foi possível salvar a geometria restaurada.");
+
+      setGeometryImportPreview(null);
+      setGeometryImportFile(null);
+      setGeometryImportBackup(null);
+      setGeometryImportState("success");
+      setGeometryImportMessage("Geometria anterior restaurada. O arquivo importado foi mantido no histórico como fonte.");
+      window.setTimeout(() => setGeometryImportState("idle"), 6000);
+    } catch (error) {
+      setGeometryImportState("error");
+      setGeometryImportMessage(error instanceof Error ? error.message : "Falha ao restaurar a geometria anterior.");
     }
   };
 
@@ -10330,6 +10399,15 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       : "mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800"}
                   >
                     <div>{geometryImportMessage}</div>
+                    {geometryImportState === "success" && geometryImportBackup && (
+                      <button
+                        type="button"
+                        onClick={() => void restoreGeometryBeforeImport()}
+                        className="mt-2 rounded-lg border border-emerald-300 bg-white px-3 py-1.5 font-semibold text-emerald-900"
+                      >
+                        Restaurar geometria anterior
+                      </button>
+                    )}
                     {geometryImportState === "review" && geometryImportPreview && (
                       <div className="mt-3 flex flex-wrap items-center gap-2">
                         <button
