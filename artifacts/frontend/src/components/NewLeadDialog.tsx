@@ -41,10 +41,12 @@ import {
 import { useToast } from "@/hooks/use-toast";
 
 const newLeadSchema = z.object({
+  cadastroTipo: z.enum(["pessoa", "empresa"]).default("pessoa"),
   nome: z.string().trim().min(2, "Nome é obrigatório"),
   telefone: z.string().optional().or(z.literal("")),
   email: z.string().email("Email inválido").optional().or(z.literal("")),
   empresa: z.string().optional().or(z.literal("")),
+  empresaCnpj: z.string().optional().or(z.literal("")),
   objetivo: z.string().optional().or(z.literal("")),
   source: z.string().default("manual"),
   assignedTo: z.string().default("__auto__"),
@@ -111,10 +113,12 @@ type CouponValidation = {
 };
 
 const DEFAULT_VALUES: NewLeadValues = {
+  cadastroTipo: "pessoa",
   nome: "",
   telefone: "",
   email: "",
   empresa: "",
+  empresaCnpj: "",
   objetivo: "",
   source: "manual",
   assignedTo: "__auto__",
@@ -221,6 +225,7 @@ export function NewLeadDialog({
     defaultValues: DEFAULT_VALUES,
   });
 
+  const cadastroTipo = form.watch("cadastroTipo");
   const watchedPhone = form.watch("telefone");
   const watchedEmail = form.watch("email");
   const watchedDocument = form.watch("documento");
@@ -228,7 +233,6 @@ export function NewLeadDialog({
   const watchedCompany = form.watch("empresa");
   const watchedCoupon = form.watch("cupomCodigo");
   const createInitialDeal = form.watch("createInitialDeal");
-  const tipoPessoa = form.watch("tipoPessoa");
 
   const duplicateCandidate = useMemo(() => {
     const phone = digits(watchedPhone);
@@ -448,7 +452,88 @@ export function NewLeadDialog({
     }
   }
 
+
+  async function syncStructuredCrm(dealId: string | undefined, values: NewLeadValues) {
+    const headers = {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    let companyId: string | null = null;
+    if (values.cadastroTipo === "empresa" && values.empresa.trim()) {
+      const companyResponse = await fetch("/api/crm/companies/manual", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          tenantId,
+          razaoSocial: values.empresa.trim(),
+          nomeFantasia: values.empresa.trim(),
+          cnpj: values.empresaCnpj.trim() || undefined,
+        }),
+      });
+      const companyData = await companyResponse.json().catch(() => ({}));
+      if (!companyResponse.ok) throw new Error(companyData.error ?? "Não foi possível estruturar o cadastro da empresa.");
+      companyId = companyData.company?.id ?? null;
+    }
+
+    const personResponse = await fetch("/api/crm/people", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        tenantId,
+        nome: values.nome.trim(),
+        telefone: values.telefone || undefined,
+        email: values.email || undefined,
+        documento: values.documento || undefined,
+        source: values.source,
+      }),
+    });
+    const personData = await personResponse.json().catch(() => ({}));
+    if (!personResponse.ok) throw new Error(personData.error ?? "Não foi possível estruturar o cadastro da pessoa.");
+    const personId = personData.item?.id as string | undefined;
+
+    if (!dealId) return { personId, companyId };
+
+    if (companyId) {
+      const companyLinkResponse = await fetch(`/api/crm/deals/${dealId}/companies`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          tenantId,
+          companyId,
+          role: "contratante",
+          isPrimary: true,
+        }),
+      });
+      const companyLinkData = await companyLinkResponse.json().catch(() => ({}));
+      if (!companyLinkResponse.ok) throw new Error(companyLinkData.error ?? "Não foi possível vincular a empresa ao negócio.");
+    }
+
+    if (personId) {
+      const personLinkResponse = await fetch(`/api/crm/deals/${dealId}/people`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          tenantId,
+          personId,
+          role: values.cadastroTipo === "empresa" ? "contato_comercial" : "consumidor_final",
+          isPrimary: true,
+          contextualCompanyId: companyId,
+          relationshipScope: companyId ? "persistent" : "deal_only",
+        }),
+      });
+      const personLinkData = await personLinkResponse.json().catch(() => ({}));
+      if (!personLinkResponse.ok) throw new Error(personLinkData.error ?? "Não foi possível vincular a pessoa ao negócio.");
+    }
+
+    return { personId, companyId };
+  }
+
   async function onSubmit(values: NewLeadValues) {
+    if (values.cadastroTipo === "empresa" && values.empresa.trim().length < 2) {
+      form.setError("empresa", { message: "Informe a empresa" });
+      return;
+    }
     if (duplicateCandidate) {
       toast({
         title: "Contato já cadastrado",
@@ -486,7 +571,7 @@ export function NewLeadDialog({
           nome: submissionValues.nome.trim(),
           telefone: submissionValues.telefone || null,
           email: submissionValues.email || null,
-          empresa: submissionValues.empresa || null,
+          empresa: submissionValues.cadastroTipo === "empresa" ? (submissionValues.empresa || null) : null,
           objetivo: submissionValues.objetivo || null,
           source: coupon ? "indicacao" : submissionValues.source,
           indicadoPor: coupon?.partnerId,
@@ -496,7 +581,7 @@ export function NewLeadDialog({
           profissao: submissionValues.profissao || null,
           endereco: submissionValues.endereco || null,
           documento: submissionValues.documento || null,
-          tipoPessoa: submissionValues.tipoPessoa,
+          tipoPessoa: "fisica",
           mercadoSegmento: submissionValues.mercadoSegmento || null,
           metadata: coupon
             ? {
@@ -515,6 +600,8 @@ export function NewLeadDialog({
       if (!leadId) throw new Error("O contato foi criado sem identificador válido.");
 
       const deal = await syncInitialDeal(leadId, submissionValues);
+      const dealId = (deal as { id?: string } | null | undefined)?.id;
+      await syncStructuredCrm(dealId, submissionValues);
       queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
       queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
       queryClient.invalidateQueries({ queryKey: ["leads-overview-context", tenantId] });
@@ -529,7 +616,6 @@ export function NewLeadDialog({
       });
 
       closeAndReset();
-      const dealId = (deal as { id?: string } | null | undefined)?.id;
       if (dealId) onNavigate(`/trabalho/${leadId}?dealId=${encodeURIComponent(dealId)}`);
     } catch (error: any) {
       if (error?.status === 409 && error?.data?.isDuplicate && error?.data?.lead) {
@@ -567,7 +653,7 @@ export function NewLeadDialog({
         <DialogHeader>
           <DialogTitle>Novo lead</DialogTitle>
           <p className="text-sm text-muted-foreground">
-            Cadastre o contato uma única vez. Depois, o mesmo contato pode ter vários negócios simultâneos.
+            Cadastre uma pessoa ou uma empresa. Empresas podem ter vários contatos e cada negócio pode ter envolvidos diferentes.
           </p>
         </DialogHeader>
 
@@ -575,8 +661,88 @@ export function NewLeadDialog({
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
             <section className="space-y-3">
               <div>
-                <p className="text-sm font-semibold">Contato</p>
-                <p className="text-xs text-muted-foreground">Dados essenciais para identificar e falar com a pessoa.</p>
+                <p className="text-sm font-semibold">Quem é o cliente?</p>
+                <p className="text-xs text-muted-foreground">A empresa não substitui a pessoa de contato. Um consumidor final pode ser cadastrado sem empresa.</p>
+              </div>
+              <FormField
+                control={form.control}
+                name="cadastroTipo"
+                render={({ field }) => (
+                  <FormItem>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        type="button"
+                        variant={field.value === "pessoa" ? "default" : "outline"}
+                        className="h-auto justify-start py-3 text-left"
+                        onClick={() => {
+                          field.onChange("pessoa");
+                          form.setValue("empresa", "");
+                          form.setValue("empresaCnpj", "");
+                        }}
+                      >
+                        <span><span className="block font-semibold">Pessoa / consumidor final</span><span className="block text-xs opacity-80">Cliente direto, sem empresa obrigatória</span></span>
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={field.value === "empresa" ? "default" : "outline"}
+                        className="h-auto justify-start py-3 text-left"
+                        onClick={() => field.onChange("empresa")}
+                      >
+                        <span><span className="block font-semibold">Empresa</span><span className="block text-xs opacity-80">PJ com um ou vários contatos</span></span>
+                      </Button>
+                    </div>
+                  </FormItem>
+                )}
+              />
+            </section>
+
+            {cadastroTipo === "empresa" && (
+              <section className="space-y-3 rounded-lg border bg-muted/20 p-4">
+                <div>
+                  <p className="text-sm font-semibold">Empresa</p>
+                  <p className="text-xs text-muted-foreground">Cadastro da organização. A pessoa responsável será informada logo abaixo.</p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FormField
+                    control={form.control}
+                    name="empresa"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Nome da empresa *</FormLabel>
+                        <FormControl><Input placeholder={companyPlaceholder || "Razão social ou nome fantasia"} {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="empresaCnpj"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>CNPJ</FormLabel>
+                        <FormControl><Input placeholder="00.000.000/0000-00" {...field} /></FormControl>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="mercadoSegmento"
+                    render={({ field }) => (
+                      <FormItem className="sm:col-span-2">
+                        <FormLabel>Segmento</FormLabel>
+                        <FormControl><Input placeholder="Ex.: Construção, varejo, clínica" {...field} /></FormControl>
+                        <p className="text-[11px] text-muted-foreground">Usado nos filtros, inteligência comercial e distribuição de leads.</p>
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </section>
+            )}
+
+            <section className="space-y-3">
+              <div>
+                <p className="text-sm font-semibold">{cadastroTipo === "empresa" ? "Pessoa de contato" : "Pessoa / consumidor final"}</p>
+                <p className="text-xs text-muted-foreground">{cadastroTipo === "empresa" ? "Toda empresa precisa de uma pessoa real para o atendimento. Depois você poderá adicionar outros contatos." : "Dados essenciais do cliente direto."}</p>
               </div>
               <FormField
                 control={form.control}
@@ -617,40 +783,9 @@ export function NewLeadDialog({
 
             <section className="space-y-3 border-t pt-4">
               <div>
-                <p className="text-sm font-semibold">Empresa e origem</p>
-                <p className="text-xs text-muted-foreground">Ajuda a atribuir, medir e contextualizar o lead desde a entrada.</p>
+                <p className="text-sm font-semibold">Origem e atendimento</p>
+                <p className="text-xs text-muted-foreground">Origem, indicação e responsável pelo atendimento.</p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <FormField
-                  control={form.control}
-                  name="empresa"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Empresa</FormLabel>
-                      <FormControl><Input placeholder={companyPlaceholder || "Nome da empresa"} {...field} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="mercadoSegmento"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Segmento</FormLabel>
-                      <FormControl>
-                        <Input
-                          data-testid="input-mercado-segmento"
-                          placeholder="Ex.: Clínica odontológica, construção, varejo"
-                          {...field}
-                        />
-                      </FormControl>
-                      <p className="text-[11px] text-muted-foreground">Atividade principal do cliente; usada nos filtros e na distribuição comercial.</p>
-                    </FormItem>
-                  )}
-                />
-              </div>
-
               <FormField
                 control={form.control}
                 name="source"
@@ -769,27 +904,11 @@ export function NewLeadDialog({
               <section className="grid gap-3 rounded-lg border bg-muted/20 p-4 sm:grid-cols-2">
                 <FormField
                   control={form.control}
-                  name="tipoPessoa"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Tipo de pessoa</FormLabel>
-                      <Select value={field.value} onValueChange={field.onChange}>
-                        <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                        <SelectContent>
-                          <SelectItem value="fisica">Pessoa física</SelectItem>
-                          <SelectItem value="juridica">Pessoa jurídica</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
                   name="documento"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{tipoPessoa === "juridica" ? "CNPJ" : "CPF"}</FormLabel>
-                      <FormControl><Input placeholder={tipoPessoa === "juridica" ? "00.000.000/0000-00" : "000.000.000-00"} {...field} /></FormControl>
+                      <FormLabel>CPF / documento da pessoa</FormLabel>
+                      <FormControl><Input placeholder="000.000.000-00" {...field} /></FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
