@@ -14,12 +14,26 @@ export function ClientPortalPreview({
   return (
     <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
       <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Preview cliente</p>
-      <h2 className="mt-1 text-xl font-semibold text-slate-950">Como a proposta aparece no portal</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="mt-1 text-xl font-semibold text-slate-950">Como a proposta aparece no portal</h2>
+        <button
+          type="button"
+          onClick={() => window.print()}
+          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+        >
+          Imprimir / salvar PDF
+        </button>
+      </div>
 
       <div className="mt-5 overflow-hidden rounded-[30px] border border-slate-200 bg-white">
-        <div className="bg-slate-950 p-6 text-white">
-          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-300">ARQDOR.ai</p>
-          <h3 className="mt-2 text-2xl font-semibold">{proposal?.title || "Proposta"}</h3>
+        <div className="bg-slate-950 p-6 text-white" style={proposal?.tenantPrimaryColor ? { backgroundColor: proposal.tenantPrimaryColor } : undefined}>
+          <div className="flex items-center gap-3">
+            {proposal?.tenantLogoUrl ? (
+              <img src={proposal.tenantLogoUrl} alt={proposal.tenantName || "Logo"} className="h-10 max-w-[180px] object-contain object-left" />
+            ) : null}
+            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-white/75">{proposal?.tenantName || "ARQDOR.ai"}</p>
+          </div>
+          <h3 className="mt-3 text-2xl font-semibold">{proposal?.title || "Proposta"}</h3>
           <p className="mt-1 text-sm text-slate-300">Cliente: {proposal?.clientName || "-"}</p>
           {proposal ? (
             <span className={`mt-4 inline-flex rounded-full px-3 py-1 text-xs font-semibold ${proposalStatusClass(proposal.status)}`}>
@@ -37,6 +51,23 @@ export function ClientPortalPreview({
                     <p className="font-semibold text-slate-950">{item.item}</p>
                     <p className="mt-1 text-sm text-slate-500">{item.description || ""}</p>
                     <p className="mt-1 text-xs text-slate-500">{item.quantity} {item.unit}</p>
+                    {(item.productName || item.materialName || item.manufacturerName) ? (
+                      <p className="mt-1 text-xs text-slate-600">
+                        {[item.productName, item.materialName, item.manufacturerName].filter(Boolean).join(" · ")}
+                      </p>
+                    ) : null}
+                    {(item.areaM2 || item.lengthMm || item.widthMm || item.heightMm || item.depthMm) ? (
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        {[
+                          item.areaM2 ? `${item.areaM2} m²` : null,
+                          item.lengthMm ? `C ${item.lengthMm} mm` : null,
+                          item.widthMm ? `L ${item.widthMm} mm` : null,
+                          item.heightMm ? `A ${item.heightMm} mm` : null,
+                          item.depthMm ? `P ${item.depthMm} mm` : null,
+                        ].filter(Boolean).join(" · ")}
+                        {item.projectRevision ? ` · revisão ${item.projectRevision}` : ""}
+                      </p>
+                    ) : null}
                   </div>
 
                   <div className="text-left md:text-right">
@@ -50,11 +81,9 @@ export function ClientPortalPreview({
             ))}
           </div>
 
-          <div className="ml-auto mt-6 max-w-sm space-y-2">
-            <Line label="Subtotal" value={money(proposal?.subtotal)} />
-            <Line label="Desconto" value={`- ${money(proposal?.discountTotal)}`} />
+          <div className="ml-auto mt-6 max-w-sm">
             <div className="flex justify-between border-t border-slate-200 pt-3 text-lg font-semibold text-slate-950">
-              <span>Total</span>
+              <span>Total da proposta</span>
               <span>{money(proposal?.grandTotal)}</span>
             </div>
           </div>
