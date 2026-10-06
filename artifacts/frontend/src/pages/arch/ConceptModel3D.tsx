@@ -93,7 +93,19 @@ type Props = {
     position: { x: number; y: number; z: number };
     target: { x: number; y: number; z: number };
   }) => void;
-  onRenderView?: (lightingMode: "day" | "sunset" | "night", renderView: "interior" | "exterior") => void;
+  onRenderView?: (
+    lightingMode: "day" | "sunset" | "night",
+    renderView: "interior" | "exterior",
+    provenance?: {
+      sceneId?: string | null;
+      sceneName?: string | null;
+      cameraSnapshot?: {
+        floor?: number;
+        position: { x: number; y: number; z: number };
+        target: { x: number; y: number; z: number };
+      } | null;
+    },
+  ) => void;
 };
 
 type Point3 = { x: number; y: number; z: number };
@@ -616,6 +628,10 @@ export default function ConceptModel3D({
   const [walkResetToken, setWalkResetToken] = useState(0);
   const [cameraSnapshotToken, setCameraSnapshotToken] = useState(0);
   const [pendingSavedScene, setPendingSavedScene] = useState(false);
+  const [pendingRenderRequest, setPendingRenderRequest] = useState<null | {
+    lightingMode: "day" | "sunset" | "night";
+    renderView: "interior" | "exterior";
+  }>(null);
   const [activeSavedSceneId, setActiveSavedSceneId] = useState<string | null>(null);
   const [panoramaExportToken, setPanoramaExportToken] = useState(0);
   const [panoramaExportState, setPanoramaExportState] = useState<"idle" | "exporting" | "error">("idle");
@@ -714,18 +730,45 @@ export default function ConceptModel3D({
     position: { x: number; y: number; z: number };
     target: { x: number; y: number; z: number };
   }) => {
-    if (!pendingSavedScene) return;
-    const point = {
-      id: `scene-${Date.now()}`,
-      name: `Cena ${savedTourPoints.length + 1}`,
-      floor: activeFloor,
-      position: snapshot.position,
-      target: snapshot.target,
-    };
-    onSavedTourPointsChange?.([...savedTourPoints, point]);
-    setActiveSavedSceneId(point.id);
-    setPendingSavedScene(false);
-    setNavigationMode("orbit");
+    if (pendingSavedScene) {
+      const point = {
+        id: `scene-${Date.now()}`,
+        name: `Cena ${savedTourPoints.length + 1}`,
+        floor: activeFloor,
+        position: snapshot.position,
+        target: snapshot.target,
+      };
+      onSavedTourPointsChange?.([...savedTourPoints, point]);
+      setActiveSavedSceneId(point.id);
+      setPendingSavedScene(false);
+      setNavigationMode("orbit");
+    }
+
+    if (pendingRenderRequest) {
+      onRenderView?.(
+        pendingRenderRequest.lightingMode,
+        pendingRenderRequest.renderView,
+        {
+          sceneId: activeSavedScene?.id ?? null,
+          sceneName: activeSavedScene?.name ?? null,
+          cameraSnapshot: {
+            floor: activeFloor,
+            position: snapshot.position,
+            target: snapshot.target,
+          },
+        },
+      );
+      setPendingRenderRequest(null);
+    }
+  };
+
+  const requestRenderFromCurrentCamera = (
+    nextLightingMode: "day" | "sunset" | "night",
+    nextRenderView: "interior" | "exterior",
+  ) => {
+    if (!webglReady || pendingRenderRequest) return;
+    setPendingRenderRequest({ lightingMode: nextLightingMode, renderView: nextRenderView });
+    setCameraSnapshotToken((value) => value + 1);
   };
 
   const resetCamera = () => {
@@ -1473,7 +1516,10 @@ export default function ConceptModel3D({
           {onRenderView && (
             <button
               type="button"
-              onClick={() => onRenderView(lightingMode, interiorMode ? "interior" : "exterior")}
+              onClick={() => requestRenderFromCurrentCamera(
+                lightingMode,
+                interiorMode ? "interior" : "exterior",
+              )}
               className="flex items-center gap-2 rounded-lg bg-orange-500 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-orange-600"
             >
               <Sparkles className="h-4 w-4" />

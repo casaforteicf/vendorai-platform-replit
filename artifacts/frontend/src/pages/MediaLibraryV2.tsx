@@ -30,6 +30,7 @@ type MediaAsset = {
   type: MediaType;
   role?: string | null;
   storageUrl: string;
+  accessUrl?: string | null;
   mimeType?: string | null;
   fileSize?: number | null;
   originalFilename?: string | null;
@@ -123,8 +124,12 @@ function friendlyName(asset: MediaAsset) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function assetAccessUrl(asset: MediaAsset) {
+  return asset.accessUrl || mediaUrl(asset.storageUrl);
+}
+
 function Preview({ asset, className = "" }: { asset: MediaAsset; className?: string }) {
-  const url = mediaUrl(asset.storageUrl);
+  const url = assetAccessUrl(asset);
   if (asset.type === "image") return <img src={url} alt={friendlyName(asset)} className={`h-full w-full object-cover ${className}`} />;
   if (asset.type === "video") return <video src={url} muted playsInline preload="metadata" className={`h-full w-full object-cover ${className}`} />;
   if (asset.type === "audio") return <div className={`flex h-full w-full items-center justify-center bg-slate-950 text-white ${className}`}><AudioLines className="h-12 w-12" /></div>;
@@ -396,7 +401,7 @@ export default function MediaLibraryV2() {
               <div><h2 className="break-words text-lg font-semibold">{friendlyName(inspected)}</h2><p className="mt-1 text-xs text-muted-foreground">{label(inspected.type)} · {bytes(inspected.fileSize)} · {inspected.createdAt ? new Date(inspected.createdAt).toLocaleDateString("pt-BR") : ""}</p><p className="mt-1 truncate text-[10px] text-muted-foreground">Arquivo: {inspected.originalFilename || "—"}</p></div>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => void patchAsset(inspected, { aiUsage: isAiApproved(inspected) ? "manual" : "approved", aiCollection: isAiApproved(inspected) ? "" : "Base IA da Empresa" })} className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl text-sm font-semibold ${isAiApproved(inspected) ? "border border-emerald-200 bg-emerald-50 text-emerald-700" : "bg-orange-500 text-white"}`}><Sparkles className="h-4 w-4" />{isAiApproved(inspected) ? "Na Base IA" : "Usar na IA"}</button>
-                <a href={mediaUrl(inspected.storageUrl)} download={inspected.originalFilename ?? undefined} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-medium"><Download className="h-4 w-4" />Baixar</a>
+                <a href={assetAccessUrl(inspected)} download={inspected.originalFilename ?? undefined} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-medium"><Download className="h-4 w-4" />Baixar</a>
                 <button type="button" onClick={() => void patchAsset(inspected, { favorite: !isFavorite(inspected) })} className={`col-span-2 inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-medium ${isFavorite(inspected) ? "text-amber-600" : ""}`}><Star className="h-4 w-4" />{isFavorite(inspected) ? "Favorito" : "Adicionar aos favoritos"}</button>
                 <button type="button" onClick={() => setMoveFolderOpen((value) => !value)} className="col-span-2 inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-medium hover:bg-muted/50"><Folder className="h-4 w-4" />Mover para pasta</button>
               </div>

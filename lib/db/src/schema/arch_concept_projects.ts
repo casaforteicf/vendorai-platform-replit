@@ -158,6 +158,9 @@ export type ArchConceptRoom = {
   y: number;
   locked?: boolean;
   floorMaterialId?: string;
+  poolDepthM?: number;
+  stairRiserCount?: number;
+  stairTreadDepthM?: number;
 };
 
 export type ArchConceptOpeningOverride = Record<

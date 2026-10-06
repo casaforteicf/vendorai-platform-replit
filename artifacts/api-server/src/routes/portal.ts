@@ -20,8 +20,10 @@ import {
   DEFAULT_OBRA_PORTAL_CONFIG,
   type ObraPortalConfig,
 } from "@workspace/db";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 
 const router = Router();
+const portalStorage = new ObjectStorageService();
 
 function portalConfig(raw: unknown): ObraPortalConfig {
   const value = raw && typeof raw === "object" ? raw as Partial<ObraPortalConfig> : {};
@@ -30,7 +32,22 @@ function portalConfig(raw: unknown): ObraPortalConfig {
 
 function portalBearer(req: any) {
   const header = String(req.headers?.authorization ?? "");
-  return header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  if (header.startsWith("Bearer ")) return header.slice(7).trim();
+
+  const cookieHeader = String(req.headers?.cookie ?? "");
+  const sessionCookie = cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith("vendorai_obra_portal_session="));
+  return sessionCookie ? decodeURIComponent(sessionCookie.split("=").slice(1).join("=")) : "";
+}
+
+function setPortalSessionCookie(res: any, token: string) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  res.setHeader(
+    "Set-Cookie",
+    `vendorai_obra_portal_session=${encodeURIComponent(token)}; Path=/api/portal/obra/; HttpOnly; SameSite=Lax; Max-Age=2592000${secure}`,
+  );
 }
 
 function hashPortalToken(token: string) {
@@ -60,6 +77,45 @@ async function createPortalSession(userId: string) {
     [crypto.randomUUID(), userId, hashPortalToken(raw)],
   );
   return raw;
+}
+
+function portalObjectPath(value: unknown): string | null {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  if (raw.startsWith("/objects/")) return raw;
+  if (raw.startsWith("/api/storage/objects/")) {
+    return `/objects/${raw.slice("/api/storage/objects/".length)}`;
+  }
+  try {
+    const parsed = new URL(raw);
+    if (parsed.pathname.startsWith("/api/storage/objects/")) {
+      return `/objects/${parsed.pathname.slice("/api/storage/objects/".length)}`;
+    }
+    if (parsed.pathname.startsWith("/objects/")) return parsed.pathname;
+  } catch {
+    // not an absolute URL
+  }
+  return null;
+}
+
+async function requirePortalAssetAccess(req: any, res: any, obra: any, config: ObraPortalConfig) {
+  if (!config.requireLogin) return true;
+  const user = await resolvePortalUser(req, obra.id);
+  if (user) return true;
+  res.status(401).send("Faça login para acessar este arquivo.");
+  return false;
+}
+
+async function streamPortalObject(res: any, value: unknown) {
+  const objectPath = portalObjectPath(value);
+  if (!objectPath) return false;
+  const file = await portalStorage.getObjectEntityFile(objectPath);
+  const objectResponse = await portalStorage.downloadObject(file, 300);
+  objectResponse.headers.forEach((headerValue, key) => res.setHeader(key, headerValue));
+  res.setHeader("Cache-Control", "private, max-age=300");
+  res.status(objectResponse.status);
+  res.send(Buffer.from(await objectResponse.arrayBuffer()));
+  return true;
 }
 
 async function getArqdorPortalProject(token: string) {
@@ -95,7 +151,16 @@ router.get("/portal/arqdor/:token/versions", async (req, res) => {
     eq(archAiRendersTable.status, "concluido"),
   )).orderBy(asc(archAiRendersTable.createdAt));
 
-  const numbered = versions.map((version, index) => ({ ...version, versionNumber: index + 1 }));
+  const numbered = versions.map((version, index) => ({
+    ...version,
+    resultImageUrl: version.resultImageUrl
+      ? `/api/portal/arqdor/${encodeURIComponent(token)}/renders/${encodeURIComponent(version.id)}/result`
+      : null,
+    originalImageUrl: version.originalImageUrl
+      ? `/api/portal/arqdor/${encodeURIComponent(token)}/renders/${encodeURIComponent(version.id)}/original`
+      : null,
+    versionNumber: index + 1,
+  }));
   const byEnvironment = numbered.reduce<Record<string, typeof numbered>>((acc, version) => {
     const key = version.ambiente || "sem_ambiente";
     (acc[key] ??= []).push(version);
@@ -103,6 +168,39 @@ router.get("/portal/arqdor/:token/versions", async (req, res) => {
   }, {});
 
   return res.json({ project: { id: project.id, title: project.titulo, clientName: project.clienteNome }, versions: numbered, byEnvironment });
+});
+
+router.get("/portal/arqdor/:token/renders/:renderId/:variant", async (req, res, next) => {
+  try {
+    const token = String(req.params.token ?? "");
+    const renderId = String(req.params.renderId ?? "");
+    const variant = String(req.params.variant ?? "");
+    if (!["result","original"].includes(variant)) return res.status(404).send("Arquivo não encontrado.");
+
+    const project = await getArqdorPortalProject(token);
+    if (!project) return res.status(404).send("Portal não encontrado ou inativo.");
+
+    const [render] = await db.select({
+      id: archAiRendersTable.id,
+      resultImageUrl: archAiRendersTable.resultImageUrl,
+      originalImageUrl: archAiRendersTable.originalImageUrl,
+      status: archAiRendersTable.status,
+    }).from(archAiRendersTable).where(and(
+      eq(archAiRendersTable.id, renderId),
+      eq(archAiRendersTable.tenantId, project.tenantId),
+      eq(archAiRendersTable.projectId, project.id),
+    )).limit(1);
+
+    if (!render || render.status !== "concluido") return res.status(404).send("Render não encontrado.");
+    const source = variant === "original" ? render.originalImageUrl : render.resultImageUrl;
+    if (!source) return res.status(404).send("Arquivo não encontrado.");
+
+    if (await streamPortalObject(res, source)) return;
+    if (/^https:\/\//i.test(String(source))) return res.redirect(302, String(source));
+    return res.status(404).send("Arquivo não disponível.");
+  } catch (err) {
+    next(err);
+  }
 });
 
 router.post("/portal/arqdor/:token/revisions", async (req, res) => {
@@ -180,6 +278,7 @@ router.post("/portal/obra/:token/register", async (req, res) => {
     [userId, obra.tenantId, obra.id, nome, email, telefone, passwordHash],
   );
   const sessionToken = await createPortalSession(userId);
+  setPortalSessionCookie(res, sessionToken);
   return res.status(201).json({ token: sessionToken, user: { id: userId, nome, email, telefone } });
 });
 
@@ -200,6 +299,7 @@ router.post("/portal/obra/:token/login", async (req, res) => {
   }
   await pool.query(`UPDATE obra_portal_users SET ultimo_login_em=now(), updated_at=now() WHERE id=$1`, [user.id]);
   const sessionToken = await createPortalSession(user.id);
+  setPortalSessionCookie(res, sessionToken);
   return res.json({ token: sessionToken, user: { id: user.id, nome: user.nome, email: user.email, telefone: user.telefone } });
 });
 
@@ -327,11 +427,27 @@ router.get("/portal/obra/:token", async (req, res) => {
     diario = await db.select().from(obraDiarioTable)
       .where(and(eq(obraDiarioTable.obraId, obra.id), eq(obraDiarioTable.status, "aprovado")))
       .orderBy(desc(obraDiarioTable.data)).limit(12);
-    if (!config.showDiaryPhotos) diario = diario.map((entry) => ({
+
+    diario = diario.map((entry: any) => ({
       ...entry,
-      fotos: [],
-      videos: [],
-      anexos: config.showDocuments ? entry.anexos : [],
+      fotos: config.showDiaryPhotos
+        ? (Array.isArray(entry.fotos) ? entry.fotos : []).map((foto: any, index: number) => ({
+            ...foto,
+            url: `/api/portal/obra/${encodeURIComponent(String(token))}/diary/${encodeURIComponent(String(entry.id))}/foto/${index}`,
+          }))
+        : [],
+      videos: config.showDiaryPhotos
+        ? (Array.isArray(entry.videos) ? entry.videos : []).map((video: any, index: number) => ({
+            ...video,
+            url: `/api/portal/obra/${encodeURIComponent(String(token))}/diary/${encodeURIComponent(String(entry.id))}/video/${index}`,
+          }))
+        : [],
+      anexos: config.showDocuments
+        ? (Array.isArray(entry.anexos) ? entry.anexos : []).map((anexo: any, index: number) => ({
+            ...anexo,
+            url: `/api/portal/obra/${encodeURIComponent(String(token))}/diary/${encodeURIComponent(String(entry.id))}/anexo/${index}`,
+          }))
+        : [],
     }));
   }
 
@@ -525,7 +641,7 @@ router.get("/portal/obra/:token", async (req, res) => {
         .map((item: any) => ({
           id: `financeiro-${item.id}`,
           nome: item.descricao ?? item.numero ?? item.tipo ?? "Documento financeiro",
-          url: item.documento_url,
+          url: `/api/portal/obra/${encodeURIComponent(String(token))}/financial/${encodeURIComponent(String(item.id))}/document`,
           mimeType: null,
           data: item.data_emissao ?? item.data_vencimento ?? null,
           tipo: "financeiro",
@@ -542,7 +658,14 @@ router.get("/portal/obra/:token", async (req, res) => {
       totalLancado: config.showFinancialDetails ? totalLancado : null,
       totalPago: config.showFinancialDetails ? totalPago : null,
       totalPendente: config.showFinancialDetails ? totalPendente : null,
-      lancamentos: config.showFinancialDetails ? lancamentos : [],
+      lancamentos: config.showFinancialDetails
+        ? lancamentos.map((item: any) => ({
+            ...item,
+            documento_url: item.documento_url
+              ? `/api/portal/obra/${encodeURIComponent(String(token))}/financial/${encodeURIComponent(String(item.id))}/document`
+              : null,
+          }))
+        : [],
     };
   }
 
@@ -573,7 +696,10 @@ router.get("/portal/obra/:token", async (req, res) => {
           LIMIT 40`,
         [project.id, obra.tenantId],
       );
-      galeriaProjeto = renders.rows;
+      galeriaProjeto = renders.rows.map((render: any) => ({
+        ...render,
+        result_image_url: `/api/portal/obra/${encodeURIComponent(String(token))}/renders/${encodeURIComponent(String(render.id))}`,
+      }));
     }
   }
 
@@ -687,7 +813,10 @@ router.get("/portal/obra/:token", async (req, res) => {
           WHERE obra_id=$1 AND tenant_id=$2 AND publicado_cliente=true
           ORDER BY categoria ASC, created_at DESC`,
         [obra.id, obra.tenantId],
-      )).rows
+      )).rows.map((item: any) => ({
+        ...item,
+        url: `/api/portal/obra/${encodeURIComponent(String(token))}/documents/${encodeURIComponent(String(item.id))}`,
+      }))
     : [];
 
   const contracts = config.showContracts ? privateDocuments.filter((item: any) => item.categoria === "contrato") : [];
@@ -701,7 +830,12 @@ router.get("/portal/obra/:token", async (req, res) => {
           WHERE obra_id=$1 AND tenant_id=$2 AND tipo='nota_fiscal'
           ORDER BY data_emissao DESC NULLS LAST, created_at DESC LIMIT 100`,
         [obra.id, obra.tenantId],
-      )).rows
+      )).rows.map((item: any) => ({
+        ...item,
+        documento_url: item.documento_url
+          ? `/api/portal/obra/${encodeURIComponent(String(token))}/invoices/${encodeURIComponent(String(item.id))}/document`
+          : null,
+      }))
     : [];
 
   const supportTickets = (authenticated && config.showSupport)
@@ -779,6 +913,184 @@ router.get("/portal/obra/:token", async (req, res) => {
     supportTickets,
     chatMessages,
   });
+});
+
+router.get("/portal/obra/:token/renders/:renderId", async (req, res, next) => {
+  try {
+    const token = String(req.params.token ?? "");
+    const renderId = String(req.params.renderId ?? "");
+    const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
+    if (!obra) return res.status(404).send("Portal não encontrado.");
+
+    const config = portalConfig(obra.portalConfig);
+    if (!(await requirePortalAssetAccess(req, res, obra, config))) return;
+    if (!config.showProjectGallery) return res.status(403).send("Galeria não publicada.");
+
+    const projectResult = await pool.query(
+      `SELECT id
+         FROM arch_projetos
+        WHERE obra_id=$1 AND tenant_id=$2
+        ORDER BY updated_at DESC
+        LIMIT 1`,
+      [obra.id, obra.tenantId],
+    );
+    const project = projectResult.rows[0];
+    if (!project) return res.status(404).send("Projeto não encontrado.");
+
+    const [render] = await db.select({
+      id: archAiRendersTable.id,
+      resultImageUrl: archAiRendersTable.resultImageUrl,
+      status: archAiRendersTable.status,
+      approvedAt: archAiRendersTable.approvedAt,
+    }).from(archAiRendersTable).where(and(
+      eq(archAiRendersTable.id, renderId),
+      eq(archAiRendersTable.tenantId, obra.tenantId),
+      eq(archAiRendersTable.projectId, project.id),
+    )).limit(1);
+
+    if (!render || render.status !== "concluido" || !render.approvedAt || !render.resultImageUrl) {
+      return res.status(404).send("Render não publicado.");
+    }
+
+    if (await streamPortalObject(res, render.resultImageUrl)) return;
+    if (/^https:\/\//i.test(String(render.resultImageUrl))) return res.redirect(302, String(render.resultImageUrl));
+    return res.status(404).send("Arquivo não disponível.");
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/portal/obra/:token/diary/:entryId/:kind/:index", async (req, res, next) => {
+  try {
+    const token = String(req.params.token ?? "");
+    const entryId = String(req.params.entryId ?? "");
+    const kind = String(req.params.kind ?? "");
+    const index = Number(req.params.index);
+    if (!["foto","video","anexo"].includes(kind) || !Number.isInteger(index) || index < 0) {
+      return res.status(404).send("Arquivo não encontrado.");
+    }
+
+    const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
+    if (!obra) return res.status(404).send("Portal não encontrado.");
+    const config = portalConfig(obra.portalConfig);
+    if (!(await requirePortalAssetAccess(req, res, obra, config))) return;
+    if ((kind === "foto" || kind === "video") && !config.showDiaryPhotos) return res.status(403).send("Mídia não publicada.");
+    if (kind === "anexo" && !config.showDocuments) return res.status(403).send("Documento não publicado.");
+
+    const [entry] = await db.select().from(obraDiarioTable).where(and(
+      eq(obraDiarioTable.id, entryId),
+      eq(obraDiarioTable.obraId, obra.id),
+      eq(obraDiarioTable.status, "aprovado"),
+    )).limit(1);
+    if (!entry) return res.status(404).send("Registro não encontrado.");
+
+    const collection = kind === "foto"
+      ? (Array.isArray((entry as any).fotos) ? (entry as any).fotos : [])
+      : kind === "video"
+        ? (Array.isArray((entry as any).videos) ? (entry as any).videos : [])
+        : (Array.isArray((entry as any).anexos) ? (entry as any).anexos : []);
+    const asset = collection[index];
+    const source = asset?.url;
+    if (!source) return res.status(404).send("Arquivo não encontrado.");
+
+    if (await streamPortalObject(res, source)) return;
+    if (/^https:\/\//i.test(String(source))) return res.redirect(302, String(source));
+    return res.status(404).send("Arquivo não disponível.");
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/portal/obra/:token/documents/:documentId", async (req, res, next) => {
+  try {
+    const token = String(req.params.token ?? "");
+    const documentId = String(req.params.documentId ?? "");
+    const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
+    if (!obra) return res.status(404).send("Portal não encontrado.");
+    const config = portalConfig(obra.portalConfig);
+    if (!(await requirePortalAssetAccess(req, res, obra, config))) return;
+
+    const result = await pool.query(
+      `SELECT id,categoria,url
+         FROM obra_portal_documents
+        WHERE id=$1 AND obra_id=$2 AND tenant_id=$3 AND publicado_cliente=true
+        LIMIT 1`,
+      [documentId, obra.id, obra.tenantId],
+    );
+    const doc = result.rows[0];
+    if (!doc) return res.status(404).send("Documento não encontrado.");
+
+    const allowed = doc.categoria === "contrato"
+      ? config.showContracts
+      : ["manual","garantia"].includes(String(doc.categoria))
+        ? config.showManuals
+        : config.showDocuments;
+    if (!allowed) return res.status(403).send("Documento não publicado.");
+
+    if (await streamPortalObject(res, doc.url)) return;
+    if (/^https:\/\//i.test(String(doc.url))) return res.redirect(302, String(doc.url));
+    return res.status(404).send("Arquivo não disponível.");
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/portal/obra/:token/financial/:entryId/document", async (req, res, next) => {
+  try {
+    const token = String(req.params.token ?? "");
+    const entryId = String(req.params.entryId ?? "");
+    const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
+    if (!obra) return res.status(404).send("Portal não encontrado.");
+    const config = portalConfig(obra.portalConfig);
+    if (!(await requirePortalAssetAccess(req, res, obra, config))) return;
+    if (!config.showDocuments || !config.showFinancialDetails) {
+      return res.status(403).send("Documento financeiro não publicado.");
+    }
+
+    const result = await pool.query(
+      `SELECT documento_url
+         FROM obra_lancamentos
+        WHERE id=$1 AND obra_id=$2 AND tenant_id=$3
+        LIMIT 1`,
+      [entryId, obra.id, obra.tenantId],
+    );
+    const source = result.rows[0]?.documento_url;
+    if (!source) return res.status(404).send("Documento não encontrado.");
+
+    if (await streamPortalObject(res, source)) return;
+    if (/^https:\/\//i.test(String(source))) return res.redirect(302, String(source));
+    return res.status(404).send("Arquivo não disponível.");
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/portal/obra/:token/invoices/:invoiceId/document", async (req, res, next) => {
+  try {
+    const token = String(req.params.token ?? "");
+    const invoiceId = String(req.params.invoiceId ?? "");
+    const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
+    if (!obra) return res.status(404).send("Portal não encontrado.");
+    const config = portalConfig(obra.portalConfig);
+    if (!(await requirePortalAssetAccess(req, res, obra, config))) return;
+    if (!config.showInvoices) return res.status(403).send("Notas fiscais não publicadas.");
+
+    const result = await pool.query(
+      `SELECT documento_url
+         FROM obra_lancamentos
+        WHERE id=$1 AND obra_id=$2 AND tenant_id=$3 AND tipo='nota_fiscal'
+        LIMIT 1`,
+      [invoiceId, obra.id, obra.tenantId],
+    );
+    const source = result.rows[0]?.documento_url;
+    if (!source) return res.status(404).send("Documento não encontrado.");
+
+    if (await streamPortalObject(res, source)) return;
+    if (/^https:\/\//i.test(String(source))) return res.redirect(302, String(source));
+    return res.status(404).send("Arquivo não disponível.");
+  } catch (err) {
+    next(err);
+  }
 });
 
 router.post("/portal/obra/:token/decisions/:decisionId/respond", async (req, res) => {

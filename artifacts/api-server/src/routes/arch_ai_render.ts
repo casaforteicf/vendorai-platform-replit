@@ -33,12 +33,16 @@ function renderObjectPath(value: string | null | undefined): string | null {
   return null;
 }
 
-function renderDisplayUrl(value: string | null | undefined): string | null {
+async function renderAccessUrl(value: string | null | undefined): Promise<string | null> {
   const raw = String(value ?? "").trim();
   if (!raw) return null;
   const objectPath = renderObjectPath(raw);
-  if (objectPath) return `/api/storage${objectPath}`;
-  return raw;
+  if (!objectPath) return raw;
+  try {
+    return await renderStorage.getObjectEntitySignedUrl(objectPath, 900);
+  } catch {
+    return null;
+  }
 }
 
 async function renderFileAvailable(value: string | null | undefined): Promise<boolean> {
@@ -171,7 +175,7 @@ archAiRenderRouter.post("/arch/ai-render/:id/approve", authenticate, async (req,
   const approvalNote = asOptionalString(req.body?.notes ?? req.body?.approval_note);
   const authenticatedUser = (req as any).user ?? {};
   const approvedBy = String(authenticatedUser.id ?? authenticatedUser.email ?? authenticatedUser.name ?? "authenticated-user");
-  captureJson(req, res, async (body) => {
+  return captureJson(req, res, async (body) => {
     const renderId = asOptionalString(body?.render_id) ?? asOptionalString(req.params["id"]);
     if (!tid || !renderId) return;
 
@@ -287,7 +291,7 @@ archAiRenderRouter.get("/arch/ai-render-video/:id", authenticate, async (req, re
     movement: job.movement,
     aspect_ratio: job.aspect_ratio,
     status: job.status,
-    video_url: renderDisplayUrl(job.video_url),
+    video_url: await renderAccessUrl(job.video_url),
     error: job.error_message,
     created_at: job.created_at,
     completed_at: job.completed_at,
@@ -333,6 +337,11 @@ archAiRenderRouter.get("/arch/ai-renders", authenticate, async (req: Request, re
       can_regenerate: render.mode === "preservar" && Boolean(render.jobInput && render.originalImageUrl),
       source: render.source,
       render_view: render.renderView,
+      project_revision: render.projectRevision,
+      scene_id: render.sceneId,
+      scene_name: render.sceneName,
+      camera_snapshot: render.cameraSnapshot,
+      source_model_version: render.sourceModelVersion,
       erro_msg: render.erroMsg,
       iluminacao: render.iluminacao,
       version_tag: render.versionTag,
@@ -340,13 +349,12 @@ archAiRenderRouter.get("/arch/ai-renders", authenticate, async (req: Request, re
       material_id: render.materialId,
       material_name: render.materialName,
       selection_metadata: render.selectionMetadata,
-      cost_estimate_usd: render.costEstimateUsd,
       approval_note: render.approvalNote,
       prompt: render.prompt,
       motor: render.motor,
       original_image_url: render.originalImageUrl,
       result_image_url: render.resultImageUrl,
-      display_url: renderDisplayUrl(render.resultImageUrl),
+      display_url: await renderAccessUrl(render.resultImageUrl),
       file_available: fileAvailable,
       mask_zones: render.maskZones,
       mask_file_url: render.maskFileUrl,
@@ -392,8 +400,13 @@ archAiRenderRouter.get("/arch/ai-render/:id", authenticate, async (req: Request,
     status: render.status,
     source: render.source,
     render_view: render.renderView,
+    project_revision: render.projectRevision,
+    scene_id: render.sceneId,
+    scene_name: render.sceneName,
+    camera_snapshot: render.cameraSnapshot,
+    source_model_version: render.sourceModelVersion,
     result_image_url: render.resultImageUrl,
-    display_url: renderDisplayUrl(render.resultImageUrl),
+    display_url: await renderAccessUrl(render.resultImageUrl),
     file_available: fileAvailable,
     original_image_url: render.originalImageUrl,
     mode: render.mode,
@@ -403,7 +416,6 @@ archAiRenderRouter.get("/arch/ai-render/:id", authenticate, async (req: Request,
     material_id: render.materialId,
     material_name: render.materialName,
     selection_metadata: render.selectionMetadata,
-    cost_estimate_usd: render.costEstimateUsd,
     approval_note: render.approvalNote,
     mask_zones: render.maskZones,
     mask_file_url: render.maskFileUrl,

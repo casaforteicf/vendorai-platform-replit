@@ -44,6 +44,10 @@ export type Proposal = {
   clientNotes?: string | null;
   internalNotes?: string | null;
   publicUrl?: string | null;
+  publicView?: boolean;
+  tenantName?: string | null;
+  tenantLogoUrl?: string | null;
+  tenantPrimaryColor?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
 };
@@ -66,6 +70,19 @@ export type ProposalItem = {
   approvedAt?: string | null;
   rejectedAt?: string | null;
   sortOrder: number;
+  productName?: string | null;
+  materialName?: string | null;
+  manufacturerName?: string | null;
+  widthMm?: number | null;
+  heightMm?: number | null;
+  depthMm?: number | null;
+  lengthMm?: number | null;
+  areaM2?: number | null;
+  perimeterM?: number | null;
+  volumeM3?: number | null;
+  projectRevision?: string | null;
+  measurementSource?: string | null;
+  measurementRevision?: string | null;
 };
 
 export type ProposalEvent = {

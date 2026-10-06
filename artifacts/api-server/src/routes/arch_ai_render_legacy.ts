@@ -116,6 +116,15 @@ const renderBodySchema = z.object({
   source: z.enum(["facade", "model3d"]).optional(),
   render_view: z.enum(["exterior", "interior"]).optional(),
   render_profile: z.enum(["technical", "premium", "decorated"]).optional().default("premium"),
+  project_revision: z.string().trim().min(1).optional(),
+  scene_id: z.string().trim().min(1).optional(),
+  scene_name: z.string().trim().min(1).optional(),
+  camera_snapshot: z.object({
+    floor: z.number().int().optional(),
+    position: z.object({ x: z.number(), y: z.number(), z: z.number() }),
+    target: z.object({ x: z.number(), y: z.number(), z: z.number() }),
+  }).optional(),
+  source_model_version: z.string().trim().min(1).optional(),
   lead_id:           z.string().optional(),
   original_image_url: z.string().min(10, "original_image_url obrigatório"),
   mode:              z.enum(["preservar", "criar"]),
@@ -212,11 +221,18 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
     project_id, concept_project_id, lead_id, original_image_url, mode,
     ambiente, estilo, iluminacao, angulo,
     mask_zones, user_notes, render_presets, materials, source, render_view, render_profile,
+    project_revision, scene_id, scene_name, camera_snapshot, source_model_version,
   } = parsed.data;
 
   if (project_id && concept_project_id) {
     return res.status(400).json({ success: false, error: "Informe project_id ou concept_project_id, não ambos." });
   }
+  let resolvedProjectRevision = project_revision ?? null;
+  let resolvedSceneId = scene_id ?? null;
+  let resolvedSceneName = scene_name ?? null;
+  let resolvedCameraSnapshot = camera_snapshot ?? null;
+  let resolvedSourceModelVersion = source_model_version ?? null;
+
   if (concept_project_id) {
     const [concept] = await db.select({
       id: archConceptProjectsTable.id,
@@ -227,7 +243,28 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
       .where(and(eq(archConceptProjectsTable.id, concept_project_id), eq(archConceptProjectsTable.tenantId, tid)))
       .limit(1);
     if (!concept) return res.status(404).json({ success: false, error: "Pré-projeto não encontrado." });
-    if (concept.status === "submitted" && (concept.configuration as any)?.projectMaster) {
+    const conceptConfiguration = (concept.configuration ?? {}) as any;
+    const projectMaster = conceptConfiguration?.projectMaster;
+    resolvedProjectRevision = resolvedProjectRevision
+      ?? String(conceptConfiguration?.revisionNumber ?? projectMaster?.version ?? 1);
+    resolvedSourceModelVersion = resolvedSourceModelVersion
+      ?? String(projectMaster?.geometryVersion ?? "concept_live");
+
+    if (resolvedSceneId) {
+      const savedScenes = Array.isArray(conceptConfiguration?.savedTourPoints) ? conceptConfiguration.savedTourPoints : [];
+      const savedScene = savedScenes.find((scene: any) => String(scene?.id) === resolvedSceneId);
+      if (!savedScene) {
+        return res.status(400).json({ success: false, error: "A cena 3D informada não pertence a este projeto." });
+      }
+      resolvedSceneName = resolvedSceneName ?? String(savedScene.name || resolvedSceneId);
+      resolvedCameraSnapshot = resolvedCameraSnapshot ?? {
+        floor: Number(savedScene.floor ?? 0),
+        position: savedScene.position,
+        target: savedScene.target,
+      };
+    }
+
+    if (concept.status === "submitted" && projectMaster) {
       return res.status(409).json({
         success: false,
         error: "O Projeto Mestre está congelado. Gere novos renders pela revisão do projeto ou pelo Projeto Arqdor aprovado.",
@@ -266,6 +303,11 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
     originalImageUrl: original_image_url,
     source,
     renderView: render_view,
+    projectRevision: resolvedProjectRevision,
+    sceneId: resolvedSceneId,
+    sceneName: resolvedSceneName,
+    cameraSnapshot: resolvedCameraSnapshot,
+    sourceModelVersion: resolvedSourceModelVersion,
     jobInput: durable ? { userNotes: user_notes, materials, renderPresets: render_presets, source, renderView: render_view } : null,
     prompt: durable ? buildPrompt({
       mode, ambiente, estilo, iluminacao, angulo, maskZones: safeMaskZones, materials,
@@ -346,6 +388,12 @@ archAiRenderRouter.get("/arch/ai-renders", authenticate, async (req: Request, re
       id: render.id,
       project_id: render.projectId,
       parent_render_id: render.parentRenderId,
+      concept_project_id: render.conceptProjectId,
+      project_revision: render.projectRevision,
+      scene_id: render.sceneId,
+      scene_name: render.sceneName,
+      camera_snapshot: render.cameraSnapshot,
+      source_model_version: render.sourceModelVersion,
       ambiente: render.ambiente,
       mode: render.mode,
       status: render.status,
@@ -389,6 +437,12 @@ archAiRenderRouter.get("/arch/ai-render/:id", authenticate, async (req: Request,
     render_id:              render.id,
     project_id:             render.projectId,
     parent_render_id:       render.parentRenderId,
+    concept_project_id:      render.conceptProjectId,
+    project_revision:        render.projectRevision,
+    scene_id:                render.sceneId,
+    scene_name:              render.sceneName,
+    camera_snapshot:         render.cameraSnapshot,
+    source_model_version:    render.sourceModelVersion,
     status:                 render.status,
     result_image_url:       render.resultImageUrl,
     original_image_url:     render.originalImageUrl,
@@ -705,6 +759,11 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
     projectId:        parent.projectId,
     conceptProjectId: parent.conceptProjectId,
     parentRenderId:   parent.id,
+    projectRevision:  parent.projectRevision,
+    sceneId:          parent.sceneId,
+    sceneName:        parent.sceneName,
+    cameraSnapshot:   parent.cameraSnapshot,
+    sourceModelVersion: parent.sourceModelVersion,
     mode:             parent.mode,
     ambiente:         parent.ambiente,
     estilo:           parent.estilo,
@@ -1620,6 +1679,9 @@ function buildCriarPrompt(p: {
   maskZones:  string[];
   materials:  { zone: string; promptFragment: string }[];
   userNotes:  string | undefined;
+  renderView?: string | null;
+  source?: string | null;
+  renderPresets?: ArqdorRenderPreset[];
 }): string {
   const parts: string[] = [
     `Professional architectural visualization of a ${p.ambiente ?? "interior"}.`,

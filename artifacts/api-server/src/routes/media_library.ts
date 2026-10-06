@@ -45,6 +45,20 @@ function nonEmptyString(value: unknown): string | null {
   return trimmed ? trimmed : null;
 }
 
+async function withAccessUrl<T extends { storageUrl?: string | null }>(asset: T): Promise<T & { accessUrl?: string | null }> {
+  const storageUrl = String(asset.storageUrl ?? "");
+  if (!storageUrl.startsWith("/objects/")) return { ...asset, accessUrl: storageUrl || null };
+  try {
+    return { ...asset, accessUrl: await objectStorage.getObjectEntitySignedUrl(storageUrl, 300) };
+  } catch {
+    return { ...asset, accessUrl: null };
+  }
+}
+
+async function withAccessUrls<T extends { storageUrl?: string | null }>(assets: T[]) {
+  return Promise.all(assets.map((asset) => withAccessUrl(asset)));
+}
+
 async function findProject(tenantId: string, projectId: string) {
   const [project] = await db
     .select()
@@ -147,7 +161,7 @@ router.get("/tenants/:tenantId/media/projects/:projectId", async (req, res) => {
       .limit(50),
   ]);
 
-  res.json({ project, assets, versions, jobs });
+  res.json({ project, assets: await withAccessUrls(assets), versions, jobs });
 });
 
 router.patch("/tenants/:tenantId/media/projects/:projectId", async (req, res) => {
@@ -228,7 +242,7 @@ router.get("/tenants/:tenantId/media/assets", async (req, res) => {
     .orderBy(desc(mediaAssetsTable.createdAt))
     .limit(limit);
 
-  res.json({ assets });
+  res.json({ assets: await withAccessUrls(assets) });
 });
 
 router.post("/tenants/:tenantId/media/assets/request-upload", async (req, res) => {

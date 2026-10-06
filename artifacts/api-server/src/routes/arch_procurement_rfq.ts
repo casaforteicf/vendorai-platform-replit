@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { createHash } from "node:crypto";
 import multer from "multer";
 import { pool } from "@workspace/db";
-import { objectStorageClient } from "../lib/objectStorage.js";
+import { ObjectStorageService, objectStorageClient } from "../lib/objectStorage.js";
 import { logger } from "../lib/logger.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { sendJarvisEmail } from "../services/jarvis-email-provider.js";
@@ -10,6 +10,7 @@ import { sendJarvisEmail } from "../services/jarvis-email-provider.js";
 export const archProcurementRfqRouter: IRouter = Router();
 export const archProcurementRfqPublicRouter: IRouter = Router();
 const publicUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024, files: 5 } });
+const rfqStorage = new ObjectStorageService();
 
 function safeFilename(name: string) {
   return name.normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/-+/g, "-").slice(0, 120) || "documento";
@@ -131,7 +132,15 @@ async function assertPackageStillCurrent(tid: string, obraId: string, packageId:
   const snapshotItems = Array.isArray(snapshot.items) ? snapshot.items : [];
   for (const snap of snapshotItems) {
     const currentResult = await pool.query(
-      `SELECT abi.*,aso.category AS spec_category,aso.region AS spec_region,aa.nome AS ambiente_nome
+      `SELECT abi.*,aso.category AS spec_category,aso.region AS spec_region,
+              aso.purchase_quantity AS spec_purchase_quantity,
+              aso.package_yield AS spec_package_yield,
+              aso.purchase_mode AS spec_purchase_mode,
+              aso.purchase_unit AS spec_purchase_unit,
+              aso.waste_factor AS spec_waste_factor,
+              aso.measurement_source AS spec_measurement_source,
+              aso.measurement_revision AS spec_measurement_revision,
+              aa.nome AS ambiente_nome
          FROM arch_budget_items abi
          LEFT JOIN arch_spec_objects aso ON aso.id=abi.spec_object_id
          LEFT JOIN arch_ambientes aa ON aa.id::text=abi.ambiente_id::text
@@ -141,7 +150,22 @@ async function assertPackageStillCurrent(tid: string, obraId: string, packageId:
     );
     const row = currentResult.rows[0];
     if (!row) return { ok: false as const, reason: `Item removido do orçamento: ${snap.item || snap.budgetItemId}` };
+    if (row.specification_outdated) {
+      return { ok: false as const, reason: `Especificação desatualizada: ${row.item}` };
+    }
     const scope = inferScope(row);
+    const projectQuantity = n(row.quantity, 1);
+    const purchaseMode = String(row.spec_purchase_mode || "same_unit");
+    const purchaseYield = row.spec_package_yield != null ? Math.max(0, n(row.spec_package_yield)) : 0;
+    const purchaseQuantity = row.spec_purchase_quantity != null
+      ? Math.max(0, n(row.spec_purchase_quantity))
+      : projectQuantity;
+    const quoteQuantity = purchaseQuantity > 0 ? purchaseQuantity : projectQuantity;
+    const quoteUnit = String(row.spec_purchase_unit || row.unit || "un");
+    const estimatedPurchaseUnitPrice = purchaseMode !== "same_unit" && purchaseYield > 0
+      ? n(row.unit_total) * purchaseYield
+      : n(row.unit_total);
+    const quoteTotal = estimatedPurchaseUnitPrice * quoteQuantity;
     const currentSnapshot = {
       budgetItemId: row.id,
       specObjectId: row.spec_object_id,
@@ -150,12 +174,23 @@ async function assertPackageStillCurrent(tid: string, obraId: string, packageId:
       ambienteId: row.ambiente_id,
       ambiente: row.ambiente_nome || null,
       region: row.spec_region || null,
-      quantity: n(row.quantity, 1),
-      unit: row.unit || "un",
+      projectQuantity,
+      projectUnit: row.unit || "un",
+      purchaseMode,
+      purchaseQuantity: quoteQuantity,
+      purchaseUnit: quoteUnit,
+      quantity: quoteQuantity,
+      unit: quoteUnit,
+      estimatedPurchaseUnitPrice,
+      wasteFactor: row.spec_waste_factor != null ? n(row.spec_waste_factor) : null,
+      packageYield: row.spec_package_yield != null ? n(row.spec_package_yield) : null,
+      measurementSource: row.spec_measurement_source || null,
+      measurementRevision: row.spec_measurement_revision || null,
+      specificationRevision: row.specification_revision || null,
       productName: row.product_name,
       materialName: row.material_name,
       manufacturerName: row.manufacturer_name,
-      total: n(row.total),
+      total: quoteTotal,
       category: scope.category,
       discipline: scope.discipline,
     };
@@ -296,8 +331,8 @@ archProcurementRfqRouter.get("/arch/procurement-rfq/:obraId", async (req, res, n
     const obraId = String(req.params["obraId"] || "");
     const obra = await ownedObra(tid, obraId);
     if (!obra) return res.status(404).json({ error: "Obra não encontrada." });
-    res.json({ obra, ...(await packageBundle(tid, obraId)) });
-  } catch (err) { logger.error({ err }, "rfq bundle error"); next(err); }
+    return res.json({ obra, ...(await packageBundle(tid, obraId)) });
+  } catch (err) { logger.error({ err }, "rfq bundle error"); return next(err); }
 });
 
 archProcurementRfqRouter.patch("/arch/procurement-rfq/suppliers/:supplierId/scope", async (req, res, next) => {
@@ -318,8 +353,8 @@ archProcurementRfqRouter.patch("/arch/procurement-rfq/suppliers/:supplierId/scop
       [JSON.stringify(categories), JSON.stringify(disciplines), JSON.stringify(regions), JSON.stringify(brands), leadTime, supplierId, tid],
     );
     if (!result.rows[0]) return res.status(404).json({ error: "Fornecedor não encontrado." });
-    res.json({ supplier: result.rows[0] });
-  } catch (err) { logger.error({ err }, "supplier scope update error"); next(err); }
+    return res.json({ supplier: result.rows[0] });
+  } catch (err) { logger.error({ err }, "supplier scope update error"); return next(err); }
 });
 
 archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async (req, res, next) => {
@@ -341,10 +376,32 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
     let filter = "";
     if (selectedIds.length) { params.push(selectedIds); filter = ` AND id = ANY($3::uuid[])`; }
     const itemResult = await client.query(
-      `SELECT abi.*, aso.category AS spec_category, aso.region AS spec_region, aa.nome AS ambiente_nome\n       FROM arch_budget_items abi\n       LEFT JOIN arch_spec_objects aso ON aso.id=abi.spec_object_id\n       LEFT JOIN arch_ambientes aa ON aa.id::text=abi.ambiente_id::text\n      WHERE abi.budget_id=$1::uuid AND abi.tenant_id::text=$2 AND abi.deleted_at IS NULL ${filter.replace(" id ", " abi.id ")}\n      ORDER BY abi.sort_order,abi.created_at`,
+      `SELECT abi.*, aso.category AS spec_category, aso.region AS spec_region,
+              aso.purchase_quantity AS spec_purchase_quantity,
+              aso.package_yield AS spec_package_yield,
+              aso.purchase_mode AS spec_purchase_mode,
+              aso.purchase_unit AS spec_purchase_unit,
+              aso.waste_factor AS spec_waste_factor,
+              aso.measurement_source AS spec_measurement_source,
+              aso.measurement_revision AS spec_measurement_revision,
+              aa.nome AS ambiente_nome\n       FROM arch_budget_items abi\n       LEFT JOIN arch_spec_objects aso ON aso.id=abi.spec_object_id\n       LEFT JOIN arch_ambientes aa ON aa.id::text=abi.ambiente_id::text\n      WHERE abi.budget_id=$1::uuid AND abi.tenant_id::text=$2 AND abi.deleted_at IS NULL ${filter.replace(" id ", " abi.id ")}\n      ORDER BY abi.sort_order,abi.created_at`,
       params,
     );
     if (!itemResult.rows.length) return res.status(422).json({ error: "O orçamento não possui itens para cotação." });
+
+    const outdatedItems = itemResult.rows.filter((row: any) => Boolean(row.specification_outdated));
+    if (outdatedItems.length) {
+      return res.status(409).json({
+        error: "Existem itens com especificação desatualizada. Revise a especificação antes de gerar a cotação.",
+        code: "SPECIFICATION_OUTDATED",
+        items: outdatedItems.map((row: any) => ({
+          id: row.id,
+          item: row.item,
+          specificationRevision: row.specification_revision ?? null,
+          specificationImpact: row.specification_impact ?? null,
+        })),
+      });
+    }
 
     const groups = new Map<string, { category: string; discipline: string; rows: any[] }>();
     for (const row of itemResult.rows) {
@@ -371,11 +428,45 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
             ? commercial.saleTotal * (total / budgetCostBase)
             : 0;
         saleValue += rowSale;
+        const projectQuantity = n(row.quantity, 1);
+        const purchaseMode = String(row.spec_purchase_mode || "same_unit");
+        const purchaseYield = row.spec_package_yield != null ? Math.max(0, n(row.spec_package_yield)) : 0;
+        const purchaseQuantity = row.spec_purchase_quantity != null
+          ? Math.max(0, n(row.spec_purchase_quantity))
+          : projectQuantity;
+        const quoteQuantity = purchaseQuantity > 0 ? purchaseQuantity : projectQuantity;
+        const quoteUnit = String(row.spec_purchase_unit || row.unit || "un");
+        const estimatedPurchaseUnitPrice = purchaseMode !== "same_unit" && purchaseYield > 0
+          ? n(row.unit_total) * purchaseYield
+          : n(row.unit_total);
+        const quoteTotal = estimatedPurchaseUnitPrice * quoteQuantity;
         const snapshot = {
-          budgetItemId: row.id, specObjectId: row.spec_object_id, item: row.item, description: row.description,
-          ambienteId: row.ambiente_id, ambiente: row.ambiente_nome || null, region: row.spec_region || null, quantity: n(row.quantity, 1), unit: row.unit || "un",
-          productName: row.product_name, materialName: row.material_name, manufacturerName: row.manufacturer_name,
-          total, category: group.category, discipline: group.discipline,
+          budgetItemId: row.id,
+          specObjectId: row.spec_object_id,
+          item: row.item,
+          description: row.description,
+          ambienteId: row.ambiente_id,
+          ambiente: row.ambiente_nome || null,
+          region: row.spec_region || null,
+          projectQuantity,
+          projectUnit: row.unit || "un",
+          purchaseMode,
+          purchaseQuantity: quoteQuantity,
+          purchaseUnit: quoteUnit,
+          quantity: quoteQuantity,
+          unit: quoteUnit,
+          estimatedPurchaseUnitPrice,
+          wasteFactor: row.spec_waste_factor != null ? n(row.spec_waste_factor) : null,
+          packageYield: row.spec_package_yield != null ? n(row.spec_package_yield) : null,
+          measurementSource: row.spec_measurement_source || null,
+          measurementRevision: row.spec_measurement_revision || null,
+          specificationRevision: row.specification_revision || null,
+          productName: row.product_name,
+          materialName: row.material_name,
+          manufacturerName: row.manufacturer_name,
+          total: quoteTotal,
+          category: group.category,
+          discipline: group.discipline,
         };
         const hash = scopeHash(snapshot);
         const existing = await client.query(
@@ -387,12 +478,13 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
           const changed = existing.rows[0].escopo_hash && existing.rows[0].escopo_hash !== hash;
           await client.query(
             `UPDATE compras_obras SET descricao=$1,ambiente=$2,disciplina=$3,categoria=$4,quantidade=$5,unidade=$6,
-               valor_total=$7,valor_venda_snapshot=$8,custo_estimado_snapshot=$7,escopo_snapshot=$9::jsonb,
-               escopo_hash=$10,cotacao_desatualizada=CASE WHEN $11 THEN true ELSE cotacao_desatualizada END,
-               escopo_versao=CASE WHEN $11 THEN escopo_versao+1 ELSE escopo_versao END,updated_at=now()
-             WHERE id=$12 AND tenant_id=$13`,
+               valor_unitario=$7,valor_total=$8,valor_venda_snapshot=$9,custo_estimado_snapshot=$8,escopo_snapshot=$10::jsonb,
+               escopo_hash=$11,cotacao_desatualizada=CASE WHEN $12 THEN true ELSE cotacao_desatualizada END,
+               escopo_versao=CASE WHEN $12 THEN escopo_versao+1 ELSE escopo_versao END,updated_at=now()
+             WHERE id=$13 AND tenant_id=$14`,
             [row.item, row.ambiente_nome || (row.ambiente_id ? String(row.ambiente_id) : null), group.discipline, group.category,
-             String(n(row.quantity,1)), row.unit || "un", String(total), String(rowSale), JSON.stringify(snapshot), hash, Boolean(changed), finalRequestId, tid],
+             String(snapshot.quantity), snapshot.unit, String(estimatedPurchaseUnitPrice), String(snapshot.total), String(rowSale),
+             JSON.stringify(snapshot), hash, Boolean(changed), finalRequestId, tid],
           );
         } else {
           finalRequestId = requestId;
@@ -404,8 +496,8 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
              VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'media','pendente','budget_rfq','[]'::jsonb,
                     $13::uuid,$14::uuid,$15::uuid,1,$16,$17::jsonb,$18,$19,now(),now())`,
             [finalRequestId,tid,obraId,`BUD-${String(row.id).slice(0,8).toUpperCase()}`,row.item,row.ambiente_nome||(row.ambiente_id?String(row.ambiente_id):null),
-             group.discipline,group.category,String(n(row.quantity,1)),row.unit||"un",String(n(row.unit_total)),String(total),
-             budgetId,row.id,row.spec_object_id||null,hash,JSON.stringify(snapshot),String(rowSale),String(total)],
+             group.discipline,group.category,String(snapshot.quantity),snapshot.unit,String(estimatedPurchaseUnitPrice),String(snapshot.total),
+             budgetId,row.id,row.spec_object_id||null,hash,JSON.stringify(snapshot),String(rowSale),String(snapshot.total)],
           );
         }
         requestIds.push(finalRequestId);
@@ -439,10 +531,10 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
       created.push({ ...pkg.rows[0], itemCount: requestIds.length, saleValue, commercialSource: commercial.saleSource });
     }
     await client.query("COMMIT");
-    res.status(201).json({ packages: created });
+    return res.status(201).json({ packages: created });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => undefined);
-    logger.error({ err }, "rfq from budget error"); next(err);
+    logger.error({ err }, "rfq from budget error"); return next(err);
   } finally { client.release(); }
 });
 
@@ -511,8 +603,8 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
     const failedCount = created.filter((item: any) => item.status === "failed").length;
     const packageStatus = sentCount === 0 ? "draft" : failedCount > 0 ? "partial" : "sent";
     await pool.query(`UPDATE arch_rfq_packages SET status=$1,updated_at=now() WHERE id=$2::uuid`, [packageStatus, packageId]);
-    res.status(201).json({ invitations: created, skipped: supplierIds.length - created.length, packageStatus });
-  } catch (err) { logger.error({ err }, "rfq invitations error"); next(err); }
+    return res.status(201).json({ invitations: created, skipped: supplierIds.length - created.length, packageStatus });
+  } catch (err) { logger.error({ err }, "rfq invitations error"); return next(err); }
 });
 
 
@@ -616,7 +708,7 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
     });
   } catch (err) {
     logger.error({ err }, "guest rfq invitation error");
-    next(err);
+    return next(err);
   }
 });
 
@@ -664,10 +756,11 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
         `INSERT INTO arch_supplier_orders
          (id,tenant_id,project_id,obra_id,compra_id,supplier_name,item,quantity,unit,estimated_value,confirmed_value,
           freight_value,discount_value,tax_value,payment_terms,quote_valid_until,lead_time_days,status,requested_at,quoted_at,notes,documents,created_at,updated_at)
-         VALUES(gen_random_uuid(),$1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,0,0,0,$11,$12,$13,'approved',now(),now(),$14,'[]'::jsonb,now(),now()) RETURNING id`,
+         VALUES(gen_random_uuid(),$1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,0,0,0,$11,$12,$13,'approved',now(),now(),$14,$15::jsonb,now(),now()) RETURNING id`,
         [tid,inv.project_id,obraId,qi.compra_id,inv.supplier_name,row.descricao,String(qi.quantity),qi.unit,String(row.custo_estimado_snapshot||row.valor_total||0),
          String(confirmedCost),inv.payment_terms||null,inv.validity_date||null,inv.lead_time_days||null,
-         [qi.notes, allocatedExtras ? `Rateio de frete/impostos/desconto do pacote: ${allocatedExtras.toFixed(2)}` : ""].filter(Boolean).join(" • ") || null],
+         [qi.notes, allocatedExtras ? `Rateio de frete/impostos/desconto do pacote: ${allocatedExtras.toFixed(2)}` : ""].filter(Boolean).join(" • ") || null,
+         JSON.stringify(Array.isArray(inv.response_documents) ? inv.response_documents : [])],
       );
       await client.query(
         `UPDATE compras_obras SET fornecedor=$1,cotacao_selecionada_id=$2::uuid,custo_confirmado=$3,status='aprovado',cotacao_desatualizada=false,updated_at=now()
@@ -676,13 +769,20 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
       );
     }
     await client.query(`UPDATE arch_rfq_invitations SET status='accepted',updated_at=now() WHERE id=$1::uuid`, [invitationId]);
-    await client.query(`UPDATE arch_rfq_invitations SET status='rejected',updated_at=now() WHERE package_id=$1::uuid AND id<>$2::uuid AND status='responded'`, [packageId,invitationId]);
+    await client.query(
+      `UPDATE arch_rfq_invitations
+          SET status='rejected',updated_at=now()
+        WHERE package_id=$1::uuid
+          AND id<>$2::uuid
+          AND status NOT IN ('accepted','rejected','expired')`,
+      [packageId,invitationId],
+    );
     await client.query(`UPDATE arch_rfq_packages SET status='completed',updated_at=now() WHERE id=$1::uuid`, [packageId]);
     await client.query("COMMIT");
-    res.json({ ok: true });
+    return res.json({ ok: true });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => undefined);
-    logger.error({ err }, "rfq selection error"); next(err);
+    logger.error({ err }, "rfq selection error"); return next(err);
   } finally { client.release(); }
 });
 
@@ -887,7 +987,7 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
   } catch (err) {
     await client.query("ROLLBACK").catch(() => undefined);
     logger.error({ err }, "rfq commercial revision error");
-    next(err);
+    return next(err);
   } finally { client.release(); }
 });
 
@@ -905,18 +1005,34 @@ archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token", async (req, res,
       ? pkg.technical_documents_snapshot
       : Array.isArray(pkg.documents) ? pkg.documents : [];
     const responseDocs = Array.isArray(inv.response_documents) ? inv.response_documents : [];
+    const tenantBrandResult = await pool.query(
+      `SELECT name, logo_url, cor_primaria FROM tenants WHERE id::text=$1 LIMIT 1`,
+      [String(inv.tenant_id)],
+    );
+    const tenantBrand = tenantBrandResult.rows[0] ?? {};
     await pool.query(`SELECT public.arch_rfq_public_mark_viewed($1::uuid)`, [token]);
+    const quoteClosed = ["accepted","rejected","expired"].includes(String(inv.status))
+      || ["completed","cancelled"].includes(String(pkg.status));
+    const quoteClosedReason = String(inv.status) === "accepted"
+      ? "Cotação selecionada."
+      : String(inv.status) === "rejected"
+        ? "Cotação encerrada após seleção de outro fornecedor."
+        : ["completed","cancelled"].includes(String(pkg.status))
+          ? "Este pacote de cotação já foi encerrado."
+          : String(inv.status) === "expired"
+            ? "Esta cotação expirou."
+            : null;
 
     const itemRows = items.map((item:any)=>`<tr>
       <td><strong>${esc(item.descricao)}</strong><br><small>${esc(item.ambiente || "")}</small></td>
       <td>${esc(item.quantidade)} ${esc(item.unidade)}</td>
-      <td><input data-id="${esc(item.id)}" data-field="unitValue" type="number" step="0.01" min="0" required></td>
-      <td><input data-id="${esc(item.id)}" data-field="brandModel" placeholder="marca/modelo"></td>
-      <td><input data-id="${esc(item.id)}" data-field="notes" placeholder="observações"></td>
+      <td><input data-id="${esc(item.id)}" data-field="unitValue" type="number" step="0.01" min="0" required ${quoteClosed ? "disabled" : ""}></td>
+      <td><input data-id="${esc(item.id)}" data-field="brandModel" placeholder="marca/modelo" ${quoteClosed ? "disabled" : ""}></td>
+      <td><input data-id="${esc(item.id)}" data-field="notes" placeholder="observações" ${quoteClosed ? "disabled" : ""}></td>
     </tr>`).join("");
     const itemMeta = JSON.stringify(items.map((x:any)=>({id:String(x.id),quantity:n(x.quantidade),unit:x.unidade||"un"})));
     const technicalDocRows = technicalDocs.length
-      ? technicalDocs.map((doc:any)=>`<li><a href="${esc(doc.url)}" target="_blank" rel="noopener">${esc(doc.title || doc.name || "Documento técnico")}</a>${doc.version ? ` <small>• ${esc(doc.version)}</small>` : ""}</li>`).join("")
+      ? technicalDocs.map((doc:any,index:number)=>`<li><a href="/api/public/arqdor/rfq/${esc(token)}/documents/${index}" target="_blank" rel="noopener">${esc(doc.title || doc.name || "Documento técnico")}</a>${doc.version ? ` <small>• ${esc(doc.version)}</small>` : ""}</li>`).join("")
       : "<li class='muted'>Nenhum arquivo técnico vinculado a este pacote.</li>";
     const responseDocRows = responseDocs.length
       ? responseDocs.map((doc:any)=>`<li>${esc(doc.name || "Anexo enviado")}</li>`).join("")
@@ -938,16 +1054,22 @@ archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token", async (req, res,
         ? `<div class="card"><div class="muted">Conta Vendor.ai vinculada</div><h2>Este fornecedor já possui acesso ao sistema</h2><p class="muted">O histórico desta cotação continua vinculado à conta. <a href="/login">Entrar no Vendor.ai</a>.</p></div>`
         : "";
 
-    res.type("html").send(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    return res.type("html").send(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <title>${esc(pkg.code)} — Cotação</title><style>
     body{font-family:Inter,Arial,sans-serif;background:#f6f7fb;color:#111827;margin:0}.wrap{max-width:1100px;margin:36px auto;padding:0 18px}.card{background:#fff;border:1px solid #e5e7eb;border-radius:22px;padding:24px;margin-bottom:18px}h1{margin:4px 0 8px;font-size:28px}small,.muted{color:#6b7280}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px;border-bottom:1px solid #eee;vertical-align:top}input,textarea{box-sizing:border-box;width:100%;padding:10px;border:1px solid #d1d5db;border-radius:10px}label{display:block;font-size:12px;font-weight:700;margin:12px 0 6px}button{background:#111827;color:#fff;border:0;border-radius:12px;padding:13px 18px;font-weight:700;cursor:pointer}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}@media(max-width:760px){.grid{grid-template-columns:1fr}table{font-size:12px}.wrap{margin:14px auto}}
-    </style></head><body><div class="wrap"><div class="card"><div class="muted">ARQDOR • Solicitação de cotação</div><h1>${esc(pkg.title)}</h1>
-    <p>${esc(obra?.nome || "Obra")} • ${esc(pkg.code)} • versão ${esc(pkg.version)}</p><p class="muted">Esta página contém somente os itens direcionados ao seu escopo: ${esc(pkg.category || pkg.discipline)}.</p></div>
+    </style></head><body><div class="wrap"><div class="card">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+      ${tenantBrand.logo_url ? `<img src="${esc(tenantBrand.logo_url)}" alt="${esc(tenantBrand.name || "Logo")}" style="max-width:180px;max-height:54px;object-fit:contain">` : ""}
+      <div class="muted">${esc(tenantBrand.name || "ARQDOR")} • Solicitação de cotação</div>
+    </div><h1>${esc(pkg.title)}</h1>
+    <p>${esc(obra?.nome || "Obra")} • ${esc(pkg.code)} • versão ${esc(pkg.version)}</p><p class="muted">Esta página contém somente os itens direcionados ao seu escopo: ${esc(pkg.category || pkg.discipline)}.</p>
+    ${quoteClosedReason ? `<div style="margin-top:14px;padding:12px 14px;border-radius:12px;background:#f3f4f6;font-weight:700">${esc(quoteClosedReason)}</div>` : ""}
+    </div>
     <div class="card"><table><thead><tr><th>Item</th><th>Quantidade</th><th>Valor unitário</th><th>Marca/modelo</th><th>Observação</th></tr></thead><tbody>${itemRows}</tbody></table></div>
     <div class="card"><h2>Arquivos técnicos</h2><p class="muted">Plantas, memoriais e detalhes liberados para esta cotação.</p><ul>${technicalDocRows}</ul></div>
     <div class="card"><h2>Anexar orçamento do fornecedor</h2><p class="muted">Você pode enviar PDF, imagem, planilha, CSV, DWG ou DXF. Até 5 arquivos por envio, 12 MB cada.</p>
-      <input id="quoteFiles" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls,.csv,.txt,.xml,.dwg,.dxf">
-      <button id="uploadFiles" type="button" style="margin-top:10px;background:#4f46e5">Enviar anexos</button>
+      <input id="quoteFiles" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls,.csv,.txt,.xml,.dwg,.dxf" ${quoteClosed ? "disabled" : ""}>
+      <button id="uploadFiles" type="button" style="margin-top:10px;background:#4f46e5" ${quoteClosed ? "disabled" : ""}>Enviar anexos</button>
       <p id="uploadMsg" class="muted"></p><ul id="uploadedDocs">${responseDocRows}</ul>
     </div>
     <div class="card"><div class="grid"><div><label>Frete</label><input id="freight" type="number" step="0.01" min="0" value="0"></div><div><label>Impostos/taxas</label><input id="taxes" type="number" step="0.01" min="0" value="0"></div>
@@ -1000,7 +1122,55 @@ archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token", async (req, res,
       setTimeout(()=>{location.href=d.demoUrl||'/app'},700);
     };
     </script></body></html>`);
-  } catch (err) { logger.error({ err }, "public rfq page error"); next(err); }
+  } catch (err) { logger.error({ err }, "public rfq page error"); return next(err); }
+});
+
+archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token/documents/:index", async (req, res, next) => {
+  try {
+    const token = String(req.params["token"] || "");
+    const index = Number(req.params["index"]);
+    if (!Number.isInteger(index) || index < 0) return res.status(404).send("Documento não encontrado.");
+
+    const bundleResult = await pool.query(`SELECT public.arch_rfq_public_bundle($1::uuid) AS bundle`, [token]);
+    const bundle = bundleResult.rows[0]?.bundle;
+    if (!bundle) return res.status(404).send("Cotação não encontrada.");
+
+    const inv = bundle.invitation;
+    const pkg = bundle.package;
+    if (["cancelled"].includes(String(pkg.status))) return res.status(410).send("Pacote encerrado.");
+
+    const docs = Array.isArray(pkg.technical_documents_snapshot)
+      ? pkg.technical_documents_snapshot
+      : Array.isArray(pkg.documents) ? pkg.documents : [];
+    const doc = docs[index];
+    if (!doc?.url) return res.status(404).send("Documento não encontrado.");
+
+    const url = String(doc.url);
+    if (url.startsWith("/api/storage/objects/")) {
+      const objectPath = `/objects/${url.slice("/api/storage/objects/".length)}`;
+      const file = await rfqStorage.getObjectEntityFile(objectPath);
+      const objectResponse = await rfqStorage.downloadObject(file, 300);
+      objectResponse.headers.forEach((value, key) => res.setHeader(key, value));
+      res.setHeader("Cache-Control", "private, max-age=300");
+      res.status(objectResponse.status);
+      return res.send(Buffer.from(await objectResponse.arrayBuffer()));
+    }
+    if (url.startsWith("/objects/")) {
+      const file = await rfqStorage.getObjectEntityFile(url);
+      const objectResponse = await rfqStorage.downloadObject(file, 300);
+      objectResponse.headers.forEach((value, key) => res.setHeader(key, value));
+      res.setHeader("Cache-Control", "private, max-age=300");
+      res.status(objectResponse.status);
+      return res.send(Buffer.from(await objectResponse.arrayBuffer()));
+    }
+    if (/^https:\/\//i.test(url)) return res.redirect(302, url);
+
+    logger.warn({ token, index, tenantId: inv?.tenant_id, url }, "rfq document url rejected");
+    return res.status(404).send("Documento não disponível.");
+  } catch (err) {
+    logger.error({ err }, "public rfq technical document error");
+    return next(err);
+  }
 });
 
 archProcurementRfqPublicRouter.post("/public/arqdor/rfq/:token/documents", publicUpload.single("documento"), async (req, res, next) => {
@@ -1016,7 +1186,10 @@ archProcurementRfqPublicRouter.post("/public/arqdor/rfq/:token/documents", publi
 
     const inv = bundle.invitation;
     const pkg = bundle.package;
-    if (["accepted","rejected","expired"].includes(String(inv.status))) {
+    if (
+      ["accepted","rejected","expired"].includes(String(inv.status))
+      || ["completed","cancelled"].includes(String(pkg.status))
+    ) {
       return res.status(409).json({ error: "Esta cotação já foi encerrada." });
     }
     const existingDocuments = Array.isArray(inv.response_documents) ? inv.response_documents : [];
@@ -1026,10 +1199,10 @@ archProcurementRfqPublicRouter.post("/public/arqdor/rfq/:token/documents", publi
 
     const document = await saveSupplierDocument(String(inv.tenant_id), String(pkg.obra_id), file);
     await pool.query(`SELECT public.arch_rfq_public_add_document($1::uuid,$2::jsonb)`, [token, JSON.stringify(document)]);
-    res.status(201).json({ document });
+    return res.status(201).json({ document });
   } catch (err) {
     logger.error({ err }, "public rfq document upload error");
-    next(err);
+    return next(err);
   }
 });
 
@@ -1037,14 +1210,14 @@ archProcurementRfqPublicRouter.post("/public/arqdor/rfq/:token/respond", async (
   try {
     const token = String(req.params["token"] || "");
     const result = await pool.query(`SELECT public.arch_rfq_public_submit($1::uuid,$2::jsonb) AS result`, [token, JSON.stringify(req.body ?? {})]);
-    res.json(result.rows[0]?.result ?? { ok: true });
+    return res.json(result.rows[0]?.result ?? { ok: true });
   } catch (err) {
     logger.error({ err }, "public rfq response error");
     const message = err instanceof Error ? err.message : "Não foi possível registrar a cotação.";
     if (/Cotação não encontrada|Cotação encerrada|Informe os itens|Item fora do escopo|todos os itens do escopo|todos os itens precisam ter preço/i.test(message)) {
       return res.status(400).json({ error: message.replace(/^.*?:\s*/, "") });
     }
-    next(err);
+    return next(err);
   }
 });
 

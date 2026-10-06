@@ -11,9 +11,9 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 // nenhum dos ~11 arquivos que já usavam isso precisou mudar.
 //
 // Endereçamento: continua usando PRIVATE_OBJECT_DIR / PUBLIC_OBJECT_SEARCH_PATHS
-// no formato "/<bucket>/<prefixo>" (ex: /app-uploads/private). O primeiro
-// segmento agora é o nome real do bucket no Supabase Storage (criado
-// automaticamente na primeira vez que for usado).
+// no formato "/<bucket>/<prefixo>" (ex: /app-uploads/private). O bucket é
+// mantido PRIVADO; objetos explicitamente públicos são servidos pelas rotas
+// controladas do backend em PUBLIC_OBJECT_SEARCH_PATHS.
 // ─────────────────────────────────────────────────────────────────────────
 
 function getSupabaseClient(): SupabaseClient {
@@ -44,7 +44,7 @@ async function ensureBucketExists(client: SupabaseClient, bucketName: string): P
       const exists = buckets?.some((b) => b.name === bucketName);
       if (!exists) {
         const { error } = await client.storage.createBucket(bucketName, {
-          public: true,
+          public: false,
           fileSizeLimit: OBJECT_STORAGE_FILE_SIZE_LIMIT,
         });
         if (error && !/already exists/i.test(error.message)) {
@@ -55,7 +55,7 @@ async function ensureBucketExists(client: SupabaseClient, bucketName: string): P
         // por bucket compatível com o limite global para que a preparação do
         // upload nunca falhe antes de gerar a URL assinada.
         const { error } = await client.storage.updateBucket(bucketName, {
-          public: true,
+          public: false,
           fileSizeLimit: OBJECT_STORAGE_FILE_SIZE_LIMIT,
         });
         if (error) throw error;
@@ -128,9 +128,13 @@ class SupabaseFileHandle {
     if (error) throw error;
   }
 
-  getPublicUrl(): string {
-    const { data } = this.client.storage.from(this.bucketName).getPublicUrl(this.objectName);
-    return data.publicUrl;
+  async getSignedUrl(expiresInSec: number = 300): Promise<string> {
+    const ttl = Math.max(60, Math.min(7 * 24 * 60 * 60, Math.floor(expiresInSec)));
+    const { data, error } = await this.client.storage.from(this.bucketName).createSignedUrl(this.objectName, ttl);
+    if (error || !data?.signedUrl) {
+      throw new Error(`Falha ao gerar URL assinada: ${error?.message ?? "erro desconhecido"}`);
+    }
+    return data.signedUrl;
   }
 }
 
@@ -215,10 +219,13 @@ export class ObjectStorageService {
     return new Response(new Uint8Array(buffer), { headers });
   }
 
-  async getObjectEntityUploadURL(): Promise<string> {
+  async getObjectEntityUploadURL(tenantId?: string | null): Promise<string> {
     const privateObjectDir = this.getPrivateObjectDir();
     const objectId = randomUUID();
-    const fullPath = `${privateObjectDir}/uploads/${objectId}`;
+    const tenantSegment = String(tenantId ?? "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
+    const fullPath = tenantSegment
+      ? `${privateObjectDir}/tenants/${tenantSegment}/uploads/${objectId}`
+      : `${privateObjectDir}/uploads/${objectId}`;
     const { bucketName, objectName } = parseObjectPath(fullPath);
 
     const client = getSupabaseClient();
@@ -228,6 +235,11 @@ export class ObjectStorageService {
       throw new Error(`Falha ao gerar URL de upload: ${error?.message ?? "erro desconhecido"}`);
     }
     return data.signedUrl;
+  }
+
+  async getObjectEntitySignedUrl(objectPath: string, expiresInSec: number = 300): Promise<string> {
+    const file = await this.getObjectEntityFile(objectPath);
+    return file.getSignedUrl(expiresInSec);
   }
 
   async getObjectEntityFile(objectPath: string): Promise<SupabaseFileHandle> {
@@ -293,19 +305,28 @@ export class ObjectStorageService {
     return `/objects/media/${safeName}`;
   }
 
-  async savePrivateBuffer(buffer: Buffer, contentType: string, originalName: string): Promise<string> {
+  async savePrivateBuffer(
+    buffer: Buffer,
+    contentType: string,
+    originalName: string,
+    tenantId?: string | null,
+  ): Promise<string> {
     const privateDir = this.getPrivateObjectDir();
     const objectId = randomUUID();
     const ext = originalName.split(".").pop()?.toLowerCase() ?? "bin";
     const safeName = `${objectId}.${ext}`;
-    const fullPath = `${privateDir}/quotes/${safeName}`;
+    const tenantSegment = String(tenantId ?? "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
+    const relativePath = tenantSegment
+      ? `tenants/${tenantSegment}/generated/${safeName}`
+      : `quotes/${safeName}`;
+    const fullPath = `${privateDir}/${relativePath}`;
     const { bucketName, objectName } = parseObjectPath(fullPath);
     await objectStorageClient.bucket(bucketName).file(objectName).save(buffer, { contentType, resumable: false });
-    return `/objects/quotes/${safeName}`;
+    return `/objects/${relativePath}`;
   }
 
-  // ACL não é usado por nenhum caller hoje (bucket é público); mantido como
-  // no-op só pra não quebrar import caso algo volte a chamar isso.
+  // ACL por objeto não é usado; a fronteira público/privado é aplicada pelas
+  // rotas do backend e URLs assinadas sobre um bucket privado.
   async trySetObjectEntityAclPolicy(rawPath: string): Promise<string> {
     return this.normalizeObjectEntityPath(rawPath);
   }

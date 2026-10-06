@@ -22,6 +22,8 @@ export type ProfessionalMediaAsset = {
   role?: string | null;
   storageUrl?: string | null;
   storage_url?: string | null;
+  accessUrl?: string | null;
+  access_url?: string | null;
   originalFilename?: string | null;
   original_filename?: string | null;
   mimeType?: string | null;
@@ -111,7 +113,7 @@ export function mediaUrl(raw: string): string {
 }
 
 export function assetUrl(asset: ProfessionalMediaAsset): string {
-  return mediaUrl(asset.storageUrl ?? asset.storage_url ?? "");
+  return asset.accessUrl ?? asset.access_url ?? mediaUrl(asset.storageUrl ?? asset.storage_url ?? "");
 }
 
 export function assetLabel(asset: ProfessionalMediaAsset): string {

@@ -1,4 +1,5 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
+import ConstructionPortalSettings from "../construction-hub/ConstructionPortalSettings";
 import { ApprovalTimelinePanel } from "./ApprovalTimelinePanel";
 import { ClientPortalPreview } from "./ClientPortalPreview";
 import { PortalDeliveryPanel } from "./PortalDeliveryPanel";
@@ -13,6 +14,7 @@ type ClientPortalApprovalStudioProps = {
 };
 
 export default function ClientPortalApprovalStudio({ arqState, onNavigate }: ClientPortalApprovalStudioProps) {
+  const [view, setView] = useState<"proposal" | "portal">("proposal");
   const projectId = useMemo(() => getProjectId(arqState), [arqState]);
   const projectTitle = useMemo(() => getProjectTitle(arqState), [arqState]);
   const clientName = useMemo(() => getClientName(arqState), [arqState]);
@@ -40,36 +42,59 @@ export default function ClientPortalApprovalStudio({ arqState, onNavigate }: Cli
         <header className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Sprint 032 • Client Portal Approval</p>
-              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[var(--arq-foreground)]">Proposta, portal público e aprovação do cliente</h1>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Portal do Cliente</p>
+              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[var(--arq-foreground)]">
+                {view === "proposal" ? "Proposta e aprovações" : "Conteúdo publicado"}
+              </h1>
               <p className="mt-1 text-sm text-[var(--arq-muted)]">
-                {projectTitle} • orçamento vira proposta, link público com token, aprovação por item e decisão final.
+                {projectTitle} • {view === "proposal"
+                  ? "proposta, aprovação por item, envio e histórico de decisões."
+                  : "documentos, cronograma, financeiro, contratos e demais conteúdos reais da obra."}
               </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
-              {proposal ? (
+              <button
+                type="button"
+                onClick={() => setView("proposal")}
+                className={`rounded-2xl px-4 py-2 text-sm font-semibold ${view === "proposal" ? "bg-slate-950 text-white" : "border border-[var(--arq-border)] bg-[var(--arq-card)] text-[var(--arq-foreground)]"}`}
+              >
+                Proposta e aprovações
+              </button>
+              <button
+                type="button"
+                onClick={() => setView("portal")}
+                className={`rounded-2xl px-4 py-2 text-sm font-semibold ${view === "portal" ? "bg-slate-950 text-white" : "border border-[var(--arq-border)] bg-[var(--arq-card)] text-[var(--arq-foreground)]"}`}
+              >
+                Conteúdo do portal
+              </button>
+
+              {view === "proposal" && proposal ? (
                 <span className={`rounded-2xl px-4 py-2 text-sm font-semibold ${proposalStatusClass(proposal.status)}`}>
                   {proposalStatusLabel(proposal.status)}
                 </span>
               ) : null}
 
-              <button
-                type="button"
-                onClick={() => void reload()}
-                className="rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-2 text-sm font-semibold text-[var(--arq-foreground)] hover:border-violet-200 hover:text-[var(--arq-accent)]"
-              >
-                {loading ? "Carregando..." : "Atualizar"}
-              </button>
+              {view === "proposal" ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void reload()}
+                    className="rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-2 text-sm font-semibold text-[var(--arq-foreground)] hover:border-violet-200 hover:text-[var(--arq-accent)]"
+                  >
+                    {loading ? "Carregando..." : "Atualizar"}
+                  </button>
 
-              <button
-                type="button"
-                onClick={() => void createFromBudget()}
-                disabled={creating}
-                className="rounded-2xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
-              >
-                {creating ? "Criando..." : "Criar proposta do orçamento"}
-              </button>
+                  <button
+                    type="button"
+                    onClick={() => void createFromBudget()}
+                    disabled={creating}
+                    className="rounded-2xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                  >
+                    {creating ? "Criando..." : "Criar proposta do orçamento"}
+                  </button>
+                </>
+              ) : null}
 
               <button
                 type="button"
@@ -82,38 +107,49 @@ export default function ClientPortalApprovalStudio({ arqState, onNavigate }: Cli
           </div>
 
           <div className="mt-5 grid gap-3 md:grid-cols-3">
-            <Info label="Projeto" value={projectId || "não identificado"} />
-            <Info label="Budget ID" value={budgetId || "não identificado pelo estado"} />
-            <Info label="Proposta" value={proposal?.id || "ainda não criada"} />
+            <Info label="Projeto" value={projectTitle || "Projeto"} />
+            <Info label="Cliente" value={clientName || "A definir"} />
+            <Info
+              label={view === "proposal" ? "Proposta" : "Fonte"}
+              value={view === "proposal"
+                ? (proposal ? proposalStatusLabel(proposal.status) : "Ainda não criada")
+                : "Obra vinculada ao projeto"}
+            />
           </div>
         </header>
 
-        {error ? (
-          <div className="rounded-[28px] border border-rose-100 bg-rose-50 p-4 text-sm font-medium text-rose-700">
-            {error}
-          </div>
-        ) : null}
+        {view === "portal" ? (
+          <ConstructionPortalSettings arqState={arqState} />
+        ) : (
+          <>
+            {error ? (
+              <div className="rounded-[28px] border border-rose-100 bg-rose-50 p-4 text-sm font-medium text-rose-700">
+                {error}
+              </div>
+            ) : null}
 
-        <ProposalSummaryCards proposal={proposal} stats={stats} />
+            <ProposalSummaryCards proposal={proposal} stats={stats} />
 
-        <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
-          <div className="space-y-5">
-            <ProposalItemsApprovalTable items={items} />
-            <ClientPortalPreview proposal={proposal} items={items} />
-          </div>
+            <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+              <div className="space-y-5">
+                <ProposalItemsApprovalTable items={items} />
+                <ClientPortalPreview proposal={proposal} items={items} />
+              </div>
 
-          <div className="space-y-5">
-            <PortalDeliveryPanel
-              proposal={proposal}
-              activating={activating}
-              sending={sending}
-              onActivate={activate}
-              onSend={send}
-            />
+              <div className="space-y-5">
+                <PortalDeliveryPanel
+                  proposal={proposal}
+                  activating={activating}
+                  sending={sending}
+                  onActivate={activate}
+                  onSend={send}
+                />
 
-            <ApprovalTimelinePanel events={events} />
-          </div>
-        </div>
+                <ApprovalTimelinePanel events={events} />
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

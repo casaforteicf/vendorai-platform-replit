@@ -110,6 +110,12 @@ export default function RealBudgetEngineStudio({ arqState, onNavigate }: RealBud
           </div>
         ) : null}
 
+        {budget?.specificationOutdated ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 print:hidden">
+            Este orçamento ficou desatualizado após uma revisão do projeto{budget.specificationRevision ? ` (revisão ${budget.specificationRevision})` : ""}. Revise e sincronize os itens destacados antes de enviar, aprovar ou solicitar novas cotações.
+          </div>
+        ) : null}
+
         <div className="print:hidden">
           <BudgetSummaryCards budget={budget} totals={totals} itemCount={items.length} />
         </div>
@@ -154,7 +160,7 @@ export default function RealBudgetEngineStudio({ arqState, onNavigate }: RealBud
               <div className="mt-5 grid gap-3">
                 <button
                   type="button"
-                  disabled={!budget || sending}
+                  disabled={!budget || sending || Boolean(budget?.specificationOutdated)}
                   onClick={() => void sendBudget()}
                   className="rounded-2xl bg-[var(--arq-accent)] px-5 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
                 >
@@ -163,7 +169,7 @@ export default function RealBudgetEngineStudio({ arqState, onNavigate }: RealBud
 
                 <button
                   type="button"
-                  disabled={!budget || approving}
+                  disabled={!budget || approving || Boolean(budget?.specificationOutdated)}
                   onClick={() => void approveCurrentBudget()}
                   className="rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
                 >
@@ -172,7 +178,7 @@ export default function RealBudgetEngineStudio({ arqState, onNavigate }: RealBud
 
                 <button
                   type="button"
-                  disabled={!budget}
+                  disabled={!budget || Boolean(budget?.specificationOutdated)}
                   onClick={() => onNavigate?.("procurement")}
                   className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
                 >

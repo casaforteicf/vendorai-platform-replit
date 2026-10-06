@@ -39,6 +39,8 @@ export type Budget = {
   clientNotes?: string | null;
   internalNotes?: string | null;
   createdAt?: string | null;
+  specificationOutdated?: boolean;
+  specificationRevision?: string | null;
   updatedAt?: string | null;
 };
 
@@ -65,6 +67,9 @@ export type BudgetItem = {
   manufacturerName?: string | null;
   productName?: string | null;
   materialName?: string | null;
+  specificationOutdated?: boolean;
+  specificationRevision?: string | null;
+  specificationImpact?: string | null;
   visibleToClient: boolean;
   sortOrder: number;
   createdAt?: string | null;

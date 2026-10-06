@@ -72,15 +72,13 @@ router.post("/tenants/:tenantId/variedades-dia", async (req, res) => {
     return;
   }
 
-  // objectPath do upload vira URL pública antes de gravar, mesmo motivo dos
-  // stories: o Praça.ai (outro app) não deve depender do backend do
-  // Vendor.ai só pra exibir mídia.
+  // A vitrine é diária; usa URL assinada com folga de 36h em vez de URL
+  // pública permanente do bucket.
   let videoUrl = parsed.data.videoUrl ?? null;
   if (videoUrl) {
     try {
       const normalized = objectStorageService.normalizeObjectEntityPath(videoUrl);
-      const file = await objectStorageService.getObjectEntityFile(normalized);
-      videoUrl = file.getPublicUrl();
+      videoUrl = await objectStorageService.getObjectEntitySignedUrl(normalized, 36 * 60 * 60);
     } catch {
       // já veio como URL pública — usa como está
     }

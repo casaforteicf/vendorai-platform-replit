@@ -959,7 +959,7 @@ router.post("/tenants/:tenantId/produtos-catalogo/gerar-imagem-ia", async (req, 
     const imgRes = await fetch(openaiUrl);
     const buffer = Buffer.from(await imgRes.arrayBuffer());
     const contentType = imgRes.headers.get("content-type") ?? "image/png";
-    const objectPath = await objectStorage.savePrivateBuffer(buffer, contentType, `produto-ia-${Date.now()}.png`);
+    const objectPath = await objectStorage.savePrivateBuffer(buffer, contentType, `produto-ia-${Date.now()}.png`, tenantId);
     const baseOrigin = `${req.protocol}://${req.get("host")}`;
     res.json({ imagemUrl: `${baseOrigin}/api/storage${objectPath}` });
   } catch (err) {

@@ -130,6 +130,8 @@ export function normalizeBudget(raw: any): Budget {
     notes: raw?.notes || raw?.observacoes || null,
     clientNotes: raw?.clientNotes || raw?.client_notes || null,
     internalNotes: raw?.internalNotes || raw?.internal_notes || null,
+    specificationOutdated: Boolean(raw?.specificationOutdated ?? raw?.specification_outdated ?? false),
+    specificationRevision: raw?.specificationRevision || raw?.specification_revision || null,
     createdAt: raw?.createdAt || raw?.created_at || null,
     updatedAt: raw?.updatedAt || raw?.updated_at || null,
   };
@@ -164,6 +166,9 @@ export function normalizeBudgetItem(raw: any): BudgetItem {
     manufacturerName: raw?.manufacturerName || raw?.manufacturer_name || raw?.fabricanteNome || null,
     productName: raw?.productName || raw?.product_name || raw?.produtoNome || null,
     materialName: raw?.materialName || raw?.material_name || raw?.materialNome || null,
+    specificationOutdated: Boolean(raw?.specificationOutdated ?? raw?.specification_outdated ?? false),
+    specificationRevision: raw?.specificationRevision || raw?.specification_revision || null,
+    specificationImpact: raw?.specificationImpact || raw?.specification_impact || null,
     visibleToClient: raw?.visibleToClient ?? raw?.visible_to_client ?? true,
     sortOrder: Number(raw?.sortOrder ?? raw?.sort_order ?? 0),
     createdAt: raw?.createdAt || raw?.created_at || null,

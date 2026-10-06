@@ -402,7 +402,7 @@ export async function startProductPhotoVideo(input: StartProductVideoInput): Pro
         status: "done",
         progress: sceneCount + 2,
         total: sceneCount + 2,
-        videoUrl: `/api/storage${storageUrl}`,
+        videoUrl: storageUrl,
         videoAssetId: output.assetId,
         sourceAssetIds,
         storyboard: input.storyboard ?? null,

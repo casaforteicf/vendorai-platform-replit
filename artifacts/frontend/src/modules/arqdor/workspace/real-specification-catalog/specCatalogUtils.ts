@@ -64,6 +64,12 @@ export function statusClass(status: SpecObjectStatus) {
   return classes[status];
 }
 
+function nullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export function normalizeCatalogItem(raw: any): CatalogItem {
   return {
     id: String(raw?.id || raw?._id || raw?.catalogId || crypto.randomUUID()),
@@ -97,12 +103,35 @@ export function normalizeSpecObject(raw: any): SpecObject {
     cenaId: raw?.cenaId || raw?.cena_id || null,
     renderId: raw?.renderId || raw?.render_id || null,
     sourceObjectId: raw?.sourceObjectId || raw?.source_object_id || null,
+    sourceType: raw?.sourceType || raw?.source_type || "manual",
+    projectRevision: raw?.projectRevision || raw?.project_revision || null,
+    revisionImpact: raw?.revisionImpact || raw?.revision_impact || "unchanged",
+    geometryHash: raw?.geometryHash || raw?.geometry_hash || null,
+    removedFromProjectAt: raw?.removedFromProjectAt || raw?.removed_from_project_at || null,
     name: raw?.name || raw?.nome || raw?.title || "Objeto especificável",
     description: raw?.description || raw?.descricao || null,
     category: raw?.category || raw?.categoria || null,
     region: raw?.region || raw?.regiao || null,
     quantity,
     unit: raw?.unit || raw?.unidade || "un",
+    quantitySource: raw?.quantitySource || raw?.quantity_source || "pending",
+    widthMm: nullableNumber(raw?.widthMm ?? raw?.width_mm),
+    heightMm: nullableNumber(raw?.heightMm ?? raw?.height_mm),
+    depthMm: nullableNumber(raw?.depthMm ?? raw?.depth_mm),
+    lengthMm: nullableNumber(raw?.lengthMm ?? raw?.length_mm),
+    areaM2: nullableNumber(raw?.areaM2 ?? raw?.area_m2),
+    perimeterM: nullableNumber(raw?.perimeterM ?? raw?.perimeter_m),
+    volumeM3: nullableNumber(raw?.volumeM3 ?? raw?.volume_m3),
+    measurementSource: raw?.measurementSource || raw?.measurement_source || "pending",
+    measurementRevision: raw?.measurementRevision || raw?.measurement_revision || null,
+    lastProjectSyncAt: raw?.lastProjectSyncAt || raw?.last_project_sync_at || null,
+    measurementConfirmedAt: raw?.measurementConfirmedAt || raw?.measurement_confirmed_at || null,
+    measurementConfirmedBy: raw?.measurementConfirmedBy || raw?.measurement_confirmed_by || null,
+    wasteFactor: nullableNumber(raw?.wasteFactor ?? raw?.waste_factor) ?? 0,
+    purchaseQuantity: nullableNumber(raw?.purchaseQuantity ?? raw?.purchase_quantity),
+    packageYield: nullableNumber(raw?.packageYield ?? raw?.package_yield),
+    purchaseMode: raw?.purchaseMode || raw?.purchase_mode || "same_unit",
+    purchaseUnit: raw?.purchaseUnit || raw?.purchase_unit || raw?.unit || raw?.unidade || "un",
     catalogProductId: raw?.catalogProductId || raw?.catalog_product_id || null,
     catalogMaterialId: raw?.catalogMaterialId || raw?.catalog_material_id || null,
     manufacturerId: raw?.manufacturerId || raw?.manufacturer_id || null,
@@ -115,6 +144,10 @@ export function normalizeSpecObject(raw: any): SpecObject {
     laborValue,
     totalValue,
     notes: raw?.notes || raw?.observacoes || null,
+    technicalApprovalStatus: raw?.technicalApprovalStatus || raw?.technical_approval_status || "pending",
+    technicalApprovedAt: raw?.technicalApprovedAt || raw?.technical_approved_at || null,
+    technicalApprovedBy: raw?.technicalApprovedBy || raw?.technical_approved_by || null,
+    technicalApprovalNote: raw?.technicalApprovalNote || raw?.technical_approval_note || null,
     status: raw?.status || "draft",
     createdAt: raw?.createdAt || raw?.created_at || null,
     updatedAt: raw?.updatedAt || raw?.updated_at || null,
