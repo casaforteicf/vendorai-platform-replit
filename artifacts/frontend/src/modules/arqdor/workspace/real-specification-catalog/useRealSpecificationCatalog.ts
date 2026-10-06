@@ -10,7 +10,11 @@ import {
 } from "./specCatalogApi";
 import type { CatalogItem, CatalogItemType, SpecObject, SpecObjectPayload } from "./specCatalogTypes";
 
-export function useRealSpecificationCatalog(projectId: string, renderId?: string) {
+export function useRealSpecificationCatalog(
+  projectId: string,
+  renderId?: string,
+  options?: { catalogEnabled?: boolean },
+) {
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
   const [specObjects, setSpecObjects] = useState<SpecObject[]>([]);
   const [selectedObject, setSelectedObject] = useState<SpecObject | null>(null);
@@ -22,6 +26,7 @@ export function useRealSpecificationCatalog(projectId: string, renderId?: string
   const [extracting, setExtracting] = useState(false);
   const [sendingToBudget, setSendingToBudget] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const catalogEnabled = Boolean(options?.catalogEnabled);
 
   const totals = useMemo(() => {
     const material = specObjects.reduce((sum, item) => sum + Number(item.materialValue || 0) * Number(item.quantity || 1), 0);
@@ -37,6 +42,7 @@ export function useRealSpecificationCatalog(projectId: string, renderId?: string
   }, [specObjects]);
 
   const loadCatalog = useCallback(async () => {
+    if (!catalogEnabled) return;
     setLoadingCatalog(true);
     setError(null);
 
@@ -50,7 +56,7 @@ export function useRealSpecificationCatalog(projectId: string, renderId?: string
 
     setCatalogItems(result.data?.items || []);
     setLoadingCatalog(false);
-  }, [catalogType, projectId, query]);
+  }, [catalogEnabled, catalogType, projectId, query]);
 
   const loadSpecObjects = useCallback(async () => {
     if (!projectId) return;
@@ -77,8 +83,8 @@ export function useRealSpecificationCatalog(projectId: string, renderId?: string
   }, [projectId, renderId]);
 
   useEffect(() => {
-    void loadCatalog();
-  }, [loadCatalog]);
+    if (catalogEnabled) void loadCatalog();
+  }, [catalogEnabled, loadCatalog]);
 
   useEffect(() => {
     void loadSpecObjects();
