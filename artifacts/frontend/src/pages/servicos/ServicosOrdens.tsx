@@ -266,6 +266,7 @@ function NovaOrdemDialog({
   const [enderecoAtendimento, setEnderecoAtendimento] = useState("");
   const [observacoes, setObservacoes] = useState("");
   const [camposPersonalizados, setCamposPersonalizados] = useState<CampoPersonalizado[]>([]);
+  const [modeloHydratado, setModeloHydratado] = useState("");
 
   const { data: leads = [] } = useQuery<any[]>({
     queryKey: ["leads-search", tenantId, clienteSearch],
@@ -289,14 +290,19 @@ function NovaOrdemDialog({
   });
 
   useEffect(() => {
-    if (!open) return;
-    const defaults = Array.isArray(modeloConfig?.camposPersonalizados) ? modeloConfig.camposPersonalizados : [];
+    if (!open) {
+      setModeloHydratado("");
+      return;
+    }
+    if (modeloHydratado === modeloExecucao || !modeloConfig) return;
+    const defaults = Array.isArray(modeloConfig.camposPersonalizados) ? modeloConfig.camposPersonalizados : [];
     setCamposPersonalizados(defaults.map((campo) => ({
       ...campo,
       id: crypto.randomUUID(),
       valor: campo.tipo === "checkbox" ? false : "",
     })));
-  }, [open, modeloExecucao, modeloConfig?.camposPersonalizados]);
+    setModeloHydratado(modeloExecucao);
+  }, [open, modeloExecucao, modeloConfig, modeloHydratado]);
 
   const saveModelo = useMutation({
     mutationFn: () =>
