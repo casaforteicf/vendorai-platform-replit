@@ -330,6 +330,7 @@ export default function LeadAttachmentsTab() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterType>("all");
   const [folderFilter, setFolderFilter] = useState<string>("");
+  const [uploadTargetFolder, setUploadTargetFolder] = useState<string>("");
 
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [folderDraft, setFolderDraft] = useState("");
@@ -610,8 +611,17 @@ export default function LeadAttachmentsTab() {
     });
   }, [unified, search, folderFilter, filter]);
 
+  function openFilePicker(folder = "") {
+    setUploadTargetFolder(normalizeFolder(folder));
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+      fileInputRef.current.click();
+    }
+  }
+
   async function uploadFiles(files: File[]) {
     if (!files.length || !leadId) return;
+    const targetFolder = normalizeFolder(uploadTargetFolder);
     setUploading(true);
     try {
       const created: StoredLeadAttachment[] = [];
@@ -637,13 +647,19 @@ export default function LeadAttachmentsTab() {
           mimeType: file.type || "application/octet-stream",
           fileSize: file.size,
           type,
-          folderPath: folderFilter || automaticFolder({ name: file.name, type, origin: "Importação manual" }),
+          folderPath: targetFolder || automaticFolder({ name: file.name, type, origin: "Importação manual" }),
           marketingStatus: "only_attachment",
           createdAt: new Date().toISOString(),
         });
       }
       await persistAttachmentState({ ...attachmentState, files: [...attachmentState.files, ...created] });
-      toast({ title: created.length === 1 ? "Arquivo adicionado" : `${created.length} arquivos adicionados`, description: "Entraram em Anexos. Nada foi liberado para marketing automaticamente." });
+      if (targetFolder) setFolderFilter(targetFolder);
+      toast({
+        title: created.length === 1 ? "Arquivo adicionado" : `${created.length} arquivos adicionados`,
+        description: targetFolder
+          ? `Adicionado em ${targetFolder}. Nada foi liberado para marketing automaticamente.`
+          : "Entraram em Anexos. Nada foi liberado para marketing automaticamente.",
+      });
     } catch (error) {
       toast({
         title: "Falha no upload",
@@ -653,6 +669,7 @@ export default function LeadAttachmentsTab() {
     } finally {
       setUploading(false);
       setUploadProgress(null);
+      setUploadTargetFolder("");
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
@@ -779,7 +796,7 @@ export default function LeadAttachmentsTab() {
               accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
               onChange={(event) => void uploadFiles(Array.from(event.target.files ?? []))}
             />
-            <Button size="sm" className="gap-1.5" onClick={() => fileInputRef.current?.click()} disabled={uploading || saving}>
+            <Button size="sm" className="gap-1.5" onClick={() => openFilePicker()} disabled={uploading || saving}>
               {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
               {uploading && uploadProgress
                 ? ` Enviando ${Math.min(100, Math.round((uploadProgress.loaded / Math.max(1, uploadProgress.total)) * 100))}%`
@@ -822,17 +839,43 @@ export default function LeadAttachmentsTab() {
             ) : folders.map((folder) => {
               const count = unified.filter((item) => item.folderPath === folder).length;
               return (
-                <button key={folder} type="button" onClick={() => setFolderFilter(folder)} className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted/50 ${folderFilter === folder ? "border-primary bg-primary/5" : ""}`}>
-                  <FolderOpen className="h-5 w-5 shrink-0 text-primary" />
-                  <div className="min-w-0"><p className="truncate text-sm font-medium">{folder}</p><p className="text-xs text-muted-foreground">{count} arquivo{count === 1 ? "" : "s"}</p></div>
-                </button>
+                <div key={folder} className={`group rounded-lg border p-2 transition-colors hover:bg-muted/50 ${folderFilter === folder ? "border-primary bg-primary/5" : ""}`}>
+                  <button type="button" onClick={() => setFolderFilter(folder)} className="flex w-full items-center gap-3 p-1 text-left">
+                    <FolderOpen className="h-5 w-5 shrink-0 text-primary" />
+                    <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{folder}</p><p className="text-xs text-muted-foreground">{count} arquivo{count === 1 ? "" : "s"}</p></div>
+                  </button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="mt-1 h-7 w-full justify-start gap-1.5 px-2 text-[11px] text-muted-foreground group-hover:text-foreground"
+                    onClick={() => openFilePicker(folder)}
+                    disabled={uploading || saving}
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Adicionar arquivo
+                  </Button>
+                </div>
               );
             })}
           </div>
         </div>
 
         <div className="space-y-2">
-          <div className="flex items-center justify-between"><h3 className="text-sm font-semibold">Arquivos</h3><span className="text-xs text-muted-foreground">{visible.length} de {unified.length}</span></div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold">Arquivos</h3>
+              {folderFilter && <Badge variant="outline" className="max-w-64 truncate text-[10px]">{folderFilter}</Badge>}
+            </div>
+            <div className="flex items-center gap-2">
+              {folderFilter && (
+                <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={() => openFilePicker(folderFilter)} disabled={uploading || saving}>
+                  {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                  Adicionar arquivos nesta pasta
+                </Button>
+              )}
+              <span className="text-xs text-muted-foreground">{visible.length} de {unified.length}</span>
+            </div>
+          </div>
           {loading ? (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{[1,2,3,4].map((item) => <div key={item} className="h-52 animate-pulse rounded-xl bg-muted" />)}</div>
           ) : visible.length === 0 ? (
