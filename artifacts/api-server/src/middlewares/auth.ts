@@ -206,7 +206,7 @@ export const authenticate: RequestHandler = (req, res, next) => {
   try {
     req.user = verifyToken(token);
     const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-    res.setHeader(
+    res.append(
       "Set-Cookie",
       `vendorai_storage_session=${encodeURIComponent(token)}; Path=/api/storage/; HttpOnly; SameSite=Lax; Max-Age=86400${secure}`,
     );
