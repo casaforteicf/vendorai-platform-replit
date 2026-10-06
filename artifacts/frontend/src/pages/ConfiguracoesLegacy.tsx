@@ -164,7 +164,7 @@ const DistribuicaoConfigCard = lazy(() => import("@/components/DistribuicaoConfi
 const SiteGeneratorTab = lazy(() => import("./SiteGenerator").then((m) => ({ default: m.SiteGeneratorTab })));
 const FaturamentoTab = lazy(() => import("./FaturamentoTab").then((m) => ({ default: m.FaturamentoTab })));
 const ContractTemplateTab = lazy(() => import("@/components/ContractTemplateTab").then((m) => ({ default: m.ContractTemplateTab })));
-const BrandKitSettings = lazy(() => import("@/components/BrandKitSettings").then((m) => ({ default: m.BrandKitSettings })));
+import { BrandKitSettings } from "@/components/BrandKitSettings";
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -2404,8 +2404,8 @@ export default function Configuracoes() {
         </div>
 
         {/* ── Tab: Marketing / Kit da Marca ─────────────────────────────── */}
-        <TabsContent value="marketing">
-          <Suspense fallback={null}><BrandKitSettings /></Suspense>
+        <TabsContent value="marketing" className="min-h-[320px]">
+          <BrandKitSettings />
         </TabsContent>
 
         {/* ── Tab: Perfil da Empresa ──────────────────────────────────────── */}
