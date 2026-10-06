@@ -25,6 +25,17 @@ export type ServicoChecklistEvidenceMode =
 
 export type ServicoChecklistVisibility = "interno" | "cliente" | "cliente_parceiro";
 
+export type ServicoMidiaItem = {
+  id: string;
+  url: string;
+  tipo: "image" | "video" | "audio";
+  nome?: string | null;
+  mimeType?: string | null;
+  criadoEm?: string | null;
+  criadoPorId?: string | null;
+  criadoPorNome?: string | null;
+};
+
 export type ServicoChecklistItem = {
   id: string;
   titulo: string;
@@ -34,7 +45,8 @@ export type ServicoChecklistItem = {
   visibilidade: ServicoChecklistVisibility;
   concluido: boolean;
   observacao?: string | null;
-  fotos?: string[];
+  fotos?: string[]; // legado: preservado para compatibilidade com OS existentes
+  midias?: ServicoMidiaItem[];
   concluidoPorId?: string | null;
   concluidoPorNome?: string | null;
   concluidoEm?: string | null;
