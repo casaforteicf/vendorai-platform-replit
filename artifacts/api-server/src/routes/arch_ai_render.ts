@@ -1,6 +1,6 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
-import { and, asc, desc, eq, ne } from "drizzle-orm";
-import { db, pool, archAiRendersTable, archRenderFidelityReviewsTable } from "@workspace/db";
+import { and, asc, desc, eq, gte, ne } from "drizzle-orm";
+import { db, pool, archAiRendersTable, archRenderFidelityReviewsTable, aiUsageLogsTable, tenantsTable } from "@workspace/db";
 import { authenticate } from "../middlewares/auth.js";
 import { inferOperationType, renderOperationTypeSchema } from "../lib/arqdor-render-version-metadata.js";
 import { syncApprovedRenderSpecifications } from "../lib/arqdor-approved-render-spec.js";
@@ -435,6 +435,82 @@ archAiRenderRouter.post("/arch/ai-render/:id/review", authenticate, async (req: 
       error: "Não foi possível concluir o Fidelity Review desta versão.",
     });
   }
+});
+
+archAiRenderRouter.get("/arch/ai-health", authenticate, async (req: Request, res: Response) => {
+  const tid = tenantId(req);
+  if (!tid) return res.status(403).json({ success: false, error: "Tenant não identificado" });
+
+  const [tenant] = await db.select({
+    openaiKeyStatus: tenantsTable.openaiKeyStatus,
+    anthropicKeyStatus: tenantsTable.anthropicKeyStatus,
+  }).from(tenantsTable).where(eq(tenantsTable.id, tid)).limit(1);
+
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const logs = await db.select({
+    provider: aiUsageLogsTable.provider,
+    feature: aiUsageLogsTable.feature,
+    model: aiUsageLogsTable.model,
+    success: aiUsageLogsTable.success,
+    errorMessage: aiUsageLogsTable.errorMessage,
+    createdAt: aiUsageLogsTable.createdAt,
+  }).from(aiUsageLogsTable)
+    .where(and(
+      eq(aiUsageLogsTable.tenantId, tid),
+      gte(aiUsageLogsTable.createdAt, since),
+    ))
+    .orderBy(desc(aiUsageLogsTable.createdAt))
+    .limit(200);
+
+  function providerHealth(provider: "openai" | "anthropic", configured: boolean) {
+    const providerLogs = logs.filter((row) => row.provider === provider);
+    const lastSuccess = providerLogs.find((row) => row.success);
+    const lastFailure = providerLogs.find((row) => !row.success);
+    const latest = providerLogs[0];
+    let state: "healthy" | "degraded" | "unverified" | "unavailable" = "unverified";
+    if (!configured) state = "unavailable";
+    else if (latest && !latest.success) state = "degraded";
+    else if (lastSuccess) state = "healthy";
+    return {
+      state,
+      configured,
+      last_success_at: lastSuccess?.createdAt ?? null,
+      last_failure_at: lastFailure?.createdAt ?? null,
+      recent_requests: providerLogs.length,
+      recent_failures: providerLogs.filter((row) => !row.success).length,
+      last_model: latest?.model ?? null,
+    };
+  }
+
+  const openaiConfigured = tenant?.openaiKeyStatus === "ativo" || Boolean(process.env["OPENAI_API_KEY"]);
+  const anthropicConfigured = tenant?.anthropicKeyStatus === "ativo" || Boolean(process.env["ANTHROPIC_API_KEY"]);
+  const fidelityLogs = logs.filter((row) => row.feature === "intelligence_analysis");
+  const fidelityLatest = fidelityLogs[0] ?? null;
+
+  return res.json({
+    success: true,
+    observed_window_hours: 24,
+    providers: {
+      openai: providerHealth("openai", openaiConfigured),
+      anthropic: providerHealth("anthropic", anthropicConfigured),
+    },
+    features: {
+      fidelity_review: {
+        state: !openaiConfigured && !anthropicConfigured
+          ? "unavailable"
+          : fidelityLatest
+            ? (fidelityLatest.success ? "healthy" : "degraded")
+            : "unverified",
+        last_success_at: fidelityLogs.find((row) => row.success)?.createdAt ?? null,
+        last_failure_at: fidelityLogs.find((row) => !row.success)?.createdAt ?? null,
+        recent_requests: fidelityLogs.length,
+        recent_failures: fidelityLogs.filter((row) => !row.success).length,
+      },
+      project_memory: {
+        state: "local",
+      },
+    },
+  });
 });
 
 // Fonte oficial do histórico persistente. Registrada antes do router legado para
