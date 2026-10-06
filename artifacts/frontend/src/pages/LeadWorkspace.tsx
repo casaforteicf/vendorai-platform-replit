@@ -608,7 +608,7 @@ export default function LeadWorkspace() {
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error ?? result.message ?? "Não foi possível mover o lead.");
 
-      await Promise.all([
+      await Promise.allSettled([
         qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId, { leadId: id }) }),
         qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
         qc.invalidateQueries({ queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }) }),
