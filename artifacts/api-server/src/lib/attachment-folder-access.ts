@@ -12,6 +12,14 @@ import {
 } from "@workspace/db";
 import { verifyAttachmentFolderUnlockToken } from "./jwt.js";
 
+export function isAttachmentFolderSchemaMissingError(error: unknown): boolean {
+  const current = error as { code?: string; cause?: { code?: string }; message?: string };
+  return current?.code === "42P01"
+    || current?.cause?.code === "42P01"
+    || String(current?.message ?? "").includes("attachment_folder_locks")
+    || String(current?.message ?? "").includes("attachment_folder_lock_objects");
+}
+
 export function normalizeAttachmentObjectPath(value: string): string {
   const raw = String(value ?? "").trim();
   if (!raw) return "";
@@ -36,7 +44,8 @@ function readCookie(req: Request, name: string): string {
 export async function getLockedObjectRecord(tenantId: string, objectPath: string) {
   const normalized = normalizeAttachmentObjectPath(objectPath);
   if (!normalized) return null;
-  const [row] = await db
+  try {
+    const [row] = await db
     .select({
       lockId: attachmentFolderLockObjectsTable.lockId,
       leadId: attachmentFolderLockObjectsTable.leadId,
@@ -49,7 +58,11 @@ export async function getLockedObjectRecord(tenantId: string, objectPath: string
       eq(attachmentFolderLockObjectsTable.objectPath, normalized),
     ))
     .limit(1);
-  return row ?? null;
+    return row ?? null;
+  } catch (error) {
+    if (isAttachmentFolderSchemaMissingError(error)) return null;
+    throw error;
+  }
 }
 
 export async function requestCanAccessLockedObject(req: Request, tenantId: string, objectPath: string): Promise<boolean> {
@@ -73,7 +86,8 @@ export async function requestCanAccessLockedObject(req: Request, tenantId: strin
 }
 
 export async function getFolderLockByPath(tenantId: string, leadId: string, folderPath: string) {
-  const [lock] = await db
+  try {
+    const [lock] = await db
     .select()
     .from(attachmentFolderLocksTable)
     .where(and(
@@ -82,7 +96,11 @@ export async function getFolderLockByPath(tenantId: string, leadId: string, fold
       eq(attachmentFolderLocksTable.folderPath, folderPath),
     ))
     .limit(1);
-  return lock ?? null;
+    return lock ?? null;
+  } catch (error) {
+    if (isAttachmentFolderSchemaMissingError(error)) return null;
+    throw error;
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -143,7 +161,8 @@ function metadataString(metadata: Record<string, unknown> | null | undefined, ke
  * object path when a folder is protected.
  */
 export async function syncProtectedObjectsForLead(tenantId: string, leadId: string): Promise<void> {
-  const locks = await db
+  try {
+    const locks = await db
     .select()
     .from(attachmentFolderLocksTable)
     .where(and(
@@ -242,5 +261,9 @@ export async function syncProtectedObjectsForLead(tenantId: string, leadId: stri
         objectPath,
       })));
     }
+  }
+  } catch (error) {
+    if (isAttachmentFolderSchemaMissingError(error)) return;
+    throw error;
   }
 }
