@@ -34,10 +34,10 @@ const AIMemoryModule = lazy(() => import('./modules/AIMemoryModule').then((m) =>
 const SettingsModule = lazy(() => import('./modules/SettingsModule').then((m) => ({ default: m.SettingsModule })))
 const ArqHubView = lazy(() => import('../arqhub/ArqHubView').then((m) => ({ default: m.ArqHubView })))
 const AIEnterpriseCore = lazy(() => import('./ai-enterprise/AIEnterpriseCore'))
-const ProjectHomeV2 = lazy(() => import('./project-experience/ProjectHomeV2').then((m) => ({ default: m.ProjectHomeV2 })))
-const SmartProjectModule = lazy(() => import('./modules/SmartProjectModule').then((m) => ({ default: m.SmartProjectModule })))
+const ProjectHomeV2 = lazy(() => import('./project-experience/ProjectHomeV2'))
+const SmartProjectModule = lazy(() => import('./modules/SmartProjectModule'))
 const SmartSpecModule = lazy(() => import('./modules/SmartSpecModule').then((m) => ({ default: m.SmartSpecModule })))
-const SpecificationStudio = lazy(() => import('./specification-studio/SpecificationStudio').then((m) => ({ default: m.SpecificationStudio })))
+const SpecificationStudio = lazy(() => import('./specification-studio/SpecificationStudio'))
 const ProductionStudio = lazy(() => import('./production-studio/ProductionStudio'))
 const ExecutiveBudgetStudio = lazy(() => import('./executive-budget-studio/ExecutiveBudgetStudio'))
 const ProcurementStudio = lazy(() => import('./procurement-studio/ProcurementStudio'))
@@ -150,6 +150,7 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'projeto':    { icon:'🏗️', label:'Projeto'       },
   'biblioteca': { icon:'🖼️', label:'Inspirar'      },
   'prompt':     { icon:'⚡', label:'Prompt'        },
+  'render':     { icon:'✨', label:'Renderizar'    },
   'renders':    { icon:'✨', label:'Renderizar'    },
   'cliente':    { icon:'👤', label:'Apresentar'    },
   'especificacao':{ icon:'📋', label:'Especificar' },
