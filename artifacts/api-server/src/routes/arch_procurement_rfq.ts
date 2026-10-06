@@ -1014,9 +1014,9 @@ archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token", async (req, res,
     const itemRows = items.map((item:any)=>`<tr>
       <td><strong>${esc(item.descricao)}</strong><br><small>${esc(item.ambiente || "")}</small></td>
       <td>${esc(item.quantidade)} ${esc(item.unidade)}</td>
-      <td><input data-id="${esc(item.id)}" data-field="unitValue" type="number" step="0.01" min="0" required></td>
-      <td><input data-id="${esc(item.id)}" data-field="brandModel" placeholder="marca/modelo"></td>
-      <td><input data-id="${esc(item.id)}" data-field="notes" placeholder="observações"></td>
+      <td><input data-id="${esc(item.id)}" data-field="unitValue" type="number" step="0.01" min="0" required ${quoteClosed ? "disabled" : ""}></td>
+      <td><input data-id="${esc(item.id)}" data-field="brandModel" placeholder="marca/modelo" ${quoteClosed ? "disabled" : ""}></td>
+      <td><input data-id="${esc(item.id)}" data-field="notes" placeholder="observações" ${quoteClosed ? "disabled" : ""}></td>
     </tr>`).join("");
     const itemMeta = JSON.stringify(items.map((x:any)=>({id:String(x.id),quantity:n(x.quantidade),unit:x.unidade||"un"})));
     const technicalDocRows = technicalDocs.length
@@ -1025,6 +1025,16 @@ archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token", async (req, res,
     const responseDocRows = responseDocs.length
       ? responseDocs.map((doc:any)=>`<li>${esc(doc.name || "Anexo enviado")}</li>`).join("")
       : "<li class='muted'>Nenhum anexo enviado ainda.</li>";
+    const quoteClosed = ["accepted","rejected","expired"].includes(String(inv.status)) || ["completed","cancelled"].includes(String(pkg.status));
+    const quoteClosedReason = String(inv.status) === "accepted"
+      ? "Cotação selecionada."
+      : String(inv.status) === "rejected"
+        ? "Cotação encerrada após seleção de outro fornecedor."
+        : ["completed","cancelled"].includes(String(pkg.status))
+          ? "Este pacote de cotação já foi encerrado."
+          : String(inv.status) === "expired"
+            ? "Esta cotação expirou."
+            : null;
     const supplierAccountCard = inv.access_mode === "guest"
       ? `<div class="card" id="vendorAccount"><div class="muted">Opcional</div><h2>Quer usar o Vendor.ai como fornecedor?</h2>
           <p class="muted">Você pode responder esta cotação sem cadastro. Se quiser, crie sua conta e passe a ter seu próprio ambiente, histórico de cotações e recursos do sistema.</p>
@@ -1050,12 +1060,14 @@ archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token", async (req, res,
       ${tenantBrand.logo_url ? `<img src="${esc(tenantBrand.logo_url)}" alt="${esc(tenantBrand.name || "Logo")}" style="max-width:180px;max-height:54px;object-fit:contain">` : ""}
       <div class="muted">${esc(tenantBrand.name || "ARQDOR")} • Solicitação de cotação</div>
     </div><h1>${esc(pkg.title)}</h1>
-    <p>${esc(obra?.nome || "Obra")} • ${esc(pkg.code)} • versão ${esc(pkg.version)}</p><p class="muted">Esta página contém somente os itens direcionados ao seu escopo: ${esc(pkg.category || pkg.discipline)}.</p></div>
+    <p>${esc(obra?.nome || "Obra")} • ${esc(pkg.code)} • versão ${esc(pkg.version)}</p><p class="muted">Esta página contém somente os itens direcionados ao seu escopo: ${esc(pkg.category || pkg.discipline)}.</p>
+    ${quoteClosedReason ? `<div style="margin-top:14px;padding:12px 14px;border-radius:12px;background:#f3f4f6;font-weight:700">${esc(quoteClosedReason)}</div>` : ""}
+    </div>
     <div class="card"><table><thead><tr><th>Item</th><th>Quantidade</th><th>Valor unitário</th><th>Marca/modelo</th><th>Observação</th></tr></thead><tbody>${itemRows}</tbody></table></div>
     <div class="card"><h2>Arquivos técnicos</h2><p class="muted">Plantas, memoriais e detalhes liberados para esta cotação.</p><ul>${technicalDocRows}</ul></div>
     <div class="card"><h2>Anexar orçamento do fornecedor</h2><p class="muted">Você pode enviar PDF, imagem, planilha, CSV, DWG ou DXF. Até 5 arquivos por envio, 12 MB cada.</p>
-      <input id="quoteFiles" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls,.csv,.txt,.xml,.dwg,.dxf">
-      <button id="uploadFiles" type="button" style="margin-top:10px;background:#4f46e5">Enviar anexos</button>
+      <input id="quoteFiles" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls,.csv,.txt,.xml,.dwg,.dxf" ${quoteClosed ? "disabled" : ""}>
+      <button id="uploadFiles" type="button" style="margin-top:10px;background:#4f46e5" ${quoteClosed ? "disabled" : ""}>Enviar anexos</button>
       <p id="uploadMsg" class="muted"></p><ul id="uploadedDocs">${responseDocRows}</ul>
     </div>
     <div class="card"><div class="grid"><div><label>Frete</label><input id="freight" type="number" step="0.01" min="0" value="0"></div><div><label>Impostos/taxas</label><input id="taxes" type="number" step="0.01" min="0" value="0"></div>
