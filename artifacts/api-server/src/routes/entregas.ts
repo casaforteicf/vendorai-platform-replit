@@ -921,6 +921,38 @@ async function supportStageConfig(tenantId: string, stageKey: string) {
   return operationalStageConfig(tenantId, "suporte", stageKey);
 }
 
+function userMatchesOperationalStageFunctions(
+  user: { active: boolean | null; userFunction: string | null; customFunctionId: string | null },
+  responsibleFunctions: string[] | null | undefined,
+): boolean {
+  if (user.active !== true) return false;
+  const configured = responsibleFunctions ?? [];
+  if (configured.length === 0) return true; // compatibilidade: etapa sem restrição explícita
+
+  const refs = new Set<string>();
+  if (user.userFunction) refs.add(`builtin:${user.userFunction}`);
+  if (user.customFunctionId) refs.add(`custom:${user.customFunctionId}`);
+  return configured.some((responsible) => refs.has(responsible));
+}
+
+async function eligibleUsersForOperationalStage(tenantId: string, pipeline: string, stageKey: string) {
+  const stage = await operationalStageConfig(tenantId, pipeline, stageKey);
+  const users = await db.select({
+    id: usersTable.id,
+    name: usersTable.name,
+    email: usersTable.email,
+    telefone: usersTable.telefone,
+    active: usersTable.active,
+    userFunction: usersTable.userFunction,
+    customFunctionId: usersTable.customFunctionId,
+  }).from(usersTable).where(eq(usersTable.tenantId, tenantId));
+
+  return {
+    stage,
+    users: users.filter((user) => userMatchesOperationalStageFunctions(user, stage?.responsaveisFuncoes)),
+  };
+}
+
 async function ensureWorkStageTask(card: typeof workCardsTable.$inferSelect) {
   if (!card.leadId) return [];
 
@@ -1739,11 +1771,26 @@ router.post("/tenants/:tenantId/support-cases", async (req, res) => {
     res.status(404).json({ error: "Cliente não encontrado" });
     return;
   }
-  const [responsavel] = await db.select({ id: usersTable.id, name: usersTable.name, telefone: usersTable.telefone })
+  const [responsavel] = await db.select({
+    id: usersTable.id,
+    name: usersTable.name,
+    telefone: usersTable.telefone,
+    active: usersTable.active,
+    userFunction: usersTable.userFunction,
+    customFunctionId: usersTable.customFunctionId,
+  })
     .from(usersTable)
     .where(and(eq(usersTable.id, parsed.data.responsavelId), eq(usersTable.tenantId, tenantId)));
   if (!responsavel) {
     res.status(422).json({ error: "Responsável não pertence a este tenant" });
+    return;
+  }
+  const openingStageConfig = await supportStageConfig(tenantId, "chamado_cliente");
+  if (!userMatchesOperationalStageFunctions(responsavel, openingStageConfig?.responsaveisFuncoes)) {
+    res.status(422).json({
+      error: "STAGE_RESPONSIBLE_REQUIRED",
+      message: "Selecione um usuário ativo cuja função esteja habilitada como responsável pela etapa Chamado cliente.",
+    });
     return;
   }
 
@@ -2028,7 +2075,48 @@ router.patch("/work-cards/:id", async (req, res) => {
     res.status(409).json({ error: "CARD_BACKWARD_FORBIDDEN", message: "O card só pode avançar. Administradores podem corrigir manualmente a etapa quando necessário." });
     return;
   }
-  if (targetPipeline === "suporte" && parsed.data.responsavelId === null) {
+
+  // Responsabilidade é definida pela função configurada na etapa.
+  // Ao mover o card, nunca carregamos uma pessoa de uma função anterior para
+  // uma etapa em que ela não está habilitada.
+  if (["execucao", "suporte"].includes(targetPipeline)) {
+    const eligible = await eligibleUsersForOperationalStage(existing.tenantId, targetPipeline, targetStage);
+    const stageHasFunctionRestriction = (eligible.stage?.responsaveisFuncoes?.length ?? 0) > 0;
+
+    if (stageHasFunctionRestriction) {
+      if (eligible.users.length === 0) {
+        res.status(409).json({
+          error: "STAGE_WITHOUT_ELIGIBLE_USERS",
+          message: "A etapa possui função responsável configurada, mas não há usuário ativo habilitado nessa função.",
+          stage: targetStage,
+        });
+        return;
+      }
+
+      if (parsed.data.responsavelId !== undefined) {
+        if (parsed.data.responsavelId === null || !eligible.users.some((user) => user.id === parsed.data.responsavelId)) {
+          res.status(422).json({
+            error: "STAGE_RESPONSIBLE_REQUIRED",
+            message: "O responsável selecionado não está habilitado pela função responsável desta etapa.",
+            eligibleUserIds: eligible.users.map((user) => user.id),
+          });
+          return;
+        }
+      } else if (!existing.responsavelId || !eligible.users.some((user) => user.id === existing.responsavelId)) {
+        // Drag/drop não abre seletor. Para não deixar o card preso com a pessoa
+        // da etapa anterior, encaminha para um usuário efetivamente habilitado.
+        // A ordenação estável evita alternância imprevisível entre movimentos.
+        const [nextResponsible] = [...eligible.users].sort((a, b) =>
+          String(a.name || a.email || a.id).localeCompare(String(b.name || b.email || b.id), "pt-BR")
+        );
+        parsed.data.responsavelId = nextResponsible.id;
+      }
+    }
+  }
+
+  const effectiveResponsibleId =
+    parsed.data.responsavelId === undefined ? existing.responsavelId : parsed.data.responsavelId;
+  if (targetPipeline === "suporte" && !effectiveResponsibleId) {
     res.status(422).json({ error: "Card de suporte não pode ficar sem responsável" });
     return;
   }
