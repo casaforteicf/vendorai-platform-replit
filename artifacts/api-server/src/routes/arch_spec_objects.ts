@@ -67,6 +67,15 @@ function tenantId(req: any): string | null {
   return req?.user?.tenantId ?? req?.tenantId ?? null;
 }
 
+function actorId(req: any): string | null {
+  return req?.user?.id ? String(req.user.id) : null;
+}
+
+function actorName(req: any): string | null {
+  const value = req?.user?.name ?? req?.user?.nome ?? req?.user?.email ?? null;
+  return value ? String(value) : null;
+}
+
 async function listSpecObjects(params: {
   tenantId?: string | null;
   projectId: string;
@@ -578,6 +587,87 @@ async function syncProjectSpecification(tId: string | null, projectId: string) {
   };
 }
 
+
+type ApprovalContext = "technical" | "architect" | "client" | "fabrication" | "installation";
+type ApprovalDecision = "approved" | "rejected" | "revision_requested";
+
+async function getSpecObjectApprovals(tId: string | null, specObjectId: string) {
+  const values: unknown[] = [specObjectId];
+  let where = "spec_object_id=$1";
+  if (tId) {
+    values.push(tId);
+    where += ` AND (tenant_id=${values.length} OR tenant_id IS NULL)`;
+  }
+  const result = await pool.query(
+    `SELECT id, spec_object_id, approval_context, decision, actor_id, actor_name, note, project_revision, created_at
+       FROM arch_spec_object_approvals
+      WHERE ${where}
+      ORDER BY created_at DESC`,
+    values,
+  );
+  return result.rows;
+}
+
+async function recordSpecObjectApproval(params: {
+  tenantId: string | null;
+  specObjectId: string;
+  context: ApprovalContext;
+  decision: ApprovalDecision;
+  actorId: string | null;
+  actorName: string | null;
+  note?: string | null;
+}) {
+  const specValues: unknown[] = [params.specObjectId];
+  let specWhere = "id=$1";
+  if (params.tenantId) {
+    specValues.push(params.tenantId);
+    specWhere += ` AND tenant_id=${specValues.length}`;
+  }
+  const current = await pool.query(`SELECT * FROM arch_spec_objects WHERE ${specWhere} LIMIT 1`, specValues);
+  const spec = current.rows[0];
+  if (!spec) return null;
+
+  await pool.query(
+    `INSERT INTO arch_spec_object_approvals (
+       id, tenant_id, spec_object_id, approval_context, decision,
+       actor_id, actor_name, note, project_revision, created_at
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now())`,
+    [
+      crypto.randomUUID(),
+      params.tenantId,
+      params.specObjectId,
+      params.context,
+      params.decision,
+      params.actorId,
+      params.actorName,
+      params.note ?? null,
+      spec.project_revision ?? null,
+    ],
+  );
+
+  if (params.context === "technical") {
+    await pool.query(
+      `UPDATE arch_spec_objects
+          SET technical_approval_status=$1,
+              technical_approved_at=CASE WHEN $1='approved' THEN now() ELSE NULL END,
+              technical_approved_by=CASE WHEN $1='approved' THEN $2 ELSE NULL END,
+              technical_approval_note=$3,
+              status=CASE
+                WHEN $1='approved' AND status IN ('draft','identified','specified','priced') THEN 'approved'
+                WHEN $1 IN ('rejected','revision_requested') AND status='approved' THEN 'specified'
+                ELSE status
+              END,
+              updated_at=now()
+        WHERE id=$4`,
+      [params.decision, params.actorId, params.note ?? null, params.specObjectId],
+    );
+  }
+
+  const item = await pool.query(`SELECT * FROM arch_spec_objects WHERE id=$1 LIMIT 1`, [params.specObjectId]);
+  const approvals = await getSpecObjectApprovals(params.tenantId, params.specObjectId);
+  return { item: item.rows[0] ?? null, approvals };
+}
+
 const archSpecObjectsRouter = Router();
 
 archSpecObjectsRouter.post("/arch/spec-objects/sync-project", async (req, res, next) => {
@@ -596,6 +686,46 @@ archSpecObjectsRouter.post("/arch/spec-objects/sync-project", async (req, res, n
     res.json({ ok: true, sync: result, items, total: items.length });
   } catch (err) {
     logger.error({ err }, "arch/spec-objects/sync-project error");
+    next(err);
+  }
+});
+
+archSpecObjectsRouter.get("/arch/spec-objects/:id/approvals", async (req, res, next) => {
+  try {
+    const approvals = await getSpecObjectApprovals(tenantId(req), req.params["id"]!);
+    res.json({ approvals });
+  } catch (err) {
+    logger.error({ err }, "arch/spec-objects approvals GET error");
+    next(err);
+  }
+});
+
+archSpecObjectsRouter.post("/arch/spec-objects/:id/approvals", async (req, res, next) => {
+  try {
+    const context = String(req.body?.context ?? "") as ApprovalContext;
+    const decision = String(req.body?.decision ?? "") as ApprovalDecision;
+    const validContexts = new Set<ApprovalContext>(["technical","architect","client","fabrication","installation"]);
+    const validDecisions = new Set<ApprovalDecision>(["approved","rejected","revision_requested"]);
+    if (!validContexts.has(context) || !validDecisions.has(decision)) {
+      res.status(400).json({ error: "Contexto ou decisão de aprovação inválidos" });
+      return;
+    }
+    const result = await recordSpecObjectApproval({
+      tenantId: tenantId(req),
+      specObjectId: req.params["id"]!,
+      context,
+      decision,
+      actorId: actorId(req),
+      actorName: actorName(req),
+      note: req.body?.note ? String(req.body.note) : null,
+    });
+    if (!result) {
+      res.status(404).json({ error: "SpecObject não encontrado" });
+      return;
+    }
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, "arch/spec-objects approvals POST error");
     next(err);
   }
 });
