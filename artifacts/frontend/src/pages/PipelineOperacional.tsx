@@ -78,7 +78,14 @@ type Attachment = {
 };
 
 type Lead = { id: string; nome?: string | null; empresa?: string | null; telefone?: string | null };
-type User = { id: string; name?: string | null; email?: string | null; userFunction?: string | null };
+type User = {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  userFunction?: string | null;
+  customFunctionId?: string | null;
+  active?: boolean | null;
+};
 type Deal = { id: string; titulo: string; leadId?: string | null; etapa: string; valor?: string | null };
 type Proposal = { id: string; dealId?: string | null; leadId: string; titulo: string; status: string; itens?: Array<Record<string, unknown>> };
 type LegacyOrderImport = {
@@ -118,6 +125,7 @@ type ConfiguredPipelineStage = {
   ordem: number;
   isSystem?: boolean;
   slaMinutos?: number | null;
+  responsaveisFuncoes?: string[] | null;
 };
 
 const EXECUTION_STAGES = [
@@ -191,6 +199,21 @@ const SUPPORT_CATEGORIES = [
   ["manutencao", "Manutenção"],
   ["outro", "Outro"],
 ] as const;
+
+function userMatchesStageFunctions(user: User, responsibleFunctions?: string[] | null) {
+  if (user.active === false) return false;
+  const configured = responsibleFunctions ?? [];
+  if (configured.length === 0) return true;
+
+  const refs = new Set<string>();
+  if (user.userFunction) refs.add(`builtin:${user.userFunction}`);
+  if (user.customFunctionId) refs.add(`custom:${user.customFunctionId}`);
+  return configured.some((ref) => refs.has(ref));
+}
+
+function eligibleUsersForStage(users: User[], stage?: ConfiguredPipelineStage | null) {
+  return users.filter((user) => userMatchesStageFunctions(user, stage?.responsaveisFuncoes));
+}
 
 function formatDate(value?: string | null) {
   if (!value) return "—";
@@ -738,7 +761,7 @@ export default function PipelineOperacional() {
                           <SelectTrigger><SelectValue placeholder="Selecionar responsável" /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="__none__">Sem responsável</SelectItem>
-                            {(usersQuery.data ?? []).map((u) => <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>)}
+                            {eligibleUsersForStage(usersQuery.data ?? [], (pipelineStagesQuery.data ?? []).find((stage) => stage.key === selectedCard.etapa)).map((u) => <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>)}
                           </SelectContent>
                         </Select>
                       </div>
@@ -1242,6 +1265,7 @@ export default function PipelineOperacional() {
         deals={dealsQuery.data ?? []}
         proposals={proposalsQuery.data ?? []}
         users={usersQuery.data ?? []}
+        stages={pipelineStagesQuery.data ?? []}
         onCreated={async () => {
           setSupportOpen(false);
           await queryClient.invalidateQueries({ queryKey: ["work-cards", tenantId, "suporte"] });
@@ -1394,7 +1418,7 @@ function InstallationAcceptancePanel({
   );
 }
 
-function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, proposals, users, onCreated }: {
+function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, proposals, users, stages, onCreated }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   tenantId: string;
@@ -1403,6 +1427,7 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
   deals: Deal[];
   proposals: Proposal[];
   users: User[];
+  stages: ConfiguredPipelineStage[];
   onCreated: () => void | Promise<void>;
 }) {
   const { toast } = useToast();
@@ -1423,6 +1448,14 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
 
   const leadDeals = deals.filter((d) => d.leadId === leadId);
   const proposal = proposals.find((p) => p.dealId === dealId) ?? null;
+  const openingStage = stages.find((stage) => stage.key === "chamado_cliente") ?? null;
+  const eligibleResponsibleUsers = eligibleUsersForStage(users, openingStage);
+
+  useEffect(() => {
+    if (responsavelId && !eligibleResponsibleUsers.some((user) => user.id === responsavelId)) {
+      setResponsavelId("");
+    }
+  }, [responsavelId, eligibleResponsibleUsers]);
 
   function legacyItemLabel(item: Record<string, unknown>, index: number) {
     return String(item.nome || item.name || item.descricao || item.produto || item.sku || `Item ${index + 1}`);
@@ -1630,7 +1663,7 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
           <div className="space-y-1.5 sm:col-span-2"><label className="text-sm font-medium">Título *</label><Input value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ex: Porta da suíte não fecha corretamente" /></div>
           <div className="space-y-1.5 sm:col-span-2"><label className="text-sm font-medium">Relato claro do problema *</label><Textarea rows={5} value={relato} onChange={(e) => setRelato(e.target.value)} placeholder="Descreva o sintoma, quando começou, onde ocorre, o que já foi testado e qualquer detalhe útil para o técnico." /><p className="text-xs text-muted-foreground">A IA e o atendimento humano devem coletar informação suficiente antes de enviar ao suporte.</p></div>
           <div className="space-y-1.5 sm:col-span-2"><label className="text-sm font-medium">Itens/produtos afetados</label><Input value={produtos} onChange={(e) => setProdutos(e.target.value)} placeholder="Separe por vírgula: janela suíte, porta varanda..." /></div>
-          <div className="space-y-1.5"><label className="text-sm font-medium">Responsável *</label><Select value={responsavelId} onValueChange={setResponsavelId}><SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger><SelectContent>{users.map((u) => <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>)}</SelectContent></Select></div>
+          <div className="space-y-1.5"><label className="text-sm font-medium">Responsável *</label><Select value={responsavelId} onValueChange={setResponsavelId}><SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger><SelectContent>{eligibleResponsibleUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>)}</SelectContent></Select>{openingStage?.responsaveisFuncoes?.length ? <p className="text-[11px] text-muted-foreground">Somente usuários ativos das funções responsáveis por esta etapa.</p> : null}</div>
           <div className="space-y-1.5"><label className="text-sm font-medium">Prioridade</label><Select value={prioridade} onValueChange={setPrioridade}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="baixa">Baixa</SelectItem><SelectItem value="normal">Normal</SelectItem><SelectItem value="alta">Alta</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent></Select></div>
           <div className="space-y-1.5"><label className="text-sm font-medium">Prazo/agendamento inicial</label><Input type="date" value={data} onChange={(e) => setData(e.target.value)} /></div>
           <div className="space-y-1.5"><label className="text-sm font-medium">Fotos, vídeos, áudios e documentos</label><Input type="file" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx" onChange={(e) => setFiles(Array.from(e.target.files ?? []))} /><p className="text-xs text-muted-foreground">{files.length ? `${files.length} arquivo(s) selecionado(s)` : "Opcional"}</p></div>
