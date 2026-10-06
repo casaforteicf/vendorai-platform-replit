@@ -115,6 +115,30 @@ export function SpecObjectEditorPanel({
     setForm((current) => ({ ...current, [key]: value }));
   }
 
+  function applyCategoryPurchasePreset(category: string) {
+    const normalized = category.toLocaleLowerCase("pt-BR");
+    setForm((current) => {
+      // Never overwrite an already configured commercial rule.
+      if (current.purchaseMode && current.purchaseMode !== "same_unit") {
+        return { ...current, category };
+      }
+
+      if (/(pedra|mármore|marmore|granito|quartzo|quartzito|superfície|superficie)/.test(normalized)) {
+        return { ...current, category, purchaseMode: "slab", purchaseUnit: "chapa", purchaseQuantity: null };
+      }
+      if (/(revestimento|porcelanato|cerâmica|ceramica|piso|azulejo)/.test(normalized)) {
+        return { ...current, category, purchaseMode: "package", purchaseUnit: "caixa", purchaseQuantity: null };
+      }
+      if (/(ferragem|dobradiça|dobradica|corrediça|corredica|puxador|fechadura|acessório|acessorio)/.test(normalized)) {
+        return { ...current, category, purchaseMode: "piece", purchaseUnit: "peça", purchaseQuantity: null };
+      }
+      if (/(modulad|marcenaria|móvel|movel|armário|armario)/.test(normalized)) {
+        return { ...current, category, purchaseMode: "kit", purchaseUnit: "kit", purchaseQuantity: null };
+      }
+      return { ...current, category };
+    });
+  }
+
   async function submit() {
     const payload = {
       ...form,
@@ -149,7 +173,7 @@ export function SpecObjectEditorPanel({
           <span className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">Categoria</span>
           <select
             value={form.category || ""}
-            onChange={(event) => set("category", event.target.value)}
+            onChange={(event) => applyCategoryPurchasePreset(event.target.value)}
             className="mt-2 w-full rounded-xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-3 py-2.5 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
           >
             <option value="">Selecione...</option>
@@ -258,6 +282,17 @@ export function SpecObjectEditorPanel({
             value={form.purchaseQuantity ?? suggestedPurchaseQuantity}
             onChange={(value) => set("purchaseQuantity", value)}
           />
+          <div className="col-span-2 rounded-xl border border-[var(--arq-border)] bg-[var(--arq-card)] p-3 text-xs text-[var(--arq-muted)] md:col-span-3">
+            {form.purchaseMode === "slab"
+              ? "Pedras: informe quantos m² úteis rende uma chapa. O sistema calcula o número inteiro de chapas."
+              : form.purchaseMode === "package"
+                ? "Revestimentos: informe quantos m²/metros/unidades há em cada caixa. O sistema arredonda para caixas inteiras."
+                : form.purchaseMode === "piece"
+                  ? "Ferragens: a compra é controlada em peças; mantenha rendimento 1 quando cada peça atende uma unidade."
+                  : form.purchaseMode === "kit"
+                    ? "Linha modulada: use kit/conjunto quando a compra comercial agrupa vários componentes do projeto."
+                    : "A compra usa a mesma unidade técnica do projeto, aplicando apenas a perda informada."}
+          </div>
           <NumberField label="Valor material" value={form.materialValue} onChange={(value) => set("materialValue", value ?? 0)} />
           <NumberField label="Valor mão de obra" value={form.laborValue} onChange={(value) => set("laborValue", value ?? 0)} />
           <div className="rounded-xl bg-[var(--arq-card)] p-3">
