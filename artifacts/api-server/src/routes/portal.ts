@@ -999,8 +999,6 @@ router.get("/portal/obra/:token", async (req, res) => {
     return rest;
   });
 
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
-
   const chatMessages = (authenticated && config.showChat)
     ? (await pool.query(
         `SELECT id,autor_tipo,autor_nome,mensagem,created_at
@@ -1773,5 +1771,3 @@ router.post("/portal/obra/:token/aprovar-orcamento", async (req, res) => {
 });
 
 export default router;
-
-[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]
