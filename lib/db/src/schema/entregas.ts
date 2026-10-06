@@ -145,6 +145,9 @@ export const workCardsTable = pgTable("work_cards", {
   dataInicioEfetiva: timestamp("data_inicio_efetiva"),
   dataFimPrevista: timestamp("data_fim_prevista"),
   dataFimEfetiva: timestamp("data_fim_efetiva"),
+  // Hash SHA-256 do link público permanente do processo. O token em claro fica
+  // somente no metadata para reenvio pelo time autorizado; lookup público usa o hash.
+  publicAccessTokenHash: text("public_access_token_hash"),
   metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -188,7 +191,7 @@ export const updateWorkCardSchema = createSelectSchema(workCardsTable, {
   dataFimEfetiva: z.coerce.date().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 })
-  .omit({ id: true, tenantId: true, createdAt: true, updatedAt: true })
+  .omit({ id: true, tenantId: true, publicAccessTokenHash: true, createdAt: true, updatedAt: true })
   .partial();
 
 export const insertWorkCardAttachmentSchema = createInsertSchema(workCardAttachmentsTable, {
