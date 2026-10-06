@@ -79,6 +79,8 @@ export function SpecObjectEditorPanel({
       wasteFactor: selectedObject.wasteFactor,
       purchaseQuantity: selectedObject.purchaseQuantity,
       packageYield: selectedObject.packageYield,
+      purchaseMode: selectedObject.purchaseMode,
+      purchaseUnit: selectedObject.purchaseUnit,
       catalogProductId: selectedObject.catalogProductId,
       catalogMaterialId: selectedObject.catalogMaterialId,
       manufacturerId: selectedObject.manufacturerId,
@@ -97,11 +99,15 @@ export function SpecObjectEditorPanel({
   const suggestedPurchaseQuantity = useMemo(() => {
     const base = Number(form.quantity || 0);
     const waste = Math.max(0, Number(form.wasteFactor || 0));
-    const gross = base * (1 + waste / 100);
-    const yieldPerPackage = Number(form.packageYield || 0);
-    if (yieldPerPackage > 0) return Math.ceil(gross / yieldPerPackage) * yieldPerPackage;
-    return gross;
-  }, [form.packageYield, form.quantity, form.wasteFactor]);
+    const grossTechnicalQuantity = base * (1 + waste / 100);
+    const purchaseMode = form.purchaseMode || "same_unit";
+    const yieldPerPurchaseUnit = Number(form.packageYield || 0);
+
+    if (purchaseMode !== "same_unit" && yieldPerPurchaseUnit > 0) {
+      return Math.ceil(grossTechnicalQuantity / yieldPerPurchaseUnit);
+    }
+    return grossTechnicalQuantity;
+  }, [form.packageYield, form.purchaseMode, form.quantity, form.wasteFactor]);
 
   const total = Number(form.quantity || 1) * (Number(form.materialValue || 0) + Number(form.laborValue || 0));
 
@@ -216,9 +222,42 @@ export function SpecObjectEditorPanel({
       <details className="mt-3 rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card-soft)] p-4">
         <summary className="cursor-pointer text-sm font-semibold">Compra e valores</summary>
         <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
+          <SelectField
+            label="Modelo de compra"
+            value={form.purchaseMode || "same_unit"}
+            onChange={(value) => {
+              const mode = value as NonNullable<SpecObjectPayload["purchaseMode"]>;
+              set("purchaseMode", mode);
+              if (mode === "package" && (!form.purchaseUnit || form.purchaseUnit === form.unit)) set("purchaseUnit", "caixa");
+              if (mode === "slab" && (!form.purchaseUnit || form.purchaseUnit === form.unit)) set("purchaseUnit", "chapa");
+              if (mode === "piece" && (!form.purchaseUnit || form.purchaseUnit === form.unit)) set("purchaseUnit", "peça");
+              if (mode === "kit" && (!form.purchaseUnit || form.purchaseUnit === form.unit)) set("purchaseUnit", "kit");
+              if (mode === "same_unit") set("purchaseUnit", form.unit);
+              set("purchaseQuantity", null);
+            }}
+            options={[
+              ["same_unit", "Mesma unidade do projeto"],
+              ["package", "Caixa / embalagem"],
+              ["slab", "Chapa"],
+              ["piece", "Peça"],
+              ["kit", "Kit / conjunto"],
+            ]}
+          />
           <NumberField label="Perda (%)" value={form.wasteFactor} onChange={(value) => set("wasteFactor", value)} />
-          <NumberField label="Rendimento embalagem" value={form.packageYield} onChange={(value) => set("packageYield", value)} />
-          <NumberField label="Qtd. de compra" value={form.purchaseQuantity ?? suggestedPurchaseQuantity} onChange={(value) => set("purchaseQuantity", value)} />
+          <NumberField
+            label={form.purchaseMode === "slab" ? "Rendimento por chapa" : form.purchaseMode === "package" ? "Rendimento por caixa" : form.purchaseMode === "kit" ? "Rendimento por kit" : "Rendimento por unidade"}
+            value={form.packageYield}
+            onChange={(value) => {
+              set("packageYield", value);
+              set("purchaseQuantity", null);
+            }}
+          />
+          <Field label="Unidade de compra" value={form.purchaseUnit || form.unit} onChange={(value) => set("purchaseUnit", value)} />
+          <NumberField
+            label={form.purchaseMode === "same_unit" ? "Qtd. de compra" : "Unidades de compra"}
+            value={form.purchaseQuantity ?? suggestedPurchaseQuantity}
+            onChange={(value) => set("purchaseQuantity", value)}
+          />
           <NumberField label="Valor material" value={form.materialValue} onChange={(value) => set("materialValue", value ?? 0)} />
           <NumberField label="Valor mão de obra" value={form.laborValue} onChange={(value) => set("laborValue", value ?? 0)} />
           <div className="rounded-xl bg-[var(--arq-card)] p-3">
@@ -373,6 +412,8 @@ function emptyPayload(projectId: string, renderId?: string): SpecObjectPayload {
     quantitySource: "manual",
     measurementSource: "pending",
     wasteFactor: 0,
+    purchaseMode: "same_unit",
+    purchaseUnit: "un",
     materialValue: 0,
     laborValue: 0,
     status: "draft",
