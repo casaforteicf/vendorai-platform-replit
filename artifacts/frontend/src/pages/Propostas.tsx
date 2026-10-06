@@ -3020,7 +3020,7 @@ function newFreeItem(): FreeItem {
     });
   
     useEffect(() => {
-      if (!open || !editingProposta) return;
+      if (!open || !editingProposta || businessProfileLoading) return;
 
       standardBudgetAppliedRef.current = true;
       const currentItems = ((editingProposta.itens ?? []) as Array<any>);
@@ -3094,12 +3094,21 @@ function newFreeItem(): FreeItem {
 
       const allStructured = currentItems.length > 0
         && currentItems.every((item) => Boolean(item.produtoId || item.composicaoId));
+      const defaultEditGroups: OrcamentoEtapaDraft[] = isConstructionTenant
+        ? buildStandardStages("icf")
+        : genericBudgetGroups.map((nome, index) => ({
+            id: index === 0 ? DEFAULT_ETAPA_ID : `grupo-padrao-${index + 1}`,
+            nome,
+          }));
+
+      if (!isConstructionTenant) setConstructionSystem("outro");
 
       if (currentItems.length === 0) {
-        // Orçamento legado vazio: abrir diretamente no construtor completo,
-        // sem criar uma cópia nem esconder as funções de etapas/composições.
+        // Orçamento legado vazio deve respeitar o perfil do tenant. Antes, a edição
+        // sempre recriava as etapas ICF e fazia serralherias/marcenarias herdarem
+        // "Projetos e legalização", "Serviços preliminares" etc.
         setMode("catalogo");
-        setOrcamentoEtapas(buildStandardStages("icf"));
+        setOrcamentoEtapas(defaultEditGroups);
         setCartLines([]);
         setFreeItems([newFreeItem()]);
       } else if (allStructured) {
@@ -3118,20 +3127,41 @@ function newFreeItem(): FreeItem {
           }
         });
 
-        const etapas = Array.from(groups.values())
+        const etapasOriginais = Array.from(groups.values())
           .sort((a, b) => a.ordem - b.ordem)
           .map(({ id, nome }) => ({ id, nome }));
+        const constructionStageNames = new Set(
+          CONSTRUCTION_SYSTEMS.flatMap((system) => getStageNamesForSystem(system.value))
+            .map((name) => normalizeBudgetVertical(name)),
+        );
+        const remappedStageIds = new Map<string, string>();
+        const etapas = isConstructionTenant
+          ? etapasOriginais
+          : etapasOriginais.filter((etapa) => {
+              const polluted = constructionStageNames.has(normalizeBudgetVertical(etapa.nome));
+              if (polluted) remappedStageIds.set(etapa.id, DEFAULT_ETAPA_ID);
+              return !polluted;
+            });
+        const finalEtapas = etapas.length
+          ? etapas
+          : defaultEditGroups;
+        if (!isConstructionTenant && remappedStageIds.size > 0 && !finalEtapas.some((etapa) => etapa.id === DEFAULT_ETAPA_ID)) {
+          finalEtapas.unshift(defaultEditGroups[0] ?? { id: DEFAULT_ETAPA_ID, nome: "Produtos" });
+        }
 
-        setOrcamentoEtapas(etapas.length ? etapas : buildStandardStages("icf"));
-        setCartLines(currentItems.map((item, index) => ({
-          etapaId: String(item.etapaId ?? etapas[0]?.id ?? DEFAULT_ETAPA_ID),
-          tipo: item.composicaoId ? "composicao" as const : "produto" as const,
-          produtoId: item.produtoId ?? undefined,
-          composicaoId: item.composicaoId ?? undefined,
-          quantidade: roundBudgetNumber(item.quantidade ?? 1),
-          precoUnitarioOverride: roundBudgetNumber(item.valorUnitario ?? 0),
-          nomeOverride: item.nome ?? undefined,
-        })));
+        setOrcamentoEtapas(finalEtapas);
+        setCartLines(currentItems.map((item, index) => {
+          const sourceStageId = String(item.etapaId ?? etapasOriginais[0]?.id ?? DEFAULT_ETAPA_ID);
+          return {
+            etapaId: remappedStageIds.get(sourceStageId) ?? sourceStageId,
+            tipo: item.composicaoId ? "composicao" as const : "produto" as const,
+            produtoId: item.produtoId ?? undefined,
+            composicaoId: item.composicaoId ?? undefined,
+            quantidade: roundBudgetNumber(item.quantidade ?? 1),
+            precoUnitarioOverride: roundBudgetNumber(item.valorUnitario ?? 0),
+            nomeOverride: item.nome ?? undefined,
+          };
+        }));
         setFreeItems([newFreeItem()]);
       } else {
         setMode("livre");
@@ -3144,14 +3174,20 @@ function newFreeItem(): FreeItem {
             }))
           : [newFreeItem()]
         );
-        setOrcamentoEtapas(buildStandardStages("icf"));
+        setOrcamentoEtapas(defaultEditGroups);
         setCartLines([]);
       }
 
       setCartError("");
       setFreeError("");
-      setShowAllByStage({});
-    }, [open, editingProposta?.id]);
+      setShowAllByStage(isConstructionTenant ? {} : { [DEFAULT_ETAPA_ID]: true });
+    }, [
+      open,
+      editingProposta?.id,
+      businessProfileLoading,
+      isConstructionTenant,
+      tenantBusinessProfile?.vertical,
+    ]);
 
     useEffect(() => {
       if (!open || editingProposta || !initialExternalBudget?.projectId) return;
