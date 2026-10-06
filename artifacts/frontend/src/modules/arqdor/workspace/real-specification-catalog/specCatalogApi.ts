@@ -84,6 +84,20 @@ export async function fetchSpecObjects(params: {
   };
 }
 
+export async function syncSpecObjectsFromProject(projectId: string): Promise<ApiResult<SpecObjectsResponse & { sync?: Record<string, unknown> }>> {
+  const response = await fetch("/api/arch/spec-objects/sync-project", {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify({ projectId }),
+  });
+
+  const result = await parseResponse<any>(response);
+  if (result.error) return { error: result.error };
+  const raw = result.data;
+  const items = raw?.items || [];
+  return { data: { items: items.map(normalizeSpecObject), total: raw?.total || items.length, sync: raw?.sync } };
+}
+
 export async function createSpecObject(payload: SpecObjectPayload): Promise<ApiResult<SpecObject>> {
   const response = await fetch("/api/arch/spec-objects", {
     method: "POST",
