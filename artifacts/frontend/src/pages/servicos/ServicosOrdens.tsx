@@ -146,6 +146,15 @@ function campoTemValor(campo: CampoPersonalizado) {
   return String(campo.valor ?? "").trim().length > 0;
 }
 
+function camposComoModelo(campos: CampoPersonalizado[]) {
+  return campos
+    .filter((campo) => campo.nome.trim())
+    .map((campo) => ({
+      ...campo,
+      valor: campo.tipo === "checkbox" ? false : "",
+    }));
+}
+
 function CamposPersonalizadosEditor({
   campos,
   onChange,
@@ -270,6 +279,37 @@ function NovaOrdemDialog({
     queryKey: ["servicos-tipos", tenantId],
     queryFn: () => fetch(`/api/tenants/${tenantId}/servicos/tipos`, { headers: authHeaders() }).then((r) => r.json()),
     enabled: !!tenantId && open,
+  });
+
+  const { data: modeloConfig } = useQuery<{ modeloExecucao: string; camposPersonalizados: CampoPersonalizado[] }>({
+    queryKey: ["servicos-modelo-os", tenantId, modeloExecucao],
+    queryFn: () =>
+      apiJson(`/api/tenants/${tenantId}/servicos/modelos/${modeloExecucao}`, { headers: authHeaders() }),
+    enabled: !!tenantId && open && !!modeloExecucao,
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    const defaults = Array.isArray(modeloConfig?.camposPersonalizados) ? modeloConfig.camposPersonalizados : [];
+    setCamposPersonalizados(defaults.map((campo) => ({
+      ...campo,
+      id: crypto.randomUUID(),
+      valor: campo.tipo === "checkbox" ? false : "",
+    })));
+  }, [open, modeloExecucao, modeloConfig?.camposPersonalizados]);
+
+  const saveModelo = useMutation({
+    mutationFn: () =>
+      apiJson(`/api/tenants/${tenantId}/servicos/modelos/${modeloExecucao}`, {
+        method: "PUT",
+        headers: authHeaders(),
+        body: JSON.stringify({ camposPersonalizados: camposComoModelo(camposPersonalizados) }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["servicos-modelo-os", tenantId, modeloExecucao] });
+      toast({ title: "Campos salvos como padrão deste modelo de OS." });
+    },
+    onError: (e: any) => toast({ title: "Erro ao salvar modelo", description: e.message, variant: "destructive" }),
   });
 
   const { data: negociosRaw = [] } = useQuery<any>({
@@ -432,13 +472,35 @@ function NovaOrdemDialog({
           </div>
 
           <div className="space-y-2">
-            <div>
-              <Label>Campos adicionais</Label>
-              <p className="text-xs text-muted-foreground mt-1">
-                Adicione os dados específicos desta OS. Eles poderão ser editados depois na execução.
-              </p>
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <Label>Campos adicionais</Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Adicione dados específicos desta OS ou salve a estrutura como padrão do modelo selecionado.
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  const semNome = camposPersonalizados.some((campo) => !campo.nome.trim());
+                  if (semNome) {
+                    toast({ title: "Dê um nome a todos os campos antes de salvar o modelo", variant: "destructive" });
+                    return;
+                  }
+                  saveModelo.mutate();
+                }}
+                disabled={saveModelo.isPending}
+              >
+                {saveModelo.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Salvar como padrão do modelo
+              </Button>
             </div>
             <CamposPersonalizadosEditor campos={camposPersonalizados} onChange={setCamposPersonalizados} />
+            <p className="text-xs text-muted-foreground">
+              Ao salvar o modelo, apenas nome, tipo e obrigatoriedade são reaproveitados. Valores preenchidos nesta OS não são copiados para as próximas.
+            </p>
           </div>
 
           <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground flex gap-2">
