@@ -219,10 +219,13 @@ export class ObjectStorageService {
     return new Response(new Uint8Array(buffer), { headers });
   }
 
-  async getObjectEntityUploadURL(): Promise<string> {
+  async getObjectEntityUploadURL(tenantId?: string | null): Promise<string> {
     const privateObjectDir = this.getPrivateObjectDir();
     const objectId = randomUUID();
-    const fullPath = `${privateObjectDir}/uploads/${objectId}`;
+    const tenantSegment = String(tenantId ?? "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
+    const fullPath = tenantSegment
+      ? `${privateObjectDir}/tenants/${tenantSegment}/uploads/${objectId}`
+      : `${privateObjectDir}/uploads/${objectId}`;
     const { bucketName, objectName } = parseObjectPath(fullPath);
 
     const client = getSupabaseClient();
