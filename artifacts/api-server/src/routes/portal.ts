@@ -648,7 +648,10 @@ router.get("/portal/obra/:token", async (req, res) => {
           LIMIT 40`,
         [project.id, obra.tenantId],
       );
-      galeriaProjeto = renders.rows;
+      galeriaProjeto = renders.rows.map((render: any) => ({
+        ...render,
+        result_image_url: `/api/portal/obra/${encodeURIComponent(String(token))}/renders/${encodeURIComponent(String(render.id))}`,
+      }));
     }
   }
 
@@ -854,6 +857,50 @@ router.get("/portal/obra/:token", async (req, res) => {
     supportTickets,
     chatMessages,
   });
+});
+
+router.get("/portal/obra/:token/renders/:renderId", async (req, res, next) => {
+  try {
+    const token = String(req.params.token ?? "");
+    const renderId = String(req.params.renderId ?? "");
+    const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
+    if (!obra) return res.status(404).send("Portal não encontrado.");
+
+    const config = portalConfig(obra.portalConfig);
+    if (!config.showProjectGallery) return res.status(403).send("Galeria não publicada.");
+
+    const projectResult = await pool.query(
+      `SELECT id
+         FROM arch_projetos
+        WHERE obra_id=$1 AND tenant_id=$2
+        ORDER BY updated_at DESC
+        LIMIT 1`,
+      [obra.id, obra.tenantId],
+    );
+    const project = projectResult.rows[0];
+    if (!project) return res.status(404).send("Projeto não encontrado.");
+
+    const [render] = await db.select({
+      id: archAiRendersTable.id,
+      resultImageUrl: archAiRendersTable.resultImageUrl,
+      status: archAiRendersTable.status,
+      approvedAt: archAiRendersTable.approvedAt,
+    }).from(archAiRendersTable).where(and(
+      eq(archAiRendersTable.id, renderId),
+      eq(archAiRendersTable.tenantId, obra.tenantId),
+      eq(archAiRendersTable.projectId, project.id),
+    )).limit(1);
+
+    if (!render || render.status !== "concluido" || !render.approvedAt || !render.resultImageUrl) {
+      return res.status(404).send("Render não publicado.");
+    }
+
+    if (await streamPortalObject(res, render.resultImageUrl)) return;
+    if (/^https:\/\//i.test(String(render.resultImageUrl))) return res.redirect(302, String(render.resultImageUrl));
+    return res.status(404).send("Arquivo não disponível.");
+  } catch (err) {
+    next(err);
+  }
 });
 
 router.post("/portal/obra/:token/decisions/:decisionId/respond", async (req, res) => {
