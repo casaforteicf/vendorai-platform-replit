@@ -104,8 +104,8 @@ async function validateMediaPlanGenerationContext(
       .limit(1),
   ]);
 
-  if (!plan) throw Object.assign(new Error("Plano de Mídia não pertence ao tenant atual."), { status: 422 });
-  if (!calendarItem || calendarItem.mediaPlanId !== mediaPlanId) {
+  if (!plan || plan.tenantId !== tenantId) throw Object.assign(new Error("Plano de Mídia não pertence ao tenant atual."), { status: 422 });
+  if (!calendarItem || calendarItem.tenantId !== tenantId || calendarItem.mediaPlanId !== mediaPlanId) {
     throw Object.assign(new Error("Ação do calendário não pertence ao Plano de Mídia informado."), { status: 422 });
   }
 
