@@ -92,6 +92,7 @@ export async function resolveValidSocialConnection(
   tenantId: string,
   provider: SocialProvider,
   connectionId: string,
+  forceRefresh = false,
 ): Promise<SocialConnection> {
   const [connection] = await db.select().from(socialConnectionsTable).where(and(
     eq(socialConnectionsTable.id, connectionId),
@@ -100,7 +101,7 @@ export async function resolveValidSocialConnection(
     eq(socialConnectionsTable.status, "active"),
   )).limit(1);
   if (!connection) throw new Error("connection_not_found");
-  if (tokenStillValid(connection)) return connection;
+  if (!forceRefresh && tokenStillValid(connection)) return connection;
   if (!connection.refreshToken) throw new Error(`${provider}_reconnect_required`);
 
   const refreshed = provider === "youtube"
