@@ -169,6 +169,7 @@ export default function IntegrationSettingsHub() {
     tiktokPixelId: "",
   });
   const [trackingHydrated, setTrackingHydrated] = useState(false);
+  const [trackingGuide, setTrackingGuide] = useState<"ga4" | "gtm" | "google-ads" | "meta" | "linkedin" | "tiktok" | null>(null);
   const [asaasKey, setAsaasKey] = useState("");
   const [zapsignKey, setZapsignKey] = useState("");
   const [emailConnections, setEmailConnections] = useState<Array<{
@@ -830,6 +831,39 @@ export default function IntegrationSettingsHub() {
     }
   };
 
+  const trackingGuides = {
+    ga4: {
+      url: "https://analytics.google.com/",
+      label: "Abrir Google Analytics",
+      steps: ["Abra Administrador", "Selecione a propriedade da empresa", "Abra Fluxos de dados", "Selecione o fluxo Web", "Copie o ID de medição no formato G-XXXXXXXXXX"],
+    },
+    gtm: {
+      url: "https://tagmanager.google.com/",
+      label: "Abrir Tag Manager",
+      steps: ["Selecione a conta da empresa", "Abra o container Web correto", "Copie o ID exibido no topo no formato GTM-XXXXXXX"],
+    },
+    "google-ads": {
+      url: "https://ads.google.com/",
+      label: "Abrir Google Ads",
+      steps: ["Abra Metas/Conversões", "Selecione ou crie a ação de conversão", "Abra a configuração da tag", "Copie o Conversion ID no formato AW-XXXXXXXXX"],
+    },
+    meta: {
+      url: "https://business.facebook.com/events_manager2/list",
+      label: "Abrir Gerenciador de Eventos Meta",
+      steps: ["Selecione a empresa correta", "Abra Fontes de dados", "Selecione o Pixel", "Copie o ID numérico do conjunto de dados/Pixel"],
+    },
+    linkedin: {
+      url: "https://www.linkedin.com/campaignmanager/accounts",
+      label: "Abrir Campaign Manager",
+      steps: ["Abra a conta de anúncios", "Clique em Measure", "Abra Signals Manager", "Clique em Insight Tag", "Use a opção de Tag Manager e copie o Partner ID"],
+    },
+    tiktok: {
+      url: "https://ads.tiktok.com/",
+      label: "Abrir TikTok Ads Manager",
+      steps: ["Abra Tools", "Entre em Events Manager", "Selecione Web Events", "Abra o Pixel da empresa", "Copie o Pixel ID"],
+    },
+  } as const;
+
   const saveTracking = async () => {
     setBusy("tracking-save");
     try {
@@ -1015,6 +1049,37 @@ export default function IntegrationSettingsHub() {
             <p className="mt-2 text-[11px] text-muted-foreground">{status?.tracking?.tiktokPixel ? "Configurado" : "Informe o Pixel ID."}</p>
           </div>
         </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {([
+            ["ga4", "Como encontrar GA4"],
+            ["gtm", "Como encontrar GTM"],
+            ["google-ads", "Como encontrar Google Ads"],
+            ["meta", "Como encontrar Meta Pixel"],
+            ["linkedin", "Como encontrar LinkedIn"],
+            ["tiktok", "Como encontrar TikTok"],
+          ] as const).map(([key, label]) => (
+            <Button key={key} size="sm" variant="outline" onClick={() => setTrackingGuide(trackingGuide === key ? null : key)}>
+              {label}
+            </Button>
+          ))}
+        </div>
+
+        {trackingGuide && (
+          <div className="mt-4 rounded-xl border bg-background p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="font-semibold">Passo a passo</h3>
+                <ol className="mt-2 space-y-1 text-xs text-muted-foreground">
+                  {trackingGuides[trackingGuide].steps.map((step, index) => <li key={step}>{index + 1}. {step}</li>)}
+                </ol>
+              </div>
+              <Button size="sm" onClick={() => window.open(trackingGuides[trackingGuide].url, "_blank", "noopener,noreferrer")}>
+                {trackingGuides[trackingGuide].label}
+              </Button>
+            </div>
+          </div>
+        )}
 
         {trackingDraft.gtmContainerId.trim() && (trackingDraft.metaPixelId.trim() || trackingDraft.linkedinInsightTagId.trim() || trackingDraft.tiktokPixelId.trim()) && (
           <div className="mt-4 rounded-lg border border-amber-300/60 bg-amber-50/50 p-3 text-xs text-amber-900">
