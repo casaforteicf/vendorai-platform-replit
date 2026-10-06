@@ -162,6 +162,25 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
 
   const { type, theme, productId, productSource, variations, imageCount, imageUrls: referenceImageUrls, contentFormat, aspectRatio, postMaterialUrls, customerPain, postObjective, voiceTone, desiredCta } = parsed.data;
 
+  const mediaPlanId = String(req.header("x-vendorai-media-plan-id") ?? "").trim();
+  const campaignId = String(req.header("x-vendorai-campaign-id") ?? "").trim();
+  const calendarItemId = String(req.header("x-vendorai-calendar-item-id") ?? "").trim();
+  const hasPlannerContext = Boolean(mediaPlanId || campaignId || calendarItemId);
+
+  if (hasPlannerContext) {
+    if (!mediaPlanId || !campaignId || !calendarItemId) {
+      res.status(422).json({ error: "Contexto da campanha incompleto. A geração foi bloqueada." });
+      return;
+    }
+
+    const validContext = await plannerContextIsValid({ tenantId, mediaPlanId, campaignId, calendarItemId });
+    if (!validContext) {
+      req.log.warn({ tenantId, mediaPlanId, campaignId, calendarItemId }, "content: contexto de campanha inválido");
+      res.status(409).json({ error: "A ação não pertence à campanha informada. A geração foi bloqueada." });
+      return;
+    }
+  }
+
   const { used, limit, configId } = await getMonthlyUsage(tenantId);
   if (used >= limit) {
     res.status(402).json({
