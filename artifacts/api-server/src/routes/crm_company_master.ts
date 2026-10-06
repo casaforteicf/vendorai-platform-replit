@@ -208,6 +208,71 @@ router.get("/crm/companies", async (req, res) => {
   });
 });
 
+
+const linkLeadSchema = z.object({
+  tenantId: z.string().optional(),
+  leadId: z.string().min(1),
+  relationshipType: z.string().min(1).optional().default("lead"),
+});
+
+router.post("/crm/companies/:companyId/link-lead", async (req, res) => {
+  const parsed = linkLeadSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  let tenantId: string;
+  try {
+    tenantId = tenantIdFromRequest(req, parsed.data.tenantId);
+  } catch (err: any) {
+    return res.status(err.status ?? 403).json({ error: err.message });
+  }
+
+  const [lead] = await db
+    .select({ id: leadsTable.id })
+    .from(leadsTable)
+    .where(and(eq(leadsTable.id, parsed.data.leadId), eq(leadsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!lead) return res.status(404).json({ error: "Lead não encontrado neste tenant" });
+
+  const [tenantCompany] = await db
+    .select()
+    .from(crmTenantCompaniesTable)
+    .where(and(
+      eq(crmTenantCompaniesTable.tenantId, tenantId),
+      eq(crmTenantCompaniesTable.companyId, req.params.companyId),
+    ))
+    .limit(1);
+  if (!tenantCompany) return res.status(404).json({ error: "Empresa não encontrada neste tenant" });
+
+  const [company] = await db
+    .select()
+    .from(crmCompaniesMasterTable)
+    .where(eq(crmCompaniesMasterTable.id, req.params.companyId))
+    .limit(1);
+  if (!company) return res.status(404).json({ error: "Empresa não encontrada" });
+
+  await db
+    .update(crmTenantCompaniesTable)
+    .set({
+      leadId: parsed.data.leadId,
+      relationshipType: parsed.data.relationshipType,
+      updatedAt: new Date(),
+    })
+    .where(eq(crmTenantCompaniesTable.id, tenantCompany.id));
+
+  await db
+    .update(leadsTable)
+    .set({
+      tipoPessoa: "juridica",
+      documento: company.cnpj,
+      empresa: company.nomeFantasia || company.razaoSocial || null,
+      updatedAt: new Date(),
+    } as any)
+    .where(and(eq(leadsTable.id, parsed.data.leadId), eq(leadsTable.tenantId, tenantId)));
+
+  const context = await loadCompanyContext(tenantId, company.id);
+  return res.json(context);
+});
+
 router.post("/crm/companies/enrich", async (req, res) => {
   const parsed = enrichSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
