@@ -930,7 +930,7 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
         runnerToken,
         status: "done",
         output: {
-          videoUrl: `/api/storage${storageUrl}`,
+          videoUrl: storageUrl,
           videoAssetId: output.assetId,
           prompt: rawPrompt ?? "",
           style,
@@ -1270,7 +1270,7 @@ async function processClaimedVideo(video: ClaimedVideo, runnerToken: string, log
       runnerToken,
       status: "done",
       output: {
-        videoUrl: `/api/storage${storageUrl}`,
+        videoUrl: storageUrl,
         videoAssetId: output.assetId,
         prompt: rawPrompt ?? "",
         style,
