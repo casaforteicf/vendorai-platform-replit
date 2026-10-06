@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { lazy, Suspense, useEffect, useState } from "react";
+import { RouteContentErrorBoundary } from "@/components/RouteContentErrorBoundary";
 import {
   useGetTenant,
   getGetTenantQueryKey,
@@ -298,7 +299,14 @@ function RouteContentFallback() {
 }
 
 function RouteContentBoundary({ children }: { children: React.ReactNode }) {
-  return <Suspense fallback={<RouteContentFallback />}>{children}</Suspense>;
+  const [location] = useLocation();
+  const routeKey = location.split("?")[0] || "/";
+
+  return (
+    <RouteContentErrorBoundary routeKey={routeKey}>
+      <Suspense fallback={<RouteContentFallback />}>{children}</Suspense>
+    </RouteContentErrorBoundary>
+  );
 }
 
 function RedirectPage({ to }: { to: string }) {
