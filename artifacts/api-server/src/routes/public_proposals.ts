@@ -5,8 +5,10 @@ import { eq } from "drizzle-orm";
 import { z } from "zod/v4";
 import { db, pool, propostasTable, leadProposalsTable, leadsTable } from "@workspace/db";
 import { proposalAccepted } from "../lib/proposal-accepted.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 
 const router: IRouter = Router();
+const proposalStorage = new ObjectStorageService();
 
 const portalRegisterSchema = z.object({
   nome: z.string().trim().min(1).max(160),
@@ -89,6 +91,19 @@ async function attachCustomerPortalAccess(userId: string, context: PublicProposa
   );
 }
 
+
+function publicizeGeneratedProposalAssets(id: string, html: string) {
+  const prefix = `/api/public/generated-proposals/${encodeURIComponent(id)}/assets/`;
+  return String(html || "")
+    .replace(/(src|href)="\/api\/storage\/objects\//g, `$1="${prefix}`)
+    .replace(/(src|href)="\/objects\//g, `$1="${prefix}`);
+}
+
+function proposalHtmlReferencesAsset(html: string, assetPath: string) {
+  const normalized = decodeURIComponent(assetPath).replace(/^\/+/, "");
+  return String(html || "").includes(`/api/storage/objects/${normalized}`)
+    || String(html || "").includes(`/objects/${normalized}`);
+}
 
 const acceptPublicBodySchema = z.object({
   nome: z.string().trim().min(1).max(160).optional(),
@@ -346,7 +361,39 @@ router.get("/public/generated-proposals/:id/html", async (req, res) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
-  res.status(200).send(proposal.htmlContent);
+  res.status(200).send(publicizeGeneratedProposalAssets(proposal.id, proposal.htmlContent));
+});
+
+router.get("/public/generated-proposals/:id/assets/*path", async (req, res, next) => {
+  try {
+    const id = String(req.params.id || "");
+    const raw = req.params.path;
+    const assetPath = Array.isArray(raw) ? raw.join("/") : String(raw || "");
+    if (!assetPath) return res.status(404).send("Arquivo não encontrado.");
+
+    const [proposal] = await db
+      .select({
+        id: leadProposalsTable.id,
+        htmlContent: leadProposalsTable.htmlContent,
+      })
+      .from(leadProposalsTable)
+      .where(eq(leadProposalsTable.id, id))
+      .limit(1);
+
+    if (!proposal || !proposalHtmlReferencesAsset(proposal.htmlContent, assetPath)) {
+      return res.status(404).send("Arquivo não encontrado.");
+    }
+
+    const objectPath = `/objects/${decodeURIComponent(assetPath).replace(/^\/+/, "")}`;
+    const file = await proposalStorage.getObjectEntityFile(objectPath);
+    const objectResponse = await proposalStorage.downloadObject(file, 300);
+    objectResponse.headers.forEach((value, key) => res.setHeader(key, value));
+    res.setHeader("Cache-Control", "private, max-age=300");
+    res.status(objectResponse.status);
+    return res.send(Buffer.from(await objectResponse.arrayBuffer()));
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ── POST /public/proposals/:token/accept — public accept (no auth) ─────────────
