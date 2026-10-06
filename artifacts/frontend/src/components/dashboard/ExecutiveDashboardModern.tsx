@@ -156,7 +156,7 @@ export default function ExecutiveDashboardModern({
 
   const activeStageData = useMemo(
     () => stages
-      .filter((item) => item.activeWithRealEntry > 0 || item.completedSamples > 0)
+      .filter((item) => item.pipeline === "comercial" && (item.activeWithRealEntry > 0 || item.completedSamples > 0))
       .slice(0, 8)
       .map((item) => ({
         name: item.label,
