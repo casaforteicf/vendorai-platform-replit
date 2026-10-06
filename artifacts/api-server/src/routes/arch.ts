@@ -7657,19 +7657,66 @@ router.post("/arch/surfaces/:surfaceId/material", async (req, res) => {
 // GET /arq/projects — list workspace projects for tenant
 router.get("/arq/projects", authenticate, async (req, res) => {
   const tid = tenantId(req);
+  const clientProjectId = typeof req.query.clientProjectId === "string"
+    ? req.query.clientProjectId.trim()
+    : "";
+
+  const conditions = [eq(archProjetosTable.tenantId, tid)];
+
+  if (clientProjectId) {
+    const [anchor] = await db
+      .select({
+        id: archProjetosTable.id,
+        leadId: archProjetosTable.leadId,
+        dealId: archProjetosTable.dealId,
+        clienteNome: archProjetosTable.clienteNome,
+        clienteEmail: archProjetosTable.clienteEmail,
+        clienteTelefone: archProjetosTable.clienteTelefone,
+      })
+      .from(archProjetosTable)
+      .where(and(
+        eq(archProjetosTable.id, clientProjectId),
+        eq(archProjetosTable.tenantId, tid),
+      ))
+      .limit(1);
+
+    if (!anchor) return res.status(404).json({ error: "Projeto de referência não encontrado." });
+
+    if (anchor.leadId) {
+      conditions.push(eq(archProjetosTable.leadId, anchor.leadId));
+    } else if (anchor.dealId) {
+      conditions.push(eq(archProjetosTable.dealId, anchor.dealId));
+    } else if (anchor.clienteEmail?.trim()) {
+      const email = anchor.clienteEmail.trim().toLowerCase();
+      conditions.push(sql<boolean>`lower(trim(coalesce(${archProjetosTable.clienteEmail}, ''))) = ${email}`);
+    } else if (anchor.clienteTelefone?.trim()) {
+      const phone = anchor.clienteTelefone.replace(/\D/g, "");
+      conditions.push(sql<boolean>`regexp_replace(coalesce(${archProjetosTable.clienteTelefone}, ''), '[^0-9]', '', 'g') = ${phone}`);
+    } else if (anchor.clienteNome?.trim()) {
+      const name = anchor.clienteNome.trim().toLowerCase().replace(/\s+/g, " ");
+      conditions.push(sql<boolean>`regexp_replace(lower(trim(coalesce(${archProjetosTable.clienteNome}, ''))), '\s+', ' ', 'g') = ${name}`);
+    } else {
+      conditions.push(eq(archProjetosTable.id, anchor.id));
+    }
+  }
+
   const projetos = await db
     .select({
-      id:          archProjetosTable.id,
-      titulo:      archProjetosTable.titulo,
-      clienteNome: archProjetosTable.clienteNome,
-      status:      archProjetosTable.status,
-      tipoObra:    archProjetosTable.tipoObra,
-      areaM2:      archProjetosTable.areaM2,
-      createdAt:   archProjetosTable.createdAt,
-      updatedAt:   archProjetosTable.updatedAt,
+      id:               archProjetosTable.id,
+      leadId:           archProjetosTable.leadId,
+      dealId:           archProjetosTable.dealId,
+      titulo:           archProjetosTable.titulo,
+      clienteNome:      archProjetosTable.clienteNome,
+      clienteEmail:     archProjetosTable.clienteEmail,
+      clienteTelefone:  archProjetosTable.clienteTelefone,
+      status:           archProjetosTable.status,
+      tipoObra:         archProjetosTable.tipoObra,
+      areaM2:           archProjetosTable.areaM2,
+      createdAt:        archProjetosTable.createdAt,
+      updatedAt:        archProjetosTable.updatedAt,
     })
     .from(archProjetosTable)
-    .where(eq(archProjetosTable.tenantId, tid))
+    .where(and(...conditions))
     .orderBy(desc(archProjetosTable.updatedAt));
   return res.json(projetos);
 });
@@ -8950,7 +8997,6 @@ router.post("/arch/partners/compartilhar", authenticate, async (req, res) => {
     .limit(1);
 
   if (!partner) return res.status(404).json({ error: "Parceiro não encontrado." });
-
   let enviadoEm: Date | undefined;
   if ((canal === "email") && partner.email) {
     const sent = await sendPartnerEmail({
@@ -10185,4 +10231,3 @@ router.get("/arch/office/indicators", authenticate, async (req, res) => {
 
 export { archPublicRouter };
 export default router;
-

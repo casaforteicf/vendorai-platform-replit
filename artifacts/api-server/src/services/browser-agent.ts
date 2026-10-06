@@ -207,28 +207,62 @@ export async function snapshotBrowserPage(page: Page) {
     const cssString = (value: string) => JSON.stringify(value);
     const buildStableSelector = (el: Element) => {
       const tag = el.tagName.toLowerCase();
+      const unique = (selector: string) => {
+        try { return document.querySelectorAll(selector).length === 1; } catch { return false; }
+      };
+
       const testId = el.getAttribute("data-testid");
-      if (testId) return `[data-testid=${cssString(testId)}]`;
+      if (testId) {
+        const selector = `[data-testid=${cssString(testId)}]`;
+        if (unique(selector)) return selector;
+      }
 
       const aria = el.getAttribute("aria-label");
-      if (aria) return `${tag}[aria-label=${cssString(aria)}]`;
+      if (aria) {
+        const selector = `${tag}[aria-label=${cssString(aria)}]`;
+        if (unique(selector)) return selector;
+      }
 
       const name = (el as HTMLInputElement).name;
-      if (name) return `${tag}[name=${cssString(name)}]`;
+      if (name) {
+        const selector = `${tag}[name=${cssString(name)}]`;
+        if (unique(selector)) return selector;
+      }
 
       const id = el.id;
-      if (id && !/^radix-|^_?r_|radix/i.test(id)) return `#${CSS.escape(id)}`;
+      if (id && !/^radix-|^_?r_|radix/i.test(id)) {
+        const selector = `#${CSS.escape(id)}`;
+        if (unique(selector)) return selector;
+      }
 
       const href = el.getAttribute("href");
-      if (tag === "a" && href) return `a[href=${cssString(href)}]`;
-
-      const parent = el.parentElement;
-      if (parent) {
-        const sameTag = Array.from(parent.children).filter(child => child.tagName === el.tagName);
-        const position = sameTag.indexOf(el) + 1;
-        if (position > 0) return `${tag}:nth-of-type(${position})`;
+      if (tag === "a" && href) {
+        const selector = `a[href=${cssString(href)}]`;
+        if (unique(selector)) return selector;
       }
-      return tag;
+
+      const parts: string[] = [];
+      let current: Element | null = el;
+      while (current && current !== document.body) {
+        const currentTag = current.tagName.toLowerCase();
+        const currentId = (current as HTMLElement).id;
+        if (currentId && !/^radix-|^_?r_|radix/i.test(currentId)) {
+          parts.unshift(`#${CSS.escape(currentId)}`);
+          const selector = parts.join(" > ");
+          if (unique(selector)) return selector;
+          break;
+        }
+        const parent = current.parentElement;
+        if (!parent) break;
+        const sameTag = Array.from(parent.children).filter(child => child.tagName === current!.tagName);
+        const position = sameTag.indexOf(current) + 1;
+        parts.unshift(`${currentTag}:nth-of-type(${Math.max(position, 1)})`);
+        const selector = `body > ${parts.join(" > ")}`;
+        if (unique(selector)) return selector;
+        current = parent;
+      }
+
+      return `body ${tag}`;
     };
 
     const interactive = Array.from(document.querySelectorAll("a,button,input,textarea,select,[role='button']"))
@@ -256,6 +290,51 @@ export async function snapshotBrowserPage(page: Page) {
       interactive,
     };
   });
+}
+
+
+
+export function canNavigateFromSnapshot(
+  actionUrl: string,
+  goal: string,
+  state: { url: string; interactive?: Array<{ href?: string | null }> },
+): boolean {
+  try {
+    const target = new URL(actionUrl, state.url);
+    const current = new URL(state.url);
+    if (target.origin !== current.origin) return true;
+
+    const explicitGoalUrls = [...goal.matchAll(/https?:\/\/[^\s)]+/g)]
+      .map((match) => {
+        try { return new URL(match[0]).toString(); } catch { return null; }
+      })
+      .filter((value): value is string => Boolean(value));
+
+    if (explicitGoalUrls.includes(target.toString())) return true;
+    if (target.toString() === current.toString()) return true;
+
+    const snapshotHrefs = (state.interactive ?? [])
+      .map((item) => item.href)
+      .filter((href): href is string => Boolean(href))
+      .map((href) => {
+        try { return new URL(href, state.url).toString(); } catch { return null; }
+      })
+      .filter((value): value is string => Boolean(value));
+
+    return snapshotHrefs.includes(target.toString());
+  } catch {
+    return false;
+  }
+}
+
+async function stabilizeSparseFirstPartyPage(page: Page) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const state = await withBrowserRetry(() => snapshotBrowserPage(page), 2);
+    if (state.interactive.length > 0 || state.text.replace(/\s+/g, " ").trim().length > 180) return state;
+    await page.waitForNetworkIdle({ idleTime: 500, timeout: 2500 }).catch(() => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+  }
+  return withBrowserRetry(() => snapshotBrowserPage(page), 2);
 }
 
 export async function planBrowserAction(
@@ -495,13 +574,29 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
     let selectorRecoveryNote = "";
     let noChangeStreak = 0;
     for (let index = 1; index <= maxSteps; index++) {
-      const state = await withBrowserRetry(() => snapshotBrowserPage(page));
+      const state = input.firstPartyAuthToken
+        ? await stabilizeSparseFirstPartyPage(page)
+        : await withBrowserRetry(() => snapshotBrowserPage(page));
       assertBrowserPageAccessible(state);
       const planningGoal = selectorRecoveryNote
         ? input.goal + "\nRECUPERAÇÃO DE NAVEGAÇÃO: " + selectorRecoveryNote
         : input.goal;
       selectorRecoveryNote = "";
       const action = await planBrowserAction(input.tenantId, planningGoal, state, steps, secretsAvailable);
+      if (action.action === "navigate" && !canNavigateFromSnapshot(action.url, input.goal, state)) {
+        selectorRecoveryNote =
+          "A navegação anterior tentou inventar uma rota interna que não existe no snapshot. " +
+          "Use SOMENTE uma URL explícita no objetivo ou um href presente em page.interactive[].href. " +
+          "Se o objetivo exige criar/editar algo, use os botões e campos reais da página atual.";
+        steps.push({
+          index,
+          action: "navigate_rejected",
+          url: state.url,
+          detail: "invented_internal_route:" + action.url,
+          checkpoint: checkpointFromState(state),
+        });
+        continue;
+      }
       steps.push({
         index,
         action: action.action,
@@ -511,9 +606,11 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
       });
 
       if (action.action === "finish") {
-        if (action.outcome !== "completed") throw new Error(`BROWSER_${action.outcome.toUpperCase()}: ${action.answer}`);
         if (input.onSessionPersist) await input.onSessionPersist(await page.cookies());
         if (input.onProfilePersist) await input.onProfilePersist(await captureBrowserProfile(page));
+        if (action.outcome !== "completed") {
+          return { ok: false, status: action.outcome, finalUrl: state.url, answer: action.answer, steps };
+        }
         return { ok: true, finalUrl: state.url, answer: action.answer, steps };
       }
 
@@ -580,9 +677,11 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
           secretsAvailable,
         );
         if (next.action === "finish") {
-          if (next.outcome !== "completed") throw new Error(`BROWSER_${next.outcome.toUpperCase()}: ${next.answer}`);
           if (input.onSessionPersist) await input.onSessionPersist(await page.cookies());
           if (input.onProfilePersist) await input.onProfilePersist(await captureBrowserProfile(page));
+          if (next.outcome !== "completed") {
+            return { ok: false, status: next.outcome, finalUrl: page.url(), answer: next.answer, steps };
+          }
           return { ok: true, finalUrl: page.url(), answer: next.answer, steps };
         }
       }
