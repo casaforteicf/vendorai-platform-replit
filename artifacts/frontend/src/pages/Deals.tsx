@@ -208,6 +208,56 @@ function formatCurrency(value: string | null | undefined): string {
   return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+const QUOTE_IMPORT_MAX_SIZE = 10 * 1024 * 1024;
+const QUOTE_IMPORT_EXTENSIONS = new Set(["pdf", "png", "jpg", "jpeg", "webp", "docx", "doc"]);
+
+function validateQuoteImportFile(file: File): string | null {
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  if (!QUOTE_IMPORT_EXTENSIONS.has(extension)) return "Use PDF, imagem, DOC ou DOCX.";
+  if (file.size <= 0) return "O arquivo selecionado está vazio.";
+  if (file.size > QUOTE_IMPORT_MAX_SIZE) return "O limite para importar orçamento é 10 MB.";
+  return null;
+}
+
+async function extractQuoteWithRetry(tenantId: string, file: File): Promise<any> {
+  const token = localStorage.getItem("vendorai_token") ?? "";
+  const transientStatuses = new Set([408, 425, 429, 502, 503, 504]);
+  let lastError = "Não foi possível processar o orçamento.";
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 45_000);
+    try {
+      const fd = new FormData();
+      fd.append("file", file, file.name);
+      const response = await fetch(`/api/tenants/${tenantId}/deals/extract-quote`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: fd,
+        signal: controller.signal,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok) return payload;
+
+      lastError = payload?.error || payload?.message || `Falha ao ler orçamento (HTTP ${response.status})`;
+      if (!transientStatuses.has(response.status) || attempt === 1) throw new Error(lastError);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        lastError = "A leitura demorou demais e foi interrompida. Tente novamente.";
+      } else if (error instanceof Error) {
+        lastError = error.message || lastError;
+      }
+      if (attempt === 1) throw new Error(lastError);
+    } finally {
+      window.clearTimeout(timeout);
+    }
+
+    await new Promise((resolve) => window.setTimeout(resolve, 700));
+  }
+
+  throw new Error(lastError);
+}
+
 type StageResponsibleUser = {
   id: string;
   active?: boolean | null;
@@ -1689,18 +1739,16 @@ function EditDealSheet({
 
 
   async function handleQuoteUpload(file: File) {
+    const validationError = validateQuoteImportFile(file);
+    if (validationError) {
+      toast({ title: "Não foi possível importar", description: validationError, variant: "destructive" });
+      return;
+    }
+
     setExtracting(true);
     setExtractedInfo(null);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch(`/api/tenants/${tenantId}/deals/extract-quote`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
-        body: fd,
-      });
-      if (!res.ok) throw new Error("Falha");
-      const data = await res.json();
+      const data = await extractQuoteWithRetry(tenantId, file);
       if (data.valorTotal != null) form.setValue("valor", data.valorTotal);
       if (data.titulo) {
         const current = form.getValues("titulo");
@@ -1715,8 +1763,12 @@ function EditDealSheet({
       }
       const confianca = data.confianca ?? 0;
       toast({ title: confianca >= 0.5 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)" });
-    } catch {
-      toast({ title: "Erro ao ler o orçamento", variant: "destructive" });
+    } catch (error) {
+      toast({
+        title: "Erro ao ler o orçamento",
+        description: error instanceof Error ? error.message : "Não foi possível processar o arquivo.",
+        variant: "destructive",
+      });
     } finally {
       setExtracting(false);
     }
@@ -2638,30 +2690,16 @@ export default function Deals() {
   const createDeal = useCreateDeal();
 
   async function handleCreateQuoteUpload(file: File) {
-    const allowedExtensions = ["pdf", "png", "jpg", "jpeg", "webp", "docx", "doc"];
-    const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
-    if (!allowedExtensions.includes(extension)) {
-      toast({ title: "Formato não suportado", description: "Use PDF, imagem, DOC ou DOCX.", variant: "destructive" });
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      toast({ title: "Arquivo muito grande", description: "O limite para importar orçamento é 10 MB.", variant: "destructive" });
+    const validationError = validateQuoteImportFile(file);
+    if (validationError) {
+      toast({ title: "Não foi possível importar", description: validationError, variant: "destructive" });
       return;
     }
 
     setCreateExtracting(true);
     setCreateExtractedInfo(null);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch(`/api/tenants/${tenantId}/deals/extract-quote`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
-        body: fd,
-      });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(payload?.error || `Falha ao ler orçamento (HTTP ${res.status})`);
-      const data = payload;
+      const data = await extractQuoteWithRetry(tenantId, file);
 
       if (data.valorTotal != null) createForm.setValue("valor", data.valorTotal);
       if (data.titulo) {
