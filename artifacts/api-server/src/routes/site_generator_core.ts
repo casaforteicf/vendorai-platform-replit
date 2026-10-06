@@ -85,9 +85,95 @@ async function persistGenerationJob(jobId: string, job: GenerationJob) {
       updatedAt: new Date(),
     })
     .where(eq(siteGenerationJobsTable.id, jobId));
+import { ObjectStorageService } from "../lib/objectStorage.js";
 }
 
 export const publicSiteGeneratorRouter: IRouter = Router();
+const publicSiteStorage = new ObjectStorageService();
+
+function normalizeSiteStorageUrl(raw: string): string {
+  if (!raw) return "";
+  if (raw.startsWith("/objects/")) return `/api/storage${raw}`;
+  return raw;
+}
+
+async function rewritePublishedSiteMedia(html: string, tenantId: string, siteSlug: string) {
+  const assets = await db
+    .select({
+      id: mediaAssetsTable.id,
+      storageUrl: mediaAssetsTable.storageUrl,
+    })
+    .from(mediaAssetsTable)
+    .where(eq(mediaAssetsTable.tenantId, tenantId))
+    .limit(500);
+
+  let next = html;
+  for (const asset of assets) {
+    const canonical = String(asset.storageUrl || "");
+    const display = normalizeSiteStorageUrl(canonical);
+    if (!canonical || (!next.includes(canonical) && !next.includes(display))) continue;
+    const safeUrl = `/api/sites/${encodeURIComponent(siteSlug)}/media/${encodeURIComponent(asset.id)}`;
+    next = next.split(canonical).join(safeUrl).split(display).join(safeUrl);
+  }
+  return next;
+}
+
+function siteReferencesAsset(site: { html?: string | null; config?: unknown }, storageUrl: string) {
+  const html = String(site.html || "");
+  const display = normalizeSiteStorageUrl(storageUrl);
+  if (html.includes(storageUrl) || html.includes(display)) return true;
+  try {
+    const configJson = JSON.stringify(site.config ?? {});
+    return configJson.includes(storageUrl) || configJson.includes(display);
+  } catch {
+    return false;
+  }
+}
+
+
+publicSiteGeneratorRouter.get("/sites/:siteSlug/media/:assetId", async (req, res, next) => {
+  try {
+    const siteSlug = String(req.params.siteSlug || "");
+    const assetId = String(req.params.assetId || "");
+    const [site] = await db
+      .select({
+        html: generatedSitesTable.html,
+        config: generatedSitesTable.config,
+        tenantId: generatedSitesTable.tenantId,
+        published: generatedSitesTable.published,
+      })
+      .from(generatedSitesTable)
+      .where(eq(generatedSitesTable.siteSlug, siteSlug))
+      .limit(1);
+    if (!site || !site.published) return res.status(404).send("Site não publicado.");
+
+    const [asset] = await db
+      .select({
+        id: mediaAssetsTable.id,
+        tenantId: mediaAssetsTable.tenantId,
+        storageUrl: mediaAssetsTable.storageUrl,
+      })
+      .from(mediaAssetsTable)
+      .where(and(eq(mediaAssetsTable.id, assetId), eq(mediaAssetsTable.tenantId, site.tenantId)))
+      .limit(1);
+    if (!asset || !siteReferencesAsset(site, asset.storageUrl)) {
+      return res.status(404).send("Mídia não publicada neste site.");
+    }
+
+    if (asset.storageUrl.startsWith("/objects/")) {
+      const file = await publicSiteStorage.getObjectEntityFile(asset.storageUrl);
+      const objectResponse = await publicSiteStorage.downloadObject(file, 3600);
+      objectResponse.headers.forEach((value, key) => res.setHeader(key, value));
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.status(objectResponse.status);
+      return res.send(Buffer.from(await objectResponse.arrayBuffer()));
+    }
+    if (/^https:\/\//i.test(asset.storageUrl)) return res.redirect(302, asset.storageUrl);
+    return res.status(404).send("Mídia indisponível.");
+  } catch (err) {
+    next(err);
+  }
+});
 
 publicSiteGeneratorRouter.get("/sites/:siteSlug", async (req, res) => {
   const { siteSlug } = req.params;
@@ -98,6 +184,7 @@ publicSiteGeneratorRouter.get("/sites/:siteSlug", async (req, res) => {
       published: generatedSitesTable.published,
       name: generatedSitesTable.name,
       tenantId: generatedSitesTable.tenantId,
+      config: generatedSitesTable.config,
     })
     .from(generatedSitesTable)
     .where(eq(generatedSitesTable.siteSlug, siteSlug))
@@ -121,7 +208,8 @@ publicSiteGeneratorRouter.get("/sites/:siteSlug", async (req, res) => {
 
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
-  res.send(await injectArqdorSiteButton(injectTenantMarketingTags(site.html, siteTenant ?? {}), site.tenantId));
+  const publicHtml = await rewritePublishedSiteMedia(site.html, site.tenantId, siteSlug);
+  res.send(await injectArqdorSiteButton(injectTenantMarketingTags(publicHtml, siteTenant ?? {}), site.tenantId));
 });
 
 publicSiteGeneratorRouter.get("/public/:tenantSlug/site-html", async (req, res) => {
@@ -133,6 +221,7 @@ publicSiteGeneratorRouter.get("/public/:tenantSlug/site-html", async (req, res) 
       published: generatedSitesTable.published,
       name: generatedSitesTable.name,
       tenantId: generatedSitesTable.tenantId,
+      config: generatedSitesTable.config,
     })
     .from(generatedSitesTable)
     .where(eq(generatedSitesTable.siteSlug, tenantSlug))
@@ -150,7 +239,8 @@ publicSiteGeneratorRouter.get("/public/:tenantSlug/site-html", async (req, res) 
       .limit(1);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("X-Frame-Options", "SAMEORIGIN");
-    res.send(await injectArqdorSiteButton(injectTenantMarketingTags(siteBySlug.html, tenantForSlug ?? {}), siteBySlug.tenantId));
+    const publicHtml = await rewritePublishedSiteMedia(siteBySlug.html, siteBySlug.tenantId, tenantSlug);
+    res.send(await injectArqdorSiteButton(injectTenantMarketingTags(publicHtml, tenantForSlug ?? {}), siteBySlug.tenantId));
     return;
   }
 
