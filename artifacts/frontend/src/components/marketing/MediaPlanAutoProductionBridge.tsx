@@ -519,7 +519,7 @@ export function MediaPlanAutoProductionBridge() {
     }
 
     return { generation: payload, variation, selectedImages };
-  }, [assets, tenantId]);
+  }, [assets, plan?.id, tenantId]);
 
   const materializeDirect = useCallback(async (item: CalendarItem, campaign: MediaPlanCampaign, project: MediaProject) => {
     const generated = await generateContent(item, campaign, {
