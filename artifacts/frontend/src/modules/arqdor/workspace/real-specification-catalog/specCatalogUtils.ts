@@ -130,6 +130,8 @@ export function normalizeSpecObject(raw: any): SpecObject {
     wasteFactor: nullableNumber(raw?.wasteFactor ?? raw?.waste_factor) ?? 0,
     purchaseQuantity: nullableNumber(raw?.purchaseQuantity ?? raw?.purchase_quantity),
     packageYield: nullableNumber(raw?.packageYield ?? raw?.package_yield),
+    purchaseMode: raw?.purchaseMode || raw?.purchase_mode || "same_unit",
+    purchaseUnit: raw?.purchaseUnit || raw?.purchase_unit || raw?.unit || raw?.unidade || "un",
     catalogProductId: raw?.catalogProductId || raw?.catalog_product_id || null,
     catalogMaterialId: raw?.catalogMaterialId || raw?.catalog_material_id || null,
     manufacturerId: raw?.manufacturerId || raw?.manufacturer_id || null,
