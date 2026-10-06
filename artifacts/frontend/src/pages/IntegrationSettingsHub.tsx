@@ -170,6 +170,12 @@ export default function IntegrationSettingsHub() {
   });
   const [trackingHydrated, setTrackingHydrated] = useState(false);
   const [trackingGuide, setTrackingGuide] = useState<"ga4" | "gtm" | "google-ads" | "meta" | "linkedin" | "tiktok" | null>(null);
+  const [trackingHealth, setTrackingHealth] = useState<{
+    sitePublished?: boolean;
+    configured?: Record<string, boolean>;
+    installedOnVendorSite?: Record<string, boolean>;
+    metaCapi?: { ready?: boolean; metaConnected?: boolean; pixelConfigured?: boolean; globalEnabled?: boolean; tenantEnabled?: boolean; consentRequired?: boolean };
+  } | null>(null);
   const [asaasKey, setAsaasKey] = useState("");
   const [zapsignKey, setZapsignKey] = useState("");
   const [emailConnections, setEmailConnections] = useState<Array<{
@@ -864,6 +870,22 @@ export default function IntegrationSettingsHub() {
     },
   } as const;
 
+  const testTrackingInstallation = async () => {
+    setBusy("tracking-test");
+    try {
+      const data = await apiJson("/api/onboarding/integracoes/tracking-health");
+      setTrackingHealth(data);
+      toast({
+        title: data?.sitePublished ? "Instalação verificada" : "Site ainda não publicado",
+        description: data?.sitePublished ? "A Central confirmou quais tags serão aplicadas ao site Vendor.ai." : "As tags ficam salvas, mas só podem operar no site Vendor.ai quando houver um site publicado.",
+      });
+    } catch (error) {
+      toast({ title: "Não foi possível testar o tracking", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const saveTracking = async () => {
     setBusy("tracking-save");
     try {
@@ -998,9 +1020,14 @@ export default function IntegrationSettingsHub() {
               Centralize os identificadores de medição. Nos sites Vendor.ai, IDs válidos são instalados automaticamente.
             </p>
           </div>
-          <Button onClick={() => void saveTracking()} disabled={busy === "tracking-save"}>
-            {busy === "tracking-save" ? "Salvando..." : "Salvar tracking"}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => void testTrackingInstallation()} disabled={busy === "tracking-test"}>
+              {busy === "tracking-test" ? "Testando..." : "Testar instalação"}
+            </Button>
+            <Button onClick={() => void saveTracking()} disabled={busy === "tracking-save"}>
+              {busy === "tracking-save" ? "Salvando..." : "Salvar tracking"}
+            </Button>
+          </div>
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -1049,6 +1076,31 @@ export default function IntegrationSettingsHub() {
             <p className="mt-2 text-[11px] text-muted-foreground">{status?.tracking?.tiktokPixel ? "Configurado" : "Informe o Pixel ID."}</p>
           </div>
         </div>
+
+        {trackingHealth && (
+          <div className="mt-4 rounded-xl border bg-background p-4">
+            <h3 className="font-semibold">Resultado do teste</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {trackingHealth.sitePublished ? "Site Vendor.ai publicado: tags configuradas podem ser injetadas automaticamente." : "Nenhum site Vendor.ai publicado foi encontrado para este tenant."}
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {Object.entries(trackingHealth.configured || {}).map(([key, configured]) => (
+                <div key={key} className="rounded-lg border px-3 py-2 text-xs">
+                  <span className="font-medium">{key}</span>
+                  <span className={configured ? "ml-2 text-emerald-600" : "ml-2 text-muted-foreground"}>
+                    {configured ? (trackingHealth.installedOnVendorSite?.[key] ? "Configurado · site pronto" : "Configurado · aguardando site") : "Não configurado"}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 rounded-lg border px-3 py-2 text-xs">
+              <span className="font-medium">Meta Conversions API</span>
+              <span className={trackingHealth.metaCapi?.ready ? "ml-2 text-emerald-600" : "ml-2 text-amber-600"}>
+                {trackingHealth.metaCapi?.ready ? "Pronta para envio com consentimento" : "Pré-requisitos incompletos ou ativação controlada ainda não liberada"}
+              </span>
+            </div>
+          </div>
+        )}
 
         <div className="mt-4 flex flex-wrap gap-2">
           {([
