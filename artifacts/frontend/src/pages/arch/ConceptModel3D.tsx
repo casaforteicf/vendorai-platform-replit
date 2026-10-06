@@ -93,7 +93,19 @@ type Props = {
     position: { x: number; y: number; z: number };
     target: { x: number; y: number; z: number };
   }) => void;
-  onRenderView?: (lightingMode: "day" | "sunset" | "night", renderView: "interior" | "exterior") => void;
+  onRenderView?: (
+    lightingMode: "day" | "sunset" | "night",
+    renderView: "interior" | "exterior",
+    provenance?: {
+      sceneId?: string | null;
+      sceneName?: string | null;
+      cameraSnapshot?: {
+        floor?: number;
+        position: { x: number; y: number; z: number };
+        target: { x: number; y: number; z: number };
+      } | null;
+    },
+  ) => void;
 };
 
 type Point3 = { x: number; y: number; z: number };
@@ -1473,7 +1485,21 @@ export default function ConceptModel3D({
           {onRenderView && (
             <button
               type="button"
-              onClick={() => onRenderView(lightingMode, interiorMode ? "interior" : "exterior")}
+              onClick={() => onRenderView(
+                lightingMode,
+                interiorMode ? "interior" : "exterior",
+                activeSavedScene
+                  ? {
+                      sceneId: activeSavedScene.id,
+                      sceneName: activeSavedScene.name,
+                      cameraSnapshot: {
+                        floor: activeSavedScene.floor,
+                        position: activeSavedScene.position,
+                        target: activeSavedScene.target,
+                      },
+                    }
+                  : { sceneId: null, sceneName: null, cameraSnapshot: null },
+              )}
               className="flex items-center gap-2 rounded-lg bg-orange-500 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-orange-600"
             >
               <Sparkles className="h-4 w-4" />
