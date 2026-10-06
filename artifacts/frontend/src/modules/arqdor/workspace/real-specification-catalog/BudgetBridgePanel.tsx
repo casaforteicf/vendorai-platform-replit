@@ -11,7 +11,12 @@ export function BudgetBridgePanel({
   onSend: (item: SpecObject) => void;
   sending?: boolean;
 }) {
-  const ready = items.filter((item) => ["specified", "priced", "approved"].includes(item.status));
+  const ready = items.filter(
+    (item) =>
+      item.technicalApprovalStatus === "approved"
+      && item.revisionImpact !== "removed"
+      && ["specified", "priced", "approved", "sent-to-budget"].includes(item.status),
+  );
   const grouped = useMemo(() => {
     const map = new Map<string, SpecObject[]>();
     for (const item of ready) {
@@ -64,11 +69,11 @@ export function BudgetBridgePanel({
                     <span className="whitespace-nowrap text-sm font-semibold">{money(item.totalValue)}</span>
                     <button
                       type="button"
-                      disabled={sending}
+                      disabled={sending || item.status === "sent-to-budget"}
                       onClick={() => onSend(item)}
                       className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
                     >
-                      Enviar
+                      {item.status === "sent-to-budget" ? "Enviado" : "Enviar"}
                     </button>
                   </div>
                 </div>
