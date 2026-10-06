@@ -368,7 +368,6 @@ export function useRenderStudioController() {
           sessionStorage.setItem(SK.renderId, requestedRenderId);
           sessionStorage.setItem(SK.renderUrl, currentUrl);
           sessionStorage.setItem(SK.imageUrl, normalizeRenderMediaUrl(current.original_image_url || currentUrl));
-          sessionStorage.setItem(SK.versions, JSON.stringify(loadedVersions.length ? loadedVersions : [currentVersion]));
           sessionStorage.setItem(SK.step, "melhoria");
         } catch (e: unknown) {
           if (!cancelled) setErr(categorizeError(e));
