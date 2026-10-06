@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { randomBytes, timingSafeEqual } from "node:crypto";
@@ -135,7 +135,7 @@ router.post("/tenants/:tenantId/custom-integrations", async (req, res) => {
   res.status(201).json({
     integration: safeRow(row),
     webhook: webhookSecret ? {
-      path: `/api/webhooks/custom/${row.id}`,
+      path: `/api/webhooks/custom/${encodeURIComponent(tenantId)}/${row.id}`,
       secret: webhookSecret,
       secretHeader: "x-vendorai-webhook-secret",
       note: "O segredo é exibido apenas agora. Guarde-o no sistema que enviará o webhook.",
@@ -228,40 +228,57 @@ router.delete("/tenants/:tenantId/custom-integrations/:id", async (req, res) => 
   res.json({ success: true });
 });
 
-customIntegrationsPublicRouter.post("/webhooks/custom/:connectionId", async (req, res) => {
+customIntegrationsPublicRouter.post("/webhooks/custom/:tenantId/:connectionId", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
   const connectionId = String(req.params.connectionId);
   const provided = req.headers["x-vendorai-webhook-secret"];
   if (typeof provided !== "string" || !provided) return void res.status(401).json({ error: "missing_webhook_secret" });
 
-  const [row] = await db.select().from(tenantCustomIntegrationsTable)
-    .where(eq(tenantCustomIntegrationsTable.id, connectionId))
-    .limit(1);
-  if (!row || row.kind !== "webhook" || !row.webhookSecretEncrypted) return void res.status(404).json({ error: "webhook_not_found" });
-
-  let expected = "";
   try {
-    expected = decrypt(row.webhookSecretEncrypted);
-  } catch {
-    return void res.status(500).json({ error: "webhook_secret_unavailable" });
+    const result = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT app_security.set_tenant_context(${tenantId}, false)`);
+
+      const [row] = await tx.select().from(tenantCustomIntegrationsTable).where(and(
+        eq(tenantCustomIntegrationsTable.id, connectionId),
+        eq(tenantCustomIntegrationsTable.tenantId, tenantId),
+      )).limit(1);
+      if (!row || row.kind !== "webhook" || !row.webhookSecretEncrypted) return { status: 404 as const, body: { error: "webhook_not_found" } };
+
+      let expected = "";
+      try {
+        expected = decrypt(row.webhookSecretEncrypted);
+      } catch {
+        return { status: 500 as const, body: { error: "webhook_secret_unavailable" } };
+      }
+
+      const a = Buffer.from(provided);
+      const b = Buffer.from(expected);
+      if (a.length !== b.length || !timingSafeEqual(a, b)) return { status: 401 as const, body: { error: "invalid_webhook_secret" } };
+
+      const now = new Date();
+      const eventType = typeof req.headers["x-event-type"] === "string" ? req.headers["x-event-type"].slice(0, 120) : null;
+      const bodyKeys = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? Object.keys(req.body).slice(0, 30) : [];
+
+      await tx.update(tenantCustomIntegrationsTable).set({
+        status: "connected",
+        lastEventAt: now,
+        lastSuccessAt: now,
+        lastError: null,
+        config: { ...(row.config || {}), lastEventType: eventType, lastPayloadKeys: bodyKeys },
+        updatedAt: now,
+      }).where(and(
+        eq(tenantCustomIntegrationsTable.id, row.id),
+        eq(tenantCustomIntegrationsTable.tenantId, tenantId),
+      ));
+
+      return { status: 202 as const, body: { accepted: true, connectionId: row.id } };
+    });
+
+    return void res.status(result.status).json(result.body);
+  } catch (error) {
+    req.log?.error?.({ error, tenantId, connectionId }, "custom webhook ingest failed");
+    return void res.status(500).json({ error: "webhook_ingest_failed" });
   }
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return void res.status(401).json({ error: "invalid_webhook_secret" });
-
-  const now = new Date();
-  const eventType = typeof req.headers["x-event-type"] === "string" ? req.headers["x-event-type"].slice(0, 120) : null;
-  const bodyKeys = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? Object.keys(req.body).slice(0, 30) : [];
-
-  await db.update(tenantCustomIntegrationsTable).set({
-    status: "connected",
-    lastEventAt: now,
-    lastSuccessAt: now,
-    lastError: null,
-    config: { ...(row.config || {}), lastEventType: eventType, lastPayloadKeys: bodyKeys },
-    updatedAt: now,
-  }).where(eq(tenantCustomIntegrationsTable.id, row.id));
-
-  res.status(202).json({ accepted: true, connectionId: row.id });
 });
 
 export default router;
