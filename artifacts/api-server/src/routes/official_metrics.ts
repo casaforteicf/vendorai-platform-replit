@@ -92,6 +92,7 @@ async function calculateGoalActual(tenantId: string, goal: GoalRow): Promise<num
         FROM deals d
         WHERE d.tenant_id = ${tenantId}
           AND d.etapa = 'ganho'
+          AND ${validCommercialDealSql("d")}
           AND (${responsibleId}::text IS NULL OR d.assigned_to = ${responsibleId})
       )
       SELECT
@@ -114,6 +115,7 @@ async function calculateGoalActual(tenantId: string, goal: GoalRow): Promise<num
       FROM deals d
       WHERE d.tenant_id = ${tenantId}
         AND d.created_at >= ${start} AND d.created_at <= ${end}
+        AND d.etapa NOT IN ('em_aquecimento','parceiro','em_execucao','entregue')
         AND ${validCommercialDealSql("d")}
         AND (${responsibleId}::text IS NULL OR d.assigned_to = ${responsibleId})
     `);
@@ -160,11 +162,14 @@ router.get("/tenants/:tenantId/dashboard/command-center", async (req, res) => {
       WITH won AS (
         SELECT d.*, COALESCE(d.data_fechamento, d.won_at, d.updated_at) AS closed_at
         FROM deals d
-        WHERE d.tenant_id = ${tenantId} AND d.etapa = 'ganho'
+        WHERE d.tenant_id = ${tenantId}
+          AND d.etapa = 'ganho'
+          AND ${validCommercialDealSql("d")}
       ), created_deals AS (
         SELECT d.* FROM deals d
         WHERE d.tenant_id = ${tenantId}
           AND d.created_at >= ${periodStart} AND d.created_at <= ${periodEnd}
+          AND d.etapa NOT IN ('em_aquecimento','parceiro','em_execucao','entregue')
           AND ${validCommercialDealSql("d")}
       )
       SELECT
