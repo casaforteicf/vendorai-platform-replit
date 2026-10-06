@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Loader2, Plus, Trash2, UserRound } from "lucide-react";
+import { Building2, Link2, Loader2, Plus, Trash2, UserRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -288,7 +288,7 @@ export function DealParticipantsCard({
               </p>
             </div>
             <Button type="button" size="sm" onClick={() => setOpen(true)}>
-              <Plus className="mr-1.5 h-4 w-4" />Adicionar envolvido
+              <Link2 className="mr-1.5 h-4 w-4" />Vincular cliente/contato
             </Button>
           </div>
 
@@ -345,10 +345,11 @@ export function DealParticipantsCard({
       <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) resetForm(); }}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>Adicionar envolvido</DialogTitle>
+            <DialogTitle>Vincular cliente/contato ao lead</DialogTitle>
           </DialogHeader>
           <Tabs value={kind} onValueChange={(value) => setKind(value as "person" | "company")}>
-            <TabsList className="grid w-full grid-cols-2">
+            <p className="text-sm text-muted-foreground">Selecione um cadastro existente para anexar este atendimento ao cliente correto ou cadastre um novo sem duplicar o lead.</p>
+          <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="person">Pessoa</TabsTrigger>
               <TabsTrigger value="company">Empresa</TabsTrigger>
             </TabsList>

@@ -8,18 +8,23 @@ import {
   FileText,
   Handshake,
   Landmark,
+  Link2,
   Loader2,
   MessageSquare,
   Network,
   PackageCheck,
   Phone,
   Mail,
+  Search,
   Sparkles,
   Users,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -38,6 +43,15 @@ type Contact = {
   isPrimary?: boolean;
   verifiedAt?: string | null;
   metadata?: Record<string, unknown> | null;
+};
+
+type LeadOption = {
+  id: string;
+  nome: string;
+  telefone?: string | null;
+  email?: string | null;
+  empresa?: string | null;
+  status?: string | null;
 };
 
 type CompanyWorkspace = {
@@ -115,6 +129,14 @@ export default function CompanyCenter() {
   const [data, setData] = useState<CompanyWorkspace | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [linkLeadOpen, setLinkLeadOpen] = useState(false);
+  const [leadOptions, setLeadOptions] = useState<LeadOption[]>([]);
+  const [leadSearch, setLeadSearch] = useState("");
+  const [selectedLeadId, setSelectedLeadId] = useState("");
+  const [loadingLeads, setLoadingLeads] = useState(false);
+  const [linkingLead, setLinkingLead] = useState(false);
+  const [linkLeadError, setLinkLeadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id || !tenantId) return;
@@ -133,7 +155,26 @@ export default function CompanyCenter() {
       .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : "Falha ao carregar empresa."); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [id, tenantId]);
+  }, [id, tenantId, reloadKey]);
+
+  useEffect(() => {
+    if (!linkLeadOpen || !tenantId) return;
+    let cancelled = false;
+    setLoadingLeads(true);
+    setLinkLeadError(null);
+    fetch(`${getBase()}/api/tenants/${tenantId}/leads`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => []);
+        if (!response.ok) throw new Error((payload as any)?.error ?? "Não foi possível carregar os leads.");
+        return Array.isArray(payload) ? payload as LeadOption[] : [];
+      })
+      .then((items) => { if (!cancelled) setLeadOptions(items); })
+      .catch((err) => { if (!cancelled) setLinkLeadError(err instanceof Error ? err.message : "Falha ao carregar leads."); })
+      .finally(() => { if (!cancelled) setLoadingLeads(false); });
+    return () => { cancelled = true; };
+  }, [linkLeadOpen, tenantId]);
 
   const companyName = data?.company.nomeFantasia || data?.company.razaoSocial || "Empresa";
   const address = useMemo(() => {
@@ -141,6 +182,102 @@ export default function CompanyCenter() {
     if (!e) return "";
     return [e.logradouro, e.numero, e.bairro, e.municipio, e.uf].filter(Boolean).join(", ");
   }, [data?.company.endereco]);
+
+  const linkedLeads = useMemo(() => {
+    if (!data) return [] as Array<{ id: string; title: string; stage?: string | null; dealId?: string | null }>;
+    const byId = new Map<string, { id: string; title: string; stage?: string | null; dealId?: string | null }>();
+    if (data.tenantCompany.leadId) {
+      byId.set(data.tenantCompany.leadId, {
+        id: data.tenantCompany.leadId,
+        title: String(data.lead?.nome ?? data.company.nomeFantasia ?? data.company.razaoSocial ?? "Lead"),
+      });
+    }
+    for (const deal of data.opportunities ?? []) {
+      const leadId = typeof deal.leadId === "string" ? deal.leadId : null;
+      if (!leadId) continue;
+      byId.set(leadId, {
+        id: leadId,
+        title: String(deal.titulo ?? data.lead?.nome ?? "Lead"),
+        stage: typeof deal.etapa === "string" ? deal.etapa : null,
+        dealId: typeof deal.id === "string" ? deal.id : null,
+      });
+    }
+    return Array.from(byId.values());
+  }, [data]);
+
+  const filteredLeadOptions = useMemo(() => {
+    const term = leadSearch.trim().toLowerCase();
+    const alreadyLinked = new Set(linkedLeads.map((item) => item.id));
+    return leadOptions
+      .filter((lead) => !alreadyLinked.has(lead.id))
+      .filter((lead) => {
+        if (!term) return true;
+        return [lead.nome, lead.telefone, lead.email, lead.empresa].some((value) => (value ?? "").toLowerCase().includes(term));
+      })
+      .slice(0, 80);
+  }, [leadOptions, leadSearch, linkedLeads]);
+
+  async function linkSelectedLead() {
+    if (!data || !selectedLeadId) return;
+    setLinkingLead(true);
+    setLinkLeadError(null);
+    const headers = { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` };
+    try {
+      const selectedLead = leadOptions.find((item) => item.id === selectedLeadId);
+      const dealsResponse = await fetch(
+        `${getBase()}/api/tenants/${tenantId}/deals?leadId=${encodeURIComponent(selectedLeadId)}&includeNaoLead=true`,
+        { headers },
+      );
+      const dealsPayload = await dealsResponse.json().catch(() => []);
+      if (!dealsResponse.ok) throw new Error((dealsPayload as any)?.error ?? "Não foi possível localizar o negócio do lead.");
+      const deals = Array.isArray(dealsPayload) ? dealsPayload : [];
+      const terminal = new Set(["ganho", "perdido", "entregue", "concluido", "cancelado"]);
+      let deal = [...deals].reverse().find((item: any) => !terminal.has(String(item.etapa))) ?? deals.at(-1);
+
+      if (!deal) {
+        const response = await fetch(`${getBase()}/api/deals`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            tenantId,
+            leadId: selectedLeadId,
+            titulo: `Atendimento - ${selectedLead?.nome ?? "Lead"}`,
+            etapa: "novo",
+          }),
+        });
+        if (!response.ok) {
+          const failed = await response.json().catch(() => ({}));
+          throw new Error((failed as any)?.error ?? "Não foi possível iniciar o negócio para este lead.");
+        }
+        deal = await response.json().catch(() => ({}));
+      }
+
+      const res = await fetch(`${getBase()}/api/crm/deals/${deal.id}/companies`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          tenantId,
+          companyId: data.company.id,
+          role: "contratante",
+          isPrimary: true,
+        }),
+      });
+      if (!res.ok) {
+        const failed = await res.json().catch(() => ({}));
+        throw new Error((failed as any)?.error ?? "Não foi possível vincular o lead a este cliente.");
+      }
+      await res.json().catch(() => ({}));
+
+      setLinkLeadOpen(false);
+      setSelectedLeadId("");
+      setLeadSearch("");
+      setReloadKey((value) => value + 1);
+    } catch (err) {
+      setLinkLeadError(err instanceof Error ? err.message : "Não foi possível vincular o lead.");
+    } finally {
+      setLinkingLead(false);
+    }
+  }
 
   if (loading) {
     return <div className="flex min-h-[50vh] items-center justify-center"><Loader2 className="h-7 w-7 animate-spin" /></div>;
@@ -176,6 +313,7 @@ export default function CompanyCenter() {
           {data.tenantCompany.leadId && (
             <Button variant="outline" onClick={() => setLocation(`/leads/${data.tenantCompany.leadId}`)}>Abrir lead</Button>
           )}
+          <Button variant="outline" onClick={() => setLinkLeadOpen(true)}><Link2 className="mr-2 h-4 w-4" />Vincular lead</Button>
           <Button variant="outline" onClick={() => setLocation("/conversas")}><MessageSquare className="mr-2 h-4 w-4" />Conversas</Button>
           <Button onClick={() => setLocation("/negocios")}><Handshake className="mr-2 h-4 w-4" />Negócios</Button>
         </div>
@@ -196,6 +334,7 @@ export default function CompanyCenter() {
         <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-xl border bg-card p-1">
           <TabsTrigger value="overview">Visão geral</TabsTrigger>
           <TabsTrigger value="people">Pessoas</TabsTrigger>
+          <TabsTrigger value="leads">Leads</TabsTrigger>
           <TabsTrigger value="opportunities">Oportunidades</TabsTrigger>
           <TabsTrigger value="conversations">Conversas</TabsTrigger>
           <TabsTrigger value="orders">Pedidos</TabsTrigger>
@@ -254,6 +393,33 @@ export default function CompanyCenter() {
               })}
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="leads">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold">Leads vinculados a este cliente</h2>
+                <p className="text-sm text-muted-foreground">Um cliente pode ter vários leads e negócios sem duplicar o cadastro da empresa.</p>
+              </div>
+              <Button onClick={() => setLinkLeadOpen(true)}><Link2 className="mr-2 h-4 w-4" />Vincular lead</Button>
+            </div>
+            {linkedLeads.length === 0 ? <Empty text="Nenhum lead vinculado a este cliente." /> : (
+              <div className="space-y-2">
+                {linkedLeads.map((lead) => (
+                  <Card key={lead.id}>
+                    <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="font-medium">{lead.title}</p>
+                        <p className="text-xs text-muted-foreground">{lead.stage ? `Etapa: ${lead.stage.replace(/_/g, " ")}` : "Lead vinculado"}</p>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={() => setLocation(`/leads/${lead.id}`)}>Abrir lead</Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="opportunities">
@@ -328,6 +494,67 @@ export default function CompanyCenter() {
           </div>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={linkLeadOpen} onOpenChange={(open) => {
+        setLinkLeadOpen(open);
+        if (!open) {
+          setSelectedLeadId("");
+          setLeadSearch("");
+          setLinkLeadError(null);
+        }
+      }}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Vincular lead ao cliente</DialogTitle>
+            <DialogDescription>
+              Use quando um contato chegar e virar lead, mas o cliente/empresa já existir. O histórico do lead continua intacto e passa a aparecer neste cadastro.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Buscar lead existente</Label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={leadSearch}
+                  onChange={(event) => setLeadSearch(event.target.value)}
+                  placeholder="Nome, telefone, e-mail ou empresa..."
+                  className="pl-9"
+                />
+              </div>
+            </div>
+
+            <div className="max-h-72 space-y-2 overflow-auto rounded-lg border p-2">
+              {loadingLeads ? (
+                <div className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando leads...</div>
+              ) : filteredLeadOptions.length === 0 ? (
+                <p className="p-6 text-center text-sm text-muted-foreground">Nenhum lead disponível com essa busca.</p>
+              ) : filteredLeadOptions.map((lead) => (
+                <button
+                  key={lead.id}
+                  type="button"
+                  onClick={() => setSelectedLeadId(lead.id)}
+                  className={`w-full rounded-lg border p-3 text-left transition-colors ${selectedLeadId === lead.id ? "border-primary bg-primary/5" : "hover:bg-muted/50"}`}
+                >
+                  <p className="font-medium">{lead.nome}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {[lead.empresa, lead.telefone, lead.email].filter(Boolean).join(" · ") || "Sem dados adicionais"}
+                  </p>
+                </button>
+              ))}
+            </div>
+
+            {linkLeadError && <p className="text-sm text-destructive">{linkLeadError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLinkLeadOpen(false)} disabled={linkingLead}>Cancelar</Button>
+            <Button onClick={() => void linkSelectedLead()} disabled={!selectedLeadId || linkingLead}>
+              {linkingLead && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Vincular lead
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
