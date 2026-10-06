@@ -188,7 +188,6 @@ function criarPlanoFallback(params: {
   objetivo: string;
   modo: PlanoAcompanhamento["modo"];
   candidatos: CanalAcompanhamento[];
-  motivoTecnico: string;
 }): PlanoAcompanhamento {
   const { context, objetivo, modo, candidatos } = params;
   const canalPrincipal = candidatos[0] ?? null;
@@ -281,7 +280,6 @@ export async function planejarAcompanhamento(params: {
       objetivo,
       modo,
       candidatos,
-      motivoTecnico: "contexto_negocio_indisponivel",
     });
   }
 
@@ -352,7 +350,6 @@ export async function planejarAcompanhamento(params: {
       objetivo,
       modo,
       candidatos,
-      motivoTecnico: "ia_indisponivel",
     });
   }
 
@@ -366,7 +363,6 @@ export async function planejarAcompanhamento(params: {
       objetivo,
       modo,
       candidatos,
-      motivoTecnico: "json_invalido",
     });
   }
   const suggested = String(raw.canalPrincipal ?? "") as CanalAcompanhamento;
