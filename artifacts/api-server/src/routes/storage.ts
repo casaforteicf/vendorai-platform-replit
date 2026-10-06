@@ -57,8 +57,8 @@ router.get("/storage/public-objects/objects/*path", (req: Request, res: Response
 /**
  * GET /storage/public-objects/*
  *
- * Serve public assets. Redirects straight to the public Supabase Storage URL —
- * no server bandwidth spent proxying, browser caches it like any normal image.
+ * Serve explicitly public assets through the API. The underlying Supabase bucket
+ * can remain private; this route is the public boundary for PUBLIC_OBJECT_SEARCH_PATHS.
  */
 router.get("/storage/public-objects/*filePath", async (req: Request, res: Response) => {
   try {
@@ -69,7 +69,11 @@ router.get("/storage/public-objects/*filePath", async (req: Request, res: Respon
       res.status(404).json({ error: "File not found" });
       return;
     }
-    res.redirect(302, file.getPublicUrl());
+    const objectResponse = await objectStorageService.downloadObject(file, 3600);
+    objectResponse.headers.forEach((value, key) => res.setHeader(key, value));
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.status(objectResponse.status);
+    res.send(Buffer.from(await objectResponse.arrayBuffer()));
   } catch (error) {
     req.log.error({ err: error }, "Error serving public object");
     res.status(500).json({ error: "Failed to serve public object" });
