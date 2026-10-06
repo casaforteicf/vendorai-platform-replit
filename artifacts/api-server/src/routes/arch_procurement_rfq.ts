@@ -997,6 +997,11 @@ archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token", async (req, res,
       ? pkg.technical_documents_snapshot
       : Array.isArray(pkg.documents) ? pkg.documents : [];
     const responseDocs = Array.isArray(inv.response_documents) ? inv.response_documents : [];
+    const tenantBrandResult = await pool.query(
+      `SELECT name, logo_url, cor_primaria FROM tenants WHERE id::text=$1 LIMIT 1`,
+      [String(inv.tenant_id)],
+    );
+    const tenantBrand = tenantBrandResult.rows[0] ?? {};
     await pool.query(`SELECT public.arch_rfq_public_mark_viewed($1::uuid)`, [token]);
 
     const itemRows = items.map((item:any)=>`<tr>
@@ -1033,7 +1038,11 @@ archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token", async (req, res,
     res.type("html").send(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <title>${esc(pkg.code)} — Cotação</title><style>
     body{font-family:Inter,Arial,sans-serif;background:#f6f7fb;color:#111827;margin:0}.wrap{max-width:1100px;margin:36px auto;padding:0 18px}.card{background:#fff;border:1px solid #e5e7eb;border-radius:22px;padding:24px;margin-bottom:18px}h1{margin:4px 0 8px;font-size:28px}small,.muted{color:#6b7280}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px;border-bottom:1px solid #eee;vertical-align:top}input,textarea{box-sizing:border-box;width:100%;padding:10px;border:1px solid #d1d5db;border-radius:10px}label{display:block;font-size:12px;font-weight:700;margin:12px 0 6px}button{background:#111827;color:#fff;border:0;border-radius:12px;padding:13px 18px;font-weight:700;cursor:pointer}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}@media(max-width:760px){.grid{grid-template-columns:1fr}table{font-size:12px}.wrap{margin:14px auto}}
-    </style></head><body><div class="wrap"><div class="card"><div class="muted">ARQDOR • Solicitação de cotação</div><h1>${esc(pkg.title)}</h1>
+    </style></head><body><div class="wrap"><div class="card">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+      ${tenantBrand.logo_url ? `<img src="${esc(tenantBrand.logo_url)}" alt="${esc(tenantBrand.name || "Logo")}" style="max-width:180px;max-height:54px;object-fit:contain">` : ""}
+      <div class="muted">${esc(tenantBrand.name || "ARQDOR")} • Solicitação de cotação</div>
+    </div><h1>${esc(pkg.title)}</h1>
     <p>${esc(obra?.nome || "Obra")} • ${esc(pkg.code)} • versão ${esc(pkg.version)}</p><p class="muted">Esta página contém somente os itens direcionados ao seu escopo: ${esc(pkg.category || pkg.discipline)}.</p></div>
     <div class="card"><table><thead><tr><th>Item</th><th>Quantidade</th><th>Valor unitário</th><th>Marca/modelo</th><th>Observação</th></tr></thead><tbody>${itemRows}</tbody></table></div>
     <div class="card"><h2>Arquivos técnicos</h2><p class="muted">Plantas, memoriais e detalhes liberados para esta cotação.</p><ul>${technicalDocRows}</ul></div>
