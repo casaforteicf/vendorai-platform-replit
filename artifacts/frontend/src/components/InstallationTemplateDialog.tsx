@@ -1,5 +1,13 @@
-import { useEffect, useState } from "react";
-import { Plus, Settings2, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  CalendarClock,
+  ClipboardCheck,
+  FileText,
+  PackageSearch,
+  Plus,
+  Settings2,
+  Trash2,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,20 +27,62 @@ type Template = {
   checks?: Array<Record<string, unknown>>;
 };
 
-type DraftCheck = { label: string; required: boolean };
+type ScopeType = "general" | "segment" | "niche" | "category" | "product";
+type EvidenceType = "none" | "photo" | "video" | "text" | "signature";
+type ResponsibleType = "internal" | "client" | "both";
 
-type InstallationMetrics = {
-  installations: number;
-  accepted: number;
-  firstVisitAccepted: number;
-  returns: number;
-  visits: number;
-  checklistItems: number;
-  completedChecklistItems: number;
-  completionRate: number;
-  occurrences: number;
-  openOccurrences: number;
-  occurrenceTypes: Record<string, number>;
+type DraftCheck = {
+  label: string;
+  required: boolean;
+  blockAdvance: boolean;
+  evidenceType: EvidenceType;
+  responsibleType: ResponsibleType;
+};
+
+const DEFAULT_CHECKS: DraftCheck[] = [
+  {
+    label: "Conferir material e itens recebidos",
+    required: true,
+    blockAdvance: true,
+    evidenceType: "photo",
+    responsibleType: "internal",
+  },
+  {
+    label: "Executar instalação conforme pedido",
+    required: true,
+    blockAdvance: true,
+    evidenceType: "photo",
+    responsibleType: "internal",
+  },
+  {
+    label: "Conferência final e aceite",
+    required: true,
+    blockAdvance: true,
+    evidenceType: "signature",
+    responsibleType: "both",
+  },
+];
+
+const scopeLabels: Record<ScopeType, string> = {
+  general: "Todos os produtos / padrão geral",
+  segment: "Um segmento",
+  niche: "Um nicho",
+  category: "Uma categoria",
+  product: "Um produto específico",
+};
+
+const evidenceLabels: Record<EvidenceType, string> = {
+  none: "Sem evidência",
+  photo: "Foto",
+  video: "Vídeo",
+  text: "Texto / observação",
+  signature: "Assinatura",
+};
+
+const responsibleLabels: Record<ResponsibleType, string> = {
+  internal: "Equipe / instalador",
+  client: "Cliente",
+  both: "Equipe ou cliente",
 };
 
 export function InstallationTemplateDialog({
@@ -48,23 +98,20 @@ export function InstallationTemplateDialog({
 }) {
   const { toast } = useToast();
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [metrics, setMetrics] = useState<InstallationMetrics | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+
   const [name, setName] = useState("");
-  const [segmentKey, setSegmentKey] = useState("");
-  const [nicheKey, setNicheKey] = useState("");
-  const [categoryKey, setCategoryKey] = useState("");
-  const [productId, setProductId] = useState("");
+  const [scopeType, setScopeType] = useState<ScopeType>("general");
+  const [scopeValue, setScopeValue] = useState("");
   const [expandQuantity, setExpandQuantity] = useState(false);
   const [evidenceRequired, setEvidenceRequired] = useState(false);
   const [manualUrls, setManualUrls] = useState("");
   const [warrantyUrls, setWarrantyUrls] = useState("");
+  const [postSaleEnabled, setPostSaleEnabled] = useState(true);
   const [postSaleAfterDays, setPostSaleAfterDays] = useState("7");
-  const [checks, setChecks] = useState<DraftCheck[]>([
-    { label: "Instalação/execução conforme pedido", required: true },
-    { label: "Conferência final", required: true },
-  ]);
+  const [postSaleAction, setPostSaleAction] = useState("create_task");
+  const [checks, setChecks] = useState<DraftCheck[]>(DEFAULT_CHECKS);
 
   async function api<T>(url: string, options?: RequestInit): Promise<T> {
     const response = await fetch(url, {
@@ -84,41 +131,72 @@ export function InstallationTemplateDialog({
     if (!tenantId || !open) return;
     setLoading(true);
     try {
-      const [templateRows, metricData] = await Promise.all([
-        api<Template[]>(`/api/tenants/${tenantId}/installation-templates`),
-        api<InstallationMetrics>(`/api/tenants/${tenantId}/installation-metrics`),
-      ]);
+      const templateRows = await api<Template[]>(`/api/tenants/${tenantId}/installation-templates`);
       setTemplates(templateRows);
-      setMetrics(metricData);
     } catch (error) {
-      toast({ title: "Não foi possível carregar os templates", description: String(error), variant: "destructive" });
+      toast({ title: "Não foi possível carregar os modelos", description: String(error), variant: "destructive" });
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { void loadTemplates(); }, [open, tenantId]);
+  useEffect(() => {
+    void loadTemplates();
+  }, [open, tenantId]);
+
+  const summary = useMemo(() => {
+    const validChecks = checks.filter((check) => check.label.trim());
+    const evidenceCount = validChecks.filter((check) => check.evidenceType !== "none").length;
+    const requiredCount = validChecks.filter((check) => check.required).length;
+    return {
+      validChecks,
+      evidenceCount,
+      requiredCount,
+    };
+  }, [checks]);
+
+  function resetForm() {
+    setName("");
+    setScopeType("general");
+    setScopeValue("");
+    setExpandQuantity(false);
+    setEvidenceRequired(false);
+    setManualUrls("");
+    setWarrantyUrls("");
+    setPostSaleEnabled(true);
+    setPostSaleAfterDays("7");
+    setPostSaleAction("create_task");
+    setChecks(DEFAULT_CHECKS);
+  }
 
   async function createTemplate() {
     if (!name.trim()) {
-      toast({ title: "Informe o nome do template.", variant: "destructive" });
+      toast({ title: "Informe o nome do modelo.", variant: "destructive" });
       return;
     }
-    const validChecks = checks.filter((check) => check.label.trim());
-    if (!validChecks.length) {
-      toast({ title: "Adicione pelo menos uma verificação.", variant: "destructive" });
+    if (scopeType !== "general" && !scopeValue.trim()) {
+      toast({ title: "Informe onde este modelo deve ser aplicado.", variant: "destructive" });
       return;
     }
+    if (!summary.validChecks.length) {
+      toast({ title: "Adicione pelo menos uma atividade.", variant: "destructive" });
+      return;
+    }
+
+    const scopePayload = {
+      segmentKey: scopeType === "segment" ? scopeValue.trim() : null,
+      nicheKey: scopeType === "niche" ? scopeValue.trim() : null,
+      categoryKey: scopeType === "category" ? scopeValue.trim() : null,
+      productId: scopeType === "product" ? scopeValue.trim() : null,
+    };
+
     setSaving(true);
     try {
       await api(`/api/tenants/${tenantId}/installation-templates`, {
         method: "POST",
         body: JSON.stringify({
           name: name.trim(),
-          segmentKey: segmentKey.trim() || null,
-          nicheKey: nicheKey.trim() || null,
-          categoryKey: categoryKey.trim() || null,
-          productId: productId.trim() || null,
+          ...scopePayload,
           active: true,
           rules: {
             expandQuantity,
@@ -126,34 +204,26 @@ export function InstallationTemplateDialog({
             required: true,
             manualUrls: manualUrls.split(/[\n,;]/).map((value) => value.trim()).filter(Boolean),
             warrantyUrls: warrantyUrls.split(/[\n,;]/).map((value) => value.trim()).filter(Boolean),
-            postSaleAfterDays: Number(postSaleAfterDays) > 0 ? Number(postSaleAfterDays) : null,
+            postSaleEnabled,
+            postSaleAfterDays: postSaleEnabled && Number(postSaleAfterDays) > 0 ? Number(postSaleAfterDays) : null,
+            postSaleAction: postSaleEnabled ? postSaleAction : null,
           },
-          checks: validChecks.map((check, index) => ({
+          checks: summary.validChecks.map((check, index) => ({
             key: `check_${index + 1}`,
             label: check.label.trim(),
             required: check.required,
+            blockAdvance: check.blockAdvance,
+            evidenceType: check.evidenceType,
+            responsibleType: check.responsibleType,
             completed: false,
           })),
         }),
       });
-      setName("");
-      setSegmentKey("");
-      setNicheKey("");
-      setCategoryKey("");
-      setProductId("");
-      setExpandQuantity(false);
-      setEvidenceRequired(false);
-      setManualUrls("");
-      setWarrantyUrls("");
-      setPostSaleAfterDays("7");
-      setChecks([
-        { label: "Instalação/execução conforme pedido", required: true },
-        { label: "Conferência final", required: true },
-      ]);
+      resetForm();
       await loadTemplates();
-      toast({ title: "Template de instalação criado." });
+      toast({ title: "Modelo de execução criado." });
     } catch (error) {
-      toast({ title: "Não foi possível criar o template", description: String(error), variant: "destructive" });
+      toast({ title: "Não foi possível criar o modelo", description: String(error), variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -167,164 +237,404 @@ export function InstallationTemplateDialog({
       });
       await loadTemplates();
     } catch (error) {
-      toast({ title: "Não foi possível alterar o template", description: String(error), variant: "destructive" });
+      toast({ title: "Não foi possível alterar o modelo", description: String(error), variant: "destructive" });
     }
   }
 
+  const scopePlaceholder =
+    scopeType === "segment"
+      ? "Ex.: Construção"
+      : scopeType === "niche"
+        ? "Ex.: Esquadrias"
+        : scopeType === "category"
+          ? "Ex.: Janelas de PVC"
+          : "Busque pelo nome ou código do produto";
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto">
+      <DialogContent className="max-h-[92vh] max-w-6xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Settings2 className="h-5 w-5" /> Templates de instalação</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <Settings2 className="h-5 w-5" />
+            Modelos de execução / instalação
+          </DialogTitle>
+          <p className="text-sm text-muted-foreground">
+            Configure uma vez o passo a passo. Quando uma execução correspondente for criada, o Vendor.ai aplica automaticamente as atividades, evidências e documentos deste modelo.
+          </p>
         </DialogHeader>
 
-        {metrics && (
-          <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
-            {[
-              ["Instalações", metrics.installations],
-              ["Aceites", metrics.accepted],
-              ["1ª visita", metrics.firstVisitAccepted],
-              ["Retornos", metrics.returns],
-              ["Pendências", metrics.openOccurrences],
-              ["Conclusão", `${metrics.completionRate}%`],
-            ].map(([label, value]) => (
-              <div key={String(label)} className="rounded-lg border bg-muted/20 p-3">
-                <p className="text-[10px] font-medium uppercase text-muted-foreground">{label}</p>
-                <p className="mt-1 text-lg font-semibold">{value}</p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="space-y-4">
-            <div>
-              <h3 className="font-semibold">Novo template</h3>
-              <p className="text-xs text-muted-foreground">O escopo mais específico prevalece: produto → categoria → nicho → segmento → padrão geral.</p>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5 sm:col-span-2">
-                <label className="text-xs font-medium">Nome *</label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Instalação de esquadrias PVC" />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium">Segmento</label>
-                <Input value={segmentKey} onChange={(e) => setSegmentKey(e.target.value)} placeholder="Ex.: construção" />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium">Nicho</label>
-                <Input value={nicheKey} onChange={(e) => setNicheKey(e.target.value)} placeholder="Ex.: esquadrias" />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium">Categoria</label>
-                <Input value={categoryKey} onChange={(e) => setCategoryKey(e.target.value)} placeholder="Ex.: janela" />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium">Produto ID</label>
-                <Input value={productId} onChange={(e) => setProductId(e.target.value)} placeholder="Opcional — produto específico" />
-              </div>
-            </div>
-
-            <div className="grid gap-2 rounded-lg border p-3 sm:grid-cols-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={expandQuantity} onChange={(e) => setExpandQuantity(e.target.checked)} />
-                Conferir cada unidade separadamente
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={evidenceRequired} onChange={(e) => setEvidenceRequired(e.target.checked)} />
-                Exigir evidência por item
-              </label>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium">Manuais aplicáveis</label>
-                <textarea
-                  className="min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm"
-                  value={manualUrls}
-                  onChange={(e) => setManualUrls(e.target.value)}
-                  placeholder="Um link por linha"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium">Garantias aplicáveis</label>
-                <textarea
-                  className="min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm"
-                  value={warrantyUrls}
-                  onChange={(e) => setWarrantyUrls(e.target.value)}
-                  placeholder="Um link por linha"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium">Pós-venda após quantos dias?</label>
-                <Input type="number" min={1} value={postSaleAfterDays} onChange={(e) => setPostSaleAfterDays(e.target.value)} />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
+        <div className="grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
+          <div className="space-y-5">
+            <section className="space-y-4 rounded-xl border p-4">
+              <div className="flex items-start gap-3">
+                <PackageSearch className="mt-0.5 h-5 w-5 text-muted-foreground" />
                 <div>
-                  <h4 className="text-sm font-semibold">Verificações obrigatórias</h4>
-                  <p className="text-xs text-muted-foreground">Ex.: nivelamento, vedação, acabamento, teste funcional.</p>
+                  <h3 className="font-semibold">1. Identificação do modelo</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Defina o nome e em quais instalações este processo deve ser aplicado.
+                  </p>
                 </div>
-                <Button type="button" size="sm" variant="outline" onClick={() => setChecks((current) => [...current, { label: "", required: true }])}>
-                  <Plus className="mr-1 h-3.5 w-3.5" /> Verificação
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Nome do modelo *</label>
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Ex.: Instalação de esquadrias PVC"
+                />
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium">Aplicar em</label>
+                  <select
+                    className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                    value={scopeType}
+                    onChange={(e) => {
+                      setScopeType(e.target.value as ScopeType);
+                      setScopeValue("");
+                    }}
+                  >
+                    {Object.entries(scopeLabels).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {scopeType !== "general" && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium">
+                      {scopeType === "product" ? "Produto específico" : scopeLabels[scopeType]}
+                    </label>
+                    <Input
+                      value={scopeValue}
+                      onChange={(e) => setScopeValue(e.target.value)}
+                      placeholder={scopePlaceholder}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="grid gap-2 rounded-lg bg-muted/30 p-3 sm:grid-cols-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={expandQuantity}
+                    onChange={(e) => setExpandQuantity(e.target.checked)}
+                  />
+                  Conferir cada unidade separadamente
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={evidenceRequired}
+                    onChange={(e) => setEvidenceRequired(e.target.checked)}
+                  />
+                  Exigir evidência nas atividades configuradas
+                </label>
+              </div>
+            </section>
+
+            <section className="space-y-4 rounded-xl border p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <ClipboardCheck className="mt-0.5 h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <h3 className="font-semibold">2. Passo a passo da execução</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Cada atividade pode definir responsável, comprovação e bloqueio de avanço.
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    setChecks((current) => [
+                      ...current,
+                      {
+                        label: "",
+                        required: true,
+                        blockAdvance: true,
+                        evidenceType: "photo",
+                        responsibleType: "internal",
+                      },
+                    ])
+                  }
+                >
+                  <Plus className="mr-1 h-3.5 w-3.5" />
+                  Atividade
                 </Button>
               </div>
-              {checks.map((check, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <Input
-                    value={check.label}
-                    onChange={(e) => setChecks((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, label: e.target.value } : item))}
-                    placeholder="Descrição da verificação"
-                  />
-                  <label className="flex shrink-0 items-center gap-1 text-xs">
-                    <input
-                      type="checkbox"
-                      checked={check.required}
-                      onChange={(e) => setChecks((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, required: e.target.checked } : item))}
-                    />
-                    Obrigatória
-                  </label>
-                  <Button type="button" size="icon" variant="ghost" disabled={checks.length <= 1} onClick={() => setChecks((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+
+              <div className="space-y-3">
+                {checks.map((check, index) => (
+                  <div key={index} className="rounded-lg border bg-background p-3">
+                    <div className="flex items-start gap-2">
+                      <div className="flex-1 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold">
+                            {index + 1}
+                          </span>
+                          <Input
+                            value={check.label}
+                            onChange={(e) =>
+                              setChecks((current) =>
+                                current.map((item, itemIndex) =>
+                                  itemIndex === index ? { ...item, label: e.target.value } : item,
+                                ),
+                              )
+                            }
+                            placeholder="Ex.: Conferir nível, prumo e vedação"
+                          />
+                        </div>
+
+                        <div className="grid gap-2 pl-9 sm:grid-cols-2">
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-medium text-muted-foreground">Quem executa / preenche</label>
+                            <select
+                              className="h-9 w-full rounded-md border bg-background px-2 text-xs"
+                              value={check.responsibleType}
+                              onChange={(e) =>
+                                setChecks((current) =>
+                                  current.map((item, itemIndex) =>
+                                    itemIndex === index
+                                      ? { ...item, responsibleType: e.target.value as ResponsibleType }
+                                      : item,
+                                  ),
+                                )
+                              }
+                            >
+                              {Object.entries(responsibleLabels).map(([value, label]) => (
+                                <option key={value} value={value}>{label}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-medium text-muted-foreground">Comprovação</label>
+                            <select
+                              className="h-9 w-full rounded-md border bg-background px-2 text-xs"
+                              value={check.evidenceType}
+                              onChange={(e) =>
+                                setChecks((current) =>
+                                  current.map((item, itemIndex) =>
+                                    itemIndex === index
+                                      ? { ...item, evidenceType: e.target.value as EvidenceType }
+                                      : item,
+                                  ),
+                                )
+                              }
+                            >
+                              {Object.entries(evidenceLabels).map(([value, label]) => (
+                                <option key={value} value={value}>{label}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-4 pl-9">
+                          <label className="flex items-center gap-1.5 text-xs">
+                            <input
+                              type="checkbox"
+                              checked={check.required}
+                              onChange={(e) =>
+                                setChecks((current) =>
+                                  current.map((item, itemIndex) =>
+                                    itemIndex === index ? { ...item, required: e.target.checked } : item,
+                                  ),
+                                )
+                              }
+                            />
+                            Obrigatória
+                          </label>
+                          <label className="flex items-center gap-1.5 text-xs">
+                            <input
+                              type="checkbox"
+                              checked={check.blockAdvance}
+                              onChange={(e) =>
+                                setChecks((current) =>
+                                  current.map((item, itemIndex) =>
+                                    itemIndex === index ? { ...item, blockAdvance: e.target.checked } : item,
+                                  ),
+                                )
+                              }
+                            />
+                            Bloquear avanço enquanto pendente
+                          </label>
+                        </div>
+                      </div>
+
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        disabled={checks.length <= 1}
+                        onClick={() => setChecks((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                        aria-label="Remover atividade"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="space-y-4 rounded-xl border p-4">
+              <div className="flex items-start gap-3">
+                <FileText className="mt-0.5 h-5 w-5 text-muted-foreground" />
+                <div>
+                  <h3 className="font-semibold">3. Documentos automáticos</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Informe os materiais que devem acompanhar esta execução. Use um link por linha.
+                  </p>
                 </div>
-              ))}
-            </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium">Manuais / instruções</label>
+                  <textarea
+                    className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    value={manualUrls}
+                    onChange={(e) => setManualUrls(e.target.value)}
+                    placeholder="Cole os links dos manuais ou instruções"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium">Garantias / termos</label>
+                  <textarea
+                    className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    value={warrantyUrls}
+                    onChange={(e) => setWarrantyUrls(e.target.value)}
+                    placeholder="Cole os links das garantias ou termos"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section className="space-y-4 rounded-xl border p-4">
+              <div className="flex items-start gap-3">
+                <CalendarClock className="mt-0.5 h-5 w-5 text-muted-foreground" />
+                <div>
+                  <h3 className="font-semibold">4. Pós-venda</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Defina se o sistema deve gerar automaticamente um acompanhamento depois da conclusão.
+                  </p>
+                </div>
+              </div>
+
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={postSaleEnabled}
+                  onChange={(e) => setPostSaleEnabled(e.target.checked)}
+                />
+                Criar acompanhamento pós-instalação
+              </label>
+
+              {postSaleEnabled && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium">Após quantos dias?</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={postSaleAfterDays}
+                      onChange={(e) => setPostSaleAfterDays(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium">Ação automática</label>
+                    <select
+                      className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                      value={postSaleAction}
+                      onChange={(e) => setPostSaleAction(e.target.value)}
+                    >
+                      <option value="create_task">Criar tarefa de acompanhamento</option>
+                      <option value="whatsapp">Preparar mensagem de WhatsApp</option>
+                      <option value="review">Solicitar avaliação / feedback</option>
+                      <option value="call">Criar tarefa de ligação</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            <section className="rounded-xl border bg-muted/20 p-4">
+              <h3 className="text-sm font-semibold">Resumo do modelo</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Este modelo será aplicado em <strong className="text-foreground">{scopeLabels[scopeType]}</strong>
+                {scopeType !== "general" && scopeValue.trim() ? <>: <strong className="text-foreground">{scopeValue.trim()}</strong></> : null}.
+                {" "}Possui <strong className="text-foreground">{summary.validChecks.length}</strong> atividade(s),
+                {" "}<strong className="text-foreground">{summary.requiredCount}</strong> obrigatória(s) e
+                {" "}<strong className="text-foreground">{summary.evidenceCount}</strong> com comprovação configurada.
+                {postSaleEnabled ? <> Pós-venda após <strong className="text-foreground">{postSaleAfterDays || "—"} dia(s)</strong>.</> : null}
+              </p>
+            </section>
           </div>
 
-          <div className="space-y-3">
+          <aside className="space-y-3">
             <div>
-              <h3 className="font-semibold">Templates configurados</h3>
-              <p className="text-xs text-muted-foreground">Templates inativos ficam preservados para histórico, mas não são aplicados em novas instalações.</p>
+              <h3 className="font-semibold">Modelos configurados</h3>
+              <p className="text-xs text-muted-foreground">
+                Os modelos existentes são preservados. Desativar um modelo não apaga o histórico das execuções anteriores.
+              </p>
             </div>
+
             {loading && <div className="h-24 animate-pulse rounded-lg bg-muted" />}
-            {!loading && templates.length === 0 && <div className="rounded-lg border border-dashed p-5 text-center text-xs text-muted-foreground">Nenhum template cadastrado. Sem template específico, o Vendor.ai usa o checklist geral.</div>}
+
+            {!loading && templates.length === 0 && (
+              <div className="rounded-lg border border-dashed p-5 text-center text-xs text-muted-foreground">
+                Nenhum modelo cadastrado. Sem modelo específico, o Vendor.ai usa o checklist geral.
+              </div>
+            )}
+
             {templates.map((template) => (
               <div key={template.id} className="rounded-lg border p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="text-sm font-semibold">{template.name}</p>
                     <p className="mt-1 text-[11px] text-muted-foreground">
-                      {[template.productId && `Produto: ${template.productId}`, template.categoryKey && `Categoria: ${template.categoryKey}`, template.nicheKey && `Nicho: ${template.nicheKey}`, template.segmentKey && `Segmento: ${template.segmentKey}`].filter(Boolean).join(" • ") || "Padrão geral"}
+                      {[
+                        template.productId && `Produto: ${template.productId}`,
+                        template.categoryKey && `Categoria: ${template.categoryKey}`,
+                        template.nicheKey && `Nicho: ${template.nicheKey}`,
+                        template.segmentKey && `Segmento: ${template.segmentKey}`,
+                      ].filter(Boolean).join(" • ") || "Padrão geral"}
                     </p>
                   </div>
-                  <Badge variant={template.active ? "secondary" : "outline"}>{template.active ? "Ativo" : "Inativo"}</Badge>
+                  <Badge variant={template.active ? "secondary" : "outline"}>
+                    {template.active ? "Ativo" : "Inativo"}
+                  </Badge>
                 </div>
-                <p className="mt-2 text-xs text-muted-foreground">{template.checks?.length ?? 0} verificação(ões) • versão {template.version}</p>
-                <Button type="button" size="sm" variant="outline" className="mt-3" onClick={() => void toggleTemplate(template)}>
+
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {template.checks?.length ?? 0} atividade(s) • versão {template.version}
+                </p>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="mt-3"
+                  onClick={() => void toggleTemplate(template)}
+                >
                   {template.active ? "Desativar" : "Ativar"}
                 </Button>
               </div>
             ))}
-          </div>
+          </aside>
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Fechar</Button>
-          <Button disabled={saving} onClick={() => void createTemplate()}>{saving ? "Salvando..." : "Criar template"}</Button>
+          <Button disabled={saving} onClick={() => void createTemplate()}>
+            {saving ? "Salvando..." : "Salvar modelo"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
