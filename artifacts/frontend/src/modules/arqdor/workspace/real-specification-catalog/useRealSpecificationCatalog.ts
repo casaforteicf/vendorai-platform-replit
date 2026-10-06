@@ -7,9 +7,11 @@ import {
   fetchSpecObjects,
   sendSpecObjectToBudget,
   syncSpecObjectsFromProject,
+  fetchSpecObjectApprovals,
+  decideSpecObjectApproval,
   updateSpecObject,
 } from "./specCatalogApi";
-import type { CatalogItem, CatalogItemType, SpecObject, SpecObjectPayload } from "./specCatalogTypes";
+import type { CatalogItem, CatalogItemType, SpecApproval, SpecApprovalContext, SpecApprovalDecision, SpecObject, SpecObjectPayload } from "./specCatalogTypes";
 
 export function useRealSpecificationCatalog(
   projectId: string,
@@ -28,6 +30,8 @@ export function useRealSpecificationCatalog(
   const [sendingToBudget, setSendingToBudget] = useState(false);
   const [syncingProject, setSyncingProject] = useState(false);
   const [lastSync, setLastSync] = useState<Record<string, unknown> | null>(null);
+  const [approvals, setApprovals] = useState<SpecApproval[]>([]);
+  const [approving, setApproving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const catalogEnabled = Boolean(options?.catalogEnabled);
 
@@ -120,6 +124,40 @@ export function useRealSpecificationCatalog(
     })();
     return () => { active = false; };
   }, [loadSpecObjects, projectId]);
+
+  useEffect(() => {
+    if (!selectedObject?.id) {
+      setApprovals([]);
+      return;
+    }
+    void (async () => {
+      const result = await fetchSpecObjectApprovals(selectedObject.id);
+      if (!result.error) setApprovals(result.data?.approvals || []);
+    })();
+  }, [selectedObject?.id]);
+
+  const decideApproval = useCallback(async (
+    context: SpecApprovalContext,
+    decision: SpecApprovalDecision,
+    note?: string | null,
+  ) => {
+    if (!selectedObject?.id) return null;
+    setApproving(true);
+    setError(null);
+    const result = await decideSpecObjectApproval(selectedObject.id, { context, decision, note });
+    if (result.error) {
+      setError(result.error);
+      setApproving(false);
+      return null;
+    }
+    if (result.data) {
+      setApprovals(result.data.approvals || []);
+      setSelectedObject(result.data.item);
+      setSpecObjects((current) => current.map((item) => item.id === result.data!.item.id ? result.data!.item : item));
+    }
+    setApproving(false);
+    return result.data || null;
+  }, [selectedObject?.id]);
 
   const addObject = useCallback(
     async (payload: SpecObjectPayload) => {
@@ -243,11 +281,14 @@ export function useRealSpecificationCatalog(
     sendingToBudget,
     syncingProject,
     lastSync,
+    approvals,
+    approving,
     error,
     totals,
     reloadCatalog: loadCatalog,
     reloadSpecObjects: loadSpecObjects,
     syncProject,
+    decideApproval,
     addObject,
     saveObject,
     extractFromRender,
