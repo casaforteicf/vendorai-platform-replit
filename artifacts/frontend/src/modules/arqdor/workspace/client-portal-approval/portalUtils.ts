@@ -139,6 +139,10 @@ export function normalizeProposal(raw: any): Proposal {
     clientNotes: raw?.clientNotes || raw?.client_notes || null,
     internalNotes: raw?.internalNotes || raw?.internal_notes || null,
     publicUrl: raw?.publicUrl || raw?.public_url || publicProposalUrl(token),
+    publicView: Boolean(raw?.publicView ?? raw?.public_view ?? false),
+    tenantName: raw?.tenantName || raw?.tenant_name || null,
+    tenantLogoUrl: raw?.tenantLogoUrl || raw?.tenant_logo_url || null,
+    tenantPrimaryColor: raw?.tenantPrimaryColor || raw?.tenant_primary_color || null,
     createdAt: raw?.createdAt || raw?.created_at || null,
     updatedAt: raw?.updatedAt || raw?.updated_at || null,
   };
@@ -163,6 +167,19 @@ export function normalizeProposalItem(raw: any): ProposalItem {
     approvedAt: raw?.approvedAt || raw?.approved_at || null,
     rejectedAt: raw?.rejectedAt || raw?.rejected_at || null,
     sortOrder: Number(raw?.sortOrder ?? raw?.sort_order ?? 0),
+    productName: raw?.productName || raw?.product_name || null,
+    materialName: raw?.materialName || raw?.material_name || null,
+    manufacturerName: raw?.manufacturerName || raw?.manufacturer_name || null,
+    widthMm: raw?.widthMm == null && raw?.width_mm == null ? null : Number(raw?.widthMm ?? raw?.width_mm),
+    heightMm: raw?.heightMm == null && raw?.height_mm == null ? null : Number(raw?.heightMm ?? raw?.height_mm),
+    depthMm: raw?.depthMm == null && raw?.depth_mm == null ? null : Number(raw?.depthMm ?? raw?.depth_mm),
+    lengthMm: raw?.lengthMm == null && raw?.length_mm == null ? null : Number(raw?.lengthMm ?? raw?.length_mm),
+    areaM2: raw?.areaM2 == null && raw?.area_m2 == null ? null : Number(raw?.areaM2 ?? raw?.area_m2),
+    perimeterM: raw?.perimeterM == null && raw?.perimeter_m == null ? null : Number(raw?.perimeterM ?? raw?.perimeter_m),
+    volumeM3: raw?.volumeM3 == null && raw?.volume_m3 == null ? null : Number(raw?.volumeM3 ?? raw?.volume_m3),
+    projectRevision: raw?.projectRevision || raw?.project_revision || null,
+    measurementSource: raw?.measurementSource || raw?.measurement_source || null,
+    measurementRevision: raw?.measurementRevision || raw?.measurement_revision || null,
   };
 }
 
