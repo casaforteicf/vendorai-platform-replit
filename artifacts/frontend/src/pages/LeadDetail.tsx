@@ -32,6 +32,7 @@ import {
   getListTenantUsersQueryKey,
   useListAgendas,
   getListAgendasQueryKey,
+  useGetTenantCalendarSettings,
   useCreateConversation,
   useCreateDeal,
   useListDeals,
@@ -1494,6 +1495,7 @@ export default function LeadDetail() {
   const [newAssistenciaProdutos, setNewAssistenciaProdutos] = useState("");
   const [newAssistenciaPrioridade, setNewAssistenciaPrioridade] = useState("normal");
   const [newAssistenciaFiles, setNewAssistenciaFiles] = useState<File[]>([]);
+  const [newAssistenciaAgendar, setNewAssistenciaAgendar] = useState(false);
 
   const { data: tenantUsers } = useListTenantUsers(tenantId, {
     query: { enabled: !!tenantId, queryKey: getListTenantUsersQueryKey(tenantId) },
@@ -1501,6 +1503,19 @@ export default function LeadDetail() {
   const { data: agendas } = useListAgendas(tenantId, {
     query: { enabled: !!tenantId, queryKey: getListAgendasQueryKey(tenantId) },
   });
+  const agendasOrdenadasParaSuporte = [...(agendas ?? [])].sort((a, b) => {
+    const score = (name: string) => /suporte|assist[eê]ncia|p[oó]s[- ]?venda|t[eé]cnica/i.test(name) ? 0 : 1;
+    return score(a.nome) - score(b.nome) || a.nome.localeCompare(b.nome, "pt-BR");
+  });
+  const { data: calendarSettings } = useGetTenantCalendarSettings(tenantId, {
+    query: { enabled: !!tenantId },
+  });
+  const assistenciaScheduleDefault = (((calendarSettings as any)?.activityScheduleDefaults ?? []) as Array<{
+    activityType: string;
+    enabled: boolean;
+    weekday: number;
+    agendaId?: string | null;
+  }>).find((item) => item.activityType === "assistencia");
 
   const { mutate: createActivity, isPending: isCreatingActivity } = useCreateActivity({
     mutation: {
@@ -1530,6 +1545,51 @@ export default function LeadDetail() {
       },
     },
   });
+
+  function nextWeekdayDate(weekday: number) {
+    const now = new Date();
+    const date = new Date(now);
+    let delta = (weekday - now.getDay() + 7) % 7;
+    if (delta === 0 && now.getHours() >= 18) delta = 7;
+    date.setDate(now.getDate() + delta);
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  function applyAssistenciaPreAgendaDefault() {
+    if (!assistenciaScheduleDefault?.enabled) return;
+    const suggestedDate = nextWeekdayDate(assistenciaScheduleDefault.weekday);
+    setNewActivityData(suggestedDate);
+    if (assistenciaScheduleDefault.agendaId && (agendas ?? []).some((agenda) => agenda.id === assistenciaScheduleDefault.agendaId)) {
+      setNewActivityAgendaId(assistenciaScheduleDefault.agendaId);
+    } else if (!newActivityAgendaId && agendasOrdenadasParaSuporte[0]?.id) {
+      setNewActivityAgendaId(agendasOrdenadasParaSuporte[0].id);
+    }
+  }
+
+  function prefillAssistenciaTimeFromDate() {
+    const date = newActivityData || (assistenciaScheduleDefault?.enabled
+      ? nextWeekdayDate(assistenciaScheduleDefault.weekday)
+      : "");
+    if (!date) return;
+    setNewActivityData(date);
+    if (!newActivityDataHoraInicio) setNewActivityDataHoraInicio(`${date}T08:00`);
+    if (!newActivityDataHoraFim) setNewActivityDataHoraFim(`${date}T09:00`);
+  }
+
+  useEffect(() => {
+    if (!isNewActivityOpen || newActivityTipo !== "assistencia" || !assistenciaScheduleDefault?.enabled || newActivityData) return;
+    applyAssistenciaPreAgendaDefault();
+  }, [
+    isNewActivityOpen,
+    newActivityTipo,
+    newActivityData,
+    assistenciaScheduleDefault?.enabled,
+    assistenciaScheduleDefault?.weekday,
+    assistenciaScheduleDefault?.agendaId,
+  ]);
 
   function openNewActivityDialog(prefillTitulo?: string) {
     setNewActivityTitulo(prefillTitulo ?? "");
@@ -1570,6 +1630,14 @@ export default function LeadDetail() {
         toast({ title: "Descreva claramente o problema antes de abrir o chamado", variant: "destructive" });
         return;
       }
+      if (newAssistenciaAgendar && (!newActivityAgendaId || !newActivityDataHoraInicio || !newActivityDataHoraFim)) {
+        toast({ title: "Selecione a agenda de suporte e informe início e fim do atendimento", variant: "destructive" });
+        return;
+      }
+      if (newAssistenciaAgendar && new Date(newActivityDataHoraFim) <= new Date(newActivityDataHoraInicio)) {
+        toast({ title: "O horário final deve ser posterior ao início", variant: "destructive" });
+        return;
+      }
 
       setIsUploadingAnexo(true);
       try {
@@ -1590,6 +1658,9 @@ export default function LeadDetail() {
             responsavelId,
             prioridade: newAssistenciaPrioridade,
             dataVencimento: newActivityData || undefined,
+            agendaId: newAssistenciaAgendar ? newActivityAgendaId : undefined,
+            dataHoraInicio: newAssistenciaAgendar && newActivityDataHoraInicio ? new Date(newActivityDataHoraInicio).toISOString() : undefined,
+            dataHoraFim: newAssistenciaAgendar && newActivityDataHoraFim ? new Date(newActivityDataHoraFim).toISOString() : undefined,
             origem: "humano",
           }),
         });
@@ -4472,8 +4543,11 @@ export default function LeadDetail() {
                 onValueChange={(v) => {
                   const next = v as typeof newActivityTipo;
                   setNewActivityTipo(next);
-                  if (next === "assistencia" && newActivityResponsavelId === "__ia__") {
-                    setNewActivityResponsavelId(user?.id ?? (tenantUsers ?? [])[0]?.id ?? "");
+                  if (next === "assistencia") {
+                    if (newActivityResponsavelId === "__ia__") {
+                      setNewActivityResponsavelId(user?.id ?? (tenantUsers ?? [])[0]?.id ?? "");
+                    }
+                    applyAssistenciaPreAgendaDefault();
                   }
                 }}
               >
@@ -4581,6 +4655,65 @@ export default function LeadDetail() {
                     <p className="text-xs text-muted-foreground">{newAssistenciaFiles.length ? `${newAssistenciaFiles.length} arquivo(s)` : "Opcional"}</p>
                   </div>
                 </div>
+                {assistenciaScheduleDefault?.enabled && newActivityData && (
+                  <div className="rounded-lg border border-dashed bg-background/70 p-3">
+                    <p className="text-sm font-medium">Pré-agenda sugerida: {new Date(`${newActivityData}T12:00:00`).toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" })}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Data aplicada pelo padrão da atividade Assistência. Pode ser alterada no vencimento ou convertida em horário confirmado abaixo.</p>
+                  </div>
+                )}
+                <div className="rounded-lg border bg-background/70 p-3 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold">Agendar atendimento</p>
+                      <p className="text-xs text-muted-foreground">Busca a agenda interna da equipe de suporte e reserva o horário para o responsável.</p>
+                    </div>
+                    <Switch
+                      checked={newAssistenciaAgendar}
+                      onCheckedChange={(checked) => {
+                        setNewAssistenciaAgendar(checked);
+                        if (checked) {
+                          prefillAssistenciaTimeFromDate();
+                          if (!newActivityAgendaId) {
+                            const preferredAgendaId = assistenciaScheduleDefault?.agendaId;
+                            const preferredExists = preferredAgendaId && (agendas ?? []).some((agenda) => agenda.id === preferredAgendaId);
+                            setNewActivityAgendaId(preferredExists ? preferredAgendaId! : (agendasOrdenadasParaSuporte[0]?.id ?? ""));
+                          }
+                        }
+                      }}
+                    />
+                  </div>
+                  {newAssistenciaAgendar && (
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium">Agenda interna de suporte *</label>
+                        <Select value={newActivityAgendaId} onValueChange={setNewActivityAgendaId}>
+                          <SelectTrigger><SelectValue placeholder="Selecione a agenda..." /></SelectTrigger>
+                          <SelectContent>
+                            {agendasOrdenadasParaSuporte.map((a) => (
+                              <SelectItem key={a.id} value={a.id}>
+                                {a.nome}{a.googleEmail ? ` (${a.googleEmail})` : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {agendasOrdenadasParaSuporte.length === 0 && (
+                          <p className="text-xs text-amber-600">Nenhuma agenda interna cadastrada. Cadastre uma em Agenda antes de reservar o atendimento.</p>
+                        )}
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium">Início *</label>
+                          <Input type="datetime-local" value={newActivityDataHoraInicio} onChange={(e) => setNewActivityDataHoraInicio(e.target.value)} />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium">Fim *</label>
+                          <Input type="datetime-local" value={newActivityDataHoraFim} onChange={(e) => setNewActivityDataHoraFim(e.target.value)} />
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">O sistema valida conflito do responsável antes de abrir a assistência e cria o compromisso na agenda interna vinculado ao chamado.</p>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -4632,7 +4765,7 @@ export default function LeadDetail() {
             {/* Data de vencimento — apenas para tipos que não são reunião */}
             {newActivityTipo !== "reuniao" && (
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Vencimento <span className="text-xs text-muted-foreground">(opcional)</span></label>
+                <label className="text-sm font-medium">{newActivityTipo === "assistencia" ? "Pré-agenda / data prevista" : "Vencimento"} <span className="text-xs text-muted-foreground">(opcional)</span></label>
                 <Input
                   type="date"
                   value={newActivityData}
