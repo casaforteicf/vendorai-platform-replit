@@ -1,6 +1,6 @@
 name: Cloudflare Pages
 # Production deploy: Pages frontend; Railway backend remains unchanged.
-# Redeploy marker: equipe-mapa-raio-production 2026-10-06T12:35Z.
+# Redeploy marker: connection-center-3070 2026-10-06T12:46Z.
 
 on:
   push:
