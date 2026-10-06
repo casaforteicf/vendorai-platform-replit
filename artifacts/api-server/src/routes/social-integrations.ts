@@ -17,6 +17,7 @@ import { createFacebookOrganicPublication, resolveFacebookOrganicCapability } fr
 import { publishAnySocialPublication } from "../services/social-publication-dispatcher.js";
 import { startSocialPublicationWorker } from "../services/social-publication-worker.js";
 import { refreshYouTubePublicationMetrics, syncYouTubePublicationComments } from "../services/youtube-channel-automation.js";
+import { resolveValidSocialConnection } from "../services/social-token-runtime.js";
 
 const router: IRouter = Router();
 const callbackRouter: IRouter = Router();
@@ -180,7 +181,15 @@ router.post("/tenants/:tenantId/social-connections/:provider/test", authenticate
   if (!selected) return res.status(404).json({ error: "provider_not_supported" });
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const connection = await getActiveSocialConnection(tenantId, selected);
-  return connection ? res.json({ ok: true, accountName: connection.accountName }) : res.status(404).json({ error: "connection_not_found" });
+  if (!connection) return res.status(404).json({ error: "connection_not_found" });
+  try {
+    const valid = await resolveValidSocialConnection(tenantId, selected, connection.id);
+    return res.json({ ok: true, accountName: valid.accountName, refreshed: valid.updatedAt?.getTime() !== connection.updatedAt?.getTime() });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "connection_test_failed";
+    if (message.endsWith("_reconnect_required")) return res.status(409).json({ error: message, reconnectRequired: true });
+    return res.status(422).json({ error: "connection_test_failed", detail: message });
+  }
 });
 
 const publicationSchema = z.object({
