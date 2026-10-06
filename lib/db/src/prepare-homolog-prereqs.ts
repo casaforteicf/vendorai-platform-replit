@@ -31,10 +31,26 @@ try {
     CREATE SEQUENCE IF NOT EXISTS tenant_public_code_seq START WITH 1 INCREMENT BY 1;
     CREATE EXTENSION IF NOT EXISTS pgcrypto;
   `);
+  const check = await pool.query(`
+    select
+      current_database() as database,
+      current_setting('search_path') as search_path,
+      to_regtype('public.vector')::text as public_vector,
+      e.extname,
+      n.nspname as extension_schema
+    from pg_extension e
+    join pg_namespace n on n.oid = e.extnamespace
+    where e.extname = 'vector'
+  `);
+  const row = check.rows[0] ?? null;
   console.log("[homolog-prereqs] sequence/extensions ready", {
     database: url.pathname.replace(/^\//, ""),
     projectId: currentRailwayProjectId,
+    vector: row,
   });
+  if (!row || row.public_vector !== "vector") {
+    throw new Error(`pgvector not available in public schema: ${JSON.stringify(row)}`);
+  }
 } finally {
   await pool.end();
 }
