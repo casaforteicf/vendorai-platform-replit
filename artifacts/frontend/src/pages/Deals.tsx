@@ -2659,7 +2659,14 @@ export default function Deals() {
         headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
         body: fd,
       });
-      if (!res.ok) throw new Error("Falha");
+      if (!res.ok) {
+        toast({
+          title: "Erro ao ler o pedido/orçamento",
+          description: `Falha na importação (HTTP ${res.status}).`,
+          variant: "destructive",
+        });
+        throw new Error("Falha");
+      }
       const data = await res.json();
       if (data.valorTotal != null) createForm.setValue("valor", data.valorTotal);
       if (data.titulo) {
