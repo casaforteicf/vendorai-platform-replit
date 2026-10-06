@@ -14,6 +14,20 @@ type IntegrationStatus = {
   domain?: { configured?: boolean; active?: boolean; name?: string | null };
   searchConsole?: { connected?: boolean; verified?: boolean };
   social?: { linkedin?: boolean; tiktok?: boolean };
+  tracking?: {
+    googleAds?: boolean;
+    googleAdsConversionId?: string | null;
+    ga4?: boolean;
+    ga4MeasurementId?: string | null;
+    gtm?: boolean;
+    gtmContainerId?: string | null;
+    metaPixel?: boolean;
+    metaPixelId?: string | null;
+    linkedinInsightTag?: boolean;
+    linkedinInsightTagId?: string | null;
+    tiktokPixel?: boolean;
+    tiktokPixelId?: string | null;
+  };
   email?: {
     google?: { connected?: boolean; address?: string | null };
     microsoft?: { connected?: boolean; address?: string | null };
@@ -35,13 +49,58 @@ type IntegrationKey =
   | "tiktok"
   | "domain";
 
+type IntegrationCategory = "Essenciais" | "Google" | "Marketing e social" | "Pagamentos e contratos" | "Domínio e web";
+
 type IntegrationRow = {
   key: IntegrationKey;
   label: string;
   description: string;
+  category: IntegrationCategory;
+  usedBy?: string;
   connected: boolean;
   attention?: boolean;
   detail?: string;
+};
+
+type CatalogIntegration = {
+  providerKey: string;
+  name: string;
+  category: string;
+  authType: string;
+  capabilities?: string[];
+  status?: string;
+  overallHealthPercent?: number;
+  lastErrorMessage?: string | null;
+};
+
+type EcosystemService = {
+  name: string;
+  state: "connected" | "attention" | "available" | "planned";
+  action?: IntegrationKey;
+  endpoint?: string;
+};
+
+type EcosystemDefinition = {
+  key: string;
+  name: string;
+  description: string;
+  connected: number;
+  services: EcosystemService[];
+};
+
+type CustomIntegration = {
+  id: string;
+  name: string;
+  kind: "api" | "webhook" | "n8n";
+  status: "connected" | "attention" | "error" | "disabled" | "not_configured";
+  baseUrl?: string | null;
+  authType: "none" | "api_key" | "bearer" | "basic";
+  hasCredential?: boolean;
+  hasWebhookSecret?: boolean;
+  lastTestAt?: string | null;
+  lastSuccessAt?: string | null;
+  lastEventAt?: string | null;
+  lastError?: string | null;
 };
 
 const OAUTH_ENDPOINTS: Partial<Record<IntegrationKey, string>> = {
@@ -82,6 +141,41 @@ export default function IntegrationSettingsHub() {
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [catalogIntegrations, setCatalogIntegrations] = useState<CatalogIntegration[]>([]);
+  const [showCustomGuide, setShowCustomGuide] = useState<"api" | "webhook" | "n8n" | null>(null);
+  const [customIntegrations, setCustomIntegrations] = useState<CustomIntegration[]>([]);
+  const [metaAdsStatus, setMetaAdsStatus] = useState<{ connected?: boolean; pendingAccountSelection?: boolean; adAccountName?: string | null }>({});
+  const [accountPicker, setAccountPicker] = useState<{
+    provider: "google-ads" | "meta-ads";
+    accounts: Array<{ id: string; label: string }>;
+  } | null>(null);
+  const [socialConnections, setSocialConnections] = useState<Array<{ provider: string; connected?: boolean; accountName?: string | null }>>([]);
+  const [customDraft, setCustomDraft] = useState({
+    name: "",
+    baseUrl: "",
+    authType: "none" as "none" | "api_key" | "bearer" | "basic",
+    credential: "",
+    apiKeyHeader: "X-API-Key",
+    healthPath: "/",
+  });
+  const [lastWebhookSetup, setLastWebhookSetup] = useState<{ path: string; secret: string; secretHeader: string } | null>(null);
+  const [trackingDraft, setTrackingDraft] = useState({
+    googleAdsConversionId: "",
+    ga4MeasurementId: "",
+    gtmContainerId: "",
+    metaPixelId: "",
+    linkedinInsightTagId: "",
+    tiktokPixelId: "",
+  });
+  const [trackingHydrated, setTrackingHydrated] = useState(false);
+  const [trackingGuide, setTrackingGuide] = useState<"ga4" | "gtm" | "google-ads" | "meta" | "linkedin" | "tiktok" | null>(null);
+  const [trackingHealth, setTrackingHealth] = useState<{
+    sitePublished?: boolean;
+    configured?: Record<string, boolean>;
+    installedOnVendorSite?: Record<string, boolean>;
+    metaCapi?: { ready?: boolean; metaConnected?: boolean; pixelConfigured?: boolean; globalEnabled?: boolean; tenantEnabled?: boolean; consentRequired?: boolean };
+  } | null>(null);
   const [asaasKey, setAsaasKey] = useState("");
   const [zapsignKey, setZapsignKey] = useState("");
   const [emailConnections, setEmailConnections] = useState<Array<{
@@ -116,11 +210,37 @@ export default function IntegrationSettingsHub() {
   const loadStatus = async () => {
     setLoading(true);
     try {
-      const [data, emailData] = await Promise.all([
+      const [data, emailData, financeData, customData, metaAdsData, socialData] = await Promise.all([
         apiJson("/api/onboarding/integracoes"),
         tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/email-connections`).catch(() => ({ connections: [] })) : Promise.resolve({ connections: [] }),
+        tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/finance-integrations`).catch(() => ({ integrations: [] })) : Promise.resolve({ integrations: [] }),
+        tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/custom-integrations`).catch(() => ({ integrations: [] })) : Promise.resolve({ integrations: [] }),
+        tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/meta-ads-connection`).catch(() => ({ connected: false })) : Promise.resolve({ connected: false }),
+        tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/social-connections`).catch(() => ({ connections: [] })) : Promise.resolve({ connections: [] }),
       ]);
       setStatus(data as IntegrationStatus);
+      const integrationData = data as IntegrationStatus;
+      if (!trackingHydrated) {
+        setTrackingDraft({
+          googleAdsConversionId: integrationData.tracking?.googleAdsConversionId ?? "",
+          ga4MeasurementId: integrationData.tracking?.ga4MeasurementId ?? "",
+          gtmContainerId: integrationData.tracking?.gtmContainerId ?? "",
+          metaPixelId: integrationData.tracking?.metaPixelId ?? "",
+          linkedinInsightTagId: integrationData.tracking?.linkedinInsightTagId ?? "",
+          tiktokPixelId: integrationData.tracking?.tiktokPixelId ?? "",
+        });
+        setTrackingHydrated(true);
+      }
+      const hiddenTenantInfrastructure = new Set([
+        "cloudflare", "railway", "supabase", "openai",
+        "whatsapp", "email", "meta", "google-ads", "asaas", "zapsign",
+        "n8n", "public-api",
+      ]);
+      const financeCatalog = Array.isArray(financeData?.integrations) ? financeData.integrations : [];
+      setCatalogIntegrations(financeCatalog.filter((item: CatalogIntegration) => !hiddenTenantInfrastructure.has(item.providerKey)));
+      setCustomIntegrations(Array.isArray(customData?.integrations) ? customData.integrations : []);
+      setMetaAdsStatus(metaAdsData || {});
+      setSocialConnections(Array.isArray(socialData?.connections) ? socialData.connections : []);
       const connections = Array.isArray(emailData?.connections) ? emailData.connections : [];
       setEmailConnections(connections);
       setEmailSignatures({
@@ -164,48 +284,62 @@ export default function IntegrationSettingsHub() {
     {
       key: "whatsapp",
       label: "WhatsApp",
-      description: "Conexão padrão via QR Code para atendimento e automações.",
+      description: "Atendimento, conversas, automações e vínculo com o CRM.",
+      category: "Essenciais",
+      usedBy: "Omnichannel · CRM · Agentes",
       connected: status?.whatsapp?.connected === true,
       detail: status?.whatsapp?.phone || undefined,
     },
     {
       key: "instagram",
       label: "Instagram",
-      description: "Mensagens, perfil e conteúdo.",
+      description: "Mensagens, perfil, conteúdo e publicação no Instagram.",
+      category: "Marketing e social",
+      usedBy: "Marketing · Omnichannel · CRM",
       connected: status?.instagram?.connected === true,
       detail: status?.instagram?.username ? `@${status.instagram.username.replace(/^@/, "")}` : undefined,
     },
     {
       key: "google-calendar",
       label: "Google Calendar",
-      description: "Agenda, compromissos e disponibilidade.",
+      description: "Sincroniza agenda, compromissos, reuniões e disponibilidade.",
+      category: "Google",
+      usedBy: "Agenda · CRM · Agente de Agendamento",
       connected: status?.googleCalendar?.connected === true,
     },
     {
       key: "email-google",
       label: "Gmail / Google Workspace",
-      description: "Caixa de entrada e saída integrada ao CRM e aos agentes.",
+      description: "Envia e recebe e-mails pelo Google Workspace dentro do Vendor.ai.",
+      category: "Google",
+      usedBy: "Omnichannel · CRM · Agentes",
       connected: emailConnections.some((connection) => connection.provider === "google"),
       detail: emailConnections.find((connection) => connection.provider === "google")?.email || undefined,
     },
     {
       key: "email-microsoft",
       label: "Microsoft 365 / Outlook",
-      description: "E-mail corporativo integrado ao CRM e aos agentes.",
+      description: "Conecta Outlook/Microsoft 365 ao e-mail, CRM e agentes.",
+      category: "Essenciais",
+      usedBy: "Omnichannel · CRM · Agentes",
       connected: emailConnections.some((connection) => connection.provider === "microsoft"),
       detail: emailConnections.find((connection) => connection.provider === "microsoft")?.email || undefined,
     },
     {
       key: "email-webmail",
       label: "Webmail / Outro provedor",
-      description: "E-mail de domínio próprio via IMAP + SMTP (cPanel, Hostinger, Locaweb, KingHost e similares).",
+      description: "Conecta e-mail de domínio próprio via IMAP/SMTP.",
+      category: "Essenciais",
+      usedBy: "Omnichannel · CRM · Agentes",
       connected: emailConnections.some((connection) => connection.provider === "webmail"),
       detail: emailConnections.find((connection) => connection.provider === "webmail")?.email || undefined,
     },
     {
       key: "google-ads",
       label: "Google Ads",
-      description: "Campanhas, mídia e conversões.",
+      description: "Campanhas, mídia, performance e conversões do Google.",
+      category: "Google",
+      usedBy: "Marketing · BI · CRM",
       connected: status?.googleAds?.connected === true && status?.googleAds?.pendingAccountSelection !== true,
       attention: status?.googleAds?.pendingAccountSelection === true,
       detail: status?.googleAds?.pendingAccountSelection ? "Seleção de conta pendente" : status?.googleAds?.descriptiveName || undefined,
@@ -213,19 +347,25 @@ export default function IntegrationSettingsHub() {
     {
       key: "asaas",
       label: "Asaas",
-      description: "Cobranças e pagamentos.",
+      description: "Pix, boleto, cartão, recorrência e confirmação de pagamentos.",
+      category: "Pagamentos e contratos",
+      usedBy: "Financeiro · Propostas · CRM",
       connected: status?.asaas?.connected === true,
     },
     {
       key: "zapsign",
       label: "ZapSign",
-      description: "Assinatura eletrônica de documentos.",
+      description: "Envia contratos e documentos para assinatura eletrônica.",
+      category: "Pagamentos e contratos",
+      usedBy: "Contratos · CRM · Portal",
       connected: status?.zapsign?.connected === true,
     },
     {
       key: "search-console",
       label: "Search Console",
-      description: "SEO, indexação e desempenho orgânico.",
+      description: "SEO, indexação, pesquisas no Google e saúde orgânica do site.",
+      category: "Google",
+      usedBy: "Marketing · Site · BI",
       connected: status?.searchConsole?.connected === true && status?.searchConsole?.verified === true,
       attention: status?.searchConsole?.connected === true && status?.searchConsole?.verified !== true,
       detail: status?.searchConsole?.connected && !status?.searchConsole?.verified ? "Conta autorizada · falta confirmar a propriedade" : undefined,
@@ -233,19 +373,25 @@ export default function IntegrationSettingsHub() {
     {
       key: "linkedin",
       label: "LinkedIn",
-      description: "Publicações, métricas e presença social.",
+      description: "Publicações, presença profissional, métricas e recursos B2B.",
+      category: "Marketing e social",
+      usedBy: "Marketing · Prospecção · BI",
       connected: status?.social?.linkedin === true,
     },
     {
       key: "tiktok",
       label: "TikTok",
-      description: "Publicações, métricas e mídia social.",
+      description: "Publicações, métricas, presença social e recursos de mídia TikTok.",
+      category: "Marketing e social",
+      usedBy: "Marketing · Conteúdo · BI",
       connected: status?.social?.tiktok === true,
     },
     {
       key: "domain",
-      label: "Domínio",
-      description: "Domínio personalizado do site.",
+      label: "Domínio próprio",
+      description: "Usa o domínio da empresa no site, portal, landing pages e links públicos.",
+      category: "Domínio e web",
+      usedBy: "Site · Portal · Landing pages",
       connected: status?.domain?.active === true,
       attention: status?.domain?.configured === true && status?.domain?.active !== true,
       detail: status?.domain?.name || undefined,
@@ -496,16 +642,300 @@ export default function IntegrationSettingsHub() {
     return "Conectar agora";
   };
 
+  const createCustomIntegration = async (kind: "api" | "webhook" | "n8n") => {
+    if (!tenantId || !customDraft.name.trim()) {
+      toast({ title: "Informe um nome para a conexão.", variant: "destructive" });
+      return;
+    }
+    if (kind !== "webhook" && !customDraft.baseUrl.trim()) {
+      toast({ title: "Informe a URL HTTPS do serviço.", variant: "destructive" });
+      return;
+    }
+    setBusy(`custom-${kind}`);
+    try {
+      const data = await apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/custom-integrations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: customDraft.name.trim(),
+          kind,
+          baseUrl: kind === "webhook" ? null : customDraft.baseUrl.trim(),
+          authType: kind === "webhook" ? "none" : customDraft.authType,
+          credential: kind === "webhook" || customDraft.authType === "none" ? null : customDraft.credential,
+          apiKeyHeader: customDraft.apiKeyHeader,
+          healthPath: customDraft.healthPath || "/",
+        }),
+      });
+      setLastWebhookSetup(data?.webhook || null);
+      setCustomDraft({ name: "", baseUrl: "", authType: "none", credential: "", apiKeyHeader: "X-API-Key", healthPath: "/" });
+      toast({
+        title: kind === "webhook" ? "Webhook criado" : "Conexão salva",
+        description: kind === "webhook" ? "Copie a URL e o segredo agora; o segredo não será exibido novamente." : "Use “Testar conexão” para validar o endpoint.",
+      });
+      await loadStatus();
+    } catch (error) {
+      toast({ title: "Não foi possível criar a conexão", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const testCustomIntegration = async (connection: CustomIntegration) => {
+    if (!tenantId) return;
+    setBusy(`custom-test-${connection.id}`);
+    try {
+      const result = await apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/custom-integrations/${encodeURIComponent(connection.id)}/test`, { method: "POST" });
+      toast({ title: result.ok ? "Conexão validada" : "Conexão precisa de atenção", description: result.message });
+      await loadStatus();
+    } catch (error) {
+      toast({ title: "Teste falhou", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+      await loadStatus();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const removeCustomIntegration = async (connection: CustomIntegration) => {
+    if (!tenantId) return;
+    setBusy(`custom-delete-${connection.id}`);
+    try {
+      await apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/custom-integrations/${encodeURIComponent(connection.id)}`, { method: "DELETE" });
+      toast({ title: "Conexão removida." });
+      await loadStatus();
+    } catch (error) {
+      toast({ title: "Não foi possível remover", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const ecosystems: EcosystemDefinition[] = [
+    {
+      key: "google",
+      name: "Google",
+      description: "Conta Google e serviços usados por comunicação, agenda, mídia, SEO e conteúdo.",
+      connected: [
+        emailConnections.some((connection) => connection.provider === "google"),
+        status?.googleCalendar?.connected === true,
+        status?.googleAds?.connected === true && status?.googleAds?.pendingAccountSelection !== true,
+        status?.searchConsole?.connected === true && status?.searchConsole?.verified === true,
+        socialConnections.some((connection) => connection.provider === "youtube" && connection.connected),
+      ].filter(Boolean).length,
+      services: [
+        { name: "Gmail", state: emailConnections.some((connection) => connection.provider === "google") ? "connected" : "available", action: "email-google" as IntegrationKey },
+        { name: "Calendar", state: status?.googleCalendar?.connected ? "connected" : "available", action: "google-calendar" as IntegrationKey },
+        { name: "Google Ads", state: status?.googleAds?.pendingAccountSelection ? "attention" : status?.googleAds?.connected ? "connected" : "available", action: "google-ads" as IntegrationKey },
+        { name: "Search Console", state: status?.searchConsole?.verified ? "connected" : status?.searchConsole?.connected ? "attention" : "available", action: "search-console" as IntegrationKey },
+        { name: "YouTube", state: socialConnections.some((connection) => connection.provider === "youtube" && connection.connected) ? "connected" : "planned" },
+        { name: "GA4", state: "planned" },
+        { name: "Tag Manager", state: "planned" },
+        { name: "Drive", state: "planned" },
+        { name: "Business Profile", state: "planned" },
+      ],
+    },
+    {
+      key: "meta",
+      name: "Meta",
+      description: "Facebook, Instagram, anúncios, Pixel e ativos comerciais da empresa.",
+      connected: [
+        status?.instagram?.connected === true,
+        metaAdsStatus.connected === true && metaAdsStatus.pendingAccountSelection !== true,
+        status?.tracking?.metaPixel === true,
+      ].filter(Boolean).length,
+      services: [
+        { name: "Instagram", state: status?.instagram?.connected ? "connected" : "available", action: "instagram" as IntegrationKey },
+        { name: "Meta Ads", state: metaAdsStatus.pendingAccountSelection ? "attention" : metaAdsStatus.connected ? "connected" : "available", endpoint: "/api/auth/meta-ads" },
+        { name: "Meta Pixel", state: status?.tracking?.metaPixel ? "connected" : "planned" },
+        { name: "Conversions API", state: "planned" },
+        { name: "Facebook Page", state: metaAdsStatus.connected ? "available" : "planned" },
+        { name: "Lead Ads", state: "planned" },
+        { name: "Catálogo", state: "planned" },
+      ],
+    },
+    {
+      key: "microsoft",
+      name: "Microsoft",
+      description: "Microsoft 365 para e-mail, agenda, arquivos e colaboração.",
+      connected: emailConnections.some((connection) => connection.provider === "microsoft") ? 1 : 0,
+      services: [
+        { name: "Outlook", state: emailConnections.some((connection) => connection.provider === "microsoft") ? "connected" : "available", action: "email-microsoft" as IntegrationKey },
+        { name: "Calendar", state: "planned" },
+        { name: "OneDrive", state: "planned" },
+        { name: "SharePoint", state: "planned" },
+        { name: "Teams", state: "planned" },
+      ],
+    },
+  ];
+
+  const loadAdsAccounts = async (provider: "google-ads" | "meta-ads") => {
+    if (!tenantId) return;
+    setBusy(`accounts-${provider}`);
+    try {
+      const path = provider === "google-ads"
+        ? `/api/tenants/${encodeURIComponent(tenantId)}/google-ads-connection/accounts`
+        : `/api/tenants/${encodeURIComponent(tenantId)}/meta-ads-connection/accounts`;
+      const data = await apiJson(path);
+      const accounts = Array.isArray(data?.accounts) ? data.accounts : [];
+      setAccountPicker({
+        provider,
+        accounts: accounts.map((account: any) => provider === "google-ads"
+          ? { id: String(account.customerId), label: `Google Ads · ${account.customerId}` }
+          : { id: String(account.adAccountId), label: `${account.name || account.adAccountId}${account.currency ? ` · ${account.currency}` : ""}` }),
+      });
+      if (!accounts.length) toast({ title: "Nenhuma conta acessível encontrada.", variant: "destructive" });
+    } catch (error) {
+      toast({ title: "Não foi possível listar as contas", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const selectAdsAccount = async (provider: "google-ads" | "meta-ads", id: string) => {
+    if (!tenantId) return;
+    setBusy(`select-${provider}`);
+    try {
+      const path = provider === "google-ads"
+        ? `/api/tenants/${encodeURIComponent(tenantId)}/google-ads-connection/select-account`
+        : `/api/tenants/${encodeURIComponent(tenantId)}/meta-ads-connection/select-account`;
+      await apiJson(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(provider === "google-ads" ? { customerId: id } : { adAccountId: id }),
+      });
+      toast({ title: provider === "google-ads" ? "Conta Google Ads selecionada." : "Conta Meta Ads selecionada." });
+      setAccountPicker(null);
+      await loadStatus();
+    } catch (error) {
+      toast({ title: "Não foi possível selecionar a conta", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const startEcosystemService = async (service: EcosystemService) => {
+    if (service.action === "google-ads" && status?.googleAds?.pendingAccountSelection) {
+      await loadAdsAccounts("google-ads");
+      return;
+    }
+    if (service.endpoint === "/api/auth/meta-ads" && metaAdsStatus.pendingAccountSelection) {
+      await loadAdsAccounts("meta-ads");
+      return;
+    }
+    if (service.action) {
+      await startConnection(service.action);
+      return;
+    }
+    if (!service.endpoint) return;
+    setBusy(service.endpoint);
+    try {
+      const data = await apiJson(service.endpoint);
+      if (!data?.url || typeof data.url !== "string") throw new Error("URL de autorização não retornada.");
+      window.location.assign(data.url);
+    } catch (error) {
+      toast({ title: "Não foi possível abrir a conexão", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+      setBusy(null);
+    }
+  };
+
+  const trackingGuides = {
+    ga4: {
+      url: "https://analytics.google.com/",
+      label: "Abrir Google Analytics",
+      steps: ["Abra Administrador", "Selecione a propriedade da empresa", "Abra Fluxos de dados", "Selecione o fluxo Web", "Copie o ID de medição no formato G-XXXXXXXXXX"],
+    },
+    gtm: {
+      url: "https://tagmanager.google.com/",
+      label: "Abrir Tag Manager",
+      steps: ["Selecione a conta da empresa", "Abra o container Web correto", "Copie o ID exibido no topo no formato GTM-XXXXXXX"],
+    },
+    "google-ads": {
+      url: "https://ads.google.com/",
+      label: "Abrir Google Ads",
+      steps: ["Abra Metas/Conversões", "Selecione ou crie a ação de conversão", "Abra a configuração da tag", "Copie o Conversion ID no formato AW-XXXXXXXXX"],
+    },
+    meta: {
+      url: "https://business.facebook.com/events_manager2/list",
+      label: "Abrir Gerenciador de Eventos Meta",
+      steps: ["Selecione a empresa correta", "Abra Fontes de dados", "Selecione o Pixel", "Copie o ID numérico do conjunto de dados/Pixel"],
+    },
+    linkedin: {
+      url: "https://www.linkedin.com/campaignmanager/accounts",
+      label: "Abrir Campaign Manager",
+      steps: ["Abra a conta de anúncios", "Clique em Measure", "Abra Signals Manager", "Clique em Insight Tag", "Use a opção de Tag Manager e copie o Partner ID"],
+    },
+    tiktok: {
+      url: "https://ads.tiktok.com/",
+      label: "Abrir TikTok Ads Manager",
+      steps: ["Abra Tools", "Entre em Events Manager", "Selecione Web Events", "Abra o Pixel da empresa", "Copie o Pixel ID"],
+    },
+  } as const;
+
+  const testTrackingInstallation = async () => {
+    setBusy("tracking-test");
+    try {
+      const data = await apiJson("/api/onboarding/integracoes/tracking-health");
+      setTrackingHealth(data);
+      toast({
+        title: data?.sitePublished ? "Instalação verificada" : "Site ainda não publicado",
+        description: data?.sitePublished ? "A Central confirmou quais tags serão aplicadas ao site Vendor.ai." : "As tags ficam salvas, mas só podem operar no site Vendor.ai quando houver um site publicado.",
+      });
+    } catch (error) {
+      toast({ title: "Não foi possível testar o tracking", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const saveTracking = async () => {
+    setBusy("tracking-save");
+    try {
+      await apiJson("/api/onboarding/integracoes/tracking", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          googleAdsConversionId: trackingDraft.googleAdsConversionId.trim() || null,
+          ga4MeasurementId: trackingDraft.ga4MeasurementId.trim() || null,
+          gtmContainerId: trackingDraft.gtmContainerId.trim() || null,
+          metaPixelId: trackingDraft.metaPixelId.trim() || null,
+          linkedinInsightTagId: trackingDraft.linkedinInsightTagId.trim() || null,
+          tiktokPixelId: trackingDraft.tiktokPixelId.trim() || null,
+        }),
+      });
+      toast({ title: "Tracking salvo", description: "Os IDs válidos serão aplicados aos sites publicados pelo Vendor.ai." });
+      setTrackingHydrated(false);
+      await loadStatus();
+    } catch (error) {
+      toast({ title: "Não foi possível salvar o tracking", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const visibleRows = rows.filter((row) => {
+    const term = search.trim().toLowerCase();
+    if (!term) return true;
+    return [row.label, row.description, row.category, row.usedBy, row.detail].filter(Boolean).join(" ").toLowerCase().includes(term);
+  });
+  const groupedRows = visibleRows.reduce<Record<string, IntegrationRow[]>>((acc, row) => {
+    (acc[row.category] ||= []).push(row);
+    return acc;
+  }, {});
+  const tenantCatalog = catalogIntegrations.filter((item) => {
+    const term = search.trim().toLowerCase();
+    if (!term) return true;
+    return [item.name, item.category, ...(item.capabilities || [])].join(" ").toLowerCase().includes(term);
+  });
   const connectedCount = rows.filter((row) => row.connected).length;
+  const attentionCount = rows.filter((row) => row.attention).length;
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-5 px-4 pb-10 sm:px-6">
       <div className="flex flex-col gap-3 rounded-2xl border bg-card p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Configurações</div>
-          <h1 className="mt-1 text-2xl font-bold">Integrações</h1>
+          <h1 className="mt-1 text-2xl font-bold">Central de Conexões</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Acesso protegido pela sua sessão de administrador. Não é necessário informar a senha novamente.
+            Todas as conexões externas da empresa ficam aqui. O Vendor.ai orienta login, permissões, ativos e etapas adicionais.
           </p>
           {user?.email && <p className="mt-1 text-xs text-muted-foreground">Sessão: {user.email}</p>}
         </div>
@@ -515,23 +945,228 @@ export default function IntegrationSettingsHub() {
         </div>
       </div>
 
+      {accountPicker && (
+        <div className="rounded-2xl border bg-card p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Escolha a conta de anúncios</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                A autorização já foi concluída. Selecione qual conta pertence a este tenant.
+              </p>
+            </div>
+            <Button variant="outline" onClick={() => setAccountPicker(null)}>Fechar</Button>
+          </div>
+          <div className="mt-4 space-y-2">
+            {accountPicker.accounts.map((account) => (
+              <button
+                key={account.id}
+                type="button"
+                disabled={busy === `select-${accountPicker.provider}`}
+                onClick={() => void selectAdsAccount(accountPicker.provider, account.id)}
+                className="flex w-full items-center justify-between rounded-lg border bg-background px-4 py-3 text-left hover:bg-muted/40 disabled:opacity-50"
+              >
+                <span className="text-sm font-medium">{account.label}</span>
+                <span className="text-xs text-muted-foreground">Selecionar</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="rounded-2xl border bg-card p-5">
-        <div className="flex items-center justify-between gap-4">
+        <div>
+          <h2 className="font-semibold">Ecossistemas conectados</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Entre pelo provedor e veja quais serviços já estão ativos, quais precisam de atenção e quais ainda serão habilitados.
+          </p>
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+          {ecosystems.map((ecosystem) => (
+            <div key={ecosystem.key} className="rounded-xl border bg-background p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold">{ecosystem.name}</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">{ecosystem.description}</p>
+                </div>
+                <span className="text-xs font-semibold text-muted-foreground">{ecosystem.connected} ativos</span>
+              </div>
+              <div className="mt-4 space-y-2">
+                {ecosystem.services.map((service) => (
+                  <div key={service.name} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
+                    <div>
+                      <p className="text-sm font-medium">{service.name}</p>
+                      <p className={service.state === "connected" ? "text-[11px] text-emerald-600" : service.state === "attention" ? "text-[11px] text-amber-600" : "text-[11px] text-muted-foreground"}>
+                        {service.state === "connected" ? "Conectado" : service.state === "attention" ? "Atenção necessária" : service.state === "available" ? "Disponível para conectar" : "Preparado para próxima etapa"}
+                      </p>
+                    </div>
+                    {(service.action || service.endpoint) && service.state !== "connected" && (
+                      <Button size="sm" variant="outline" onClick={() => void startEcosystemService(service)}>
+                        {service.state === "attention" ? "Continuar" : "Conectar"}
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border bg-card p-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h2 className="font-semibold">Saúde das integrações</h2>
-            <p className="text-sm text-muted-foreground">
-              {loading ? "Verificando conexões..." : `${connectedCount} de ${rows.length} conexões ativas`}
+            <h2 className="font-semibold">Tracking e conversões</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Centralize os identificadores de medição. Nos sites Vendor.ai, IDs válidos são instalados automaticamente.
             </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => void testTrackingInstallation()} disabled={busy === "tracking-test"}>
+              {busy === "tracking-test" ? "Testando..." : "Testar instalação"}
+            </Button>
+            <Button onClick={() => void saveTracking()} disabled={busy === "tracking-save"}>
+              {busy === "tracking-save" ? "Salvando..." : "Salvar tracking"}
+            </Button>
           </div>
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {rows.map((row) => (
+          <div className="rounded-xl border bg-background p-4">
+            <h3 className="font-semibold">Google Analytics 4</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Mede acessos, eventos, origem e conversões do site.</p>
+            <Input className="mt-3" value={trackingDraft.ga4MeasurementId} onChange={(e) => setTrackingDraft((v) => ({ ...v, ga4MeasurementId: e.target.value }))} placeholder="G-XXXXXXXXXX" />
+            <p className="mt-2 text-[11px] text-muted-foreground">{status?.tracking?.ga4 ? "Configurado" : "Informe o Measurement ID da propriedade GA4."}</p>
+          </div>
+
+          <div className="rounded-xl border bg-background p-4">
+            <h3 className="font-semibold">Google Tag Manager</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Centraliza tags e pixels no container da empresa.</p>
+            <Input className="mt-3" value={trackingDraft.gtmContainerId} onChange={(e) => setTrackingDraft((v) => ({ ...v, gtmContainerId: e.target.value }))} placeholder="GTM-XXXXXXX" />
+            <p className="mt-2 text-[11px] text-muted-foreground">{status?.tracking?.gtm ? "Configurado" : "Informe o ID do container GTM."}</p>
+          </div>
+
+          <div className="rounded-xl border bg-background p-4">
+            <h3 className="font-semibold">Google Ads Conversion</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Identifica conversões originadas de campanhas Google Ads.</p>
+            <Input className="mt-3" value={trackingDraft.googleAdsConversionId} onChange={(e) => setTrackingDraft((v) => ({ ...v, googleAdsConversionId: e.target.value }))} placeholder="AW-XXXXXXXXX" />
+            <p className="mt-2 text-[11px] text-muted-foreground">{status?.tracking?.googleAds ? "Configurado" : "Informe o Conversion ID."}</p>
+          </div>
+
+          <div className="rounded-xl border bg-background p-4">
+            <h3 className="font-semibold">Meta Pixel</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Mede visitas e eventos do site para Facebook e Instagram.</p>
+            <Input className="mt-3" value={trackingDraft.metaPixelId} onChange={(e) => setTrackingDraft((v) => ({ ...v, metaPixelId: e.target.value }))} placeholder="ID numérico do Pixel" />
+            <p className="mt-2 text-[11px] text-muted-foreground">{status?.tracking?.metaPixel ? "Configurado" : "Informe o ID do Pixel Meta."}</p>
+            {status?.tracking?.metaPixel && metaAdsStatus.connected && (
+              <p className="mt-2 text-[11px] text-emerald-600">CAPI: infraestrutura disponível via conexão Meta Ads; envio depende de consentimento e ativação controlada.</p>
+            )}
+          </div>
+
+          <div className="rounded-xl border bg-background p-4">
+            <h3 className="font-semibold">LinkedIn Insight Tag</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Mede visitas, públicos e conversões para campanhas LinkedIn.</p>
+            <Input className="mt-3" value={trackingDraft.linkedinInsightTagId} onChange={(e) => setTrackingDraft((v) => ({ ...v, linkedinInsightTagId: e.target.value }))} placeholder="Partner ID numérico" />
+            <p className="mt-2 text-[11px] text-muted-foreground">{status?.tracking?.linkedinInsightTag ? "Configurado" : "Informe o Partner ID."}</p>
+          </div>
+
+          <div className="rounded-xl border bg-background p-4">
+            <h3 className="font-semibold">TikTok Pixel</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Mede visitas e conversões para campanhas TikTok.</p>
+            <Input className="mt-3" value={trackingDraft.tiktokPixelId} onChange={(e) => setTrackingDraft((v) => ({ ...v, tiktokPixelId: e.target.value }))} placeholder="Pixel ID TikTok" />
+            <p className="mt-2 text-[11px] text-muted-foreground">{status?.tracking?.tiktokPixel ? "Configurado" : "Informe o Pixel ID."}</p>
+          </div>
+        </div>
+
+        {trackingHealth && (
+          <div className="mt-4 rounded-xl border bg-background p-4">
+            <h3 className="font-semibold">Resultado do teste</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {trackingHealth.sitePublished ? "Site Vendor.ai publicado: tags configuradas podem ser injetadas automaticamente." : "Nenhum site Vendor.ai publicado foi encontrado para este tenant."}
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {Object.entries(trackingHealth.configured || {}).map(([key, configured]) => (
+                <div key={key} className="rounded-lg border px-3 py-2 text-xs">
+                  <span className="font-medium">{key}</span>
+                  <span className={configured ? "ml-2 text-emerald-600" : "ml-2 text-muted-foreground"}>
+                    {configured ? (trackingHealth.installedOnVendorSite?.[key] ? "Configurado · site pronto" : "Configurado · aguardando site") : "Não configurado"}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 rounded-lg border px-3 py-2 text-xs">
+              <span className="font-medium">Meta Conversions API</span>
+              <span className={trackingHealth.metaCapi?.ready ? "ml-2 text-emerald-600" : "ml-2 text-amber-600"}>
+                {trackingHealth.metaCapi?.ready ? "Pronta para envio com consentimento" : "Pré-requisitos incompletos ou ativação controlada ainda não liberada"}
+              </span>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {([
+            ["ga4", "Como encontrar GA4"],
+            ["gtm", "Como encontrar GTM"],
+            ["google-ads", "Como encontrar Google Ads"],
+            ["meta", "Como encontrar Meta Pixel"],
+            ["linkedin", "Como encontrar LinkedIn"],
+            ["tiktok", "Como encontrar TikTok"],
+          ] as const).map(([key, label]) => (
+            <Button key={key} size="sm" variant="outline" onClick={() => setTrackingGuide(trackingGuide === key ? null : key)}>
+              {label}
+            </Button>
+          ))}
+        </div>
+
+        {trackingGuide && (
+          <div className="mt-4 rounded-xl border bg-background p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="font-semibold">Passo a passo</h3>
+                <ol className="mt-2 space-y-1 text-xs text-muted-foreground">
+                  {trackingGuides[trackingGuide].steps.map((step, index) => <li key={step}>{index + 1}. {step}</li>)}
+                </ol>
+              </div>
+              <Button size="sm" onClick={() => window.open(trackingGuides[trackingGuide].url, "_blank", "noopener,noreferrer")}>
+                {trackingGuides[trackingGuide].label}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {trackingDraft.gtmContainerId.trim() && (trackingDraft.metaPixelId.trim() || trackingDraft.linkedinInsightTagId.trim() || trackingDraft.tiktokPixelId.trim()) && (
+          <div className="mt-4 rounded-lg border border-amber-300/60 bg-amber-50/50 p-3 text-xs text-amber-900">
+            Atenção a duplicidade: se estes pixels já estiverem instalados dentro do GTM, não cadastre também o mesmo pixel diretamente aqui.
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-2xl border bg-card p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="font-semibold">Saúde das conexões</h2>
+            <p className="text-sm text-muted-foreground">
+              {loading ? "Verificando conexões..." : `${connectedCount} conectadas · ${attentionCount} precisam de atenção · ${tenantCatalog.length} opções no catálogo`}
+            </p>
+          </div>
+          <div className="w-full lg:max-w-sm">
+            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar Google, ERP, Pix, API..." />
+          </div>
+        </div>
+
+        <div className="mt-5 space-y-6">
+          {Object.entries(groupedRows).map(([category, categoryRows]) => (
+            <section key={category}>
+              <div className="mb-2">
+                <h3 className="text-sm font-semibold">{category}</h3>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {categoryRows.map((row) => (
             <div key={row.key} className="rounded-xl border bg-background p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3 className="font-semibold">{row.label}</h3>
                   <p className="mt-1 text-xs text-muted-foreground">{row.description}</p>
+                  {row.usedBy && <p className="mt-2 text-[11px] text-muted-foreground"><span className="font-medium">Usado por:</span> {row.usedBy}</p>}
                 </div>
                 <span className={row.connected ? "text-xs font-semibold text-emerald-600" : row.attention ? "text-xs font-semibold text-amber-600" : "text-xs font-semibold text-muted-foreground"}>
                   {row.connected ? "Conectado" : row.attention ? "Atenção" : "Desconectado"}
@@ -669,7 +1304,160 @@ export default function IntegrationSettingsHub() {
               )}
             </div>
           ))}
+              </div>
+            </section>
+          ))}
         </div>
+      </div>
+
+      <div className="rounded-2xl border bg-card p-5">
+        <div>
+          <h2 className="font-semibold">Adicionar conexão</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Conectores de negócio disponíveis para o tenant. Infraestrutura interna do Vendor.ai não aparece aqui.
+          </p>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {tenantCatalog.slice(0, 18).map((item) => {
+            const configured = item.status && !["not_configured", "disabled"].includes(item.status);
+            const healthy = item.status === "connected" && Number(item.overallHealthPercent || 0) >= 80;
+            return (
+              <div key={item.providerKey} className="rounded-xl border bg-background p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-semibold">{item.name}</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">{(item.capabilities || []).slice(0, 5).join(" · ") || item.category}</p>
+                  </div>
+                  <span className={healthy ? "text-xs font-semibold text-emerald-600" : configured ? "text-xs font-semibold text-amber-600" : "text-xs font-semibold text-muted-foreground"}>
+                    {healthy ? "Conectado" : configured ? "Revisar" : "Disponível"}
+                  </span>
+                </div>
+                <p className="mt-3 text-[11px] text-muted-foreground">Autenticação: {item.authType.replaceAll("_", " ")}</p>
+                {item.lastErrorMessage && <p className="mt-2 text-xs text-destructive">{item.lastErrorMessage}</p>}
+                <Button className="mt-4" variant="outline" onClick={() => toast({
+                  title: configured ? `${item.name}: revisar conexão` : `${item.name}: configuração assistida`,
+                  description: configured
+                    ? "Use o health check da integração para validar autenticação, sincronização e webhooks."
+                    : "O conector está catalogado. A conexão só deve ser marcada como ativa depois de autenticação e teste real.",
+                })}>
+                  {configured ? "Revisar conexão" : "Configurar"}
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border bg-card p-5">
+        <div>
+          <h2 className="font-semibold">Integrações personalizadas</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Para sistemas sem conector nativo, use API direta, webhook ou n8n. Segredos nunca devem ser salvos sem criptografia e teste real.
+          </p>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          {[
+            { key: "api" as const, title: "API personalizada", text: "Conecte ERP, sistema legado ou serviço próprio por HTTPS com autenticação segura." },
+            { key: "webhook" as const, title: "Webhook", text: "Gere uma URL exclusiva do tenant e valide eventos assinados em tempo real." },
+            { key: "n8n" as const, title: "n8n", text: "Conecte uma instância n8n e use workflows para orquestrar sistemas sem conector nativo." },
+          ].map((item) => (
+            <div key={item.key} className="rounded-xl border bg-background p-4">
+              <h3 className="font-semibold">{item.title}</h3>
+              <p className="mt-1 text-xs text-muted-foreground">{item.text}</p>
+              <Button className="mt-4" variant="outline" onClick={() => {
+                setShowCustomGuide(showCustomGuide === item.key ? null : item.key);
+                setLastWebhookSetup(null);
+              }}>
+                {showCustomGuide === item.key ? "Fechar configuração" : "Configurar"}
+              </Button>
+
+              {showCustomGuide === item.key && (
+                <div className="mt-4 space-y-3 rounded-lg border bg-muted/30 p-3">
+                  <Input value={customDraft.name} onChange={(e) => setCustomDraft((v) => ({ ...v, name: e.target.value }))} placeholder="Nome da conexão" />
+
+                  {item.key !== "webhook" && (
+                    <>
+                      <Input value={customDraft.baseUrl} onChange={(e) => setCustomDraft((v) => ({ ...v, baseUrl: e.target.value }))} placeholder={item.key === "n8n" ? "https://n8n.suaempresa.com" : "https://api.sistema.com"} />
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <select
+                          value={customDraft.authType}
+                          onChange={(e) => setCustomDraft((v) => ({ ...v, authType: e.target.value as typeof v.authType }))}
+                          className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                        >
+                          <option value="none">Sem autenticação</option>
+                          <option value="api_key">API Key</option>
+                          <option value="bearer">Bearer Token</option>
+                          <option value="basic">Basic Auth</option>
+                        </select>
+                        <Input value={customDraft.healthPath} onChange={(e) => setCustomDraft((v) => ({ ...v, healthPath: e.target.value }))} placeholder="/health" />
+                      </div>
+                      {customDraft.authType === "api_key" && (
+                        <Input value={customDraft.apiKeyHeader} onChange={(e) => setCustomDraft((v) => ({ ...v, apiKeyHeader: e.target.value }))} placeholder="Header da API Key, ex.: X-API-Key" />
+                      )}
+                      {customDraft.authType !== "none" && (
+                        <Input type="password" value={customDraft.credential} onChange={(e) => setCustomDraft((v) => ({ ...v, credential: e.target.value }))} placeholder={customDraft.authType === "basic" ? "usuario:senha" : "Credencial"} />
+                      )}
+                    </>
+                  )}
+
+                  {item.key === "webhook" && (
+                    <p className="text-xs text-muted-foreground">O Vendor.ai gerará uma URL exclusiva e um segredo. O sistema externo deverá enviar esse segredo no header indicado.</p>
+                  )}
+
+                  <Button disabled={busy === `custom-${item.key}`} onClick={() => void createCustomIntegration(item.key)}>
+                    {busy === `custom-${item.key}` ? "Salvando..." : item.key === "webhook" ? "Gerar webhook seguro" : "Salvar conexão"}
+                  </Button>
+
+                  {item.key === "webhook" && lastWebhookSetup && (
+                    <div className="rounded-md border bg-background p-3 text-xs">
+                      <p className="font-medium">Copie estes dados agora</p>
+                      <p className="mt-2 break-all"><strong>URL:</strong> {window.location.origin}{lastWebhookSetup.path}</p>
+                      <p className="mt-2 break-all"><strong>Header:</strong> {lastWebhookSetup.secretHeader}</p>
+                      <p className="mt-2 break-all"><strong>Segredo:</strong> {lastWebhookSetup.secret}</p>
+                      <p className="mt-2 text-muted-foreground">O segredo não será exibido novamente.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {customIntegrations.length > 0 && (
+          <div className="mt-6">
+            <h3 className="text-sm font-semibold">Conexões personalizadas salvas</h3>
+            <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {customIntegrations.map((connection) => (
+                <div key={connection.id} className="rounded-xl border bg-background p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h4 className="font-semibold">{connection.name}</h4>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {connection.kind.toUpperCase()} {connection.baseUrl ? `· ${connection.baseUrl}` : "· webhook de entrada"}
+                      </p>
+                    </div>
+                    <span className={connection.status === "connected" ? "text-xs font-semibold text-emerald-600" : connection.status === "error" ? "text-xs font-semibold text-red-600" : "text-xs font-semibold text-amber-600"}>
+                      {connection.status === "connected" ? "Conectado" : connection.status === "error" ? "Erro" : "Atenção"}
+                    </span>
+                  </div>
+                  {connection.lastError && <p className="mt-3 text-xs text-destructive">{connection.lastError}</p>}
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button variant="outline" disabled={busy === `custom-test-${connection.id}`} onClick={() => void testCustomIntegration(connection)}>
+                      {busy === `custom-test-${connection.id}` ? "Testando..." : "Testar conexão"}
+                    </Button>
+                    <Button variant="outline" disabled={busy === `custom-delete-${connection.id}`} onClick={() => void removeCustomIntegration(connection)}>
+                      Remover
+                    </Button>
+                  </div>
+                  {connection.kind === "webhook" && !connection.lastEventAt && (
+                    <p className="mt-3 text-[11px] text-muted-foreground">Aguardando o primeiro evento assinado para confirmar a conexão.</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

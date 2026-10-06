@@ -31,6 +31,7 @@ import { extractBusinessDataFromDocuments } from "../lib/document-extraction.js"
 import { generateSubdomainSlug } from "../lib/subdomain.js";
 import { encrypt } from "../lib/crypto.js";
 import { getGoogleAdsConnectionByTenantId } from "../services/google-ads-oauth.js";
+import { getMetaAdsConnectionByTenantId } from "../services/meta-ads-oauth.js";
 import { callOpenAI } from "../lib/ai-gateway.js";
 import { getActiveCatalogCount } from "../lib/catalog-readiness.js";
 import { ensureTenantProposalBuilderTemplate } from "../lib/proposal-builder.js";
@@ -1288,7 +1289,7 @@ router.get("/onboarding/integracoes", authenticate, async (req, res) => {
   const socialConnections = await db.select({ provider: socialConnectionsTable.provider, status: socialConnectionsTable.status }).from(socialConnectionsTable).where(eq(socialConnectionsTable.tenantId, tenantId));
 
   const [tenantData] = await db
-    .select({ asaasApiKey: tenantsTable.asaasApiKey, zapsignApiKey: tenantsTable.zapsignApiKey, googleAdsConversionId: tenantsTable.googleAdsConversionId, metaPixelId: tenantsTable.metaPixelId, linkedinInsightTagId: tenantsTable.linkedinInsightTagId, tiktokPixelId: tenantsTable.tiktokPixelId })
+    .select({ asaasApiKey: tenantsTable.asaasApiKey, zapsignApiKey: tenantsTable.zapsignApiKey, googleAdsConversionId: tenantsTable.googleAdsConversionId, ga4MeasurementId: tenantsTable.ga4MeasurementId, gtmContainerId: tenantsTable.gtmContainerId, metaPixelId: tenantsTable.metaPixelId, linkedinInsightTagId: tenantsTable.linkedinInsightTagId, tiktokPixelId: tenantsTable.tiktokPixelId })
     .from(tenantsTable).where(eq(tenantsTable.id, tenantId));
 
   return res.json({
@@ -1317,8 +1318,125 @@ router.get("/onboarding/integracoes", authenticate, async (req, res) => {
     site: { published: !!publishedSite },
     domain: { configured: !!domain, active: domain?.status === "active", name: domain?.domain ?? null, status: domain?.status ?? null },
     searchConsole: { connected: !!searchConsole && searchConsole.status !== "disconnected", verified: searchConsole?.verified === true },
-    tracking: { googleAds: !!tenantData?.googleAdsConversionId, metaPixel: !!tenantData?.metaPixelId, linkedinInsightTag: /^\d+$/.test(tenantData?.linkedinInsightTagId ?? ""), tiktokPixel: /^[A-Za-z0-9_-]+$/.test(tenantData?.tiktokPixelId ?? "") },
+    tracking: {
+      googleAds: !!tenantData?.googleAdsConversionId,
+      googleAdsConversionId: tenantData?.googleAdsConversionId ?? null,
+      ga4: /^G-[A-Z0-9]+$/i.test(tenantData?.ga4MeasurementId ?? ""),
+      ga4MeasurementId: tenantData?.ga4MeasurementId ?? null,
+      gtm: /^GTM-[A-Z0-9]+$/i.test(tenantData?.gtmContainerId ?? ""),
+      gtmContainerId: tenantData?.gtmContainerId ?? null,
+      metaPixel: /^\d+$/.test(tenantData?.metaPixelId ?? ""),
+      metaPixelId: tenantData?.metaPixelId ?? null,
+      linkedinInsightTag: /^\d+$/.test(tenantData?.linkedinInsightTagId ?? ""),
+      linkedinInsightTagId: tenantData?.linkedinInsightTagId ?? null,
+      tiktokPixel: /^[A-Za-z0-9_-]+$/.test(tenantData?.tiktokPixelId ?? ""),
+      tiktokPixelId: tenantData?.tiktokPixelId ?? null,
+    },
     social: { linkedin: socialConnections.some((connection) => connection.provider === "linkedin" && connection.status === "active"), tiktok: socialConnections.some((connection) => connection.provider === "tiktok" && connection.status === "active") },
+  });
+});
+
+
+// ── PUT /onboarding/integracoes/tracking ──────────────────────────────────────
+router.put("/onboarding/integracoes/tracking", authenticate, async (req, res) => {
+  const tenantId = req.user!.tenantId;
+  if (!tenantId) return res.status(403).json({ error: "Tenant não identificado" });
+
+  const parsed = z.object({
+    googleAdsConversionId: z.string().trim().max(40).nullable().optional(),
+    ga4MeasurementId: z.string().trim().max(40).nullable().optional(),
+    gtmContainerId: z.string().trim().max(40).nullable().optional(),
+    metaPixelId: z.string().trim().max(40).nullable().optional(),
+    linkedinInsightTagId: z.string().trim().max(40).nullable().optional(),
+    tiktokPixelId: z.string().trim().max(80).nullable().optional(),
+  }).safeParse(req.body ?? {});
+
+  if (!parsed.success) return res.status(422).json({ error: "Dados de tracking inválidos", issues: parsed.error.issues });
+
+  const normalize = (value: string | null | undefined) => value?.trim() || null;
+  const values = {
+    googleAdsConversionId: normalize(parsed.data.googleAdsConversionId),
+    ga4MeasurementId: normalize(parsed.data.ga4MeasurementId),
+    gtmContainerId: normalize(parsed.data.gtmContainerId),
+    metaPixelId: normalize(parsed.data.metaPixelId),
+    linkedinInsightTagId: normalize(parsed.data.linkedinInsightTagId),
+    tiktokPixelId: normalize(parsed.data.tiktokPixelId),
+  };
+
+  const errors: Record<string, string> = {};
+  if (values.googleAdsConversionId && !/^AW-\d+$/.test(values.googleAdsConversionId)) errors.googleAdsConversionId = "Use o formato AW-XXXXXXXXX.";
+  if (values.ga4MeasurementId && !/^G-[A-Z0-9]+$/i.test(values.ga4MeasurementId)) errors.ga4MeasurementId = "Use o formato G-XXXXXXXXXX.";
+  if (values.gtmContainerId && !/^GTM-[A-Z0-9]+$/i.test(values.gtmContainerId)) errors.gtmContainerId = "Use o formato GTM-XXXXXXX.";
+  if (values.metaPixelId && !/^\d+$/.test(values.metaPixelId)) errors.metaPixelId = "O Meta Pixel deve conter apenas números.";
+  if (values.linkedinInsightTagId && !/^\d+$/.test(values.linkedinInsightTagId)) errors.linkedinInsightTagId = "O Partner ID do LinkedIn deve conter apenas números.";
+  if (values.tiktokPixelId && !/^[A-Za-z0-9_-]+$/.test(values.tiktokPixelId)) errors.tiktokPixelId = "Pixel TikTok inválido.";
+
+  if (Object.keys(errors).length) return res.status(422).json({ error: "Formato inválido", fields: errors });
+
+  await db.update(tenantsTable).set({ ...values, updatedAt: new Date() }).where(eq(tenantsTable.id, tenantId));
+
+  return res.json({
+    success: true,
+    tracking: {
+      googleAds: Boolean(values.googleAdsConversionId),
+      ga4: Boolean(values.ga4MeasurementId),
+      gtm: Boolean(values.gtmContainerId),
+      metaPixel: Boolean(values.metaPixelId),
+      linkedinInsightTag: Boolean(values.linkedinInsightTagId),
+      tiktokPixel: Boolean(values.tiktokPixelId),
+    },
+  });
+});
+
+// ── GET /onboarding/integracoes/tracking-health ───────────────────────────────
+router.get("/onboarding/integracoes/tracking-health", authenticate, async (req, res) => {
+  const tenantId = req.user!.tenantId;
+  if (!tenantId) return res.status(403).json({ error: "Tenant não identificado" });
+
+  const [[tenant], [site], metaAds] = await Promise.all([
+    db.select({
+      googleAdsConversionId: tenantsTable.googleAdsConversionId,
+      ga4MeasurementId: tenantsTable.ga4MeasurementId,
+      gtmContainerId: tenantsTable.gtmContainerId,
+      metaPixelId: tenantsTable.metaPixelId,
+      linkedinInsightTagId: tenantsTable.linkedinInsightTagId,
+      tiktokPixelId: tenantsTable.tiktokPixelId,
+    }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
+    db.select({ id: generatedSitesTable.id, siteSlug: generatedSitesTable.siteSlug })
+      .from(generatedSitesTable)
+      .where(and(eq(generatedSitesTable.tenantId, tenantId), eq(generatedSitesTable.published, true)))
+      .limit(1),
+    getMetaAdsConnectionByTenantId(tenantId).catch(() => null),
+  ]);
+
+  const sitePublished = Boolean(site?.id);
+  const configured = {
+    googleAds: /^AW-\d+$/.test(tenant?.googleAdsConversionId ?? ""),
+    ga4: /^G-[A-Z0-9]+$/i.test(tenant?.ga4MeasurementId ?? ""),
+    gtm: /^GTM-[A-Z0-9]+$/i.test(tenant?.gtmContainerId ?? ""),
+    metaPixel: /^\d+$/.test(tenant?.metaPixelId ?? ""),
+    linkedinInsightTag: /^\d+$/.test(tenant?.linkedinInsightTagId ?? ""),
+    tiktokPixel: /^[A-Za-z0-9_-]+$/.test(tenant?.tiktokPixelId ?? ""),
+  };
+
+  const allowlist = new Set((process.env["MARKETING_SERVER_CONVERSIONS_TENANT_IDS"] ?? "").split(",").map((x) => x.trim()).filter(Boolean));
+  const capiGlobalEnabled = process.env["MARKETING_SERVER_CONVERSIONS_ENABLED"] === "true";
+  const capiTenantEnabled = allowlist.has(tenantId);
+  const metaConnected = Boolean(metaAds?.status === "active" && metaAds?.accessToken);
+
+  return res.json({
+    sitePublished,
+    siteSlug: site?.siteSlug ?? null,
+    configured,
+    installedOnVendorSite: Object.fromEntries(Object.entries(configured).map(([key, value]) => [key, Boolean(value && sitePublished)])),
+    metaCapi: {
+      pixelConfigured: configured.metaPixel,
+      metaConnected,
+      globalEnabled: capiGlobalEnabled,
+      tenantEnabled: capiTenantEnabled,
+      ready: configured.metaPixel && metaConnected && capiGlobalEnabled && capiTenantEnabled,
+      consentRequired: true,
+    },
   });
 });
 
