@@ -31,12 +31,13 @@ import {
 import { buildUserFunctionFilter } from "../middlewares/auth.js";
 import { checkTurnoCapacity, dispatchPendingEntregas, pickNextMotorista } from "../lib/entregas.js";
 import { triggerDeliveryFeedbackRequest } from "../services/post-venda.js";
-import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
+import { sendAgentAttachments, sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { generateSupportReportDraft } from "../services/support-report.js";
 import { requestSupportFeedback } from "../services/support-feedback.js";
 import { canAdvanceWorkCard, TERMINAL_WORK_STAGES } from "../lib/pipeline-progress.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { generateDeliveryAcceptancePdf } from "../lib/delivery-acceptance-pdf.js";
+import { generateSupportOrderPdf, type SupportOrderTimelineEntry } from "../lib/support-order-pdf.js";
 import { generateInstallationAcceptancePdf, type InstallationAcceptanceSnapshot } from "../lib/pdf-installation-acceptance.js";
 
 const router: IRouter = Router();
@@ -1505,6 +1506,19 @@ router.post("/tenants/:tenantId/support-cases", async (req, res) => {
       produtos: parsed.data.produtos,
       origem: parsed.data.origem,
       substatus: null,
+      supportWorkOrder: {
+        version: 1,
+        status: "aberta",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        timeline: [{
+          at: new Date().toISOString(),
+          userName: responsavel.name || "Equipe",
+          text: `Assistência criada. Relato inicial: ${parsed.data.relato}`,
+          visibility: "cliente",
+          kind: "abertura",
+        }],
+      },
     },
   }).returning();
 
@@ -2235,6 +2249,256 @@ const supportReportSchema = z.object({
   clienteAcompanhou: z.boolean().nullable().default(null),
   recomendacoes: z.string().max(10000).default(""),
   observacoes: z.string().max(10000).default(""),
+});
+
+const supportOrderUpdateSchema = z.object({
+  text: z.string().trim().min(1).max(10000),
+  visibility: z.enum(["interno", "cliente"]).default("interno"),
+  kind: z.enum(["atualizacao", "execucao", "pendencia", "material", "observacao"]).default("atualizacao"),
+});
+
+function supportOrderTimeline(metadata: Record<string, unknown> | null | undefined): SupportOrderTimelineEntry[] {
+  const raw = metadata?.supportWorkOrder;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+  const timeline = (raw as Record<string, unknown>).timeline;
+  return Array.isArray(timeline) ? timeline as SupportOrderTimelineEntry[] : [];
+}
+
+async function supportOrderPdfInput(card: typeof workCardsTable.$inferSelect, final: boolean) {
+  const [lead] = card.leadId
+    ? await db.select({ nome: leadsTable.nome, empresa: leadsTable.empresa })
+        .from(leadsTable)
+        .where(and(eq(leadsTable.id, card.leadId), eq(leadsTable.tenantId, card.tenantId)))
+        .limit(1)
+    : [];
+  const [owner] = card.responsavelId
+    ? await db.select({ name: usersTable.name })
+        .from(usersTable)
+        .where(and(eq(usersTable.id, card.responsavelId), eq(usersTable.tenantId, card.tenantId)))
+        .limit(1)
+    : [];
+  const [deal] = card.dealId
+    ? await db.select({ titulo: dealsTable.titulo })
+        .from(dealsTable)
+        .where(and(eq(dealsTable.id, card.dealId), eq(dealsTable.tenantId, card.tenantId)))
+        .limit(1)
+    : [];
+  const attachments = await db.select({
+    nome: workCardAttachmentsTable.nome,
+    descricao: workCardAttachmentsTable.descricao,
+    mimeType: workCardAttachmentsTable.mimeType,
+  }).from(workCardAttachmentsTable).where(and(
+    eq(workCardAttachmentsTable.tenantId, card.tenantId),
+    eq(workCardAttachmentsTable.workCardId, card.id),
+  )).orderBy(desc(workCardAttachmentsTable.createdAt));
+
+  const metadata = (card.metadata ?? {}) as Record<string, unknown>;
+  const report = (metadata.supportReport ?? metadata.supportReportDraft ?? {}) as Record<string, unknown>;
+  return {
+    code: card.codigo,
+    title: card.titulo,
+    client: lead?.empresa || lead?.nome || "Cliente",
+    order: deal?.titulo || card.dealId || null,
+    responsible: owner?.name || null,
+    stage: card.etapa,
+    openedAt: card.createdAt,
+    closedAt: final ? (card.dataFimEfetiva ?? new Date()) : card.dataFimEfetiva,
+    problem: String(report.problemaRelatado ?? card.descricao ?? ""),
+    diagnosis: typeof report.diagnostico === "string" ? report.diagnostico : null,
+    service: typeof report.servicoExecutado === "string" ? report.servicoExecutado : null,
+    materials: Array.isArray(report.materiaisUtilizados) ? report.materiaisUtilizados.map(String) : [],
+    situation: typeof report.situacaoFinal === "string" ? report.situacaoFinal : null,
+    recommendations: typeof report.recomendacoes === "string" ? report.recomendacoes : null,
+    observations: typeof report.observacoes === "string" ? report.observacoes : null,
+    timeline: supportOrderTimeline(metadata),
+    attachments: attachments.map((a) => ({ name: a.nome, description: a.descricao, mimeType: a.mimeType })),
+    final,
+  };
+}
+
+router.post("/work-cards/:id/support-order/update", async (req, res) => {
+  const parsed = supportOrderUpdateSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.message, issues: parsed.error.issues }); return; }
+  const [card] = await db.select().from(workCardsTable).where(eq(workCardsTable.id, String(req.params.id))).limit(1);
+  if (!card || card.pipeline !== "suporte") { res.status(404).json({ error: "Assistência não encontrada" }); return; }
+  if (!canAccessTenant(req, card.tenantId)) { res.status(403).json({ error: "Access denied to this tenant" }); return; }
+  if (restrictedToOwnWork(req) && card.responsavelId && card.responsavelId !== req.user?.sub) { res.status(403).json({ error: "Este card pertence a outro responsável" }); return; }
+
+  const now = new Date();
+  const metadata = (card.metadata ?? {}) as Record<string, unknown>;
+  const current = metadata.supportWorkOrder && typeof metadata.supportWorkOrder === "object" && !Array.isArray(metadata.supportWorkOrder)
+    ? metadata.supportWorkOrder as Record<string, unknown>
+    : {};
+  const [actor] = req.user?.sub
+    ? await db.select({ name: usersTable.name }).from(usersTable)
+        .where(and(eq(usersTable.id, req.user.sub), eq(usersTable.tenantId, card.tenantId))).limit(1)
+    : [];
+  const entry: SupportOrderTimelineEntry = {
+    at: now.toISOString(),
+    userName: actor?.name || "Equipe",
+    text: parsed.data.text,
+    visibility: parsed.data.visibility,
+    kind: parsed.data.kind,
+  };
+  const timeline = [...supportOrderTimeline(metadata), entry].slice(-500);
+  const nextMetadata = {
+    ...metadata,
+    supportWorkOrder: {
+      ...current,
+      version: Number(current.version ?? 1),
+      status: String(current.status ?? "aberta"),
+      createdAt: current.createdAt ?? card.createdAt.toISOString(),
+      updatedAt: now.toISOString(),
+      timeline,
+    },
+  };
+  const [updated] = await db.update(workCardsTable).set({ metadata: nextMetadata, updatedAt: now })
+    .where(eq(workCardsTable.id, card.id)).returning();
+
+  if (card.leadId) {
+    await recordWorkHistory({
+      tenantId: card.tenantId,
+      leadId: card.leadId,
+      dealId: card.dealId,
+      tipo: "assistencia",
+      titulo: `${card.codigo}: ${parsed.data.kind.replaceAll("_", " ")}`,
+      descricao: parsed.data.text,
+      responsavelId: card.responsavelId,
+    });
+  }
+
+  if (parsed.data.visibility === "cliente" && card.leadId) {
+    const [lead] = await db.select({ telefone: leadsTable.telefone }).from(leadsTable)
+      .where(and(eq(leadsTable.id, card.leadId), eq(leadsTable.tenantId, card.tenantId))).limit(1);
+    if (lead?.telefone) {
+      await sendDirectWhatsAppMessage(
+        card.tenantId,
+        lead.telefone,
+        `🛠️ Atualização da assistência ${card.codigo}\n${parsed.data.text}\n\nAcompanhe pelo Portal do Cliente.`,
+        req.log,
+      ).catch((error) => req.log.warn({ err: error, workCardId: card.id }, "support-order: atualização do cliente não enviada"));
+    }
+  }
+
+  res.json({ card: updated, entry });
+});
+
+router.get("/work-cards/:id/support-order/pdf", async (req, res) => {
+  const [card] = await db.select().from(workCardsTable).where(eq(workCardsTable.id, String(req.params.id))).limit(1);
+  if (!card || card.pipeline !== "suporte") { res.status(404).json({ error: "Assistência não encontrada" }); return; }
+  if (!canAccessTenant(req, card.tenantId)) { res.status(403).json({ error: "Access denied to this tenant" }); return; }
+  const final = Boolean(((card.metadata ?? {}) as Record<string, unknown>).supportOrderFinalizedAt);
+  const pdf = await generateSupportOrderPdf(await supportOrderPdfInput(card, final));
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `inline; filename="OS-${card.codigo}${final ? "-FINAL" : "-EM-ANDAMENTO"}.pdf"`);
+  res.send(pdf);
+});
+
+router.post("/work-cards/:id/support-order/finalize", async (req, res) => {
+  const parsed = supportReportSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.message, issues: parsed.error.issues }); return; }
+  const [card] = await db.select().from(workCardsTable).where(eq(workCardsTable.id, String(req.params.id))).limit(1);
+  if (!card || card.pipeline !== "suporte") { res.status(404).json({ error: "Assistência não encontrada" }); return; }
+  if (!canAccessTenant(req, card.tenantId)) { res.status(403).json({ error: "Access denied to this tenant" }); return; }
+  if (restrictedToOwnWork(req) && card.responsavelId && card.responsavelId !== req.user?.sub) { res.status(403).json({ error: "Este card pertence a outro responsável" }); return; }
+
+  const now = new Date();
+  const metadata = (card.metadata ?? {}) as Record<string, unknown>;
+  const currentOrder = metadata.supportWorkOrder && typeof metadata.supportWorkOrder === "object" && !Array.isArray(metadata.supportWorkOrder)
+    ? metadata.supportWorkOrder as Record<string, unknown>
+    : {};
+  const version = Number(currentOrder.version ?? 1);
+
+  const cardForPdf = {
+    ...card,
+    etapa: "fechamento_assistencia",
+    dataFimEfetiva: now,
+    metadata: { ...metadata, supportReport: parsed.data },
+  };
+  const pdf = await generateSupportOrderPdf(await supportOrderPdfInput(cardForPdf as typeof card, true));
+  const filename = `OS-${card.codigo}-R${version}.pdf`;
+  const objectPath = await objectStorage.savePrivateBuffer(pdf, "application/pdf", filename);
+  const [attachment] = await db.insert(workCardAttachmentsTable).values({
+    tenantId: card.tenantId,
+    workCardId: card.id,
+    leadId: card.leadId,
+    criadoPor: req.user?.sub ?? null,
+    origem: "support_order_final",
+    nome: filename,
+    url: `/api/storage${objectPath}`,
+    mimeType: "application/pdf",
+    tamanho: pdf.length,
+    descricao: `Ordem de Serviço final da assistência ${card.codigo}`,
+    metadata: { documentType: "ordem_servico", final: true, version },
+  }).returning();
+
+  const nextMetadata = {
+    ...metadata,
+    supportReport: parsed.data,
+    supportReportConfirmed: true,
+    supportReportConfirmedAt: now.toISOString(),
+    supportReportConfirmedBy: req.user?.sub ?? null,
+    supportOrderFinalizedAt: now.toISOString(),
+    supportOrderFinalizedBy: req.user?.sub ?? null,
+    supportOrderFinalAttachmentId: attachment.id,
+    supportWorkOrder: {
+      ...currentOrder,
+      version,
+      status: "finalizada",
+      finalizedAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      timeline: supportOrderTimeline(metadata),
+    },
+  };
+
+  const [updated] = await db.update(workCardsTable).set({
+    etapa: "fechamento_assistencia",
+    dataFimEfetiva: now,
+    metadata: nextMetadata,
+    updatedAt: now,
+  }).where(eq(workCardsTable.id, card.id)).returning();
+
+  if (card.leadId) {
+    await db.insert(activitiesTable).values({
+      tenantId: card.tenantId,
+      leadId: card.leadId,
+      dealId: card.dealId,
+      tipo: "assistencia",
+      titulo: `${card.codigo}: assistência finalizada`,
+      descricao: `Ordem de Serviço final gerada e compartilhada. Situação: ${parsed.data.situacaoFinal}.`,
+      status: "concluida",
+      concluidaEm: now,
+      responsavelId: card.responsavelId,
+      anexoNome: filename,
+      anexoUrl: `/api/storage${objectPath}`,
+      anexoMimeType: "application/pdf",
+      anexoTamanho: pdf.length,
+      anexoCategoria: "documento",
+    });
+  }
+
+  const recipients: Array<{ phone: string; role: string }> = [];
+  if (card.leadId) {
+    const [lead] = await db.select({ telefone: leadsTable.telefone }).from(leadsTable)
+      .where(and(eq(leadsTable.id, card.leadId), eq(leadsTable.tenantId, card.tenantId))).limit(1);
+    if (lead?.telefone) recipients.push({ phone: lead.telefone, role: "cliente" });
+  }
+  if (card.responsavelId) {
+    const [owner] = await db.select({ telefone: usersTable.telefone }).from(usersTable)
+      .where(and(eq(usersTable.id, card.responsavelId), eq(usersTable.tenantId, card.tenantId))).limit(1);
+    if (owner?.telefone && !recipients.some((r) => r.phone === owner.telefone)) recipients.push({ phone: owner.telefone, role: "responsável" });
+  }
+  for (const recipient of recipients) {
+    const message = `✅ Assistência ${card.codigo} finalizada.\nA Ordem de Serviço final segue anexada para ${recipient.role}.\nSituação: ${parsed.data.situacaoFinal.replaceAll("_", " ")}.`;
+    await sendDirectWhatsAppMessage(card.tenantId, recipient.phone, message, req.log).catch(() => undefined);
+    await sendAgentAttachments(card.tenantId, recipient.phone, [{
+      name: filename,
+      objectPath,
+      mimeType: "application/pdf",
+    }], req.log).catch((error) => req.log.warn({ err: error, workCardId: card.id }, "support-order: PDF final não enviado"));
+  }
+
+  res.json({ card: updated, attachment, sharedWith: recipients.map((r) => r.role) });
 });
 
 router.post("/work-cards/:id/support-report/draft", async (req, res) => {

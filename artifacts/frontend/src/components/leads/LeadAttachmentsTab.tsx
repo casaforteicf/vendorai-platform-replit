@@ -125,6 +125,58 @@ type UnifiedAttachment = {
 
 const EMPTY_STATE: AttachmentState = { files: [], folders: [], overrides: {} };
 
+const CORE_FOLDERS = [
+  "Documentos / Contratos",
+  "Documentos / Propostas e Orçamentos",
+  "Documentos / Ordens de Serviço",
+  "Financeiro / Boletos",
+  "Financeiro / PIX",
+  "Financeiro / Notas Fiscais",
+  "Financeiro / Comprovantes e Recibos",
+  "Projetos",
+  "Assistência / Suporte",
+  "Execução / Obra",
+  "Conversas / Arquivos recebidos",
+  "Imagens e Fotos",
+  "Vídeos",
+  "Áudios",
+  "Outros",
+] as const;
+
+function automaticFolder(input: {
+  name?: string | null;
+  category?: string | null;
+  origin?: string | null;
+  type?: AttachmentType | null;
+  activityType?: string | null;
+  pipeline?: string | null;
+}): string {
+  const text = [
+    input.name,
+    input.category,
+    input.origin,
+    input.activityType,
+    input.pipeline,
+  ].filter(Boolean).join(" ").toLowerCase();
+
+  if (/contrato|contract|termo assinado|assinad/.test(text)) return "Documentos / Contratos";
+  if (/proposta|orçamento|orcamento|cotação|cotacao/.test(text)) return "Documentos / Propostas e Orçamentos";
+  if (/ordem de serviço|ordem de servico|\bos\b|service order/.test(text)) return "Documentos / Ordens de Serviço";
+  if (/boleto|linha digitável|linha digitavel/.test(text)) return "Financeiro / Boletos";
+  if (/\bpix\b|qr code|qrcode/.test(text)) return "Financeiro / PIX";
+  if (/nota fiscal|\bnf-e?\b|\bnfe\b|danfe/.test(text)) return "Financeiro / Notas Fiscais";
+  if (/comprovante|recibo|pagamento|baixa financeira/.test(text)) return "Financeiro / Comprovantes e Recibos";
+  if (/projeto|planta|render|fachada|memorial|especificaç|especificac/.test(text)) return "Projetos";
+  if (/assistência|assistencia|suporte|garantia|manutenção|manutencao/.test(text)) return "Assistência / Suporte";
+  if (/execução|execucao|obra|instalação|instalacao|entrega/.test(text)) return "Execução / Obra";
+  if (/whatsapp|e-mail|email|conversa|mensagem|omnichannel/.test(text)) return "Conversas / Arquivos recebidos";
+  if (input.type === "image") return "Imagens e Fotos";
+  if (input.type === "video") return "Vídeos";
+  if (input.type === "audio") return "Áudios";
+  if (input.type === "document") return "Outros";
+  return "Outros";
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -423,7 +475,11 @@ export default function LeadAttachmentsTab() {
         size: file.fileSize,
         createdAt: file.createdAt,
         origin: "Upload no cliente",
-        folderPath: normalizeFolder(override.folderPath ?? file.folderPath ?? ""),
+        folderPath: normalizeFolder(
+          override.folderPath ??
+          file.folderPath ??
+          automaticFolder({ name: file.name, category: file.category, origin: "Upload no cliente", type: file.type })
+        ),
         marketingStatus: promoted ? "approved" : (override.marketingStatus ?? file.marketingStatus ?? "only_attachment"),
         mediaAssetId: promoted?.id ?? override.mediaAssetId,
       });
@@ -447,7 +503,16 @@ export default function LeadAttachmentsTab() {
         size: activity.anexoTamanho,
         createdAt: activity.createdAt,
         origin: activity.tipo === "assistencia" ? "Assistência" : "Atividade",
-        folderPath: normalizeFolder(override.folderPath ?? ""),
+        folderPath: normalizeFolder(
+          override.folderPath ??
+          automaticFolder({
+            name: activity.anexoNome || activity.titulo,
+            category: activity.anexoCategoria,
+            origin: activity.tipo === "assistencia" ? "Assistência" : "Atividade",
+            type: inferType(activity.anexoMimeType, activity.anexoNome),
+            activityType: activity.tipo,
+          })
+        ),
         marketingStatus: promoted ? "approved" : (override.marketingStatus ?? "only_attachment"),
         mediaAssetId: promoted?.id ?? override.mediaAssetId,
       });
@@ -469,7 +534,15 @@ export default function LeadAttachmentsTab() {
         size: attachment.tamanho,
         createdAt: attachment.createdAt,
         origin: attachment.pipeline === "suporte" || String(attachment.origem ?? "").includes("assist") ? "Assistência" : "Execução",
-        folderPath: normalizeFolder(override.folderPath ?? ""),
+        folderPath: normalizeFolder(
+          override.folderPath ??
+          automaticFolder({
+            name: attachment.nome,
+            origin: attachment.origem,
+            type: inferType(attachment.mimeType, attachment.nome),
+            pipeline: attachment.pipeline,
+          })
+        ),
         marketingStatus: promoted ? "approved" : (override.marketingStatus ?? "only_attachment"),
         mediaAssetId: promoted?.id ?? override.mediaAssetId,
       });
@@ -493,7 +566,16 @@ export default function LeadAttachmentsTab() {
         size: asset.fileSize,
         createdAt: asset.createdAt,
         origin: context.type === "client" ? "Mídias do cliente" : "Central de Mídias",
-        folderPath: normalizeFolder(override.folderPath ?? metadataString(metadata, "folderPath")),
+        folderPath: normalizeFolder(
+          override.folderPath ??
+          metadataString(metadata, "folderPath") ??
+          automaticFolder({
+            name: metadataString(metadata, "displayName") || asset.originalFilename,
+            category: metadataString(metadata, "category"),
+            origin: asset.source,
+            type: asset.type,
+          })
+        ),
         marketingStatus: "approved",
         mediaAssetId: asset.id,
       });
@@ -512,7 +594,7 @@ export default function LeadAttachmentsTab() {
   }, [attachmentState, activities, workAttachments, mediaAssets, leadId]);
 
   const folders = useMemo(() => {
-    const all = new Set<string>(attachmentState.folders);
+    const all = new Set<string>([...CORE_FOLDERS, ...attachmentState.folders]);
     unified.forEach((item) => { if (item.folderPath) all.add(item.folderPath); });
     return [...all].sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [attachmentState.folders, unified]);
@@ -555,7 +637,7 @@ export default function LeadAttachmentsTab() {
           mimeType: file.type || "application/octet-stream",
           fileSize: file.size,
           type,
-          folderPath: folderFilter,
+          folderPath: folderFilter || automaticFolder({ name: file.name, type, origin: "Importação manual" }),
           marketingStatus: "only_attachment",
           createdAt: new Date().toISOString(),
         });
@@ -686,7 +768,7 @@ export default function LeadAttachmentsTab() {
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <CardTitle className="flex items-center gap-2 text-base"><Paperclip className="h-4 w-4" />Anexos do cliente</CardTitle>
-            <p className="mt-1 text-xs text-muted-foreground">Arquivos enviados aqui, em atividades, execução e assistência aparecem juntos. Só os aprovados entram em Mídias.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Repositório central do lead: documentos, financeiro, projetos, imagens, vídeos e áudios aparecem juntos e são organizados automaticamente em pastas. Arquivos externos também podem ser importados.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -701,7 +783,7 @@ export default function LeadAttachmentsTab() {
               {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
               {uploading && uploadProgress
                 ? ` Enviando ${Math.min(100, Math.round((uploadProgress.loaded / Math.max(1, uploadProgress.total)) * 100))}%`
-                : " Adicionar arquivo"}
+                : " Importar arquivo"}
             </Button>
             <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setFolderDialogOpen(true)} disabled={saving}>
               <Plus className="h-4 w-4" /> Nova pasta
