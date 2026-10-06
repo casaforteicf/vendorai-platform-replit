@@ -158,6 +158,7 @@ export * from "./beauty_prontuarios";
 export * from "./servicos_prestadores";
 export * from "./servicos_tipos";
 export * from "./servicos_ordens";
+export * from "./servicos_modelos_os";
 export * from "./food_cardapio_itens";
 export * from "./food_pedidos";
 export * from "./food_pedido_itens";
