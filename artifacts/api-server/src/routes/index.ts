@@ -181,6 +181,7 @@ import organizacoesRouter from "./organizacoes";
 import tenantSwitchRouter from "./tenant_switch.js";
 import adminFinancialRouter from "./admin_financial";
 import sellerCommissionsRouter from "./sellerCommissions";
+import commercialPartnershipsRouter from "./commercial_partnerships";
 import contentTrackingRouter from "./content_tracking";
 import tenantNavModulesRouter from "./tenantNavModules";
 import vendasPracaRouter from "./vendas_praca";
@@ -609,6 +610,7 @@ router.use(adminFinancialRouter);
 
 // Comissões de vendedores
 router.use(sellerCommissionsRouter);
+router.use(commercialPartnershipsRouter);
 
 // Módulos de navegação por tenant
 router.use(tenantNavModulesRouter);

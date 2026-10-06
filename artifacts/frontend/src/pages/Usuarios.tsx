@@ -425,6 +425,20 @@ interface RepresentativeTenantUser {
   userFunction?: UserFunction | null;
 }
 
+interface CommercialPartnership {
+  id: string;
+  ownerTenantId: string;
+  partnerTenantId: string;
+  partnerName?: string | null;
+  partnerTenantCode?: string | null;
+  relationshipType: string;
+  status: string;
+  defaultCommissionPercent: string;
+  defaultPermissions: string[];
+  authorizedUserIds: string[];
+  distributionMode: string;
+}
+
 interface TenantUserFunction {
   id: string;
   tenantId: string;
@@ -487,6 +501,14 @@ export default function Usuarios() {
   const [newFunctionRepresentativeUserIds, setNewFunctionRepresentativeUserIds] = useState<string[]>([]);
   const [newFunctionLeadAccessScope, setNewFunctionLeadAccessScope] = useState<"assigned" | "territory" | "all_authorized">("assigned");
   const [creatingFunction, setCreatingFunction] = useState(false);
+  const [partnershipDialogOpen, setPartnershipDialogOpen] = useState(false);
+  const [partnershipSearch, setPartnershipSearch] = useState("");
+  const [partnershipTenantId, setPartnershipTenantId] = useState("");
+  const [partnershipTenantCode, setPartnershipTenantCode] = useState("");
+  const [partnershipTenantName, setPartnershipTenantName] = useState("");
+  const [partnershipAuthorizedUsers, setPartnershipAuthorizedUsers] = useState<string[]>([]);
+  const [partnershipCommission, setPartnershipCommission] = useState("15");
+  const [creatingPartnership, setCreatingPartnership] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -507,6 +529,28 @@ export default function Usuarios() {
   });
 
   const { data: users, isLoading } = useListTenantUsers(tenantId);
+  const { data: commercialPartnerships = [] } = useQuery<CommercialPartnership[]>({
+    queryKey: ["commercial-partnerships", tenantId],
+    enabled: Boolean(tenantId),
+    queryFn: () => customFetch<CommercialPartnership[]>(`/api/tenants/${tenantId}/commercial-partnerships`, { responseType: "json" }),
+  });
+  const normalizedPartnershipSearch = partnershipSearch.trim();
+  const { data: partnershipTenantOptions = [], isFetching: searchingPartnershipTenants } = useQuery({
+    queryKey: ["commercial-partnership-tenant-search", tenantId, normalizedPartnershipSearch],
+    enabled: Boolean(tenantId) && partnershipDialogOpen && normalizedPartnershipSearch.length >= 2,
+    queryFn: () => customFetch<RepresentativeTenantOption[]>(
+      `/api/tenants/${tenantId}/representative-tenants?search=${encodeURIComponent(normalizedPartnershipSearch)}`,
+      { responseType: "json" },
+    ),
+  });
+  const { data: partnershipTenantUsers = [], isFetching: loadingPartnershipUsers } = useQuery({
+    queryKey: ["commercial-partnership-users-picker", tenantId, partnershipTenantId],
+    enabled: Boolean(tenantId) && partnershipDialogOpen && Boolean(partnershipTenantId),
+    queryFn: () => customFetch<RepresentativeTenantUser[]>(
+      `/api/tenants/${tenantId}/representative-tenants/${partnershipTenantId}/users`,
+      { responseType: "json" },
+    ),
+  });
   const { data: tenantFunctions = [] } = useQuery({
     queryKey: userFunctionsQueryKey,
     enabled: Boolean(tenantId),
@@ -978,6 +1022,50 @@ export default function Usuarios() {
     }
   }
 
+  function resetPartnershipForm() {
+    setPartnershipSearch("");
+    setPartnershipTenantId("");
+    setPartnershipTenantCode("");
+    setPartnershipTenantName("");
+    setPartnershipAuthorizedUsers([]);
+    setPartnershipCommission("15");
+  }
+
+  async function createCommercialPartnership() {
+    if (!partnershipTenantId) {
+      toast({ title: "Selecione a empresa representante.", variant: "destructive" });
+      return;
+    }
+    const commission = Number(partnershipCommission || 15);
+    if (!Number.isFinite(commission) || commission < 0 || commission > 100) {
+      toast({ title: "Informe uma comissão válida entre 0% e 100%.", variant: "destructive" });
+      return;
+    }
+    setCreatingPartnership(true);
+    try {
+      await customFetch(`/api/tenants/${tenantId}/commercial-partnerships`, {
+        method: "POST",
+        body: JSON.stringify({
+          partnerTenantId: partnershipTenantId,
+          relationshipType: "representante_comercial",
+          defaultCommissionPercent: commission,
+          authorizedUserIds: partnershipAuthorizedUsers,
+          distributionMode: "partner_queue",
+          defaultPermissions: ["view_lead", "view_contacts", "create_activities", "move_pipeline", "create_proposal", "send_proposal", "negotiate", "close_deal", "assign_partner_user"],
+        }),
+        responseType: "json",
+      });
+      await queryClient.invalidateQueries({ queryKey: ["commercial-partnerships", tenantId] });
+      setPartnershipDialogOpen(false);
+      resetPartnershipForm();
+      toast({ title: "Empresa representante vinculada", description: "Agora ela pode ser escolhida como responsável nos negócios compartilhados." });
+    } catch (err: any) {
+      toast({ title: "Erro ao vincular representante", description: err?.message || copy.tryAgain, variant: "destructive" });
+    } finally {
+      setCreatingPartnership(false);
+    }
+  }
+
   async function confirmDelete() {
     if (!deleteTarget) return;
     try {
@@ -1083,6 +1171,58 @@ export default function Usuarios() {
           </Card>
         ))}
       </div>
+
+      <Card className="border-cyan-100">
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <BriefcaseBusiness className="h-5 w-5 text-cyan-700" />
+                <h2 className="font-semibold">Empresas representantes</h2>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Empresas/tenants que podem receber responsabilidade por leads e negócios. Os usuários continuam pertencendo ao tenant de origem.
+              </p>
+            </div>
+            <Button type="button" variant="outline" onClick={() => { resetPartnershipForm(); setPartnershipDialogOpen(true); }}>
+              <Plus className="mr-2 h-4 w-4" /> Vincular empresa
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {commercialPartnerships.filter((item) => item.ownerTenantId === tenantId && item.status === "active").length === 0 ? (
+            <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+              Nenhuma empresa representante vinculada. Vincule a empresa e depois escolha-a como responsável em cada negócio.
+            </div>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {commercialPartnerships
+                .filter((item) => item.ownerTenantId === tenantId && item.status === "active")
+                .map((partnership) => (
+                  <div key={partnership.id} className="rounded-lg border p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{partnership.partnerName || partnership.partnerTenantCode || partnership.partnerTenantId}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">Representante comercial</p>
+                      </div>
+                      <Badge variant="outline" className="bg-cyan-50 text-cyan-700 border-cyan-200">Ativa</Badge>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-md bg-muted/40 px-2 py-1.5">
+                        <p className="text-muted-foreground">Comissão padrão</p>
+                        <p className="font-semibold">{Number(partnership.defaultCommissionPercent || 15).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%</p>
+                      </div>
+                      <div className="rounded-md bg-muted/40 px-2 py-1.5">
+                        <p className="text-muted-foreground">Usuários autorizados</p>
+                        <p className="font-semibold">{partnership.authorizedUserIds?.length || "Todos"}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="pb-3 space-y-3">
@@ -1263,6 +1403,111 @@ export default function Usuarios() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={partnershipDialogOpen} onOpenChange={(open) => {
+        setPartnershipDialogOpen(open);
+        if (!open) resetPartnershipForm();
+      }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Vincular empresa representante</DialogTitle>
+            <DialogDescription>
+              Selecione outro tenant do Vendor.ai. Não será criado usuário duplicado: a representação será entre as duas empresas.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>Buscar empresa</Label>
+              <Input
+                value={partnershipSearch}
+                onChange={(event) => {
+                  setPartnershipSearch(event.target.value);
+                  setPartnershipTenantId("");
+                  setPartnershipTenantCode("");
+                  setPartnershipTenantName("");
+                  setPartnershipAuthorizedUsers([]);
+                }}
+                placeholder="Nome da empresa ou código Vendor.ai..."
+              />
+              {normalizedPartnershipSearch.length < 2 ? (
+                <p className="text-xs text-muted-foreground">Digite pelo menos 2 caracteres.</p>
+              ) : searchingPartnershipTenants ? (
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Buscando...</p>
+              ) : (
+                <div className="max-h-44 overflow-y-auto rounded-md border">
+                  {partnershipTenantOptions.length === 0 ? (
+                    <p className="p-3 text-xs text-muted-foreground">Nenhum tenant ativo encontrado.</p>
+                  ) : partnershipTenantOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className={partnershipTenantId === option.id
+                        ? "flex w-full items-center justify-between gap-3 border-b bg-cyan-50 px-3 py-2 text-left text-sm last:border-b-0"
+                        : "flex w-full items-center justify-between gap-3 border-b px-3 py-2 text-left text-sm last:border-b-0 hover:bg-muted/50"}
+                      onClick={() => {
+                        setPartnershipTenantId(option.id);
+                        setPartnershipTenantCode(option.tenantCode);
+                        setPartnershipTenantName(option.name);
+                        setPartnershipAuthorizedUsers([]);
+                      }}
+                    >
+                      <span className="font-medium">{option.name}</span>
+                      <span className="text-xs text-muted-foreground">{option.tenantCode}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {partnershipTenantId && (
+              <>
+                <div className="rounded-lg border border-cyan-200 bg-cyan-50/50 p-3">
+                  <p className="text-sm font-medium">{partnershipTenantName}</p>
+                  <p className="text-xs text-muted-foreground">Tenant vinculado: {partnershipTenantCode}</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Usuários autorizados da representante</Label>
+                  <p className="text-xs text-muted-foreground">Se ninguém for marcado, todos os usuários ativos da empresa poderão ser usados pela regra da parceria.</p>
+                  {loadingPartnershipUsers ? (
+                    <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Carregando usuários...</p>
+                  ) : (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {partnershipTenantUsers.map((partnerUser) => {
+                        const checked = partnershipAuthorizedUsers.includes(partnerUser.id);
+                        return (
+                          <label key={partnerUser.id} className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2">
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={(value) => setPartnershipAuthorizedUsers((current) =>
+                                value ? [...new Set([...current, partnerUser.id])] : current.filter((id) => id !== partnerUser.id)
+                              )}
+                            />
+                            <span className="text-sm">{partnerUser.name}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <div className="w-full max-w-[220px] space-y-1.5">
+                  <Label>Comissão padrão</Label>
+                  <div className="relative">
+                    <Input type="number" min="0" max="100" step="0.01" value={partnershipCommission} onChange={(event) => setPartnershipCommission(event.target.value)} className="pr-8" />
+                    <span className="pointer-events-none absolute right-3 top-2.5 text-sm text-muted-foreground">%</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">Padrão: 15%. Pode ser alterado em cada negócio.</p>
+                </div>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setPartnershipDialogOpen(false)}>Cancelar</Button>
+            <Button type="button" onClick={createCommercialPartnership} disabled={!partnershipTenantId || creatingPartnership}>
+              {creatingPartnership && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Vincular empresa
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={(open) => {
         setDialogOpen(open);

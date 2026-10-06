@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, ArrowRight, AlertTriangle, BrainCircuit, Clock3, Loader2, Pencil, Settings2, Sparkles, UserRound } from "lucide-react";
+import { ArrowLeft, ArrowRight, AlertTriangle, BrainCircuit, Building2, Clock3, HandCoins, Loader2, Pencil, Settings2, Sparkles, UserRound, WalletCards } from "lucide-react";
 
 const LeadDetail = lazy(() => import("@/pages/LeadDetail"));
 const StageQuestionsPanel = lazy(() => import("@/components/StageQuestionsPanel").then((m) => ({ default: m.StageQuestionsPanel })));
@@ -70,6 +70,51 @@ const pipelineDotClass: Record<string, string> = {
 };
 
 const hiddenFromCommercialFlow = new Set(["em_aquecimento", "em_execucao", "entregue", "parceiro"]);
+
+type CommercialPartnershipSnap = {
+  id: string;
+  ownerTenantId: string;
+  partnerTenantId: string;
+  partnerName?: string | null;
+  partnerTenantCode?: string | null;
+  status: string;
+  defaultCommissionPercent: string;
+  defaultPermissions: string[];
+  authorizedUserIds: string[];
+  distributionMode: string;
+};
+
+type DealParticipationSnap = {
+  id: string;
+  dealId: string;
+  ownerTenantId: string;
+  partnerTenantId: string;
+  partnershipId?: string | null;
+  role: "responsible" | "participant";
+  status: string;
+  operationalUserId?: string | null;
+  operationalUserName?: string | null;
+  partnerName?: string | null;
+  permissions: string[];
+  commission?: {
+    id: string;
+    commissionType: "percent" | "fixed";
+    percent: string;
+    fixedAmount?: string | null;
+    baseAmount: string;
+    amount: string;
+    paidAmount: string;
+    status: string;
+    dueAt?: string | null;
+  } | null;
+};
+
+type PartnerUserSnap = {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  userFunction?: string | null;
+};
 
 type FullIntelligenceResponse = {
   profile: null | {
@@ -174,6 +219,32 @@ export default function LeadWorkspace() {
       return response.json();
     },
   });
+  const { data: partnerships = [] } = useQuery<CommercialPartnershipSnap[]>({
+    queryKey: ["commercial-partnerships", tenantId],
+    enabled: Boolean(tenantId && token),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/commercial-partnerships`, {
+        headers: { Authorization: "Bearer " + token },
+      });
+      if (!response.ok) throw new Error("Não foi possível carregar as empresas representantes.");
+      return response.json();
+    },
+  });
+  const { data: dealParticipations = [] } = useQuery<DealParticipationSnap[]>({
+    queryKey: ["deal-participations", tenantId],
+    enabled: Boolean(tenantId && token),
+    staleTime: 10_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/deal-participations`, {
+        headers: { Authorization: "Bearer " + token },
+      });
+      if (!response.ok) throw new Error("Não foi possível carregar a responsabilidade empresarial.");
+      return response.json();
+    },
+  });
   const createDeal = useCreateDeal({ request });
   const updateStage = useUpdatePipelineStage();
   const deal = useMemo(() => {
@@ -188,6 +259,15 @@ export default function LeadWorkspace() {
       ?? newestFirst[0]
       ?? null;
   }, [deals, requestedDealId]);
+  const activeParticipation = useMemo(
+    () => deal ? dealParticipations.find((item) => item.dealId === deal.id && item.status === "active") ?? null : null,
+    [deal, dealParticipations],
+  );
+  const ownerPartnerships = useMemo(
+    () => partnerships.filter((item) => item.ownerTenantId === tenantId && item.status === "active"),
+    [partnerships, tenantId],
+  );
+
   const stages = useMemo(() => [...(configuredStages.length ? configuredStages : fallbackStages)].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0)), [configuredStages]);
   const currentIndex = stages.findIndex((s) => s.key === deal?.etapa);
   const currentStage = stages[currentIndex];
@@ -219,6 +299,29 @@ export default function LeadWorkspace() {
   const [savingOwner, setSavingOwner] = useState(false);
   const [intelligenceOpen, setIntelligenceOpen] = useState(false);
   const [advancedHandoffOpen, setAdvancedHandoffOpen] = useState(false);
+  const [selectedPartnershipId, setSelectedPartnershipId] = useState("");
+  const [selectedPartnerUserId, setSelectedPartnerUserId] = useState("");
+  const [partnerCommissionPercent, setPartnerCommissionPercent] = useState("15");
+  const [savingRepresentation, setSavingRepresentation] = useState(false);
+  const [savingCommission, setSavingCommission] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [payerAccount, setPayerAccount] = useState("");
+  const [beneficiaryAccount, setBeneficiaryAccount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("pix");
+  const [payingCommission, setPayingCommission] = useState(false);
+
+  const { data: partnerUsers = [] } = useQuery<PartnerUserSnap[]>({
+    queryKey: ["commercial-partnership-users", selectedPartnershipId],
+    enabled: Boolean(token && selectedPartnershipId),
+    staleTime: 30_000,
+    queryFn: async () => {
+      const response = await fetch(`/api/commercial-partnerships/${selectedPartnershipId}/users`, {
+        headers: { Authorization: "Bearer " + token },
+      });
+      if (!response.ok) throw new Error("Não foi possível carregar os usuários da representante.");
+      return response.json();
+    },
+  });
 
   const targetStage = stages.find((s) => s.key === nextStage);
   const targetStageAgent = (targetStage as { responsavelAgenteKey?: string | null } | undefined)?.responsavelAgenteKey ?? null;
@@ -235,6 +338,23 @@ export default function LeadWorkspace() {
   useEffect(() => {
     if (!ownerEditorOpen) setCurrentOwner(deal?.assignedTo ?? lead?.assignedTo ?? "");
   }, [deal?.assignedTo, lead?.assignedTo, ownerEditorOpen]);
+  useEffect(() => {
+    if (activeParticipation?.partnershipId) {
+      setSelectedPartnershipId(activeParticipation.partnershipId);
+      setSelectedPartnerUserId(activeParticipation.operationalUserId ?? "");
+      setPartnerCommissionPercent(String(activeParticipation.commission?.percent ?? "15"));
+      return;
+    }
+    const first = ownerPartnerships[0];
+    setSelectedPartnershipId(first?.id ?? "");
+    setSelectedPartnerUserId("");
+    setPartnerCommissionPercent(String(first?.defaultCommissionPercent ?? "15"));
+  }, [activeParticipation?.id, ownerPartnerships.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (activeParticipation) return;
+    const partnership = ownerPartnerships.find((item) => item.id === selectedPartnershipId);
+    if (partnership) setPartnerCommissionPercent(String(partnership.defaultCommissionPercent ?? "15"));
+  }, [selectedPartnershipId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function startAttendance() {
     if (!lead) return;
@@ -344,6 +464,95 @@ export default function LeadWorkspace() {
     }
   }
 
+  async function saveRepresentationResponsibility() {
+    if (!deal || !selectedPartnershipId) {
+      toast({ title: "Selecione a empresa representante.", variant: "destructive" });
+      return;
+    }
+    setSavingRepresentation(true);
+    try {
+      const response = await fetch(`/api/deals/${deal.id}/share-with-partner`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({
+          partnershipId: selectedPartnershipId,
+          role: "responsible",
+          operationalUserId: selectedPartnerUserId || null,
+          commissionType: "percent",
+          commissionPercent: Number(partnerCommissionPercent || 15),
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível atribuir a empresa representante.");
+      await qc.invalidateQueries({ queryKey: ["deal-participations", tenantId] });
+      toast({
+        title: "Empresa definida como responsável",
+        description: "O negócio foi compartilhado e a representante mantém acesso nas próximas etapas conforme as autonomias configuradas.",
+      });
+    } catch (error) {
+      toast({ title: "Erro ao definir representante", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setSavingRepresentation(false);
+    }
+  }
+
+  async function saveIntercompanyCommission() {
+    const commissionId = activeParticipation?.commission?.id;
+    if (!commissionId) return;
+    setSavingCommission(true);
+    try {
+      const response = await fetch(`/api/intercompany-commissions/${commissionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({
+          commissionType: "percent",
+          percent: Number(partnerCommissionPercent || 15),
+          reason: "Ajuste comercial no negócio",
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível ajustar a comissão.");
+      await qc.invalidateQueries({ queryKey: ["deal-participations", tenantId] });
+      toast({ title: "Comissão atualizada", description: "A regra deste negócio foi atualizada sem alterar o padrão de 15% da parceria." });
+    } catch (error) {
+      toast({ title: "Erro ao ajustar comissão", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setSavingCommission(false);
+    }
+  }
+
+  async function payIntercompanyCommission() {
+    const commission = activeParticipation?.commission;
+    if (!commission?.id) return;
+    const amount = Number(paymentAmount.replace(",", "."));
+    if (!Number.isFinite(amount) || amount <= 0 || !payerAccount.trim() || !beneficiaryAccount.trim()) {
+      toast({ title: "Informe valor e as duas contas/caixas.", variant: "destructive" });
+      return;
+    }
+    setPayingCommission(true);
+    try {
+      const response = await fetch(`/api/intercompany-commissions/${commission.id}/payments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({
+          amount,
+          payerAccount: payerAccount.trim(),
+          beneficiaryAccount: beneficiaryAccount.trim(),
+          paymentMethod,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível registrar a baixa.");
+      setPaymentAmount("");
+      await qc.invalidateQueries({ queryKey: ["deal-participations", tenantId] });
+      toast({ title: "Baixa registrada", description: "Saída e entrada foram lançadas nos financeiros dos dois tenants e o saldo da comissão foi atualizado." });
+    } catch (error) {
+      toast({ title: "Erro ao registrar pagamento", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setPayingCommission(false);
+    }
+  }
+
   async function advance() {
     if (!deal || !nextStage || !owner || title.trim().length < 3) {
       toast({ title: "Preencha etapa, responsável e próxima atividade.", variant: "destructive" });
@@ -433,7 +642,9 @@ export default function LeadWorkspace() {
                   </div>
                 ) : (
                   <span className="inline-flex items-center gap-1.5">
-                    <UserRound className="h-3.5 w-3.5" />Responsável: {displayUser(deal?.assignedTo ?? lead.assignedTo)}
+                    {activeParticipation?.role === "responsible" ? <Building2 className="h-3.5 w-3.5" /> : <UserRound className="h-3.5 w-3.5" />}
+                    Responsável: {activeParticipation?.role === "responsible" ? (activeParticipation.partnerName || "Empresa representante") : displayUser(deal?.assignedTo ?? lead.assignedTo)}
+                    {activeParticipation?.role === "responsible" && activeParticipation.operationalUserName ? <span className="text-muted-foreground">· Executor: {activeParticipation.operationalUserName}</span> : null}
                     {canEditOwner && (
                       <button
                         type="button"
@@ -463,6 +674,143 @@ export default function LeadWorkspace() {
         </div>
       </CardContent>
     </Card>
+
+    {deal && canEditOwner && (
+      <Card className="border-border/70 shadow-sm">
+        <CardContent className="p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-cyan-700" />
+                <p className="text-sm font-semibold">Responsabilidade empresarial</p>
+                {activeParticipation?.role === "responsible" && <Badge variant="secondary">Empresa responsável</Badge>}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">Compartilhe este negócio com uma empresa representante sem duplicar usuários entre tenants.</p>
+            </div>
+          </div>
+
+          {ownerPartnerships.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhuma empresa representante ativa foi vinculada a este tenant.</p>
+          ) : (
+            <div className="grid gap-3 lg:grid-cols-[1.3fr_1fr_160px_auto] lg:items-end">
+              <div className="space-y-1.5">
+                <Label>Empresa representante</Label>
+                <Select value={selectedPartnershipId} onValueChange={setSelectedPartnershipId}>
+                  <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectContent>
+                    {ownerPartnerships.map((partnership) => (
+                      <SelectItem key={partnership.id} value={partnership.id}>
+                        {partnership.partnerName || partnership.partnerTenantCode || partnership.partnerTenantId}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Executor na representante</Label>
+                <Select value={selectedPartnerUserId || "__queue__"} onValueChange={(value) => setSelectedPartnerUserId(value === "__queue__" ? "" : value)}>
+                  <SelectTrigger><SelectValue placeholder="Fila da empresa" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__queue__">Fila da empresa / definir depois</SelectItem>
+                    {partnerUsers.map((partnerUser) => (
+                      <SelectItem key={partnerUser.id} value={partnerUser.id}>
+                        {partnerUser.name || partnerUser.email || partnerUser.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Comissão do negócio</Label>
+                <div className="relative">
+                  <Input type="number" min="0" max="100" step="0.01" value={partnerCommissionPercent} onChange={(event) => setPartnerCommissionPercent(event.target.value)} className="pr-8" />
+                  <span className="pointer-events-none absolute right-3 top-2.5 text-sm text-muted-foreground">%</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">Padrão da parceria: 15%, ajustável por negócio.</p>
+              </div>
+              <Button type="button" onClick={saveRepresentationResponsibility} disabled={savingRepresentation || !selectedPartnershipId}>
+                {savingRepresentation && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {activeParticipation ? "Atualizar responsabilidade" : "Definir como responsável"}
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    )}
+
+    {deal && activeParticipation?.commission && canEditOwner && (
+      <Card className="border-border/70 shadow-sm">
+        <CardContent className="p-4">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <HandCoins className="h-4 w-4 text-emerald-700" />
+                <p className="text-sm font-semibold">Comissão inter-tenant</p>
+                <Badge variant="outline">{activeParticipation.commission.status.replaceAll("_", " ")}</Badge>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {activeParticipation.partnerName || "Empresa representante"} · comissão específica deste negócio.
+              </p>
+            </div>
+            <div className="text-right text-xs">
+              <p className="font-semibold">{Number(activeParticipation.commission.amount || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+              <p className="text-muted-foreground">
+                Pago {Number(activeParticipation.commission.paidAmount || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} ·
+                Saldo {Math.max(0, Number(activeParticipation.commission.amount || 0) - Number(activeParticipation.commission.paidAmount || 0)).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+              </p>
+            </div>
+          </div>
+
+          <div className="mb-4 grid gap-3 md:grid-cols-[180px_auto] md:items-end">
+            <div className="space-y-1.5">
+              <Label>Percentual acordado</Label>
+              <Input type="number" min="0" max="100" step="0.01" value={partnerCommissionPercent} onChange={(event) => setPartnerCommissionPercent(event.target.value)} />
+            </div>
+            <Button type="button" variant="outline" className="w-fit" onClick={saveIntercompanyCommission} disabled={savingCommission}>
+              {savingCommission && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Salvar comissão
+            </Button>
+          </div>
+
+          <div className="rounded-lg border bg-muted/20 p-3">
+            <div className="mb-3 flex items-center gap-2">
+              <WalletCards className="h-4 w-4 text-primary" />
+              <p className="text-sm font-semibold">Registrar baixa parcial</p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5 lg:items-end">
+              <div className="space-y-1.5">
+                <Label>Valor pago</Label>
+                <Input inputMode="decimal" placeholder="0,00" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Conta/caixa pagador</Label>
+                <Input placeholder="Ex.: Sicredi" value={payerAccount} onChange={(event) => setPayerAccount(event.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Conta/caixa recebedor</Label>
+                <Input placeholder="Ex.: Banco do Brasil" value={beneficiaryAccount} onChange={(event) => setBeneficiaryAccount(event.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Forma</Label>
+                <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pix">Pix</SelectItem>
+                    <SelectItem value="transferencia">Transferência</SelectItem>
+                    <SelectItem value="boleto">Boleto</SelectItem>
+                    <SelectItem value="dinheiro">Dinheiro</SelectItem>
+                    <SelectItem value="outro">Outro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button type="button" onClick={payIntercompanyCommission} disabled={payingCommission}>
+                {payingCommission && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Dar baixa
+              </Button>
+            </div>
+            <p className="mt-2 text-[11px] text-muted-foreground">Cada baixa gera saída no financeiro do pagador, entrada no financeiro da representante e mantém o saldo restante previsto.</p>
+          </div>
+        </CardContent>
+      </Card>
+    )}
 
     {deal && visualStages.length > 0 && (
       <Card className="border-border/70 shadow-sm">
