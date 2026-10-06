@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { requestCanAccessLockedObject } from "../lib/attachment-folder-access.js";
 import { and, desc, eq } from "drizzle-orm";
 import {
   db,
@@ -242,7 +243,13 @@ router.get("/tenants/:tenantId/media/assets", async (req, res) => {
     .orderBy(desc(mediaAssetsTable.createdAt))
     .limit(limit);
 
-  res.json({ assets: await withAccessUrls(assets) });
+  const visibleAssets = [];
+  for (const asset of assets) {
+    if (await requestCanAccessLockedObject(req, tenantId, asset.storageUrl)) {
+      visibleAssets.push(asset);
+    }
+  }
+  res.json({ assets: await withAccessUrls(visibleAssets) });
 });
 
 router.post("/tenants/:tenantId/media/assets/request-upload", async (req, res) => {
