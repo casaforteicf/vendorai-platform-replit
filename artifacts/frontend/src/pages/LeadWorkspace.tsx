@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, ArrowRight, AlertTriangle, BrainCircuit, Building2, Clock3, HandCoins, Loader2, Pencil, Settings2, Sparkles, UserRound, WalletCards } from "lucide-react";
+import { ArrowLeft, ArrowRight, AlertTriangle, BrainCircuit, Building2, Clock3, HandCoins, Headset, Loader2, Pencil, Settings2, Sparkles, UserRound, WalletCards } from "lucide-react";
 
 const LeadDetail = lazy(() => import("@/pages/LeadDetail"));
 const StageQuestionsPanel = lazy(() => import("@/components/StageQuestionsPanel").then((m) => ({ default: m.StageQuestionsPanel })));
@@ -309,6 +309,10 @@ export default function LeadWorkspace() {
   const [beneficiaryAccount, setBeneficiaryAccount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("pix");
   const [payingCommission, setPayingCommission] = useState(false);
+  const [supportTransferOpen, setSupportTransferOpen] = useState(false);
+  const [supportOwner, setSupportOwner] = useState("");
+  const [supportNote, setSupportNote] = useState("");
+  const [movingToSupport, setMovingToSupport] = useState(false);
 
   const { data: partnerUsers = [] } = useQuery<PartnerUserSnap[]>({
     queryKey: ["commercial-partnership-users", selectedPartnershipId],
@@ -333,11 +337,20 @@ export default function LeadWorkspace() {
   );
   const eligibleIds = (targetStage as { elegiveisUserIds?: string[] | null } | undefined)?.elegiveisUserIds ?? null;
   const eligibleUsers = eligibleIds && eligibleIds.length > 0 ? users.filter((u) => eligibleIds.includes(u.id)) : users;
+  const supportUsers = useMemo(() => {
+    const filtered = users.filter((u) => ["suporte", "administrador"].includes((u as { userFunction?: string | null }).userFunction ?? ""));
+    return filtered.length > 0 ? filtered : users;
+  }, [users]);
   const [draftEligible, setDraftEligible] = useState<string[]>([]);
   useEffect(() => { setDraftEligible(eligibleIds ?? []); }, [nextStage]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!ownerEditorOpen) setCurrentOwner(deal?.assignedTo ?? lead?.assignedTo ?? "");
   }, [deal?.assignedTo, lead?.assignedTo, ownerEditorOpen]);
+  useEffect(() => {
+    if (supportOwner && supportUsers.some((supportUser) => supportUser.id === supportOwner)) return;
+    const currentSupportOwner = supportUsers.find((supportUser) => supportUser.id === deal?.assignedTo);
+    setSupportOwner(currentSupportOwner?.id ?? supportUsers[0]?.id ?? "");
+  }, [deal?.assignedTo, supportOwner, supportUsers]);
   useEffect(() => {
     if (activeParticipation?.partnershipId) {
       setSelectedPartnershipId(activeParticipation.partnershipId);
@@ -550,6 +563,53 @@ export default function LeadWorkspace() {
       toast({ title: "Erro ao registrar pagamento", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
     } finally {
       setPayingCommission(false);
+    }
+  }
+
+  async function transferToSupport() {
+    if (!deal || !supportOwner) {
+      toast({ title: "Selecione o responsável do suporte.", variant: "destructive" });
+      return;
+    }
+
+    setMovingToSupport(true);
+    try {
+      const response = await fetch("/api/deals/" + deal.id + "/transfer-pipeline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({
+          targetPipeline: "suporte",
+          responsavelId: supportOwner,
+          observacao: supportNote.trim() || undefined,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error ?? result.message ?? "Não foi possível mover para Suporte.");
+
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId, { leadId: id }) }),
+        qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
+        qc.invalidateQueries({ queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }) }),
+      ]);
+
+      setOpen(false);
+      setSupportTransferOpen(false);
+      setSupportNote("");
+      toast({
+        title: "Lead enviado para Suporte",
+        description: "O histórico comercial foi preservado e um chamado foi criado na etapa Chamado cliente.",
+      });
+
+      const supportCardId = result?.supportCard?.id;
+      if (supportCardId) navigate("/pipeline-operacional/suporte?card=" + encodeURIComponent(supportCardId));
+    } catch (error) {
+      toast({
+        title: "Erro ao mover para Suporte",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setMovingToSupport(false);
     }
   }
 
@@ -1068,9 +1128,57 @@ export default function LeadWorkspace() {
             </div>
           )}
 
-          <Button type="button" variant="outline" onClick={() => setAdvancedHandoffOpen((v) => !v)}>
-            {advancedHandoffOpen ? "Ocultar ajustes" : "Editar antes de avançar"}
-          </Button>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button type="button" variant="outline" onClick={() => setAdvancedHandoffOpen((v) => !v)}>
+              {advancedHandoffOpen ? "Ocultar ajustes" : "Editar antes de avançar"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="border-cyan-200 text-cyan-800 hover:bg-cyan-50 hover:text-cyan-900"
+              onClick={() => setSupportTransferOpen((value) => !value)}
+            >
+              <Headset className="mr-2 h-4 w-4" />
+              {supportTransferOpen ? "Ocultar transferência" : "Mover para Suporte"}
+            </Button>
+          </div>
+
+          {supportTransferOpen && (
+            <div className="grid gap-4 rounded-xl border border-cyan-200 bg-cyan-50/40 p-4">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-cyan-900">
+                  <Headset className="h-4 w-4" />
+                  Transferir para a pipeline Suporte
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Cria um chamado em “Chamado cliente”, preservando o lead, o negócio, as atividades e todo o histórico comercial.
+                </p>
+              </div>
+              <Field label="Responsável do suporte">
+                <Select value={supportOwner} onValueChange={setSupportOwner}>
+                  <SelectTrigger><SelectValue placeholder="Selecione o responsável" /></SelectTrigger>
+                  <SelectContent>
+                    {supportUsers.map((supportUser) => (
+                      <SelectItem key={supportUser.id} value={supportUser.id}>
+                        {supportUser.name || supportUser.email || supportUser.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Motivo / observação para o suporte">
+                <Textarea
+                  value={supportNote}
+                  onChange={(event) => setSupportNote(event.target.value)}
+                  placeholder="Ex.: cliente solicitou assistência na instalação..."
+                />
+              </Field>
+              <Button type="button" onClick={transferToSupport} disabled={movingToSupport || !supportOwner}>
+                {movingToSupport && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Confirmar e abrir no Suporte
+              </Button>
+            </div>
+          )}
 
           {advancedHandoffOpen && (
             <div className="grid gap-4 rounded-xl border p-4">
