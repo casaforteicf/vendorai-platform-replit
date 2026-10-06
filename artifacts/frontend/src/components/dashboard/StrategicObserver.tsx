@@ -203,28 +203,77 @@ function closedAt(deal: Deal): string | null | undefined {
   return deal.dataFechamento || deal.wonAt || deal.lostAt || deal.updatedAt;
 }
 
+const BRAZIL_UF = "(?:AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)";
+
+function isBrazilPostalCode(value: string): boolean {
+  return /\b\d{5}-?\d{3}\b/.test(value);
+}
+
 function normalizeCity(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const cleaned = value.trim().replace(/\s+/g, " ");
-  return cleaned.length >= 2 ? cleaned : null;
+  if (cleaned.length < 2 || /^\d{5}-?\d{3}$/.test(cleaned)) return null;
+  return cleaned;
 }
 
 function leadCity(lead: Lead): string | null {
   const metadata = lead.metadata ?? {};
-  const direct = [metadata["cidade"], metadata["city"], metadata["municipio"], metadata["localidade"]]
+  const direct = [metadata["cidade"], metadata["city"], metadata["municipio"]]
     .map(normalizeCity)
     .find(Boolean);
   if (direct) return direct;
 
+  const localidade = normalizeCity(metadata["localidade"]);
+  if (localidade && !isBrazilPostalCode(localidade)) return localidade;
+
   const address = normalizeCity(lead.endereco);
   if (!address) return null;
+
+  const cityUf = address.match(new RegExp("(?:^|,)\\s*([^,]+?)\\s*[-/]\\s*" + BRAZIL_UF + "\\b", "i"));
+  const cityFromUf = normalizeCity(cityUf?.[1]);
+  if (cityFromUf) return cityFromUf;
+
   const parts = address.split(",").map((item) => item.trim()).filter(Boolean);
-  if (parts.length >= 3) {
-    const candidate = parts[parts.length - 2]?.replace(/\s*[-/]\s*[A-Z]{2}\b.*$/i, "").trim();
-    return normalizeCity(candidate);
+  for (let index = parts.length - 1; index >= 0; index -= 1) {
+    const part = parts[index];
+    if (isBrazilPostalCode(part) || new RegExp("^" + BRAZIL_UF + "$", "i").test(part)) continue;
+    const candidate = normalizeCity(part.replace(new RegExp("\\s*[-/]\\s*" + BRAZIL_UF + "\\b.*$", "i"), "").replace(/\bCEP\b.*$/i, "").trim());
+    if (candidate && !/^\d+$/.test(candidate)) return candidate;
   }
-  const stateMatch = address.match(/,\s*([^,]+?)\s*[-/]\s*[A-Z]{2}\b/i);
-  return normalizeCity(stateMatch?.[1]);
+  return null;
+}
+
+function validWorldPoint(lat: number, long: number): boolean {
+  return Number.isFinite(lat) && lat >= -90 && lat <= 90 && Number.isFinite(long) && long >= -180 && long <= 180;
+}
+
+function validBrazilPoint(lat: number, long: number): boolean {
+  return lat >= -34 && lat <= 6 && long >= -74 && long <= -34;
+}
+
+function leadPoint(lead: Lead): { lat: number; long: number } | null {
+  const lat = Number(lead.latitude);
+  const long = Number(lead.longitude);
+  if (!validWorldPoint(lat, long)) return null;
+
+  const metadata = lead.metadata ?? {};
+  const locationText = [
+    lead.endereco,
+    metadata["cidade"],
+    metadata["municipio"],
+    metadata["localidade"],
+    metadata["cep"],
+    metadata["uf"],
+    metadata["estado"],
+    metadata["pais"],
+    metadata["country"],
+  ].filter((value): value is string => typeof value === "string").join(" ");
+  const hasBrazilHint = isBrazilPostalCode(locationText) || new RegExp("\\b" + BRAZIL_UF + "\\b", "i").test(locationText) || /\b(?:Brasil|Brazil)\b/i.test(locationText);
+
+  if (!hasBrazilHint) return { lat, long };
+  if (validBrazilPoint(lat, long)) return { lat, long };
+  if (validBrazilPoint(long, lat)) return { lat: long, long: lat };
+  return null;
 }
 
 function mean(values: number[]): number | null {
@@ -381,9 +430,10 @@ export default function StrategicObserver({
       if (!city) continue;
       const bucket = cityBuckets.get(city) ?? { leads: new Set(), open: [], won: [], lost: [], sellers: new Set(), lats: [], longs: [] };
       if (isRecent(lead.createdAt, cutoff)) bucket.leads.add(lead.id);
-      if (Number.isFinite(Number(lead.latitude)) && Number.isFinite(Number(lead.longitude))) {
-        bucket.lats.push(Number(lead.latitude));
-        bucket.longs.push(Number(lead.longitude));
+      const point = leadPoint(lead);
+      if (point) {
+        bucket.lats.push(point.lat);
+        bucket.longs.push(point.long);
       }
       cityBuckets.set(city, bucket);
     }
