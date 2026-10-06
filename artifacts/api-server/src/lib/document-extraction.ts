@@ -55,6 +55,85 @@ export const quoteExtractionResultSchema = z.object({
 
 export type QuoteExtractionResult = z.infer<typeof quoteExtractionResultSchema>;
 
+function parseLooseNumber(value: unknown): number | null | undefined {
+  if (value === null || value === undefined || value === "") return value as null | undefined;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value !== "string") return null;
+  const raw = value.trim().replace(/R\$\s?/gi, "").replace(/\s/g, "");
+  if (!raw) return null;
+  const normalized = raw.includes(",")
+    ? raw.replace(/\./g, "").replace(",", ".")
+    : raw;
+  const parsed = Number(normalized.replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseLooseString(value: unknown): string | null | undefined {
+  if (value === null || value === undefined) return value as null | undefined;
+  if (typeof value === "string") return value.trim() || null;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return null;
+}
+
+function normalizeQuoteExtractionPayload(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const input = value as Record<string, unknown>;
+  const output: Record<string, unknown> = { ...input };
+
+  const stringFields = [
+    "titulo", "numeroDocumento", "dataEmissao", "cliente", "clienteDocumento",
+    "clienteTelefone", "clienteEmail", "clienteCidade", "clienteEstado", "clienteCep",
+    "clienteEndereco", "fornecedor", "fornecedorDocumento", "fornecedorEndereco",
+    "validade", "formaPagamento", "condPagamento", "prazoEntrega", "observacoes",
+  ];
+  for (const key of stringFields) output[key] = parseLooseString(input[key]);
+
+  const numericFields = ["valorTotal", "desconto", "acrescimos", "frete", "impostos", "confianca"];
+  for (const key of numericFields) output[key] = parseLooseNumber(input[key]);
+
+  if (Array.isArray(input.itens)) {
+    output.itens = input.itens
+      .filter((item) => item && typeof item === "object" && !Array.isArray(item))
+      .map((item) => {
+        const row = item as Record<string, unknown>;
+        return {
+          ...row,
+          codigo: parseLooseString(row.codigo),
+          descricao: parseLooseString(row.descricao),
+          unidade: parseLooseString(row.unidade),
+          quantidade: parseLooseNumber(row.quantidade),
+          valorUnitario: parseLooseNumber(row.valorUnitario),
+          valorTotal: parseLooseNumber(row.valorTotal),
+          grupo: parseLooseString(row.grupo),
+          etapa: parseLooseString(row.etapa),
+          observacoes: parseLooseString(row.observacoes),
+        };
+      })
+      .filter((item) => typeof item.descricao === "string" && item.descricao.length > 0);
+  }
+
+  for (const key of ["inclusoes", "exclusoes", "clausulas", "informacoesAdicionais"]) {
+    if (Array.isArray(input[key])) {
+      output[key] = (input[key] as unknown[])
+        .map(parseLooseString)
+        .filter((item): item is string => typeof item === "string" && item.length > 0);
+    }
+  }
+
+  return output;
+}
+
+function parseQuoteExtraction(raw: string): QuoteExtractionResult {
+  const parsed = JSON.parse(raw || "{}");
+  const normalized = normalizeQuoteExtractionPayload(parsed);
+  const result = quoteExtractionResultSchema.safeParse(normalized);
+  if (result.success) return result.data;
+  return {
+    confianca: 0,
+    informacoesAdicionais: ["A leitura retornou dados parcialmente inválidos. Revise o orçamento importado antes de salvar."],
+  };
+}
+
 // ─── Financial entry (lançamento) extraction — nota fiscal, recibo, boleto ───
 // D-004: novo lançamento no ERP por foto/upload -- IA identifica o tipo de
 // documento, extrai os dados e devolve pra revisão antes de lançar de
@@ -257,7 +336,7 @@ export async function extractQuoteData(
     );
     const cleaned = visual.content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
     try {
-      return quoteExtractionResultSchema.parse(JSON.parse(cleaned || "{}"));
+      return parseQuoteExtraction(cleaned || "{}");
     } catch {
       return { confianca: 0, informacoesAdicionais: ["PDF visual processado, mas a estrutura retornada precisa de conferência manual."] };
     }
@@ -299,10 +378,9 @@ export async function extractQuoteData(
 
   const raw = aiResult.content || "{}";
   try {
-    const parsed = JSON.parse(raw);
-    return quoteExtractionResultSchema.parse(parsed);
+    return parseQuoteExtraction(raw);
   } catch {
-    return { confianca: 0 };
+    return { confianca: 0, informacoesAdicionais: ["Não foi possível interpretar a resposta da leitura automática."] };
   }
 }
 
