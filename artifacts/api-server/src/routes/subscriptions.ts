@@ -120,21 +120,39 @@ router.get("/tenants/:tenantId/subscription/renewal-state", async (req, res) => 
   const now = new Date();
   const dueAt = cycle?.dueDate ?? subscription.proximaCobranca ?? null;
   const dueReached = Boolean(dueAt && dueAt.getTime() <= now.getTime());
-  const overdue = subscription.status === "inadimplente" || cycle?.status === "overdue";
-  const pendingDue = cycle?.status === "pending" && dueReached;
-  const actionRequired = overdue || pendingDue;
+  let overdue = subscription.status === "inadimplente" || cycle?.status === "overdue";
+  let pendingDue = cycle?.status === "pending" && dueReached;
 
   let paymentUrl: string | null = null;
   let paymentStatus: string | null = cycle?.status ?? null;
-  if (cycle?.mes && cycle.asaasChargeId && cycle.status !== "paid" && cycle.status !== "cancelled") {
+  let providerVerified = false;
+
+  if (cycle?.mes && cycle.asaasChargeId && cycle.status !== "cancelled") {
     try {
       const charge = await findChargeByExternalReference(cycle.mes);
-      paymentUrl = charge?.invoiceUrl || charge?.bankSlipUrl || null;
-      paymentStatus = charge?.status ?? paymentStatus;
+      if (charge) {
+        providerVerified = true;
+        paymentUrl = charge.invoiceUrl || charge.bankSlipUrl || null;
+        paymentStatus = charge.status ?? paymentStatus;
+
+        const providerLocalStatus = localStatus(charge.status);
+        overdue = providerLocalStatus === "overdue";
+        pendingDue = providerLocalStatus === "pending" && dueReached;
+
+        if (providerLocalStatus === "paid") {
+          overdue = false;
+          pendingDue = false;
+        }
+      }
     } catch (err) {
       req.log.warn({ err, tenantId, subscriptionId: subscription.id }, "subscription-renewal-state: Asaas lookup failed");
     }
   }
+
+  // Fail-open: indisponibilidade do provedor ou estado local pendente nunca
+  // deve bloquear todo o produto. O frontend pode avisar/cobrar, mas o gate
+  // total só é permitido com inadimplência confirmada pelo provedor.
+  const actionRequired = providerVerified && overdue;
 
   res.json({
     hasSubscription: true,
@@ -151,6 +169,7 @@ router.get("/tenants/:tenantId/subscription/renewal-state", async (req, res) => 
     billingEventId: cycle?.id ?? null,
     paymentStatus,
     paymentUrl,
+    providerVerified,
   });
 });
 
