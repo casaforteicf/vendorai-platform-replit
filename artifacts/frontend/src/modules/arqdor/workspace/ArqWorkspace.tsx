@@ -139,8 +139,8 @@ interface FlowStep {
 const FLOW_STEPS: FlowStep[] = [
   { id:'criar',       icon:'✦',  label:'Projeto',      sublabel:'Cliente e projeto', primary:'home',          extras:['projeto'],                          color: PHX.purple },
   { id:'inspirar',    icon:'🖼️', label:'Inspirar',    sublabel:'Biblioteca',        primary:'biblioteca',    extras:[],                                   color: PHX.blue   },
-  { id:'renderizar',  icon:'✨', label:'Renderizar',   sublabel:'Visualização IA',   primary:'renders',       extras:['prompt'],                           color: PHX.purple },
-  { id:'melhorar',    icon:'🔄', label:'Melhorar',    sublabel:'Versões e aprovação',primary:'correcoes',     extras:['ai-review','memoria'],              color: PHX.amber  },
+  { id:'renderizar',  icon:'✨', label:'Renderizar',   sublabel:'Criar e editar render', primary:'renders', extras:['prompt'], color: PHX.purple },
+  { id:'melhorar',    icon:'🔄', label:'Melhorar',    sublabel:'Galeria, versões e aprovação', primary:'real-render-gallery', extras:[], color: PHX.amber  },
   { id:'especificar', icon:'📋', label:'Especificar', sublabel:'Memorial técnico',  primary:'especificacao', extras:[],                                   color: '#16a34a'  },
   { id:'orcamento',   icon:'💰', label:'Orçamento',   sublabel:'Budget executivo',  primary:'orcamento',     extras:['orcamento-pro'],                    color: '#0369a1'  },
   { id:'apresentar',  icon:'👤', label:'Proposta',    sublabel:'Apresentar ao cliente',primary:'cliente',     extras:[],                                   color: PHX.cyan   },
@@ -440,8 +440,8 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'prompt':        return <PromptPlaygroundModule/>
     case 'render':
     case 'renders':       return <RenderStudioRouteBridge projectId={arqState.projectId} />
-    case 'ai-review':     return <AIReviewModule/>
-    case 'correcoes':     return <AICorrectionsModule/>
+    case 'ai-review':
+    case 'correcoes':     return <RealRenderGalleryStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'memoria':       return <AIMemoryModule/>
     case 'config':        return <SettingsModule/>
     case 'marketplace':
