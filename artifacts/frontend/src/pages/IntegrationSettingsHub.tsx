@@ -190,6 +190,11 @@ export default function IntegrationSettingsHub() {
   } | null>(null);
   const [asaasKey, setAsaasKey] = useState("");
   const [zapsignKey, setZapsignKey] = useState("");
+  const [emailAvailability, setEmailAvailability] = useState<{
+    google?: { configured?: boolean };
+    microsoft?: { configured?: boolean };
+    resend?: { apiConfigured?: boolean; webhookConfigured?: boolean; configured?: boolean };
+  }>({});
   const [emailConnections, setEmailConnections] = useState<Array<{
     provider: "google" | "microsoft" | "webmail";
     email?: string | null;
@@ -222,15 +227,17 @@ export default function IntegrationSettingsHub() {
   const loadStatus = async () => {
     setLoading(true);
     try {
-      const [data, emailData, financeData, customData, metaAdsData, socialData] = await Promise.all([
+      const [data, emailData, emailAvailabilityData, financeData, customData, metaAdsData, socialData] = await Promise.all([
         apiJson("/api/onboarding/integracoes"),
         tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/email-connections`).catch(() => ({ connections: [] })) : Promise.resolve({ connections: [] }),
+        tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/email-connections/availability`).catch(() => ({})) : Promise.resolve({}),
         tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/finance-integrations`).catch(() => ({ integrations: [] })) : Promise.resolve({ integrations: [] }),
         tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/custom-integrations`).catch(() => ({ integrations: [] })) : Promise.resolve({ integrations: [] }),
         tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/meta-ads-connection`).catch(() => ({ connected: false })) : Promise.resolve({ connected: false }),
         tenantId ? apiJson(`/api/tenants/${encodeURIComponent(tenantId)}/social-connections`).catch(() => ({ connections: [] })) : Promise.resolve({ connections: [] }),
       ]);
       setStatus(data as IntegrationStatus);
+      setEmailAvailability(emailAvailabilityData || {});
       const integrationData = data as IntegrationStatus;
       if (!trackingHydrated) {
         setTrackingDraft({
@@ -342,7 +349,10 @@ export default function IntegrationSettingsHub() {
       category: "Essenciais",
       usedBy: "Omnichannel · CRM · Agentes",
       connected: emailConnections.some((connection) => connection.provider === "microsoft"),
-      detail: emailConnections.find((connection) => connection.provider === "microsoft")?.email || undefined,
+      attention: emailAvailability.microsoft?.configured === false,
+      detail: emailAvailability.microsoft?.configured === false
+        ? "Não configurado no servidor · faltam credenciais OAuth Microsoft"
+        : emailConnections.find((connection) => connection.provider === "microsoft")?.email || undefined,
     },
     {
       key: "email-webmail",
@@ -423,7 +433,7 @@ export default function IntegrationSettingsHub() {
       attention: status?.domain?.configured === true && status?.domain?.active !== true,
       detail: status?.domain?.name || undefined,
     },
-  ], [status, emailConnections]);
+  ], [status, emailConnections, emailAvailability]);
 
   const startConnection = async (key: IntegrationKey) => {
     if (key === "domain") {
@@ -438,6 +448,14 @@ export default function IntegrationSettingsHub() {
 
     if (key === "email-google" || key === "email-microsoft") {
       if (!tenantId) return;
+      if (key === "email-microsoft" && emailAvailability.microsoft?.configured === false) {
+        toast({
+          title: "Microsoft 365 ainda não está configurado no servidor",
+          description: "É necessário cadastrar MICROSOFT_CLIENT_ID e MICROSOFT_CLIENT_SECRET no ambiente antes de conectar uma conta.",
+          variant: "destructive",
+        });
+        return;
+      }
       setBusy(key);
       try {
         const provider = key === "email-google" ? "google" : key === "email-microsoft" ? "microsoft" : "webmail";
@@ -827,7 +845,7 @@ export default function IntegrationSettingsHub() {
       description: "Microsoft 365 para e-mail, agenda, arquivos e colaboração.",
       connected: emailConnections.some((connection) => connection.provider === "microsoft") ? 1 : 0,
       services: [
-        { name: "Outlook", state: emailConnections.some((connection) => connection.provider === "microsoft") ? "connected" : "available", action: "email-microsoft" as IntegrationKey },
+        { name: "Outlook", state: emailConnections.some((connection) => connection.provider === "microsoft") ? "connected" : emailAvailability.microsoft?.configured === false ? "attention" : "available", action: "email-microsoft" as IntegrationKey },
         { name: "Calendar", state: "planned" },
         { name: "OneDrive", state: "planned" },
         { name: "SharePoint", state: "planned" },
@@ -1108,6 +1126,17 @@ export default function IntegrationSettingsHub() {
           <p className="mt-1 text-sm font-semibold">{nextTokenExpiry}</p>
         </div>
       </div>
+
+      {emailAvailability.resend?.configured === false && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
+          <p className="text-sm font-semibold">E-mail transacional precisa de configuração no servidor</p>
+          <p className="mt-1 text-xs">
+            {emailAvailability.resend?.apiConfigured
+              ? "A API do Resend está configurada, mas falta RESEND_WEBHOOK_SECRET para confirmar entrega, abertura, clique, bounce e falhas."
+              : "Faltam RESEND_API_KEY e/ou RESEND_WEBHOOK_SECRET. Os eventos de entrega não podem ser considerados operacionais até a configuração do ambiente."}
+          </p>
+        </div>
+      )}
 
       {accountPicker && (
         <div className="rounded-2xl border bg-card p-5">
