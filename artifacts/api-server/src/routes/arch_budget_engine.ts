@@ -38,6 +38,7 @@ interface BudgetItemPayload {
   manufacturerName?: string | null;
   productName?: string | null;
   materialName?: string | null;
+  catalogCode?: string | null;
   compositionId?: string | null;
   compositionCode?: string | null;
   visibleToClient?: boolean;
@@ -263,16 +264,16 @@ async function createBudgetItem(tId: string | null, payload: BudgetItemPayload) 
       id, tenant_id, budget_id, spec_object_id, project_id, ambiente_id, render_id,
       item, description, type, quantity, unit,
       material_value, labor_value, unit_total, total_material, total_labor, total,
-      supplier_name, manufacturer_name, product_name, material_name,
+      supplier_name, manufacturer_name, product_name, material_name, catalog_code,
       composition_id, composition_code,
       visible_to_client, sort_order, created_at, updated_at
     ) VALUES (
       $1,$2,$3,$4,$5,$6,$7,
       $8,$9,$10,$11,$12,
       $13,$14,$15,$16,$17,$18,
-      $19,$20,$21,$22,
-      $23,$24,
-      $25,$26,now(),now()
+      $19,$20,$21,$22,$23,
+      $24,$25,
+      $26,$27,now(),now()
     ) RETURNING *`,
     [
       id, tId, payload.budgetId, payload.specObjectId ?? null, payload.projectId,
@@ -282,7 +283,7 @@ async function createBudgetItem(tId: string | null, payload: BudgetItemPayload) 
       Number(payload.materialValue ?? 0), Number(payload.laborValue ?? 0),
       t.unitTotal, t.totalMaterial, t.totalLabor, t.total,
       payload.supplierName ?? null, payload.manufacturerName ?? null,
-      payload.productName ?? null, payload.materialName ?? null,
+      payload.productName ?? null, payload.materialName ?? null, payload.catalogCode ?? null,
       payload.compositionId ?? null, payload.compositionCode ?? null,
       payload.visibleToClient ?? true, Number(payload.sortOrder ?? 0),
     ],
@@ -293,7 +294,13 @@ async function createBudgetItem(tId: string | null, payload: BudgetItemPayload) 
 }
 
 async function updateBudgetItem(id: string, tId: string | null, payload: Partial<BudgetItemPayload>) {
-  const currentResult = await pool.query(`SELECT * FROM arch_budget_items WHERE id = $1`, [id]);
+  const currentValues: unknown[] = [id];
+  let currentWhere = `id = $1`;
+  if (tId) {
+    currentValues.push(tId);
+    currentWhere += ` AND tenant_id = $2`;
+  }
+  const currentResult = await pool.query(`SELECT * FROM arch_budget_items WHERE ${currentWhere}`, currentValues);
   const current = currentResult.rows[0];
   if (!current) return null;
 
@@ -309,7 +316,7 @@ async function updateBudgetItem(id: string, tId: string | null, payload: Partial
     quantity: "quantity", unit: "unit",
     materialValue: "material_value", laborValue: "labor_value",
     supplierName: "supplier_name", manufacturerName: "manufacturer_name",
-    productName: "product_name", materialName: "material_name",
+    productName: "product_name", materialName: "material_name", catalogCode: "catalog_code",
     compositionId: "composition_id", compositionCode: "composition_code",
     visibleToClient: "visible_to_client", sortOrder: "sort_order",
   };
@@ -345,16 +352,16 @@ async function updateBudgetItem(id: string, tId: string | null, payload: Partial
 }
 
 async function deleteBudgetItem(id: string, tId: string | null) {
-  const currentResult = await pool.query(`SELECT * FROM arch_budget_items WHERE id = $1`, [id]);
-  const current = currentResult.rows[0];
-  if (!current) return false;
-
   const values: unknown[] = [id];
   let where = `id = $1`;
   if (tId) {
     values.push(tId);
     where += ` AND tenant_id = $2`;
   }
+
+  const currentResult = await pool.query(`SELECT * FROM arch_budget_items WHERE ${where}`, values);
+  const current = currentResult.rows[0];
+  if (!current) return false;
 
   await pool.query(`UPDATE arch_budget_items SET deleted_at = now() WHERE ${where}`, values);
   await recalculateBudget(current.budget_id);
