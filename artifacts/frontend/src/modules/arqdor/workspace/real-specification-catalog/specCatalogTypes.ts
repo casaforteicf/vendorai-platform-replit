@@ -93,6 +93,7 @@ export type SpecObject = {
 
   catalogProductId?: string | null;
   catalogMaterialId?: string | null;
+  catalogCode?: string | null;
   manufacturerId?: string | null;
   supplierId?: string | null;
 
@@ -146,6 +147,7 @@ export type SpecObjectPayload = {
   purchaseUnit?: string | null;
   catalogProductId?: string | null;
   catalogMaterialId?: string | null;
+  catalogCode?: string | null;
   manufacturerId?: string | null;
   supplierId?: string | null;
   productName?: string | null;
