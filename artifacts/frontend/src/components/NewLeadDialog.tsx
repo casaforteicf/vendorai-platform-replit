@@ -705,9 +705,20 @@ export function NewLeadDialog({
 
       const selectedRepresentativeFunctionId = representativeFunctionId(values.assignedTo);
       const resolvedAssignee = resolveAutomaticAssignee(values);
+
+      if (!selectedRepresentativeFunctionId && !resolvedAssignee) {
+        form.setError("assignedTo", { message: "Defina um responsável antes de salvar o lead." });
+        toast({
+          title: "Responsável obrigatório",
+          description: "Selecione uma pessoa da equipe ou uma empresa representante. A distribuição automática só pode ser usada quando encontrar um responsável válido.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const submissionValues: NewLeadValues = {
         ...values,
-        assignedTo: selectedRepresentativeFunctionId ? values.assignedTo : (resolvedAssignee ?? values.assignedTo),
+        assignedTo: selectedRepresentativeFunctionId ? values.assignedTo : resolvedAssignee!,
       };
 
       // ui-integrity: error-propagates-to-caller — o catch deste submit exibe toast ao usuário.
@@ -1153,7 +1164,7 @@ export function NewLeadDialog({
                   name="assignedTo"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Responsável</FormLabel>
+                      <FormLabel>Responsável *</FormLabel>
                       <Select value={field.value} onValueChange={field.onChange}>
                         <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                         <SelectContent>
@@ -1172,8 +1183,9 @@ export function NewLeadDialog({
                         </SelectContent>
                       </Select>
                       <p className="text-[11px] leading-relaxed text-muted-foreground">
-                        Atribuição manual: mostra todos os usuários ativos. Automático: usa apenas usuários habilitados para receber leads e prioriza cidade, região e segmento configurados. Empresas representantes autorizadas aparecem junto da equipe.
+                        Obrigatório. Atribuição manual: mostra todos os usuários ativos. Automático: usa apenas usuários habilitados para receber leads e prioriza cidade, região e segmento configurados; se não encontrar ninguém, o lead não será criado. Empresas representantes autorizadas aparecem junto da equipe.
                       </p>
+                      <FormMessage />
                     </FormItem>
                   )}
                 />
