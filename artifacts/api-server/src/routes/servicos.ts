@@ -644,9 +644,24 @@ router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
 
   const nascePronta = !tipoServico.requerVisitaTecnica && tipoServico.precoBase != null;
   const checklist = buildChecklist(modeloExecucao);
+  const hasCamposPersonalizados = Object.prototype.hasOwnProperty.call(req.body ?? {}, "camposPersonalizados");
+  let camposDaOrdem = normalizeCamposPersonalizados(camposPersonalizados);
+
+  if (!hasCamposPersonalizados) {
+    const [modeloSalvo] = await db.select({ camposPersonalizados: servicosModelosOsTable.camposPersonalizados })
+      .from(servicosModelosOsTable)
+      .where(and(
+        eq(servicosModelosOsTable.tenantId, tenantId),
+        eq(servicosModelosOsTable.modeloExecucao, modeloExecucao),
+      ))
+      .limit(1);
+    camposDaOrdem = normalizeCamposPersonalizados(modeloSalvo?.camposPersonalizados ?? []);
+  }
+
   const criacao = history(req, "criacao", `OS criada com modelo ${modeloExecucao}`, {
     modeloExecucao,
     negocioId: negocioId ?? null,
+    camposPersonalizados: camposDaOrdem.length,
   });
 
   const [ordem] = await db
@@ -664,7 +679,7 @@ router.post("/tenants/:tenantId/servicos/ordens", async (req, res) => {
       valorOrcado: nascePronta ? tipoServico.precoBase : null,
       checklistExecucao: checklist,
       historicoExecucao: [criacao],
-      camposPersonalizados: normalizeCamposPersonalizados(camposPersonalizados),
+      camposPersonalizados: camposDaOrdem,
       clienteAcompanha,
       compartilharStatusCliente,
       portalToken: clienteAcompanha ? crypto.randomUUID() : null,
