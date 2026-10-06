@@ -65,6 +65,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Plus, GripVertical, DollarSign, User, UserRound, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake, FileText, Clock, CalendarDays, Pen, KanbanSquare, ArrowRight, ArrowLeft, UserMinus, Ruler, Bot, ChevronDown, ChevronUp } from "lucide-react";
 import { PipelineNav } from "@/components/PipelineNav";
+import { AdminDeleteLeadButton } from "@/components/AdminDeleteLeadButton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   DealEtapaSaas,
@@ -443,6 +444,12 @@ function DealCard({
             {deal.titulo}
           </p>
         </div>
+        {!overlay && (
+          <AdminDeleteLeadButton
+            leadId={deal.leadId}
+            leadName={leadName || deal.titulo}
+          />
+        )}
       </div>
 
       {/* Valor */}
