@@ -386,7 +386,6 @@ function SettingsSectionShell({
   title,
   description,
   children,
-  return <ConfiguracoesNormalized embedded forcedTab="perfil" />;
 }: {
   title: string;
   description: string;
