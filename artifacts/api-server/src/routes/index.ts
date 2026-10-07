@@ -112,6 +112,7 @@ import { createSystemConsolidationRouter } from "./arch_system_consolidation";
 import archThemePreferencesRouter from "./arch_theme_preferences";
 import arqdorSketchupImportRouter from "./arqdor_sketchup_import";
 import financeiroObraRouter from "./financeiro_obra";
+import obraGovernancaRouter from "./obra_governanca";
 import portalRouter from "./portal";
 import varejoRouter from "./varejo";
 import supermercadoRouter, { supermercadoPublicRouter } from "./supermercado";
@@ -500,6 +501,7 @@ router.use(adminAppUsersRouter);
 // Construção Civil Hub
 router.use(construcaoRouter);
 router.use(financeiroObraRouter);
+router.use(obraGovernancaRouter);
 router.use(archAiRenderRouter);
 
 // Varejo de Roupas & Acessórios Hub
