@@ -12,6 +12,7 @@ import {
 import { VENDORAI_LAUNCH_CAMPAIGN } from "../lib/commercialOffer.js";
 import { ensureVendorAiLaunchSubscriptionForDeal } from "../lib/vendorai-subscription-lifecycle.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
+import { canonicalDealValueSql } from "../lib/deal-value.js";
 
 const LOOKBACK_DAYS = 30;
 const MAX_ROWS_PER_RUN = 500;
@@ -79,7 +80,7 @@ export async function runCommercialLifecycleSync(log: Logger): Promise<void> {
       dealId: dealsTable.id,
       tenantId: dealsTable.tenantId,
       leadId: dealsTable.leadId,
-      value: dealsTable.valor,
+      value: canonicalDealValueSql,
       updatedAt: dealsTable.updatedAt,
       campaignId: leadsTable.adCampaignId,
       leadSource: leadsTable.source,
