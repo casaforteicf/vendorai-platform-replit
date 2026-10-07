@@ -386,6 +386,7 @@ function SettingsSectionShell({
   title,
   description,
   children,
+  return <ConfiguracoesNormalized embedded forcedTab="perfil" />;
 }: {
   title: string;
   description: string;
@@ -800,7 +801,7 @@ export default function Configuracoes() {
       title: "Empresa",
       description: "Dados da empresa, marca, endereço, canais e preferências.",
       icon: Building2,
-      action: () => openSettingsSection("empresa", "perfil"),
+      action: () => openSettingsSection("empresa"),
     },
     {
       key: "plano-negocios",
@@ -814,7 +815,7 @@ export default function Configuracoes() {
       title: "Equipe e permissões",
       description: "Usuários, funções, acessos e responsáveis.",
       icon: Users,
-      action: () => openSettingsSection("equipe", "equipe"),
+      action: () => openSettingsSection("equipe"),
     },
     {
       key: "integracoes",
