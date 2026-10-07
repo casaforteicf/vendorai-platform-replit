@@ -306,6 +306,86 @@ router.delete("/tenants/:tenantId/obras/:obraId/governanca/relatorios-salvos/:id
   return res.status(204).send();
 });
 
+router.get("/tenants/:tenantId/governanca/permissoes-efetivas", async (req, res) => {
+  const { tenantId } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const regras = await db.select().from(obraPermissoesOperacionaisTable)
+    .where(and(
+      eq(obraPermissoesOperacionaisTable.tenantId, tenantId),
+      eq(obraPermissoesOperacionaisTable.ativo, true),
+    ))
+    .orderBy(obraPermissoesOperacionaisTable.chave);
+
+  const u = (req as any).user ?? {};
+  const admin = isTenantAdmin(req);
+  const efetivas = regras.map((r) => {
+    const roles = Array.isArray(r.rolesPermitidas) ? r.rolesPermitidas : [];
+    const funcoes = Array.isArray(r.funcoesPermitidas) ? r.funcoesPermitidas : [];
+    const usuarios = Array.isArray(r.usuariosPermitidos) ? r.usuariosPermitidos : [];
+    const permitido =
+      admin ||
+      roles.includes(u.platformRole) ||
+      roles.includes(u.role) ||
+      funcoes.includes(u.userFunction) ||
+      usuarios.includes(userId(req) ?? "");
+    return { chave: r.chave, nome: r.nome, permitido };
+  });
+
+  return res.json({
+    admin,
+    usuarioId: userId(req),
+    permissoes: efetivas,
+  });
+});
+
+router.post("/tenants/:tenantId/governanca/permissoes-operacionais/inicializar", async (req, res) => {
+  const { tenantId } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  if (!isTenantAdmin(req)) return res.status(403).json({ error: "Somente admin pode inicializar permissões." });
+
+  const presets = [
+    ["orcamento.editar", "Editar orçamento", "Criar e alterar orçamento, composições e formação de venda."],
+    ["cotacoes.selecionar", "Selecionar cotações", "Selecionar propostas e fornecedores vencedores."],
+    ["compras.aprovar", "Aprovar compras", "Aprovar pedidos de compra e autorizar envio ao fornecedor."],
+    ["recebimento.registrar", "Registrar recebimento", "Registrar recebimentos, rejeições e devoluções."],
+    ["execucao.medir", "Medir execução", "Registrar medições físicas e apontamentos de execução."],
+    ["financeiro.liquidar", "Liquidar financeiro", "Registrar pagamentos, recebimentos e estornos."],
+    ["relatorios.ver", "Ver relatórios", "Visualizar relatórios consolidados da obra."],
+    ["auditoria.ver", "Ver auditoria", "Visualizar a trilha de auditoria da obra."],
+  ] as const;
+
+  const existentes = await db.select().from(obraPermissoesOperacionaisTable)
+    .where(eq(obraPermissoesOperacionaisTable.tenantId, tenantId));
+  const criadas = [];
+
+  for (const [chave, nome, descricao] of presets) {
+    if (existentes.some((x) => x.chave === chave)) continue;
+    const [row] = await db.insert(obraPermissoesOperacionaisTable).values({
+      tenantId,
+      chave,
+      nome,
+      descricao,
+      rolesPermitidas: ["super_admin", "tenant_admin", "admin"],
+      funcoesPermitidas: [],
+      usuariosPermitidos: [],
+      ativo: true,
+    }).returning();
+    criadas.push(row);
+  }
+
+  await audit(req, {
+    tenantId,
+    modulo: "permissoes",
+    acao: "inicializar",
+    entidade: "permissao_operacional",
+    resumo: `${criadas.length} permissão(ões) operacional(is) inicializada(s)`,
+    metadata: { chaves: criadas.map((x) => x.chave) },
+  });
+
+  return res.status(201).json({ criadas, existentes: presets.length - criadas.length });
+});
+
 router.get("/tenants/:tenantId/governanca/permissoes-operacionais", async (req, res) => {
   const { tenantId } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
