@@ -126,24 +126,52 @@ export function AiBudgetUsageIndicator() {
     if (!tenantId || buyingPack) return;
     setBuyingPack(pack.key);
     setPurchaseError(null);
-    try {
-      const response = await fetch(`/api/tenants/${tenantId}/vendor-credit-purchases`, {
+
+    const requestPurchase = async (path: string) => {
+      const response = await fetch(path, {
         method: "POST",
         headers: {
           ...authHeaders(),
           "Content-Type": "application/json",
+          Accept: "application/json",
         },
         body: JSON.stringify({ packKey: pack.key }),
       });
-      const data = await response.json() as {
-        invoiceUrl?: string | null;
-        error?: string;
-      };
-      if (!response.ok) throw new Error(data.error || "Não foi possível iniciar a compra.");
-      if (!data.invoiceUrl) throw new Error("A cobrança foi criada, mas o link de pagamento não foi retornado.");
-      window.open(data.invoiceUrl, "_blank", "noopener,noreferrer");
+
+      const contentType = response.headers.get("content-type") ?? "";
+      const raw = await response.text();
+      let data: { invoiceUrl?: string | null; error?: string } = {};
+      if (contentType.includes("application/json") || raw.trim().startsWith("{")) {
+        try {
+          data = JSON.parse(raw) as typeof data;
+        } catch {
+          // Resposta inválida é tratada abaixo sem expor erro técnico ao usuário.
+        }
+      }
+
+      return { response, data, raw };
+    };
+
+    try {
+      let result = await requestPurchase(`/api/tenants/${tenantId}/vendor-credit-purchases`);
+
+      // Durante transições de backend, um endpoint ainda não publicado pode
+      // cair no fallback HTML da aplicação. Nessa situação, tenta o alias
+      // legado que usa o mesmo fluxo de cobrança e o mesmo packKey.
+      const returnedHtml = result.raw.trimStart().startsWith("<!DOCTYPE") || result.raw.trimStart().startsWith("<html");
+      if (returnedHtml || result.response.status === 404 || result.response.status === 405) {
+        result = await requestPurchase(`/api/tenants/${tenantId}/token-purchases`);
+      }
+
+      if (!result.response.ok) {
+        throw new Error(result.data.error || "Não foi possível iniciar a compra de Credits.");
+      }
+      if (!result.data.invoiceUrl) {
+        throw new Error("A cobrança foi criada, mas o link de pagamento não foi retornado.");
+      }
+      window.open(result.data.invoiceUrl, "_blank", "noopener,noreferrer");
     } catch (error) {
-      setPurchaseError(error instanceof Error ? error.message : "Não foi possível iniciar a compra.");
+      setPurchaseError(error instanceof Error ? error.message : "Não foi possível iniciar a compra de Credits.");
     } finally {
       setBuyingPack(null);
     }
