@@ -20,6 +20,7 @@ import { checkCatalogMatch, type CatalogCheckItem } from "../lib/catalog-price-c
 import { reconcileScoutOnDealWon } from "../services/revenueScout.js";
 import { ensureTenantPlanAndCommission } from "../lib/deal-closure-commission.js";
 import type { Logger } from "pino";
+import { resolveCanonicalDealValue } from "../lib/deal-value.js";
 
 const router = Router();
 
@@ -69,11 +70,14 @@ router.post("/deals/:dealId/confirm-closure", async (req, res) => {
 
   const valorImplantacaoNum = typeof body.valorImplantacao === "number" ? body.valorImplantacao : 0;
   const valorMensalidadeNum = typeof body.valorMensalidade === "number" ? body.valorMensalidade : 0;
-  const valorNum = typeof body.valor === "number" && body.valor > 0
-    ? body.valor
-    : (valorImplantacaoNum + valorMensalidadeNum) > 0
-      ? valorImplantacaoNum + valorMensalidadeNum
-      : deal.valor ? parseFloat(String(deal.valor)) : 0;
+  const canonicalValue = await resolveCanonicalDealValue(dealId, tenantId);
+  const valorNum = canonicalValue > 0
+    ? canonicalValue
+    : typeof body.valor === "number" && body.valor > 0
+      ? body.valor
+      : (valorImplantacaoNum + valorMensalidadeNum) > 0
+        ? valorImplantacaoNum + valorMensalidadeNum
+        : 0;
 
   // ── Catalog-price divergence guard — mesma regra do proposalAccepted() ────
   const [proposta] = await db
@@ -294,11 +298,14 @@ export async function runDealClosure(
 
   const valorImplantacaoNum = typeof valorImplantacao === "number" ? valorImplantacao : 0;
   const valorMensalidadeNum = typeof valorMensalidade === "number" ? valorMensalidade : 0;
-  const valorNum = typeof valor === "number" && valor > 0
-    ? valor
-    : (valorImplantacaoNum + valorMensalidadeNum) > 0
-      ? valorImplantacaoNum + valorMensalidadeNum
-      : deal.valor ? parseFloat(String(deal.valor)) : 0;
+  const canonicalValue = await resolveCanonicalDealValue(dealId, tenantId);
+  const valorNum = canonicalValue > 0
+    ? canonicalValue
+    : typeof valor === "number" && valor > 0
+      ? valor
+      : (valorImplantacaoNum + valorMensalidadeNum) > 0
+        ? valorImplantacaoNum + valorMensalidadeNum
+        : 0;
 
   // ── 1. Update deal to ganho ─────────────────────────────────────────────
   await db

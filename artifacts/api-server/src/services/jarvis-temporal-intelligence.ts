@@ -1,5 +1,6 @@
 import { and, eq, gte, or } from "drizzle-orm";
 import { db, dealsTable } from "@workspace/db";
+import { canonicalDealValueSql } from "../lib/deal-value.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const CURRENT_DAYS = 30;
@@ -141,7 +142,7 @@ export async function loadJarvisTemporalIntelligence(
   const deals = await db
     .select({
       etapa: dealsTable.etapa,
-      valor: dealsTable.valor,
+      valor: canonicalDealValueSql,
       createdAt: dealsTable.createdAt,
       updatedAt: dealsTable.updatedAt,
       dataFechamento: dealsTable.dataFechamento,

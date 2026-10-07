@@ -21,6 +21,8 @@ import {
   prospectorQueueTable,
 } from "@workspace/db";
 
+import { canonicalDealValueSql } from "../lib/deal-value.js";
+
 const router: IRouter = Router();
 
 function getTenantId(req: Request): string {
@@ -88,7 +90,7 @@ router.get("/tenants/:tenantId/analytics/agents", async (req, res) => {
       .select({
         source: leadsTable.source,
         total: count(),
-        valor: sql<string>`sum(${dealsTable.valor})::text`,
+        valor: sql<string>`sum(${canonicalDealValueSql})::text`,
       })
       .from(dealsTable)
       .innerJoin(leadsTable, eq(dealsTable.leadId, leadsTable.id))
@@ -283,7 +285,7 @@ router.get("/tenants/:tenantId/analytics/channels", async (req, res) => {
       .select({
         source: leadsTable.source,
         total: count(),
-        valor: sql<string>`sum(${dealsTable.valor})::text`,
+        valor: sql<string>`sum(${canonicalDealValueSql})::text`,
       })
       .from(dealsTable)
       .innerJoin(leadsTable, eq(dealsTable.leadId, leadsTable.id))

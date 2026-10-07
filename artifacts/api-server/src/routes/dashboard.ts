@@ -34,6 +34,7 @@ import {
 } from "drizzle-orm";
 import { callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";
 import { authenticate } from "../middlewares/auth.js";
+import { canonicalDealValueSql } from "../lib/deal-value.js";
 
 const router: IRouter = Router();
 
@@ -143,7 +144,7 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
 
     // 3. Valor total em negociação (deals abertos)
     db
-      .select({ totalValor: sum(dealsTable.valor) })
+      .select({ totalValor: sum(canonicalDealValueSql) })
       .from(dealsTable)
       .where(
         and(
@@ -205,7 +206,7 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
     db
       .select({
         count: sql<number>`count(*)`.mapWith(Number),
-        somaValor: sum(dealsTable.valor),
+        somaValor: sum(canonicalDealValueSql),
       })
       .from(dealsTable)
       .where(
@@ -219,7 +220,7 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
     // 8. Ticket médio
     db
       .select({
-        ticketMedio: sql<string | null>`avg(${dealsTable.valor})::text`,
+        ticketMedio: sql<string | null>`avg(${canonicalDealValueSql})::text`,
       })
       .from(dealsTable)
       .where(
@@ -650,13 +651,13 @@ router.post("/tenants/:tenantId/dashboard/perfil-insight", async (req, res) => {
         .orderBy(desc(sql`count(*)`))
         .limit(5),
       db
-        .select({ count: sql<number>`count(*)`.mapWith(Number), somaValor: sum(dealsTable.valor) })
+        .select({ count: sql<number>`count(*)`.mapWith(Number), somaValor: sum(canonicalDealValueSql) })
         .from(dealsTable)
         .where(and(eq(dealsTable.tenantId, tenantId), eq(dealsTable.etapa, "ganho"))),
       db
-        .select({ ticketMedio: sql<string | null>`avg(${dealsTable.valor})::text` })
+        .select({ ticketMedio: sql<string | null>`avg(${canonicalDealValueSql})::text` })
         .from(dealsTable)
-        .where(and(eq(dealsTable.tenantId, tenantId), eq(dealsTable.etapa, "ganho"), isNotNull(dealsTable.valor))),
+        .where(and(eq(dealsTable.tenantId, tenantId), eq(dealsTable.etapa, "ganho"))),
       db
         .select({
           naoInformado: sql<number>`count(*) filter (where ${leadsTable.dataNascimento} is null or ${leadsTable.dataNascimento} = '')`.mapWith(Number),
@@ -891,7 +892,7 @@ router.get("/dashboard", authenticate, async (req, res) => {
     // Aquecimento, parceiros, execução e estados terminais não pertencem ao pipeline Comercial.
     db.select({
       total: count(),
-      somaValor: sum(dealsTable.valor),
+      somaValor: sum(canonicalDealValueSql),
     })
       .from(dealsTable)
       .innerJoin(leadsTable, and(
@@ -908,7 +909,7 @@ router.get("/dashboard", authenticate, async (req, res) => {
     // deals ganhos este mês
     db.select({
       total: count(),
-      somaValor: sum(dealsTable.valor),
+      somaValor: sum(canonicalDealValueSql),
     })
       .from(dealsTable)
       .where(and(

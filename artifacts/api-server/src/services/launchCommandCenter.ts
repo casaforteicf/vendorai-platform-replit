@@ -10,6 +10,7 @@ import {
   tenantsTable,
   webBehaviorEventsTable,
 } from "@workspace/db";
+import { canonicalDealValueSql } from "../lib/deal-value.js";
 
 export type LaunchPeriod = "7d" | "30d" | "90d" | "all";
 export type BehaviorIntentTier = "baixo" | "medio" | "alto" | "muito_alto";
@@ -380,7 +381,7 @@ export async function getFilteredLaunchCommandCenter(tenantId: string, rawFilter
   const wonDeals = await db.select({
     leadId: dealsTable.leadId,
     campaignId: leadsTable.adCampaignId,
-    valor: dealsTable.valor,
+    valor: canonicalDealValueSql,
     wonAt: dealsTable.wonAt,
     dataFechamento: dealsTable.dataFechamento,
     updatedAt: dealsTable.updatedAt,

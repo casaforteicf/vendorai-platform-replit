@@ -24,6 +24,7 @@ import {
   aiUsageLogsTable,
 } from "@workspace/db";
 import { authenticate } from "../middlewares/auth.js";
+import { canonicalDealValueSql } from "../lib/deal-value.js";
 
 const router: IRouter = Router();
 
@@ -345,7 +346,7 @@ router.get("/organizacoes/:id/painel", authenticate, async (req, res) => {
       const [dealsRow] = await db
         .select({
           count: sql<number>`count(*)`,
-          receita: sql<number>`coalesce(sum(${dealsTable.valor}), 0)`,
+          receita: sql<number>`coalesce(sum(${canonicalDealValueSql}), 0)`,
         })
         .from(dealsTable)
         .where(and(eq(dealsTable.tenantId, tenant.id), eq(dealsTable.etapa, "ganho")));

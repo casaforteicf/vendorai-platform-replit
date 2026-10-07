@@ -6,6 +6,7 @@ import {
   jarvisCasesTable,
   leadsTable,
 } from "@workspace/db";
+import { canonicalDealValueSql } from "../lib/deal-value.js";
 
 export type JarvisRelationNodeKind =
   | "person"
@@ -78,7 +79,7 @@ export async function loadJarvisRelationshipIntelligence(tenantId: string) {
         leadId: dealsTable.leadId,
         titulo: dealsTable.titulo,
         etapa: dealsTable.etapa,
-        valor: dealsTable.valor,
+        valor: canonicalDealValueSql,
         assignedTo: dealsTable.assignedTo,
         updatedAt: dealsTable.updatedAt,
       })

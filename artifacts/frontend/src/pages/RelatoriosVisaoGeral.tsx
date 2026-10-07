@@ -159,7 +159,22 @@ export default function RelatoriosVisaoGeral() {
     const wonDeals = deals.filter((deal) => deal.etapa === "ganho");
     const lostDeals = deals.filter((deal) => deal.etapa === "perdido");
     const closedDeals = wonDeals.length + lostDeals.length;
-    const revenue = wonDeals.reduce((sum, deal) => sum + Number(deal.valor ?? 0), 0);
+
+    const latestProposalValueByDeal = new Map<string, { value: number; updatedAt: number }>();
+    for (const proposal of propostas) {
+      if (!proposal.dealId || proposal.valorTotal == null) continue;
+      const value = Number(proposal.valorTotal);
+      if (!Number.isFinite(value)) continue;
+      const updatedAt = new Date(proposal.updatedAt ?? proposal.createdAt ?? 0).getTime();
+      const current = latestProposalValueByDeal.get(proposal.dealId);
+      if (!current || updatedAt >= current.updatedAt) {
+        latestProposalValueByDeal.set(proposal.dealId, { value, updatedAt });
+      }
+    }
+    const revenue = wonDeals.reduce(
+      (sum, deal) => sum + (latestProposalValueByDeal.get(deal.id)?.value ?? Number(deal.valor ?? 0)),
+      0,
+    );
     const ticket = wonDeals.length ? revenue / wonDeals.length : 0;
 
     const gender = countValues(activeLeads.map((lead) => normalizeText(lead.genero)));

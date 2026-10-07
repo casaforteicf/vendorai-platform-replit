@@ -10,6 +10,7 @@ import {
   mediaPlansTable,
   tenantsTable,
 } from "@workspace/db";
+import { canonicalDealValueSql } from "../lib/deal-value.js";
 
 const secret = process.env["JWT_SECRET"] ?? process.env["SESSION_SECRET"];
 if (!secret) throw new Error("JWT_SECRET (or SESSION_SECRET) is required");
@@ -267,7 +268,7 @@ diagnosticPlanningProtectedRouter.get("/tenants/:tenantId/diagnostico-planejamen
   const [profile, deals, latestMediaPlan] = await Promise.all([
     profileForTenant(tenantId),
     db.select({
-      valor: dealsTable.valor,
+      valor: canonicalDealValueSql,
       etapa: dealsTable.etapa,
       wonAt: dealsTable.wonAt,
       dataFechamento: dealsTable.dataFechamento,

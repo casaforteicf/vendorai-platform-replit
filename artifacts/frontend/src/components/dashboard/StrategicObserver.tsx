@@ -394,11 +394,25 @@ export default function StrategicObserver({
     const now = Date.now();
     const cutoff = now - 90 * 24 * 60 * 60 * 1000;
     const leadById = new Map(raw.leads.map((lead) => [lead.id, lead]));
-    const dealById = new Map(raw.deals.map((deal) => [deal.id, deal]));
+    const proposalValueByDeal = new Map<string, { value: number; createdAt: number }>();
+    for (const proposal of raw.proposals) {
+      if (!proposal.dealId || proposal.valorTotal == null) continue;
+      const value = n(proposal.valorTotal);
+      const createdAt = new Date(proposal.createdAt ?? 0).getTime();
+      const current = proposalValueByDeal.get(proposal.dealId);
+      if (!current || createdAt >= current.createdAt) {
+        proposalValueByDeal.set(proposal.dealId, { value, createdAt });
+      }
+    }
+    const canonicalDeals = raw.deals.map((deal) => ({
+      ...deal,
+      valor: proposalValueByDeal.get(deal.id)?.value ?? deal.valor,
+    }));
+    const dealById = new Map(canonicalDeals.map((deal) => [deal.id, deal]));
     const userById = new Map(raw.users.map((user) => [user.id, user]));
 
-    const openDeals = raw.deals.filter((deal) => !OPEN_EXCLUDED.has(String(deal.etapa ?? "")));
-    const closedRecent = raw.deals.filter((deal) =>
+    const openDeals = canonicalDeals.filter((deal) => !OPEN_EXCLUDED.has(String(deal.etapa ?? "")));
+    const closedRecent = canonicalDeals.filter((deal) =>
       (TERMINAL_WON.has(String(deal.etapa ?? "")) || TERMINAL_LOST.has(String(deal.etapa ?? ""))) &&
       isRecent(closedAt(deal), cutoff),
     );

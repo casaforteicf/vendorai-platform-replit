@@ -39,6 +39,8 @@ import {
   normalizeProposalBuilderTemplate,
   type ProposalBuilderTemplate,
 } from "../lib/proposal-builder.js";
+import { syncDealValueFromProposal } from "../lib/deal-value.js";
+
 const router: IRouter = Router();
 
 type BudgetSnapshotPending = {
@@ -753,6 +755,12 @@ router.post("/propostas", async (req, res) => {
       numero,
     })
     .returning();
+
+  await syncDealValueFromProposal({
+    dealId: proposta.dealId,
+    tenantId: proposta.tenantId,
+    valorTotal: proposta.valorTotal,
+  });
 
   void recordIntelligenceEvent({
     tenantId: proposta.tenantId,

@@ -14,6 +14,7 @@ import {
   whatsappConnectionsTable,
   webBehaviorEventsTable,
 } from "@workspace/db";
+import { canonicalDealValueSql } from "../lib/deal-value.js";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getActiveCatalogPreview } from "../lib/catalog-readiness.js";
 import coreRouter, { publicSiteGeneratorRouter as corePublicSiteGeneratorRouter } from "./site_generator_core.js";
@@ -412,7 +413,7 @@ router.get("/tenants/:tenantId/site-generator/analytics", async (req, res) => {
         .from(leadsTable)
         .where(eq(leadsTable.tenantId, tenantId)),
       db
-        .select({ id: dealsTable.id, leadId: dealsTable.leadId, etapa: dealsTable.etapa, valor: dealsTable.valor })
+        .select({ id: dealsTable.id, leadId: dealsTable.leadId, etapa: dealsTable.etapa, valor: canonicalDealValueSql })
         .from(dealsTable)
         .where(eq(dealsTable.tenantId, tenantId)),
     ]);

@@ -12,6 +12,7 @@ import {
   type JarvisTemporalAnomaly,
   type JarvisTemporalIntelligence,
 } from "./jarvis-temporal-intelligence.js";
+import { canonicalDealValueSql } from "../lib/deal-value.js";
 
 const WON_STAGES = new Set(["ganho", "entregue"]);
 const LOST_STAGES = new Set(["perdido", "cancelado"]);
@@ -311,7 +312,7 @@ export async function loadJarvisAnomalyCorrelationIntelligence(
       leadId: dealsTable.leadId,
       assignedTo: dealsTable.assignedTo,
       etapa: dealsTable.etapa,
-      valor: dealsTable.valor,
+      valor: canonicalDealValueSql,
       createdAt: dealsTable.createdAt,
       updatedAt: dealsTable.updatedAt,
       dataFechamento: dealsTable.dataFechamento,
