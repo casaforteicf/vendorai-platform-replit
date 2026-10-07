@@ -199,6 +199,15 @@ async function updateSpecObject(id: string, tId: string | null, payload: Partial
 
   const sets: string[] = [];
   const values: unknown[] = [];
+    "manufacturerId", "supplierId",
+    "productName", "materialName", "manufacturerName", "supplierName",
+    "materialValue", "laborValue",
+    "widthMm", "heightMm", "depthMm", "lengthMm", "areaM2", "perimeterM", "volumeM3",
+  ]);
+  const currentColumnValue = (column: string) => (current as Record<string, unknown>)[column];
+  const normalizedComparable = (value: unknown) => value == null ? null : typeof value === "number" ? Number(value) : String(value);
+
+  let invalidatesTechnicalApproval = false;
   const payloadRecord = payload as Record<string, unknown>;
   const approvalSensitiveFields = new Set([
     "quantity", "unit",
@@ -210,9 +219,21 @@ async function updateSpecObject(id: string, tId: string | null, payload: Partial
   ]);
   const currentColumnValue = (column: string) => (current as Record<string, unknown>)[column];
   const normalizedComparable = (value: unknown) => value == null ? null : typeof value === "number" ? Number(value) : String(value);
-
   let invalidatesTechnicalApproval = false;
   for (const [key, column] of Object.entries(allowed)) {
+    }
+    values.push(payloadRecord[key]);
+    sets.push(column + " = $" + values.length);
+  }
+
+  if (payloadRecord.status !== undefined) {
+    const nextStatus = invalidatesTechnicalApproval
+      && current.technical_approval_status === "approved"
+      && payloadRecord.status === "approved"
+        ? "specified"
+        : payloadRecord.status;
+    values.push(nextStatus);
+    sets.push("status = $" + values.length);
     if (key === "status" || payloadRecord[key] === undefined) continue;
     if (approvalSensitiveFields.has(key)
       && normalizedComparable(payloadRecord[key]) !== normalizedComparable(currentColumnValue(column))) {
@@ -233,6 +254,12 @@ async function updateSpecObject(id: string, tId: string | null, payload: Partial
   }
 
   if (sets.length === 0) return current;
+
+    sets.push("technical_approval_note = NULL");
+    if (payloadRecord.status === undefined) {
+      sets.push("status = CASE WHEN status = 'approved' THEN 'specified' ELSE status END");
+    }
+  }
 
   if (invalidatesTechnicalApproval && current.technical_approval_status === "approved") {
     sets.push("technical_approval_status = 'pending'");
