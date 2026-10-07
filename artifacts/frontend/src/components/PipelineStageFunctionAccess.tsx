@@ -102,14 +102,6 @@ export function PipelineStageFunctionAccess({
       }),
     [agents],
   );
-  const sortedAgents = useMemo(
-    () =>
-      [...agents].sort((a, b) => {
-        if (a.ativo !== b.ativo) return a.ativo ? -1 : 1;
-        return a.nome.localeCompare(b.nome, "pt-BR");
-      }),
-    [agents],
-  );
 
   const options = useMemo(() => {
     const overrides = new Map(
@@ -155,15 +147,6 @@ export function PipelineStageFunctionAccess({
         });
       }
 
-      const selectedOption = next ? agents.find((agent) => agent.agentKey === next) : null;
-
-      if (selectedOption && !selectedOption.ativo) {
-        await customFetch(`/api/agent-configs/${selectedOption.agentKey}/activate`, {
-          method: "POST",
-          responseType: "json",
-        });
-      }
-
       await customFetch(`/api/tenants/${tenantId}/pipeline-stages/${stageId}`, {
         method: "PATCH",
         body: JSON.stringify({ responsavelAgenteKey: next }),
@@ -172,7 +155,6 @@ export function PipelineStageFunctionAccess({
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["pipeline-stages", tenantId, pipeline] }),
         queryClient.invalidateQueries({ queryKey: getListPipelineStagesQueryKey(tenantId) }),
-        queryClient.invalidateQueries({ queryKey: ["agent-configs", tenantId] }),
         queryClient.invalidateQueries({ queryKey: ["agent-configs", tenantId] }),
       ]);
     } catch (error) {
@@ -273,14 +255,12 @@ export function PipelineStageFunctionAccess({
               {selectedAgent === null && <Check className="h-3.5 w-3.5 text-primary" />}
             </button>
             {sortedAgents.map((agent) => (
-            {sortedAgents.map((agent) => (
               <button
                 key={agent.agentKey}
                 type="button"
                 disabled={saving}
                 onClick={() => void persistAgent(agent.agentKey)}
                 className={cn(
-                  "flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-muted",
                   "flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-muted",
                   selectedAgent === agent.agentKey && "bg-muted font-medium",
                 )}
@@ -292,20 +272,11 @@ export function PipelineStageFunctionAccess({
                   )}
                   {selectedAgent === agent.agentKey && <Check className="h-3.5 w-3.5 text-primary" />}
                 </span>
-                <span className="min-w-0 flex-1 truncate">{agent.nome}</span>
-                <span className="flex shrink-0 items-center gap-1.5">
-                  {!agent.ativo && (
-                    <span className="text-[10px] text-muted-foreground">ativa ao selecionar</span>
-                  )}
-                  {selectedAgent === agent.agentKey && <Check className="h-3.5 w-3.5 text-primary" />}
-                </span>
               </button>
             ))}
           </div>
           {sortedAgents.length === 0 && (
-          {sortedAgents.length === 0 && (
             <p className="px-2 py-1 text-[11px] text-muted-foreground">
-              Nenhum agente de IA disponível para este tenant.
               Nenhum agente de IA disponível para este tenant.
             </p>
           )}
