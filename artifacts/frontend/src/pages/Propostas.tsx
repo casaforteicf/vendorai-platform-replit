@@ -1153,6 +1153,8 @@ export function CatalogoModal({
                 <Button
                   size="sm"
                   variant="outline"
+                  data-testid="catalog-import-pdf"
+                  aria-label="Importar catálogo em PDF"
                   disabled={pdfImporting}
                   onClick={() => document.getElementById("pdf-catalog-import-input")?.click()}
                 >
