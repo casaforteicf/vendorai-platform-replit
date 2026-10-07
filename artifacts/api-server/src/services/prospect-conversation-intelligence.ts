@@ -326,6 +326,8 @@ Responda SOMENTE JSON válido:
   }
   if (extracted.meetingAccepted) facts.push({ key: "meeting_accepted", value: true, confidence: 100, source, confirmed: true, observedAt: now.toISOString() });
   if (extracted.meetingInterest) facts.push({ key: "meeting_interest", value: true, confidence: 90, source, confirmed: true, observedAt: now.toISOString() });
+  if (extracted.meetingStart) facts.push({ key: "meeting_start", value: extracted.meetingStart, confidence: 100, source, confirmed: true, observedAt: now.toISOString() });
+  if (extracted.meetingEnd) facts.push({ key: "meeting_end", value: extracted.meetingEnd, confidence: 100, source, confirmed: true, observedAt: now.toISOString() });
 
   const qualification: ProspectQualification = {
     ...currentQ,
