@@ -242,9 +242,9 @@ export default function Marketplace() {
   return (
     <div className="arqdor-reference-ui max-w-6xl mx-auto space-y-5">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Marketplace Arch</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Arqdor Marketplace</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Compre e venda produtos entre arquitetos e designers
+          Conecte projetos a produtos, fornecedores e oportunidades em um só ecossistema
         </p>
       </div>
 
@@ -297,7 +297,7 @@ export default function Marketplace() {
               <p className="text-xs text-muted-foreground mt-1">
                 {busca || catFilter !== "__all__"
                   ? "Tente outros filtros."
-                  : "Outros arquitetos ainda não publicaram produtos."}
+                  : "Ainda não há ofertas publicadas para esta seleção."}
               </p>
             </div>
           )}
