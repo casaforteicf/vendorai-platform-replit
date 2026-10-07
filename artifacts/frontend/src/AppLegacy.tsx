@@ -675,6 +675,7 @@ function AppRoutes() {
         <Route path="/praca-conciliacao"><ProtectedRoute component={ConciliacaoFinanceiraPraca} /></Route>
         <Route path="/logistica-praca"><ProtectedRoute component={MonitorLogisticaPraca} /></Route>
         <Route path="/entregas-praca"><ProtectedRoute component={AppEntregadorPraca} /></Route>
+        <Route path="/configuracoes/:section"><ConfiguracoesRoute /></Route>
         <Route path="/configuracoes"><ConfiguracoesRoute /></Route>
         <Route path="/usuarios"><ProtectedRoute component={Usuarios} /></Route>
         <Route path="/propostas">{() => <ProtectedRoute component={Propostas} />}</Route>
