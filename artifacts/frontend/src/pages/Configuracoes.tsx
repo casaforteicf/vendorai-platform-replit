@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Bell, Bot, Building2, ChevronRight, Database, Search, Settings2, ShieldCheck, Users, Workflow, Zap } from "lucide-react";
 import ConfiguracoesNormalized from "./ConfiguracoesNormalized";
 import { BrandKitSettings } from "@/components/BrandKitSettings";
@@ -564,13 +564,12 @@ export default function Configuracoes() {
     },
   ];
 
-  const filteredSettingsCards = useMemo(() => {
-    const term = settingsSearch.trim().toLocaleLowerCase("pt-BR");
-    if (!term) return settingsCards;
-    return settingsCards.filter((card) =>
-      `${card.title} ${card.description}`.toLocaleLowerCase("pt-BR").includes(term),
-    );
-  }, [settingsSearch]);
+  const settingsSearchTerm = settingsSearch.trim().toLocaleLowerCase("pt-BR");
+  const filteredSettingsCards = settingsSearchTerm
+    ? settingsCards.filter((card) =>
+        `${card.title} ${card.description}`.toLocaleLowerCase("pt-BR").includes(settingsSearchTerm),
+      )
+    : settingsCards;
 
   return (
     <div className="vendor-settings-compact vendor-page-canvas vendor-config-page">
