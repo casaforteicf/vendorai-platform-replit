@@ -1,0 +1,153 @@
+# Archived from .github/workflows/cloudflare-fullstack-alt.yml on 2026-10-07.
+# Automatic frontend deploys now use Cloudflare Pages native Git integration.
+
+name: Cloudflare Fullstack Alternative
+# Manual contingency only. Automatic production frontend deploys are handled by Cloudflare Pages Git integration.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-fullstack-alt-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy API and frontend to Cloudflare
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Validate Cloudflare credentials
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+
+      - name: Build API container
+        run: docker build -f cloudflare/api-worker/Dockerfile -t vendorai-api:cloudflare-alt .
+
+      - name: Deploy API Worker and Container
+        id: api
+        working-directory: cloudflare/api-worker
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          pnpm dlx wrangler@4 deploy 2>&1 | tee /tmp/vendorai-cloudflare-api.log
+          worker_url=$(grep -Eo 'https://[^[:space:]]+\.workers\.dev' /tmp/vendorai-cloudflare-api.log | tail -n 1 || true)
+          if [ -z "$worker_url" ]; then
+            echo "Cloudflare Worker URL was not reported."
+            exit 1
+          fi
+          echo "worker_url=$worker_url" >> "$GITHUB_OUTPUT"
+
+      - name: Verify API health
+        shell: bash
+        env:
+          WORKER_URL: ${{ steps.api.outputs.worker_url }}
+        run: |
+          set -euo pipefail
+          for attempt in {1..30}; do
+            status=$(curl -sS -o /tmp/vendorai-api-health.json -w '%{http_code}' "$WORKER_URL/api/healthz" || true)
+            if [ "$status" = "200" ]; then
+              cat /tmp/vendorai-api-health.json
+              exit 0
+            fi
+            echo "API health attempt $attempt returned HTTP ${status:-000}"
+            sleep 10
+          done
+          cat /tmp/vendorai-api-health.json 2>/dev/null || true
+          exit 1
+
+      - name: Install workspace dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build frontend
+        env:
+          VENDOR_BUILD_ID: ${{ github.sha }}
+        run: pnpm --filter @workspace/frontend build
+
+      - name: Point Pages proxy to Cloudflare API
+        shell: bash
+        env:
+          WORKER_URL: ${{ steps.api.outputs.worker_url }}
+        run: |
+          set -euo pipefail
+          worker_file="artifacts/frontend/dist/public/_worker.js"
+          test -f "$worker_file"
+          node - "$worker_file" "$WORKER_URL" <<'NODE'
+          const fs = require("node:fs");
+          const [file, origin] = process.argv.slice(2);
+          let source = fs.readFileSync(file, "utf8");
+          const before = 'const RAILWAY_ORIGIN = "https://vendorai-platform-replit-production.up.railway.app";';
+          const after = `const RAILWAY_ORIGIN = ${JSON.stringify(origin)};`;
+          if (!source.includes(before)) throw new Error("Expected API proxy origin was not found");
+          source = source.replace(before, after);
+          fs.writeFileSync(file, source);
+          NODE
+          grep -F "$WORKER_URL" "$worker_file"
+
+      - name: Ensure alternative Pages project
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm dlx wrangler@3.90.0 pages project create vendorai-alt --production-branch main || true
+
+      - name: Deploy alternative frontend
+        id: frontend
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          pnpm dlx wrangler@3.90.0 pages deploy artifacts/frontend/dist/public --project-name vendorai-alt --branch main 2>&1 | tee /tmp/vendorai-cloudflare-pages.log
+          pages_url=$(grep -Eo 'https://[^[:space:]]+\.pages\.dev' /tmp/vendorai-cloudflare-pages.log | tail -n 1 || true)
+          if [ -z "$pages_url" ]; then
+            pages_url="https://vendorai-alt.pages.dev"
+          fi
+          echo "pages_url=$pages_url" >> "$GITHUB_OUTPUT"
+
+      - name: Verify frontend and Visitor Intelligence
+        shell: bash
+        env:
+          PAGES_URL: ${{ steps.frontend.outputs.pages_url }}
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error "$PAGES_URL/login" >/dev/null
+          login=$(curl --fail --silent --show-error -H 'content-type: application/json' --data '{"email":"demo","password":"demo"}' "$PAGES_URL/api/auth/demo-login")
+          token=$(jq -r '.token // empty' <<<"$login")
+          test -n "$token"
+          for minutes in 60 129600; do
+            status=$(curl -sS -o /tmp/visitor-${minutes}.json -w '%{http_code}' -H "Authorization: Bearer $token" "$PAGES_URL/api/visitor-intelligence?minutes=$minutes&onlineWindowSeconds=90")
+            if [ "$status" != "200" ]; then
+              cat /tmp/visitor-${minutes}.json
+              echo "Visitor Intelligence returned HTTP $status for minutes=$minutes"
+              exit 1
+            fi
+          done
+          echo "Alternative Cloudflare fullstack is healthy at $PAGES_URL"
