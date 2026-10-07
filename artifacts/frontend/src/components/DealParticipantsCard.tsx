@@ -276,6 +276,11 @@ export function DealParticipantsCard({
 
   return (
     <>
+            Envolvidos ({people.length + companies.length})
+          </Button>
+        </div>
+      ) : (
+              <Card className="border-border/70 shadow-sm">
       {hasParticipants ? (
         <div className="flex justify-end">
           <Button type="button" size="sm" variant="ghost" className="h-8 text-muted-foreground" onClick={() => setOpen(true)}>

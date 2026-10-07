@@ -1,10 +1,9 @@
 import { Router, type IRouter } from "express";
 import multer from "multer";
-import Anthropic from "@anthropic-ai/sdk";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger.js";
-import { resolveAIKey, logUsage, estimateCost } from "../lib/ai-gateway.js";
 import { objectStorageClient } from "../lib/objectStorage.js";
+import { extractQuoteData } from "../lib/document-extraction.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { sendJarvisEmail } from "../services/jarvis-email-provider.js";
 
@@ -149,76 +148,48 @@ router.post("/arch/procurement/:obraId/analyze-document", upload.single("documen
       res.json({ extracted: { tipo: "orcamento", itens: [] }, document, parseLocally: true });
       return;
     }
-    const aiKey = await resolveAIKey(tid, "anthropic");
-    const anthropic = new Anthropic({ apiKey: aiKey.apiKey });
-    const system = `Você extrai dados de documentos de compras de obras no Brasil.
-Retorne APENAS JSON válido, sem markdown:
-{
-  "tipo": "orcamento" | "pedido" | "cotacao" | "nota" | "outro",
-  "fornecedor": "string ou null",
-  "numero": "string ou null",
-  "dataPrevista": "YYYY-MM-DD ou null",
-  "condicaoPagamento": "string ou null",
-  "prazoEntregaDias": 0,
-  "frete": 0,
-  "desconto": 0,
-  "taxas": 0,
-  "observacoes": "string ou null",
-  "itens": [
-    {
-      "descricao": "string",
-      "quantidade": 1,
-      "unidade": "un",
-      "valorUnitario": 0,
-      "valorTotal": 0
-    }
-  ]
-}
-Não invente valores. Quando ausente use null ou 0. Se houver vários itens, extraia todos. Contexto: ${context}.`;
+    const quote = await extractQuoteData([
+      { buffer: file.buffer, mimeType: file.mimetype, originalName: file.originalname },
+    ], tid);
 
-    let content: Anthropic.MessageParam["content"];
-    if (isPdf) {
-      content = [
-        { type: "document" as const, source: { type: "base64" as const, media_type: "application/pdf" as const, data: file.buffer.toString("base64") } },
-        { type: "text" as const, text: "Extraia os dados deste documento para o fluxo de compras da obra." },
-      ];
-    } else if (isImage) {
-      const mediaType = ["image/jpeg","image/png","image/gif","image/webp"].includes(file.mimetype) ? file.mimetype : "image/jpeg";
-      content = [
-        { type: "image" as const, source: { type: "base64" as const, media_type: mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: file.buffer.toString("base64") } },
-        { type: "text" as const, text: "Extraia os dados deste documento para o fluxo de compras da obra." },
-      ];
-    } else {
-      content = [{ type: "text" as const, text: `Extraia os dados do documento abaixo:\n\n${file.buffer.toString("utf-8").slice(0, 50000)}` }];
-    }
+    const items = Array.isArray(quote.itens)
+      ? quote.itens.map((item) => ({
+          descricao: item.descricao,
+          quantidade: item.quantidade ?? null,
+          unidade: item.unidade ?? null,
+          valorUnitario: item.valorUnitario ?? null,
+          valorTotal: item.valorTotal ?? null,
+        }))
+      : [];
 
-    const model = "claude-sonnet-4-6";
-    const response = await anthropic.messages.create({
-      model,
-      max_tokens: 1800,
-      system,
-      messages: [{ role: "user", content }],
-    });
-    const raw = response.content[0]?.type === "text" ? response.content[0].text : "{}";
-    const match = raw.match(/\{[\s\S]*\}/);
-    let extracted: Record<string, unknown> = {};
-    try { extracted = JSON.parse(match?.[0] ?? "{}"); }
-    catch { extracted = { tipo: "outro", itens: [], observacoes: raw.slice(0, 2000) }; }
-
-    const inputTokens = response.usage.input_tokens;
-    const outputTokens = response.usage.output_tokens;
-    await logUsage({
-      tenantId: tid,
-      provider: "anthropic",
-      model,
-      feature: "document_extraction",
-      inputTokens,
-      outputTokens,
-      costEstimateUsd: estimateCost(model, inputTokens, outputTokens),
-      usedByok: aiKey.usedByok,
-      success: true,
-    });
-
+    const deliveryText = quote.prazoEntrega ?? null;
+    const deliveryDaysMatch = deliveryText?.match(/(\d+)\s*(?:dia|dias)/i);
+    const extracted = {
+      tipo: context === "quote" ? "cotacao" : "orcamento",
+      fornecedor: quote.fornecedor ?? null,
+      numero: quote.numeroDocumento ?? null,
+      dataPrevista: null,
+      condicaoPagamento: quote.condPagamento ?? quote.formaPagamento ?? null,
+      prazoEntregaDias: deliveryDaysMatch ? Number(deliveryDaysMatch[1]) : null,
+      frete: quote.frete ?? null,
+      desconto: quote.desconto ?? null,
+      taxas: quote.impostos ?? quote.acrescimos ?? null,
+      observacoes: [
+        quote.observacoes,
+        ...(quote.informacoesAdicionais ?? []),
+      ].filter(Boolean).join("\n") || null,
+      itens: items,
+      confianca: quote.confianca ?? 0,
+      cliente: quote.cliente ?? null,
+      clienteDocumento: quote.clienteDocumento ?? null,
+      clienteTelefone: quote.clienteTelefone ?? null,
+      clienteEmail: quote.clienteEmail ?? null,
+      clienteCidade: quote.clienteCidade ?? null,
+      clienteEstado: quote.clienteEstado ?? null,
+      clienteCep: quote.clienteCep ?? null,
+      clienteEndereco: quote.clienteEndereco ?? null,
+      valorTotal: quote.valorTotal ?? null,
+    };
     res.json({ extracted, document });
   } catch (err) {
     logger.error({ err }, "arch procurement document analysis error");

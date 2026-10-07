@@ -281,6 +281,14 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   quantidadePacote: integer("quantidade_pacote"),
   precoPacote: numeric("preco_pacote", { precision: 12, scale: 2 }),
   larguraPecaM: numeric("largura_peca_m", { precision: 8, scale: 3 }),
+  // Regras de comercialização/embalagem mestre. Os valores abaixo são
+  // expressos em quantidade de PACOTES PRIMÁRIOS. Ex.: 6 pacotes por caixa
+  // mestre => embalagemMestreQuantidade=6. Quando fracionamento=false, a
+  // quantidade faturável é elevada ao múltiplo comercial válido.
+  embalagemMestreQuantidade: integer("embalagem_mestre_quantidade"),
+  quantidadeMinimaVenda: integer("quantidade_minima_venda"),
+  multiploVenda: integer("multiplo_venda"),
+  permiteFracionarEmbalagemMestre: boolean("permite_fracionar_embalagem_mestre").notNull().default(false),
   // Auto-cadastro via IA (sync de estoque do ERP) — produto novo entra
   // como 'pendente_revisao' (e ativo=false, reaproveitando toda a
   // exclusão de site/feed/anúncio já existente por produtosCatalogoTable.ativo)

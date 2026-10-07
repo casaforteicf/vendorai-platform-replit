@@ -35,6 +35,17 @@ export const dealTenantParticipationsTable = pgTable("deal_tenant_participations
   role: text("role").notNull().default("responsible"),
   status: text("status").notNull().default("active"),
   operationalUserId: text("operational_user_id").references(() => usersTable.id, { onDelete: "set null" }),
+  // Função/equipe externa que representa este tenant dentro da empresa de origem
+  // (comercial, transporte, instalação, suporte etc.).
+  functionId: text("function_id"),
+  // Cada tenant mantém sua própria posição do mesmo negócio. Assim o card pode
+  // aparecer simultaneamente nas pipelines das empresas participantes sem duplicar o negócio.
+  pipeline: text("pipeline").notNull().default("comercial"),
+  stage: text("stage"),
+  stageEnteredAt: timestamp("stage_entered_at", { withTimezone: true }),
+  stageDueAt: timestamp("stage_due_at", { withTimezone: true }),
+  lastHandoffFromTenantId: text("last_handoff_from_tenant_id").references(() => tenantsTable.id, { onDelete: "set null" }),
+  lastHandoffAt: timestamp("last_handoff_at", { withTimezone: true }),
   permissions: jsonb("permissions").$type<string[]>().notNull().default([]),
   commissionType: text("commission_type").notNull().default("percent"),
   commissionPercent: numeric("commission_percent", { precision: 7, scale: 4 }).notNull().default("15"),

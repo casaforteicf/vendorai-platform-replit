@@ -79,7 +79,7 @@ function normalize(value: string) {
 function campaignFor(plan: MediaPlan, item: CalendarItem) {
   const name = normalize(item.pilar.split(" · ")[0] || "");
   const campaigns = plan.conteudo.campanhas ?? [];
-  return campaigns.find((campaign) => normalize(campaign.nome) === name) ?? campaigns[0] ?? null;
+  return campaigns.find((campaign) => normalize(campaign.nome) === name) ?? null;
 }
 
 function generatorType(item: CalendarItem): "feed" | "stories" | "reels" | "linkedin" | "youtube" {
@@ -128,6 +128,7 @@ export function MediaPlanFailedRetryBridge() {
   const [projects, setProjects] = useState<MediaProject[]>([]);
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [running, setRunning] = useState(false);
+  const [retryFeedback, setRetryFeedback] = useState<{ error: string }>({ error: "" });
   const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
 
   const onContent = window.location.pathname === "/content";
@@ -194,8 +195,12 @@ export function MediaPlanFailedRetryBridge() {
       headers: headers(true),
       body: JSON.stringify({ status: "gerado", contentGenerationId: generationId, variationIdx: 0 }),
     });
-    if (!response.ok) throw new Error("Falha ao sincronizar o rascunho com o calendário.");
-  }, []);
+    if (!response.ok) {
+      const message = retryFeedback.error || "Falha ao sincronizar o rascunho com o calendário.";
+      setRetryFeedback({ error: message });
+      throw new Error(message);
+    }
+  }, [retryFeedback.error]);
 
   const patchProject = useCallback(async (project: MediaProject, patch: Record<string, unknown>) => {
     const context = { ...(project.context ?? {}), ...patch, updatedFromPlanAt: new Date().toISOString() };
@@ -210,7 +215,12 @@ export function MediaPlanFailedRetryBridge() {
   const generate = useCallback(async (item: CalendarItem, campaign: MediaPlanCampaign, visual: boolean) => {
     const response = await fetch(`/api/tenants/${tid}/content/generate`, {
       method: "POST",
-      headers: headers(true),
+      headers: {
+        ...headers(true),
+        "x-vendorai-calendar-item-id": item.id,
+        "x-vendorai-media-plan-id": plan?.id ?? "",
+        "x-vendorai-campaign-id": campaign.id,
+      },
       body: JSON.stringify({
         type: generatorType(item),
         theme: promptFor(campaign, item).slice(0, 8000),
@@ -220,8 +230,12 @@ export function MediaPlanFailedRetryBridge() {
         desiredCta: campaign.oferta,
       }),
     });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({})) as { error?: string };
+      throw new Error(errorBody.error ?? `O gerador falhou (HTTP ${response.status}).`);
+    }
     const generation = await response.json().catch(() => ({})) as Generation & { error?: string };
-    if (!response.ok || !generation.id) throw new Error(generation.error ?? "O gerador não criou o rascunho.");
+    if (!generation.id) throw new Error(generation.error ?? "O gerador não criou o rascunho.");
     let variation = generation.result?.variations?.[0];
     if (visual && extractImages(variation).length === 0) {
       const imageResponse = await fetch(`/api/tenants/${tid}/content/${generation.id}/variations/0/regenerate-image`, {
@@ -234,7 +248,7 @@ export function MediaPlanFailedRetryBridge() {
       variation = { ...(variation ?? {}), imageUrl: imagePayload.imageUrls[0], imageUrls: imagePayload.imageUrls };
     }
     return { generation, variation };
-  }, [tid]);
+  }, [plan?.id, tid]);
 
   const retryOne = useCallback(async (item: CalendarItem) => {
     if (!plan) throw new Error("Plano não carregado.");
@@ -327,6 +341,7 @@ export function MediaPlanFailedRetryBridge() {
   const retryAll = useCallback(async () => {
     if (running || failedItems.length === 0) return;
     setRunning(true);
+    setRetryFeedback({ error: "" });
     setProgress({ done: 0, total: failedItems.length, failed: 0 });
     let nextIndex = 0;
     let done = 0;
@@ -337,8 +352,9 @@ export function MediaPlanFailedRetryBridge() {
         if (index >= failedItems.length) return;
         try {
           await retryOne(failedItems[index]!);
-        } catch {
+        } catch (error) {
           failed += 1;
+          setRetryFeedback({ error: error instanceof Error ? error.message : "Falha ao reprocessar o item." });
         }
         done += 1;
         setProgress({ done, total: failedItems.length, failed });
@@ -352,16 +368,19 @@ export function MediaPlanFailedRetryBridge() {
   if (!host || !plan || plan.conteudo.statusPlanejamento !== "aprovado" || failedItems.length === 0) return null;
 
   return createPortal(
-    <button
-      type="button"
-      disabled={running}
-      onClick={() => void retryAll()}
-      className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60"
-      title="Reprocessa somente itens que falharam, sem recriar rascunhos já concluídos"
-    >
-      {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-      {running ? `Refazendo ${progress.done}/${progress.total}${progress.failed ? ` · ${progress.failed} falha(s)` : ""}` : `Reprocessar falhas (${failedItems.length})`}
-    </button>,
+    <div className="inline-flex items-center gap-2">
+      <button
+        type="button"
+        disabled={running}
+        onClick={() => void retryAll()}
+        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60"
+        title="Reprocessa somente itens que falharam, sem recriar rascunhos já concluídos"
+      >
+        {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+        {running ? `Refazendo ${progress.done}/${progress.total}${progress.failed ? ` · ${progress.failed} falha(s)` : ""}` : `Reprocessar falhas (${failedItems.length})`}
+      </button>
+      {retryFeedback.error ? <span className="max-w-72 text-[11px] text-red-600" role="alert">{retryFeedback.error}</span> : null}
+    </div>,
     host,
   );
 }
