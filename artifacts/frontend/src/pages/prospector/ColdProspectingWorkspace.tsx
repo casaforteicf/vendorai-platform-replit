@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, CalendarDays, CheckCircle2, Mail, MessageCircle, RefreshCw, Send, Settings2, Sparkles, UserRound, Users } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -62,6 +62,8 @@ type ProspectingConfig = {
   coldProspectingMode: "off" | "assisted" | "autonomous";
   allowedSolutions: Array<"vendorai" | "arqdor">;
   allowedChannels: Array<"whatsapp" | "email" | "phone" | "instagram">;
+  targetSegments: string[];
+  targetPersonas: string[];
   contactWindowStart: string;
   contactWindowEnd: string;
   maxContactsPerPerson7d: number;
@@ -111,6 +113,8 @@ export default function ColdProspectingWorkspace() {
   const [meetingStart, setMeetingStart] = useState("");
   const [meetingEnd, setMeetingEnd] = useState("");
   const [pendingMaterialId, setPendingMaterialId] = useState<string | null>(null);
+  const [targetSegmentsDraft, setTargetSegmentsDraft] = useState("");
+  const [targetPersonasDraft, setTargetPersonasDraft] = useState("");
 
   const list = useQuery({
     queryKey: ["cold-prospects", tenantId],
@@ -127,6 +131,12 @@ export default function ColdProspectingWorkspace() {
       return result.config;
     },
   });
+
+  useEffect(() => {
+    if (!config.data) return;
+    setTargetSegmentsDraft((config.data.targetSegments ?? []).join(", "));
+    setTargetPersonasDraft((config.data.targetPersonas ?? []).join(", "));
+  }, [config.data]);
 
   const detail = useQuery({
     queryKey: ["cold-prospect", tenantId, selectedId],
@@ -331,6 +341,28 @@ export default function ColdProspectingWorkspace() {
               max={100}
               value={config.data?.meetingReadinessThreshold ?? 80}
               onChange={(e) => saveConfigMutation.mutate({ meetingReadinessThreshold: Number(e.target.value) })}
+            />
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium">Segmentos-alvo</p>
+            <Input
+              value={targetSegmentsDraft}
+              placeholder="Construtoras, esquadrias, arquitetura..."
+              onChange={(e) => setTargetSegmentsDraft(e.target.value)}
+              onBlur={() => saveConfigMutation.mutate({
+                targetSegments: targetSegmentsDraft.split(",").map((v) => v.trim()).filter(Boolean),
+              })}
+            />
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium">Personas-alvo</p>
+            <Input
+              value={targetPersonasDraft}
+              placeholder="Diretor comercial, orçamentista..."
+              onChange={(e) => setTargetPersonasDraft(e.target.value)}
+              onBlur={() => saveConfigMutation.mutate({
+                targetPersonas: targetPersonasDraft.split(",").map((v) => v.trim()).filter(Boolean),
+              })}
             />
           </div>
           <div>
