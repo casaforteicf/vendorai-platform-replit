@@ -42,7 +42,6 @@ const router: IRouter = Router();
 // cai no orçamento vinculado mais recente. Isso evita que cards antigos com
 // deal.valor nulo derrubem os totais do dashboard.
 const CANONICAL_DEAL_VALUE = sql<string>`coalesce(
-  ${dealsTable.valor},
   (
     select ${propostasTable.valorTotal}
     from ${propostasTable}
@@ -51,6 +50,7 @@ const CANONICAL_DEAL_VALUE = sql<string>`coalesce(
     order by ${propostasTable.updatedAt} desc, ${propostasTable.createdAt} desc
     limit 1
   ),
+  ${dealsTable.valor},
   0
 )`;
 
@@ -673,7 +673,7 @@ router.post("/tenants/:tenantId/dashboard/perfil-insight", async (req, res) => {
       db
         .select({ ticketMedio: sql<string | null>`avg(${CANONICAL_DEAL_VALUE})::text` })
         .from(dealsTable)
-        .where(and(eq(dealsTable.tenantId, tenantId), eq(dealsTable.etapa, "ganho"), isNotNull(dealsTable.valor))),
+        .where(and(eq(dealsTable.tenantId, tenantId), eq(dealsTable.etapa, "ganho"))),
       db
         .select({
           naoInformado: sql<number>`count(*) filter (where ${leadsTable.dataNascimento} is null or ${leadsTable.dataNascimento} = '')`.mapWith(Number),
