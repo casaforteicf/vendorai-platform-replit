@@ -1160,7 +1160,7 @@ const importInsumosEmLoteSchema = z.object({
     multiploCompra: z.union([z.string(), z.number()]).optional().nullable(),
     permiteFracionarCompra: z.boolean().optional().nullable(),
     perdaPadraoPercentual: z.union([z.string(), z.number()]).optional().nullable(),
-    tipo: z.enum(["material", "mao_de_obra", "equipamento", "servico"]).optional().nullable(),
+    tipo: z.enum(["material", "mao_de_obra", "equipamento", "servico", "subempreitada", "consumivel", "frete", "outro_custo_direto"]).optional().nullable(),
     precoUnitario: z.union([z.string(), z.number()]).optional().nullable(),
     categoria: z.string().trim().max(255).optional().nullable(),
   })).min(1).max(5000),
@@ -1183,7 +1183,7 @@ router.post("/tenants/:tenantId/insumos/importar", async (req, res) => {
     nome: string;
     descricao?: string;
     unidade: string;
-    tipo?: "material" | "mao_de_obra" | "equipamento" | "servico";
+    tipo?: "material" | "mao_de_obra" | "equipamento" | "servico" | "subempreitada" | "consumivel" | "frete" | "outro_custo_direto";
     precoUnitario?: string;
     categoria?: string;
   }> = [];
