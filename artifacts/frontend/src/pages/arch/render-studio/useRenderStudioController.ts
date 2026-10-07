@@ -380,6 +380,13 @@ export function useRenderStudioController() {
       return () => { cancelled = true; };
     }
 
+    const ss = cacheMatchesContext ? sessionStorage.getItem(SK.step) : null;
+    const sa = cacheMatchesContext ? sessionStorage.getItem(SK.ambiente) : null;
+    const sri = cacheMatchesContext ? sessionStorage.getItem(SK.renderId) : null;
+    const sru = cacheMatchesContext ? sessionStorage.getItem(SK.renderUrl) : null;
+    const sv = cacheMatchesContext ? sessionStorage.getItem(SK.versions) : null;
+    const siu = cacheMatchesContext ? sessionStorage.getItem(SK.imageUrl) : null;
+
     const cachedProjectId = requestedProjectId || localStorage.getItem("arq_last_project_id") || "no-project";
     const cachedAmbiente = requestedAmbiente || sessionStorage.getItem(SK.ambiente) || "";
     const expectedCacheContext = `${cachedProjectId}:${cachedAmbiente}`;
@@ -487,11 +494,8 @@ export function useRenderStudioController() {
   // O histórico oficial vive no backend. O array de versões não é mais
   // regravado continuamente no sessionStorage pelo controller; o cache legado
   // é usado somente como ponte de bootstrap/recovery na entrada do Studio.
-  useEffect(() => {
-    try {
       if (imageDataUrl) sessionStorage.setItem(SK.imageUrl, imageDataUrl);
       else sessionStorage.removeItem(SK.imageUrl);
-    } catch {}
   }, [imageDataUrl]);
 
   // Elapsed time
