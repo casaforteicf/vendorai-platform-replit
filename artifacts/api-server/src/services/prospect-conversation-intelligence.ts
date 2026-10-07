@@ -13,6 +13,7 @@ import {
 } from "@workspace/db";
 import { callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";
 import { decideProspectNextAction } from "./prospect-decision-engine.js";
+import { enforceTenantSolutionPolicy, resolveColdProspectingConfig } from "./cold-prospecting-config.js";
 
 type ProspectRole =
   | "gatekeeper"
@@ -341,20 +342,32 @@ Responda SOMENTE JSON válido:
     fitScore: prospect.fitScore ?? Math.max(prospect.vendoraiFitScore ?? 0, prospect.arqdorFitScore ?? 0),
   });
 
+  const qualificationScore = Math.max(0, Math.min(100,
+    Math.round((prospect.fitScore ?? Math.max(prospect.vendoraiFitScore ?? 0, prospect.arqdorFitScore ?? 0)) * 0.25)
+    + (hasResponsible ? 20 : 0)
+    + ((hasDecision || hasPath) ? 15 : 0)
+    + (hasPain ? 25 : 0)
+    + (facts.some((f) => f.confirmed) ? 10 : 0)
+    + (extracted.interestSignal ? 10 : 0)
+    + (extracted.meetingInterest ? 10 : 0)
+  ));
+
   const stage = extracted.optOut
     ? "nao_contatar" as const
     : extracted.meetingAccepted
       ? "reuniao_em_negociacao" as const
       : prospect.stage;
 
-  const decision = decideProspectNextAction({
+  const runtime = await resolveColdProspectingConfig(input.tenantId);
+  const decision = enforceTenantSolutionPolicy(decideProspectNextAction({
     ...prospect,
     stage,
     qualification,
-  });
+  }), runtime);
 
   const [updated] = await db.update(prospectsTable).set({
     qualification,
+    qualificationScore,
     accountMap,
     meetingReadinessScore: readiness,
     stage: decision.stage,
