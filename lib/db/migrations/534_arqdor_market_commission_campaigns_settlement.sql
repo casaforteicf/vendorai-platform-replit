@@ -33,6 +33,7 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 ALTER TABLE public.arqdor_market_commission_entries
+  ADD COLUMN IF NOT EXISTS praca_order_id text REFERENCES public.praca_pedidos(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS payment_intent_id text,
   ADD COLUMN IF NOT EXISTS provider text,
   ADD COLUMN IF NOT EXISTS provider_payment_id text,
@@ -175,3 +176,7 @@ CREATE INDEX IF NOT EXISTS arch_marketplace_pedidos_market_demand_idx
   ON public.arch_marketplace_pedidos(market_demand_id);
 CREATE INDEX IF NOT EXISTS arch_marketplace_pedidos_praca_order_idx
   ON public.arch_marketplace_pedidos(praca_order_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS arqdor_market_commission_entries_praca_order_uidx
+  ON public.arqdor_market_commission_entries(praca_order_id)
+  WHERE praca_order_id IS NOT NULL;
