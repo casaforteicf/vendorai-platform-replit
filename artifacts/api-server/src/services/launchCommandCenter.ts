@@ -1,5 +1,6 @@
 import { and, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import {
+import { canonicalDealValueSql } from "../lib/deal-value.js";
   adCampaignEventsTable,
   adCampaignsTable,
   adPerformanceSnapshotsTable,
@@ -380,7 +381,7 @@ export async function getFilteredLaunchCommandCenter(tenantId: string, rawFilter
   const wonDeals = await db.select({
     leadId: dealsTable.leadId,
     campaignId: leadsTable.adCampaignId,
-    valor: dealsTable.valor,
+    valor: canonicalDealValueSql,
     wonAt: dealsTable.wonAt,
     dataFechamento: dealsTable.dataFechamento,
     updatedAt: dealsTable.updatedAt,
