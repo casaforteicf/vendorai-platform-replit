@@ -79,6 +79,7 @@ type CommercialPartnershipSnap = {
   partnerTenantId: string;
   partnerName?: string | null;
   partnerTenantCode?: string | null;
+  ownerName?: string | null;
   status: string;
   defaultCommissionPercent: string;
   defaultPermissions: string[];
@@ -298,6 +299,18 @@ export default function LeadWorkspace() {
     () => partnerships.filter((item) => item.ownerTenantId === tenantId && item.status === "active"),
     [partnerships, tenantId],
   );
+  const intercompanyPartnerships = useMemo(
+    () => partnerships.filter((item) =>
+      item.status === "active" && (item.ownerTenantId === tenantId || item.partnerTenantId === tenantId)
+    ),
+    [partnerships, tenantId],
+  );
+  const handoffPartnership = intercompanyPartnerships.find((item) => item.id === handoffPartnershipId) ?? null;
+  const handoffCompanyName = handoffPartnership
+    ? (handoffPartnership.ownerTenantId === tenantId
+      ? (handoffPartnership.partnerName || handoffPartnership.partnerTenantCode || "Empresa vinculada")
+      : (handoffPartnership.ownerName || "Empresa vinculada"))
+    : "";
 
   const stages = useMemo(() => [...(configuredStages.length ? configuredStages : fallbackStages)].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0)), [configuredStages]);
   const currentIndex = stages.findIndex((s) => s.key === deal?.etapa);
@@ -347,6 +360,11 @@ export default function LeadWorkspace() {
   const [transferOwner, setTransferOwner] = useState("");
   const [transferReason, setTransferReason] = useState("");
   const [movingPipeline, setMovingPipeline] = useState(false);
+  const [intercompanyOpen, setIntercompanyOpen] = useState(false);
+  const [handoffPartnershipId, setHandoffPartnershipId] = useState("");
+  const [handoffManualStages, setHandoffManualStages] = useState<Array<{ key: string; label: string; ordem?: number }>>([]);
+  const [handoffManualStage, setHandoffManualStage] = useState("");
+  const [handoffSending, setHandoffSending] = useState(false);
 
   const { data: partnerUsers = [] } = useQuery<PartnerUserSnap[]>({
     queryKey: ["commercial-partnership-users", selectedPartnershipId],
@@ -431,6 +449,67 @@ export default function LeadWorkspace() {
     const partnership = ownerPartnerships.find((item) => item.id === selectedPartnershipId);
     if (partnership) setPartnerCommissionPercent(String(partnership.defaultCommissionPercent ?? "15"));
   }, [selectedPartnershipId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!handoffPartnershipId || !intercompanyPartnerships.some((item) => item.id === handoffPartnershipId)) {
+      setHandoffPartnershipId(intercompanyPartnerships[0]?.id ?? "");
+    }
+  }, [handoffPartnershipId, intercompanyPartnerships]);
+
+  async function handoffCompany() {
+    if (!deal || !handoffPartnershipId) {
+      toast({ title: "Selecione a empresa de destino.", variant: "destructive" });
+      return;
+    }
+
+    setHandoffSending(true);
+    try {
+      const response = await fetch(`/api/deals/${deal.id}/handoff-company`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({
+          partnershipId: handoffPartnershipId,
+          ...(handoffManualStage ? { targetStage: handoffManualStage } : {}),
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+
+      if (response.status === 409 && result.error === "STAGE_MAPPING_REQUIRED") {
+        setHandoffManualStages(result.availableStages ?? []);
+        setHandoffManualStage("");
+        toast({
+          title: "Escolha a etapa de entrada",
+          description: "A empresa de destino não possui uma etapa equivalente automática para esta etapa.",
+        });
+        return;
+      }
+      if (!response.ok) throw new Error(result.message ?? result.error ?? "Não foi possível encaminhar o negócio.");
+
+      setHandoffManualStages([]);
+      setHandoffManualStage("");
+      setIntercompanyOpen(false);
+      await Promise.allSettled([
+        qc.invalidateQueries({ queryKey: ["deal-participations", tenantId] }),
+        qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId, { leadId: id }) }),
+      ]);
+
+      const dueDescription = result?.destination?.stageDueAt
+        ? ` Prazo da etapa: ${formatDeadline(result.destination.stageDueAt)}.`
+        : "";
+      toast({
+        title: `Encaminhado para ${handoffCompanyName || "empresa vinculada"}`,
+        description: `Entrada em ${result?.destination?.stageLabel ?? result?.destination?.stage ?? "etapa correspondente"}, com responsável definido pela regra da etapa.${dueDescription}`,
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao encaminhar para empresa",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setHandoffSending(false);
+    }
+  }
 
   function startAttendance() {
     if (!lead) return;
@@ -1221,7 +1300,7 @@ export default function LeadWorkspace() {
             </div>
           )}
 
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2 sm:grid-cols-3">
             <Button type="button" variant="outline" onClick={() => setAdvancedHandoffOpen((v) => !v)}>
               {advancedHandoffOpen ? "Ocultar ajustes" : "Editar antes de avançar"}
             </Button>
@@ -1234,7 +1313,74 @@ export default function LeadWorkspace() {
               <Headset className="mr-2 h-4 w-4" />
               {pipelineTransferOpen ? "Ocultar movimentação" : "Mover para outra pipeline"}
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="border-indigo-200 text-indigo-800 hover:bg-indigo-50 hover:text-indigo-900"
+              disabled={intercompanyPartnerships.length === 0}
+              onClick={() => setIntercompanyOpen((value) => !value)}
+            >
+              <Building2 className="mr-2 h-4 w-4" />
+              {intercompanyOpen ? "Ocultar envio" : "Encaminhar para empresa"}
+            </Button>
           </div>
+
+          {intercompanyOpen && (
+            <div className="grid gap-4 rounded-xl border border-indigo-200 bg-indigo-50/40 p-4">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-indigo-900">
+                  <Building2 className="h-4 w-4" />
+                  Encaminhar o mesmo negócio para outra empresa
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  O Vendor.ai procura a etapa equivalente na empresa de destino, define o responsável pela função e usa o SLA já configurado nessa etapa. O negócio continua compartilhado nas duas empresas.
+                </p>
+              </div>
+              <Field label="Empresa de destino">
+                <Select value={handoffPartnershipId} onValueChange={(value) => {
+                  setHandoffPartnershipId(value);
+                  setHandoffManualStages([]);
+                  setHandoffManualStage("");
+                }}>
+                  <SelectTrigger><SelectValue placeholder="Selecione a empresa" /></SelectTrigger>
+                  <SelectContent>
+                    {intercompanyPartnerships.map((partnership) => {
+                      const label = partnership.ownerTenantId === tenantId
+                        ? (partnership.partnerName || partnership.partnerTenantCode || partnership.partnerTenantId)
+                        : (partnership.ownerName || partnership.ownerTenantId);
+                      return <SelectItem key={partnership.id} value={partnership.id}>{label}</SelectItem>;
+                    })}
+                  </SelectContent>
+                </Select>
+              </Field>
+              {handoffManualStages.length > 0 && (
+                <Field label="Etapa de entrada (exceção)">
+                  <Select value={handoffManualStage} onValueChange={setHandoffManualStage}>
+                    <SelectTrigger><SelectValue placeholder="Selecione a etapa correspondente" /></SelectTrigger>
+                    <SelectContent>
+                      {[...handoffManualStages].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0)).map((stage) => (
+                        <SelectItem key={stage.key} value={stage.key}>{stage.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Esta escolha só aparece quando não existe correspondência automática entre as etapas.
+                  </p>
+                </Field>
+              )}
+              <div className="rounded-lg border bg-background/80 p-3 text-xs text-muted-foreground">
+                <strong className="text-foreground">Automático:</strong> etapa equivalente → responsável da função → SLA da etapa → acompanhamento compartilhado.
+              </div>
+              <Button
+                type="button"
+                onClick={handoffCompany}
+                disabled={handoffSending || !handoffPartnershipId || (handoffManualStages.length > 0 && !handoffManualStage)}
+              >
+                {handoffSending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Encaminhar para {handoffCompanyName || "empresa"}
+              </Button>
+            </div>
+          )}
 
           {pipelineTransferOpen && (
             <div className="grid gap-4 rounded-xl border border-cyan-200 bg-cyan-50/40 p-4">
