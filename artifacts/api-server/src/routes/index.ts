@@ -15,6 +15,7 @@ import conversationsRouter from "./conversations";
 import agentActionsLogRouter from "./agent_actions_log";
 import browserAgentRouter, { browserAgentHandoffRouter } from "./browser_agent";
 import browserAgentMcpRouter from "./browser_agent_mcp";
+import serverAgentRouter from "./server_agent.js";
 import vendiRouter from "./vendi";
 import consentsRouter from "./consents";
 import businessProfilesRouter from "./business_profiles";
@@ -367,6 +368,7 @@ router.use(crmDealParticipantsRouter);
 router.use(conversationsRouter);
 router.use(agentActionsLogRouter);
 router.use(browserAgentRouter);
+router.use(serverAgentRouter);
 router.use(vendiRouter);
 router.use(consentsRouter);
 
