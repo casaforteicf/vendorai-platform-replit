@@ -13,7 +13,7 @@ import crmCompanyMasterRouter from "./crm_company_master";
 import crmDealParticipantsRouter from "./crm_deal_participants";
 import conversationsRouter from "./conversations";
 import agentActionsLogRouter from "./agent_actions_log";
-import browserAgentRouter from "./browser_agent";
+import browserAgentRouter, { browserAgentHandoffRouter } from "./browser_agent";
 import browserAgentMcpRouter from "./browser_agent_mcp";
 import vendiRouter from "./vendi";
 import consentsRouter from "./consents";
@@ -255,6 +255,8 @@ router.use(adsPublicRouter);
 router.use(internalScoutSignalRouter);
 router.use(internalRemoteControlRouter);
 router.use(browserAgentMcpRouter);
+// Public handoff is authorized by the short-lived handoff token, not tenant JWT.
+router.use(browserAgentHandoffRouter);
 router.use(pracaPerguntasPublicRouter);
 router.use(pracaAvaliacoesPublicRouter);
 router.use(pracaPaymentsPublicRouter);
