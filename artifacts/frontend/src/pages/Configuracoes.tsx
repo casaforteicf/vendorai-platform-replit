@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Bell, Bot, Building2, ChevronRight, Database, Search, Settings2, ShieldCheck, Users, Workflow, Zap } from "lucide-react";
+import { useLocation } from "wouter";
+import { ArrowLeft, Bell, Bot, Building2, ChevronRight, Database, Search, Settings2, ShieldCheck, Users, Workflow, Zap } from "lucide-react";
 import ConfiguracoesNormalized from "./ConfiguracoesNormalized";
 import { BrandKitSettings } from "@/components/BrandKitSettings";
 import IntegrationSettingsHub from "./IntegrationSettingsHub";
@@ -374,21 +375,62 @@ function SettingsUxCleanup() {
   );
 }
 
+
+function SettingsSectionShell({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  const [, setLocation] = useLocation();
+
+  return (
+    <div className="vendor-settings-compact vendor-page-canvas vendor-config-page">
+      <SettingsUxCleanup />
+      <main className="settings-home-shell">
+        <div className="mb-4 flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <button
+              type="button"
+              onClick={() => setLocation("/configuracoes")}
+              className="mb-2 inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Voltar para Configurações
+            </button>
+            <h1 className="settings-home-title">{title}</h1>
+            <p className="settings-home-subtitle">{description}</p>
+          </div>
+        </div>
+        {children}
+      </main>
+    </div>
+  );
+}
+
 export default function Configuracoes() {
+  const [, setLocation] = useLocation();
   const readRequestedTab = () => new URLSearchParams(window.location.search).get("tab");
   const [requestedTab, setRequestedTab] = useState<string | null>(() => readRequestedTab());
   const params = new URLSearchParams(window.location.search);
+  const settingsSection = window.location.pathname.startsWith("/configuracoes/")
+    ? window.location.pathname.slice("/configuracoes/".length).split("/")[0]
+    : null;
 
   const navigateWithinSettings = (tab: string, extra?: Record<string, string>) => {
-    const url = new URL(window.location.href);
-    url.pathname = "/configuracoes";
-    url.search = "";
-    url.searchParams.set("tab", tab);
-    Object.entries(extra ?? {}).forEach(([key, value]) => url.searchParams.set(key, value));
+    const search = new URLSearchParams({ tab, ...(extra ?? {}) });
+    setLocation(`/configuracoes?${search.toString()}`);
+  };
 
-    window.history.pushState({}, "", `${url.pathname}${url.search}`);
-    setRequestedTab(tab);
-    window.dispatchEvent(new PopStateEvent("popstate"));
+  const openSettingsSection = (section: string, tab?: string, extra?: Record<string, string>) => {
+    const search = new URLSearchParams();
+    if (tab) search.set("tab", tab);
+    Object.entries(extra ?? {}).forEach(([key, value]) => search.set(key, value));
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    setLocation(`/configuracoes/${section}${suffix}`);
   };
   const legacySiteDeepLink = requestedTab === "site";
   const integrationsDeepLink = requestedTab === "integracoes";
@@ -405,10 +447,7 @@ export default function Configuracoes() {
   ].includes(requestedTab);
   const isInstallationMode = params.get("installation") === "1";
 
-  const [showJarvis, setShowJarvis] = useState(false);
-  const [showGovernance, setShowGovernance] = useState(false);
   const [showInstallationSettings, setShowInstallationSettings] = useState(false);
-  const [showFullSettings, setShowFullSettings] = useState(false);
   const [defaultsApplied, setDefaultsApplied] = useState(false);
   const [showRecommendations, setShowRecommendations] = useState(false);
   const [settingsSearch, setSettingsSearch] = useState("");
@@ -460,7 +499,202 @@ export default function Configuracoes() {
     setDefaultsApplied(true);
   };
 
-  if (integrationsDeepLink) {
+  if (settingsSection === "ia-agentes") {
+    return (
+      <SettingsSectionShell
+        title="IA e agentes"
+        description="Permissões, contexto, voz e autonomia dos agentes."
+      >
+        <JarvisPermissionsCenter />
+      </SettingsSectionShell>
+    );
+  }
+
+  if (settingsSection === "seguranca") {
+    return (
+      <SettingsSectionShell
+        title="Segurança e auditoria"
+        description="Acessos, impacto, validação, histórico e restauração segura."
+      >
+        <section className="settings-advanced-content space-y-2.5">
+          <ConfigurationSectionGuard />
+          <ConfigurationAccessPanel />
+          <ConfigurationGovernancePanel />
+          <ConfigurationImpactSimulator />
+          <ConfigurationPostChangeValidation />
+          <ConfigurationHistoryPanel />
+          <ConfigurationRollbackPanel />
+        </section>
+      </SettingsSectionShell>
+    );
+  }
+
+  if (settingsSection === "integracoes") {
+    return (
+      <SettingsSectionShell
+        title="Integrações"
+        description="WhatsApp, Instagram, e-mail, Google, Meta e demais conexões externas."
+      >
+        <IntegrationSettingsHub />
+      </SettingsSectionShell>
+    );
+  }
+
+  if (settingsSection === "empresa") {
+    return (
+      <SettingsSectionShell
+        title="Empresa"
+        description="Dados da empresa, marca, endereço, canais e preferências."
+      >
+        <ConfiguracoesNormalized />
+      </SettingsSectionShell>
+    );
+  }
+
+  if (settingsSection === "equipe") {
+    return (
+      <SettingsSectionShell
+        title="Equipe e permissões"
+        description="Usuários, funções, acessos, responsáveis e permissões."
+      >
+        <ConfiguracoesNormalized />
+      </SettingsSectionShell>
+    );
+  }
+
+  if (settingsSection === "crm-operacao") {
+    return (
+      <SettingsSectionShell
+        title="CRM e operação"
+        description="Acesse as configurações e áreas operacionais sem misturar tudo em uma única tela."
+      >
+        <div className="settings-card-grid">
+          <article className="settings-home-card">
+            <div className="settings-home-card__top">
+              <span className="settings-home-card__icon"><Workflow className="h-5 w-5" /></span>
+              <div>
+                <div className="settings-home-card__title">Pipeline operacional</div>
+                <p className="settings-home-card__description">Etapas, execução, responsáveis e movimentações operacionais.</p>
+              </div>
+            </div>
+            <button type="button" className="settings-home-card__action" onClick={() => setLocation("/pipeline-operacional")}>
+              Abrir pipeline <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </article>
+          <article className="settings-home-card">
+            <div className="settings-home-card__top">
+              <span className="settings-home-card__icon"><Database className="h-5 w-5" /></span>
+              <div>
+                <div className="settings-home-card__title">Configuração comercial</div>
+                <p className="settings-home-card__description">Parâmetros comerciais e inteligência já existentes nas configurações.</p>
+              </div>
+            </div>
+            <button type="button" className="settings-home-card__action" onClick={() => navigateWithinSettings("analise")}>
+              Gerenciar <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </article>
+          <article className="settings-home-card">
+            <div className="settings-home-card__top">
+              <span className="settings-home-card__icon"><Settings2 className="h-5 w-5" /></span>
+              <div>
+                <div className="settings-home-card__title">Propostas</div>
+                <p className="settings-home-card__description">Acesse propostas e modelos comerciais sem carregar a configuração inteira.</p>
+              </div>
+            </div>
+            <button type="button" className="settings-home-card__action" onClick={() => setLocation("/propostas")}>
+              Abrir propostas <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </article>
+        </div>
+      </SettingsSectionShell>
+    );
+  }
+
+  if (settingsSection === "notificacoes") {
+    return (
+      <SettingsSectionShell
+        title="Notificações"
+        description="Centralize os pontos atuais de alerta sem abrir configurações não relacionadas."
+      >
+        <div className="settings-card-grid">
+          <article className="settings-home-card">
+            <div className="settings-home-card__top">
+              <span className="settings-home-card__icon"><Bot className="h-5 w-5" /></span>
+              <div>
+                <div className="settings-home-card__title">Alertas da IA</div>
+                <p className="settings-home-card__description">Alertas proativos, voz e permissões do dispositivo.</p>
+              </div>
+            </div>
+            <button type="button" className="settings-home-card__action" onClick={() => openSettingsSection("ia-agentes")}>
+              Gerenciar <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </article>
+          <article className="settings-home-card">
+            <div className="settings-home-card__top">
+              <span className="settings-home-card__icon"><Zap className="h-5 w-5" /></span>
+              <div>
+                <div className="settings-home-card__title">Canais conectados</div>
+                <p className="settings-home-card__description">WhatsApp, Instagram, e-mail e demais canais dependem das integrações ativas.</p>
+              </div>
+            </div>
+            <button type="button" className="settings-home-card__action" onClick={() => openSettingsSection("integracoes")}>
+              Abrir integrações <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </article>
+        </div>
+      </SettingsSectionShell>
+    );
+  }
+
+  if (settingsSection === "avancado") {
+    return (
+      <SettingsSectionShell
+        title="Avançado"
+        description="Acesse cada área avançada separadamente para evitar uma página longa e instável."
+      >
+        <div className="settings-card-grid">
+          <article className="settings-home-card">
+            <div className="settings-home-card__top">
+              <span className="settings-home-card__icon"><ShieldCheck className="h-5 w-5" /></span>
+              <div>
+                <div className="settings-home-card__title">Segurança e auditoria</div>
+                <p className="settings-home-card__description">Histórico, acesso, impacto, validação e restauração.</p>
+              </div>
+            </div>
+            <button type="button" className="settings-home-card__action" onClick={() => openSettingsSection("seguranca")}>
+              Abrir <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </article>
+          <article className="settings-home-card">
+            <div className="settings-home-card__top">
+              <span className="settings-home-card__icon"><Bot className="h-5 w-5" /></span>
+              <div>
+                <div className="settings-home-card__title">IA e agentes</div>
+                <p className="settings-home-card__description">Permissões, contexto, autonomia e dispositivo.</p>
+              </div>
+            </div>
+            <button type="button" className="settings-home-card__action" onClick={() => openSettingsSection("ia-agentes")}>
+              Abrir <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </article>
+          <article className="settings-home-card">
+            <div className="settings-home-card__top">
+              <span className="settings-home-card__icon"><Database className="h-5 w-5" /></span>
+              <div>
+                <div className="settings-home-card__title">Configurações legadas</div>
+                <p className="settings-home-card__description">Acesso temporário às opções antigas enquanto elas são migradas para telas próprias.</p>
+              </div>
+            </div>
+            <button type="button" className="settings-home-card__action" onClick={() => navigateWithinSettings("perfil")}>
+              Abrir compatibilidade <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </article>
+        </div>
+      </SettingsSectionShell>
+    );
+  }
+
+    if (integrationsDeepLink) {
     return <IntegrationSettingsHub />;
   }
 
@@ -532,60 +766,56 @@ export default function Configuracoes() {
       title: "Empresa",
       description: "Dados da empresa, marca, endereço, canais e preferências.",
       icon: Building2,
-      action: () => navigateWithinSettings("perfil"),
+      action: () => openSettingsSection("empresa", "perfil"),
     },
     {
       key: "equipe",
       title: "Equipe e permissões",
       description: "Usuários, funções, acessos e responsáveis.",
       icon: Users,
-      action: () => navigateWithinSettings("equipe"),
+      action: () => openSettingsSection("equipe", "equipe"),
     },
     {
       key: "integracoes",
       title: "Integrações",
       description: "WhatsApp, Instagram, e-mail, Google, Meta, outros sistemas e APIs.",
       icon: Zap,
-      action: () => navigateWithinSettings("integracoes"),
+      action: () => openSettingsSection("integracoes"),
     },
     {
       key: "ia",
       title: "IA e agentes",
       description: "Agentes, autonomia, permissões, comportamento e respostas.",
       icon: Bot,
-      action: () => setShowJarvis(true),
+      action: () => openSettingsSection("ia-agentes"),
     },
     {
       key: "crm",
       title: "CRM e operação",
       description: "Pipelines, etapas, atividades, propostas, regras e processos.",
       icon: Workflow,
-      action: () => setShowFullSettings(true),
+      action: () => openSettingsSection("crm-operacao"),
     },
     {
       key: "seguranca",
       title: "Segurança e auditoria",
       description: "Acessos, permissões, histórico de alterações, sessões e restauração.",
       icon: ShieldCheck,
-      action: () => setShowGovernance(true),
+      action: () => openSettingsSection("seguranca"),
     },
     {
       key: "notificacoes",
       title: "Notificações",
       description: "Alertas, e-mails, WhatsApp, eventos e preferências de contato.",
       icon: Bell,
-      action: () => setShowFullSettings(true),
+      action: () => openSettingsSection("notificacoes"),
     },
     {
       key: "avancado",
       title: "Avançado",
       description: "Configurações técnicas, APIs, governança e preferências avançadas.",
       icon: Settings2,
-      action: () => {
-        setShowJarvis(true);
-        setShowGovernance(true);
-        setShowFullSettings(true);
-      },
+      action: () => openSettingsSection("avancado"),
     },
   ];
 
@@ -675,15 +905,15 @@ export default function Configuracoes() {
               <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">Aplique mudanças somente depois de revisar o impacto.</p>
               <div className="settings-recommendation-row">
                 <span className="flex items-center gap-2"><Bot className="h-4 w-4 text-primary" /> Permissões da IA</span>
-                <button type="button" onClick={() => setShowJarvis(true)} className="font-semibold text-primary">Abrir</button>
+                <button type="button" onClick={() => openSettingsSection("ia-agentes")} className="font-semibold text-primary">Abrir</button>
               </div>
               <div className="settings-recommendation-row">
                 <span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-primary" /> Segurança e histórico</span>
-                <button type="button" onClick={() => setShowGovernance(true)} className="font-semibold text-primary">Abrir</button>
+                <button type="button" onClick={() => openSettingsSection("seguranca")} className="font-semibold text-primary">Abrir</button>
               </div>
               <div className="settings-recommendation-row">
                 <span className="flex items-center gap-2"><Database className="h-4 w-4 text-primary" /> Configuração completa</span>
-                <button type="button" onClick={() => setShowFullSettings(true)} className="font-semibold text-primary">Abrir</button>
+                <button type="button" onClick={() => openSettingsSection("avancado")} className="font-semibold text-primary">Abrir</button>
               </div>
             </section>
 
@@ -697,42 +927,6 @@ export default function Configuracoes() {
           </aside>
         </div>
 
-        {showJarvis && (
-          <section className="settings-inline-panel">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <div><h2 className="text-sm font-semibold">IA e agentes</h2><p className="text-xs text-muted-foreground">Permissões, contexto e autonomia dos agentes.</p></div>
-              <button type="button" onClick={() => setShowJarvis(false)} className="rounded-lg border px-2.5 py-1.5 text-xs">Fechar</button>
-            </div>
-            <JarvisPermissionsCenter />
-          </section>
-        )}
-
-        {showGovernance && (
-          <section className="settings-inline-panel settings-advanced-content space-y-2.5">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <div><h2 className="text-sm font-semibold">Segurança e auditoria</h2><p className="text-xs text-muted-foreground">Acessos, impacto, validação, histórico e restauração segura.</p></div>
-              <button type="button" onClick={() => setShowGovernance(false)} className="rounded-lg border px-2.5 py-1.5 text-xs">Fechar</button>
-            </div>
-            <ConfigurationSectionGuard />
-            <ConfigurationAccessPanel />
-            <ConfigurationGovernancePanel />
-            <ConfigurationImpactSimulator />
-            <ConfigurationPostChangeValidation />
-            <ConfigurationHistoryPanel />
-            <ConfigurationRollbackPanel />
-          </section>
-        )}
-
-        {showFullSettings && (
-          <section className="settings-inline-panel settings-advanced-content">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <div><h2 className="text-sm font-semibold">Configurações completas</h2><p className="text-xs text-muted-foreground">Demais opções preservadas e organizadas em um único ponto.</p></div>
-              <button type="button" onClick={() => setShowFullSettings(false)} className="rounded-lg border px-2.5 py-1.5 text-xs">Fechar</button>
-            </div>
-            <ConfiguracoesNormalized />
-            <ConfigurationCatalogProductsBridge />
-          </section>
-        )}
       </main>
     </div>
   );
