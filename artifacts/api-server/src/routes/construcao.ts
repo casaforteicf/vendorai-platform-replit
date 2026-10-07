@@ -8,6 +8,7 @@ import { ensureStandardConstructionCatalog } from "../lib/ensure-standard-constr
 import { gerarRelatorioDiarioPdf } from "../lib/pdf-diario";
 import { gerarOrcamentoPdf } from "../lib/pdf-orcamento";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { calcularQuantidadeCompra } from "../lib/construction-unit-conversion.js";
 import {
   db,
   obrasTable,
@@ -1147,6 +1148,13 @@ const importInsumosEmLoteSchema = z.object({
     nome: z.string().trim().min(1).max(500),
     descricao: z.string().trim().max(2000).optional().nullable(),
     unidade: z.string().trim().min(1).max(50),
+    unidadeCompra: z.string().trim().max(50).optional().nullable(),
+    fatorCompraParaConsumo: z.union([z.string(), z.number()]).optional().nullable(),
+    embalagemQuantidade: z.union([z.string(), z.number()]).optional().nullable(),
+    quantidadeMinimaCompra: z.union([z.string(), z.number()]).optional().nullable(),
+    multiploCompra: z.union([z.string(), z.number()]).optional().nullable(),
+    permiteFracionarCompra: z.boolean().optional().nullable(),
+    perdaPadraoPercentual: z.union([z.string(), z.number()]).optional().nullable(),
     tipo: z.enum(["material", "mao_de_obra", "equipamento", "servico"]).optional().nullable(),
     precoUnitario: z.union([z.string(), z.number()]).optional().nullable(),
     categoria: z.string().trim().max(255).optional().nullable(),
@@ -1191,6 +1199,13 @@ router.post("/tenants/:tenantId/insumos/importar", async (req, res) => {
       tenantId: tid,
       nome: raw.nome.trim(),
       unidade: raw.unidade.trim(),
+      ...(raw.unidadeCompra?.trim() ? { unidadeCompra: raw.unidadeCompra.trim() } : {}),
+      ...(raw.fatorCompraParaConsumo != null && String(raw.fatorCompraParaConsumo).trim() !== "" ? { fatorCompraParaConsumo: String(raw.fatorCompraParaConsumo).trim() } : {}),
+      ...(raw.embalagemQuantidade != null && String(raw.embalagemQuantidade).trim() !== "" ? { embalagemQuantidade: String(raw.embalagemQuantidade).trim() } : {}),
+      ...(raw.quantidadeMinimaCompra != null && String(raw.quantidadeMinimaCompra).trim() !== "" ? { quantidadeMinimaCompra: String(raw.quantidadeMinimaCompra).trim() } : {}),
+      ...(raw.multiploCompra != null && String(raw.multiploCompra).trim() !== "" ? { multiploCompra: String(raw.multiploCompra).trim() } : {}),
+      ...(raw.permiteFracionarCompra != null ? { permiteFracionarCompra: raw.permiteFracionarCompra } : {}),
+      ...(raw.perdaPadraoPercentual != null && String(raw.perdaPadraoPercentual).trim() !== "" ? { perdaPadraoPercentual: String(raw.perdaPadraoPercentual).trim() } : {}),
       ...(raw.tipo ? { tipo: raw.tipo } : {}),
       ...(raw.codigo?.trim() ? { codigo: raw.codigo.trim() } : {}),
       ...(raw.descricao?.trim() ? { descricao: raw.descricao.trim() } : {}),
@@ -1310,6 +1325,43 @@ router.post("/tenants/:tenantId/insumos/importar", async (req, res) => {
     composicoesRecalculadas,
     orcamentosRecalculados,
     orcamentosComAviso,
+  });
+});
+
+router.post("/tenants/:tenantId/insumos/:insumoId/calcular-compra", async (req, res) => {
+  const { tenantId: tid, insumoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const bodySchema = z.object({
+    quantidadeTecnica: z.union([z.string(), z.number()]).transform(Number).pipe(z.number().nonnegative()),
+    perdaPercentualOverride: z.union([z.string(), z.number()]).transform(Number).pipe(z.number().nonnegative()).optional().nullable(),
+  });
+  const parsed = bodySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [insumo] = await db
+    .select()
+    .from(insumosTable)
+    .where(and(eq(insumosTable.id, insumoId), eq(insumosTable.tenantId, tid)));
+  if (!insumo) return res.status(404).json({ error: "Insumo não encontrado" });
+
+  const calculo = calcularQuantidadeCompra({
+    quantidadeTecnica: parsed.data.quantidadeTecnica,
+    fatorCompraParaConsumo: numberOrZero(insumo.fatorCompraParaConsumo) || 1,
+    perdaPadraoPercentual: numberOrZero(insumo.perdaPadraoPercentual),
+    perdaPercentualOverride: parsed.data.perdaPercentualOverride ?? null,
+    quantidadeMinimaCompra: numberOrZero(insumo.quantidadeMinimaCompra),
+    multiploCompra: numberOrZero(insumo.multiploCompra),
+    permiteFracionarCompra: insumo.permiteFracionarCompra,
+  });
+
+  return res.json({
+    insumoId: insumo.id,
+    unidadeConsumo: insumo.unidade,
+    unidadeCompra: insumo.unidadeCompra ?? insumo.unidade,
+    fatorCompraParaConsumo: numberOrZero(insumo.fatorCompraParaConsumo) || 1,
+    embalagemQuantidade: numberOrZero(insumo.embalagemQuantidade),
+    ...calculo,
   });
 });
 
