@@ -57,7 +57,6 @@ export default function ConceptSitePlacementPanel({
     () => buildSitePlacementSuggestions(rooms, lotWidth, lotDepth, placement),
     [rooms, lotWidth, lotDepth, placement],
   );
-  const lotArea = useMemo(() => polygonArea(lotBoundary), [lotBoundary]);
   const lotBoundary = useMemo(
     () => getSiteBoundaryPoints(lotWidth, lotDepth, placement),
     [lotWidth, lotDepth, placement],
@@ -94,11 +93,6 @@ export default function ConceptSitePlacementPanel({
   };
 
   const stopDrag = () => setDragOffset(null);
-      { x: bounds.maxX, y: bounds.minY },
-      { x: bounds.maxX, y: bounds.maxY },
-      { x: bounds.minX, y: bounds.maxY },
-    ].every((point) => pointInSitePolygon(point, envelope.polygon))
-  );
   const fits = !bounds || (
     envelope.polygon.length >= 3
     && [
@@ -165,12 +159,6 @@ export default function ConceptSitePlacementPanel({
             stroke="#64748b"
             strokeWidth="0.08"
           />
-              fillOpacity="0.45"
-              stroke="#16a34a"
-              strokeWidth="0.08"
-              strokeDasharray="0.25 0.18"
-            />
-          )}
           {envelope.polygon.length >= 3 && (
             <polygon
               points={envelope.polygon.map((point) => `${point.x},${point.y}`).join(" ")}
@@ -228,83 +216,6 @@ export default function ConceptSitePlacementPanel({
           A casa ultrapassa a área edificável atual. Ajuste o perímetro/recuos, reposicione a implantação ou revise a planta.
         </div>
       )}
-
-            Formato do terreno
-          </div>
-          <span className="text-[10px] font-semibold text-slate-500">{lotArea.toFixed(1)} m² reais</span>
-        </div>
-        <div className="grid grid-cols-2 gap-2 rounded-xl border bg-slate-50 p-1">
-          <button
-            type="button"
-            onClick={() => onPlacementChange({ ...placement, lotBoundary: null })}
-            className={!placement.lotBoundary
-              ? "rounded-lg bg-white px-3 py-2 text-[11px] font-bold text-slate-950 shadow-sm"
-              : "rounded-lg px-3 py-2 text-[11px] font-semibold text-slate-600"}
-          >
-            Retangular
-          </button>
-          <button
-            type="button"
-            onClick={() => onPlacementChange({
-              ...placement,
-              lotBoundary: {
-                kind: "polygon",
-                points: [
-                  { x: 0, y: 0 },
-                  { x: lotWidth, y: 0 },
-                  { x: lotWidth, y: lotDepth },
-                  { x: 0, y: lotDepth },
-                ],
-              },
-            })}
-            className={placement.lotBoundary
-              ? "rounded-lg bg-white px-3 py-2 text-[11px] font-bold text-slate-950 shadow-sm"
-              : "rounded-lg px-3 py-2 text-[11px] font-semibold text-slate-600"}
-          >
-            Irregular
-          </button>
-        </div>
-        {placement.lotBoundary && (
-          <div className="rounded-xl border bg-white p-3">
-            <div className="mb-2 text-[10px] leading-4 text-slate-500">
-              Ajuste os quatro vértices em metros. A área edificável verde é recalculada e a casa não pode ultrapassar o polígono.
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {(["Frente esq.", "Frente dir.", "Fundos dir.", "Fundos esq."] as const).map((label, index) => {
-                const point = lotBoundary[index] ?? { x: 0, y: 0 };
-                return (
-                  <div key={label} className="rounded-lg bg-slate-50 p-2">
-                    <div className="mb-1 text-[9px] font-bold text-slate-600">{label}</div>
-                    <div className="grid grid-cols-2 gap-1">
-                      {(["x", "y"] as const).map((axis) => (
-                        <label key={axis} className="text-[9px] font-semibold text-slate-400">
-                          {axis.toUpperCase()}
-                          <input
-                            type="number"
-                            min={0}
-                            max={axis === "x" ? lotWidth : lotDepth}
-                            step={0.1}
-                            value={Number(point[axis].toFixed(2))}
-                            onChange={(event) => {
-                              const points = [...lotBoundary.slice(0, 4)];
-                              points[index] = {
-                                ...point,
-                                [axis]: Math.max(0, Math.min(axis === "x" ? lotWidth : lotDepth, Number(event.target.value) || 0)),
-                              };
-                              onPlacementChange({ ...placement, lotBoundary: { kind: "polygon", points } });
-                            }}
-                            className="mt-0.5 h-8 w-full rounded-md border bg-white px-2 text-[10px] font-bold text-slate-800"
-                          />
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </section>
 
       <section className="space-y-2">
         <div className="flex items-center justify-between gap-2">
