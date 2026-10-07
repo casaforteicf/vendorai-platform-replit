@@ -1858,6 +1858,9 @@ router.post("/tenants/:tenantId/composicoes", async (req, res) => {
           insumoId: item.insumoId,
           quantidade: item.quantidade,
           perdaPercentualOverride: item.perdaPercentualOverride ?? null,
+          formulaQuantidade: item.formulaQuantidade ?? null,
+          condicaoAplicabilidade: item.condicaoAplicabilidade ?? null,
+          observacaoTecnica: item.observacaoTecnica ?? null,
         }))
       );
     }
@@ -1883,6 +1886,162 @@ router.post("/tenants/:tenantId/composicoes/catalogo-padrao/aplicar", async (req
   }
 });
 
+router.post("/tenants/:tenantId/composicoes/:composicaoId/duplicar", async (req, res) => {
+  const { tenantId: tid, composicaoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [original] = await db
+    .select()
+    .from(composicoesTable)
+    .where(and(eq(composicoesTable.id, composicaoId), eq(composicoesTable.tenantId, tid)));
+  if (!original) return res.status(404).json({ error: "Composição não encontrada" });
+
+  const itens = await db
+    .select()
+    .from(composicaoInsumosTable)
+    .where(eq(composicaoInsumosTable.composicaoId, composicaoId));
+
+  const nome = typeof req.body?.nome === "string" && req.body.nome.trim()
+    ? req.body.nome.trim()
+    : `${original.nome} — variante`;
+  const codigo = typeof req.body?.codigo === "string" && req.body.codigo.trim()
+    ? req.body.codigo.trim()
+    : original.codigo
+      ? `${original.codigo}-VAR`
+      : null;
+
+  const duplicada = await db.transaction(async (tx) => {
+    const [created] = await tx.insert(composicoesTable).values({
+      tenantId: tid,
+      nome,
+      descricao: original.descricao,
+      unidade: original.unidade,
+      tipoComposicao: original.tipoComposicao,
+      aplicacao: original.aplicacao,
+      inclui: original.inclui,
+      naoInclui: original.naoInclui,
+      criterioMedicao: original.criterioMedicao,
+      observacoesTecnicas: original.observacoesTecnicas,
+      formulaCalculo: original.formulaCalculo,
+      parametrosPadrao: original.parametrosPadrao,
+      composicaoOrigemId: original.composicaoOrigemId ?? original.id,
+      varianteDeId: original.id,
+      versao: 1,
+      statusVersao: "rascunho",
+      versaoAtual: true,
+      custoTotal: original.custoTotal,
+      produtividadeDia: original.produtividadeDia,
+      equipePadrao: original.equipePadrao,
+      horasDiaPadrao: original.horasDiaPadrao,
+      codigo,
+      etapaKey: original.etapaKey,
+      sistemasConstrutivos: original.sistemasConstrutivos,
+      comumTodosSistemas: original.comumTodosSistemas,
+      ativo: true,
+      ordem: original.ordem,
+    }).returning();
+
+    if (itens.length) {
+      await tx.insert(composicaoInsumosTable).values(itens.map((item) => ({
+        composicaoId: created.id,
+        insumoId: item.insumoId,
+        quantidade: item.quantidade,
+        perdaPercentualOverride: item.perdaPercentualOverride,
+        formulaQuantidade: item.formulaQuantidade,
+        condicaoAplicabilidade: item.condicaoAplicabilidade,
+        observacaoTecnica: item.observacaoTecnica,
+        precoUnitario: item.precoUnitario,
+      })));
+    }
+
+    return created;
+  });
+
+  return res.status(201).json(duplicada);
+});
+
+router.post("/tenants/:tenantId/composicoes/:composicaoId/nova-versao", async (req, res) => {
+  const { tenantId: tid, composicaoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [original] = await db
+    .select()
+    .from(composicoesTable)
+    .where(and(eq(composicoesTable.id, composicaoId), eq(composicoesTable.tenantId, tid)));
+  if (!original) return res.status(404).json({ error: "Composição não encontrada" });
+
+  const raizId = original.composicaoOrigemId ?? original.id;
+  const versoes = await db
+    .select({ versao: composicoesTable.versao })
+    .from(composicoesTable)
+    .where(and(
+      eq(composicoesTable.tenantId, tid),
+      or(eq(composicoesTable.id, raizId), eq(composicoesTable.composicaoOrigemId, raizId)),
+    ));
+  const nextVersao = Math.max(original.versao, ...versoes.map((v) => v.versao ?? 1)) + 1;
+
+  const itens = await db
+    .select()
+    .from(composicaoInsumosTable)
+    .where(eq(composicaoInsumosTable.composicaoId, composicaoId));
+
+  const nova = await db.transaction(async (tx) => {
+    await tx.update(composicoesTable)
+      .set({ versaoAtual: false, updatedAt: new Date() })
+      .where(and(
+        eq(composicoesTable.tenantId, tid),
+        or(eq(composicoesTable.id, raizId), eq(composicoesTable.composicaoOrigemId, raizId)),
+      ));
+
+    const [created] = await tx.insert(composicoesTable).values({
+      tenantId: tid,
+      nome: original.nome,
+      descricao: original.descricao,
+      unidade: original.unidade,
+      tipoComposicao: original.tipoComposicao,
+      aplicacao: original.aplicacao,
+      inclui: original.inclui,
+      naoInclui: original.naoInclui,
+      criterioMedicao: original.criterioMedicao,
+      observacoesTecnicas: original.observacoesTecnicas,
+      formulaCalculo: original.formulaCalculo,
+      parametrosPadrao: original.parametrosPadrao,
+      composicaoOrigemId: raizId,
+      varianteDeId: original.varianteDeId,
+      versao: nextVersao,
+      statusVersao: "rascunho",
+      versaoAtual: true,
+      custoTotal: original.custoTotal,
+      produtividadeDia: original.produtividadeDia,
+      equipePadrao: original.equipePadrao,
+      horasDiaPadrao: original.horasDiaPadrao,
+      codigo: original.codigo,
+      etapaKey: original.etapaKey,
+      sistemasConstrutivos: original.sistemasConstrutivos,
+      comumTodosSistemas: original.comumTodosSistemas,
+      ativo: original.ativo,
+      ordem: original.ordem,
+    }).returning();
+
+    if (itens.length) {
+      await tx.insert(composicaoInsumosTable).values(itens.map((item) => ({
+        composicaoId: created.id,
+        insumoId: item.insumoId,
+        quantidade: item.quantidade,
+        perdaPercentualOverride: item.perdaPercentualOverride,
+        formulaQuantidade: item.formulaQuantidade,
+        condicaoAplicabilidade: item.condicaoAplicabilidade,
+        observacaoTecnica: item.observacaoTecnica,
+        precoUnitario: item.precoUnitario,
+      })));
+    }
+
+    return created;
+  });
+
+  return res.status(201).json(nova);
+});
+
 router.get("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
   const { tenantId: tid, composicaoId } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
@@ -1899,6 +2058,9 @@ router.get("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
       insumoId: composicaoInsumosTable.insumoId,
       quantidade: composicaoInsumosTable.quantidade,
       perdaPercentualOverride: composicaoInsumosTable.perdaPercentualOverride,
+      formulaQuantidade: composicaoInsumosTable.formulaQuantidade,
+      condicaoAplicabilidade: composicaoInsumosTable.condicaoAplicabilidade,
+      observacaoTecnica: composicaoInsumosTable.observacaoTecnica,
       precoUnitario: composicaoInsumosTable.precoUnitario,
       insumo: insumosTable,
     })
@@ -1993,6 +2155,10 @@ router.put("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
             composicaoId: item.composicaoId,
             insumoId: item.insumoId,
             quantidade: item.quantidade,
+            perdaPercentualOverride: item.perdaPercentualOverride ?? null,
+            formulaQuantidade: item.formulaQuantidade ?? null,
+            condicaoAplicabilidade: item.condicaoAplicabilidade ?? null,
+            observacaoTecnica: item.observacaoTecnica ?? null,
           }))
         );
       }
