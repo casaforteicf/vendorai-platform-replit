@@ -1,13 +1,12 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useLocation, useParams } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCreateDeal, useGetLead, useListActivities, useListDeals, useListPipelineStages, useListTenantUsers, useUpdatePipelineStage, getGetLeadQueryKey, getListActivitiesQueryKey, getListDealsQueryKey, getListPipelineStagesQueryKey, getListTenantUsersQueryKey } from "@workspace/api-client-react";
+import { useCreateDeal, useGetLead, useListActivities, useListDeals, useListPipelineStages, useListTenantUsers, getGetLeadQueryKey, getListActivitiesQueryKey, getListDealsQueryKey, getListPipelineStagesQueryKey, getListTenantUsersQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AdminDeleteLeadButton } from "@/components/AdminDeleteLeadButton";
-import { ArrowLeft, ArrowRight, AlertTriangle, BrainCircuit, Building2, Clock3, HandCoins, Headset, Loader2, Pencil, Settings2, Sparkles, UserRound, WalletCards } from "lucide-react";
+import { PipelineStageFunctionAccess } from "@/components/PipelineStageFunctionAccess";
+import { ArrowLeft, ArrowRight, AlertTriangle, BrainCircuit, Building2, Clock3, HandCoins, Headset, Loader2, Pencil, Sparkles, UserRound, WalletCards } from "lucide-react";
 
 const LeadDetail = lazy(() => import("@/pages/LeadDetail"));
 const DealParticipantsCard = lazy(() => import("@/components/DealParticipantsCard").then((m) => ({ default: m.DealParticipantsCard })));
@@ -117,6 +117,35 @@ type PartnerUserSnap = {
   email?: string | null;
   userFunction?: string | null;
 };
+
+type ResponsibilityUser = {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  active?: boolean | null;
+  platformRole?: string | null;
+  userFunction?: string | null;
+  customFunctionId?: string | null;
+};
+
+type ResponsibilityStage = {
+  id?: string;
+  key: string;
+  label?: string | null;
+  responsaveisFuncoes?: string[] | null;
+};
+
+function userCanOwnStage(user: ResponsibilityUser, stage?: ResponsibilityStage | null): boolean {
+  if (user.active !== true) return false;
+  if (user.platformRole === "super_admin" || user.platformRole === "tenant_admin" || user.userFunction === "administrador") return true;
+  const configured = stage?.responsaveisFuncoes ?? [];
+  if (configured.length === 0) return true;
+
+  const refs = new Set<string>();
+  if (user.userFunction) refs.add(`builtin:${user.userFunction}`);
+  if (user.customFunctionId) refs.add(`custom:${user.customFunctionId}`);
+  return configured.some((responsible) => refs.has(responsible));
+}
 
 type FullIntelligenceResponse = {
   profile: null | {
@@ -248,7 +277,6 @@ export default function LeadWorkspace() {
     },
   });
   const createDeal = useCreateDeal({ request });
-  const updateStage = useUpdatePipelineStage();
   const deal = useMemo(() => {
     const requested = deals.find((d) => d.id === requestedDealId);
     if (requested) return requested;
@@ -294,7 +322,6 @@ export default function LeadWorkspace() {
   const [description, setDescription] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
-  const [editEligible, setEditEligible] = useState(false);
   const [savingAnswers, setSavingAnswers] = useState(false);
   const [ownerEditorOpen, setOwnerEditorOpen] = useState(false);
   const [responsibilityEditorOpen, setResponsibilityEditorOpen] = useState(false);
@@ -341,9 +368,10 @@ export default function LeadWorkspace() {
     && targetStageAI?.mode === "autonoma"
     && ((targetStageAI.allowedActions ?? []).includes("create_activity") || (targetStageAI.allowedActions ?? []).includes("send_message"))
   );
-  const eligibleIds = (targetStage as { elegiveisUserIds?: string[] | null } | undefined)?.elegiveisUserIds ?? null;
-  const eligibleUsers = eligibleIds && eligibleIds.length > 0 ? users.filter((u) => eligibleIds.includes(u.id)) : users;
-  const { data: targetPipelineStages = [] } = useQuery<Array<{ id: string; key: string; label: string; ordem?: number }>>({
+  const eligibleUsers = useMemo(
+    () => users.filter((candidate) => userCanOwnStage(candidate as ResponsibilityUser, targetStage as ResponsibilityStage | undefined)),
+    [users, targetStage],
+  const { data: targetPipelineStages = [] } = useQuery<Array<{ id: string; key: string; label: string; ordem?: number; responsaveisFuncoes?: string[] | null }>>({
     queryKey: ["pipeline-stages", tenantId, targetPipeline],
     enabled: Boolean(tenantId && token && pipelineTransferOpen),
     staleTime: 30_000,
@@ -363,18 +391,26 @@ export default function LeadWorkspace() {
     { key: "execucao", label: "Execução / Pedidos" },
     { key: "suporte", label: "Suporte" },
   ];
-  const [draftEligible, setDraftEligible] = useState<string[]>([]);
-  useEffect(() => { setDraftEligible(eligibleIds ?? []); }, [nextStage]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!ownerEditorOpen) setCurrentOwner(deal?.assignedTo ?? lead?.assignedTo ?? "");
   }, [deal?.assignedTo, lead?.assignedTo, ownerEditorOpen]);
-  useEffect(() => {
-    if (!transferOwner) setTransferOwner(deal?.assignedTo ?? users[0]?.id ?? "");
-  }, [deal?.assignedTo, transferOwner, users]);
+  const selectedTransferStage = targetPipelineStages.find((stage) => stage.key === targetPipelineStage) ?? null;
+  const transferEligibleUsers = useMemo(
+    () => users.filter((candidate) => userCanOwnStage(candidate as ResponsibilityUser, selectedTransferStage as ResponsibilityStage | null)),
+    [users, selectedTransferStage],
+  );
+
   useEffect(() => {
     const firstStage = [...targetPipelineStages].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))[0];
     setTargetPipelineStage(firstStage?.key ?? "");
   }, [targetPipeline, targetPipelineStages]);
+
+    if (!selectedTransferStage) return;
+    const preferred = [deal?.assignedTo, user?.id].find((candidateId) =>
+      Boolean(candidateId) && transferEligibleUsers.some((candidate) => candidate.id === candidateId)
+    );
+    setTransferOwner(preferred ?? transferEligibleUsers[0]?.id ?? "");
+  }, [selectedTransferStage?.key, deal?.assignedTo, user?.id, transferEligibleUsers]);
   useEffect(() => {
     if (activeParticipation?.partnershipId) {
       setSelectedPartnershipId(activeParticipation.partnershipId);
@@ -434,8 +470,14 @@ export default function LeadWorkspace() {
     const aiAction = fullIntelligence?.health?.nextBestAction ?? fullIntelligence?.profile?.nextBestAction;
     const aiReason = fullIntelligence?.health?.nextBestActionReason ?? fullIntelligence?.profile?.nextBestActionReason;
 
+    const nextStageConfig = stages.find((candidate) => candidate.key === stage) as ResponsibilityStage | undefined;
+    const stageEligibleUsers = users.filter((candidate) => userCanOwnStage(candidate as ResponsibilityUser, nextStageConfig));
+    const preferredOwner = [deal?.assignedTo, user?.id].find((candidateId) =>
+      Boolean(candidateId) && stageEligibleUsers.some((candidate) => candidate.id === candidateId)
+    );
+
     setNextStage(stage);
-    setOwner(deal?.assignedTo ?? user?.id ?? "");
+    setOwner(preferredOwner ?? stageEligibleUsers[0]?.id ?? "");
     setTitle(aiAction?.trim() || guidance[stage]?.[1] || "Dar continuidade ao atendimento");
     setDescription(aiReason?.trim() || "");
     setNote("");
@@ -443,22 +485,6 @@ export default function LeadWorkspace() {
     setEditEligible(false);
     setAdvancedHandoffOpen(false);
     setOpen(true);
-  }
-
-  function saveEligible() {
-    if (!targetStage) return;
-    updateStage.mutate(
-      { tenantId, id: targetStage.id, data: { elegiveisUserIds: draftEligible } },
-      {
-        onSuccess: () => {
-          qc.invalidateQueries({ queryKey: getListPipelineStagesQueryKey(tenantId) });
-          toast({ title: "Usuários habilitados atualizados para " + targetStage.label + "." });
-          setEditEligible(false);
-          if (draftEligible.length > 0 && !draftEligible.includes(owner)) setOwner(draftEligible[0]);
-        },
-        onError: () => toast({ title: "Erro ao salvar usuários habilitados", variant: "destructive" }),
-      },
-    );
   }
 
   async function saveCurrentOwner() {
@@ -775,6 +801,19 @@ export default function LeadWorkspace() {
     )}
 
     {deal && canEditOwner && (
+          </Button>
+        </div>
+      ) : (
+        <Card className="border-border/70 shadow-sm">
+                <CardContent className="p-4">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Building2 className="h-4 w-4 text-cyan-700" />
+                        <p className="text-sm font-semibold">Responsabilidade empresarial</p>
+                        {activeParticipation?.role === "responsible" && <Badge variant="secondary">Empresa responsável</Badge>}
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">Compartilhe este negócio com uma empresa representante sem duplicar usuários entre tenants.</p>
       activeParticipation && !responsibilityEditorOpen ? (
         <div className="flex justify-end">
           <Button type="button" variant="ghost" size="sm" className="h-8 text-muted-foreground" onClick={() => setResponsibilityEditorOpen(true)}>
@@ -796,6 +835,55 @@ export default function LeadWorkspace() {
                     </div>
                   </div>
         
+                        <Label>Empresa representante</Label>
+                        <Select value={selectedPartnershipId} onValueChange={setSelectedPartnershipId}>
+                          <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                          <SelectContent>
+                            {ownerPartnerships.map((partnership) => (
+                              <SelectItem key={partnership.id} value={partnership.id}>
+                                {partnership.partnerName || partnership.partnerTenantCode || partnership.partnerTenantId}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                        <Label>Executor na representante</Label>
+                        <Select value={selectedPartnerUserId || "__queue__"} onValueChange={(value) => setSelectedPartnerUserId(value === "__queue__" ? "" : value)}>
+                          <SelectTrigger><SelectValue placeholder="Fila da empresa" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__queue__">Fila da empresa / definir depois</SelectItem>
+                            {partnerUsers.map((partnerUser) => (
+                              <SelectItem key={partnerUser.id} value={partnerUser.id}>
+                                {partnerUser.name || partnerUser.email || partnerUser.id}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                        <Button type="button" variant="ghost" className="h-9 px-2 text-muted-foreground" onClick={() => setCommissionEditorOpen((value) => !value)}>
+                          <HandCoins className="mr-2 h-4 w-4" />
+                          {commissionEditorOpen ? "Ocultar comissão" : activeParticipation ? "Editar comissão" : "Configurar comissão"}
+                        </Button>
+                        {commissionEditorOpen && (
+                          <div className="space-y-1.5 rounded-md border bg-muted/20 p-2">
+                            <Label>Comissão do negócio</Label>
+                            <div className="relative">
+                              <Input type="number" min="0" max="100" step="0.01" value={partnerCommissionPercent} onChange={(event) => setPartnerCommissionPercent(event.target.value)} className="pr-8" />
+                              <span className="pointer-events-none absolute right-3 top-2.5 text-sm text-muted-foreground">%</span>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">Informação restrita a usuários autorizados. O padrão da parceria pode ser ajustado por negócio.</p>
+                          </div>
+                        )}
+                      </div>
+                      <Button type="button" onClick={saveRepresentationResponsibility} disabled={savingRepresentation || !selectedPartnershipId}>
+                        {savingRepresentation && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {activeParticipation ? "Atualizar responsabilidade" : "Definir como responsável"}
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+      )
                   {ownerPartnerships.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Nenhuma empresa representante ativa foi vinculada a este tenant.</p>
                   ) : (
@@ -855,17 +943,13 @@ export default function LeadWorkspace() {
     )}
 
     {deal && activeParticipation?.commission && canEditOwner && (
-      <Card className="border-border/70 shadow-sm">
-        <CardContent className="p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <HandCoins className="h-4 w-4 text-muted-foreground" />
               <p className="text-sm font-medium text-muted-foreground">Comissão da empresa representante</p>
-            </div>
             <Button type="button" variant="ghost" size="sm" onClick={() => setCommissionEditorOpen((value) => !value)}>
               {commissionEditorOpen ? "Ocultar comissão" : "Editar comissão"}
             </Button>
-          </div>
 
           {commissionEditorOpen && (
             <div className="mt-4 border-t pt-4">
@@ -881,7 +965,6 @@ export default function LeadWorkspace() {
                     Saldo {Math.max(0, Number(activeParticipation.commission.amount || 0) - Number(activeParticipation.commission.paidAmount || 0)).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                   </p>
                 </div>
-              </div>
 
               <div className="mb-4 grid gap-3 md:grid-cols-[180px_auto] md:items-end">
                 <div className="space-y-1.5">
@@ -890,8 +973,6 @@ export default function LeadWorkspace() {
                 </div>
                 <Button type="button" variant="outline" className="w-fit" onClick={saveIntercompanyCommission} disabled={savingCommission}>
                   {savingCommission && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Salvar comissão
-                </Button>
-              </div>
 
               <div className="rounded-lg border bg-muted/20 p-3">
                 <div className="mb-3 flex items-center gap-2">
@@ -929,11 +1010,6 @@ export default function LeadWorkspace() {
                   </Button>
                 </div>
                 <p className="mt-2 text-[11px] text-muted-foreground">Cada baixa gera saída no financeiro do pagador, entrada no financeiro da representante e mantém o saldo restante previsto.</p>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
     )}
 
     {deal && visualStages.length > 0 && (
@@ -976,7 +1052,6 @@ export default function LeadWorkspace() {
                   <Badge variant="secondary" className="h-5 px-2 text-[11px]">
                     Saúde {fullIntelligence.health.score}/100
                   </Badge>
-                )}
                 {fullIntelligence.health.trend && (
                   <Badge variant="outline" className="h-5 px-2 text-[11px]">
                     {fullIntelligence.health.trend === "melhorando" ? "↑ Melhorando" : fullIntelligence.health.trend === "piorando" ? "↓ Piorando" : "→ Estável"}
@@ -985,7 +1060,6 @@ export default function LeadWorkspace() {
                 {fullIntelligence.health.confidence != null && (
                   <span className="text-[11px] text-muted-foreground">Confiança {fullIntelligence.health.confidence}%</span>
                 )}
-              </div>
               <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <div>
                   <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Risco principal</p>
@@ -1021,7 +1095,6 @@ export default function LeadWorkspace() {
                         <p className="text-xs font-medium leading-snug">{question.questionText}</p>
                         {question.objective && <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{question.objective}</p>}
                       </div>
-                    ))}
                 </div>
               </div>
             )}
@@ -1242,11 +1315,14 @@ export default function LeadWorkspace() {
                 <Select value={transferOwner} onValueChange={setTransferOwner}>
                   <SelectTrigger><SelectValue placeholder="Selecione o responsável" /></SelectTrigger>
                   <SelectContent>
-                    {users.map((targetUser) => (
+                    {transferEligibleUsers.map((targetUser) => (
                       <SelectItem key={targetUser.id} value={targetUser.id}>
                         {targetUser.name || targetUser.email || targetUser.id}
                       </SelectItem>
                     ))}
+                    {transferEligibleUsers.length === 0 && (
+                      <SelectItem value="__none_available__" disabled>Nenhum responsável elegível para esta etapa</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </Field>
@@ -1271,7 +1347,18 @@ export default function LeadWorkspace() {
           {advancedHandoffOpen && (
             <div className="grid gap-4 rounded-xl border p-4">
               <Field label="Nova etapa">
-                <Select value={nextStage} onValueChange={(v) => { setNextStage(v); if (!fullIntelligence?.health?.nextBestAction && !fullIntelligence?.profile?.nextBestAction) setTitle(guidance[v]?.[1] ?? "Dar continuidade ao atendimento"); setEditEligible(false); }}>
+                <Select value={nextStage} onValueChange={(v) => {
+                  setNextStage(v);
+                  const selectedStage = stages.find((candidate) => candidate.key === v) as ResponsibilityStage | undefined;
+                  const nextEligible = users.filter((candidate) => userCanOwnStage(candidate as ResponsibilityUser, selectedStage));
+                  if (!nextEligible.some((candidate) => candidate.id === owner)) {
+                    const preferred = [deal?.assignedTo, user?.id].find((candidateId) =>
+                      Boolean(candidateId) && nextEligible.some((candidate) => candidate.id === candidateId)
+                    );
+                    setOwner(preferred ?? nextEligible[0]?.id ?? "");
+                  }
+                  if (!fullIntelligence?.health?.nextBestAction && !fullIntelligence?.profile?.nextBestAction) setTitle(guidance[v]?.[1] ?? "Dar continuidade ao atendimento");
+                }}>
                   <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                   <SelectContent>{stages.filter((s, index) => {
                     if (deal?.etapa === "em_aquecimento") return s.key === "novo";
@@ -1282,29 +1369,39 @@ export default function LeadWorkspace() {
               </Field>
 
               <div className="grid gap-2">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <Label>Responsável</Label>
-                  <Button type="button" variant="ghost" size="sm" className="h-7 gap-1 text-xs text-muted-foreground" onClick={() => setEditEligible((v) => !v)}>
-                    <Settings2 className="h-3.5 w-3.5" /> Habilitados
-                  </Button>
-                </div>
-                {editEligible && targetStage ? (
-                  <div className="space-y-2 rounded-lg border p-3">
-                    <div className="grid max-h-40 gap-1.5 overflow-y-auto">
-                      {users.map((u) => (
-                        <label key={u.id} className="flex items-center gap-2 text-sm">
-                          <Checkbox checked={draftEligible.includes(u.id)} onCheckedChange={(checked) => setDraftEligible((prev) => checked ? [...prev, u.id] : prev.filter((x) => x !== u.id))} />
-                          {u.name || u.email || u.id}
-                        </label>
-                      ))}
+                  {canEditOwner && targetStage ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-muted-foreground">Configurar responsáveis da etapa</span>
+                      <PipelineStageFunctionAccess
+                        tenantId={tenantId}
+                        pipeline="comercial"
+                        stageId={targetStage.id}
+                        value={(targetStage as ResponsibilityStage).responsaveisFuncoes ?? []}
+                        agentValue={(targetStage as { responsavelAgenteKey?: string | null }).responsavelAgenteKey ?? null}
+                        className="w-40"
+                      />
                     </div>
-                    <Button type="button" size="sm" disabled={updateStage.isPending} onClick={saveEligible}>Salvar habilitados</Button>
-                  </div>
-                ) : (
-                  <Select value={owner} onValueChange={setOwner}>
-                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                    <SelectContent>{eligibleUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>)}</SelectContent>
-                  </Select>
+                  ) : null}
+                </div>
+                <Select value={owner} onValueChange={setOwner}>
+                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    {eligibleUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>)}
+                    {eligibleUsers.length === 0 && (
+                      <SelectItem value="__none_available__" disabled>Nenhum responsável elegível para esta etapa</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  A lista usa a mesma regra oficial da etapa e do servidor. Administradores ativos podem assumir qualquer etapa; sem funções configuradas, a etapa fica sem restrição por função.
+                </p>
+                {activeParticipation?.role === "responsible" && (
+                  <p className="rounded-md border border-cyan-200 bg-cyan-50/50 px-3 py-2 text-[11px] text-cyan-900">
+                    Empresa responsável preservada: {activeParticipation.partnerName || "empresa representante"}
+                    {activeParticipation.operationalUserName ? ` · executor ${activeParticipation.operationalUserName}` : ""}. O avanço não remove esse vínculo.
+                  </p>
                 )}
               </div>
 
