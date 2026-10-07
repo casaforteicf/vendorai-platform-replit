@@ -52,6 +52,8 @@ CREATE TABLE IF NOT EXISTS arqdor_engineering_configurations (
   opening_type text NOT NULL,
   product_kind text NOT NULL DEFAULT 'window',
   leaf_count integer,
+  allowed_leaf_counts jsonb NOT NULL DEFAULT '[]'::jsonb,
+  composition_pattern text,
   frame_code text,
   min_width_mm numeric(12,3),
   max_width_mm numeric(12,3),
