@@ -851,7 +851,6 @@ export default function LeadWorkspace() {
                   )}
                 </CardContent>
               </Card>
-            )}
       )
     )}
 
