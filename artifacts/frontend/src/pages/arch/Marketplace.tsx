@@ -146,6 +146,7 @@ export default function Marketplace() {
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishTitle, setPublishTitle] = useState(() => urlParams.get("titulo") ?? urlParams.get("q") ?? "");
   const [publishVisibility, setPublishVisibility] = useState<"privada" | "parceiros" | "regional" | "aberta">("privada");
+  const [publishSupplierIds, setPublishSupplierIds] = useState<string[]>([]);
   const [submittingPublish, setSubmittingPublish] = useState(false);
   const { data: categoriasProduto = [] } = useListCategoriasProduto(tenantId, {
     query: {
@@ -330,6 +331,7 @@ export default function Marketplace() {
           quantidade: contextQuantidade ? Number(contextQuantidade) : undefined,
           unidade: contextUnidade ?? undefined,
           visibilidade: publishVisibility,
+          fornecedorTenantIds: publishSupplierIds,
           publicar: true,
         }),
       });
@@ -338,6 +340,7 @@ export default function Marketplace() {
         throw new Error(err?.error ?? "Não foi possível publicar a necessidade.");
       }
       setPublishOpen(false);
+      setPublishSupplierIds([]);
       toast({ title: "Necessidade publicada", description: "Ela já está disponível no Arqdor Market conforme a visibilidade escolhida." });
     } catch (err: any) {
       toast({ title: "Erro ao publicar", description: err.message, variant: "destructive" });
@@ -376,7 +379,7 @@ export default function Marketplace() {
               Encontre empresas, produtos e serviços compatíveis com o contexto técnico do seu projeto e orçamento.
             </p>
           </div>
-          <Button variant="outline" onClick={() => setPublishOpen(true)}>
+          <Button variant="outline" onClick={() => { setPublishSupplierIds([]); setPublishOpen(true); }}>
             <Send className="h-4 w-4 mr-2" /> Publicar necessidade
           </Button>
         </div>
@@ -491,16 +494,13 @@ export default function Marketplace() {
                         {company.categorias.slice(0, 4).map(cat => <Badge key={cat} variant="secondary">{cat}</Badge>)}
                       </div>
                       <div className="flex gap-2">
-                        <Button size="sm" variant="outline" className="flex-1" onClick={() => {
-                          setBusca("");
-                          setCatFilter("__all__");
-                          setResultMode("produtos");
-                        }}>
+                        <Button size="sm" variant="outline" className="flex-1" onClick={() => setResultMode("produtos")}>
                           Ver produtos
                         </Button>
                         <Button size="sm" className="flex-1" onClick={() => {
                           setPublishTitle(busca || `Cotação para ${company.nome}`);
                           setPublishVisibility("privada");
+                          setPublishSupplierIds([company.id]);
                           setPublishOpen(true);
                         }}>
                           Solicitar cotação
@@ -567,9 +567,20 @@ export default function Marketplace() {
                         ) : (
                           <p className="text-xs text-muted-foreground">Sob consulta</p>
                         )}
-                        <Button size="sm" className="h-7 text-xs" onClick={() => openBuy(item)}>
-                          <ShoppingCart className="h-3 w-3 mr-1" /> Comprar
-                        </Button>
+                        {item.preco && Number(item.preco) > 0 ? (
+                          <Button size="sm" className="h-7 text-xs" onClick={() => openBuy(item)}>
+                            <ShoppingCart className="h-3 w-3 mr-1" /> Comprar
+                          </Button>
+                        ) : (
+                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => {
+                            setPublishTitle(`Cotação — ${item.nome}`);
+                            setPublishVisibility("privada");
+                            setPublishSupplierIds([item.vendedorTenantId]);
+                            setPublishOpen(true);
+                          }}>
+                            <Send className="h-3 w-3 mr-1" /> Cotar
+                          </Button>
+                        )}
                       </div>
                       {item.totalVendas > 0 && (
                         <p className="text-xs text-muted-foreground">{item.totalVendas} venda(s)</p>
@@ -791,6 +802,7 @@ export default function Marketplace() {
               </Select>
               <p className="text-xs text-muted-foreground">
                 Dados pessoais do cliente e valores internos do orçamento não são publicados por esta ação.
+                {publishSupplierIds.length > 0 ? ` Esta cotação será enviada diretamente para ${publishSupplierIds.length} empresa(s) selecionada(s).` : ""}
               </p>
             </div>
             {(contextQuantidade || contextUnidade || contextOrigem) && (
