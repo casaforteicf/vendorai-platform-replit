@@ -344,7 +344,7 @@ Responda SOMENTE JSON válido:
   const stage = extracted.optOut
     ? "nao_contatar" as const
     : extracted.meetingAccepted
-      ? "reuniao_agendada" as const
+      ? "reuniao_em_negociacao" as const
       : prospect.stage;
 
   const decision = decideProspectNextAction({
@@ -366,6 +366,7 @@ Responda SOMENTE JSON válido:
     primaryHook: decision.primaryHook,
     opportunitySummary: extracted.summary || prospect.opportunitySummary,
     lastInteractionAt: now,
+    nextActionAt: extracted.optOut || extracted.meetingAccepted ? null : now,
     updatedAt: now,
   }).where(and(eq(prospectsTable.id, prospect.id), eq(prospectsTable.tenantId, input.tenantId))).returning();
 
