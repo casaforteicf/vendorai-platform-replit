@@ -83,6 +83,7 @@ const ConceptRenderGalleryActions = lazy(() => import("./ConceptRenderGalleryAct
 const ConceptCatalogPanels = lazy(() => import("./ConceptCatalogPanels"));
 const ConceptConstructionLibraryPanel = lazy(() => import("./ConceptConstructionLibraryPanel"));
 const ConceptRealEnvironmentPanel = lazy(() => import("./ConceptRealEnvironmentPanel"));
+const ConceptReferenceSceneCard = lazy(() => import("./ConceptReferenceSceneCard"));
 
 
 type RoomKind =
@@ -10665,6 +10666,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       }}
                       onAction={(elementId, action) => void updateRealEnvironmentAction(elementId, action)}
                     />
+                  </Suspense>
+                )}
+                {referenceIsScenePhoto && referencePlan?.photoAnalysis && (
+                  <Suspense fallback={null}>
+                    <ConceptReferenceSceneCard analysis={referencePlan.photoAnalysis} />
                   </Suspense>
                 )}
                 {referenceIsPlanImage && (
