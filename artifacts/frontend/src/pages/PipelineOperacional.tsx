@@ -581,7 +581,7 @@ export default function PipelineOperacional() {
           {pipeline === "execucao" ? (
             <>
               {isAdmin && <Button variant="outline" onClick={() => setInstallationTemplatesOpen(true)} className="gap-2"><ClipboardCheck className="h-4 w-4" /> Configurar instalação</Button>}
-              <Button onClick={() => setDeliveryOpen(true)} className="gap-2"><Truck className="h-4 w-4" /> Liberar itens para entrega</Button>
+              <Button onClick={() => setDeliveryOpen(true)} className="gap-2"><Truck className="h-4 w-4" /> Criar lote para entrega</Button>
             </>
           ) : (
             <Button onClick={() => setSupportOpen(true)} className="gap-2"><Wrench className="h-4 w-4" /> Novo chamado</Button>
@@ -1822,7 +1822,7 @@ function DeliveryDialog({ open, onOpenChange, tenantId, token, deals, leads, use
       setDealId(""); setResponsavelId(""); setReleaseDate(""); setDeliveryDate(""); setAddress(""); setNotes(""); setQuantities({}); setFiles([]);
       await onCreated();
     } catch (error) {
-      toast({ title: "Erro ao criar lote de entrega", description: String(error), variant: "destructive" });
+      toast({ title: "Erro ao criar lote de execução", description: String(error), variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -1831,7 +1831,7 @@ function DeliveryDialog({ open, onOpenChange, tenantId, token, deals, leads, use
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
-        <DialogHeader><DialogTitle>Liberar itens para entrega parcial</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>Criar lote de execução</DialogTitle></DialogHeader>
         <div className="space-y-4 py-1">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5"><label className="text-sm font-medium">Pedido *</label><Select value={dealId} onValueChange={(v) => { setDealId(v); setQuantities({}); }}><SelectTrigger><SelectValue placeholder="Selecionar pedido" /></SelectTrigger><SelectContent>{deals.filter((d) => !["perdido"].includes(d.etapa)).map((d) => <SelectItem key={d.id} value={d.id}>{d.titulo}</SelectItem>)}</SelectContent></Select>{selectedLead && <p className="text-xs text-muted-foreground">Cliente: {selectedLead.nome || selectedLead.empresa}</p>}</div>
