@@ -431,3 +431,50 @@ export async function tryIngestColdProspectReply(input: {
 
   return { handled: true, prospectId: prospect.id };
 }
+
+
+export async function tryIngestColdProspectEmailReply(input: {
+  tenantId: string;
+  email: string;
+  subject?: string | null;
+  text: string;
+  externalId?: string | null;
+}): Promise<{ handled: boolean; prospectId?: string }> {
+  const email = input.email.trim().toLowerCase();
+  if (!email) return { handled: false };
+
+  const [prospect] = await db.select().from(prospectsTable)
+    .where(and(
+      eq(prospectsTable.tenantId, input.tenantId),
+      isNull(prospectsTable.convertedAt),
+      sql`lower(coalesce(${prospectsTable.email}, '')) = ${email}`,
+    )).limit(1);
+
+  if (!prospect) return { handled: false };
+
+  const content = input.subject?.trim()
+    ? `Assunto: ${input.subject.trim()}\n\n${input.text}`
+    : input.text;
+  const now = new Date();
+  const [interaction] = await db.insert(prospectInteractionsTable).values({
+    tenantId: input.tenantId,
+    prospectId: prospect.id,
+    direction: "inbound",
+    channel: "email",
+    status: "replied",
+    content,
+    subject: input.subject ?? null,
+    externalId: input.externalId ?? null,
+    occurredAt: now,
+  }).returning({ id: prospectInteractionsTable.id });
+
+  await analyzeProspectInboundMessage({
+    tenantId: input.tenantId,
+    prospectId: prospect.id,
+    message: content,
+    channel: "email",
+    interactionId: interaction?.id ?? null,
+  });
+
+  return { handled: true, prospectId: prospect.id };
+}
