@@ -13,6 +13,7 @@ import {
 import { requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
 import { decideProspectNextAction } from "../services/prospect-decision-engine.js";
 import { planSalesContent } from "../services/sales-content-planner.js";
+import { approveSalesContent, generateSalesContent } from "../services/sales-content-generator.js";
 import { z } from "zod/v4";
 
 const router: IRouter = Router();
@@ -186,6 +187,53 @@ router.post(base + "/:prospectId/content-plan", async (req, res) => {
 
   const plan = await planSalesContent({ tenantId, prospect, context: parsed.data });
   return res.json(plan);
+});
+
+
+router.post(base + "/:prospectId/content-generate", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const prospectId = String(req.params["prospectId"]);
+  const parsed = contentPlanSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: "Contexto inválido", details: parsed.error.issues });
+
+  const [prospect] = await db.select().from(prospectsTable)
+    .where(and(eq(prospectsTable.id, prospectId), eq(prospectsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!prospect) return res.status(404).json({ error: "Prospect não encontrado" });
+
+  const plan = await planSalesContent({ tenantId, prospect, context: parsed.data });
+  if (plan.action === "reuse") {
+    return res.json({ action: "reuse", assetId: plan.selectedAssetId, reason: plan.reason });
+  }
+
+  try {
+    const generated = await generateSalesContent({ tenantId, prospect, plan, logger: req.log });
+    return res.status(201).json({ action: "generated", ...generated, approvalStatus: "review", autoSendAllowed: false });
+  } catch (error) {
+    req.log.error({ error, tenantId, prospectId }, "prospects: sales content generation failed");
+    return res.status(502).json({ error: "Não foi possível gerar o material comercial agora." });
+  }
+});
+
+const approveContentSchema = z.object({
+  autoSendAllowed: z.boolean().optional().default(false),
+});
+
+router.post(base + "/:prospectId/content/:assetId/approve", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const prospectId = String(req.params["prospectId"]);
+  const assetId = String(req.params["assetId"]);
+  const parsed = approveContentSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: "Dados inválidos", details: parsed.error.issues });
+
+  const [prospect] = await db.select({ id: prospectsTable.id }).from(prospectsTable)
+    .where(and(eq(prospectsTable.id, prospectId), eq(prospectsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!prospect) return res.status(404).json({ error: "Prospect não encontrado" });
+
+  const ok = await approveSalesContent({ tenantId, assetId, autoSendAllowed: parsed.data.autoSendAllowed });
+  if (!ok) return res.status(404).json({ error: "Material comercial não encontrado" });
+  return res.json({ ok: true, assetId, approvalStatus: "approved", autoSendAllowed: parsed.data.autoSendAllowed });
 });
 
 export default router;
