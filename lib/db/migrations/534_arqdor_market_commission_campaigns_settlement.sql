@@ -161,3 +161,17 @@ $$;
 
 COMMENT ON COLUMN public.arqdor_market_commission_rules.conditions IS
   'Condições adicionais da regra/campanha, ex.: billingTypes, minOrderValue, maxOrderValue, buyerTenantIds, sellerTenantIds.';
+
+ALTER TABLE public.arch_marketplace_pedidos
+  ADD COLUMN IF NOT EXISTS market_demand_id uuid REFERENCES public.arqdor_market_demands(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS commission_rule_id uuid REFERENCES public.arqdor_market_commission_rules(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS commission_percentage numeric(5,2),
+  ADD COLUMN IF NOT EXISTS praca_order_id text REFERENCES public.praca_pedidos(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS payment_status text NOT NULL DEFAULT 'pending',
+  ADD COLUMN IF NOT EXISTS payment_provider text,
+  ADD COLUMN IF NOT EXISTS payment_intent_id text REFERENCES public.praca_payment_intents(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS arch_marketplace_pedidos_market_demand_idx
+  ON public.arch_marketplace_pedidos(market_demand_id);
+CREATE INDEX IF NOT EXISTS arch_marketplace_pedidos_praca_order_idx
+  ON public.arch_marketplace_pedidos(praca_order_id);
