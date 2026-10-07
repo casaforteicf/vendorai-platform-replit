@@ -44,6 +44,12 @@ function clampPercent(value: number | null | undefined) {
   return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0;
 }
 
+export function calculateOriginShareCents(grossCommissionCents: number, sharePercent = 25) {
+  const gross = Math.max(0, Math.round(Number(grossCommissionCents) || 0));
+  const share = clampPercent(sharePercent);
+  return Math.round(gross * (share / 100));
+}
+
 function matchesOptional(ruleValue: string | null, inputValue: string | null | undefined) {
   return !ruleValue || ruleValue === inputValue;
 }
@@ -367,7 +373,7 @@ async function createOriginTenantParticipation(
   if (existing) return existing;
 
   const grossCommissionCents = Math.max(0, Number(parentEvent.commissionCents ?? 0));
-  const originShareCents = Math.round(grossCommissionCents * (sharePercent / 100));
+  const originShareCents = calculateOriginShareCents(grossCommissionCents, sharePercent);
 
   const [event] = await db.insert(arqdorOriginCommissionEventsTable).values({
     sellerTenantId: input.tenantId,
