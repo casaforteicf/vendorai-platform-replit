@@ -132,7 +132,7 @@ export function buildImportedArchitectural3DProfile(
 ): ImportedArchitectural3DProfile {
   const warnings: string[] = [];
   const sections = analysis.memory.sections ?? [];
-  const floorCount = Math.max(1, Number(analysis.memory.floors ?? analysis.memory.floorPlans.length || 1));
+  const floorCount = Math.max(1, Number(analysis.memory.floors ?? (analysis.memory.floorPlans.length || 1)));
 
   const sectionHeights = sections
     .map((section) => ({ section, height: sectionWallHeight(section) }))
