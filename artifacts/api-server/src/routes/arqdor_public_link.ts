@@ -112,6 +112,7 @@ const signupSchema = z.object({
     uf: z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/, "Informe a UF."),
   }),
   aceite: z.literal(true, { message: "É preciso aceitar o uso dos dados para continuar." }),
+  originCampaignId: z.string().trim().max(160).optional().nullable(),
   // Campo invisível no formulário: robôs preenchem, pessoas não.
   site: z.string().max(0).optional().default(""),
 });
@@ -251,6 +252,8 @@ arqdorPublicLinkRouter.post("/public/arqdor/:slug/cadastro", signupLimiter, asyn
   if (data.site) return res.status(400).json({ error: "Cadastro inválido." });
 
   const tenantId = link.tenant_id;
+  const originSource = "arqdor_partner_public_link";
+  const originCampaignId = data.originCampaignId || null;
   const address = formatAddress(data.endereco);
   const customerProfile = {
     name: data.nome,
@@ -280,9 +283,13 @@ arqdorPublicLinkRouter.post("/public/arqdor/:slug/cadastro", signupLimiter, asyn
           SET instagram_handle = COALESCE(NULLIF(instagram_handle, ''), $3),
               endereco = COALESCE(NULLIF(endereco, ''), $4),
               email = COALESCE(NULLIF(email, ''), $5),
+              origin_tenant_id = COALESCE(origin_tenant_id, $2),
+              origin_source = COALESCE(origin_source, $6),
+              origin_campaign_id = COALESCE(origin_campaign_id, $7),
+              origin_captured_at = COALESCE(origin_captured_at, now()),
               updated_at = now()
         WHERE id = $1 AND tenant_id = $2`,
-      [leadId, tenantId, data.instagram, address, data.email],
+      [leadId, tenantId, data.instagram, address, data.email, originSource, originCampaignId],
     );
   } else {
     const assignedTo = await pickNextVendedor(tenantId, {});
@@ -294,6 +301,10 @@ arqdorPublicLinkRouter.post("/public/arqdor/:slug/cadastro", signupLimiter, asyn
       instagramHandle: normalizeInstagramHandle(data.instagram),
       endereco: address,
       source: "arqdor_link_publico",
+      originTenantId: tenantId,
+      originSource,
+      originCampaignId,
+      originCapturedAt: new Date(),
       objetivo: "Projeto residencial (pré-projeto online)",
       assignedTo,
       metadata: leadRegistrationMetadata(null, {
