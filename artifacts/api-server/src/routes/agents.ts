@@ -114,6 +114,7 @@ async function handleAgentProcess(
   try {
     const contextoNegocioResolvido = await resolverContextoNegocio({
       tenantId,
+      role: agentName,
       query: [
         mensagem,
         ctx.lead.objetivo,

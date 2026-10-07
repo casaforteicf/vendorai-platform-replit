@@ -266,6 +266,7 @@ export async function planejarAcompanhamento(params: {
   try {
     contextoNegocio = await resolverContextoNegocio({
       tenantId: params.tenantId,
+      role: "followup",
       query: [
         context.lead.nome,
         context.etapa,
