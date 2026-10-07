@@ -6,6 +6,7 @@ import { z } from "zod/v4";
 import { db, pool, propostasTable, leadProposalsTable, leadsTable } from "@workspace/db";
 import { proposalAccepted } from "../lib/proposal-accepted.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { clientFinalDecision, clientItemDecision, getPublicProposal } from "./arch_client_portal_approval";
 
 const router: IRouter = Router();
 const proposalStorage = new ObjectStorageService();
@@ -158,6 +159,32 @@ function proposalHtmlReferencesAsset(html: string, assetPath: string) {
   return String(html || "").includes(`/api/storage/objects/${normalized}`)
     || String(html || "").includes(`/objects/${normalized}`);
 }
+
+
+// ARQDOR proposal portal — public token endpoints live in the central public proposals router.
+router.get("/arch/portal/proposta/:token", async (req, res, next) => {
+  try {
+    res.json(await getPublicProposal(String(req.params.token ?? "")));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/arch/portal/proposta/:token/items/:itemId/decision", async (req, res, next) => {
+  try {
+    res.json(await clientItemDecision(String(req.params.token ?? ""), String(req.params.itemId ?? ""), req.body));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/arch/portal/proposta/:token/decision", async (req, res, next) => {
+  try {
+    res.json(await clientFinalDecision(String(req.params.token ?? ""), req.body));
+  } catch (err) {
+    next(err);
+  }
+});
 
 const acceptPublicBodySchema = z.object({
   nome: z.string().trim().min(1).max(160).optional(),
