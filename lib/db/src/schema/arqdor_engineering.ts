@@ -10,6 +10,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { tenantsTable } from "./tenants";
+import { produtosCatalogoTable } from "./produtos_catalogo";
 
 export type ArqdorEngineeringScope = "universal" | "tenant";
 export type ArqdorEngineeringComponentGroup =
@@ -60,6 +61,7 @@ export const arqdorEngineeringComponentsTable = pgTable(
       .notNull()
       .references(() => arqdorEngineeringSystemsTable.id, { onDelete: "cascade" }),
     code: text("code").notNull(),
+    catalogProductId: text("catalog_product_id").references(() => produtosCatalogoTable.id, { onDelete: "set null" }),
     name: text("name").notNull(),
     group: text("group").$type<ArqdorEngineeringComponentGroup>().notNull(),
     role: text("role").notNull(),
@@ -88,6 +90,7 @@ export const arqdorEngineeringConfigurationsTable = pgTable(
       .notNull()
       .references(() => arqdorEngineeringSystemsTable.id, { onDelete: "cascade" }),
     code: text("code").notNull(),
+    catalogProductId: text("catalog_product_id").references(() => produtosCatalogoTable.id, { onDelete: "set null" }),
     name: text("name").notNull(),
     openingType: text("opening_type").notNull(),
     productKind: text("product_kind").notNull().default("window"),
