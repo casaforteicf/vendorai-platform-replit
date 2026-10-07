@@ -24,7 +24,7 @@ function hasProjectSignal(q: ProspectQualification | null | undefined): boolean 
     q?.project?.recebeProjetos ||
     q?.project?.formatosProjetos?.length ||
     q?.budget?.usaPlanilha ||
-    q?.budget?.processoLevantamento ||
+    q?.project?.processoLevantamento ||
     q?.budget?.gargalos?.length,
   );
 }
