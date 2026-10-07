@@ -1839,37 +1839,6 @@ router.post("/arch/concept-projects", authenticate, async (req, res) => {
       ? String((parsed.data.configuration as any).creationKey).trim()
       : "";
 
-      .where(and(
-        eq(archConceptProjectsTable.tenantId, tid),
-        eq(archConceptProjectsTable.ownerUserId, userId),
-        sql`${archConceptProjectsTable.configuration}->>'creationKey' = ${creationKey}`,
-      ))
-      .limit(1);
-    if (existing) return res.status(200).json(existing);
-  }
-
-  try {
-    const [created] = await db
-      .insert(archConceptProjectsTable)
-      .values(parsed.data)
-      .returning();
-    return res.status(201).json(created);
-  } catch (error) {
-    // Corrida entre autosave/cliques/abas: o índice único garante um único rascunho.
-    if (creationKey && (error as { code?: string })?.code === "23505") {
-      const [existing] = await db
-        .select()
-        .from(archConceptProjectsTable)
-        .where(and(
-          eq(archConceptProjectsTable.tenantId, tid),
-          eq(archConceptProjectsTable.ownerUserId, userId),
-          sql`${archConceptProjectsTable.configuration}->>'creationKey' = ${creationKey}`,
-        ))
-        .limit(1);
-      if (existing) return res.status(200).json(existing);
-    }
-    throw error;
-  }
   if (creationKey) {
     const [existing] = await db
       .select()
