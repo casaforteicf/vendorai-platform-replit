@@ -56,6 +56,7 @@ import {
   Upload, X, Image as ImageIcon, FileSpreadsheet, Copy,
   Send, ThumbsUp, ThumbsDown, ChevronRight, AlertCircle,
   Search, Loader2, FileText, Download, Sparkles,
+  Zap, Sun, BatteryCharging, CarFront,
 } from "lucide-react";
 import TabFinanceiro from "./TabFinanceiro";
 import EquipeProducao from "./EquipeProducao";
@@ -142,6 +143,7 @@ const TABS = [
   { id: "estoque",      label: "Estoque",        icon: Package },
   { id: "compras",      label: "Compras",        icon: ShoppingCart },
   { id: "orcamento",    label: "Orçamento",      icon: FileSpreadsheet },
+  { id: "energia",       label: "Energia",        icon: Zap },
 ];
 
 function MobileTabDropdown({ activeTab, onSelect }: { activeTab: string; onSelect: (id: string) => void }) {
@@ -2844,6 +2846,168 @@ function CurvaABC({ tenantId, obraId, orcamentoId }: { tenantId: string; obraId:
   );
 }
 
+function EnergiaSistemas({ tenantId, obraId }: { tenantId: string; obraId: string }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [tipo, setTipo] = useState("fotovoltaico_on_grid");
+  const [somenteInfraestrutura, setSomenteInfraestrutura] = useState(false);
+
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["obra-energia-resumo", tenantId, obraId],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/energia/resumo`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Erro ao carregar sistemas de energia");
+      return res.json();
+    },
+    enabled: !!tenantId && !!obraId,
+  });
+
+  async function preconfigurar() {
+    const token = localStorage.getItem("vendorai_token");
+    const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/energia/preconfigurar`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ tipo, somenteInfraestrutura }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      toast({ title: "Não foi possível adicionar", description: body?.error ?? "Erro ao criar sistema de energia", variant: "destructive" });
+      return;
+    }
+    toast({ title: "Sistema de energia adicionado" });
+    qc.invalidateQueries({ queryKey: ["obra-energia-resumo", tenantId, obraId] });
+  }
+
+  const labelTipo: Record<string, string> = {
+    fotovoltaico_on_grid: "Solar fotovoltaico on-grid",
+    fotovoltaico_hibrido: "Solar fotovoltaico híbrido",
+    off_grid: "Sistema off-grid",
+    banco_baterias: "Banco de baterias",
+    carregador_ve: "Carregador de veículo elétrico",
+    gerador: "Gerador",
+    nobreak_ups: "Nobreak / UPS",
+    quadro_cargas_essenciais: "Quadro de cargas essenciais",
+    chave_transferencia: "Chave de transferência",
+    gestao_energia: "Gestão de energia",
+  };
+
+  const iconTipo = (t: string) => t.includes("fotovoltaico") ? Sun : t === "carregador_ve" ? CarFront : t.includes("bateria") || t === "off_grid" ? BatteryCharging : Zap;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 md:grid-cols-3">
+        <Card>
+          <CardContent className="pt-4">
+            <div className="text-xs text-muted-foreground">Potência instalada</div>
+            <div className="text-2xl font-bold mt-1">{data?.totais?.potenciaKw ?? "0.0000"} kW</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <div className="text-xs text-muted-foreground">Armazenamento</div>
+            <div className="text-2xl font-bold mt-1">{data?.totais?.energiaKwh ?? "0.0000"} kWh</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <div className="text-xs text-muted-foreground">Alertas técnicos</div>
+            <div className="text-2xl font-bold mt-1">{data?.alertas?.length ?? 0}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Adicionar sistema especial</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
+          <div className="space-y-2">
+            <Label>Tipo</Label>
+            <select
+              className="w-full h-10 rounded-md border bg-background px-3 text-sm"
+              value={tipo}
+              onChange={(e) => setTipo(e.target.value)}
+            >
+              {Object.entries(labelTipo).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </div>
+          <label className="flex items-center gap-2 h-10 px-3 rounded-md border bg-muted/20 text-sm">
+            <input
+              type="checkbox"
+              checked={somenteInfraestrutura}
+              onChange={(e) => setSomenteInfraestrutura(e.target.checked)}
+            />
+            Somente infraestrutura
+          </label>
+          <Button onClick={preconfigurar}><Plus className="h-4 w-4 mr-1" />Adicionar</Button>
+        </CardContent>
+      </Card>
+
+      {isLoading ? (
+        <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin" /></div>
+      ) : (data?.sistemas ?? []).length === 0 ? (
+        <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">Nenhum sistema especial configurado nesta obra.</CardContent></Card>
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {(data?.sistemas ?? []).map((s: any) => {
+            const Icon = iconTipo(s.tipo);
+            const comps = (data?.componentes ?? []).filter((c: any) => c.sistemaId === s.id);
+            return (
+              <Card key={s.id}>
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Icon className="h-4 w-4 text-primary" />
+                      {s.nome || labelTipo[s.tipo] || s.tipo}
+                    </CardTitle>
+                    {s.somenteInfraestrutura && <Badge variant="secondary">Só infraestrutura</Badge>}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div><span className="text-muted-foreground">Potência:</span> <strong>{s.potenciaKw ?? "—"} kW</strong></div>
+                    <div><span className="text-muted-foreground">Energia:</span> <strong>{s.energiaKwh ?? "—"} kWh</strong></div>
+                    <div><span className="text-muted-foreground">Tensão:</span> <strong>{s.tensaoV ?? "—"} V</strong></div>
+                    <div><span className="text-muted-foreground">Autonomia:</span> <strong>{s.autonomiaHoras ?? "—"} h</strong></div>
+                  </div>
+                  <div className="space-y-1.5">
+                    {comps.map((comp: any) => (
+                      <div key={comp.id} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-xs">
+                        <div>
+                          <div className="font-medium">{comp.nome}</div>
+                          <div className="text-muted-foreground">{comp.tipo} · {comp.slotKey}</div>
+                        </div>
+                        <Badge variant="outline">{comp.quantidade} {comp.unidade}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {(data?.alertas ?? []).length > 0 && (
+        <Card className="border-amber-200">
+          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><AlertCircle className="h-4 w-4 text-amber-500" />Alertas</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {(data.alertas ?? []).map((a: any, idx: number) => (
+              <div key={idx} className="text-xs rounded-md bg-amber-50 border border-amber-200 px-3 py-2">{a.mensagem ?? a.tipo}</div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ObraDetalhe() {
@@ -3005,6 +3169,7 @@ export default function ObraDetalhe() {
         {activeTab === "estoque"      && <EstoqueObra tenantId={tenantId} obraId={obraId} />}
         {activeTab === "compras"      && <Compras tenantId={tenantId} obraId={obraId} />}
         {activeTab === "orcamento"    && <TabOrcamento tenantId={tenantId} obraId={obraId} portalToken={(obra as any).portalToken} />}
+        {activeTab === "energia"       && <EnergiaSistemas tenantId={tenantId} obraId={obraId} />}
       </div>
     </div>
   );
