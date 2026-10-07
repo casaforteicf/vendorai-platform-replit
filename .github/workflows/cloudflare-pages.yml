@@ -1,6 +1,6 @@
 name: Cloudflare Pages
 # Production deploy: Pages frontend; Railway backend remains unchanged.
-# Redeploy marker: configuracoes-navigation-2026-10-06.
+# Redeploy marker: configuracoes-pages-route-bypass-2026-10-06.
 
 on:
   push:
@@ -262,6 +262,41 @@ jobs:
           echo "Custom domain was attached but is not active yet."
           exit 1
 
+
+      - name: Ensure app domain bypasses tenant Worker
+        if: steps.deploy_primary.outcome == 'success' || steps.deploy_fallback.outcome == 'success'
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          api="https://api.cloudflare.com/client/v4"
+          auth=(-H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json")
+          zone_response=$(curl -sS "${auth[@]}" "$api/zones?name=appvendorai.com&account.id=$CLOUDFLARE_ACCOUNT_ID")
+          test "$(jq -r '.success // false' <<<"$zone_response")" = "true"
+          zone_id=$(jq -r '.result[0].id // empty' <<<"$zone_response")
+          test -n "$zone_id"
+
+          pattern="app.appvendorai.com/*"
+          routes=$(curl -sS "${auth[@]}" "$api/zones/$zone_id/workers/routes")
+          test "$(jq -r '.success // false' <<<"$routes")" = "true"
+          route_id=$(jq -r --arg pattern "$pattern" '.result[] | select(.pattern == $pattern) | .id' <<<"$routes" | head -1)
+
+          payload=$(jq -nc --arg pattern "$pattern" '{pattern:$pattern}')
+          if [ -n "$route_id" ]; then
+            result=$(curl -sS "${auth[@]}" -X PUT "$api/zones/$zone_id/workers/routes/$route_id" --data "$payload")
+          else
+            result=$(curl -sS "${auth[@]}" -X POST "$api/zones/$zone_id/workers/routes" --data "$payload")
+          fi
+
+          if [ "$(jq -r '.success // false' <<<"$result")" != "true" ]; then
+            echo "Could not enforce Pages bypass for $pattern"
+            jq -c '{errors, messages}' <<<"$result"
+            exit 1
+          fi
+
+          echo "Pages bypass active for $pattern"
 
       - name: Verify production bundle integrity
         if: steps.deploy_primary.outcome == 'success' || steps.deploy_fallback.outcome == 'success'
