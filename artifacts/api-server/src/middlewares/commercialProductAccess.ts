@@ -17,7 +17,7 @@ function applies(segmentKeys: string[], tenantSegments: string[]) {
 
 export async function getTenantCommercialAccess(tenantId: string) {
   const [tenant, entitlements, profiles] = await Promise.all([
-    db.select({ vertical: tenantsTable.vertical, verticalSecundaria: tenantsTable.verticalSecundaria })
+    db.select({ vertical: tenantsTable.vertical, verticalSecundaria: tenantsTable.verticalSecundaria, isDemo: tenantsTable.isDemo })
       .from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
     getActiveEntitlements(tenantId),
     db.select().from(commercialProductProfilesTable).where(eq(commercialProductProfilesTable.active, true)),
@@ -39,6 +39,7 @@ export async function getTenantCommercialAccess(tenantId: string) {
   }
 
   return {
+    isDemo: Boolean(tenant[0]?.isDemo),
     fullPackageActive,
     entitlementKeys,
     moduleKeys,
@@ -85,6 +86,12 @@ export const enforceCommercialProductAccess: RequestHandler = async (req, res, n
   if (!tenantId) return res.status(403).json({ error: "TENANT_REQUIRED" });
 
   const access = await getTenantCommercialAccess(tenantId);
+
+  // O tenant oficial de demonstração precisa conseguir executar o Arqdor de ponta a ponta.
+  // A exceção é deliberadamente restrita ao prefixo /arch; os demais produtos continuam
+  // respeitando os entitlements comerciais normalmente.
+  if (access.isDemo && req.path.startsWith("/arch")) return next();
+
   if (access.fullPackageActive || rule.anyOf.some((key) => access.moduleKeys.has(key))) return next();
 
   return res.status(403).json({
