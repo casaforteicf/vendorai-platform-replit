@@ -399,6 +399,7 @@ async function clientFinalDecision(portalToken: string, payload: ClientDecisionP
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 const archClientPortalApprovalRouter = Router();
+export const archClientPortalApprovalPublicRouter = Router();
 
 archClientPortalApprovalRouter.get("/arch/propostas", async (req, res, next) => {
   try {
@@ -452,7 +453,7 @@ archClientPortalApprovalRouter.post("/arch/propostas/:id/send", async (req, res,
 });
 
 // ─── Public routes (no auth required) ────────────────────────────────────────
-archClientPortalApprovalRouter.get("/arch/portal/proposta/:token", async (req, res, next) => {
+archClientPortalApprovalPublicRouter.get("/arch/portal/proposta/:token", async (req, res, next) => {
   try {
     const result = await getPublicProposal(req.params["token"]!);
     res.json(result);
@@ -462,7 +463,7 @@ archClientPortalApprovalRouter.get("/arch/portal/proposta/:token", async (req, r
   }
 });
 
-archClientPortalApprovalRouter.post("/arch/portal/proposta/:token/items/:itemId/decision", async (req, res, next) => {
+archClientPortalApprovalPublicRouter.post("/arch/portal/proposta/:token/items/:itemId/decision", async (req, res, next) => {
   try {
     const result = await clientItemDecision(req.params["token"]!, req.params["itemId"]!, req.body as ClientItemDecisionPayload);
     res.json(result);
@@ -472,7 +473,7 @@ archClientPortalApprovalRouter.post("/arch/portal/proposta/:token/items/:itemId/
   }
 });
 
-archClientPortalApprovalRouter.post("/arch/portal/proposta/:token/decision", async (req, res, next) => {
+archClientPortalApprovalPublicRouter.post("/arch/portal/proposta/:token/decision", async (req, res, next) => {
   try {
     const result = await clientFinalDecision(req.params["token"]!, req.body as ClientDecisionPayload);
     res.json(result);
