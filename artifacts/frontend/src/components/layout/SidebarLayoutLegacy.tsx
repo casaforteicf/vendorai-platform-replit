@@ -212,7 +212,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
     },
   });
   const MODULE_TO_HREFS: Record<string, string[]> = {
-    dashboard:  ["/", "/trabalho"],
+    dashboard:  ["/dashboard", "/", "/trabalho"],
     leads:      ["/leads", "/empresas", "/deals", "/pipeline-operacional", "/pipeline-relacionamento"],
     prospector: ["/app/prospector"],
     scheduler:  ["/agenda"],
@@ -528,7 +528,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
   // Core routes plus its explicit allowlist; new routes remain hidden until
   // approved for that vertical.
   const CORE_VERTICAL_HREFS = [
-    "/", "/trabalho", "/leads", "/app/prospector", "/deals", "/comissoes",
+    "/", "/dashboard", "/trabalho", "/leads", "/app/prospector", "/deals", "/comissoes",
     "/conversations", "/agenda", "/propostas", "/catalogo", "/campanhas", "/campanhas-nova",
     "/agents/config", "/base-conhecimento", "/analytics", "/usuarios", "/configuracoes", "/faq",
     "/guia-implantacao", "/scout", "/scout/regras", "/scout/oportunidades", "/scout/pipeline",
