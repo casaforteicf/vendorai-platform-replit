@@ -1,6 +1,6 @@
 import { flushSync } from "react-dom";
 import { conceptReferenceSize } from "./conceptReferenceImage";
-import { lazy, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import "./planner5d-reference.css";
 import {
   ArrowLeft,
@@ -82,6 +82,7 @@ const ConceptModel3D = lazy(() => import("./ConceptModel3D"));
 const ConceptRenderGalleryActions = lazy(() => import("./ConceptRenderGalleryActions").then((m) => ({ default: m.ConceptRenderGalleryActions })));
 const ConceptCatalogPanels = lazy(() => import("./ConceptCatalogPanels"));
 const ConceptConstructionLibraryPanel = lazy(() => import("./ConceptConstructionLibraryPanel"));
+const ConceptRealEnvironmentPanel = lazy(() => import("./ConceptRealEnvironmentPanel"));
 
 
 type RoomKind =
@@ -441,6 +442,32 @@ type ReferencePlan = {
   calibrationSource?: "image_aspect_fit" | "lot";
 };
 
+type RealEnvironmentKind = "auto" | "terreno" | "cozinha" | "banheiro" | "sala" | "quarto" | "fachada" | "area_externa" | "piscina" | "escritorio" | "outro";
+type RealEnvironmentUseMode = "existing" | "reference" | "modify";
+type RealEnvironmentAction = "preserve" | "remove" | "replace" | "relocate" | "review";
+type RealEnvironmentAnalysis = {
+  version: 1;
+  kind: Exclude<RealEnvironmentKind, "auto">;
+  useMode: RealEnvironmentUseMode;
+  summary: string;
+  confidence: number;
+  elements: Array<{
+    id: string;
+    label: string;
+    category: string;
+    confidence: number;
+    bbox: { x: number; y: number; width: number; height: number };
+    action: RealEnvironmentAction;
+    suggestedAction: RealEnvironmentAction;
+    reason: string;
+    source: "ai" | "user";
+  }>;
+  warnings: string[];
+  analyzedAt: string;
+  sourceModel: string;
+  sourceImageUrl?: string;
+};
+
 type ReferenceTracePreview = {
   summary: string;
   confidence: number;
@@ -521,6 +548,7 @@ type ConceptDraftResponse = {
     wallMaterials?: Record<string, string>;
     savedTourPoints?: SavedTourPoint[];
     referencePlan?: ReferencePlan;
+    realEnvironment?: RealEnvironmentAnalysis;
     sourceFiles?: ProjectSourceFile[];
     sitePlacement?: SitePlacement;
     projectBrief?: ProjectBriefSnapshot;
@@ -1134,6 +1162,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     };
   } | null>(null);
   const [referencePlan, setReferencePlan] = useState<ReferencePlan | null>(null);
+  const [realEnvironment, setRealEnvironment] = useState<RealEnvironmentAnalysis | null>(null);
+  const [realEnvironmentKind, setRealEnvironmentKind] = useState<RealEnvironmentKind>("auto");
+  const [realEnvironmentUseMode, setRealEnvironmentUseMode] = useState<RealEnvironmentUseMode>("existing");
+  const [realEnvironmentState, setRealEnvironmentState] = useState<"idle" | "analyzing" | "ready" | "error">("idle");
+  const [realEnvironmentMessage, setRealEnvironmentMessage] = useState<string | null>(null);
+  const [referenceInputMode, setReferenceInputMode] = useState<"floorplan" | "real_environment">("floorplan");
+  const referenceInputModeRef = useRef<"floorplan" | "real_environment">("floorplan");
   const [referencePlanState, setReferencePlanState] = useState<"idle" | "uploading" | "error" | "success">("idle");
   const [referencePlanMessage, setReferencePlanMessage] = useState<string | null>(null);
   const [referenceTraceState, setReferenceTraceState] = useState<"idle" | "loading" | "error" | "ready" | "applied">("idle");
@@ -1589,6 +1624,15 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         setWallMaterials(draft.configuration?.wallMaterials && typeof draft.configuration.wallMaterials === "object" ? draft.configuration.wallMaterials : {});
         setSavedTourPoints(Array.isArray(draft.configuration?.savedTourPoints) ? draft.configuration.savedTourPoints : []);
         setReferencePlan(draft.configuration?.referencePlan ?? null);
+        const loadedRealEnvironment = draft.configuration?.realEnvironment ?? null;
+        setRealEnvironment(loadedRealEnvironment);
+        if (loadedRealEnvironment) {
+          setRealEnvironmentKind(loadedRealEnvironment.kind);
+          setRealEnvironmentUseMode(loadedRealEnvironment.useMode);
+          setRealEnvironmentState("ready");
+          setReferenceInputMode("real_environment");
+          referenceInputModeRef.current = "real_environment";
+        }
         setSourceFiles(Array.isArray(draft.configuration?.sourceFiles) ? draft.configuration.sourceFiles : []);
         setSitePlacement(migrateLegacySitePlacement(draft.configuration?.sitePlacement));
         setProjectBrief(draft.configuration?.projectBrief ?? null);
@@ -2206,10 +2250,17 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               : referencePlan?.kind === "image"
                 ? "received"
                 : "idle";
-  const referenceReviewActive = editorView === "plan" && referencePlan?.kind === "image" && referenceTraceState !== "applied";
+  const referenceReviewActive =
+    referenceInputMode === "floorplan" &&
+    editorView === "plan" &&
+    referencePlan?.kind === "image" &&
+    referenceTraceState !== "applied";
   const hideCurrentGeometryForReferenceReview = referenceReviewActive;
-  const showReferenceImage = referencePlan?.kind === "image" && referenceDisplayMode !== "vector";
-  const showReferenceVector = referenceDisplayMode !== "reference";
+  const showReferenceImage =
+    referenceInputMode === "floorplan" &&
+    referencePlan?.kind === "image" &&
+    referenceDisplayMode !== "vector";
+  const showReferenceVector = referenceInputMode === "floorplan" && referenceDisplayMode !== "reference";
 
   const selected = safeRooms.find((r) => r.id === selectedId) ?? null;
   const selectedObject = safeObjects.find((object) => object.id === selectedObjectId) ?? null;
@@ -5153,6 +5204,80 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     safeCustomWalls.length,
   ]);
 
+  const analyzeRealEnvironment = async (id: string) => {
+    setRealEnvironmentState("analyzing");
+    setRealEnvironmentMessage("Analisando ambiente...");
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("vendorai_token") : null;
+      const response = await fetch(`/api/arch/concept-projects/${encodeURIComponent(id)}/real-environment/analyze`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ kind: realEnvironmentKind, useMode: realEnvironmentUseMode }),
+      });
+      const payload = await response.json().catch(() => ({})) as RealEnvironmentAnalysis & { error?: string };
+      if (!response.ok || !payload?.elements) throw new Error(payload.error ?? "Não foi possível analisar o ambiente.");
+      setRealEnvironment(payload);
+      setRealEnvironmentKind(payload.kind);
+      setRealEnvironmentUseMode(payload.useMode);
+      setRealEnvironmentState("ready");
+      setRealEnvironmentMessage(
+        `${payload.elements.length} elemento(s) · ${Math.round(payload.confidence * 100)}% confiança.`,
+      );
+      return payload;
+    } catch (error) {
+      setRealEnvironmentState("error");
+      setRealEnvironmentMessage(error instanceof Error ? error.message : "Falha ao analisar o ambiente real.");
+      return null;
+    }
+  };
+
+  const updateRealEnvironmentAction = async (elementId: string, action: RealEnvironmentAction) => {
+    const id = conceptIdRef.current ?? conceptId;
+    if (!id || !realEnvironment) return;
+    const element = realEnvironment.elements.find((item) => item.id === elementId);
+    if (!element) return;
+    if (action === "remove" || action === "replace" || action === "relocate") {
+      const labels: Record<string, string> = { remove: "remover", replace: "substituir", relocate: "realocar" };
+      const confirmed = window.confirm(`Confirmar: ${labels[action]} “${element.label}” na intervenção? O Arqdor preservará os demais elementos.`);
+      if (!confirmed) return;
+    }
+    const token = typeof window !== "undefined" ? localStorage.getItem("vendorai_token") : null;
+    const response = await fetch(`/api/arch/concept-projects/${encodeURIComponent(id)}/real-environment/elements/${encodeURIComponent(elementId)}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ action }),
+    });
+    const payload = await response.json().catch(() => ({})) as RealEnvironmentAnalysis & { error?: string };
+    if (!response.ok || !payload?.elements) {
+      setRealEnvironmentMessage(payload.error ?? "Não foi possível atualizar a intervenção.");
+      return;
+    }
+    setRealEnvironment(payload);
+    setRealEnvironmentState("ready");
+  };
+
+  const chooseReferenceInputMode = (mode: "floorplan" | "real_environment") => {
+    referenceInputModeRef.current = mode;
+    setReferenceInputMode(mode);
+    if (mode === "real_environment") {
+      setReferenceTracePreview(null);
+      setReferenceTraceState("idle");
+    }
+    const input = referencePlanInputRef.current;
+    if (!input) return;
+    input.accept = mode === "real_environment"
+      ? "image/png,image/jpeg,image/webp"
+      : "image/png,image/jpeg,image/webp,application/pdf,.pdf";
+    input.value = "";
+    input.click();
+  };
+
   const uploadReferencePlan = async (file: File) => {
     if (referencePlanState === "uploading") return;
     setReferencePlanState("uploading");
@@ -5178,7 +5303,25 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setEditorLibraryTab("build");
       setReferencePlanState("success");
 
-      if (payload.kind === "image") {
+      if (referenceInputModeRef.current === "floorplan") {
+        await fetch(`/api/arch/concept-projects/${encodeURIComponent(id)}/real-environment`, {
+          method: "DELETE",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        }).catch(() => undefined);
+        setRealEnvironment(null);
+        setRealEnvironmentState("idle");
+        setRealEnvironmentMessage(null);
+      }
+
+      if (payload.kind === "image" && referenceInputModeRef.current === "real_environment") {
+        setReferenceTraceState("idle");
+        setReferenceDisplayMode("reference");
+        setReferencePlanMessage("Foto recebida. Analisando ambiente real...");
+        await analyzeRealEnvironment(id);
+      } else if (payload.kind === "image") {
+        setRealEnvironment(null);
+        setRealEnvironmentState("idle");
+        setRealEnvironmentMessage(null);
         setReferenceTraceState("loading");
         setReferencePlanMessage("Imagem recebida. A IA está reconstruindo paredes e aberturas para gerar a planta editável...");
         try {
@@ -10353,13 +10496,23 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   />
                   <button
                     type="button"
-                    onClick={() => referencePlanInputRef.current?.click()}
+                    onClick={() => chooseReferenceInputMode("real_environment")}
                     disabled={referencePlanState === "uploading" || Boolean(projectMaster)}
                     className="inline-flex items-center gap-2 rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
-                    title={projectMaster ? "Crie uma revisão antes de trocar a planta de referência." : "Anexar imagem ou PDF como planta de referência"}
+                    title={projectMaster ? "Crie uma revisão antes de trocar a foto." : "Usar uma foto real do terreno, ambiente ou fachada como base do projeto"}
                   >
                     <Camera className="h-4 w-4" />
-                    {referencePlanState === "uploading" ? "Enviando referência..." : referencePlan ? "Trocar referência" : "Imagem / PDF"}
+                    {referencePlanState === "uploading" && referenceInputMode === "real_environment" ? "Enviando foto..." : "Foto / ambiente real"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => chooseReferenceInputMode("floorplan")}
+                    disabled={referencePlanState === "uploading" || Boolean(projectMaster)}
+                    className="inline-flex items-center gap-2 rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
+                    title={projectMaster ? "Crie uma revisão antes de trocar a planta." : "Importar planta, croqui ou PDF para vetorização e calibração"}
+                  >
+                    <Ruler className="h-4 w-4" />
+                    {referencePlanState === "uploading" && referenceInputMode === "floorplan" ? "Enviando planta..." : "Planta / croqui"}
                   </button>
                   <input
                     ref={sourceFileInputRef}
@@ -10453,7 +10606,26 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     {referencePlanMessage}
                   </div>
                 )}
-                {referencePlan?.kind === "image" && (
+                {referenceInputMode === "real_environment" && (
+                  <Suspense fallback={null}>
+                    <ConceptRealEnvironmentPanel
+                      kind={realEnvironmentKind}
+                      useMode={realEnvironmentUseMode}
+                      onKindChange={setRealEnvironmentKind}
+                      onUseModeChange={setRealEnvironmentUseMode}
+                      hasImage={referencePlan?.kind === "image"}
+                      state={realEnvironmentState}
+                      message={realEnvironmentMessage}
+                      analysis={realEnvironment}
+                      onReanalyze={() => {
+                        const id = conceptIdRef.current ?? conceptId;
+                        if (id) void analyzeRealEnvironment(id);
+                      }}
+                      onAction={(elementId, action) => void updateRealEnvironmentAction(elementId, action)}
+                    />
+                  </Suspense>
+                )}
+                {referencePlan?.kind === "image" && referenceInputMode === "floorplan" && (
                   <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50/60 p-3 text-xs">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
