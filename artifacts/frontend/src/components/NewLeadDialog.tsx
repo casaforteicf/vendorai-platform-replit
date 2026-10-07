@@ -120,10 +120,19 @@ type CommercialPartnerDraft = {
   telefone: string;
   email: string;
   documento: string;
-  role: "indicador" | "parceiro" | "arquiteto" | "engenheiro" | "representante" | "instalador" | "outro";
+  role: "consumidor_final" | "proprietario" | "contratante" | "comprador" | "contato_comercial" | "decisor" | "responsavel_financeiro" | "indicador" | "parceiro" | "arquiteto" | "engenheiro" | "representante" | "instalador" | "outro";
   hasCommission: boolean;
   commissionKind: "percent" | "fixed";
   commissionValue: string;
+};
+
+type EndCustomerDraft = {
+  enabled: boolean;
+  nome: string;
+  telefone: string;
+  email: string;
+  documento: string;
+  funcao: string;
 };
 
 type CrmPersonOption = {
@@ -135,6 +144,13 @@ type CrmPersonOption = {
 };
 
 const COMMERCIAL_PARTNER_ROLES = [
+  ["consumidor_final", "Cliente / consumidor final"],
+  ["contato_comercial", "Usuário / contato da construtora ou empresa"],
+  ["decisor", "Decisor / aprovador"],
+  ["comprador", "Compras"],
+  ["responsavel_financeiro", "Financeiro"],
+  ["proprietario", "Proprietário"],
+  ["contratante", "Contratante"],
   ["indicador", "Indicador"],
   ["parceiro", "Parceiro"],
   ["arquiteto", "Arquiteto"],
@@ -256,6 +272,14 @@ export function NewLeadDialog({
   const [showCommercial, setShowCommercial] = useState(false);
   const [extraContacts, setExtraContacts] = useState<ExtraCompanyContact[]>([]);
   const [commercialPartners, setCommercialPartners] = useState<CommercialPartnerDraft[]>([]);
+  const [endCustomer, setEndCustomer] = useState<EndCustomerDraft>({
+    enabled: false,
+    nome: "",
+    telefone: "",
+    email: "",
+    documento: "",
+    funcao: "",
+  });
   const [serverDuplicate, setServerDuplicate] = useState<{ lead: Lead; matchBy: string } | null>(null);
   const [couponValidation, setCouponValidation] = useState<CouponValidation | null>(null);
   const [couponError, setCouponError] = useState<string | null>(null);
@@ -387,6 +411,7 @@ export function NewLeadDialog({
     setShowCommercial(false);
     setExtraContacts([]);
     setCommercialPartners([]);
+    setEndCustomer({ enabled: false, nome: "", telefone: "", email: "", documento: "", funcao: "" });
     setServerDuplicate(null);
     resetCoupon();
     form.reset(DEFAULT_VALUES);
@@ -622,6 +647,40 @@ export function NewLeadDialog({
 
   async function syncCommercialPartners(leadId: string, dealId?: string) {
     const synced: Array<Record<string, unknown>> = [];
+
+    if (endCustomer.enabled) {
+      const displayName = endCustomer.nome.trim();
+      if (displayName.length < 2) throw new Error("Informe o nome do cliente final ou desmarque a opção de cliente final identificado.");
+      const personData = await crmPostJson<{ item?: { id?: string; nome?: string } }>("/api/crm/people", {
+        tenantId,
+        nome: displayName,
+        telefone: endCustomer.telefone.trim() || undefined,
+        email: endCustomer.email.trim() || undefined,
+        documento: endCustomer.documento.trim() || undefined,
+        profissao: endCustomer.funcao.trim() || undefined,
+        source: "manual",
+      });
+      const personId = personData.item?.id;
+      if (!personId) throw new Error("Não foi possível cadastrar o cliente final.");
+
+      if (dealId) {
+        await crmPostJson(`/api/crm/deals/${dealId}/people`, {
+          tenantId,
+          personId,
+          role: "consumidor_final",
+          relationshipScope: "deal_only",
+          metadata: { leadId, cadastroOrigem: "qualificacao_cadastral" },
+        });
+      }
+
+      synced.push({
+        personId,
+        nome: personData.item?.nome ?? displayName,
+        role: "consumidor_final",
+        relationshipScope: "deal_only",
+        cadastroOrigem: "qualificacao_cadastral",
+      });
+    }
 
     for (const partner of commercialPartners) {
       let personId = partner.personId;
@@ -954,8 +1013,9 @@ export function NewLeadDialog({
 
             <section className="space-y-3">
               <div>
-                <p className="text-sm font-semibold">{cadastroTipo === "pessoa" ? "Pessoa / consumidor final" : cadastroTipo === "empresa" ? "Contato principal da empresa" : "Pessoa principal deste negócio"}</p>
-                <p className="text-xs text-muted-foreground">{cadastroTipo === "pessoa" ? "Dados essenciais do cliente direto." : cadastroTipo === "empresa" ? "A empresa pode ter vários contatos. Defina aqui quem é o contato principal." : "Pode ser consumidor final, contato comercial ou a pessoa que iniciou o atendimento."}</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">Qualificação cadastral</p>
+                <p className="mt-1 text-sm font-semibold">{cadastroTipo === "pessoa" ? "Pessoa / consumidor final" : cadastroTipo === "empresa" ? "Contato principal da empresa / construtora" : "Contato da empresa / construtora"}</p>
+                <p className="text-xs text-muted-foreground">{cadastroTipo === "pessoa" ? "Dados essenciais do cliente direto." : cadastroTipo === "empresa" ? "Aqui entram somente os dados cadastrais da pessoa: nome, função/cargo, telefone, e-mail e documento. A qualificação comercial do negócio acontece depois, na etapa Qualificado." : "Cadastre aqui a pessoa da construtora/empresa que está no atendimento. O cliente final e os demais envolvidos ficam em blocos próprios abaixo."}</p>
               </div>
               <FormField
                 control={form.control}
@@ -1230,7 +1290,7 @@ export function NewLeadDialog({
                   name="profissao"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Cargo / função</FormLabel>
+                      <FormLabel>Função / cargo na empresa</FormLabel>
                       <FormControl><Input placeholder="Ex.: Comprador, Diretor, Arquiteto" {...field} /></FormControl>
                     </FormItem>
                   )}
@@ -1249,12 +1309,61 @@ export function NewLeadDialog({
               </section>
             )}
 
+            {cadastroTipo === "negocio" && (
+              <section className="space-y-3 border-t pt-4">
+                <div>
+                  <p className="text-sm font-semibold">Cliente da construtora / cliente final</p>
+                  <p className="text-xs text-muted-foreground">
+                    Cadastro da pessoa para quem a construtora está executando, vendendo ou orçando. Não é a qualificação comercial do negócio.
+                  </p>
+                </div>
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={endCustomer.enabled}
+                    onChange={(event) => setEndCustomer((current) => ({ ...current, enabled: event.target.checked }))}
+                  />
+                  Existe cliente final identificado
+                </label>
+                {endCustomer.enabled && (
+                  <div className="grid gap-3 rounded-lg border bg-muted/20 p-4 sm:grid-cols-2">
+                    <Input
+                      className="sm:col-span-2"
+                      placeholder="Nome do cliente final"
+                      value={endCustomer.nome}
+                      onChange={(event) => setEndCustomer((current) => ({ ...current, nome: event.target.value }))}
+                    />
+                    <PhoneInput
+                      value={endCustomer.telefone}
+                      onChange={(value) => setEndCustomer((current) => ({ ...current, telefone: value ?? "" }))}
+                    />
+                    <Input
+                      type="email"
+                      placeholder="E-mail do cliente final"
+                      value={endCustomer.email}
+                      onChange={(event) => setEndCustomer((current) => ({ ...current, email: event.target.value }))}
+                    />
+                    <Input
+                      placeholder="CPF / documento"
+                      value={endCustomer.documento}
+                      onChange={(event) => setEndCustomer((current) => ({ ...current, documento: event.target.value }))}
+                    />
+                    <Input
+                      placeholder="Função / relação com a obra (ex.: proprietário)"
+                      value={endCustomer.funcao}
+                      onChange={(event) => setEndCustomer((current) => ({ ...current, funcao: event.target.value }))}
+                    />
+                  </div>
+                )}
+              </section>
+            )}
+
             <section className="space-y-3 border-t pt-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold">Parceiros e envolvidos</p>
+                  <p className="text-sm font-semibold">Outros envolvidos no cadastro</p>
                   <p className="text-xs text-muted-foreground">
-                    Indicador, arquiteto, parceiro ou outro profissional. Comissão é opcional e começa como sem comissão.
+                    Outros contatos da construtora/empresa, decisor, compras, financeiro, arquiteto, engenheiro, indicador e demais participantes. Todos ficam ligados ao mesmo cadastro e, quando houver negócio, ao mesmo negócio.
                   </p>
                 </div>
                 <Button
@@ -1281,7 +1390,7 @@ export function NewLeadDialog({
 
               {commercialPartners.length === 0 ? (
                 <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-                  Nenhum parceiro vinculado. Isso não impede o cadastro do lead.
+                  Nenhum outro envolvido vinculado. Isso não impede o cadastro do lead.
                 </p>
               ) : (
                 <div className="space-y-3">
