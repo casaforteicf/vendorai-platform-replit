@@ -2725,6 +2725,126 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
       {selectedId && (orcamento?.etapas ?? []).length > 0 && (
         <FormacaoVenda tenantId={tenantId} obraId={obraId} orcamentoId={selectedId} locked={locked} />
       )}
+      {selectedId && (orcamento?.etapas ?? []).length > 0 && (
+        <CotacoesOrcamento tenantId={tenantId} obraId={obraId} orcamentoId={selectedId} locked={locked} />
+      )}
+    </div>
+  );
+}
+
+function CotacoesOrcamento({ tenantId, obraId, orcamentoId, locked }: { tenantId: string; obraId: string; orcamentoId: string; locked: boolean }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [titulo, setTitulo] = useState("Cotação de materiais");
+
+  const { data: cotacoes = [], isLoading } = useQuery<any[]>({
+    queryKey: ["obra-cotacoes", tenantId, obraId, orcamentoId],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}/cotacoes`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Erro ao carregar cotações");
+      return res.json();
+    },
+    enabled: !!orcamentoId,
+  });
+
+  async function criarCotacao() {
+    const token = localStorage.getItem("vendorai_token");
+    const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}/cotacoes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ titulo, status: "aberta", gerarItensDoOrcamento: true }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      toast({ title: "Não foi possível criar", description: body?.error ?? "Erro ao criar cotação", variant: "destructive" });
+      return;
+    }
+    toast({ title: "Cotação criada com os itens do orçamento" });
+    qc.invalidateQueries({ queryKey: ["obra-cotacoes", tenantId, obraId, orcamentoId] });
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <CardTitle className="text-sm">Cotações e fornecedores</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">RFQ vinculada aos itens do orçamento, com cobertura, unidade comercial e seleção por fornecedor.</p>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {!locked && (
+          <div className="flex gap-2">
+            <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Título da cotação" />
+            <Button onClick={criarCotacao}><Plus className="h-4 w-4 mr-1" />Nova cotação</Button>
+          </div>
+        )}
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando…</div>
+        ) : cotacoes.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhuma cotação vinculada a este orçamento.</p>
+        ) : (
+          <div className="space-y-2">
+            {cotacoes.map((cotacao: any) => (
+              <CotacaoResumo key={cotacao.id} tenantId={tenantId} cotacao={cotacao} />
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function CotacaoResumo({ tenantId, cotacao }: { tenantId: string; cotacao: any }) {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["cotacao-resumo", tenantId, cotacao.id],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/cotacoes/${cotacao.id}/resumo`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Erro ao carregar resumo da cotação");
+      return res.json();
+    },
+    enabled: open,
+  });
+
+  return (
+    <div className="rounded-lg border">
+      <button type="button" className="w-full flex items-center justify-between gap-3 px-3 py-3 text-left" onClick={() => setOpen((v) => !v)}>
+        <div>
+          <div className="text-sm font-medium">{cotacao.titulo}</div>
+          <div className="text-xs text-muted-foreground">{cotacao.status}</div>
+        </div>
+        {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+      </button>
+      {open && (
+        <div className="border-t px-3 py-3">
+          {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : data ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                <div className="rounded border p-2"><span className="text-muted-foreground">Itens</span><div className="font-bold text-base">{data.totais?.itens ?? 0}</div></div>
+                <div className="rounded border p-2"><span className="text-muted-foreground">Cobertos</span><div className="font-bold text-base">{data.totais?.cobertos ?? 0}</div></div>
+                <div className="rounded border p-2"><span className="text-muted-foreground">Parciais</span><div className="font-bold text-base">{data.totais?.parciais ?? 0}</div></div>
+                <div className="rounded border p-2"><span className="text-muted-foreground">Propostas</span><div className="font-bold text-base">{data.totais?.propostas ?? 0}</div></div>
+              </div>
+              <div className="space-y-1">
+                {(data.cobertura ?? []).slice(0, 30).map((x: any) => (
+                  <div key={x.item.id} className="flex items-center justify-between gap-3 rounded border px-3 py-2 text-xs">
+                    <div><div className="font-medium">{x.item.nome}</div><div className="text-muted-foreground">{x.qtdNecessaria} {x.item.unidadeCompra ?? x.item.unidadeTecnica} · {x.candidatos} proposta(s)</div></div>
+                    <Badge variant={x.status === "coberto" ? "default" : "outline"}>{x.status}</Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
