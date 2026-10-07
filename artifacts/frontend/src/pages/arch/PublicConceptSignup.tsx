@@ -246,7 +246,14 @@ export default function PublicConceptSignup() {
       const response = await fetch(`/api/public/arqdor/${encodeURIComponent(slug)}/cadastro`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, endereco: address, aceite }),
+        body: JSON.stringify({
+          ...form,
+          endereco: address,
+          aceite,
+          originCampaignId: new URLSearchParams(window.location.search).get("campaign")
+            ?? new URLSearchParams(window.location.search).get("utm_campaign")
+            ?? null,
+        }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) { setError(body.error ?? "Não foi possível concluir o cadastro."); return; }
