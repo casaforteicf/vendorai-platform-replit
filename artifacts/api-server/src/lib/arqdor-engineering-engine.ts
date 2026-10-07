@@ -321,7 +321,7 @@ function resolveComponent(component: ComponentRule, input: EngineeringInput): Re
 
   const base = Math.max(0, evaluateRule(component.quantityRule, input));
   const waste = Math.max(0, evaluateRule(component.wasteRule, { ...input, options: { ...input.options, baseQuantity: base } }));
-  const theoretical = base;
+  let theoretical = base;
   let billed = theoretical + waste;
   let commercialUnits: number | undefined;
 
