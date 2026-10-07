@@ -9,6 +9,7 @@ import { gerarRelatorioDiarioPdf } from "../lib/pdf-diario";
 import { gerarOrcamentoPdf } from "../lib/pdf-orcamento";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { calcularQuantidadeCompra } from "../lib/construction-unit-conversion.js";
+import { extractQuoteData } from "../lib/document-extraction.js";
 import {
   db,
   obrasTable,
@@ -172,6 +173,24 @@ const uploadFotos = multer({
   fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith("image/")) return cb(null, true);
     cb(new Error("Apenas imagens são permitidas."));
+  },
+});
+
+const uploadCotacao = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    const name = file.originalname.toLowerCase();
+    const allowed =
+      file.mimetype === "application/pdf" ||
+      file.mimetype === "application/msword" ||
+      file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      file.mimetype === "text/csv" ||
+      file.mimetype.startsWith("text/") ||
+      file.mimetype.startsWith("image/") ||
+      /\.(pdf|doc|docx|csv|txt|xls|xlsx|png|jpe?g|webp)$/i.test(name);
+    if (allowed) return cb(null, true);
+    cb(new Error("Formato não suportado para cotação."));
   },
 });
 
@@ -3309,6 +3328,193 @@ router.get("/tenants/:tenantId/cotacoes/:cotacaoId/resumo", async (req, res) => 
     },
   });
 });
+
+router.post(
+  "/tenants/:tenantId/cotacoes/:cotacaoId/propostas/importar-arquivo",
+  uploadCotacao.single("file"),
+  async (req, res) => {
+    const { tenantId: tid, cotacaoId } = req.params;
+    if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+    if (!req.file) return res.status(422).json({ error: "Nenhum arquivo enviado." });
+
+    const [cotacao] = await db.select().from(obraCotacoesTable)
+      .where(and(eq(obraCotacoesTable.id, cotacaoId), eq(obraCotacoesTable.tenantId, tid)));
+    if (!cotacao) return res.status(404).json({ error: "Cotação não encontrada" });
+
+    let extraido;
+    try {
+      extraido = await extractQuoteData([{
+        buffer: req.file.buffer,
+        mimeType: req.file.mimetype,
+        originalName: req.file.originalname,
+      }], tid);
+    } catch (error) {
+      req.log?.error?.({ error, cotacaoId, fileName: req.file.originalname }, "cotacao: falha na extração");
+      return res.status(422).json({ error: "Não foi possível extrair a proposta automaticamente." });
+    }
+
+    const itensExtraidos = Array.isArray(extraido.itens) ? extraido.itens : [];
+    if (!itensExtraidos.length) {
+      return res.status(422).json({
+        error: "Nenhum item comercial foi identificado no arquivo.",
+        extracao: extraido,
+      });
+    }
+
+    const ext = req.file.originalname.toLowerCase().split(".").pop() ?? "manual";
+    const formatos = new Set(["pdf","xls","xlsx","csv","imagem","doc","manual","api","email"]);
+    const origemFormato = req.file.mimetype.startsWith("image/")
+      ? "imagem"
+      : formatos.has(ext)
+        ? ext
+        : ext === "docx" ? "doc" : "manual";
+
+    let fornecedorId: string | null = null;
+    let fornecedorNomeSnapshot = String(extraido.fornecedor ?? req.body?.fornecedorNome ?? "").trim();
+    const fornecedorDocumento = String(extraido.fornecedorDocumento ?? "").replace(/\D/g, "");
+
+    if (fornecedorDocumento) {
+      const fornecedores = await db.select().from(fornecedoresTable)
+        .where(eq(fornecedoresTable.tenantId, tid));
+      const found = fornecedores.find((f: any) => String((f as any).documento ?? "").replace(/\D/g, "") === fornecedorDocumento);
+      if (found) {
+        fornecedorId = found.id;
+        fornecedorNomeSnapshot = found.nome;
+      }
+    }
+
+    if (!fornecedorId && fornecedorNomeSnapshot) {
+      const fornecedores = await db.select().from(fornecedoresTable)
+        .where(eq(fornecedoresTable.tenantId, tid));
+      const normalized = normalizarTextoCotacao(fornecedorNomeSnapshot);
+      const found = fornecedores.find((f) => normalizarTextoCotacao(f.nome) === normalized);
+      if (found) {
+        fornecedorId = found.id;
+        fornecedorNomeSnapshot = found.nome;
+      }
+    }
+
+    if (!fornecedorNomeSnapshot) fornecedorNomeSnapshot = "Fornecedor não identificado";
+
+    const [proposta] = await db.insert(obraCotacaoPropostasTable).values({
+      cotacaoId,
+      fornecedorId,
+      fornecedorNomeSnapshot,
+      numeroProposta: extraido.numeroDocumento ?? null,
+      dataProposta: extraido.dataEmissao ?? null,
+      validadeAte: extraido.validade ?? null,
+      condicaoPagamento: extraido.condPagamento ?? extraido.formaPagamento ?? null,
+      freteValor: String(numberOrZero(extraido.frete)),
+      impostosValor: String(numberOrZero(extraido.impostos)),
+      descontoValor: String(numberOrZero(extraido.desconto)),
+      valorTotalInformado: extraido.valorTotal == null ? null : String(extraido.valorTotal),
+      origemFormato,
+      arquivoNome: req.file.originalname,
+      extracaoConfianca: extraido.confianca == null ? null : String(extraido.confianca * 100),
+      status: "extraida",
+      observacoes: extraido.observacoes ?? null,
+      metadata: {
+        informacoesAdicionais: extraido.informacoesAdicionais ?? [],
+        inclusoes: extraido.inclusoes ?? [],
+        exclusoes: extraido.exclusoes ?? [],
+        clausulas: extraido.clausulas ?? [],
+      },
+    }).returning();
+
+    const itensCotacao = await db.select().from(obraCotacaoItensTable)
+      .where(eq(obraCotacaoItensTable.cotacaoId, cotacaoId));
+
+    const criados = [];
+    for (let i = 0; i < itensExtraidos.length; i++) {
+      const raw = itensExtraidos[i];
+      let match = null as typeof itensCotacao[number] | null;
+      let confianca = 0;
+
+      for (const item of itensCotacao) {
+        const byCodigo = raw.codigo && item.codigo &&
+          normalizarTextoCotacao(raw.codigo) === normalizarTextoCotacao(item.codigo);
+        const sim = Math.max(
+          byCodigo ? 1 : 0,
+          similaridadeCotacao(raw.descricao ?? "", item.nome),
+          similaridadeCotacao(raw.descricao ?? "", item.especificacao ?? ""),
+        );
+        if (sim > confianca / 100) {
+          match = item;
+          confianca = Math.round(sim * 100);
+        }
+      }
+      if (confianca < 55) match = null;
+
+      const quantidadeOfertada = numberOrZero(raw.quantidade);
+      const precoFornecedor = numberOrZero(raw.valorUnitario);
+      const valorTotalLinha = raw.valorTotal != null
+        ? numberOrZero(raw.valorTotal)
+        : quantidadeOfertada * precoFornecedor;
+
+      let precoNormalizado: number | null = null;
+      let qtdCompraNormalizada: number | null = null;
+      let status: "coberto" | "parcial" | "ambigua" | "incompativel" = match ? "coberto" : "ambigua";
+
+      if (match) {
+        const fator = numberOrZero(match.fatorCompraParaConsumo) || 1;
+        const unFornecedor = normalizarTextoCotacao(raw.unidade ?? "");
+        const unCompra = normalizarTextoCotacao(match.unidadeCompra ?? match.unidadeTecnica);
+        const unTecnica = normalizarTextoCotacao(match.unidadeTecnica);
+
+        if (unFornecedor && unFornecedor === unCompra) {
+          precoNormalizado = precoFornecedor / fator;
+          qtdCompraNormalizada = quantidadeOfertada;
+        } else if (unFornecedor && unFornecedor === unTecnica) {
+          precoNormalizado = precoFornecedor;
+          qtdCompraNormalizada = quantidadeOfertada / fator;
+        } else {
+          status = "ambigua";
+        }
+
+        const necessario = numberOrZero(match.quantidadeCompra ?? match.quantidadeTecnica);
+        if (qtdCompraNormalizada != null && qtdCompraNormalizada + 0.0001 < necessario) status = "parcial";
+      }
+
+      const [row] = await db.insert(obraCotacaoPropostaItensTable).values({
+        propostaId: proposta.id,
+        cotacaoItemId: match?.id ?? null,
+        linhaOrigem: i + 1,
+        codigoFornecedor: raw.codigo ?? null,
+        descricaoFornecedor: raw.descricao,
+        especificacao: raw.observacoes ?? null,
+        quantidadeOfertada: String(quantidadeOfertada),
+        unidadeFornecedor: raw.unidade ?? "",
+        precoUnitarioFornecedor: String(precoFornecedor),
+        precoUnitarioNormalizado: precoNormalizado == null ? null : String(precoNormalizado),
+        quantidadeCompraNormalizada: qtdCompraNormalizada == null ? null : String(qtdCompraNormalizada),
+        valorTotalLinha: String(valorTotalLinha),
+        coberturaStatus: status,
+        reconciliacaoConfianca: String(confianca),
+        metadata: {
+          grupo: raw.grupo ?? null,
+          etapa: raw.etapa ?? null,
+        },
+      }).returning();
+      criados.push(row);
+    }
+
+    await db.update(obraCotacaoPropostasTable)
+      .set({ status: "revisao", updatedAt: new Date() })
+      .where(eq(obraCotacaoPropostasTable.id, proposta.id));
+
+    await db.update(obraCotacoesTable)
+      .set({ status: "recebendo_propostas", updatedAt: new Date() })
+      .where(eq(obraCotacoesTable.id, cotacaoId));
+
+    return res.status(201).json({
+      proposta: { ...proposta, status: "revisao" },
+      extracao: extraido,
+      itens: criados,
+      reconciliados: criados.filter((x) => !!x.cotacaoItemId).length,
+      ambiguos: criados.filter((x) => !x.cotacaoItemId || x.coberturaStatus === "ambigua").length,
+    });
+  }
+);
 
 router.post("/tenants/:tenantId/cotacoes/:cotacaoId/propostas", async (req, res) => {
   const { tenantId: tid, cotacaoId } = req.params;
