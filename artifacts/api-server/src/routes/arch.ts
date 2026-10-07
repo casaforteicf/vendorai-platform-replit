@@ -6250,7 +6250,13 @@ router.post("/arch/marketplace/:itemId/comprar", authenticate, async (req, res) 
   );
   const rule = resolvedRule.rows[0] || null;
   const commissionPercentage = Number(rule?.percentage ?? 10);
-  const comissao = valorTotal * commissionPercentage / 100;
+  const rawCommission = valorTotal * commissionPercentage / 100;
+  const commissionMin = rule?.min_commission_amount == null ? null : Number(rule.min_commission_amount);
+  const commissionMax = rule?.max_commission_amount == null ? null : Number(rule.max_commission_amount);
+  const comissao = Math.max(
+    commissionMin ?? 0,
+    Math.min(rawCommission, commissionMax ?? Number.POSITIVE_INFINITY),
+  );
 
   const client = await vendorPool.connect();
   try {
