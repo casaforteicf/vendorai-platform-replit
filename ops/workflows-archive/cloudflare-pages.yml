@@ -1,3 +1,6 @@
+# Archived from .github/workflows/cloudflare-pages.yml on 2026-10-07.
+# Automatic frontend deploys now use Cloudflare Pages native Git integration.
+
 name: Cloudflare Pages
 # Production deploy: Cloudflare Pages Git integration is the automatic production path. This workflow is manual contingency only; Railway backend remains unchanged.
 # Redeploy marker: cloudflare-secrets-refresh-2026-10-07.

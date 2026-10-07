@@ -1,3 +1,6 @@
+# Archived from .github/workflows/cloudflare-fullstack-alt.yml on 2026-10-07.
+# Automatic frontend deploys now use Cloudflare Pages native Git integration.
+
 name: Cloudflare Fullstack Alternative
 # Manual contingency only. Automatic production frontend deploys are handled by Cloudflare Pages Git integration.
 
