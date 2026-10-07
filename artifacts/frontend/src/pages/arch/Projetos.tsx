@@ -705,68 +705,6 @@ export default function Projetos() {
         </Select>
       </div>
 
-            <div key={i} className="overflow-hidden rounded-2xl border bg-background">
-              <Skeleton className="h-40 w-full rounded-none" />
-              <div className="space-y-3 p-4">
-                <Skeleton className="h-4 w-2/3" />
-                <Skeleton className="h-3 w-1/2" />
-                <Skeleton className="h-9 w-full" />
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : error ? (
-        <div className="rounded-2xl border border-destructive/20 bg-destructive/5 px-5 py-8 text-center text-sm text-destructive">{error}</div>
-      ) : projetos.length === 0 ? (
-        <div className="rounded-2xl border border-dashed px-5 py-14 text-center">
-          <FolderOpen className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
-          <p className="font-medium">Nenhum projeto encontrado</p>
-          <p className="mt-1 text-sm text-muted-foreground">Crie um projeto ou ajuste os filtros.</p>
-        </div>
-      ) : (
-          {projetos.map((p) => {
-            const progressIndex = ["briefing", "orcamento", "aprovado", "em_execucao", "entregue"].indexOf(p.status);
-            const progress = p.status === "cancelado" ? 0 : Math.max(12, Math.min(100, ((progressIndex + 1) / 5) * 100));
-            const nextAction =
-              p.status === "briefing" ? "Continuar briefing"
-                : p.status === "orcamento" ? "Revisar orçamento"
-                  : p.status === "aprovado" ? "Preparar execução"
-                    : p.status === "em_execucao" ? "Acompanhar execução"
-                      : p.status === "entregue" ? "Abrir pós-venda"
-                        : "Abrir projeto";
-            return (
-              <article key={p.id} className="group overflow-hidden rounded-2xl border bg-background shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-                <button type="button" onClick={() => navigate(`/arch/projetos/${p.id}`)} className="block w-full text-left">
-                  <div className="relative h-40 overflow-hidden bg-muted">
-                    {p.thumbnailUrl ? (
-                      <img src={p.thumbnailUrl} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" loading="lazy" />
-                    ) : (
-                      <div className="grid h-full place-items-center bg-gradient-to-br from-slate-50 to-slate-100 text-slate-400">
-                        <FolderOpen className="h-9 w-9" />
-                      </div>
-                    )}
-                    <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/55 to-transparent" />
-                    <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between gap-2">
-                      <StatusBadge status={p.status} />
-                      <span className="rounded-full bg-white/90 px-2 py-1 text-[10px] font-semibold text-slate-700">
-                        {p.totalRenders ?? 0} render{(p.totalRenders ?? 0) === 1 ? "" : "s"}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <h2 className="truncate text-base font-bold">{p.titulo}</h2>
-                        <p className="mt-0.5 truncate text-xs text-muted-foreground">{p.clienteNome ?? "Cliente não vinculado"}</p>
-                      </div>
-                      {p.tipoObra && <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] font-semibold">{p.tipoObra}</span>}
-                    </div>
-
-                    <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                      <div className="rounded-xl bg-muted/50 p-2">
-                        <div className="text-[10px] text-muted-foreground">Área</div>
-                        <div className="mt-0.5 text-xs font-bold">{p.areaM2 ? `${Number(p.areaM2).toFixed(0)} m²` : "—"}</div>
       {/* Visão visual de projetos — ARQ-PROJ */}
       {loading ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -811,69 +749,6 @@ export default function Projetos() {
                       <div className="grid h-full place-items-center bg-gradient-to-br from-slate-50 to-slate-100 text-slate-400">
                         <FolderOpen className="h-9 w-9" />
                       </div>
-                      <div className="rounded-xl bg-muted/50 p-2">
-                        <div className="text-[10px] text-muted-foreground">Ambientes</div>
-                        <div className="mt-0.5 text-xs font-bold">{p.totalAmbientes ?? 0}</div>
-                      </div>
-                      <div className="rounded-xl bg-muted/50 p-2">
-                        <div className="text-[10px] text-muted-foreground">Orçamento</div>
-                        <div className="mt-0.5 truncate text-xs font-bold text-emerald-700">{p.orcamentoTotal ? fmt(Number(p.orcamentoTotal)) : "—"}</div>
-                      </div>
-                    </div>
-
-                    <div className="mt-4">
-                      <div className="mb-1 flex items-center justify-between text-[10px] font-semibold text-muted-foreground">
-                        <span>Progresso</span>
-                        <span>{Math.round(progress)}%</span>
-                      </div>
-                      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                        <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} />
-                    </div>
-
-                    <div className="mt-4 flex items-center justify-between gap-3">
-                      <span className="text-xs font-semibold text-primary">{nextAction}</span>
-                      {p.updatedAt && (
-                        <span className="text-[10px] text-muted-foreground">
-                          {new Date(p.updatedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </button>
-
-                <div className="flex items-center gap-1 border-t px-3 py-2">
-                  {p.leadId && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-8 text-xs"
-                      onClick={() => openEditLead({
-                        id: p.leadId!,
-                        nome: p.clienteNome ?? "",
-                        email: p.clienteEmail,
-                        telefone: p.clienteTelefone,
-                      }, p.id)}
-                    >
-                      <Pencil className="mr-1 h-3 w-3" /> Lead
-                    </Button>
-                  )}
-                  <Button size="sm" variant="ghost" className="ml-auto h-8 text-xs" onClick={() => navigate(`/arch/projetos/${p.id}`)}>
-                    Abrir
-                  </Button>
-                  {p.portalAtivo && p.portalToken && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-8 text-xs text-blue-600"
-                      onClick={() => window.open(`${window.location.origin}/arch/portal/${encodeURIComponent(p.portalToken!)}`, "_blank", "noopener,noreferrer")}
-                    >
-                      <ExternalLink className="mr-1 h-3 w-3" /> Portal
-                    </Button>
-                  )}
-                </div>
-              </article>
-            );
-          })}
                     )}
                     <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/55 to-transparent" />
                     <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between gap-2">
