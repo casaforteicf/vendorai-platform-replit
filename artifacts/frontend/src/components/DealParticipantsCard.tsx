@@ -272,9 +272,19 @@ export function DealParticipantsCard({
     await qc.invalidateQueries({ queryKey: ["crm-deal-participants", tenantId, dealId] });
   }
 
+  const hasParticipants = people.length > 0 || companies.length > 0;
+
   return (
     <>
-      <Card className="border-border/70 shadow-sm">
+      {hasParticipants ? (
+        <div className="flex justify-end">
+          <Button type="button" size="sm" variant="ghost" className="h-8 text-muted-foreground" onClick={() => setOpen(true)}>
+            <UserRound className="mr-1.5 h-4 w-4" />
+            Envolvidos ({people.length + companies.length})
+          </Button>
+        </div>
+      ) : (
+              <Card className="border-border/70 shadow-sm">
         <CardContent className="p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -341,6 +351,7 @@ export function DealParticipantsCard({
           )}
         </CardContent>
       </Card>
+      )}
 
       <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) resetForm(); }}>
         <DialogContent className="max-w-xl">
