@@ -1130,6 +1130,7 @@ router.post(
         vigencia: priceParsed.vigencia ?? null,
         products,
         importableCount: importable.length,
+        updateableCount: products.filter((p) => p.precoBase != null && p.duplicate && (p.priceMatch?.score ?? 0) >= 0.58).length,
         exactOrHighConfidenceCount: products.filter((p) => (p.priceMatch?.score ?? 0) >= 0.85).length,
         reviewCount: products.filter((p) => !p.priceMatch || (p.priceMatch.score < 0.85)).length,
         duplicateCount: products.filter((p) => p.duplicate).length,
