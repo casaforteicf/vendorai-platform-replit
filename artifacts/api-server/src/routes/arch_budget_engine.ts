@@ -470,9 +470,14 @@ async function calculateParametricEngineeringQuote(tId: string | null, payload: 
         cc.condition_rule,
         cc.cutting_rule,
         cc.waste_rule,
-        cc.metadata AS link_metadata
+        cc.metadata AS link_metadata,
+        pc.custo_fornecedor AS catalog_cost_value,
+        pc.preco_arqdor AS catalog_arqdor_value,
+        pc.preco_base AS catalog_base_value,
+        pc.status_revisao AS catalog_review_status
        FROM arqdor_engineering_configuration_components cc
        JOIN arqdor_engineering_components ec ON ec.id = cc.component_id
+       LEFT JOIN produtos_catalogo pc ON pc.id = ec.catalog_product_id
       WHERE cc.configuration_id = $1
         AND ec.is_active = true
       ORDER BY cc.sequence, ec.code`,
@@ -513,8 +518,18 @@ async function calculateParametricEngineeringQuote(tId: string | null, payload: 
     unit: item.unit,
     required: item.required,
     commercialLengthMm: item.commercial_length_mm == null ? null : Number(item.commercial_length_mm),
-    costValue: item.cost_value == null ? null : Number(item.cost_value),
-    saleValue: item.sale_value == null ? null : Number(item.sale_value),
+    costValue: item.cost_value != null
+      ? Number(item.cost_value)
+      : item.catalog_cost_value != null
+        ? Number(item.catalog_cost_value)
+        : null,
+    saleValue: item.sale_value != null
+      ? Number(item.sale_value)
+      : item.catalog_arqdor_value != null
+        ? Number(item.catalog_arqdor_value)
+        : item.catalog_review_status === "ok" && item.catalog_base_value != null
+          ? Number(item.catalog_base_value)
+          : null,
     pricingBasis: item.pricing_basis,
     quantityRule: item.quantity_rule ?? undefined,
     dimensionRule: item.dimension_rule ?? undefined,
