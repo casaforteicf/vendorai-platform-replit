@@ -1,6 +1,6 @@
 import { flushSync } from "react-dom";
 import { conceptReferenceSize } from "./conceptReferenceImage";
-import { lazy, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import "./planner5d-reference.css";
 import {
   ArrowLeft,
@@ -82,6 +82,7 @@ const ConceptModel3D = lazy(() => import("./ConceptModel3D"));
 const ConceptRenderGalleryActions = lazy(() => import("./ConceptRenderGalleryActions").then((m) => ({ default: m.ConceptRenderGalleryActions })));
 const ConceptCatalogPanels = lazy(() => import("./ConceptCatalogPanels"));
 const ConceptConstructionLibraryPanel = lazy(() => import("./ConceptConstructionLibraryPanel"));
+const ConceptRealEnvironmentPanel = lazy(() => import("./ConceptRealEnvironmentPanel"));
 
 
 type RoomKind =
@@ -5205,7 +5206,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
   const analyzeRealEnvironment = async (id: string) => {
     setRealEnvironmentState("analyzing");
-    setRealEnvironmentMessage("Lendo o ambiente existente...");
+    setRealEnvironmentMessage("Analisando ambiente...");
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("vendorai_token") : null;
       const response = await fetch(`/api/arch/concept-projects/${encodeURIComponent(id)}/real-environment/analyze`, {
@@ -5223,7 +5224,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setRealEnvironmentUseMode(payload.useMode);
       setRealEnvironmentState("ready");
       setRealEnvironmentMessage(
-        `Ambiente reconhecido como ${payload.kind.replaceAll("_", " ")} · ${payload.elements.length} elemento(s) identificado(s) · confiança ${Math.round(payload.confidence * 100)}%.`,
+        `${payload.elements.length} elemento(s) · ${Math.round(payload.confidence * 100)}% confiança.`,
       );
       return payload;
     } catch (error) {
@@ -5315,7 +5316,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       if (payload.kind === "image" && referenceInputModeRef.current === "real_environment") {
         setReferenceTraceState("idle");
         setReferenceDisplayMode("reference");
-        setReferencePlanMessage("Foto recebida. O Arqdor está entendendo o ambiente real em segundo plano...");
+        setReferencePlanMessage("Foto recebida. Analisando ambiente real...");
         await analyzeRealEnvironment(id);
       } else if (payload.kind === "image") {
         setRealEnvironment(null);
@@ -10606,119 +10607,23 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   </div>
                 )}
                 {referenceInputMode === "real_environment" && (
-                  <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-xs">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-[220px] flex-1">
-                        <div className="font-semibold text-emerald-950">Base real do projeto</div>
-                        <div className="mt-0.5 text-emerald-900/75">
-                          O Arqdor preserva o local existente e só altera elementos confirmados para a intervenção.
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <label className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-2 py-1">
-                          <span className="text-[10px] font-semibold text-emerald-800">O que é</span>
-                          <select
-                            value={realEnvironmentKind}
-                            onChange={(event) => setRealEnvironmentKind(event.currentTarget.value as RealEnvironmentKind)}
-                            className="bg-transparent text-[11px] font-semibold outline-none"
-                          >
-                            <option value="auto">Detectar automaticamente</option>
-                            <option value="terreno">Terreno</option>
-                            <option value="cozinha">Cozinha</option>
-                            <option value="banheiro">Banheiro</option>
-                            <option value="sala">Sala</option>
-                            <option value="quarto">Quarto</option>
-                            <option value="fachada">Fachada</option>
-                            <option value="area_externa">Área externa</option>
-                            <option value="piscina">Piscina</option>
-                            <option value="escritorio">Escritório</option>
-                            <option value="outro">Outro</option>
-                          </select>
-                        </label>
-                        <label className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-2 py-1">
-                          <span className="text-[10px] font-semibold text-emerald-800">Uso</span>
-                          <select
-                            value={realEnvironmentUseMode}
-                            onChange={(event) => setRealEnvironmentUseMode(event.currentTarget.value as RealEnvironmentUseMode)}
-                            className="bg-transparent text-[11px] font-semibold outline-none"
-                          >
-                            <option value="existing">Projetar sobre o existente</option>
-                            <option value="modify">Reformar / modificar existente</option>
-                            <option value="reference">Somente referência visual</option>
-                          </select>
-                        </label>
-                        {referencePlan?.kind === "image" && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const id = conceptIdRef.current ?? conceptId;
-                              if (id) void analyzeRealEnvironment(id);
-                            }}
-                            disabled={realEnvironmentState === "analyzing"}
-                            className="rounded-lg border border-emerald-300 bg-white px-3 py-1.5 font-semibold text-emerald-900 disabled:opacity-50"
-                          >
-                            {realEnvironmentState === "analyzing" ? "Analisando..." : "Reanalisar foto"}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {realEnvironmentMessage && (
-                      <div className={`mt-2 rounded-lg border px-2.5 py-2 text-[11px] ${realEnvironmentState === "error" ? "border-red-200 bg-red-50 text-red-800" : "border-emerald-200 bg-white text-emerald-900"}`}>
-                        {realEnvironmentMessage}
-                      </div>
-                    )}
-
-                    {realEnvironment && (
-                      <div className="mt-3">
-                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-emerald-950">
-                          <span className="rounded-full bg-emerald-700 px-2 py-1 font-bold text-white">
-                            {realEnvironment.kind.replaceAll("_", " ")}
-                          </span>
-                          <span>confiança {Math.round(realEnvironment.confidence * 100)}%</span>
-                          <span>·</span>
-                          <span>{realEnvironment.elements.length} elemento(s) reconhecido(s)</span>
-                        </div>
-                        <div className="mt-2 text-[11px] leading-relaxed text-emerald-900/80">{realEnvironment.summary}</div>
-                        <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[10px] text-amber-900">
-                          A foto não cria medidas reais sozinha. Medidas confirmadas e geometria do projeto têm prioridade sobre qualquer inferência visual.
-                        </div>
-
-                        {realEnvironment.elements.length > 0 && (
-                          <div className="mt-3 max-h-64 space-y-1.5 overflow-auto pr-1">
-                            {realEnvironment.elements.slice(0, 30).map((element) => (
-                              <div key={element.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-100 bg-white px-2.5 py-2">
-                                <div className="min-w-[170px] flex-1">
-                                  <div className="font-semibold text-slate-900">{element.label}</div>
-                                  <div className="text-[10px] text-slate-500">
-                                    {element.category.replaceAll("_", " ")} · confiança {Math.round(element.confidence * 100)}%
-                                    {element.source === "user" ? " · confirmado pelo usuário" : ""}
-                                  </div>
-                                </div>
-                                <select
-                                  value={element.action}
-                                  onChange={(event) => void updateRealEnvironmentAction(element.id, event.currentTarget.value as RealEnvironmentAction)}
-                                  className="rounded-md border bg-background px-2 py-1 text-[10px] font-semibold"
-                                  aria-label={`Intervenção para ${element.label}`}
-                                >
-                                  <option value="preserve">Preservar</option>
-                                  <option value="remove">Remover</option>
-                                  <option value="replace">Substituir</option>
-                                  <option value="relocate">Realocar</option>
-                                  <option value="review">Revisar</option>
-                                </select>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {realEnvironment.warnings.length > 0 && (
-                          <div className="mt-2 text-[10px] text-amber-800">
-                            {realEnvironment.warnings.slice(0, 4).join(" · ")}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  <Suspense fallback={null}>
+                    <ConceptRealEnvironmentPanel
+                      kind={realEnvironmentKind}
+                      useMode={realEnvironmentUseMode}
+                      onKindChange={setRealEnvironmentKind}
+                      onUseModeChange={setRealEnvironmentUseMode}
+                      hasImage={referencePlan?.kind === "image"}
+                      state={realEnvironmentState}
+                      message={realEnvironmentMessage}
+                      analysis={realEnvironment}
+                      onReanalyze={() => {
+                        const id = conceptIdRef.current ?? conceptId;
+                        if (id) void analyzeRealEnvironment(id);
+                      }}
+                      onAction={(elementId, action) => void updateRealEnvironmentAction(elementId, action)}
+                    />
+                  </Suspense>
                 )}
                 {referencePlan?.kind === "image" && referenceInputMode === "floorplan" && (
                   <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50/60 p-3 text-xs">
