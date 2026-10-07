@@ -1,11 +1,7 @@
 name: Cloudflare Fullstack Alternative
-# Manual alternative redeploy marker: 2026-10-06-vendi-followup-500
+# Manual contingency only. Automatic production frontend deploys are handled by Cloudflare Pages Git integration.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/cloudflare-fullstack-alt.yml"
   workflow_dispatch:
 
 permissions:
