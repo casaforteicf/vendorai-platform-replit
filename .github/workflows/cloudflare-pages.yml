@@ -1,6 +1,6 @@
 name: Cloudflare Pages
 # Production deploy: Pages frontend; Railway backend remains unchanged.
-# Redeploy marker: arqdor-production-2026-10-07-d812b0e4.
+# Redeploy marker: central-conexoes-2026-10-07-54ff09e0.
 
 on:
   push:
