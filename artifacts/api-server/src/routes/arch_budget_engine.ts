@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
+import { calculateEngineeringQuote } from "../lib/arqdor-engineering-engine.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type BudgetStatus = "draft" | "in-review" | "sent" | "approved" | "rejected" | "archived";
@@ -431,8 +432,183 @@ async function createBudgetFromSpecObjects(tId: string | null, payload: {
   return recalculateBudget(budget.id);
 }
 
+async function calculateParametricEngineeringQuote(tId: string | null, payload: {
+  configurationId: string;
+  request: Record<string, unknown>;
+  projectId?: string | null;
+  budgetId?: string | null;
+}) {
+  const cfgValues: unknown[] = [payload.configurationId];
+  let tenantClause = "";
+  if (tId) {
+    cfgValues.push(tId);
+    tenantClause = ` AND (s.scope = 'universal' OR s.tenant_id::text = ${cfgValues.length}::text)`;
+  }
+
+  const configResult = await pool.query(
+    `SELECT c.*, s.manufacturer, s.line, s.material, s.version AS system_version
+       FROM arqdor_engineering_configurations c
+       JOIN arqdor_engineering_systems s ON s.id = c.system_id
+      WHERE c.id = $1
+        AND c.is_active = true
+        AND s.is_active = true
+        ${tenantClause}
+      LIMIT 1`,
+    cfgValues,
+  );
+
+  const row = configResult.rows[0];
+  if (!row) return null;
+
+  const componentResult = await pool.query(
+    `SELECT
+        ec.*,
+        cc.required,
+        cc.sequence,
+        cc.quantity_rule,
+        cc.dimension_rule,
+        cc.condition_rule,
+        cc.cutting_rule,
+        cc.waste_rule,
+        cc.metadata AS link_metadata
+       FROM arqdor_engineering_configuration_components cc
+       JOIN arqdor_engineering_components ec ON ec.id = cc.component_id
+      WHERE cc.configuration_id = $1
+        AND ec.is_active = true
+      ORDER BY cc.sequence, ec.code`,
+    [payload.configurationId],
+  );
+
+  const performanceResult = await pool.query(
+    `SELECT *
+       FROM arqdor_engineering_performance_tests
+      WHERE configuration_id = $1
+      ORDER BY test_type, created_at`,
+    [payload.configurationId],
+  );
+
+  const configuration = {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    productKind: row.product_kind,
+    openingType: row.opening_type,
+    leafCount: row.leaf_count == null ? null : Number(row.leaf_count),
+    minWidthMm: row.min_width_mm == null ? null : Number(row.min_width_mm),
+    maxWidthMm: row.max_width_mm == null ? null : Number(row.max_width_mm),
+    minHeightMm: row.min_height_mm == null ? null : Number(row.min_height_mm),
+    maxHeightMm: row.max_height_mm == null ? null : Number(row.max_height_mm),
+    maxLeafWeightKg: row.max_leaf_weight_kg == null ? null : Number(row.max_leaf_weight_kg),
+    allowedGlassThicknessMm: Array.isArray(row.allowed_glass_thickness_mm)
+      ? row.allowed_glass_thickness_mm.map(Number).filter(Number.isFinite)
+      : [],
+    installationRules: row.installation_rules ?? {},
+  };
+
+  const components = componentResult.rows.map((item: any) => ({
+    code: item.code,
+    name: item.name,
+    group: item.group,
+    role: item.role,
+    unit: item.unit,
+    required: item.required,
+    commercialLengthMm: item.commercial_length_mm == null ? null : Number(item.commercial_length_mm),
+    costValue: item.cost_value == null ? null : Number(item.cost_value),
+    saleValue: item.sale_value == null ? null : Number(item.sale_value),
+    pricingBasis: item.pricing_basis,
+    quantityRule: item.quantity_rule ?? undefined,
+    dimensionRule: item.dimension_rule ?? undefined,
+    conditionRule: item.condition_rule ?? undefined,
+    wasteRule: item.waste_rule ?? undefined,
+    metadata: { ...(item.metadata ?? {}), ...(item.link_metadata ?? {}) },
+  }));
+
+  const performanceEvidence = performanceResult.rows.map((item: any) => ({
+    id: item.id,
+    reportNumber: item.report_number,
+    testType: item.test_type,
+    acousticDb: item.acoustic_db == null ? null : Number(item.acoustic_db),
+    watertightnessPa: item.watertightness_pa == null ? null : Number(item.watertightness_pa),
+    windPressurePa: item.wind_pressure_pa == null ? null : Number(item.wind_pressure_pa),
+    airPermeability: item.air_permeability == null ? null : Number(item.air_permeability),
+    conditions: {
+      ...(item.conditions ?? {}),
+      measuredDeflectionMm: item.measured_deflection_mm == null ? undefined : Number(item.measured_deflection_mm),
+      allowedDeflectionMm: item.allowed_deflection_mm == null ? undefined : Number(item.allowed_deflection_mm),
+      sourceFile: item.source_file ?? undefined,
+    },
+  }));
+
+  const result = calculateEngineeringQuote({
+    configuration,
+    components,
+    performanceEvidence,
+    request: payload.request as any,
+  });
+
+  if (tId && (payload.projectId || payload.budgetId)) {
+    await pool.query(
+      `INSERT INTO arqdor_engineering_quote_snapshots (
+         id, tenant_id, project_id, budget_id, configuration_id, engine_version,
+         input, resolved_bom, validation, cost_summary, price_summary, created_at
+       ) VALUES (
+         $1,$2,$3,$4,$5,$6,
+         $7::jsonb,$8::jsonb,$9::jsonb,$10::jsonb,$11::jsonb,now()
+       )`,
+      [
+        crypto.randomUUID(),
+        tId,
+        payload.projectId ?? null,
+        payload.budgetId ?? null,
+        payload.configurationId,
+        `engineering-v1/system-${row.system_version ?? 1}`,
+        JSON.stringify(payload.request ?? {}),
+        JSON.stringify(result.bom),
+        JSON.stringify({ valid: result.valid, validations: result.validations, evidence: result.evidence }),
+        JSON.stringify({ cost: result.totals.cost }),
+        JSON.stringify({ sale: result.totals.sale }),
+      ],
+    );
+  }
+
+  return {
+    ...result,
+    configuration: {
+      ...configuration,
+      manufacturer: row.manufacturer,
+      line: row.line,
+      material: row.material,
+      systemVersion: Number(row.system_version ?? 1),
+    },
+  };
+}
+
 // ─── Router ───────────────────────────────────────────────────────────────────
 const archBudgetEngineRouter = Router();
+
+archBudgetEngineRouter.post("/arch/orcamento/engineering/quote", async (req, res, next) => {
+  try {
+    const configurationId = String(req.body?.configurationId ?? "");
+    if (!configurationId) {
+      res.status(400).json({ error: "configurationId é obrigatório" });
+      return;
+    }
+    const result = await calculateParametricEngineeringQuote(tenantId(req), {
+      configurationId,
+      request: req.body?.request ?? {},
+      projectId: req.body?.projectId ?? null,
+      budgetId: req.body?.budgetId ?? null,
+    });
+    if (!result) {
+      res.status(404).json({ error: "Configuração de engenharia não encontrada ou sem acesso" });
+      return;
+    }
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, "arch/orcamento/engineering/quote error");
+    next(err);
+  }
+});
 
 archBudgetEngineRouter.get("/arch/orcamento", async (req, res, next) => {
   try {
