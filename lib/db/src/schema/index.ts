@@ -180,6 +180,7 @@ export * from "./site_verticais";
 export * from "./site_contatos";
 export * from "./prospector_config";
 export * from "./prospector_queue";\nexport * from "./prospects";
+export * from "./prospect_interactions";
 export * from "./notification_logs";
 export * from "./sdr_templates";
 export * from "./content_studio_uploads";
