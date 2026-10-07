@@ -3344,7 +3344,8 @@ router.post("/tenants/:tenantId/cotacoes/:cotacaoId/propostas/:propostaId/itens/
   const { tenantId: tid, cotacaoId, propostaId } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
-  const [proposta] = await db.select().from(obraCotacaoPropostasTable)
+  const [proposta] = await db.select({ id: obraCotacaoPropostasTable.id })
+    .from(obraCotacaoPropostasTable)
     .innerJoin(obraCotacoesTable, eq(obraCotacaoPropostasTable.cotacaoId, obraCotacoesTable.id))
     .where(and(
       eq(obraCotacaoPropostasTable.id, propostaId),
@@ -3465,7 +3466,12 @@ router.post("/tenants/:tenantId/cotacoes/:cotacaoId/selecionar", async (req, res
   });
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
 
-  const [item] = await db.select().from(obraCotacaoItensTable)
+  const [item] = await db.select({
+    id: obraCotacaoItensTable.id,
+    quantidadeCompra: obraCotacaoItensTable.quantidadeCompra,
+    quantidadeTecnica: obraCotacaoItensTable.quantidadeTecnica,
+  })
+    .from(obraCotacaoItensTable)
     .innerJoin(obraCotacoesTable, eq(obraCotacaoItensTable.cotacaoId, obraCotacoesTable.id))
     .where(and(
       eq(obraCotacaoItensTable.id, parsed.data.cotacaoItemId),
@@ -3474,7 +3480,8 @@ router.post("/tenants/:tenantId/cotacoes/:cotacaoId/selecionar", async (req, res
     ));
   if (!item) return res.status(404).json({ error: "Item de cotação não encontrado" });
 
-  const [propostaItem] = await db.select().from(obraCotacaoPropostaItensTable)
+  const [propostaItem] = await db.select({ id: obraCotacaoPropostaItensTable.id })
+    .from(obraCotacaoPropostaItensTable)
     .innerJoin(obraCotacaoPropostasTable, eq(obraCotacaoPropostaItensTable.propostaId, obraCotacaoPropostasTable.id))
     .where(and(
       eq(obraCotacaoPropostaItensTable.id, parsed.data.propostaItemId),
@@ -3487,7 +3494,7 @@ router.post("/tenants/:tenantId/cotacoes/:cotacaoId/selecionar", async (req, res
     .set({ selecionado: true, updatedAt: new Date() })
     .where(eq(obraCotacaoPropostaItensTable.id, parsed.data.propostaItemId));
 
-  const qtdNecessaria = numberOrZero((item as any).obra_cotacao_itens?.quantidadeCompra ?? (item as any).obra_cotacao_itens?.quantidadeTecnica);
+  const qtdNecessaria = numberOrZero(item.quantidadeCompra ?? item.quantidadeTecnica);
   const selecoes = await db.select().from(obraCotacaoSelecoesTable)
     .where(eq(obraCotacaoSelecoesTable.cotacaoItemId, parsed.data.cotacaoItemId));
   const qtdSelecionada = selecoes.reduce((s, x) => s + numberOrZero(x.quantidadeSelecionada), 0);
