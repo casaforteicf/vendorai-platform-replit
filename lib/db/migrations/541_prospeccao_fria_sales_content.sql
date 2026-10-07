@@ -64,3 +64,29 @@ ALTER TABLE "content_library" ADD COLUMN IF NOT EXISTS "valid_from" timestamp;
 ALTER TABLE "content_library" ADD COLUMN IF NOT EXISTS "valid_until" timestamp;
 ALTER TABLE "content_library" ADD COLUMN IF NOT EXISTS "generated_by_ai" boolean DEFAULT false NOT NULL;
 ALTER TABLE "content_library" ADD COLUMN IF NOT EXISTS "generation_context" jsonb DEFAULT '{}'::jsonb NOT NULL;
+
+
+CREATE TABLE IF NOT EXISTS "prospect_interactions" (
+  "id" text PRIMARY KEY NOT NULL,
+  "tenant_id" text NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
+  "prospect_id" text NOT NULL REFERENCES "prospects"("id") ON DELETE CASCADE,
+  "person_id" text,
+  "direction" text NOT NULL,
+  "channel" text NOT NULL,
+  "status" text DEFAULT 'planned' NOT NULL,
+  "content" text,
+  "subject" text,
+  "external_id" text,
+  "material_id" text REFERENCES "content_library"("id") ON DELETE SET NULL,
+  "objective" text,
+  "reason" text,
+  "metadata" jsonb DEFAULT '{}'::jsonb NOT NULL,
+  "scheduled_at" timestamptz,
+  "sent_at" timestamptz,
+  "occurred_at" timestamptz DEFAULT now() NOT NULL,
+  "created_at" timestamptz DEFAULT now() NOT NULL
+);
+CREATE INDEX IF NOT EXISTS "prospect_interactions_tenant_prospect_idx"
+  ON "prospect_interactions" ("tenant_id", "prospect_id", "occurred_at");
+CREATE INDEX IF NOT EXISTS "prospect_interactions_scheduled_idx"
+  ON "prospect_interactions" ("tenant_id", "status", "scheduled_at");
