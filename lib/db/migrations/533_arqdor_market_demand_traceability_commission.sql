@@ -69,6 +69,32 @@ CREATE INDEX IF NOT EXISTS arqdor_market_demands_project_idx
 CREATE INDEX IF NOT EXISTS arqdor_market_demands_budget_idx
   ON public.arqdor_market_demands(tenant_id,budget_id,created_at DESC);
 
+CREATE TABLE IF NOT EXISTS public.arqdor_market_commission_entries (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  demand_id uuid NOT NULL REFERENCES public.arqdor_market_demands(id) ON DELETE CASCADE,
+  tenant_id text NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+  package_id uuid NULL REFERENCES public.arch_rfq_packages(id) ON DELETE SET NULL,
+  supplier_id text NULL,
+  supplier_name text NULL,
+  source text NOT NULL CHECK (source IN ('internal','external','manual_adjustment')),
+  rule_id uuid NULL REFERENCES public.arqdor_market_commission_rules(id) ON DELETE SET NULL,
+  percentage numeric(5,2) NOT NULL CHECK (percentage >= 0 AND percentage <= 100),
+  base_value numeric(14,2) NOT NULL DEFAULT 0,
+  commission_amount numeric(14,2) NOT NULL DEFAULT 0,
+  status text NOT NULL DEFAULT 'due'
+    CHECK (status IN ('pending','due','invoiced','paid','waived','disputed','cancelled')),
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS arqdor_market_commission_entries_package_uidx
+  ON public.arqdor_market_commission_entries(package_id)
+  WHERE package_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS arqdor_market_commission_entries_demand_idx
+  ON public.arqdor_market_commission_entries(demand_id,created_at DESC);
+
 CREATE TABLE IF NOT EXISTS public.arqdor_market_demand_events (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   demand_id uuid NOT NULL REFERENCES public.arqdor_market_demands(id) ON DELETE CASCADE,
