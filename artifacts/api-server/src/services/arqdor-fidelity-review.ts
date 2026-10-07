@@ -6,6 +6,12 @@ import { ObjectStorageService } from "../lib/objectStorage.js";
 
 const FIDELITY_MODEL = "gpt-4o-mini";
 
+export const ARQDOR_FIDELITY_APPROVAL_POLICY = {
+  automaticBlocking: false,
+  humanApprovalRequired: true,
+  warningField: "requiresHumanReview",
+} as const;
+
 const fidelityDimensionSchema = z.object({
   score: z.number().min(0).max(100),
   confidence: z.number().min(0).max(1),
