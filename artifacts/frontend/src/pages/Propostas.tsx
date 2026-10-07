@@ -572,6 +572,31 @@ export function CatalogoModal({
   const [csvRaw, setCsvRaw] = useState("");
   const [importPreviewOpen, setImportPreviewOpen] = useState(false);
   const [importResult, setImportResult] = useState<{ imported: number; errors: { row: number; message: string }[] } | null>(null);
+  const [pdfImporting, setPdfImporting] = useState(false);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState<{
+    fileName: string;
+    fabricante: string | null;
+    products: Array<{
+      nome: string;
+      sku: string | null;
+      categoria: string;
+      precoBase: number | null;
+      unidade: string;
+      descricao: string | null;
+      marca: string | null;
+      fornecedor: string | null;
+      cor: string | null;
+      especificacoes: Array<{ label: string; value: string }>;
+      confianca: number;
+      avisos: string[];
+      duplicate?: { id: string; nome: string; sku: string | null } | null;
+    }>;
+    importableCount: number;
+    duplicateCount: number;
+    reviewCount: number;
+    csv: string;
+  } | null>(null);
   // Composição de N itens pra cálculo por m² — tabela separada
   // (produto_composicoes), carregada/salva à parte do form principal.
   const [composicaoItens, setComposicaoItens] = useState<{ itemProdutoId: string; baseCalculo: "area" | "perimetro" }[]>([]);
@@ -1026,6 +1051,59 @@ export function CatalogoModal({
     e.target.value = "";
   }
 
+  async function handlePdfCatalogFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      toast({ title: "Arquivo inválido", description: "Selecione um catálogo em PDF.", variant: "destructive" });
+      return;
+    }
+
+    setPdfImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const token = localStorage.getItem("vendorai_token") ?? "";
+      const response = await fetch(`/api/tenants/${encodeURIComponent(tenantId)}/produtos-catalogo/import-pdf/preview`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || "Não foi possível interpretar o PDF.");
+      setPdfPreview(payload);
+      setPdfPreviewOpen(true);
+    } catch (error) {
+      toast({
+        title: "Erro ao interpretar catálogo",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setPdfImporting(false);
+    }
+  }
+
+  function confirmPdfImport() {
+    if (!pdfPreview?.csv || pdfPreview.importableCount < 1) {
+      toast({ title: "Nenhum produto pronto para importar", description: "Revise os itens sem preço ou duplicados antes de confirmar.", variant: "destructive" });
+      return;
+    }
+    importMut.mutate(
+      { tenantId, data: { csv: pdfPreview.csv } },
+      {
+        onSuccess: (result) => {
+          setPdfPreviewOpen(false);
+          setPdfPreview(null);
+          setImportResult(result);
+          invalidate();
+        },
+        onError: () => toast({ title: "Erro ao importar catálogo interpretado", variant: "destructive" }),
+      }
+    );
+  }
+
   function confirmImport() {
     importMut.mutate(
       { tenantId, data: { csv: csvRaw } },
@@ -1057,6 +1135,13 @@ export function CatalogoModal({
                   className="hidden"
                   onChange={handleCsvFile}
                 />
+                <input
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  id="pdf-catalog-import-input"
+                  className="hidden"
+                  onChange={handlePdfCatalogFile}
+                />
                 <Button size="sm" variant="outline" onClick={downloadTemplate}>
                   <Download className="h-4 w-4 mr-1.5" />
                   Modelo CSV
@@ -1064,6 +1149,15 @@ export function CatalogoModal({
                 <Button size="sm" variant="outline" onClick={() => document.getElementById("csv-import-input")?.click()}>
                   <Upload className="h-4 w-4 mr-1.5" />
                   Importar CSV/Excel
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={pdfImporting}
+                  onClick={() => document.getElementById("pdf-catalog-import-input")?.click()}
+                >
+                  {pdfImporting ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <FileText className="h-4 w-4 mr-1.5" />}
+                  {pdfImporting ? "Interpretando PDF…" : "Importar PDF"}
                 </Button>
                   {selectedIds.size > 0 && (
                 <Button size="sm" variant="destructive" onClick={() => setBulkDeleteOpen(true)}>
@@ -1106,7 +1200,7 @@ export function CatalogoModal({
             <div className="flex flex-col items-center gap-3 py-12 text-muted-foreground">
               <Package className="h-10 w-10 opacity-25" />
               <p className="text-sm">Nenhum produto no catálogo ainda</p>
-              <p className="text-xs">Use "Importar CSV/Excel" para adicionar vários produtos de uma vez</p>
+              <p className="text-xs">Use "Importar PDF" para interpretar um catálogo ou "Importar CSV/Excel" para adicionar vários produtos de uma vez</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -2056,6 +2150,73 @@ export function CatalogoModal({
               </div>
             </form>
           </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Importação inteligente de catálogo PDF */}
+      <Dialog open={pdfPreviewOpen} onOpenChange={(o) => !o && setPdfPreviewOpen(false)}>
+        <DialogContent className="max-w-[95vw] w-full h-[90vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
+            <DialogTitle>Catálogo interpretado pela IA</DialogTitle>
+          </DialogHeader>
+          <div className="px-6 pb-3 shrink-0 space-y-2">
+            <p className="text-sm text-muted-foreground">
+              {pdfPreview?.fileName} {pdfPreview?.fabricante ? `· ${pdfPreview.fabricante}` : ""}
+            </p>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <Badge variant="outline">{pdfPreview?.products.length ?? 0} identificados</Badge>
+              <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">{pdfPreview?.importableCount ?? 0} prontos</Badge>
+              {(pdfPreview?.duplicateCount ?? 0) > 0 && <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">{pdfPreview?.duplicateCount} já existentes</Badge>}
+              {(pdfPreview?.reviewCount ?? 0) > 0 && <Badge variant="outline" className="border-orange-200 bg-orange-50 text-orange-700">{pdfPreview?.reviewCount} pedem revisão</Badge>}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              O PDF foi convertido para o padrão oficial do Vendor.ai. Produtos já existentes e itens sem preço confiável ficam fora da importação automática para evitar duplicidade ou cadastro incorreto.
+            </p>
+          </div>
+          <div className="flex-1 overflow-auto px-6">
+            <Table>
+              <TableHeader className="sticky top-0 bg-background z-10">
+                <TableRow>
+                  <TableHead>Produto interpretado</TableHead>
+                  <TableHead>SKU</TableHead>
+                  <TableHead>Categoria Vendor.ai</TableHead>
+                  <TableHead>Preço</TableHead>
+                  <TableHead>Confiança</TableHead>
+                  <TableHead>Revisão</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(pdfPreview?.products ?? []).map((product, index) => (
+                  <TableRow key={`${product.sku || product.nome}-${index}`} className={product.duplicate || product.precoBase == null ? "bg-amber-50/40" : undefined}>
+                    <TableCell>
+                      <div className="font-medium">{product.nome}</div>
+                      {(product.marca || product.cor) && <div className="text-xs text-muted-foreground">{[product.marca, product.cor].filter(Boolean).join(" · ")}</div>}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{product.sku || "—"}</TableCell>
+                    <TableCell className="text-xs">{product.categoria}</TableCell>
+                    <TableCell className="font-mono text-xs">{product.precoBase == null ? <span className="text-amber-700">revisar</span> : fmtCurrency(String(product.precoBase))}</TableCell>
+                    <TableCell className="text-xs">{Math.round(product.confianca * 100)}%</TableCell>
+                    <TableCell className="max-w-[340px] text-xs">
+                      {product.duplicate ? (
+                        <span className="text-amber-700">Já existe: {product.duplicate.nome}</span>
+                      ) : product.avisos.length > 0 ? (
+                        <span className="text-amber-700">{product.avisos.join(" · ")}</span>
+                      ) : (
+                        <span className="text-emerald-700">Pronto para importar</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="flex gap-2 p-6 pt-4 border-t shrink-0">
+            <Button variant="outline" className="flex-1" onClick={() => setPdfPreviewOpen(false)}>Cancelar</Button>
+            <Button className="flex-1" onClick={confirmPdfImport} disabled={importMut.isPending || !pdfPreview?.importableCount}>
+              {importMut.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+              Importar {pdfPreview?.importableCount ?? 0} produtos normalizados
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
