@@ -7465,27 +7465,27 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         </button>
 
                         <button type="button" onClick={() => chooseProjectStartReferenceMode("real_environment")}
-                          className="group min-h-32 rounded-2xl border-2 border-sky-200 bg-sky-50/60 p-5 text-left transition hover:border-sky-400 hover:bg-sky-50 hover:shadow-sm">
+                          className="group min-h-32 rounded-2xl border-2 border-sky-200 bg-sky-50/60 p-5 text-left transition hover:border-sky-400 hover:bg-sky-50">
                           <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-sky-600 text-white"><Camera className="h-5 w-5" /></span>
                             <span><span className="block text-base font-bold text-slate-950">Foto / ambiente real</span>
-                            <span className="mt-1 block text-xs leading-5 text-slate-600">Use foto do terreno, fachada, cozinha ou outro espaço real. O Arqdor preserva o que existe e só remove, substitui ou realoca elementos com intervenção confirmada.</span>
-                            <span className="mt-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-sky-700">Preservação máxima</span></span></div>
-                        </button>
-
-                        <button type="button" onClick={() => chooseProjectStartReferenceMode("floorplan")}
-                          className="group min-h-32 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm">
-                          <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-800"><Ruler className="h-5 w-5" /></span>
-                            <span><span className="block text-base font-bold text-slate-950">Planta / croqui / PDF</span>
-                            <span className="mt-1 block text-xs leading-5 text-slate-600">Importe planta, croqui ou PDF para leitura, calibração e reconstrução como geometria editável antes de aplicar ao projeto.</span></span></div>
+                            <span className="mt-1 block text-xs leading-5 text-slate-600">Terreno, fachada ou ambiente real, preservando o que existe até você confirmar intervenções.</span></span></div>
                         </button>
                       </div>
 
                       <div className="mt-5 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
-                        <strong className="font-semibold text-slate-800">Foto real</strong> preserva o ambiente existente e registra intervenções confirmadas. <strong className="font-semibold text-slate-800">Planta/croqui</strong> passa por leitura, calibração e revisão antes de virar geometria editável. Arquivos geométricos só são aplicados depois da prévia e confirmação.
+                        Foto real preserva o ambiente. Planta/croqui é calibrada antes de virar geometria editável.
                       </div>
 
                       <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => chooseProjectStartReferenceMode("floorplan")}
+                            className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                          >
+                            <Ruler className="h-4 w-4" />
+                            Planta / croqui / PDF
+                          </button>
                           {projectScope === "house" && (
                             <button
                               type="button"
