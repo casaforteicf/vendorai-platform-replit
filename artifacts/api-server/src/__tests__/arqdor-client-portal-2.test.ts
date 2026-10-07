@@ -39,4 +39,24 @@ describe("Arqdor Client Portal 2.0 contracts", () => {
     expect(source).toContain('"/tenants/:tenantId/obras/:obraId/portal/support"');
     expect(source).toContain('"/tenants/:tenantId/obras/:obraId/portal/messages"');
   });
+  it("supports the complete publication engine, client responses, audit and Vendi", () => {
+    expect(source).toContain("obra_portal_items");
+    expect(source).toContain("obra_portal_item_responses");
+    expect(source).toContain("obra_portal_audit");
+    expect(source).toContain('"/portal/obra/:token/items/:itemId/respond"');
+    expect(source).toContain('"/portal/obra/:token/vendi"');
+    expect(source).toContain('"/tenants/:tenantId/obras/:obraId/portal/items"');
+    expect(source).toContain('"/tenants/:tenantId/obras/:obraId/portal/audit"');
+    expect(source).toContain("itemIsPublishedByConfig");
+    expect(source).toContain("getOpenAIForTenant");
+  });
+  it("keeps internal construction costs private and supports granular publication", () => {
+    expect(source).toContain("visible_to_client=true");
+    expect(source).toContain("showUnitPrice");
+    expect(source).toContain("showTotal");
+    expect(source).toContain("precoUnitarioCliente");
+    expect(source).toContain("valorTotalCliente");
+    expect(source).toContain('"/tenants/:tenantId/obras/:obraId/portal/budget-items"');
+    expect(source).not.toContain("Custo realizado");
+  });
 });
