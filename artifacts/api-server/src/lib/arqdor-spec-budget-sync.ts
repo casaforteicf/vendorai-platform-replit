@@ -100,6 +100,8 @@ export async function syncSpecObjectToBudget(params: { tenantId: string | null; 
   const quantity = Number(spec.quantity ?? 1);
   const materialValue = Number(spec.material_value ?? 0);
   const laborValue = Number(spec.labor_value ?? 0);
+  const requiresTechnicalApproval = spec.technical_approval_status !== "approved";
+  const specificationImpact = requiresTechnicalApproval ? "technical_approval_required" : null;
   const unitTotal = materialValue + laborValue;
   const totalMaterial = quantity * materialValue;
   const totalLabor = quantity * laborValue;
@@ -123,9 +125,9 @@ export async function syncSpecObjectToBudget(params: { tenantId: string | null; 
               supplier_name = $13, manufacturer_name = $14,
               product_name = $15, material_name = $16,
               catalog_code = $17, render_id = $18, ambiente_id = $19,
-              specification_outdated = FALSE,
-              specification_revision = $20,
-              specification_impact = NULL,
+              specification_outdated = $20,
+              specification_revision = $21,
+              specification_impact = $22,
               updated_at = now()
         WHERE id = $1 AND budget_id = $2`,
       [
@@ -135,7 +137,7 @@ export async function syncSpecObjectToBudget(params: { tenantId: string | null; 
         spec.supplier_name ?? null, spec.manufacturer_name ?? null,
         spec.product_name ?? null, spec.material_name ?? null,
         spec.catalog_code ?? null, spec.render_id ?? null, spec.ambiente_id ?? null,
-        spec.project_revision ?? null,
+        requiresTechnicalApproval, spec.project_revision ?? null, specificationImpact,
       ],
     );
   } else {
@@ -153,7 +155,7 @@ export async function syncSpecObjectToBudget(params: { tenantId: string | null; 
          $8,$9,'product',$10,$11,
          $12,$13,$14,$15,$16,$17,
          $18,$19,$20,$21,$22,
-         false,$23,NULL,
+         $23,$24,$25,
          true,0,now(),now()
        )`,
       [
@@ -163,7 +165,7 @@ export async function syncSpecObjectToBudget(params: { tenantId: string | null; 
         materialValue, laborValue, unitTotal, totalMaterial, totalLabor, total,
         spec.supplier_name ?? null, spec.manufacturer_name ?? null,
         spec.product_name ?? null, spec.material_name ?? null, spec.catalog_code ?? null,
-        spec.project_revision ?? null,
+        requiresTechnicalApproval, spec.project_revision ?? null, specificationImpact,
       ],
     );
   }
