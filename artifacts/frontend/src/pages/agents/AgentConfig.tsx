@@ -221,7 +221,7 @@ export default function AgentConfig() {
           <Card className="space-y-2 p-4">
             <h3 className="font-semibold">Conhecimento compartilhado da empresa</h3>
             <p className="text-sm text-muted-foreground">Os blocos aprovados em Marca e Negócio complementam o conhecimento de cada agente, conforme sua função.</p>
-            <a href="/configuracoes?tab=marketing" className="inline-block text-sm font-medium text-primary underline">Visualizar base dos agentes</a>
+            <Link href="/configuracoes?tab=marketing" className="inline-block text-sm font-medium text-primary underline">Visualizar base dos agentes</Link>
           </Card>
 
           <BrowserAgentPanel />
