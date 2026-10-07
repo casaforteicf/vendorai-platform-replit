@@ -150,18 +150,33 @@ export async function enforcePreProjectScope(req: Request, res: Parameters<Reque
       }
       return next();
     }
-    const renderMatch = path.match(/^\/arch\/ai-render\/([^/]+)(\/[^/]+)?$/);
-    if (renderMatch && (method === "GET" || method === "POST")) {
+    const renderMatch = path.match(/^\/arch\/ai-render\/([^/]+)(?:\/([^/]+))?$/);
+    if (renderMatch) {
+      const renderId = renderMatch[1]!;
+      const action = renderMatch[2] ?? null;
       const owner = await pool.query<{ concept_project_id: string | null }>(
         `SELECT concept_project_id FROM arch_ai_renders WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
-        [renderMatch[1], user.tenantId],
+        [renderId, user.tenantId],
       );
       if (owner.rows[0]?.concept_project_id !== conceptId) return denyPreProject(res);
-      if (method === "POST" && await preProjectRenderQuotaReached(user.tenantId, conceptId)) {
-        res.status(429).json({ error: "Você atingiu o limite de imagens de hoje. Tente novamente amanhã." });
-        return;
+
+      if (method === "GET" && action === null) return next();
+
+      const allowedGuestRenderActions = new Set([
+        "adjust",
+        "material-mask-preview",
+        "primary",
+        "regenerate",
+      ]);
+      if (method === "POST" && action && allowedGuestRenderActions.has(action)) {
+        if (await preProjectRenderQuotaReached(user.tenantId, conceptId)) {
+          res.status(429).json({ error: "Você atingiu o limite de imagens de hoje. Tente novamente amanhã." });
+          return;
+        }
+        return next();
       }
-      return next();
+
+      return denyPreProject(res);
     }
   } catch {
     res.status(503).json({ error: "Não foi possível validar o acesso agora. Tente novamente." });
