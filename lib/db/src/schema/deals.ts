@@ -115,6 +115,7 @@ export const dealsTable = pgTable("deals", {
 const valorField = z
   .union([z.number(), z.string()])
   .transform((v) => String(v))
+  .nullable()
   .optional();
 
 const numericSaasField = z
