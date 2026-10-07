@@ -231,9 +231,15 @@ router.post(base + "/:prospectId/content/:assetId/approve", async (req, res) => 
     .limit(1);
   if (!prospect) return res.status(404).json({ error: "Prospect não encontrado" });
 
-  const ok = await approveSalesContent({ tenantId, assetId, autoSendAllowed: parsed.data.autoSendAllowed });
-  if (!ok) return res.status(404).json({ error: "Material comercial não encontrado" });
-  return res.json({ ok: true, assetId, approvalStatus: "approved", autoSendAllowed: parsed.data.autoSendAllowed });
+  const approval = await approveSalesContent({ tenantId, assetId, autoSendAllowed: parsed.data.autoSendAllowed });
+  if (!approval.approved) return res.status(404).json({ error: "Material comercial não encontrado" });
+  return res.json({
+    ok: true,
+    assetId,
+    approvalStatus: "approved",
+    autoSendAllowed: approval.autoSendAllowed,
+    requestedAutoSendAllowed: parsed.data.autoSendAllowed,
+  });
 });
 
 export default router;
