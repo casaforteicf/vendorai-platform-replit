@@ -68,6 +68,7 @@ export * from "./obra_hidraulica";
 export * from "./obra_piscinas";
 export * from "./orcamento_formacao_venda";
 export * from "./obra_cotacoes";
+export * from "./obra_compras_v17";
 export * from "./tabelas_precos_obras";
 export * from "./varejo_colecoes";
 export * from "./varejo_fornecedores";
