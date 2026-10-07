@@ -138,6 +138,16 @@ import {
   insertObraCotacaoPropostaItemSchema,
   insertObraCotacaoSelecaoSchema,
   fornecedoresTable,
+  obraPedidosCompraTable,
+  obraPedidoCompraItensTable,
+  obraPedidoRecebimentosTable,
+  obraPedidoRecebimentoItensTable,
+  obraPedidoDevolucoesTable,
+  insertObraPedidoCompraSchema,
+  insertObraPedidoCompraItemSchema,
+  insertObraPedidoRecebimentoSchema,
+  insertObraPedidoRecebimentoItemSchema,
+  insertObraPedidoDevolucaoSchema,
   insertObraSchema,
   updateObraSchema,
   insertObraEtapaSchema,
@@ -3711,6 +3721,435 @@ router.post("/tenants/:tenantId/cotacoes/:cotacaoId/selecionar", async (req, res
     .where(eq(obraCotacaoItensTable.id, parsed.data.cotacaoItemId));
 
   return res.status(201).json({ selecao: row, coberturaStatus, qtdSelecionada, qtdNecessaria });
+});
+
+// ─── Compras, pedidos, recebimentos e devoluções ──────────────────────────────
+
+function dataLimiteCompra(dataNecessidade: string | null | undefined, prazoFornecedorDias: number, bufferLogisticoDias: number) {
+  if (!dataNecessidade) return null;
+  const d = new Date(`${dataNecessidade}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setUTCDate(d.getUTCDate() - Math.max(0, prazoFornecedorDias) - Math.max(0, bufferLogisticoDias));
+  return d.toISOString().slice(0, 10);
+}
+
+router.post("/tenants/:tenantId/obras/:obraId/cotacoes/:cotacaoId/gerar-pedidos", async (req, res) => {
+  const { tenantId: tid, obraId, cotacaoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [cotacao] = await db.select().from(obraCotacoesTable)
+    .innerJoin(obraOrcamentosTable, eq(obraCotacoesTable.orcamentoId, obraOrcamentosTable.id))
+    .where(and(
+      eq(obraCotacoesTable.id, cotacaoId),
+      eq(obraCotacoesTable.tenantId, tid),
+      eq(obraOrcamentosTable.obraId, obraId),
+    ));
+  if (!cotacao) return res.status(404).json({ error: "Cotação não encontrada para esta obra." });
+
+  const itensCotacao = await db.select().from(obraCotacaoItensTable)
+    .where(eq(obraCotacaoItensTable.cotacaoId, cotacaoId));
+  const itemIds = itensCotacao.map((i) => i.id);
+  if (!itemIds.length) return res.status(422).json({ error: "Cotação sem itens." });
+
+  const selecoes = await db.select().from(obraCotacaoSelecoesTable)
+    .where(inArray(obraCotacaoSelecoesTable.cotacaoItemId, itemIds));
+  if (!selecoes.length) return res.status(422).json({ error: "Nenhum item selecionado na cotação." });
+
+  const propostaItens = await db.select().from(obraCotacaoPropostaItensTable)
+    .where(inArray(obraCotacaoPropostaItensTable.id, selecoes.map((s) => s.propostaItemId)));
+  const propostas = await db.select().from(obraCotacaoPropostasTable)
+    .where(eq(obraCotacaoPropostasTable.cotacaoId, cotacaoId));
+
+  const existentes = await db.select().from(obraPedidosCompraTable)
+    .where(and(eq(obraPedidosCompraTable.tenantId, tid), eq(obraPedidosCompraTable.cotacaoId, cotacaoId)));
+  if (existentes.some((p) => p.status !== "cancelado")) {
+    return res.status(409).json({ error: "Já existem pedidos ativos gerados para esta cotação.", pedidos: existentes });
+  }
+
+  const porProposta = new Map<string, typeof selecoes>();
+  for (const selecao of selecoes) {
+    const pItem = propostaItens.find((p) => p.id === selecao.propostaItemId);
+    if (!pItem) continue;
+    if (!porProposta.has(pItem.propostaId)) porProposta.set(pItem.propostaId, []);
+    porProposta.get(pItem.propostaId)!.push(selecao);
+  }
+
+  const pedidosCriados = [];
+
+  for (const [propostaId, selecoesProposta] of porProposta.entries()) {
+    const proposta = propostas.find((p) => p.id === propostaId);
+    if (!proposta) continue;
+
+    const prazoFornecedorDias = Math.max(0, Number(proposta.prazoEntregaDias ?? 0));
+    const bufferLogisticoDias = Math.max(0, Number(req.body?.bufferLogisticoDias ?? 0));
+    const necessidade = typeof req.body?.dataNecessidade === "string" ? req.body.dataNecessidade : null;
+    const limiteCompra = dataLimiteCompra(necessidade, prazoFornecedorDias, bufferLogisticoDias);
+
+    const linhas = [];
+    let valorItens = 0;
+
+    for (const selecao of selecoesProposta) {
+      const pItem = propostaItens.find((p) => p.id === selecao.propostaItemId);
+      const cItem = itensCotacao.find((i) => i.id === selecao.cotacaoItemId);
+      if (!pItem || !cItem) continue;
+
+      const quantidade = numberOrZero(selecao.quantidadeSelecionada);
+      const precoUnitario = numberOrZero(pItem.precoUnitarioFornecedor);
+      const valorTotal = quantidade * precoUnitario;
+      valorItens += valorTotal;
+
+      linhas.push({
+        propostaItemId: pItem.id,
+        selecaoId: selecao.id,
+        insumoId: cItem.insumoId ?? null,
+        descricao: pItem.descricaoFornecedor,
+        codigoFornecedor: pItem.codigoFornecedor ?? null,
+        marca: pItem.marca ?? null,
+        modelo: pItem.modelo ?? null,
+        quantidadePedida: quantidade.toFixed(4),
+        unidadeCompra: pItem.unidadeFornecedor || cItem.unidadeCompra || cItem.unidadeTecnica,
+        precoUnitario: precoUnitario.toFixed(6),
+        valorTotal: valorTotal.toFixed(4),
+        quantidadeRecebida: "0",
+        quantidadeAprovada: "0",
+        quantidadeRejeitada: "0",
+        saldoReceber: quantidade.toFixed(4),
+      });
+    }
+
+    if (!linhas.length) continue;
+
+    const proporcao = selecoes.length > 0 ? selecoesProposta.length / selecoes.length : 1;
+    const frete = numberOrZero(proposta.freteValor) * proporcao;
+    const impostos = numberOrZero(proposta.impostosValor) * proporcao;
+    const desconto = numberOrZero(proposta.descontoValor) * proporcao;
+    const valorTotalPedido = valorItens + frete + impostos - desconto;
+
+    const [pedido] = await db.insert(obraPedidosCompraTable).values({
+      tenantId: tid,
+      obraId,
+      cotacaoId,
+      propostaId,
+      fornecedorId: proposta.fornecedorId ?? null,
+      fornecedorNomeSnapshot: proposta.fornecedorNomeSnapshot,
+      status: "rascunho",
+      dataPedido: new Date().toISOString().slice(0, 10),
+      dataNecessidade: necessidade,
+      prazoFornecedorDias,
+      bufferLogisticoDias,
+      dataLimiteCompra: limiteCompra,
+      condicaoPagamento: proposta.condicaoPagamento ?? null,
+      freteValor: frete.toFixed(4),
+      impostosValor: impostos.toFixed(4),
+      descontoValor: desconto.toFixed(4),
+      valorItens: valorItens.toFixed(4),
+      valorTotal: valorTotalPedido.toFixed(4),
+      criadoPorId: (req as any).user?.sub ?? null,
+      metadata: { origem: "cotacao_selecionada" },
+    }).returning();
+
+    for (const linha of linhas) {
+      await db.insert(obraPedidoCompraItensTable).values({ ...linha, pedidoId: pedido.id });
+    }
+
+    pedidosCriados.push(pedido);
+  }
+
+  if (!pedidosCriados.length) return res.status(422).json({ error: "Não foi possível gerar pedidos a partir das seleções." });
+
+  return res.status(201).json({ pedidos: pedidosCriados });
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/pedidos-compra", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const pedidos = await db.select().from(obraPedidosCompraTable)
+    .where(and(eq(obraPedidosCompraTable.tenantId, tid), eq(obraPedidosCompraTable.obraId, obraId)))
+    .orderBy(desc(obraPedidosCompraTable.createdAt));
+
+  const ids = pedidos.map((p) => p.id);
+  const itens = ids.length
+    ? await db.select().from(obraPedidoCompraItensTable).where(inArray(obraPedidoCompraItensTable.pedidoId, ids))
+    : [];
+
+  return res.json({ pedidos, itens });
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/pedidos-compra/:pedidoId/aprovar", async (req, res) => {
+  const { tenantId: tid, obraId, pedidoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [pedido] = await db.select().from(obraPedidosCompraTable)
+    .where(and(
+      eq(obraPedidosCompraTable.id, pedidoId),
+      eq(obraPedidosCompraTable.tenantId, tid),
+      eq(obraPedidosCompraTable.obraId, obraId),
+    ));
+  if (!pedido) return res.status(404).json({ error: "Pedido não encontrado" });
+  if (pedido.status !== "rascunho") return res.status(409).json({ error: "Somente pedido em rascunho pode ser aprovado." });
+
+  const [updated] = await db.update(obraPedidosCompraTable)
+    .set({
+      status: "aprovado",
+      aprovadoPorId: (req as any).user?.sub ?? null,
+      aprovadoEm: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(obraPedidosCompraTable.id, pedidoId))
+    .returning();
+
+  return res.json(updated);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/pedidos-compra/:pedidoId/enviar", async (req, res) => {
+  const { tenantId: tid, obraId, pedidoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [pedido] = await db.select().from(obraPedidosCompraTable)
+    .where(and(
+      eq(obraPedidosCompraTable.id, pedidoId),
+      eq(obraPedidosCompraTable.tenantId, tid),
+      eq(obraPedidosCompraTable.obraId, obraId),
+    ));
+  if (!pedido) return res.status(404).json({ error: "Pedido não encontrado" });
+  if (pedido.status !== "aprovado") return res.status(409).json({ error: "Pedido precisa estar aprovado antes do envio." });
+
+  const [updated] = await db.update(obraPedidosCompraTable)
+    .set({ status: "enviado", enviadoEm: new Date(), updatedAt: new Date() })
+    .where(eq(obraPedidosCompraTable.id, pedidoId))
+    .returning();
+
+  return res.json(updated);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/pedidos-compra/:pedidoId/recebimentos", async (req, res) => {
+  const { tenantId: tid, obraId, pedidoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [pedido] = await db.select().from(obraPedidosCompraTable)
+    .where(and(
+      eq(obraPedidosCompraTable.id, pedidoId),
+      eq(obraPedidosCompraTable.tenantId, tid),
+      eq(obraPedidosCompraTable.obraId, obraId),
+    ));
+  if (!pedido) return res.status(404).json({ error: "Pedido não encontrado" });
+  if (!["aprovado", "enviado", "parcialmente_recebido"].includes(pedido.status)) {
+    return res.status(409).json({ error: "Pedido não está apto para recebimento." });
+  }
+
+  const itensEntrada = Array.isArray(req.body?.itens) ? req.body.itens : [];
+  if (!itensEntrada.length) return res.status(422).json({ error: "Informe os itens recebidos." });
+
+  const itensPedido = await db.select().from(obraPedidoCompraItensTable)
+    .where(eq(obraPedidoCompraItensTable.pedidoId, pedidoId));
+
+  const recebimento = await db.transaction(async (tx) => {
+    const [rec] = await tx.insert(obraPedidoRecebimentosTable).values({
+      pedidoId,
+      status: "inspecao",
+      documentoNumero: req.body?.documentoNumero ?? null,
+      documentoUrl: req.body?.documentoUrl ?? null,
+      transportadora: req.body?.transportadora ?? null,
+      responsavelId: (req as any).user?.sub ?? null,
+      observacoes: req.body?.observacoes ?? null,
+      fotos: Array.isArray(req.body?.fotos) ? req.body.fotos : [],
+    }).returning();
+
+    for (const raw of itensEntrada) {
+      const item = itensPedido.find((i) => i.id === raw.pedidoItemId);
+      if (!item) throw new Error(`Item de pedido inválido: ${raw.pedidoItemId}`);
+
+      const qtdRecebida = numberOrZero(raw.quantidadeRecebida);
+      const qtdAprovada = raw.quantidadeAprovada == null ? qtdRecebida : numberOrZero(raw.quantidadeAprovada);
+      const qtdRejeitada = raw.quantidadeRejeitada == null ? Math.max(0, qtdRecebida - qtdAprovada) : numberOrZero(raw.quantidadeRejeitada);
+
+      if (qtdRecebida <= 0 || qtdAprovada < 0 || qtdRejeitada < 0 || qtdAprovada + qtdRejeitada > qtdRecebida + 0.0001) {
+        throw new Error("Quantidades de recebimento inválidas.");
+      }
+      const saldoAtual = numberOrZero(item.saldoReceber);
+      if (qtdRecebida > saldoAtual + 0.0001) throw new Error(`Recebimento excede saldo do item ${item.descricao}.`);
+
+      const [recItem] = await tx.insert(obraPedidoRecebimentoItensTable).values({
+        recebimentoId: rec.id,
+        pedidoItemId: item.id,
+        quantidadeRecebida: qtdRecebida.toFixed(4),
+        quantidadeAprovada: qtdAprovada.toFixed(4),
+        quantidadeRejeitada: qtdRejeitada.toFixed(4),
+        motivoRejeicao: raw.motivoRejeicao ?? null,
+        lote: raw.lote ?? null,
+        validade: raw.validade ?? null,
+      }).returning();
+
+      const novaRecebida = numberOrZero(item.quantidadeRecebida) + qtdRecebida;
+      const novaAprovada = numberOrZero(item.quantidadeAprovada) + qtdAprovada;
+      const novaRejeitada = numberOrZero(item.quantidadeRejeitada) + qtdRejeitada;
+      const novoSaldo = Math.max(0, numberOrZero(item.quantidadePedida) - novaRecebida);
+
+      await tx.update(obraPedidoCompraItensTable)
+        .set({
+          quantidadeRecebida: novaRecebida.toFixed(4),
+          quantidadeAprovada: novaAprovada.toFixed(4),
+          quantidadeRejeitada: novaRejeitada.toFixed(4),
+          saldoReceber: novoSaldo.toFixed(4),
+          updatedAt: new Date(),
+        })
+        .where(eq(obraPedidoCompraItensTable.id, item.id));
+
+      if (item.insumoId && qtdAprovada > 0) {
+        const [saldo] = await tx.select().from(estoqueObrasTable)
+          .where(and(eq(estoqueObrasTable.obraId, obraId), eq(estoqueObrasTable.insumoId, item.insumoId)));
+        if (saldo) {
+          await tx.update(estoqueObrasTable)
+            .set({ quantidadeAtual: (numberOrZero(saldo.quantidadeAtual) + qtdAprovada).toFixed(4), updatedAt: new Date() })
+            .where(eq(estoqueObrasTable.id, saldo.id));
+        } else {
+          await tx.insert(estoqueObrasTable).values({
+            obraId,
+            insumoId: item.insumoId,
+            quantidadeAtual: qtdAprovada.toFixed(4),
+            quantidadeMinima: "0",
+          });
+        }
+
+        await tx.insert(movimentacoesEstoqueObrasTable).values({
+          tenantId: tid,
+          insumoId: item.insumoId,
+          tipo: "entrada",
+          quantia: qtdAprovada.toFixed(4),
+          origemTipo: "pedido_compra",
+          destinoTipo: "obra",
+          destinoObraId: obraId,
+          responsavelId: (req as any).user?.sub ?? null,
+          observacao: `Recebimento ${rec.id} / pedido ${pedidoId}`,
+        });
+      }
+
+      void recItem;
+    }
+
+    const itensAtualizados = await tx.select().from(obraPedidoCompraItensTable)
+      .where(eq(obraPedidoCompraItensTable.pedidoId, pedidoId));
+    const saldoTotal = itensAtualizados.reduce((s, i) => s + numberOrZero(i.saldoReceber), 0);
+    const rejeitados = itensAtualizados.reduce((s, i) => s + numberOrZero(i.quantidadeRejeitada), 0);
+    const statusPedido = saldoTotal <= 0.0001 ? "recebido" : "parcialmente_recebido";
+    const statusRecebimento = rejeitados > 0 ? "parcial" : "aprovado";
+
+    await tx.update(obraPedidoRecebimentosTable)
+      .set({ status: statusRecebimento })
+      .where(eq(obraPedidoRecebimentosTable.id, rec.id));
+    await tx.update(obraPedidosCompraTable)
+      .set({ status: statusPedido, updatedAt: new Date() })
+      .where(eq(obraPedidosCompraTable.id, pedidoId));
+
+    return { ...rec, status: statusRecebimento, pedidoStatus: statusPedido };
+  });
+
+  return res.status(201).json(recebimento);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/pedidos-compra/:pedidoId/devolucoes", async (req, res) => {
+  const { tenantId: tid, obraId, pedidoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraPedidoDevolucaoSchema.safeParse({
+    ...req.body,
+    pedidoId,
+    responsavelId: (req as any).user?.sub ?? null,
+  });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [pedido] = await db.select().from(obraPedidosCompraTable)
+    .where(and(
+      eq(obraPedidosCompraTable.id, pedidoId),
+      eq(obraPedidosCompraTable.tenantId, tid),
+      eq(obraPedidosCompraTable.obraId, obraId),
+    ));
+  if (!pedido) return res.status(404).json({ error: "Pedido não encontrado" });
+
+  const [item] = await db.select().from(obraPedidoCompraItensTable)
+    .where(and(eq(obraPedidoCompraItensTable.id, parsed.data.pedidoItemId), eq(obraPedidoCompraItensTable.pedidoId, pedidoId)));
+  if (!item) return res.status(422).json({ error: "Item não pertence ao pedido." });
+
+  const qtd = numberOrZero(parsed.data.quantidade);
+  if (qtd <= 0 || qtd > numberOrZero(item.quantidadeAprovada) + 0.0001) {
+    return res.status(422).json({ error: "Quantidade de devolução inválida." });
+  }
+
+  const devolucao = await db.transaction(async (tx) => {
+    const [row] = await tx.insert(obraPedidoDevolucoesTable).values(parsed.data).returning();
+
+    if (item.insumoId) {
+      const [saldo] = await tx.select().from(estoqueObrasTable)
+        .where(and(eq(estoqueObrasTable.obraId, obraId), eq(estoqueObrasTable.insumoId, item.insumoId)));
+      const atual = numberOrZero(saldo?.quantidadeAtual);
+      if (atual < qtd - 0.0001) throw new Error("Estoque insuficiente para registrar devolução.");
+
+      if (saldo) {
+        await tx.update(estoqueObrasTable)
+          .set({ quantidadeAtual: (atual - qtd).toFixed(4), updatedAt: new Date() })
+          .where(eq(estoqueObrasTable.id, saldo.id));
+      }
+
+      await tx.insert(movimentacoesEstoqueObrasTable).values({
+        tenantId: tid,
+        insumoId: item.insumoId,
+        tipo: "devolucao",
+        quantia: qtd.toFixed(4),
+        origemTipo: "obra",
+        origemObraId: obraId,
+        destinoTipo: "fornecedor",
+        responsavelId: (req as any).user?.sub ?? null,
+        observacao: `Devolução do pedido ${pedidoId}: ${parsed.data.motivo}`,
+      });
+    }
+
+    await tx.update(obraPedidoCompraItensTable)
+      .set({
+        quantidadeAprovada: Math.max(0, numberOrZero(item.quantidadeAprovada) - qtd).toFixed(4),
+        updatedAt: new Date(),
+      })
+      .where(eq(obraPedidoCompraItensTable.id, item.id));
+
+    return row;
+  });
+
+  return res.status(201).json(devolucao);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/pedidos-compra/:pedidoId/resumo", async (req, res) => {
+  const { tenantId: tid, obraId, pedidoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [pedido] = await db.select().from(obraPedidosCompraTable)
+    .where(and(
+      eq(obraPedidosCompraTable.id, pedidoId),
+      eq(obraPedidosCompraTable.tenantId, tid),
+      eq(obraPedidosCompraTable.obraId, obraId),
+    ));
+  if (!pedido) return res.status(404).json({ error: "Pedido não encontrado" });
+
+  const itens = await db.select().from(obraPedidoCompraItensTable)
+    .where(eq(obraPedidoCompraItensTable.pedidoId, pedidoId));
+  const recebimentos = await db.select().from(obraPedidoRecebimentosTable)
+    .where(eq(obraPedidoRecebimentosTable.pedidoId, pedidoId));
+  const devolucoes = await db.select().from(obraPedidoDevolucoesTable)
+    .where(eq(obraPedidoDevolucoesTable.pedidoId, pedidoId));
+
+  return res.json({
+    pedido,
+    itens,
+    recebimentos,
+    devolucoes,
+    totais: {
+      pedido: itens.reduce((s, i) => s + numberOrZero(i.quantidadePedida), 0),
+      recebido: itens.reduce((s, i) => s + numberOrZero(i.quantidadeRecebida), 0),
+      aprovado: itens.reduce((s, i) => s + numberOrZero(i.quantidadeAprovada), 0),
+      rejeitado: itens.reduce((s, i) => s + numberOrZero(i.quantidadeRejeitada), 0),
+      saldoReceber: itens.reduce((s, i) => s + numberOrZero(i.saldoReceber), 0),
+      valorTotal: numberOrZero(pedido.valorTotal),
+    },
+  });
 });
 
 // ─── Base Mestre de Preços: propagação segura ─────────────────────────────────
