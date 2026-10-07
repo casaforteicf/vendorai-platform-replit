@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS "prospects" (
   "next_best_action_reason" text,
   "next_action_at" timestamptz,
   "qualification_score" integer,
+  "meeting_readiness_score" integer,
+  "account_map" jsonb DEFAULT '[]'::jsonb NOT NULL,
   "qualification" jsonb DEFAULT '{}'::jsonb NOT NULL,
   "opportunity_summary" text,
   "assigned_user_id" text,
@@ -37,7 +39,8 @@ CREATE TABLE IF NOT EXISTS "prospects" (
   CONSTRAINT "prospects_fit_score_range" CHECK ("fit_score" IS NULL OR ("fit_score" >= 0 AND "fit_score" <= 100)),
   CONSTRAINT "prospects_vendorai_fit_score_range" CHECK ("vendorai_fit_score" IS NULL OR ("vendorai_fit_score" >= 0 AND "vendorai_fit_score" <= 100)),
   CONSTRAINT "prospects_arqdor_fit_score_range" CHECK ("arqdor_fit_score" IS NULL OR ("arqdor_fit_score" >= 0 AND "arqdor_fit_score" <= 100)),
-  CONSTRAINT "prospects_qualification_score_range" CHECK ("qualification_score" IS NULL OR ("qualification_score" >= 0 AND "qualification_score" <= 100))
+  CONSTRAINT "prospects_qualification_score_range" CHECK ("qualification_score" IS NULL OR ("qualification_score" >= 0 AND "qualification_score" <= 100)),
+  CONSTRAINT "prospects_meeting_readiness_score_range" CHECK ("meeting_readiness_score" IS NULL OR ("meeting_readiness_score" >= 0 AND "meeting_readiness_score" <= 100))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS "prospects_tenant_company_uidx"
