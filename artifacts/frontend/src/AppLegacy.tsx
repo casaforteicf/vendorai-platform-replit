@@ -596,7 +596,7 @@ function PublicRoute({ component: Component }: any) {
 
   useEffect(() => {
     if (!isLoading && token && user) {
-      setLocation(user.platformRole === "partner" ? "/partner" : user.platformRole === "tenant_admin" ? "/configuracoes?tab=plano-negocios" : "/dashboard");
+      setLocation(user.platformRole === "partner" ? "/partner" : "/dashboard");
     }
   }, [token, user, isLoading, setLocation]);
 
