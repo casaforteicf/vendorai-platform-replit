@@ -57,6 +57,27 @@ export type ArqdorProjectImportMemory = {
   inconsistencies: Array<string>;
   sourcePages: Array<JsonRecord>;
   floorPlans: ArqdorImportedFloorPlan[];
+  facades: Array<{
+    page: number;
+    label?: string | null;
+    orientation?: "front" | "rear" | "left" | "right" | "unknown";
+    confidence: number;
+    style?: string | null;
+    materials: Array<JsonRecord>;
+    openings: Array<JsonRecord>;
+    architecturalFeatures: Array<JsonRecord>;
+    heights: Array<JsonRecord>;
+    evidence: string[];
+  }>;
+  sections: Array<{
+    page: number;
+    label?: string | null;
+    confidence: number;
+    levels: Array<JsonRecord>;
+    heights: Array<JsonRecord>;
+    roof: JsonRecord | null;
+    evidence: string[];
+  }>;
 };
 
 export type ArqdorUniversalCandidate = {
@@ -247,6 +268,43 @@ export function normalizeArqdorIntelligentProjectImport(
     ? memory.floorPlans.map(normalizeFloorPlan).filter(Boolean) as ArqdorImportedFloorPlan[]
     : [];
 
+  const facades = Array.isArray(memory.facades)
+    ? memory.facades.map((item) => {
+        const row = record(item);
+        const orientationRaw = String(row.orientation ?? "unknown");
+        const orientation = ["front","rear","left","right"].includes(orientationRaw)
+          ? orientationRaw as "front" | "rear" | "left" | "right"
+          : "unknown";
+        return {
+          page: Math.max(1, Math.round(Number(row.page) || 1)),
+          label: row.label == null ? null : String(row.label).slice(0, 180),
+          orientation,
+          confidence: clamp01(row.confidence, 0.5),
+          style: row.style == null ? null : String(row.style).slice(0, 180),
+          materials: Array.isArray(row.materials) ? row.materials.map(record).slice(0, 100) : [],
+          openings: Array.isArray(row.openings) ? row.openings.map(record).slice(0, 300) : [],
+          architecturalFeatures: Array.isArray(row.architecturalFeatures) ? row.architecturalFeatures.map(record).slice(0, 200) : [],
+          heights: Array.isArray(row.heights) ? row.heights.map(record).slice(0, 200) : [],
+          evidence: stringList(row.evidence, 100),
+        };
+      }).slice(0, 20)
+    : [];
+
+  const sections = Array.isArray(memory.sections)
+    ? memory.sections.map((item) => {
+        const row = record(item);
+        return {
+          page: Math.max(1, Math.round(Number(row.page) || 1)),
+          label: row.label == null ? null : String(row.label).slice(0, 180),
+          confidence: clamp01(row.confidence, 0.5),
+          levels: Array.isArray(row.levels) ? row.levels.map(record).slice(0, 100) : [],
+          heights: Array.isArray(row.heights) ? row.heights.map(record).slice(0, 200) : [],
+          roof: row.roof && typeof row.roof === "object" ? record(row.roof) : null,
+          evidence: stringList(row.evidence, 100),
+        };
+      }).slice(0, 30)
+    : [];
+
   const candidates = Array.isArray(value.universalCandidates)
     ? value.universalCandidates.map((item) => normalizeCandidate(item, sourceFileName)).filter(Boolean) as ArqdorUniversalCandidate[]
     : [];
@@ -270,6 +328,8 @@ export function normalizeArqdorIntelligentProjectImport(
       inconsistencies: stringList(memory.inconsistencies, 100),
       sourcePages,
       floorPlans,
+      facades,
+      sections,
     },
     universalCandidates: candidates,
     warnings: stringList(value.warnings, 100),
@@ -304,6 +364,8 @@ export async function analyzeArqdorProjectDocument(input: {
     "Quando as cadeias de cotas permitirem determinar com segurança a largura/profundidade total do retângulo da planta, preencha widthMeters/depthMeters. Caso contrário deixe null e requiresCalibration=true; nunca estime.",
     "dimensions deve registrar cotas explícitas legíveis com valor em metros, orientação, pontos/trecho associados e evidência. Cota explícita tem prioridade sobre proporção visual.",
     "openings deve ligar cada abertura à parede por wallIndex (índice em walls, base zero) quando isso estiver inequívoco e cruzar o código J/P com o quadro de esquadrias e detalhes.",
+    "Gere memory.facades para cada elevação/fachada: orientação quando identificável, estilo somente se suportado, materiais, aberturas/códigos, elementos arquitetônicos (arcos, molduras, clapboard, floreiras, mansardas, marquises, pergolados etc.), alturas e evidências por página.",
+    "Gere memory.sections para cada corte: níveis, alturas explícitas, pé-direito quando legível, lajes, fundações apenas como referência, cobertura/inclinação, cumeeira e demais relações verticais. Não estime alturas ausentes.",
     "Para a Biblioteca Universal, remova/ignore nomes de pessoas, CPF/CNPJ, e-mails, telefones, endereço, matrícula e qualquer dado identificável do cliente ou obra.",
     "Crie candidatos automaticamente, sem pedir autorização: pre_project para plantas reutilizáveis, facade para fachadas, roof para coberturas, opening para esquadrias especiais, room para ambientes relevantes e complete_project quando planta+fachadas+cortes forem coerentes.",
     "architecture deve conter apenas informação arquitetônica reutilizável. metadata deve conter área aproximada, pavimentos, quartos/suítes, estilo, cobertura, dimensões e tags quando suportado.",
@@ -323,6 +385,8 @@ export async function analyzeArqdorProjectDocument(input: {
         technicalNotes: [],
         inconsistencies: [],
         sourcePages: [],
+        facades: [],
+        sections: [],
         floorPlans: [{
           page: 1,
           label: "Planta baixa",
