@@ -3663,17 +3663,24 @@ export default function Deals() {
                       <Sparkles className="h-3.5 w-3.5" />
                       Dados extraídos do orçamento
                     </p>
+
                     {createExtractedInfo.confianca != null && (
-                      <div className={cn(
-                        "rounded px-2 py-1.5 text-[11px]",
-                        createExtractedInfo.confianca >= 0.7
-                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                          : "bg-amber-50 text-amber-800 border border-amber-200"
-                      )}>
+                      <div
+                        className={
+                          "rounded px-2 py-1.5 text-[11px] " +
+                          (createExtractedInfo.confianca >= 0.7
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            : "bg-amber-50 text-amber-800 border border-amber-200")
+                        }
+                      >
                         Confiança da leitura: {Math.round(createExtractedInfo.confianca * 100)}%
                         {createExtractedInfo.confianca < 0.7 && " — revise os dados antes de continuar."}
                       </div>
-                    {(!createExtractedInfo.cliente || !createExtractedInfo.clienteTelefone || !createExtractedInfo.clienteCidade) && (
+                    )}
+
+                    {(!createExtractedInfo.cliente ||
+                      !createExtractedInfo.clienteTelefone ||
+                      !createExtractedInfo.clienteCidade) && (
                       <div className="rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
                         Conferir:
                         {!createExtractedInfo.cliente && " nome do cliente;"}
@@ -3681,41 +3688,61 @@ export default function Deals() {
                         {!createExtractedInfo.clienteCidade && " cidade;"}
                         {" "}a ausência de um campo não impede o aproveitamento dos demais dados.
                       </div>
+                    )}
+
                     {createExtractedInfo.fornecedor && (
-                      <p className="text-xs text-violet-700">Fornecedor: <span className="font-medium">{createExtractedInfo.fornecedor}</span></p>
+                      <p className="text-xs text-violet-700">
+                        Fornecedor: <span className="font-medium">{createExtractedInfo.fornecedor}</span>
+                      </p>
                     )}
                     {createExtractedInfo.cliente && (
-                      <p className="text-xs text-violet-700">Cliente: <span className="font-medium">{createExtractedInfo.cliente}</span></p>
-                    )}
-                      <p className="text-xs text-violet-700">Telefone: <span className="font-medium">{createExtractedInfo.clienteTelefone}</span></p>
-                    {(createExtractedInfo.clienteCidade || createExtractedInfo.clienteEstado) && (
                       <p className="text-xs text-violet-700">
-                        Cidade: <span className="font-medium">
-                          {[createExtractedInfo.clienteCidade, createExtractedInfo.clienteEstado].filter(Boolean).join(" / ")}
-                        </span>
+                        Cliente: <span className="font-medium">{createExtractedInfo.cliente}</span>
                       </p>
-                    {createExtractedInfo.clienteEmail && (
-                      <p className="text-xs text-violet-700">E-mail: <span className="font-medium">{createExtractedInfo.clienteEmail}</span></p>
-                    {createExtractedInfo.clienteCep && (
-                      <p className="text-xs text-violet-700">CEP: <span className="font-medium">{createExtractedInfo.clienteCep}</span></p>
-                    {createExtractedInfo.clienteEndereco && (
-                      <p className="text-xs text-violet-700">Endereço: <span className="font-medium">{createExtractedInfo.clienteEndereco}</span></p>
-                    {createExtractedInfo.clienteDocumento && (
-                      <p className="text-xs text-violet-700">CPF/CNPJ: <span className="font-medium">{createExtractedInfo.clienteDocumento}</span></p>
                     )}
                     {createExtractedInfo.clienteTelefone && (
-                      <p className="text-xs text-violet-700">Telefone: <span className="font-medium">{createExtractedInfo.clienteTelefone}</span></p>
+                      <p className="text-xs text-violet-700">
+                        Telefone: <span className="font-medium">{createExtractedInfo.clienteTelefone}</span>
+                      </p>
+                    )}
+                    {(createExtractedInfo.clienteCidade || createExtractedInfo.clienteEstado) && (
+                      <p className="text-xs text-violet-700">
+                        Cidade:{" "}
+                        <span className="font-medium">
+                          {[createExtractedInfo.clienteCidade, createExtractedInfo.clienteEstado]
+                            .filter(Boolean)
+                            .join(" / ")}
+                        </span>
+                      </p>
                     )}
                     {createExtractedInfo.clienteEmail && (
-                      <p className="text-xs text-violet-700">E-mail: <span className="font-medium">{createExtractedInfo.clienteEmail}</span></p>
+                      <p className="text-xs text-violet-700">
+                        E-mail: <span className="font-medium">{createExtractedInfo.clienteEmail}</span>
+                      </p>
+                    )}
+                    {createExtractedInfo.clienteCep && (
+                      <p className="text-xs text-violet-700">
+                        CEP: <span className="font-medium">{createExtractedInfo.clienteCep}</span>
+                      </p>
                     )}
                     {createExtractedInfo.clienteEndereco && (
-                      <p className="text-xs text-violet-700">Endereço: <span className="font-medium">{createExtractedInfo.clienteEndereco}</span></p>
+                      <p className="text-xs text-violet-700">
+                        Endereço: <span className="font-medium">{createExtractedInfo.clienteEndereco}</span>
+                      </p>
                     )}
+                    {createExtractedInfo.clienteDocumento && (
+                      <p className="text-xs text-violet-700">
+                        CPF/CNPJ: <span className="font-medium">{createExtractedInfo.clienteDocumento}</span>
+                      </p>
+                    )}
+
                     {createExtractedInfo.itens && createExtractedInfo.itens.length > 0 && (
                       <div className="space-y-1 mt-1">
                         {createExtractedInfo.itens.slice(0, 4).map((item, i) => (
-                          <div key={i} className="flex justify-between text-[11px] text-violet-700 bg-white/60 rounded px-2 py-1">
+                          <div
+                            key={i}
+                            className="flex justify-between text-[11px] text-violet-700 bg-white/60 rounded px-2 py-1"
+                          >
                             <span className="truncate flex-1">{item.descricao}</span>
                             {item.valorTotal != null && (
                               <span className="ml-2 font-medium whitespace-nowrap">
@@ -3725,12 +3752,17 @@ export default function Deals() {
                           </div>
                         ))}
                         {createExtractedInfo.itens.length > 4 && (
-                          <p className="text-[10px] text-violet-500 text-center">+{createExtractedInfo.itens.length - 4} itens</p>
+                          <p className="text-[10px] text-violet-500 text-center">
+                            +{createExtractedInfo.itens.length - 4} itens
+                          </p>
                         )}
                       </div>
                     )}
+
                     {createExtractedInfo.observacoes && (
-                      <p className="text-[11px] text-violet-600 italic leading-tight">{createExtractedInfo.observacoes.slice(0, 150)}</p>
+                      <p className="text-[11px] text-violet-600 italic leading-tight">
+                        {createExtractedInfo.observacoes.slice(0, 150)}
+                      </p>
                     )}
                   </div>
                 )}
