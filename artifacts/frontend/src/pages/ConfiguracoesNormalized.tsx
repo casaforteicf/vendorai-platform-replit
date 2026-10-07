@@ -50,7 +50,13 @@ type IntegrationHealthPayload = {
   social?: { linkedin?: boolean; tiktok?: boolean };
 };
 
-export default function Configuracoes({ embedded = false }: { embedded?: boolean } = {}) {
+export default function Configuracoes({
+  embedded = false,
+  forcedTab,
+}: {
+  embedded?: boolean;
+  forcedTab?: string;
+} = {}) {
   const params = new URLSearchParams(window.location.search);
   const legacySiteDeepLink = params.get("tab") === "site";
 
@@ -483,7 +489,7 @@ export default function Configuracoes({ embedded = false }: { embedded?: boolean
           .catalog-source-note a { display: inline-block; margin-top: .5rem; margin-left: 0; }
         }
       `}</style>
-      <ConfiguracoesLegacy embedded={embedded} />
+      <ConfiguracoesLegacy embedded={embedded} forcedTab={forcedTab} />
     </div>
   );
 }
