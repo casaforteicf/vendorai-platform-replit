@@ -51,6 +51,7 @@ import {
   inferArqdorRenderPresets,
   type ArqdorRenderPreset,
 } from "../lib/arqdor-render-prompts.js";
+import { interventionPromptContext, type RealEnvironmentAnalysis } from "../lib/arqdor-real-environment.js";
 
 export const archAiRenderRouter = Router();
 
@@ -227,6 +228,7 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
   if (project_id && concept_project_id) {
     return res.status(400).json({ success: false, error: "Informe project_id ou concept_project_id, não ambos." });
   }
+  let effectiveUserNotes = user_notes;
   let resolvedProjectRevision = project_revision ?? null;
   let resolvedSceneId = scene_id ?? null;
   let resolvedSceneName = scene_name ?? null;
@@ -244,6 +246,12 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
       .limit(1);
     if (!concept) return res.status(404).json({ success: false, error: "Pré-projeto não encontrado." });
     const conceptConfiguration = (concept.configuration ?? {}) as any;
+    const realEnvironmentContext = interventionPromptContext(
+      (conceptConfiguration?.realEnvironment ?? null) as RealEnvironmentAnalysis | null,
+    );
+    if (realEnvironmentContext) {
+      effectiveUserNotes = [realEnvironmentContext, effectiveUserNotes].filter(Boolean).join("\n");
+    }
     const projectMaster = conceptConfiguration?.projectMaster;
     resolvedProjectRevision = resolvedProjectRevision
       ?? String(conceptConfiguration?.revisionNumber ?? projectMaster?.version ?? 1);
@@ -308,10 +316,10 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
     sceneName: resolvedSceneName,
     cameraSnapshot: resolvedCameraSnapshot,
     sourceModelVersion: resolvedSourceModelVersion,
-    jobInput: durable ? { userNotes: user_notes, materials, renderPresets: render_presets, source, renderView: render_view } : null,
+    jobInput: durable ? { userNotes: effectiveUserNotes, materials, renderPresets: render_presets, source, renderView: render_view } : null,
     prompt: durable ? buildPrompt({
       mode, ambiente, estilo, iluminacao, angulo, maskZones: safeMaskZones, materials,
-      userNotes: user_notes, renderPresets: render_presets, source, renderView: render_view,
+      userNotes: effectiveUserNotes, renderPresets: render_presets, source, renderView: render_view,
     }) : undefined,
     motor: undefined,
     status:           durable ? "queued" : "processando",
@@ -343,7 +351,7 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
     iluminacao,
     angulo,
     materials,
-    userNotes:    user_notes,
+    userNotes:    effectiveUserNotes,
     renderPresets: render_presets,
     source,
     renderView: render_view,
