@@ -199,14 +199,38 @@ async function updateSpecObject(id: string, tId: string | null, payload: Partial
 
   const sets: string[] = [];
   const values: unknown[] = [];
+  const payloadRecord = payload as Record<string, unknown>;
+  const approvalSensitiveFields = new Set([
+    "quantity", "unit",
+    "catalogProductId", "catalogMaterialId", "catalogCode",
+    "manufacturerId", "supplierId",
+    "productName", "materialName", "manufacturerName", "supplierName",
+    "materialValue", "laborValue",
+    "widthMm", "heightMm", "depthMm", "lengthMm", "areaM2", "perimeterM", "volumeM3",
+  ]);
+  const currentColumnValue = (column: string) => (current as Record<string, unknown>)[column];
+  const normalizedComparable = (value: unknown) => value == null ? null : typeof value === "number" ? Number(value) : String(value);
 
+  let invalidatesTechnicalApproval = false;
   for (const [key, column] of Object.entries(allowed)) {
-    if ((payload as Record<string, unknown>)[key] === undefined) continue;
-    values.push((payload as Record<string, unknown>)[key]);
-    sets.push(`${column} = $${values.length}`);
+    if (payloadRecord[key] === undefined) continue;
+    if (approvalSensitiveFields.has(key)
+      && normalizedComparable(payloadRecord[key]) !== normalizedComparable(currentColumnValue(column))) {
+      invalidatesTechnicalApproval = true;
+    }
+    values.push(payloadRecord[key]);
+    sets.push(`${column} = ${values.length}`);
   }
 
   if (sets.length === 0) return current;
+
+  if (invalidatesTechnicalApproval && current.technical_approval_status === "approved") {
+    sets.push("technical_approval_status = 'pending'");
+    sets.push("technical_approved_at = NULL");
+    sets.push("technical_approved_by = NULL");
+    sets.push("technical_approval_note = NULL");
+    sets.push("status = CASE WHEN status = 'approved' THEN 'specified' ELSE status END");
+  }
 
   const mergedTotals = totalValue({
     quantity: payload.quantity ?? Number(current.quantity ?? 1),
