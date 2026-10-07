@@ -96,6 +96,22 @@ type Venda = {
   itemNome: string;
 };
 
+type MarketDemand = {
+  id: string;
+  titulo: string;
+  descricao: string | null;
+  categoria: string | null;
+  produtoServico: string | null;
+  quantidade: string | null;
+  unidade: string | null;
+  visibilidade: string;
+  prazoResposta: string | null;
+  dataNecessidade: string | null;
+  compradorNome: string | null;
+  conviteStatus: string | null;
+  origemAcesso: "convite" | "market";
+};
+
 type Projeto = { id: string; titulo: string };
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -175,6 +191,17 @@ export default function Marketplace() {
   const [pedidosLoading, setPedidosLoading] = useState(false);
   const [pedidosLoaded, setPedidosLoaded]   = useState(false);
 
+  // ── Cotações recebidas state
+  const [demandasRecebidas, setDemandasRecebidas] = useState<MarketDemand[]>([]);
+  const [demandasLoading, setDemandasLoading] = useState(false);
+  const [demandasLoaded, setDemandasLoaded] = useState(false);
+  const [respondendoDemanda, setRespondendoDemanda] = useState<MarketDemand | null>(null);
+  const [proposalTotal, setProposalTotal] = useState("");
+  const [proposalLeadDays, setProposalLeadDays] = useState("");
+  const [proposalPayment, setProposalPayment] = useState("");
+  const [proposalNotes, setProposalNotes] = useState("");
+  const [submittingProposal, setSubmittingProposal] = useState(false);
+
   // ── Vendas state
   const [vendas, setVendas]                 = useState<Venda[]>([]);
   const [totalComissoes, setTotalComissoes] = useState(0);
@@ -239,6 +266,20 @@ export default function Marketplace() {
     setPedidosLoading(false);
     setPedidosLoaded(true);
   }, [pedidosLoaded]);
+
+  const loadDemandasRecebidas = useCallback(async () => {
+    if (demandasLoaded) return;
+    setDemandasLoading(true);
+    try {
+      const res = await fetch("/api/arch/market/demandas/recebidas", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (res.ok) setDemandasRecebidas(await res.json());
+    } finally {
+      setDemandasLoading(false);
+      setDemandasLoaded(true);
+    }
+  }, [demandasLoaded]);
 
   const loadVendas = useCallback(async () => {
     if (vendasLoaded) return;
@@ -349,6 +390,53 @@ export default function Marketplace() {
     }
   }
 
+  function openResponderDemanda(demanda: MarketDemand) {
+    setRespondendoDemanda(demanda);
+    setProposalTotal("");
+    setProposalLeadDays("");
+    setProposalPayment("");
+    setProposalNotes("");
+  }
+
+  async function handleEnviarProposta() {
+    if (!respondendoDemanda) return;
+    const total = Number(proposalTotal);
+    if (!Number.isFinite(total) || total < 0) {
+      toast({ title: "Informe um valor total válido", variant: "destructive" });
+      return;
+    }
+    setSubmittingProposal(true);
+    try {
+      const res = await fetch(`/api/arch/market/demandas/${respondendoDemanda.id}/propostas`, {
+        method: "POST",
+        headers: authH(),
+        body: JSON.stringify({
+          valorTotal: total,
+          prazoEntregaDias: proposalLeadDays ? Number(proposalLeadDays) : undefined,
+          condicaoPagamento: proposalPayment || undefined,
+          observacoes: proposalNotes || undefined,
+          itens: [{
+            descricao: respondendoDemanda.produtoServico || respondendoDemanda.titulo,
+            quantidade: respondendoDemanda.quantidade ? Number(respondendoDemanda.quantidade) : undefined,
+            unidade: respondendoDemanda.unidade || undefined,
+            valorTotal: total,
+          }],
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error ?? "Não foi possível enviar a proposta.");
+      }
+      setRespondendoDemanda(null);
+      setDemandasLoaded(false);
+      toast({ title: "Proposta enviada", description: "O comprador recebeu sua resposta dentro do Arqdor Market." });
+    } catch (err: any) {
+      toast({ title: "Erro ao enviar proposta", description: err.message, variant: "destructive" });
+    } finally {
+      setSubmittingProposal(false);
+    }
+  }
+
   // ── Toggle ativo (Meus Produtos) ───────────────────────────────────────
   async function toggleAtivo(item: MarketplaceItem) {
     setTogglingId(item.id);
@@ -388,6 +476,7 @@ export default function Marketplace() {
       <Tabs defaultValue="explorar">
         <TabsList>
           <TabsTrigger value="explorar">Explorar</TabsTrigger>
+          <TabsTrigger value="cotacoes" onClick={loadDemandasRecebidas}>Cotações recebidas</TabsTrigger>
           <TabsTrigger value="meus-produtos" onClick={loadMeusProdutos}>Meus Produtos</TabsTrigger>
           <TabsTrigger value="pedidos" onClick={loadPedidos}>Pedidos</TabsTrigger>
           <TabsTrigger value="vendas" onClick={loadVendas}>Vendas</TabsTrigger>
@@ -594,6 +683,54 @@ export default function Marketplace() {
           )}
         </TabsContent>
 
+        <TabsContent value="cotacoes" className="mt-4 space-y-3">
+          {demandasLoading && (
+            <div className="space-y-2">
+              {[1,2,3].map(i => <Skeleton key={i} className="h-28 rounded-xl" />)}
+            </div>
+          )}
+          {!demandasLoading && demandasLoaded && demandasRecebidas.length === 0 && (
+            <div className="rounded-lg border border-dashed p-12 text-center">
+              <ClipboardList className="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" />
+              <p className="font-medium text-sm">Nenhuma cotação disponível</p>
+              <p className="text-xs text-muted-foreground mt-1">Convites e oportunidades do Market aparecerão aqui.</p>
+            </div>
+          )}
+          {!demandasLoading && demandasRecebidas.map((demanda) => (
+            <Card key={demanda.id}>
+              <CardContent className="p-4">
+                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                  <div className="min-w-0 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold">{demanda.titulo}</p>
+                      <Badge variant={demanda.origemAcesso === "convite" ? "default" : "secondary"}>
+                        {demanda.origemAcesso === "convite" ? "Convite" : "Market"}
+                      </Badge>
+                      {demanda.categoria && <Badge variant="outline">{demanda.categoria}</Badge>}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {demanda.compradorNome ? `Solicitante: ${demanda.compradorNome}` : "Solicitante protegido"}
+                    </p>
+                    {(demanda.quantidade || demanda.unidade) && (
+                      <p className="text-sm">
+                        Quantidade: <strong>{demanda.quantidade ?? "—"} {demanda.unidade ?? ""}</strong>
+                      </p>
+                    )}
+                    {demanda.descricao && <p className="text-sm text-muted-foreground">{demanda.descricao}</p>}
+                    <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                      {demanda.dataNecessidade && <span>Necessidade: {fmtDate(demanda.dataNecessidade)}</span>}
+                      {demanda.prazoResposta && <span>Responder até: {fmtDate(demanda.prazoResposta)}</span>}
+                    </div>
+                  </div>
+                  <Button size="sm" onClick={() => openResponderDemanda(demanda)}>
+                    <Send className="h-4 w-4 mr-2" /> Enviar proposta
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </TabsContent>
+
         {/* ── ABA: MEUS PRODUTOS ──────────────────────────────────────── */}
         <TabsContent value="meus-produtos" className="mt-4">
           {meusProdutosLoading && (
@@ -778,6 +915,40 @@ export default function Marketplace() {
           )}
         </TabsContent>
       </Tabs>
+
+      <Dialog open={!!respondendoDemanda} onOpenChange={() => setRespondendoDemanda(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Responder cotação — {respondendoDemanda?.titulo}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div className="space-y-1.5">
+              <Label>Valor total da proposta</Label>
+              <Input type="number" min="0" step="0.01" value={proposalTotal} onChange={e => setProposalTotal(e.target.value)} placeholder="0,00" />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Prazo de entrega (dias)</Label>
+                <Input type="number" min="0" value={proposalLeadDays} onChange={e => setProposalLeadDays(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Condição de pagamento</Label>
+                <Input value={proposalPayment} onChange={e => setProposalPayment(e.target.value)} placeholder="Ex.: 28 dias" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Observações</Label>
+              <Input value={proposalNotes} onChange={e => setProposalNotes(e.target.value)} placeholder="Marca, frete, disponibilidade, condições..." />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setRespondendoDemanda(null)}>Cancelar</Button>
+              <Button onClick={handleEnviarProposta} disabled={submittingProposal}>
+                {submittingProposal ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Enviando…</> : <><Send className="h-4 w-4 mr-2" />Enviar proposta</>}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={publishOpen} onOpenChange={setPublishOpen}>
         <DialogContent className="max-w-lg">
