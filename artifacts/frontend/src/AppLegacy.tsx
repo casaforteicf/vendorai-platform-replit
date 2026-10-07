@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { RouteContentErrorBoundary } from "@/components/RouteContentErrorBoundary";
+import Dashboard from "@/pages/dashboard/Dashboard";
 import {
   useGetTenant,
   getGetTenantQueryKey,
@@ -37,7 +38,6 @@ const AcceptInvite       = lazy(() => import("@/pages/AcceptInvite"));
 const NotFound           = lazy(() => import("@/pages/not-found"));
 const Suspended          = lazy(() => import("@/pages/Suspended"));
 
-const Dashboard          = lazy(() => import("@/pages/dashboard/Dashboard"));
 const WorkCenterHome     = lazy(() => import("@/pages/WorkCenterHome"));
 const ComissoesVendedor  = lazy(() => import("@/pages/ComissoesVendedor"));
 const Leads              = lazy(() => import("@/pages/Leads"));
