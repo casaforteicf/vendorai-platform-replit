@@ -20,3 +20,6 @@ CREATE INDEX IF NOT EXISTS idx_arch_render_fidelity_reviews_render_created
   ON arch_render_fidelity_reviews (tenant_id, render_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_arch_render_fidelity_reviews_project_created
   ON arch_render_fidelity_reviews (tenant_id, project_id, created_at DESC);
+
+-- Internal backend table. Keep it protected from direct Data API access.
+ALTER TABLE arch_render_fidelity_reviews ENABLE ROW LEVEL SECURITY;
