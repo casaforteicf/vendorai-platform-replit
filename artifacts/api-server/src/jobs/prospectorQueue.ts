@@ -2,15 +2,14 @@
  * Prospector Queue Worker
  *
  * Processes pending entries in prospector_queue respecting each tenant's
- * ritmo_diario (leads-per-day limit).
+ * ritmo_diario (prospects-per-day limit).
  *
  * Flow per entry:
  *  1. Duplicate check by phone (digits) or CNPJ in leads table
  *     - Duplicate → update lead with any missing fields + Prospector tags,
  *                   mark queue "duplicado"
- *     - New       → create lead (source="prospector_auto") + deal in first funil,
- *                   persist Prospector tags, mark queue "importado", then
- *                   run predictive enrichment
+ *     - New       → create pre-Lead Prospect, preserve source snapshot and
+ *                   keep it outside CRM Lead/Deal until qualification
  *
  * Daily limit tracking: count queue rows updated today per tenant with
  *   status IN ('importado', 'duplicado', 'abordado').
