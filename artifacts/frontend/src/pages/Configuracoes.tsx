@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { ArrowLeft, Bell, Bot, Building2, ChevronRight, Database, Search, Settings2, ShieldCheck, Users, Workflow, Zap } from "lucide-react";
 import ConfiguracoesNormalized from "./ConfiguracoesNormalized";
+import ConfiguracoesLegacy from "./ConfiguracoesLegacy";
 import { BrandKitSettings } from "@/components/BrandKitSettings";
 import IntegrationSettingsHub from "./IntegrationSettingsHub";
 import DiagnosticoPlanejamento from "./DiagnosticoPlanejamento";
@@ -134,6 +135,19 @@ function SettingsUxCleanup() {
       }
       .vendor-settings-compact .vendor-config-without-site .space-y-6 > :not([hidden]) ~ :not([hidden]) {
         margin-top: 1rem !important;
+      }
+
+      .settings-section-native {
+        width: 100%;
+        min-width: 0;
+      }
+      .settings-section-native > div {
+        max-width: none !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+      }
+      .settings-section-native > div > div:first-child {
+        margin-top: 0 !important;
       }
 
       .settings-home-shell {
@@ -390,7 +404,6 @@ function SettingsSectionShell({
 
   return (
     <div className="vendor-settings-compact vendor-page-canvas vendor-config-page">
-      <SettingsUxCleanup />
       <main className="settings-home-shell">
         <div className="mb-4 flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
