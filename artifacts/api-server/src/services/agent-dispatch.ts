@@ -1595,6 +1595,7 @@ export async function processAgentInternal(params: {
     try {
       const contextoNegocioResolvido = await resolverContextoNegocio({
         tenantId,
+        role: resolvedAgentName,
         query: [
           mensagem,
           ctx.lead.objetivo,

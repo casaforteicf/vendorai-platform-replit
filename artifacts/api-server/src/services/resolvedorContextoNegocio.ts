@@ -1,4 +1,5 @@
 import { pool } from "@workspace/db";
+import { ROLE_SECTIONS } from "./business-plan-model.js";
 
 export type TipoFonteContextoNegocio =
   | "perfil_negocio"
@@ -147,10 +148,12 @@ export async function resolverContextoNegocio(input: {
   query: string;
   productIds?: string[];
   limit?: number;
+  role?: string;
 }): Promise<ContextoNegocioResolvido> {
   const preferredProductIds = new Set((input.productIds ?? []).filter(Boolean));
   const queryTokens = tokens(input.query);
   const limit = Math.min(Math.max(input.limit ?? 10, 3), 20);
+  const allowedPlanSections = input.role ? new Set(ROLE_SECTIONS[input.role] ?? []) : null;
 
   const [profileResult, productResult, contextResult, knowledgeResult, planoResult] = await Promise.all([
     pool.query<ProfileRow>(
@@ -344,13 +347,15 @@ export async function resolverContextoNegocio(input: {
   const secoesPlano = plano?.sections && typeof plano.sections === "object" ? plano.sections : {};
   const registrosPlano: Array<{ secao: string; titulo: string; valores: Record<string, string>; fonte: string }> = [];
   for (const [secao, conteudo] of Object.entries(secoesPlano)) {
+    if (allowedPlanSections && !allowedPlanSections.has(secao as any)) continue;
     const aprovados = Array.isArray((conteudo as any)?.approved) ? (conteudo as any).approved : [];
     for (const registro of aprovados) {
       if (!registro || registro.evidence === "hypothesis") continue;
       const valores = registro.values && typeof registro.values === "object" ? registro.values : {};
       const texto = [registro.title, registro.source, ...Object.values(valores)].join(" ");
-      const pontuacao = relevance(texto, queryTokens, false);
-      if (pontuacao <= 0 && queryTokens.length > 0) continue;
+      const relevancia = relevance(texto, queryTokens, false);
+      if (!input.role && relevancia <= 0 && queryTokens.length > 0) continue;
+      const pontuacao = (input.role ? 1100 : 0) + relevancia;
       registrosPlano.push({
         secao,
         titulo: String(registro.title ?? "Registro aprovado"),
