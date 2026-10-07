@@ -62,12 +62,6 @@ type MetaGrowthOverview = {
   leads30d?: number | null;
   opportunities30d?: number | null;
   pipelineValue30d?: number | null;
-  sales30d?: number | null;
-  revenueClosed30d?: number | null;
-  paidSales30d?: number | null;
-  paidRevenueClosed30d?: number | null;
-  paidCac30d?: number | null;
-  paidRoas30d?: number | null;
   paidSpend30d?: number | null;
   paidLeads30d?: number | null;
   organicLeads30d?: number | null;
@@ -205,13 +199,8 @@ export function MetaGrowthHub() {
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Metric icon={<Users className="h-4 w-4" />} label="Seguidores" value={n(data?.followers)} detail={`${signed(data?.followersDelta7d)} em 7 dias · ${signed(data?.followersDelta30d)} em 30 dias`} />
         <Metric icon={<TrendingUp className="h-4 w-4" />} label="Alcance 30 dias" value={n(data?.reach30d)} detail={`${n(data?.profileVisits30d)} visitas ao perfil`} />
-        <Metric icon={<MessageCircle className="h-4 w-4" />} label="Leads Meta" value={n(data?.leads30d)} detail={`${n(data?.opportunities30d)} oportunidades abertas`} />
-        <Metric icon={<Target className="h-4 w-4" />} label="Vendas Meta" value={n(data?.sales30d)} detail={`${money(data?.revenueClosed30d)} de receita fechada`} />
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric icon={<BarChart3 className="h-4 w-4" />} label="Pipeline atribuído" value={money(data?.pipelineValue30d)} detail="Somente oportunidades abertas" />
-        <Metric icon={<TrendingUp className="h-4 w-4" />} label="Receita fechada" value={money(data?.revenueClosed30d)} detail={`${n(data?.sales30d)} venda(s) ganha(s)`} />
-        <Metric icon={<Megaphone className="h-4 w-4" />} label="Investimento Meta Ads" value={money(data?.paidSpend30d)} detail={`${n(data?.paidSales30d)} venda(s) paga(s) atribuída(s)`} />
-        <Metric icon={<BarChart3 className="h-4 w-4" />} label="ROAS Meta" value={data?.paidRoas30d == null ? "—" : `${data.paidRoas30d.toFixed(2)}x`} detail={`CAC ${money(data?.paidCac30d)} · receita paga ${money(data?.paidRevenueClosed30d)}`} />
+        <Metric icon={<MessageCircle className="h-4 w-4" />} label="Leads Meta" value={n(data?.leads30d)} detail={`${n(data?.opportunities30d)} oportunidades`} />
+        <Metric icon={<BarChart3 className="h-4 w-4" />} label="Pipeline atribuído" value={money(data?.pipelineValue30d)} detail={`${money(data?.paidSpend30d)} investidos em Ads`} />
       </div>
 
       {remarketing ? (
