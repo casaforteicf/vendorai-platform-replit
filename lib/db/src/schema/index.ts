@@ -158,6 +158,7 @@ export * from "./arch_marketplace_items";
 export * from "./arch_marketplace_pedidos";
 export * from "./arqdor_market_v21";
 export * from "./arqdor_market_protecoes_v21";
+export * from "./arqdor_origin_commission_v21";
 export * from "./arch_render_versoes";
 export * from "./arch_render_solicitacoes";
 export * from "./arch_suggestions";
