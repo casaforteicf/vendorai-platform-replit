@@ -42,6 +42,7 @@ import {
   normalizeName,
 } from "../services/cnpjService.js";
 import { leadRegistrationMetadata, normalizeInstagramHandle, normalizeLeadEmail, normalizeLeadName } from "../lib/lead-registration-standard.js";
+import { intakeColdProspect } from "../services/cold-prospect-intake.js";
 
 // Quantidade de aprovações (approved + edited) para liberar a automação.
 const AUTOMATION_THRESHOLD = 50;
@@ -2356,110 +2357,48 @@ router.post("/prospector/cnpj/prospectar", async (req, res) => {
     });
   }
 
-  // Calculate how many days since opening
+  // New cold discovery: stay as Prospect until qualification.
   const abertura = d.dataAbertura ? new Date(d.dataAbertura) : null;
   const diasAberto = abertura ? Math.floor((Date.now() - abertura.getTime()) / 86_400_000) : null;
   const isRecemAberta = diasAberto != null && diasAberto <= 90;
+  const source = isRecemAberta ? "recem_aberta" : d.source;
+  const sourceRef = `${source}:${cnpjClean}`;
 
-  const [firstFunil] = await db
-    .select({ id: funisTable.id })
-    .from(funisTable)
-    .where(eq(funisTable.tenantId, tenantId))
-    .limit(1);
-
-  const priorityReason = isRecemAberta
-    ? `Empresa aberta há ${diasAberto} dias — montando operação`
-    : undefined;
-
-  const [lead] = await db.insert(leadsTable).values({
+  const result = await intakeColdProspect({
     tenantId,
-    nome: normalizeLeadName(d.nomeFantasia || d.razaoSocial, "Empresa prospectada"),
-    empresa: d.razaoSocial,
-    telefone: d.telefone ?? undefined,
-    email: normalizeLeadEmail(d.email),
-    documento: cnpjClean,
-    endereco: d.endereco,
-    tipoPessoa: "juridica",
-    source: isRecemAberta ? "recem_aberta" : d.source,
-    enrichmentStatus: "pending",
-    mercadoSegmento: d.cnaeDescricao,
-    priorityReason,
-    dadosPj: {
-      cnpj: cnpjClean,
-      razaoSocial: d.razaoSocial,
-      segmento: d.cnaeDescricao,
-      socios: d.socios.map((s) => ({ nome: s.nome })),
+    source,
+    sourceRef,
+    displayName: d.nomeFantasia || d.razaoSocial,
+    cnpj: cnpjClean,
+    razaoSocial: d.razaoSocial,
+    phone: d.telefone ?? null,
+    email: normalizeLeadEmail(d.email) ?? null,
+    address: d.endereco ?? null,
+    segment: d.cnaeDescricao ?? null,
+    city: d.municipio ?? null,
+    fitScore: isRecemAberta ? 75 : 65,
+    vendoraiFitScore: 70,
+    arqdorFitScore: /(constru|arquitet|engenhar|esquadr|material|imobili)/i.test(d.cnaeDescricao ?? "") ? 75 : 15,
+    qualification: {
+      facts: [
+        { key: "cnpj", value: cnpjClean, confidence: 100, source, confirmed: true, observedAt: new Date().toISOString() },
+        ...(d.dataAbertura ? [{ key: "data_abertura", value: d.dataAbertura, confidence: 100, source, confirmed: true, observedAt: new Date().toISOString() }] : []),
+        ...(d.socios[0]?.nome ? [{ key: "qsa_contact", value: d.socios[0].nome, confidence: 100, source, confirmed: true, observedAt: new Date().toISOString() }] : []),
+      ],
     },
-    metadata: leadRegistrationMetadata({
-      origem: d.source,
-      prospectado_em: new Date().toISOString(),
-      cnae: d.cnaeCode,
-      data_abertura: d.dataAbertura,
-      dias_aberto: diasAberto,
-      cidade: d.municipio,
-    }, {
-      entryChannel: "prospeccao",
-      entrySource: isRecemAberta ? "recem_aberta" : d.source,
-      details: { cnpj: cnpjClean },
-    }),
-  }).returning({ id: leadsTable.id });
-
-  if (!lead) return res.status(500).json({ error: "Falha ao criar lead" });
-
-  // Create deal in the same CRM funnel used by the canonical Prospector.
-  let cnpjDealId: string | null = null;
-  if (firstFunil) {
-    const [createdDeal] = await db.insert(dealsTable).values({
-      tenantId,
-      leadId: lead.id,
-      funilId: firstFunil.id,
-      titulo: `${d.nomeFantasia || d.razaoSocial} — Prospector CNPJ`,
-      etapa: "novo",
-    }).returning({ id: dealsTable.id });
-    cnpjDealId = createdDeal?.id ?? null;
-  }
-
-  // Activity
-  await db.insert(activitiesTable).values({
-    tenantId,
-    leadId: lead.id,
-    dealId: cnpjDealId,
-    tipo: "tarefa",
-    titulo: "Lead importado via Busca CNPJ",
-    descricao: `Lead importado via Busca CNPJ (CNAE ${d.cnaeCode ?? "?"}) — ${d.municipio ?? ""}`,
-    status: "concluida",
+    opportunitySummary: isRecemAberta
+      ? `Empresa aberta há ${diasAberto} dias; oportunidade para diagnóstico da operação em formação.`
+      : null,
   });
 
-  if (cnpjDealId) {
-    gerarBriefingDeal(
-      tenantId,
-      cnpjDealId,
-      d.nomeFantasia || d.razaoSocial,
-      d.endereco ?? null,
-      d.telefone ?? null,
-      null,
-      null,
-      null,
-      [],
-      [],
-      req.log,
-    ).catch(() => undefined);
-  }
-
-  // Enrich (fire-and-forget) with boost if recently opened
-  enrichLead({
-    leadId: lead.id,
-    tenantId,
-    scoreBoost: isRecemAberta ? 20 : 0,
-    boostReason: isRecemAberta ? "empresa_recem_aberta" : "",
-  }).catch(() => undefined);
-
-  return res.status(201).json({
-    leadId: lead.id,
-    merged: false,
+  return res.status(result.created ? 201 : 200).json({
+    prospectId: result.prospect.id,
+    companyId: result.companyId,
+    merged: !result.created,
     isRecemAberta,
     linkedInUrl: buildLinkedInSearchUrl(d.razaoSocial, d.municipio ?? ""),
     decisorNome: d.socios[0]?.nome ?? null,
+    stage: result.prospect.stage,
   });
 });
 
@@ -2570,77 +2509,35 @@ router.post("/prospector/ads/prospectar", async (req, res) => {
     });
   }
 
-  const [lead] = await db.insert(leadsTable).values({
+  const result = await intakeColdProspect({
     tenantId,
-    nome: d.pageName,
-    empresa: d.pageName,
-    telefone: telefone ?? undefined,
-    endereco: place?.endereco ?? undefined,
-    websiteUrl: place?.siteOficial ?? undefined,
     source: "ad_library",
-    tipoPessoa: "juridica",
-    enrichmentStatus: "pending",
-    mercadoSegmento: d.searchTerms ?? undefined,
-    priorityReason: "Investindo em anúncios Meta/Instagram — sinal de intenção comercial",
-    metadata: metaSignal,
-  }).returning({ id: leadsTable.id });
-
-  if (!lead) return res.status(500).json({ error: "Falha ao criar lead Meta" });
-
-  const [firstFunil] = await db
-    .select({ id: funisTable.id })
-    .from(funisTable)
-    .where(eq(funisTable.tenantId, tenantId))
-    .orderBy(asc(funisTable.createdAt))
-    .limit(1);
-
-  let dealId: string | null = null;
-  if (firstFunil) {
-    const [deal] = await db.insert(dealsTable).values({
-      tenantId,
-      leadId: lead.id,
-      funilId: firstFunil.id,
-      titulo: `${d.pageName} — Prospector Meta`,
-      etapa: "novo",
-    }).returning({ id: dealsTable.id });
-    dealId = deal?.id ?? null;
-  }
-
-  await db.insert(activitiesTable).values({
-    tenantId,
-    leadId: lead.id,
-    dealId,
-    tipo: "tarefa",
-    titulo: "Lead importado via Prospector Meta/Instagram",
-    descricao: `Anunciante ativo identificado na Meta Ad Library${d.searchTerms ? ` para "${d.searchTerms}"` : ""}.`,
-    status: "concluida",
+    sourceRef: `ad_library:${d.pageId}`,
+    displayName: d.pageName,
+    phone: telefone,
+    website: place?.siteOficial ?? null,
+    address: place?.endereco ?? null,
+    segment: d.searchTerms ?? null,
+    fitScore: 72,
+    vendoraiFitScore: 78,
+    arqdorFitScore: /(constru|arquitet|engenhar|esquadr|material|imobili)/i.test(d.searchTerms ?? "") ? 68 : 15,
+    qualification: {
+      inferredPains: ["possível perda de leads entre anúncio e atendimento"],
+      facts: [
+        { key: "active_meta_advertiser", value: true, confidence: 100, source: "ad_library", confirmed: true, observedAt: now },
+        ...(place?.rating != null ? [{ key: "google_rating", value: place.rating, confidence: 100, source: "google_places", confirmed: true, observedAt: now }] : []),
+      ],
+    },
+    opportunitySummary: "Empresa identificada investindo ativamente em mídia paga; validar processo comercial antes de propor solução.",
   });
 
-  if (dealId) {
-    gerarBriefingDeal(
-      tenantId,
-      dealId,
-      d.pageName,
-      place?.endereco ?? null,
-      telefone,
-      place?.siteOficial ?? null,
-      place?.rating ?? null,
-      place?.reviewCount ?? null,
-      ["Investe ativamente em mídia paga"],
-      ["Risco de perda de leads entre anúncio e atendimento"],
-      req.log,
-    ).catch(() => undefined);
-  }
-
-  enrichLead({
-    leadId: lead.id,
-    tenantId,
-    log: req.log,
-    scoreBoost: 5,
-    boostReason: "meta_advertiser",
-  }).catch(() => undefined);
-
-  return res.status(201).json({ leadId: lead.id, dealId, merged: false, whatsapp });
+  return res.status(result.created ? 201 : 200).json({
+    prospectId: result.prospect.id,
+    companyId: result.companyId,
+    merged: !result.created,
+    whatsapp,
+    stage: result.prospect.stage,
+  });
 });
 
 /** POST /prospector/cnpj/recem-abertas — manual trigger of new-company scan */
