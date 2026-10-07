@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db, pool, leadsTable, archMarketplaceItemsTable, tenantsTable } from "@workspace/db";
-import { signGuestConceptToken } from "../lib/jwt.js";
+import { signGuestConceptToken, verifyToken } from "../lib/jwt.js";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { pickNextVendedor } from "../lib/round-robin.js";
 import { leadRegistrationMetadata, normalizeInstagramHandle, normalizeLeadEmail, normalizeLeadName } from "../lib/lead-registration-standard.js";
@@ -216,6 +216,158 @@ arqdorPublicLinkRouter.get("/public/arqdor/:slug/market", profileLimiter, async 
     tenantName: link.tenant_name,
     primaryColor: /^#[0-9a-fA-F]{6}$/.test(link.public_primary_color ?? "") ? link.public_primary_color : DEFAULT_SITE_BUTTON_COLOR,
     produtos,
+  });
+});
+
+arqdorPublicLinkRouter.post("/public/arqdor/:slug/market/lead", signupLimiter, async (req, res) => {
+  const link = await findLinkBySlug(String(req.params.slug));
+  if (!link || !link.enabled || !link.owner_user_id || !link.market_enabled) {
+    return res.status(404).json({ error: "O Market não está disponível nesta experiência." });
+  }
+
+  const auth = String(req.headers.authorization ?? "");
+  const rawToken = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  if (!rawToken) return res.status(401).json({ error: "Sessão do pré-projeto obrigatória." });
+
+  let guest;
+  try {
+    guest = verifyToken(rawToken);
+  } catch {
+    return res.status(401).json({ error: "Sessão inválida ou expirada." });
+  }
+  if (
+    guest.accessScope !== "preprojeto"
+    || guest.tenantId !== link.tenant_id
+    || !guest.leadId
+    || !guest.conceptId
+  ) {
+    return res.status(403).json({ error: "Este acesso não pode gerar oportunidades no Market." });
+  }
+
+  const productId = typeof req.body?.productId === "string" ? req.body.productId : "";
+  if (!productId) return res.status(422).json({ error: "Produto obrigatório." });
+
+  const [product] = await db
+    .select({
+      id: archMarketplaceItemsTable.id,
+      vendedorTenantId: archMarketplaceItemsTable.vendedorTenantId,
+      nome: archMarketplaceItemsTable.nome,
+      categoria: archMarketplaceItemsTable.categoria,
+      ativo: archMarketplaceItemsTable.ativo,
+    })
+    .from(archMarketplaceItemsTable)
+    .where(eq(archMarketplaceItemsTable.id, productId))
+    .limit(1);
+  if (!product?.ativo) return res.status(404).json({ error: "Produto indisponível." });
+
+  const rules = await loadTenantMarketProtectionRules(link.tenant_id);
+  const decision = evaluateMarketProtection({
+    vendedorTenantId: product.vendedorTenantId,
+    categoria: product.categoria,
+    nome: product.nome,
+  }, link.tenant_id, rules);
+  if (!decision.incluir) {
+    return res.status(403).json({ error: "Este fornecedor não está disponível nesta experiência do parceiro." });
+  }
+
+  const [sourceLead] = await db
+    .select()
+    .from(leadsTable)
+    .where(and(eq(leadsTable.id, guest.leadId), eq(leadsTable.tenantId, link.tenant_id)))
+    .limit(1);
+  if (!sourceLead) return res.status(404).json({ error: "Lead de origem não encontrado." });
+
+  // Produto do próprio tenant de origem: não cria lead cross-tenant nem participação de indicação.
+  if (product.vendedorTenantId === link.tenant_id) {
+    return res.status(200).json({
+      routed: false,
+      ownTenant: true,
+      leadId: sourceLead.id,
+      message: "Interesse registrado diretamente com o parceiro de origem.",
+    });
+  }
+
+  let targetLeadId: string | null = null;
+  if (sourceLead.email) {
+    const byEmail = await pool.query<{ id: string }>(
+      `SELECT id FROM leads
+        WHERE tenant_id=$1 AND lower(email)=lower($2) AND excluido_em IS NULL
+        LIMIT 1`,
+      [product.vendedorTenantId, sourceLead.email],
+    );
+    targetLeadId = byEmail.rows[0]?.id ?? null;
+  }
+  if (!targetLeadId && sourceLead.telefone) {
+    const match = await findLeadByDedup(product.vendedorTenantId, sourceLead.telefone, null, sourceLead.nome);
+    if (match.found) targetLeadId = match.lead.id;
+  }
+
+  const attributionMetadata = {
+    originTenantId: link.tenant_id,
+    originLeadId: sourceLead.id,
+    originConceptId: guest.conceptId,
+    originSource: "arqdor_partner_public_market",
+    marketProductId: product.id,
+    marketProductName: product.nome,
+    marketCategory: product.categoria,
+    commercialProtectionMode: decision.modo,
+    referredAt: new Date().toISOString(),
+  };
+
+  if (targetLeadId) {
+    const [target] = await db.select().from(leadsTable)
+      .where(and(eq(leadsTable.id, targetLeadId), eq(leadsTable.tenantId, product.vendedorTenantId)))
+      .limit(1);
+    await db.update(leadsTable)
+      .set({
+        originTenantId: target?.originTenantId ?? link.tenant_id,
+        originSource: target?.originSource ?? "arqdor_partner_public_market",
+        originCampaignId: target?.originCampaignId ?? sourceLead.originCampaignId ?? null,
+        originCapturedAt: target?.originCapturedAt ?? new Date(),
+        metadata: { ...((target?.metadata ?? {}) as Record<string, unknown>), arqdorReferral: attributionMetadata },
+        updatedAt: new Date(),
+      })
+      .where(and(eq(leadsTable.id, targetLeadId), eq(leadsTable.tenantId, product.vendedorTenantId)));
+  } else {
+    const assignedTo = await pickNextVendedor(product.vendedorTenantId, {});
+    const [created] = await db.insert(leadsTable).values({
+      tenantId: product.vendedorTenantId,
+      nome: sourceLead.nome,
+      telefone: sourceLead.telefone,
+      email: sourceLead.email,
+      instagramHandle: sourceLead.instagramHandle,
+      endereco: sourceLead.endereco,
+      source: "arqdor_market_partner_referral",
+      objetivo: `Interesse em ${product.nome}`,
+      assignedTo,
+      originTenantId: link.tenant_id,
+      originSource: "arqdor_partner_public_market",
+      originCampaignId: sourceLead.originCampaignId ?? null,
+      originCapturedAt: new Date(),
+      metadata: { arqdorReferral: attributionMetadata },
+    }).returning({ id: leadsTable.id });
+    targetLeadId = created?.id ?? null;
+  }
+
+  if (!targetLeadId) return res.status(500).json({ error: "Não foi possível encaminhar a oportunidade." });
+
+  await pool.query(
+    `INSERT INTO notifications (id, tenant_id, type, category, title, message, created_at)
+     VALUES (gen_random_uuid()::text,$1,'info','general',$2,$3,now())`,
+    [
+      product.vendedorTenantId,
+      "Novo lead pelo Arqdor Market",
+      `${sourceLead.nome} demonstrou interesse em ${product.nome}. Origem comercial preservada para participação sobre comissão.`,
+    ],
+  ).catch(() => undefined);
+
+  return res.status(201).json({
+    routed: true,
+    ownTenant: false,
+    leadId: targetLeadId,
+    supplierTenantId: product.vendedorTenantId,
+    originTenantId: link.tenant_id,
+    message: "Solicitação enviada ao fornecedor.",
   });
 });
 
