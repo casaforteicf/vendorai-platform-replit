@@ -450,13 +450,6 @@ interface TenantUserFunction {
   linkedTenantCode?: string | null;
   leadAccessScope?: "assigned" | "territory" | "all_authorized";
   representativeUserIds?: string[];
-  leadAssignmentEnabled?: boolean | null;
-  leadAssignmentCities?: string[];
-  leadAssignmentRegions?: string[];
-  leadAssignmentSegments?: string[];
-  leadAssignmentLat?: number | null;
-  leadAssignmentLng?: number | null;
-  leadAssignmentRaioKm?: number | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -507,10 +500,6 @@ export default function Usuarios() {
   const [newFunctionTenantSearch, setNewFunctionTenantSearch] = useState("");
   const [newFunctionRepresentativeUserIds, setNewFunctionRepresentativeUserIds] = useState<string[]>([]);
   const [newFunctionLeadAccessScope, setNewFunctionLeadAccessScope] = useState<"assigned" | "territory" | "all_authorized">("assigned");
-  const [newFunctionLeadAssignmentEnabled, setNewFunctionLeadAssignmentEnabled] = useState(false);
-  const [newFunctionLeadAssignmentCities, setNewFunctionLeadAssignmentCities] = useState("");
-  const [newFunctionLeadAssignmentRegions, setNewFunctionLeadAssignmentRegions] = useState("");
-  const [newFunctionLeadAssignmentSegments, setNewFunctionLeadAssignmentSegments] = useState("");
   const [creatingFunction, setCreatingFunction] = useState(false);
   const [partnershipDialogOpen, setPartnershipDialogOpen] = useState(false);
   const [partnershipSearch, setPartnershipSearch] = useState("");
@@ -749,10 +738,6 @@ export default function Usuarios() {
     setNewFunctionTenantSearch("");
     setNewFunctionRepresentativeUserIds([]);
     setNewFunctionLeadAccessScope("assigned");
-    setNewFunctionLeadAssignmentEnabled(false);
-    setNewFunctionLeadAssignmentCities("");
-    setNewFunctionLeadAssignmentRegions("");
-    setNewFunctionLeadAssignmentSegments("");
     setFunctionDialogOpen(true);
   }
 
@@ -771,10 +756,6 @@ export default function Usuarios() {
     setNewFunctionTenantSearch(customFunction.linkedTenantCode ?? "");
     setNewFunctionRepresentativeUserIds(customFunction.representativeUserIds ?? []);
     setNewFunctionLeadAccessScope(customFunction.leadAccessScope ?? "assigned");
-    setNewFunctionLeadAssignmentEnabled(customFunction.leadAssignmentEnabled ?? customFunction.systemKey === "representante_comercial");
-    setNewFunctionLeadAssignmentCities((customFunction.leadAssignmentCities ?? []).join(", "));
-    setNewFunctionLeadAssignmentRegions((customFunction.leadAssignmentRegions ?? []).join(", "));
-    setNewFunctionLeadAssignmentSegments((customFunction.leadAssignmentSegments ?? []).join(", "));
     setFunctionDialogOpen(true);
   }
 
@@ -790,10 +771,6 @@ export default function Usuarios() {
     setNewFunctionTenantSearch("");
     setNewFunctionRepresentativeUserIds([]);
     setNewFunctionLeadAccessScope("assigned");
-    setNewFunctionLeadAssignmentEnabled(false);
-    setNewFunctionLeadAssignmentCities("");
-    setNewFunctionLeadAssignmentRegions("");
-    setNewFunctionLeadAssignmentSegments("");
     setFunctionDialogOpen(true);
   }
 
@@ -854,10 +831,6 @@ export default function Usuarios() {
             linkedTenantCode: newFunctionKind === "external_company" ? newFunctionLinkedTenantCode.trim().toUpperCase() : null,
             leadAccessScope: newFunctionLeadAccessScope,
             representativeUserIds: newFunctionKind === "external_company" ? newFunctionRepresentativeUserIds : [],
-            leadAssignmentEnabled: newFunctionKind === "external_company" ? newFunctionLeadAssignmentEnabled : null,
-            leadAssignmentCities: newFunctionKind === "external_company" ? parseTerritories(newFunctionLeadAssignmentCities) : [],
-            leadAssignmentRegions: newFunctionKind === "external_company" ? parseTerritories(newFunctionLeadAssignmentRegions) : [],
-            leadAssignmentSegments: newFunctionKind === "external_company" ? parseTerritories(newFunctionLeadAssignmentSegments) : [],
           }),
           responseType: "json",
         },
@@ -2019,51 +1992,6 @@ export default function Usuarios() {
                         <SelectItem value="all_authorized">{copy.representativeLeadAll}</SelectItem>
                       </SelectContent>
                     </Select>
-                  </div>
-                  <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <Label>{copy.leadAssignmentTitle}</Label>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          A empresa externa usa as mesmas regras de distribuição dos usuários internos.
-                        </p>
-                      </div>
-                      <Switch
-                        checked={newFunctionLeadAssignmentEnabled}
-                        onCheckedChange={setNewFunctionLeadAssignmentEnabled}
-                      />
-                    </div>
-                    {newFunctionLeadAssignmentEnabled && (
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="space-y-1.5">
-                          <Label>{copy.cities}</Label>
-                          <Input
-                            value={newFunctionLeadAssignmentCities}
-                            onChange={(event) => setNewFunctionLeadAssignmentCities(event.target.value)}
-                            placeholder={copy.citiesPlaceholder}
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label>{copy.regions}</Label>
-                          <Input
-                            value={newFunctionLeadAssignmentRegions}
-                            onChange={(event) => setNewFunctionLeadAssignmentRegions(event.target.value)}
-                            placeholder={copy.regionsPlaceholder}
-                          />
-                        </div>
-                        <div className="space-y-1.5 sm:col-span-2">
-                          <Label>{copy.segments}</Label>
-                          <Input
-                            value={newFunctionLeadAssignmentSegments}
-                            onChange={(event) => setNewFunctionLeadAssignmentSegments(event.target.value)}
-                            placeholder={copy.segmentsPlaceholder}
-                          />
-                          <p className="text-[11px] text-muted-foreground">
-                            {copy.territoryHelp} {copy.segmentsHelp}
-                          </p>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
