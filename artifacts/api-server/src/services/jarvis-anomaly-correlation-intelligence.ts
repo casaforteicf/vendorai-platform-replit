@@ -8,11 +8,11 @@ import {
   usersTable,
 } from "@workspace/db";
 import {
-import { canonicalDealValueSql } from "../lib/deal-value.js";
   loadJarvisTemporalIntelligence,
   type JarvisTemporalAnomaly,
   type JarvisTemporalIntelligence,
 } from "./jarvis-temporal-intelligence.js";
+import { canonicalDealValueSql } from "../lib/deal-value.js";
 
 const WON_STAGES = new Set(["ganho", "entregue"]);
 const LOST_STAGES = new Set(["perdido", "cancelado"]);
