@@ -660,6 +660,15 @@ router.post("/deals/:dealId/handoff-company", async (req, res) => {
         sharedByUserId: req.user?.sub ?? null,
       }).returning();
     }
+
+    // Reutiliza o mesmo vínculo de função externa já usado pela segurança dos leads.
+    // Isso permite à empresa participante abrir o lead compartilhado sem criar uma cópia.
+    if (externalFunction?.id && deal.leadId) {
+      await db.update(leadsTable).set({
+        representativeFunctionId: externalFunction.id,
+        updatedAt: now,
+      }).where(eq(leadsTable.id, deal.leadId));
+    }
   } else {
     // Retorno para a empresa originadora: o negócio continua o mesmo e volta
     // para a posição equivalente da pipeline comercial da origem.
@@ -764,7 +773,10 @@ router.patch("/representation-work/:participationId/assign", async (req, res) =>
   return res.json(updated);
 });
 
-const stageSchema = z.object({ etapa: z.string().trim().min(1).max(80) });
+const stageSchema = z.object({
+  etapa: z.string().trim().min(1).max(120),
+  pipeline: z.enum(SHARED_PIPELINES).optional(),
+});
 
 router.patch("/representation-work/:participationId/stage", async (req, res) => {
   const participationId = String(req.params.participationId);
@@ -777,12 +789,66 @@ router.patch("/representation-work/:participationId/stage", async (req, res) => 
     return res.status(403).json({ error: "A representação não possui autonomia para movimentar a pipeline." });
   }
 
-  const [updated] = await db.update(dealsTable).set({
-    etapa: parsed.data.etapa,
-    updatedAt: new Date(),
-  }).where(eq(dealsTable.id, access.participation.dealId)).returning();
+  const participation = access.participation;
+  const pipeline = parsed.data.pipeline ?? (participation.pipeline as typeof SHARED_PIPELINES[number] | null) ?? "comercial";
+  const [targetStage] = await db.select({
+    key: pipelineStagesTable.key,
+    label: pipelineStagesTable.label,
+    slaMinutos: pipelineStagesTable.slaMinutos,
+    responsaveisFuncoes: pipelineStagesTable.responsaveisFuncoes,
+  }).from(pipelineStagesTable).where(and(
+    eq(pipelineStagesTable.tenantId, participation.partnerTenantId),
+    eq(pipelineStagesTable.pipeline, pipeline),
+    eq(pipelineStagesTable.key, parsed.data.etapa),
+  )).limit(1);
 
-  return res.json({ deal: updated, participation: access.participation });
+  if (!targetStage) {
+    return res.status(422).json({ error: "A etapa escolhida não existe na pipeline desta empresa." });
+  }
+
+  const operationalUserId = await resolveOperationalUser({
+    tenantId: participation.partnerTenantId,
+    requestedUserId: participation.operationalUserId,
+    responsibleFunctions: targetStage.responsaveisFuncoes,
+  });
+  if (!operationalUserId) {
+    return res.status(422).json({
+      error: "STAGE_RESPONSIBLE_REQUIRED",
+      message: "Não há usuário ativo compatível com a função responsável pela etapa.",
+    });
+  }
+
+  const now = new Date();
+  const stageDueAt = targetStage.slaMinutos
+    ? new Date(now.getTime() + targetStage.slaMinutos * 60 * 1000)
+    : null;
+
+  // A empresa parceira movimenta somente a própria posição do negócio.
+  // O estágio comercial da empresa originadora permanece intacto.
+  const [updatedParticipation] = await db.update(dealTenantParticipationsTable).set({
+    pipeline,
+    stage: targetStage.key,
+    operationalUserId,
+    stageEnteredAt: now,
+    stageDueAt,
+    updatedAt: now,
+  }).where(eq(dealTenantParticipationsTable.id, participation.id)).returning();
+
+  const [deal] = await db.select().from(dealsTable)
+    .where(eq(dealsTable.id, participation.dealId)).limit(1);
+
+  return res.json({
+    deal,
+    participation: updatedParticipation,
+    destination: {
+      pipeline,
+      stage: targetStage.key,
+      stageLabel: targetStage.label,
+      operationalUserId,
+      stageDueAt,
+      slaMinutes: targetStage.slaMinutos ?? null,
+    },
+  });
 });
 
 const adjustCommissionSchema = z.object({
