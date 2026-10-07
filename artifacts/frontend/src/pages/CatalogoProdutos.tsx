@@ -114,6 +114,16 @@ type CatalogProductSummary = {
   textureUrl?: string | null;
   model3dUrl?: string | null;
   projectLibraryEnabled?: boolean;
+  tipoCalculo?: string | null;
+  colecao?: string | null;
+  cor?: string | null;
+  fechamentoPacote?: string | number | null;
+  quantidadePacote?: number | null;
+  precoPacote?: string | number | null;
+  embalagemMestreQuantidade?: number | null;
+  quantidadeMinimaVenda?: number | null;
+  multiploVenda?: number | null;
+  permiteFracionarEmbalagemMestre?: boolean | null;
   projectTechnicalConfig?: {
     modelSurfaces?: Array<{ key: string; label: string }>;
     modelSurfacesDetectedAt?: string;
@@ -279,6 +289,172 @@ function NumberField({
         )}
       </div>
     </Field>
+  );
+}
+
+function EngineeringCommercialPanel({
+  product,
+  onSaved,
+}: {
+  product: CatalogProductSummary;
+  onSaved: () => Promise<void> | void;
+}) {
+  const { toast } = useToast();
+  const [fechamentoPacote, setFechamentoPacote] = useState<number | undefined>(
+    product.fechamentoPacote == null ? undefined : Number(product.fechamentoPacote),
+  );
+  const [quantidadePacote, setQuantidadePacote] = useState<number | undefined>(
+    product.quantidadePacote ?? undefined,
+  );
+  const [precoPacote, setPrecoPacote] = useState<number | undefined>(
+    product.precoPacote == null ? undefined : Number(product.precoPacote),
+  );
+  const [embalagemMestre, setEmbalagemMestre] = useState<number | undefined>(
+    product.embalagemMestreQuantidade ?? undefined,
+  );
+  const [quantidadeMinima, setQuantidadeMinima] = useState<number | undefined>(
+    product.quantidadeMinimaVenda ?? undefined,
+  );
+  const [multiploVenda, setMultiploVenda] = useState<number | undefined>(
+    product.multiploVenda ?? undefined,
+  );
+  const [fracionaMestre, setFracionaMestre] = useState(
+    product.permiteFracionarEmbalagemMestre === true,
+  );
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setFechamentoPacote(product.fechamentoPacote == null ? undefined : Number(product.fechamentoPacote));
+    setQuantidadePacote(product.quantidadePacote ?? undefined);
+    setPrecoPacote(product.precoPacote == null ? undefined : Number(product.precoPacote));
+    setEmbalagemMestre(product.embalagemMestreQuantidade ?? undefined);
+    setQuantidadeMinima(product.quantidadeMinimaVenda ?? undefined);
+    setMultiploVenda(product.multiploVenda ?? undefined);
+    setFracionaMestre(product.permiteFracionarEmbalagemMestre === true);
+  }, [product]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await patchCatalogProduct(product.id, {
+        fechamentoPacote: fechamentoPacote == null ? null : fechamentoPacote.toFixed(3),
+        quantidadePacote: quantidadePacote == null ? null : Math.trunc(quantidadePacote),
+        precoPacote: precoPacote == null ? null : precoPacote.toFixed(2),
+        embalagemMestreQuantidade: embalagemMestre == null ? null : Math.trunc(embalagemMestre),
+        quantidadeMinimaVenda: quantidadeMinima == null ? null : Math.trunc(quantidadeMinima),
+        multiploVenda: multiploVenda == null ? null : Math.trunc(multiploVenda),
+        permiteFracionarEmbalagemMestre: fracionaMestre,
+      });
+      await onSaved();
+      toast({
+        title: "Engenharia comercial salva",
+        description: "Vendor.ai, Praça.ai e Arqdor passam a usar as mesmas regras de pacote e embalagem mestre.",
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao salvar engenharia comercial",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const pack = fechamentoPacote && fechamentoPacote > 0 ? fechamentoPacote : null;
+  const master = embalagemMestre && embalagemMestre > 0 ? embalagemMestre : null;
+  const masterYield = pack && master ? pack * master : null;
+
+  return (
+    <div className="space-y-4 rounded-xl border border-emerald-200 bg-emerald-50/35 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold">Engenharia de venda e embalagem</h3>
+          <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
+            Regra única do produto mestre para orçamento, Praça.ai e Arqdor. A necessidade técnica é calculada primeiro; depois o sistema fecha pacote, mínimo, múltiplo e embalagem mestre.
+          </p>
+        </div>
+        <Button type="button" size="sm" onClick={() => void save()} disabled={saving}>
+          <Save className="mr-1.5 h-4 w-4" />
+          {saving ? "Salvando…" : "Salvar engenharia"}
+        </Button>
+      </div>
+
+      {(product.colecao || product.cor || product.tipoCalculo) && (
+        <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+          {product.colecao && <span className="rounded-full border bg-background px-2 py-1">Coleção: {product.colecao}</span>}
+          {product.cor && <span className="rounded-full border bg-background px-2 py-1">Variação: {product.cor}</span>}
+          {product.tipoCalculo && <span className="rounded-full border bg-background px-2 py-1">Cálculo: {product.tipoCalculo}</span>}
+        </div>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <NumberField
+          label="Fechamento do pacote"
+          value={fechamentoPacote}
+          onChange={setFechamentoPacote}
+          step="0.001"
+          hint="Quanto 1 pacote primário cobre na unidade comercial do produto (m², m, peça etc.)."
+        />
+        <NumberField
+          label="Itens por pacote"
+          value={quantidadePacote}
+          onChange={setQuantidadePacote}
+          step="1"
+          hint="Quantidade física de peças/unidades dentro do pacote primário."
+        />
+        <NumberField
+          label="Preço do pacote"
+          value={precoPacote}
+          onChange={setPrecoPacote}
+          suffix="R$"
+          hint="Opcional. Se vazio, o motor deriva pelo rendimento × preço base."
+        />
+        <NumberField
+          label="Pacotes por embalagem mestre"
+          value={embalagemMestre}
+          onChange={setEmbalagemMestre}
+          step="1"
+          hint="Ex.: caixa mestre com 6 pacotes = 6."
+        />
+        <NumberField
+          label="Quantidade mínima de venda"
+          value={quantidadeMinima}
+          onChange={setQuantidadeMinima}
+          step="1"
+          hint="Em pacotes primários. Ex.: mínimo comercial de 4 pacotes."
+        />
+        <NumberField
+          label="Múltiplo obrigatório"
+          value={multiploVenda}
+          onChange={setMultiploVenda}
+          step="1"
+          hint="Em pacotes primários. Ex.: vende somente de 2 em 2."
+        />
+      </div>
+
+      <label className="flex items-start gap-3 rounded-lg border bg-background p-3">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={fracionaMestre}
+          onChange={(event) => setFracionaMestre(event.target.checked)}
+        />
+        <span>
+          <span className="block text-xs font-medium">Permitir fracionar embalagem mestre</span>
+          <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
+            Desligado por padrão. Quando desligado, a quantidade faturável sobe automaticamente para um múltiplo válido da embalagem mestre.
+          </span>
+        </span>
+      </label>
+
+      {masterYield != null && (
+        <div className="rounded-lg border bg-background p-3 text-xs">
+          <span className="font-medium">Resumo automático:</span>{" "}
+          1 embalagem mestre = {master} pacote{master === 1 ? "" : "s"} primário{master === 1 ? "" : "s"} = {masterYield.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} na unidade de rendimento do produto.
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1429,6 +1605,11 @@ export default function CatalogoProdutos() {
                 key={`commercial-${activeProduct.id}`}
                 product={activeProduct}
                 portalTarget={portalTarget}
+                onSaved={handleCommercialSaved}
+              />
+              <EngineeringCommercialPanel
+                key={`engineering-${activeProduct.id}`}
+                product={activeProduct}
                 onSaved={handleCommercialSaved}
               />
               <ArqdorProductConfigurationPanel
