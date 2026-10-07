@@ -546,7 +546,7 @@ export default function Configuracoes() {
         title="Empresa"
         description="Dados da empresa, marca, endereço, canais e preferências."
       >
-        <ConfiguracoesNormalized />
+        <ConfiguracoesNormalized embedded />
       </SettingsSectionShell>
     );
   }
@@ -557,7 +557,7 @@ export default function Configuracoes() {
         title="Equipe e permissões"
         description="Usuários, funções, acessos, responsáveis e permissões."
       >
-        <ConfiguracoesNormalized />
+        <ConfiguracoesNormalized embedded />
       </SettingsSectionShell>
     );
   }
