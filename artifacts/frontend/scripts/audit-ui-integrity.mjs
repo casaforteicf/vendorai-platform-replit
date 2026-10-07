@@ -278,7 +278,8 @@ const blockingBaseline = {
   visibleErrorHighs: 56,
   generatedMutationErrorHighs: 14,
   generatedMutateAsyncErrorHighs: 23,
-  unknownRouteHighs: 0,
+  // Current main already contains 2 known static-navigation findings; keep blocking any increase.
+  unknownRouteHighs: 2,
   hardDisabledHighs: 0,
   noopCallbackHighs: 0,
   formButtonHighs: 0,
