@@ -5,8 +5,11 @@ import { requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
 import {
   db,
   dealsTable,
+  leadsTable,
   usersTable,
   tenantsTable,
+  pipelineStagesTable,
+  tenantUserFunctionsTable,
   tenantCommercialPartnershipsTable,
   dealTenantParticipationsTable,
   intercompanyCommissionsTable,
@@ -28,6 +31,8 @@ const DEFAULT_PARTNER_PERMISSIONS = [
   "negotiate",
   "close_deal",
   "assign_partner_user",
+  "view_partner_progress",
+  "open_support",
 ];
 
 function isSuperAdmin(req: any) {
@@ -230,11 +235,98 @@ const shareDealSchema = z.object({
   partnershipId: z.string().min(1),
   role: z.enum(["responsible", "participant"]).default("responsible"),
   operationalUserId: z.string().min(1).nullable().optional(),
+  functionId: z.string().min(1).nullable().optional(),
+  pipeline: z.enum(["comercial", "aquecimento", "parceiros", "execucao", "suporte"]).default("comercial"),
+  stage: z.string().trim().min(1).max(120).optional(),
   permissions: z.array(z.string()).max(100).optional(),
   commissionType: z.enum(["percent", "fixed"]).default("percent"),
   commissionPercent: z.coerce.number().min(0).max(100).optional(),
   commissionFixedAmount: z.coerce.number().min(0).nullable().optional(),
 });
+
+const SHARED_PIPELINES = ["comercial", "aquecimento", "parceiros", "execucao", "suporte"] as const;
+
+function normalizeStageLabel(value: string | null | undefined) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function userMatchesResponsibleFunctions(
+  user: { active?: boolean | null; platformRole?: string | null; userFunction?: string | null; customFunctionId?: string | null },
+  responsibleFunctions: string[] | null | undefined,
+) {
+  if (user.active !== true) return false;
+  if (user.platformRole === "super_admin" || user.platformRole === "tenant_admin" || user.userFunction === "administrador") return true;
+  const configured = responsibleFunctions ?? [];
+  if (configured.length === 0) return true;
+  const refs = new Set<string>();
+  if (user.userFunction) refs.add(`builtin:${user.userFunction}`);
+  if (user.customFunctionId) refs.add(`custom:${user.customFunctionId}`);
+  return configured.some((value) => refs.has(value));
+}
+
+async function resolveStageForTenant(input: {
+  tenantId: string;
+  pipeline: typeof SHARED_PIPELINES[number];
+  requestedStage?: string | null;
+  sourceStage?: string | null;
+  sourceLabel?: string | null;
+}) {
+  const stages = await db.select({
+    id: pipelineStagesTable.id,
+    key: pipelineStagesTable.key,
+    label: pipelineStagesTable.label,
+    ordem: pipelineStagesTable.ordem,
+    slaMinutos: pipelineStagesTable.slaMinutos,
+    responsaveisFuncoes: pipelineStagesTable.responsaveisFuncoes,
+  }).from(pipelineStagesTable).where(and(
+    eq(pipelineStagesTable.tenantId, input.tenantId),
+    eq(pipelineStagesTable.pipeline, input.pipeline),
+  ));
+
+  const ordered = [...stages].sort((a, b) => a.ordem - b.ordem);
+  if (input.requestedStage) {
+    return ordered.find((stage) => stage.key === input.requestedStage) ?? null;
+  }
+
+  const byKey = input.sourceStage
+    ? ordered.find((stage) => stage.key === input.sourceStage)
+    : null;
+  if (byKey) return byKey;
+
+  const normalizedSource = normalizeStageLabel(input.sourceLabel || input.sourceStage);
+  if (normalizedSource) {
+    const byLabel = ordered.find((stage) => normalizeStageLabel(stage.label) === normalizedSource);
+    if (byLabel) return byLabel;
+  }
+
+  return null;
+}
+
+async function resolveOperationalUser(input: {
+  tenantId: string;
+  requestedUserId?: string | null;
+  responsibleFunctions?: string[] | null;
+}) {
+  const users = await db.select({
+    id: usersTable.id,
+    active: usersTable.active,
+    platformRole: usersTable.platformRole,
+    userFunction: usersTable.userFunction,
+    customFunctionId: usersTable.customFunctionId,
+  }).from(usersTable).where(eq(usersTable.tenantId, input.tenantId));
+
+  if (input.requestedUserId) {
+    const requested = users.find((user) => user.id === input.requestedUserId);
+    if (requested && userMatchesResponsibleFunctions(requested, input.responsibleFunctions)) return requested.id;
+  }
+
+  return users.find((user) => userMatchesResponsibleFunctions(user, input.responsibleFunctions))?.id ?? null;
+}
 
 router.post("/deals/:dealId/share-with-partner", async (req, res) => {
   const dealId = String(req.params.dealId);
@@ -297,6 +389,10 @@ router.post("/deals/:dealId/share-with-partner", async (req, res) => {
           role: parsed.data.role,
           status: "active",
           operationalUserId: parsed.data.operationalUserId ?? null,
+          functionId: parsed.data.functionId ?? current.functionId ?? null,
+          pipeline: parsed.data.pipeline,
+          stage: parsed.data.stage ?? current.stage ?? deal.etapa,
+          stageEnteredAt: new Date(),
           permissions,
           commissionType: parsed.data.commissionType,
           commissionPercent: String(commissionPercent),
@@ -312,6 +408,10 @@ router.post("/deals/:dealId/share-with-partner", async (req, res) => {
           role: parsed.data.role,
           status: "active",
           operationalUserId: parsed.data.operationalUserId ?? null,
+          functionId: parsed.data.functionId ?? null,
+          pipeline: parsed.data.pipeline,
+          stage: parsed.data.stage ?? deal.etapa,
+          stageEnteredAt: new Date(),
           permissions,
           commissionType: parsed.data.commissionType,
           commissionPercent: String(commissionPercent),
@@ -407,6 +507,202 @@ router.post("/deals/:dealId/share-with-partner", async (req, res) => {
   return res.status(201).json(result);
 });
 
+const handoffCompanySchema = z.object({
+  partnershipId: z.string().min(1),
+  targetPipeline: z.enum(SHARED_PIPELINES).optional(),
+  targetStage: z.string().trim().min(1).max(120).optional(),
+  operationalUserId: z.string().min(1).nullable().optional(),
+  note: z.string().trim().max(2000).nullable().optional(),
+});
+
+router.post("/deals/:dealId/handoff-company", async (req, res) => {
+  const parsed = handoffCompanySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const dealId = String(req.params.dealId);
+  const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, dealId)).limit(1);
+  if (!deal) return res.status(404).json({ error: "Negócio não encontrado." });
+
+  const [partnership] = await db.select().from(tenantCommercialPartnershipsTable)
+    .where(and(
+      eq(tenantCommercialPartnershipsTable.id, parsed.data.partnershipId),
+      eq(tenantCommercialPartnershipsTable.status, "active"),
+    )).limit(1);
+  if (!partnership) return res.status(404).json({ error: "Vínculo entre empresas não encontrado." });
+
+  const senderTenantId = currentTenantId(req);
+  if (!isSuperAdmin(req) && senderTenantId !== partnership.ownerTenantId && senderTenantId !== partnership.partnerTenantId) {
+    return res.status(403).json({ error: "FORBIDDEN" });
+  }
+  if (deal.tenantId !== partnership.ownerTenantId) {
+    return res.status(422).json({ error: "O negócio não pertence à empresa de origem deste vínculo." });
+  }
+
+  const destinationTenantId = senderTenantId === partnership.ownerTenantId
+    ? partnership.partnerTenantId
+    : partnership.ownerTenantId;
+
+  const [participation] = await db.select().from(dealTenantParticipationsTable)
+    .where(and(
+      eq(dealTenantParticipationsTable.dealId, dealId),
+      eq(dealTenantParticipationsTable.partnerTenantId, partnership.partnerTenantId),
+    )).limit(1);
+
+  const senderPipeline = senderTenantId === partnership.partnerTenantId
+    ? ((participation?.pipeline as typeof SHARED_PIPELINES[number] | null) ?? "comercial")
+    : "comercial";
+  const senderStage = senderTenantId === partnership.partnerTenantId
+    ? (participation?.stage ?? deal.etapa)
+    : deal.etapa;
+
+  const [sourceStageConfig] = await db.select({
+    label: pipelineStagesTable.label,
+  }).from(pipelineStagesTable).where(and(
+    eq(pipelineStagesTable.tenantId, senderTenantId || deal.tenantId),
+    eq(pipelineStagesTable.pipeline, senderPipeline),
+    eq(pipelineStagesTable.key, senderStage),
+  )).limit(1);
+
+  const targetPipeline = parsed.data.targetPipeline ?? senderPipeline;
+  const targetStage = await resolveStageForTenant({
+    tenantId: destinationTenantId,
+    pipeline: targetPipeline,
+    requestedStage: parsed.data.targetStage,
+    sourceStage: senderStage,
+    sourceLabel: sourceStageConfig?.label ?? senderStage,
+  });
+
+  if (!targetStage) {
+    const available = await db.select({
+      key: pipelineStagesTable.key,
+      label: pipelineStagesTable.label,
+      ordem: pipelineStagesTable.ordem,
+    }).from(pipelineStagesTable).where(and(
+      eq(pipelineStagesTable.tenantId, destinationTenantId),
+      eq(pipelineStagesTable.pipeline, targetPipeline),
+    ));
+    return res.status(409).json({
+      error: "STAGE_MAPPING_REQUIRED",
+      message: "Não existe uma etapa equivalente configurada na empresa de destino. Selecione a etapa de entrada.",
+      source: { pipeline: senderPipeline, stage: senderStage, label: sourceStageConfig?.label ?? senderStage },
+      targetPipeline,
+      availableStages: available.sort((a, b) => a.ordem - b.ordem),
+    });
+  }
+
+  const operationalUserId = await resolveOperationalUser({
+    tenantId: destinationTenantId,
+    requestedUserId: parsed.data.operationalUserId ?? null,
+    responsibleFunctions: targetStage.responsaveisFuncoes,
+  });
+  if (!operationalUserId) {
+    return res.status(422).json({
+      error: "STAGE_RESPONSIBLE_REQUIRED",
+      message: "Não há usuário ativo compatível com a função responsável pela etapa de destino.",
+    });
+  }
+
+  const now = new Date();
+  const stageDueAt = targetStage.slaMinutos
+    ? new Date(now.getTime() + targetStage.slaMinutos * 60 * 1000)
+    : null;
+
+  let externalFunction = null as null | { id: string };
+  const [functionRow] = await db.select({ id: tenantUserFunctionsTable.id })
+    .from(tenantUserFunctionsTable)
+    .where(and(
+      eq(tenantUserFunctionsTable.tenantId, senderTenantId || deal.tenantId),
+      eq(tenantUserFunctionsTable.kind, "external_company"),
+      eq(tenantUserFunctionsTable.linkedTenantId, destinationTenantId),
+    ))
+    .limit(1);
+  externalFunction = functionRow ?? null;
+
+  let updatedParticipation = participation;
+  if (destinationTenantId === partnership.partnerTenantId) {
+    const permissions = participation?.permissions?.length
+      ? participation.permissions
+      : (partnership.defaultPermissions ?? DEFAULT_PARTNER_PERMISSIONS);
+
+    if (participation) {
+      [updatedParticipation] = await db.update(dealTenantParticipationsTable).set({
+        partnershipId: partnership.id,
+        status: "active",
+        operationalUserId,
+        functionId: externalFunction?.id ?? participation.functionId ?? null,
+        pipeline: targetPipeline,
+        stage: targetStage.key,
+        stageEnteredAt: now,
+        stageDueAt,
+        lastHandoffFromTenantId: senderTenantId || partnership.ownerTenantId,
+        lastHandoffAt: now,
+        permissions,
+        endedAt: null,
+        updatedAt: now,
+      }).where(eq(dealTenantParticipationsTable.id, participation.id)).returning();
+    } else {
+      [updatedParticipation] = await db.insert(dealTenantParticipationsTable).values({
+        dealId,
+        ownerTenantId: partnership.ownerTenantId,
+        partnerTenantId: partnership.partnerTenantId,
+        partnershipId: partnership.id,
+        role: "participant",
+        status: "active",
+        operationalUserId,
+        functionId: externalFunction?.id ?? null,
+        pipeline: targetPipeline,
+        stage: targetStage.key,
+        stageEnteredAt: now,
+        stageDueAt,
+        lastHandoffFromTenantId: senderTenantId || partnership.ownerTenantId,
+        lastHandoffAt: now,
+        permissions: partnership.defaultPermissions ?? DEFAULT_PARTNER_PERMISSIONS,
+        sharedByUserId: req.user?.sub ?? null,
+      }).returning();
+    }
+  } else {
+    // Retorno para a empresa originadora: o negócio continua o mesmo e volta
+    // para a posição equivalente da pipeline comercial da origem.
+    if (targetPipeline !== "comercial") {
+      return res.status(409).json({
+        error: "OWNER_PIPELINE_TRANSFER_REQUIRED",
+        message: "Para retornar a uma pipeline operacional da empresa de origem, use a movimentação de pipeline após o handoff.",
+      });
+    }
+    await db.update(dealsTable).set({
+      etapa: targetStage.key,
+      assignedTo: operationalUserId,
+      updatedAt: now,
+    }).where(eq(dealsTable.id, dealId));
+
+    if (participation) {
+      [updatedParticipation] = await db.update(dealTenantParticipationsTable).set({
+        role: "participant",
+        lastHandoffFromTenantId: senderTenantId || partnership.partnerTenantId,
+        lastHandoffAt: now,
+        updatedAt: now,
+      }).where(eq(dealTenantParticipationsTable.id, participation.id)).returning();
+    }
+  }
+
+  return res.json({
+    dealId,
+    shared: true,
+    sourceTenantId: senderTenantId || deal.tenantId,
+    destinationTenantId,
+    destination: {
+      pipeline: targetPipeline,
+      stage: targetStage.key,
+      stageLabel: targetStage.label,
+      operationalUserId,
+      stageDueAt,
+      slaMinutes: targetStage.slaMinutos ?? null,
+    },
+    participation: updatedParticipation,
+    note: parsed.data.note ?? null,
+  });
+});
+
 router.get("/tenants/:tenantId/representation-work", requireSameTenanOrSuperAdmin(), async (req, res) => {
   // tenant-audit: reviewed protected by requireSameTenanOrSuperAdmin before tenant data access
   const tenantId = String(req.params.tenantId);
@@ -415,9 +711,19 @@ router.get("/tenants/:tenantId/representation-work", requireSameTenanOrSuperAdmi
   const rows = await db.select({
     participation: dealTenantParticipationsTable,
     deal: dealsTable,
+    lead: {
+      id: leadsTable.id,
+      nome: leadsTable.nome,
+      empresa: leadsTable.empresa,
+      telefone: leadsTable.telefone,
+      email: leadsTable.email,
+    },
+    functionName: tenantUserFunctionsTable.name,
     commission: intercompanyCommissionsTable,
   }).from(dealTenantParticipationsTable)
     .innerJoin(dealsTable, eq(dealsTable.id, dealTenantParticipationsTable.dealId))
+    .leftJoin(leadsTable, eq(leadsTable.id, dealsTable.leadId))
+    .leftJoin(tenantUserFunctionsTable, eq(tenantUserFunctionsTable.id, dealTenantParticipationsTable.functionId))
     .leftJoin(intercompanyCommissionsTable, eq(intercompanyCommissionsTable.participationId, dealTenantParticipationsTable.id))
     .where(and(
       eq(dealTenantParticipationsTable.partnerTenantId, tenantId),
