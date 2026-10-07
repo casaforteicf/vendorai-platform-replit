@@ -20,6 +20,7 @@ import { sendProspectOutreach } from "../services/prospect-outreach.js";
 import { convertProspectToLead } from "../services/prospect-conversion.js";
 import { scheduleProspectMeeting } from "../services/prospect-meeting.js";
 import { enforceTenantSolutionPolicy, resolveColdProspectingConfig } from "../services/cold-prospecting-config.js";
+import { analyzeProspectInboundMessage } from "../services/prospect-conversation-intelligence.js";
 
 const router: IRouter = Router();
 const base = "/tenants/:tenantId/prospects";
@@ -346,6 +347,65 @@ router.get(base + "/:prospectId/interactions", async (req, res) => {
     ))
     .orderBy(desc(prospectInteractionsTable.occurredAt));
   return res.json(interactions);
+});
+
+
+const inboundInteractionSchema = z.object({
+  channel: z.enum(["whatsapp", "email", "phone", "instagram"]),
+  content: z.string().trim().min(1).max(20000),
+  subject: z.string().trim().max(300).nullable().optional(),
+  externalId: z.string().trim().max(500).nullable().optional(),
+  personId: z.string().trim().min(1).nullable().optional(),
+  occurredAt: z.coerce.date().optional(),
+});
+
+router.post(base + "/:prospectId/inbound", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const prospectId = String(req.params["prospectId"]);
+  const parsed = inboundInteractionSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Dados inválidos", details: parsed.error.issues });
+
+  const [prospect] = await db.select({ id: prospectsTable.id }).from(prospectsTable)
+    .where(and(eq(prospectsTable.id, prospectId), eq(prospectsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!prospect) return res.status(404).json({ error: "Prospect não encontrado" });
+
+  const occurredAt = parsed.data.occurredAt ?? new Date();
+  const content = parsed.data.subject
+    ? `Assunto: ${parsed.data.subject}\n\n${parsed.data.content}`
+    : parsed.data.content;
+
+  const [interaction] = await db.insert(prospectInteractionsTable).values({
+    tenantId,
+    prospectId,
+    personId: parsed.data.personId ?? null,
+    direction: "inbound",
+    channel: parsed.data.channel,
+    status: "replied",
+    content,
+    subject: parsed.data.subject ?? null,
+    externalId: parsed.data.externalId ?? null,
+    occurredAt,
+  }).returning();
+
+  try {
+    const updated = await analyzeProspectInboundMessage({
+      tenantId,
+      prospectId,
+      message: content,
+      channel: parsed.data.channel,
+      interactionId: interaction?.id ?? null,
+    });
+    return res.status(201).json({ interaction, prospect: updated });
+  } catch (error) {
+    req.log.error({ error, tenantId, prospectId }, "prospects: inbound intelligence failed");
+    return res.status(201).json({
+      interaction,
+      prospect: null,
+      intelligencePending: true,
+      warning: "Interação registrada, mas a análise automática não foi concluída.",
+    });
+  }
 });
 
 export default router;
