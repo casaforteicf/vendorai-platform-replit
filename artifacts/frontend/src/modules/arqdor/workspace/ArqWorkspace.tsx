@@ -5,7 +5,7 @@
 // Princípios aplicados:
 // • Esconder complexidade — usuário pensa em objetivos, não em módulos
 // • Espaço em branco — menos elementos, mais impacto
-// • Roxo como destaque único — nunca como fundo dominante
+// • Verde tecnológico como destaque único — premium, comercial e arquitetônico
 // • Fluxo linear — Criar → Inspirar → Renderizar → Melhorar → Especificar → Apresentar → Entregar
 // • ✨ Gerar Render sempre visível — CTA principal nunca some
 // • Linguagem humana — sem termos técnicos no UI
@@ -938,12 +938,12 @@ function WorkspaceInner() {
               display:'flex', alignItems:'center', justifyContent:'center',
               fontSize:14, color:'#fff', flexShrink:0,
               boxShadow:'0 2px 8px rgba(124,58,237,0.3)',
-            }}>🏛️</div>
+            }}><span style={{ fontSize:17, fontWeight:900, letterSpacing:'-0.08em' }}>A</span></div>
             <div>
               <p style={{ margin:0, fontSize:13, fontWeight:900, color:PHX.text, letterSpacing:'-0.02em', lineHeight:1 }}>
-                arqdor<span style={{ color:PHX.purple }}>.ai</span>
+                ARQDOR<span style={{ color:PHX.purple }}>.ai</span>
               </p>
-              <p style={{ margin:0, fontSize:8, color:PHX.dim, letterSpacing:'0.08em', fontWeight:600 }}>STUDIO</p>
+              <p style={{ margin:0, fontSize:8, color:PHX.dim, letterSpacing:'0.08em', fontWeight:600 }}>ARQUITETURA + IA</p>
             </div>
           </div>
 
