@@ -375,8 +375,21 @@ function SettingsUxCleanup() {
 }
 
 export default function Configuracoes() {
+  const readRequestedTab = () => new URLSearchParams(window.location.search).get("tab");
+  const [requestedTab, setRequestedTab] = useState<string | null>(() => readRequestedTab());
   const params = new URLSearchParams(window.location.search);
-  const requestedTab = params.get("tab");
+
+  const navigateWithinSettings = (tab: string, extra?: Record<string, string>) => {
+    const url = new URL(window.location.href);
+    url.pathname = "/configuracoes";
+    url.search = "";
+    url.searchParams.set("tab", tab);
+    Object.entries(extra ?? {}).forEach(([key, value]) => url.searchParams.set(key, value));
+
+    window.history.pushState({}, "", `${url.pathname}${url.search}`);
+    setRequestedTab(tab);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
   const legacySiteDeepLink = requestedTab === "site";
   const integrationsDeepLink = requestedTab === "integracoes";
   const businessPlanDeepLink = requestedTab === "plano-negocios";
@@ -401,6 +414,12 @@ export default function Configuracoes() {
   const [settingsSearch, setSettingsSearch] = useState("");
 
   useEffect(() => {
+    const syncRequestedTab = () => setRequestedTab(readRequestedTab());
+    window.addEventListener("popstate", syncRequestedTab);
+    return () => window.removeEventListener("popstate", syncRequestedTab);
+  }, []);
+
+  useEffect(() => {
     const openIntegration = (event: MouseEvent) => {
       const origin = event.target instanceof Element ? event.target : null;
       const tab = origin?.closest<HTMLElement>("[role='tab']");
@@ -412,7 +431,7 @@ export default function Configuracoes() {
         if (label.includes("integracoes")) {
           event.preventDefault();
           event.stopPropagation();
-          window.location.assign("/configuracoes?tab=integracoes");
+          navigateWithinSettings("integracoes");
           return;
         }
       }
@@ -423,7 +442,7 @@ export default function Configuracoes() {
 
       event.preventDefault();
       event.stopPropagation();
-      window.location.assign(`/configuracoes?tab=integracoes&integration=${encodeURIComponent(key)}`);
+      navigateWithinSettings("integracoes", { integration: key });
     };
 
     document.addEventListener("click", openIntegration, true);
@@ -513,21 +532,21 @@ export default function Configuracoes() {
       title: "Empresa",
       description: "Dados da empresa, marca, endereço, canais e preferências.",
       icon: Building2,
-      action: () => window.location.assign("/configuracoes?tab=perfil"),
+      action: () => navigateWithinSettings("perfil"),
     },
     {
       key: "equipe",
       title: "Equipe e permissões",
       description: "Usuários, funções, acessos e responsáveis.",
       icon: Users,
-      action: () => window.location.assign("/configuracoes?tab=equipe"),
+      action: () => navigateWithinSettings("equipe"),
     },
     {
       key: "integracoes",
       title: "Integrações",
       description: "WhatsApp, Instagram, e-mail, Google, Meta, outros sistemas e APIs.",
       icon: Zap,
-      action: () => window.location.assign("/configuracoes?tab=integracoes"),
+      action: () => navigateWithinSettings("integracoes"),
     },
     {
       key: "ia",
