@@ -80,3 +80,36 @@ export function isSolutionAllowed(
 export function canExecuteAutonomously(config: ColdProspectingRuntimeConfig): boolean {
   return config.mode === "autonomous";
 }
+
+
+export function enforceTenantSolutionPolicy<T extends {
+  recommendedSolution: "undefined" | "vendorai" | "arqdor" | "vendorai_arqdor";
+  primaryHook: "vendorai" | "arqdor" | "diagnostico";
+}>(decision: T, config: ColdProspectingRuntimeConfig): T {
+  const vendor = config.allowedSolutions.includes("vendorai");
+  const arqdor = config.allowedSolutions.includes("arqdor");
+
+  if (decision.recommendedSolution === "vendorai_arqdor") {
+    if (vendor && arqdor) return decision;
+    if (arqdor) return { ...decision, recommendedSolution: "arqdor", primaryHook: "arqdor" };
+    if (vendor) return { ...decision, recommendedSolution: "vendorai", primaryHook: "vendorai" };
+    return { ...decision, recommendedSolution: "undefined", primaryHook: "diagnostico" };
+  }
+  if (decision.recommendedSolution === "arqdor" && !arqdor) {
+    return vendor
+      ? { ...decision, recommendedSolution: "vendorai", primaryHook: "vendorai" }
+      : { ...decision, recommendedSolution: "undefined", primaryHook: "diagnostico" };
+  }
+  if (decision.recommendedSolution === "vendorai" && !vendor) {
+    return arqdor
+      ? { ...decision, recommendedSolution: "arqdor", primaryHook: "arqdor" }
+      : { ...decision, recommendedSolution: "undefined", primaryHook: "diagnostico" };
+  }
+  if (decision.primaryHook === "arqdor" && !arqdor) {
+    return { ...decision, primaryHook: vendor ? "vendorai" : "diagnostico" };
+  }
+  if (decision.primaryHook === "vendorai" && !vendor) {
+    return { ...decision, primaryHook: arqdor ? "arqdor" : "diagnostico" };
+  }
+  return decision;
+}
