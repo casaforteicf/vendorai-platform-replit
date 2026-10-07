@@ -4,6 +4,7 @@ import {
   text,
   timestamp,
   numeric,
+  uuid,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -27,6 +28,13 @@ export const archMarketplacePedidosTable = pgTable("arch_marketplace_pedidos", {
   valorUnitario: numeric("valor_unitario", { precision: 10, scale: 2 }),
   valorTotal:    numeric("valor_total",    { precision: 12, scale: 2 }),
   comissao:      numeric("comissao",       { precision: 10, scale: 2 }),
+  marketDemandId: uuid("market_demand_id"),
+  commissionRuleId: uuid("commission_rule_id"),
+  commissionPercentage: numeric("commission_percentage", { precision: 5, scale: 2 }),
+  pracaOrderId: text("praca_order_id"),
+  paymentStatus: varchar("payment_status", { length: 30 }).default("pending"),
+  paymentProvider: varchar("payment_provider", { length: 30 }),
+  paymentIntentId: text("payment_intent_id"),
   status:        varchar("status",         { length: 20 }).default("pendente"),
   createdAt:     timestamp("created_at").notNull().defaultNow(),
 });
