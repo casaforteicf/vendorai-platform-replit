@@ -2704,19 +2704,6 @@ export default function Deals() {
       if (!response.ok) throw new Error("Não foi possível carregar as funções de representação.");
       const rows = await response.json() as DealRepresentativeFunction[];
       return rows.filter((item) => item.kind === "external_company");
-    const validationError = validateQuoteImportFile(file);
-    if (validationError) {
-      setCreateQuoteStatus("error");
-      toast({ title: "Não foi possível importar", description: validationError, variant: "destructive" });
-      return;
-    }
-    const isNewFile = !createQuoteFile
-      || createQuoteFile.name !== file.name
-      || createQuoteFile.size !== file.size
-      || createQuoteFile.lastModified !== file.lastModified;
-    setCreateQuoteFile(file);
-    if (isNewFile) setCreateExtractedInfo(null);
-    setCreateQuoteStatus("processing");
     },
   });
 
@@ -2811,22 +2798,26 @@ export default function Deals() {
   const createLead = useCreateLead();
 
   async function handleCreateQuoteUpload(file: File) {
+    const validationError = validateQuoteImportFile(file);
+    if (validationError) {
+      setCreateQuoteStatus("error");
+      toast({ title: "Não foi possível importar", description: validationError, variant: "destructive" });
+      return;
+    }
+
+    const isNewFile = !createQuoteFile
+      || createQuoteFile.name !== file.name
+      || createQuoteFile.size !== file.size
+      || createQuoteFile.lastModified !== file.lastModified;
+
+    setCreateQuoteFile(file);
+    if (isNewFile) setCreateExtractedInfo(null);
+    setCreateQuoteStatus("processing");
     setCreateExtracting(true);
+
     try {
       const data = await extractQuoteWithRetry(tenantId, file);
 
-          quoteFileUrl: createExtractedInfo?.quoteFileUrl ?? undefined,
-      if (!res.ok) {
-        toast({
-          title: "Erro ao ler o pedido/orçamento",
-          description: `Falha na importação (HTTP ${res.status}).`,
-          variant: "destructive",
-        });
-        throw new Error("Falha");
-      }
-          setCreateExtractedInfo(null);
-          setCreateQuoteFile(null);
-          setCreateQuoteStatus("idle");
       if (data.valorTotal != null) createForm.setValue("valor", data.valorTotal);
       if (data.titulo) {
         const current = createForm.getValues("titulo");
@@ -2850,6 +2841,9 @@ export default function Deals() {
         data.observacoes ||
         Object.values(extractedCustomer).some(Boolean)
       ) {
+        setCreateExtractedInfo({
+          itens: data.itens,
+          fornecedor: data.fornecedor,
           observacoes: data.observacoes,
           confianca: data.confianca ?? 0,
           quoteFileUrl: data.quoteFileUrl ?? null,
@@ -2879,16 +2873,6 @@ export default function Deals() {
 
       if (matchedLead) {
         createForm.setValue("leadId", matchedLead.id, { shouldDirty: true, shouldValidate: true });
-        setCreateExtractedInfo({
-          itens: data.itens,
-          fornecedor: data.fornecedor,
-          cliente: data.cliente,
-          clienteDocumento: data.clienteDocumento,
-          clienteEndereco: data.clienteEndereco,
-          clienteTelefone: data.clienteTelefone,
-          clienteEmail: data.clienteEmail,
-          observacoes: data.observacoes,
-        });
       }
 
       if (data.quoteFileUrl) {
@@ -2896,7 +2880,11 @@ export default function Deals() {
         setCreateQuoteFileName(data.originalName ?? file.name);
       }
 
-      const normalize = (value: unknown) => String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
+      const normalize = (value: unknown) => String(value ?? "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLocaleLowerCase("pt-BR")
+        .trim();
       const digitsOnly = (value: unknown) => String(value ?? "").replace(/\D/g, "");
       const extractedDocument = digitsOnly(data.clienteDocumento);
       const extractedName = normalize(data.cliente);
@@ -2918,6 +2906,7 @@ export default function Deals() {
         if (data.clienteTelefone) createForm.setValue("leadTelefone", data.clienteTelefone);
         if (data.clienteEmail) createForm.setValue("leadEmail", data.clienteEmail);
       }
+
       const confianca = data.confianca ?? 0;
       setCreateQuoteStatus(confianca >= 0.7 ? "review" : "partial");
       toast({
@@ -2929,6 +2918,7 @@ export default function Deals() {
             : undefined,
       });
     } catch (error) {
+      setCreateQuoteStatus("error");
       toast({
         title: "Erro ao ler o orçamento",
         description: error instanceof Error ? error.message : "Não foi possível processar o arquivo.",
