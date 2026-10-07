@@ -32,6 +32,7 @@ import { triggerOnboardingHandoff } from "./agent-engine.js";
 import { createEntregasFromProposta } from "./entregas.js";
 import { reconcileScoutOnDealWon } from "../services/revenueScout.js";
 import { exportLeadToCRM } from "./crm-export.js";
+import { syncDealValueFromProposal } from "./deal-value.js";
 
 export type ProposalAcceptanceChannel = "link" | "whatsapp" | "manual";
 
@@ -806,6 +807,11 @@ export async function proposalAccepted(
     .returning();
 
   const acceptedProposal = updatedProposta ?? proposta;
+  await syncDealValueFromProposal({
+    dealId: acceptedProposal.dealId,
+    tenantId: acceptedProposal.tenantId,
+    valorTotal: acceptedProposal.valorTotal,
+  });
   let workProvisioning: WorkBaselineProvisioning | null | undefined;
   const ensureConstructionProvisioning = async () => {
     if (workProvisioning !== undefined) return workProvisioning;
