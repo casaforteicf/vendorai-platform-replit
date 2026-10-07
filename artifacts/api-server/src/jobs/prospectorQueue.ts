@@ -29,6 +29,8 @@ import {
   leadsTable,
   dealsTable,
   prospectsTable,
+  crmCompaniesMasterTable,
+  crmTenantCompaniesTable,
 } from "@workspace/db";
 import { pickNextVendedor } from "../lib/round-robin.js";
 import { recordResponsavelChange } from "../lib/leadResponsavelHistorico.js";
@@ -369,6 +371,40 @@ async function processQueueItem(params: {
     return;
   }
 
+  // Link to Company Master only when a reliable existing match is available.
+  // Never fabricate a CNPJ just to satisfy the master model.
+  let companyId: string | null = null;
+  const companyMatchers: ReturnType<typeof eq>[] = [];
+  if (phoneDigits) {
+    companyMatchers.push(
+      sql`regexp_replace(coalesce(${crmCompaniesMasterTable.telefone}, ''), '[^0-9]', '', 'g') = ${phoneDigits}` as ReturnType<typeof eq>,
+    );
+  }
+  if (websiteDomain) {
+    companyMatchers.push(
+      sql`lower(regexp_replace(regexp_replace(coalesce(${crmCompaniesMasterTable.website}, ''), '^https?://', ''), '^www\\.', '')) LIKE ${websiteDomain + '%'}` as ReturnType<typeof eq>,
+    );
+  }
+  if (companyMatchers.length) {
+    const [company] = await db.select({ id: crmCompaniesMasterTable.id })
+      .from(crmCompaniesMasterTable)
+      .where(companyMatchers.length === 1 ? companyMatchers[0]! : or(...companyMatchers)!)
+      .limit(1);
+    companyId = company?.id ?? null;
+    if (companyId) {
+      await db.insert(crmTenantCompaniesTable).values({
+        tenantId,
+        companyId,
+        relationshipType: "prospect",
+        status: "ativo",
+        metadata: { source, sourceRef },
+      }).onConflictDoUpdate({
+        target: [crmTenantCompaniesTable.tenantId, crmTenantCompaniesTable.companyId],
+        set: { status: "ativo", updatedAt: now },
+      });
+    }
+  }
+
   const baseFit = item.telefone || item.website ? 55 : 35;
   const vendorFit = 60;
   const arqdorFit = /(constru|arquitet|engenhar|esquadr|piscin|revest|m[oó]ve|imobili|material|telhado)/i.test(item.setor ?? "")
@@ -408,7 +444,7 @@ async function processQueueItem(params: {
 
   const [prospect] = await db.insert(prospectsTable).values({
     tenantId,
-    companyId: null,
+    companyId,
     source,
     sourceRef,
     displayName: item.nome,
