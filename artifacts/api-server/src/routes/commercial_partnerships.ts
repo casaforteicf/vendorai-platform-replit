@@ -530,38 +530,58 @@ router.post("/deals/:dealId/handoff-company", async (req, res) => {
     )).limit(1);
   if (!partnership) return res.status(404).json({ error: "Vínculo entre empresas não encontrado." });
 
-  const senderTenantId = currentTenantId(req);
-  if (!isSuperAdmin(req) && senderTenantId !== partnership.ownerTenantId && senderTenantId !== partnership.partnerTenantId) {
-    return res.status(403).json({ error: "FORBIDDEN" });
-  }
-  if (deal.tenantId !== partnership.ownerTenantId) {
-    return res.status(422).json({ error: "O negócio não pertence à empresa de origem deste vínculo." });
+  const companies = new Set([partnership.ownerTenantId, partnership.partnerTenantId]);
+  if (!companies.has(deal.tenantId)) {
+    return res.status(422).json({ error: "O negócio não pertence a nenhuma das empresas deste vínculo." });
   }
 
-  const destinationTenantId = senderTenantId === partnership.ownerTenantId
+  const senderTenantId = currentTenantId(req);
+  if (!isSuperAdmin(req) && !companies.has(senderTenantId)) {
+    return res.status(403).json({ error: "FORBIDDEN" });
+  }
+
+  // A empresa que cadastrou o negócio é a origem canônica deste negócio,
+  // independentemente do sentido cadastrado na parceria.
+  const originTenantId = deal.tenantId;
+  const participantTenantId = originTenantId === partnership.ownerTenantId
     ? partnership.partnerTenantId
     : partnership.ownerTenantId;
+
+  if (!isSuperAdmin(req) && senderTenantId !== originTenantId && senderTenantId !== participantTenantId) {
+    return res.status(403).json({ error: "FORBIDDEN" });
+  }
 
   const [participation] = await db.select().from(dealTenantParticipationsTable)
     .where(and(
       eq(dealTenantParticipationsTable.dealId, dealId),
-      eq(dealTenantParticipationsTable.partnerTenantId, partnership.partnerTenantId),
+      eq(dealTenantParticipationsTable.partnerTenantId, participantTenantId),
     )).limit(1);
 
-  const senderPipeline = senderTenantId === partnership.partnerTenantId
-    ? ((participation?.pipeline as typeof SHARED_PIPELINES[number] | null) ?? "comercial")
-    : "comercial";
-  const senderStage = senderTenantId === partnership.partnerTenantId
-    ? (participation?.stage ?? deal.etapa)
-    : deal.etapa;
+  // Se quem está enviando não é a origem, precisa existir participação ativa.
+  if (!isSuperAdmin(req) && senderTenantId === participantTenantId && (!participation || participation.status !== "active")) {
+    return res.status(403).json({ error: "Este negócio ainda não foi compartilhado com esta empresa." });
+  }
 
-  const [sourceStageConfig] = await db.select({
-    label: pipelineStagesTable.label,
-  }).from(pipelineStagesTable).where(and(
-    eq(pipelineStagesTable.tenantId, senderTenantId || deal.tenantId),
-    eq(pipelineStagesTable.pipeline, senderPipeline),
-    eq(pipelineStagesTable.key, senderStage),
-  )).limit(1);
+  const destinationTenantId = senderTenantId === participantTenantId
+    ? originTenantId
+    : participantTenantId;
+
+  const senderIsOrigin = senderTenantId === originTenantId || isSuperAdmin(req) && senderTenantId !== participantTenantId;
+  const senderPipeline = senderIsOrigin
+    ? "comercial"
+    : ((participation?.pipeline as typeof SHARED_PIPELINES[number] | null) ?? "comercial");
+  const senderStage = senderIsOrigin
+    ? deal.etapa
+    : (participation?.stage ?? deal.etapa);
+
+  const [sourceStageConfig] = await db.select({ label: pipelineStagesTable.label })
+    .from(pipelineStagesTable)
+    .where(and(
+      eq(pipelineStagesTable.tenantId, senderIsOrigin ? originTenantId : participantTenantId),
+      eq(pipelineStagesTable.pipeline, senderPipeline),
+      eq(pipelineStagesTable.key, senderStage),
+    ))
+    .limit(1);
 
   const targetPipeline = parsed.data.targetPipeline ?? senderPipeline;
   const targetStage = await resolveStageForTenant({
@@ -607,19 +627,21 @@ router.post("/deals/:dealId/handoff-company", async (req, res) => {
     ? new Date(now.getTime() + targetStage.slaMinutos * 60 * 1000)
     : null;
 
-  let externalFunction = null as null | { id: string };
-  const [functionRow] = await db.select({ id: tenantUserFunctionsTable.id })
+  // A função externa é sempre procurada na empresa de origem, apontando para a
+  // empresa participante. Isso preserva permissões/equipe sem transformar
+  // usuários externos em usuários internos.
+  const [externalFunction] = await db.select({ id: tenantUserFunctionsTable.id })
     .from(tenantUserFunctionsTable)
     .where(and(
-      eq(tenantUserFunctionsTable.tenantId, senderTenantId || deal.tenantId),
+      eq(tenantUserFunctionsTable.tenantId, originTenantId),
       eq(tenantUserFunctionsTable.kind, "external_company"),
-      eq(tenantUserFunctionsTable.linkedTenantId, destinationTenantId),
+      eq(tenantUserFunctionsTable.linkedTenantId, participantTenantId),
     ))
     .limit(1);
-  externalFunction = functionRow ?? null;
 
   let updatedParticipation = participation;
-  if (destinationTenantId === partnership.partnerTenantId) {
+
+  if (destinationTenantId === participantTenantId) {
     const permissions = participation?.permissions?.length
       ? participation.permissions
       : (partnership.defaultPermissions ?? DEFAULT_PARTNER_PERMISSIONS);
@@ -634,7 +656,7 @@ router.post("/deals/:dealId/handoff-company", async (req, res) => {
         stage: targetStage.key,
         stageEnteredAt: now,
         stageDueAt,
-        lastHandoffFromTenantId: senderTenantId || partnership.ownerTenantId,
+        lastHandoffFromTenantId: originTenantId,
         lastHandoffAt: now,
         permissions,
         endedAt: null,
@@ -643,8 +665,8 @@ router.post("/deals/:dealId/handoff-company", async (req, res) => {
     } else {
       [updatedParticipation] = await db.insert(dealTenantParticipationsTable).values({
         dealId,
-        ownerTenantId: partnership.ownerTenantId,
-        partnerTenantId: partnership.partnerTenantId,
+        ownerTenantId: originTenantId,
+        partnerTenantId: participantTenantId,
         partnershipId: partnership.id,
         role: "participant",
         status: "active",
@@ -654,15 +676,13 @@ router.post("/deals/:dealId/handoff-company", async (req, res) => {
         stage: targetStage.key,
         stageEnteredAt: now,
         stageDueAt,
-        lastHandoffFromTenantId: senderTenantId || partnership.ownerTenantId,
+        lastHandoffFromTenantId: originTenantId,
         lastHandoffAt: now,
-        permissions: partnership.defaultPermissions ?? DEFAULT_PARTNER_PERMISSIONS,
+        permissions,
         sharedByUserId: req.user?.sub ?? null,
       }).returning();
     }
 
-    // Reutiliza o mesmo vínculo de função externa já usado pela segurança dos leads.
-    // Isso permite à empresa participante abrir o lead compartilhado sem criar uma cópia.
     if (externalFunction?.id && deal.leadId) {
       await db.update(leadsTable).set({
         representativeFunctionId: externalFunction.id,
@@ -670,14 +690,15 @@ router.post("/deals/:dealId/handoff-company", async (req, res) => {
       }).where(eq(leadsTable.id, deal.leadId));
     }
   } else {
-    // Retorno para a empresa originadora: o negócio continua o mesmo e volta
-    // para a posição equivalente da pipeline comercial da origem.
+    // Retorno para quem cadastrou: atualiza a posição da origem sem apagar a
+    // participação da outra empresa, que continua disponível para consulta.
     if (targetPipeline !== "comercial") {
       return res.status(409).json({
         error: "OWNER_PIPELINE_TRANSFER_REQUIRED",
-        message: "Para retornar a uma pipeline operacional da empresa de origem, use a movimentação de pipeline após o handoff.",
+        message: "Para retornar a uma pipeline operacional da empresa de origem, conclua o handoff e use a movimentação de pipeline da própria empresa.",
       });
     }
+
     await db.update(dealsTable).set({
       etapa: targetStage.key,
       assignedTo: operationalUserId,
@@ -687,7 +708,7 @@ router.post("/deals/:dealId/handoff-company", async (req, res) => {
     if (participation) {
       [updatedParticipation] = await db.update(dealTenantParticipationsTable).set({
         role: "participant",
-        lastHandoffFromTenantId: senderTenantId || partnership.partnerTenantId,
+        lastHandoffFromTenantId: participantTenantId,
         lastHandoffAt: now,
         updatedAt: now,
       }).where(eq(dealTenantParticipationsTable.id, participation.id)).returning();
@@ -697,7 +718,8 @@ router.post("/deals/:dealId/handoff-company", async (req, res) => {
   return res.json({
     dealId,
     shared: true,
-    sourceTenantId: senderTenantId || deal.tenantId,
+    originTenantId,
+    sourceTenantId: senderTenantId || originTenantId,
     destinationTenantId,
     destination: {
       pipeline: targetPipeline,
