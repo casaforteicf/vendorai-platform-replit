@@ -158,3 +158,90 @@ export type ObraEletricaPonto = typeof obraEletricaPontosTable.$inferSelect;
 export type ObraEletricaCircuito = typeof obraEletricaCircuitosTable.$inferSelect;
 export type ObraEletricaQuadro = typeof obraEletricaQuadrosTable.$inferSelect;
 export type ObraEletricaRedeEspecial = typeof obraEletricaRedesEspeciaisTable.$inferSelect;
+
+
+export const ENERGIA_SISTEMA_TIPOS = [
+  "fotovoltaico_on_grid",
+  "fotovoltaico_hibrido",
+  "off_grid",
+  "banco_baterias",
+  "carregador_ve",
+  "gerador",
+  "nobreak_ups",
+  "quadro_cargas_essenciais",
+  "chave_transferencia",
+  "gestao_energia",
+] as const;
+
+export const ENERGIA_COMPONENTE_TIPOS = [
+  "infraestrutura",
+  "equipamento",
+  "protecao",
+  "armazenamento",
+  "geracao",
+  "conversao",
+  "controle",
+  "medicao",
+  "estrutura_fixacao",
+  "aterramento",
+] as const;
+
+export const obraEnergiaSistemasTable = pgTable("obra_energia_sistemas", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  obraId: text("obra_id").notNull().references(() => obrasTable.id, { onDelete: "cascade" }),
+  tipo: text("tipo").notNull(),
+  codigo: text("codigo"),
+  nome: text("nome"),
+  potenciaKw: numeric("potencia_kw", { precision: 15, scale: 4 }),
+  energiaKwh: numeric("energia_kwh", { precision: 15, scale: 4 }),
+  tensaoV: numeric("tensao_v", { precision: 10, scale: 2 }),
+  fases: integer("fases"),
+  autonomiaHoras: numeric("autonomia_horas", { precision: 10, scale: 2 }),
+  potenciaPicoKw: numeric("potencia_pico_kw", { precision: 15, scale: 4 }),
+  somenteInfraestrutura: boolean("somente_infraestrutura").notNull().default(false),
+  parametros: jsonb("parametros").$type<Record<string, unknown> | null>(),
+  origem: text("origem"),
+  origemRef: text("origem_ref"),
+  ativo: boolean("ativo").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (t) => ({
+  obraTipoIdx: index("obra_energia_sistemas_obra_tipo_idx").on(t.obraId, t.tipo),
+}));
+
+export const obraEnergiaComponentesTable = pgTable("obra_energia_componentes", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  sistemaId: text("sistema_id").notNull().references(() => obraEnergiaSistemasTable.id, { onDelete: "cascade" }),
+  tipo: text("tipo").notNull(),
+  slotKey: text("slot_key").notNull(),
+  nome: text("nome").notNull(),
+  quantidade: numeric("quantidade", { precision: 15, scale: 4 }).notNull().default("1"),
+  unidade: text("unidade").notNull().default("un"),
+  composicaoId: text("composicao_id").references(() => composicoesTable.id, { onDelete: "set null" }),
+  circuitoId: text("circuito_id").references(() => obraEletricaCircuitosTable.id, { onDelete: "set null" }),
+  incluiInfraestrutura: boolean("inclui_infraestrutura").notNull().default(false),
+  parametros: jsonb("parametros").$type<Record<string, unknown> | null>(),
+  observacoes: text("observacoes"),
+  ativo: boolean("ativo").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (t) => ({
+  sistemaSlotIdx: index("obra_energia_componentes_sistema_slot_idx").on(t.sistemaId, t.slotKey),
+}));
+
+export const insertObraEnergiaSistemaSchema = createInsertSchema(obraEnergiaSistemasTable, {
+  tipo: z.enum(ENERGIA_SISTEMA_TIPOS),
+  potenciaKw: decimalOptional,
+  energiaKwh: decimalOptional,
+  tensaoV: decimalOptional,
+  autonomiaHoras: decimalOptional,
+  potenciaPicoKw: decimalOptional,
+}).omit({ id: true, createdAt: true, updatedAt: true });
+
+export const insertObraEnergiaComponenteSchema = createInsertSchema(obraEnergiaComponentesTable, {
+  tipo: z.enum(ENERGIA_COMPONENTE_TIPOS),
+  quantidade: decimalOptional,
+}).omit({ id: true, createdAt: true, updatedAt: true });
+
+export type ObraEnergiaSistema = typeof obraEnergiaSistemasTable.$inferSelect;
+export type ObraEnergiaComponente = typeof obraEnergiaComponentesTable.$inferSelect;
