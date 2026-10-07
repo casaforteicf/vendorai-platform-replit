@@ -32,6 +32,8 @@ export type EngineeringConfiguration = {
   productKind: string;
   openingType: string;
   leafCount?: number | null;
+  allowedLeafCounts?: number[];
+  compositionPattern?: string | null;
   minWidthMm?: number | null;
   maxWidthMm?: number | null;
   minHeightMm?: number | null;
@@ -214,15 +216,28 @@ function validateConfiguration(
     }
   }
 
-  if (configuration.leafCount != null && input.leafCount != null && configuration.leafCount !== input.leafCount) {
-    out.push({
-      code: "configuration.leafCount",
-      severity: "error",
-      field: "leafCount",
-      expected: configuration.leafCount,
-      actual: input.leafCount,
-      message: "Quantidade de folhas não corresponde à configuração selecionada.",
-    });
+  if (input.leafCount != null) {
+    if (configuration.allowedLeafCounts?.length) {
+      if (!configuration.allowedLeafCounts.includes(input.leafCount)) {
+        out.push({
+          code: "configuration.leafCount",
+          severity: "error",
+          field: "leafCount",
+          expected: configuration.allowedLeafCounts,
+          actual: input.leafCount,
+          message: "Quantidade de folhas não homologada para esta família/configuração.",
+        });
+      }
+    } else if (configuration.leafCount != null && configuration.leafCount !== input.leafCount) {
+      out.push({
+        code: "configuration.leafCount",
+        severity: "error",
+        field: "leafCount",
+        expected: configuration.leafCount,
+        actual: input.leafCount,
+        message: "Quantidade de folhas não corresponde à configuração selecionada.",
+      });
+    }
   }
 
   if (
