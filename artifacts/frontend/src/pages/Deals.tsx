@@ -480,7 +480,9 @@ function DealCard({
       {/* Valor */}
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground pl-6">
         <DollarSign className="h-3 w-3 shrink-0" />
-        <span className="font-semibold text-foreground">{formatCurrency(deal.valor)}</span>
+        <span className="font-semibold text-foreground">{formatCurrency(
+          proposta?.valorTotal ?? deal.valor,
+        )}</span>
       </div>
 
       {/* Prazo */}
