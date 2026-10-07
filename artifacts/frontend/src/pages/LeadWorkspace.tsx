@@ -306,7 +306,6 @@ export default function LeadWorkspace() {
   const [selectedPartnerUserId, setSelectedPartnerUserId] = useState("");
   const [partnerCommissionPercent, setPartnerCommissionPercent] = useState("15");
   const [commissionEditorOpen, setCommissionEditorOpen] = useState(false);
-  const [commissionEditorOpen, setCommissionEditorOpen] = useState(false);
   const [savingRepresentation, setSavingRepresentation] = useState(false);
   const [savingCommission, setSavingCommission] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState("");
@@ -811,20 +810,6 @@ export default function LeadWorkspace() {
                                 {partnership.partnerName || partnership.partnerTenantCode || partnership.partnerTenantId}
                               </SelectItem>
                             ))}
-                <Button type="button" variant="ghost" className="h-9 px-2 text-muted-foreground" onClick={() => setCommissionEditorOpen((value) => !value)}>
-                  <HandCoins className="mr-2 h-4 w-4" />
-                  {commissionEditorOpen ? "Ocultar comissão" : activeParticipation ? "Editar comissão" : "Configurar comissão"}
-                </Button>
-                {commissionEditorOpen && (
-                  <div className="space-y-1.5 rounded-md border bg-muted/20 p-2">
-                    <Label>Comissão do negócio</Label>
-                    <div className="relative">
-                      <Input type="number" min="0" max="100" step="0.01" value={partnerCommissionPercent} onChange={(event) => setPartnerCommissionPercent(event.target.value)} className="pr-8" />
-                      <span className="pointer-events-none absolute right-3 top-2.5 text-sm text-muted-foreground">%</span>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground">Informação restrita a usuários autorizados. O padrão da parceria pode ser ajustado por negócio.</p>
-                  </div>
-                )}
                           </SelectContent>
                         </Select>
                       </div>
@@ -876,19 +861,19 @@ export default function LeadWorkspace() {
             <div className="flex items-center gap-2">
               <HandCoins className="h-4 w-4 text-muted-foreground" />
               <p className="text-sm font-medium text-muted-foreground">Comissão da empresa representante</p>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <HandCoins className="h-4 w-4 text-muted-foreground" />
-              <p className="text-sm font-medium text-muted-foreground">Comissão da empresa representante</p>
+            </div>
             <Button type="button" variant="ghost" size="sm" onClick={() => setCommissionEditorOpen((value) => !value)}>
               {commissionEditorOpen ? "Ocultar comissão" : "Editar comissão"}
             </Button>
+          </div>
+
           {commissionEditorOpen && (
             <div className="mt-4 border-t pt-4">
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold">{activeParticipation.partnerName || "Empresa representante"}</p>
                   <Badge variant="outline" className="mt-1">{activeParticipation.commission.status.replaceAll("_", " ")}</Badge>
+                </div>
                 <div className="text-right text-xs">
                   <p className="font-semibold">{Number(activeParticipation.commission.amount || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
                   <p className="text-muted-foreground">
@@ -896,6 +881,7 @@ export default function LeadWorkspace() {
                     Saldo {Math.max(0, Number(activeParticipation.commission.amount || 0) - Number(activeParticipation.commission.paidAmount || 0)).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                   </p>
                 </div>
+              </div>
 
               <div className="mb-4 grid gap-3 md:grid-cols-[180px_auto] md:items-end">
                 <div className="space-y-1.5">
@@ -944,6 +930,7 @@ export default function LeadWorkspace() {
                 </div>
                 <p className="mt-2 text-[11px] text-muted-foreground">Cada baixa gera saída no financeiro do pagador, entrada no financeiro da representante e mantém o saldo restante previsto.</p>
               </div>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -972,27 +959,11 @@ export default function LeadWorkspace() {
                 );
               })}
             </div>
-            <Button type="button" variant="ghost" size="sm" onClick={() => setCommissionEditorOpen((value) => !value)}>
-              {commissionEditorOpen ? "Ocultar comissão" : "Editar comissão"}
           </div>
         </CardContent>
       </Card>
     )}
 
-          {commissionEditorOpen && (
-            <div className="mt-4 border-t pt-4">
-              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold">{activeParticipation.partnerName || "Empresa representante"}</p>
-                  <Badge variant="outline" className="mt-1">{activeParticipation.commission.status.replaceAll("_", " ")}</Badge>
-                </div>
-                <div className="text-right text-xs">
-                  <p className="font-semibold">{Number(activeParticipation.commission.amount || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
-                  <p className="text-muted-foreground">
-                    Pago {Number(activeParticipation.commission.paidAmount || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} ·
-                    Saldo {Math.max(0, Number(activeParticipation.commission.amount || 0) - Number(activeParticipation.commission.paidAmount || 0)).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                  </p>
-                </div>
     {fullIntelligence?.health && (
       <Card className="border-border/70 shadow-sm">
         <CardContent className="p-4">
@@ -1014,6 +985,7 @@ export default function LeadWorkspace() {
                 {fullIntelligence.health.confidence != null && (
                   <span className="text-[11px] text-muted-foreground">Confiança {fullIntelligence.health.confidence}%</span>
                 )}
+              </div>
               <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <div>
                   <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Risco principal</p>
@@ -1026,15 +998,6 @@ export default function LeadWorkspace() {
                   {fullIntelligence.health.nextBestActionReason && <p className="mt-0.5 text-xs text-muted-foreground">{fullIntelligence.health.nextBestActionReason}</p>}
                 </div>
               </div>
-
-              <div className="mb-4 grid gap-3 md:grid-cols-[180px_auto] md:items-end">
-                <div className="space-y-1.5">
-                  <Label>Percentual acordado</Label>
-                  <Input type="number" min="0" max="100" step="0.01" value={partnerCommissionPercent} onChange={(event) => setPartnerCommissionPercent(event.target.value)} />
-                </div>
-                <Button type="button" variant="outline" className="w-fit" onClick={saveIntercompanyCommission} disabled={savingCommission}>
-                  {savingCommission && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Salvar comissão
-                </Button>
               <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] text-muted-foreground">
                 <span>{fullIntelligence.events.length} evento(s) no histórico inteligente</span>
                 <span>{fullIntelligence.facts.length} conhecimento(s) estruturado(s)</span>
@@ -1042,43 +1005,7 @@ export default function LeadWorkspace() {
                   Ver inteligência completa
                 </Button>
               </div>
-
-              <div className="rounded-lg border bg-muted/20 p-3">
-                <div className="mb-3 flex items-center gap-2">
-                  <WalletCards className="h-4 w-4 text-primary" />
-                  <p className="text-sm font-semibold">Registrar baixa parcial</p>
-                </div>
-                <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5 lg:items-end">
-                  <div className="space-y-1.5">
-                    <Label>Valor pago</Label>
-                    <Input inputMode="decimal" placeholder="0,00" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Conta/caixa pagador</Label>
-                    <Input placeholder="Ex.: Sicredi" value={payerAccount} onChange={(event) => setPayerAccount(event.target.value)} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Conta/caixa recebedor</Label>
-                    <Input placeholder="Ex.: Banco do Brasil" value={beneficiaryAccount} onChange={(event) => setBeneficiaryAccount(event.target.value)} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Forma</Label>
-                    <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pix">Pix</SelectItem>
-                        <SelectItem value="transferencia">Transferência</SelectItem>
-                        <SelectItem value="boleto">Boleto</SelectItem>
-                        <SelectItem value="dinheiro">Dinheiro</SelectItem>
-                        <SelectItem value="outro">Outro</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Button type="button" onClick={payIntercompanyCommission} disabled={payingCommission}>
-                    {payingCommission && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Dar baixa
-                  </Button>
-                </div>
-                <p className="mt-2 text-[11px] text-muted-foreground">Cada baixa gera saída no financeiro do pagador, entrada no financeiro da representante e mantém o saldo restante previsto.</p>
+            </div>
             {deal && fullIntelligence.dynamicQuestions.some((question) => question.stageKey === deal.etapa && question.status === "pendente") && (
               <div className="w-full rounded-lg border border-primary/15 bg-primary/[0.025] p-3 lg:w-[330px]">
                 <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold">
@@ -1097,8 +1024,8 @@ export default function LeadWorkspace() {
                     ))}
                 </div>
               </div>
-          )}
             )}
+          </div>
         </CardContent>
       </Card>
     )}
@@ -1404,3 +1331,4 @@ export default function LeadWorkspace() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <div className="grid gap-2"><Label>{label}</Label>{children}</div>;
 }
+
