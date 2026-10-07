@@ -1584,7 +1584,7 @@ export default function Configuracoes() {
   const disconnectIg = useDisconnectInstagram();
   const refreshIg = useRefreshInstagramToken();
 
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   useEffect(() => {
     const url = new URL(window.location.href);
     const connected = url.searchParams.get("instagramConnected");
@@ -3700,7 +3700,7 @@ export default function Configuracoes() {
             <p className="mt-1 text-sm text-muted-foreground">
               Todas as integrações, credenciais, QR Codes, OAuth, testes e reconexões são administrados em um único lugar.
             </p>
-            <Button className="mt-4" onClick={() => window.location.assign("/configuracoes?tab=integracoes")}>
+            <Button className="mt-4" onClick={() => setLocation("/configuracoes?tab=integracoes")}>
               Abrir Central de Conexões
             </Button>
           </div>
@@ -4313,10 +4313,10 @@ export default function Configuracoes() {
                   )}
 
                   <div className="flex flex-wrap items-center gap-2">
-                    <Button type="button" onClick={() => window.location.assign("/content")} className="gap-2">
+                    <Button type="button" onClick={() => setLocation("/content")} className="gap-2">
                       <Wand2 className="h-4 w-4" /> Criar conteúdo
                     </Button>
-                    <Button type="button" variant="outline" onClick={() => window.location.assign("/ads")} className="gap-2">
+                    <Button type="button" variant="outline" onClick={() => setLocation("/ads")} className="gap-2">
                       <TrendingUp className="h-4 w-4" /> Anúncios patrocinados
                     </Button>
                   </div>
