@@ -29,6 +29,7 @@ async function resolveMarketplaceCommissionForOrder(
   orderId: string,
   billingType: string,
   grossCentavos: number,
+  commissionBaseCentavos: number,
 ) {
   const items = await vendorPool.query(
     `SELECT i.produto_id,i.sku,i.total_centavos,
@@ -44,6 +45,8 @@ async function resolveMarketplaceCommissionForOrder(
 
   let totalCommissionCentavos = 0;
   const itemRules: any[] = [];
+  const rawItemsTotal = items.rows.reduce((sum: number, item: any) => sum + Math.max(0, Number(item.total_centavos || 0)), 0);
+  const discountFactor = rawItemsTotal > 0 ? Math.min(1, commissionBaseCentavos / rawItemsTotal) : 1;
   for (const item of items.rows) {
     const ctx = {
       billingType,
@@ -66,7 +69,7 @@ async function resolveMarketplaceCommissionForOrder(
     );
     const rule = resolved.rows[0] || null;
     const percentage = Number(rule?.percentage ?? 10);
-    const itemBase = Math.max(0, Number(item.total_centavos || 0));
+    const itemBase = Math.round(Math.max(0, Number(item.total_centavos || 0)) * discountFactor);
     const itemCommission = Math.round(itemBase * percentage / 100);
     totalCommissionCentavos += itemCommission;
     itemRules.push({
@@ -93,10 +96,10 @@ async function resolveMarketplaceCommissionForOrder(
     );
     const rule = fallback.rows[0] || null;
     const percentage = Number(rule?.percentage ?? 10);
-    totalCommissionCentavos = Math.round(grossCentavos * percentage / 100);
+    totalCommissionCentavos = Math.round(commissionBaseCentavos * percentage / 100);
     itemRules.push({
       productId: null,
-      baseCentavos: grossCentavos,
+      baseCentavos: commissionBaseCentavos,
       commissionCentavos: totalCommissionCentavos,
       ruleId: rule?.rule_id || null,
       percentage,
@@ -298,7 +301,7 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (r
   const gross = Number(order.total_centavos);
   const freight = Number(order.frete_centavos);
   const commissionBase = Math.max(0, Number(order.subtotal_centavos) - Number(order.desconto_centavos));
-  const resolvedCommission = await resolveMarketplaceCommissionForOrder(tenantId, orderId, billingType, gross);
+  const resolvedCommission = await resolveMarketplaceCommissionForOrder(tenantId, orderId, billingType, gross, commissionBase);
   const pracaAmount = Math.min(commissionBase, resolvedCommission.totalCommissionCentavos);
   const effectiveCommissionPercent = commissionBase > 0 ? (pracaAmount / commissionBase) * 100 : 0;
   const commissionBps = Math.round(effectiveCommissionPercent * 100);
@@ -384,13 +387,24 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (r
     if (order.market_demand_id && pracaAmount > 0) {
       const entryResult = await client.query(
         `INSERT INTO arqdor_market_commission_entries
-          (demand_id,tenant_id,source,percentage,base_value,commission_amount,status,
+          (demand_id,tenant_id,praca_order_id,source,percentage,base_value,commission_amount,status,
            payment_intent_id,provider,rule_snapshot,metadata)
-         VALUES($1::uuid,$2,'internal',$3,$4,$5,'invoiced',$6,'asaas',$7::jsonb,$8::jsonb)
+         VALUES($1::uuid,$2,$3,'internal',$4,$5,$6,'invoiced',$7,'asaas',$8::jsonb,$9::jsonb)
+         ON CONFLICT (praca_order_id) WHERE praca_order_id IS NOT NULL
+         DO UPDATE SET percentage=EXCLUDED.percentage,
+                       base_value=EXCLUDED.base_value,
+                       commission_amount=EXCLUDED.commission_amount,
+                       status='invoiced',
+                       payment_intent_id=EXCLUDED.payment_intent_id,
+                       provider='asaas',
+                       rule_snapshot=EXCLUDED.rule_snapshot,
+                       metadata=EXCLUDED.metadata,
+                       updated_at=now()
          RETURNING id`,
         [
           order.market_demand_id,
           tenantId,
+          orderId,
           String(effectiveCommissionPercent),
           String(commissionBase / 100),
           String(pracaAmount / 100),
@@ -404,12 +418,18 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (r
         [entryResult.rows[0].id, intentId],
       );
       await client.query(
-        `UPDATE arqdor_market_demands
-            SET commission_base_value=COALESCE(commission_base_value,0)+$1,
-                commission_amount=COALESCE(commission_amount,0)+$2,
+        `UPDATE arqdor_market_demands d
+            SET commission_base_value=COALESCE((
+                  SELECT SUM(e.base_value) FROM arqdor_market_commission_entries e
+                  WHERE e.demand_id=d.id AND e.status<>'cancelled'
+                ),0),
+                commission_amount=COALESCE((
+                  SELECT SUM(e.commission_amount) FROM arqdor_market_commission_entries e
+                  WHERE e.demand_id=d.id AND e.status<>'cancelled'
+                ),0),
                 commission_status='invoiced',updated_at=now()
-          WHERE id=$3::uuid AND tenant_id=$4`,
-        [String(commissionBase / 100), String(pracaAmount / 100), order.market_demand_id, tenantId],
+          WHERE id=$1::uuid AND tenant_id=$2`,
+        [order.market_demand_id, tenantId],
       );
     }
     await client.query(
