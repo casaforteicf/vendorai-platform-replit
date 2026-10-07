@@ -149,6 +149,9 @@ export const composicaoInsumosTable = pgTable("composicao_insumos", {
     .notNull()
     .references(() => insumosTable.id, { onDelete: "restrict" }),
   quantidade: numeric("quantidade", { precision: 15, scale: 4 }).notNull(),
+  // Override opcional. Quando nulo, usa perdaPadraoPercentual do insumo.
+  // Nunca somar perda padrão + override: o override substitui o padrão.
+  perdaPercentualOverride: numeric("perda_percentual_override", { precision: 7, scale: 3 }),
   precoUnitario: numeric("preco_unitario", { precision: 15, scale: 4 }),
 });
 
@@ -157,6 +160,7 @@ export const insertComposicaoInsumoSchema = createInsertSchema(composicaoInsumos
     .union([z.string(), z.number()])
     .transform((v) => String(v))
     .pipe(z.string().regex(/^\d+(\.\d+)?$/, "Invalid decimal")),
+  perdaPercentualOverride: decimalOptional,
   precoUnitario: decimalOptional,
 }).omit({ id: true });
 
