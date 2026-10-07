@@ -364,9 +364,58 @@ router.post("/deals", async (req, res) => {
     });
     return;
   }
-  const assignedTo = parsed.data.assignedTo ?? (
+  const [initialStageConfig] = await db.select({
+    responsaveisFuncoes: pipelineStagesTable.responsaveisFuncoes,
+  }).from(pipelineStagesTable).where(and(
+    eq(pipelineStagesTable.tenantId, parsed.data.tenantId),
+    eq(pipelineStagesTable.pipeline, "comercial"),
+    eq(pipelineStagesTable.key, parsed.data.etapa),
+  )).limit(1);
+
+  const preferredAssignedTo = parsed.data.assignedTo ?? (
     req.user?.platformRole !== "super_admin" && req.user?.sub ? req.user.sub : null
   );
+
+  let assignedTo: string | null = null;
+  if (preferredAssignedTo) {
+    const [preferredOwner] = await db.select({
+      id: usersTable.id,
+      active: usersTable.active,
+      platformRole: usersTable.platformRole,
+      userFunction: usersTable.userFunction,
+      customFunctionId: usersTable.customFunctionId,
+    }).from(usersTable).where(and(
+      eq(usersTable.id, preferredAssignedTo),
+      eq(usersTable.tenantId, parsed.data.tenantId),
+    )).limit(1);
+
+    if (preferredOwner && userMatchesStageResponsibleFunctions(preferredOwner, initialStageConfig?.responsaveisFuncoes)) {
+      assignedTo = preferredOwner.id;
+    }
+  }
+
+  if (!assignedTo) {
+    const candidates = await db.select({
+      id: usersTable.id,
+      active: usersTable.active,
+      platformRole: usersTable.platformRole,
+      userFunction: usersTable.userFunction,
+      customFunctionId: usersTable.customFunctionId,
+    }).from(usersTable).where(eq(usersTable.tenantId, parsed.data.tenantId));
+
+    assignedTo = candidates.find((candidate) =>
+      userMatchesStageResponsibleFunctions(candidate, initialStageConfig?.responsaveisFuncoes)
+    )?.id ?? null;
+  }
+
+  if (!assignedTo) {
+    res.status(422).json({
+      error: "STAGE_RESPONSIBLE_REQUIRED",
+      message: "Não há responsável ativo elegível para a etapa inicial. Configure as funções responsáveis da etapa ou ative um usuário compatível.",
+    });
+    return;
+  }
+
   const [deal] = await db.insert(dealsTable).values({ ...parsed.data, assignedTo }).returning();
   await recordDealJourney({
     tenantId: deal.tenantId, leadId: deal.leadId, dealId: deal.id,
