@@ -23,7 +23,7 @@ import {
 import { VENDORAI_SAAS_CONTRACT_HTML } from "../lib/vendorai-contract-template.js";
 import { createDocument, isZapSignConfigured } from "../lib/zapsign.js";
 import { requireRole } from "../middlewares/auth.js";
-import { resolveCanonicalDealValue } from "../lib/deal-value.js";
+import { canonicalDealValueSql, resolveCanonicalDealValue } from "../lib/deal-value.js";
 
 const router = Router();
 
@@ -288,7 +288,7 @@ router.get("/tenants/:tenantId/leads/:leadId/active-deals", async (req, res) => 
       .select({
         id: dealsTable.id,
         titulo: dealsTable.titulo,
-        valor: dealsTable.valor,
+        valor: canonicalDealValueSql,
         etapa: dealsTable.etapa,
         tipoFechamento: dealsTable.tipoFechamento,
         planoContratado: dealsTable.planoContratado,
