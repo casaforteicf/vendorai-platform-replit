@@ -10,12 +10,17 @@ import {
   FileAudio,
   FileVideo,
   Globe2,
+  HelpCircle,
   ImagePlus,
   Loader2,
   Mic2,
+  MoreHorizontal,
+  Pencil,
+  Play,
   Plus,
   QrCode,
   RefreshCw,
+  Search,
   ShieldCheck,
   Sparkles,
   Smartphone,
@@ -308,6 +313,9 @@ export default function VideoAvatarPage() {
   const [saving, setSaving] = useState(false);
   const [showCreate, setShowCreate] = useState(() => new URLSearchParams(window.location.search).get("capture") === "mobile");
   const [showMobileQr, setShowMobileQr] = useState(false);
+  const [createStep, setCreateStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [dubleSearch, setDubleSearch] = useState("");
+  const [dubleFilter, setDubleFilter] = useState<"all" | "ready" | "capture" | "review">("all");
 
   const [displayName, setDisplayName] = useState("");
   const [kind, setKind] = useState<"person" | "persona">("person");
@@ -588,6 +596,7 @@ export default function VideoAvatarPage() {
     setShowVoiceScript(false);
     setShowVideoScript(false);
     setAuthorizationConfirmed(false);
+    setCreateStep(1);
     setConsents({ face_use: true, voice_use: true, ai_generation: true, organic_publish: false, paid_ads: false });
     if (faceInput.current) faceInput.current.value = "";
     if (voiceInput.current) voiceInput.current.value = "";
@@ -727,274 +736,476 @@ export default function VideoAvatarPage() {
   const detailVideoReferenceId = detailCapture?.video?.referenceAssetId ?? null;
   const detailVoiceReference = detail?.voices.some((voice) => Boolean(voice.reference_asset_id));
 
+  const filteredIdentities = useMemo(() => {
+    const term = dubleSearch.trim().toLowerCase();
+    return identities.filter((identity) => {
+      const capture = identity.metadata?.captureProfile;
+      const references = [Boolean(identity.face_reference_asset_id), Boolean(capture?.voice?.referenceAssetId), Boolean(capture?.video?.referenceAssetId)].filter(Boolean).length;
+      const isReady = identity.status === "active" && references === 3;
+      const needsCapture = references < 3;
+      const needsReview = capture?.voice?.analysisStatus === "pending" || capture?.video?.analysisStatus === "pending";
+      const matchesFilter =
+        dubleFilter === "all" ||
+        (dubleFilter === "ready" && isReady) ||
+        (dubleFilter === "capture" && needsCapture) ||
+        (dubleFilter === "review" && needsReview);
+      const matchesSearch = !term || identity.display_name.toLowerCase().includes(term);
+      return matchesFilter && matchesSearch;
+    });
+  }, [identities, dubleFilter, dubleSearch]);
+
+  const wizardSteps = ["Pessoa", "Captura", "Autorização", "Verificação", "Concluir"] as const;
+  const canContinueStep1 = Boolean(displayName.trim());
+  const hasAnyReference = Boolean(faceFile || voiceFile || videoFile);
+  const canContinueStep2 = kind === "persona" || hasAnyReference;
+  const canContinueStep3 = authorizationConfirmed;
+  const captureCount = [Boolean(faceFile), Boolean(voiceFile), Boolean(videoFile)].filter(Boolean).length;
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0f0b1e] via-[#1a1040] to-[#0a0818] text-[#e8e4f8]">
-      <div className="max-w-6xl mx-auto px-4 py-8 space-y-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/40 text-slate-950">
+      <div className="mx-auto max-w-[1440px] space-y-4 px-4 py-5 lg:px-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <button onClick={() => navigate("/content-studio/video")} className="flex items-center gap-2 text-sm text-gray-400 hover:text-white mb-3">
+            <button onClick={() => navigate("/content-studio/video")} className="mb-3 flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
               <ArrowLeft className="h-4 w-4" /> Voltar para Vídeo com IA
             </button>
             <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-purple-500/20 text-purple-300"><UserRound className="h-6 w-6" /></div>
+              <div className="rounded-xl bg-purple-500/10 p-3 text-purple-600"><UserRound className="h-6 w-6" /></div>
               <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-xl font-bold">Pessoas & Vozes autorizadas</h1>
-                  <span className="inline-flex items-center gap-1 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-200"><Globe2 className="h-3 w-3" /> Mercosul</span>
-                </div>
-                <p className="text-sm text-gray-400">Crie a Identidade Audiovisual e o Dublê Digital com referências guiadas e idioma base por mercado.</p>
+                <h1 className="text-2xl font-bold tracking-tight">Dublês Digitais</h1>
+                <p className="text-sm text-muted-foreground">Cadastre uma vez sua identidade audiovisual e reutilize nos vídeos.</p>
               </div>
             </div>
           </div>
-          <button onClick={() => setShowCreate((value) => !value)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-purple-600 hover:bg-purple-500 px-4 py-2.5 text-sm font-semibold text-white">
-            <Plus className="h-4 w-4" /> Nova pessoa/persona
-          </button>
-        </div>
-
-        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 flex gap-3 text-sm">
-          <ShieldCheck className="h-5 w-5 text-emerald-400 shrink-0 mt-0.5" />
-          <div>
-            <p className="font-semibold text-emerald-200">Identidade protegida por consentimento</p>
-            <p className="text-xs text-gray-400 mt-0.5">Rosto, voz, geração por IA, publicação orgânica e anúncios são autorizações independentes. Revogar uma autorização bloqueia novos usos daquele escopo.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => toast({ title: "Como funciona", description: "Cadastre a pessoa uma vez, faça foto, voz e vídeo, confirme as autorizações e reutilize o Dublê Digital nos próximos vídeos." })}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+            >
+              <HelpCircle className="h-4 w-4" /> Como funciona
+            </button>
+            <button
+              onClick={() => { resetCreate(); setShowCreate(true); setCreateStep(1); }}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-500"
+            >
+              <Plus className="h-4 w-4" /> Criar Dublê Digital
+            </button>
           </div>
         </div>
+
+        {!showCreate && (
+          <>
+            <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-wrap gap-2">
+                  {([
+                    ["all", `Todos (${identities.length})`],
+                    ["ready", `Prontos (${identities.filter((identity) => {
+                      const capture = identity.metadata?.captureProfile;
+                      return identity.status === "active" && Boolean(identity.face_reference_asset_id) && Boolean(capture?.voice?.referenceAssetId) && Boolean(capture?.video?.referenceAssetId);
+                    }).length})`],
+                    ["capture", `Em captura (${identities.filter((identity) => {
+                      const capture = identity.metadata?.captureProfile;
+                      return [Boolean(identity.face_reference_asset_id), Boolean(capture?.voice?.referenceAssetId), Boolean(capture?.video?.referenceAssetId)].filter(Boolean).length < 3;
+                    }).length})`],
+                    ["review", `Precisa revisar (${identities.filter((identity) => {
+                      const capture = identity.metadata?.captureProfile;
+                      return capture?.voice?.analysisStatus === "pending" || capture?.video?.analysisStatus === "pending";
+                    }).length})`],
+                  ] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setDubleFilter(value)}
+                      className={cn(
+                        "rounded-lg px-3 py-2 text-xs font-medium transition-colors",
+                        dubleFilter === value
+                          ? "border border-orange-200 bg-orange-50 text-orange-700"
+                          : "border border-slate-200 bg-slate-50 text-slate-600 hover:bg-white hover:text-slate-900",
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div className="relative flex gap-2">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    value={dubleSearch}
+                    onChange={(event) => setDubleSearch(event.target.value)}
+                    placeholder="Buscar dublê..."
+                    className="w-full min-w-[250px] rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm outline-none focus:border-orange-300 focus:ring-2 focus:ring-orange-500/10"
+                  />
+                  <button onClick={() => void loadAll(true)} className="rounded-xl border border-slate-200 bg-white p-2 text-slate-500 hover:bg-slate-50" aria-label="Atualizar">
+                    <RefreshCw className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            {loading ? (
+              <div className="flex min-h-[300px] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-purple-500" /></div>
+            ) : filteredIdentities.length === 0 ? (
+              <section className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center shadow-sm">
+                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-500/10 text-purple-600">
+                  <UserRound className="h-7 w-7" />
+                </div>
+                <h2 className="text-lg font-semibold">{identities.length === 0 ? "Seu primeiro Dublê Digital" : "Nenhum dublê encontrado"}</h2>
+                <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+                  {identities.length === 0
+                    ? "Faça uma captura guiada de foto, voz e vídeo. Depois disso, o dublê fica disponível para reutilizar sempre que criar um vídeo."
+                    : "Tente outro filtro ou termo de busca."}
+                </p>
+                {identities.length === 0 && (
+                  <button
+                    type="button"
+                    onClick={() => { resetCreate(); setShowCreate(true); setCreateStep(1); }}
+                    className="mt-5 inline-flex items-center gap-2 rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-500"
+                  >
+                    <Plus className="h-4 w-4" /> Criar Dublê Digital
+                  </button>
+                )}
+              </section>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {filteredIdentities.map((identity) => {
+                  const identityMarket = marketFromMetadata(identity.metadata);
+                  const capture = identity.metadata?.captureProfile;
+                  const references = [Boolean(identity.face_reference_asset_id), Boolean(capture?.voice?.referenceAssetId), Boolean(capture?.video?.referenceAssetId)].filter(Boolean).length;
+                  const ready = identity.status === "active" && references === 3;
+                  return (
+                    <article key={identity.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-gradient-to-br from-violet-100 to-slate-100 text-violet-600"><UserRound className="h-8 w-8" /></div>
+                          <div className="min-w-0">
+                            <h3 className="truncate font-semibold">{identity.display_name}</h3>
+                            <p className="mt-1 text-xs text-slate-500">{identity.kind === "person" ? "Pessoa real autorizada" : "Persona da marca"}</p>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] text-slate-600">{identityMarket.name}</span>
+                              <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] text-slate-600">{identityMarket.locale}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <span className={cn("rounded-full px-2 py-1 text-[10px] font-medium", ready ? "bg-emerald-500/10 text-emerald-700" : "bg-amber-500/10 text-amber-700")}>
+                          {ready ? "Pronto" : `${references}/3 capturas`}
+                        </span>
+                      </div>
+                      <div className="mt-4 grid grid-cols-3 divide-x divide-slate-100 rounded-xl border border-slate-200 bg-slate-50/60 py-2 text-center text-xs">
+                        <div className="px-2"><div className={identity.face_reference_asset_id ? "font-semibold text-emerald-600" : "text-slate-400"}>{identity.face_reference_asset_id ? "✓" : "○"}</div><div className="mt-1 text-slate-600">Foto</div></div>
+                        <div className="px-2"><div className={capture?.voice?.referenceAssetId ? "font-semibold text-emerald-600" : "text-slate-400"}>{capture?.voice?.referenceAssetId ? "✓" : "○"}</div><div className="mt-1 text-slate-600">Voz</div></div>
+                        <div className="px-2"><div className={capture?.video?.referenceAssetId ? "font-semibold text-emerald-600" : "text-slate-400"}>{capture?.video?.referenceAssetId ? "✓" : "○"}</div><div className="mt-1 text-slate-600">Vídeo</div></div>
+                      </div>
+                      <div className="mt-4 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void loadIdentity(identity.id)}
+                          className={cn(
+                            "inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold",
+                            ready ? "border border-slate-200 bg-white text-slate-800 hover:bg-slate-50" : "bg-violet-600 text-white hover:bg-violet-500",
+                          )}
+                        >
+                          <Play className="h-3.5 w-3.5" /> {ready ? "Abrir dublê" : "Continuar captura"}
+                        </button>
+                        <button type="button" onClick={() => void loadIdentity(identity.id)} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"><Pencil className="h-3.5 w-3.5" /> Editar</button>
+                        <button type="button" className="rounded-lg border border-slate-200 px-2.5 py-2 text-slate-500 hover:bg-slate-50" aria-label="Mais ações"><MoreHorizontal className="h-4 w-4" /></button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+
+            {detail && (
+              <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-lg font-bold">{detail.identity.display_name}</h2>
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                      <span className="rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground">{detailMarket.name} · {detailMarket.locale}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">Identidade audiovisual reutilizável para geração de vídeos.</p>
+                  </div>
+                  <button type="button" onClick={() => setDetail(null)} className="rounded-lg border px-3 py-2 text-xs hover:bg-muted">Fechar</button>
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl border p-3"><p className="text-xs font-semibold">Foto</p><p className={cn("mt-1 text-xs", detail.identity.face_reference_asset_id ? "text-emerald-600" : "text-muted-foreground")}>{detail.identity.face_reference_asset_id ? "✓ Referência salva" : "— Não cadastrada"}</p></div>
+                  <div className="rounded-xl border p-3"><p className="text-xs font-semibold">Voz</p><p className={cn("mt-1 text-xs", detailVoiceReference ? "text-emerald-600" : "text-muted-foreground")}>{detailVoiceReference ? "✓ Referência salva" : "— Não cadastrada"}</p></div>
+                  <div className="rounded-xl border p-3"><p className="text-xs font-semibold">Vídeo</p><p className={cn("mt-1 text-xs", detailVideoReferenceId ? "text-emerald-600" : "text-muted-foreground")}>{detailVideoReferenceId ? "✓ Referência salva" : "— Não cadastrado"}</p></div>
+                </div>
+
+                <details className="mt-4 rounded-xl border">
+                  <summary className="cursor-pointer px-4 py-3 text-sm font-medium">Configurações e testes avançados</summary>
+                  <div className="space-y-4 border-t p-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Autorizações ativas</p>
+                      <div className="mt-2 flex flex-wrap gap-2">{CONSENT_OPTIONS.map((option) => <span key={option.scope} className={cn("rounded-full border px-2.5 py-1 text-[11px]", activeConsentScopes.has(option.scope) ? "bg-emerald-500/10 text-emerald-700" : "text-muted-foreground")}>{activeConsentScopes.has(option.scope) ? "✓ " : "— "}{option.label}</span>)}</div>
+                    </div>
+
+                    <section className="rounded-xl border p-4">
+                      <div className="flex items-center gap-2"><Volume2 className="h-4 w-4 text-cyan-600" /><p className="text-sm font-semibold">Testar voz · {detailMarket.locale}</p></div>
+                      <textarea value={testText} onChange={(event) => setTestText(event.target.value)} rows={3} maxLength={5000} className="mt-3 w-full resize-none rounded-xl border bg-background px-3 py-2 text-sm outline-none" />
+                      <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <button disabled={!voiceEngineReady || testingVoice || !detail.voices.some((voice) => voice.status === "ready") || !activeConsentScopes.has("voice_use") || !activeConsentScopes.has("ai_generation")} onClick={() => void testVoice()} className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">
+                          {testingVoice ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Gerar amostra
+                        </button>
+                        {testAudioUrl && <audio controls src={testAudioUrl} className="h-8 max-w-full" />}
+                      </div>
+                    </section>
+
+                    <TalkingVideoPanel tenantId={tenantId} identityId={detail.identity.id} identityName={detail.identity.display_name} faceReferenceAssetId={detail.identity.face_reference_asset_id} voices={detail.voices} activeConsentScopes={activeConsentScopes} voiceEngineReady={voiceEngineReady} lipSyncEngineReady={lipSyncEngineReady} />
+                  </div>
+                </details>
+              </section>
+            )}
+          </>
+        )}
 
         {showCreate && (
-          <section className="rounded-2xl border border-purple-500/30 bg-purple-500/5 p-5 space-y-5">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
               <div>
-                <h2 className="font-bold text-white">Cadastrar Identidade Audiovisual</h2>
-                <p className="text-xs text-gray-400 mt-1">{marketConfig.name} · {marketConfig.locale} · Mercosul. Use apenas materiais próprios ou de pessoas que autorizaram explicitamente o uso.</p>
+                <h2 className="text-xl font-bold">Criar Dublê Digital</h2>
+                <p className="mt-1 text-sm text-slate-500">Uma captura guiada, feita uma vez. Depois, é só reutilizar.</p>
               </div>
-              <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-gray-400">Alta fidelidade: foto + voz guiada + vídeo ~2 min</div>
+              <button type="button" onClick={() => { resetCreate(); setShowCreate(false); }} className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50">Cancelar</button>
             </div>
 
-            <section className="rounded-xl border border-purple-500/20 bg-black/20 p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex gap-3">
-                  <div className="rounded-xl bg-purple-500/15 p-2.5 text-purple-200"><Smartphone className="h-5 w-5" /></div>
-                  <div>
-                    <p className="text-sm font-semibold text-white">Fazer foto, áudio e vídeo pelo celular</p>
-                    <p className="mt-1 text-xs text-gray-400">O celular abre esta mesma captura responsiva, com os roteiros de voz e vídeo do mercado selecionado.</p>
-                  </div>
+            <div className="grid lg:grid-cols-[280px_1fr]">
+              <aside className="border-b border-slate-200 bg-slate-50/70 p-4 lg:min-h-[520px] lg:border-b-0 lg:border-r">
+                <div className="grid grid-cols-5 gap-2 lg:grid-cols-1 lg:gap-1">
+                  {wizardSteps.map((label, index) => {
+                    const step = (index + 1) as 1 | 2 | 3 | 4 | 5;
+                    const active = createStep === step;
+                    const done = createStep > step;
+                    const subtitles = ["Nome, tipo e idioma", "Foto, voz e vídeo", "Uso da imagem e voz", "Revisão das capturas", "Finalizar criação"];
+                    return (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => { if (step <= createStep) setCreateStep(step); }}
+                        className={cn(
+                          "flex min-w-0 items-center gap-3 rounded-xl p-3 text-left transition-colors",
+                          active ? "bg-violet-100 text-violet-800" : done ? "text-slate-700 hover:bg-white" : "cursor-default text-slate-400",
+                        )}
+                      >
+                        <span className={cn(
+                          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
+                          active ? "bg-violet-600 text-white" : done ? "bg-emerald-500 text-white" : "bg-slate-200 text-slate-500",
+                        )}>{done ? "✓" : step}</span>
+                        <span className="hidden min-w-0 lg:block">
+                          <span className="block text-sm font-semibold">{label}</span>
+                          <span className="mt-0.5 block text-xs text-slate-500">{subtitles[index]}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
-                <button type="button" onClick={() => setShowMobileQr((value) => !value)} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-purple-400/30 bg-purple-500/10 px-3 py-2 text-xs font-semibold text-purple-100 hover:bg-purple-500/20">
-                  <QrCode className="h-4 w-4" /> {showMobileQr ? "Ocultar QR Code" : "Abrir QR Code"}
-                </button>
-              </div>
-              {showMobileQr && (
-                <div className="mt-4 grid gap-4 rounded-xl border border-white/10 bg-white/[0.03] p-4 sm:grid-cols-[176px_1fr] sm:items-center">
-                  <div className="rounded-xl bg-white p-2"><img src={mobileQrUrl} alt="QR Code para abrir a captura do Dublê Digital no celular" className="aspect-square w-full" /></div>
+              </aside>
+
+              <div className="p-5 lg:p-7">
+              {createStep === 1 && (
+                <div className="mx-auto max-w-2xl space-y-5">
                   <div>
-                    <p className="text-sm font-semibold text-white">Escaneie com a câmera do celular</p>
-                    <p className="mt-1 text-xs leading-5 text-gray-400">Por segurança, o usuário deverá entrar na própria conta. Nenhum token, identidade ou mídia é enviado ao serviço que desenha o QR Code.</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button type="button" onClick={() => void copyMobileLink()} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs hover:bg-white/5"><Copy className="h-3.5 w-3.5" /> Copiar link</button>
-                      <button type="button" onClick={() => void shareMobileLink()} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs hover:bg-white/5"><Smartphone className="h-3.5 w-3.5" /> Compartilhar</button>
-                    </div>
+                    <h3 className="text-base font-semibold">Quem será o Dublê Digital?</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">Defina somente os dados básicos. A captura vem na próxima etapa.</p>
+                  </div>
+                  <label className="block space-y-1.5">
+                    <span className="text-sm font-medium">Nome</span>
+                    <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Ex.: Marcos — Comercial" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-orange-500/20" />
+                  </label>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="space-y-1.5">
+                      <span className="text-sm font-medium">Tipo</span>
+                      <select value={kind} onChange={(event) => setKind(event.target.value as "person" | "persona")} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none">
+                        <option value="person">Pessoa real autorizada</option>
+                        <option value="persona">Persona da marca</option>
+                      </select>
+                    </label>
+                    <label className="space-y-1.5">
+                      <span className="text-sm font-medium">Idioma base</span>
+                      <select value={captureMarket} onChange={(event) => setCaptureMarket(event.target.value as MarketCode)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none">
+                        {Object.values(CAPTURE_MARKETS).map((market) => <option key={market.code} value={market.code}>{market.name} · {market.locale}</option>)}
+                      </select>
+                    </label>
                   </div>
                 </div>
               )}
-            </section>
 
-            <div className="grid lg:grid-cols-3 gap-4">
-              <label className="space-y-1.5">
-                <span className="text-xs font-medium text-gray-300">Nome da pessoa/persona</span>
-                <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Ex.: Marcos — Comercial" className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm outline-none focus:border-purple-500/50" />
-              </label>
-              <label className="space-y-1.5">
-                <span className="text-xs font-medium text-gray-300">Tipo</span>
-                <select value={kind} onChange={(event) => setKind(event.target.value as "person" | "persona")} className="w-full rounded-xl border border-white/10 bg-[#171126] px-3 py-2.5 text-sm outline-none focus:border-purple-500/50">
-                  <option value="person">Pessoa real autorizada</option>
-                  <option value="persona">Persona da marca</option>
-                </select>
-              </label>
-              <label className="space-y-1.5">
-                <span className="text-xs font-medium text-gray-300">Mercado / idioma base da gravação</span>
-                <select value={captureMarket} disabled={voiceRecording || videoRecording} onChange={(event) => setCaptureMarket(event.target.value as MarketCode)} className="w-full rounded-xl border border-cyan-500/20 bg-[#171126] px-3 py-2.5 text-sm outline-none focus:border-cyan-500/50 disabled:opacity-50">
-                  {Object.values(CAPTURE_MARKETS).map((market) => <option key={market.code} value={market.code}>{market.name} · {market.locale} · {market.currency}</option>)}
-                </select>
-              </label>
-            </div>
+              {createStep === 2 && (
+                <div className="space-y-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="text-base font-semibold">Capture foto, voz e vídeo</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">O ideal é concluir os três itens para máxima fidelidade.</p>
+                    </div>
+                    <button type="button" onClick={() => setShowMobileQr((value) => !value)} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold hover:bg-muted">
+                      <QrCode className="h-4 w-4" /> Fazer pelo celular
+                    </button>
+                  </div>
 
-            <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-3 flex gap-3">
-              <Globe2 className="h-4 w-4 text-cyan-300 mt-0.5 shrink-0" />
-              <div>
-                <p className="text-xs font-semibold text-cyan-100">Idioma base da identidade: {marketConfig.locale}</p>
-                <p className="text-[11px] text-gray-400 mt-1">Esta escolha define o roteiro usado para capturar voz e vídeo e fica registrada nas referências. Ela não limita futuros conteúdos: no gerador do Dublê você ainda pode escolher outro mercado Mercosul.</p>
-              </div>
-            </div>
+                  {showMobileQr && (
+                    <div className="grid gap-4 rounded-xl border bg-muted/20 p-4 sm:grid-cols-[150px_1fr] sm:items-center">
+                      <div className="rounded-xl bg-white p-2"><img src={mobileQrUrl} alt="QR Code para captura no celular" className="aspect-square w-full" /></div>
+                      <div>
+                        <p className="font-medium">Continue a captura no celular</p>
+                        <p className="mt-1 text-sm text-muted-foreground">Escaneie o QR Code e entre na mesma conta.</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button type="button" onClick={() => void copyMobileLink()} className="inline-flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-xs"><Copy className="h-3.5 w-3.5" /> Copiar link</button>
+                          <button type="button" onClick={() => void shareMobileLink()} className="inline-flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-xs"><Smartphone className="h-3.5 w-3.5" /> Compartilhar</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
-            <div className="grid lg:grid-cols-3 gap-4">
-              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div><ImagePlus className="h-5 w-5 text-purple-300 mb-2" /><p className="text-sm font-semibold">1. Foto de referência</p><p className="text-xs text-gray-500 mt-1">JPG, PNG ou WebP com rosto claro e bem iluminado.</p></div>
-                  {faceFile && <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />}
+                  <div className="grid gap-4 lg:grid-cols-3">
+                    <div className="rounded-xl border p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div><ImagePlus className="mb-2 h-5 w-5 text-purple-600" /><p className="font-semibold">Foto</p><p className="mt-1 text-xs text-muted-foreground">Rosto claro e bem iluminado.</p></div>
+                        {faceFile && <CheckCircle2 className="h-5 w-5 text-emerald-500" />}
+                      </div>
+                      <button type="button" onClick={() => faceInput.current?.click()} className="mt-4 w-full rounded-lg border px-3 py-2 text-xs font-medium hover:bg-muted"><Upload className="mr-2 inline h-3.5 w-3.5" />Escolher foto</button>
+                      <p className="mt-2 truncate text-[11px] text-muted-foreground">{faceFile?.name ?? "Não enviada"}</p>
+                      <input ref={faceInput} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => setFaceFile(event.target.files?.[0] ?? null)} />
+                    </div>
+
+                    <div className="rounded-xl border p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div><Mic2 className="mb-2 h-5 w-5 text-cyan-600" /><p className="font-semibold">Voz guiada</p><p className="mt-1 text-xs text-muted-foreground">1–2 min de fala natural.</p></div>
+                        <span className="rounded-full bg-muted px-2 py-1 text-[10px]">{voiceCaptureStatus.label}</span>
+                      </div>
+                      <div className="mt-4 grid grid-cols-2 gap-2">
+                        <button type="button" disabled={videoRecording} onClick={() => voiceRecording ? stopVoiceRecording() : void startVoiceRecording()} className={cn("rounded-lg px-3 py-2 text-xs font-semibold text-white", voiceRecording ? "bg-red-600" : "bg-cyan-600", videoRecording && "opacity-40")}>
+                          {voiceRecording ? `Parar ${formatDuration(voiceElapsed)}` : "Gravar"}
+                        </button>
+                        <button type="button" disabled={voiceRecording} onClick={() => voiceInput.current?.click()} className="rounded-lg border px-3 py-2 text-xs font-medium disabled:opacity-40">Enviar áudio</button>
+                      </div>
+                      <button type="button" onClick={() => setShowVoiceScript((value) => !value)} className="mt-3 text-xs font-medium text-cyan-700">{showVoiceScript ? "Ocultar roteiro" : "Ver roteiro"}</button>
+                      <input ref={voiceInput} type="file" accept="audio/*" className="hidden" onChange={(event) => void handleVoiceFile(event.target.files?.[0] ?? null)} />
+                    </div>
+
+                    <div className="rounded-xl border p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div><Camera className="mb-2 h-5 w-5 text-fuchsia-600" /><p className="font-semibold">Vídeo do Dublê</p><p className="mt-1 text-xs text-muted-foreground">~2 min para rosto, olhar e gestos.</p></div>
+                        <span className="rounded-full bg-muted px-2 py-1 text-[10px]">{videoCaptureStatus.label}</span>
+                      </div>
+                      <div className="mt-4 grid grid-cols-2 gap-2">
+                        <button type="button" disabled={voiceRecording} onClick={() => videoRecording ? stopVideoRecording() : void startVideoRecording()} className={cn("rounded-lg px-3 py-2 text-xs font-semibold text-white", videoRecording ? "bg-red-600" : "bg-fuchsia-600", voiceRecording && "opacity-40")}>
+                          {videoRecording ? `Parar ${formatDuration(videoElapsed)}` : "Gravar"}
+                        </button>
+                        <button type="button" disabled={videoRecording} onClick={() => videoInput.current?.click()} className="rounded-lg border px-3 py-2 text-xs font-medium disabled:opacity-40">Enviar vídeo</button>
+                      </div>
+                      <button type="button" onClick={() => setShowVideoScript((value) => !value)} className="mt-3 text-xs font-medium text-fuchsia-700">{showVideoScript ? "Ocultar roteiro" : "Ver roteiro"}</button>
+                      <input ref={videoInput} type="file" accept="video/*" className="hidden" onChange={(event) => void handleVideoFile(event.target.files?.[0] ?? null)} />
+                    </div>
+                  </div>
+
+                  {videoRecording && (
+                    <div className="grid gap-4 rounded-xl border border-red-500/20 bg-red-500/5 p-4 lg:grid-cols-[360px_1fr]">
+                      <video ref={videoPreview} muted playsInline className="aspect-video w-full rounded-xl bg-black object-cover" />
+                      <div><p className="text-sm font-semibold">Gravando referência · {formatDuration(videoElapsed)}</p><p className="mt-1 text-xs text-muted-foreground">Mantenha a câmera na altura dos olhos, com luz frontal e sem filtros.</p></div>
+                    </div>
+                  )}
+
+                  {showVoiceScript && (
+                    <section className="rounded-xl border p-4">
+                      <p className="font-semibold">Roteiro de voz · {marketConfig.name}</p>
+                      <div className="mt-3 max-h-64 space-y-3 overflow-y-auto pr-2">{marketConfig.voiceScript.map((paragraph, index) => <p key={index} className="text-sm leading-6 text-muted-foreground">{paragraph.replace("[NOME]", displayName.trim() || "[seu nome]")}</p>)}</div>
+                    </section>
+                  )}
+
+                  {showVideoScript && (
+                    <section className="rounded-xl border p-4">
+                      <p className="font-semibold">Roteiro de vídeo · {marketConfig.name}</p>
+                      <div className="mt-3 grid gap-3 md:grid-cols-2">{marketConfig.videoScript.map((item) => <div key={item.time} className="rounded-lg border p-3"><div className="flex justify-between gap-2"><p className="text-xs font-semibold">{item.title}</p><span className="text-[10px] text-muted-foreground">{item.time}</span></div><p className="mt-2 text-sm text-muted-foreground">{item.text.replace("[NOME]", displayName.trim() || "[seu nome]")}</p><p className="mt-2 text-[11px] text-muted-foreground">{item.cue}</p></div>)}</div>
+                    </section>
+                  )}
                 </div>
-                <button type="button" onClick={() => faceInput.current?.click()} className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs hover:bg-white/5"><Upload className="h-3.5 w-3.5" /> Escolher foto</button>
-                <p className="text-[11px] text-gray-500 truncate">{faceFile?.name ?? "Nenhuma foto selecionada"}</p>
-                <input ref={faceInput} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => setFaceFile(event.target.files?.[0] ?? null)} />
-              </div>
+              )}
 
-              <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4 space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div><Mic2 className="h-5 w-5 text-cyan-300 mb-2" /><p className="text-sm font-semibold">2. Voz guiada · {marketConfig.locale}</p><p className="text-xs text-gray-500 mt-1">Capta timbre, ritmo, pausas, perguntas, ênfase e transições no idioma base.</p></div>
-                  <span className={cn("rounded-full px-2 py-1 text-[10px]", voiceCaptureStatus.tone === "ready" ? "bg-emerald-500/15 text-emerald-300" : voiceCaptureStatus.tone === "warning" ? "bg-amber-500/15 text-amber-300" : "bg-white/5 text-gray-500")}>{voiceCaptureStatus.label}</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button type="button" disabled={videoRecording} onClick={() => voiceRecording ? stopVoiceRecording() : void startVoiceRecording()} className={cn("inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold", voiceRecording ? "bg-red-600 hover:bg-red-500 text-white" : "bg-cyan-600 hover:bg-cyan-500 text-white", videoRecording && "opacity-40")}>
-                    {voiceRecording ? <CircleStop className="h-3.5 w-3.5" /> : <Mic2 className="h-3.5 w-3.5" />}{voiceRecording ? `Parar ${formatDuration(voiceElapsed)}` : "Gravar agora"}
-                  </button>
-                  <button type="button" disabled={voiceRecording} onClick={() => voiceInput.current?.click()} className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs hover:bg-white/5 disabled:opacity-40"><Upload className="h-3.5 w-3.5" /> Enviar áudio</button>
-                </div>
-                <button type="button" onClick={() => setShowVoiceScript((value) => !value)} className="text-xs text-cyan-300 hover:text-cyan-200">{showVoiceScript ? "Ocultar roteiro" : "Ver roteiro guiado"}</button>
-                <p className="text-[11px] text-gray-500 truncate">{voiceFile ? `${voiceFile.name} · ${formatDuration(voiceDuration)}` : "Recomendado: aproximadamente 1–2 minutos de fala útil"}</p>
-                <input ref={voiceInput} type="file" accept="audio/*" className="hidden" onChange={(event) => void handleVoiceFile(event.target.files?.[0] ?? null)} />
-              </div>
-
-              <div className="rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/5 p-4 space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div><Camera className="h-5 w-5 text-fuchsia-300 mb-2" /><p className="text-sm font-semibold">3. Vídeo do Dublê · {marketConfig.locale}</p><p className="text-xs text-gray-500 mt-1">Referência facial, labial, olhar, expressões, cabeça e gestos.</p></div>
-                  <span className={cn("rounded-full px-2 py-1 text-[10px]", videoCaptureStatus.tone === "ready" ? "bg-emerald-500/15 text-emerald-300" : videoCaptureStatus.tone === "warning" ? "bg-amber-500/15 text-amber-300" : "bg-white/5 text-gray-500")}>{videoCaptureStatus.label}</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button type="button" disabled={voiceRecording} onClick={() => videoRecording ? stopVideoRecording() : void startVideoRecording()} className={cn("inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold", videoRecording ? "bg-red-600 hover:bg-red-500 text-white" : "bg-fuchsia-600 hover:bg-fuchsia-500 text-white", voiceRecording && "opacity-40")}>
-                    {videoRecording ? <CircleStop className="h-3.5 w-3.5" /> : <Camera className="h-3.5 w-3.5" />}{videoRecording ? `Parar ${formatDuration(videoElapsed)}` : "Gravar vídeo"}
-                  </button>
-                  <button type="button" disabled={videoRecording} onClick={() => videoInput.current?.click()} className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs hover:bg-white/5 disabled:opacity-40"><Upload className="h-3.5 w-3.5" /> Enviar vídeo</button>
-                </div>
-                <button type="button" onClick={() => setShowVideoScript((value) => !value)} className="text-xs text-fuchsia-300 hover:text-fuchsia-200">{showVideoScript ? "Ocultar roteiro" : "Abrir roteiro de 2 min"}</button>
-                <p className="text-[11px] text-gray-500 truncate">{videoFile ? `${videoFile.name} · ${formatDuration(videoDuration)}` : "Meta: aproximadamente 2 minutos"}</p>
-                <input ref={videoInput} type="file" accept="video/*" className="hidden" onChange={(event) => void handleVideoFile(event.target.files?.[0] ?? null)} />
-              </div>
-            </div>
-
-            {videoRecording && (
-              <div className="grid lg:grid-cols-[360px_1fr] gap-4 rounded-xl border border-red-500/20 bg-red-500/5 p-4">
-                <video ref={videoPreview} muted playsInline className="w-full aspect-video rounded-xl bg-black object-cover" />
-                <div><p className="text-sm font-semibold text-white">Gravando referência do Dublê · {formatDuration(videoElapsed)}</p><p className="text-xs text-gray-400 mt-1">Mantenha a câmera na altura dos olhos, rosto iluminado e sem filtros. O roteiro abaixo orienta as transições.</p><div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-3 text-xs text-gray-300">Frente → esquerda leve → centro → direita leve → centro → sorriso natural → expressão neutra.</div></div>
-              </div>
-            )}
-
-            {showVoiceScript && (
-              <section className="rounded-xl border border-cyan-500/20 bg-black/20 p-4 space-y-3">
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                  <div><p className="text-sm font-semibold text-cyan-100">Teleprompter — Voz guiada · {marketConfig.name}</p><p className="text-xs text-gray-500">Leia no seu ritmo normal. Não tente imitar locutor e não force sotaque diferente do seu.</p></div>
-                  <span className="text-[10px] text-gray-500">{marketConfig.voiceScriptVersion}</span>
-                </div>
-                <div className="max-h-64 overflow-y-auto space-y-3 pr-2">{marketConfig.voiceScript.map((paragraph, index) => <p key={index} className="text-sm leading-6 text-gray-200">{paragraph.replace("[NOME]", displayName.trim() || "[seu nome]")}</p>)}</div>
-              </section>
-            )}
-
-            {showVideoScript && (
-              <section className="rounded-xl border border-fuchsia-500/20 bg-black/20 p-4 space-y-3">
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                  <div><p className="text-sm font-semibold text-fuchsia-100">Teleprompter — Vídeo guiado ~2 min · {marketConfig.name}</p><p className="text-xs text-gray-500">Naturalidade primeiro. Movimentos pequenos e reais são melhores que atuação exagerada.</p></div>
-                  <span className="text-[10px] text-gray-500">{marketConfig.videoScriptVersion}</span>
-                </div>
-                <div className="grid md:grid-cols-2 gap-3">{marketConfig.videoScript.map((item) => <div key={item.time} className="rounded-lg border border-white/10 bg-white/[0.02] p-3"><div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold text-fuchsia-200">{item.title}</p><span className="text-[10px] text-gray-500">{item.time}</span></div><p className="text-sm leading-5 text-gray-200 mt-2">{item.text.replace("[NOME]", displayName.trim() || "[seu nome]")}</p><p className="text-[11px] text-gray-500 mt-2">{item.cue}</p></div>)}</div>
-              </section>
-            )}
-
-            <section className="rounded-xl border border-white/10 bg-black/10 p-4 space-y-3">
-              <div className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-amber-300" /><p className="text-sm font-semibold">Pré-validação técnica das referências</p></div>
-              <p className="text-xs text-gray-500">O VendorAI registra verificações objetivas disponíveis no navegador e depois usa o analisador técnico do Media Engine. Não exibimos nota artificial de semelhança facial.</p>
-              <div className="grid md:grid-cols-2 gap-3">
-                <div className="rounded-lg border border-white/10 p-3"><p className="text-xs font-semibold">Voz · {marketConfig.locale}</p><div className="mt-2 space-y-1 text-[11px] text-gray-400"><p>{voiceFile ? "✓ Arquivo capturado" : "— Arquivo ainda não capturado"}</p><p>{voiceDuration !== null ? `${voiceDuration >= 45 && voiceDuration <= 150 ? "✓" : "!"} Duração: ${formatDuration(voiceDuration)}` : "— Duração ainda não disponível"}</p><p>◌ Ruído, pico, silêncio e demais métricas: analisador técnico após salvar</p></div></div>
-                <div className="rounded-lg border border-white/10 p-3"><p className="text-xs font-semibold">Vídeo · {marketConfig.locale}</p><div className="mt-2 space-y-1 text-[11px] text-gray-400"><p>{videoFile ? "✓ Arquivo capturado" : "— Arquivo ainda não capturado"}</p><p>{videoDuration !== null ? `${videoDuration >= 90 && videoDuration <= 150 ? "✓" : "!"} Duração: ${formatDuration(videoDuration)}` : "— Duração ainda não disponível"}</p><p>◌ Resolução, FPS, áudio e demais métricas: analisador técnico após salvar</p></div></div>
-              </div>
-            </section>
-
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Autorizações de uso</p>
-              <div className="grid md:grid-cols-2 gap-2">
-                {CONSENT_OPTIONS.map((option) => (
-                  <label key={option.scope} className={cn("flex gap-3 rounded-xl border p-3 cursor-pointer", consents[option.scope] ? "border-emerald-500/30 bg-emerald-500/5" : "border-white/10 bg-white/[0.02]")}>
-                    <input type="checkbox" checked={consents[option.scope]} onChange={() => setConsents((current) => ({ ...current, [option.scope]: !current[option.scope] }))} className="mt-1 accent-emerald-500" />
-                    <span><span className="block text-sm font-medium">{option.label}</span><span className="block text-xs text-gray-500 mt-0.5">{option.description}</span></span>
+              {createStep === 3 && (
+                <div className="mx-auto max-w-3xl space-y-5">
+                  <div>
+                    <h3 className="text-base font-semibold">Autorizações de uso</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">Defina o que este Dublê Digital pode fazer. Essas autorizações continuam independentes e revogáveis.</p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {CONSENT_OPTIONS.map((option) => (
+                      <label key={option.scope} className={cn("flex cursor-pointer gap-3 rounded-xl border p-4", consents[option.scope] && "border-emerald-500/40 bg-emerald-500/5")}>
+                        <input type="checkbox" checked={consents[option.scope]} onChange={() => setConsents((current) => ({ ...current, [option.scope]: !current[option.scope] }))} className="mt-1 accent-emerald-600" />
+                        <span><span className="block text-sm font-medium">{option.label}</span><span className="mt-1 block text-xs text-muted-foreground">{option.description}</span></span>
+                      </label>
+                    ))}
+                  </div>
+                  <label className={cn("flex cursor-pointer gap-3 rounded-xl border p-4", authorizationConfirmed ? "border-emerald-500/40 bg-emerald-500/5" : "border-amber-500/30 bg-amber-500/5")}>
+                    <input type="checkbox" checked={authorizationConfirmed} onChange={(event) => setAuthorizationConfirmed(event.target.checked)} className="mt-1 accent-emerald-600" />
+                    <span><span className="block text-sm font-semibold">Declaro que possuo autorização para os usos selecionados</span><span className="mt-1 block text-xs text-muted-foreground">O VendorAI registra quem cadastrou, as finalidades autorizadas e o idioma base da captura.</span></span>
                   </label>
-                ))}
+                </div>
+              )}
+
+              {createStep === 4 && (
+                <div className="mx-auto max-w-3xl space-y-5">
+                  <div>
+                    <h3 className="text-base font-semibold">Verificação</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">Confira o material antes de concluir. A análise técnica profunda ocorre após salvar.</p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-xl border p-4"><p className="text-sm font-semibold">Foto</p><p className={cn("mt-2 text-xs", faceFile ? "text-emerald-600" : "text-muted-foreground")}>{faceFile ? "✓ Pronta" : "— Não enviada"}</p></div>
+                    <div className="rounded-xl border p-4"><p className="text-sm font-semibold">Voz</p><p className={cn("mt-2 text-xs", voiceFile ? "text-emerald-600" : "text-muted-foreground")}>{voiceFile ? `✓ ${formatDuration(voiceDuration)}` : "— Não enviada"}</p></div>
+                    <div className="rounded-xl border p-4"><p className="text-sm font-semibold">Vídeo</p><p className={cn("mt-2 text-xs", videoFile ? "text-emerald-600" : "text-muted-foreground")}>{videoFile ? `✓ ${formatDuration(videoDuration)}` : "— Não enviado"}</p></div>
+                  </div>
+                  <div className="rounded-xl border bg-muted/20 p-4 text-sm">
+                    <div className="flex items-center justify-between"><span className="text-muted-foreground">Dublê</span><strong>{displayName}</strong></div>
+                    <div className="mt-2 flex items-center justify-between"><span className="text-muted-foreground">Idioma base</span><strong>{marketConfig.locale}</strong></div>
+                    <div className="mt-2 flex items-center justify-between"><span className="text-muted-foreground">Capturas prontas</span><strong>{captureCount}/3</strong></div>
+                  </div>
+                </div>
+              )}
+
+              {createStep === 5 && (
+                <div className="mx-auto max-w-2xl py-6 text-center">
+                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600"><ShieldCheck className="h-8 w-8" /></div>
+                  <h3 className="mt-4 text-xl font-bold">Tudo pronto para criar o Dublê Digital</h3>
+                  <p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">Ao concluir, foto, voz, vídeo e autorizações serão salvos na mesma Identidade Audiovisual. Não será criado um cadastro paralelo.</p>
+                  <button disabled={saving || !displayName.trim() || voiceRecording || videoRecording || !authorizationConfirmed} onClick={() => void createIdentity()} className="mt-6 inline-flex items-center gap-2 rounded-xl bg-orange-600 px-5 py-3 text-sm font-semibold text-white hover:bg-orange-500 disabled:opacity-50">
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Finalizar captura do Dublê
+                  </button>
+                </div>
+              )}
               </div>
             </div>
 
-            <label className={cn("flex gap-3 rounded-xl border p-4 cursor-pointer", authorizationConfirmed ? "border-emerald-500/40 bg-emerald-500/10" : "border-amber-500/30 bg-amber-500/5")}>
-              <input type="checkbox" checked={authorizationConfirmed} onChange={(event) => setAuthorizationConfirmed(event.target.checked)} className="mt-1 accent-emerald-500" />
-              <span><span className="block text-sm font-semibold">Declaro que possuo autorização para os usos selecionados</span><span className="block text-xs text-gray-400 mt-1">Esta confirmação não substitui documentos legais necessários ao seu caso. Ela registra no VendorAI quem cadastrou, quais finalidades foram autorizadas e o mercado/idioma base da captura.</span></span>
-            </label>
-
-            <div className="flex justify-end gap-2">
-              <button onClick={() => { resetCreate(); setShowCreate(false); }} className="rounded-xl border border-white/10 px-4 py-2 text-sm text-gray-300">Cancelar</button>
-              <button disabled={saving || !displayName.trim() || voiceRecording || videoRecording} onClick={() => void createIdentity()} className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Salvar identidade autorizada
+            <div className="flex items-center justify-between border-t border-slate-200 bg-white px-5 py-4 lg:pl-[300px]">
+              <button
+                type="button"
+                disabled={createStep === 1 || saving}
+                onClick={() => setCreateStep((Math.max(1, createStep - 1)) as 1 | 2 | 3 | 4 | 5)}
+                className="rounded-xl border px-4 py-2 text-sm font-medium disabled:opacity-40"
+              >
+                Voltar
               </button>
+              {createStep < 5 && (
+                <button
+                  type="button"
+                  disabled={
+                    saving ||
+                    (createStep === 1 && !canContinueStep1) ||
+                    (createStep === 2 && !canContinueStep2) ||
+                    (createStep === 3 && !canContinueStep3)
+                  }
+                  onClick={() => setCreateStep((Math.min(5, createStep + 1)) as 1 | 2 | 3 | 4 | 5)}
+                  className="rounded-xl bg-orange-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-500 disabled:opacity-40"
+                >
+                  Continuar
+                </button>
+              )}
             </div>
           </section>
         )}
-
-        <div className="grid lg:grid-cols-[320px_1fr] gap-4">
-          <aside className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 space-y-2 min-h-[420px]">
-            <div className="flex items-center justify-between px-2 py-1"><p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Identidades</p><button onClick={() => void loadAll(true)} className="p-1.5 rounded-lg hover:bg-white/10 text-gray-400" aria-label="Atualizar"><RefreshCw className="h-3.5 w-3.5" /></button></div>
-            {loading ? (
-              <div className="py-12 flex justify-center"><Loader2 className="h-5 w-5 animate-spin text-purple-400" /></div>
-            ) : identities.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-white/10 p-5 text-center text-xs text-gray-500">Nenhuma pessoa/persona cadastrada ainda.</div>
-            ) : identities.map((identity) => {
-              const identityMarket = marketFromMetadata(identity.metadata);
-              return (
-                <button key={identity.id} onClick={() => void loadIdentity(identity.id)} className={cn("w-full rounded-xl border p-3 text-left transition-colors", selectedId === identity.id ? "border-purple-500/40 bg-purple-500/10" : "border-white/5 bg-black/10 hover:border-white/15")}>
-                  <div className="flex items-center justify-between gap-2"><p className="text-sm font-semibold truncate">{identity.display_name}</p><span className={cn("text-[10px] rounded-full px-2 py-0.5", identity.status === "active" ? "bg-emerald-500/15 text-emerald-300" : "bg-gray-500/15 text-gray-300")}>{identity.status === "active" ? "Ativa" : identity.status}</span></div>
-                  <p className="text-[11px] text-gray-500 mt-1">{identity.kind === "person" ? "Pessoa real" : "Persona"} · {identityMarket.code} / {identityMarket.locale} · {Number(identity.voice_profile_count ?? 0)} voz(es) · {Number(identity.active_consent_count ?? 0)} autorizações</p>
-                </button>
-              );
-            })}
-          </aside>
-
-          <main className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 min-h-[420px]">
-            {!detail ? (
-              <div className="h-full min-h-[360px] flex flex-col items-center justify-center text-center"><UserRound className="h-9 w-9 text-gray-600 mb-3" /><p className="text-sm font-semibold text-gray-300">Selecione ou cadastre uma identidade</p><p className="text-xs text-gray-500 mt-1 max-w-sm">Aqui ficam foto, voz, vídeo de referência, idioma base e permissões usadas para criação audiovisual.</p></div>
-            ) : (
-              <div className="space-y-5">
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2"><h2 className="text-lg font-bold">{detail.identity.display_name}</h2><CheckCircle2 className="h-4 w-4 text-emerald-400" /><span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-200">{detailMarket.name} · {detailMarket.locale}</span></div>
-                    <p className="text-xs text-gray-500 mt-1">{detail.identity.kind === "person" ? "Pessoa real autorizada" : "Persona da marca"} · VendorAI · Mercosul</p>
-                  </div>
-                  <div className={cn("rounded-lg border px-3 py-2 text-xs", voiceEngineReady ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-amber-500/30 bg-amber-500/10 text-amber-200")}>{voiceEngineReady ? "Motor de voz conectado" : "Motor de voz aguardando GPU/configuração"}</div>
-                </div>
-
-                <section className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4 space-y-3">
-                  <div><p className="text-sm font-semibold">Prontidão da Identidade Audiovisual</p><p className="text-[11px] text-gray-500 mt-1">As referências ficam versionadas na Biblioteca Audiovisual com mercado e locale de captura. A análise profunda não recebe nota até processamento real.</p></div>
-                  <div className="grid sm:grid-cols-3 gap-2">
-                    <div className="rounded-lg border border-white/10 bg-black/10 p-3"><p className="text-xs font-semibold">Rosto</p><p className={cn("text-[11px] mt-1", detail.identity.face_reference_asset_id ? "text-emerald-300" : "text-gray-500")}>{detail.identity.face_reference_asset_id ? "✓ Referência salva" : "— Não cadastrado"}</p></div>
-                    <div className="rounded-lg border border-white/10 bg-black/10 p-3"><p className="text-xs font-semibold">Voz · {detailMarket.locale}</p><p className={cn("text-[11px] mt-1", detailVoiceReference ? "text-emerald-300" : "text-gray-500")}>{detailVoiceReference ? "✓ Referência salva" : "— Não cadastrada"}</p></div>
-                    <div className="rounded-lg border border-white/10 bg-black/10 p-3"><p className="text-xs font-semibold">Vídeo ~2 min</p><p className={cn("text-[11px] mt-1", detailVideoReferenceId ? "text-emerald-300" : "text-gray-500")}>{detailVideoReferenceId ? "✓ Referência salva" : "— Não cadastrado"}</p></div>
-                  </div>
-                  {(detailCapture?.voice?.analysisStatus === "pending" || detailCapture?.video?.analysisStatus === "pending") && <p className="text-[11px] text-amber-300">◌ Análise profunda de fidelidade pendente: ruído/eco/clipping, prosódia, expressões, olhar, estabilidade e sincronismo labial.</p>}
-                </section>
-
-                <section className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Autorizações ativas</p>
-                  <div className="flex flex-wrap gap-2">{CONSENT_OPTIONS.map((option) => <span key={option.scope} className={cn("rounded-full border px-2.5 py-1 text-[11px]", activeConsentScopes.has(option.scope) ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-white/10 bg-white/[0.02] text-gray-500")}>{activeConsentScopes.has(option.scope) ? "✓ " : "— "}{option.label}</span>)}</div>
-                </section>
-
-                <section className="rounded-xl border border-white/10 bg-black/10 p-4 space-y-3">
-                  <div className="flex items-center gap-2"><FileAudio className="h-4 w-4 text-cyan-300" /><p className="text-sm font-semibold">Perfis de voz</p></div>
-                  {detail.voices.length === 0 ? <p className="text-xs text-gray-500">Nenhum áudio de referência foi cadastrado para esta identidade.</p> : detail.voices.map((voice) => <div key={voice.id} className="flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2"><div><p className="text-sm">{voice.name}</p><p className="text-[11px] text-gray-500">{voice.reference_asset_id ? `Áudio de referência salvo na Biblioteca · ${detailMarket.locale}` : "Sem referência de áudio"}</p></div><span className={cn("text-[10px] rounded-full px-2 py-0.5", voice.status === "ready" ? "bg-emerald-500/15 text-emerald-300" : "bg-gray-500/15 text-gray-300")}>{voice.status === "ready" ? "Pronta" : voice.status}</span></div>)}
-                </section>
-
-                {detailVideoReferenceId && <section className="rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/5 p-4"><div className="flex items-center gap-2"><FileVideo className="h-4 w-4 text-fuchsia-300" /><p className="text-sm font-semibold">Referência corporal/facial do Dublê</p></div><p className="text-xs text-gray-500 mt-1">Vídeo guiado registrado na Identidade Audiovisual em {detailMarket.locale}. Ele permanece vinculado ao pipeline de análise e geração do Dublê.</p></section>}
-
-                <section className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-3"><div><div className="flex items-center gap-2"><Volume2 className="h-4 w-4 text-cyan-300" /><p className="text-sm font-semibold">Testar voz autorizada · {detailMarket.locale}</p></div><p className="text-[11px] text-gray-500 mt-1">Exige perfil de voz pronto + autorizações de voz e geração IA. O locale é enviado automaticamente ao Voice Engine.</p></div>{!voiceEngineReady && <span className="text-[10px] text-amber-300">Disponível após conectar GPU</span>}</div>
-                  <textarea value={testText} onChange={(event) => setTestText(event.target.value)} rows={3} maxLength={5000} className="w-full resize-none rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none focus:border-cyan-500/40" />
-                  <div className="flex flex-wrap items-center gap-3"><button disabled={!voiceEngineReady || testingVoice || !detail.voices.some((voice) => voice.status === "ready") || !activeConsentScopes.has("voice_use") || !activeConsentScopes.has("ai_generation")} onClick={() => void testVoice()} className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed">{testingVoice ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Gerar amostra</button>{testAudioUrl && <audio controls src={testAudioUrl} className="h-8 max-w-full" />}</div>
-                </section>
-
-                <TalkingVideoPanel tenantId={tenantId} identityId={detail.identity.id} identityName={detail.identity.display_name} faceReferenceAssetId={detail.identity.face_reference_asset_id} voices={detail.voices} activeConsentScopes={activeConsentScopes} voiceEngineReady={voiceEngineReady} lipSyncEngineReady={lipSyncEngineReady} />
-              </div>
-            )}
-          </main>
-        </div>
       </div>
     </div>
   );
