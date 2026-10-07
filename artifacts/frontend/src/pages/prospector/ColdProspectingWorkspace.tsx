@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, CalendarDays, CheckCircle2, Mail, MessageCircle, RefreshCw, Send, Sparkles, UserRound, Users } from "lucide-react";
+import { Bot, CalendarDays, CheckCircle2, Mail, MessageCircle, RefreshCw, Send, Settings2, Sparkles, UserRound, Users } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 
 type Stage =
   | "encontrado" | "analisado" | "em_contato" | "conta_mapeada"
@@ -57,6 +58,17 @@ type Interaction = {
 };
 
 type ProspectRow = { prospect: Prospect; company?: unknown };
+type ProspectingConfig = {
+  coldProspectingMode: "off" | "assisted" | "autonomous";
+  allowedSolutions: Array<"vendorai" | "arqdor">;
+  allowedChannels: Array<"whatsapp" | "email" | "phone" | "instagram">;
+  contactWindowStart: string;
+  contactWindowEnd: string;
+  maxContactsPerPerson7d: number;
+  qualificationThreshold: number;
+  meetingReadinessThreshold: number;
+  autoSendApprovedContent: boolean;
+};
 type ProspectDetail = { prospect: Prospect; interactions: Interaction[] };
 
 const STAGES: Array<{ key: Stage; label: string }> = [
@@ -68,6 +80,10 @@ const STAGES: Array<{ key: Stage; label: string }> = [
   { key: "reuniao_em_negociacao", label: "Reunião" },
   { key: "reuniao_agendada", label: "Agendada" },
   { key: "qualificado", label: "Qualificado" },
+  { key: "aquecimento", label: "Aquecimento" },
+  { key: "sem_aderencia", label: "Sem aderência" },
+  { key: "sem_contato", label: "Sem contato" },
+  { key: "nao_contatar", label: "Não contatar" },
 ];
 
 function headers() {
@@ -94,12 +110,22 @@ export default function ColdProspectingWorkspace() {
   const [message, setMessage] = useState("");
   const [meetingStart, setMeetingStart] = useState("");
   const [meetingEnd, setMeetingEnd] = useState("");
+  const [pendingMaterialId, setPendingMaterialId] = useState<string | null>(null);
 
   const list = useQuery({
     queryKey: ["cold-prospects", tenantId],
     enabled: Boolean(tenantId),
     queryFn: () => api<ProspectRow[]>(`/api/tenants/${tenantId}/prospects`),
     refetchInterval: 30_000,
+  });
+
+  const config = useQuery({
+    queryKey: ["cold-prospect-config", tenantId],
+    enabled: Boolean(tenantId),
+    queryFn: async () => {
+      const result = await api<{ config: ProspectingConfig | null }>("/api/prospector/config");
+      return result.config;
+    },
   });
 
   const detail = useQuery({
@@ -136,11 +162,38 @@ export default function ColdProspectingWorkspace() {
         channel,
       }),
     }),
-    onSuccess: (data) => toast({
-      title: data.action === "reuse" ? "Material aprovado encontrado" : "Material criado para revisão",
-      description: data.action === "generated" ? "O envio automático permanece bloqueado até aprovação." : undefined,
-    }),
+    onSuccess: (data) => {
+      setPendingMaterialId(data.assetId ?? null);
+      toast({
+        title: data.action === "reuse" ? "Material aprovado encontrado" : "Material criado para revisão",
+        description: data.action === "generated" ? "Revise e aprove a peça antes de autorizar uso." : undefined,
+      });
+    },
     onError: (error: Error) => toast({ title: "Falha ao preparar material", description: error.message, variant: "destructive" }),
+  });
+
+  const saveConfigMutation = useMutation({
+    mutationFn: (patch: Partial<ProspectingConfig>) => api<{ config: ProspectingConfig }>("/api/prospector/config", {
+      method: "PUT",
+      body: JSON.stringify(patch),
+    }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["cold-prospect-config", tenantId] });
+      toast({ title: "Estratégia de prospecção atualizada" });
+    },
+    onError: (error: Error) => toast({ title: "Falha ao salvar estratégia", description: error.message, variant: "destructive" }),
+  });
+
+  const approveMaterialMutation = useMutation({
+    mutationFn: () => api<any>(`/api/tenants/${tenantId}/prospects/${selectedId}/content/${pendingMaterialId}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ autoSendAllowed: false }),
+    }),
+    onSuccess: () => {
+      toast({ title: "Material aprovado", description: "A peça está disponível para o Vendi. Autoenvio permanece desativado." });
+      setPendingMaterialId(null);
+    },
+    onError: (error: Error) => toast({ title: "Falha ao aprovar material", description: error.message, variant: "destructive" }),
   });
 
   const convertMutation = useMutation({
@@ -185,6 +238,129 @@ export default function ColdProspectingWorkspace() {
     <div className="space-y-4">
       <Card>
         <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base"><Settings2 className="h-4 w-4" />Estratégia do tenant</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div>
+            <p className="mb-1 text-xs font-medium">Modo</p>
+            <Select
+              value={config.data?.coldProspectingMode ?? "off"}
+              onValueChange={(value) => saveConfigMutation.mutate({ coldProspectingMode: value as ProspectingConfig["coldProspectingMode"] })}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="off">Desativado</SelectItem>
+                <SelectItem value="assisted">Assistido</SelectItem>
+                <SelectItem value="autonomous">Autônomo</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium">Soluções autorizadas</p>
+            <div className="flex gap-2">
+              {(["vendorai","arqdor"] as const).map((solution) => {
+                const active = (config.data?.allowedSolutions ?? ["vendorai"]).includes(solution);
+                return (
+                  <Button
+                    key={solution}
+                    type="button"
+                    size="sm"
+                    variant={active ? "default" : "outline"}
+                    onClick={() => {
+                      const current = config.data?.allowedSolutions ?? ["vendorai"];
+                      const next = active ? current.filter((item) => item !== solution) : [...current, solution];
+                      if (next.length) saveConfigMutation.mutate({ allowedSolutions: next });
+                    }}
+                  >
+                    {solution === "vendorai" ? "Vendor.ai" : "Arqdor"}
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium">Janela de contato</p>
+            <div className="flex gap-2">
+              <Input
+                type="time"
+                value={config.data?.contactWindowStart ?? "08:00"}
+                onChange={(e) => saveConfigMutation.mutate({ contactWindowStart: e.target.value })}
+              />
+              <Input
+                type="time"
+                value={config.data?.contactWindowEnd ?? "18:00"}
+                onChange={(e) => saveConfigMutation.mutate({ contactWindowEnd: e.target.value })}
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-between rounded-lg border px-3">
+            <div>
+              <p className="text-xs font-medium">Autoenvio de material aprovado</p>
+              <p className="text-[11px] text-muted-foreground">Só funciona no modo autônomo.</p>
+            </div>
+            <Switch
+              checked={config.data?.autoSendApprovedContent ?? false}
+              onCheckedChange={(checked) => saveConfigMutation.mutate({ autoSendApprovedContent: checked })}
+            />
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium">Limite de contatos / 7 dias</p>
+            <Input
+              type="number"
+              min={1}
+              max={30}
+              value={config.data?.maxContactsPerPerson7d ?? 5}
+              onChange={(e) => saveConfigMutation.mutate({ maxContactsPerPerson7d: Number(e.target.value) })}
+            />
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium">Score mínimo para Lead</p>
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              value={config.data?.qualificationThreshold ?? 70}
+              onChange={(e) => saveConfigMutation.mutate({ qualificationThreshold: Number(e.target.value) })}
+            />
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium">Readiness para reunião</p>
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              value={config.data?.meetingReadinessThreshold ?? 80}
+              onChange={(e) => saveConfigMutation.mutate({ meetingReadinessThreshold: Number(e.target.value) })}
+            />
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium">Canais automáticos</p>
+            <div className="flex flex-wrap gap-1">
+              {(["whatsapp","email"] as const).map((item) => {
+                const active = (config.data?.allowedChannels ?? ["whatsapp"]).includes(item);
+                return (
+                  <Button
+                    key={item}
+                    type="button"
+                    size="sm"
+                    variant={active ? "default" : "outline"}
+                    onClick={() => {
+                      const current = config.data?.allowedChannels ?? ["whatsapp"];
+                      const next = active ? current.filter((channel) => channel !== item) : [...current, item];
+                      if (next.length) saveConfigMutation.mutate({ allowedChannels: next });
+                    }}
+                  >
+                    {item === "whatsapp" ? "WhatsApp" : "E-mail"}
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
           <div className="flex items-center justify-between gap-3">
             <div>
               <CardTitle className="text-base">Pipeline de Prospecção IA</CardTitle>
@@ -196,7 +372,7 @@ export default function ColdProspectingWorkspace() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-3 overflow-x-auto pb-2" style={{ gridTemplateColumns: "repeat(8, minmax(210px, 1fr))" }}>
+          <div className="grid gap-3 overflow-x-auto pb-2" style={{ gridTemplateColumns: "repeat(12, minmax(210px, 1fr))" }}>
             {STAGES.map((stage) => (
               <div key={stage.key} className="min-h-40 rounded-xl border bg-muted/20 p-2">
                 <div className="mb-2 flex items-center justify-between">
@@ -309,6 +485,11 @@ export default function ColdProspectingWorkspace() {
                     <Sparkles className="mr-1 h-3.5 w-3.5" />Gerar material
                   </Button>
                 </div>
+                {pendingMaterialId && (
+                  <Button className="w-full" variant="secondary" onClick={() => approveMaterialMutation.mutate()} disabled={approveMaterialMutation.isPending}>
+                    <CheckCircle2 className="mr-1 h-3.5 w-3.5" />Aprovar material para uso
+                  </Button>
+                )}
               </CardContent>
             </Card>
 
