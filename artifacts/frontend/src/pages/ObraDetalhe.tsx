@@ -56,7 +56,7 @@ import {
   Upload, X, Image as ImageIcon, FileSpreadsheet, Copy,
   Send, ThumbsUp, ThumbsDown, ChevronRight, AlertCircle,
   Search, Loader2, FileText, Download, Sparkles,
-  Zap, Sun, BatteryCharging, CarFront,
+  Zap, Sun, BatteryCharging, CarFront, Droplets, Gauge, Flame,
 } from "lucide-react";
 import TabFinanceiro from "./TabFinanceiro";
 import EquipeProducao from "./EquipeProducao";
@@ -144,6 +144,7 @@ const TABS = [
   { id: "compras",      label: "Compras",        icon: ShoppingCart },
   { id: "orcamento",    label: "Orçamento",      icon: FileSpreadsheet },
   { id: "energia",       label: "Energia",        icon: Zap },
+  { id: "hidraulica",     label: "Hidráulica",     icon: Droplets },
 ];
 
 function MobileTabDropdown({ activeTab, onSelect }: { activeTab: string; onSelect: (id: string) => void }) {
@@ -3008,6 +3009,154 @@ function EnergiaSistemas({ tenantId, obraId }: { tenantId: string; obraId: strin
   );
 }
 
+function HidraulicaSistemas({ tenantId, obraId }: { tenantId: string; obraId: string }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [tipoArea, setTipoArea] = useState("central_hidraulica");
+
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["obra-hidraulica-area-tecnica", tenantId, obraId],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/hidraulica/area-tecnica-resumo`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Erro ao carregar área técnica hidráulica");
+      return res.json();
+    },
+    enabled: !!tenantId && !!obraId,
+  });
+
+  async function criarAreaTecnica() {
+    const token = localStorage.getItem("vendorai_token");
+    const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/hidraulica/preconfigurar-area-tecnica`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        tipo: tipoArea,
+        nome: tipoArea === "central_aquecimento" ? "Central de aquecimento" :
+          tipoArea === "central_pressurizacao" ? "Central de pressurização" :
+          tipoArea === "casa_maquinas" ? "Casa de máquinas" : "Central hidráulica",
+        drenoObrigatorio: true,
+        acessoManutencao: true,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      toast({ title: "Não foi possível criar", description: body?.error ?? "Erro ao criar área técnica", variant: "destructive" });
+      return;
+    }
+    toast({ title: "Área técnica adicionada" });
+    qc.invalidateQueries({ queryKey: ["obra-hidraulica-area-tecnica", tenantId, obraId] });
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 md:grid-cols-4">
+        <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Reservação</div><div className="text-2xl font-bold mt-1">{data?.totais?.volumeReservacaoL ?? "0"} L</div></CardContent></Card>
+        <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Água quente</div><div className="text-2xl font-bold mt-1">{data?.totais?.volumeAguaQuenteL ?? "0"} L</div></CardContent></Card>
+        <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Potência aquecimento</div><div className="text-2xl font-bold mt-1">{data?.totais?.potenciaAquecimentoKw ?? "0"} kW</div></CardContent></Card>
+        <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Potência pressurização</div><div className="text-2xl font-bold mt-1">{data?.totais?.potenciaPressurizacaoKw ?? "0"} kW</div></CardContent></Card>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-3"><CardTitle className="text-base">Adicionar área técnica</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+          <div className="space-y-2">
+            <Label>Tipo</Label>
+            <select className="w-full h-10 rounded-md border bg-background px-3 text-sm" value={tipoArea} onChange={(e) => setTipoArea(e.target.value)}>
+              <option value="central_hidraulica">Central hidráulica</option>
+              <option value="central_aquecimento">Central de aquecimento</option>
+              <option value="central_pressurizacao">Central de pressurização</option>
+              <option value="casa_maquinas">Casa de máquinas</option>
+              <option value="shaft">Shaft técnico</option>
+              <option value="reservatorio">Área de reservatórios</option>
+              <option value="central_reuso">Central de reuso</option>
+            </select>
+          </div>
+          <Button onClick={criarAreaTecnica}><Plus className="h-4 w-4 mr-1" />Adicionar</Button>
+        </CardContent>
+      </Card>
+
+      {isLoading ? (
+        <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin" /></div>
+      ) : (
+        <>
+          <div className="grid gap-3 lg:grid-cols-2">
+            {(data?.areas ?? []).map((a: any) => (
+              <Card key={a.id}>
+                <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Droplets className="h-4 w-4 text-primary" />{a.nome}</CardTitle></CardHeader>
+                <CardContent className="grid grid-cols-2 gap-2 text-xs">
+                  <div><span className="text-muted-foreground">Tipo:</span> {a.tipo}</div>
+                  <div><span className="text-muted-foreground">Manutenção:</span> {a.acessoManutencao ? "sim" : "não"}</div>
+                  <div><span className="text-muted-foreground">Dreno:</span> {a.drenoObrigatorio ? "sim" : "não"}</div>
+                  <div><span className="text-muted-foreground">Ventilação:</span> {a.ventilacaoObrigatoria ? "sim" : "não"}</div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {(data?.aquecimento ?? []).length > 0 && (
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Flame className="h-4 w-4 text-primary" />Água quente</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {data.aquecimento.map((a: any) => (
+                  <div key={a.id} className="rounded-md border px-3 py-2 text-xs flex justify-between gap-3">
+                    <div><div className="font-medium">{a.nome}</div><div className="text-muted-foreground">{a.tipoGeracao}{a.recirculacao ? " · recirculação" : ""}</div></div>
+                    <div className="text-right">{a.volumeAcumulacaoL ? `${a.volumeAcumulacaoL} L` : "—"}<br />{a.potenciaKw ? `${a.potenciaKw} kW` : ""}</div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {(data?.pressurizacao ?? []).length > 0 && (
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Gauge className="h-4 w-4 text-primary" />Pressurização</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {data.pressurizacao.map((p: any) => (
+                  <div key={p.id} className="rounded-md border px-3 py-2 text-xs flex justify-between gap-3">
+                    <div><div className="font-medium">{p.nome}</div><div className="text-muted-foreground">{p.tipo}{p.bypass ? " · bypass" : ""}</div></div>
+                    <div className="text-right">{p.vazaoProjetoLMin ? `${p.vazaoProjetoLMin} L/min` : "—"}<br />{p.pressaoProjetoMca ? `${p.pressaoProjetoMca} mca` : ""}</div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {(data?.manifolds ?? []).length > 0 && (
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Manifolds / registros centralizados</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {data.manifolds.map((m: any) => (
+                  <div key={m.id} className="rounded-md border px-3 py-2 text-xs flex justify-between">
+                    <div><div className="font-medium">{m.nome}</div><div className="text-muted-foreground">{m.funcao} · {m.tecnologia}</div></div>
+                    <Badge variant="outline">{m.numeroSaidas} saídas</Badge>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {(data?.alertas ?? []).length > 0 && (
+            <Card className="border-amber-200">
+              <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><AlertCircle className="h-4 w-4 text-amber-500" />Alertas técnicos</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {data.alertas.map((a: any, idx: number) => (
+                  <div key={idx} className="text-xs rounded-md bg-amber-50 border border-amber-200 px-3 py-2">{a.mensagem ?? a.tipo}</div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ObraDetalhe() {
@@ -3170,6 +3319,7 @@ export default function ObraDetalhe() {
         {activeTab === "compras"      && <Compras tenantId={tenantId} obraId={obraId} />}
         {activeTab === "orcamento"    && <TabOrcamento tenantId={tenantId} obraId={obraId} portalToken={(obra as any).portalToken} />}
         {activeTab === "energia"       && <EnergiaSistemas tenantId={tenantId} obraId={obraId} />}
+        {activeTab === "hidraulica"     && <HidraulicaSistemas tenantId={tenantId} obraId={obraId} />}
       </div>
     </div>
   );
