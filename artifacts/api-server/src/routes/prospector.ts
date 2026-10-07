@@ -1119,88 +1119,56 @@ router.post("/prospector/construction-signals/prospect", async (req, res) => {
     });
   }
 
-  const [lead] = await db.insert(leadsTable).values({
+  const result = await intakeColdProspect({
     tenantId,
-    nome: normalizeLeadName(actorLabel, "Oportunidade Radar de Obras"),
-    empresa: actorType === "empresa" ? actorName ?? undefined : undefined,
-    telefone: telefone ?? undefined,
-    websiteUrl: websiteUrl ?? undefined,
-    endereco: work.endereco ?? undefined,
     source: "construction_radar",
-    mercadoSegmento: `Construção civil ${work.categoria ?? "residencial"}`,
-    enrichmentStatus: "pending",
-    propensityScore: scored.score,
-    priorityReason: `Radar de Obras: ${scored.reason}`,
-    constructionStage: work.fase ?? undefined,
-    proximaAcao: actorName
-      ? "Prospecctor: pesquisar contexto e iniciar diagnóstico consultivo"
-      : "Identificar proprietário, arquiteto/engenheiro ou empresa responsável antes da abordagem",
-    tipoPessoa: actorType === "empresa" ? "juridica" : "fisica",
-    metadata: leadRegistrationMetadata(metadataPatch, {
-      entryChannel: "prospeccao",
-      entrySource: "construction_radar",
-      details: { sourceUrl: work.sourceUrl ?? null },
-    }),
-  }).returning({ id: leadsTable.id });
-
-  if (!lead) return res.status(500).json({ error: "Falha ao enviar a obra ao Prospecctor" });
-
-  const [firstFunil] = await db
-    .select({ id: funisTable.id })
-    .from(funisTable)
-    .where(eq(funisTable.tenantId, tenantId))
-    .orderBy(asc(funisTable.createdAt))
-    .limit(1);
-
-  let dealId: string | null = null;
-  if (firstFunil) {
-    const [deal] = await db.insert(dealsTable).values({
-      tenantId,
-      leadId: lead.id,
-      funilId: firstFunil.id,
-      titulo: `${actorName || work.obra} — Radar de Obras`,
-      etapa: "novo",
-    }).returning({ id: dealsTable.id });
-    dealId = deal?.id ?? null;
-  }
-
-  await db.insert(activitiesTable).values({
-    tenantId,
-    leadId: lead.id,
-    dealId,
-    tipo: "tarefa",
-    titulo: "Radar de Obras — nova oportunidade",
-    descricao: [
-      `${work.obra} · ${work.local}`,
-      work.endereco ? `Endereço: ${work.endereco}` : null,
-      actorName ? `Contato recomendado: ${actorName} (${actorRole})` : "Contato: ainda a identificar",
-      `Prioridade: ${scored.priority} (${scored.score}/100)`,
-      `Evidência: ${work.evidencia}`,
-      work.sourceUrl ? `Fonte: ${work.sourceUrl}` : null,
-    ].filter(Boolean).join("\n"),
-    status: "concluida",
+    sourceRef: `construction_radar:${prospectKey}`,
+    displayName: actorName || work.obra,
+    phone: telefone ?? null,
+    website: websiteUrl ?? null,
+    address: work.endereco ?? null,
+    segment: `Construção civil ${work.categoria ?? "residencial"}`,
+    city: work.local ?? null,
+    fitScore: scored.score,
+    vendoraiFitScore: Math.max(60, scored.score - 10),
+    arqdorFitScore: Math.max(75, scored.score),
+    qualification: {
+      inferredPains: [],
+      facts: [
+        {
+          key: "construction_work_signal",
+          value: `${work.obra}${work.fase ? ` · fase ${work.fase}` : ""}`,
+          confidence: work.sourceAuthority === "oficial" ? 100 : work.sourceAuthority === "primaria" ? 85 : 65,
+          source: work.sourceUrl ?? work.sourceTitle ?? "Radar de Obras",
+          confirmed: true,
+          observedAt: now,
+        },
+        ...(actorName ? [{
+          key: "known_actor",
+          value: { name: actorName, role: actorRole, type: actorType },
+          confidence: 90,
+          source: "construction_radar",
+          confirmed: true,
+          observedAt: now,
+        }] : []),
+      ],
+    },
+    opportunitySummary: `${work.obra} · ${work.local}. Prioridade ${scored.priority} (${scored.score}/100). ${work.evidencia}`,
   });
 
-  enrichLead({
-    leadId: lead.id,
-    tenantId,
-    log: req.log,
-    scoreBoost: scored.priority === "alta" ? 18 : scored.priority === "media" ? 10 : 4,
-    boostReason: "construction_radar_signal",
-  }).catch((err) => req.log.warn({ err, leadId: lead.id }, "prospector: construction radar enrichment failed"));
-
-  return res.status(201).json({
-    leadId: lead.id,
-    dealId,
-    merged: false,
+  return res.status(result.created ? 201 : 200).json({
+    prospectId: result.prospect.id,
+    companyId: result.companyId,
+    merged: !result.created,
     actor: { role: actorRole, name: actorName, type: actorType },
     opportunityScore: scored.score,
     priority: scored.priority,
     priorityReason: scored.reason,
     readyForOutreach: Boolean(telefone),
+    stage: result.prospect.stage,
     message: actorName
-      ? `Obra enviada ao Prospecctor com ${actorName} como contato recomendado.`
-      : "Obra enviada ao Prospecctor; falta identificar um contato público antes da abordagem.",
+      ? `Obra enviada à Prospecção IA com ${actorName} como contato recomendado.`
+      : "Obra enviada à Prospecção IA; falta identificar um contato público antes da abordagem.",
   });
 });
 
