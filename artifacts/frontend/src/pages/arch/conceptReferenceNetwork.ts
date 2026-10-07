@@ -104,3 +104,33 @@ export async function applyImportedProjectGeometryRequest(
   if (!response.ok) throw new Error(payload?.error ?? "Não foi possível aplicar a planta importada.");
   return payload;
 }
+
+
+export async function importedProject3DPreviewRequest(projectId: string) {
+  const auth = token();
+  const response = await fetch(
+    `/api/arch/concept-projects/${encodeURIComponent(projectId)}/imported-project/3d-preview`,
+    { headers: auth ? { Authorization: `Bearer ${auth}` } : undefined },
+  );
+  const payload = await response.json().catch(() => ({})) as any;
+  if (!response.ok) throw new Error(payload?.error ?? "Não foi possível gerar a prévia 3D importada.");
+  return payload;
+}
+
+export async function applyImportedProject3DRequest(projectId: string) {
+  const auth = token();
+  const response = await fetch(
+    `/api/arch/concept-projects/${encodeURIComponent(projectId)}/imported-project/apply-3d`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(auth ? { Authorization: `Bearer ${auth}` } : {}),
+      },
+      body: JSON.stringify({ confirm: true }),
+    },
+  );
+  const payload = await response.json().catch(() => ({})) as any;
+  if (!response.ok) throw new Error(payload?.error ?? "Não foi possível aplicar cortes, fachadas e cobertura.");
+  return payload;
+}
