@@ -19,11 +19,18 @@ import {
   obraCotacaoPropostasTable,
   obraCotacaoPropostaItensTable,
   obraCotacaoSelecoesTable,
+  arqdorMarketProtecoesTenantTable,
+  insertArqdorMarketProtecaoTenantSchema,
   insertArqdorMarketDemandaSchema,
   insertArqdorMarketPropostaSchema,
 } from "@workspace/db";
 import { authenticate } from "../middlewares/auth.js";
 import { vendorPool } from "../lib/vendorDb.js";
+import {
+  evaluateMarketProtection,
+  loadTenantMarketProtectionRules,
+  normalizeMarketProtectionValue,
+} from "../lib/arqdor-market-protection.js";
 
 const router = Router();
 
@@ -33,6 +40,12 @@ function currentTenantId(req: any): string | null {
 
 function currentUserId(req: any): string | null {
   return req?.user?.id ?? req?.user?.sub ?? null;
+}
+
+function canManageMarketProtection(req: any): boolean {
+  const role = String(req?.user?.platformRole ?? "");
+  const fn = String(req?.user?.userFunction ?? "");
+  return role === "super_admin" || role === "tenant_admin" || fn === "administrador";
 }
 
 async function assertSourceOwnership(input: {
@@ -273,10 +286,7 @@ router.get("/arch/market/contexto", authenticate, async (req, res) => {
   const categoria = typeof req.query.categoria === "string" ? req.query.categoria.trim() : "";
   const limit = Math.min(Math.max(Number(req.query.limit ?? 60) || 60, 1), 100);
 
-  const conditions = [
-    eq(archMarketplaceItemsTable.ativo, true),
-    ne(archMarketplaceItemsTable.vendedorTenantId, tenantId),
-  ];
+  const conditions = [eq(archMarketplaceItemsTable.ativo, true)];
   if (busca) {
     conditions.push(or(
       ilike(archMarketplaceItemsTable.nome, `%${busca}%`),
@@ -286,7 +296,10 @@ router.get("/arch/market/contexto", authenticate, async (req, res) => {
   }
   if (categoria) conditions.push(ilike(archMarketplaceItemsTable.categoria, `%${categoria}%`));
 
-  const rows = await db
+  // Busca uma janela maior antes de aplicar a política comercial do tenant.
+  // Isso evita que itens do próprio parceiro (necessários em modo exclusivo/
+  // preferencial) sejam eliminados antes do filtro contextual.
+  const rawRows = await db
     .select({
       id: archMarketplaceItemsTable.id,
       masterProductId: archMarketplaceItemsTable.masterProductId,
@@ -298,6 +311,7 @@ router.get("/arch/market/contexto", authenticate, async (req, res) => {
       imagens: archMarketplaceItemsTable.imagens,
       especificacoes: archMarketplaceItemsTable.especificacoes,
       totalVendas: archMarketplaceItemsTable.totalVendas,
+      createdAt: archMarketplaceItemsTable.createdAt,
       empresaNome: tenantsTable.name,
       empresaSlug: tenantsTable.slug,
       empresaVertical: tenantsTable.vertical,
@@ -306,7 +320,38 @@ router.get("/arch/market/contexto", authenticate, async (req, res) => {
     .innerJoin(tenantsTable, eq(tenantsTable.id, archMarketplaceItemsTable.vendedorTenantId))
     .where(and(...conditions))
     .orderBy(desc(archMarketplaceItemsTable.totalVendas), desc(archMarketplaceItemsTable.createdAt))
-    .limit(limit);
+    .limit(Math.min(Math.max(limit * 4, 120), 400));
+
+  const protectionRules = await loadTenantMarketProtectionRules(tenantId);
+  const evaluatedRows = rawRows
+    .map((row) => ({
+      row,
+      decision: evaluateMarketProtection({
+        vendedorTenantId: row.vendedorTenantId,
+        categoria: row.categoria,
+        nome: row.nome,
+        especificacoes: (row.especificacoes ?? {}) as Record<string, unknown>,
+      }, tenantId, protectionRules),
+    }))
+    .filter(({ decision }) => decision.incluir)
+    .sort((a, b) => {
+      if (b.decision.boost !== a.decision.boost) return b.decision.boost - a.decision.boost;
+      const salesDiff = Number(b.row.totalVendas ?? 0) - Number(a.row.totalVendas ?? 0);
+      if (salesDiff !== 0) return salesDiff;
+      return new Date(String(b.row.createdAt)).getTime() - new Date(String(a.row.createdAt)).getTime();
+    })
+    .slice(0, limit);
+
+  const rows = evaluatedRows.map(({ row, decision }) => ({
+    ...row,
+    protecaoComercial: {
+      modo: decision.modo,
+      regraId: decision.regraId,
+      escopo: decision.escopo,
+      valor: decision.valor,
+      parceiroOrigem: row.vendedorTenantId === tenantId,
+    },
+  }));
 
   const supplierIds = [...new Set(rows.map((row) => row.vendedorTenantId))];
 
@@ -329,7 +374,7 @@ router.get("/arch/market/contexto", authenticate, async (req, res) => {
         });
       }
     } catch {
-      // Marketplace precisa continuar funcionando mesmo se o legado de avaliações
+      // Marketplace segue funcional mesmo se o legado de avaliações
       // ainda não estiver disponível no ambiente atual.
     }
   }
@@ -347,9 +392,15 @@ router.get("/arch/market/contexto", authenticate, async (req, res) => {
       categorias: new Set<string>(),
       fotos: [] as string[],
       totalVendas: 0,
+      parceiroOrigem: row.vendedorTenantId === tenantId,
+      prioridadeProtecao: 0,
     };
     current.produtosCompativeis += 1;
     current.totalVendas += Number(row.totalVendas ?? 0);
+    current.prioridadeProtecao = Math.max(
+      current.prioridadeProtecao,
+      row.protecaoComercial?.modo === "exclusivo" ? 1000 : row.protecaoComercial?.modo === "preferencial" ? 500 : 0,
+    );
     if (row.categoria) current.categorias.add(row.categoria);
     for (const foto of row.imagens ?? []) {
       if (current.fotos.length >= 4) break;
@@ -361,6 +412,7 @@ router.get("/arch/market/contexto", authenticate, async (req, res) => {
   const empresas = [...companiesMap.values()]
     .map((company) => ({ ...company, categorias: [...company.categorias] }))
     .sort((a, b) => {
+      if (b.prioridadeProtecao !== a.prioridadeProtecao) return b.prioridadeProtecao - a.prioridadeProtecao;
       const reviewDiff = (b.avaliacao ?? -1) - (a.avaliacao ?? -1);
       if (reviewDiff !== 0) return reviewDiff;
       return b.produtosCompativeis - a.produtosCompativeis;
@@ -381,6 +433,7 @@ router.get("/arch/market/contexto", authenticate, async (req, res) => {
     avaliacaoFornecedor: ratings.get(row.vendedorTenantId)?.media ?? null,
     totalAvaliacoesFornecedor: ratings.get(row.vendedorTenantId)?.total ?? 0,
     acaoPrincipal: row.preco != null && Number(row.preco) > 0 ? "comprar" : "cotar",
+    protecaoComercial: row.protecaoComercial,
   }));
 
   return res.json({
@@ -391,10 +444,120 @@ router.get("/arch/market/contexto", authenticate, async (req, res) => {
       origemId: typeof req.query.origemId === "string" ? req.query.origemId : null,
       quantidade: typeof req.query.quantidade === "string" ? Number(req.query.quantidade) : null,
       unidade: typeof req.query.unidade === "string" ? req.query.unidade : null,
+      tenantOrigemId: tenantId,
+    },
+    protecaoComercial: {
+      ativa: protectionRules.length > 0,
+      regrasAtivas: protectionRules.length,
     },
     empresas,
     produtos,
   });
+});
+
+router.get("/arch/market/protecoes", authenticate, async (req, res) => {
+  const tenantId = currentTenantId(req);
+  if (!tenantId) return res.status(401).json({ error: "Tenant não identificado." });
+
+  const rows = await db
+    .select()
+    .from(arqdorMarketProtecoesTenantTable)
+    .where(eq(arqdorMarketProtecoesTenantTable.tenantId, tenantId))
+    .orderBy(arqdorMarketProtecoesTenantTable.prioridade, arqdorMarketProtecoesTenantTable.createdAt);
+
+  return res.json(rows);
+});
+
+router.post("/arch/market/protecoes", authenticate, async (req, res) => {
+  const tenantId = currentTenantId(req);
+  if (!tenantId) return res.status(401).json({ error: "Tenant não identificado." });
+  if (!canManageMarketProtection(req)) return res.status(403).json({ error: "Somente administradores podem configurar a proteção comercial." });
+
+  const parsed = insertArqdorMarketProtecaoTenantSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.flatten() });
+
+  const normalized = normalizeMarketProtectionValue(parsed.data.valor);
+  if (!normalized) return res.status(422).json({ error: "Valor de proteção inválido." });
+
+  const existing = await db
+    .select()
+    .from(arqdorMarketProtecoesTenantTable)
+    .where(and(
+      eq(arqdorMarketProtecoesTenantTable.tenantId, tenantId),
+      eq(arqdorMarketProtecoesTenantTable.escopo, parsed.data.escopo),
+      eq(arqdorMarketProtecoesTenantTable.valorNormalizado, normalized),
+    ))
+    .limit(1);
+
+  if (existing[0]) {
+    const [updated] = await db
+      .update(arqdorMarketProtecoesTenantTable)
+      .set({
+        valor: parsed.data.valor,
+        modo: parsed.data.modo,
+        prioridade: parsed.data.prioridade ?? existing[0].prioridade,
+        ativo: parsed.data.ativo ?? true,
+        observacoes: parsed.data.observacoes ?? null,
+        updatedAt: new Date(),
+      })
+      .where(eq(arqdorMarketProtecoesTenantTable.id, existing[0].id))
+      .returning();
+    return res.json(updated);
+  }
+
+  const [created] = await db
+    .insert(arqdorMarketProtecoesTenantTable)
+    .values({
+      ...parsed.data,
+      tenantId,
+      valorNormalizado: normalized,
+    })
+    .returning();
+
+  return res.status(201).json(created);
+});
+
+router.put("/arch/market/protecoes/:id", authenticate, async (req, res) => {
+  const tenantId = currentTenantId(req);
+  if (!tenantId) return res.status(401).json({ error: "Tenant não identificado." });
+  if (!canManageMarketProtection(req)) return res.status(403).json({ error: "Somente administradores podem configurar a proteção comercial." });
+
+  const parsed = insertArqdorMarketProtecaoTenantSchema.partial().safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.flatten() });
+
+  const patch: Record<string, unknown> = { ...parsed.data, updatedAt: new Date() };
+  if (parsed.data.valor !== undefined) {
+    patch.valorNormalizado = normalizeMarketProtectionValue(parsed.data.valor);
+  }
+
+  const [updated] = await db
+    .update(arqdorMarketProtecoesTenantTable)
+    .set(patch as any)
+    .where(and(
+      eq(arqdorMarketProtecoesTenantTable.id, String(req.params.id)),
+      eq(arqdorMarketProtecoesTenantTable.tenantId, tenantId),
+    ))
+    .returning();
+
+  if (!updated) return res.status(404).json({ error: "Regra de proteção não encontrada." });
+  return res.json(updated);
+});
+
+router.delete("/arch/market/protecoes/:id", authenticate, async (req, res) => {
+  const tenantId = currentTenantId(req);
+  if (!tenantId) return res.status(401).json({ error: "Tenant não identificado." });
+  if (!canManageMarketProtection(req)) return res.status(403).json({ error: "Somente administradores podem configurar a proteção comercial." });
+
+  const [deleted] = await db
+    .delete(arqdorMarketProtecoesTenantTable)
+    .where(and(
+      eq(arqdorMarketProtecoesTenantTable.id, String(req.params.id)),
+      eq(arqdorMarketProtecoesTenantTable.tenantId, tenantId),
+    ))
+    .returning({ id: arqdorMarketProtecoesTenantTable.id });
+
+  if (!deleted) return res.status(404).json({ error: "Regra de proteção não encontrada." });
+  return res.status(204).end();
 });
 
 router.post("/arch/market/demandas", authenticate, async (req, res) => {
