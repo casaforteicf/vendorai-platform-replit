@@ -19,6 +19,7 @@ import { z } from "zod/v4";
 import { sendProspectOutreach } from "../services/prospect-outreach.js";
 import { convertProspectToLead } from "../services/prospect-conversion.js";
 import { scheduleProspectMeeting } from "../services/prospect-meeting.js";
+import { enforceTenantSolutionPolicy, resolveColdProspectingConfig } from "../services/cold-prospecting-config.js";
 
 const router: IRouter = Router();
 const base = "/tenants/:tenantId/prospects";
@@ -55,13 +56,14 @@ router.post(base, async (req, res) => {
     if (!companyLink) return res.status(404).json({ error: "Empresa não vinculada a este tenant" });
   }
 
-  const decision = decideProspectNextAction({
+  const runtime = await resolveColdProspectingConfig(tenantId);
+  const decision = enforceTenantSolutionPolicy(decideProspectNextAction({
     stage: parsed.data.stage ?? "encontrado",
     vendoraiFitScore: parsed.data.vendoraiFitScore ?? null,
     arqdorFitScore: parsed.data.arqdorFitScore ?? null,
     qualification: parsed.data.qualification ?? {},
     opportunitySummary: parsed.data.opportunitySummary ?? null,
-  });
+  }), runtime);
 
   try {
     const [created] = await db.insert(prospectsTable).values({
@@ -136,13 +138,14 @@ router.patch(base + "/:prospectId", async (req, res) => {
   if (!current) return res.status(404).json({ error: "Prospect não encontrado" });
 
   const merged = { ...current, ...parsed.data };
-  const decision = decideProspectNextAction({
+  const runtime = await resolveColdProspectingConfig(tenantId);
+  const decision = enforceTenantSolutionPolicy(decideProspectNextAction({
     stage: merged.stage,
     vendoraiFitScore: merged.vendoraiFitScore,
     arqdorFitScore: merged.arqdorFitScore,
     qualification: merged.qualification,
     opportunitySummary: merged.opportunitySummary,
-  });
+  }), runtime);
 
   const [updated] = await db.update(prospectsTable).set({
     ...parsed.data,
@@ -169,7 +172,8 @@ router.post(base + "/:prospectId/recalculate", async (req, res) => {
     .limit(1);
   if (!current) return res.status(404).json({ error: "Prospect não encontrado" });
 
-  const decision = decideProspectNextAction(current);
+  const runtime = await resolveColdProspectingConfig(tenantId);
+  const decision = enforceTenantSolutionPolicy(decideProspectNextAction(current), runtime);
   const [updated] = await db.update(prospectsTable).set({
     ...decision,
     updatedAt: new Date(),
