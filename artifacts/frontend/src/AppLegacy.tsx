@@ -1,3 +1,4 @@
+// diag-group-a-trigger: 2026-10-07
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
