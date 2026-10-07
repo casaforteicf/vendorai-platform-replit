@@ -1429,15 +1429,6 @@ router.post("/arch/concept-projects/:id/reference-plan/trace", authenticate, asy
     return res.status(422).json({ error: "A planta de referência não possui arquivo persistido válido." });
   }
 
-  const classifiedConfidence = Number(photoAnalysis?.confidence ?? 0);
-  if (classifiedKind && classifiedKind !== "plan" && classifiedKind !== "unknown" && classifiedConfidence >= 0.55) {
-    return res.status(422).json({
-      error: "Esta imagem foi reconhecida como foto real, não como planta/croqui. Use a análise de cena do pré-projeto em vez de vetorizar como planta.",
-      code: "REFERENCE_PHOTO_NOT_PLAN",
-      photoAnalysis,
-    });
-  }
-
   const photoAnalysis = referencePlan.photoAnalysis && typeof referencePlan.photoAnalysis === "object"
     ? referencePlan.photoAnalysis as Record<string, unknown>
     : null;
@@ -1695,21 +1686,6 @@ router.post("/arch/concept-projects/:id/reference-plan", authenticate, upload.si
         depthMeters = fitted.depthMeters;
         offsetX = fitted.offsetX;
         offsetY = fitted.offsetY;
-      }
-        });
-      } catch {
-        photoAnalysis = {
-          kind: "unknown",
-          confidence: 0,
-          summary: "Imagem recebida. A classificação automática não ficou disponível; revise o tipo de referência antes de converter.",
-          perspective: "unknown",
-          needsScaleAnchor: true,
-          detectedElements: [],
-          preserveElements: [],
-          removableElements: [],
-          projectHints: [],
-          sourceModel: "unavailable",
-        };
       }
       try {
         photoAnalysis = await analyzeReferencePhoto({
