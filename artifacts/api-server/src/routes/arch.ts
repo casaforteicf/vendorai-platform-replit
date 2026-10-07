@@ -25,6 +25,7 @@ import {
   renderSurfaceMaterialsTable,
   notificationsTable,
   tenantsTable,
+  tenantNavModulesTable,
   obrasTable,
   obraEtapasTable,
   obraEtapaDependenciasTable,
@@ -5031,16 +5032,31 @@ router.get("/arch/health", authenticate, async (req, res) => {
 // GET /api/arch/catalogo
 router.get("/arch/catalogo", authenticate, async (req, res) => {
   const tid = tenantId(req);
-  const { categoria, fornecedor, busca, limit = "50", offset = "0" } =
+  const { categoria, fornecedor, busca, scope = "ecosystem", limit = "50", offset = "0" } =
     req.query as Record<string, string | undefined>;
 
-  // Fonte única: a Biblioteca de Projeto lê diretamente produtos_catalogo.
-  // O mesmo ID é reutilizado em projeto, render, orçamento e proposta.
+  // Biblioteca de Projeto:
+  // - "ecosystem" (padrão): catálogo próprio + catálogos ativos de todos os tenants com Arqdor habilitado.
+  // - "tenant": somente catálogo do tenant atual.
+  // Dados internos de custo não são retornados; o produto mestre continua pertencendo ao tenant de origem.
   const conditions = [
-    eq(produtosCatalogoTable.tenantId, tid),
     eq(produtosCatalogoTable.ativo, true),
     eq(produtosCatalogoTable.projectLibraryEnabled, true),
   ];
+
+  if (scope === "tenant") {
+    conditions.push(eq(produtosCatalogoTable.tenantId, tid));
+  } else {
+    conditions.push(or(
+      eq(produtosCatalogoTable.tenantId, tid),
+      and(
+        eq(tenantNavModulesTable.moduleKey, "arch"),
+        eq(tenantNavModulesTable.isEnabled, true),
+        eq(tenantsTable.status, "active"),
+      ),
+    )!);
+  }
+
   if (fornecedor) conditions.push(ilike(produtosCatalogoTable.fornecedor, `%${fornecedor}%`));
   if (busca) conditions.push(ilike(produtosCatalogoTable.nome, `%${busca}%`));
   if (categoria) {
@@ -5054,34 +5070,50 @@ router.get("/arch/catalogo", authenticate, async (req, res) => {
     .select({
       produto: produtosCatalogoTable,
       categoriaNome: categoriasProdutoTable.nome,
+      sourceTenantName: tenantsTable.name,
+      arqdorEnabled: tenantNavModulesTable.isEnabled,
     })
     .from(produtosCatalogoTable)
     .leftJoin(
       categoriasProdutoTable,
       and(
         eq(categoriasProdutoTable.id, produtosCatalogoTable.categoriaId),
-        eq(categoriasProdutoTable.tenantId, tid),
+        eq(categoriasProdutoTable.tenantId, produtosCatalogoTable.tenantId),
+      ),
+    )
+    .leftJoin(tenantsTable, eq(tenantsTable.id, produtosCatalogoTable.tenantId))
+    .leftJoin(
+      tenantNavModulesTable,
+      and(
+        eq(tenantNavModulesTable.tenantId, produtosCatalogoTable.tenantId),
+        eq(tenantNavModulesTable.moduleKey, "arch"),
       ),
     )
     .where(and(...conditions))
-    .orderBy(desc(produtosCatalogoTable.createdAt))
-    .limit(Math.min(200, Math.max(1, Number(limit) || 50)))
+    .orderBy(
+      sql`case when ${produtosCatalogoTable.tenantId} = ${tid} then 0 else 1 end`,
+      tenantsTable.name,
+      produtosCatalogoTable.nome,
+    )
+    .limit(Math.min(500, Math.max(1, Number(limit) || 50)))
     .offset(Math.max(0, Number(offset) || 0));
 
-  return res.json(rows.map(({ produto, categoriaNome }) => {
+  return res.json(rows.map(({ produto, categoriaNome, sourceTenantName }) => {
     const imagens = Array.from(new Set([
       produto.imagemUrl,
       ...((produto.imagens as string[] | null) ?? []),
     ].filter((value): value is string => Boolean(value))));
+    const ownedByTenant = produto.tenantId === tid;
 
     return {
       id: produto.id,
       sourceProductId: produto.id,
+      sourceTenantId: produto.tenantId,
+      sourceTenantName: sourceTenantName ?? null,
+      ownedByTenant,
+      canEdit: ownedByTenant,
       nome: produto.nome,
       descricao: produto.descricao,
-      width: produto.dimensoes?.largura ?? null,
-      height: produto.dimensoes?.altura ?? null,
-      depth: produto.dimensoes?.profundidade ?? null,
       sku: produto.sku,
       codigo: produto.sku,
       codigoBarras: produto.codigoBarras,
@@ -5091,8 +5123,8 @@ router.get("/arch/catalogo", authenticate, async (req, res) => {
       depth: produto.dimensoes?.profundidade ?? null,
       categoria: categoriaNome ?? produto.categoriaId,
       subcategoria: null,
-      fornecedor: produto.fornecedor ?? produto.marca,
-      precoBase: produto.precoBase,
+      fornecedor: produto.fornecedor ?? produto.marca ?? sourceTenantName,
+      precoBase: produto.precoArqdor ?? produto.precoBase,
       precoPromocional: produto.precoPromocional,
       promocaoAtivaAte: produto.promocaoAtivaAte,
       unidade: produto.unidade,
@@ -5105,7 +5137,11 @@ router.get("/arch/catalogo", authenticate, async (req, res) => {
         ...(produto.textureUrl ? { textureUrl: produto.textureUrl } : {}),
         source: "produtos_catalogo",
         sourceProductId: produto.id,
+        sourceTenantId: produto.tenantId,
+        sourceTenantName: sourceTenantName ?? null,
+        ecosystemCatalog: !ownedByTenant,
       },
+      marketplaceAvailable: produto.vendeNoArqdor,
       ativo: produto.ativo,
       createdAt: produto.createdAt,
     };
