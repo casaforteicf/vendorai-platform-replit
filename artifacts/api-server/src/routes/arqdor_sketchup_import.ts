@@ -6,7 +6,8 @@ import { ObjectStorageService } from "../lib/objectStorage.js";
 import { convertSketchupToGlb } from "../services/sketchupConverterService.js";
 import { parseIfcEditableGeometry } from "../lib/arqdor-ifc-editable.js";
 import { parseDxfEditableGeometry } from "../lib/arqdor-dxf-editable.js";
-import { analyzeArqdorProjectDocument, universalModelDedupeKey } from "../lib/arqdor-intelligent-project-import.js";
+import { analyzeArqdorProjectDocument, universalModelDedupeKey, type ArqdorImportedFloorPlan } from "../lib/arqdor-intelligent-project-import.js";
+import { importedFloorPlanToEditableGeometry } from "../lib/arqdor-imported-geometry.js";
 import crypto from "node:crypto";
 
 const router: IRouter = Router();
@@ -155,6 +156,7 @@ router.post("/arch/concept-projects/:id/import-project-intelligent", intelligent
         rooms: analysis.memory.rooms.length,
         openings: analysis.memory.openings.length,
         materials: analysis.memory.materials.length,
+        floorPlans: analysis.memory.floorPlans.length,
         universalModels: savedModels.length,
         warnings: analysis.warnings.length + analysis.memory.inconsistencies.length,
       },
@@ -200,6 +202,10 @@ router.post("/arch/concept-projects/:id/import-project-intelligent", intelligent
       document: analysis.document,
       memory: analysis.memory,
       universalModels: savedModels,
+      geometryPreviews: analysis.memory.floorPlans.map((floorPlan, index) => ({
+        index,
+        ...importedFloorPlanToEditableGeometry(floorPlan),
+      })),
       warnings: analysis.warnings,
       message: "Projeto interpretado, Memória da Obra gerada e modelos reutilizáveis enviados automaticamente à Biblioteca Universal.",
     });
@@ -208,6 +214,186 @@ router.post("/arch/concept-projects/:id/import-project-intelligent", intelligent
       error: error instanceof Error ? error.message : "Não foi possível interpretar o projeto arquitetônico.",
     });
   }
+});
+
+
+router.get("/arch/concept-projects/:id/imported-project/geometry-preview", async (req, res) => {
+  const tenantId = req.user?.tenantId ?? req.tenantId;
+  const userId = req.user?.sub;
+  const projectId = String(req.params.id);
+  if (!tenantId || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const [concept] = await db
+    .select({ configuration: archConceptProjectsTable.configuration })
+    .from(archConceptProjectsTable)
+    .where(and(
+      eq(archConceptProjectsTable.id, projectId),
+      eq(archConceptProjectsTable.tenantId, tenantId),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ))
+    .limit(1);
+
+  if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+  const config = (concept.configuration ?? {}) as Record<string, any>;
+  const floorPlans = Array.isArray(config.projectMemory?.memory?.floorPlans)
+    ? config.projectMemory.memory.floorPlans as ArqdorImportedFloorPlan[]
+    : [];
+  if (!floorPlans.length) {
+    return res.status(422).json({
+      error: "A importação atual não possui planta baixa estruturada para reconstrução.",
+      code: "IMPORTED_FLOOR_PLAN_NOT_FOUND",
+    });
+  }
+
+  const requestedIndex = Number(req.query.floorPlanIndex ?? 0);
+  const index = Number.isFinite(requestedIndex)
+    ? Math.max(0, Math.min(floorPlans.length - 1, Math.round(requestedIndex)))
+    : 0;
+  const widthMeters = Number(req.query.widthMeters);
+  const depthMeters = Number(req.query.depthMeters);
+  const floor = Number(req.query.floor ?? 0);
+  const preview = importedFloorPlanToEditableGeometry(floorPlans[index]!, {
+    floor: Number.isFinite(floor) ? floor : 0,
+    widthMeters: Number.isFinite(widthMeters) && widthMeters > 0 ? widthMeters : undefined,
+    depthMeters: Number.isFinite(depthMeters) && depthMeters > 0 ? depthMeters : undefined,
+  });
+
+  return res.json({
+    floorPlanIndex: index,
+    floorPlanCount: floorPlans.length,
+    preview,
+  });
+});
+
+router.post("/arch/concept-projects/:id/imported-project/apply-geometry", async (req, res) => {
+  const tenantId = req.user?.tenantId ?? req.tenantId;
+  const userId = req.user?.sub;
+  const projectId = String(req.params.id);
+  if (!tenantId || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const confirmed = req.body?.confirm === true || String(req.body?.confirm ?? "").toLowerCase() === "true";
+  if (!confirmed) {
+    return res.status(400).json({
+      error: "Confirme explicitamente a aplicação da geometria importada.",
+      code: "CONFIRMATION_REQUIRED",
+    });
+  }
+
+  const [concept] = await db
+    .select({
+      status: archConceptProjectsTable.status,
+      configuration: archConceptProjectsTable.configuration,
+    })
+    .from(archConceptProjectsTable)
+    .where(and(
+      eq(archConceptProjectsTable.id, projectId),
+      eq(archConceptProjectsTable.tenantId, tenantId),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ))
+    .limit(1);
+
+  if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+  const config = (concept.configuration ?? {}) as Record<string, any>;
+  if (concept.status === "submitted" && config.projectMaster) {
+    return res.status(409).json({
+      error: "O Projeto Mestre está congelado. Crie uma revisão antes de aplicar a geometria importada.",
+      code: "PROJECT_MASTER_FROZEN",
+    });
+  }
+
+  const floorPlans = Array.isArray(config.projectMemory?.memory?.floorPlans)
+    ? config.projectMemory.memory.floorPlans as ArqdorImportedFloorPlan[]
+    : [];
+  if (!floorPlans.length) {
+    return res.status(422).json({
+      error: "A importação atual não possui planta baixa estruturada.",
+      code: "IMPORTED_FLOOR_PLAN_NOT_FOUND",
+    });
+  }
+
+  const requestedIndex = Number(req.body?.floorPlanIndex ?? 0);
+  const index = Number.isFinite(requestedIndex)
+    ? Math.max(0, Math.min(floorPlans.length - 1, Math.round(requestedIndex)))
+    : 0;
+  const floor = Number.isFinite(Number(req.body?.floor)) ? Math.max(0, Math.round(Number(req.body.floor))) : 0;
+  const widthMeters = Number(req.body?.widthMeters);
+  const depthMeters = Number(req.body?.depthMeters);
+  const preview = importedFloorPlanToEditableGeometry(floorPlans[index]!, {
+    floor,
+    widthMeters: Number.isFinite(widthMeters) && widthMeters > 0 ? widthMeters : undefined,
+    depthMeters: Number.isFinite(depthMeters) && depthMeters > 0 ? depthMeters : undefined,
+  });
+
+  if (!preview.canApply) {
+    return res.status(422).json({
+      error: preview.requiresCalibration
+        ? "Informe largura e profundidade reais para calibrar a planta antes de aplicar."
+        : "A geometria importada ainda não atingiu confiança suficiente para ser aplicada.",
+      code: preview.requiresCalibration ? "CALIBRATION_REQUIRED" : "GEOMETRY_LOW_CONFIDENCE",
+      preview,
+    });
+  }
+
+  const replace = req.body?.replace !== false;
+  const existingWalls = Array.isArray(config.customWalls) ? config.customWalls : [];
+  const existingOpenings = Array.isArray(config.customOpenings) ? config.customOpenings : [];
+  const existingSpaces = Array.isArray(config.spaceProfiles) ? config.spaceProfiles : [];
+  const keepOtherFloors = <T extends { floor?: number }>(items: T[]) =>
+    items.filter((item) => Number(item?.floor ?? 0) !== floor);
+
+  const nextWalls = replace ? [...keepOtherFloors(existingWalls), ...preview.walls] : [...existingWalls, ...preview.walls];
+  const nextOpenings = replace ? [...keepOtherFloors(existingOpenings), ...preview.openings] : [...existingOpenings, ...preview.openings];
+  const nextSpaces = replace ? [...keepOtherFloors(existingSpaces), ...preview.spaces] : [...existingSpaces, ...preview.spaces];
+
+  const wallMaterials = { ...(config.wallMaterials ?? {}) } as Record<string, string>;
+  for (const wall of preview.walls) {
+    if (wall.material) wallMaterials[wall.id] = wall.material;
+  }
+
+  const appliedAt = new Date().toISOString();
+  await db
+    .update(archConceptProjectsTable)
+    .set({
+      configuration: {
+        ...config,
+        floors: Math.max(Number(config.floors ?? 1), floor + 1),
+        customWalls: nextWalls,
+        customOpenings: nextOpenings,
+        spaceProfiles: nextSpaces,
+        wallMaterials,
+        wallFirstFloors: Array.from(new Set([
+          ...(Array.isArray(config.wallFirstFloors) ? config.wallFirstFloors : []),
+          floor,
+        ])).sort((a, b) => Number(a) - Number(b)),
+        importedGeometryState: {
+          appliedAt,
+          floorPlanIndex: index,
+          sourcePage: preview.page,
+          floor,
+          widthMeters: preview.widthMeters,
+          depthMeters: preview.depthMeters,
+          confidence: preview.confidence,
+          topologyRepairs: preview.topologyRepairs,
+          walls: preview.walls.length,
+          openings: preview.openings.length,
+          spaces: preview.spaces.length,
+          warnings: preview.warnings,
+        },
+      } as any,
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(archConceptProjectsTable.id, projectId),
+      eq(archConceptProjectsTable.tenantId, tenantId),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ));
+
+  return res.json({
+    mode: "applied",
+    floorPlanIndex: index,
+    preview,
+    message: "Planta importada convertida em paredes e aberturas editáveis do Arqdor.",
+  });
 });
 
 router.post("/arch/concept-projects/:id/import-geometry", geometryUpload.single("file"), async (req, res) => {
