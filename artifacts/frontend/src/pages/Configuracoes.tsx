@@ -5,6 +5,7 @@ import ConfiguracoesNormalized from "./ConfiguracoesNormalized";
 import { BrandKitSettings } from "@/components/BrandKitSettings";
 import IntegrationSettingsHub from "./IntegrationSettingsHub";
 import DiagnosticoPlanejamento from "./DiagnosticoPlanejamento";
+import AgentConfig from "./agents/AgentConfig";
 import { ConfigurationHistoryPanel } from "@/components/ConfigurationHistoryPanel";
 import { ConfigurationAccessPanel } from "@/components/ConfigurationAccessPanel";
 import { ConfigurationRollbackPanel } from "@/components/ConfigurationRollbackPanel";
@@ -503,9 +504,26 @@ export default function Configuracoes() {
     return (
       <SettingsSectionShell
         title="IA e agentes"
-        description="Permissões, contexto, voz e autonomia dos agentes."
+        description="Configure todos os agentes do tenant em um único lugar: função, objetivo, conhecimento, canais, autonomia, handoff e governança."
       >
-        <JarvisPermissionsCenter />
+        <section className="space-y-4">
+          <AgentConfig />
+
+          <details className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 [&::-webkit-details-marker]:hidden">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">JARVIS · permissões, voz e autonomia</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Configuração específica do JARVIS. As configurações dos demais agentes ficam acima, cada uma preservada por agente.
+                </p>
+              </div>
+              <span className="text-xs font-medium text-primary">Abrir</span>
+            </summary>
+            <div className="border-t border-border/60 p-4">
+              <JarvisPermissionsCenter />
+            </div>
+          </details>
+        </section>
       </SettingsSectionShell>
     );
   }
@@ -670,7 +688,7 @@ export default function Configuracoes() {
               <span className="settings-home-card__icon"><Bot className="h-5 w-5" /></span>
               <div>
                 <div className="settings-home-card__title">IA e agentes</div>
-                <p className="settings-home-card__description">Permissões, contexto, autonomia e dispositivo.</p>
+                <p className="settings-home-card__description">Todos os agentes do tenant: função, objetivo, conhecimento, canais, autonomia, handoff e permissões do JARVIS.</p>
               </div>
             </div>
             <button type="button" className="settings-home-card__action" onClick={() => openSettingsSection("ia-agentes")}>
