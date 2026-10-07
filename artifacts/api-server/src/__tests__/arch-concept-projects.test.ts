@@ -416,6 +416,22 @@ describe("Arqdor Concept — persistência e isolamento", () => {
 
     expect(res.status).toBe(404);
   });
+
+  it("exige briefing ou geometria antes de desenvolver um projeto vazio com IA", async () => {
+    mockDbSelect.mockReturnValue(selectLimitReturning([{
+      ...conceptA,
+      configuration: { floors: 1, desiredArea: 145, projectScope: "house" },
+      rooms: [],
+    }]));
+
+    const res = await request(app)
+      .post("/api/arch/concept-projects/concept-a/develop-with-ai")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .send({ mode: "assistido", preserveLayout: true });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("ARCH_BRIEF_REQUIRED");
+  });
 });
 
 describe("Arqdor Concept — handoff idempotente para Projeto Arqdor", () => {
