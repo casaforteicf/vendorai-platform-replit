@@ -42,7 +42,7 @@ import { useToast } from "@/hooks/use-toast";
 import { LEAD_SOURCE_OPTIONS } from "@/lib/leadRegistration";
 
 const newLeadSchema = z.object({
-  cadastroTipo: z.enum(["pessoa", "empresa", "negocio"]).default("pessoa"),
+  cadastroTipo: z.enum(["pessoa", "casal", "empresa", "negocio"]).default("pessoa"),
   nome: z.string().trim().min(2, "Nome é obrigatório"),
   telefone: z.string().optional().or(z.literal("")),
   email: z.string().email("Email inválido").optional().or(z.literal("")),
@@ -128,6 +128,14 @@ type CommercialPartnerDraft = {
 
 type EndCustomerDraft = {
   enabled: boolean;
+  nome: string;
+  telefone: string;
+  email: string;
+  documento: string;
+  funcao: string;
+};
+
+type CoClientDraft = {
   nome: string;
   telefone: string;
   email: string;
@@ -280,6 +288,13 @@ export function NewLeadDialog({
     documento: "",
     funcao: "",
   });
+  const [coClient, setCoClient] = useState<CoClientDraft>({
+    nome: "",
+    telefone: "",
+    email: "",
+    documento: "",
+    funcao: "",
+  });
   const [serverDuplicate, setServerDuplicate] = useState<{ lead: Lead; matchBy: string } | null>(null);
   const [couponValidation, setCouponValidation] = useState<CouponValidation | null>(null);
   const [couponError, setCouponError] = useState<string | null>(null);
@@ -412,6 +427,7 @@ export function NewLeadDialog({
     setExtraContacts([]);
     setCommercialPartners([]);
     setEndCustomer({ enabled: false, nome: "", telefone: "", email: "", documento: "", funcao: "" });
+    setCoClient({ nome: "", telefone: "", email: "", documento: "", funcao: "" });
     setServerDuplicate(null);
     resetCoupon();
     form.reset(DEFAULT_VALUES);
@@ -620,7 +636,24 @@ export function NewLeadDialog({
       personId = personData.item?.id as string | undefined;
     }
 
-    if (!dealId) return { personId, companyId };
+    let coClientPersonId: string | undefined;
+    if (values.cadastroTipo === "casal") {
+      const coClientName = coClient.nome.trim();
+      if (coClientName.length < 2) throw new Error("Informe o nome do segundo cliente.");
+      const secondPersonData = await crmPostJson<{ item?: { id?: string; nome?: string } }>("/api/crm/people", {
+        tenantId,
+        nome: coClientName,
+        telefone: coClient.telefone.trim() || undefined,
+        email: coClient.email.trim() || undefined,
+        documento: coClient.documento.trim() || undefined,
+        profissao: coClient.funcao.trim() || undefined,
+        source: values.source,
+      });
+      coClientPersonId = secondPersonData.item?.id;
+      if (!coClientPersonId) throw new Error("Não foi possível cadastrar o segundo cliente.");
+    }
+
+    if (!dealId) return { personId, coClientPersonId, companyId };
 
     if (companyId) {
       await crmPostJson(`/api/crm/deals/${dealId}/companies`, {
@@ -639,10 +672,24 @@ export function NewLeadDialog({
         isPrimary: true,
         contextualCompanyId: companyId,
         relationshipScope: companyId ? "persistent" : "deal_only",
+        metadata: values.cadastroTipo === "casal"
+          ? { clientePrincipal: true, ordemClientePrincipal: 1, grupoCliente: "multiplo" }
+          : undefined,
       });
     }
 
-    return { personId, companyId };
+    if (coClientPersonId) {
+      await crmPostJson(`/api/crm/deals/${dealId}/people`, {
+        tenantId,
+        personId: coClientPersonId,
+        role: "consumidor_final",
+        isPrimary: false,
+        relationshipScope: "deal_only",
+        metadata: { clientePrincipal: true, ordemClientePrincipal: 2, grupoCliente: "multiplo" },
+      });
+    }
+
+    return { personId, coClientPersonId, companyId };
   }
 
   async function syncCommercialPartners(leadId: string, dealId?: string) {
@@ -738,6 +785,24 @@ export function NewLeadDialog({
   }
 
   async function onSubmit(values: NewLeadValues) {
+    if (values.cadastroTipo === "casal") {
+      if (coClient.nome.trim().length < 2) {
+        toast({
+          title: "Segundo cliente obrigatório",
+          description: "Informe os dados do segundo cliente para cadastrar o casal.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (coClient.email.trim() && !z.string().email().safeParse(coClient.email.trim()).success) {
+        toast({
+          title: "Email inválido",
+          description: "Revise o email do segundo cliente.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
     if (values.cadastroTipo === "empresa" && values.empresa.trim().length < 2) {
       form.setError("empresa", { message: "Informe a empresa" });
       return;
@@ -791,7 +856,7 @@ export function NewLeadDialog({
           nome: submissionValues.nome.trim(),
           telefone: submissionValues.telefone || null,
           email: submissionValues.email || null,
-          empresa: submissionValues.cadastroTipo !== "pessoa" ? (submissionValues.empresa || null) : null,
+          empresa: submissionValues.cadastroTipo === "empresa" || submissionValues.cadastroTipo === "negocio" ? (submissionValues.empresa || null) : null,
           objetivo: submissionValues.objetivo || null,
           source: coupon ? "indicacao" : submissionValues.source,
           indicadoPor: coupon?.partnerId,
@@ -897,6 +962,7 @@ export function NewLeadDialog({
           setShowCommercial(false);
           setExtraContacts([]);
           setCommercialPartners([]);
+          setCoClient({ nome: "", telefone: "", email: "", documento: "", funcao: "" });
           setServerDuplicate(null);
           resetCoupon();
           form.reset(DEFAULT_VALUES);
@@ -929,7 +995,7 @@ export function NewLeadDialog({
                 name="cadastroTipo"
                 render={({ field }) => (
                   <FormItem>
-                    <div className="grid gap-2 sm:grid-cols-3">
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                       <Button
                         type="button"
                         variant={field.value === "pessoa" ? "default" : "outline"}
@@ -942,6 +1008,19 @@ export function NewLeadDialog({
                         }}
                       >
                         <span><span className="block font-semibold">Pessoa / consumidor final</span><span className="mt-1 block text-xs opacity-80">Cliente direto. Nenhuma empresa é obrigatória.</span></span>
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={field.value === "casal" ? "default" : "outline"}
+                        className="h-auto min-h-20 justify-start whitespace-normal py-3 text-left"
+                        onClick={() => {
+                          field.onChange("casal");
+                          form.setValue("empresa", "");
+                          form.setValue("empresaCnpj", "");
+                          setExtraContacts([]);
+                        }}
+                      >
+                        <span><span className="block font-semibold">Casal / dois clientes</span><span className="mt-1 block text-xs opacity-80">Duas pessoas como clientes principais do mesmo negócio.</span></span>
                       </Button>
                       <Button
                         type="button"
@@ -968,7 +1047,7 @@ export function NewLeadDialog({
               />
             </section>
 
-            {cadastroTipo !== "pessoa" && (
+            {cadastroTipo !== "pessoa" && cadastroTipo !== "casal" && (
               <section className="space-y-3 rounded-lg border bg-muted/20 p-4">
                 <div>
                   <p className="text-sm font-semibold">{cadastroTipo === "negocio" ? "Empresa relacionada (opcional)" : "Empresa"}</p>
@@ -1014,8 +1093,8 @@ export function NewLeadDialog({
             <section className="space-y-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-primary">Qualificação cadastral</p>
-                <p className="mt-1 text-sm font-semibold">{cadastroTipo === "pessoa" ? "Pessoa / consumidor final" : cadastroTipo === "empresa" ? "Contato principal da empresa / construtora" : "Contato da empresa / construtora"}</p>
-                <p className="text-xs text-muted-foreground">{cadastroTipo === "pessoa" ? "Dados essenciais do cliente direto." : cadastroTipo === "empresa" ? "Aqui entram somente os dados cadastrais da pessoa: nome, função/cargo, telefone, e-mail e documento. A qualificação comercial do negócio acontece depois, na etapa Qualificado." : "Cadastre aqui a pessoa da construtora/empresa que está no atendimento. O cliente final e os demais envolvidos ficam em blocos próprios abaixo."}</p>
+                <p className="mt-1 text-sm font-semibold">{cadastroTipo === "pessoa" ? "Pessoa / consumidor final" : cadastroTipo === "casal" ? "Cliente 1" : cadastroTipo === "empresa" ? "Contato principal da empresa / construtora" : "Contato da empresa / construtora"}</p>
+                <p className="text-xs text-muted-foreground">{cadastroTipo === "pessoa" ? "Dados essenciais do cliente direto." : cadastroTipo === "casal" ? "Cadastre e qualifique a primeira pessoa. O segundo cliente terá o mesmo nível de cadastro e ficará no mesmo negócio." : cadastroTipo === "empresa" ? "Aqui entram somente os dados cadastrais da pessoa: nome, função/cargo, telefone, e-mail e documento. A qualificação comercial do negócio acontece depois, na etapa Qualificado." : "Cadastre aqui a pessoa da construtora/empresa que está no atendimento. O cliente final e os demais envolvidos ficam em blocos próprios abaixo."}</p>
               </div>
               <FormField
                 control={form.control}
@@ -1053,7 +1132,64 @@ export function NewLeadDialog({
                 />
               </div>
 
-              {cadastroTipo !== "pessoa" && form.watch("empresa").trim() && (
+              {cadastroTipo === "casal" && (
+                <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
+                  <div>
+                    <p className="text-sm font-semibold">Cliente 2</p>
+                    <p className="text-xs text-muted-foreground">Segundo cliente principal. Não será tratado como parceiro ou outro envolvido.</p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="sm:col-span-2">
+                      <label className="text-sm font-medium">Nome *</label>
+                      <Input
+                        className="mt-2"
+                        placeholder="Nome completo"
+                        value={coClient.nome}
+                        onChange={(event) => setCoClient((current) => ({ ...current, nome: event.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">WhatsApp / Telefone</label>
+                      <PhoneInput
+                        className="mt-2"
+                        value={coClient.telefone}
+                        onChange={(value) => setCoClient((current) => ({ ...current, telefone: value ?? "" }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Email</label>
+                      <Input
+                        className="mt-2"
+                        type="email"
+                        placeholder="email@exemplo.com"
+                        value={coClient.email}
+                        onChange={(event) => setCoClient((current) => ({ ...current, email: event.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">CPF / documento</label>
+                      <Input
+                        className="mt-2"
+                        placeholder="000.000.000-00"
+                        value={coClient.documento}
+                        onChange={(event) => setCoClient((current) => ({ ...current, documento: event.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Função no negócio</label>
+                      <Input
+                        className="mt-2"
+                        placeholder="Ex.: coproprietário, comprador"
+                        value={coClient.funcao}
+                        onChange={(event) => setCoClient((current) => ({ ...current, funcao: event.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">Cliente 1 e Cliente 2 ficam vinculados ao mesmo negócio como clientes principais. Documentos, contatos e assinaturas permanecem individualizados.</p>
+                </div>
+              )}
+
+              {cadastroTipo !== "pessoa" && cadastroTipo !== "casal" && form.watch("empresa").trim() && (
                 <div className="space-y-3 rounded-lg border border-dashed p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
