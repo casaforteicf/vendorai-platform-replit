@@ -131,6 +131,13 @@ type CommissionRule = {
   conditions: Record<string, any>;
 };
 
+type PendingMarketPayment = {
+  sellerTenantId: string;
+  pracaOrderId: string;
+  demandCode: string;
+  idempotencyKey: string;
+};
+
 function getToken() {
   return localStorage.getItem("vendorai_token");
 }
@@ -242,6 +249,15 @@ export default function Marketplace() {
   const [ruleMinOrder, setRuleMinOrder] = useState("");
   const [ruleMaxOrder, setRuleMaxOrder] = useState("");
   const [savingCommissionRule, setSavingCommissionRule] = useState(false);
+
+  const [pendingPayment, setPendingPayment] = useState<PendingMarketPayment | null>(null);
+  const [paymentBillingType, setPaymentBillingType] = useState<"PIX" | "CREDIT_CARD">("PIX");
+  const [paymentDocument, setPaymentDocument] = useState("");
+  const [creatingPayment, setCreatingPayment] = useState(false);
+  const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
+  const [paymentCheckoutUrl, setPaymentCheckoutUrl] = useState<string | null>(null);
+  const [pixData, setPixData] = useState<{ encodedImage: string; payload: string; expirationDate: string } | null>(null);
+  const [checkingPayment, setCheckingPayment] = useState(false);
 
   const loadItems = useCallback(async () => {
     setItemsLoading(true);
@@ -492,6 +508,108 @@ export default function Marketplace() {
     }
   };
 
+  const resetPayment = () => {
+    setPendingPayment(null);
+    setPaymentBillingType("PIX");
+    setPaymentDocument("");
+    setCreatingPayment(false);
+    setPaymentIntentId(null);
+    setPaymentCheckoutUrl(null);
+    setPixData(null);
+  };
+
+  const localIsoDate = () => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+
+  const createMarketPayment = async () => {
+    if (!pendingPayment) return;
+    const documentDigits = paymentDocument.replace(/\D/g, "");
+    if (![11, 14].includes(documentDigits.length)) {
+      toast({ title: "Pagamento", description: "Informe um CPF ou CNPJ válido.", variant: "destructive" });
+      return;
+    }
+    setCreatingPayment(true);
+    try {
+      const res = await fetch(
+        `/api/tenants/${pendingPayment.sellerTenantId}/praca-orders/${pendingPayment.pracaOrderId}/payment-intents`,
+        {
+          method: "POST",
+          headers: {
+            ...authH(),
+            "Idempotency-Key": pendingPayment.idempotencyKey,
+          },
+          body: JSON.stringify({
+            billingType: paymentBillingType,
+            dueDate: localIsoDate(),
+            clienteDocumento: documentDigits,
+          }),
+        },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Não foi possível criar a cobrança.");
+      setPaymentIntentId(data.id);
+      setPaymentCheckoutUrl(data.checkoutUrl || data.invoiceUrl || null);
+
+      if (paymentBillingType === "PIX") {
+        const pixRes = await fetch(
+          `/api/tenants/${pendingPayment.sellerTenantId}/praca-orders/${pendingPayment.pracaOrderId}/payment-intents/${data.id}/pix`,
+          { headers: { Authorization: `Bearer ${getToken()}` } },
+        );
+        const pix = await pixRes.json().catch(() => ({}));
+        if (!pixRes.ok) throw new Error(pix.error || "Cobrança criada, mas não foi possível carregar o QR Code PIX.");
+        setPixData(pix);
+      } else if (data.checkoutUrl || data.invoiceUrl) {
+        window.open(data.checkoutUrl || data.invoiceUrl, "_blank", "noopener,noreferrer");
+      }
+
+      toast({
+        title: paymentBillingType === "PIX" ? "PIX gerado" : "Checkout do cartão criado",
+        description: "A comissão do Market já está vinculada ao split desta cobrança.",
+      });
+    } catch (err: any) {
+      toast({ title: "Pagamento", description: err.message, variant: "destructive" });
+    } finally {
+      setCreatingPayment(false);
+    }
+  };
+
+  const checkMarketPayment = async () => {
+    if (!pendingPayment) return;
+    setCheckingPayment(true);
+    try {
+      const res = await fetch(
+        `/api/tenants/${pendingPayment.sellerTenantId}/praca-orders/${pendingPayment.pracaOrderId}/payment`,
+        { headers: { Authorization: `Bearer ${getToken()}` } },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Não foi possível consultar o pagamento.");
+      if (["received", "confirmed"].includes(String(data.status))) {
+        toast({
+          title: data.status === "received" ? "Pagamento liquidado" : "Pagamento confirmado",
+          description: data.status === "received"
+            ? "A comissão do Market foi liquidada pelo split."
+            : "Pagamento confirmado. A liquidação será atualizada pelo Asaas.",
+        });
+        if (data.status === "received") {
+          resetPayment();
+          setPedidosLoaded(false);
+          setDemandsLoaded(false);
+        }
+      } else {
+        toast({ title: "Pagamento", description: `Status atual: ${data.status || "pendente"}.` });
+      }
+    } catch (err: any) {
+      toast({ title: "Pagamento", description: err.message, variant: "destructive" });
+    } finally {
+      setCheckingPayment(false);
+    }
+  };
+
   useEffect(() => {
     loadItems();
   }, [loadItems]);
@@ -548,15 +666,36 @@ export default function Marketplace() {
         throw new Error(err?.error ?? "Falha ao realizar compra.");
       }
 
+      const data = await res.json();
       setBuying(null);
-      toast({
-        title: "Pedido criado",
-        description:
-          buyProjeto !== "__none__"
-            ? "Item vinculado ao projeto e ao orçamento."
-            : "Pedido registrado no Market Arqdor.",
-      });
       setPedidosLoaded(false);
+      setDemandsLoaded(false);
+
+      if (data?.payment?.required && data.payment.pracaOrderId && data.payment.sellerTenantId) {
+        setPendingPayment({
+          sellerTenantId: data.payment.sellerTenantId,
+          pracaOrderId: data.payment.pracaOrderId,
+          demandCode: data?.demand?.code || "AMD",
+          idempotencyKey: crypto.randomUUID(),
+        });
+        setPaymentBillingType("PIX");
+        setPaymentDocument("");
+        setPaymentIntentId(null);
+        setPaymentCheckoutUrl(null);
+        setPixData(null);
+        toast({
+          title: "Pedido criado",
+          description: `${data?.demand?.code || "Demanda"} registrada. Conclua o pagamento para liquidar a operação.`,
+        });
+      } else {
+        toast({
+          title: "Pedido criado",
+          description:
+            buyProjeto !== "__none__"
+              ? "Item vinculado ao projeto e ao orçamento."
+              : "Pedido registrado no Market Arqdor.",
+        });
+      }
     } catch (err: any) {
       toast({ title: "Erro", description: err.message, variant: "destructive" });
     } finally {
@@ -1332,6 +1471,96 @@ export default function Marketplace() {
           </CardContent>
         </Card>
       </section>
+
+      <Dialog open={!!pendingPayment} onOpenChange={(open) => { if (!open) resetPayment(); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Pagamento • {pendingPayment?.demandCode}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-900">
+              A cobrança é criada no Asaas do fornecedor com o split da comissão do Market já aplicado.
+              O lançamento permanece como devido até a liquidação confirmada pelo provedor.
+            </div>
+
+            {!paymentIntentId && (
+              <>
+                <div className="space-y-1.5">
+                  <Label>Forma de pagamento</Label>
+                  <Select value={paymentBillingType} onValueChange={(v) => setPaymentBillingType(v as "PIX" | "CREDIT_CARD")}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PIX">PIX</SelectItem>
+                      <SelectItem value="CREDIT_CARD">Cartão de crédito</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>CPF ou CNPJ do pagador</Label>
+                  <Input value={paymentDocument} onChange={(e) => setPaymentDocument(e.target.value)} placeholder="Somente números ou formatado" />
+                </div>
+
+                <Button
+                  className="w-full bg-emerald-700 hover:bg-emerald-800"
+                  onClick={createMarketPayment}
+                  disabled={creatingPayment}
+                >
+                  {creatingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {paymentBillingType === "PIX" ? "Gerar PIX" : "Ir para pagamento com cartão"}
+                </Button>
+              </>
+            )}
+
+            {pixData && (
+              <div className="space-y-3 rounded-xl border p-4 text-center">
+                <p className="text-sm font-semibold">PIX pronto para pagamento</p>
+                <img
+                  src={`data:image/png;base64,${pixData.encodedImage}`}
+                  alt="QR Code PIX"
+                  className="mx-auto h-52 w-52 rounded-lg border bg-white p-2"
+                />
+                <div className="rounded-lg bg-slate-50 p-3 text-left">
+                  <p className="mb-1 text-[10px] font-semibold uppercase text-muted-foreground">PIX copia e cola</p>
+                  <p className="break-all font-mono text-xs">{pixData.payload}</p>
+                </div>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => navigator.clipboard?.writeText(pixData.payload)}
+                >
+                  Copiar código PIX
+                </Button>
+              </div>
+            )}
+
+            {paymentIntentId && paymentBillingType === "CREDIT_CARD" && (
+              <div className="space-y-3 rounded-xl border p-4">
+                <p className="text-sm font-semibold">Checkout seguro criado</p>
+                <p className="text-xs text-muted-foreground">
+                  Os dados do cartão são informados no ambiente seguro do provedor e não ficam armazenados no VendorAI.
+                </p>
+                {paymentCheckoutUrl && (
+                  <Button className="w-full" onClick={() => window.open(paymentCheckoutUrl, "_blank", "noopener,noreferrer")}>
+                    Abrir checkout do cartão
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {paymentIntentId && (
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={checkMarketPayment} disabled={checkingPayment}>
+                  {checkingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Verificar pagamento
+                </Button>
+                <Button variant="ghost" onClick={resetPayment}>Fechar</Button>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={commissionRuleOpen} onOpenChange={setCommissionRuleOpen}>
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
