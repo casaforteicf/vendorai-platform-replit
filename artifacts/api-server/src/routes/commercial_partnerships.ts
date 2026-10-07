@@ -14,6 +14,7 @@ import {
   erpTitulosTable,
   erpPagamentosTable,
 } from "@workspace/db";
+import { resolveCanonicalDealValue } from "../lib/deal-value.js";
 
 const router = Router();
 
@@ -265,7 +266,7 @@ router.post("/deals/:dealId/share-with-partner", async (req, res) => {
   const partnerTenantNameForFinance = partnerTenantForFinance?.name ?? partnership.partnerTenantId;
 
   const commissionPercent = parsed.data.commissionPercent ?? Number(partnership.defaultCommissionPercent ?? 15);
-  const baseAmount = money(deal.valor);
+  const baseAmount = await resolveCanonicalDealValue(deal.id, deal.tenantId);
   const fixedAmount = parsed.data.commissionFixedAmount ?? null;
   const amount = commissionAmount(baseAmount, parsed.data.commissionType, commissionPercent, fixedAmount);
   const permissions = [...new Set(parsed.data.permissions ?? partnership.defaultPermissions ?? DEFAULT_PARTNER_PERMISSIONS)];
@@ -497,9 +498,12 @@ router.patch("/intercompany-commissions/:commissionId", async (req, res) => {
   const parsed = adjustCommissionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
 
-  const [deal] = await db.select({ valor: dealsTable.valor }).from(dealsTable)
+  const [deal] = await db.select({ id: dealsTable.id, tenantId: dealsTable.tenantId }).from(dealsTable)
     .where(eq(dealsTable.id, commission.dealId)).limit(1);
-  const baseAmount = parsed.data.baseAmount ?? money(deal?.valor ?? commission.baseAmount);
+  const canonicalBaseAmount = deal
+    ? await resolveCanonicalDealValue(deal.id, deal.tenantId)
+    : money(commission.baseAmount);
+  const baseAmount = parsed.data.baseAmount ?? canonicalBaseAmount;
   const amount = commissionAmount(baseAmount, parsed.data.commissionType, parsed.data.percent, parsed.data.fixedAmount ?? null);
   if (money(commission.paidAmount) > amount + 0.0001) {
     return res.status(409).json({ error: "A nova comissão não pode ser menor que o valor já pago." });
