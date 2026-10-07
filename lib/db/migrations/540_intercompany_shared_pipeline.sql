@@ -48,3 +48,16 @@ SET permissions = (
   ) AS permission
 )
 WHERE status = 'active';
+
+
+-- Equipes/empresas externas comerciais usam as mesmas regras de distribuição
+-- de leads dos usuários internos. Campos nulos preservam compatibilidade.
+ALTER TABLE tenant_user_functions
+  ADD COLUMN IF NOT EXISTS last_assigned_at timestamptz,
+  ADD COLUMN IF NOT EXISTS lead_assignment_enabled boolean,
+  ADD COLUMN IF NOT EXISTS lead_assignment_cities jsonb NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS lead_assignment_regions jsonb NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS lead_assignment_segments jsonb NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS lead_assignment_lat double precision,
+  ADD COLUMN IF NOT EXISTS lead_assignment_lng double precision,
+  ADD COLUMN IF NOT EXISTS lead_assignment_raio_km double precision;
