@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { Magnet, Maximize2, Move, Route, ZoomIn, ZoomOut } from "lucide-react";
 import type { ConceptGeometry, ConceptRoomShape, OpeningMarker } from "./conceptGeometry";
 import { orthogonalEnd, snapPointToWallNetwork, snapPointToWallNetworkDetailed, wallLength, wallMidpoint, type ClosedSpace, type WallSnapKind, type WallTopologyEndpointRef, type WallTopologyNode } from "./conceptWallNetwork";
@@ -38,6 +38,7 @@ type Props = {
   rooms: ConceptRoomShape[];
   lotWidth: number;
   lotDepth: number;
+  lotBoundaryPoints?: Array<{ x: number; y: number }> | null;
   showLotBoundary?: boolean;
   activeFloor?: number;
   geometry: ConceptGeometry;
@@ -358,6 +359,7 @@ export default function ConceptPlan2D({
   rooms,
   lotWidth,
   lotDepth,
+  lotBoundaryPoints = null,
   showLotBoundary = true,
   activeFloor = 0,
   geometry,
@@ -410,6 +412,22 @@ export default function ConceptPlan2D({
   previewOpenings = [],
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const lotClipId = useId().replace(/:/g, "");
+  const effectiveLotBoundary = useMemo(
+    () => Array.isArray(lotBoundaryPoints) && lotBoundaryPoints.length >= 3
+      ? lotBoundaryPoints
+      : [
+          { x: 0, y: 0 },
+          { x: lotWidth, y: 0 },
+          { x: lotWidth, y: lotDepth },
+          { x: 0, y: lotDepth },
+        ],
+    [lotBoundaryPoints, lotWidth, lotDepth],
+  );
+  const lotPointsAttribute = useMemo(
+    () => effectiveLotBoundary.map((point) => `${point.x},${point.y}`).join(" "),
+    [effectiveLotBoundary],
+  );
   const previewWallMap = useMemo(
     () => new Map(previewWalls.map((wall) => [wall.id, wall])),
     [previewWalls],
@@ -1460,6 +1478,9 @@ export default function ConceptPlan2D({
         letterSpacing="normal"
       >
         <defs>
+          <clipPath id={lotClipId}>
+            <polygon points={lotPointsAttribute} />
+          </clipPath>
           <pattern id="concept-grid" width="1" height="1" patternUnits="userSpaceOnUse">
             <path d="M 1 0 L 0 0 0 1" fill="none" stroke="#e2e8f0" strokeWidth="0.018" />
           </pattern>
@@ -1468,13 +1489,17 @@ export default function ConceptPlan2D({
           </pattern>
         </defs>
 
-        <rect
-          x={showLotBoundary ? 0 : view.x - view.width}
-          y={showLotBoundary ? 0 : view.y - view.height}
-          width={showLotBoundary ? lotWidth : view.width * 3}
-          height={showLotBoundary ? lotDepth : view.height * 3}
-          fill="#fcfcfd"
-        />
+        {showLotBoundary ? (
+          <polygon points={lotPointsAttribute} fill="#fcfcfd" stroke="#64748b" strokeWidth="0.05" />
+        ) : (
+          <rect
+            x={view.x - view.width}
+            y={view.y - view.height}
+            width={view.width * 3}
+            height={view.height * 3}
+            fill="#fcfcfd"
+          />
+        )}
         {referenceImage?.url ? (
           <image
             href={referenceImage.url}
@@ -1494,6 +1519,7 @@ export default function ConceptPlan2D({
           height={showLotBoundary ? lotDepth : view.height * 3}
           fill="url(#concept-grid)"
           opacity={referenceImage?.url ? 0.34 : 0.72}
+          clipPath={showLotBoundary ? `url(#${lotClipId})` : undefined}
         />
         {(previewWalls.length > 0 || previewOpenings.length > 0) && (
           <g pointerEvents="none" aria-label="Prévia do traçado sugerido pela IA">
