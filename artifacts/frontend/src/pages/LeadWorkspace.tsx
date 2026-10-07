@@ -786,7 +786,33 @@ export default function LeadWorkspace() {
         return;
       }
 
-      const response = await fetch("/api/deals/" + deal.id, { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token }, body: JSON.stringify({ etapa: nextStage, handoff: { responsavelId: owner, atividadeTitulo: title.trim(), atividadeDescricao: description.trim() || undefined, dataVencimento: due ? new Date(due).toISOString() : undefined, observacaoPassagem: note.trim() || undefined } }) });
+      const sharedParticipationId = (deal as typeof deal & { sharedParticipationId?: string | null }).sharedParticipationId;
+      const response = sharedParticipationId
+        ? await fetch("/api/representation-work/" + sharedParticipationId + "/stage", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+            body: JSON.stringify({
+              etapa: nextStage,
+              pipeline: "comercial",
+              atividadeTitulo: title.trim(),
+              atividadeDescricao: description.trim() || undefined,
+              observacaoPassagem: note.trim() || undefined,
+            }),
+          })
+        : await fetch("/api/deals/" + deal.id, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+            body: JSON.stringify({
+              etapa: nextStage,
+              handoff: {
+                responsavelId: owner,
+                atividadeTitulo: title.trim(),
+                atividadeDescricao: description.trim() || undefined,
+                dataVencimento: due ? new Date(due).toISOString() : undefined,
+                observacaoPassagem: note.trim() || undefined,
+              },
+            }),
+          });
       const result = await response.json().catch(() => ({}));
       if (response.status === 202 && result.pendingApproval) {
         toast({ title: "Movimentação enviada para aprovação." });
@@ -799,7 +825,12 @@ export default function LeadWorkspace() {
         qc.invalidateQueries({ queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }) }),
       ]);
       setOpen(false);
-      toast({ title: "Etapa avançada", description: "Próxima atividade atribuída a " + displayUser(owner) + "." });
+      toast({
+        title: "Etapa avançada",
+        description: (deal as typeof deal & { sharedParticipationId?: string | null }).sharedParticipationId
+          ? `Etapa da empresa atualizada para ${result?.destination?.stageLabel ?? nextStage}. O SLA e as atividades seguem a configuração da etapa.`
+          : "Próxima atividade atribuída a " + displayUser(owner) + ".",
+      });
     } catch (e) {
       toast({ title: "Erro ao avançar", description: e instanceof Error ? e.message : "Tente novamente.", variant: "destructive" });
     } finally {
