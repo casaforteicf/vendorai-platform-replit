@@ -36,6 +36,7 @@ import { recordResponsavelChange } from "../lib/leadResponsavelHistorico.js";
 import { enrichLead } from "./leadEnrichment.js";
 import { leadRegistrationMetadata } from "../lib/lead-registration-standard.js";
 import { decideProspectNextAction } from "../services/prospect-decision-engine.js";
+import { enforceTenantSolutionPolicy, resolveColdProspectingConfig } from "../services/cold-prospecting-config.js";
 
 /** Returns the start-of-day in UTC for "now" (for counting daily processed leads). */
 function todayStart(): Date {
@@ -375,7 +376,8 @@ async function processQueueItem(params: {
     ? 70
     : 20;
 
-  const decision = decideProspectNextAction({
+  const runtime = await resolveColdProspectingConfig(tenantId);
+  const decision = enforceTenantSolutionPolicy(decideProspectNextAction({
     stage: "analisado",
     vendoraiFitScore: vendorFit,
     arqdorFitScore: arqdorFit,
@@ -403,7 +405,7 @@ async function processQueueItem(params: {
       ],
     },
     opportunitySummary: null,
-  });
+  }), runtime);
 
   const [prospect] = await db.insert(prospectsTable).values({
     tenantId,
@@ -426,7 +428,7 @@ async function processQueueItem(params: {
     currentObjective: decision.currentObjective,
     nextBestAction: decision.nextBestAction,
     nextBestActionReason: decision.nextBestActionReason,
-    qualificationScore: 0,
+    qualificationScore: null,
     qualification: {
       commercial: {
         canaisAtendimento: item.telefone ? ["telefone/whatsapp"] : item.website ? ["website"] : [],
