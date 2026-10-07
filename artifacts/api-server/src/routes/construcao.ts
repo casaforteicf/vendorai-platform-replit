@@ -88,6 +88,14 @@ import {
   obraEnergiaComponentesTable,
   insertObraEnergiaSistemaSchema,
   insertObraEnergiaComponenteSchema,
+  obraHidraulicaRedesTable,
+  obraHidraulicaPontosTable,
+  obraHidraulicaSegmentosTable,
+  obraHidraulicaEquipamentosTable,
+  insertObraHidraulicaRedeSchema,
+  insertObraHidraulicaPontoSchema,
+  insertObraHidraulicaSegmentoSchema,
+  insertObraHidraulicaEquipamentoSchema,
   insertObraSchema,
   updateObraSchema,
   insertObraEtapaSchema,
@@ -2284,6 +2292,174 @@ router.post("/tenants/:tenantId/obras/:obraId/energia/preconfigurar", async (req
   }
 
   return res.status(201).json({ sistema, componentes: componentesCriados });
+});
+
+// ─── Hidráulica: pontos, redes, tecnologias e segmentos ───────────────────────
+
+router.post("/tenants/:tenantId/obras/:obraId/hidraulica/redes", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  const parsed = insertObraHidraulicaRedeSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraHidraulicaRedesTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/hidraulica/pontos", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraHidraulicaPontoSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  if (parsed.data.redeId) {
+    const [rede] = await db.select().from(obraHidraulicaRedesTable)
+      .where(and(eq(obraHidraulicaRedesTable.id, parsed.data.redeId), eq(obraHidraulicaRedesTable.obraId, obraId)));
+    if (!rede) return res.status(422).json({ error: "Rede hidráulica inválida para esta obra." });
+  }
+
+  const [row] = await db.insert(obraHidraulicaPontosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/hidraulica/redes/:redeId/segmentos", async (req, res) => {
+  const { tenantId: tid, obraId, redeId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [rede] = await db.select().from(obraHidraulicaRedesTable)
+    .where(and(eq(obraHidraulicaRedesTable.id, redeId), eq(obraHidraulicaRedesTable.obraId, obraId)));
+  if (!rede) return res.status(404).json({ error: "Rede hidráulica não encontrada" });
+
+  const parsed = insertObraHidraulicaSegmentoSchema.safeParse({ ...req.body, redeId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraHidraulicaSegmentosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/hidraulica/equipamentos", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraHidraulicaEquipamentoSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraHidraulicaEquipamentosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/hidraulica/resumo", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  const [redes, pontos, equipamentos] = await Promise.all([
+    db.select().from(obraHidraulicaRedesTable).where(and(eq(obraHidraulicaRedesTable.obraId, obraId), eq(obraHidraulicaRedesTable.ativo, true))),
+    db.select().from(obraHidraulicaPontosTable).where(and(eq(obraHidraulicaPontosTable.obraId, obraId), eq(obraHidraulicaPontosTable.ativo, true))),
+    db.select().from(obraHidraulicaEquipamentosTable).where(and(eq(obraHidraulicaEquipamentosTable.obraId, obraId), eq(obraHidraulicaEquipamentosTable.ativo, true))),
+  ]);
+
+  const redeIds = redes.map((r) => r.id);
+  const segmentos = redeIds.length
+    ? await db.select().from(obraHidraulicaSegmentosTable)
+        .where(and(inArray(obraHidraulicaSegmentosTable.redeId, redeIds), eq(obraHidraulicaSegmentosTable.ativo, true)))
+    : [];
+
+  const alertas = [];
+
+  for (const ponto of pontos) {
+    if (ponto.redeId) {
+      const rede = redes.find((r) => r.id === ponto.redeId);
+      if (!rede) {
+        alertas.push({ tipo: "ponto_sem_rede_valida", pontoId: ponto.id, redeId: ponto.redeId });
+        continue;
+      }
+      if (ponto.incluiLigacaoAteRede && rede.composicaoId) {
+        alertas.push({
+          tipo: "ligacao_potencialmente_duplicada",
+          pontoId: ponto.id,
+          redeId: rede.id,
+          mensagem: "O ponto inclui ligação até a rede e a rede possui composição própria. Revisar escopo para evitar dupla contagem.",
+        });
+      }
+    }
+  }
+
+  for (const rede of redes) {
+    const segs = segmentos.filter((s) => s.redeId === rede.id);
+    const tecnologias = new Set(segs.map((s) => s.tecnologia).filter(Boolean));
+    if (tecnologias.size > 1 && !rede.configuracao?.includes("mista")) {
+      alertas.push({
+        tipo: "rede_com_tecnologias_mistas",
+        redeId: rede.id,
+        mensagem: "A rede possui segmentos com tecnologias diferentes. Marcar configuração mista ou revisar os trechos.",
+      });
+    }
+  }
+
+  const totalComprimento = segmentos.reduce((sum, s) => sum + numberOrZero(s.comprimentoM), 0);
+
+  return res.json({
+    redes,
+    pontos,
+    segmentos,
+    equipamentos,
+    totais: {
+      redes: redes.length,
+      pontos: pontos.reduce((sum, p) => sum + numberOrZero(p.quantidade), 0),
+      segmentos: segmentos.length,
+      comprimentoM: totalComprimento.toFixed(4),
+    },
+    alertas,
+    regraAntiduplicidade: {
+      pontos: "terminal/ligação final",
+      redes: "tubulação principal, conexões, suportes, isolamento e infraestrutura",
+      principio: "o mesmo trecho/material não deve existir simultaneamente na composição do ponto e da rede",
+    },
+  });
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/hidraulica/preconfigurar", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const funcao = typeof req.body?.funcao === "string" ? req.body.funcao : null;
+  const tecnologia = typeof req.body?.tecnologia === "string" ? req.body.tecnologia : null;
+  const permitidasFuncoes = ["agua_fria","agua_quente","esgoto","ventilacao","pluvial","drenagem","reuso","irrigacao","piscina","hidromassagem","outro"];
+  const permitidasTecnologias = ["pex","ppr","pvc","cpvc","aquatherm","cobre","multicamada","pead","ferro_fundido","pp","outro"];
+
+  if (!funcao || !permitidasFuncoes.includes(funcao)) return res.status(422).json({ error: "Função hidráulica inválida." });
+  if (!tecnologia || !permitidasTecnologias.includes(tecnologia)) return res.status(422).json({ error: "Tecnologia hidráulica inválida." });
+
+  const configuracao = typeof req.body?.configuracao === "string" ? req.body.configuracao : null;
+  const codigo = typeof req.body?.codigo === "string" && req.body.codigo.trim()
+    ? req.body.codigo.trim()
+    : `${funcao.toUpperCase()}-01`;
+
+  const [rede] = await db.insert(obraHidraulicaRedesTable).values({
+    obraId,
+    codigo,
+    funcao,
+    tipoRede: req.body?.tipoRede ?? "ramal",
+    tecnologia,
+    configuracao,
+    diametroMm: req.body?.diametroMm != null ? String(req.body.diametroMm) : null,
+    classePressao: req.body?.classePressao ?? null,
+    origem: "preconfiguracao",
+    metadata: req.body?.metadata ?? null,
+    ativo: true,
+  }).returning();
+
+  return res.status(201).json({ rede });
 });
 
 // ─── Base Mestre de Preços: propagação segura ─────────────────────────────────
