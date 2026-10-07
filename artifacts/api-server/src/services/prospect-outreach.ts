@@ -1,7 +1,9 @@
 import { and, eq, gte, isNull } from "drizzle-orm";
 import {
+  businessProfilesTable,
   contentLibraryTable,
   db,
+  tenantsTable,
   prospectInteractionsTable,
   prospectsTable,
 } from "@workspace/db";
@@ -97,6 +99,15 @@ export async function sendProspectOutreach(input: {
   const content = (input.content?.trim() || materialText(material?.variation)).trim();
   if (!content) throw new Error("empty_outreach_content");
 
+  const [brand] = await db.select({
+    businessName: businessProfilesTable.nomeFantasia,
+  }).from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, input.tenantId)).limit(1);
+  const [tenant] = await db.select({
+    name: tenantsTable.name,
+    nomeEmpresa: tenantsTable.nomeEmpresa,
+  }).from(tenantsTable).where(eq(tenantsTable.id, input.tenantId)).limit(1);
+  const tenantName = brand?.businessName || tenant?.nomeEmpresa || tenant?.name || "Empresa";
+
   let externalId: string | undefined;
   if (input.channel === "whatsapp") {
     if (!prospect.phone) throw new Error("prospect_phone_missing");
@@ -105,7 +116,7 @@ export async function sendProspectOutreach(input: {
     if (!prospect.email) throw new Error("prospect_email_missing");
     externalId = await sendOperationalEmail({
       tenantId: input.tenantId,
-      tenantName: "Vendor.ai",
+      tenantName,
       to: prospect.email,
       subject: input.subject?.trim() || material?.title || "Contato",
       text: content,
