@@ -6241,22 +6241,26 @@ router.post("/arch/marketplace/:itemId/comprar", authenticate, async (req, res) 
     );
     const demand = demandResult.rows[0];
 
-    const [pedido] = await db
-      .insert(archMarketplacePedidosTable)
-      .values({
-        compradorTenantId: tid,
+    const pedidoResult = await client.query(
+      `INSERT INTO arch_marketplace_pedidos
+        (id,comprador_tenant_id,item_id,projeto_id,quantidade,valor_unitario,valor_total,comissao,
+         market_demand_id,commission_rule_id,commission_percentage,payment_status,status,created_at)
+       VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8::uuid,$9::uuid,$10,'pending','pendente',now())
+       RETURNING *`,
+      [
+        tid,
         itemId,
-        projetoId: projetoId ?? null,
-        quantidade: String(quantidade),
-        valorUnitario: String(valorUnitario),
-        valorTotal: String(valorTotal.toFixed(2)),
-        comissao: String(comissao.toFixed(2)),
-        marketDemandId: demand.id,
-        commissionRuleId: rule?.rule_id ?? null,
-        commissionPercentage: String(commissionPercentage),
-        paymentStatus: "pending",
-      })
-      .returning();
+        projetoId || null,
+        String(quantidade),
+        String(valorUnitario),
+        String(valorTotal.toFixed(2)),
+        String(comissao.toFixed(2)),
+        demand.id,
+        rule?.rule_id || null,
+        String(commissionPercentage),
+      ],
+    );
+    const pedido = pedidoResult.rows[0];
 
     let pracaOrderId: string | null = null;
     let commissionEntryId: string | null = null;
