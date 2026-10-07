@@ -109,3 +109,65 @@ export const insertObraExecucaoConsumoSchema = createInsertSchema(obraExecucaoCo
   custoTotal: decimalOptional,
   perdaQuantidade: decimalOptional,
 }).omit({ id: true, createdAt: true });
+
+
+export const obraExecucaoMaoObraTable = pgTable("obra_execucao_mao_obra", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  atividadeId: text("atividade_id").notNull().references(() => obraExecucaoAtividadesTable.id, { onDelete: "cascade" }),
+  recursoId: text("recurso_id"),
+  funcao: text("funcao"),
+  quantidadePessoas: numeric("quantidade_pessoas", { precision: 10, scale: 2 }).notNull().default("1"),
+  horas: numeric("horas", { precision: 15, scale: 4 }).notNull(),
+  custoHora: numeric("custo_hora", { precision: 15, scale: 4 }).notNull(),
+  custoTotal: numeric("custo_total", { precision: 15, scale: 4 }).notNull(),
+  dataReferencia: date("data_referencia", { mode: "string" }).notNull(),
+  origem: text("origem"),
+  observacoes: text("observacoes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const obraExecucaoEquipamentosTable = pgTable("obra_execucao_equipamentos", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  atividadeId: text("atividade_id").notNull().references(() => obraExecucaoAtividadesTable.id, { onDelete: "cascade" }),
+  equipamentoId: text("equipamento_id"),
+  descricao: text("descricao"),
+  horas: numeric("horas", { precision: 15, scale: 4 }).notNull(),
+  custoHora: numeric("custo_hora", { precision: 15, scale: 4 }).notNull(),
+  custoTotal: numeric("custo_total", { precision: 15, scale: 4 }).notNull(),
+  dataReferencia: date("data_referencia", { mode: "string" }).notNull(),
+  observacoes: text("observacoes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const obraExecucaoSnapshotsTable = pgTable("obra_execucao_snapshots", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  atividadeId: text("atividade_id").notNull().references(() => obraExecucaoAtividadesTable.id, { onDelete: "cascade" }),
+  dataReferencia: date("data_referencia", { mode: "string" }).notNull(),
+  quantidadeExecutada: numeric("quantidade_executada", { precision: 15, scale: 4 }).notNull(),
+  percentualExecutado: numeric("percentual_executado", { precision: 9, scale: 4 }).notNull(),
+  horasHomem: numeric("horas_homem", { precision: 15, scale: 4 }).notNull().default("0"),
+  horasEquipamento: numeric("horas_equipamento", { precision: 15, scale: 4 }).notNull().default("0"),
+  custoMaoObra: numeric("custo_mao_obra", { precision: 15, scale: 4 }).notNull().default("0"),
+  custoEquipamentos: numeric("custo_equipamentos", { precision: 15, scale: 4 }).notNull().default("0"),
+  custoMateriais: numeric("custo_materiais", { precision: 15, scale: 4 }).notNull().default("0"),
+  custoTotalRealizado: numeric("custo_total_realizado", { precision: 15, scale: 4 }).notNull().default("0"),
+  produtividadeReal: numeric("produtividade_real", { precision: 15, scale: 6 }),
+  desvioCustoPercentual: numeric("desvio_custo_percentual", { precision: 9, scale: 4 }),
+  desvioProdutividadePercentual: numeric("desvio_produtividade_percentual", { precision: 9, scale: 4 }),
+  memoriaCalculo: jsonb("memoria_calculo").$type<Record<string, unknown>>().notNull(),
+  criadoPorId: text("criado_por_id").references(() => usersTable.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertObraExecucaoMaoObraSchema = createInsertSchema(obraExecucaoMaoObraTable, {
+  quantidadePessoas: decimalOptional,
+  horas: decimalOptional,
+  custoHora: decimalOptional,
+  custoTotal: decimalOptional,
+}).omit({ id: true, createdAt: true });
+
+export const insertObraExecucaoEquipamentoSchema = createInsertSchema(obraExecucaoEquipamentosTable, {
+  horas: decimalOptional,
+  custoHora: decimalOptional,
+  custoTotal: decimalOptional,
+}).omit({ id: true, createdAt: true });
