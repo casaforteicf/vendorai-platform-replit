@@ -1,6 +1,6 @@
 name: Cloudflare Pages
 # Production deploy: Pages frontend; Railway backend remains unchanged.
-# Redeploy marker: plano-negocios-configuracoes-2026-10-06.
+# Redeploy marker: configuracoes-navigation-2026-10-06.
 
 on:
   push:
