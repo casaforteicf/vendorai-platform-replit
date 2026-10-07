@@ -4722,7 +4722,7 @@ router.get("/arch/health", authenticate, async (req, res) => {
       .select({
         status: archAiRendersTable.status,
         createdAt: archAiRendersTable.createdAt,
-        updatedAt: archAiRendersTable.updatedAt,
+        concluidoEm: archAiRendersTable.concluidoEm,
       })
       .from(archAiRendersTable)
       .where(and(
@@ -4737,7 +4737,7 @@ router.get("/arch/health", authenticate, async (req, res) => {
     const finished = completed.length + failed.length;
     const successRate = finished > 0 ? (completed.length / finished) * 100 : null;
     const latencies = completed
-      .map((item) => item.updatedAt && item.createdAt ? new Date(item.updatedAt).getTime() - new Date(item.createdAt).getTime() : 0)
+      .map((item) => item.concluidoEm && item.createdAt ? new Date(item.concluidoEm).getTime() - new Date(item.createdAt).getTime() : 0)
       .filter((value) => value > 0);
     const avgLatencyMs = latencies.length
       ? Math.round(latencies.reduce((sum, value) => sum + value, 0) / latencies.length)
