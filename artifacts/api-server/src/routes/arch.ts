@@ -101,6 +101,7 @@ import { buildConceptIfc, conceptIfcFilename } from "../lib/arqdor-concept-ifc.j
 import { parseIfcEditableGeometry } from "../lib/arqdor-ifc-editable.js";
 import { fitReferenceImageToLot } from "../lib/arqdor-reference-calibration.js";
 import { traceReferencePlanImage } from "../lib/arqdor-reference-ai-trace.js";
+import { analyzeRealEnvironmentImage, interventionPromptContext, type RealEnvironmentAction, type RealEnvironmentAnalysis, type RealEnvironmentKind, type RealEnvironmentUseMode } from "../lib/arqdor-real-environment.js";
 
 function sanitizeAIError(err: any): { status: number; message: string } {
   const raw: string = err?.message ?? String(err ?? "");
@@ -1451,6 +1452,113 @@ router.post("/arch/concept-projects/:id/reference-plan/trace", authenticate, asy
     const safe = sanitizeAIError(error);
     return res.status(safe.status).json({ error: safe.message });
   }
+});
+
+router.post("/arch/concept-projects/:id/real-environment/analyze", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  const id = String(req.params.id);
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const requestedKind = String(req.body?.kind ?? "auto") as RealEnvironmentKind;
+  const useMode = String(req.body?.useMode ?? "existing") as RealEnvironmentUseMode;
+  const validKinds = new Set(["auto","terreno","cozinha","banheiro","sala","quarto","fachada","area_externa","piscina","escritorio","outro"]);
+  const validModes = new Set(["existing","reference","modify"]);
+  if (!validKinds.has(requestedKind) || !validModes.has(useMode)) {
+    return res.status(400).json({ error: "Tipo de ambiente ou finalidade inválidos." });
+  }
+
+  const [concept] = await db.select({ configuration: archConceptProjectsTable.configuration })
+    .from(archConceptProjectsTable)
+    .where(and(
+      eq(archConceptProjectsTable.id, id),
+      eq(archConceptProjectsTable.tenantId, tid),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ))
+    .limit(1);
+  if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+
+  const config = (concept.configuration ?? {}) as Record<string, unknown>;
+  const referencePlan = config.referencePlan && typeof config.referencePlan === "object"
+    ? config.referencePlan as Record<string, unknown>
+    : null;
+  if (!referencePlan || referencePlan.kind !== "image") {
+    return res.status(422).json({ error: "Envie uma foto antes de analisar o ambiente real." });
+  }
+  const storagePath = typeof referencePlan.storagePath === "string" ? referencePlan.storagePath : "";
+  if (!storagePath.startsWith("/objects/")) {
+    return res.status(422).json({ error: "A imagem não possui arquivo persistido válido." });
+  }
+
+  try {
+    const storage = new ObjectStorageService();
+    const file = await storage.getObjectEntityFile(storagePath);
+    const [buffer] = await file.download();
+    const analysis = await analyzeRealEnvironmentImage({
+      tenantId: tid,
+      buffer,
+      mimeType: typeof referencePlan.mimeType === "string" ? referencePlan.mimeType : "image/jpeg",
+      requestedKind,
+      useMode,
+    });
+    const realEnvironment = { ...analysis, sourceImageUrl: referencePlan.url };
+    await db.update(archConceptProjectsTable)
+      .set({ configuration: { ...config, realEnvironment } as any, updatedAt: new Date() })
+      .where(and(
+        eq(archConceptProjectsTable.id, id),
+        eq(archConceptProjectsTable.tenantId, tid),
+        eq(archConceptProjectsTable.ownerUserId, userId),
+      ));
+    return res.json(realEnvironment);
+  } catch (error) {
+    const safe = sanitizeAIError(error);
+    return res.status(safe.status).json({ error: safe.message });
+  }
+});
+
+router.patch("/arch/concept-projects/:id/real-environment/elements/:elementId", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  const id = String(req.params.id);
+  const elementId = String(req.params.elementId);
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const action = String(req.body?.action ?? "") as RealEnvironmentAction;
+  if (!new Set(["preserve","remove","replace","relocate","review"]).has(action)) {
+    return res.status(400).json({ error: "Ação inválida." });
+  }
+
+  const [concept] = await db.select({ configuration: archConceptProjectsTable.configuration })
+    .from(archConceptProjectsTable)
+    .where(and(
+      eq(archConceptProjectsTable.id, id),
+      eq(archConceptProjectsTable.tenantId, tid),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ))
+    .limit(1);
+  if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+
+  const config = (concept.configuration ?? {}) as Record<string, unknown>;
+  const env = (config.realEnvironment && typeof config.realEnvironment === "object"
+    ? config.realEnvironment
+    : null) as RealEnvironmentAnalysis | null;
+  if (!env) return res.status(404).json({ error: "Ambiente real ainda não foi analisado." });
+  if (!env.elements.some((item) => item.id === elementId)) {
+    return res.status(404).json({ error: "Elemento não encontrado." });
+  }
+
+  const next = {
+    ...env,
+    elements: env.elements.map((item) => item.id === elementId ? { ...item, action, source: "user" as const } : item),
+  };
+  await db.update(archConceptProjectsTable)
+    .set({ configuration: { ...config, realEnvironment: next } as any, updatedAt: new Date() })
+    .where(and(
+      eq(archConceptProjectsTable.id, id),
+      eq(archConceptProjectsTable.tenantId, tid),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ));
+  return res.json(next);
 });
 
 router.post("/arch/concept-projects/:id/reference-plan", authenticate, upload.single("file"), async (req, res) => {
@@ -6879,6 +6987,11 @@ const angleMapArch: Record<string, string> = {
   aerea:       "aerial top-down bird's-eye view",
 };
 
+function realEnvironmentPromptFromBody(body: unknown): string {
+  const env = body && typeof body === "object" ? (body as any).realEnvironment : null;
+  return interventionPromptContext(env as RealEnvironmentAnalysis | null);
+}
+
 function buildArchPreservationRules(isExterior: boolean): string {
   return isExterior
     ? [
@@ -6935,6 +7048,7 @@ router.post("/arch/render", async (req, res) => {
   const isExterior = !roomType || roomType === "fachada externa";
 
   const preservationRules = buildArchPreservationRules(isExterior);
+  const realEnvironmentRules = realEnvironmentPromptFromBody(req.body);
 
   const materialInstructions = materials.length > 0
     ? [
@@ -6967,6 +7081,7 @@ router.post("/arch/render", async (req, res) => {
     "You are a professional architectural photographer and photorealism engine.",
     `Transform the supplied ${isExterior ? "3D architectural exterior/reference view" : "3D interior/reference view"} into a TRUE PHOTOREALISTIC ARCHITECTURAL PHOTOGRAPH.`,
     preservationRules,
+    realEnvironmentRules,
     materialInstructions,
     estiloInstruction,
     lightingInstruction,
