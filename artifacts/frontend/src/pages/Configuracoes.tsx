@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Bell, Bot, Building2, ChevronRight, Database, Search, Settings2, ShieldCheck, Users, Workflow, Zap } from "lucide-react";
 import ConfiguracoesNormalized from "./ConfiguracoesNormalized";
 import { BrandKitSettings } from "@/components/BrandKitSettings";
 import IntegrationSettingsHub from "./IntegrationSettingsHub";
@@ -132,6 +133,148 @@ function SettingsUxCleanup() {
         margin-top: 1rem !important;
       }
 
+      .settings-home-shell {
+        width: 100%;
+        max-width: 92rem;
+        margin: 0 auto;
+        padding: .65rem 1rem 1.5rem;
+      }
+      .settings-home-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 1rem;
+      }
+      .settings-home-title {
+        font-size: 1.7rem;
+        line-height: 1.15;
+        font-weight: 750;
+        letter-spacing: -.025em;
+      }
+      .settings-home-subtitle {
+        margin-top: .35rem;
+        color: hsl(var(--muted-foreground));
+        font-size: .86rem;
+      }
+      .settings-review-button {
+        display: inline-flex;
+        align-items: center;
+        gap: .55rem;
+        min-height: 2.8rem;
+        border: 1px solid hsl(var(--primary) / .16);
+        border-radius: .85rem;
+        padding: .7rem .9rem;
+        background: hsl(var(--primary) / .08);
+        color: hsl(var(--primary));
+        font-size: .75rem;
+        font-weight: 700;
+      }
+      .settings-searchbox {
+        display: flex;
+        align-items: center;
+        gap: .65rem;
+        height: 2.75rem;
+        margin-bottom: 1rem;
+        border: 1px solid hsl(var(--border));
+        border-radius: .75rem;
+        padding: 0 .85rem;
+        background: hsl(var(--card));
+        box-shadow: 0 1px 2px hsl(var(--foreground) / .04);
+      }
+      .settings-searchbox input {
+        width: 100%;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        font-size: .78rem;
+      }
+      .settings-home-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 20rem;
+        gap: 1rem;
+        align-items: start;
+      }
+      .settings-card-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: .8rem;
+      }
+      .settings-home-card {
+        display: flex;
+        min-height: 8.5rem;
+        flex-direction: column;
+        justify-content: space-between;
+        border: 1px solid hsl(var(--border));
+        border-radius: .9rem;
+        padding: 1rem;
+        background: hsl(var(--card));
+        box-shadow: 0 1px 3px hsl(var(--foreground) / .04);
+        transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+      }
+      .settings-home-card:hover {
+        transform: translateY(-1px);
+        border-color: hsl(var(--primary) / .3);
+        box-shadow: 0 8px 22px hsl(var(--foreground) / .06);
+      }
+      .settings-home-card__top { display: flex; gap: .8rem; align-items: flex-start; }
+      .settings-home-card__icon {
+        display: grid;
+        width: 2.5rem;
+        height: 2.5rem;
+        flex: 0 0 auto;
+        place-items: center;
+        border-radius: .7rem;
+        background: hsl(var(--primary) / .09);
+        color: hsl(var(--primary));
+      }
+      .settings-home-card__title { font-size: .88rem; font-weight: 720; }
+      .settings-home-card__description { margin-top: .25rem; font-size: .72rem; line-height: 1.45; color: hsl(var(--muted-foreground)); }
+      .settings-home-card__action {
+        display: inline-flex;
+        align-items: center;
+        gap: .35rem;
+        width: fit-content;
+        margin-top: .8rem;
+        border: 1px solid hsl(var(--border));
+        border-radius: .55rem;
+        padding: .4rem .62rem;
+        background: hsl(var(--background));
+        font-size: .69rem;
+        font-weight: 650;
+      }
+      .settings-side-stack { display: grid; gap: .8rem; }
+      .settings-side-card {
+        border: 1px solid hsl(var(--border));
+        border-radius: .9rem;
+        padding: 1rem;
+        background: hsl(var(--card));
+        box-shadow: 0 1px 3px hsl(var(--foreground) / .04);
+      }
+      .settings-side-card__title { font-size: .82rem; font-weight: 720; }
+      .settings-recommendation-row,
+      .settings-summary-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: .75rem;
+        padding: .68rem 0;
+        border-bottom: 1px solid hsl(var(--border) / .72);
+        font-size: .7rem;
+      }
+      .settings-recommendation-row:last-child,
+      .settings-summary-row:last-child { border-bottom: 0; padding-bottom: 0; }
+      .settings-summary-row span:first-child { color: hsl(var(--muted-foreground)); }
+      .settings-review-panel {
+        margin-bottom: 1rem;
+        border: 1px solid hsl(var(--primary) / .2);
+        border-radius: .85rem;
+        padding: .9rem 1rem;
+        background: hsl(var(--primary) / .04);
+      }
+      .settings-review-panel ul { margin: .55rem 0 0 1rem; list-style: disc; color: hsl(var(--muted-foreground)); font-size: .72rem; line-height: 1.55; }
+      .settings-inline-panel { margin-top: 1rem; }
+
       .settings-quick-panel {
         border-radius: .85rem;
         padding: .8rem .9rem;
@@ -212,7 +355,15 @@ function SettingsUxCleanup() {
         font-weight: 650;
       }
 
+      @media (max-width: 980px) {
+        .settings-home-layout { grid-template-columns: 1fr; }
+        .settings-side-stack { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      }
       @media (max-width: 640px) {
+        .settings-home-header { flex-direction: column; }
+        .settings-review-button { width: 100%; justify-content: space-between; }
+        .settings-card-grid, .settings-side-stack { grid-template-columns: 1fr; }
+        .settings-home-shell { padding-left: .75rem; padding-right: .75rem; }
         .settings-catalog-summary { align-items: stretch; flex-direction: column; }
         .settings-catalog-summary a { width: 100%; text-align: center; }
         .settings-quick-actions { width: 100%; }
@@ -244,6 +395,8 @@ export default function Configuracoes() {
   const [showInstallationSettings, setShowInstallationSettings] = useState(false);
   const [showFullSettings, setShowFullSettings] = useState(false);
   const [defaultsApplied, setDefaultsApplied] = useState(false);
+  const [showRecommendations, setShowRecommendations] = useState(false);
+  const [settingsSearch, setSettingsSearch] = useState("");
 
   useEffect(() => {
     const openIntegration = (event: MouseEvent) => {
@@ -284,13 +437,6 @@ export default function Configuracoes() {
       alwaysConfirmSensitiveActions: true,
     });
     setDefaultsApplied(true);
-  };
-
-  const advancedOpen = showJarvis && showGovernance;
-  const toggleAdvanced = () => {
-    const next = !advancedOpen;
-    setShowJarvis(next);
-    setShowGovernance(next);
   };
 
   if (integrationsDeepLink) {
@@ -355,75 +501,193 @@ export default function Configuracoes() {
     );
   }
 
+  const settingsCards = [
+    {
+      key: "empresa",
+      title: "Empresa",
+      description: "Dados da empresa, marca, endereço, canais e preferências.",
+      icon: Building2,
+      action: () => window.location.assign("/configuracoes?tab=perfil"),
+    },
+    {
+      key: "equipe",
+      title: "Equipe e permissões",
+      description: "Usuários, funções, acessos e responsáveis.",
+      icon: Users,
+      action: () => window.location.assign("/configuracoes?tab=equipe"),
+    },
+    {
+      key: "integracoes",
+      title: "Integrações",
+      description: "WhatsApp, Instagram, e-mail, Google, Meta, outros sistemas e APIs.",
+      icon: Zap,
+      action: () => window.location.assign("/configuracoes?tab=integracoes"),
+    },
+    {
+      key: "ia",
+      title: "IA e agentes",
+      description: "Agentes, autonomia, permissões, comportamento e respostas.",
+      icon: Bot,
+      action: () => setShowJarvis(true),
+    },
+    {
+      key: "crm",
+      title: "CRM e operação",
+      description: "Pipelines, etapas, atividades, propostas, regras e processos.",
+      icon: Workflow,
+      action: () => setShowFullSettings(true),
+    },
+    {
+      key: "seguranca",
+      title: "Segurança e auditoria",
+      description: "Acessos, permissões, histórico de alterações, sessões e restauração.",
+      icon: ShieldCheck,
+      action: () => setShowGovernance(true),
+    },
+    {
+      key: "notificacoes",
+      title: "Notificações",
+      description: "Alertas, e-mails, WhatsApp, eventos e preferências de contato.",
+      icon: Bell,
+      action: () => setShowFullSettings(true),
+    },
+    {
+      key: "avancado",
+      title: "Avançado",
+      description: "Configurações técnicas, APIs, governança e preferências avançadas.",
+      icon: Settings2,
+      action: () => {
+        setShowJarvis(true);
+        setShowGovernance(true);
+        setShowFullSettings(true);
+      },
+    },
+  ];
+
+  const settingsSearchTerm = settingsSearch.trim().toLocaleLowerCase("pt-BR");
+  const filteredSettingsCards = settingsSearchTerm
+    ? settingsCards.filter((card) =>
+        `${card.title} ${card.description}`.toLocaleLowerCase("pt-BR").includes(settingsSearchTerm),
+      )
+    : settingsCards;
+
   return (
     <div className="vendor-settings-compact vendor-page-canvas vendor-config-page">
       <SettingsUxCleanup />
-      <section className="mx-auto mb-3 w-full max-w-7xl px-4 sm:px-6">
-        <div className="settings-quick-panel border border-border bg-card shadow-sm">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="text-[13px] font-semibold">Ajustes rápidos</div>
-                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">Modo essencial</span>
+      <main className="settings-home-shell">
+        <header className="settings-home-header">
+          <div>
+            <h1 className="settings-home-title">Configurações</h1>
+            <p className="settings-home-subtitle">Gerencie empresa, equipe, integrações, IA, segurança e preferências do Vendor.ai.</p>
+          </div>
+          <button type="button" className="settings-review-button" onClick={() => setShowRecommendations((current) => !current)}>
+            <Settings2 className="h-4 w-4" />
+            <span>Revisar configuração recomendada</span>
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </header>
+
+        {showRecommendations && (
+          <section className="settings-review-panel" aria-label="Revisão da configuração recomendada">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-[13px] font-semibold">{defaultsApplied ? "Padrão recomendado aplicado" : "Revise antes de aplicar"}</div>
+                <ul>
+                  <li>Mantém confirmação obrigatória para ações sensíveis.</li>
+                  <li>Preserva suas permissões atuais de microfone e notificações.</li>
+                  <li>Aplica o padrão recomendado somente às permissões e autonomia da IA.</li>
+                </ul>
               </div>
-              <p className="mt-1 max-w-3xl text-[11px] leading-relaxed text-muted-foreground">
-                Aplique o padrão recomendado ou abra as opções avançadas quando precisar revisar permissões, segurança e histórico.
-              </p>
-            </div>
-
-            <div className="settings-quick-actions">
-              <button
-                type="button"
-                onClick={applyAutomaticDefaults}
-                className="bg-primary text-primary-foreground"
-              >
-                {defaultsApplied ? "Padrão aplicado" : "Aplicar padrão recomendado"}
-              </button>
-              <button
-                type="button"
-                onClick={toggleAdvanced}
-                className="border border-border bg-background text-foreground"
-              >
-                {advancedOpen ? "Ocultar avançado" : "Ver avançado"}
+              <button type="button" onClick={applyAutomaticDefaults} className="min-h-9 shrink-0 rounded-lg bg-primary px-3 py-2 text-[11px] font-semibold text-primary-foreground">
+                {defaultsApplied ? "Aplicado" : "Aplicar após revisão"}
               </button>
             </div>
-          </div>
-        </div>
-      </section>
-
-      <details
-        open={showJarvis}
-        onToggle={(event) => setShowJarvis(event.currentTarget.open)}
-        className="mx-auto mb-2.5 w-full max-w-7xl px-4 sm:px-6"
-      >
-        <summary className="settings-toggle-summary flex cursor-pointer list-none items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5 shadow-sm [&::-webkit-details-marker]:hidden">
-          <div className="min-w-0">
-            <div className="settings-toggle-title">IA — permissões e autonomia</div>
-            <div className="settings-toggle-description">Voz, contexto, permissões e autonomia dos agentes.</div>
-          </div>
-          <span className="settings-toggle-action">{showJarvis ? "Ocultar" : "Abrir"}</span>
-        </summary>
-        {showJarvis && (
-          <div className="settings-advanced-content mt-2.5">
-            <JarvisPermissionsCenter />
-          </div>
+          </section>
         )}
-      </details>
 
-      <details
-        open={showGovernance}
-        onToggle={(event) => setShowGovernance(event.currentTarget.open)}
-        className="mx-auto mb-3 w-full max-w-7xl px-4 sm:px-6"
-      >
-        <summary className="settings-toggle-summary flex cursor-pointer list-none items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5 shadow-sm [&::-webkit-details-marker]:hidden">
-          <div className="min-w-0">
-            <div className="settings-toggle-title">Segurança e histórico</div>
-            <div className="settings-toggle-description">Acessos, impacto, validação, histórico de alterações e restauração segura.</div>
-          </div>
-          <span className="settings-toggle-action">{showGovernance ? "Ocultar" : "Abrir"}</span>
-        </summary>
+        <label className="settings-searchbox">
+          <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <input
+            value={settingsSearch}
+            onChange={(event) => setSettingsSearch(event.target.value)}
+            placeholder="Pesquisar configuração, ex.: WhatsApp, usuários, pipeline..."
+            aria-label="Pesquisar configuração"
+          />
+        </label>
+
+        <div className="settings-home-layout">
+          <section className="settings-card-grid" aria-label="Categorias de configuração">
+            {filteredSettingsCards.map((card) => {
+              const Icon = card.icon;
+              return (
+                <article key={card.key} className="settings-home-card">
+                  <div className="settings-home-card__top">
+                    <span className="settings-home-card__icon"><Icon className="h-5 w-5" /></span>
+                    <div className="min-w-0">
+                      <div className="settings-home-card__title">{card.title}</div>
+                      <p className="settings-home-card__description">{card.description}</p>
+                    </div>
+                  </div>
+                  <button type="button" className="settings-home-card__action" onClick={card.action}>
+                    Gerenciar <ChevronRight className="h-3.5 w-3.5" />
+                  </button>
+                </article>
+              );
+            })}
+            {filteredSettingsCards.length === 0 && (
+              <div className="col-span-full rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+                Nenhuma configuração encontrada para “{settingsSearch}”.
+              </div>
+            )}
+          </section>
+
+          <aside className="settings-side-stack">
+            <section className="settings-side-card">
+              <div className="flex items-center justify-between gap-3">
+                <div className="settings-side-card__title">Recomendações</div>
+                <button type="button" onClick={() => setShowRecommendations(true)} className="text-[10px] font-semibold text-primary">Revisar</button>
+              </div>
+              <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">Aplique mudanças somente depois de revisar o impacto.</p>
+              <div className="settings-recommendation-row">
+                <span className="flex items-center gap-2"><Bot className="h-4 w-4 text-primary" /> Permissões da IA</span>
+                <button type="button" onClick={() => setShowJarvis(true)} className="font-semibold text-primary">Abrir</button>
+              </div>
+              <div className="settings-recommendation-row">
+                <span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-primary" /> Segurança e histórico</span>
+                <button type="button" onClick={() => setShowGovernance(true)} className="font-semibold text-primary">Abrir</button>
+              </div>
+              <div className="settings-recommendation-row">
+                <span className="flex items-center gap-2"><Database className="h-4 w-4 text-primary" /> Configuração completa</span>
+                <button type="button" onClick={() => setShowFullSettings(true)} className="font-semibold text-primary">Abrir</button>
+              </div>
+            </section>
+
+            <section className="settings-side-card">
+              <div className="settings-side-card__title">Resumo da configuração</div>
+              <div className="settings-summary-row"><span>Empresa</span><strong>Perfil centralizado</strong></div>
+              <div className="settings-summary-row"><span>Integrações</span><strong>Central única</strong></div>
+              <div className="settings-summary-row"><span>IA e agentes</span><strong>Permissões revisáveis</strong></div>
+              <div className="settings-summary-row"><span>Segurança</span><strong>Auditoria disponível</strong></div>
+            </section>
+          </aside>
+        </div>
+
+        {showJarvis && (
+          <section className="settings-inline-panel">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div><h2 className="text-sm font-semibold">IA e agentes</h2><p className="text-xs text-muted-foreground">Permissões, contexto e autonomia dos agentes.</p></div>
+              <button type="button" onClick={() => setShowJarvis(false)} className="rounded-lg border px-2.5 py-1.5 text-xs">Fechar</button>
+            </div>
+            <JarvisPermissionsCenter />
+          </section>
+        )}
+
         {showGovernance && (
-          <div className="settings-advanced-content mt-2.5 space-y-2.5">
+          <section className="settings-inline-panel settings-advanced-content space-y-2.5">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div><h2 className="text-sm font-semibold">Segurança e auditoria</h2><p className="text-xs text-muted-foreground">Acessos, impacto, validação, histórico e restauração segura.</p></div>
+              <button type="button" onClick={() => setShowGovernance(false)} className="rounded-lg border px-2.5 py-1.5 text-xs">Fechar</button>
+            </div>
             <ConfigurationSectionGuard />
             <ConfigurationAccessPanel />
             <ConfigurationGovernancePanel />
@@ -431,29 +695,20 @@ export default function Configuracoes() {
             <ConfigurationPostChangeValidation />
             <ConfigurationHistoryPanel />
             <ConfigurationRollbackPanel />
-          </div>
+          </section>
         )}
-      </details>
 
-      <details
-        open={showFullSettings}
-        onToggle={(event) => setShowFullSettings(event.currentTarget.open)}
-        className="mx-auto mb-4 w-full max-w-7xl px-4 sm:px-6"
-      >
-        <summary className="settings-toggle-summary flex cursor-pointer list-none items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5 shadow-sm [&::-webkit-details-marker]:hidden">
-          <div className="min-w-0">
-            <div className="settings-toggle-title">Configurações completas</div>
-            <div className="settings-toggle-description">Empresa, equipe, integrações, catálogo e preferências detalhadas.</div>
-          </div>
-          <span className="settings-toggle-action">{showFullSettings ? "Ocultar" : "Abrir"}</span>
-        </summary>
         {showFullSettings && (
-          <div className="settings-advanced-content mt-2.5">
+          <section className="settings-inline-panel settings-advanced-content">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div><h2 className="text-sm font-semibold">Configurações completas</h2><p className="text-xs text-muted-foreground">Demais opções preservadas e organizadas em um único ponto.</p></div>
+              <button type="button" onClick={() => setShowFullSettings(false)} className="rounded-lg border px-2.5 py-1.5 text-xs">Fechar</button>
+            </div>
             <ConfiguracoesNormalized />
             <ConfigurationCatalogProductsBridge />
-          </div>
+          </section>
         )}
-      </details>
+      </main>
     </div>
   );
 }
