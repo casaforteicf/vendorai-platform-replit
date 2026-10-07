@@ -56,7 +56,7 @@ import {
   ChevronDown, ChevronUp, BookOpen, User, Building2,
   Upload, X, Image as ImageIcon, FileSpreadsheet, Copy,
   Send, ThumbsUp, ThumbsDown, ChevronRight, AlertCircle,
-  Search, Loader2, FileText, Download, Sparkles,
+  Search, Loader2, FileText, Download, Sparkles, Store,
   Zap, Sun, BatteryCharging, CarFront, Droplets, Gauge, Flame, Waves, Activity, FileBarChart2, History,
 } from "lucide-react";
 import TabFinanceiro from "./TabFinanceiro";
@@ -2830,6 +2830,22 @@ function CotacoesOrcamento({ tenantId, obraId, orcamentoId, locked }: { tenantId
             <CardTitle className="text-sm">Cotações e fornecedores</CardTitle>
             <p className="text-xs text-muted-foreground mt-1">RFQ vinculada aos itens do orçamento, com cobertura, unidade comercial e seleção por fornecedor.</p>
           </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              const params = new URLSearchParams({
+                origem: "orcamento",
+                origemId: orcamentoId,
+                obraId,
+                orcamentoId,
+                titulo: titulo || "Cotação da obra",
+              });
+              window.location.href = `/arch/marketplace?${params.toString()}`;
+            }}
+          >
+            <Store className="h-4 w-4 mr-1.5" /> Abrir no Arqdor Market
+          </Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
