@@ -1818,7 +1818,7 @@ router.post("/tenants/:tenantId/composicoes", async (req, res) => {
   const insumoIds = [...new Set(parsedItens.data.map((item) => item.insumoId))];
   const insumos = insumoIds.length
     ? await db
-        .select({ id: insumosTable.id, precoUnitario: insumosTable.precoUnitario })
+        .select({ id: insumosTable.id, precoUnitario: insumosTable.precoUnitario, perdaPadraoPercentual: insumosTable.perdaPadraoPercentual })
         .from(insumosTable)
         .where(and(eq(insumosTable.tenantId, tid), inArray(insumosTable.id, insumoIds)))
     : [];
@@ -1827,10 +1827,17 @@ router.post("/tenants/:tenantId/composicoes", async (req, res) => {
     return res.status(422).json({ error: "Um ou mais insumos não pertencem a este tenant." });
   }
 
-  const precoPorInsumo = new Map(insumos.map((item) => [item.id, Number(item.precoUnitario ?? 0)]));
+  const dadosPorInsumo = new Map(insumos.map((item) => [item.id, {
+    preco: Number(item.precoUnitario ?? 0),
+    perdaPadrao: Number(item.perdaPadraoPercentual ?? 0),
+  }]));
   const custoTotal = parsedItens.data.reduce((sum, item) => {
-    const preco = Number(precoPorInsumo.get(item.insumoId) ?? 0);
-    return sum + Number(item.quantidade ?? 0) * preco;
+    const dados = dadosPorInsumo.get(item.insumoId) ?? { preco: 0, perdaPadrao: 0 };
+    const perda = item.perdaPercentualOverride != null
+      ? Number(item.perdaPercentualOverride)
+      : dados.perdaPadrao;
+    const quantidadeEfetiva = Number(item.quantidade ?? 0) * (1 + perda / 100);
+    return sum + quantidadeEfetiva * dados.preco;
   }, 0);
 
   const composicao = await db.transaction(async (tx) => {
@@ -1845,6 +1852,7 @@ router.post("/tenants/:tenantId/composicoes", async (req, res) => {
           composicaoId: created.id,
           insumoId: item.insumoId,
           quantidade: item.quantidade,
+          perdaPercentualOverride: item.perdaPercentualOverride ?? null,
         }))
       );
     }
@@ -1932,7 +1940,7 @@ router.put("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
     const insumoIds = [...new Set(parsedItens.map((item) => item.insumoId))];
     const insumos = insumoIds.length
       ? await db
-          .select({ id: insumosTable.id, precoUnitario: insumosTable.precoUnitario })
+          .select({ id: insumosTable.id, precoUnitario: insumosTable.precoUnitario, perdaPadraoPercentual: insumosTable.perdaPadraoPercentual })
           .from(insumosTable)
           .where(and(eq(insumosTable.tenantId, tid), inArray(insumosTable.id, insumoIds)))
       : [];
@@ -1941,10 +1949,17 @@ router.put("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
       return res.status(422).json({ error: "Um ou mais insumos não pertencem a este tenant." });
     }
 
-    const precoPorInsumo = new Map(insumos.map((item) => [item.id, Number(item.precoUnitario ?? 0)]));
+    const dadosPorInsumo = new Map(insumos.map((item) => [item.id, {
+      preco: Number(item.precoUnitario ?? 0),
+      perdaPadrao: Number(item.perdaPadraoPercentual ?? 0),
+    }]));
     custoTotal = parsedItens.reduce((sum, item) => {
-      const preco = Number(precoPorInsumo.get(item.insumoId) ?? 0);
-      return sum + Number(item.quantidade ?? 0) * preco;
+      const dados = dadosPorInsumo.get(item.insumoId) ?? { preco: 0, perdaPadrao: 0 };
+      const perda = item.perdaPercentualOverride != null
+        ? Number(item.perdaPercentualOverride)
+        : dados.perdaPadrao;
+      const quantidadeEfetiva = Number(item.quantidade ?? 0) * (1 + perda / 100);
+      return sum + quantidadeEfetiva * dados.preco;
     }, 0);
   }
 
