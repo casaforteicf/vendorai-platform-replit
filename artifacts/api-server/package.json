@@ -51,7 +51,8 @@
     "resend": "^6.12.4",
     "sharp": "^0.35.3",
     "zod": "catalog:",
-    "@workspace/vendor-brain": "workspace:*"
+    "@workspace/vendor-brain": "workspace:*",
+    "ssh2": "^1.17.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",
@@ -68,6 +69,7 @@
     "supertest": "^7.2.2",
     "thread-stream": "3.1.0",
     "tsx": "catalog:",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.8",
+    "@types/ssh2": "^1.15.5"
   }
 }
