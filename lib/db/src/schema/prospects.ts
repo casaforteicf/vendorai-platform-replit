@@ -105,7 +105,6 @@ export const prospectsTable = pgTable("prospects", {
 
   qualificationScore: integer("qualification_score"),
   meetingReadinessScore: integer("meeting_readiness_score"),
-  meetingReadinessScore: integer("meeting_readiness_score"),
   accountMap: jsonb("account_map").$type<Array<{
     personId?: string | null;
     name: string;
@@ -146,8 +145,6 @@ export const insertProspectSchema = createInsertSchema(prospectsTable, {
   vendoraiFitScore: z.number().int().min(0).max(100).nullable().optional(),
   arqdorFitScore: z.number().int().min(0).max(100).nullable().optional(),
   qualificationScore: z.number().int().min(0).max(100).nullable().optional(),
-  meetingReadinessScore: z.number().int().min(0).max(100).nullable().optional(),
-  meetingReadinessScore: z.number().int().min(0).max(100).nullable().optional(),
   meetingReadinessScore: z.number().int().min(0).max(100).nullable().optional(),
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
