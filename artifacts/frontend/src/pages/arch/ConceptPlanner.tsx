@@ -4978,29 +4978,20 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const uploadIntelligentProject = async (file: File) => {
     if (sourceFileState === "uploading") return;
     setSourceFileState("uploading");
-    setSourceFileMessage("Interpretando projeto completo, quadro de esquadrias, cortes, fachadas e cobertura...");
+    setSourceFileMessage("Interpretando projeto arquitetônico...");
     try {
       const id = await saveConcept(4);
       if (!id) throw new Error("Não foi possível salvar o pré-projeto antes da importação.");
-      const { importProjectIntelligentRequest } = await import("./conceptReferenceNetwork");
-      const payload = await importProjectIntelligentRequest(id, file) as any;
+      const { runIntelligentProjectImport } = await import("./conceptImportedProjectActions");
+      const { payload, message } = await runIntelligentProjectImport(id, file);
       if (payload?.source?.id) {
         setSourceFiles((current) => [
           ...current.filter((item) => item.id !== payload.source.id),
           payload.source as ProjectSourceFile,
         ].slice(-20));
       }
-      const previews = Array.isArray(payload?.geometryPreviews) ? payload.geometryPreviews : [];
-      const applicable = previews.filter((item: any) => item?.canApply).length;
-      const floorPlans = Number(payload?.memory?.floorPlans?.length ?? previews.length ?? 0);
-      const models = Number(payload?.universalModels?.length ?? 0);
-      const openings = Number(payload?.memory?.openings?.length ?? 0);
       setSourceFileState("success");
-      setSourceFileMessage(
-        "Importação Inteligente concluída: " + floorPlans + " planta(s), " + openings +
-        " esquadria(s)/abertura(s) e " + models + " modelo(s) enviados à Biblioteca Universal. " +
-        (applicable ? applicable + " planta(s) já podem virar geometria editável." : "A geometria aguarda calibração/revisão técnica."),
-      );
+      setSourceFileMessage(message);
       window.setTimeout(() => setSourceFileState("idle"), 9000);
     } catch (error) {
       setSourceFileState("error");
@@ -5009,16 +5000,15 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       if (projectStartImportInputRef.current) projectStartImportInputRef.current.value = "";
     }
   };
+
   const applyImportedProject2D = async () => {
     const id = conceptIdRef.current ?? conceptId;
     if (!id || projectMaster) return;
     setSourceFileState("uploading");
-    setSourceFileMessage("Convertendo a planta importada para paredes e esquadrias editáveis...");
+    setSourceFileMessage("Aplicando planta importada...");
     try {
-      const { applyImportedProjectGeometryRequest } = await import("./conceptReferenceNetwork");
-      const payload = await applyImportedProjectGeometryRequest(id, { floorPlanIndex: 0, floor: 0, replace: true }) as any;
-      const preview = payload?.preview;
-      if (!preview?.canApply) throw new Error("A planta ainda não está pronta para aplicação.");
+      const { runImportedProject2D } = await import("./conceptImportedProjectActions");
+      const preview = await runImportedProject2D(id);
       setCustomWalls(Array.isArray(preview.walls) ? preview.walls : []);
       setCustomOpenings(Array.isArray(preview.openings) ? preview.openings : []);
       setSpaceProfiles(Array.isArray(preview.spaces) ? preview.spaces : []);
@@ -5026,7 +5016,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setEditorView("plan");
       setEditorLibraryTab("build");
       setSourceFileState("success");
-      setSourceFileMessage("Planta importada aplicada: paredes, encontros e esquadrias agora estão editáveis no Arqdor.");
+      setSourceFileMessage("Planta importada aplicada e editável.");
     } catch (error) {
       setSourceFileState("error");
       setSourceFileMessage(error instanceof Error ? error.message : "Não foi possível aplicar a planta importada.");
@@ -5037,22 +5027,23 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const id = conceptIdRef.current ?? conceptId;
     if (!id || projectMaster) return;
     setSourceFileState("uploading");
-    setSourceFileMessage("Consolidando cortes, fachadas e cobertura no modelo 3D...");
+    setSourceFileMessage("Aplicando perfil 3D importado...");
     try {
-      const { applyImportedProject3DRequest } = await import("./conceptReferenceNetwork");
-      const payload = await applyImportedProject3DRequest(id) as any;
+      const { runImportedProject3D } = await import("./conceptImportedProjectActions");
+      const payload = await runImportedProject3D(id);
       if (payload?.facadeDesign) setFacadeDesign(normalizeFacadeDesign(payload.facadeDesign));
       if (payload?.facadePreferences) {
         setFacadePreferences((current) => ({ ...current, ...payload.facadePreferences }));
       }
       setEditorView("model3d");
       setSourceFileState("success");
-      setSourceFileMessage("Cortes, fachadas e cobertura consolidados no perfil 3D importado.");
+      setSourceFileMessage("Perfil 3D importado aplicado.");
     } catch (error) {
       setSourceFileState("error");
       setSourceFileMessage(error instanceof Error ? error.message : "Não foi possível aplicar o perfil 3D importado.");
     }
   };
+
   const saveReferenceCalibration = async (patch: Partial<Pick<ReferencePlan, "widthMeters" | "offsetX" | "offsetY" | "opacity">>) => {
     if (!referencePlan || referencePlan.kind !== "image" || projectMaster) return;
 
