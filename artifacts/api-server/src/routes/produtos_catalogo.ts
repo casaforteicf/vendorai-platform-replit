@@ -22,7 +22,7 @@ const router: IRouter = Router();
 const objectStorage = new ObjectStorageService();
 const catalogPdfUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024, files: 1 },
+  limits: { fileSize: 50 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, cb) => {
     const isPdf = file.mimetype === "application/pdf" || file.originalname.toLowerCase().endsWith(".pdf");
     if (!isPdf) {
@@ -698,7 +698,27 @@ function csvEscape(value: unknown): string {
 
 router.post(
   "/tenants/:tenantId/produtos-catalogo/import-pdf/preview",
-  catalogPdfUpload.single("file"),
+  (req, res, next) => {
+    catalogPdfUpload.single("file")(req, res, (error: any) => {
+      if (!error) {
+        next();
+        return;
+      }
+      if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+        res.status(413).json({
+          error: "O catálogo PDF ultrapassa o limite de 50 MB. Comprima o PDF ou divida o catálogo em partes menores.",
+          code: "CATALOG_PDF_TOO_LARGE",
+          maxSizeMb: 50,
+        });
+        return;
+      }
+      if (error instanceof multer.MulterError) {
+        res.status(422).json({ error: "Não foi possível receber o catálogo PDF.", code: error.code });
+        return;
+      }
+      res.status(422).json({ error: error?.message || "Arquivo PDF inválido." });
+    });
+  },
   async (req, res) => {
     const tenantId = routeTenantId(req);
     if (!canAccessTenant(req, tenantId)) {
