@@ -1,6 +1,6 @@
 name: Cloudflare Pages
 # Production deploy: Pages frontend; Railway backend remains unchanged.
-# Redeploy marker: canonical-deal-value-release-2026-10-07-0216.
+# Redeploy marker: settings-team-final-release-2026-10-07-0219.
 
 on:
   push:
