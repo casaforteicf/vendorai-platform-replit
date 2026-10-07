@@ -83,7 +83,6 @@ const ConceptRenderGalleryActions = lazy(() => import("./ConceptRenderGalleryAct
 const ConceptCatalogPanels = lazy(() => import("./ConceptCatalogPanels"));
 const ConceptConstructionLibraryPanel = lazy(() => import("./ConceptConstructionLibraryPanel"));
 const ConceptRealEnvironmentPanel = lazy(() => import("./ConceptRealEnvironmentPanel"));
-const ConceptReferenceSceneCard = lazy(() => import("./ConceptReferenceSceneCard"));
 
 
 type RoomKind =
@@ -506,10 +505,10 @@ type ProjectSourceFile = {
   originalName: string;
   mimeType: string;
   extension: string;
-  kind: "bim" | "cad" | "model3d" | "architectural_geometry" | "architectural_project";
+  kind: "bim" | "cad" | "model3d" | "architectural_geometry";
   uploadedAt: string;
   status: "stored_only" | "converted" | "parsed";
-  parserStatus: "pending_ifc_parser" | "conversion_required" | "parsed_metadata" | "ready_model3d" | "ready_editable_geometry" | "ready_project_memory";
+  parserStatus: "pending_ifc_parser" | "conversion_required" | "parsed_metadata" | "ready_model3d" | "ready_editable_geometry";
   parsedAt?: string;
   convertedAt?: string;
   conversionEngine?: string;
@@ -519,19 +518,6 @@ type ProjectSourceFile = {
     format: "glb" | "gltf";
   };
   manifest?: Record<string, unknown>;
-  summary?: {
-    sheets?: number;
-    rooms?: number;
-    openings?: number;
-    materials?: number;
-    floorPlans?: number;
-    geometryReady?: number;
-    architectural3DReady?: boolean;
-    facades?: number;
-    sections?: number;
-    universalModels?: number;
-    warnings?: number;
-  };
   ifcMetadata?: {
     schema: string | null;
     projectName: string | null;
@@ -4976,75 +4962,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     }
   };
 
-  const uploadIntelligentProject = async (file: File) => {
-    if (sourceFileState === "uploading") return;
-    setSourceFileState("uploading");
-    setSourceFileMessage("Interpretando projeto arquitetônico...");
-    try {
-      const id = await saveConcept(4);
-      if (!id) throw new Error("Não foi possível salvar o pré-projeto antes da importação.");
-      const { runIntelligentProjectImport } = await import("./conceptImportedProjectActions");
-      const { payload, message } = await runIntelligentProjectImport(id, file);
-      if (payload?.source?.id) {
-        setSourceFiles((current) => [
-          ...current.filter((item) => item.id !== payload.source.id),
-          payload.source as ProjectSourceFile,
-        ].slice(-20));
-      }
-      setSourceFileState("success");
-      setSourceFileMessage(message);
-      window.setTimeout(() => setSourceFileState("idle"), 9000);
-    } catch (error) {
-      setSourceFileState("error");
-      setSourceFileMessage(error instanceof Error ? error.message : "Falha na Importação Inteligente do projeto.");
-    } finally {
-      if (projectStartImportInputRef.current) projectStartImportInputRef.current.value = "";
-    }
-  };
-
-  const applyImportedProject2D = async () => {
-    const id = conceptIdRef.current ?? conceptId;
-    if (!id || projectMaster) return;
-    setSourceFileState("uploading");
-    setSourceFileMessage("Aplicando planta importada...");
-    try {
-      const { runImportedProject2D } = await import("./conceptImportedProjectActions");
-      const preview = await runImportedProject2D(id);
-      setCustomWalls(Array.isArray(preview.walls) ? preview.walls : []);
-      setCustomOpenings(Array.isArray(preview.openings) ? preview.openings : []);
-      setSpaceProfiles(Array.isArray(preview.spaces) ? preview.spaces : []);
-      setWallFirstFloors((current) => Array.from(new Set([...current, 0])).sort((a, b) => a - b));
-      setEditorView("plan");
-      setEditorLibraryTab("build");
-      setSourceFileState("success");
-      setSourceFileMessage("Planta importada aplicada e editável.");
-    } catch (error) {
-      setSourceFileState("error");
-      setSourceFileMessage(error instanceof Error ? error.message : "Não foi possível aplicar a planta importada.");
-    }
-  };
-
-  const applyImportedProject3D = async () => {
-    const id = conceptIdRef.current ?? conceptId;
-    if (!id || projectMaster) return;
-    setSourceFileState("uploading");
-    setSourceFileMessage("Aplicando perfil 3D importado...");
-    try {
-      const { runImportedProject3D } = await import("./conceptImportedProjectActions");
-      const payload = await runImportedProject3D(id);
-      if (payload?.facadeDesign) setFacadeDesign(normalizeFacadeDesign(payload.facadeDesign));
-      if (payload?.facadePreferences) {
-        setFacadePreferences((current) => ({ ...current, ...payload.facadePreferences }));
-      }
-      setEditorView("model3d");
-      setSourceFileState("success");
-      setSourceFileMessage("Perfil 3D importado aplicado.");
-    } catch (error) {
-      setSourceFileState("error");
-      setSourceFileMessage(error instanceof Error ? error.message : "Não foi possível aplicar o perfil 3D importado.");
-    }
-  };
-
   const saveReferenceCalibration = async (patch: Partial<Pick<ReferencePlan, "widthMeters" | "offsetX" | "offsetY" | "opacity">>) => {
     if (!referencePlan || referencePlan.kind !== "image" || projectMaster) return;
 
@@ -7500,15 +7417,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                             : "O terreno fica opcional por enquanto. Você pode criar a casa primeiro e posicioná-la no lote depois."}
                       </p>
 
-                      <input ref={projectStartImportInputRef} type="file" accept=".pdf,.dxf,.ifc,.dwg,.rvt,.skp,application/pdf,application/dxf" className="hidden"
+                      <input ref={projectStartImportInputRef} type="file" accept=".dxf,.ifc,.dwg,.rvt,.skp,application/dxf" className="hidden"
                         onChange={(event) => {
                           const file = event.target.files?.[0]; if (!file) return;
                           setStartSourceChosen(true); setIntakeStage("complete"); setStartChooserDismissed(true);
                           setEditorView("plan"); setEditorLibraryTab("build"); setLibraryOpen(true);
                           const extension = file.name.split(".").pop()?.toLowerCase();
-                          if (extension === "pdf") {
-                            void uploadIntelligentProject(file);
-                          } else if (extension && ["dxf", "ifc", "dwg", "skp"].includes(extension)) {
+                          if (extension && ["dxf", "ifc", "dwg", "skp"].includes(extension)) {
                             void previewGeometryImport(file);
                           } else {
                             void uploadProjectSourceFile(file);
@@ -7546,7 +7461,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           className="group min-h-32 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm">
                           <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-800"><FolderOpen className="h-5 w-5" /></span>
                             <span><span className="block text-base font-bold text-slate-950">Importar projeto</span>
-                            <span className="mt-1 block text-xs leading-5 text-slate-600">PDF usa Importação Inteligente: lê pranchas, gera Memória da Obra e alimenta a Biblioteca Universal. DXF/IFC/DWG/SKP continuam com prévia de geometria antes de aplicar.</span></span></div>
+                            <span className="mt-1 block text-xs leading-5 text-slate-600">DXF, IFC, DWG e SKP passam primeiro por prévia de escala/geometria antes de substituir a planta. RVT fica preservado como fonte vinculada.</span></span></div>
                         </button>
 
                         <button type="button" onClick={() => chooseProjectStartReferenceMode("real_environment")}
@@ -10752,11 +10667,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     />
                   </Suspense>
                 )}
-                {referenceIsScenePhoto && referencePlan?.photoAnalysis && (
-                  <Suspense fallback={null}>
-                    <ConceptReferenceSceneCard analysis={referencePlan.photoAnalysis} />
-                  </Suspense>
-                )}
                 {referenceIsPlanImage && (
                   <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50/60 p-3 text-xs">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -11122,15 +11032,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                                 ? "IFC lido"
                                 : source.parserStatus === "pending_ifc_parser"
                                   ? "aguardando parser BIM"
-                                  : source.parserStatus === "ready_project_memory"
-                                    ? "Memória da Obra gerada"
-                                    : "aguardando conversão"}
+                                  : "aguardando conversão"}
                           </div>
-                          {source.kind === "architectural_project" && source.summary && (
-                            <div className="mt-1 text-[11px] text-slate-600">
-                              {source.summary.floorPlans ?? 0} planta(s) · {source.summary.openings ?? 0} esquadria(s) · {source.summary.facades ?? 0} fachada(s) · {source.summary.sections ?? 0} corte(s) · {source.summary.universalModels ?? 0} modelo(s) universais
-                            </div>
-                          )}
                           {source.ifcMetadata && (
                             <div className="mt-1 text-[11px] text-slate-600">
                               {source.ifcMetadata.storeys.length} pav. · {source.ifcMetadata.counts.walls} paredes · {source.ifcMetadata.counts.doors} portas · {source.ifcMetadata.counts.windows} janelas · {source.ifcMetadata.counts.spaces} espaços
@@ -11143,26 +11046,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           ) : null}
                         </div>
                         <div className="flex items-center gap-2">
-                          {source.kind === "architectural_project" && Number(source.summary?.geometryReady ?? 0) > 0 && (
-                            <button
-                              type="button"
-                              onClick={() => void applyImportedProject2D()}
-                              disabled={sourceFileState === "uploading" || Boolean(projectMaster)}
-                              className="rounded-lg border px-2.5 py-1.5 font-semibold text-emerald-700 disabled:opacity-50"
-                            >
-                              Abrir planta editável
-                            </button>
-                          )}
-                          {source.kind === "architectural_project" && source.summary?.architectural3DReady && (
-                            <button
-                              type="button"
-                              onClick={() => void applyImportedProject3D()}
-                              disabled={sourceFileState === "uploading" || Boolean(projectMaster)}
-                              className="rounded-lg border px-2.5 py-1.5 font-semibold text-violet-700 disabled:opacity-50"
-                            >
-                              Aplicar cortes/fachada 3D
-                            </button>
-                          )}
                           {source.extension.toLowerCase() === "skp" && source.parserStatus !== "ready_model3d" && (
                             <button
                               type="button"
