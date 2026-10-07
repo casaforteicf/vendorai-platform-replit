@@ -1,6 +1,6 @@
 name: Cloudflare Pages
 # Production deploy: Pages frontend; Railway backend remains unchanged.
-# Redeploy marker: configuracoes-pages-route-bypass-2026-10-06.
+# Redeploy marker: dashboard-navigation-2026-10-06.
 
 on:
   push:
