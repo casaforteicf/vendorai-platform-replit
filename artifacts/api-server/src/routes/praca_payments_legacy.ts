@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { timingSafeEqual } from "node:crypto";
 import { vendorPool } from "../lib/vendorDb";
+import { getPixQrCode } from "../lib/asaas";
 
 const router: IRouter = Router();
 export const pracaPaymentsPublicRouter: IRouter = Router();
@@ -624,6 +625,32 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-actions", async (r
   } catch (error: any) {
     await vendorPool.query("UPDATE praca_payment_actions SET status='failed',error_message=$1,updated_at=now() WHERE id=$2",[String(error?.message ?? error).slice(0,2000),actionId]);
     return res.status(502).json({ error:"Falha de comunicação com o Asaas.",actionId });
+  }
+});
+
+router.get("/tenants/:tenantId/praca-orders/:orderId/payment-intents/:intentId/pix", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  const orderId = String(req.params.orderId);
+  const intentId = String(req.params.intentId);
+  if (!await canAccessOrderPayment(req, tenantId, orderId)) return res.status(403).json({ error: "Forbidden" });
+
+  const result = await vendorPool.query(
+    `SELECT pi.provider_payment_id,pi.billing_type,t.asaas_api_key
+       FROM praca_payment_intents pi
+       JOIN tenants t ON t.id=pi.tenant_id
+      WHERE pi.id=$1 AND pi.tenant_id=$2 AND pi.order_id=$3 AND pi.provider='asaas'
+      LIMIT 1`,
+    [intentId,tenantId,orderId],
+  );
+  if (!result.rowCount) return res.status(404).json({ error: "Cobrança não encontrada." });
+  const row = result.rows[0];
+  if (row.billing_type !== "PIX") return res.status(409).json({ error: "Esta cobrança não é PIX." });
+  if (!row.provider_payment_id) return res.status(409).json({ error: "Cobrança ainda não criada no Asaas." });
+  try {
+    const pix = await getPixQrCode(String(row.provider_payment_id), String(row.asaas_api_key || ""));
+    return res.json(pix);
+  } catch (error: any) {
+    return res.status(502).json({ error: error?.message || "Não foi possível gerar o PIX." });
   }
 });
 
