@@ -564,7 +564,7 @@ export default function Configuracoes() {
         title="Empresa"
         description="Dados da empresa, marca, endereço, canais e preferências."
       >
-        <ConfiguracoesNormalized embedded />
+        <ConfiguracoesNormalized embedded forcedTab="perfil" />
       </SettingsSectionShell>
     );
   }
@@ -575,7 +575,7 @@ export default function Configuracoes() {
         title="Equipe e permissões"
         description="Usuários, funções, acessos, responsáveis e permissões."
       >
-        <ConfiguracoesNormalized embedded />
+        <ConfiguracoesNormalized embedded forcedTab="equipe" />
       </SettingsSectionShell>
     );
   }
@@ -784,14 +784,14 @@ export default function Configuracoes() {
       title: "Empresa",
       description: "Dados da empresa, marca, endereço, canais e preferências.",
       icon: Building2,
-      action: () => openSettingsSection("empresa", "perfil"),
+      action: () => openSettingsSection("empresa"),
     },
     {
       key: "equipe",
       title: "Equipe e permissões",
       description: "Usuários, funções, acessos e responsáveis.",
       icon: Users,
-      action: () => openSettingsSection("equipe", "equipe"),
+      action: () => openSettingsSection("equipe"),
     },
     {
       key: "integracoes",
