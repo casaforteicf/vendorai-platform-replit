@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -70,6 +71,7 @@ function stringValue(value: unknown) {
 }
 
 export function BrandKitSettings() {
+  const [, setLocation] = useLocation();
   const { user, token, isLoading: authLoading } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const { toast } = useToast();
@@ -548,10 +550,10 @@ export function BrandKitSettings() {
               <div className="md:col-span-2 rounded-xl border bg-muted/10 p-3"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Público / ICP</p><p className="mt-1 line-clamp-3 whitespace-pre-line text-sm">{profileData?.publicoAlvo || "Não informado"}</p></div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" type="button" onClick={() => window.location.assign("/configuracoes?tab=perfil")}>
+              <Button variant="outline" type="button" onClick={() => setLocation("/configuracoes?tab=perfil")}>
                 Editar em Empresa <ExternalLink className="ml-2 h-4 w-4" />
               </Button>
-              <Button variant="ghost" type="button" onClick={() => window.location.assign("/configuracoes?tab=plano-negocios")}>
+              <Button variant="ghost" type="button" onClick={() => setLocation("/configuracoes?tab=plano-negocios")}>
                 Abrir Plano de Negócios
               </Button>
             </div>
@@ -652,7 +654,7 @@ export function BrandKitSettings() {
             <p className="text-sm text-muted-foreground">
               Produtos, serviços, preços, imagens e pacotes continuam no Catálogo oficial. O Kit da Marca usa essa fonte para campanhas, propostas e agentes sem duplicar cadastros.
             </p>
-            <Button variant="outline" type="button" onClick={() => window.location.assign("/catalogo")}>Abrir Catálogo</Button>
+            <Button variant="outline" type="button" onClick={() => setLocation("/catalogo")}>Abrir Catálogo</Button>
           </div>
           <div className="rounded-2xl border bg-card p-5 space-y-3">
             <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" /><h2 className="font-semibold">Modelo inteligente de proposta</h2></div>
@@ -687,9 +689,9 @@ export function BrandKitSettings() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" type="button" onClick={() => window.location.assign("/midias")}>Abrir Mídias</Button>
-            <Button variant="outline" type="button" onClick={() => window.location.assign("/base-conhecimento")}>Abrir Conhecimento</Button>
-            <Button variant="outline" type="button" onClick={() => window.location.assign("/content-studio/video")}><ImageIcon className="mr-2 h-4 w-4" />Abrir Vídeos</Button>
+            <Button variant="outline" type="button" onClick={() => setLocation("/midias")}>Abrir Mídias</Button>
+            <Button variant="outline" type="button" onClick={() => setLocation("/base-conhecimento")}>Abrir Conhecimento</Button>
+            <Button variant="outline" type="button" onClick={() => setLocation("/content-studio/video")}><ImageIcon className="mr-2 h-4 w-4" />Abrir Vídeos</Button>
           </div>
         </section>
       )}
