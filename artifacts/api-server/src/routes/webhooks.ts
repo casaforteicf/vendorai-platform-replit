@@ -48,6 +48,7 @@ import { ObjectStorageService } from "../lib/objectStorage.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 import { tryIngestTechnicianSupportMessage } from "../services/support-whatsapp-ingest.js";
 import { tryHandleSupportFeedbackMessage } from "../services/support-feedback.js";
+import { tryIngestColdProspectReply } from "../services/prospect-conversation-intelligence.js";
 import { startVoiceSession, registerVoiceTurn, endVoiceSession } from "../services/voice-agent-orchestrator.js";
 import { createVendorAiVoiceStream, resolveDefaultVendorAiVoice } from "../services/vendorai-voice-engine.js";
 
@@ -707,6 +708,18 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
     res.status(200).json({ supportFeedback: true, ...supportFeedback });
     return;
   }
+
+  const coldProspectReply = await tryIngestColdProspectReply({
+    tenantId,
+    phone: telefone,
+    text: mensagem,
+    channel: "whatsapp",
+  });
+  if (coldProspectReply.handled) {
+    res.status(200).json({ coldProspect: true, prospectId: coldProspectReply.prospectId });
+    return;
+  }
+
   const match = await findLeadByDedup(tenantId, telefone, null, null);
 
   let lead: typeof leadsTable.$inferSelect;
@@ -1658,6 +1671,18 @@ router.post("/tenants/:tenantId/webhooks/evolution", async (req, res) => {
   const supportFeedback = await tryHandleSupportFeedbackMessage({ tenantId, phone: telefone, text: mensagem, log: req.log });
   if (supportFeedback.handled) {
     res.status(200).json({ supportFeedback: true, ...supportFeedback });
+    return;
+  }
+
+  const coldProspectReply = await tryIngestColdProspectReply({
+    tenantId,
+    phone: telefone,
+    text: mensagem,
+    channel: "whatsapp",
+    externalId: key.id ?? null,
+  });
+  if (coldProspectReply.handled) {
+    res.status(200).json({ coldProspect: true, prospectId: coldProspectReply.prospectId });
     return;
   }
 
