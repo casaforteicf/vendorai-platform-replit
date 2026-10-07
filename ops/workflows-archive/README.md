@@ -5,3 +5,5 @@ Automatic frontend production deployments are handled by the native Cloudflare P
 Former GitHub Actions deployment workflows are archived in this directory for reference only and are no longer active under `.github/workflows`.
 
 Backend deployment remains separate.
+
+Production redeploy marker: 2026-10-07 cloudflare-native full-main.
