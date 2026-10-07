@@ -54,6 +54,8 @@ export default function ConstructionPortalContentManager({ tenantId, obraId }: {
 
   async function addPortalItem() {
     if (!item.title.trim()) return;
+    setBusy(true);
+    try {
       const content: Record<string, any> = {};
       if (item.body.trim()) content.body = item.body.trim();
       if (item.amount !== "") content.amount = Number(item.amount);
@@ -137,6 +139,7 @@ export default function ConstructionPortalContentManager({ tenantId, obraId }: {
 
   return (
     <div className="space-y-5">
+      <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Central de publicação</p>
         <h3 className="mt-1 text-lg font-semibold text-slate-950">Conteúdo do Portal do Cliente</h3>
         <p className="mt-1 text-xs text-slate-500">Crie conteúdos e controle o ciclo Interno → Compartilhável → Publicado → Arquivado.</p>
@@ -166,6 +169,7 @@ export default function ConstructionPortalContentManager({ tenantId, obraId }: {
           </div>) : <p className="p-5 text-center text-sm text-slate-400">Nenhum conteúdo adicional criado.</p>}
         </div>
       </section>
+      <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Visibilidade do orçamento</p>
         <h3 className="mt-1 text-lg font-semibold text-slate-950">Escolha exatamente o que o cliente vê</h3>
         <p className="mt-1 text-xs text-slate-500">Custos internos e BDI nunca são enviados ao portal. Você controla item, quantidade, preço unitário comercial e total.</p>
@@ -181,6 +185,7 @@ export default function ConstructionPortalContentManager({ tenantId, obraId }: {
           </div>) : <p className="p-5 text-center text-sm text-slate-400">Nenhum orçamento enviado ou aprovado encontrado para esta obra.</p>}
         </div>
       </section>
+      <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Acessos do cliente</p>
         <h3 className="mt-1 text-lg font-semibold text-slate-950">Pessoas, perfis e permissões</h3>
         <p className="mt-1 text-xs text-slate-500">Cada pessoa pode ter uma visão diferente do mesmo portal. Revogar o acesso encerra as sessões ativas.</p>
