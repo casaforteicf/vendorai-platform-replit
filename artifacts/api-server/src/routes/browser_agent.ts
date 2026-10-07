@@ -39,6 +39,7 @@ import {
 } from "../services/browser-live-session.js";
 
 const router: IRouter = Router();
+export const browserAgentHandoffRouter: IRouter = Router();
 
 const vendiAutonomyEnabled = () => String(process.env["VENDI_AUTONOMY_ENABLED"] ?? "").toLowerCase() === "true";
 
@@ -962,7 +963,7 @@ router.post("/browser-agent/live", async (req, res) => {
   res.status(201).json(session);
 });
 
-router.get("/browser-agent/handoff/:sessionId/screenshot", async (req, res) => {
+browserAgentHandoffRouter.get("/browser-agent/handoff/:sessionId/screenshot", async (req, res) => {
   try {
     res.json(await captureLiveBrowserHandoff(String(req.params.sessionId), String(req.query.handoff ?? "")));
   } catch (error: any) {
@@ -970,7 +971,7 @@ router.get("/browser-agent/handoff/:sessionId/screenshot", async (req, res) => {
   }
 });
 
-router.post("/browser-agent/handoff/:sessionId/pause", async (req, res) => {
+browserAgentHandoffRouter.post("/browser-agent/handoff/:sessionId/pause", async (req, res) => {
   const parsed = livePauseSchema.safeParse(req.body);
   if (!parsed.success) { res.status(422).json({ error: parsed.error.flatten() }); return; }
   try {
@@ -980,7 +981,7 @@ router.post("/browser-agent/handoff/:sessionId/pause", async (req, res) => {
   }
 });
 
-router.post("/browser-agent/handoff/:sessionId/control", async (req, res) => {
+browserAgentHandoffRouter.post("/browser-agent/handoff/:sessionId/control", async (req, res) => {
   const parsed = liveControlSchema.safeParse(req.body);
   if (!parsed.success) { res.status(422).json({ error: parsed.error.flatten() }); return; }
   try {
@@ -990,7 +991,7 @@ router.post("/browser-agent/handoff/:sessionId/control", async (req, res) => {
   }
 });
 
-router.delete("/browser-agent/handoff/:sessionId", async (req, res) => {
+browserAgentHandoffRouter.delete("/browser-agent/handoff/:sessionId", async (req, res) => {
   try {
     res.json(await closeLiveBrowserHandoff(String(req.params.sessionId), String(req.query.handoff ?? "")));
   } catch (error: any) {
