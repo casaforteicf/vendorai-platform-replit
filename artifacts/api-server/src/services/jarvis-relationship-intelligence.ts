@@ -1,12 +1,12 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import {
-import { canonicalDealValueSql } from "../lib/deal-value.js";
   db,
   dealsTable,
   fornecedoresTable,
   jarvisCasesTable,
   leadsTable,
 } from "@workspace/db";
+import { canonicalDealValueSql } from "../lib/deal-value.js";
 
 export type JarvisRelationNodeKind =
   | "person"
