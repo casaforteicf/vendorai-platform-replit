@@ -1891,8 +1891,61 @@ function EstoqueObra({ tenantId, obraId }: { tenantId: string; obraId: string })
     );
 }
 
-function Compras({ obraId }: { tenantId: string; obraId: string }) {
-  return <RealProcurementWorkspace obraId={obraId} compact />;
+function Compras({ tenantId, obraId }: { tenantId: string; obraId: string }) {
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["obra-pedidos-compra-v17", tenantId, obraId],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/pedidos-compra`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Erro ao carregar pedidos de compra");
+      return res.json();
+    },
+    enabled: !!tenantId && !!obraId,
+  });
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Pedidos gerados das cotações</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando…</div>
+          ) : (data?.pedidos ?? []).length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhum pedido gerado a partir das seleções de cotação.</p>
+          ) : (
+            <div className="space-y-2">
+              {(data.pedidos ?? []).map((p: any) => {
+                const itens = (data.itens ?? []).filter((i: any) => i.pedidoId === p.id);
+                const saldo = itens.reduce((s: number, i: any) => s + Number(i.saldoReceber ?? 0), 0);
+                return (
+                  <div key={p.id} className="rounded-lg border px-3 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium">{p.fornecedorNomeSnapshot}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          {itens.length} item(ns) · {fmtBRL(p.valorTotal)}
+                          {p.dataLimiteCompra ? ` · comprar até ${p.dataLimiteCompra}` : ""}
+                        </div>
+                      </div>
+                      <Badge variant="outline">{p.status}</Badge>
+                    </div>
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      Saldo a receber: <span className="font-medium text-foreground">{fmtNum(saldo)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      <RealProcurementWorkspace obraId={obraId} compact />
+    </div>
+  );
 }
 
 // ─── TabOrcamento ─────────────────────────────────────────────────────────────
@@ -2791,7 +2844,7 @@ function CotacoesOrcamento({ tenantId, obraId, orcamentoId, locked }: { tenantId
         ) : (
           <div className="space-y-2">
             {cotacoes.map((cotacao: any) => (
-              <CotacaoResumo key={cotacao.id} tenantId={tenantId} cotacao={cotacao} />
+              <CotacaoResumo key={cotacao.id} tenantId={tenantId} obraId={obraId} cotacao={cotacao} />
             ))}
           </div>
         )}
@@ -2800,9 +2853,10 @@ function CotacoesOrcamento({ tenantId, obraId, orcamentoId, locked }: { tenantId
   );
 }
 
-function CotacaoResumo({ tenantId, cotacao }: { tenantId: string; cotacao: any }) {
+function CotacaoResumo({ tenantId, obraId, cotacao }: { tenantId: string; obraId: string; cotacao: any }) {
   const [open, setOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [generatingOrders, setGeneratingOrders] = useState(false);
   const { toast } = useToast();
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -2880,6 +2934,27 @@ function CotacaoResumo({ tenantId, cotacao }: { tenantId: string; cotacao: any }
     }
   }
 
+  async function gerarPedidos() {
+    setGeneratingOrders(true);
+    try {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/cotacoes/${cotacao.id}/gerar-pedidos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ bufferLogisticoDias: 0 }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast({ title: "Não foi possível gerar pedidos", description: body?.error ?? "Revise as seleções da cotação.", variant: "destructive" });
+        return;
+      }
+      toast({ title: "Pedidos gerados", description: `${body?.pedidos?.length ?? 0} pedido(s) criado(s) por fornecedor.` });
+      qc.invalidateQueries({ queryKey: ["obra-pedidos-compra-v17", tenantId, obraId] });
+    } finally {
+      setGeneratingOrders(false);
+    }
+  }
+
   return (
     <div className="rounded-lg border">
       <div className="flex items-center justify-between gap-3 px-3 py-3">
@@ -2914,6 +2989,15 @@ function CotacaoResumo({ tenantId, cotacao }: { tenantId: string; cotacao: any }
                 <div className="rounded border p-2"><span className="text-muted-foreground">Não cotados</span><div className="font-bold text-base">{data.totais?.naoCotados ?? 0}</div></div>
                 <div className="rounded border p-2"><span className="text-muted-foreground">Propostas</span><div className="font-bold text-base">{data.totais?.propostas ?? 0}</div></div>
               </div>
+
+              {(data.selecoes ?? []).length > 0 && (
+                <div className="flex justify-end">
+                  <Button size="sm" variant="outline" onClick={gerarPedidos} disabled={generatingOrders}>
+                    {generatingOrders ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ShoppingCart className="h-4 w-4 mr-1" />}
+                    Gerar pedidos
+                  </Button>
+                </div>
+              )}
 
               {(data.propostas ?? []).length > 0 && (
                 <div className="space-y-1.5">
