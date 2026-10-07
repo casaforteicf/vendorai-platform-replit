@@ -156,17 +156,6 @@ type DealResumo = {
   active: boolean;
 };
 
-type PropostaResumo = {
-  id: string;
-  titulo: string;
-  numero: string | null;
-  status: string;
-  valorTotal: string | null;
-  leadId: string;
-  dealId: string | null;
-  createdAt: string;
-};
-
 // ── Constants ──────────────────────────────────────────────────────────────
 const ESCOPO_ORCAMENTO_OPTIONS = [
   { value: "completo", label: "Projeto completo", description: "Tudo o que estiver confirmado na especificação." },
@@ -358,10 +347,6 @@ export default function ProjetoDetalhe() {
   const [dealDialogOpen, setDealDialogOpen] = useState(false);
   const [dealBusy, setDealBusy] = useState(false);
 
-  // ── Propostas do cliente / negócio
-  const [propostasContexto, setPropostasContexto] = useState<PropostaResumo[]>([]);
-  const [propostasLoading, setPropostasLoading] = useState(false);
-
   // ── Ambiente dialog state
   const [addAmbienteOpen, setAddAmbienteOpen]     = useState(false);
   const [editingAmbiente, setEditingAmbiente]     = useState<Ambiente | null>(null);
@@ -442,40 +427,6 @@ export default function ProjetoDetalhe() {
     }
   }, [projetoId, toast]);
 
-  const loadPropostasContexto = useCallback(async (project?: Projeto | null) => {
-    if (!tenantId || !project) {
-      setPropostasContexto([]);
-      return;
-    }
-
-    const queries: string[] = [];
-    if (project.leadId) queries.push(`leadId=${encodeURIComponent(project.leadId)}`);
-    else if (project.dealId) queries.push(`dealId=${encodeURIComponent(project.dealId)}`);
-
-    if (queries.length === 0) {
-      setPropostasContexto([]);
-      return;
-    }
-
-    setPropostasLoading(true);
-    try {
-      const response = await fetch(`/api/tenants/${tenantId}/propostas?${queries[0]}`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (!response.ok) {
-        setPropostasContexto([]);
-        return;
-      }
-
-      const body = await response.json().catch(() => []);
-      const proposals = Array.isArray(body) ? body as PropostaResumo[] : [];
-      proposals.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      setPropostasContexto(proposals);
-    } finally {
-      setPropostasLoading(false);
-    }
-  }, [tenantId]);
-
   const loadProjeto = useCallback(async () => {
     if (!projetoId) return;
     const res = await fetch(`/api/arch/projetos/${projetoId}`, {
@@ -491,7 +442,6 @@ export default function ProjetoDetalhe() {
     setAmbientes(nextAmbientes);
     setRenders(nextRenders);
     void loadDealContext(data.projeto ?? null, true);
-    void loadPropostasContexto(data.projeto ?? null);
 
     // Render e Ambiente representam o mesmo cômodo do projeto. Se um render antigo
     // possui o ambiente preenchido, mas o cadastro de Ambientes ainda não existe,
@@ -545,7 +495,7 @@ export default function ProjetoDetalhe() {
         }
       }
     }
-  }, [projetoId, loadDealContext, loadPropostasContexto]);
+  }, [projetoId, loadDealContext]);
 
   const loadOrcamento = useCallback(async () => {
     if (!projetoId) return;
@@ -1463,56 +1413,16 @@ export default function ProjetoDetalhe() {
           </div>
 
           <div className="rounded-lg border p-3">
-            <p className="text-xs font-medium text-muted-foreground">Propostas</p>
-            {propostasLoading ? (
-              <p className="mt-1 text-sm text-muted-foreground">Carregando propostas...</p>
-            ) : propostasContexto.length > 0 ? (
-              <>
-                <p className="mt-1 text-sm font-semibold">
-                  {propostasContexto.length} {propostasContexto.length === 1 ? "proposta disponível" : "propostas disponíveis"}
-                </p>
-                <div className="mt-2 max-h-28 space-y-1 overflow-y-auto pr-1">
-                  {propostasContexto.map((proposta) => (
-                    <button
-                      key={proposta.id}
-                      type="button"
-                      onClick={() => navigate(`/propostas?edit=${encodeURIComponent(proposta.id)}&returnTo=${encodeURIComponent(`/arch/projetos/${projetoId}`)}`)}
-                      className="w-full rounded-md border bg-background px-2 py-1.5 text-left hover:bg-muted/40"
-                    >
-                      <p className="truncate text-xs font-medium">
-                        {proposta.numero ? `#${proposta.numero} · ` : ""}{proposta.titulo}
-                      </p>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">
-                        {proposta.status}
-                        {proposta.valorTotal && Number(proposta.valorTotal) > 0 ? ` · ${fmt(Number(proposta.valorTotal))}` : ""}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-3 w-full"
-                  onClick={() => {
-                    const params = new URLSearchParams({
-                      returnTo: `/arch/projetos/${projetoId}`,
-                      archProjectId: projetoId,
-                    });
-                    if (projeto.leadId) params.set("leadId", projeto.leadId);
-                    else if (projeto.dealId) params.set("dealId", projeto.dealId);
-                    navigate(`/propostas?${params.toString()}`);
-                  }}
-                >
-                  <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Ver todas
+            <p className="text-xs font-medium text-muted-foreground">Proposta</p>
+            <p className="mt-1 text-sm font-semibold">{projeto.propostaId ? "Proposta vinculada" : "Sem proposta"}</p>
+            {projeto.propostaId ? (
+              <Link href="/propostas">
+                <Button variant="outline" size="sm" className="mt-3 w-full">
+                  <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Abrir propostas
                 </Button>
-              </>
+              </Link>
             ) : (
-              <>
-                <p className="mt-1 text-sm font-semibold">Nenhuma proposta encontrada</p>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Serão mostradas aqui todas as propostas já cadastradas para este cliente.
-                </p>
-              </>
+              <p className="mt-3 text-xs text-muted-foreground">A proposta pode ser vinculada sem duplicar o orçamento.</p>
             )}
           </div>
 
