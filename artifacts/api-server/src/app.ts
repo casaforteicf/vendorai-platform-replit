@@ -253,6 +253,13 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
       value === "/auth" ||
       value.startsWith("/auth/"),
   );
+  const isServerAgentApiRequest = requestPaths.some(
+    (value) =>
+      value === "/api/server-agent" ||
+      value.startsWith("/api/server-agent/") ||
+      value === "/server-agent" ||
+      value.startsWith("/server-agent/"),
+  );
   const hasBearerAuth = req.headers.authorization?.startsWith("Bearer ") === true;
 
   // Healthchecks are public infrastructure probes and must reach the health
@@ -267,6 +274,14 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
   // this bypass independent of that header prevents /auth/me from becoming
   // a false "Tenant não encontrado".
   if (isAuthApiRequest) {
+    return next();
+  }
+
+  // Server Agent é uma rota interna autenticada do CRM. Ela deve chegar ao
+  // middleware authenticate antes de qualquer resolução de tenant por domínio.
+  // Sem este bypass, chamadas sem Bearer podem ser interceptadas pelo resolvedor
+  // de tenant e retornar 404, mascarando a proteção correta de autenticação.
+  if (isServerAgentApiRequest) {
     return next();
   }
 
