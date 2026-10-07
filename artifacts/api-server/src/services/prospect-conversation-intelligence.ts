@@ -173,11 +173,12 @@ async function syncPeopleToCompany(input: {
   people: ExtractedPerson[];
   accountMap: NonNullable<Prospect["accountMap"]>;
 }) {
-  if (!input.prospect.companyId || input.people.length === 0) return input.accountMap;
+  const companyId = companyId;
+  if (!companyId || input.people.length === 0) return input.accountMap;
   const [tenantCompany] = await db.select().from(crmTenantCompaniesTable)
     .where(and(
       eq(crmTenantCompaniesTable.tenantId, input.tenantId),
-      eq(crmTenantCompaniesTable.companyId, input.prospect.companyId),
+      eq(crmTenantCompaniesTable.companyId, companyId),
     )).limit(1);
   if (!tenantCompany) return input.accountMap;
 
@@ -188,7 +189,7 @@ async function syncPeopleToCompany(input: {
     }).from(crmCompanyPeopleTable)
       .innerJoin(crmPeopleMasterTable, eq(crmCompanyPeopleTable.personId, crmPeopleMasterTable.id))
       .where(and(
-        eq(crmCompanyPeopleTable.companyId, input.prospect.companyId),
+        eq(crmCompanyPeopleTable.companyId, companyId),
         ilike(crmPeopleMasterTable.nome, person.name),
       )).limit(1);
 
@@ -203,7 +204,7 @@ async function syncPeopleToCompany(input: {
       personId = created?.id;
       if (personId) {
         await db.insert(crmCompanyPeopleTable).values({
-          companyId: input.prospect.companyId,
+          companyId: companyId,
           personId,
           cargo: person.jobTitle ?? null,
           source: "prospecting_conversation",
