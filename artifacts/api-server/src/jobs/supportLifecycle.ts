@@ -11,6 +11,7 @@ import {
 import { tenantIsWithinBusinessHours } from "../lib/proactiveMessageGuard.js";
 import { sendAgentAttachments, sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { requestSupportFeedback } from "../services/support-feedback.js";
+import { executeConfiguredStageEvents } from "../services/pipeline-stage-events.js";
 
 
 const DISTRIBUTED_LOCK_KEY = "vendorai:support-lifecycle:v2";
@@ -304,6 +305,14 @@ export async function runSupportLifecycle(log: Logger): Promise<void> {
             .limit(1)
         : [];
 
+      const [owner] = card.responsavelId
+        ? await db
+            .select({ id: usersTable.id, name: usersTable.name, telefone: usersTable.telefone })
+            .from(usersTable)
+            .where(and(eq(usersTable.id, card.responsavelId), eq(usersTable.tenantId, card.tenantId)))
+            .limit(1)
+        : [];
+
       const stageChanged = metadata.supportLifecycleStage !== stage;
       const stageEnteredAt = stageChanged ? card.updatedAt : stageEntryDate(card, metadata);
       const nextMetadata: Record<string, unknown> = {
@@ -322,6 +331,31 @@ export async function runSupportLifecycle(log: Logger): Promise<void> {
 
       // Important stage transitions are proactively communicated once.
       if (stageChanged) {
+        await executeConfiguredStageEvents({
+          tenantId: card.tenantId,
+          pipeline: "suporte",
+          stageKey: stage,
+          gatilho: "entrada",
+          entityType: "work_card",
+          entityId: card.id,
+          leadId: card.leadId,
+          dealId: card.dealId,
+          workCardId: card.id,
+          client: {
+            name: lead?.empresa || lead?.nome || "Cliente",
+            phone: lead?.telefone ?? null,
+          },
+          owner: {
+            id: owner?.id ?? card.responsavelId,
+            name: owner?.name ?? null,
+            phone: owner?.telefone ?? null,
+          },
+          processTitle: card.titulo,
+          processCode: card.codigo,
+          url: `https://app.appvendorai.com/pipeline-operacional/suporte?card=${encodeURIComponent(card.id)}`,
+          log,
+        });
+
         const transitionMessage = stageCustomerMessage(stage, card.codigo);
         if (transitionMessage && lead?.telefone) {
           await sendDirectWhatsAppMessage(card.tenantId, lead.telefone, transitionMessage, log);
@@ -405,6 +439,33 @@ export async function runSupportLifecycle(log: Logger): Promise<void> {
 
       // Um único aviso por etapa. Quando existe data prevista, nunca antecipar:
       // o lembrete passa a ficar elegível somente na própria data cadastrada.
+      if (reminderIsDue) {
+        await executeConfiguredStageEvents({
+          tenantId: card.tenantId,
+          pipeline: "suporte",
+          stageKey: stage,
+          gatilho: "atraso",
+          entityType: "work_card",
+          entityId: card.id,
+          leadId: card.leadId,
+          dealId: card.dealId,
+          workCardId: card.id,
+          client: {
+            name: lead?.empresa || lead?.nome || "Cliente",
+            phone: lead?.telefone ?? null,
+          },
+          owner: {
+            id: owner?.id ?? card.responsavelId,
+            name: owner?.name ?? null,
+            phone: owner?.telefone ?? null,
+          },
+          processTitle: card.titulo,
+          processCode: card.codigo,
+          url: `https://app.appvendorai.com/pipeline-operacional/suporte?card=${encodeURIComponent(card.id)}`,
+          log,
+        });
+      }
+
       if (reminderIsDue && !lastOwnerReminderAt) {
         await notifyOwner({
           tenantId: card.tenantId,
@@ -452,3 +513,4 @@ export async function runSupportLifecycle(log: Logger): Promise<void> {
 
   });
 }
+
