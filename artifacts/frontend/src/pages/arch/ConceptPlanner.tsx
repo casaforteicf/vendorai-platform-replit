@@ -82,6 +82,7 @@ const ConceptModel3D = lazy(() => import("./ConceptModel3D"));
 const ConceptRenderGalleryActions = lazy(() => import("./ConceptRenderGalleryActions").then((m) => ({ default: m.ConceptRenderGalleryActions })));
 const ConceptCatalogPanels = lazy(() => import("./ConceptCatalogPanels"));
 const ConceptConstructionLibraryPanel = lazy(() => import("./ConceptConstructionLibraryPanel"));
+const ConceptReferenceSceneCard = lazy(() => import("./ConceptReferenceSceneCard"));
 
 
 type RoomKind =
@@ -438,6 +439,19 @@ type ReferencePlan = {
   offsetX?: number;
   offsetY?: number;
   calibrationSource?: "image_aspect_fit" | "lot";
+  photoAnalysis?: {
+    kind: "plan" | "terrain" | "room" | "facade" | "inspiration" | "unknown";
+    confidence: number;
+    summary: string;
+    perspective: "top_down" | "frontal" | "oblique" | "interior" | "unknown";
+    needsScaleAnchor: boolean;
+    suggestedAnchor?: string;
+    detectedElements: string[];
+    preserveElements: string[];
+    removableElements: string[];
+    projectHints: string[];
+    sourceModel: string;
+  };
 };
 
 type ReferenceTracePreview = {
@@ -2237,9 +2251,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               : referencePlan?.kind === "image"
                 ? "received"
                 : "idle";
-  const referenceReviewActive = editorView === "plan" && referencePlan?.kind === "image" && referenceTraceState !== "applied";
+  const referenceIsPlanImage = referencePlan?.kind === "image"
+    && (!referencePlan.photoAnalysis?.kind || ["plan", "unknown"].includes(referencePlan.photoAnalysis.kind));
+  const referenceIsScenePhoto = referencePlan?.kind === "image" && !referenceIsPlanImage;
+  const referenceReviewActive = editorView === "plan" && referenceIsPlanImage && referenceTraceState !== "applied";
   const hideCurrentGeometryForReferenceReview = referenceReviewActive;
-  const showReferenceImage = referencePlan?.kind === "image" && referenceDisplayMode !== "vector";
+  const showReferenceImage = referenceIsPlanImage && referenceDisplayMode !== "vector";
   const showReferenceVector = referenceDisplayMode !== "reference";
 
   const selected = safeRooms.find((r) => r.id === selectedId) ?? null;
@@ -4987,9 +5004,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const traceReferencePlanWithAi = async () => {
     if (referenceTraceState === "loading") return;
     const id = conceptIdRef.current ?? conceptId;
-    if (!id || referencePlan?.kind !== "image") {
+    if (!id || !referenceIsPlanImage) {
       setReferenceTraceState("error");
-      setReferencePlanMessage("Anexe uma imagem de planta antes de usar a leitura por IA.");
+      setReferencePlanMessage("Leitura vetorial é exclusiva para planta/croqui. Fotos reais ficam como cena-base.");
       return;
     }
     setReferenceTraceState("loading");
@@ -5131,6 +5148,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     if (
       !id ||
       referencePlan?.kind !== "image" ||
+      (referencePlan.photoAnalysis?.kind && !["plan", "unknown"].includes(referencePlan.photoAnalysis.kind)) ||
       referenceTraceState !== "idle" ||
       saveState === "loading" ||
       projectMaster ||
@@ -5177,6 +5195,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     conceptId,
     referencePlan?.kind,
     referencePlan?.url,
+    referencePlan?.photoAnalysis?.kind,
     referenceTraceState,
     saveState,
     projectMaster,
@@ -5210,10 +5229,36 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setReferencePlanState("success");
 
       if (payload.kind === "image") {
-        setReferenceTraceState("loading");
-        setReferencePlanMessage("Imagem recebida. A IA está reconstruindo paredes e aberturas para gerar a planta editável...");
-        try {
-          const tracePayload = await requestReferenceTrace(id, payload);
+        const detectedKind = payload.photoAnalysis?.kind ?? "unknown";
+        const isPlanLike = detectedKind === "plan" || detectedKind === "unknown";
+        if (!isPlanLike) {
+          setReferenceTraceState("idle");
+          setReferenceDisplayMode("reference");
+          if (detectedKind === "terrain") {
+            setEditorLibraryTab("site");
+          } else if (detectedKind === "facade") {
+            setStep(5);
+          } else {
+            setEditorLibraryTab("build");
+          }
+          const anchorHint = payload.photoAnalysis?.needsScaleAnchor && payload.photoAnalysis?.suggestedAnchor
+            ? ` Para escala real, meça: ${payload.photoAnalysis.suggestedAnchor}.`
+            : "";
+          const label = detectedKind === "terrain"
+            ? "terreno"
+            : detectedKind === "room"
+              ? "ambiente real"
+              : detectedKind === "facade"
+                ? "fachada"
+                : "referência visual";
+          setReferencePlanMessage(
+            `Foto reconhecida como ${label}. ${payload.photoAnalysis?.summary ?? "Imagem vinculada como base visual."}${anchorHint}`,
+          );
+        } else {
+          setReferenceTraceState("loading");
+          setReferencePlanMessage("Planta/croqui reconhecido. A IA está reconstruindo paredes e aberturas para gerar geometria editável...");
+          try {
+            const tracePayload = await requestReferenceTrace(id, payload);
           setReferenceTracePreview(tracePayload);
           setSelectedTraceElement(null);
 
@@ -5236,13 +5281,14 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                 : `Leitura concluída, mas a confiança foi insuficiente para aplicar automaticamente. Revise a referência e calibre uma medida antes de tentar novamente.`,
             );
           }
-        } catch (traceError) {
-          setReferenceTraceState("error");
-          setReferencePlanMessage(
-            traceError instanceof Error
-              ? `Imagem importada, mas a leitura automática falhou: ${traceError.message}`
-              : "Imagem importada, mas a leitura automática falhou. Tente gerar a planta novamente.",
-          );
+          } catch (traceError) {
+            setReferenceTraceState("error");
+            setReferencePlanMessage(
+              traceError instanceof Error
+                ? `Imagem importada, mas a leitura automática falhou: ${traceError.message}`
+                : "Imagem importada, mas a leitura automática falhou. Tente gerar a planta novamente.",
+            );
+          }
         }
       } else {
         setReferenceTraceState("idle");
@@ -8841,7 +8887,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               </aside>
 
               <div className="arq-workspace-center arq-canvas relative min-h-[calc(100dvh-56px)] overflow-hidden bg-[#f6f7f8]">
-                  {editorView === "plan" && referencePlan?.kind === "image" && referenceTraceState !== "applied" && (
+                  {editorView === "plan" && referenceIsPlanImage && referenceTraceState !== "applied" && (
                     <div className="absolute left-1/2 top-3 z-[70] w-[min(620px,calc(100%-32px))] -translate-x-1/2 rounded-2xl border border-blue-200 bg-white/95 px-4 py-3 shadow-xl backdrop-blur">
                       <div className="flex items-center gap-3">
                         <div className={referenceTraceState === "error"
@@ -10415,7 +10461,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     onClick={() => referencePlanInputRef.current?.click()}
                     disabled={referencePlanState === "uploading" || Boolean(projectMaster)}
                     className="inline-flex items-center gap-2 rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
-                    title={projectMaster ? "Crie uma revisão antes de trocar a planta de referência." : "Anexar imagem ou PDF como planta de referência"}
+                    title={projectMaster ? "Crie uma revisão antes de trocar a referência." : "Anexar planta, croqui, foto ou PDF"}
                   >
                     <Camera className="h-4 w-4" />
                     {referencePlanState === "uploading" ? "Enviando referência..." : referencePlan ? "Trocar referência" : "Imagem / PDF"}
@@ -10512,7 +10558,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     {referencePlanMessage}
                   </div>
                 )}
-                {referencePlan?.kind === "image" && (
+                {referenceIsScenePhoto && referencePlan?.photoAnalysis && (
+                  <ConceptReferenceSceneCard analysis={referencePlan.photoAnalysis} />
+                )}
+                {referenceIsPlanImage && (
                   <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50/60 p-3 text-xs">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
@@ -10787,13 +10836,19 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-muted/30 px-3 py-2 text-xs">
                     <div className="min-w-0">
                       <div className="truncate font-semibold">{referencePlan.originalName}</div>
-                      <div className="text-muted-foreground">{referencePlan.kind === "image" ? "Imagem de referência no editor 2D" : "PDF de referência vinculado"}</div>
-                      {referencePlan.kind === "image" && referencePlan.widthMeters && referencePlan.depthMeters ? (
+                      <div className="text-muted-foreground">
+                        {referencePlan.kind !== "image"
+                          ? "PDF de referência vinculado"
+                          : referenceIsScenePhoto
+                            ? "Foto real usada como cena-base"
+                            : "Planta/croqui vinculada ao editor 2D"}
+                      </div>
+                      {referenceIsPlanImage && referencePlan.widthMeters && referencePlan.depthMeters ? (
                         <div className="mt-1 text-[11px] text-muted-foreground">
                           Referência calibrada: {referencePlan.widthMeters.toFixed(2)} × {referencePlan.depthMeters.toFixed(2)} m · proporção preservada
                         </div>
                       ) : null}
-                      {referencePlan.kind === "image" && !projectMaster ? (
+                      {referenceIsPlanImage && !projectMaster ? (
                         <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4" onClick={(event) => event.stopPropagation()}>
                           <label className="text-[10px] font-semibold text-muted-foreground">
                             Largura ref. (m)
