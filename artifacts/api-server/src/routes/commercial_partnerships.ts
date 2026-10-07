@@ -9,6 +9,7 @@ import {
   usersTable,
   tenantsTable,
   pipelineStagesTable,
+  activitiesTable,
   tenantUserFunctionsTable,
   tenantCommercialPartnershipsTable,
   dealTenantParticipationsTable,
@@ -798,6 +799,9 @@ router.patch("/representation-work/:participationId/assign", async (req, res) =>
 const stageSchema = z.object({
   etapa: z.string().trim().min(1).max(120),
   pipeline: z.enum(SHARED_PIPELINES).optional(),
+  atividadeTitulo: z.string().trim().min(3).max(200).optional(),
+  atividadeDescricao: z.string().trim().max(2000).optional(),
+  observacaoPassagem: z.string().trim().max(2000).optional(),
 });
 
 router.patch("/representation-work/:participationId/stage", async (req, res) => {
@@ -818,6 +822,10 @@ router.patch("/representation-work/:participationId/stage", async (req, res) => 
     label: pipelineStagesTable.label,
     slaMinutos: pipelineStagesTable.slaMinutos,
     responsaveisFuncoes: pipelineStagesTable.responsaveisFuncoes,
+    atividadesPadrao: pipelineStagesTable.atividadesPadrao,
+    atividadePadraoTitulo: pipelineStagesTable.atividadePadraoTitulo,
+    atividadePadraoDescricao: pipelineStagesTable.atividadePadraoDescricao,
+    atividadePadraoPrazoMinutos: pipelineStagesTable.atividadePadraoPrazoMinutos,
   }).from(pipelineStagesTable).where(and(
     eq(pipelineStagesTable.tenantId, participation.partnerTenantId),
     eq(pipelineStagesTable.pipeline, pipeline),
@@ -858,6 +866,72 @@ router.patch("/representation-work/:participationId/stage", async (req, res) => 
 
   const [deal] = await db.select().from(dealsTable)
     .where(eq(dealsTable.id, participation.dealId)).limit(1);
+
+  if (deal?.leadId) {
+    const configuredTemplates = targetStage.atividadesPadrao ?? [];
+    const fallback = targetStage.atividadePadraoTitulo?.trim()
+      ? [{
+          id: "legacy-default",
+          titulo: targetStage.atividadePadraoTitulo.trim(),
+          descricao: targetStage.atividadePadraoDescricao ?? null,
+          prazoMinutos: targetStage.atividadePadraoPrazoMinutos ?? targetStage.slaMinutos ?? 24 * 60,
+          tipo: "tarefa",
+          categoria: "sugerida",
+          responsavel: "deal_owner",
+          prioridade: "normal",
+          bloqueiaAvanco: false,
+        }]
+      : [];
+    const templates = configuredTemplates.length > 0 ? configuredTemplates : fallback;
+
+    if (templates.length > 0) {
+      for (const template of templates) {
+        const templateKey = template.id || template.titulo.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 80);
+        const [existingTask] = await db.select({ id: activitiesTable.id }).from(activitiesTable).where(and(
+          eq(activitiesTable.tenantId, participation.partnerTenantId),
+          eq(activitiesTable.dealId, participation.dealId),
+          eq(activitiesTable.origemEtapaKey, targetStage.key),
+          eq(activitiesTable.origemTemplateKey, templateKey),
+        )).limit(1);
+        if (existingTask) continue;
+
+        const dueMinutes = template.prazoMinutos ?? targetStage.slaMinutos ?? 24 * 60;
+        await db.insert(activitiesTable).values({
+          tenantId: participation.partnerTenantId,
+          leadId: deal.leadId,
+          dealId: participation.dealId,
+          tipo: template.tipo ?? "tarefa",
+          titulo: `${template.titulo} — ${deal.titulo}`,
+          descricao: template.descricao?.trim() || parsed.data.atividadeDescricao || `Atividade criada ao entrar em ${targetStage.label}.`,
+          prioridade: template.prioridade ?? "normal",
+          estadoExecucao: template.categoria === "automatica" ? "planejada_ia" : "planejada",
+          categoriaExecucao: template.categoria ?? "sugerida",
+          origem: "pipeline_stage",
+          origemEtapaKey: targetStage.key,
+          origemTemplateKey: templateKey,
+          bloqueiaAvanco: Boolean(template.bloqueiaAvanco || template.categoria === "obrigatoria"),
+          status: "planejado",
+          responsavelId: operationalUserId,
+          dataVencimento: new Date(now.getTime() + dueMinutes * 60 * 1000),
+        });
+      }
+    } else if (parsed.data.atividadeTitulo) {
+      await db.insert(activitiesTable).values({
+        tenantId: participation.partnerTenantId,
+        leadId: deal.leadId,
+        dealId: participation.dealId,
+        tipo: "tarefa",
+        titulo: parsed.data.atividadeTitulo,
+        descricao: parsed.data.atividadeDescricao ?? parsed.data.observacaoPassagem ?? null,
+        origem: "pipeline_stage",
+        origemEtapaKey: targetStage.key,
+        origemTemplateKey: "shared-handoff",
+        status: "planejado",
+        responsavelId: operationalUserId,
+        dataVencimento: stageDueAt ?? new Date(now.getTime() + 24 * 60 * 60 * 1000),
+      });
+    }
+  }
 
   return res.json({
     deal,
