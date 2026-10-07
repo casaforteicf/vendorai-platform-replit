@@ -262,8 +262,10 @@ async function extractQuoteWithRetry(tenantId: string, file: File): Promise<any>
 type StageResponsibleUser = {
   id: string;
   active?: boolean | null;
+  platformRole?: string | null;
   userFunction?: string | null;
   customFunctionId?: string | null;
+  leadAssignmentEnabled?: boolean | null;
 };
 
 type DealResponsiblePartnership = {
@@ -291,13 +293,26 @@ function dealRepresentativePartnershipId(value?: string | null) {
     : null;
 }
 
+function canReceiveCommercialAssignment(user: StageResponsibleUser): boolean {
+  if (user.active === false) return false;
+  if (user.platformRole === "super_admin" || user.platformRole === "tenant_admin" || user.userFunction === "administrador") return true;
+  if (user.leadAssignmentEnabled === false) return false;
+  if (user.leadAssignmentEnabled === true) return true;
+  return user.platformRole === "tenant_seller"
+    || user.userFunction === "vendedor"
+    || user.userFunction === "representante_comercial";
+}
+
 function isUserResponsibleForStage(
   user: StageResponsibleUser,
   stage?: Pick<PipelineStage, "responsaveisFuncoes"> | null,
 ): boolean {
-  if (user.active !== true) return false;
+  if (!canReceiveCommercialAssignment(user)) return false;
+  if (user.platformRole === "super_admin" || user.platformRole === "tenant_admin" || user.userFunction === "administrador") return true;
   const responsibleFunctions = stage?.responsaveisFuncoes ?? [];
-  if (responsibleFunctions.length === 0) return false;
+  // Etapas sem função responsável configurada não devem esvaziar o seletor.
+  // Nelas, qualquer usuário comercial elegível permanece disponível.
+  if (responsibleFunctions.length === 0) return true;
 
   const refs = new Set<string>();
   if (user.userFunction) refs.add(`builtin:${user.userFunction}`);
@@ -1803,7 +1818,12 @@ function EditDealSheet({
         setQuoteFileName(data.originalName ?? null);
       }
       const confianca = data.confianca ?? 0;
-      toast({ title: confianca >= 0.5 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)" });
+      const leituraAviso = Array.isArray(data.informacoesAdicionais)
+        ? data.informacoesAdicionais.filter(Boolean).join(" ")
+        : undefined;
+        title: confianca >= 0.5 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)",
+        description: confianca < 0.5 ? leituraAviso : undefined,
+      });
     } catch (error) {
       setCreateQuoteStatus("error");
       toast({
@@ -2902,6 +2922,12 @@ export default function Deals() {
         if (data.clienteEmail) createForm.setValue("leadEmail", data.clienteEmail);
       }
       const confianca = data.confianca ?? 0;
+      const leituraAviso = Array.isArray(data.informacoesAdicionais)
+        ? data.informacoesAdicionais.filter(Boolean).join(" ")
+        : undefined;
+        title: confianca >= 0.5 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)",
+        description: confianca < 0.5 ? leituraAviso : undefined,
+      });
       setCreateQuoteStatus(confianca >= 0.7 ? "review" : "partial");
       toast({
         title: confianca >= 0.7 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)",
