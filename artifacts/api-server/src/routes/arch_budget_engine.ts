@@ -466,7 +466,7 @@ archBudgetEngineRouter.post("/arch/orcamento/from-spec-objects", async (req, res
   }
 });
 
-archBudgetEngineRouter.patch("/arch/orcamento/:id", async (req, res, next) => {
+archBudgetEngineRouter.patch("/arch/orcamento/budget/:id", async (req, res, next) => {
   try {
     const result = await updateBudget(req.params["id"]!, tenantId(req), req.body as Partial<BudgetPayload>);
     if (!result) { res.status(404).json({ error: "Orçamento não encontrado" }); return; }
