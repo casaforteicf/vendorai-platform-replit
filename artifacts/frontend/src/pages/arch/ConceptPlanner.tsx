@@ -1129,6 +1129,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       : `concept-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   );
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
+  const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
   const [aiDevelopmentState, setAiDevelopmentState] = useState<"idle" | "running" | "error">("idle");
   const [customerProfile, setCustomerProfile] = useState<CustomerProfile>({});
   const [facadePreferences, setFacadePreferences] = useState<ConceptFacadePreferences>(DEFAULT_FACADE);
@@ -1810,7 +1811,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           body: JSON.stringify(payload),
         },
       );
-      if (!response.ok) throw new Error("Falha ao salvar pré-projeto");
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => null) as { message?: string; error?: string } | null;
+        throw new Error(errorBody?.message || errorBody?.error || `Falha ao salvar pré-projeto (${response.status})`);
+      }
       const saved = (await response.json()) as ConceptDraftResponse;
       conceptIdRef.current = saved.id;
       setConceptId(saved.id);
@@ -1826,9 +1830,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     try {
       const savedId = await request;
       setSaveState("saved");
+      setSaveErrorMessage(null);
       return savedId;
-    } catch {
+    } catch (error) {
       setSaveState("error");
+      setSaveErrorMessage(error instanceof Error ? error.message : "Não foi possível salvar o pré-projeto.");
       return null;
     } finally {
       if (creatingConceptRef.current === request) creatingConceptRef.current = null;
@@ -1883,7 +1889,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const saveStatusLabel = saveState === "saving"
     ? "Salvando…"
     : saveState === "error"
-      ? "Erro ao salvar"
+      ? (saveErrorMessage ? `Erro ao salvar · ${saveErrorMessage}` : "Erro ao salvar")
       : hasUnsavedChanges
         ? "Alterações não salvas"
         : saveState === "saved"
@@ -5282,6 +5288,22 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     input.click();
   };
 
+  const chooseProjectStartReferenceMode = (mode: "floorplan" | "real_environment") => {
+    referenceInputModeRef.current = mode;
+    setReferenceInputMode(mode);
+    if (mode === "real_environment") {
+      setReferenceTracePreview(null);
+      setReferenceTraceState("idle");
+    }
+    const input = projectStartReferenceInputRef.current;
+    if (!input) return;
+    input.accept = mode === "real_environment"
+      ? "image/png,image/jpeg,image/webp"
+      : "image/png,image/jpeg,image/webp,application/pdf,.pdf";
+    input.value = "";
+    input.click();
+  };
+
   const uploadReferencePlan = async (file: File) => {
     if (referencePlanState === "uploading") return;
     setReferencePlanState("uploading");
@@ -7442,16 +7464,24 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                             <span className="mt-1 block text-xs leading-5 text-slate-600">DXF, IFC, DWG e SKP passam primeiro por prévia de escala/geometria antes de substituir a planta. RVT fica preservado como fonte vinculada.</span></span></div>
                         </button>
 
-                        <button type="button" onClick={() => projectStartReferenceInputRef.current?.click()}
+                        <button type="button" onClick={() => chooseProjectStartReferenceMode("real_environment")}
+                          className="group min-h-32 rounded-2xl border-2 border-sky-200 bg-sky-50/60 p-5 text-left transition hover:border-sky-400 hover:bg-sky-50 hover:shadow-sm">
+                          <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-sky-600 text-white"><Camera className="h-5 w-5" /></span>
+                            <span><span className="block text-base font-bold text-slate-950">Foto / ambiente real</span>
+                            <span className="mt-1 block text-xs leading-5 text-slate-600">Use foto do terreno, fachada, cozinha ou outro espaço real. O Arqdor preserva o que existe e só remove, substitui ou realoca elementos com intervenção confirmada.</span>
+                            <span className="mt-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-sky-700">Preservação máxima</span></span></div>
+                        </button>
+
+                        <button type="button" onClick={() => chooseProjectStartReferenceMode("floorplan")}
                           className="group min-h-32 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm">
-                          <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-800"><Camera className="h-5 w-5" /></span>
-                            <span><span className="block text-base font-bold text-slate-950">{projectScope === "room" ? "Foto / croqui / planta" : "Croqui / pré-planta / foto"}</span>
-                            <span className="mt-1 block text-xs leading-5 text-slate-600">Envie imagem ou PDF. Em imagens, a IA interpreta a referência e reconstrói paredes e aberturas como geometria editável.</span></span></div>
+                          <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-800"><Ruler className="h-5 w-5" /></span>
+                            <span><span className="block text-base font-bold text-slate-950">Planta / croqui / PDF</span>
+                            <span className="mt-1 block text-xs leading-5 text-slate-600">Importe planta, croqui ou PDF para leitura, calibração e reconstrução como geometria editável antes de aplicar ao projeto.</span></span></div>
                         </button>
                       </div>
 
                       <div className="mt-5 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
-                        Arquivos geométricos só são aplicados depois da prévia e confirmação. Imagens passam por reconstrução vetorial e revisão humana antes de virar <strong className="font-semibold text-slate-800">geometria editável</strong>.
+                        <strong className="font-semibold text-slate-800">Foto real</strong> preserva o ambiente existente e registra intervenções confirmadas. <strong className="font-semibold text-slate-800">Planta/croqui</strong> passa por leitura, calibração e revisão antes de virar geometria editável. Arquivos geométricos só são aplicados depois da prévia e confirmação.
                       </div>
 
                       <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
