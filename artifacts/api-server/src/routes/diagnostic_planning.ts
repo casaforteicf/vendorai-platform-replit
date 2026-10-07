@@ -3,6 +3,7 @@ import { Router, type IRouter } from "express";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
+import { canonicalDealValueSql } from "../lib/deal-value.js";
   businessProfilesTable,
   db,
   pool,
@@ -267,7 +268,7 @@ diagnosticPlanningProtectedRouter.get("/tenants/:tenantId/diagnostico-planejamen
   const [profile, deals, latestMediaPlan] = await Promise.all([
     profileForTenant(tenantId),
     db.select({
-      valor: dealsTable.valor,
+      valor: canonicalDealValueSql,
       etapa: dealsTable.etapa,
       wonAt: dealsTable.wonAt,
       dataFechamento: dealsTable.dataFechamento,
