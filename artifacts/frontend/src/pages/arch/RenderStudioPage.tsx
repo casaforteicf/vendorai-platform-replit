@@ -613,14 +613,6 @@ export default function RenderStudioPage() {
     return requested || localStorage.getItem("arq_last_project_id");
   });
   const [ambiente, setAmbiente] = useState(() => {
-    const cachedAmbiente = sessionStorage.getItem(SK.ambiente) || "";
-    if (!cachedAmbiente) return "";
-    const requestedProjectId = params.get("project_id")?.trim();
-    const effectiveProjectId = requestedProjectId || localStorage.getItem("arq_last_project_id") || "no-project";
-    const cachedContext = sessionStorage.getItem(SK.context);
-    return cachedContext === `${effectiveProjectId}:${cachedAmbiente}`
-      ? cachedAmbiente
-      : "";
     const params = new URLSearchParams(window.location.search);
     const requested = params.get("ambiente")?.trim();
     if (requested) return requested;
