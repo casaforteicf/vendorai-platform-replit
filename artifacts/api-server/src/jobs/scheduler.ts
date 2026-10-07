@@ -80,6 +80,7 @@ import { runAutonomousProspectingAllTenants } from "../services/vendi-autonomous
 import { runDailyAgendaSummary } from "./dailyAgendaSummary.js";
 import { runSdrFollowup } from "./sdrFollowup.js";
 import { runCustomerIntelligenceFollowup } from "./customerIntelligenceFollowup.js";
+import { runColdProspectFollowup } from "./coldProspectFollowup.js";
 import { runObjectionsExtraction } from "./objectionsExtraction.js";
 import { runRecemAbertas } from "./recemAbertasJob.js";
 import { runMicroEventsRescan } from "./microEventsRescan.js";
@@ -1714,6 +1715,14 @@ export function startScheduler(log: Logger): void {
   cron.schedule("*/15 * * * *", () => {
     orchestrateProspectCampaigns(log).catch((err) => {
       log.error({ err }, "scheduler/prospect-orchestrator: unhandled error");
+    });
+  });
+
+  // Job 2c: New pre-Lead cold prospecting engine — every 15 minutes.
+  // Runs only for tenants configured as cold_prospecting_mode='autonomous'.
+  cron.schedule("*/15 * * * *", () => {
+    runColdProspectFollowup(log).catch((err) => {
+      log.error({ err }, "scheduler/cold-prospect-followup: unhandled error");
     });
   });
 
