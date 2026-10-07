@@ -988,10 +988,10 @@ function WorkspaceInner() {
               <kbd style={{ fontSize:8, padding:'1px 5px', borderRadius:4, background:PHX.muted, color:PHX.dim, border:`1px solid ${PHX.border}`, fontFamily:'monospace' }}>⌘K</kbd>
             </button>
 
-            {/* Copilot toggle */}
+            {/* Vendi contextual toggle */}
             <button
               onClick={() => setCopilotCollapsed(p => !p)}
-              title={copilotCollapsed ? 'Abrir assistente' : 'Recolher assistente'}
+              title={copilotCollapsed ? 'Abrir Vendi — ajuda contextual desta tela' : 'Recolher Vendi'}
               style={{
                 padding:'5px 11px', borderRadius:8,
                 border:`1px solid ${copilotCollapsed ? PHX.border : PHX.purple}`,
@@ -1002,7 +1002,7 @@ function WorkspaceInner() {
                 transition:'all 0.15s ease',
               }}
             >
-              🤖 {copilotCollapsed ? 'Assistente' : '▸'}
+              🤖 {copilotCollapsed ? 'Vendi · posso ajudar aqui' : 'Vendi ▸'}
             </button>
 
             {/* ✨ Gerar Render — CTA principal */}
@@ -1047,11 +1047,12 @@ function WorkspaceInner() {
             </div>
           </div>
 
-          {/* ── ARQ COPILOT sidebar (right, same row as content) ── */}
+          {/* ── Vendi contextual sidebar (right, same row as content) ── */}
           <ArqCopilot
             collapsed={copilotCollapsed}
             onToggle={() => setCopilotCollapsed(p => !p)}
             nextAction={computeNextAction(arqState, 0)}
+            moduleId={activeModule}
           />
         </div>
 
