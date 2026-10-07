@@ -1,3 +1,4 @@
+// Release marker: Arqdor Ambiente Real functional flow 2026-10-07.
 import http from "node:http";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve, sep } from "node:path";
