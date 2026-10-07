@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { AlignCenter, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, CheckCircle2, Compass, Eye, Home, Mountain, Move, Ruler, ShieldAlert, Sparkles, Sun } from "lucide-react";
+import { AlignCenter, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, CheckCircle2, Compass, Eye, Home, Mountain, Move, Route, Ruler, ShieldAlert, Sparkles, Sun } from "lucide-react";
 import {
   buildSitePlacementSuggestions,
   clampBuildingOrigin,
