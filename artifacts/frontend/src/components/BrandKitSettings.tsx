@@ -619,7 +619,7 @@ export function BrandKitSettings() {
                   <option value="evolve">Evoluir identidade</option>
                   <option value="rebuild">Reconstruir identidade</option>
                 </select>
-                <Button type="button" onClick={buildWithAI} disabled={aiLoading || !tenantId} className="gap-2">
+                <Button type="button" onClick={() => void buildWithAI()} disabled={aiLoading || !tenantId} className="gap-2">
                   {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                   {aiLoading ? "Analisando..." : "Analisar e completar"}
                 </Button>
