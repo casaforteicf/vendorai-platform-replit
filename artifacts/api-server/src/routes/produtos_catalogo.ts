@@ -932,6 +932,10 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
   const iQuantidadePacote = idx(["quantidade_pacote", "pecas_por_pacote", "qtd_pacote"]);
   const iPrecoPacote      = idx(["preco_pacote", "preco_do_pacote", "valor_pacote"]);
   const iLarguraPecaM     = idx(["largura_peca_m", "largura_peca", "largura_m"]);
+  const iEmbalagemMestre  = idx(["embalagem_mestre_quantidade", "embalagem_mestre", "pacotes_por_embalagem_mestre", "qtd_embalagem_mestre"]);
+  const iQuantidadeMinima = idx(["quantidade_minima_venda", "minimo_venda", "qtd_minima", "moq"]);
+  const iMultiploVenda    = idx(["multiplo_venda", "multiplo_pedido", "order_multiple"]);
+  const iFracionaMestre   = idx(["permite_fracionar_embalagem_mestre", "fraciona_embalagem_mestre", "permite_fracionar"]);
 
   if (iNome < 0 || (iPreco < 0 && iCusto < 0) || iCategoria < 0) {
     res.status(422).json({ error: `Colunas obrigatórias não encontradas. Necessário: 'nome', 'categoria' e 'custo' ou 'preco_base'. Encontrado: ${headers.join(", ")}` });
@@ -1100,6 +1104,12 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
       quantidadePacote: iQuantidadePacote >= 0 ? parseIntCell(cols[iQuantidadePacote]) : null,
       precoPacote:      iPrecoPacote      >= 0 ? parseDecimalCell(cols[iPrecoPacote])?.toFixed(2) ?? null : null,
       larguraPecaM:     iLarguraPecaM     >= 0 ? parseDecimalCell(cols[iLarguraPecaM])?.toFixed(2) ?? null : null,
+      embalagemMestreQuantidade: iEmbalagemMestre >= 0 ? parseIntCell(cols[iEmbalagemMestre]) : null,
+      quantidadeMinimaVenda: iQuantidadeMinima >= 0 ? parseIntCell(cols[iQuantidadeMinima]) : null,
+      multiploVenda: iMultiploVenda >= 0 ? parseIntCell(cols[iMultiploVenda]) : null,
+      permiteFracionarEmbalagemMestre: iFracionaMestre >= 0
+        ? ["sim", "true", "1", "yes"].includes((cols[iFracionaMestre] ?? "").trim().toLowerCase())
+        : false,
     });
   }
 
