@@ -95,6 +95,8 @@ export const arqdorEngineeringConfigurationsTable = pgTable(
     openingType: text("opening_type").notNull(),
     productKind: text("product_kind").notNull().default("window"),
     leafCount: integer("leaf_count"),
+    allowedLeafCounts: jsonb("allowed_leaf_counts").$type<number[]>().notNull().default([]),
+    compositionPattern: text("composition_pattern"),
     frameCode: text("frame_code"),
     minWidthMm: numeric("min_width_mm", { precision: 12, scale: 3 }),
     maxWidthMm: numeric("max_width_mm", { precision: 12, scale: 3 }),
