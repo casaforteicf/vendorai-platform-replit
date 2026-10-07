@@ -1,4 +1,7 @@
 import { type Browser, type CookieData, type Page } from "puppeteer-core";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { acquireBrowserLease } from "./browser-fleet.js";
 import {
   captureBrowserProfile,
@@ -18,6 +21,7 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("type"), selector: z.string().min(1), text: z.string(), reason: z.string().optional() }),
   z.object({ action: z.literal("secret"), selector: z.string().min(1), secret: z.enum(["login", "passcode"]), reason: z.string().optional() }),
   z.object({ action: z.literal("select"), selector: z.string().min(1), value: z.string(), reason: z.string().optional() }),
+  z.object({ action: z.literal("upload"), selector: z.string().min(1), url: z.string().url(), reason: z.string().optional() }),
   z.object({ action: z.literal("extract"), selector: z.string().min(1).optional(), reason: z.string().optional() }),
   z.object({ action: z.literal("finish"), answer: z.string().min(1), outcome: z.enum(["completed", "blocked", "failed"]), reason: z.string().optional() }),
 ]);
@@ -38,6 +42,7 @@ export type PlannedAction =
   | { action: "type"; selector: string; text: string; reason?: string }
   | { action: "secret"; selector: string; secret: "login" | "passcode"; reason?: string }
   | { action: "select"; selector: string; value: string; reason?: string }
+  | { action: "upload"; selector: string; url: string; reason?: string }
   | { action: "extract"; selector?: string; reason?: string }
   | { action: "finish"; answer: string; outcome: "completed" | "blocked" | "failed"; reason?: string };
 
@@ -205,7 +210,7 @@ export async function snapshotBrowserPage(page: Page) {
   return page.evaluate(() => {
     const clean = (v: string | null | undefined) => (v ?? "").replace(/\s+/g, " ").trim();
     const cssString = (value: string) => JSON.stringify(value);
-    const buildStableSelector = (el: Element) => {
+    const buildStableSelector = (el: Element, index: number) => {
       const tag = el.tagName.toLowerCase();
       const testId = el.getAttribute("data-testid");
       if (testId) return `[data-testid=${cssString(testId)}]`;
@@ -222,13 +227,9 @@ export async function snapshotBrowserPage(page: Page) {
       const href = el.getAttribute("href");
       if (tag === "a" && href) return `a[href=${cssString(href)}]`;
 
-      const parent = el.parentElement;
-      if (parent) {
-        const sameTag = Array.from(parent.children).filter(child => child.tagName === el.tagName);
-        const position = sameTag.indexOf(el) + 1;
-        if (position > 0) return `${tag}:nth-of-type(${position})`;
-      }
-      return tag;
+      const agentId = `vendi-${index}`;
+      el.setAttribute("data-vendi-agent-id", agentId);
+      return `[data-vendi-agent-id=${cssString(agentId)}]`;
     };
 
     const interactive = Array.from(document.querySelectorAll("a,button,input,textarea,select,[role='button']"))
@@ -238,13 +239,15 @@ export async function snapshotBrowserPage(page: Page) {
         const i = el as HTMLInputElement;
         return {
           index,
-          selector: buildStableSelector(el),
+          selector: buildStableSelector(el, index),
           tag: el.tagName.toLowerCase(),
           id: el.id || null,
           name: i.name || null,
           type: i.type || null,
           text: clean(h.innerText || (i.type === "password" ? "" : i.value) || el.getAttribute("aria-label")),
           placeholder: i.placeholder || null,
+          accept: i.accept || null,
+          multiple: Boolean(i.multiple),
           href: el instanceof HTMLAnchorElement ? el.href : null,
         };
       });
@@ -268,7 +271,8 @@ export async function planBrowserAction(
   const system = [
     "Você é o Browser Agent do Vendor.ai.",
     "Atinja o objetivo navegando pela interface web e responda SOMENTE JSON válido.",
-    "Ações: navigate(url), click(selector), type(selector,text), secret(selector,secret), select(selector,value), extract(selector opcional), finish(answer).",
+    "Ações: navigate(url), click(selector), type(selector,text), secret(selector,secret), select(selector,value), upload(selector,url), extract(selector opcional), finish(answer).",
+    "Para input type=file, use upload(selector,url) apontando para um arquivo HTTP(S) público permitido; não tente apenas clicar no file picker.",
     "Para campos de autenticação use secret com secret=login ou passcode quando disponível.",
     "Nunca peça, invente ou repita segredos. Eles são injetados pelo backend e não ficam visíveis para você.",
     "A página fornece page.interactive[].selector. Para click/type/secret/select, reutilize EXATAMENTE um selector presente nessa lista sempre que possível. Não invente IDs, especialmente IDs Radix/temporários. Nunca use seletores Playwright como :has-text().",
@@ -366,6 +370,34 @@ export async function executeBrowserAction(
     await page.click(action.selector);
   }
 
+  if (action.action === "upload") {
+    if (!input.allowWrite) throw new Error("APPROVAL_REQUIRED: execução está em modo somente leitura");
+    const target = validateBrowserUrl(action.url, input.allowedHosts);
+    const response = await fetch(target, { redirect: "follow" });
+    if (!response.ok) throw new Error(`UPLOAD_FETCH_FAILED:${response.status}`);
+    const length = Number(response.headers.get("content-length") ?? "0");
+    if (length > 20 * 1024 * 1024) throw new Error("UPLOAD_TOO_LARGE");
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length > 20 * 1024 * 1024) throw new Error("UPLOAD_TOO_LARGE");
+    const element = await page.$(action.selector);
+    if (!element) throw new Error(`No element found for selector: ${action.selector}`);
+    const inputType = await page.$eval(action.selector, el => (el as HTMLInputElement).type).catch(() => "");
+    if (inputType !== "file") throw new Error("UPLOAD_TARGET_NOT_FILE_INPUT");
+    const contentType = response.headers.get("content-type") ?? "application/octet-stream";
+    const ext =
+      contentType.includes("png") ? ".png" :
+      contentType.includes("jpeg") || contentType.includes("jpg") ? ".jpg" :
+      contentType.includes("webp") ? ".webp" :
+      contentType.includes("pdf") ? ".pdf" : ".bin";
+    const dir = await mkdtemp(join(tmpdir(), "vendi-upload-"));
+    const filePath = join(dir, `upload${ext}`);
+    try {
+      await writeFile(filePath, bytes);
+      await element.uploadFile(filePath);
+    } finally {
+      await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }
   if (action.action === "type") await clearAndType(page, action.selector, action.text);
   if (action.action === "select") await page.select(action.selector, action.value);
 
