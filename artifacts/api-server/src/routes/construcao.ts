@@ -120,6 +120,12 @@ import {
   insertObraPiscinaTratamentoSchema,
   insertObraPiscinaAquecimentoSchema,
   insertObraPiscinaOverflowSchema,
+  orcamentoFormacaoVendaTable,
+  orcamentoFormacaoComponentesTable,
+  orcamentoFormacaoSnapshotsTable,
+  insertOrcamentoFormacaoVendaSchema,
+  updateOrcamentoFormacaoVendaSchema,
+  insertOrcamentoFormacaoComponenteSchema,
   insertObraSchema,
   updateObraSchema,
   insertObraEtapaSchema,
@@ -2870,6 +2876,282 @@ router.post("/tenants/:tenantId/obras/:obraId/piscinas/:piscinaId/preconfigurar"
   }
 
   return res.status(201).json({ casaMaquinas: casa, circuitos: criados });
+});
+
+// ─── Formação de custo e preço de venda ──────────────────────────────────────
+
+async function calcularFormacaoVenda(tid: string, orcamentoId: string, formacaoId: string) {
+  const [orcamento] = await db.select().from(obraOrcamentosTable)
+    .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid)));
+  if (!orcamento) throw new Error("Orçamento não encontrado");
+
+  const [formacao] = await db.select().from(orcamentoFormacaoVendaTable)
+    .where(and(
+      eq(orcamentoFormacaoVendaTable.id, formacaoId),
+      eq(orcamentoFormacaoVendaTable.orcamentoId, orcamentoId),
+      eq(orcamentoFormacaoVendaTable.tenantId, tid),
+    ));
+  if (!formacao) throw new Error("Formação de venda não encontrada");
+
+  const etapas = await db.select().from(obraOrcamentoEtapasTable)
+    .where(eq(obraOrcamentoEtapasTable.orcamentoId, orcamentoId));
+  const etapaIds = etapas.map((e) => e.id);
+  const itens = etapaIds.length
+    ? await db.select().from(obraOrcamentoItensTable).where(inArray(obraOrcamentoItensTable.etapaId, etapaIds))
+    : [];
+
+  const custoItem = (item: typeof obraOrcamentoItensTable.$inferSelect) =>
+    numberOrZero(item.quantidade) * numberOrZero(item.custoUnitario);
+  const custoDireto = itens.reduce((sum, item) => sum + custoItem(item), 0);
+
+  const componentes = await db.select().from(orcamentoFormacaoComponentesTable)
+    .where(and(
+      eq(orcamentoFormacaoComponentesTable.formacaoId, formacaoId),
+      eq(orcamentoFormacaoComponentesTable.ativo, true),
+    ))
+    .orderBy(asc(orcamentoFormacaoComponentesTable.ordem));
+
+  const custoDiretoEtapa = new Map<string, number>();
+  for (const etapa of etapas) {
+    custoDiretoEtapa.set(etapa.id, itens.filter((i) => i.etapaId === etapa.id).reduce((s, i) => s + custoItem(i), 0));
+  }
+  const custoDiretoItem = new Map(itens.map((i) => [i.id, custoItem(i)]));
+
+  let custosIndiretos = 0;
+  let impostos = 0;
+  let comissao = 0;
+  let risco = 0;
+  let componentesSobreVendaPct = 0;
+  const memoriaComponentes = [];
+
+  for (const comp of componentes) {
+    let baseDireta = custoDireto;
+    if (comp.escopo === "etapa" && comp.etapaId) baseDireta = custoDiretoEtapa.get(comp.etapaId) ?? 0;
+    if (comp.escopo === "item" && comp.itemId) baseDireta = custoDiretoItem.get(comp.itemId) ?? 0;
+
+    const pct = numberOrZero(comp.percentual);
+    const fixo = numberOrZero(comp.valorFixo);
+
+    if (comp.modo === "percentual" && comp.baseCalculo === "preco_venda") {
+      componentesSobreVendaPct += pct;
+      memoriaComponentes.push({ id: comp.id, tipo: comp.tipo, nome: comp.nome, valor: null, percentual: pct, base: "preco_venda" });
+      continue;
+    }
+
+    const base = comp.baseCalculo === "custo_total" ? custoDireto + custosIndiretos : baseDireta;
+    const valor = comp.modo === "valor_fixo" ? fixo : base * pct / 100;
+
+    if (comp.tipo === "impostos") impostos += valor;
+    else if (comp.tipo === "comissao") comissao += valor;
+    else if (comp.tipo === "risco") risco += valor;
+    else if (comp.tipo !== "margem") custosIndiretos += valor;
+
+    memoriaComponentes.push({ id: comp.id, tipo: comp.tipo, nome: comp.nome, valor, percentual: pct, base: comp.baseCalculo });
+  }
+
+  const custoAntesVenda = custoDireto + custosIndiretos + impostos + comissao + risco;
+  const margemPct = numberOrZero(formacao.margemPercentual);
+  let precoVenda = custoAntesVenda;
+  let margemValor = 0;
+
+  const pctVendaTotal = componentesSobreVendaPct + (formacao.metodoMargem === "margem_sobre_venda" ? margemPct : 0);
+  if (pctVendaTotal >= 100) throw new Error("Percentuais sobre preço de venda somados devem ser menores que 100%.");
+
+  if (formacao.precoVendaManual != null && numberOrZero(formacao.precoVendaManual) > 0) {
+    precoVenda = numberOrZero(formacao.precoVendaManual);
+  } else if (formacao.metodoMargem === "margem_sobre_venda") {
+    precoVenda = custoAntesVenda / (1 - pctVendaTotal / 100);
+  } else {
+    precoVenda = custoAntesVenda * (1 + margemPct / 100);
+    if (componentesSobreVendaPct > 0) precoVenda = precoVenda / (1 - componentesSobreVendaPct / 100);
+  }
+
+  const componentesVenda = precoVenda * componentesSobreVendaPct / 100;
+  for (const comp of componentes.filter((x) => x.modo === "percentual" && x.baseCalculo === "preco_venda")) {
+    const valor = precoVenda * numberOrZero(comp.percentual) / 100;
+    if (comp.tipo === "impostos") impostos += valor;
+    else if (comp.tipo === "comissao") comissao += valor;
+    else if (comp.tipo === "risco") risco += valor;
+    else if (comp.tipo !== "margem") custosIndiretos += valor;
+    const mem = memoriaComponentes.find((m) => m.id === comp.id);
+    if (mem) mem.valor = valor;
+  }
+
+  margemValor = precoVenda - custoDireto - custosIndiretos - impostos - comissao - risco;
+
+  if (formacao.arredondamento != null && numberOrZero(formacao.arredondamento) > 0 && formacao.precoVendaManual == null) {
+    const passo = numberOrZero(formacao.arredondamento);
+    precoVenda = Math.ceil(precoVenda / passo) * passo;
+    margemValor = precoVenda - custoDireto - custosIndiretos - impostos - comissao - risco;
+  }
+
+  const markupEfetivo = custoDireto > 0 ? precoVenda / custoDireto : 0;
+  const margemEfetivaPercentual = precoVenda > 0 ? margemValor / precoVenda * 100 : 0;
+
+  return {
+    orcamento,
+    formacao,
+    componentes,
+    custoDireto,
+    custosIndiretos,
+    impostos,
+    comissao,
+    risco,
+    margemValor,
+    precoVenda,
+    markupEfetivo,
+    margemEfetivaPercentual,
+    memoriaCalculo: {
+      itens: itens.length,
+      etapas: etapas.length,
+      metodoMargem: formacao.metodoMargem,
+      margemPercentual: margemPct,
+      componentesSobreVendaPercentual: componentesSobreVendaPct,
+      componentesSobreVendaValor: componentesVenda,
+      componentes: memoriaComponentes,
+    },
+  };
+}
+
+router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/formacao-venda", async (req, res) => {
+  const { tenantId: tid, obraId, orcamentoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [orcamento] = await db.select({ id: obraOrcamentosTable.id }).from(obraOrcamentosTable)
+    .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
+  if (!orcamento) return res.status(404).json({ error: "Orçamento não encontrado" });
+
+  const parsed = insertOrcamentoFormacaoVendaSchema.safeParse({
+    ...req.body,
+    tenantId: tid,
+    orcamentoId,
+    criadoPorId: (req as any).user?.sub ?? null,
+  });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  await db.update(orcamentoFormacaoVendaTable)
+    .set({ ativo: false, updatedAt: new Date() })
+    .where(and(eq(orcamentoFormacaoVendaTable.orcamentoId, orcamentoId), eq(orcamentoFormacaoVendaTable.ativo, true)));
+
+  const [row] = await db.insert(orcamentoFormacaoVendaTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.put("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/formacao-venda/:formacaoId", async (req, res) => {
+  const { tenantId: tid, orcamentoId, formacaoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = updateOrcamentoFormacaoVendaSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.update(orcamentoFormacaoVendaTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(and(
+      eq(orcamentoFormacaoVendaTable.id, formacaoId),
+      eq(orcamentoFormacaoVendaTable.orcamentoId, orcamentoId),
+      eq(orcamentoFormacaoVendaTable.tenantId, tid),
+    ))
+    .returning();
+  if (!row) return res.status(404).json({ error: "Formação de venda não encontrada" });
+
+  return res.json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/formacao-venda/:formacaoId/componentes", async (req, res) => {
+  const { tenantId: tid, orcamentoId, formacaoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [formacao] = await db.select({ id: orcamentoFormacaoVendaTable.id }).from(orcamentoFormacaoVendaTable)
+    .where(and(
+      eq(orcamentoFormacaoVendaTable.id, formacaoId),
+      eq(orcamentoFormacaoVendaTable.orcamentoId, orcamentoId),
+      eq(orcamentoFormacaoVendaTable.tenantId, tid),
+    ));
+  if (!formacao) return res.status(404).json({ error: "Formação de venda não encontrada" });
+
+  const parsed = insertOrcamentoFormacaoComponenteSchema.safeParse({ ...req.body, formacaoId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const data = parsed.data;
+  const escopoValido =
+    (data.escopo === "orcamento" && !data.etapaId && !data.itemId) ||
+    (data.escopo === "etapa" && !!data.etapaId && !data.itemId) ||
+    (data.escopo === "item" && !!data.itemId);
+  if (!escopoValido) return res.status(422).json({ error: "Escopo incompatível com etapaId/itemId." });
+
+  if (data.modo === "percentual" && data.percentual == null) return res.status(422).json({ error: "Percentual obrigatório." });
+  if (data.modo === "valor_fixo" && data.valorFixo == null) return res.status(422).json({ error: "Valor fixo obrigatório." });
+
+  const [row] = await db.insert(orcamentoFormacaoComponentesTable).values(data).returning();
+  return res.status(201).json(row);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/formacao-venda/:formacaoId/calcular", async (req, res) => {
+  const { tenantId: tid, orcamentoId, formacaoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  try {
+    const r = await calcularFormacaoVenda(tid, orcamentoId, formacaoId);
+    return res.json({
+      custoDireto: r.custoDireto.toFixed(4),
+      custosIndiretos: r.custosIndiretos.toFixed(4),
+      impostos: r.impostos.toFixed(4),
+      comissao: r.comissao.toFixed(4),
+      risco: r.risco.toFixed(4),
+      margemValor: r.margemValor.toFixed(4),
+      precoVenda: r.precoVenda.toFixed(4),
+      markupEfetivo: r.markupEfetivo.toFixed(6),
+      margemEfetivaPercentual: r.margemEfetivaPercentual.toFixed(4),
+      memoriaCalculo: r.memoriaCalculo,
+    });
+  } catch (error) {
+    return res.status(422).json({ error: error instanceof Error ? error.message : "Falha ao calcular formação de venda" });
+  }
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/formacao-venda/:formacaoId/snapshot", async (req, res) => {
+  const { tenantId: tid, orcamentoId, formacaoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  try {
+    const r = await calcularFormacaoVenda(tid, orcamentoId, formacaoId);
+    const [snapshot] = await db.insert(orcamentoFormacaoSnapshotsTable).values({
+      formacaoId,
+      custoDireto: r.custoDireto.toFixed(4),
+      custosIndiretos: r.custosIndiretos.toFixed(4),
+      impostos: r.impostos.toFixed(4),
+      comissao: r.comissao.toFixed(4),
+      risco: r.risco.toFixed(4),
+      margemValor: r.margemValor.toFixed(4),
+      precoVenda: r.precoVenda.toFixed(4),
+      markupEfetivo: r.markupEfetivo.toFixed(6),
+      margemEfetivaPercentual: r.margemEfetivaPercentual.toFixed(4),
+      memoriaCalculo: r.memoriaCalculo,
+      criadoPorId: (req as any).user?.sub ?? null,
+    }).returning();
+
+    return res.status(201).json(snapshot);
+  } catch (error) {
+    return res.status(422).json({ error: error instanceof Error ? error.message : "Falha ao gerar snapshot" });
+  }
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/formacao-venda", async (req, res) => {
+  const { tenantId: tid, orcamentoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const formacoes = await db.select().from(orcamentoFormacaoVendaTable)
+    .where(and(eq(orcamentoFormacaoVendaTable.tenantId, tid), eq(orcamentoFormacaoVendaTable.orcamentoId, orcamentoId)))
+    .orderBy(desc(orcamentoFormacaoVendaTable.versao), desc(orcamentoFormacaoVendaTable.createdAt));
+
+  const ids = formacoes.map((f) => f.id);
+  const componentes = ids.length
+    ? await db.select().from(orcamentoFormacaoComponentesTable)
+        .where(inArray(orcamentoFormacaoComponentesTable.formacaoId, ids))
+        .orderBy(asc(orcamentoFormacaoComponentesTable.ordem))
+    : [];
+
+  return res.json({ formacoes, componentes });
 });
 
 // ─── Base Mestre de Preços: propagação segura ─────────────────────────────────
