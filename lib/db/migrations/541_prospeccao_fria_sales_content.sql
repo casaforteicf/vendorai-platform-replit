@@ -1,7 +1,14 @@
 CREATE TABLE IF NOT EXISTS "prospects" (
   "id" text PRIMARY KEY NOT NULL,
   "tenant_id" text NOT NULL REFERENCES "tenants"("id") ON DELETE CASCADE,
-  "company_id" text NOT NULL REFERENCES "crm_companies_master"("id") ON DELETE CASCADE,
+  "company_id" text REFERENCES "crm_companies_master"("id") ON DELETE SET NULL,
+  "display_name" text,
+  "phone" text,
+  "email" text,
+  "website" text,
+  "address" text,
+  "segment" text,
+  "city" text,
   "source" text DEFAULT 'prospector' NOT NULL,
   "source_ref" text,
   "stage" text DEFAULT 'encontrado' NOT NULL,
@@ -35,6 +42,8 @@ CREATE TABLE IF NOT EXISTS "prospects" (
 
 CREATE UNIQUE INDEX IF NOT EXISTS "prospects_tenant_company_uidx"
   ON "prospects" ("tenant_id", "company_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "prospects_tenant_source_ref_uidx"
+  ON "prospects" ("tenant_id", "source", "source_ref");
 CREATE INDEX IF NOT EXISTS "prospects_tenant_stage_idx"
   ON "prospects" ("tenant_id", "stage");
 CREATE INDEX IF NOT EXISTS "prospects_next_action_idx"
