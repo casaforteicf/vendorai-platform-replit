@@ -1528,13 +1528,18 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           if (!cancelled) {
             setConceptId(null);
             conceptIdRef.current = null;
-            setProjectScope(null);
-            setStartWithTerrain(null);
+            // PKG-07 / ARQ-UI: novo pré-projeto entra direto na escolha da origem.
+            // Casa é o padrão, terreno é opcional e pode ser informado antes ou depois.
+            setProjectScope("house");
+            setStartWithTerrain(false);
             setTerrainDefined(false);
             setStartSourceChosen(false);
-            setStartWizardStage("kind");
-            setIntakeStage("kind");
+            setStartWizardStage("source");
+            setIntakeStage("source");
             setStartChooserDismissed(false);
+            setEditorExperienceMode("guided");
+            setEditorView("plan");
+            setEditorLibraryTab("brief");
             setSaveState("idle");
           }
           return;
@@ -6860,11 +6865,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
         {step === 4 && (
           <section className="min-h-screen overflow-hidden bg-[#eef1f4] arq-workspace-stage">
-            <div className="arq-app-bar relative flex min-h-12 flex-wrap items-center justify-between gap-1.5 border-b border-slate-200 bg-white px-2 py-1 text-slate-900 shadow-sm sm:px-3 lg:h-12 lg:flex-nowrap lg:py-0">
+            <div className="arq-app-bar sticky top-0 z-50 flex min-h-14 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white/95 px-3 py-1.5 text-slate-900 shadow-sm backdrop-blur sm:px-4 lg:flex-nowrap">
               <div className="flex min-w-0 items-center gap-2">
                 {!guestMode && <a
                   href="/arch"
-                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10 hover:text-white"
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-950"
                   title="Voltar ao Arqdor"
                 >
                   <ArrowLeft className="h-4 w-4" />
@@ -6878,7 +6883,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                 {!guestMode && <button
                   type="button"
                   onClick={openProjectList}
-                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10 hover:text-white"
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-950"
                   title="Meus pré-projetos"
                   aria-label="Meus pré-projetos"
                 >
@@ -6887,7 +6892,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                 {!guestMode && <button
                   type="button"
                   onClick={() => { setPublicLinkOpen(true); void loadPublicLink(); }}
-                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10 hover:text-white"
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-950"
                   title="Link para clientes"
                   aria-label="Link para clientes"
                 >
@@ -6898,7 +6903,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   type="button"
                   onClick={() => void saveConcept(4)}
                   disabled={saveState === "saving" || saveState === "loading"}
-                  className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-500/15 px-3 text-xs font-bold text-emerald-100 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
                   title="Salvar a planta e todas as edições atuais"
                 >
                   <Check className="h-4 w-4" />
@@ -6907,10 +6912,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                 {saveStatusLabel && (
                   <span
                     className={saveState === "error"
-                      ? "shrink-0 text-[11px] font-semibold text-red-300"
+                      ? "shrink-0 text-[11px] font-semibold text-red-600"
                       : hasUnsavedChanges
-                        ? "shrink-0 text-[11px] text-amber-200"
-                        : "shrink-0 text-[11px] text-slate-400"}
+                        ? "shrink-0 text-[11px] text-amber-600"
+                        : "shrink-0 text-[11px] text-slate-500"}
                     aria-live="polite"
                   >
                     {saveStatusLabel}
@@ -6926,7 +6931,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       setEditorLibraryTab("brief");
                       setLibraryOpen(true);
                     }}
-                    className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3 text-xs font-bold text-emerald-100 transition hover:bg-emerald-500/20"
+                    className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
                     title="Abrir o briefing mestre que orienta este projeto"
                   >
                     <Heart className="h-4 w-4" />
@@ -6940,8 +6945,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   onClick={() => void runAiDevelopment()}
                   disabled={aiDevelopmentState === "running" || saveState === "loading"}
                   className={aiDevelopmentState === "error"
-                    ? "inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-red-400/30 bg-red-500/15 px-3 text-xs font-bold text-red-100 disabled:opacity-50"
-                    : "inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-orange-400/30 bg-orange-500/15 px-3 text-xs font-bold text-orange-100 transition hover:bg-orange-500/25 disabled:opacity-50"}
+                    ? "inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 text-xs font-bold text-red-700 disabled:opacity-50"
+                    : "inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 text-xs font-bold text-orange-700 transition hover:bg-orange-100 disabled:opacity-50"}
                   title="Desenvolver layout, paredes, aberturas e fachada com IA"
                 >
                   <Sparkles className={aiDevelopmentState === "running" ? "h-4 w-4 animate-pulse" : "h-4 w-4"} />
@@ -6952,20 +6957,20 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                 <button
                   type="button"
                   onClick={() => setActiveFloor((current) => floors <= 1 ? 0 : (current + 1) % floors)}
-                  className="ml-1 hidden h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 text-xs font-semibold text-slate-200 shadow-sm hover:bg-white/10 sm:inline-flex"
+                  className="ml-1 hidden h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 sm:inline-flex"
                   title="Alternar pavimento"
                 >
                   <Layers3 className="h-4 w-4 text-slate-500" />
                   <span>{activeFloor === 0 ? "Térreo" : activeFloor === 1 ? "Superior" : `Pav. ${activeFloor + 1}`}</span>
                   <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
                 </button>
-                <div className="ml-1 flex items-center rounded-xl border border-white/10 bg-white/5 p-1">
+                <div className="ml-1 flex items-center rounded-xl border border-slate-200 bg-slate-50 p-1">
                   <button
                     type="button"
                     onClick={() => setEditorExperienceMode("guided")}
                     className={editorExperienceMode === "guided"
                       ? "rounded-lg bg-white px-3 py-2 text-[11px] font-bold text-slate-950 shadow-sm"
-                      : "rounded-lg px-3 py-2 text-[11px] font-semibold text-slate-300 hover:bg-white/10"}
+                      : "rounded-lg px-3 py-2 text-[11px] font-semibold text-slate-600 hover:bg-white"}
                   >
                     Guiado
                   </button>
@@ -6974,7 +6979,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     onClick={() => { setEditorExperienceMode("professional"); if (editorLibraryTab === "brief" || editorLibraryTab === "placement") setEditorLibraryTab("build"); }}
                     className={editorExperienceMode === "professional"
                       ? "rounded-lg bg-white px-3 py-2 text-[11px] font-bold text-slate-950 shadow-sm"
-                      : "rounded-lg px-3 py-2 text-[11px] font-semibold text-slate-300 hover:bg-white/10"}
+                      : "rounded-lg px-3 py-2 text-[11px] font-semibold text-slate-600 hover:bg-white"}
                   >
                     <span className="sm:hidden">Pro</span><span className="hidden sm:inline">Profissional</span>
                   </button>
@@ -6990,7 +6995,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   title="Cotas"
                   className={showDimensions
                     ? "hidden h-10 w-10 place-items-center rounded-xl bg-orange-500/15 text-orange-300 sm:grid"
-                    : "hidden h-10 w-10 place-items-center rounded-xl text-slate-300 hover:bg-white/10 sm:grid"}
+                    : "hidden h-10 w-10 place-items-center rounded-xl text-slate-600 hover:bg-slate-100 sm:grid"}
                 >
                   <Ruler className="h-4 w-4" />
                 </button>
@@ -7000,7 +7005,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     type="button"
                     onClick={() => setModelGalleryOpen(true)}
                     title="Abrir galeria de modelos"
-                    className="hidden h-10 items-center gap-2 rounded-xl text-slate-300 hover:bg-white/10 sm:inline-flex sm:px-3"
+                    className="hidden h-10 items-center gap-2 rounded-xl text-slate-600 hover:bg-slate-100 sm:inline-flex sm:px-3"
                   >
                     <LayoutGrid className="h-4 w-4" />
                     Modelos
@@ -7016,7 +7021,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     title="Abrir biblioteca de móveis e objetos"
                     className={libraryOpen && editorLibraryTab === "furniture"
                       ? "hidden h-10 items-center gap-2 rounded-xl bg-white px-3 text-xs font-bold text-slate-950 shadow-sm sm:inline-flex"
-                      : "hidden h-10 items-center gap-2 rounded-xl text-slate-300 hover:bg-white/10 sm:inline-flex"}
+                      : "hidden h-10 items-center gap-2 rounded-xl text-slate-600 hover:bg-slate-100 sm:inline-flex"}
                   >
                     <Box className="h-4 w-4" />
                     Móveis
@@ -7026,7 +7031,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   type="button"
                   onClick={() => setFloors((value) => Math.min(3, value + 1))}
                   title="Adicionar pavimento"
-                  className="hidden h-10 w-10 place-items-center rounded-xl text-slate-300 hover:bg-white/10 sm:grid"
+                  className="hidden h-10 w-10 place-items-center rounded-xl text-slate-600 hover:bg-slate-100 sm:grid"
                 >
                   <Plus className="h-5 w-5" />
                 </button>
@@ -7233,9 +7238,33 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
                   {startWizardStage === "source" && (
                     <>
-                      <button type="button" onClick={() => { if (projectScope === "house") { setIntakeStage("terrain_choice"); setStartWizardStage("terrain"); } else { setProjectScope(null); setStartWithTerrain(null); setTerrainDefined(false); setIntakeStage("kind"); setStartWizardStage("kind"); } setStartChooserDismissed(false); }} className="mb-3 text-xs font-semibold text-slate-500 hover:text-slate-900">← Voltar</button>
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">{projectScope === "room" ? "Ambiente" : "Projeto"}</div>
-                      <h2 className="mt-1 text-2xl font-bold text-slate-950">Como você quer começar?</h2>
+                      <div className="mb-5 flex flex-col gap-4 border-b border-slate-100 pb-5 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">Novo pré-projeto</div>
+                          <h2 className="mt-1 text-2xl font-bold text-slate-950">Como você quer começar?</h2>
+                          <p className="mt-1 text-sm text-slate-500">Escolha o escopo e a origem. Nada aqui bloqueia ajustes posteriores.</p>
+                        </div>
+                        <div className="flex shrink-0 rounded-xl border bg-slate-50 p-1">
+                          <button
+                            type="button"
+                            onClick={() => { setProjectScope("house"); setStartWithTerrain(false); setTerrainDefined(false); }}
+                            className={projectScope === "house"
+                              ? "rounded-lg bg-slate-950 px-3 py-2 text-xs font-bold text-white shadow-sm"
+                              : "rounded-lg px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-white"}
+                          >
+                            Casa completa
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setProjectScope("room"); setStartWithTerrain(false); setTerrainDefined(false); setLotWidth(8); setLotDepth(8); setDesiredArea(25); setFloors(1); }}
+                            className={projectScope === "room"
+                              ? "rounded-lg bg-slate-950 px-3 py-2 text-xs font-bold text-white shadow-sm"
+                              : "rounded-lg px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-white"}
+                          >
+                            Um ambiente
+                          </button>
+                        </div>
+                      </div>
                       <p className="mt-1 text-sm leading-6 text-slate-500">
                         {projectScope === "room"
                           ? "Você pode descrever o ambiente, enviar uma foto/croqui, desenhar ou importar uma base."
@@ -7297,6 +7326,60 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
                       <div className="mt-5 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
                         A referência enviada não vira apenas uma imagem: primeiro é convertida em <strong className="font-semibold text-slate-800">geometria editável</strong>. Depois o mesmo projeto segue para 2D, 3D e Genius Render.
+                      </div>
+
+                      <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex flex-wrap gap-2">
+                          {projectScope === "house" && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setStartWithTerrain(true);
+                                setTerrainDefined(true);
+                                setIntakeStage("terrain_editor");
+                                setStartChooserDismissed(true);
+                                setEditorView("plan");
+                                setEditorLibraryTab("site");
+                                setLibraryOpen(true);
+                              }}
+                              className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold text-slate-700 hover:border-orange-300 hover:bg-orange-50"
+                            >
+                              <MapPin className="h-4 w-4 text-orange-600" />
+                              Definir terreno antes
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStartSourceChosen(true);
+                              setIntakeStage("complete");
+                              setStartChooserDismissed(true);
+                              setEditorExperienceMode("guided");
+                              setEditorView("plan");
+                              setEditorLibraryTab("models");
+                              setLibraryOpen(true);
+                              setModelGalleryOpen(true);
+                            }}
+                            className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold text-slate-700 hover:border-slate-400 hover:bg-slate-50"
+                          >
+                            <LayoutGrid className="h-4 w-4" />
+                            Usar modelo / inspiração
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStartSourceChosen(true);
+                            setIntakeStage("complete");
+                            setStartChooserDismissed(true);
+                            setEditorView("plan");
+                            setEditorLibraryTab("build");
+                            setLibraryOpen(true);
+                          }}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100"
+                        >
+                          Entrar direto no editor <ArrowRight className="h-4 w-4" />
+                        </button>
                       </div>
                     </>
                   )}
@@ -7510,86 +7593,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               </div>
             )}
 
-            {editorView === "plan" && !terrainOnly && (
-              <div className="flex items-center gap-1.5 overflow-x-auto border-b border-slate-200 bg-white px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                <button
-                  type="button"
-                  onClick={() => setInteractionMode("navigate")}
-                  className={interactionMode === "navigate"
-                    ? "shrink-0 rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white"
-                    : "shrink-0 rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"}
-                >
-                  Selecionar / editar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!wallFirstActive) activateWallFirstFloor();
-                    setEditorLibraryTab("build");
-                    setLibraryOpen(true);
-                    setInteractionMode("draw-wall");
-                    setSelectedId(null);
-                    setSelectedOpeningId(null);
-                  }}
-                  className={interactionMode === "draw-wall"
-                    ? "shrink-0 rounded-xl bg-orange-500 px-3 py-2 text-xs font-bold text-white"
-                    : "shrink-0 rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-orange-300 hover:bg-orange-50"}
-                >
-                  + Parede
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditorLibraryTab("rooms");
-                    setLibraryOpen(true);
-                    setInteractionMode(wallFirstActive ? "space" : "room");
-                    setSelectedOpeningId(null);
-                  }}
-                  className={(interactionMode === "room" || interactionMode === "space")
-                    ? "shrink-0 rounded-xl bg-orange-500 px-3 py-2 text-xs font-bold text-white"
-                    : "shrink-0 rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-orange-300 hover:bg-orange-50"}
-                >
-                  Ambientes
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditorLibraryTab("build");
-                    setLibraryOpen(true);
-                    setInteractionMode("opening");
-                    setSelectedId(null);
-                    setSelectedOpeningId(null);
-                  }}
-                  className={interactionMode === "opening"
-                    ? "shrink-0 rounded-xl bg-orange-500 px-3 py-2 text-xs font-bold text-white"
-                    : "shrink-0 rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-orange-300 hover:bg-orange-50"}
-                >
-                  Portas / janelas
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditorLibraryTab("furniture");
-                    setLibraryOpen(true);
-                    setInteractionMode("navigate");
-                  }}
-                  className={editorLibraryTab === "furniture" && libraryOpen
-                    ? "shrink-0 rounded-xl bg-orange-500 px-3 py-2 text-xs font-bold text-white"
-                    : "shrink-0 rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-orange-300 hover:bg-orange-50"}
-                >
-                  Móveis
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowDimensions((value) => !value)}
-                  className={showDimensions
-                    ? "shrink-0 rounded-xl bg-sky-50 px-3 py-2 text-xs font-bold text-sky-700 ring-1 ring-sky-200"
-                    : "shrink-0 rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"}
-                >
-                  Cotas {showDimensions ? "✓" : ""}
-                </button>
-              </div>
-            )}
+            {/* ARQ-UI: a barra horizontal duplicada foi removida.
+                Ferramentas de desenho permanecem no rail/painel contextual, liberando área do canvas. */}
 
             <div className="arq-workspace-shell relative min-h-[calc(100dvh-112px)] overflow-hidden bg-[#f6f7f8]">
               <aside className={editorView !== "plan"
