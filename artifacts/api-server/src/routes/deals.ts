@@ -2416,7 +2416,17 @@ router.patch("/deals/:id", async (req, res) => {
 // ─── Quote extraction ─────────────────────────────────────────────────────────
 router.post(
   "/tenants/:tenantId/deals/extract-quote",
-  uploadQuote.single("file"),
+  (req, res, next) => {
+    uploadQuote.single("file")(req, res, (error: unknown) => {
+      if (!error) return next();
+      if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+        res.status(413).json({ error: "Arquivo muito grande. O limite para importar orçamento é 10 MB." });
+        return;
+      }
+      req.log.warn({ err: error }, "extract-quote: upload failed");
+      res.status(400).json({ error: "Não foi possível receber o arquivo do orçamento." });
+    });
+  },
   async (req, res) => {
     const tenantId = String(req.params.tenantId);
 

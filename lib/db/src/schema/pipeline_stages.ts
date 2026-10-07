@@ -69,6 +69,29 @@ export type PipelineStageActivityTemplate = {
   condicao?: "sempre" | "sem_resposta_cliente" | "sem_atividade_aberta";
 };
 
+export type PipelineStageEventTemplate = {
+  id: string;
+  nome: string;
+  ativo?: boolean;
+  gatilho: "entrada" | "atraso";
+  tipo: "mensagem" | "imagem" | "documento" | "playbook" | "demanda";
+  destinatario: "cliente" | "responsavel" | "ambos";
+  canal: "whatsapp" | "notificacao";
+  mensagem?: string | null;
+  anexo?: {
+    nome: string;
+    url: string;
+    mimeType?: string | null;
+  } | null;
+  demanda?: {
+    titulo: string;
+    descricao?: string | null;
+    prazoMinutos?: number | null;
+    prioridade?: "baixa" | "normal" | "alta" | "urgente";
+    bloqueiaAvanco?: boolean;
+  } | null;
+};
+
 export type PipelineStageAICriterion = {
   field: string;
   operator?: "exists" | "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "contains";
@@ -157,9 +180,37 @@ export const pipelineStagesTable = pgTable("pipeline_stages", {
   // Conteúdos/interações vinculados à linha do tempo do SLA da etapa.
   // 0% = entrada, 1..99% = durante, 100%/final = fim do prazo.
   interacoesConteudo: jsonb("interacoes_conteudo").$type<PipelineStageContentInteraction[]>().notNull().default([]),
+  // Eventos disparados pela etapa. Vazio mantém comportamento legado dos tenants existentes.
+  eventos: jsonb("eventos").$type<PipelineStageEventTemplate[]>().notNull().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+export const pipelineStageEventRunsTable = pgTable("pipeline_stage_event_runs", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  stageId: text("stage_id").notNull().references(() => pipelineStagesTable.id, { onDelete: "cascade" }),
+  eventId: text("event_id").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  stageKey: text("stage_key").notNull(),
+  gatilho: text("gatilho").notNull(),
+  status: text("status").notNull().default("executing"),
+  attempts: integer("attempts").notNull().default(1),
+  error: text("error"),
+  executedAt: timestamp("executed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  uniqueExecution: uniqueIndex("pipeline_stage_event_runs_unique_execution_idx").on(
+    table.tenantId,
+    table.stageId,
+    table.eventId,
+    table.entityType,
+    table.entityId,
+    table.stageKey,
+    table.gatilho,
+  ),
+}));
 
 export const insertPipelineStageSchema = createInsertSchema(pipelineStagesTable).omit({
   id: true, createdAt: true, updatedAt: true,

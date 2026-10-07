@@ -14,6 +14,7 @@ import {
 } from "@workspace/db";
 import { tenantIsWithinBusinessHours } from "../lib/proactiveMessageGuard.js";
 import { sendAgentAttachments, sendDirectWhatsAppMessage } from "../services/omnichannel.js";
+import { executeConfiguredStageEvents } from "../services/pipeline-stage-events.js";
 
 const DISTRIBUTED_LOCK_KEY = "vendorai:pipeline-stage-lifecycle:v1";
 const APP_BASE_URL = "https://app.appvendorai.com";
@@ -349,7 +350,7 @@ export async function runPipelineStageLifecycle(log: Logger): Promise<void> {
 
     for (const row of deals) {
       const state = dealPipelineAndStage(row.deal);
-      if (!state || !row.deal.assignedTo || !(await canRunTenant(row.deal.tenantId))) continue;
+      if (!state || !(await canRunTenant(row.deal.tenantId))) continue;
 
       const config = stageMap.get(`${row.deal.tenantId}:${state.pipeline}:${state.stage}`);
       const stageLabel = config?.label || state.stage;
@@ -367,30 +368,48 @@ export async function runPipelineStageLifecycle(log: Logger): Promise<void> {
       });
       const transitionCategory = `pipeline_stage_entered:${state.pipeline}:${row.deal.id}:${state.stage}`;
 
-      if (minutesSince(enteredAt, now) <= RECENT_TRANSITION_MINUTES && !(await hasNotification(row.deal.tenantId, transitionCategory))) {
-        await markNotification({
+      if (minutesSince(enteredAt, now) <= RECENT_TRANSITION_MINUTES) {
+        await executeConfiguredStageEvents({
           tenantId: row.deal.tenantId,
-          category: transitionCategory,
-          title: `${pipelineLabel(state.pipeline)}: nova etapa`,
-          message: `${clientName(row.lead)} entrou em ${stageLabel}.`,
+          pipeline: state.pipeline,
+          stageKey: state.stage,
+          gatilho: "entrada",
+          entityType: "deal",
+          entityId: row.deal.id,
+          leadId: row.deal.leadId,
+          dealId: row.deal.id,
+          client: { name: clientName(row.lead), phone: clientContact(row.lead).phone },
+          owner: { id: row.owner?.id ?? null, name: row.owner?.name ?? null, phone: row.owner?.telefone ?? null },
+          processTitle: row.deal.titulo,
+          url: routeForDeal(state.pipeline, row.deal.leadId, row.deal.id),
+          log,
         });
-        try {
-          await sendStageWhatsApp({
+
+        if (row.deal.assignedTo && !(await hasNotification(row.deal.tenantId, transitionCategory))) {
+          await markNotification({
             tenantId: row.deal.tenantId,
-            owner: row.owner,
-            lead: row.lead,
-            pipelineLabel: pipelineLabel(state.pipeline),
-            stageLabel,
-            title: "O processo entrou nesta etapa e está sob sua responsabilidade.",
-            dueDate: row.deal.dataFechamentoPrevista,
-            detail: row.deal.titulo,
-            url: routeForDeal(state.pipeline, row.deal.leadId, row.deal.id),
-            log,
+            category: transitionCategory,
+            title: `${pipelineLabel(state.pipeline)}: nova etapa`,
+            message: `${clientName(row.lead)} entrou em ${stageLabel}.`,
           });
-        } catch (error) {
-          log.warn({ err: error, dealId: row.deal.id }, "pipeline-stage-lifecycle: aviso de entrada do deal falhou");
+          try {
+            await sendStageWhatsApp({
+              tenantId: row.deal.tenantId,
+              owner: row.owner,
+              lead: row.lead,
+              pipelineLabel: pipelineLabel(state.pipeline),
+              stageLabel,
+              title: "O processo entrou nesta etapa e está sob sua responsabilidade.",
+              dueDate: row.deal.dataFechamentoPrevista,
+              detail: row.deal.titulo,
+              url: routeForDeal(state.pipeline, row.deal.leadId, row.deal.id),
+              log,
+            });
+          } catch (error) {
+            log.warn({ err: error, dealId: row.deal.id }, "pipeline-stage-lifecycle: aviso de entrada do deal falhou");
+          }
+          transitions++;
         }
-        transitions++;
       }
 
       const dueDateKey = plannedDateKey(row.deal.dataFechamentoPrevista);
@@ -399,8 +418,24 @@ export async function runPipelineStageLifecycle(log: Logger): Promise<void> {
       const overdueBySla = !dueDateKey && slaMinutes != null && slaMinutes > 0 && minutesSince(enteredAt, now) >= slaMinutes;
       if (!overdueByDate && !overdueBySla) continue;
 
+      await executeConfiguredStageEvents({
+        tenantId: row.deal.tenantId,
+        pipeline: state.pipeline,
+        stageKey: state.stage,
+        gatilho: "atraso",
+        entityType: "deal",
+        entityId: row.deal.id,
+        leadId: row.deal.leadId,
+        dealId: row.deal.id,
+        client: { name: clientName(row.lead), phone: clientContact(row.lead).phone },
+        owner: { id: row.owner?.id ?? null, name: row.owner?.name ?? null, phone: row.owner?.telefone ?? null },
+        processTitle: row.deal.titulo,
+        url: routeForDeal(state.pipeline, row.deal.leadId, row.deal.id),
+        log,
+      });
+
       const overdueCategory = `pipeline_stage_overdue:${state.pipeline}:${row.deal.id}:${state.stage}`;
-      if (await hasNotification(row.deal.tenantId, overdueCategory)) continue;
+      if (!row.deal.assignedTo || await hasNotification(row.deal.tenantId, overdueCategory)) continue;
       await markNotification({
         tenantId: row.deal.tenantId,
         category: overdueCategory,
@@ -451,7 +486,7 @@ export async function runPipelineStageLifecycle(log: Logger): Promise<void> {
 
     for (const row of cards) {
       const card = row.card;
-      if (!card.responsavelId || ["concluido", "entrega_obra", "instalacao_finalizada", "fechamento_assistencia", "cancelado"].includes(card.etapa)) continue;
+      if (["concluido", "entrega_obra", "instalacao_finalizada", "fechamento_assistencia", "cancelado"].includes(card.etapa)) continue;
       if (!(await canRunTenant(card.tenantId))) continue;
 
       const metadata = asRecord(card.metadata);
@@ -485,31 +520,51 @@ export async function runPipelineStageLifecycle(log: Logger): Promise<void> {
         }).where(and(eq(workCardsTable.id, card.id), eq(workCardsTable.tenantId, card.tenantId)));
       }
 
-      if (minutesSince(enteredAt, now) <= RECENT_TRANSITION_MINUTES && !(await hasNotification(card.tenantId, transitionCategory))) {
-        await markNotification({
+      if (minutesSince(enteredAt, now) <= RECENT_TRANSITION_MINUTES) {
+        await executeConfiguredStageEvents({
           tenantId: card.tenantId,
-          category: transitionCategory,
-          title: `${pipelineLabel(cardPipeline)}: nova etapa`,
-          message: `${clientName(row.lead)} entrou em ${stageLabel}.`,
+          pipeline: cardPipeline,
+          stageKey: card.etapa,
+          gatilho: "entrada",
+          entityType: "work_card",
+          entityId: card.id,
+          leadId: card.leadId,
+          dealId: card.dealId,
+          workCardId: card.id,
+          client: { name: clientName(row.lead), phone: clientContact(row.lead).phone },
+          owner: { id: row.owner?.id ?? null, name: row.owner?.name ?? null, phone: row.owner?.telefone ?? null },
+          processTitle: card.titulo,
+          processCode: card.codigo,
+          url: `${APP_BASE_URL}/pipeline-operacional/${cardPipeline}?card=${encodeURIComponent(card.id)}`,
+          log,
         });
-        try {
-          await sendStageWhatsApp({
+
+        if (card.responsavelId && !(await hasNotification(card.tenantId, transitionCategory))) {
+          await markNotification({
             tenantId: card.tenantId,
-            owner: row.owner,
-            lead: row.lead,
-            pipelineLabel: pipelineLabel(cardPipeline),
-            stageLabel,
-            title: "O processo entrou nesta etapa e está sob sua responsabilidade.",
-            dueDate: card.dataFimPrevista,
-            detail: `${card.codigo} — ${card.titulo}`,
-            url: `${APP_BASE_URL}/pipeline-operacional/execucao?card=${encodeURIComponent(card.id)}`,
-            attachmentCardId: card.id,
-            log,
+            category: transitionCategory,
+            title: `${pipelineLabel(cardPipeline)}: nova etapa`,
+            message: `${clientName(row.lead)} entrou em ${stageLabel}.`,
           });
-        } catch (error) {
-          log.warn({ err: error, workCardId: card.id }, "pipeline-stage-lifecycle: aviso de entrada da execução falhou");
+          try {
+            await sendStageWhatsApp({
+              tenantId: card.tenantId,
+              owner: row.owner,
+              lead: row.lead,
+              pipelineLabel: pipelineLabel(cardPipeline),
+              stageLabel,
+              title: "O processo entrou nesta etapa e está sob sua responsabilidade.",
+              dueDate: card.dataFimPrevista,
+              detail: `${card.codigo} — ${card.titulo}`,
+              url: `${APP_BASE_URL}/pipeline-operacional/${cardPipeline}?card=${encodeURIComponent(card.id)}`,
+              attachmentCardId: card.id,
+              log,
+            });
+          } catch (error) {
+            log.warn({ err: error, workCardId: card.id }, "pipeline-stage-lifecycle: aviso de entrada da execução falhou");
+          }
+          transitions++;
         }
-        transitions++;
       }
 
       const dueDateKey = plannedDateKey(card.dataFimPrevista);
@@ -518,12 +573,30 @@ export async function runPipelineStageLifecycle(log: Logger): Promise<void> {
       const overdueBySla = !dueDateKey && slaMinutes != null && slaMinutes > 0 && minutesSince(enteredAt, now) >= slaMinutes;
       if (!overdueByDate && !overdueBySla) continue;
 
-      const overdueCategory = `pipeline_stage_overdue:execucao:${card.id}:${card.etapa}`;
-      if (await hasNotification(card.tenantId, overdueCategory)) continue;
+      await executeConfiguredStageEvents({
+        tenantId: card.tenantId,
+        pipeline: cardPipeline,
+        stageKey: card.etapa,
+        gatilho: "atraso",
+        entityType: "work_card",
+        entityId: card.id,
+        leadId: card.leadId,
+        dealId: card.dealId,
+        workCardId: card.id,
+        client: { name: clientName(row.lead), phone: clientContact(row.lead).phone },
+        owner: { id: row.owner?.id ?? null, name: row.owner?.name ?? null, phone: row.owner?.telefone ?? null },
+        processTitle: card.titulo,
+        processCode: card.codigo,
+        url: `${APP_BASE_URL}/pipeline-operacional/${cardPipeline}?card=${encodeURIComponent(card.id)}`,
+        log,
+      });
+
+      const overdueCategory = `pipeline_stage_overdue:${cardPipeline}:${card.id}:${card.etapa}`;
+      if (!card.responsavelId || await hasNotification(card.tenantId, overdueCategory)) continue;
       await markNotification({
         tenantId: card.tenantId,
         category: overdueCategory,
-        title: "Execução: etapa precisa de atenção",
+        title: `${pipelineLabel(cardPipeline)}: etapa precisa de atenção`,
         message: `${clientName(row.lead)} permanece em ${stageLabel} além do prazo esperado.`,
       });
       try {
@@ -531,12 +604,12 @@ export async function runPipelineStageLifecycle(log: Logger): Promise<void> {
           tenantId: card.tenantId,
           owner: row.owner,
           lead: row.lead,
-          pipelineLabel: "Execução / Pedidos",
+          pipelineLabel: pipelineLabel(cardPipeline),
           stageLabel,
           title: dueDateKey ? "Etapa chegou à data prevista sem avanço." : "Etapa ultrapassou o SLA configurado.",
           dueDate: card.dataFimPrevista,
           detail: `${card.codigo} — ${card.titulo}`,
-          url: `${APP_BASE_URL}/pipeline-operacional/execucao?card=${encodeURIComponent(card.id)}`,
+          url: `${APP_BASE_URL}/pipeline-operacional/${cardPipeline}?card=${encodeURIComponent(card.id)}`,
           attachmentCardId: card.id,
           log,
         });
@@ -570,7 +643,7 @@ export async function runPipelineStageLifecycle(log: Logger): Promise<void> {
 
     for (const row of scoutRows) {
       const op = row.opportunity;
-      if (!op.assignedTo || ["convertida", "descartada"].includes(op.pipelineStage)) continue;
+      if (["convertida", "descartada"].includes(op.pipelineStage)) continue;
       if (!(await canRunTenant(op.tenantId))) continue;
 
       const config = stageMap.get(`${op.tenantId}:scout:${op.pipelineStage}`);
@@ -580,35 +653,67 @@ export async function runPipelineStageLifecycle(log: Logger): Promise<void> {
       const enteredAt = op.enviadoEm || op.approvedAt || op.createdAt;
       const transitionCategory = `pipeline_stage_entered:scout:${op.id}:${op.pipelineStage}`;
 
-      if (minutesSince(enteredAt, now) <= RECENT_TRANSITION_MINUTES && !(await hasNotification(op.tenantId, transitionCategory))) {
-        await markNotification({
+      if (minutesSince(enteredAt, now) <= RECENT_TRANSITION_MINUTES) {
+        await executeConfiguredStageEvents({
           tenantId: op.tenantId,
-          category: transitionCategory,
-          title: "Scout: nova etapa",
-          message: `${clientName(row.lead)} entrou em ${stageLabel}.`,
+          pipeline: "scout",
+          stageKey: op.pipelineStage,
+          gatilho: "entrada",
+          entityType: "scout",
+          entityId: op.id,
+          leadId: op.clienteId,
+          client: { name: clientName(row.lead), phone: clientContact(row.lead).phone },
+          owner: { id: row.owner?.id ?? null, name: row.owner?.name ?? null, phone: row.owner?.telefone ?? null },
+          processTitle: op.descricao,
+          url: `${APP_BASE_URL}/scout?tab=acoes`,
+          log,
         });
-        try {
-          await sendStageWhatsApp({
+
+        if (op.assignedTo && !(await hasNotification(op.tenantId, transitionCategory))) {
+          await markNotification({
             tenantId: op.tenantId,
-            owner: row.owner,
-            lead: row.lead,
-            pipelineLabel: "Scout",
-            stageLabel,
-            title: "A oportunidade entrou nesta etapa e está sob sua responsabilidade.",
-            detail: op.descricao,
-            url: `${APP_BASE_URL}/scout?tab=acoes`,
-            log,
+            category: transitionCategory,
+            title: "Scout: nova etapa",
+            message: `${clientName(row.lead)} entrou em ${stageLabel}.`,
           });
-        } catch (error) {
-          log.warn({ err: error, opportunityId: op.id }, "pipeline-stage-lifecycle: aviso de entrada do Scout falhou");
+          try {
+            await sendStageWhatsApp({
+              tenantId: op.tenantId,
+              owner: row.owner,
+              lead: row.lead,
+              pipelineLabel: "Scout",
+              stageLabel,
+              title: "A oportunidade entrou nesta etapa e está sob sua responsabilidade.",
+              detail: op.descricao,
+              url: `${APP_BASE_URL}/scout?tab=acoes`,
+              log,
+            });
+          } catch (error) {
+            log.warn({ err: error, opportunityId: op.id }, "pipeline-stage-lifecycle: aviso de entrada do Scout falhou");
+          }
+          transitions++;
         }
-        transitions++;
       }
 
       const slaMinutes = config?.slaMinutos ?? null;
       if (slaMinutes == null || slaMinutes <= 0 || minutesSince(enteredAt, now) < slaMinutes) continue;
+      await executeConfiguredStageEvents({
+        tenantId: op.tenantId,
+        pipeline: "scout",
+        stageKey: op.pipelineStage,
+        gatilho: "atraso",
+        entityType: "scout",
+        entityId: op.id,
+        leadId: op.clienteId,
+        client: { name: clientName(row.lead), phone: clientContact(row.lead).phone },
+        owner: { id: row.owner?.id ?? null, name: row.owner?.name ?? null, phone: row.owner?.telefone ?? null },
+        processTitle: op.descricao,
+        url: `${APP_BASE_URL}/scout?tab=acoes`,
+        log,
+      });
+
       const overdueCategory = `pipeline_stage_overdue:scout:${op.id}:${op.pipelineStage}`;
-      if (await hasNotification(op.tenantId, overdueCategory)) continue;
+      if (!op.assignedTo || await hasNotification(op.tenantId, overdueCategory)) continue;
 
       await markNotification({
         tenantId: op.tenantId,
@@ -637,3 +742,4 @@ export async function runPipelineStageLifecycle(log: Logger): Promise<void> {
     log.info({ transitions, overdue }, "pipeline-stage-lifecycle: complete");
   });
 }
+

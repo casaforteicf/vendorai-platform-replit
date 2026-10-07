@@ -297,6 +297,7 @@ export default function LeadWorkspace() {
   const [editEligible, setEditEligible] = useState(false);
   const [savingAnswers, setSavingAnswers] = useState(false);
   const [ownerEditorOpen, setOwnerEditorOpen] = useState(false);
+  const [responsibilityEditorOpen, setResponsibilityEditorOpen] = useState(false);
   const [currentOwner, setCurrentOwner] = useState("");
   const [savingOwner, setSavingOwner] = useState(false);
   const [intelligenceOpen, setIntelligenceOpen] = useState(false);
@@ -521,6 +522,7 @@ export default function LeadWorkspace() {
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error ?? "Não foi possível atribuir a empresa representante.");
       await qc.invalidateQueries({ queryKey: ["deal-participations", tenantId] });
+      setResponsibilityEditorOpen(false);
       toast({
         title: "Empresa definida como responsável",
         description: "O negócio foi compartilhado e a representante mantém acesso nas próximas etapas conforme as autonomias configuradas.",
@@ -773,74 +775,83 @@ export default function LeadWorkspace() {
     )}
 
     {deal && canEditOwner && (
-      <Card className="border-border/70 shadow-sm">
-        <CardContent className="p-4">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <div className="flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-cyan-700" />
-                <p className="text-sm font-semibold">Responsabilidade empresarial</p>
-                {activeParticipation?.role === "responsible" && <Badge variant="secondary">Empresa responsável</Badge>}
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">Compartilhe este negócio com uma empresa representante sem duplicar usuários entre tenants.</p>
-            </div>
-          </div>
-
-          {ownerPartnerships.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nenhuma empresa representante ativa foi vinculada a este tenant.</p>
-          ) : (
-            <div className="grid gap-3 lg:grid-cols-[1.3fr_1fr_160px_auto] lg:items-end">
-              <div className="space-y-1.5">
-                <Label>Empresa representante</Label>
-                <Select value={selectedPartnershipId} onValueChange={setSelectedPartnershipId}>
-                  <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                  <SelectContent>
-                    {ownerPartnerships.map((partnership) => (
-                      <SelectItem key={partnership.id} value={partnership.id}>
-                        {partnership.partnerName || partnership.partnerTenantCode || partnership.partnerTenantId}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Executor na representante</Label>
-                <Select value={selectedPartnerUserId || "__queue__"} onValueChange={(value) => setSelectedPartnerUserId(value === "__queue__" ? "" : value)}>
-                  <SelectTrigger><SelectValue placeholder="Fila da empresa" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__queue__">Fila da empresa / definir depois</SelectItem>
-                    {partnerUsers.map((partnerUser) => (
-                      <SelectItem key={partnerUser.id} value={partnerUser.id}>
-                        {partnerUser.name || partnerUser.email || partnerUser.id}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Button type="button" variant="ghost" className="h-9 px-2 text-muted-foreground" onClick={() => setCommissionEditorOpen((value) => !value)}>
-                  <HandCoins className="mr-2 h-4 w-4" />
-                  {commissionEditorOpen ? "Ocultar comissão" : activeParticipation ? "Editar comissão" : "Configurar comissão"}
-                </Button>
-                {commissionEditorOpen && (
-                  <div className="space-y-1.5 rounded-md border bg-muted/20 p-2">
-                    <Label>Comissão do negócio</Label>
-                    <div className="relative">
-                      <Input type="number" min="0" max="100" step="0.01" value={partnerCommissionPercent} onChange={(event) => setPartnerCommissionPercent(event.target.value)} className="pr-8" />
-                      <span className="pointer-events-none absolute right-3 top-2.5 text-sm text-muted-foreground">%</span>
+      activeParticipation && !responsibilityEditorOpen ? (
+        <div className="flex justify-end">
+          <Button type="button" variant="ghost" size="sm" className="h-8 text-muted-foreground" onClick={() => setResponsibilityEditorOpen(true)}>
+            <Building2 className="mr-1.5 h-4 w-4" />
+            Responsável / empresa
+          </Button>
+        </div>
+      ) : (
+        <Card className="border-border/70 shadow-sm">
+                <CardContent className="p-4">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Building2 className="h-4 w-4 text-cyan-700" />
+                        <p className="text-sm font-semibold">Responsabilidade empresarial</p>
+                        {activeParticipation?.role === "responsible" && <Badge variant="secondary">Empresa responsável</Badge>}
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">Compartilhe este negócio com uma empresa representante sem duplicar usuários entre tenants.</p>
                     </div>
-                    <p className="text-[11px] text-muted-foreground">Informação restrita a usuários autorizados. O padrão da parceria pode ser ajustado por negócio.</p>
                   </div>
-                )}
-              </div>
-              <Button type="button" onClick={saveRepresentationResponsibility} disabled={savingRepresentation || !selectedPartnershipId}>
-                {savingRepresentation && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {activeParticipation ? "Atualizar responsabilidade" : "Definir como responsável"}
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        
+                  {ownerPartnerships.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Nenhuma empresa representante ativa foi vinculada a este tenant.</p>
+                  ) : (
+                    <div className="grid gap-3 lg:grid-cols-[1.3fr_1fr_160px_auto] lg:items-end">
+                      <div className="space-y-1.5">
+                        <Label>Empresa representante</Label>
+                        <Select value={selectedPartnershipId} onValueChange={setSelectedPartnershipId}>
+                          <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                          <SelectContent>
+                            {ownerPartnerships.map((partnership) => (
+                              <SelectItem key={partnership.id} value={partnership.id}>
+                                {partnership.partnerName || partnership.partnerTenantCode || partnership.partnerTenantId}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Executor na representante</Label>
+                        <Select value={selectedPartnerUserId || "__queue__"} onValueChange={(value) => setSelectedPartnerUserId(value === "__queue__" ? "" : value)}>
+                          <SelectTrigger><SelectValue placeholder="Fila da empresa" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__queue__">Fila da empresa / definir depois</SelectItem>
+                            {partnerUsers.map((partnerUser) => (
+                              <SelectItem key={partnerUser.id} value={partnerUser.id}>
+                                {partnerUser.name || partnerUser.email || partnerUser.id}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Button type="button" variant="ghost" className="h-9 px-2 text-muted-foreground" onClick={() => setCommissionEditorOpen((value) => !value)}>
+                          <HandCoins className="mr-2 h-4 w-4" />
+                          {commissionEditorOpen ? "Ocultar comissão" : activeParticipation ? "Editar comissão" : "Configurar comissão"}
+                        </Button>
+                        {commissionEditorOpen && (
+                          <div className="space-y-1.5 rounded-md border bg-muted/20 p-2">
+                            <Label>Comissão do negócio</Label>
+                            <div className="relative">
+                              <Input type="number" min="0" max="100" step="0.01" value={partnerCommissionPercent} onChange={(event) => setPartnerCommissionPercent(event.target.value)} className="pr-8" />
+                              <span className="pointer-events-none absolute right-3 top-2.5 text-sm text-muted-foreground">%</span>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">Informação restrita a usuários autorizados. O padrão da parceria pode ser ajustado por negócio.</p>
+                          </div>
+                        )}
+                      </div>
+                      <Button type="button" onClick={saveRepresentationResponsibility} disabled={savingRepresentation || !selectedPartnershipId}>
+                        {savingRepresentation && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {activeParticipation ? "Atualizar responsabilidade" : "Definir como responsável"}
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+      )
     )}
 
     {deal && activeParticipation?.commission && canEditOwner && (
@@ -1320,3 +1331,4 @@ export default function LeadWorkspace() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <div className="grid gap-2"><Label>{label}</Label>{children}</div>;
 }
+

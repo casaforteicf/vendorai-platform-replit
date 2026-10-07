@@ -78,7 +78,14 @@ type Attachment = {
 };
 
 type Lead = { id: string; nome?: string | null; empresa?: string | null; telefone?: string | null; email?: string | null; endereco?: string | null };
-type User = { id: string; name?: string | null; email?: string | null; userFunction?: string | null };
+type User = {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  userFunction?: string | null;
+  customFunctionId?: string | null;
+  active?: boolean | null;
+};
 type Deal = { id: string; titulo: string; leadId?: string | null; etapa: string; valor?: string | null };
 type Proposal = { id: string; dealId?: string | null; leadId: string; titulo: string; status: string; itens?: Array<Record<string, unknown>> };
 type LegacyOrderImport = {
@@ -118,6 +125,7 @@ type ConfiguredPipelineStage = {
   ordem: number;
   isSystem?: boolean;
   slaMinutos?: number | null;
+  responsaveisFuncoes?: string[] | null;
 };
 
 const EXECUTION_STAGES = [
@@ -191,6 +199,21 @@ const SUPPORT_CATEGORIES = [
   ["manutencao", "Manutenção"],
   ["outro", "Outro"],
 ] as const;
+
+function userMatchesStageFunctions(user: User, responsibleFunctions?: string[] | null) {
+  if (user.active === false) return false;
+  const configured = responsibleFunctions ?? [];
+  if (configured.length === 0) return true;
+
+  const refs = new Set<string>();
+  if (user.userFunction) refs.add(`builtin:${user.userFunction}`);
+  if (user.customFunctionId) refs.add(`custom:${user.customFunctionId}`);
+  return configured.some((ref) => refs.has(ref));
+}
+
+function eligibleUsersForStage(users: User[], stage?: ConfiguredPipelineStage | null) {
+  return users.filter((user) => userMatchesStageFunctions(user, stage?.responsaveisFuncoes));
+}
 
 function formatDate(value?: string | null) {
   if (!value) return "—";
@@ -515,6 +538,12 @@ export default function PipelineOperacional() {
   const stageIndex = (stage: string) => stages.findIndex(([key]) => key === stage);
   const canMoveForward = (card: WorkCard, target: string) =>
     target === card.etapa || stageIndex(target) >= stageIndex(card.etapa) || (card.pipeline === "execucao" && isAdmin);
+  const nextExecutionStage = (stage: string) => {
+    const index = EXECUTION_STAGES.findIndex(([key]) => key === stage);
+    return index >= 0 && index < EXECUTION_STAGES.length - 1 ? EXECUTION_STAGES[index + 1] : null;
+  };
+  const currentStageRequirementsCompleted = (card: WorkCard) =>
+    (EXECUTION_STAGE_REQUIREMENTS[card.etapa] ?? []).every((requirement) => requirementCompleted(card, requirement.key));
 
   function setPipeline(next: PipelineKind | "comercial" | "aquecimento" | "parceiros") {
     if (next === "comercial") navigate("/deals");
@@ -581,7 +610,7 @@ export default function PipelineOperacional() {
           {pipeline === "execucao" ? (
             <>
               {isAdmin && <Button variant="outline" onClick={() => setInstallationTemplatesOpen(true)} className="gap-2"><ClipboardCheck className="h-4 w-4" /> Configurar instalação</Button>}
-              <Button onClick={() => setDeliveryOpen(true)} className="gap-2"><Truck className="h-4 w-4" /> Liberar itens para entrega</Button>
+              <Button onClick={() => setDeliveryOpen(true)} className="gap-2"><Truck className="h-4 w-4" /> Criar lote para entrega</Button>
             </>
           ) : (
             <Button onClick={() => setSupportOpen(true)} className="gap-2"><Wrench className="h-4 w-4" /> Novo chamado</Button>
@@ -738,7 +767,7 @@ export default function PipelineOperacional() {
                           <SelectTrigger><SelectValue placeholder="Selecionar responsável" /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="__none__">Sem responsável</SelectItem>
-                            {(usersQuery.data ?? []).map((u) => <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>)}
+                            {eligibleUsersForStage(usersQuery.data ?? [], (pipelineStagesQuery.data ?? []).find((stage) => stage.key === selectedCard.etapa)).map((u) => <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>)}
                           </SelectContent>
                         </Select>
                       </div>
@@ -827,6 +856,48 @@ export default function PipelineOperacional() {
                         })}
                       </div>
                     )}
+
+
+                    {(() => {
+                      const nextStage = nextExecutionStage(selectedCard.etapa);
+                      const requirementsCompleted = currentStageRequirementsCompleted(selectedCard);
+                      if (!nextStage) {
+                        return (
+                          <div className="rounded-xl border bg-muted/20 p-3 text-sm text-muted-foreground">
+                            Este pedido já está na etapa final da execução.
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="flex flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="text-sm font-semibold">Avançar etapa</p>
+                            <p className="text-xs text-muted-foreground">
+                              Próxima etapa: <strong className="text-foreground">{nextStage[1]}</strong>
+                              {!requirementsCompleted ? " • conclua os requisitos obrigatórios acima para liberar o avanço." : ""}
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            disabled={patchCard.isPending || !requirementsCompleted}
+                            onClick={() => {
+                              patchCard.mutate(
+                                { id: selectedCard.id, data: { etapa: nextStage[0] } },
+                                {
+                                  onSuccess: () => toast({
+                                    title: "Etapa avançada",
+                                    description: `Pedido movido para ${nextStage[1]}.`,
+                                  }),
+                                },
+                              );
+                            }}
+                          >
+                            {patchCard.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Avançar para {nextStage[1]}
+                          </Button>
+                        </div>
+                      );
+                    })()}
                   </div>
                 ) : (
                   <>
@@ -1242,6 +1313,7 @@ export default function PipelineOperacional() {
         deals={dealsQuery.data ?? []}
         proposals={proposalsQuery.data ?? []}
         users={usersQuery.data ?? []}
+        stages={pipelineStagesQuery.data ?? []}
         onCreated={async () => {
           setSupportOpen(false);
           await queryClient.invalidateQueries({ queryKey: ["work-cards", tenantId, "suporte"] });
@@ -1394,7 +1466,7 @@ function InstallationAcceptancePanel({
   );
 }
 
-function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, proposals, users, onCreated }: {
+function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, proposals, users, stages, onCreated }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   tenantId: string;
@@ -1403,6 +1475,7 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
   deals: Deal[];
   proposals: Proposal[];
   users: User[];
+  stages: ConfiguredPipelineStage[];
   onCreated: () => void | Promise<void>;
 }) {
   const { toast } = useToast();
@@ -1450,6 +1523,14 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
     }, []);
   }, [leads, leadSearch]);
   const proposal = proposals.find((p) => p.dealId === dealId) ?? null;
+  const openingStage = stages.find((stage) => stage.key === "chamado_cliente") ?? null;
+  const eligibleResponsibleUsers = eligibleUsersForStage(users, openingStage);
+
+  useEffect(() => {
+    if (responsavelId && !eligibleResponsibleUsers.some((user) => user.id === responsavelId)) {
+      setResponsavelId("");
+    }
+  }, [responsavelId, eligibleResponsibleUsers]);
 
   function legacyItemLabel(item: Record<string, unknown>, index: number) {
     return String(item.nome || item.name || item.descricao || item.produto || item.sku || `Item ${index + 1}`);
@@ -1708,7 +1789,7 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
           <div className="space-y-1.5 sm:col-span-2"><label className="text-sm font-medium">Título *</label><Input value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ex: Porta da suíte não fecha corretamente" /></div>
           <div className="space-y-1.5 sm:col-span-2"><label className="text-sm font-medium">Relato claro do problema *</label><Textarea rows={5} value={relato} onChange={(e) => setRelato(e.target.value)} placeholder="Descreva o sintoma, quando começou, onde ocorre, o que já foi testado e qualquer detalhe útil para o técnico." /><p className="text-xs text-muted-foreground">A IA e o atendimento humano devem coletar informação suficiente antes de enviar ao suporte.</p></div>
           <div className="space-y-1.5 sm:col-span-2"><label className="text-sm font-medium">Itens/produtos afetados</label><Input value={produtos} onChange={(e) => setProdutos(e.target.value)} placeholder="Separe por vírgula: janela suíte, porta varanda..." /></div>
-          <div className="space-y-1.5"><label className="text-sm font-medium">Responsável *</label><Select value={responsavelId} onValueChange={setResponsavelId}><SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger><SelectContent>{users.map((u) => <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>)}</SelectContent></Select></div>
+          <div className="space-y-1.5"><label className="text-sm font-medium">Responsável *</label><Select value={responsavelId} onValueChange={setResponsavelId}><SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger><SelectContent>{eligibleResponsibleUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>)}</SelectContent></Select>{openingStage?.responsaveisFuncoes?.length ? <p className="text-[11px] text-muted-foreground">Somente usuários ativos das funções responsáveis por esta etapa.</p> : null}</div>
           <div className="space-y-1.5"><label className="text-sm font-medium">Prioridade</label><Select value={prioridade} onValueChange={setPrioridade}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="baixa">Baixa</SelectItem><SelectItem value="normal">Normal</SelectItem><SelectItem value="alta">Alta</SelectItem><SelectItem value="urgente">Urgente</SelectItem></SelectContent></Select></div>
           <div className="space-y-1.5"><label className="text-sm font-medium">Prazo/agendamento inicial</label><Input type="date" value={data} onChange={(e) => setData(e.target.value)} /></div>
           <div className="space-y-1.5"><label className="text-sm font-medium">Fotos, vídeos, áudios e documentos</label><Input type="file" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx" onChange={(e) => setFiles(Array.from(e.target.files ?? []))} /><p className="text-xs text-muted-foreground">{files.length ? `${files.length} arquivo(s) selecionado(s)` : "Opcional"}</p></div>
@@ -1822,7 +1903,7 @@ function DeliveryDialog({ open, onOpenChange, tenantId, token, deals, leads, use
       setDealId(""); setResponsavelId(""); setReleaseDate(""); setDeliveryDate(""); setAddress(""); setNotes(""); setQuantities({}); setFiles([]);
       await onCreated();
     } catch (error) {
-      toast({ title: "Erro ao criar lote de entrega", description: String(error), variant: "destructive" });
+      toast({ title: "Erro ao criar lote de execução", description: String(error), variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -1831,7 +1912,7 @@ function DeliveryDialog({ open, onOpenChange, tenantId, token, deals, leads, use
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
-        <DialogHeader><DialogTitle>Liberar itens para entrega parcial</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>Criar lote de execução</DialogTitle></DialogHeader>
         <div className="space-y-4 py-1">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5"><label className="text-sm font-medium">Pedido *</label><Select value={dealId} onValueChange={(v) => { setDealId(v); setQuantities({}); }}><SelectTrigger><SelectValue placeholder="Selecionar pedido" /></SelectTrigger><SelectContent>{deals.filter((d) => !["perdido"].includes(d.etapa)).map((d) => <SelectItem key={d.id} value={d.id}>{d.titulo}</SelectItem>)}</SelectContent></Select>{selectedLead && <p className="text-xs text-muted-foreground">Cliente: {selectedLead.nome || selectedLead.empresa}</p>}</div>
@@ -1871,3 +1952,4 @@ function DeliveryDialog({ open, onOpenChange, tenantId, token, deals, leads, use
     </Dialog>
   );
 }
+

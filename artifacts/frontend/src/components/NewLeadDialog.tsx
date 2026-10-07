@@ -143,6 +143,15 @@ type CrmPersonOption = {
   emails?: string[] | null;
 };
 
+type CrmCompanyOption = {
+  companyId: string;
+  cnpj: string;
+  razaoSocial?: string | null;
+  nomeFantasia?: string | null;
+  telefone?: string | null;
+  email?: string | null;
+};
+
 const COMMERCIAL_PARTNER_ROLES = [
   ["consumidor_final", "Cliente / consumidor final"],
   ["contato_comercial", "Usuário / contato da construtora ou empresa"],
@@ -343,8 +352,8 @@ export function NewLeadDialog({
   );
 
   const { data: crmPeople = { items: [] } } = useQuery<{ items: CrmPersonOption[] }>({
-    queryKey: ["crm-people", tenantId, "new-lead-partners", open],
-    enabled: Boolean(open && tenantId && commercialPartners.length > 0),
+    queryKey: ["crm-people", tenantId, "new-lead", open],
+    enabled: Boolean(open && tenantId),
     queryFn: async () => {
       const response = await fetch(`/api/crm/people?tenantId=${encodeURIComponent(tenantId)}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -355,6 +364,42 @@ export function NewLeadDialog({
     staleTime: 30_000,
     refetchOnWindowFocus: false,
   });
+
+  const { data: crmCompanies = { items: [] } } = useQuery<{ items: CrmCompanyOption[] }>({
+    queryKey: ["crm-companies", tenantId, "new-lead", open],
+    enabled: Boolean(open && tenantId),
+    queryFn: async () => {
+      const response = await fetch(`/api/crm/companies?tenantId=${encodeURIComponent(tenantId)}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) throw new Error("Não foi possível carregar as empresas já cadastradas.");
+      return response.json();
+    },
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+
+  function applyExistingCompany(name: string) {
+    const normalized = normalizedText(name);
+    const company = crmCompanies.items.find((item) =>
+      normalizedText(item.nomeFantasia) === normalized ||
+      normalizedText(item.razaoSocial) === normalized ||
+      digits(item.cnpj) === digits(name),
+    );
+    if (!company) return;
+    form.setValue("empresa", company.nomeFantasia || company.razaoSocial || name, { shouldDirty: true });
+    form.setValue("empresaCnpj", company.cnpj || "", { shouldDirty: true });
+  }
+
+  function applyExistingPerson(name: string) {
+    const normalized = normalizedText(name);
+    const person = crmPeople.items.find((item) => normalizedText(item.nome) === normalized);
+    if (!person) return;
+    form.setValue("nome", person.nome, { shouldDirty: true });
+    form.setValue("telefone", person.telefones?.[0] ?? "", { shouldDirty: true });
+    form.setValue("email", person.emails?.[0] ?? "", { shouldDirty: true });
+    form.setValue("documento", person.documento ?? "", { shouldDirty: true });
+  }
 
   const { data: representativeFunctions = [] } = useQuery({
     queryKey: ["tenant-user-functions", tenantId, "lead-assignment"],
@@ -981,7 +1026,24 @@ export function NewLeadDialog({
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Nome da empresa {cadastroTipo === "empresa" ? "*" : ""}</FormLabel>
-                        <FormControl><Input placeholder={companyPlaceholder || "Razão social ou nome fantasia"} {...field} /></FormControl>
+                        <FormControl>
+                          <Input
+                            list="new-lead-existing-companies"
+                            placeholder={companyPlaceholder || "Busque uma empresa cadastrada ou digite uma nova"}
+                            {...field}
+                            onChange={(event) => {
+                              field.onChange(event);
+                              applyExistingCompany(event.target.value);
+                            }}
+                          />
+                        </FormControl>
+                        <datalist id="new-lead-existing-companies">
+                          {crmCompanies.items.map((company) => {
+                            const name = company.nomeFantasia || company.razaoSocial || company.cnpj;
+                            return <option key={company.companyId} value={name}>{company.cnpj ? `${company.cnpj}` : ""}</option>;
+                          })}
+                        </datalist>
+                        <p className="text-[11px] text-muted-foreground">Busca primeiro nas empresas já cadastradas. Ao selecionar, o CNPJ é preenchido automaticamente.</p>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -1023,7 +1085,27 @@ export function NewLeadDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Nome *</FormLabel>
-                    <FormControl><Input autoFocus data-testid="input-nome" placeholder="Nome completo" {...field} /></FormControl>
+                    <FormControl>
+                      <Input
+                        autoFocus
+                        data-testid="input-nome"
+                        list="new-lead-existing-people"
+                        placeholder="Busque uma pessoa cadastrada ou digite um novo nome"
+                        {...field}
+                        onChange={(event) => {
+                          field.onChange(event);
+                          applyExistingPerson(event.target.value);
+                        }}
+                      />
+                    </FormControl>
+                    <datalist id="new-lead-existing-people">
+                      {crmPeople.items.map((person) => (
+                        <option key={person.id} value={person.nome}>
+                          {[person.telefones?.[0], person.emails?.[0], person.documento].filter(Boolean).join(" · ")}
+                        </option>
+                      ))}
+                    </datalist>
+                    <p className="text-[11px] text-muted-foreground">Busca nos contatos já cadastrados e reaproveita telefone, email e documento quando selecionado.</p>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -1643,3 +1725,4 @@ export function NewLeadDialog({
     </Dialog>
   );
 }
+
