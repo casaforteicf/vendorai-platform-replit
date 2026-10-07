@@ -60,6 +60,7 @@ export * from "./obras";
 export * from "./obra_diario";
 export * from "./insumos";
 export * from "./composicoes";
+export * from "./mao_obra_orcamento";
 export * from "./tabelas_precos_obras";
 export * from "./varejo_colecoes";
 export * from "./varejo_fornecedores";
