@@ -57,6 +57,7 @@ const Conversations      = lazy(() => import("@/pages/Conversations"));
 const Agenda             = lazy(() => import("@/pages/Agenda"));
 const MinhasEntregas     = lazy(() => import("@/pages/MinhasEntregas"));
 const Configuracoes      = lazy(() => import("@/pages/Configuracoes"));
+const BrandKitSettingsOnly = lazy(() => import("@/components/BrandKitSettings").then((m) => ({ default: m.BrandKitSettings })));
 const KnowledgeBase      = lazy(() => import("@/pages/KnowledgeBase"));
 const SolicitacaoCompra  = lazy(() => import("@/pages/SolicitacaoCompra"));
 const Pacotes            = lazy(() => import("@/pages/Pacotes"));
@@ -325,6 +326,21 @@ function LegacyCampaignHubRedirect() {
     setLocation(view === "mercados" ? "/content?tab=campanhas&view=mercados" : "/content?tab=campanhas");
   }, [setLocation]);
   return null;
+}
+
+function MarketingSettingsOnlyPage() {
+  return (
+    <div className="vendor-page-canvas mx-auto w-full max-w-7xl px-4 py-4 sm:px-6">
+      <BrandKitSettingsOnly />
+    </div>
+  );
+}
+
+function ConfiguracoesRoute() {
+  const requestedTab = new URLSearchParams(window.location.search).get("tab");
+  return requestedTab === "marketing"
+    ? <ProtectedRoute component={MarketingSettingsOnlyPage} />
+    : <ProtectedRoute component={Configuracoes} />;
 }
 
 function ProtectedRoute({ component: Component, ...rest }: any) {
@@ -660,7 +676,7 @@ function AppRoutes() {
         <Route path="/praca-conciliacao"><ProtectedRoute component={ConciliacaoFinanceiraPraca} /></Route>
         <Route path="/logistica-praca"><ProtectedRoute component={MonitorLogisticaPraca} /></Route>
         <Route path="/entregas-praca"><ProtectedRoute component={AppEntregadorPraca} /></Route>
-        <Route path="/configuracoes"><ProtectedRoute component={Configuracoes} /></Route>
+        <Route path="/configuracoes"><ConfiguracoesRoute /></Route>
         <Route path="/usuarios"><ProtectedRoute component={Usuarios} /></Route>
         <Route path="/propostas">{() => <ProtectedRoute component={Propostas} />}</Route>
         <Route path="/catalogo">{() => <ProtectedRoute component={CatalogoProdutos} />}</Route>
