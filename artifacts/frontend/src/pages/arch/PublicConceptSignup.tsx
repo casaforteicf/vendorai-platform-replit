@@ -49,10 +49,13 @@ function readSession(slug: string): Session | null {
   }
 }
 
-function PublicMarketPanel({ slug, profile, onClose }: { slug: string; profile: BrandProfile; onClose: () => void }) {
+function PublicMarketPanel({ slug, profile, token, onClose }: { slug: string; profile: BrandProfile; token: string; onClose: () => void }) {
   const [products, setProducts] = useState<PublicMarketProduct[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [routingId, setRoutingId] = useState<string | null>(null);
+  const [routedIds, setRoutedIds] = useState<Set<string>>(() => new Set());
+  const [marketError, setMarketError] = useState<string | null>(null);
 
   const load = async (query = "") => {
     setLoading(true);
@@ -68,6 +71,29 @@ function PublicMarketPanel({ slug, profile, onClose }: { slug: string; profile: 
   };
 
   useEffect(() => { void load(); }, [slug]);
+
+  const requestSupplier = async (product: PublicMarketProduct) => {
+    if (routedIds.has(product.id)) return;
+    setRoutingId(product.id);
+    setMarketError(null);
+    try {
+      const response = await fetch(`/api/public/arqdor/${encodeURIComponent(slug)}/market/lead`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ productId: product.id }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error ?? "Não foi possível enviar seu interesse.");
+      setRoutedIds((current) => new Set([...current, product.id]));
+    } catch (error: any) {
+      setMarketError(error?.message ?? "Não foi possível enviar seu interesse.");
+    } finally {
+      setRoutingId(null);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[5000] bg-slate-950/50 p-3 sm:p-6" role="dialog" aria-modal="true">
@@ -93,6 +119,7 @@ function PublicMarketPanel({ slug, profile, onClose }: { slug: string; profile: 
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+          {marketError && <div className="mb-4 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{marketError}</div>}
           {loading ? (
             <div className="grid min-h-48 place-items-center text-sm text-slate-500">Buscando soluções…</div>
           ) : products.length === 0 ? (
@@ -114,7 +141,21 @@ function PublicMarketPanel({ slug, profile, onClose }: { slug: string; profile: 
                     {product.descricao && <p className="line-clamp-2 text-sm text-slate-600">{product.descricao}</p>}
                     <div className="flex items-center justify-between gap-3 pt-1">
                       <span className="font-bold text-slate-950">{product.preco != null ? product.preco.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "Sob consulta"}</span>
-                      <span className="text-xs font-semibold" style={{ color: profile.primaryColor }}>{product.acaoPrincipal === "comprar" ? "Disponível" : "Solicitar cotação"}</span>
+                      <button
+                        type="button"
+                        disabled={routingId === product.id || routedIds.has(product.id)}
+                        onClick={() => void requestSupplier(product)}
+                        className="rounded-lg px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+                        style={{ backgroundColor: profile.primaryColor }}
+                      >
+                        {routedIds.has(product.id)
+                          ? "Enviado"
+                          : routingId === product.id
+                            ? "Enviando…"
+                            : product.acaoPrincipal === "comprar"
+                              ? "Tenho interesse"
+                              : "Solicitar cotação"}
+                      </button>
                     </div>
                   </div>
                 </article>
@@ -172,7 +213,7 @@ function GuestEditor({ session, slug, profile }: { session: Session; slug: strin
           {profile.marketButtonLabel}
         </button>
       )}
-      {marketOpen && <PublicMarketPanel slug={slug} profile={profile} onClose={() => setMarketOpen(false)} />}
+      {marketOpen && <PublicMarketPanel slug={slug} profile={profile} token={session.token} onClose={() => setMarketOpen(false)} />}
     </>
   );
 }
