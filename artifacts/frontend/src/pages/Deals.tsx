@@ -1757,7 +1757,13 @@ function EditDealSheet({
         setQuoteFileName(data.originalName ?? null);
       }
       const confianca = data.confianca ?? 0;
-      toast({ title: confianca >= 0.5 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)" });
+      const leituraAviso = Array.isArray(data.informacoesAdicionais)
+        ? data.informacoesAdicionais.filter(Boolean).join(" ")
+        : undefined;
+      toast({
+        title: confianca >= 0.5 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)",
+        description: confianca < 0.5 ? leituraAviso : undefined,
+      });
     } catch {
       toast({ title: "Erro ao ler o orçamento", variant: "destructive" });
     } finally {
@@ -2786,7 +2792,13 @@ export default function Deals() {
         if (data.clienteEmail) createForm.setValue("leadEmail", data.clienteEmail);
       }
       const confianca = data.confianca ?? 0;
-      toast({ title: confianca >= 0.5 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)" });
+      const leituraAviso = Array.isArray(data.informacoesAdicionais)
+        ? data.informacoesAdicionais.filter(Boolean).join(" ")
+        : undefined;
+      toast({
+        title: confianca >= 0.5 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)",
+        description: confianca < 0.5 ? leituraAviso : undefined,
+      });
     } catch {
       toast({ title: "Erro ao ler o orçamento", variant: "destructive" });
     } finally {
