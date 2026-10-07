@@ -74,6 +74,8 @@ export function startArchConceptRenderRunner(logger: Logger, pollMs = 3000) {
         userNotes?: string;
         materials?: Array<{ zone: string; promptFragment: string }>;
         renderPresets?: import("../lib/arqdor-render-prompts.js").ArqdorRenderPreset[];
+        realEnvironmentSourceUrl?: string;
+        realEnvironmentKind?: string;
       };
       await processRenderJob({
         renderId: render.id,
@@ -90,6 +92,8 @@ export function startArchConceptRenderRunner(logger: Logger, pollMs = 3000) {
         renderPresets: input.renderPresets ?? [],
         source: render.source,
         renderView: render.render_view,
+        realEnvironmentSourceUrl: input.realEnvironmentSourceUrl,
+        realEnvironmentKind: input.realEnvironmentKind,
         retentativas: Number.parseInt(String(render.retentativas ?? "0"), 10) || 0,
         logger,
         leaseToken,
