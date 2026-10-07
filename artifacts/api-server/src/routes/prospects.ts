@@ -12,6 +12,8 @@ import {
 } from "@workspace/db";
 import { requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
 import { decideProspectNextAction } from "../services/prospect-decision-engine.js";
+import { planSalesContent } from "../services/sales-content-planner.js";
+import { z } from "zod/v4";
 
 const router: IRouter = Router();
 const base = "/tenants/:tenantId/prospects";
@@ -160,6 +162,30 @@ router.post(base + "/:prospectId/recalculate", async (req, res) => {
   }).where(and(eq(prospectsTable.id, prospectId), eq(prospectsTable.tenantId, tenantId))).returning();
 
   return res.json(updated);
+});
+
+
+const contentPlanSchema = z.object({
+  segment: z.string().trim().min(1).max(120).nullable().optional(),
+  persona: z.string().trim().min(1).max(120).nullable().optional(),
+  pains: z.array(z.string().trim().min(1).max(240)).max(20).optional().default([]),
+  objective: z.string().trim().min(1).max(300).nullable().optional(),
+  channel: z.string().trim().min(1).max(50).nullable().optional(),
+});
+
+router.post(base + "/:prospectId/content-plan", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const prospectId = String(req.params["prospectId"]);
+  const parsed = contentPlanSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: "Contexto inválido", details: parsed.error.issues });
+
+  const [prospect] = await db.select().from(prospectsTable)
+    .where(and(eq(prospectsTable.id, prospectId), eq(prospectsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!prospect) return res.status(404).json({ error: "Prospect não encontrado" });
+
+  const plan = await planSalesContent({ tenantId, prospect, context: parsed.data });
+  return res.json(plan);
 });
 
 export default router;
