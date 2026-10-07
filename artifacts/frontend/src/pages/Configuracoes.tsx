@@ -386,9 +386,10 @@ export default function Configuracoes() {
     url.searchParams.set("tab", tab);
     Object.entries(extra ?? {}).forEach(([key, value]) => url.searchParams.set(key, value));
 
-    window.history.pushState({}, "", `${url.pathname}${url.search}`);
-    setRequestedTab(tab);
-    window.dispatchEvent(new PopStateEvent("popstate"));
+    // Deep links de Configurações precisam manter URL e conteúdo sincronizados.
+    // A navegação completa evita que o shell fique em uma seção enquanto o
+    // conteúdo interno continua apontando para outra aba.
+    window.location.assign(`${url.pathname}${url.search}`);
   };
   const legacySiteDeepLink = requestedTab === "site";
   const integrationsDeepLink = requestedTab === "integracoes";
@@ -448,6 +449,18 @@ export default function Configuracoes() {
     document.addEventListener("click", openIntegration, true);
     return () => document.removeEventListener("click", openIntegration, true);
   }, []);
+
+  const openInlinePanel = (panel: "jarvis" | "governance" | "full") => {
+    if (panel === "jarvis") setShowJarvis(true);
+    if (panel === "governance") setShowGovernance(true);
+    if (panel === "full") setShowFullSettings(true);
+
+    window.setTimeout(() => {
+      document
+        .getElementById(`settings-panel-${panel}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
 
   const applyAutomaticDefaults = () => {
     const current = loadJarvisPermissions();
@@ -553,39 +566,35 @@ export default function Configuracoes() {
       title: "IA e agentes",
       description: "Agentes, autonomia, permissões, comportamento e respostas.",
       icon: Bot,
-      action: () => setShowJarvis(true),
+      action: () => navigateWithinSettings("ai"),
     },
     {
       key: "crm",
       title: "CRM e operação",
       description: "Pipelines, etapas, atividades, propostas, regras e processos.",
       icon: Workflow,
-      action: () => setShowFullSettings(true),
+      action: () => navigateWithinSettings("analise"),
     },
     {
       key: "seguranca",
       title: "Segurança e auditoria",
       description: "Acessos, permissões, histórico de alterações, sessões e restauração.",
       icon: ShieldCheck,
-      action: () => setShowGovernance(true),
+      action: () => openInlinePanel("governance"),
     },
     {
       key: "notificacoes",
       title: "Notificações",
       description: "Alertas, e-mails, WhatsApp, eventos e preferências de contato.",
       icon: Bell,
-      action: () => setShowFullSettings(true),
+      action: () => navigateWithinSettings("calendario"),
     },
     {
       key: "avancado",
       title: "Avançado",
       description: "Configurações técnicas, APIs, governança e preferências avançadas.",
       icon: Settings2,
-      action: () => {
-        setShowJarvis(true);
-        setShowGovernance(true);
-        setShowFullSettings(true);
-      },
+      action: () => openInlinePanel("full"),
     },
   ];
 
@@ -675,15 +684,15 @@ export default function Configuracoes() {
               <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">Aplique mudanças somente depois de revisar o impacto.</p>
               <div className="settings-recommendation-row">
                 <span className="flex items-center gap-2"><Bot className="h-4 w-4 text-primary" /> Permissões da IA</span>
-                <button type="button" onClick={() => setShowJarvis(true)} className="font-semibold text-primary">Abrir</button>
+                <button type="button" onClick={() => navigateWithinSettings("ai")} className="font-semibold text-primary">Abrir</button>
               </div>
               <div className="settings-recommendation-row">
                 <span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-primary" /> Segurança e histórico</span>
-                <button type="button" onClick={() => setShowGovernance(true)} className="font-semibold text-primary">Abrir</button>
+                <button type="button" onClick={() => openInlinePanel("governance")} className="font-semibold text-primary">Abrir</button>
               </div>
               <div className="settings-recommendation-row">
                 <span className="flex items-center gap-2"><Database className="h-4 w-4 text-primary" /> Configuração completa</span>
-                <button type="button" onClick={() => setShowFullSettings(true)} className="font-semibold text-primary">Abrir</button>
+                <button type="button" onClick={() => openInlinePanel("full")} className="font-semibold text-primary">Abrir</button>
               </div>
             </section>
 
@@ -698,7 +707,7 @@ export default function Configuracoes() {
         </div>
 
         {showJarvis && (
-          <section className="settings-inline-panel">
+          <section id="settings-panel-jarvis" className="settings-inline-panel scroll-mt-6">
             <div className="mb-2 flex items-center justify-between gap-3">
               <div><h2 className="text-sm font-semibold">IA e agentes</h2><p className="text-xs text-muted-foreground">Permissões, contexto e autonomia dos agentes.</p></div>
               <button type="button" onClick={() => setShowJarvis(false)} className="rounded-lg border px-2.5 py-1.5 text-xs">Fechar</button>
@@ -708,7 +717,7 @@ export default function Configuracoes() {
         )}
 
         {showGovernance && (
-          <section className="settings-inline-panel settings-advanced-content space-y-2.5">
+          <section id="settings-panel-governance" className="settings-inline-panel settings-advanced-content space-y-2.5 scroll-mt-6">
             <div className="mb-2 flex items-center justify-between gap-3">
               <div><h2 className="text-sm font-semibold">Segurança e auditoria</h2><p className="text-xs text-muted-foreground">Acessos, impacto, validação, histórico e restauração segura.</p></div>
               <button type="button" onClick={() => setShowGovernance(false)} className="rounded-lg border px-2.5 py-1.5 text-xs">Fechar</button>
@@ -724,7 +733,7 @@ export default function Configuracoes() {
         )}
 
         {showFullSettings && (
-          <section className="settings-inline-panel settings-advanced-content">
+          <section id="settings-panel-full" className="settings-inline-panel settings-advanced-content scroll-mt-6">
             <div className="mb-2 flex items-center justify-between gap-3">
               <div><h2 className="text-sm font-semibold">Configurações completas</h2><p className="text-xs text-muted-foreground">Demais opções preservadas e organizadas em um único ponto.</p></div>
               <button type="button" onClick={() => setShowFullSettings(false)} className="rounded-lg border px-2.5 py-1.5 text-xs">Fechar</button>
