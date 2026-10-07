@@ -284,11 +284,36 @@ export async function extractLancamentoData(
 
   for (const file of files) {
     try {
+      const visual = await callOpenAIFileExtraction(
+        tenantId,
+        "document_extraction",
+        { buffer: file.buffer, mimeType: file.mimeType || "application/pdf", filename: file.originalName },
+        QUOTE_EXTRACTION_SYSTEM_PROMPT + "\n\nAnalise o PDF visualmente página por página. Não presuma dados ausentes. Preserve a ordem original dos itens e retorne somente o JSON.",
+        { model: "gpt-4.1-mini", maxTokens: 5000 },
+      );
+      const cleaned = visual.content.replace(/^\`\`\`(?:json)?\s*/i, "").replace(/\s*\`\`\`$/, "").trim();
+      try {
+        return quoteExtractionResultSchema.parse(JSON.parse(cleaned || "{}"));
+      } catch {
+        return {
+          confianca: 0,
+          informacoesAdicionais: ["PDF visual processado, mas a estrutura retornada precisa de conferência manual."],
+        };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const invalidFile = /invalid_file|badly formatted|corrupted|arquivo.*corromp/i.test(message);
+      return {
+        confianca: 0,
+        informacoesAdicionais: [
+          invalidFile
+            ? "O PDF não pôde ser lido automaticamente porque o arquivo está malformado ou corrompido. O upload foi preservado para conferência manual."
+            : "A leitura visual do PDF ficou indisponível. O upload foi preservado para conferência manual.",
+        ],
+      };
       const text = await extractTextFromBuffer(file.buffer, file.mimeType, file.originalName, tenantId);
       if (text.trim().length > 20) {
         texts.push(`=== ${file.originalName} ===\n${text.trim()}`);
       }
-    } catch {
       // skip unreadable files
     }
   }
