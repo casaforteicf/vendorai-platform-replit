@@ -10,7 +10,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
+  AlertTriangle,
   CalendarDays,
+  CheckCircle2,
+  FileText,
   FolderTree,
   Plus,
   Route,
@@ -18,6 +21,7 @@ import {
   Store,
   Trash2,
   Truck,
+  Upload,
   WalletCards,
 } from "lucide-react";
 
@@ -114,6 +118,16 @@ type CatalogProductSummary = {
   textureUrl?: string | null;
   model3dUrl?: string | null;
   projectLibraryEnabled?: boolean;
+  tipoCalculo?: string | null;
+  colecao?: string | null;
+  cor?: string | null;
+  fechamentoPacote?: string | number | null;
+  quantidadePacote?: number | null;
+  precoPacote?: string | number | null;
+  embalagemMestreQuantidade?: number | null;
+  quantidadeMinimaVenda?: number | null;
+  multiploVenda?: number | null;
+  permiteFracionarEmbalagemMestre?: boolean | null;
   projectTechnicalConfig?: {
     modelSurfaces?: Array<{ key: string; label: string }>;
     modelSurfacesDetectedAt?: string;
@@ -138,6 +152,49 @@ type ArqdorProductMaterial = {
   isDefault: boolean;
   precoAdicional: string | null;
   material: ArqdorMaterial | null;
+};
+
+type CatalogPricePreviewItem = {
+  nome: string;
+  sku?: string | null;
+  colecao?: string | null;
+  cor?: string | null;
+  precoBase?: number | null;
+  imagemUrl?: string | null;
+  paginaCatalogo?: number | null;
+  fechamentoPacote?: number | null;
+  quantidadePacote?: number | null;
+  embalagemMestreQuantidade?: number | null;
+  quantidadeMinimaVenda?: number | null;
+  multiploVenda?: number | null;
+  avisos?: string[];
+  duplicate?: { id: string; nome: string; sku?: string | null } | null;
+  priceMatch?: { score: number; sourceName?: string | null; sourceSku?: string | null; reason: string } | null;
+};
+
+type CatalogPricePreview = {
+  catalogFileName: string;
+  priceTableFileName: string;
+  fabricante?: string | null;
+  tabela?: string | null;
+  vigencia?: string | null;
+  products: CatalogPricePreviewItem[];
+  importableCount: number;
+  updateableCount?: number;
+  exactOrHighConfidenceCount: number;
+  reviewCount: number;
+  duplicateCount: number;
+  csv: string;
+  sourceFiles?: {
+    catalogOriginalUrl?: string | null;
+    priceTableOriginalUrl?: string | null;
+  };
+  visualSource?: {
+    strategy?: string;
+    extractedCount?: number;
+    referencedCount?: number;
+    note?: string;
+  };
 };
 
 type CommercialSnapshot = {
@@ -279,6 +336,172 @@ function NumberField({
         )}
       </div>
     </Field>
+  );
+}
+
+function EngineeringCommercialPanel({
+  product,
+  onSaved,
+}: {
+  product: CatalogProductSummary;
+  onSaved: () => Promise<void> | void;
+}) {
+  const { toast } = useToast();
+  const [fechamentoPacote, setFechamentoPacote] = useState<number | undefined>(
+    product.fechamentoPacote == null ? undefined : Number(product.fechamentoPacote),
+  );
+  const [quantidadePacote, setQuantidadePacote] = useState<number | undefined>(
+    product.quantidadePacote ?? undefined,
+  );
+  const [precoPacote, setPrecoPacote] = useState<number | undefined>(
+    product.precoPacote == null ? undefined : Number(product.precoPacote),
+  );
+  const [embalagemMestre, setEmbalagemMestre] = useState<number | undefined>(
+    product.embalagemMestreQuantidade ?? undefined,
+  );
+  const [quantidadeMinima, setQuantidadeMinima] = useState<number | undefined>(
+    product.quantidadeMinimaVenda ?? undefined,
+  );
+  const [multiploVenda, setMultiploVenda] = useState<number | undefined>(
+    product.multiploVenda ?? undefined,
+  );
+  const [fracionaMestre, setFracionaMestre] = useState(
+    product.permiteFracionarEmbalagemMestre === true,
+  );
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setFechamentoPacote(product.fechamentoPacote == null ? undefined : Number(product.fechamentoPacote));
+    setQuantidadePacote(product.quantidadePacote ?? undefined);
+    setPrecoPacote(product.precoPacote == null ? undefined : Number(product.precoPacote));
+    setEmbalagemMestre(product.embalagemMestreQuantidade ?? undefined);
+    setQuantidadeMinima(product.quantidadeMinimaVenda ?? undefined);
+    setMultiploVenda(product.multiploVenda ?? undefined);
+    setFracionaMestre(product.permiteFracionarEmbalagemMestre === true);
+  }, [product]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await patchCatalogProduct(product.id, {
+        fechamentoPacote: fechamentoPacote == null ? null : fechamentoPacote.toFixed(3),
+        quantidadePacote: quantidadePacote == null ? null : Math.trunc(quantidadePacote),
+        precoPacote: precoPacote == null ? null : precoPacote.toFixed(2),
+        embalagemMestreQuantidade: embalagemMestre == null ? null : Math.trunc(embalagemMestre),
+        quantidadeMinimaVenda: quantidadeMinima == null ? null : Math.trunc(quantidadeMinima),
+        multiploVenda: multiploVenda == null ? null : Math.trunc(multiploVenda),
+        permiteFracionarEmbalagemMestre: fracionaMestre,
+      });
+      await onSaved();
+      toast({
+        title: "Engenharia comercial salva",
+        description: "Vendor.ai, Praça.ai e Arqdor passam a usar as mesmas regras de pacote e embalagem mestre.",
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao salvar engenharia comercial",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const pack = fechamentoPacote && fechamentoPacote > 0 ? fechamentoPacote : null;
+  const master = embalagemMestre && embalagemMestre > 0 ? embalagemMestre : null;
+  const masterYield = pack && master ? pack * master : null;
+
+  return (
+    <div className="space-y-4 rounded-xl border border-emerald-200 bg-emerald-50/35 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold">Engenharia de venda e embalagem</h3>
+          <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
+            Regra única do produto mestre para orçamento, Praça.ai e Arqdor. A necessidade técnica é calculada primeiro; depois o sistema fecha pacote, mínimo, múltiplo e embalagem mestre.
+          </p>
+        </div>
+        <Button type="button" size="sm" onClick={() => void save()} disabled={saving}>
+          <Save className="mr-1.5 h-4 w-4" />
+          {saving ? "Salvando…" : "Salvar engenharia"}
+        </Button>
+      </div>
+
+      {(product.colecao || product.cor || product.tipoCalculo) && (
+        <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+          {product.colecao && <span className="rounded-full border bg-background px-2 py-1">Coleção: {product.colecao}</span>}
+          {product.cor && <span className="rounded-full border bg-background px-2 py-1">Variação: {product.cor}</span>}
+          {product.tipoCalculo && <span className="rounded-full border bg-background px-2 py-1">Cálculo: {product.tipoCalculo}</span>}
+        </div>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <NumberField
+          label="Fechamento do pacote"
+          value={fechamentoPacote}
+          onChange={setFechamentoPacote}
+          step="0.001"
+          hint="Quanto 1 pacote primário cobre na unidade comercial do produto (m², m, peça etc.)."
+        />
+        <NumberField
+          label="Itens por pacote"
+          value={quantidadePacote}
+          onChange={setQuantidadePacote}
+          step="1"
+          hint="Quantidade física de peças/unidades dentro do pacote primário."
+        />
+        <NumberField
+          label="Preço do pacote"
+          value={precoPacote}
+          onChange={setPrecoPacote}
+          suffix="R$"
+          hint="Opcional. Se vazio, o motor deriva pelo rendimento × preço base."
+        />
+        <NumberField
+          label="Pacotes por embalagem mestre"
+          value={embalagemMestre}
+          onChange={setEmbalagemMestre}
+          step="1"
+          hint="Ex.: caixa mestre com 6 pacotes = 6."
+        />
+        <NumberField
+          label="Quantidade mínima de venda"
+          value={quantidadeMinima}
+          onChange={setQuantidadeMinima}
+          step="1"
+          hint="Em pacotes primários. Ex.: mínimo comercial de 4 pacotes."
+        />
+        <NumberField
+          label="Múltiplo obrigatório"
+          value={multiploVenda}
+          onChange={setMultiploVenda}
+          step="1"
+          hint="Em pacotes primários. Ex.: vende somente de 2 em 2."
+        />
+      </div>
+
+      <label className="flex items-start gap-3 rounded-lg border bg-background p-3">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={fracionaMestre}
+          onChange={(event) => setFracionaMestre(event.target.checked)}
+        />
+        <span>
+          <span className="block text-xs font-medium">Permitir fracionar embalagem mestre</span>
+          <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
+            Desligado por padrão. Quando desligado, a quantidade faturável sobe automaticamente para um múltiplo válido da embalagem mestre.
+          </span>
+        </span>
+      </label>
+
+      {masterYield != null && (
+        <div className="rounded-lg border bg-background p-3 text-xs">
+          <span className="font-medium">Resumo automático:</span>{" "}
+          1 embalagem mestre = {master} pacote{master === 1 ? "" : "s"} primário{master === 1 ? "" : "s"} = {masterYield.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} na unidade de rendimento do produto.
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1229,6 +1452,243 @@ function CommercialDeliveryPanel({
   );
 }
 
+function CatalogPriceImporter({
+  tenantId,
+  onImported,
+}: {
+  tenantId: string;
+  onImported: () => Promise<void> | void;
+}) {
+  const { toast } = useToast();
+  const catalogInputRef = useRef<HTMLInputElement>(null);
+  const priceInputRef = useRef<HTMLInputElement>(null);
+  const [catalogFile, setCatalogFile] = useState<File | null>(null);
+  const [priceFile, setPriceFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<CatalogPricePreview | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [importing, setImporting] = useState(false);
+
+  const analyze = async () => {
+    if (!catalogFile || !priceFile || !tenantId) return;
+    setAnalyzing(true);
+    setPreview(null);
+    try {
+      const form = new FormData();
+      form.append("catalog", catalogFile);
+      form.append("priceTable", priceFile);
+      const response = await fetch(`/api/tenants/${tenantId}/produtos-catalogo/import-catalog-price/preview`, {
+        method: "POST",
+        headers: { Authorization: authHeaders().Authorization },
+        body: form,
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Falha ao compatibilizar arquivos.");
+      setPreview(body as CatalogPricePreview);
+      toast({
+        title: "Compatibilização concluída",
+        description: `${body.importableCount ?? 0} produto(s) prontos para importação.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Falha na compatibilização",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const importMatched = async () => {
+    if (!preview?.csv || !tenantId) return;
+    setImporting(true);
+    try {
+      const updates = preview.products.filter(
+        (item) => item.duplicate && item.precoBase != null && (item.priceMatch?.score ?? 0) >= 0.58,
+      );
+
+      for (const item of updates) {
+        const patch: Record<string, unknown> = {
+          precoBase: Number(item.precoBase).toFixed(2),
+        };
+        if (item.colecao) patch.colecao = item.colecao;
+        if (item.cor) patch.cor = item.cor;
+        if (item.fechamentoPacote != null) patch.fechamentoPacote = Number(item.fechamentoPacote).toFixed(3);
+        if (item.quantidadePacote != null) patch.quantidadePacote = Math.trunc(item.quantidadePacote);
+        if (item.embalagemMestreQuantidade != null) patch.embalagemMestreQuantidade = Math.trunc(item.embalagemMestreQuantidade);
+        if (item.quantidadeMinimaVenda != null) patch.quantidadeMinimaVenda = Math.trunc(item.quantidadeMinimaVenda);
+        if (item.multiploVenda != null) patch.multiploVenda = Math.trunc(item.multiploVenda);
+        await patchCatalogProduct(item.duplicate!.id, patch);
+      }
+
+      let created = 0;
+      if (preview.importableCount > 0) {
+        const response = await fetch(`/api/tenants/${tenantId}/produtos-catalogo/import`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({ csv: preview.csv }),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error || "Falha ao importar produtos compatibilizados.");
+        created = body.imported ?? 0;
+      }
+
+      await onImported();
+      toast({
+        title: "Catálogo e tabela aplicados",
+        description: `${created} novo(s) produto(s) e ${updates.length} cadastro(s) existente(s) atualizado(s), preservando a engenharia já existente.`,
+      });
+      setPreview(null);
+      setCatalogFile(null);
+      setPriceFile(null);
+      if (catalogInputRef.current) catalogInputRef.current.value = "";
+      if (priceInputRef.current) priceInputRef.current.value = "";
+    } catch (error) {
+      toast({
+        title: "Erro ao importar",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border bg-card p-4 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold">Importação inteligente · Catálogo + tabela de preços</h2>
+          <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
+            O catálogo fornece produto, coleção, acabamento e referência visual; a tabela fornece preço e regras comerciais. A engenharia já cadastrada no produto mestre continua sendo reutilizada por Vendor.ai, Praça.ai e Arqdor.
+          </p>
+        </div>
+        <Button type="button" size="sm" onClick={() => void analyze()} disabled={!catalogFile || !priceFile || analyzing}>
+          <Upload className="mr-1.5 h-4 w-4" />
+          {analyzing ? "Compatibilizando…" : "Compatibilizar"}
+        </Button>
+      </div>
+
+      <input
+        ref={catalogInputRef}
+        type="file"
+        accept=".pdf,application/pdf"
+        className="hidden"
+        onChange={(event) => {
+          setCatalogFile(event.target.files?.[0] ?? null);
+          setPreview(null);
+        }}
+      />
+      <input
+        ref={priceInputRef}
+        type="file"
+        accept=".pdf,application/pdf"
+        className="hidden"
+        onChange={(event) => {
+          setPriceFile(event.target.files?.[0] ?? null);
+          setPreview(null);
+        }}
+      />
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <button
+          type="button"
+          className="flex min-h-20 items-center gap-3 rounded-xl border border-dashed bg-muted/15 p-3 text-left hover:bg-muted/30"
+          onClick={() => catalogInputRef.current?.click()}
+        >
+          <FileText className="h-5 w-5 shrink-0 text-blue-600" />
+          <span className="min-w-0">
+            <span className="block text-xs font-medium">Catálogo visual PDF</span>
+            <span className="block truncate text-[11px] text-muted-foreground">{catalogFile?.name || "Selecionar catálogo do fabricante"}</span>
+          </span>
+        </button>
+        <button
+          type="button"
+          className="flex min-h-20 items-center gap-3 rounded-xl border border-dashed bg-muted/15 p-3 text-left hover:bg-muted/30"
+          onClick={() => priceInputRef.current?.click()}
+        >
+          <FileText className="h-5 w-5 shrink-0 text-emerald-600" />
+          <span className="min-w-0">
+            <span className="block text-xs font-medium">Tabela de preços PDF</span>
+            <span className="block truncate text-[11px] text-muted-foreground">{priceFile?.name || "Selecionar tabela vigente"}</span>
+          </span>
+        </button>
+      </div>
+
+      {preview && (
+        <div className="mt-4 space-y-3">
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-lg border bg-background p-3"><p className="text-[11px] text-muted-foreground">Novos</p><p className="text-lg font-semibold">{preview.importableCount}</p></div>
+            <div className="rounded-lg border bg-background p-3"><p className="text-[11px] text-muted-foreground">Atualizar existentes</p><p className="text-lg font-semibold">{preview.updateableCount ?? 0}</p></div>
+            <div className="rounded-lg border bg-background p-3"><p className="text-[11px] text-muted-foreground">Alta confiança</p><p className="text-lg font-semibold">{preview.exactOrHighConfidenceCount}</p></div>
+            <div className="rounded-lg border bg-background p-3"><p className="text-[11px] text-muted-foreground">Revisar vínculo</p><p className="text-lg font-semibold">{preview.reviewCount}</p></div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-background p-3 text-[11px] text-muted-foreground">
+            <span className="font-medium text-foreground">Imagens reais do catálogo:</span>
+            <span>{preview.visualSource?.extractedCount ?? 0} recorte(s) salvo(s)</span>
+            <span>·</span>
+            <span>{preview.visualSource?.referencedCount ?? 0} página(s) referenciada(s)</span>
+            {preview.sourceFiles?.catalogOriginalUrl && (
+              <a className="ml-auto underline" href={preview.sourceFiles.catalogOriginalUrl} target="_blank" rel="noreferrer">
+                Abrir catálogo original
+              </a>
+            )}
+          </div>
+
+          <div className="max-h-72 overflow-auto rounded-xl border bg-background">
+            <div className="divide-y">
+              {preview.products.slice(0, 40).map((item, index) => {
+                const score = item.priceMatch?.score ?? 0;
+                const ok = score >= 0.85 && !item.duplicate && item.precoBase != null;
+                return (
+                  <div key={`${item.sku || item.nome}-${index}`} className="flex items-start justify-between gap-3 p-3">
+                    {item.imagemUrl ? (
+                      <img src={item.imagemUrl} alt="" className="h-14 w-14 shrink-0 rounded-md border object-cover" />
+                    ) : (
+                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md border bg-muted/20 text-[10px] text-muted-foreground">
+                        {item.paginaCatalogo ? `p. ${item.paginaCatalogo}` : "sem foto"}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium">{item.nome}</p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        {[item.colecao, item.cor, item.sku].filter(Boolean).join(" · ") || "Sem variação/código"}
+                      </p>
+                      {item.priceMatch && (
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          Preço vinculado a: {item.priceMatch.sourceName || item.priceMatch.sourceSku || "item da tabela"} · confiança {Math.round(score * 100)}%
+                        </p>
+                      )}
+                      {item.avisos?.length ? <p className="mt-1 text-[11px] text-amber-700">{item.avisos.join(" ")}</p> : null}
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-xs font-semibold">{item.precoBase != null ? currency(Number(item.precoBase)) : "Sem preço"}</p>
+                      <span className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] ${ok ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                        {ok ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+                        {ok ? "compatível" : "revisar"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="max-w-3xl text-[11px] leading-4 text-muted-foreground">
+              A página de origem do catálogo é preservada como referência visual. Itens sem correspondência segura ou já cadastrados não entram na importação automática.
+            </p>
+            <Button type="button" onClick={() => void importMatched()} disabled={importing || preview.importableCount === 0}>
+              {importing ? "Aplicando…" : `Aplicar ${preview.importableCount + (preview.updateableCount ?? 0)} compatibilizados`}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CatalogoProdutos() {
   const { user, rawUser, tenantOverride } = useAuth();
   const queryClient = useQueryClient();
@@ -1421,6 +1881,7 @@ export default function CatalogoProdutos() {
           </Link>
         </div>
       </div>
+      <CatalogPriceImporter tenantId={tenantId} onImported={handleCommercialSaved} />
       <CatalogoModal open tenantId={tenantId} onClose={() => navigate("/")} />
       {portalTarget && activeProduct
         ? createPortal(
@@ -1429,6 +1890,11 @@ export default function CatalogoProdutos() {
                 key={`commercial-${activeProduct.id}`}
                 product={activeProduct}
                 portalTarget={portalTarget}
+                onSaved={handleCommercialSaved}
+              />
+              <EngineeringCommercialPanel
+                key={`engineering-${activeProduct.id}`}
+                product={activeProduct}
                 onSaved={handleCommercialSaved}
               />
               <ArqdorProductConfigurationPanel

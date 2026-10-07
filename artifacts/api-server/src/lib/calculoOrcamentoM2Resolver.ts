@@ -41,6 +41,10 @@ export function produtoParaCalculo(produto: typeof produtosCatalogoTable.$inferS
     fechamentoPacote:
       produto.fechamentoPacote != null ? parseFloat(produto.fechamentoPacote as unknown as string) : null,
     precoPacote: produto.precoPacote != null ? parseFloat(produto.precoPacote as unknown as string) : null,
+    embalagemMestreQuantidade: produto.embalagemMestreQuantidade ?? null,
+    quantidadeMinimaVenda: produto.quantidadeMinimaVenda ?? null,
+    multiploVenda: produto.multiploVenda ?? null,
+    permiteFracionarEmbalagemMestre: produto.permiteFracionarEmbalagemMestre ?? false,
   };
 }
 
