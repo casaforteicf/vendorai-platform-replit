@@ -90,8 +90,22 @@ async function assertParticipationAccess(req: any, participationId: string) {
           .where(eq(tenantCommercialPartnershipsTable.id, participation.partnershipId)).limit(1)
       : [null];
 
-    const authorized = partnership?.authorizedUserIds ?? [];
-    if (authorized.length > 0 && !authorized.includes(String(req.user?.sub ?? ""))) {
+    const isAdmin = req.user?.platformRole === "tenant_admin" || req.user?.userFunction === "administrador";
+    const currentUserId = String(req.user?.sub ?? "");
+
+    // authorizedUserIds pertence semanticamente ao tenant cadastrado como
+    // partner na parceria. Quando o negócio nasceu nesse lado e foi enviado
+    // no sentido inverso, não aplique essa lista aos usuários da outra empresa.
+    if (partnership?.partnerTenantId === tenantId) {
+      const authorized = partnership.authorizedUserIds ?? [];
+      if (!isAdmin && authorized.length > 0 && !authorized.includes(currentUserId)) {
+        return { error: "FORBIDDEN" as const };
+      }
+    }
+
+    // Em qualquer sentido, se o trabalho foi atribuído a uma pessoa específica,
+    // só ela (ou admin) pode operar o card.
+    if (!isAdmin && participation.operationalUserId && participation.operationalUserId !== currentUserId) {
       return { error: "FORBIDDEN" as const };
     }
   }
