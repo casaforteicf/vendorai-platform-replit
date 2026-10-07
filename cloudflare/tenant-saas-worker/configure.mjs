@@ -70,6 +70,7 @@ const routes = await cf("/zones/" + zoneId + "/workers/routes");
 const desiredRoutes = [
   { pattern: "*/*", script: workerScript },
   { pattern: "appvendorai.com/*", script: null },
+  { pattern: "app.appvendorai.com/*", script: null },
   { pattern: "*.appvendorai.com/*", script: null },
 ];
 
