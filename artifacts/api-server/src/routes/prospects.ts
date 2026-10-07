@@ -9,12 +9,16 @@ import {
   crmPeopleMasterTable,
   insertProspectSchema,
   updateProspectSchema,
+  prospectInteractionsTable,
 } from "@workspace/db";
 import { requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
 import { decideProspectNextAction } from "../services/prospect-decision-engine.js";
 import { planSalesContent } from "../services/sales-content-planner.js";
 import { approveSalesContent, generateSalesContent } from "../services/sales-content-generator.js";
 import { z } from "zod/v4";
+import { sendProspectOutreach } from "../services/prospect-outreach.js";
+import { convertProspectToLead } from "../services/prospect-conversion.js";
+import { scheduleProspectMeeting } from "../services/prospect-meeting.js";
 
 const router: IRouter = Router();
 const base = "/tenants/:tenantId/prospects";
@@ -28,7 +32,7 @@ router.get(base, async (req, res) => {
       company: crmCompaniesMasterTable,
     })
     .from(prospectsTable)
-    .innerJoin(crmCompaniesMasterTable, eq(prospectsTable.companyId, crmCompaniesMasterTable.id))
+    .leftJoin(crmCompaniesMasterTable, eq(prospectsTable.companyId, crmCompaniesMasterTable.id))
     .where(eq(prospectsTable.tenantId, tenantId))
     .orderBy(desc(prospectsTable.updatedAt));
   res.json(rows);
@@ -39,15 +43,17 @@ router.post(base, async (req, res) => {
   const parsed = insertProspectSchema.safeParse({ ...req.body, tenantId });
   if (!parsed.success) return res.status(400).json({ error: "Dados inválidos", details: parsed.error.issues });
 
-  const [companyLink] = await db
-    .select({ companyId: crmTenantCompaniesTable.companyId })
-    .from(crmTenantCompaniesTable)
-    .where(and(
-      eq(crmTenantCompaniesTable.tenantId, tenantId),
-      eq(crmTenantCompaniesTable.companyId, parsed.data.companyId),
-    ))
-    .limit(1);
-  if (!companyLink) return res.status(404).json({ error: "Empresa não vinculada a este tenant" });
+  if (parsed.data.companyId) {
+    const [companyLink] = await db
+      .select({ companyId: crmTenantCompaniesTable.companyId })
+      .from(crmTenantCompaniesTable)
+      .where(and(
+        eq(crmTenantCompaniesTable.tenantId, tenantId),
+        eq(crmTenantCompaniesTable.companyId, parsed.data.companyId),
+      ))
+      .limit(1);
+    if (!companyLink) return res.status(404).json({ error: "Empresa não vinculada a este tenant" });
+  }
 
   const decision = decideProspectNextAction({
     stage: parsed.data.stage ?? "encontrado",
@@ -85,7 +91,7 @@ router.get(base + "/:prospectId", async (req, res) => {
     tenantCompanyId: crmTenantCompaniesTable.id,
   })
     .from(prospectsTable)
-    .innerJoin(crmCompaniesMasterTable, eq(prospectsTable.companyId, crmCompaniesMasterTable.id))
+    .leftJoin(crmCompaniesMasterTable, eq(prospectsTable.companyId, crmCompaniesMasterTable.id))
     .leftJoin(crmTenantCompaniesTable, and(
       eq(crmTenantCompaniesTable.tenantId, tenantId),
       eq(crmTenantCompaniesTable.companyId, prospectsTable.companyId),
@@ -108,7 +114,14 @@ router.get(base + "/:prospectId", async (req, res) => {
       ))
     : [];
 
-  return res.json({ ...row, accountMap });
+  const interactions = await db.select().from(prospectInteractionsTable)
+    .where(and(
+      eq(prospectInteractionsTable.tenantId, tenantId),
+      eq(prospectInteractionsTable.prospectId, prospectId),
+    ))
+    .orderBy(desc(prospectInteractionsTable.occurredAt));
+
+  return res.json({ ...row, accountMap, interactions });
 });
 
 router.patch(base + "/:prospectId", async (req, res) => {
@@ -240,6 +253,95 @@ router.post(base + "/:prospectId/content/:assetId/approve", async (req, res) => 
     autoSendAllowed: approval.autoSendAllowed,
     requestedAutoSendAllowed: parsed.data.autoSendAllowed,
   });
+});
+
+
+const sendSchema = z.object({
+  channel: z.enum(["whatsapp", "email"]),
+  content: z.string().trim().min(1).max(10000).nullable().optional(),
+  subject: z.string().trim().min(1).max(300).nullable().optional(),
+  materialId: z.string().min(1).nullable().optional(),
+  objective: z.string().trim().max(500).nullable().optional(),
+  reason: z.string().trim().max(1000).nullable().optional(),
+});
+
+router.post(base + "/:prospectId/send", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const prospectId = String(req.params["prospectId"]);
+  const parsed = sendSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Dados inválidos", details: parsed.error.issues });
+  try {
+    const result = await sendProspectOutreach({
+      tenantId,
+      prospectId,
+      ...parsed.data,
+      autonomous: false,
+      log: req.log,
+    });
+    return res.status(201).json(result);
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "send_failed";
+    const status = ["prospect_not_found"].includes(code) ? 404 : 409;
+    req.log.warn({ error, tenantId, prospectId }, "prospects: outreach blocked/failed");
+    return res.status(status).json({ error: code });
+  }
+});
+
+router.post(base + "/:prospectId/convert", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const prospectId = String(req.params["prospectId"]);
+  try {
+    const result = await convertProspectToLead({ tenantId, prospectId, requireEligibility: true });
+    return res.status(result.alreadyConverted ? 200 : 201).json(result);
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "conversion_failed";
+    const missing = (error as Error & { missing?: string[] })?.missing;
+    return res.status(code === "prospect_not_found" ? 404 : 409).json({ error: code, missing });
+  }
+});
+
+const meetingSchema = z.object({
+  start: z.coerce.date(),
+  end: z.coerce.date(),
+  title: z.string().trim().min(1).max(300).nullable().optional(),
+  modality: z.enum(["meet", "presencial", "ligacao"]).optional(),
+  location: z.string().trim().max(500).nullable().optional(),
+});
+
+router.post(base + "/:prospectId/schedule-meeting", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const prospectId = String(req.params["prospectId"]);
+  const parsed = meetingSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Dados inválidos", details: parsed.error.issues });
+  try {
+    const result = await scheduleProspectMeeting({
+      tenantId,
+      prospectId,
+      start: parsed.data.start,
+      end: parsed.data.end,
+      title: parsed.data.title,
+      modality: parsed.data.modality,
+      location: parsed.data.location,
+      autonomous: false,
+      log: req.log,
+    });
+    return res.status(201).json(result);
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "meeting_failed";
+    return res.status(code === "prospect_not_found" ? 404 : 409).json({ error: code });
+  }
+});
+
+router.get(base + "/:prospectId/interactions", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const prospectId = String(req.params["prospectId"]);
+  const interactions = await db.select().from(prospectInteractionsTable)
+    .where(and(
+      eq(prospectInteractionsTable.tenantId, tenantId),
+      eq(prospectInteractionsTable.prospectId, prospectId),
+    ))
+    .orderBy(desc(prospectInteractionsTable.occurredAt));
+  return res.json(interactions);
 });
 
 export default router;
