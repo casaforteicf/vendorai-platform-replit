@@ -79,7 +79,14 @@ export type ProspectQualification = {
 export const prospectsTable = pgTable("prospects", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
-  companyId: text("company_id").notNull().references(() => crmCompaniesMasterTable.id, { onDelete: "cascade" }),
+  companyId: text("company_id").references(() => crmCompaniesMasterTable.id, { onDelete: "set null" }),
+  displayName: text("display_name"),
+  phone: text("phone"),
+  email: text("email"),
+  website: text("website"),
+  address: text("address"),
+  segment: text("segment"),
+  city: text("city"),
   source: text("source").notNull().default("prospector"),
   sourceRef: text("source_ref"),
   stage: text("stage").$type<ProspectStage>().notNull().default("encontrado"),
@@ -113,6 +120,7 @@ export const prospectsTable = pgTable("prospects", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   tenantCompanyUnique: uniqueIndex("prospects_tenant_company_uidx").on(table.tenantId, table.companyId),
+  tenantSourceRefUnique: uniqueIndex("prospects_tenant_source_ref_uidx").on(table.tenantId, table.source, table.sourceRef),
   tenantStageIdx: index("prospects_tenant_stage_idx").on(table.tenantId, table.stage),
   nextActionIdx: index("prospects_next_action_idx").on(table.tenantId, table.nextActionAt),
 }));
