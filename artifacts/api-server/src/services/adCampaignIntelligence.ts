@@ -10,6 +10,7 @@ import {
   tenantsTable,
   webBehaviorEventsTable,
 } from "@workspace/db";
+import { canonicalDealValueSql } from "../lib/deal-value.js";
 
 export async function recordAdCampaignEvent(input: {
   tenantId: string;
@@ -162,7 +163,7 @@ export async function getAdsOverview(tenantId: string) {
 
     const [sales] = await db.select({
       total: sql<number>`count(*)`,
-      revenue: sql<string>`coalesce(sum(${dealsTable.valor}), 0)`,
+      revenue: sql<string>`coalesce(sum(${canonicalDealValueSql}), 0)`,
     }).from(dealsTable)
       .innerJoin(leadsTable, eq(dealsTable.leadId, leadsTable.id))
       .where(and(eq(leadsTable.adCampaignId, campaign.id), eq(dealsTable.etapa, "ganho")));
