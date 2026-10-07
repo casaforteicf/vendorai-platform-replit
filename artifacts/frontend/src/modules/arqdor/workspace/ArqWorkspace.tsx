@@ -613,8 +613,13 @@ function ProjectSelectorBar({ arqState }: { arqState: ArqProjectState }) {
               <p style={{ margin:0, padding:'12px 14px', fontSize:10, color:PHX.dim }}>Nenhum projeto ainda</p>
             )}
           </div>
-          {/* Criação canônica: cliente/lead e projeto no mesmo fluxo */}
-          <div style={{ borderTop:`1px solid ${PHX.border}`, padding:'10px' }}>
+          {/* Workspace do cliente: projetos/pastas do cliente ativo apenas */}
+          <div style={{ borderTop:`1px solid ${PHX.border}`, padding:'10px', display:'flex', flexDirection:'column', gap:7 }}>
+            {arqState.projectMeta?.clienteNome && (
+              <p style={{ margin:0, padding:'0 2px 2px', fontSize:9, color:PHX.dim }}>
+                Cliente ativo: <strong style={{ color:PHX.text }}>{arqState.projectMeta.clienteNome}</strong>
+              </p>
+            )}
             <button
               onClick={() => window.location.assign('/arch/projetos/novo')}
               style={{
@@ -622,7 +627,15 @@ function ProjectSelectorBar({ arqState }: { arqState: ArqProjectState }) {
                 background:PHX.purple, color:'#fff', cursor:'pointer', fontSize:11, fontWeight:800,
               }}
             >
-              ＋ Novo projeto com cliente
+              ＋ Novo projeto deste cliente
+            <button
+              onClick={() => window.location.assign('/arch/projetos')}
+              style={{
+                width:'100%', padding:'7px 12px', borderRadius:8, border:`1px solid ${PHX.border}`,
+                background:'transparent', color:PHX.textSub, cursor:'pointer', fontSize:10, fontWeight:700,
+              }}
+            >
+              Trocar cliente
             </button>
           </div>
         </div>
