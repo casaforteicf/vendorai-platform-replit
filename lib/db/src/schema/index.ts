@@ -149,6 +149,7 @@ export * from "./arch_render_solicitacoes";
 export * from "./arch_suggestions";
 export * from "./arch_render_surfaces";
 export * from "./arch_ai_renders";
+export * from "./arch_render_fidelity_reviews";
 export * from "./arch_project_configs";
 export * from "./arch_concept_projects";
 export * from "./beauty_servicos";
