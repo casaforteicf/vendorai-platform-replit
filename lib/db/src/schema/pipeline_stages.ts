@@ -1,7 +1,7 @@
 // Etapas das pipelines, configuráveis por tenant. As etapas do sistema
 // existem como linhas isSystem=true — protegidas contra exclusão/troca de key,
 // mas label/cor/SLA/responsabilidade são editáveis pelo admin.
-import { pgTable, text, timestamp, integer, boolean, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, boolean, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { tenantsTable } from "./tenants";
 
