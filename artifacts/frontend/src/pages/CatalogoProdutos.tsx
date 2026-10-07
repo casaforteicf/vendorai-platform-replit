@@ -160,6 +160,8 @@ type CatalogPricePreviewItem = {
   colecao?: string | null;
   cor?: string | null;
   precoBase?: number | null;
+  imagemUrl?: string | null;
+  paginaCatalogo?: number | null;
   fechamentoPacote?: number | null;
   quantidadePacote?: number | null;
   embalagemMestreQuantidade?: number | null;
@@ -183,6 +185,16 @@ type CatalogPricePreview = {
   reviewCount: number;
   duplicateCount: number;
   csv: string;
+  sourceFiles?: {
+    catalogOriginalUrl?: string | null;
+    priceTableOriginalUrl?: string | null;
+  };
+  visualSource?: {
+    strategy?: string;
+    extractedCount?: number;
+    referencedCount?: number;
+    note?: string;
+  };
 };
 
 type CommercialSnapshot = {
@@ -1612,6 +1624,18 @@ function CatalogPriceImporter({
             <div className="rounded-lg border bg-background p-3"><p className="text-[11px] text-muted-foreground">Revisar vínculo</p><p className="text-lg font-semibold">{preview.reviewCount}</p></div>
           </div>
 
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-background p-3 text-[11px] text-muted-foreground">
+            <span className="font-medium text-foreground">Imagens reais do catálogo:</span>
+            <span>{preview.visualSource?.extractedCount ?? 0} recorte(s) salvo(s)</span>
+            <span>·</span>
+            <span>{preview.visualSource?.referencedCount ?? 0} página(s) referenciada(s)</span>
+            {preview.sourceFiles?.catalogOriginalUrl && (
+              <a className="ml-auto underline" href={preview.sourceFiles.catalogOriginalUrl} target="_blank" rel="noreferrer">
+                Abrir catálogo original
+              </a>
+            )}
+          </div>
+
           <div className="max-h-72 overflow-auto rounded-xl border bg-background">
             <div className="divide-y">
               {preview.products.slice(0, 40).map((item, index) => {
@@ -1619,7 +1643,14 @@ function CatalogPriceImporter({
                 const ok = score >= 0.85 && !item.duplicate && item.precoBase != null;
                 return (
                   <div key={`${item.sku || item.nome}-${index}`} className="flex items-start justify-between gap-3 p-3">
-                    <div className="min-w-0">
+                    {item.imagemUrl ? (
+                      <img src={item.imagemUrl} alt="" className="h-14 w-14 shrink-0 rounded-md border object-cover" />
+                    ) : (
+                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md border bg-muted/20 text-[10px] text-muted-foreground">
+                        {item.paginaCatalogo ? `p. ${item.paginaCatalogo}` : "sem foto"}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
                       <p className="truncate text-xs font-medium">{item.nome}</p>
                       <p className="mt-0.5 text-[11px] text-muted-foreground">
                         {[item.colecao, item.cor, item.sku].filter(Boolean).join(" · ") || "Sem variação/código"}
