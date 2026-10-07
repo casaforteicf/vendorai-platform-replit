@@ -25,6 +25,7 @@ import { runRevenueScoutJob } from "../services/revenueScout.js";
 import { runContentAutopilotJob } from "../services/contentAutopilotJob.js";
 import { runAppointmentReminders } from "./appointmentReminders.js";
 import { runReviewRequests } from "./reviewRequests.js";
+import { runTokenGuardian } from "./tokenGuardian.js";
 import { runAdsReviewSync } from "./adsReviewSync.js";
 import { runAdsWasteGuard } from "./adsWasteGuard.js";
 import { pollPendingRenders } from "../services/blenderService.js";
@@ -1676,6 +1677,11 @@ async function runNoResponseClosingMessage(log: Logger): Promise<void> {
 }
 
 export function startScheduler(log: Logger): void {
+  // Token Guardian: refresh expiring OAuth credentials without browser interaction.
+  runTokenGuardian(log).catch((err) => log.error({ err }, "scheduler/token-guardian: startup failure"));
+  cron.schedule("10 * * * *", () => {
+    runTokenGuardian(log).catch((err) => log.error({ err }, "scheduler/token-guardian: unhandled error"));
+  });
   // Veículos únicos: ao vencer o SLA, bloqueia alterações até o vendedor
   // justificar manter, avançar ou perder a negociação.
   cron.schedule("*/15 * * * *", () => {

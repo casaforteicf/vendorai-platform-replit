@@ -114,7 +114,7 @@ function sanitizeRenderErrorForUser(value: unknown): string | null {
 const renderBodySchema = z.object({
   project_id:        z.string().optional(),
   concept_project_id: z.string().trim().min(1).optional(),
-  source: z.enum(["facade", "model3d"]).optional(),
+  source: z.enum(["facade", "model3d", "scene_photo"]).optional(),
   render_view: z.enum(["exterior", "interior"]).optional(),
   render_profile: z.enum(["technical", "premium", "decorated"]).optional().default("premium"),
   project_revision: z.string().trim().min(1).optional(),
@@ -128,6 +128,7 @@ const renderBodySchema = z.object({
   source_model_version: z.string().trim().min(1).optional(),
   lead_id:           z.string().optional(),
   original_image_url: z.string().min(10, "original_image_url obrigatório"),
+  design_reference_image_url: z.string().min(10).optional(),
   mode:              z.enum(["preservar", "criar"]),
   ambiente:          z.string().min(1),
   estilo:            z.string().optional(),
@@ -219,12 +220,13 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
   }
 
   const {
-    project_id, concept_project_id, lead_id, original_image_url, mode,
+    project_id, concept_project_id, lead_id, original_image_url, design_reference_image_url, mode,
     ambiente, estilo, iluminacao, angulo,
     mask_zones, user_notes, render_presets, materials, source, render_view, render_profile,
     project_revision, scene_id, scene_name, camera_snapshot, source_model_version,
   } = parsed.data;
 
+  let scenePhotoContext = "";
   if (project_id && concept_project_id) {
     return res.status(400).json({ success: false, error: "Informe project_id ou concept_project_id, não ambos." });
   }
@@ -266,6 +268,18 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
       ?? String(conceptConfiguration?.revisionNumber ?? projectMaster?.version ?? 1);
     resolvedSourceModelVersion = resolvedSourceModelVersion
       ?? String(projectMaster?.geometryVersion ?? "concept_live");
+    if (source === "scene_photo") {
+      const analysis = conceptConfiguration?.referencePlan?.photoAnalysis;
+      if (analysis && typeof analysis === "object") {
+        const preserve = Array.isArray(analysis.preserveElements) ? analysis.preserveElements.join(", ") : "";
+        const removable = Array.isArray(analysis.removableElements) ? analysis.removableElements.join(", ") : "";
+        scenePhotoContext = [
+          `SCENE CONTEXT: ${String(analysis.summary ?? "real photographed scene")}.`,
+          `Preserve untouched: ${preserve || "all surroundings"}.`,
+          `Remove only where physically occupied/occluded: ${removable || "no element pre-authorized"}.`,
+        ].join(" ");
+      }
+    }
 
     if (resolvedSceneId) {
       const savedScenes = Array.isArray(conceptConfiguration?.savedTourPoints) ? conceptConfiguration.savedTourPoints : [];
@@ -297,6 +311,7 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
     if (!project) return res.status(404).json({ success: false, error: "Projeto não encontrado." });
   }
 
+  const resolvedUserNotes = [user_notes, scenePhotoContext].filter(Boolean).join("\n") || undefined;
   // Sanitiza: no modo Preservar, remove mobiliário solto das zonas
   const safeMaskZones = mode === "preservar"
     ? filterFurnitureZones(mask_zones)
@@ -304,7 +319,7 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
 
   // Persist before acknowledging. Only concept preservation uses the durable
   // worker; existing professional render modes keep their established pipeline.
-  const durable = Boolean(concept_project_id) && mode === "preservar";
+  const durable = Boolean(concept_project_id) && mode === "preservar" && source !== "scene_photo";
   // Cria registro inicial
   const [render] = await db.insert(archAiRendersTable).values({
     tenantId:         tid,
@@ -325,9 +340,11 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
     sceneName: resolvedSceneName,
     cameraSnapshot: resolvedCameraSnapshot,
     sourceModelVersion: resolvedSourceModelVersion,
+    jobInput: durable ? { userNotes: resolvedUserNotes, materials, renderPresets: render_presets, source, renderView: render_view } : null,
     jobInput: durable ? { userNotes: effectiveUserNotes, materials, renderPresets: render_presets, source, renderView: render_view, realEnvironmentSourceUrl, realEnvironmentKind } : null,
     prompt: durable ? buildPrompt({
       mode, ambiente, estilo, iluminacao, angulo, maskZones: safeMaskZones, materials,
+      userNotes: resolvedUserNotes, renderPresets: render_presets, source, renderView: render_view,
       userNotes: effectiveUserNotes, renderPresets: render_presets, source, renderView: render_view,
     }) : undefined,
     motor: undefined,
@@ -354,12 +371,14 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
     tenantId:     tid,
     mode,
     originalUrl:  original_image_url,
+    designReferenceUrl: design_reference_image_url,
     maskZones:    safeMaskZones,
     ambiente,
     estilo,
     iluminacao,
     angulo,
     materials,
+    userNotes:    resolvedUserNotes,
     userNotes:    effectiveUserNotes,
     renderPresets: render_presets,
     source,
@@ -901,6 +920,7 @@ export interface RenderJobParams {
   tenantId:     string;
   mode:         "preservar" | "criar";
   originalUrl:  string;
+  designReferenceUrl?: string;
   maskZones:    string[];
   // Máscara real desenhada pelo usuário (PNG base64, branco=editar,
   // preto=preservar) — quando presente, tem prioridade sobre o mapa
@@ -990,7 +1010,7 @@ async function enhanceFinalRender(buffer: Buffer): Promise<Buffer> {
 
 export async function processRenderJob(params: RenderJobParams): Promise<void> {
   const {
-    renderId, tenantId: tid, mode, originalUrl, maskZones, maskFileBase64, maskCoordinates,
+    renderId, tenantId: tid, mode, originalUrl, designReferenceUrl, maskZones, maskFileBase64, maskCoordinates,
     materialAwareSelection, selectionPaddingPercent, materialReferenceUrl, materialName,
     ambiente, estilo, iluminacao, angulo, materials, userNotes, renderPresets, source, renderView, renderProfile,
     realEnvironmentSourceUrl, realEnvironmentKind, logger, retentativas,
@@ -1043,6 +1063,22 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
 
     if (mode === "preservar") {
       const originalDataUrl = bufferToDataUrl(originalBuf, originalMime);
+      if (source === "scene_photo") {
+        if (!designReferenceUrl) throw new Error("A cena-base precisa da referência visual da arquitetura atual.");
+        const { buf: designBuf, mime: designMime } = await fetchImageAsBuffer(designReferenceUrl, storage);
+        const designDataUrl = bufferToDataUrl(designBuf, designMime);
+        const generated = await generateRenderPremiumOpenAI({
+          tenantId: tid,
+          imageDataUrl: originalDataUrl,
+          referenceImageDataUrls: [designDataUrl],
+          prompt,
+          logger,
+        });
+        resultB64 = generated.base64;
+        motor = `${generated.provider}-${generated.model}-scene-photo`;
+        compositedFlag = false;
+        segConf = { scene_photo_camera_lock: 1, design_reference: 1 };
+      } else {
       const hasLocalSelection = Boolean(maskFileBase64 || (maskCoordinates && maskCoordinates.length > 0));
 
       if (hasLocalSelection && params.userNotes) {
@@ -1203,6 +1239,7 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
       await db.update(archAiRendersTable)
         .set({ segmentationConfidence: segConf })
         .where(ownedRender);
+      }
 
     } else if (mode === "criar" && params.userNotes) {
       // ── 3b. Ajuste pós-geração de elemento pontual (Fill Pro + máscara) ─
@@ -1237,6 +1274,7 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
       resultB64 = generated.base64;
 
       const generatedBuf  = Buffer.from(resultB64, "base64");
+      source !== "scene_photo" &&
       const compositedBuf = await compositeWithOriginal(generatedBuf, originalBuf, maskBuf);
       resultB64 = compositedBuf.toString("base64");
       compositedFlag = true;
@@ -1602,6 +1640,19 @@ function buildPreservePrompt(p: {
         ? "architecture"
         : "interior",
   });
+  if (p.source === "scene_photo") {
+    return [
+      "SCENE COMPOSITION MODE: image 1 is the real-world scene and absolute camera/perspective authority; image 2 is the current Arqdor design and absolute architecture authority.",
+      "Keep the exact camera position, framing, horizon, perspective, lens feel and all untouched surroundings from image 1.",
+      "Insert the architecture from image 2 into image 1 at realistic ground contact and scale. Preserve the building massing, floor count, roof/parapet, facade composition, openings and proportions from image 2.",
+      "Do not redesign, mirror, simplify or invent the building. Do not copy the background or camera from image 2.",
+      "OCCLUSION RULE: remove or hide vegetation, loose furniture, temporary objects or other scene elements only where the new architecture physically occupies or occludes that same region. Preserve everything else.",
+      "REALISM RULE: match scene lighting, shadows, atmosphere, ground contact, reflections and color temperature so the intervention looks physically present in the photographed place.",
+      p.userNotes ?? "",
+      "Final self-check: camera and untouched context must match image 1; architecture must match image 2.",
+    ].join("\n");
+  }
+
   if (p.ambiente === "fachada" || p.renderView === "exterior" || p.source === "facade") {
     const light = p.iluminacao === "night"
       ? "Night photograph with warm interior and facade lighting, realistic dark sky and readable materials. Do not turn night into daytime."
