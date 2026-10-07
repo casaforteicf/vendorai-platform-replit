@@ -1,0 +1,29 @@
+-- Fluxo interempresa: o mesmo negócio mantém uma posição por tenant participante.
+-- O SLA continua vindo da etapa de destino; este campo guarda apenas o prazo calculado
+-- para a participação atual, sem criar uma segunda configuração de SLA.
+
+ALTER TABLE deal_tenant_participations
+  ADD COLUMN IF NOT EXISTS function_id text,
+  ADD COLUMN IF NOT EXISTS pipeline text NOT NULL DEFAULT 'comercial',
+  ADD COLUMN IF NOT EXISTS stage text,
+  ADD COLUMN IF NOT EXISTS stage_entered_at timestamptz,
+  ADD COLUMN IF NOT EXISTS stage_due_at timestamptz,
+  ADD COLUMN IF NOT EXISTS last_handoff_from_tenant_id text,
+  ADD COLUMN IF NOT EXISTS last_handoff_at timestamptz;
+
+DO $$ BEGIN
+  ALTER TABLE deal_tenant_participations
+    ADD CONSTRAINT deal_tenant_participations_function_id_fk
+    FOREIGN KEY (function_id) REFERENCES tenant_user_functions(id) ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE deal_tenant_participations
+    ADD CONSTRAINT deal_tenant_participations_last_handoff_from_tenant_id_fk
+    FOREIGN KEY (last_handoff_from_tenant_id) REFERENCES tenants(id) ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE INDEX IF NOT EXISTS deal_tenant_participation_pipeline_stage_idx
+  ON deal_tenant_participations (partner_tenant_id, pipeline, stage, status);
