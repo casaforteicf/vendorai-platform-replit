@@ -875,6 +875,277 @@ router.post(
   },
 );
 
+
+type CatalogPriceMatchRow = CatalogPdfPreviewProduct & {
+  colecao: string | null;
+  paginaCatalogo: number | null;
+  tipoCalculo: string | null;
+  fechamentoPacote: number | null;
+  quantidadePacote: number | null;
+  precoPacote: number | null;
+  embalagemMestreQuantidade: number | null;
+  quantidadeMinimaVenda: number | null;
+  multiploVenda: number | null;
+  permiteFracionarEmbalagemMestre: boolean;
+  priceMatch: {
+    score: number;
+    sourceName: string | null;
+    sourceSku: string | null;
+    reason: string;
+  } | null;
+};
+
+function catalogMatchKey(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function tokenSimilarity(a: string, b: string): number {
+  const aa = new Set(catalogMatchKey(a).split(/\s+/).filter((x) => x.length > 1));
+  const bb = new Set(catalogMatchKey(b).split(/\s+/).filter((x) => x.length > 1));
+  if (!aa.size || !bb.size) return 0;
+  let intersection = 0;
+  for (const token of aa) if (bb.has(token)) intersection++;
+  return intersection / Math.max(aa.size, bb.size);
+}
+
+function nullablePositiveNumber(value: unknown): number | null {
+  const n = typeof value === "number" ? value : Number(String(value ?? "").replace(",", "."));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function nullablePositiveInteger(value: unknown): number | null {
+  const n = nullablePositiveNumber(value);
+  return n == null ? null : Math.max(1, Math.trunc(n));
+}
+
+const catalogPriceUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024, files: 2 },
+  fileFilter: (_req, file, cb) => {
+    const pdf = file.mimetype === "application/pdf" || file.originalname.toLowerCase().endsWith(".pdf");
+    cb(pdf ? null : new Error("Apenas arquivos PDF são aceitos."), pdf);
+  },
+});
+
+router.post(
+  "/tenants/:tenantId/produtos-catalogo/import-catalog-price/preview",
+  (req, res, next) => {
+    catalogPriceUpload.fields([
+      { name: "catalog", maxCount: 1 },
+      { name: "priceTable", maxCount: 1 },
+    ])(req, res, (error: any) => {
+      if (!error) return next();
+      if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+        return res.status(413).json({ error: "Cada PDF pode ter no máximo 50 MB.", code: "CATALOG_PRICE_PDF_TOO_LARGE" });
+      }
+      return res.status(422).json({ error: error?.message || "Não foi possível receber os PDFs." });
+    });
+  },
+  async (req, res) => {
+    const tenantId = routeTenantId(req);
+    if (!canAccessTenant(req, tenantId)) return res.status(403).json({ error: "Access denied" });
+
+    const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+    const catalog = files?.catalog?.[0];
+    const priceTable = files?.priceTable?.[0];
+    if (!catalog || !priceTable) {
+      return res.status(422).json({ error: "Envie o catálogo PDF e a tabela de preços PDF." });
+    }
+
+    try {
+      const [catalogAi, priceAi, existing] = await Promise.all([
+        callOpenAIFileExtraction(
+          tenantId,
+          "document_extraction",
+          { buffer: catalog.buffer, mimeType: "application/pdf", filename: catalog.originalname },
+          [
+            "Extraia produtos e variações reais deste catálogo comercial.",
+            "O catálogo é a fonte VISUAL e TÉCNICA, não a fonte principal de preço.",
+            "Preserve coleção/linha, acabamento/cor, medidas, unidade, especificações e a página onde o produto/variação aparece.",
+            "Quando uma página mostrar uma família com várias cores/acabamentos, gere uma linha por variação comercial.",
+            "Não invente SKU, preço, embalagem ou medida.",
+            "Retorne SOMENTE JSON válido no formato:",
+            JSON.stringify({ fabricante:"string|null", produtos:[{
+              nome:"string", sku:"string|null", colecao:"string|null", cor:"string|null",
+              categoria:"string|null", unidade:"string|null", descricao:"string|null",
+              pagina:"number|null", tipoCalculo:"string|null",
+              fechamentoPacote:"number|null", quantidadePacote:"number|null",
+              especificacoes:[{label:"string",value:"string"}], confianca:0.9
+            }]})
+          ].join("\n"),
+          { model: "gpt-4.1-mini", maxTokens: 12000, log: req.log },
+        ),
+        callOpenAIFileExtraction(
+          tenantId,
+          "document_extraction",
+          { buffer: priceTable.buffer, mimeType: "application/pdf", filename: priceTable.originalname },
+          [
+            "Extraia cada item/linha comercial desta tabela de preços.",
+            "Esta é a fonte oficial de PREÇO e REGRAS DE VENDA.",
+            "Preserve SKU/código, nome, coleção, cor/acabamento, unidade, preço, IPI, fechamento/rendimento, quantidade por pacote e qualquer mínimo/múltiplo/embalagem mestre explicitamente informado.",
+            "Não invente embalagem mestre quando ela não estiver escrita.",
+            "Retorne SOMENTE JSON válido no formato:",
+            JSON.stringify({ tabela:"string|null", vigencia:"string|null", itens:[{
+              nome:"string", sku:"string|null", colecao:"string|null", cor:"string|null",
+              unidade:"string|null", precoBase:"number|null", ipiPercentual:"number|null",
+              fechamentoPacote:"number|null", quantidadePacote:"number|null", precoPacote:"number|null",
+              embalagemMestreQuantidade:"number|null", quantidadeMinimaVenda:"number|null",
+              multiploVenda:"number|null", permiteFracionarEmbalagemMestre:"boolean|null",
+              tipoCalculo:"string|null", observacoes:["string"]
+            }]})
+          ].join("\n"),
+          { model: "gpt-4.1-mini", maxTokens: 10000, log: req.log },
+        ),
+        db.select({
+          id: produtosCatalogoTable.id,
+          nome: produtosCatalogoTable.nome,
+          sku: produtosCatalogoTable.sku,
+        }).from(produtosCatalogoTable).where(eq(produtosCatalogoTable.tenantId, tenantId)),
+      ]);
+
+      const catalogParsed = JSON.parse(cleanAiJson(catalogAi.content || "{}")) as any;
+      const priceParsed = JSON.parse(cleanAiJson(priceAi.content || "{}")) as any;
+      const catalogRows = Array.isArray(catalogParsed.produtos) ? catalogParsed.produtos : [];
+      const priceRows = Array.isArray(priceParsed.itens) ? priceParsed.itens : [];
+      if (!catalogRows.length) return res.status(422).json({ error: "Nenhum produto foi identificado no catálogo." });
+      if (!priceRows.length) return res.status(422).json({ error: "Nenhum item de preço foi identificado na tabela." });
+
+      const existingBySku = new Map(existing.filter((p) => p.sku).map((p) => [catalogMatchKey(p.sku), p]));
+      const existingByName = new Map(existing.map((p) => [catalogMatchKey(p.nome), p]));
+
+      const products: CatalogPriceMatchRow[] = catalogRows.map((raw: any) => {
+        const nome = String(raw.nome ?? "").trim();
+        const sku = String(raw.sku ?? "").trim() || null;
+        const colecao = String(raw.colecao ?? "").trim() || null;
+        const cor = String(raw.cor ?? "").trim() || null;
+        const catalogIdentity = [nome, colecao, cor].filter(Boolean).join(" ");
+
+        let best: { row: any; score: number; reason: string } | null = null;
+        for (const candidate of priceRows) {
+          const cSku = String(candidate.sku ?? "").trim();
+          const candidateIdentity = [candidate.nome, candidate.colecao, candidate.cor].filter(Boolean).join(" ");
+          let score = 0;
+          let reason = "similaridade";
+          if (sku && cSku && catalogMatchKey(sku) === catalogMatchKey(cSku)) {
+            score = 1;
+            reason = "SKU exato";
+          } else {
+            const nameScore = tokenSimilarity(catalogIdentity, candidateIdentity);
+            const collectionScore = colecao && candidate.colecao
+              ? (catalogMatchKey(colecao) === catalogMatchKey(candidate.colecao) ? 1 : tokenSimilarity(colecao, candidate.colecao))
+              : 0;
+            const colorScore = cor && candidate.cor
+              ? (catalogMatchKey(cor) === catalogMatchKey(candidate.cor) ? 1 : tokenSimilarity(cor, candidate.cor))
+              : 0;
+            score = Math.min(0.98, nameScore * 0.65 + collectionScore * 0.25 + colorScore * 0.10);
+          }
+          if (!best || score > best.score) best = { row: candidate, score, reason };
+        }
+
+        const matched = best && best.score >= 0.58 ? best : null;
+        const price = matched?.row ?? {};
+        const duplicate = (sku ? existingBySku.get(catalogMatchKey(sku)) : undefined)
+          ?? existingByName.get(catalogMatchKey(nome))
+          ?? null;
+        const categoriaRaw = String(raw.categoria ?? "");
+        const categoria = findOfficialItemCategory(categoriaRaw)
+          ?? ITEM_CATEGORIES.map((item) => ({ item, score: categoryNameSimilarity(categoriaRaw || nome, item) }))
+            .sort((a, b) => b.score - a.score)[0]?.item
+          ?? ITEM_CATEGORIES[0];
+
+        const specs = Array.isArray(raw.especificacoes)
+          ? raw.especificacoes
+              .map((s: any) => ({ label: String(s?.label ?? "").trim(), value: String(s?.value ?? "").trim() }))
+              .filter((s: any) => s.label && s.value)
+              .slice(0, 40)
+          : [];
+        const paginaCatalogo = nullablePositiveInteger(raw.pagina);
+        if (paginaCatalogo) specs.push({ label: "Página do catálogo", value: String(paginaCatalogo) });
+        specs.push({ label: "Fonte visual", value: catalog.originalname });
+        specs.push({ label: "Fonte de preço", value: priceTable.originalname });
+
+        const avisos: string[] = [];
+        if (!matched) avisos.push("Preço sem correspondência segura na tabela; revisar vínculo.");
+        else if (matched.score < 0.85) avisos.push("Correspondência provável; revisar antes de confirmar.");
+        if (duplicate) avisos.push(`Produto já existente no catálogo: ${duplicate.nome}.`);
+
+        return {
+          nome,
+          sku,
+          categoria,
+          precoBase: nullablePositiveNumber(price.precoBase),
+          unidade: String(price.unidade ?? raw.unidade ?? "un").trim() || "un",
+          descricao: String(raw.descricao ?? "").trim() || null,
+          marca: String(catalogParsed.fabricante ?? "").trim() || null,
+          fornecedor: String(catalogParsed.fabricante ?? "").trim() || null,
+          cor,
+          colecao,
+          paginaCatalogo,
+          tipoCalculo: String(price.tipoCalculo ?? raw.tipoCalculo ?? "").trim() || null,
+          fechamentoPacote: nullablePositiveNumber(price.fechamentoPacote ?? raw.fechamentoPacote),
+          quantidadePacote: nullablePositiveInteger(price.quantidadePacote ?? raw.quantidadePacote),
+          precoPacote: nullablePositiveNumber(price.precoPacote),
+          embalagemMestreQuantidade: nullablePositiveInteger(price.embalagemMestreQuantidade),
+          quantidadeMinimaVenda: nullablePositiveInteger(price.quantidadeMinimaVenda),
+          multiploVenda: nullablePositiveInteger(price.multiploVenda),
+          permiteFracionarEmbalagemMestre: price.permiteFracionarEmbalagemMestre === true,
+          especificacoes: specs,
+          confianca: Number(raw.confianca ?? 0.7),
+          avisos,
+          duplicate: duplicate ? { id: duplicate.id, nome: duplicate.nome, sku: duplicate.sku } : null,
+          priceMatch: matched ? {
+            score: Number(matched.score.toFixed(3)),
+            sourceName: String(price.nome ?? "").trim() || null,
+            sourceSku: String(price.sku ?? "").trim() || null,
+            reason: matched.reason,
+          } : null,
+        };
+      }).filter((p: CatalogPriceMatchRow) => p.nome);
+
+      const importable = products.filter((p) => p.precoBase != null && !p.duplicate && (p.priceMatch?.score ?? 0) >= 0.58);
+      const header = [
+        "nome","sku","categoria","preco_base","unidade","descricao","marca","fornecedor","cor","colecao",
+        "tipo_calculo","fechamento_pacote","quantidade_pacote","preco_pacote",
+        "embalagem_mestre_quantidade","quantidade_minima_venda","multiplo_venda",
+        "permite_fracionar_embalagem_mestre","especificacoes"
+      ];
+      const rows = importable.map((p) => [
+        p.nome,p.sku ?? "",p.categoria,p.precoBase!.toFixed(2),p.unidade,p.descricao ?? "",p.marca ?? "",p.fornecedor ?? "",
+        p.cor ?? "",p.colecao ?? "",p.tipoCalculo ?? "",p.fechamentoPacote ?? "",p.quantidadePacote ?? "",p.precoPacote ?? "",
+        p.embalagemMestreQuantidade ?? "",p.quantidadeMinimaVenda ?? "",p.multiploVenda ?? "",
+        p.permiteFracionarEmbalagemMestre ? "sim" : "nao",
+        p.especificacoes.map((s) => `${s.label}:${s.value}`).join(";"),
+      ].map(csvEscape).join(","));
+
+      res.json({
+        catalogFileName: catalog.originalname,
+        priceTableFileName: priceTable.originalname,
+        fabricante: catalogParsed.fabricante ?? null,
+        tabela: priceParsed.tabela ?? null,
+        vigencia: priceParsed.vigencia ?? null,
+        products,
+        importableCount: importable.length,
+        exactOrHighConfidenceCount: products.filter((p) => (p.priceMatch?.score ?? 0) >= 0.85).length,
+        reviewCount: products.filter((p) => !p.priceMatch || (p.priceMatch.score < 0.85)).length,
+        duplicateCount: products.filter((p) => p.duplicate).length,
+        csv: [header.join(","), ...rows].join("\n"),
+        visualSource: {
+          strategy: "catalog_page_reference",
+          note: "A página de origem visual é preservada por produto. A extração/corte de imagem deve respeitar a página do catálogo sem gerar imagem sintética.",
+        },
+      });
+    } catch (error: any) {
+      req.log?.error?.({ err: error, tenantId }, "catalog-price-preview failed");
+      return res.status(502).json({ error: error?.message || "Falha ao compatibilizar catálogo e tabela de preços." });
+    }
+  },
+);
+
 const importBodySchema = z.object({ csv: z.string().min(1) });
 
 router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
