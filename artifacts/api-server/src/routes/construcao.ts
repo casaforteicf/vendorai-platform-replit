@@ -43,6 +43,18 @@ import {
   insertEquipamentoRecursoSchema,
   updateEquipamentoRecursoSchema,
   insertEquipamentoCoberturaSchema,
+  servicosFornecedoresTable,
+  servicosContratosTable,
+  servicosCoberturasTable,
+  servicosMedicoesTable,
+  servicosAditivosTable,
+  insertServicoFornecedorSchema,
+  updateServicoFornecedorSchema,
+  insertServicoContratoSchema,
+  updateServicoContratoSchema,
+  insertServicoCoberturaSchema,
+  insertServicoMedicaoSchema,
+  insertServicoAditivoSchema,
   insertObraSchema,
   updateObraSchema,
   insertObraEtapaSchema,
@@ -1315,6 +1327,224 @@ router.get("/tenants/:tenantId/equipamentos-orcamento/resolver", async (req, res
     suprimidas,
     custoTotal: custoTotal.toFixed(4),
     regra: "cada slot técnico soma uma vez; prioridade item_orcamento > etapa_orcamento > composicao",
+  });
+});
+
+// ─── Serviços e subempreitadas ────────────────────────────────────────────────
+
+router.get("/tenants/:tenantId/servicos-fornecedores", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+  const rows = await db.select().from(servicosFornecedoresTable)
+    .where(eq(servicosFornecedoresTable.tenantId, tid))
+    .orderBy(asc(servicosFornecedoresTable.nome));
+  return res.json(rows);
+});
+
+router.post("/tenants/:tenantId/servicos-fornecedores", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = insertServicoFornecedorSchema.safeParse({ ...req.body, tenantId: tid });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const [row] = await db.insert(servicosFornecedoresTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.put("/tenants/:tenantId/servicos-fornecedores/:fornecedorId", async (req, res) => {
+  const { tenantId: tid, fornecedorId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = updateServicoFornecedorSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const [row] = await db.update(servicosFornecedoresTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(and(eq(servicosFornecedoresTable.id, fornecedorId), eq(servicosFornecedoresTable.tenantId, tid)))
+    .returning();
+  if (!row) return res.status(404).json({ error: "Fornecedor não encontrado" });
+  return res.json(row);
+});
+
+router.get("/tenants/:tenantId/servicos-contratos", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+  const rows = await db.select().from(servicosContratosTable)
+    .where(eq(servicosContratosTable.tenantId, tid))
+    .orderBy(desc(servicosContratosTable.createdAt));
+  return res.json(rows);
+});
+
+router.post("/tenants/:tenantId/servicos-contratos", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertServicoContratoSchema.safeParse({
+    ...req.body,
+    tenantId: tid,
+    criadoPorId: (req as any).user?.sub ?? null,
+  });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  if (parsed.data.fornecedorId) {
+    const [fornecedor] = await db.select({ id: servicosFornecedoresTable.id })
+      .from(servicosFornecedoresTable)
+      .where(and(
+        eq(servicosFornecedoresTable.id, parsed.data.fornecedorId),
+        eq(servicosFornecedoresTable.tenantId, tid),
+      ));
+    if (!fornecedor) return res.status(422).json({ error: "Fornecedor inválido para este tenant." });
+  }
+
+  const valorGlobal = numberOrZero(parsed.data.valorGlobal) ||
+    numberOrZero(parsed.data.quantidadeContratada) * numberOrZero(parsed.data.valorUnitario);
+  const saldoContratual = Math.max(0, valorGlobal - numberOrZero(parsed.data.adiantamentoValor));
+
+  const [row] = await db.insert(servicosContratosTable).values({
+    ...parsed.data,
+    valorGlobal: valorGlobal.toFixed(4),
+    saldoContratual: saldoContratual.toFixed(4),
+  }).returning();
+
+  return res.status(201).json(row);
+});
+
+router.put("/tenants/:tenantId/servicos-contratos/:contratoId", async (req, res) => {
+  const { tenantId: tid, contratoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = updateServicoContratoSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const [row] = await db.update(servicosContratosTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(and(eq(servicosContratosTable.id, contratoId), eq(servicosContratosTable.tenantId, tid)))
+    .returning();
+  if (!row) return res.status(404).json({ error: "Contrato não encontrado" });
+  return res.json(row);
+});
+
+router.post("/tenants/:tenantId/servicos-coberturas", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = insertServicoCoberturaSchema.safeParse({ ...req.body, tenantId: tid });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const data = parsed.data;
+
+  const idsPresentes = [
+    data.composicaoId ? "composicao" : null,
+    data.orcamentoEtapaId ? "etapa_orcamento" : null,
+    data.orcamentoItemId ? "item_orcamento" : null,
+  ].filter(Boolean);
+  if (idsPresentes.length !== 1 || idsPresentes[0] !== data.escopoTipo) {
+    return res.status(422).json({ error: "Informe exatamente um alvo compatível com escopoTipo." });
+  }
+
+  let custoUnitario = numberOrZero(data.custoUnitario);
+  if (data.contratoId) {
+    const [contrato] = await db.select().from(servicosContratosTable)
+      .where(and(eq(servicosContratosTable.id, data.contratoId), eq(servicosContratosTable.tenantId, tid)));
+    if (!contrato) return res.status(422).json({ error: "Contrato inválido para este tenant." });
+    custoUnitario = custoUnitario || numberOrZero(contrato.valorUnitario) || numberOrZero(contrato.valorGlobal);
+  }
+
+  const custoTotal = numberOrZero(data.quantidade) * custoUnitario;
+  const targetCondition =
+    data.escopoTipo === "composicao"
+      ? eq(servicosCoberturasTable.composicaoId, data.composicaoId!)
+      : data.escopoTipo === "etapa_orcamento"
+        ? eq(servicosCoberturasTable.orcamentoEtapaId, data.orcamentoEtapaId!)
+        : eq(servicosCoberturasTable.orcamentoItemId, data.orcamentoItemId!);
+
+  const row = await db.transaction(async (tx) => {
+    await tx.update(servicosCoberturasTable)
+      .set({ ativo: false, updatedAt: new Date() })
+      .where(and(
+        eq(servicosCoberturasTable.tenantId, tid),
+        eq(servicosCoberturasTable.escopoTipo, data.escopoTipo),
+        eq(servicosCoberturasTable.slotKey, data.slotKey),
+        eq(servicosCoberturasTable.ativo, true),
+        targetCondition,
+      ));
+
+    const [created] = await tx.insert(servicosCoberturasTable).values({
+      ...data,
+      custoUnitario: custoUnitario.toFixed(4),
+      custoTotal: custoTotal.toFixed(4),
+      ativo: true,
+    }).returning();
+    return created;
+  });
+
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/servicos-contratos/:contratoId/medicoes", async (req, res) => {
+  const { tenantId: tid, contratoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [contrato] = await db.select().from(servicosContratosTable)
+    .where(and(eq(servicosContratosTable.id, contratoId), eq(servicosContratosTable.tenantId, tid)));
+  if (!contrato) return res.status(404).json({ error: "Contrato não encontrado" });
+
+  const parsed = insertServicoMedicaoSchema.safeParse({ ...req.body, tenantId: tid, contratoId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const valorBruto = numberOrZero(parsed.data.valorBruto) ||
+    (numberOrZero(parsed.data.quantidadeMedida) * numberOrZero(contrato.valorUnitario)) ||
+    (numberOrZero(parsed.data.percentualMedido) / 100) * numberOrZero(contrato.valorGlobal);
+  const retencaoValor = numberOrZero(parsed.data.retencaoValor) ||
+    valorBruto * numberOrZero(contrato.retencaoPercentual) / 100;
+  const valorLiquido = valorBruto - retencaoValor - numberOrZero(parsed.data.descontosValor) + numberOrZero(parsed.data.acrescimosValor);
+
+  const [row] = await db.insert(servicosMedicoesTable).values({
+    ...parsed.data,
+    valorBruto: valorBruto.toFixed(4),
+    retencaoValor: retencaoValor.toFixed(4),
+    valorLiquido: valorLiquido.toFixed(4),
+  }).returning();
+
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/servicos-contratos/:contratoId/aditivos", async (req, res) => {
+  const { tenantId: tid, contratoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [contrato] = await db.select().from(servicosContratosTable)
+    .where(and(eq(servicosContratosTable.id, contratoId), eq(servicosContratosTable.tenantId, tid)));
+  if (!contrato) return res.status(404).json({ error: "Contrato não encontrado" });
+
+  const parsed = insertServicoAditivoSchema.safeParse({ ...req.body, tenantId: tid, contratoId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(servicosAditivosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.get("/tenants/:tenantId/servicos-contratos/:contratoId/resumo", async (req, res) => {
+  const { tenantId: tid, contratoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [contrato] = await db.select().from(servicosContratosTable)
+    .where(and(eq(servicosContratosTable.id, contratoId), eq(servicosContratosTable.tenantId, tid)));
+  if (!contrato) return res.status(404).json({ error: "Contrato não encontrado" });
+
+  const medicoes = await db.select().from(servicosMedicoesTable)
+    .where(and(eq(servicosMedicoesTable.tenantId, tid), eq(servicosMedicoesTable.contratoId, contratoId)));
+  const aditivos = await db.select().from(servicosAditivosTable)
+    .where(and(eq(servicosAditivosTable.tenantId, tid), eq(servicosAditivosTable.contratoId, contratoId)));
+
+  const aditivosAprovados = aditivos.filter((a) => a.aprovado).reduce((s, a) => s + numberOrZero(a.valor), 0);
+  const valorContratoAtual = numberOrZero(contrato.valorGlobal) + aditivosAprovados;
+  const valorMedido = medicoes.reduce((s, m) => s + numberOrZero(m.valorBruto), 0);
+  const valorLiquido = medicoes.reduce((s, m) => s + numberOrZero(m.valorLiquido), 0);
+  const retencoes = medicoes.reduce((s, m) => s + numberOrZero(m.retencaoValor), 0);
+
+  return res.json({
+    contrato,
+    valorContratoAtual: valorContratoAtual.toFixed(4),
+    valorMedido: valorMedido.toFixed(4),
+    valorLiquidoMedido: valorLiquido.toFixed(4),
+    retencoes: retencoes.toFixed(4),
+    saldoMedir: Math.max(0, valorContratoAtual - valorMedido).toFixed(4),
+    medicoes,
+    aditivos,
   });
 });
 
