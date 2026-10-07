@@ -3,7 +3,8 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { findOfficialItemCategory, ITEM_CATEGORIES, categoryNameSimilarity } from "../lib/itemCategories";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { callOpenAI, generateImage } from "../lib/ai-gateway.js";
+import { callOpenAI, callOpenAIFileExtraction, generateImage } from "../lib/ai-gateway.js";
+import multer from "multer";
 import { resolverContextoNegocio } from "../services/resolvedorContextoNegocio.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import {
@@ -19,6 +20,18 @@ import {
 
 const router: IRouter = Router();
 const objectStorage = new ObjectStorageService();
+const catalogPdfUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    const isPdf = file.mimetype === "application/pdf" || file.originalname.toLowerCase().endsWith(".pdf");
+    if (!isPdf) {
+      cb(new Error("Envie um arquivo PDF."));
+      return;
+    }
+    cb(null, true);
+  },
+});
 
 function routeTenantId(req: any): string {
   // tenant-audit: reviewed tenant route; callers enforce same-tenant or super-admin access before tenant-scoped data access.
@@ -656,6 +669,191 @@ router.patch("/tenants/:tenantId/produtos-catalogo/praca-ai-bulk", async (req, r
   res.json({ atualizados: updated.length });
 });
 
+
+
+type CatalogPdfPreviewProduct = {
+  nome: string;
+  sku: string | null;
+  categoria: string;
+  precoBase: number | null;
+  unidade: string;
+  descricao: string | null;
+  marca: string | null;
+  fornecedor: string | null;
+  cor: string | null;
+  especificacoes: Array<{ label: string; value: string }>;
+  confianca: number;
+  avisos: string[];
+  duplicate?: { id: string; nome: string; sku: string | null } | null;
+};
+
+function cleanAiJson(raw: string): string {
+  return raw.trim().replace(/^\`\`\`json\s*/i, "").replace(/\s*\`\`\`$/i, "");
+}
+
+function csvEscape(value: unknown): string {
+  const text = value == null ? "" : String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+router.post(
+  "/tenants/:tenantId/produtos-catalogo/import-pdf/preview",
+  catalogPdfUpload.single("file"),
+  async (req, res) => {
+    const tenantId = routeTenantId(req);
+    if (!canAccessTenant(req, tenantId)) {
+      res.status(403).json({ error: "Access denied" });
+      return;
+    }
+    if (!req.file) {
+      res.status(422).json({ error: "Selecione um catálogo em PDF." });
+      return;
+    }
+
+    try {
+      const existing = await db
+        .select({
+          id: produtosCatalogoTable.id,
+          nome: produtosCatalogoTable.nome,
+          sku: produtosCatalogoTable.sku,
+          categoriaId: produtosCatalogoTable.categoriaId,
+        })
+        .from(produtosCatalogoTable)
+        .where(eq(produtosCatalogoTable.tenantId, tenantId));
+
+      const instruction = [
+        "Você interpreta catálogos comerciais e os converte para o padrão oficial de produtos do Vendor.ai.",
+        "Leia o PDF inteiro, incluindo tabelas, títulos, famílias, linhas, variantes e especificações técnicas.",
+        "NÃO copie a estrutura visual do PDF. Normalize cada produto/variante em um registro utilizável no catálogo.",
+        "Não invente preço, SKU, medida, material, cor, marca ou fornecedor. Quando não existir, use null.",
+        "Quando uma tabela representar variações reais (medida, cor, modelo, voltagem, acabamento), gere registros distintos somente quando fizer sentido comercial.",
+        "Evite transformar cabeçalhos, textos institucionais, índices, legendas e acessórios citados apenas como referência em produtos.",
+        "Preço: use o preço unitário/comercial explicitamente associado ao item. Não calcule preço ausente.",
+        "Categoria: escolha SOMENTE uma destas categorias oficiais, usando a mais adequada: " + ITEM_CATEGORIES.join(" | "),
+        "Unidade: normalize para valores curtos como un, m, m², m³, kg, cx, pct, kit, serviço quando houver evidência.",
+        "Especificações: preserve atributos técnicos relevantes como pares label/value; não repita nome, SKU, categoria, preço, marca ou cor.",
+        "Confianca deve estar entre 0 e 1. Em avisos, explique apenas incertezas reais que o usuário precisa revisar.",
+        "Retorne SOMENTE JSON válido no formato:",
+        JSON.stringify({
+          fabricante: "string|null",
+          produtos: [{
+            nome: "string",
+            sku: "string|null",
+            categoria: "categoria oficial",
+            precoBase: "number|null",
+            unidade: "string",
+            descricao: "string|null",
+            marca: "string|null",
+            fornecedor: "string|null",
+            cor: "string|null",
+            especificacoes: [{ label: "string", value: "string" }],
+            confianca: 0.9,
+            avisos: ["string"]
+          }]
+        }),
+        "Extraia o máximo de produtos reais possível dentro do limite de resposta, sem resumir vários SKUs em um único item quando o PDF os distingue."
+      ].join("\n");
+
+      const ai = await callOpenAIFileExtraction(
+        tenantId,
+        "document_extraction",
+        { buffer: req.file.buffer, mimeType: "application/pdf", filename: req.file.originalname },
+        instruction,
+        { model: "gpt-4.1-mini", maxTokens: 10000, log: req.log },
+      );
+
+      const parsed = JSON.parse(cleanAiJson(ai.content || "{}")) as {
+        fabricante?: string | null;
+        produtos?: Array<Record<string, unknown>>;
+      };
+      const rawProducts = Array.isArray(parsed.produtos) ? parsed.produtos : [];
+      if (rawProducts.length === 0) {
+        res.status(422).json({ error: "Não foi possível identificar produtos reais neste PDF. Revise o arquivo ou tente um catálogo com texto/tabelas mais legíveis." });
+        return;
+      }
+
+      const norm = (value: unknown) => typeof value === "string" ? value.trim() : "";
+      const normKey = (value: unknown) => norm(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const existingBySku = new Map(existing.filter((p) => p.sku).map((p) => [normKey(p.sku), p]));
+      const existingByName = new Map(existing.map((p) => [normKey(p.nome), p]));
+      const seen = new Set<string>();
+      const products: CatalogPdfPreviewProduct[] = [];
+
+      for (const raw of rawProducts) {
+        const nome = norm(raw.nome);
+        if (!nome) continue;
+        const sku = norm(raw.sku) || null;
+        const categoryRaw = norm(raw.categoria);
+        const categoria = findOfficialItemCategory(categoryRaw)
+          ?? ITEM_CATEGORIES.map((item) => ({ item, score: categoryNameSimilarity(categoryRaw || nome, item) })).sort((a, b) => b.score - a.score)[0]?.item
+          ?? ITEM_CATEGORIES[0];
+        const priceValue = typeof raw.precoBase === "number" ? raw.precoBase : Number(raw.precoBase);
+        const precoBase = Number.isFinite(priceValue) && priceValue >= 0 ? priceValue : null;
+        const key = sku ? `sku:${normKey(sku)}` : `nome:${normKey(nome)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        const specs = Array.isArray(raw.especificacoes)
+          ? raw.especificacoes
+              .map((item: any) => ({ label: norm(item?.label), value: norm(item?.value) }))
+              .filter((item: { label: string; value: string }) => item.label && item.value)
+              .slice(0, 40)
+          : [];
+        const duplicate = (sku ? existingBySku.get(normKey(sku)) : undefined) ?? existingByName.get(normKey(nome)) ?? null;
+        const avisos = Array.isArray(raw.avisos) ? raw.avisos.map(norm).filter(Boolean).slice(0, 8) : [];
+        if (precoBase == null) avisos.push("Preço não identificado no PDF; revise antes de importar.");
+        if (duplicate) avisos.push(`Já existe produto semelhante no catálogo: ${duplicate.nome}.`);
+
+        products.push({
+          nome,
+          sku,
+          categoria,
+          precoBase,
+          unidade: norm(raw.unidade) || "un",
+          descricao: norm(raw.descricao) || null,
+          marca: norm(raw.marca) || norm(parsed.fabricante) || null,
+          fornecedor: norm(raw.fornecedor) || norm(parsed.fabricante) || null,
+          cor: norm(raw.cor) || null,
+          especificacoes: specs,
+          confianca: Math.min(1, Math.max(0, Number(raw.confianca ?? 0.5) || 0.5)),
+          avisos: Array.from(new Set(avisos)),
+          duplicate: duplicate ? { id: duplicate.id, nome: duplicate.nome, sku: duplicate.sku } : null,
+        });
+      }
+
+      const importable = products.filter((p) => p.precoBase != null && !p.duplicate);
+      const header = ["nome","sku","categoria","preco_base","unidade","descricao","marca","fornecedor","cor","especificacoes"];
+      const rows = importable.map((p) => [
+        p.nome,
+        p.sku ?? "",
+        p.categoria,
+        p.precoBase!.toFixed(2),
+        p.unidade,
+        p.descricao ?? "",
+        p.marca ?? "",
+        p.fornecedor ?? "",
+        p.cor ?? "",
+        p.especificacoes.map((s) => `${s.label}:${s.value}`).join(";"),
+      ].map(csvEscape).join(","));
+      const csv = [header.join(","), ...rows].join("\n");
+
+      res.json({
+        fileName: req.file.originalname,
+        fabricante: norm(parsed.fabricante) || null,
+        products,
+        importableCount: importable.length,
+        duplicateCount: products.filter((p) => p.duplicate).length,
+        reviewCount: products.filter((p) => p.precoBase == null || p.avisos.length > 0).length,
+        csv,
+      });
+    } catch (error: any) {
+      req.log?.error?.({ err: error, tenantId }, "catalog-pdf-preview failed");
+      res.status(502).json({
+        error: error?.message || "Não foi possível interpretar o catálogo PDF.",
+      });
+    }
+  },
+);
 
 const importBodySchema = z.object({ csv: z.string().min(1) });
 
