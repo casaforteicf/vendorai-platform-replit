@@ -30,18 +30,18 @@ const EMPTY_PROJECT_CTX: ProjectContext = {
 // ─── Inline welcome message (no mock file) ────────────────────────────────
 function makeWelcomeMsg(projectName?: string): CopilotMessage {
   const text = projectName
-    ? `Olá! Sou o Vendi e estou acompanhando este projeto com você.\n\nPosso analisar **${projectName}**, encontrar informações faltantes, levantar quantitativos, conferir especificações e ajudar a preparar o orçamento.`
-    : `Olá! Sou o Vendi.\n\nAbra ou importe um projeto e eu posso ajudar a analisar a planta, identificar pendências, levantar quantitativos e preparar o orçamento.`
+    ? `Olá! Sou o ARQ Copilot, seu assistente de projeto.\n\nEstou pronto para ajudar com **${projectName}**. Pode me perguntar sobre materiais, renders, memoriais descritivos, orçamentos ou próximos passos.`
+    : `Olá! Sou o ARQ Copilot.\n\nAbra um projeto para ter respostas mais precisas sobre materiais, ambientes e renders. Ou pergunte qualquer coisa sobre arquitetura e design!`
   return {
     id: 'msg-welcome',
     role: 'COPILOT',
     timestamp: new Date().toISOString(),
     text,
     chips: [
-      { label: 'Analisar projeto', value: 'Analise este projeto e destaque o que está confirmado, calculado, assumido e o que precisa de validação.' },
-      { label: 'Gerar quantitativos', value: 'Levante os quantitativos deste projeto por ambiente e disciplina.' },
-      { label: 'Preparar orçamento', value: 'Prepare o orçamento preliminar deste projeto usando as regras e o catálogo deste tenant.' },
-      { label: 'Ver pendências', value: 'Quais informações estão faltando ou divergentes para concluir o orçamento?' },
+      { label: 'Próximo passo',    value: 'Qual é o próximo passo do projeto?' },
+      { label: 'Ver pendências',   value: 'Quais são as pendências atuais?' },
+      { label: 'Sugerir materiais',value: 'Sugira materiais para este projeto' },
+      { label: 'Criar memorial',   value: 'Gere um memorial descritivo preliminar' },
     ],
   }
 }
@@ -484,7 +484,7 @@ function AlertsStrip({ health }: { health: ProjectHealthResult }) {
 
 // ─── Main Copilot panel ───────────────────────────────────────────────────
 
-export function ArqCopilot({ collapsed, onToggle, nextAction, moduleId }: { collapsed: boolean; onToggle: () => void; nextAction?: string; moduleId?: string }) {
+export function ArqCopilot({ collapsed, onToggle, nextAction }: { collapsed: boolean; onToggle: () => void; nextAction?: string }) {
   const workspaceCtx   = useContext(WorkspaceContext)
   const isRealProject  = workspaceCtx?.isRealProject ?? false
   const ctx            = workspaceCtx?.projectCtx ?? EMPTY_PROJECT_CTX
@@ -518,37 +518,6 @@ export function ArqCopilot({ collapsed, onToggle, nextAction, moduleId }: { coll
   const progress    = useMemo(() => computeProgress(ctx),          [ctx])
   const workflow    = useMemo(() => buildWorkflow('INITIAL', ctx), [ctx])
   const renderReady = useMemo(() => Math.max(0, Math.min(100, progress - 15)), [progress])
-
-
-  const contextualActions = useMemo(() => {
-    const common = [
-      { label: 'Ver pendências', prompt: 'Revise o contexto atual e diga o que está faltando, divergente ou precisa de validação.' },
-      { label: 'Próxima ação', prompt: 'Qual é a melhor próxima ação neste contexto?' },
-    ]
-    if (moduleId === 'projeto' || moduleId === 'home') {
-      return [
-        { label: 'Analisar planta', prompt: 'Analise a planta/projeto atual e organize o que foi identificado com nível de confiança.' },
-        { label: 'Gerar quantitativos', prompt: 'Gere os quantitativos do projeto por ambiente, item e disciplina.' },
-        { label: 'Preparar orçamento', prompt: 'Prepare um orçamento preliminar usando catálogo, composições e regras do tenant.' },
-        ...common,
-      ]
-    }
-    if (moduleId === 'orcamento' || moduleId === 'orcamento-pro' || moduleId === 'budget') {
-      return [
-        { label: 'Revisar orçamento', prompt: 'Revise este orçamento e aponte itens faltantes, inconsistências, perdas e regras não aplicadas.' },
-        { label: 'Alternativa econômica', prompt: 'Prepare uma alternativa mais econômica sem comprometer os requisitos principais.' },
-        ...common,
-      ]
-    }
-    if (moduleId === 'especificacao' || moduleId === 'specification' || moduleId === 'especificacao-produto') {
-      return [
-        { label: 'Conferir especificações', prompt: 'Confira as especificações deste projeto e destaque lacunas, conflitos e itens sem definição.' },
-        { label: 'Cruzar catálogo', prompt: 'Cruze as especificações com os produtos e materiais disponíveis no catálogo do tenant.' },
-        ...common,
-      ]
-    }
-    return common
-  }, [moduleId])
 
   // ── Build history array for API (last 8 exchanges) ───────────────────────
   const buildHistory = useCallback((msgs: CopilotMessage[]) => {
@@ -689,7 +658,7 @@ export function ArqCopilot({ collapsed, onToggle, nextAction, moduleId }: { coll
         width:40, flexShrink:0, background:'rgba(255,255,255,0.03)', borderLeft:`1px solid ${T.border}`,
         display:'flex', flexDirection:'column', alignItems:'center', paddingTop:8, gap:2,
       }}>
-        <button onClick={onToggle} style={{ padding:'6px', borderRadius:6, border:'none', background:'transparent', cursor:'pointer', color:T.dim, fontSize:16 }} title='Abrir Vendi — ajuda contextual'>◂</button>
+        <button onClick={onToggle} style={{ padding:'6px', borderRadius:6, border:'none', background:'transparent', cursor:'pointer', color:T.dim, fontSize:16 }} title='Abrir Copilot'>◂</button>
         <div style={{ width:24, height:24, borderRadius:'50%', background:T.purple, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, marginTop:4 }}>🤖</div>
         {tasks.filter(t=>t.status==='PENDING').length > 0 && (
           <div style={{ width:16, height:16, borderRadius:'50%', background:'#f87171', display:'flex', alignItems:'center', justifyContent:'center', fontSize:8, fontWeight:700, color:'#fff' }}>
@@ -712,8 +681,7 @@ export function ArqCopilot({ collapsed, onToggle, nextAction, moduleId }: { coll
             🤖
           </div>
           <div style={{ flex:1, minWidth:0 }}>
-            <p style={{ margin:'0 0 1px', fontSize:11, fontWeight:800, color:'#fff' }}>Vendi</p>
-            <p style={{ margin:'0 0 3px', fontSize:8, color:T.dim }}>Posso ajudar no que está aberto agora</p>
+            <p style={{ margin:'0 0 1px', fontSize:11, fontWeight:800, color:'#fff' }}>ARQ Copilot</p>
             <HealthBadge health={health}/>
           </div>
           {isRealProject ? (
@@ -730,27 +698,6 @@ export function ArqCopilot({ collapsed, onToggle, nextAction, moduleId }: { coll
       </div>
 
       <ProgressBar value={progress} renderReady={renderReady}/>
-      {contextualActions.length > 0 && (
-        <div style={{ padding:'8px 10px', borderBottom:`1px solid ${T.border}`, background:'rgba(124,58,237,0.035)', flexShrink:0 }}>
-          <p style={{ margin:'0 0 6px', fontSize:8, fontWeight:700, color:T.purpleL, letterSpacing:'0.05em' }}>O VENDI PODE AJUDAR AQUI</p>
-          <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
-            {contextualActions.map(action => (
-              <button
-                key={action.label}
-                onClick={() => handleSend(action.prompt)}
-                disabled={loading}
-                style={{
-                  padding:'4px 8px', borderRadius:10, fontSize:9, cursor:loading?'default':'pointer',
-                  border:`1px solid ${T.border}`, background:'rgba(255,255,255,0.04)',
-                  color:T.text, opacity:loading?0.5:1,
-                }}
-              >
-                {action.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
       <AlertsStrip health={health}/>
 
       <div style={{ display:'flex', borderBottom:`1px solid ${T.border}`, flexShrink:0, overflowX:'auto' }}>
