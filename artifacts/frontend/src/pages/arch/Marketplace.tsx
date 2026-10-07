@@ -20,7 +20,7 @@ import { ordenarArvoreCategorias } from "@/lib/categoriaTree";
 import { useListCategoriasProduto, getListCategoriasProdutoQueryKey } from "@workspace/api-client-react";
 import {
   Search, Image, ShoppingCart, Loader2, Store, Package,
-  TrendingUp, DollarSign, ReceiptText,
+  TrendingUp, DollarSign, ReceiptText, Building2, Star, Send, ClipboardList,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -36,6 +36,47 @@ type MarketplaceItem = {
   ativo: boolean;
   totalVendas: number;
   createdAt: string;
+};
+
+type MarketCompany = {
+  id: string;
+  nome: string;
+  slug: string | null;
+  vertical: string | null;
+  avaliacao: number | null;
+  totalAvaliacoes: number;
+  produtosCompativeis: number;
+  categorias: string[];
+  fotos: string[];
+  totalVendas: number;
+};
+
+type MarketContextResponse = {
+  contexto: {
+    busca: string | null;
+    categoria: string | null;
+    origem: string | null;
+    origemId: string | null;
+    quantidade: number | null;
+    unidade: string | null;
+  };
+  empresas: MarketCompany[];
+  produtos: Array<{
+    id: string;
+    masterProductId: string | null;
+    fornecedorTenantId: string;
+    fornecedorNome: string;
+    nome: string;
+    descricao: string | null;
+    categoria: string | null;
+    preco: number | null;
+    imagens: string[];
+    especificacoes: Record<string, unknown>;
+    totalVendas: number;
+    avaliacaoFornecedor: number | null;
+    totalAvaliacoesFornecedor: number;
+    acaoPrincipal: "comprar" | "cotar";
+  }>;
 };
 
 type Pedido = {
@@ -81,13 +122,31 @@ export default function Marketplace() {
   const { toast } = useToast();
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
+  const urlParams = new URLSearchParams(window.location.search);
+  const contextOrigem = urlParams.get("origem");
+  const contextOrigemId = urlParams.get("origemId");
+  const contextQuantidade = urlParams.get("quantidade");
+  const contextUnidade = urlParams.get("unidade");
+  const contextProjetoId = urlParams.get("projetoId");
+  const contextObraId = urlParams.get("obraId");
+  const contextOrcamentoId = urlParams.get("orcamentoId");
+  const contextOrcamentoItemId = urlParams.get("orcamentoItemId");
+  const contextRenderId = urlParams.get("renderId");
+  const contextAtividadeId = urlParams.get("atividadeId");
+  const contextEtapaId = urlParams.get("etapaId");
 
   // ── Explorar state
   const [items, setItems]           = useState<MarketplaceItem[]>([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemsLoaded, setItemsLoaded]   = useState(false);
-  const [busca, setBusca]           = useState("");
-  const [catFilter, setCatFilter]   = useState("__all__");
+  const [busca, setBusca]           = useState(() => urlParams.get("q") ?? urlParams.get("busca") ?? "");
+  const [catFilter, setCatFilter]   = useState(() => urlParams.get("categoria") ?? "__all__");
+  const [companies, setCompanies]   = useState<MarketCompany[]>([]);
+  const [resultMode, setResultMode] = useState<"tudo" | "empresas" | "produtos">("tudo");
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [publishTitle, setPublishTitle] = useState(() => urlParams.get("titulo") ?? urlParams.get("q") ?? "");
+  const [publishVisibility, setPublishVisibility] = useState<"privada" | "parceiros" | "regional" | "aberta">("privada");
+  const [submittingPublish, setSubmittingPublish] = useState(false);
   const { data: categoriasProduto = [] } = useListCategoriasProduto(tenantId, {
     query: {
       queryKey: getListCategoriasProdutoQueryKey(tenantId),
@@ -124,16 +183,39 @@ export default function Marketplace() {
   // ── Loaders ────────────────────────────────────────────────────────────
   const loadItems = useCallback(async () => {
     setItemsLoading(true);
-    const params = new URLSearchParams({ limit: "40" });
+    const params = new URLSearchParams({ limit: "60" });
     if (busca)                   params.set("busca", busca);
     if (catFilter !== "__all__") params.set("categoria", catFilter);
-    const res = await fetch(`/api/arch/marketplace?${params}`, {
+    if (contextOrigem)           params.set("origem", contextOrigem);
+    if (contextOrigemId)         params.set("origemId", contextOrigemId);
+    if (contextQuantidade)       params.set("quantidade", contextQuantidade);
+    if (contextUnidade)          params.set("unidade", contextUnidade);
+    const res = await fetch(`/api/arch/market/contexto?${params}`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     });
-    if (res.ok) setItems(await res.json());
+    if (res.ok) {
+      const data: MarketContextResponse = await res.json();
+      setCompanies(data.empresas ?? []);
+      setItems((data.produtos ?? []).map((p) => ({
+        id: p.id,
+        vendedorTenantId: p.fornecedorTenantId,
+        nome: p.nome,
+        descricao: p.descricao,
+        categoria: p.categoria,
+        preco: p.preco == null ? null : String(p.preco),
+        comissaoVendorai: null,
+        imagens: p.imagens,
+        ativo: true,
+        totalVendas: p.totalVendas,
+        createdAt: new Date().toISOString(),
+      })));
+    } else {
+      setCompanies([]);
+      setItems([]);
+    }
     setItemsLoading(false);
     setItemsLoaded(true);
-  }, [busca, catFilter]);
+  }, [busca, catFilter, contextOrigem, contextOrigemId, contextQuantidade, contextUnidade]);
 
   const loadMeusProdutos = useCallback(async () => {
     if (meusProdutosLoaded) return;
@@ -219,6 +301,51 @@ export default function Marketplace() {
     }
   }
 
+  async function handlePublicarNecessidade() {
+    const title = publishTitle.trim() || busca.trim();
+    if (!title) {
+      toast({ title: "Informe a necessidade", description: "Dê um nome para a cotação que será publicada.", variant: "destructive" });
+      return;
+    }
+
+    setSubmittingPublish(true);
+    try {
+      const res = await fetch("/api/arch/market/demandas", {
+        method: "POST",
+        headers: authH(),
+        body: JSON.stringify({
+          origem: contextOrigem ?? "manual",
+          origemId: contextOrigemId ?? undefined,
+          projetoId: contextProjetoId ?? undefined,
+          obraId: contextObraId ?? undefined,
+          orcamentoId: contextOrcamentoId ?? undefined,
+          orcamentoItemId: contextOrcamentoItemId ?? undefined,
+          renderId: contextRenderId ?? undefined,
+          atividadeId: contextAtividadeId ?? undefined,
+          etapaId: contextEtapaId ?? undefined,
+          titulo: title,
+          descricao: busca ? `Necessidade originada do contexto: ${busca}` : undefined,
+          categoria: catFilter !== "__all__" ? catFilter : undefined,
+          produtoServico: busca || title,
+          quantidade: contextQuantidade ? Number(contextQuantidade) : undefined,
+          unidade: contextUnidade ?? undefined,
+          visibilidade: publishVisibility,
+          publicar: true,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error ?? "Não foi possível publicar a necessidade.");
+      }
+      setPublishOpen(false);
+      toast({ title: "Necessidade publicada", description: "Ela já está disponível no Arqdor Market conforme a visibilidade escolhida." });
+    } catch (err: any) {
+      toast({ title: "Erro ao publicar", description: err.message, variant: "destructive" });
+    } finally {
+      setSubmittingPublish(false);
+    }
+  }
+
   // ── Toggle ativo (Meus Produtos) ───────────────────────────────────────
   async function toggleAtivo(item: MarketplaceItem) {
     setTogglingId(item.id);
@@ -242,10 +369,17 @@ export default function Marketplace() {
   return (
     <div className="arqdor-reference-ui max-w-6xl mx-auto space-y-5">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Marketplace Arch</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Compre e venda produtos entre arquitetos e designers
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Arqdor Market</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Encontre empresas, produtos e serviços compatíveis com o contexto técnico do seu projeto e orçamento.
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => setPublishOpen(true)}>
+            <Send className="h-4 w-4 mr-2" /> Publicar necessidade
+          </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="explorar">
@@ -284,6 +418,102 @@ export default function Marketplace() {
             </Select>
           </div>
 
+          {(contextOrigem || contextQuantidade || contextUnidade) && (
+            <div className="rounded-xl border bg-violet-50/60 border-violet-200 p-4">
+              <div className="flex items-start gap-3">
+                <ClipboardList className="h-5 w-5 text-violet-700 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-violet-950">Necessidade do projeto</p>
+                  <p className="text-sm text-violet-800 mt-1">
+                    {busca || "Item técnico"}
+                    {contextQuantidade ? ` · ${contextQuantidade}${contextUnidade ? ` ${contextUnidade}` : ""}` : ""}
+                  </p>
+                  <p className="text-xs text-violet-700 mt-1">
+                    O Market está priorizando fornecedores e produtos compatíveis com este contexto.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant={resultMode === "tudo" ? "default" : "outline"} onClick={() => setResultMode("tudo")}>
+              Tudo
+            </Button>
+            <Button size="sm" variant={resultMode === "empresas" ? "default" : "outline"} onClick={() => setResultMode("empresas")}>
+              Empresas {companies.length > 0 ? `(${companies.length})` : ""}
+            </Button>
+            <Button size="sm" variant={resultMode === "produtos" ? "default" : "outline"} onClick={() => setResultMode("produtos")}>
+              Produtos {items.length > 0 ? `(${items.length})` : ""}
+            </Button>
+          </div>
+
+          {!itemsLoading && (resultMode === "tudo" || resultMode === "empresas") && companies.length > 0 && (
+            <div className="space-y-2">
+              <div>
+                <p className="text-sm font-semibold">Empresas compatíveis</p>
+                <p className="text-xs text-muted-foreground">Parceiros do ecossistema com produtos relacionados à necessidade.</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {companies.map(company => (
+                  <Card key={company.id} className="overflow-hidden">
+                    {company.fotos[0] && (
+                      <div className="h-28 bg-muted">
+                        <img src={company.fotos[0]} alt={company.nome} className="h-full w-full object-cover" />
+                      </div>
+                    )}
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <Building2 className="h-4 w-4 text-violet-700" />
+                            <p className="font-semibold text-sm truncate">{company.nome}</p>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {company.produtosCompativeis} produto(s) compatível(is)
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          {company.avaliacao != null ? (
+                            <div className="flex items-center gap-1 text-sm font-semibold">
+                              <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                              {company.avaliacao.toFixed(1)}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">Sem avaliações</span>
+                          )}
+                          {company.totalAvaliacoes > 0 && (
+                            <p className="text-[11px] text-muted-foreground">{company.totalAvaliacoes} avaliação(ões)</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {company.categorias.slice(0, 4).map(cat => <Badge key={cat} variant="secondary">{cat}</Badge>)}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" className="flex-1" onClick={() => {
+                          setBusca("");
+                          setCatFilter("__all__");
+                          setResultMode("produtos");
+                        }}>
+                          Ver produtos
+                        </Button>
+                        <Button size="sm" className="flex-1" onClick={() => {
+                          setPublishTitle(busca || `Cotação para ${company.nome}`);
+                          setPublishVisibility("privada");
+                          setPublishOpen(true);
+                        }}>
+                          Solicitar cotação
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+
+
           {itemsLoading && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-56 rounded-xl" />)}
@@ -302,8 +532,13 @@ export default function Marketplace() {
             </div>
           )}
 
-          {!itemsLoading && items.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {!itemsLoading && (resultMode === "tudo" || resultMode === "produtos") && items.length > 0 && (
+            <div className="space-y-2">
+              <div>
+                <p className="text-sm font-semibold">Produtos compatíveis</p>
+                <p className="text-xs text-muted-foreground">Compra direta quando houver preço; itens sob consulta seguem para cotação.</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {items.map(item => {
                 const thumb = item.imagens?.[0];
                 return (
@@ -343,6 +578,7 @@ export default function Marketplace() {
                   </Card>
                 );
               })}
+              </div>
             </div>
           )}
         </TabsContent>
@@ -531,6 +767,49 @@ export default function Marketplace() {
           )}
         </TabsContent>
       </Tabs>
+
+      <Dialog open={publishOpen} onOpenChange={setPublishOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Publicar necessidade no Arqdor Market</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div className="space-y-1.5">
+              <Label>Título da necessidade</Label>
+              <Input value={publishTitle} onChange={e => setPublishTitle(e.target.value)} placeholder="Ex.: Cimento CP-II — 80 sacos" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Quem pode visualizar</Label>
+              <Select value={publishVisibility} onValueChange={(value) => setPublishVisibility(value as typeof publishVisibility)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="privada">Privada — somente empresas convidadas</SelectItem>
+                  <SelectItem value="parceiros">Rede de parceiros</SelectItem>
+                  <SelectItem value="regional">Market regional</SelectItem>
+                  <SelectItem value="aberta">Market aberto</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Dados pessoais do cliente e valores internos do orçamento não são publicados por esta ação.
+              </p>
+            </div>
+            {(contextQuantidade || contextUnidade || contextOrigem) && (
+              <div className="rounded-lg border bg-muted/40 p-3 text-xs space-y-1">
+                <p className="font-medium text-sm">Contexto enviado com a cotação</p>
+                {contextQuantidade && <p>Quantidade: {contextQuantidade} {contextUnidade ?? ""}</p>}
+                {contextOrigem && <p>Origem: {contextOrigem}</p>}
+                {catFilter !== "__all__" && <p>Categoria: {catFilter}</p>}
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setPublishOpen(false)}>Cancelar</Button>
+              <Button onClick={handlePublicarNecessidade} disabled={submittingPublish}>
+                {submittingPublish ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Publicando…</> : <><Send className="h-4 w-4 mr-2" />Publicar</>}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Dialog: Comprar ─────────────────────────────────────────────── */}
       <Dialog open={!!buying} onOpenChange={() => setBuying(null)}>
