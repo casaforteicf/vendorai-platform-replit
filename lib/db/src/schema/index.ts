@@ -149,6 +149,7 @@ export * from "./arch_render_solicitacoes";
 export * from "./arch_suggestions";
 export * from "./arch_render_surfaces";
 export * from "./arch_ai_renders";
+export * from "./arch_render_fidelity_reviews";
 export * from "./arch_project_configs";
 export * from "./arch_concept_projects";
 export * from "./beauty_servicos";
@@ -260,3 +261,5 @@ export * from "./tenant_custom_integrations";
 export * from "./tenant_commercial_partnerships";
 
 export * from "./attachment_folder_locks";
+
+[executed on device: vmi3624448 (5bc1259f-2bcf-417a-b2e2-7864f48f2673)]

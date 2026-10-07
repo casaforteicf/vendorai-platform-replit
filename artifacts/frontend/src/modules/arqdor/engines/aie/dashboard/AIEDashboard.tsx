@@ -38,7 +38,7 @@ function ScoreGauge({ label, icon, score }: { label: string; icon: string; score
 
 const SCORE_META: Array<{ key: keyof ProjectScores; label: string; icon: string }> = [
   { key:'overall',        label:'Overall',        icon:'🏆' },
-  { key:'renderReadiness',label:'Render Ready',   icon:'🎬' },
+  { key:'renderReadiness',label:'Structural Readiness', icon:'🏗️' },
   { key:'material',       label:'Material',       icon:'🪵' },
   { key:'consistency',    label:'Consistência',   icon:'🔗' },
   { key:'composition',    label:'Composição',     icon:'⚖️'  },
@@ -63,10 +63,13 @@ function ReadinessBanner({ result }: { result: AIEResult }) {
       <div style={{ textAlign:'center' as const, flexShrink:0 }}>
         <p style={{ margin:0, fontSize:42, fontWeight:900, color, lineHeight:1 }}>{rr.score}<span style={{ fontSize:20 }}>%</span></p>
         <p style={{ margin:'4px 0 0', fontSize:10, fontWeight:700, color, letterSpacing:'0.05em' }}>
-          {rr.ready ? '✓ PRONTO PARA RENDER' : 'NÃO PRONTO'}
+          {rr.ready ? '✓ PRONTIDÃO ESTRUTURAL OK' : 'PRONTIDÃO INCOMPLETA'}
         </p>
       </div>
       <div style={{ flex:1 }}>
+        <p style={{ margin:'0 0 8px', fontSize:9, color:T.dim, lineHeight:1.5 }}>
+          Structural Readiness é um checklist determinístico de completude/consistência do projeto. Não mede fidelidade visual do render; essa validação pertence ao Fidelity / AI Review.
+        </p>
         {!rr.ready && rr.missing.length > 0 && (
           <div style={{ marginBottom:8 }}>
             <p style={{ margin:'0 0 4px', fontSize:9, fontWeight:700, color:'#f87171', letterSpacing:'0.07em' }}>BLOQUEANTES</p>

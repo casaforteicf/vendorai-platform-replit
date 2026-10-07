@@ -87,7 +87,7 @@ export async function createBudgetFromSpecObjects(payload: CreateBudgetFromSpecP
 }
 
 export async function updateBudget(id: string, payload: Partial<BudgetPayload>): Promise<ApiResult<Budget>> {
-  const response = await fetch(`/api/arch/orcamento/${id}`, {
+  const response = await fetch(`/api/arch/orcamento/budget/${id}`, {
     method: "PATCH",
     headers: jsonHeaders(),
     body: JSON.stringify(payload),

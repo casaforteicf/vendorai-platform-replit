@@ -136,6 +136,7 @@ export function CatalogBrowserPanel({
                   <p className="truncate text-sm font-semibold text-[var(--arq-foreground)]">{item.name}</p>
                   <p className="mt-1 text-xs text-[var(--arq-muted)]">{item.type} • {item.category || "sem categoria"}</p>
                   <p className="mt-1 text-xs text-[var(--arq-muted)]">{item.manufacturer || item.supplier || item.material || "sem vínculo"}</p>
+                  {item.code ? <p className="mt-1 text-[11px] font-medium text-[var(--arq-foreground)]">SKU / ref.: {item.code}</p> : null}
                 </div>
               </div>
 
@@ -143,6 +144,11 @@ export function CatalogBrowserPanel({
                 <Info label="Material" value={money(item.price)} />
                 <Info label="Mão de obra" value={money(item.laborPrice)} />
               </div>
+              {(item.width || item.height || item.depth) ? (
+                <div className="mt-2 rounded-2xl bg-[var(--arq-card-soft)] p-3 text-xs text-[var(--arq-muted)]">
+                  Dimensões de referência: {[item.width, item.height, item.depth].filter((v) => v != null).join(" × ")}
+                </div>
+              ) : null}
 
               {selectedObject ? (
                 <div className="mt-2 rounded-2xl bg-[var(--arq-card-soft)] p-3 text-xs">

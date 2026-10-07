@@ -45,6 +45,9 @@ export type CatalogItem = {
   unit?: string | null;
   price?: number | null;
   laborPrice?: number | null;
+  width?: number | null;
+  height?: number | null;
+  depth?: number | null;
   imageUrl?: string | null;
   description?: string | null;
   metadata?: Record<string, unknown>;
@@ -93,6 +96,7 @@ export type SpecObject = {
 
   catalogProductId?: string | null;
   catalogMaterialId?: string | null;
+  catalogCode?: string | null;
   manufacturerId?: string | null;
   supplierId?: string | null;
 
@@ -146,6 +150,7 @@ export type SpecObjectPayload = {
   purchaseUnit?: string | null;
   catalogProductId?: string | null;
   catalogMaterialId?: string | null;
+  catalogCode?: string | null;
   manufacturerId?: string | null;
   supplierId?: string | null;
   productName?: string | null;
