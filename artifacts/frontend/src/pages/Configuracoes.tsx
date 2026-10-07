@@ -800,7 +800,7 @@ export default function Configuracoes() {
       title: "Empresa",
       description: "Dados da empresa, marca, endereço, canais e preferências.",
       icon: Building2,
-      action: () => openSettingsSection("empresa"),
+      action: () => openSettingsSection("empresa", "perfil"),
     },
     {
       key: "plano-negocios",
@@ -814,7 +814,7 @@ export default function Configuracoes() {
       title: "Equipe e permissões",
       description: "Usuários, funções, acessos e responsáveis.",
       icon: Users,
-      action: () => openSettingsSection("equipe"),
+      action: () => openSettingsSection("equipe", "equipe"),
     },
     {
       key: "integracoes",
