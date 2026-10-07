@@ -161,12 +161,21 @@ function proposalHtmlReferencesAsset(html: string, assetPath: string) {
 }
 
 
+
+function handleArqdorPublicProposalError(err: unknown, res: any, next: any) {
+  if (err instanceof Error && err.message === "Proposta não encontrada") {
+    res.status(404).json({ error: "Proposta não encontrada ou link inválido." });
+    return;
+  }
+  next(err);
+}
+
 // ARQDOR proposal portal — public token endpoints live in the central public proposals router.
 router.get("/arch/portal/proposta/:token", async (req, res, next) => {
   try {
     res.json(await getPublicProposal(String(req.params.token ?? "")));
   } catch (err) {
-    next(err);
+    handleArqdorPublicProposalError(err, res, next);
   }
 });
 
@@ -174,7 +183,7 @@ router.post("/arch/portal/proposta/:token/items/:itemId/decision", async (req, r
   try {
     res.json(await clientItemDecision(String(req.params.token ?? ""), String(req.params.itemId ?? ""), req.body));
   } catch (err) {
-    next(err);
+    handleArqdorPublicProposalError(err, res, next);
   }
 });
 
@@ -182,7 +191,7 @@ router.post("/arch/portal/proposta/:token/decision", async (req, res, next) => {
   try {
     res.json(await clientFinalDecision(String(req.params.token ?? ""), req.body));
   } catch (err) {
-    next(err);
+    handleArqdorPublicProposalError(err, res, next);
   }
 });
 
@@ -451,7 +460,7 @@ router.get("/public/proposals/:token/assets/*path", async (req, res, next) => {
     res.status(objectResponse.status);
     return res.send(Buffer.from(await objectResponse.arrayBuffer()));
   } catch (err) {
-    next(err);
+    handleArqdorPublicProposalError(err, res, next);
   }
 });
 
@@ -509,7 +518,7 @@ router.get("/public/generated-proposals/:id/assets/*path", async (req, res, next
     res.status(objectResponse.status);
     return res.send(Buffer.from(await objectResponse.arrayBuffer()));
   } catch (err) {
-    next(err);
+    handleArqdorPublicProposalError(err, res, next);
   }
 });
 
