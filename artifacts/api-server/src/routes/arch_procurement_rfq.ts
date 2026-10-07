@@ -798,7 +798,7 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
     const tid = requireTenant(req, res); if (!tid) return;
     const { obraId, packageId, invitationId } = req.params as Record<string,string>;
     const invResult = await client.query(
-      `SELECT i.*,p.project_id,p.budget_id,p.category,p.discipline FROM arch_rfq_invitations i
+      `SELECT i.*,p.project_id,p.budget_id,p.category,p.discipline,p.market_demand_id FROM arch_rfq_invitations i
        JOIN arch_rfq_packages p ON p.id=i.package_id
        WHERE i.id=$1::uuid AND p.id=$2::uuid AND p.obra_id=$3 AND i.tenant_id=$4 LIMIT 1`,
       [invitationId,packageId,obraId,tid],
@@ -849,6 +849,83 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
       );
     }
     await client.query(`UPDATE arch_rfq_invitations SET status='accepted',updated_at=now() WHERE id=$1::uuid`, [invitationId]);
+
+    if (inv.market_demand_id) {
+      const commission = await resolveMarketCommission(tid, inv.category, inv.discipline, null);
+      const commissionBase = Math.max(0, lineTotal + netExtras);
+      const commissionAmount = commissionBase * commission.percentage / 100;
+      await client.query(
+        `INSERT INTO arqdor_market_commission_entries
+          (demand_id,tenant_id,package_id,supplier_id,supplier_name,source,rule_id,percentage,base_value,commission_amount,status,metadata)
+         VALUES($1::uuid,$2,$3::uuid,$4,$5,'internal',$6::uuid,$7,$8,$9,'due',$10::jsonb)
+         ON CONFLICT (package_id) WHERE package_id IS NOT NULL
+         DO UPDATE SET supplier_id=EXCLUDED.supplier_id,supplier_name=EXCLUDED.supplier_name,rule_id=EXCLUDED.rule_id,
+                       percentage=EXCLUDED.percentage,base_value=EXCLUDED.base_value,
+                       commission_amount=EXCLUDED.commission_amount,status='due',metadata=EXCLUDED.metadata,updated_at=now()`,
+        [
+          inv.market_demand_id,
+          tid,
+          packageId,
+          inv.supplier_id || null,
+          inv.supplier_name,
+          commission.ruleId,
+          String(commission.percentage),
+          String(commissionBase),
+          String(commissionAmount),
+          JSON.stringify({ invitationId, category: inv.category, discipline: inv.discipline }),
+        ],
+      );
+      await client.query(
+        `UPDATE arqdor_market_demands d
+            SET selected_supplier_name=$1,
+                selected_supplier_id=$2,
+                commission_base_value=COALESCE((SELECT SUM(base_value) FROM arqdor_market_commission_entries e WHERE e.demand_id=d.id AND e.status<>'cancelled'),0),
+                commission_amount=COALESCE((SELECT SUM(commission_amount) FROM arqdor_market_commission_entries e WHERE e.demand_id=d.id AND e.status<>'cancelled'),0),
+                commission_status='due',
+                status=CASE
+                  WHEN EXISTS (
+                    SELECT 1 FROM arch_rfq_packages p
+                    WHERE p.market_demand_id=d.id AND p.id<>$3::uuid AND p.status NOT IN ('completed','cancelled')
+                  ) THEN 'partially_closed'
+                  ELSE 'closed_internal'
+                END,
+                closed_mode=CASE
+                  WHEN NOT EXISTS (
+                    SELECT 1 FROM arch_rfq_packages p
+                    WHERE p.market_demand_id=d.id AND p.id<>$3::uuid AND p.status NOT IN ('completed','cancelled')
+                  ) THEN 'internal'
+                  ELSE closed_mode
+                END,
+                closed_at=CASE
+                  WHEN NOT EXISTS (
+                    SELECT 1 FROM arch_rfq_packages p
+                    WHERE p.market_demand_id=d.id AND p.id<>$3::uuid AND p.status NOT IN ('completed','cancelled')
+                  ) THEN now()
+                  ELSE closed_at
+                END,
+                updated_at=now()
+          WHERE d.id=$4::uuid AND d.tenant_id=$5`,
+        [inv.supplier_name, inv.supplier_id || null, packageId, inv.market_demand_id, tid],
+      );
+      await appendMarketEvent(
+        client,
+        String(inv.market_demand_id),
+        tid,
+        "supplier_selected",
+        req.user?.sub ?? null,
+        "rfq_invitation",
+        invitationId,
+        {
+          packageId,
+          supplierId: inv.supplier_id || null,
+          supplierName: inv.supplier_name,
+          commissionRuleId: commission.ruleId,
+          commissionPercentage: commission.percentage,
+          commissionBase,
+          commissionAmount,
+        },
+      );
+    }
     await client.query(
       `UPDATE arch_rfq_invitations
           SET status='rejected',updated_at=now()
@@ -1067,6 +1144,157 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
   } catch (err) {
     await client.query("ROLLBACK").catch(() => undefined);
     logger.error({ err }, "rfq commercial revision error");
+    return next(err);
+  } finally { client.release(); }
+});
+
+archProcurementRfqRouter.get("/arch/market-demands", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res); if (!tid) return;
+    const projectId = String(req.query["projectId"] || "").trim();
+    const params: any[] = [tid];
+    let projectFilter = "";
+    if (projectId) { params.push(projectId); projectFilter = " AND d.project_id=$2::uuid"; }
+    const result = await pool.query(
+      `SELECT d.*,
+              COALESCE((SELECT COUNT(*) FROM arch_rfq_packages p WHERE p.market_demand_id=d.id),0)::int AS package_count,
+              COALESCE((SELECT COUNT(*) FROM arqdor_market_demand_events e WHERE e.demand_id=d.id),0)::int AS event_count
+         FROM arqdor_market_demands d
+        WHERE d.tenant_id=$1${projectFilter}
+        ORDER BY d.created_at DESC
+        LIMIT 100`,
+      params,
+    );
+    return res.json({ demands: result.rows });
+  } catch (err) { logger.error({ err }, "market demands list error"); return next(err); }
+});
+
+archProcurementRfqRouter.get("/arch/market-demands/:demandId", async (req, res, next) => {
+  try {
+    const tid = requireTenant(req, res); if (!tid) return;
+    const demandId = String(req.params["demandId"] || "");
+    const [demand, packages, events, commissions] = await Promise.all([
+      pool.query(`SELECT * FROM arqdor_market_demands WHERE id=$1::uuid AND tenant_id=$2 LIMIT 1`, [demandId, tid]),
+      pool.query(`SELECT * FROM arch_rfq_packages WHERE market_demand_id=$1::uuid AND tenant_id=$2 ORDER BY created_at`, [demandId, tid]),
+      pool.query(`SELECT * FROM arqdor_market_demand_events WHERE demand_id=$1::uuid AND tenant_id=$2 ORDER BY created_at,id`, [demandId, tid]),
+      pool.query(`SELECT * FROM arqdor_market_commission_entries WHERE demand_id=$1::uuid AND tenant_id=$2 ORDER BY created_at`, [demandId, tid]),
+    ]);
+    if (!demand.rows[0]) return res.status(404).json({ error: "Demanda não encontrada." });
+    return res.json({ demand: demand.rows[0], packages: packages.rows, events: events.rows, commissions: commissions.rows });
+  } catch (err) { logger.error({ err }, "market demand detail error"); return next(err); }
+});
+
+archProcurementRfqRouter.post("/arch/market-demands/:demandId/close-external", async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    const tid = requireTenant(req, res); if (!tid) return;
+    const demandId = String(req.params["demandId"] || "");
+    const supplierName = String(req.body?.supplierName || "").trim();
+    const supplierDocument = String(req.body?.supplierDocument || "").trim();
+    const supplierContact = String(req.body?.supplierContact || "").trim();
+    const reason = String(req.body?.reason || "").trim();
+    const value = Math.max(0, n(req.body?.value));
+    if (!supplierName) return res.status(422).json({ error: "Informe com quem a compra/contratação foi fechada." });
+    if (!reason) return res.status(422).json({ error: "Informe o motivo do fechamento fora do Market." });
+    if (value <= 0) return res.status(422).json({ error: "Informe o valor efetivamente fechado para concluir a demanda." });
+
+    await client.query("BEGIN");
+    const demandResult = await client.query(
+      `SELECT * FROM arqdor_market_demands WHERE id=$1::uuid AND tenant_id=$2 LIMIT 1 FOR UPDATE`,
+      [demandId, tid],
+    );
+    const demand = demandResult.rows[0];
+    if (!demand) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Demanda não encontrada." }); }
+    if (["closed_internal","closed_external","cancelled"].includes(String(demand.status))) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "Esta demanda já foi encerrada." });
+    }
+
+    const inviteResult = await client.query(
+      `SELECT i.*,p.category,p.discipline
+         FROM arch_rfq_invitations i
+         JOIN arch_rfq_packages p ON p.id=i.package_id
+        WHERE p.market_demand_id=$1::uuid AND i.tenant_id=$2`,
+      [demandId, tid],
+    );
+    const normName = normalizeText(supplierName);
+    const normDoc = supplierDocument.replace(/\D/g, "");
+    const normContact = supplierContact.replace(/\D/g, "");
+    const matchedInvite = inviteResult.rows.find((inv: any) => {
+      const nameMatch = normName && normalizeText(inv.supplier_name) === normName;
+      const phoneMatch = normContact && String(inv.supplier_phone || "").replace(/\D/g, "") === normContact;
+      const emailMatch = supplierContact.includes("@") && String(inv.supplier_email || "").toLowerCase() === supplierContact.toLowerCase();
+      return nameMatch || phoneMatch || emailMatch;
+    }) || null;
+
+    let commissionRuleId: string | null = null;
+    let commissionPercentage = 0;
+    let commissionAmount = 0;
+    let commissionStatus = "not_applicable";
+    const riskFlags: string[] = [];
+
+    if (matchedInvite) {
+      const commission = await resolveMarketCommission(tid, matchedInvite.category, matchedInvite.discipline, null);
+      commissionRuleId = commission.ruleId;
+      commissionPercentage = commission.percentage;
+      commissionAmount = value * commissionPercentage / 100;
+      commissionStatus = "due";
+      riskFlags.push("external_close_matches_market_supplier", "anti_circumvention_review");
+      await client.query(
+        `INSERT INTO arqdor_market_commission_entries
+          (demand_id,tenant_id,package_id,supplier_id,supplier_name,source,rule_id,percentage,base_value,commission_amount,status,metadata)
+         VALUES($1::uuid,$2,$3::uuid,$4,$5,'external',$6::uuid,$7,$8,$9,'due',$10::jsonb)
+         ON CONFLICT (package_id) WHERE package_id IS NOT NULL
+         DO UPDATE SET source='external',supplier_id=EXCLUDED.supplier_id,supplier_name=EXCLUDED.supplier_name,
+                       rule_id=EXCLUDED.rule_id,percentage=EXCLUDED.percentage,base_value=EXCLUDED.base_value,
+                       commission_amount=EXCLUDED.commission_amount,status='due',metadata=EXCLUDED.metadata,updated_at=now()`,
+        [
+          demandId, tid, matchedInvite.package_id, matchedInvite.supplier_id || null, supplierName,
+          commissionRuleId, String(commissionPercentage), String(value), String(commissionAmount),
+          JSON.stringify({ matchedInvitationId: matchedInvite.id, reason, declaredExternalClose: true }),
+        ],
+      );
+    } else {
+      riskFlags.push("external_supplier_declared");
+    }
+
+    const updated = await client.query(
+      `UPDATE arqdor_market_demands
+          SET status='closed_external',closed_mode='external',external_supplier_name=$1,
+              external_supplier_document=$2,external_supplier_contact=$3,external_close_reason=$4,
+              external_close_value=$5,commission_rule_id=$6::uuid,commission_percentage=$7,
+              commission_base_value=$5,commission_amount=$8,commission_status=$9,
+              risk_flags=$10::jsonb,closed_at=now(),updated_at=now()
+        WHERE id=$11::uuid AND tenant_id=$12
+        RETURNING *`,
+      [
+        supplierName, supplierDocument || null, supplierContact || null, reason, String(value),
+        commissionRuleId, String(commissionPercentage), String(commissionAmount), commissionStatus,
+        JSON.stringify(riskFlags), demandId, tid,
+      ],
+    );
+    await appendMarketEvent(
+      client, demandId, tid, "demand_closed_external", req.user?.sub ?? null, "market_demand", demandId,
+      {
+        supplierName,
+        supplierDocument: supplierDocument || null,
+        supplierContact: supplierContact || null,
+        reason,
+        value,
+        matchedMarketSupplier: Boolean(matchedInvite),
+        matchedInvitationId: matchedInvite?.id || null,
+        commissionRuleId,
+        commissionPercentage,
+        commissionAmount,
+        commissionStatus,
+        riskFlags,
+      },
+    );
+    await client.query("COMMIT");
+    return res.json({ demand: updated.rows[0], matchedMarketSupplier: Boolean(matchedInvite) });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    logger.error({ err }, "market demand external close error");
     return next(err);
   } finally { client.release(); }
 });
