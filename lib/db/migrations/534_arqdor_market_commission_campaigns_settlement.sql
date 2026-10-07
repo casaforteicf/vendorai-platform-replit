@@ -15,11 +15,20 @@ DO $$ BEGIN
     CHECK (rule_kind IN ('standard','campaign','promotion','exception','negotiated'));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-DO $$ BEGIN
+UPDATE public.arqdor_market_commission_rules
+SET adjustment_mode='override'
+WHERE adjustment_mode IS DISTINCT FROM 'override';
+
+DO $ BEGIN
+  ALTER TABLE public.arqdor_market_commission_rules
+    DROP CONSTRAINT IF EXISTS arqdor_market_commission_rules_adjustment_chk;
+EXCEPTION WHEN undefined_object THEN NULL; END $;
+
+DO $ BEGIN
   ALTER TABLE public.arqdor_market_commission_rules
     ADD CONSTRAINT arqdor_market_commission_rules_adjustment_chk
-    CHECK (adjustment_mode IN ('override','delta'));
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    CHECK (adjustment_mode IN ('override'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $;
 
 DO $$ BEGIN
   ALTER TABLE public.arqdor_market_commission_rules
@@ -71,7 +80,9 @@ RETURNS TABLE(
   rule_name text,
   rule_kind text,
   campaign_code text,
-  adjustment_mode text
+  adjustment_mode text,
+  min_commission_amount numeric,
+  max_commission_amount numeric
 )
 LANGUAGE sql
 STABLE
@@ -139,7 +150,9 @@ AS $$
     COALESCE(name, scope_type || COALESCE(':' || scope_key,'')),
     rule_kind,
     campaign_code,
-    adjustment_mode
+    adjustment_mode,
+    min_commission_amount,
+    max_commission_amount
   FROM chosen;
 $$;
 
