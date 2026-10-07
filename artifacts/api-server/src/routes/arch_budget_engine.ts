@@ -82,7 +82,7 @@ async function recalculateBudget(budgetId: string) {
          FROM composicoes c
          LEFT JOIN composicao_insumos ci ON ci.composicao_id = c.id
          LEFT JOIN insumos i ON i.id = ci.insumo_id
-        WHERE c.tenant_id = $2
+        WHERE c.tenant_id::text = $2::text
           AND c.ativo = true
         GROUP BY c.id, c.codigo, c.tenant_id
        )
@@ -97,7 +97,7 @@ async function recalculateBudget(budgetId: string) {
               updated_at = now()
          FROM composition_costs cc
         WHERE abi.budget_id = $1
-          AND abi.tenant_id = $2
+          AND abi.tenant_id::text = $2::text
           AND abi.deleted_at IS NULL
           AND (
             (abi.composition_id IS NOT NULL AND abi.composition_id = cc.id)
