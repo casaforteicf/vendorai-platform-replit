@@ -10,7 +10,7 @@ describe("cold prospecting end-to-end contract", () => {
   it("keeps new cold discoveries out of Lead/Deal until qualification", () => {
     const worker = src("jobs/prospectorQueue.ts");
     expect(worker).toContain("pre-lead prospect created without CRM Lead/Deal");
-    expect(worker).toContain("db.insert(prospectsTable)");
+    expect(worker).toContain("intakeColdProspect");
     const newFlow = worker.slice(worker.indexOf("// ── New cold Prospect"));
     expect(newFlow).not.toContain("db.insert(leadsTable)");
     expect(newFlow).not.toContain("db.insert(dealsTable)");
@@ -18,10 +18,17 @@ describe("cold prospecting end-to-end contract", () => {
 
   it("intercepts cold WhatsApp replies before normal Lead creation", () => {
     const webhooks = src("routes/webhooks.ts");
-    const cold = webhooks.indexOf("tryIngestColdProspectReply");
-    const createLead = webhooks.indexOf("evolution-webhook: creating lead from first contact");
-    expect(cold).toBeGreaterThanOrEqual(0);
-    expect(createLead).toBeGreaterThan(cold);
+    const coldImport = webhooks.indexOf('import { tryIngestColdProspectReply');
+    const zapiRoute = webhooks.indexOf('/webhooks/zapi');
+    const zapiCold = webhooks.indexOf("tryIngestColdProspectReply", Math.max(zapiRoute, coldImport + 1));
+    const zapiLeadFlow = webhooks.indexOf("// ── 4-7. Find/create lead", zapiRoute);
+    const evolutionRoute = webhooks.indexOf('/webhooks/evolution');
+    const evolutionCold = webhooks.indexOf("tryIngestColdProspectReply", evolutionRoute);
+    const evolutionLeadFlow = webhooks.indexOf("let lead:", evolutionCold);
+    expect(zapiCold).toBeGreaterThan(zapiRoute);
+    expect(zapiLeadFlow).toBeGreaterThan(zapiCold);
+    expect(evolutionCold).toBeGreaterThan(evolutionRoute);
+    expect(evolutionLeadFlow).toBeGreaterThan(evolutionCold);
   });
 
   it("routes unmatched inbound email through Prospect intelligence first", () => {
@@ -35,7 +42,8 @@ describe("cold prospecting end-to-end contract", () => {
     expect(src("services/prospect-outreach.ts")).toContain("outside_contact_window");
     expect(src("services/prospect-conversion.ts")).toContain("convertProspectToLead");
     expect(src("services/prospect-meeting.ts")).toContain("scheduleProspectMeeting");
-    expect(src("jobs/coldProspectFollowup.ts")).toContain('coldProspectingMode, "autonomous"');
+    expect(src("jobs/coldProspectFollowup.ts")).toContain("runColdProspectFollowup");
+    expect(src("jobs/scheduler.ts")).toContain("runColdProspectFollowup");
   });
 
   it("keeps generated sales content approval-gated", () => {
