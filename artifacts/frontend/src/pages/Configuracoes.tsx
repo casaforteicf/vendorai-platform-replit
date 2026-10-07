@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { ArrowLeft, Bell, Bot, Building2, ChevronRight, Database, Search, Settings2, ShieldCheck, Users, Workflow, Zap } from "lucide-react";
+import { ArrowLeft, Bell, BookOpenText, Bot, Building2, ChevronRight, Database, Search, Settings2, ShieldCheck, Users, Workflow, Zap } from "lucide-react";
 import ConfiguracoesNormalized from "./ConfiguracoesNormalized";
 import ConfiguracoesLegacy from "./ConfiguracoesLegacy";
 import { BrandKitSettings } from "@/components/BrandKitSettings";
@@ -574,6 +574,17 @@ export default function Configuracoes() {
     );
   }
 
+  if (settingsSection === "plano-negocios") {
+    return (
+      <SettingsSectionShell
+        title="Plano de Negócios"
+        description="Estratégia, diagnóstico, metas, ICP, ofertas, canais e contexto operacional que alimentam CRM, BI, Marketing e agentes."
+      >
+        <DiagnosticoPlanejamento />
+      </SettingsSectionShell>
+    );
+  }
+
   if (settingsSection === "equipe") {
     return (
       <SettingsSectionShell
@@ -792,6 +803,13 @@ export default function Configuracoes() {
       action: () => openSettingsSection("empresa", "perfil"),
     },
     {
+      key: "plano-negocios",
+      title: "Plano de Negócios",
+      description: "Diagnóstico, estratégia, metas, ICP, ofertas, canais e informações que orientam a operação e os agentes.",
+      icon: BookOpenText,
+      action: () => openSettingsSection("plano-negocios"),
+    },
+    {
       key: "equipe",
       title: "Equipe e permissões",
       description: "Usuários, funções, acessos e responsáveis.",
@@ -888,7 +906,7 @@ export default function Configuracoes() {
           <input
             value={settingsSearch}
             onChange={(event) => setSettingsSearch(event.target.value)}
-            placeholder="Pesquisar configuração, ex.: WhatsApp, usuários, pipeline..."
+            placeholder="Pesquisar configuração, ex.: Plano de Negócios, WhatsApp, usuários, pipeline..."
             aria-label="Pesquisar configuração"
           />
         </label>
