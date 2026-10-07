@@ -736,8 +736,8 @@ function AppRoutes() {
         <Route path="/content-studio/video/lote">{() => <ProtectedRoute component={VideoLotePage} />}</Route>
         <Route path="/faq">{() => <ProtectedRoute component={FAQ} />}</Route>
         <Route path="/guia-implantacao">{() => <ProtectedRoute component={GuiaImplantacao} />}</Route>
-        <Route path="/agents/config">{() => <ProtectedRoute component={AgentConfig} />}</Route>
-        <Route path="/agentes">{() => <ProtectedRoute component={AgentConfig} />}</Route>
+        <Route path="/agents/config">{() => <RedirectPage to="/configuracoes/ia-agentes" />}</Route>
+        <Route path="/agentes">{() => <RedirectPage to="/configuracoes/ia-agentes" />}</Route>
         <Route path="/vendi/operacoes">{() => <ProtectedRoute component={VendiOperations} />}</Route>
         <Route path="/diagnostico-planejamento">{() => <RedirectPage to="/configuracoes?tab=plano-negocios" />}</Route>
         <Route path="/analytics">{() => <ProtectedRoute component={Analytics} />}</Route>
