@@ -71,6 +71,47 @@ describe("calcularFechamentoPacote", () => {
     const r = calcularFechamentoPacote(6, { fechamentoPacote: 6, precoPacote: null, precoBase: 179.71 });
     expect(r.valorTotal).toBeCloseTo(6 * 179.71);
   });
+
+  it("respeita embalagem mestre mínima sem fracionamento", () => {
+    const r = calcularFechamentoPacote(36.01, {
+      fechamentoPacote: 6,
+      precoPacote: 100,
+      precoBase: 16.67,
+      embalagemMestreQuantidade: 6,
+      permiteFracionarEmbalagemMestre: false,
+    });
+    expect(r.numeroPacotesNecessarios).toBe(7);
+    expect(r.numeroPacotes).toBe(12);
+    expect(r.numeroEmbalagensMestre).toBe(2);
+    expect(r.quantidadeFaturada).toBe(72);
+    expect(r.valorTotal).toBe(1200);
+  });
+
+  it("permite fracionar embalagem mestre quando explicitamente autorizado", () => {
+    const r = calcularFechamentoPacote(36.01, {
+      fechamentoPacote: 6,
+      precoPacote: 100,
+      precoBase: 16.67,
+      embalagemMestreQuantidade: 6,
+      permiteFracionarEmbalagemMestre: true,
+    });
+    expect(r.numeroPacotesNecessarios).toBe(7);
+    expect(r.numeroPacotes).toBe(7);
+    expect(r.numeroEmbalagensMestre).toBeUndefined();
+  });
+
+  it("combina mínimo de venda e múltiplo comercial", () => {
+    const r = calcularFechamentoPacote(6, {
+      fechamentoPacote: 6,
+      precoPacote: 100,
+      precoBase: 16.67,
+      quantidadeMinimaVenda: 5,
+      multiploVenda: 2,
+    });
+    expect(r.numeroPacotesNecessarios).toBe(1);
+    expect(r.numeroPacotes).toBe(6);
+    expect(r.valorTotal).toBe(600);
+  });
 });
 
 describe("calcularOrcamentoProdutoArea — teto vinílico (area_com_acabamento_perimetro)", () => {
