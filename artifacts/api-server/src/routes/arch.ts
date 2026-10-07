@@ -4843,6 +4843,81 @@ router.get("/arch/sketchfab/search", authenticate, async (req, res) => {
   }
 });
 
+// GET /api/arch/health
+// Health operacional real do Arqdor. Não inventa uptime/latência:
+// usa configuração disponível + telemetria dos renders persistidos do tenant.
+router.get("/arch/health", authenticate, async (req, res) => {
+  const now = Date.now();
+  const since = new Date(now - 24 * 60 * 60 * 1000);
+
+  try {
+    const recent = await db
+      .select({
+        status: archAiRendersTable.status,
+        createdAt: archAiRendersTable.createdAt,
+        concluidoEm: archAiRendersTable.concluidoEm,
+      })
+      .from(archAiRendersTable)
+      .where(and(
+        eq(archAiRendersTable.tenantId, tid),
+        gte(archAiRendersTable.createdAt, since),
+      ))
+      .orderBy(desc(archAiRendersTable.createdAt))
+      .limit(200);
+
+    const completed = recent.filter((item) => item.status === "concluido");
+    const failed = recent.filter((item) => ["erro", "falhou", "failed"].includes(String(item.status).toLowerCase()));
+    const finished = completed.length + failed.length;
+    const successRate = finished > 0 ? (completed.length / finished) * 100 : null;
+    const latencies = completed
+      .map((item) => item.concluidoEm && item.createdAt ? new Date(item.concluidoEm).getTime() - new Date(item.createdAt).getTime() : 0)
+      .filter((value) => value > 0);
+    const avgLatencyMs = latencies.length
+      ? Math.round(latencies.reduce((sum, value) => sum + value, 0) / latencies.length)
+      : null;
+
+    const providers = {
+      openai: {
+        configured: Boolean(process.env.OPENAI_API_KEY),
+        requiredBy: ["fidelity-review", "analysis", "text"],
+      },
+      database: {
+        configured: true,
+        reachable: true,
+      },
+      storage: {
+        configured: Boolean(process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID || process.env.PRIVATE_OBJECT_DIR),
+    };
+
+    const renderStatus =
+      failed.length > 0 && completed.length === 0 ? "offline"
+      : failed.length > 0 ? "warning"
+      : completed.length > 0 ? "online"
+      : providers.openai.configured ? "warning" : "offline";
+
+    return res.json({
+      measuredAt: new Date(now).toISOString(),
+      windowHours: 24,
+      providers,
+      render: {
+        status: renderStatus,
+        total: recent.length,
+        completed: completed.length,
+        failed: failed.length,
+        successRate,
+        averageDurationMs: avgLatencyMs,
+      },
+    });
+  } catch (error) {
+    req.log?.error?.({ err: error }, "arch/health: falha");
+    return res.status(503).json({
+      measuredAt: new Date(now).toISOString(),
+      windowHours: 24,
+      error: "Não foi possível medir a saúde operacional do Arqdor.",
+    });
+  }
+});
+
 router.post("/arch/sketchfab/import", authenticate, async (req, res) => {
   const tid = tenantId(req);
   const uid = z.string().trim().min(1).max(80).safeParse(req.body?.uid);
@@ -5148,6 +5223,9 @@ router.get("/arch/catalogo", authenticate, async (req, res) => {
       sourceProductId: produto.id,
       nome: produto.nome,
       descricao: produto.descricao,
+      width: produto.dimensoes?.largura ?? null,
+      height: produto.dimensoes?.altura ?? null,
+      depth: produto.dimensoes?.profundidade ?? null,
       sku: produto.sku,
       codigo: produto.sku,
       codigoBarras: produto.codigoBarras,
@@ -5206,6 +5284,9 @@ router.post("/arch/catalogo/sync-source/:sourceProductId", authenticate, async (
     sourceProductId: source.id,
     nome: source.nome,
     descricao: source.descricao,
+    width: source.dimensoes?.largura ?? null,
+    height: source.dimensoes?.altura ?? null,
+    depth: source.dimensoes?.profundidade ?? null,
     sku: source.sku,
     codigo: source.sku,
     codigoBarras: source.codigoBarras,
@@ -8066,6 +8147,41 @@ router.post("/arch/surfaces/:surfaceId/material", async (req, res) => {
 // GET /arq/projects — list workspace projects for tenant
 router.get("/arq/projects", authenticate, async (req, res) => {
   const tid = tenantId(req);
+  const conditions = [eq(archProjetosTable.tenantId, tid)];
+  if (clientProjectId) {
+    const [anchor] = await db
+      .select({
+        id: archProjetosTable.id,
+        leadId: archProjetosTable.leadId,
+        dealId: archProjetosTable.dealId,
+        clienteNome: archProjetosTable.clienteNome,
+        clienteEmail: archProjetosTable.clienteEmail,
+        clienteTelefone: archProjetosTable.clienteTelefone,
+      })
+      .from(archProjetosTable)
+      .where(and(
+        eq(archProjetosTable.id, clientProjectId),
+        eq(archProjetosTable.tenantId, tid),
+      ))
+      .limit(1);
+    if (!anchor) return res.status(404).json({ error: "Projeto de referência não encontrado." });
+    if (anchor.leadId) {
+      conditions.push(eq(archProjetosTable.leadId, anchor.leadId));
+    } else if (anchor.dealId) {
+      conditions.push(eq(archProjetosTable.dealId, anchor.dealId));
+    } else if (anchor.clienteEmail?.trim()) {
+      const email = anchor.clienteEmail.trim().toLowerCase();
+      conditions.push(sql<boolean>`lower(trim(coalesce(${archProjetosTable.clienteEmail}, ''))) = ${email}`);
+    } else if (anchor.clienteTelefone?.trim()) {
+      const phone = anchor.clienteTelefone.replace(/\D/g, "");
+      conditions.push(sql<boolean>`regexp_replace(coalesce(${archProjetosTable.clienteTelefone}, ''), '[^0-9]', '', 'g') = ${phone}`);
+    } else if (anchor.clienteNome?.trim()) {
+      const name = anchor.clienteNome.trim().toLowerCase().replace(/\s+/g, " ");
+      conditions.push(sql<boolean>`regexp_replace(lower(trim(coalesce(${archProjetosTable.clienteNome}, ''))), '\s+', ' ', 'g') = ${name}`);
+    } else {
+      conditions.push(eq(archProjetosTable.id, anchor.id));
+    }
+  }
   const clientProjectId = typeof req.query.clientProjectId === "string"
     ? req.query.clientProjectId.trim()
     : "";
@@ -8111,6 +8227,14 @@ router.get("/arq/projects", authenticate, async (req, res) => {
 
   const projetos = await db
     .select({
+      clienteNome:      archProjetosTable.clienteNome,
+      clienteEmail:     archProjetosTable.clienteEmail,
+      clienteTelefone:  archProjetosTable.clienteTelefone,
+      status:           archProjetosTable.status,
+      tipoObra:         archProjetosTable.tipoObra,
+      areaM2:           archProjetosTable.areaM2,
+      createdAt:        archProjetosTable.createdAt,
+      updatedAt:        archProjetosTable.updatedAt,
       id:               archProjetosTable.id,
       leadId:           archProjetosTable.leadId,
       dealId:           archProjetosTable.dealId,
@@ -9308,7 +9432,6 @@ router.post("/arch/partners/:id/solicitar", authenticate, async (req, res) => {
     .limit(1);
 
   if (!partner) return res.status(404).json({ error: "Parceiro não encontrado." });
-
   const TIPO_LABELS: Record<string, string> = {
     orcamento: "Orçamento", amostra: "Amostra", visita: "Visita Técnica", compartilhar: "Compartilhamento de Projeto",
   };
