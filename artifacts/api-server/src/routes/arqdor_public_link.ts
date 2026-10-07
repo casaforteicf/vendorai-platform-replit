@@ -2,6 +2,7 @@ import { Router, type Request } from "express";
 import rateLimit from "express-rate-limit";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { eq } from "drizzle-orm";
 import { db, pool, leadsTable, archMarketplaceItemsTable, tenantsTable } from "@workspace/db";
 import { signGuestConceptToken } from "../lib/jwt.js";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
