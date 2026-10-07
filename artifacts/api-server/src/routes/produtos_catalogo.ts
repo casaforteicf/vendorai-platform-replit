@@ -5,6 +5,7 @@ import { findOfficialItemCategory, ITEM_CATEGORIES, categoryNameSimilarity } fro
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { callOpenAI, callOpenAIFileExtraction, generateImage } from "../lib/ai-gateway.js";
 import multer from "multer";
+import sharp from "sharp";
 import { resolverContextoNegocio } from "../services/resolvedorContextoNegocio.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import {
@@ -878,6 +879,8 @@ router.post(
 
 type CatalogPriceMatchRow = CatalogPdfPreviewProduct & {
   colecao: string | null;
+  imagemUrl: string | null;
+  visualRegion: { x: number; y: number; width: number; height: number } | null;
   paginaCatalogo: number | null;
   tipoCalculo: string | null;
   fechamentoPacote: number | null;
@@ -923,9 +926,73 @@ function nullablePositiveInteger(value: unknown): number | null {
   return n == null ? null : Math.max(1, Math.trunc(n));
 }
 
+function clamp01(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(1, n));
+}
+
+function normalizeVisualRegion(value: unknown): { x: number; y: number; width: number; height: number } | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  const x = clamp01(raw.x);
+  const y = clamp01(raw.y);
+  const width = clamp01(raw.width);
+  const height = clamp01(raw.height);
+  if (width < 0.04 || height < 0.04) return null;
+  return {
+    x: Math.min(x, 1 - width),
+    y: Math.min(y, 1 - height),
+    width,
+    height,
+  };
+}
+
+async function extractCatalogVisual(
+  pdf: Buffer,
+  tenantId: string,
+  pageNumber: number | null,
+  region: { x: number; y: number; width: number; height: number } | null,
+  filename: string,
+): Promise<string | null> {
+  if (!pageNumber || !region) return null;
+  try {
+    // Sharp usa índice de página zero-based. Em ambientes sem suporte de PDF no
+    // libvips, a falha cai no fallback de referência por página sem bloquear a importação.
+    const page = sharp(pdf, { page: Math.max(0, pageNumber - 1), density: 160 }).png();
+    const metadata = await page.metadata();
+    const width = metadata.width ?? 0;
+    const height = metadata.height ?? 0;
+    if (!width || !height) return null;
+
+    const left = Math.max(0, Math.floor(region.x * width));
+    const top = Math.max(0, Math.floor(region.y * height));
+    const cropWidth = Math.max(64, Math.min(width - left, Math.ceil(region.width * width)));
+    const cropHeight = Math.max(64, Math.min(height - top, Math.ceil(region.height * height)));
+    if (cropWidth <= 0 || cropHeight <= 0) return null;
+
+    const cropped = await page
+      .extract({ left, top, width: cropWidth, height: cropHeight })
+      .resize({ width: 1400, height: 1400, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 88, chromaSubsampling: "4:4:4" })
+      .toBuffer();
+
+    const safe = filename.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 80);
+    const objectPath = await objectStorage.savePrivateBuffer(
+      cropped,
+      "image/jpeg",
+      `catalogo-produto-${safe}-p${pageNumber}-${Date.now()}.jpg`,
+      tenantId,
+    );
+    return `/api/storage/objects${objectPath.replace(/^\/objects/, "")}`;
+  } catch {
+    return null;
+  }
+}
+
 const catalogPriceUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024, files: 2 },
+  limits: { fileSize: 100 * 1024 * 1024, files: 2 },
   fileFilter: (_req, file, cb) => {
     const pdf = file.mimetype === "application/pdf" || file.originalname.toLowerCase().endsWith(".pdf");
     cb(pdf ? null : new Error("Apenas arquivos PDF são aceitos."), pdf);
@@ -941,7 +1008,7 @@ router.post(
     ])(req, res, (error: any) => {
       if (!error) return next();
       if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
-        return res.status(413).json({ error: "Cada PDF pode ter no máximo 50 MB.", code: "CATALOG_PRICE_PDF_TOO_LARGE" });
+        return res.status(413).json({ error: "Cada PDF pode ter no máximo 100 MB.", code: "CATALOG_PRICE_PDF_TOO_LARGE" });
       }
       return res.status(422).json({ error: error?.message || "Não foi possível receber os PDFs." });
     });
@@ -958,6 +1025,13 @@ router.post(
     }
 
     try {
+      const [catalogObjectPath, priceObjectPath] = await Promise.all([
+        objectStorage.savePrivateBuffer(catalog.buffer, "application/pdf", `catalogo-original-${Date.now()}.pdf`, tenantId),
+        objectStorage.savePrivateBuffer(priceTable.buffer, "application/pdf", `tabela-precos-${Date.now()}.pdf`, tenantId),
+      ]);
+      const catalogSourceUrl = `/api/storage/objects${catalogObjectPath.replace(/^\/objects/, "")}`;
+      const priceTableSourceUrl = `/api/storage/objects${priceObjectPath.replace(/^\/objects/, "")}`;
+
       const [catalogAi, priceAi, existing] = await Promise.all([
         callOpenAIFileExtraction(
           tenantId,
@@ -969,12 +1043,14 @@ router.post(
             "Preserve coleção/linha, acabamento/cor, medidas, unidade, especificações e a página onde o produto/variação aparece.",
             "Quando uma página mostrar uma família com várias cores/acabamentos, gere uma linha por variação comercial.",
             "Não invente SKU, preço, embalagem ou medida.",
+            "Para visualRegion, marque a menor região retangular da página que represente visualmente aquele produto/acabamento (foto, amostra ou swatch), com coordenadas normalizadas de 0 a 1. Se não houver uma região visual inequívoca, use null.",
             "Retorne SOMENTE JSON válido no formato:",
             JSON.stringify({ fabricante:"string|null", produtos:[{
               nome:"string", sku:"string|null", colecao:"string|null", cor:"string|null",
               categoria:"string|null", unidade:"string|null", descricao:"string|null",
               pagina:"number|null", tipoCalculo:"string|null",
               fechamentoPacote:"number|null", quantidadePacote:"number|null",
+              visualRegion:{x:"0..1",y:"0..1",width:"0..1",height:"0..1"} ,
               especificacoes:[{label:"string",value:"string"}], confianca:0.9
             }]})
           ].join("\n"),
@@ -1065,6 +1141,7 @@ router.post(
               .slice(0, 40)
           : [];
         const paginaCatalogo = nullablePositiveInteger(raw.pagina);
+        const visualRegion = normalizeVisualRegion(raw.visualRegion);
         if (paginaCatalogo) specs.push({ label: "Página do catálogo", value: String(paginaCatalogo) });
         specs.push({ label: "Fonte visual", value: catalog.originalname });
         specs.push({ label: "Fonte de preço", value: priceTable.originalname });
@@ -1085,6 +1162,8 @@ router.post(
           fornecedor: String(catalogParsed.fabricante ?? "").trim() || null,
           cor,
           colecao,
+          imagemUrl: null,
+          visualRegion,
           paginaCatalogo,
           tipoCalculo: String(price.tipoCalculo ?? raw.tipoCalculo ?? "").trim() || null,
           fechamentoPacote: nullablePositiveNumber(price.fechamentoPacote ?? raw.fechamentoPacote),
@@ -1107,18 +1186,32 @@ router.post(
         };
       }).filter((p: CatalogPriceMatchRow) => p.nome);
 
+      for (const product of products) {
+        product.imagemUrl = await extractCatalogVisual(
+          catalog.buffer,
+          tenantId,
+          product.paginaCatalogo,
+          product.visualRegion,
+          product.sku || product.nome,
+        );
+        if (!product.imagemUrl && product.paginaCatalogo && product.visualRegion) {
+          product.avisos.push("Referência visual localizada no catálogo, mas o recorte automático não ficou disponível neste ambiente; a página de origem foi preservada.");
+        }
+      }
+
       const importable = products.filter((p) => p.precoBase != null && !p.duplicate && (p.priceMatch?.score ?? 0) >= 0.58);
       const header = [
         "nome","sku","categoria","preco_base","unidade","descricao","marca","fornecedor","cor","colecao",
         "tipo_calculo","fechamento_pacote","quantidade_pacote","preco_pacote",
         "embalagem_mestre_quantidade","quantidade_minima_venda","multiplo_venda",
-        "permite_fracionar_embalagem_mestre","especificacoes"
+        "permite_fracionar_embalagem_mestre","imagem_url","especificacoes"
       ];
       const rows = importable.map((p) => [
         p.nome,p.sku ?? "",p.categoria,p.precoBase!.toFixed(2),p.unidade,p.descricao ?? "",p.marca ?? "",p.fornecedor ?? "",
         p.cor ?? "",p.colecao ?? "",p.tipoCalculo ?? "",p.fechamentoPacote ?? "",p.quantidadePacote ?? "",p.precoPacote ?? "",
         p.embalagemMestreQuantidade ?? "",p.quantidadeMinimaVenda ?? "",p.multiploVenda ?? "",
         p.permiteFracionarEmbalagemMestre ? "sim" : "nao",
+        p.imagemUrl ?? "",
         p.especificacoes.map((s) => `${s.label}:${s.value}`).join(";"),
       ].map(csvEscape).join(","));
 
@@ -1135,9 +1228,15 @@ router.post(
         reviewCount: products.filter((p) => !p.priceMatch || (p.priceMatch.score < 0.85)).length,
         duplicateCount: products.filter((p) => p.duplicate).length,
         csv: [header.join(","), ...rows].join("\n"),
+        sourceFiles: {
+          catalogOriginalUrl: catalogSourceUrl,
+          priceTableOriginalUrl: priceTableSourceUrl,
+        },
         visualSource: {
-          strategy: "catalog_page_reference",
-          note: "A página de origem visual é preservada por produto. A extração/corte de imagem deve respeitar a página do catálogo sem gerar imagem sintética.",
+          strategy: "catalog_crop_with_page_fallback",
+          extractedCount: products.filter((p) => Boolean(p.imagemUrl)).length,
+          referencedCount: products.filter((p) => Boolean(p.paginaCatalogo)).length,
+          note: "Quando a página e a região visual são identificadas, o sistema tenta recortar a imagem real do PDF e salva no storage. Se o runtime não suportar rasterização PDF, mantém a página de origem sem gerar imagem sintética.",
         },
       });
     } catch (error: any) {
