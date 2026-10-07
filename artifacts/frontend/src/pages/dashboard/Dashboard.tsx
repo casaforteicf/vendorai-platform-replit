@@ -1,15 +1,14 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ExecutiveDashboardModern from "@/components/dashboard/ExecutiveDashboardModern";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { dashboardSnapshotQueryKey, fetchDashboardSnapshot } from "@/lib/dashboardSnapshot";
-
-const BusinessGoalsDialog = lazy(() => import("@/components/dashboard/BusinessGoalsDialog"));
-const StrategicObserver = lazy(() => import("@/components/dashboard/StrategicObserver"));
-const JarvisHistory = lazy(() => import("@/components/dashboard/JarvisHistory"));
-const JarvisObserverCaseSync = lazy(() => import("@/components/dashboard/JarvisObserverCaseSync"));
-const JarvisNewsMarket = lazy(() => import("@/components/dashboard/JarvisNewsMarket"));
+import BusinessGoalsDialog from "@/components/dashboard/BusinessGoalsDialog";
+import StrategicObserver from "@/components/dashboard/StrategicObserver";
+import JarvisHistory from "@/components/dashboard/JarvisHistory";
+import JarvisObserverCaseSync from "@/components/dashboard/JarvisObserverCaseSync";
+import JarvisNewsMarket from "@/components/dashboard/JarvisNewsMarket";
 
 type CommandCenterProps = Parameters<typeof ExecutiveDashboardModern>[0];
 type OfficialMetrics = CommandCenterProps["data"];
