@@ -7305,7 +7305,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           setStartSourceChosen(true); setIntakeStage("complete"); setStartChooserDismissed(true);
                           setEditorView("plan"); setEditorLibraryTab("build"); setLibraryOpen(true);
                           const extension = file.name.split(".").pop()?.toLowerCase();
-                          if (extension === "dxf") void importConceptDxf(file); else void uploadProjectSourceFile(file);
+                          if (extension && ["dxf", "ifc", "dwg", "skp"].includes(extension)) {
+                            void previewGeometryImport(file);
+                          } else {
+                            void uploadProjectSourceFile(file);
+                          }
                         }} />
                       <input ref={projectStartReferenceInputRef} type="file" accept="image/png,image/jpeg,image/webp,application/pdf,.pdf" className="hidden"
                         onChange={(event) => {
@@ -7339,7 +7343,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           className="group min-h-32 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm">
                           <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-800"><FolderOpen className="h-5 w-5" /></span>
                             <span><span className="block text-base font-bold text-slate-950">Importar projeto</span>
-                            <span className="mt-1 block text-xs leading-5 text-slate-600">DXF entra como geometria editável. IFC, DWG, RVT e SKP ficam vinculados ao pré-projeto.</span></span></div>
+                            <span className="mt-1 block text-xs leading-5 text-slate-600">DXF, IFC, DWG e SKP passam primeiro por prévia de escala/geometria antes de substituir a planta. RVT fica preservado como fonte vinculada.</span></span></div>
                         </button>
 
                         <button type="button" onClick={() => projectStartReferenceInputRef.current?.click()}
@@ -7351,7 +7355,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       </div>
 
                       <div className="mt-5 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
-                        A referência enviada não vira apenas uma imagem: primeiro é convertida em <strong className="font-semibold text-slate-800">geometria editável</strong>. Depois o mesmo projeto segue para 2D, 3D e Genius Render.
+                        Arquivos geométricos só são aplicados depois da prévia e confirmação. Imagens passam por reconstrução vetorial e revisão humana antes de virar <strong className="font-semibold text-slate-800">geometria editável</strong>.
                       </div>
 
                       <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
