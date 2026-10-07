@@ -47,6 +47,7 @@ async function resolveMarketplaceCommissionForOrder(
   billingType: string,
   grossCentavos: number,
   commissionBaseCentavos: number,
+  buyerTenantId?: string | null,
 ) {
   const items = await vendorPool.query(
     `SELECT i.produto_id,i.sku,i.total_centavos,
@@ -68,6 +69,7 @@ async function resolveMarketplaceCommissionForOrder(
     const ctx = {
       billingType,
       orderValue: grossCentavos / 100,
+      buyerTenantId: buyerTenantId || undefined,
       sellerTenantId: tenantId,
     };
     const resolved = await vendorPool.query(
@@ -87,7 +89,15 @@ async function resolveMarketplaceCommissionForOrder(
     const rule = resolved.rows[0] || null;
     const percentage = Number(rule?.percentage ?? 10);
     const itemBase = Math.round(Math.max(0, Number(item.total_centavos || 0)) * discountFactor);
-    const itemCommission = Math.round(itemBase * percentage / 100);
+    const rawCommission = itemBase * percentage / 100;
+    const minCommission = rule?.min_commission_amount == null ? null : Math.round(Number(rule.min_commission_amount) * 100);
+    const maxCommission = rule?.max_commission_amount == null ? null : Math.round(Number(rule.max_commission_amount) * 100);
+    const itemCommission = Math.round(
+      Math.max(
+        minCommission ?? 0,
+        Math.min(rawCommission, maxCommission ?? Number.POSITIVE_INFINITY),
+      ),
+    );
     totalCommissionCentavos += itemCommission;
     itemRules.push({
       productId: item.produto_id,
@@ -101,6 +111,8 @@ async function resolveMarketplaceCommissionForOrder(
       ruleName: rule?.rule_name || null,
       ruleKind: rule?.rule_kind || null,
       campaignCode: rule?.campaign_code || null,
+      minCommissionCentavos: minCommission,
+      maxCommissionCentavos: maxCommission,
     });
   }
 
@@ -109,11 +121,19 @@ async function resolveMarketplaceCommissionForOrder(
       `SELECT * FROM public.arqdor_market_resolve_commission_v2(
         $1,NULL,NULL,NULL,NULL,NULL,$2::jsonb
       )`,
-      [tenantId, JSON.stringify({ billingType, orderValue: grossCentavos / 100, sellerTenantId: tenantId })],
+      [tenantId, JSON.stringify({ billingType, orderValue: grossCentavos / 100, buyerTenantId: buyerTenantId || undefined, sellerTenantId: tenantId })],
     );
     const rule = fallback.rows[0] || null;
     const percentage = Number(rule?.percentage ?? 10);
-    totalCommissionCentavos = Math.round(commissionBaseCentavos * percentage / 100);
+    const rawCommission = commissionBaseCentavos * percentage / 100;
+    const minCommission = rule?.min_commission_amount == null ? null : Math.round(Number(rule.min_commission_amount) * 100);
+    const maxCommission = rule?.max_commission_amount == null ? null : Math.round(Number(rule.max_commission_amount) * 100);
+    totalCommissionCentavos = Math.round(
+      Math.max(
+        minCommission ?? 0,
+        Math.min(rawCommission, maxCommission ?? Number.POSITIVE_INFINITY),
+      ),
+    );
     itemRules.push({
       productId: null,
       baseCentavos: commissionBaseCentavos,
@@ -123,6 +143,8 @@ async function resolveMarketplaceCommissionForOrder(
       ruleName: rule?.rule_name || null,
       ruleKind: rule?.rule_kind || null,
       campaignCode: rule?.campaign_code || null,
+      minCommissionCentavos: minCommission,
+      maxCommissionCentavos: maxCommission,
     });
   }
 
@@ -321,7 +343,14 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (r
   const gross = Number(order.total_centavos);
   const freight = Number(order.frete_centavos);
   const commissionBase = Math.max(0, Number(order.subtotal_centavos) - Number(order.desconto_centavos));
-  const resolvedCommission = await resolveMarketplaceCommissionForOrder(tenantId, orderId, billingType, gross, commissionBase);
+  const resolvedCommission = await resolveMarketplaceCommissionForOrder(
+    tenantId,
+    orderId,
+    billingType,
+    gross,
+    commissionBase,
+    order.market_buyer_tenant_id || null,
+  );
   const pracaAmount = Math.min(commissionBase, resolvedCommission.totalCommissionCentavos);
   const effectiveCommissionPercent = commissionBase > 0 ? (pracaAmount / commissionBase) * 100 : 0;
   const commissionBps = Math.round(effectiveCommissionPercent * 100);
