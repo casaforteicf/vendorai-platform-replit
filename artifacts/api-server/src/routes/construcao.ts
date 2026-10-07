@@ -38,6 +38,11 @@ import {
   insertMaoObraEquipeSchema,
   insertMaoObraEquipeMembroSchema,
   insertMaoObraCoberturaSchema,
+  equipamentosRecursosTable,
+  equipamentosCoberturasTable,
+  insertEquipamentoRecursoSchema,
+  updateEquipamentoRecursoSchema,
+  insertEquipamentoCoberturaSchema,
   insertObraSchema,
   updateObraSchema,
   insertObraEtapaSchema,
@@ -1127,6 +1132,189 @@ router.get("/tenants/:tenantId/mao-obra/resolver", async (req, res) => {
     suprimidas,
     conflito: rows.length > 1,
     regra: "item_orcamento > etapa_orcamento > composicao; somente a fonte efetiva soma no custo",
+  });
+});
+
+// ─── Equipamentos do orçamento ───────────────────────────────────────────────
+
+function custoUnitarioEquipamento(recurso: typeof equipamentosRecursosTable.$inferSelect): number {
+  if (recurso.origem === "proprio") {
+    const operacionalHora =
+      numberOrZero(recurso.depreciacaoHora) +
+      numberOrZero(recurso.custoManutencaoHora) +
+      (recurso.combustivelIncluso ? 0 : numberOrZero(recurso.custoCombustivelHora)) +
+      (recurso.operadorIncluso ? 0 : numberOrZero(recurso.custoOperadorHora));
+
+    if (recurso.unidadeCobranca === "h") return operacionalHora;
+    if (recurso.unidadeCobranca === "dia") return operacionalHora * 8;
+  }
+
+  return numberOrZero(recurso.valorUnitario);
+}
+
+router.get("/tenants/:tenantId/equipamentos-orcamento/recursos", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const rows = await db.select().from(equipamentosRecursosTable)
+    .where(eq(equipamentosRecursosTable.tenantId, tid))
+    .orderBy(asc(equipamentosRecursosTable.nome));
+
+  return res.json(rows.map((row) => ({
+    ...row,
+    custoUnitarioEfetivo: custoUnitarioEquipamento(row).toFixed(4),
+  })));
+});
+
+router.post("/tenants/:tenantId/equipamentos-orcamento/recursos", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertEquipamentoRecursoSchema.safeParse({ ...req.body, tenantId: tid });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [created] = await db.insert(equipamentosRecursosTable).values(parsed.data).returning();
+  return res.status(201).json({ ...created, custoUnitarioEfetivo: custoUnitarioEquipamento(created).toFixed(4) });
+});
+
+router.put("/tenants/:tenantId/equipamentos-orcamento/recursos/:equipamentoId", async (req, res) => {
+  const { tenantId: tid, equipamentoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = updateEquipamentoRecursoSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [updated] = await db.update(equipamentosRecursosTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(and(eq(equipamentosRecursosTable.id, equipamentoId), eq(equipamentosRecursosTable.tenantId, tid)))
+    .returning();
+  if (!updated) return res.status(404).json({ error: "Equipamento não encontrado" });
+
+  return res.json({ ...updated, custoUnitarioEfetivo: custoUnitarioEquipamento(updated).toFixed(4) });
+});
+
+router.post("/tenants/:tenantId/equipamentos-orcamento/coberturas", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertEquipamentoCoberturaSchema.safeParse({
+    ...req.body,
+    tenantId: tid,
+    criadoPorId: (req as any).user?.sub ?? null,
+  });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const data = parsed.data;
+  const idsPresentes = [
+    data.composicaoId ? "composicao" : null,
+    data.orcamentoEtapaId ? "etapa_orcamento" : null,
+    data.orcamentoItemId ? "item_orcamento" : null,
+  ].filter(Boolean);
+  if (idsPresentes.length !== 1 || idsPresentes[0] !== data.escopoTipo) {
+    return res.status(422).json({ error: "Informe exatamente um alvo compatível com escopoTipo." });
+  }
+
+  const [equipamento] = await db.select().from(equipamentosRecursosTable)
+    .where(and(eq(equipamentosRecursosTable.id, data.equipamentoId), eq(equipamentosRecursosTable.tenantId, tid)));
+  if (!equipamento) return res.status(422).json({ error: "Equipamento inválido para este tenant." });
+
+  const valorUnitario = numberOrZero(data.valorUnitario) || custoUnitarioEquipamento(equipamento);
+  const mobilizacao = data.mobilizacao != null ? numberOrZero(data.mobilizacao) : numberOrZero(equipamento.mobilizacao);
+  const desmobilizacao = data.desmobilizacao != null ? numberOrZero(data.desmobilizacao) : numberOrZero(equipamento.desmobilizacao);
+  const transporte = data.transporte != null ? numberOrZero(data.transporte) : numberOrZero(equipamento.transporte);
+  const quantidade = numberOrZero(data.quantidade);
+  const custoOperacionalExtra =
+    equipamento.origem === "proprio" && data.horasOperacao != null
+      ? numberOrZero(data.horasOperacao) * (
+          (equipamento.combustivelIncluso ? 0 : numberOrZero(equipamento.custoCombustivelHora)) +
+          (equipamento.operadorIncluso ? 0 : numberOrZero(equipamento.custoOperadorHora)) +
+          numberOrZero(equipamento.custoManutencaoHora) +
+          numberOrZero(equipamento.depreciacaoHora)
+        )
+      : 0;
+  const custoTotal = quantidade * valorUnitario + mobilizacao + desmobilizacao + transporte + custoOperacionalExtra;
+
+  const targetCondition =
+    data.escopoTipo === "composicao"
+      ? eq(equipamentosCoberturasTable.composicaoId, data.composicaoId!)
+      : data.escopoTipo === "etapa_orcamento"
+        ? eq(equipamentosCoberturasTable.orcamentoEtapaId, data.orcamentoEtapaId!)
+        : eq(equipamentosCoberturasTable.orcamentoItemId, data.orcamentoItemId!);
+
+  const created = await db.transaction(async (tx) => {
+    // O mesmo slot técnico não pode ser cobrado duas vezes no mesmo alvo.
+    await tx.update(equipamentosCoberturasTable)
+      .set({ ativo: false, updatedAt: new Date() })
+      .where(and(
+        eq(equipamentosCoberturasTable.tenantId, tid),
+        eq(equipamentosCoberturasTable.escopoTipo, data.escopoTipo),
+        eq(equipamentosCoberturasTable.slotKey, data.slotKey),
+        eq(equipamentosCoberturasTable.ativo, true),
+        targetCondition,
+      ));
+
+    const [row] = await tx.insert(equipamentosCoberturasTable).values({
+      ...data,
+      unidadeCobranca: data.unidadeCobranca || equipamento.unidadeCobranca,
+      valorUnitario: valorUnitario.toFixed(4),
+      mobilizacao: mobilizacao.toFixed(4),
+      desmobilizacao: desmobilizacao.toFixed(4),
+      transporte: transporte.toFixed(4),
+      custoTotal: custoTotal.toFixed(4),
+      ativo: true,
+    }).returning();
+    return row;
+  });
+
+  return res.status(201).json(created);
+});
+
+router.get("/tenants/:tenantId/equipamentos-orcamento/resolver", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const composicaoId = typeof req.query.composicaoId === "string" ? req.query.composicaoId : null;
+  const orcamentoEtapaId = typeof req.query.orcamentoEtapaId === "string" ? req.query.orcamentoEtapaId : null;
+  const orcamentoItemId = typeof req.query.orcamentoItemId === "string" ? req.query.orcamentoItemId : null;
+
+  const alvos = [];
+  if (composicaoId) alvos.push(eq(equipamentosCoberturasTable.composicaoId, composicaoId));
+  if (orcamentoEtapaId) alvos.push(eq(equipamentosCoberturasTable.orcamentoEtapaId, orcamentoEtapaId));
+  if (orcamentoItemId) alvos.push(eq(equipamentosCoberturasTable.orcamentoItemId, orcamentoItemId));
+  if (!alvos.length) return res.status(422).json({ error: "Informe ao menos um alvo." });
+
+  const rows = await db.select().from(equipamentosCoberturasTable)
+    .where(and(
+      eq(equipamentosCoberturasTable.tenantId, tid),
+      eq(equipamentosCoberturasTable.ativo, true),
+      or(...alvos),
+    ));
+
+  const prioridade = { item_orcamento: 3, etapa_orcamento: 2, composicao: 1 } as const;
+  const porSlot = new Map<string, typeof rows>();
+  for (const row of rows) {
+    if (!porSlot.has(row.slotKey)) porSlot.set(row.slotKey, []);
+    porSlot.get(row.slotKey)!.push(row);
+  }
+
+  const efetivas = [];
+  const suprimidas = [];
+  for (const [slotKey, slotRows] of porSlot) {
+    const ordered = slotRows.sort((a, b) =>
+      (prioridade[b.escopoTipo as keyof typeof prioridade] ?? 0) -
+      (prioridade[a.escopoTipo as keyof typeof prioridade] ?? 0));
+    efetivas.push(ordered[0]);
+    for (const row of ordered.slice(1)) {
+      suprimidas.push({ ...row, slotKey, motivoSupressao: "equipamento_equivalente_coberto_em_escopo_mais_especifico" });
+    }
+  }
+
+  const custoTotal = efetivas.reduce((sum, row) => sum + numberOrZero(row.custoTotal), 0);
+  return res.json({
+    efetivas,
+    suprimidas,
+    custoTotal: custoTotal.toFixed(4),
+    regra: "cada slot técnico soma uma vez; prioridade item_orcamento > etapa_orcamento > composicao",
   });
 });
 
