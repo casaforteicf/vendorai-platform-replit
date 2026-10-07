@@ -357,6 +357,7 @@ archAiRenderRouter.get("/arch/ai-render/:id/reviews", authenticate, async (req: 
   return res.json({
     success: true,
     render_id: renderId,
+    policy: ARQDOR_FIDELITY_APPROVAL_POLICY,
     reviews: reviews.map((row) => ({
       id: row.id,
       render_id: row.renderId,
@@ -420,6 +421,7 @@ archAiRenderRouter.post("/arch/ai-render/:id/review", authenticate, async (req: 
       success: true,
       review_id: saved?.id,
       render_id: render.id,
+      policy: ARQDOR_FIDELITY_APPROVAL_POLICY,
       review: result.review,
       usage: {
         input_tokens: result.inputTokens,
