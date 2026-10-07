@@ -2721,7 +2721,204 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
       {selectedId && (orcamento?.etapas ?? []).length > 0 && (
         <CurvaABC tenantId={tenantId} obraId={obraId} orcamentoId={selectedId} />
       )}
+
+      {selectedId && (orcamento?.etapas ?? []).length > 0 && (
+        <FormacaoVenda tenantId={tenantId} obraId={obraId} orcamentoId={selectedId} locked={locked} />
+      )}
     </div>
+  );
+}
+
+function FormacaoVenda({ tenantId, obraId, orcamentoId, locked }: { tenantId: string; obraId: string; orcamentoId: string; locked: boolean }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [margem, setMargem] = useState("15");
+  const [metodo, setMetodo] = useState("margem_sobre_venda");
+  const [tipoComponente, setTipoComponente] = useState("impostos");
+  const [nomeComponente, setNomeComponente] = useState("Impostos");
+  const [percentual, setPercentual] = useState("0");
+  const [baseCalculo, setBaseCalculo] = useState("preco_venda");
+
+  const { data: config, isLoading } = useQuery<any>({
+    queryKey: ["formacao-venda", tenantId, obraId, orcamentoId],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}/formacao-venda`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Erro ao carregar formação de venda");
+      return res.json();
+    },
+    enabled: !!orcamentoId,
+  });
+
+  const ativa = (config?.formacoes ?? []).find((f: any) => f.ativo) ?? null;
+
+  const { data: calc, isLoading: calculating } = useQuery<any>({
+    queryKey: ["formacao-venda-calculo", tenantId, obraId, orcamentoId, ativa?.id],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}/formacao-venda/${ativa.id}/calcular`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error ?? "Erro no cálculo");
+      }
+      return res.json();
+    },
+    enabled: !!ativa?.id,
+  });
+
+  async function criarFormacao() {
+    const token = localStorage.getItem("vendorai_token");
+    const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}/formacao-venda`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ nome: "Formação de venda", metodoMargem: metodo, margemPercentual: margem }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      toast({ title: "Não foi possível criar", description: body?.error ?? "Erro na formação de venda", variant: "destructive" });
+      return;
+    }
+    toast({ title: "Formação de venda criada" });
+    qc.invalidateQueries({ queryKey: ["formacao-venda", tenantId, obraId, orcamentoId] });
+  }
+
+  async function adicionarComponente() {
+    if (!ativa?.id) return;
+    const token = localStorage.getItem("vendorai_token");
+    const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}/formacao-venda/${ativa.id}/componentes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({
+        escopo: "orcamento",
+        tipo: tipoComponente,
+        nome: nomeComponente || tipoComponente,
+        modo: "percentual",
+        baseCalculo,
+        percentual,
+        incluiNaVenda: true,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      toast({ title: "Não foi possível adicionar", description: body?.error ?? "Erro no componente", variant: "destructive" });
+      return;
+    }
+    setPercentual("0");
+    qc.invalidateQueries({ queryKey: ["formacao-venda", tenantId, obraId, orcamentoId] });
+    qc.invalidateQueries({ queryKey: ["formacao-venda-calculo", tenantId, obraId, orcamentoId, ativa.id] });
+  }
+
+  async function gerarSnapshot() {
+    if (!ativa?.id) return;
+    const token = localStorage.getItem("vendorai_token");
+    const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}/formacao-venda/${ativa.id}/snapshot`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      toast({ title: "Não foi possível registrar", description: body?.error ?? "Erro ao gerar snapshot", variant: "destructive" });
+      return;
+    }
+    toast({ title: "Snapshot financeiro registrado" });
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <CardTitle className="text-sm">Formação de custo e preço de venda</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">Custo direto → indiretos → impostos/comissão/risco → margem → preço de venda.</p>
+          </div>
+          {ativa && !locked && <Button size="sm" variant="outline" onClick={gerarSnapshot}>Registrar snapshot</Button>}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando…</div>
+        ) : !ativa ? (
+          <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+            <div className="space-y-2">
+              <Label>Método da margem</Label>
+              <select className="w-full h-10 rounded-md border bg-background px-3 text-sm" value={metodo} onChange={(e) => setMetodo(e.target.value)}>
+                <option value="margem_sobre_venda">Margem sobre preço de venda</option>
+                <option value="markup_sobre_custo">Markup sobre custo</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label>Margem (%)</Label>
+              <Input type="number" step="0.01" value={margem} onChange={(e) => setMargem(e.target.value)} />
+            </div>
+            <Button onClick={criarFormacao} disabled={locked}>Criar formação</Button>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Custo direto</div><div className="font-bold mt-1">{calculating ? "…" : fmtBRL(calc?.custoDireto)}</div></div>
+              <div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Indiretos + risco</div><div className="font-bold mt-1">{calculating ? "…" : fmtBRL(Number(calc?.custosIndiretos ?? 0) + Number(calc?.risco ?? 0))}</div></div>
+              <div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Impostos + comissão</div><div className="font-bold mt-1">{calculating ? "…" : fmtBRL(Number(calc?.impostos ?? 0) + Number(calc?.comissao ?? 0))}</div></div>
+              <div className="rounded-lg border p-3 bg-primary/5"><div className="text-xs text-muted-foreground">Preço de venda</div><div className="font-bold mt-1">{calculating ? "…" : fmtBRL(calc?.precoVenda)}</div></div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-4">
+              <div className="space-y-2">
+                <Label>Componente</Label>
+                <select className="w-full h-10 rounded-md border bg-background px-3 text-sm" value={tipoComponente} onChange={(e) => {
+                  setTipoComponente(e.target.value);
+                  const labels: Record<string,string> = { impostos:"Impostos", comissao:"Comissão", risco:"Risco", administracao_obra:"Administração da obra", canteiro:"Canteiro", engenharia:"Engenharia", seguro:"Seguro", garantia:"Garantia", frete_logistica:"Frete/logística", despesas_financeiras:"Despesas financeiras", outro_indireto:"Outro indireto" };
+                  setNomeComponente(labels[e.target.value] ?? e.target.value);
+                }}>
+                  <option value="administracao_obra">Administração da obra</option>
+                  <option value="canteiro">Canteiro</option>
+                  <option value="engenharia">Engenharia</option>
+                  <option value="seguro">Seguro</option>
+                  <option value="garantia">Garantia</option>
+                  <option value="frete_logistica">Frete/logística</option>
+                  <option value="despesas_financeiras">Despesas financeiras</option>
+                  <option value="impostos">Impostos</option>
+                  <option value="comissao">Comissão</option>
+                  <option value="risco">Risco</option>
+                  <option value="outro_indireto">Outro indireto</option>
+                </select>
+              </div>
+              <div className="space-y-2"><Label>Nome</Label><Input value={nomeComponente} onChange={(e) => setNomeComponente(e.target.value)} /></div>
+              <div className="space-y-2"><Label>Percentual</Label><Input type="number" step="0.01" value={percentual} onChange={(e) => setPercentual(e.target.value)} /></div>
+              <div className="space-y-2"><Label>Base</Label><select className="w-full h-10 rounded-md border bg-background px-3 text-sm" value={baseCalculo} onChange={(e) => setBaseCalculo(e.target.value)}>
+                <option value="custo_direto">Custo direto</option>
+                <option value="custo_total">Custo acumulado</option>
+                <option value="preco_venda">Preço de venda</option>
+              </select></div>
+            </div>
+            {!locked && <div className="flex justify-end"><Button size="sm" variant="outline" onClick={adicionarComponente}><Plus className="h-3.5 w-3.5 mr-1" />Adicionar componente</Button></div>}
+
+            {(config?.componentes ?? []).filter((x: any) => x.formacaoId === ativa.id && x.ativo).length > 0 && (
+              <div className="space-y-1">
+                {(config.componentes ?? []).filter((x: any) => x.formacaoId === ativa.id && x.ativo).map((x: any) => (
+                  <div key={x.id} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-xs">
+                    <div><div className="font-medium">{x.nome}</div><div className="text-muted-foreground">{x.tipo} · {x.baseCalculo}</div></div>
+                    <Badge variant="outline">{x.modo === "percentual" ? `${x.percentual}%` : fmtBRL(x.valorFixo)}</Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {calc && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-muted-foreground">
+                <div>Margem: <span className="font-medium text-foreground">{fmtBRL(calc.margemValor)}</span></div>
+                <div>Margem efetiva: <span className="font-medium text-foreground">{Number(calc.margemEfetivaPercentual ?? 0).toFixed(2)}%</span></div>
+                <div>Markup efetivo: <span className="font-medium text-foreground">{Number(calc.markupEfetivo ?? 0).toFixed(4)}x</span></div>
+                <div>Método: <span className="font-medium text-foreground">{ativa.metodoMargem === "margem_sobre_venda" ? "margem sobre venda" : "markup sobre custo"}</span></div>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
