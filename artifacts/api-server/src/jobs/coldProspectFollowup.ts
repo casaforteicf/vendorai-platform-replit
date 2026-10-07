@@ -9,6 +9,7 @@ import type { Logger } from "pino";
 import { callOpenAI } from "../lib/ai-gateway.js";
 import { sendProspectOutreach } from "../services/prospect-outreach.js";
 import { resolveColdProspectingConfig } from "../services/cold-prospecting-config.js";
+import { scheduleProspectMeeting } from "../services/prospect-meeting.js";
 
 function chooseChannel(
   prospect: typeof prospectsTable.$inferSelect,
@@ -101,6 +102,35 @@ export async function runColdProspectFollowup(log: Logger) {
           eq(prospectInteractionsTable.tenantId, row.tenantId),
           eq(prospectInteractionsTable.prospectId, prospect.id),
         )).orderBy(asc(prospectInteractionsTable.occurredAt));
+
+        if (prospect.stage === "reuniao_em_negociacao") {
+          const facts = prospect.qualification?.facts ?? [];
+          const accepted = facts.some((f) => f.key === "meeting_accepted" && f.value === true && f.confirmed);
+          const startValue = facts.slice().reverse().find((f) => f.key === "meeting_start" && f.confirmed)?.value;
+          const endValue = facts.slice().reverse().find((f) => f.key === "meeting_end" && f.confirmed)?.value;
+          const start = typeof startValue === "string" ? new Date(startValue) : null;
+          const end = typeof endValue === "string" ? new Date(endValue) : null;
+
+          if (
+            accepted &&
+            start && end &&
+            !Number.isNaN(start.getTime()) &&
+            !Number.isNaN(end.getTime()) &&
+            (prospect.meetingReadinessScore ?? 0) >= runtime.meetingReadinessThreshold
+          ) {
+            await scheduleProspectMeeting({
+              tenantId: row.tenantId,
+              prospectId: prospect.id,
+              start,
+              end,
+              modality: "meet",
+              autonomous: true,
+              log,
+            });
+            summary.sent++;
+            continue;
+          }
+        }
 
         const outbound = history.filter((h) => h.direction === "outbound" && h.status !== "failed" && h.status !== "skipped");
         const inbound = history.filter((h) => h.direction === "inbound");
