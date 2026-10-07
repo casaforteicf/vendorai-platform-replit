@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import * as XLSX from "xlsx";
 import { useRoute, Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -2801,6 +2802,11 @@ function CotacoesOrcamento({ tenantId, obraId, orcamentoId, locked }: { tenantId
 
 function CotacaoResumo({ tenantId, cotacao }: { tenantId: string; cotacao: any }) {
   const [open, setOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
   const { data, isLoading } = useQuery<any>({
     queryKey: ["cotacao-resumo", tenantId, cotacao.id],
     queryFn: async () => {
@@ -2814,29 +2820,135 @@ function CotacaoResumo({ tenantId, cotacao }: { tenantId: string; cotacao: any }
     enabled: open,
   });
 
+  async function prepararArquivoCotacao(file: File): Promise<File> {
+    if (!/\.(xlsx|xls)$/i.test(file.name)) return file;
+
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array", cellDates: false });
+    const partes: string[] = [];
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName];
+      if (!sheet) continue;
+      partes.push(`=== PLANILHA: ${sheetName} ===`);
+      partes.push(XLSX.utils.sheet_to_csv(sheet, { FS: ";", RS: "\n" }));
+    }
+    const csv = partes.join("\n");
+    return new File([csv], file.name, { type: "text/csv" });
+  }
+
+  async function importarArquivo(file?: File) {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const token = localStorage.getItem("vendorai_token");
+      const preparado = await prepararArquivoCotacao(file);
+      const form = new FormData();
+      form.append("file", preparado, file.name);
+
+      const res = await fetch(`/api/tenants/${tenantId}/cotacoes/${cotacao.id}/propostas/importar-arquivo`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast({
+          title: "Não foi possível importar",
+          description: body?.error ?? "Falha ao ler a proposta.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const reconciliados = Number(body?.reconciliados ?? 0);
+      const ambiguos = Number(body?.ambiguos ?? 0);
+      toast({
+        title: "Proposta importada",
+        description: `${reconciliados} item(ns) reconciliado(s)${ambiguos ? ` · ${ambiguos} para revisar` : ""}.`,
+      });
+      qc.invalidateQueries({ queryKey: ["cotacao-resumo", tenantId, cotacao.id] });
+      setOpen(true);
+    } catch (error) {
+      toast({
+        title: "Erro na importação",
+        description: error instanceof Error ? error.message : "Falha inesperada.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
   return (
     <div className="rounded-lg border">
-      <button type="button" className="w-full flex items-center justify-between gap-3 px-3 py-3 text-left" onClick={() => setOpen((v) => !v)}>
-        <div>
+      <div className="flex items-center justify-between gap-3 px-3 py-3">
+        <button type="button" className="flex-1 text-left" onClick={() => setOpen((v) => !v)}>
           <div className="text-sm font-medium">{cotacao.titulo}</div>
           <div className="text-xs text-muted-foreground">{cotacao.status}</div>
-        </div>
-        {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-      </button>
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          className="hidden"
+          accept=".pdf,.doc,.docx,.csv,.txt,.xls,.xlsx,image/*"
+          onChange={(e) => importarArquivo(e.target.files?.[0])}
+        />
+        <Button size="sm" variant="outline" disabled={uploading} onClick={() => fileRef.current?.click()}>
+          {uploading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />}
+          Importar proposta
+        </Button>
+        <button type="button" onClick={() => setOpen((v) => !v)}>
+          {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
+      </div>
+
       {open && (
         <div className="border-t px-3 py-3">
           {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : data ? (
             <div className="space-y-3">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
                 <div className="rounded border p-2"><span className="text-muted-foreground">Itens</span><div className="font-bold text-base">{data.totais?.itens ?? 0}</div></div>
                 <div className="rounded border p-2"><span className="text-muted-foreground">Cobertos</span><div className="font-bold text-base">{data.totais?.cobertos ?? 0}</div></div>
                 <div className="rounded border p-2"><span className="text-muted-foreground">Parciais</span><div className="font-bold text-base">{data.totais?.parciais ?? 0}</div></div>
+                <div className="rounded border p-2"><span className="text-muted-foreground">Não cotados</span><div className="font-bold text-base">{data.totais?.naoCotados ?? 0}</div></div>
                 <div className="rounded border p-2"><span className="text-muted-foreground">Propostas</span><div className="font-bold text-base">{data.totais?.propostas ?? 0}</div></div>
               </div>
+
+              {(data.propostas ?? []).length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="text-xs font-medium text-muted-foreground">Propostas recebidas</div>
+                  {(data.propostas ?? []).map((p: any) => {
+                    const itens = (data.propostaItens ?? []).filter((i: any) => i.propostaId === p.id);
+                    const ambiguos = itens.filter((i: any) => !i.cotacaoItemId || i.coberturaStatus === "ambigua").length;
+                    return (
+                      <div key={p.id} className="rounded border px-3 py-2 text-xs flex items-center justify-between gap-3">
+                        <div>
+                          <div className="font-medium">{p.fornecedorNomeSnapshot}</div>
+                          <div className="text-muted-foreground">
+                            {p.arquivoNome || p.origemFormato} · {itens.length} item(ns)
+                            {p.validadeAte ? ` · validade ${p.validadeAte}` : ""}
+                          </div>
+                        </div>
+                        <div className="flex gap-1.5">
+                          <Badge variant="outline">{p.status}</Badge>
+                          {ambiguos > 0 && <Badge variant="secondary">{ambiguos} revisar</Badge>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               <div className="space-y-1">
-                {(data.cobertura ?? []).slice(0, 30).map((x: any) => (
+                {(data.cobertura ?? []).slice(0, 50).map((x: any) => (
                   <div key={x.item.id} className="flex items-center justify-between gap-3 rounded border px-3 py-2 text-xs">
-                    <div><div className="font-medium">{x.item.nome}</div><div className="text-muted-foreground">{x.qtdNecessaria} {x.item.unidadeCompra ?? x.item.unidadeTecnica} · {x.candidatos} proposta(s)</div></div>
+                    <div>
+                      <div className="font-medium">{x.item.nome}</div>
+                      <div className="text-muted-foreground">
+                        {x.qtdNecessaria} {x.item.unidadeCompra ?? x.item.unidadeTecnica} · {x.candidatos} proposta(s)
+                      </div>
+                    </div>
                     <Badge variant={x.status === "coberto" ? "default" : "outline"}>{x.status}</Badge>
                   </div>
                 ))}
