@@ -377,6 +377,21 @@ function SettingsUxCleanup() {
 }
 
 
+function FocusedLegacySettings({ tab }: { tab: string }) {
+  const [, setLocation] = useLocation();
+  const currentTab = new URLSearchParams(window.location.search).get("tab");
+
+  useEffect(() => {
+    if (currentTab === tab) return;
+    const search = new URLSearchParams(window.location.search);
+    search.set("tab", tab);
+    setLocation(`${window.location.pathname}?${search.toString()}`, { replace: true });
+  }, [currentTab, setLocation, tab]);
+
+  if (currentTab !== tab) return null;
+  return <ConfiguracoesNormalized embedded />;
+}
+
 function SettingsSectionShell({
   title,
   description,
@@ -564,7 +579,7 @@ export default function Configuracoes() {
         title="Empresa"
         description="Dados da empresa, marca, endereço, canais e preferências."
       >
-        <ConfiguracoesNormalized embedded />
+        <FocusedLegacySettings tab="perfil" />
       </SettingsSectionShell>
     );
   }
@@ -575,7 +590,7 @@ export default function Configuracoes() {
         title="Equipe e permissões"
         description="Usuários, funções, acessos, responsáveis e permissões."
       >
-        <ConfiguracoesNormalized embedded />
+        <FocusedLegacySettings tab="equipe" />
       </SettingsSectionShell>
     );
   }
