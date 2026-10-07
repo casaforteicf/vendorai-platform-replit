@@ -229,6 +229,8 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
     return res.status(400).json({ success: false, error: "Informe project_id ou concept_project_id, não ambos." });
   }
   let effectiveUserNotes = user_notes;
+  let realEnvironmentSourceUrl: string | undefined;
+  let realEnvironmentKind: string | undefined;
   let resolvedProjectRevision = project_revision ?? null;
   let resolvedSceneId = scene_id ?? null;
   let resolvedSceneName = scene_name ?? null;
@@ -251,6 +253,13 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
     );
     if (realEnvironmentContext) {
       effectiveUserNotes = [realEnvironmentContext, effectiveUserNotes].filter(Boolean).join("\n");
+    }
+    const realEnvironment = conceptConfiguration?.realEnvironment as RealEnvironmentAnalysis | undefined;
+    if (realEnvironment && realEnvironment.useMode !== "reference") {
+      realEnvironmentSourceUrl = typeof (realEnvironment as any).sourceImageUrl === "string"
+        ? String((realEnvironment as any).sourceImageUrl)
+        : undefined;
+      realEnvironmentKind = realEnvironment.kind;
     }
     const projectMaster = conceptConfiguration?.projectMaster;
     resolvedProjectRevision = resolvedProjectRevision
@@ -316,7 +325,7 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
     sceneName: resolvedSceneName,
     cameraSnapshot: resolvedCameraSnapshot,
     sourceModelVersion: resolvedSourceModelVersion,
-    jobInput: durable ? { userNotes: effectiveUserNotes, materials, renderPresets: render_presets, source, renderView: render_view } : null,
+    jobInput: durable ? { userNotes: effectiveUserNotes, materials, renderPresets: render_presets, source, renderView: render_view, realEnvironmentSourceUrl, realEnvironmentKind } : null,
     prompt: durable ? buildPrompt({
       mode, ambiente, estilo, iluminacao, angulo, maskZones: safeMaskZones, materials,
       userNotes: effectiveUserNotes, renderPresets: render_presets, source, renderView: render_view,
@@ -356,6 +365,8 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
     source,
     renderView: render_view,
     renderProfile: render_profile,
+    realEnvironmentSourceUrl,
+    realEnvironmentKind,
     logger:       req.log,
     retentativas: 0,
   }).catch(err => {
@@ -911,6 +922,8 @@ export interface RenderJobParams {
   source?: string | null;
   renderView?: string | null;
   renderProfile?: "technical" | "premium" | "decorated";
+  realEnvironmentSourceUrl?: string;
+  realEnvironmentKind?: string;
   logger:       any;
   retentativas: number;
 }
@@ -980,7 +993,7 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
     renderId, tenantId: tid, mode, originalUrl, maskZones, maskFileBase64, maskCoordinates,
     materialAwareSelection, selectionPaddingPercent, materialReferenceUrl, materialName,
     ambiente, estilo, iluminacao, angulo, materials, userNotes, renderPresets, source, renderView, renderProfile,
-    logger, retentativas,
+    realEnvironmentSourceUrl, realEnvironmentKind, logger, retentativas,
   } = params;
 
   const storage = new ObjectStorageService();
@@ -1002,6 +1015,12 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
 
     // ── 1. Baixar imagem original ──────────────────────────────────────────
     const { buf: originalBuf, mime: originalMime } = await fetchImageAsBuffer(originalUrl, storage);
+
+    let realEnvironmentDataUrl: string | undefined;
+    if (realEnvironmentSourceUrl) {
+      const realEnvironmentImage = await fetchImageAsBuffer(realEnvironmentSourceUrl, storage);
+      realEnvironmentDataUrl = bufferToDataUrl(realEnvironmentImage.buf, realEnvironmentImage.mime);
+    }
 
     const meta = await sharp(originalBuf).metadata();
     const width  = meta.width  ?? 1024;
@@ -1144,9 +1163,18 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
         // Refino global: preservação rígida sem máscara.
         const generated = await generateRenderPremiumOpenAI({
           tenantId: tid,
-          imageDataUrl: originalDataUrl,
+          imageDataUrl: realEnvironmentDataUrl ?? originalDataUrl,
+          referenceImageDataUrls: realEnvironmentDataUrl ? [originalDataUrl] : undefined,
           prompt: [
             prompt,
+            ...(realEnvironmentDataUrl ? [
+              "REAL-SITE COMPOSITION MODE. The FIRST input image is the actual existing place and is authoritative for camera, perspective, road, sidewalks, neighboring buildings, terrain cues, vegetation and every unaffected surrounding element.",
+              "The SECOND input image is the designed architectural intervention and is authoritative for the new project's geometry, opening count/position, massing, proportions, materials and design intent.",
+              "Insert the designed intervention into the real place at physically plausible scale and ground contact. Do not turn the location into a generic scene.",
+              "Vegetation or existing objects may disappear ONLY where they are physically occluded by the new construction or explicitly marked REMOVE/REPLACE/RELOCATE in the REAL ENVIRONMENT LOCK. Preserve all remaining vegetation and context.",
+              "Do not copy the background, sky or surroundings from the project reference image. Do not redesign the building to match the existing site.",
+              `Existing scene category: ${realEnvironmentKind ?? "ambiente real"}.`,
+            ] : []),
             "PREMIUM ARCHVIZ OUTPUT: produce a high-end photorealistic architectural visualization of the exact same project.",
             "Preserve the reference camera, architecture, cabinetry, exact visible-object inventory, furniture count/placement and the perceived base colors/material identity.",
             "Increase realistic global illumination, material micro-detail, wood grain fidelity, fabric weave, stone depth, metal/glass reflections, soft contact shadows and photographic clarity.",
@@ -1247,6 +1275,7 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
 
     // ── 5. QA estrutural pós-render ─────────────────────────────────────────
     const shouldValidateArchitecture =
+      !realEnvironmentSourceUrl &&
       mode === "preservar" &&
       ambiente === "fachada" &&
       (source === "facade" || renderView === "exterior");
