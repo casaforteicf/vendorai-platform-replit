@@ -84,6 +84,10 @@ import {
   insertObraEletricaCircuitoSchema,
   insertObraEletricaQuadroSchema,
   insertObraEletricaRedeEspecialSchema,
+  obraEnergiaSistemasTable,
+  obraEnergiaComponentesTable,
+  insertObraEnergiaSistemaSchema,
+  insertObraEnergiaComponenteSchema,
   insertObraSchema,
   updateObraSchema,
   insertObraEtapaSchema,
@@ -2116,6 +2120,170 @@ router.get("/tenants/:tenantId/obras/:obraId/eletrica/verificar-duplicidade", as
     conflitos,
     possuiConflito: conflitos.length > 0,
   });
+});
+
+// ─── Energia e sistemas especiais ─────────────────────────────────────────────
+
+router.post("/tenants/:tenantId/obras/:obraId/energia/sistemas", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  const parsed = insertObraEnergiaSistemaSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraEnergiaSistemasTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/energia/sistemas/:sistemaId/componentes", async (req, res) => {
+  const { tenantId: tid, obraId, sistemaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [sistema] = await db.select().from(obraEnergiaSistemasTable)
+    .where(and(eq(obraEnergiaSistemasTable.id, sistemaId), eq(obraEnergiaSistemasTable.obraId, obraId)));
+  if (!sistema) return res.status(404).json({ error: "Sistema de energia não encontrado" });
+
+  const parsed = insertObraEnergiaComponenteSchema.safeParse({ ...req.body, sistemaId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  if (parsed.data.circuitoId) {
+    const [circuito] = await db.select().from(obraEletricaCircuitosTable)
+      .where(and(eq(obraEletricaCircuitosTable.id, parsed.data.circuitoId), eq(obraEletricaCircuitosTable.obraId, obraId)));
+    if (!circuito) return res.status(422).json({ error: "Circuito elétrico inválido para esta obra." });
+  }
+
+  const [row] = await db.insert(obraEnergiaComponentesTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/energia/resumo", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  const sistemas = await db.select().from(obraEnergiaSistemasTable)
+    .where(and(eq(obraEnergiaSistemasTable.obraId, obraId), eq(obraEnergiaSistemasTable.ativo, true)));
+  const ids = sistemas.map((s) => s.id);
+  const componentes = ids.length
+    ? await db.select().from(obraEnergiaComponentesTable)
+        .where(and(inArray(obraEnergiaComponentesTable.sistemaId, ids), eq(obraEnergiaComponentesTable.ativo, true)))
+    : [];
+
+  const alertas = [];
+  for (const sistema of sistemas) {
+    const comps = componentes.filter((c) => c.sistemaId === sistema.id);
+    const slots = new Map<string, number>();
+    for (const comp of comps) slots.set(comp.slotKey, (slots.get(comp.slotKey) ?? 0) + 1);
+
+    for (const [slotKey, total] of slots) {
+      if (total > 1) {
+        alertas.push({
+          tipo: "slot_duplicado",
+          sistemaId: sistema.id,
+          slotKey,
+          quantidade: total,
+          mensagem: "Há mais de um componente ativo no mesmo slot técnico. Revisar duplicidade.",
+        });
+      }
+    }
+
+    if (sistema.somenteInfraestrutura) {
+      const equipamentosFinais = comps.filter((c) => c.tipo === "equipamento" || c.tipo === "geracao" || c.tipo === "armazenamento");
+      if (equipamentosFinais.length) {
+        alertas.push({
+          tipo: "infraestrutura_com_equipamento_final",
+          sistemaId: sistema.id,
+          mensagem: "O sistema está marcado como somente infraestrutura, mas possui equipamento final ativo.",
+        });
+      }
+    }
+  }
+
+  return res.json({
+    sistemas,
+    componentes,
+    totais: {
+      potenciaKw: sistemas.reduce((sum, s) => sum + numberOrZero(s.potenciaKw), 0).toFixed(4),
+      energiaKwh: sistemas.reduce((sum, s) => sum + numberOrZero(s.energiaKwh), 0).toFixed(4),
+    },
+    alertas,
+    regraAntiduplicidade: "infraestrutura, circuito e equipamento final devem ocupar slots distintos; o mesmo escopo não deve ser cobrado em mais de um componente",
+  });
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/energia/preconfigurar", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const tipo = typeof req.body?.tipo === "string" ? req.body.tipo : null;
+  const permitidos = ["fotovoltaico_on_grid","fotovoltaico_hibrido","off_grid","banco_baterias","carregador_ve","gerador","nobreak_ups","quadro_cargas_essenciais","chave_transferencia","gestao_energia"];
+  if (!tipo || !permitidos.includes(tipo)) return res.status(422).json({ error: "Tipo de sistema especial inválido." });
+
+  const somenteInfraestrutura = Boolean(req.body?.somenteInfraestrutura);
+  const parametros = req.body?.parametros && typeof req.body.parametros === "object" ? req.body.parametros : {};
+
+  const defaults: Record<string, Array<{ tipo: string; slotKey: string; nome: string }>> = {
+    fotovoltaico_on_grid: [
+      { tipo: "geracao", slotKey: "modulos", nome: "Módulos fotovoltaicos" },
+      { tipo: "conversao", slotKey: "inversor", nome: "Inversor fotovoltaico" },
+      { tipo: "infraestrutura", slotKey: "cabos_cc_ca", nome: "Cabos e infraestrutura CC/CA" },
+      { tipo: "protecao", slotKey: "protecoes_cc_ca", nome: "Proteções CC/CA" },
+      { tipo: "estrutura_fixacao", slotKey: "estrutura_fixacao", nome: "Estrutura de fixação" },
+      { tipo: "aterramento", slotKey: "aterramento", nome: "Aterramento/equipotencialização" },
+      { tipo: "medicao", slotKey: "medicao", nome: "Medição/monitoramento" },
+    ],
+    carregador_ve: [
+      { tipo: "infraestrutura", slotKey: "circuito_dedicado", nome: "Circuito dedicado para recarga VE" },
+      { tipo: "protecao", slotKey: "protecao_ve", nome: "Proteções do circuito de recarga" },
+      { tipo: "aterramento", slotKey: "aterramento_ve", nome: "Aterramento do ponto de recarga" },
+      { tipo: "equipamento", slotKey: "wallbox", nome: "Carregador veicular / wallbox" },
+      { tipo: "controle", slotKey: "gestao_carga", nome: "Gerenciamento/balanceamento de carga" },
+    ],
+    off_grid: [
+      { tipo: "geracao", slotKey: "geracao", nome: "Geração principal" },
+      { tipo: "armazenamento", slotKey: "baterias", nome: "Banco de baterias" },
+      { tipo: "conversao", slotKey: "inversor_hibrido", nome: "Inversor híbrido/off-grid" },
+      { tipo: "controle", slotKey: "controle_carga", nome: "Controle de carga/energia" },
+      { tipo: "infraestrutura", slotKey: "quadro_cargas_essenciais", nome: "Quadro de cargas essenciais" },
+      { tipo: "protecao", slotKey: "protecoes", nome: "Proteções elétricas" },
+      { tipo: "aterramento", slotKey: "aterramento", nome: "Aterramento/equipotencialização" },
+    ],
+  };
+
+  const [sistema] = await db.insert(obraEnergiaSistemasTable).values({
+    obraId,
+    tipo,
+    nome: req.body?.nome ?? tipo,
+    somenteInfraestrutura,
+    parametros,
+    origem: "preconfiguracao",
+    ativo: true,
+  }).returning();
+
+  const componentesBase = defaults[tipo] ?? [];
+  const componentesCriados = [];
+  for (const item of componentesBase) {
+    if (somenteInfraestrutura && ["equipamento","geracao","armazenamento","conversao"].includes(item.tipo)) continue;
+    const [created] = await db.insert(obraEnergiaComponentesTable).values({
+      sistemaId: sistema.id,
+      tipo: item.tipo,
+      slotKey: item.slotKey,
+      nome: item.nome,
+      quantidade: "1",
+      unidade: "un",
+      ativo: true,
+    }).returning();
+    componentesCriados.push(created);
+  }
+
+  return res.status(201).json({ sistema, componentes: componentesCriados });
 });
 
 // ─── Base Mestre de Preços: propagação segura ─────────────────────────────────
