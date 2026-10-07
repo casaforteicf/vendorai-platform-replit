@@ -25,6 +25,7 @@ import {
   Layers,
   Loader2,
   MapPin,
+  Search,
   ThumbsUp,
 } from "lucide-react";
 import PortalClientDecisions from "./PortalClientDecisions";
@@ -36,6 +37,13 @@ import {
   PortalSupportChat,
   portalSessionKey,
 } from "./PortalObraPrivateSuite";
+import {
+  PortalItemsSection,
+  PortalTimeline,
+  PortalVendi,
+  type PortalPublishedItem,
+  type PortalItemResponse,
+} from "./PortalExperienceSuite";
 
 const API = "/api";
 
@@ -96,6 +104,15 @@ type Publication = {
   showManuals?: boolean;
   showSupport?: boolean;
   showChat?: boolean;
+  showBriefing?: boolean;
+  showTimeline?: boolean;
+  showAgenda?: boolean;
+  showChangeOrders?: boolean;
+  showSignatures?: boolean;
+  showDelivery?: boolean;
+  showVendi?: boolean;
+  showNotifications?: boolean;
+  showClientTasks?: boolean;
 };
 
 interface PortalData {
@@ -140,9 +157,10 @@ interface PortalData {
         previsaoInicio?: string;
         mostrarCronogramaExecucao?: boolean;
         mostrarFisicoFinanceiro?: boolean;
+        mostrarTotalGeral?: boolean;
       } | null;
     } | null;
-    bdiGlobal: string;
+    valorTotal?: string | number | null;
     etapas: Array<{
       id: string;
       nome: string;
@@ -151,9 +169,9 @@ interface PortalData {
         id: string;
         nome: string;
         unidade: string;
-        quantidade: string;
-        custoUnitario: string;
-        bdi?: string | null;
+        quantidade?: string | null;
+        precoUnitario?: string | number | null;
+        valorTotal?: string | number | null;
         ordem: number;
       }>;
     }>;
@@ -167,7 +185,6 @@ interface PortalData {
     responsavel?: string | null;
     dataInicioPrevista?: string | null;
     dataFimPrevista?: string | null;
-    custoPrevisto?: string | null;
     pesoFisico?: string | null;
   }>;
   fases?: Array<{
@@ -178,7 +195,6 @@ interface PortalData {
     status: string;
     percentual_etapa: string | number;
     percentual_executado: string | number;
-    custo_previsto: string | number;
     data_inicio_prevista?: string | null;
     data_fim_prevista?: string | null;
   }>;
@@ -242,9 +258,7 @@ interface PortalData {
     etapa_nome?: string | null;
   }>;
   financeiro?: {
-    orcamentoTotal: number;
-    custoRealizado: number;
-    percentualConsumido: number;
+    valorContratado: number;
     totalLancado?: number | null;
     totalPago?: number | null;
     totalPendente?: number | null;
@@ -269,6 +283,8 @@ interface PortalData {
   invoices?: any[];
   supportTickets?: any[];
   chatMessages?: any[];
+  portalItems?: PortalPublishedItem[];
+  portalResponses?: PortalItemResponse[];
 }
 
 const OBRA_STATUS: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -336,6 +352,7 @@ export default function PortalObra() {
   const [approved, setApproved] = useState(false);
   const [expandedDiario, setExpandedDiario] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [globalSearch, setGlobalSearch] = useState("");
   const [activeObraKey, setActiveObraKey] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>(() => {
     const fromUrl = tabFromSearch(search);
@@ -410,10 +427,16 @@ export default function PortalObra() {
     const p = data?.publication ?? {};
     return [
       p.showOverview !== false ? { id: "dados" as const, label: "Visão Geral", icon: <Building2 className="h-4 w-4" /> } : null,
+      p.showClientTasks !== false ? { id: "pendencias" as const, label: "Pendências", icon: <CheckCircle2 className="h-4 w-4" /> } : null,
+      p.showBriefing !== false ? { id: "briefing" as const, label: "Briefing", icon: <FileText className="h-4 w-4" /> } : null,
+      p.showTimeline !== false ? { id: "timeline" as const, label: "Linha do tempo", icon: <Clock className="h-4 w-4" /> } : null,
       p.showExecutiveBalance !== false ? { id: "executivo" as const, label: "Balanço Executivo", icon: <CircleDollarSign className="h-4 w-4" /> } : null,
       p.showSchedule !== false ? { id: "cronograma" as const, label: "Cronograma", icon: <Layers className="h-4 w-4" /> } : null,
       p.showMeasurements !== false && p.showSchedule !== false ? { id: "medicoes" as const, label: "Medições", icon: <CheckCircle2 className="h-4 w-4" /> } : null,
+      p.showAgenda !== false ? { id: "agenda" as const, label: "Agenda", icon: <Calendar className="h-4 w-4" /> } : null,
       p.showProposals !== false ? { id: "propostas" as const, label: "Propostas", icon: <CircleDollarSign className="h-4 w-4" /> } : null,
+      p.showChangeOrders !== false ? { id: "alteracoes" as const, label: "Alterações", icon: <FileText className="h-4 w-4" /> } : null,
+      p.showSignatures !== false ? { id: "assinaturas" as const, label: "Aceites", icon: <CheckCircle2 className="h-4 w-4" /> } : null,
       p.showDiary !== false ? { id: "diario" as const, label: "Diário", icon: <FileText className="h-4 w-4" /> } : null,
       p.showProjectGallery !== false || p.showDiaryPhotos !== false ? { id: "galeria" as const, label: "Fotos", icon: <Camera className="h-4 w-4" /> } : null,
       p.showDocuments !== false ? { id: "projetos" as const, label: "Projetos", icon: <FileText className="h-4 w-4" /> } : null,
@@ -424,6 +447,8 @@ export default function PortalObra() {
       p.showProcurementSummary !== false ? { id: "compras" as const, label: "Compras", icon: <Layers className="h-4 w-4" /> } : null,
       p.showFinancialSummary === true ? { id: "financeiro" as const, label: "Financeiro", icon: <CircleDollarSign className="h-4 w-4" /> } : null,
       p.showBudget !== false ? { id: "orcamento" as const, label: "Orçamento", icon: <CircleDollarSign className="h-4 w-4" /> } : null,
+      p.showDelivery !== false ? { id: "entrega" as const, label: "Entrega e pós-venda", icon: <CheckCircle2 className="h-4 w-4" /> } : null,
+      p.showVendi !== false ? { id: "vendi" as const, label: "Vendi", icon: <FileText className="h-4 w-4" /> } : null,
       p.showSupport !== false ? { id: "suporte" as const, label: "Suporte", icon: <FileText className="h-4 w-4" /> } : null,
       p.showChat !== false ? { id: "chat" as const, label: "Chat", icon: <FileText className="h-4 w-4" /> } : null,
     ].filter(Boolean) as Array<{ id: TabId; label: string; icon: React.ReactNode }>;
@@ -468,13 +493,31 @@ export default function PortalObra() {
   const invoices = data.invoices ?? [];
   const supportTickets = data.supportTickets ?? [];
   const chatMessages = data.chatMessages ?? [];
+  const portalItems = data.portalItems ?? [];
+  const portalResponses = data.portalResponses ?? [];
+  const globalSearchResults = (() => {
+    const q = globalSearch.trim().toLocaleLowerCase("pt-BR");
+    if (q.length < 2) return [] as Array<{ id: string; title: string; subtitle: string; tab?: TabId; url?: string }>;
+    const kindTab: Record<string, TabId> = {
+      briefing: "briefing", pendencia: "pendencias", timeline: "timeline", notificacao: "timeline",
+      agenda: "agenda", aditivo: "alteracoes", alteracao: "alteracoes", assinatura: "assinaturas",
+      aceite: "assinaturas", entrega: "entrega", pos_venda: "entrega",
+    };
+    const itemResults = portalItems
+      .filter((item) => `${item.title} ${item.description ?? ""} ${item.content?.body ?? ""}`.toLocaleLowerCase("pt-BR").includes(q))
+      .map((item) => ({ id: `item-${item.id}`, title: item.title, subtitle: item.description ?? item.kind, tab: kindTab[item.kind] ?? "dados" as TabId }));
+    const docs = [...documentos, ...projectDocuments, ...contracts, ...manuals, ...invoices];
+    const docResults = docs
+      .filter((doc: any) => `${doc.nome ?? doc.titulo ?? doc.descricao ?? ""} ${doc.categoria ?? ""}`.toLocaleLowerCase("pt-BR").includes(q))
+      .map((doc: any) => ({ id: `doc-${doc.id}`, title: doc.nome ?? doc.titulo ?? doc.descricao ?? "Documento", subtitle: doc.categoria ?? "Documento", url: doc.url ?? doc.documento_url }));
+    return [...itemResults, ...docResults].slice(0, 12);
+  })();
+  const pendingPortalItems = portalItems.filter((item) => item.requires_action && !portalResponses.some((response) => response.item_id === item.id));
   const obraStatus = OBRA_STATUS[obra.status] ?? { label: obra.status, color: "bg-gray-100 text-gray-600", icon: null };
   const totalEtapas = etapas.length;
   const avgProgress = Math.round(resumo?.progressoGeral ?? (totalEtapas > 0 ? etapas.reduce((s, e) => s + parseFloat(e.percentualExecutado ?? "0"), 0) / totalEtapas : 0));
-  const bdiGlobal = orcamento ? parseFloat(orcamento.bdiGlobal ?? "0") : 0;
-  const itemTotal = (item: NonNullable<PortalData["orcamento"]>["etapas"][0]["itens"][0]) => parseFloat(item.quantidade) * parseFloat(item.custoUnitario) * (1 + (item.bdi != null ? parseFloat(item.bdi) : bdiGlobal) / 100);
-  const etapaTotal = (etapa: NonNullable<PortalData["orcamento"]>["etapas"][0]) => etapa.itens.reduce((s, i) => s + itemTotal(i), 0);
-  const orcamentoTotalCalc = orcamento ? orcamento.etapas.reduce((s, e) => s + etapaTotal(e), 0) : 0;
+  const itemTotal = (item: NonNullable<PortalData["orcamento"]>["etapas"][0]["itens"][0]) => Number(item.valorTotal ?? 0);
+  const etapaTotal = (etapa: NonNullable<PortalData["orcamento"]>["etapas"][0]) => etapa.itens.reduce((sum, item) => sum + itemTotal(item), 0);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -518,17 +561,92 @@ export default function PortalObra() {
             </div>
             <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
               <p className="text-xs font-medium text-gray-500">Pendências</p>
-              <p className="mt-1 text-base font-semibold text-gray-900">{resumo.decisoesPendentes} decisão(ões)</p>
-              <p className="mt-1 text-xs text-gray-400">{resumo.ocorrenciasAbertas} ocorrência(s) publicada(s)</p>
+              <p className="mt-1 text-base font-semibold text-gray-900">{resumo.decisoesPendentes + pendingPortalItems.length} pendência(s)</p>
+              <p className="mt-1 text-xs text-gray-400">{resumo.decisoesPendentes} decisão(ões) · {pendingPortalItems.length} ação(ões) do portal</p>
             </div>
           </div>
         ) : null}
 
+        {data.publication?.showNotifications !== false && portalItems.some((item) => item.kind === "notificacao") ? (
+          <Section title="Atualizações importantes" icon={<AlertTriangle className="h-5 w-5" />}>
+            <PortalItemsSection token={token} sessionToken={portalSession} items={portalItems} responses={portalResponses}
+              kinds={["notificacao"]} emptyText="Nenhuma atualização publicada."
+              onRefresh={() => void loadPortal(portalSession)} />
+          </Section>
+        ) : null}
         <PortalClientDecisions token={token} decisions={decisions} onResolved={(decisionId) => setData((current) => current ? { ...current, decisions: (current.decisions ?? []).filter((item) => item.id !== decisionId) } : current)} />
 
         {ocorrencias.length > 0 ? <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 p-5"><h2 className="mb-3 flex items-center gap-2 font-semibold text-amber-800"><AlertTriangle className="h-5 w-5" />Ocorrências em aberto ({ocorrencias.length})</h2><div className="space-y-3">{ocorrencias.map((oc) => <div key={oc.id} className="rounded-lg border border-amber-100 bg-white p-3"><div className="mb-1 flex items-center justify-between text-xs text-gray-500"><span>{fmt(oc.data)}</span>{oc.responsavelNome ? <span>{oc.responsavelNome}</span> : null}</div><p className="text-sm text-gray-700">{oc.observacoes}</p></div>)}</div></div> : null}
 
+        <div className="relative mb-6">
+          <div className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+            <Search className="h-4 w-4 text-gray-400" />
+            <input value={globalSearch} onChange={(e) => setGlobalSearch(e.target.value)} placeholder="Buscar em todo o portal" className="w-full bg-transparent text-sm outline-none placeholder:text-gray-400" />
+          </div>
+          {globalSearch.trim().length >= 2 ? <div className="absolute left-0 right-0 z-20 mt-2 max-h-80 overflow-auto rounded-2xl border bg-white p-2 shadow-xl">
+            {globalSearchResults.length ? globalSearchResults.map((result) => result.url ? <a key={result.id} href={result.url} target="_blank" rel="noreferrer" className="block rounded-xl px-3 py-2 hover:bg-gray-50"><p className="text-sm font-medium text-gray-800">{result.title}</p><p className="text-xs text-gray-400">{result.subtitle}</p></a> : <button key={result.id} onClick={() => { if (result.tab) handleTabChange(result.tab); setGlobalSearch(""); }} className="block w-full rounded-xl px-3 py-2 text-left hover:bg-gray-50"><p className="text-sm font-medium text-gray-800">{result.title}</p><p className="text-xs text-gray-400">{result.subtitle}</p></button>) : <p className="px-3 py-4 text-center text-sm text-gray-400">Nenhum resultado publicado encontrado.</p>}
+          </div> : null}
+        </div>
         {visibleTabs.length > 0 ? <div className="mb-6"><div className="sm:hidden"><select value={activeTab} onChange={(e) => handleTabChange(e.target.value as TabId)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-700">{visibleTabs.map((tab) => <option key={tab.id} value={tab.id}>{tab.label}</option>)}</select></div><div className="hidden overflow-x-auto border-b border-gray-200 sm:flex">{visibleTabs.map((tab) => <button key={tab.id} onClick={() => handleTabChange(tab.id)} className={`flex items-center gap-2 whitespace-nowrap border-b-2 px-5 py-3 text-sm font-medium transition-colors ${activeTab === tab.id ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"}`}>{tab.icon}{tab.label}</button>)}</div></div> : null}
+
+        {activeTab === "pendencias" && data.publication?.showClientTasks !== false ? (
+          <Section title="Pendências para você" icon={<CheckCircle2 className="h-5 w-5" />}>
+            <PortalItemsSection token={token} sessionToken={portalSession} items={pendingPortalItems} responses={portalResponses}
+              kinds={["pendencia","briefing","agenda","aditivo","alteracao","assinatura","aceite","entrega"]}
+              emptyText="Você não tem nenhuma pendência publicada no momento."
+              onRefresh={() => void loadPortal(portalSession)} />
+          </Section>
+        ) : null}
+
+        {activeTab === "briefing" && data.publication?.showBriefing !== false ? (
+          <Section title="Briefing" icon={<FileText className="h-5 w-5" />}>
+            <PortalItemsSection token={token} sessionToken={portalSession} items={portalItems} responses={portalResponses}
+              kinds={["briefing"]} emptyText="Nenhum briefing foi publicado ainda."
+              onRefresh={() => void loadPortal(portalSession)} />
+          </Section>
+        ) : null}
+
+        {activeTab === "timeline" && data.publication?.showTimeline !== false ? (
+          <Section title="Linha do tempo" icon={<Clock className="h-5 w-5" />}><PortalTimeline items={portalItems} /></Section>
+        ) : null}
+
+        {activeTab === "agenda" && data.publication?.showAgenda !== false ? (
+          <Section title="Agenda" icon={<Calendar className="h-5 w-5" />}>
+            <PortalItemsSection token={token} sessionToken={portalSession} items={portalItems} responses={portalResponses}
+              kinds={["agenda"]} emptyText="Nenhum compromisso foi publicado."
+              onRefresh={() => void loadPortal(portalSession)} />
+          </Section>
+        ) : null}
+
+        {activeTab === "alteracoes" && data.publication?.showChangeOrders !== false ? (
+          <Section title="Alterações e aditivos" icon={<FileText className="h-5 w-5" />}>
+            <PortalItemsSection token={token} sessionToken={portalSession} items={portalItems} responses={portalResponses}
+              kinds={["aditivo","alteracao"]} emptyText="Nenhuma alteração ou aditivo publicado."
+              onRefresh={() => void loadPortal(portalSession)} />
+          </Section>
+        ) : null}
+
+        {activeTab === "assinaturas" && data.publication?.showSignatures !== false ? (
+          <Section title="Assinaturas e aceites" icon={<CheckCircle2 className="h-5 w-5" />}>
+            <PortalItemsSection token={token} sessionToken={portalSession} items={portalItems} responses={portalResponses}
+              kinds={["assinatura","aceite"]} emptyText="Nenhum aceite pendente ou publicado."
+              onRefresh={() => void loadPortal(portalSession)} />
+          </Section>
+        ) : null}
+
+        {activeTab === "entrega" && data.publication?.showDelivery !== false ? (
+          <Section title="Entrega, garantias e pós-venda" icon={<CheckCircle2 className="h-5 w-5" />}>
+            <PortalItemsSection token={token} sessionToken={portalSession} items={portalItems} responses={portalResponses}
+              kinds={["entrega","pos_venda"]} emptyText="Nenhum conteúdo de entrega ou pós-venda publicado."
+              onRefresh={() => void loadPortal(portalSession)} />
+          </Section>
+        ) : null}
+
+        {activeTab === "vendi" && data.publication?.showVendi !== false ? (
+          <Section title="Vendi — assistente do seu projeto" icon={<FileText className="h-5 w-5" />}>
+            <PortalVendi token={token} sessionToken={portalSession} />
+          </Section>
+        ) : null}
 
         {activeTab === "dados" && data.publication?.showOverview !== false ? (
           <Section title="Visão Geral da Obra" icon={<Building2 className="h-5 w-5" />}>
@@ -584,15 +702,15 @@ export default function PortalObra() {
           </Section>
         ) : null}
 
-        {activeTab === "orcamento" && data.publication?.showBudget !== false ? <Section title="Orçamento" icon={<CircleDollarSign className="h-5 w-5" />}>{!orcamento ? <div className="py-8 text-center text-gray-400"><FileText className="mx-auto mb-2 h-8 w-8 opacity-40" /><p className="text-sm">Nenhum orçamento disponível ainda.</p></div> : <><div className="mb-4 flex flex-wrap items-center justify-between gap-2"><span className="text-sm text-gray-500">{orcamento.titulo ?? `Orçamento v${orcamento.versao}`}{orcamento.bdiGlobal !== "0" ? ` · BDI ${orcamento.bdiGlobal}%` : ""}</span><div className="flex items-center gap-2">{orcamento.status === "aprovado" ? <span className="flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />Aprovado pelo cliente</span> : null}{orcamento.status === "enviado" && !approved ? <button onClick={handleAprovar} disabled={approving} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60">{approving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ThumbsUp className="h-4 w-4" />}Aprovar Orçamento</button> : null}</div></div><div className="space-y-3">{orcamento.etapas.map((etapa) => <div key={etapa.id} className="overflow-hidden rounded-xl border border-gray-200"><div className="flex items-center justify-between bg-gray-50 px-4 py-3"><span className="text-sm font-medium text-gray-800">{etapa.nome}</span><span className="text-sm font-semibold text-gray-900">{fmtMoney(etapaTotal(etapa))}</span></div>{etapa.itens.length > 0 ? <div className="divide-y divide-gray-100">{etapa.itens.map((item) => <div key={item.id} className="flex items-start justify-between gap-4 px-4 py-2.5 text-sm"><div className="min-w-0 flex-1"><p className="text-gray-700">{item.nome}</p><p className="text-xs text-gray-400">{item.quantidade} {item.unidade} × {fmtMoney(item.custoUnitario)}</p></div><span className="whitespace-nowrap font-medium text-gray-900">{fmtMoney(itemTotal(item))}</span></div>)}</div> : null}</div>)}</div><div className="mt-4 flex items-center justify-between rounded-xl bg-indigo-50 px-5 py-4"><span className="font-semibold text-indigo-800">Total do Orçamento</span><span className="text-xl font-bold text-indigo-700">{fmtMoney(orcamentoTotalCalc)}</span></div></>}</Section> : null}
+        {activeTab === "orcamento" && data.publication?.showBudget !== false ? <Section title="Orçamento" icon={<CircleDollarSign className="h-5 w-5" />}>{!orcamento ? <div className="py-8 text-center text-gray-400"><FileText className="mx-auto mb-2 h-8 w-8 opacity-40" /><p className="text-sm">Nenhum orçamento disponível ainda.</p></div> : <><div className="mb-4 flex flex-wrap items-center justify-between gap-2"><span className="text-sm text-gray-500">{orcamento.titulo ?? `Orçamento v${orcamento.versao}`}</span><div className="flex items-center gap-2">{orcamento.status === "aprovado" ? <span className="flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />Aprovado pelo cliente</span> : null}{orcamento.status === "enviado" && !approved ? <button onClick={handleAprovar} disabled={approving} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60">{approving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ThumbsUp className="h-4 w-4" />}Aprovar Orçamento</button> : null}</div></div><div className="space-y-3">{orcamento.etapas.map((etapa) => <div key={etapa.id} className="overflow-hidden rounded-xl border border-gray-200"><div className="flex items-center justify-between bg-gray-50 px-4 py-3"><span className="text-sm font-medium text-gray-800">{etapa.nome}</span><span className="text-sm font-semibold text-gray-900">{fmtMoney(etapaTotal(etapa))}</span></div>{etapa.itens.length > 0 ? <div className="divide-y divide-gray-100">{etapa.itens.map((item) => <div key={item.id} className="flex items-start justify-between gap-4 px-4 py-2.5 text-sm"><div className="min-w-0 flex-1"><p className="text-gray-700">{item.nome}</p><p className="text-xs text-gray-400">{item.quantidade != null ? `${item.quantidade} ${item.unidade}` : item.unidade}{item.precoUnitario != null ? ` × ${fmtMoney(item.precoUnitario)}` : ""}</p></div>{item.valorTotal != null ? <span className="whitespace-nowrap font-medium text-gray-900">{fmtMoney(item.valorTotal)}</span> : null}</div>)}</div> : null}</div>)}</div>{orcamento.valorTotal != null ? <div className="mt-4 flex items-center justify-between rounded-xl bg-indigo-50 px-5 py-4"><span className="font-semibold text-indigo-800">Total do Orçamento</span><span className="text-xl font-bold text-indigo-700">{fmtMoney(orcamento.valorTotal)}</span></div> : null}</>}</Section> : null}
 
         {activeTab === "cronograma" && data.publication?.showSchedule !== false ? <Section title="Cronograma Executivo e Financeiro" icon={<Layers className="h-5 w-5" />}>
           {orcamento?.propostaOrigemId ? <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">Linha de base contratada</p><p className="text-sm font-medium text-indigo-900">Versão {orcamento.versao}{orcamento.linhaBaseSnapshot?.numero ? ` · Proposta ${orcamento.linhaBaseSnapshot.numero}` : ""}</p></div>{orcamento.linhaBaseSnapshot?.acceptedAt ? <span className="text-xs text-indigo-600">Contratada em {fmt(orcamento.linhaBaseSnapshot.acceptedAt)}</span> : null}</div> : null}
 
           {orcamento?.linhaBaseSnapshot?.apresentacao?.mostrarPortalCliente !== false ? (
             <div className="mb-4 grid gap-3 rounded-xl border border-gray-200 bg-white p-4 md:grid-cols-3">
-              <div><p className="text-xs text-gray-500">Valor contratado</p><p className="text-sm font-semibold">{fmtMoney(orcamento?.linhaBaseSnapshot?.valorTotal ?? obra.orcamentoTotal)}</p></div>
-              <div><p className="text-xs text-gray-500">Entrada / adiantamento</p><p className="text-sm font-semibold">{Number(orcamento?.linhaBaseSnapshot?.apresentacao?.entradaPercentual ?? 0).toFixed(2)}% · {fmtMoney(Number(orcamento?.linhaBaseSnapshot?.valorTotal ?? obra.orcamentoTotal ?? 0) * Number(orcamento?.linhaBaseSnapshot?.apresentacao?.entradaPercentual ?? 0) / 100)}</p></div>
+              <div><p className="text-xs text-gray-500">Valor contratado</p><p className="text-sm font-semibold">{fmtMoney(orcamento?.linhaBaseSnapshot?.valorTotal ?? orcamento?.valorTotal)}</p></div>
+              <div><p className="text-xs text-gray-500">Entrada / adiantamento</p><p className="text-sm font-semibold">{Number(orcamento?.linhaBaseSnapshot?.apresentacao?.entradaPercentual ?? 0).toFixed(2)}% · {orcamento?.linhaBaseSnapshot?.valorTotal != null ? fmtMoney(Number(orcamento.linhaBaseSnapshot.valorTotal) * Number(orcamento?.linhaBaseSnapshot?.apresentacao?.entradaPercentual ?? 0) / 100) : "—"}</p></div>
               <div><p className="text-xs text-gray-500">Amortização por medição</p><p className="text-sm font-semibold">{Number(orcamento?.linhaBaseSnapshot?.apresentacao?.amortizacaoEntradaPercentual ?? orcamento?.linhaBaseSnapshot?.apresentacao?.entradaPercentual ?? 0).toFixed(2)}%</p><p className="text-[11px] text-gray-400">Até quitar o saldo do adiantamento</p></div>
             </div>
           ) : null}
@@ -604,7 +722,7 @@ export default function PortalObra() {
               const dias = etapa.dataInicioPrevista && etapa.dataFimPrevista ? Math.max(1, differenceInCalendarDays(parseISO(`${etapa.dataFimPrevista}T12:00:00`), parseISO(`${etapa.dataInicioPrevista}T12:00:00`))) + 1 : null;
               const stagePhases = fases.filter((fase) => fase.etapa_id === etapa.id).sort((a,b) => Number(a.ordem)-Number(b.ordem));
               return <div key={etapa.id} className="rounded-xl border border-gray-200 bg-white p-4">
-                <div className="mb-3 flex items-start justify-between gap-2"><div className="flex-1"><p className="text-sm font-medium text-gray-900">{etapa.nome}</p>{etapa.responsavel ? <p className="mt-0.5 text-xs text-gray-400">{etapa.responsavel}</p> : null}{data.publication?.showBudget !== false && Number(etapa.custoPrevisto ?? 0) > 0 ? <p className="mt-1 text-xs font-medium text-indigo-600">Contratado na etapa: {fmtMoney(etapa.custoPrevisto)}{Number(etapa.pesoFisico ?? 0) > 0 ? ` · peso físico ${Number(etapa.pesoFisico).toFixed(1)}%` : ""}</p> : null}</div><span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${st.color}`}>{st.label}</span></div>
+                <div className="mb-3 flex items-start justify-between gap-2"><div className="flex-1"><p className="text-sm font-medium text-gray-900">{etapa.nome}</p>{etapa.responsavel ? <p className="mt-0.5 text-xs text-gray-400">{etapa.responsavel}</p> : null}</div><span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${st.color}`}>{st.label}</span></div>
                 <div className="mb-2 flex items-center gap-3"><ProgressBar value={p} color={st.bar} /><span className="w-10 text-right text-sm font-bold text-gray-700">{Math.round(p)}%</span></div>
                 <div className="mt-1 flex items-center gap-4 text-xs text-gray-400">{etapa.dataInicioPrevista ? <span>{fmt(etapa.dataInicioPrevista)} → {fmt(etapa.dataFimPrevista)}</span> : null}{dias ? <span>{dias} dias</span> : null}</div>
                 {stagePhases.length ? <div className="mt-4 space-y-2 border-t border-gray-100 pt-3">
@@ -612,7 +730,7 @@ export default function PortalObra() {
                     const fp = Number(fase.percentual_executado ?? 0);
                     const fst = ETAPA_STATUS[fase.status] ?? { label: fase.status, color: "bg-gray-100 text-gray-600", bar: "#94a3b8" };
                     return <div key={fase.id} className="rounded-lg bg-gray-50 p-3">
-                      <div className="mb-2 flex items-start justify-between gap-2"><div><p className="text-xs font-semibold text-gray-800">{fase.nome}</p><p className="text-[11px] text-gray-500">{fmt(fase.data_inicio_prevista)} → {fmt(fase.data_fim_prevista)} · {Number(fase.percentual_etapa ?? 0).toFixed(2)}% da etapa · {fmtMoney(fase.custo_previsto)}</p></div><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${fst.color}`}>{fst.label}</span></div>
+                      <div className="mb-2 flex items-start justify-between gap-2"><div><p className="text-xs font-semibold text-gray-800">{fase.nome}</p><p className="text-[11px] text-gray-500">{fmt(fase.data_inicio_prevista)} → {fmt(fase.data_fim_prevista)} · {Number(fase.percentual_etapa ?? 0).toFixed(2)}% da etapa</p></div><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${fst.color}`}>{fst.label}</span></div>
                       <div className="flex items-center gap-3"><ProgressBar value={fp} color={fst.bar} /><span className="w-10 text-right text-xs font-bold">{fp.toFixed(0)}%</span></div>
                     </div>;
                   })}
@@ -684,7 +802,7 @@ export default function PortalObra() {
                       <div><p className="text-sm font-semibold text-gray-900">{compra.descricao}</p><p className="mt-0.5 text-xs text-gray-400">{compra.etapa_nome ?? "Sem etapa"}{compra.fornecedor ? ` · ${compra.fornecedor}` : ""}</p></div>
                       <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${entregue ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{entregue ? "Recebido" : status}</span>
                     </div>
-                    <div className="mt-3 grid grid-cols-2 gap-3 text-xs text-gray-500 md:grid-cols-4"><div><span className="block text-[10px] uppercase text-gray-400">Necessidade</span>{fmt(compra.data_necessidade)}</div><div><span className="block text-[10px] uppercase text-gray-400">Prev. entrega</span>{fmt(compra.data_prevista)}</div><div><span className="block text-[10px] uppercase text-gray-400">Prazo fornecedor</span>{Number(compra.prazo_fornecedor_dias ?? 0)} dias</div><div><span className="block text-[10px] uppercase text-gray-400">Valor</span>{fmtMoney(compra.valor_total)}</div></div>
+                    <div className="mt-3 grid grid-cols-2 gap-3 text-xs text-gray-500 md:grid-cols-3"><div><span className="block text-[10px] uppercase text-gray-400">Necessidade</span>{fmt(compra.data_necessidade)}</div><div><span className="block text-[10px] uppercase text-gray-400">Prev. entrega</span>{fmt(compra.data_prevista)}</div><div><span className="block text-[10px] uppercase text-gray-400">Prazo fornecedor</span>{Number(compra.prazo_fornecedor_dias ?? 0)} dias</div></div>
                   </div>;
                 })}
               </div>
@@ -697,19 +815,16 @@ export default function PortalObra() {
             {!financeiro ? <div className="py-8 text-center text-sm text-gray-400">Resumo financeiro indisponível.</div> : (
               <>
                 <InfoGrid items={[
-                  { label: "Orçamento", value: fmtMoney(financeiro.orcamentoTotal) },
-                  { label: "Custo realizado", value: fmtMoney(financeiro.custoRealizado) },
-                  { label: "% consumido", value: `${financeiro.percentualConsumido.toFixed(1)}%` },
+                  { label: "Valor contratado", value: fmtMoney(financeiro.valorContratado) },
+                  { label: "Pago/recebido", value: fmtMoney(financeiro.totalPago) },
+                  { label: "Pendente", value: fmtMoney(financeiro.totalPendente) },
                   ...(data.publication?.showFinancialDetails === true ? [
-                    { label: "Total lançado", value: fmtMoney(financeiro.totalLancado) },
-                    { label: "Pago/recebido", value: fmtMoney(financeiro.totalPago) },
-                    { label: "Pendente", value: fmtMoney(financeiro.totalPendente) },
+                    { label: "Total publicado", value: fmtMoney(financeiro.totalLancado) },
                   ] : []),
                 ]} />
-                <div className="mt-4"><ProgressBar value={financeiro.percentualConsumido} color={financeiro.percentualConsumido > 100 ? "#e11d48" : "#6366f1"} /></div>
                 {data.publication?.showFinancialDetails === true && financeiro.lancamentos.length ? (
                   <div className="mt-6 divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200 bg-white">
-                    {financeiro.lancamentos.map((item: any) => <div key={item.id} className="flex items-center justify-between gap-4 px-4 py-3"><div className="min-w-0"><p className="truncate text-sm font-medium text-gray-800">{item.descricao ?? item.tipo}</p><p className="text-xs text-gray-400">{item.fornecedor ?? "—"} · vence {fmt(item.data_vencimento)}</p></div><div className="text-right"><p className="text-sm font-semibold text-gray-900">{fmtMoney(item.valor)}</p><p className="text-[10px] text-gray-400">{item.status}</p>{item.documento_url ? <a href={item.documento_url} target="_blank" rel="noreferrer" className="text-[10px] font-semibold text-indigo-600">Documento</a> : null}</div></div>)}
+                    {financeiro.lancamentos.map((item: any) => <div key={item.id} className="flex items-center justify-between gap-4 px-4 py-3"><div className="min-w-0"><p className="truncate text-sm font-medium text-gray-800">{item.descricao ?? item.tipo}</p><p className="text-xs text-gray-400">vence {fmt(item.data_vencimento)}</p></div><div className="text-right"><p className="text-sm font-semibold text-gray-900">{fmtMoney(item.valor)}</p><p className="text-[10px] text-gray-400">{item.status}</p>{item.documento_url ? <a href={item.documento_url} target="_blank" rel="noreferrer" className="text-[10px] font-semibold text-indigo-600">Documento</a> : null}</div></div>)}
                   </div>
                 ) : null}
               </>
