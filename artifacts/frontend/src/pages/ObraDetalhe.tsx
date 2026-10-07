@@ -57,7 +57,7 @@ import {
   Upload, X, Image as ImageIcon, FileSpreadsheet, Copy,
   Send, ThumbsUp, ThumbsDown, ChevronRight, AlertCircle,
   Search, Loader2, FileText, Download, Sparkles,
-  Zap, Sun, BatteryCharging, CarFront, Droplets, Gauge, Flame, Waves,
+  Zap, Sun, BatteryCharging, CarFront, Droplets, Gauge, Flame, Waves, Activity,
 } from "lucide-react";
 import TabFinanceiro from "./TabFinanceiro";
 import EquipeProducao from "./EquipeProducao";
@@ -147,6 +147,7 @@ const TABS = [
   { id: "energia",       label: "Energia",        icon: Zap },
   { id: "hidraulica",     label: "Hidráulica",     icon: Droplets },
   { id: "piscinas",        label: "Piscinas",       icon: Waves },
+  { id: "execucao",         label: "Execução",       icon: Activity },
 ];
 
 function MobileTabDropdown({ activeTab, onSelect }: { activeTab: string; onSelect: (id: string) => void }) {
@@ -3819,6 +3820,148 @@ function PiscinasObra({ tenantId, obraId }: { tenantId: string; obraId: string }
   );
 }
 
+function ExecucaoProdutividade({ tenantId, obraId }: { tenantId: string; obraId: string }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [nome, setNome] = useState("");
+  const [unidade, setUnidade] = useState("m²");
+  const [quantidade, setQuantidade] = useState("");
+  const [custoPlanejado, setCustoPlanejado] = useState("");
+  const [medicoes, setMedicoes] = useState<Record<string,string>>({});
+
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["obra-execucao-resumo", tenantId, obraId],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/execucao/resumo`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Erro ao carregar execução");
+      return res.json();
+    },
+    enabled: !!tenantId && !!obraId,
+  });
+
+  async function criarAtividade() {
+    if (!nome.trim() || !quantidade) return;
+    const token = localStorage.getItem("vendorai_token");
+    const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/execucao/atividades`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({
+        nome: nome.trim(),
+        unidade,
+        quantidadePlanejada: quantidade,
+        custoPlanejado: custoPlanejado || "0",
+        status: "planejada",
+        origem: "manual",
+      }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      toast({ title: "Não foi possível criar atividade", description: body?.error ?? "Erro inesperado.", variant: "destructive" });
+      return;
+    }
+    setNome(""); setQuantidade(""); setCustoPlanejado("");
+    qc.invalidateQueries({ queryKey: ["obra-execucao-resumo", tenantId, obraId] });
+    toast({ title: "Atividade criada" });
+  }
+
+  async function registrarMedicao(atividadeId: string) {
+    const qtd = medicoes[atividadeId];
+    if (!qtd) return;
+    const token = localStorage.getItem("vendorai_token");
+    const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/execucao/atividades/${atividadeId}/medicoes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({
+        dataMedicao: new Date().toISOString().slice(0,10),
+        quantidadeExecutada: qtd,
+        origem: "manual",
+      }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      toast({ title: "Não foi possível medir", description: body?.error ?? "Erro inesperado.", variant: "destructive" });
+      return;
+    }
+    setMedicoes((prev) => ({ ...prev, [atividadeId]: "" }));
+    qc.invalidateQueries({ queryKey: ["obra-execucao-resumo", tenantId, obraId] });
+  }
+
+  async function gerarSnapshot(atividadeId: string) {
+    const token = localStorage.getItem("vendorai_token");
+    const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/execucao/atividades/${atividadeId}/snapshot`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({}),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      toast({ title: "Não foi possível consolidar", description: body?.error ?? "Erro inesperado.", variant: "destructive" });
+      return;
+    }
+    qc.invalidateQueries({ queryKey: ["obra-execucao-resumo", tenantId, obraId] });
+    toast({ title: "Snapshot de execução registrado" });
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 md:grid-cols-4">
+        <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Atividades</div><div className="text-2xl font-bold mt-1">{data?.totais?.atividades ?? 0}</div></CardContent></Card>
+        <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Concluídas</div><div className="text-2xl font-bold mt-1">{data?.totais?.concluidas ?? 0}</div></CardContent></Card>
+        <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Custo planejado</div><div className="text-xl font-bold mt-1">{fmtBRL(data?.totais?.custoPlanejado)}</div></CardContent></Card>
+        <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Custo realizado</div><div className="text-xl font-bold mt-1">{fmtBRL(data?.totais?.custoRealizado)}</div></CardContent></Card>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-3"><CardTitle className="text-base">Nova atividade de execução</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-4 md:items-end">
+          <div className="space-y-2 md:col-span-2"><Label>Atividade</Label><Input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Montagem paredes ICF térreo" /></div>
+          <div className="space-y-2"><Label>Quantidade planejada</Label><div className="flex gap-2"><Input type="number" step="0.01" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} /><Input className="w-24" value={unidade} onChange={(e) => setUnidade(e.target.value)} /></div></div>
+          <div className="space-y-2"><Label>Custo planejado</Label><Input type="number" step="0.01" value={custoPlanejado} onChange={(e) => setCustoPlanejado(e.target.value)} /></div>
+          <div className="md:col-span-4 flex justify-end"><Button onClick={criarAtividade}><Plus className="h-4 w-4 mr-1" />Adicionar atividade</Button></div>
+        </CardContent>
+      </Card>
+
+      {isLoading ? (
+        <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin" /></div>
+      ) : (
+        <div className="space-y-3">
+          {(data?.atividades ?? []).map((a: any) => {
+            const snap = (data?.ultimosSnapshots ?? []).find((s: any) => s.atividadeId === a.id);
+            return (
+              <Card key={a.id}>
+                <CardContent className="pt-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-medium text-sm">{a.nome}</div>
+                      <div className="text-xs text-muted-foreground">{a.quantidadeExecutada} / {a.quantidadePlanejada} {a.unidade}</div>
+                    </div>
+                    <Badge variant="outline">{a.status}</Badge>
+                  </div>
+                  <Progress value={Math.min(100, Number(a.percentualExecutado ?? 0))} />
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                    <div>Executado: <strong>{Number(a.percentualExecutado ?? 0).toFixed(1)}%</strong></div>
+                    <div>Custo real: <strong>{fmtBRL(a.custoRealizado)}</strong></div>
+                    <div>Produtividade: <strong>{a.produtividadeReal ?? "—"}</strong></div>
+                    <div>Desvio custo: <strong>{snap?.desvioCustoPercentual == null ? "—" : `${Number(snap.desvioCustoPercentual).toFixed(1)}%`}</strong></div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <Input className="w-40" type="number" step="0.01" placeholder={`Medir (${a.unidade})`} value={medicoes[a.id] ?? ""} onChange={(e) => setMedicoes((prev) => ({ ...prev, [a.id]: e.target.value }))} />
+                    <Button size="sm" variant="outline" onClick={() => registrarMedicao(a.id)}>Registrar medição</Button>
+                    <Button size="sm" variant="outline" onClick={() => gerarSnapshot(a.id)}>Consolidar custo/produtividade</Button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ObraDetalhe() {
@@ -3983,6 +4126,7 @@ export default function ObraDetalhe() {
         {activeTab === "energia"       && <EnergiaSistemas tenantId={tenantId} obraId={obraId} />}
         {activeTab === "hidraulica"     && <HidraulicaSistemas tenantId={tenantId} obraId={obraId} />}
         {activeTab === "piscinas"        && <PiscinasObra tenantId={tenantId} obraId={obraId} />}
+        {activeTab === "execucao"         && <ExecucaoProdutividade tenantId={tenantId} obraId={obraId} />}
       </div>
     </div>
   );
