@@ -1008,6 +1008,9 @@ router.get("/arch/concept-projects", authenticate, async (req, res) => {
     const customer = (row.customerProfile ?? {}) as { name?: string };
     const render = (row.conceptRender ?? {}) as { resultImageUrl?: string; history?: Array<{ resultImageUrl?: string }> };
     const history = Array.isArray(render.history) ? render.history : [];
+      floors?: number;
+    };
+    const rooms = Array.isArray(row.rooms) ? row.rooms : [];
     const configuration = (row.configuration ?? {}) as {
       projectScope?: "house" | "room";
       terrainDefined?: boolean;
@@ -1023,6 +1026,8 @@ router.get("/arch/concept-projects", authenticate, async (req, res) => {
       customerName: typeof customer.name === "string" && customer.name.trim() ? customer.name.trim() : null,
       thumbnailUrl: render.resultImageUrl ?? history[history.length - 1]?.resultImageUrl ?? null,
       lot: row.lot,
+      floors: typeof configuration.floors === "number" ? configuration.floors : null,
+      roomCount: rooms.length,
       currentStep: row.currentStep,
       projectScope: configuration.projectScope ?? null,
       terrainDefined: Boolean(configuration.terrainDefined),
@@ -1427,6 +1432,15 @@ router.post("/arch/concept-projects/:id/reference-plan/trace", authenticate, asy
     return res.status(422).json({ error: "A planta de referência não possui arquivo persistido válido." });
   }
 
+  const classifiedConfidence = Number(photoAnalysis?.confidence ?? 0);
+  if (classifiedKind && classifiedKind !== "plan" && classifiedKind !== "unknown" && classifiedConfidence >= 0.55) {
+    return res.status(422).json({
+      error: "Esta imagem foi reconhecida como foto real, não como planta/croqui. Use a análise de cena do pré-projeto em vez de vetorizar como planta.",
+      code: "REFERENCE_PHOTO_NOT_PLAN",
+      photoAnalysis,
+    });
+  }
+
   const photoAnalysis = referencePlan.photoAnalysis && typeof referencePlan.photoAnalysis === "object"
     ? referencePlan.photoAnalysis as Record<string, unknown>
     : null;
@@ -1685,6 +1699,21 @@ router.post("/arch/concept-projects/:id/reference-plan", authenticate, upload.si
         offsetX = fitted.offsetX;
         offsetY = fitted.offsetY;
       }
+        });
+      } catch {
+        photoAnalysis = {
+          kind: "unknown",
+          confidence: 0,
+          summary: "Imagem recebida. A classificação automática não ficou disponível; revise o tipo de referência antes de converter.",
+          perspective: "unknown",
+          needsScaleAnchor: true,
+          detectedElements: [],
+          preserveElements: [],
+          removableElements: [],
+          projectHints: [],
+          sourceModel: "unavailable",
+        };
+      }
       try {
         photoAnalysis = await analyzeReferencePhoto({
           tenantId: tid,
@@ -1837,6 +1866,37 @@ router.post("/arch/concept-projects", authenticate, async (req, res) => {
       ? String((parsed.data.configuration as any).creationKey).trim()
       : "";
 
+      .where(and(
+        eq(archConceptProjectsTable.tenantId, tid),
+        eq(archConceptProjectsTable.ownerUserId, userId),
+        sql`${archConceptProjectsTable.configuration}->>'creationKey' = ${creationKey}`,
+      ))
+      .limit(1);
+    if (existing) return res.status(200).json(existing);
+  }
+
+  try {
+    const [created] = await db
+      .insert(archConceptProjectsTable)
+      .values(parsed.data)
+      .returning();
+    return res.status(201).json(created);
+  } catch (error) {
+    // Corrida entre autosave/cliques/abas: o índice único garante um único rascunho.
+    if (creationKey && (error as { code?: string })?.code === "23505") {
+      const [existing] = await db
+        .select()
+        .from(archConceptProjectsTable)
+        .where(and(
+          eq(archConceptProjectsTable.tenantId, tid),
+          eq(archConceptProjectsTable.ownerUserId, userId),
+          sql`${archConceptProjectsTable.configuration}->>'creationKey' = ${creationKey}`,
+        ))
+        .limit(1);
+      if (existing) return res.status(200).json(existing);
+    }
+    throw error;
+  }
   if (creationKey) {
     const [existing] = await db
       .select()
@@ -1954,7 +2014,6 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
         eq(archConceptProjectsTable.ownerUserId, userId),
       ),
     )
-    .returning();
 
   if (!updated) return res.status(404).json({ error: "Pré-projeto não encontrado." });
   return res.json(updated);
@@ -2684,6 +2743,13 @@ router.post("/arch/concept-projects/:id/develop-with-ai", authenticate, async (r
 
   const projectScope = config.projectScope === "room" ? "room" : "house";
   const terrainDefined = config.terrainDefined === true;
+  // O ponto de partida deve ser um programa/briefing aprovado ou geometria real já existente.
+  if (!projectBrief && rooms.length === 0 && customWalls.length === 0 && customOpenings.length === 0) {
+    return res.status(409).json({
+      error: "Defina o briefing/programa de necessidades antes de desenvolver a planta com IA.",
+      code: "ARCH_BRIEF_REQUIRED",
+    });
+  }
   const customWalls = Array.isArray(config.customWalls) ? config.customWalls : [];
   const customOpenings = Array.isArray(config.customOpenings) ? config.customOpenings : [];
 
@@ -4079,6 +4145,10 @@ router.get("/arch/projetos", authenticate, async (req, res) => {
       portalAtivo:     archProjetosTable.portalAtivo,
       createdAt:       archProjetosTable.createdAt,
       updatedAt:       archProjetosTable.updatedAt,
+          and arch_ai_renders.result_image_url is not null
+        order by arch_ai_renders.created_at desc
+        limit 1
+      )`,
       thumbnailUrl: sql<string | null>`(
         select arch_ai_renders.result_image_url from arch_ai_renders
         where arch_ai_renders.project_id = ${archProjetosTable.id}
