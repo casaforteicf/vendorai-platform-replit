@@ -106,6 +106,20 @@ import {
   insertObraHidraulicaAquecimentoSchema,
   insertObraHidraulicaPressurizacaoSchema,
   insertObraHidraulicaReservatorioSchema,
+  obraPiscinasTable,
+  obraPiscinaCasasMaquinasTable,
+  obraPiscinaCircuitosTable,
+  obraPiscinaEquipamentosTable,
+  obraPiscinaTratamentoTable,
+  obraPiscinaAquecimentoTable,
+  obraPiscinaOverflowTable,
+  insertObraPiscinaSchema,
+  insertObraPiscinaCasaMaquinasSchema,
+  insertObraPiscinaCircuitoSchema,
+  insertObraPiscinaEquipamentoSchema,
+  insertObraPiscinaTratamentoSchema,
+  insertObraPiscinaAquecimentoSchema,
+  insertObraPiscinaOverflowSchema,
   insertObraSchema,
   updateObraSchema,
   insertObraEtapaSchema,
@@ -2640,6 +2654,222 @@ router.post("/tenants/:tenantId/obras/:obraId/hidraulica/preconfigurar-area-tecn
   }).returning();
 
   return res.status(201).json({ areaTecnica: area });
+});
+
+// ─── Piscinas, casa de máquinas, circuitos e tratamento ───────────────────────
+
+router.post("/tenants/:tenantId/obras/:obraId/piscinas", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  const parsed = insertObraPiscinaSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const comprimento = numberOrZero(parsed.data.comprimentoM);
+  const largura = numberOrZero(parsed.data.larguraM);
+  const profMin = numberOrZero(parsed.data.profundidadeMinM);
+  const profMax = numberOrZero(parsed.data.profundidadeMaxM);
+  const profundidadeMedia = (profMin + profMax) / 2;
+  const areaEspelho = parsed.data.areaEspelhoM2 != null ? numberOrZero(parsed.data.areaEspelhoM2) : comprimento * largura;
+  const volume = parsed.data.volumeM3 != null ? numberOrZero(parsed.data.volumeM3) : areaEspelho * profundidadeMedia;
+  const perimetro = parsed.data.perimetroM != null ? numberOrZero(parsed.data.perimetroM) : (comprimento + largura) * 2;
+
+  const [row] = await db.insert(obraPiscinasTable).values({
+    ...parsed.data,
+    areaEspelhoM2: areaEspelho ? areaEspelho.toFixed(4) : parsed.data.areaEspelhoM2,
+    volumeM3: volume ? volume.toFixed(4) : parsed.data.volumeM3,
+    perimetroM: perimetro ? perimetro.toFixed(4) : parsed.data.perimetroM,
+  }).returning();
+
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/piscinas/:piscinaId/casa-maquinas", async (req, res) => {
+  const { tenantId: tid, obraId, piscinaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [piscina] = await db.select({ id: obraPiscinasTable.id }).from(obraPiscinasTable)
+    .where(and(eq(obraPiscinasTable.id, piscinaId), eq(obraPiscinasTable.obraId, obraId)));
+  if (!piscina) return res.status(404).json({ error: "Piscina não encontrada" });
+
+  const parsed = insertObraPiscinaCasaMaquinasSchema.safeParse({ ...req.body, piscinaId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const [row] = await db.insert(obraPiscinaCasasMaquinasTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/piscinas/:piscinaId/circuitos", async (req, res) => {
+  const { tenantId: tid, obraId, piscinaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [piscina] = await db.select({ id: obraPiscinasTable.id }).from(obraPiscinasTable)
+    .where(and(eq(obraPiscinasTable.id, piscinaId), eq(obraPiscinasTable.obraId, obraId)));
+  if (!piscina) return res.status(404).json({ error: "Piscina não encontrada" });
+
+  const parsed = insertObraPiscinaCircuitoSchema.safeParse({ ...req.body, piscinaId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  if (parsed.data.casaMaquinasId) {
+    const [cm] = await db.select({ id: obraPiscinaCasasMaquinasTable.id }).from(obraPiscinaCasasMaquinasTable)
+      .where(and(eq(obraPiscinaCasasMaquinasTable.id, parsed.data.casaMaquinasId), eq(obraPiscinaCasasMaquinasTable.piscinaId, piscinaId)));
+    if (!cm) return res.status(422).json({ error: "Casa de máquinas inválida para esta piscina." });
+  }
+
+  const [row] = await db.insert(obraPiscinaCircuitosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/piscinas/:piscinaId/equipamentos", async (req, res) => {
+  const { tenantId: tid, obraId, piscinaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [piscina] = await db.select({ id: obraPiscinasTable.id }).from(obraPiscinasTable)
+    .where(and(eq(obraPiscinasTable.id, piscinaId), eq(obraPiscinasTable.obraId, obraId)));
+  if (!piscina) return res.status(404).json({ error: "Piscina não encontrada" });
+
+  const parsed = insertObraPiscinaEquipamentoSchema.safeParse({ ...req.body, piscinaId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const [row] = await db.insert(obraPiscinaEquipamentosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/piscinas/:piscinaId/tratamento", async (req, res) => {
+  const { tenantId: tid, obraId, piscinaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraPiscinaTratamentoSchema.safeParse({ ...req.body, piscinaId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const [row] = await db.insert(obraPiscinaTratamentoTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/piscinas/:piscinaId/aquecimento", async (req, res) => {
+  const { tenantId: tid, obraId, piscinaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraPiscinaAquecimentoSchema.safeParse({ ...req.body, piscinaId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const [row] = await db.insert(obraPiscinaAquecimentoTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/piscinas/:piscinaId/overflow", async (req, res) => {
+  const { tenantId: tid, obraId, piscinaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraPiscinaOverflowSchema.safeParse({ ...req.body, piscinaId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const [row] = await db.insert(obraPiscinaOverflowTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/piscinas/resumo", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const piscinas = await db.select().from(obraPiscinasTable)
+    .where(and(eq(obraPiscinasTable.obraId, obraId), eq(obraPiscinasTable.ativo, true)));
+  const ids = piscinas.map((p) => p.id);
+
+  const [casasMaquinas, circuitos, equipamentos, tratamentos, aquecimentos, overflows] = ids.length
+    ? await Promise.all([
+        db.select().from(obraPiscinaCasasMaquinasTable).where(and(inArray(obraPiscinaCasasMaquinasTable.piscinaId, ids), eq(obraPiscinaCasasMaquinasTable.ativo, true))),
+        db.select().from(obraPiscinaCircuitosTable).where(and(inArray(obraPiscinaCircuitosTable.piscinaId, ids), eq(obraPiscinaCircuitosTable.ativo, true))),
+        db.select().from(obraPiscinaEquipamentosTable).where(and(inArray(obraPiscinaEquipamentosTable.piscinaId, ids), eq(obraPiscinaEquipamentosTable.ativo, true))),
+        db.select().from(obraPiscinaTratamentoTable).where(and(inArray(obraPiscinaTratamentoTable.piscinaId, ids), eq(obraPiscinaTratamentoTable.ativo, true))),
+        db.select().from(obraPiscinaAquecimentoTable).where(and(inArray(obraPiscinaAquecimentoTable.piscinaId, ids), eq(obraPiscinaAquecimentoTable.ativo, true))),
+        db.select().from(obraPiscinaOverflowTable).where(and(inArray(obraPiscinaOverflowTable.piscinaId, ids), eq(obraPiscinaOverflowTable.ativo, true))),
+      ])
+    : [[], [], [], [], [], []];
+
+  const alertas = [];
+  for (const piscina of piscinas) {
+    const circuitosPiscina = circuitos.filter((c) => c.piscinaId === piscina.id);
+    const casa = casasMaquinas.find((cm) => cm.piscinaId === piscina.id);
+
+    if (!casa && circuitosPiscina.length > 0) {
+      alertas.push({
+        tipo: "circuitos_sem_casa_maquinas",
+        piscinaId: piscina.id,
+        mensagem: "Piscina possui circuitos hidráulicos, mas não possui casa de máquinas configurada.",
+      });
+    }
+
+    if ((piscina.tipo === "borda_infinita" || piscina.tipo === "overflow") && !overflows.some((o) => o.piscinaId === piscina.id)) {
+      alertas.push({
+        tipo: "overflow_sem_configuracao",
+        piscinaId: piscina.id,
+        mensagem: "Piscina com borda infinita/overflow sem calha ou reservatório de compensação configurado.",
+      });
+    }
+
+    const hasFiltracao = circuitosPiscina.some((c) => c.tipo === "filtracao");
+    if (!hasFiltracao) {
+      alertas.push({
+        tipo: "sem_circuito_filtracao",
+        piscinaId: piscina.id,
+        mensagem: "Piscina sem circuito de filtração configurado.",
+      });
+    }
+  }
+
+  return res.json({
+    piscinas,
+    casasMaquinas,
+    circuitos,
+    equipamentos,
+    tratamentos,
+    aquecimentos,
+    overflows,
+    totais: {
+      piscinas: piscinas.length,
+      volumeM3: piscinas.reduce((s, p) => s + numberOrZero(p.volumeM3), 0).toFixed(4),
+      areaEspelhoM2: piscinas.reduce((s, p) => s + numberOrZero(p.areaEspelhoM2), 0).toFixed(4),
+      potenciaEquipamentosKw: equipamentos.reduce((s, e) => s + numberOrZero(e.potenciaKw) * numberOrZero(e.quantidade), 0).toFixed(4),
+      potenciaAquecimentoKw: aquecimentos.reduce((s, a) => s + numberOrZero(a.potenciaKw), 0).toFixed(4),
+    },
+    alertas,
+  });
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/piscinas/:piscinaId/preconfigurar", async (req, res) => {
+  const { tenantId: tid, obraId, piscinaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [piscina] = await db.select().from(obraPiscinasTable)
+    .where(and(eq(obraPiscinasTable.id, piscinaId), eq(obraPiscinasTable.obraId, obraId)));
+  if (!piscina) return res.status(404).json({ error: "Piscina não encontrada" });
+
+  const [casa] = await db.insert(obraPiscinaCasasMaquinasTable).values({
+    piscinaId,
+    nome: "Casa de máquinas",
+    ventilacaoObrigatoria: true,
+    drenoObrigatorio: true,
+    pontoEletricoObrigatorio: true,
+    acessoManutencao: true,
+    ativo: true,
+  }).returning();
+
+  const circuitosBase = ["filtracao", "aspiracao", "retorno", "dreno_fundo"] as const;
+  if (piscina.tipo === "borda_infinita" || piscina.tipo === "overflow") circuitosBase.push("overflow" as any);
+  if (Boolean(req.body?.aquecimento)) circuitosBase.push("aquecimento" as any);
+
+  const criados = [];
+  for (const tipo of circuitosBase) {
+    const [row] = await db.insert(obraPiscinaCircuitosTable).values({
+      piscinaId,
+      casaMaquinasId: casa.id,
+      tipo,
+      ativo: true,
+    }).returning();
+    criados.push(row);
+  }
+
+  return res.status(201).json({ casaMaquinas: casa, circuitos: criados });
 });
 
 // ─── Base Mestre de Preços: propagação segura ─────────────────────────────────
