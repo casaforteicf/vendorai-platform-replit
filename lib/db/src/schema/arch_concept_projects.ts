@@ -31,6 +31,16 @@ export type ArchConceptConfiguration = {
     setbackRear: number;
     setbackLeft: number;
     setbackRight: number;
+    northSide?: "bottom" | "top" | "left" | "right" | null;
+    vehicleAccessSide?: "bottom" | "top" | "left" | "right" | null;
+    slope?: "flat" | "to_front" | "to_rear" | "to_left" | "to_right";
+    preferredViewSide?: "bottom" | "top" | "left" | "right" | null;
+    avoidSide?: "bottom" | "top" | "left" | "right" | null;
+    strategy?: "balanced" | "access" | "solar" | "leisure";
+    lotBoundary?: {
+      kind: "polygon";
+      points: Array<{ x: number; y: number }>;
+    } | null;
   };
   customWalls?: Array<{
     id: string;
