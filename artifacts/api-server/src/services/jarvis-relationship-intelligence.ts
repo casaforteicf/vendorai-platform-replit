@@ -1,5 +1,6 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import {
+import { canonicalDealValueSql } from "../lib/deal-value.js";
   db,
   dealsTable,
   fornecedoresTable,
@@ -78,7 +79,7 @@ export async function loadJarvisRelationshipIntelligence(tenantId: string) {
         leadId: dealsTable.leadId,
         titulo: dealsTable.titulo,
         etapa: dealsTable.etapa,
-        valor: dealsTable.valor,
+        valor: canonicalDealValueSql,
         assignedTo: dealsTable.assignedTo,
         updatedAt: dealsTable.updatedAt,
       })
