@@ -227,6 +227,35 @@ function codeFor(category: string) {
   const date = new Date().toISOString().slice(0, 10).replaceAll("-", "");
   return `RFQ-${category.toUpperCase().replace(/[^A-Z0-9]+/g, "-").slice(0, 12)}-${date}-${crypto.randomUUID().slice(0, 5).toUpperCase()}`;
 }
+function marketDemandCode() {
+  const date = new Date().toISOString().slice(0, 10).replaceAll("-", "");
+  return `AMD-${date}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+}
+async function appendMarketEvent(
+  client: any,
+  demandId: string,
+  tid: string,
+  eventType: string,
+  actorId: string | null | undefined,
+  referenceType?: string | null,
+  referenceId?: string | null,
+  payload: Record<string, unknown> = {},
+) {
+  await client.query(
+    `INSERT INTO arqdor_market_demand_events
+      (demand_id,tenant_id,event_type,actor_type,actor_id,source,reference_type,reference_id,payload,created_at)
+     VALUES($1::uuid,$2,$3,$4,$5,'vendorai',$6,$7,$8::jsonb,now())`,
+    [demandId, tid, eventType, actorId ? "user" : "system", actorId || null, referenceType || null, referenceId || null, JSON.stringify(payload)],
+  );
+}
+async function resolveMarketCommission(tid: string, category?: string | null, productLine?: string | null, productId?: string | null) {
+  const result = await pool.query(
+    `SELECT * FROM public.arqdor_market_resolve_commission($1,$2,$3,$4)`,
+    [tid, category || null, productLine || null, productId || null],
+  );
+  const row = result.rows[0];
+  return { ruleId: row?.rule_id ? String(row.rule_id) : null, percentage: n(row?.percentage, 10) };
+}
 async function ensureArchitectReferralPartner(tid: string, userId: string | null | undefined) {
   if (!userId) return null;
   const existing = await pool.query(
@@ -412,6 +441,40 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
     }
 
     await client.query("BEGIN");
+    const demandResult = await client.query(
+      `INSERT INTO arqdor_market_demands
+        (demand_code,tenant_id,project_id,obra_id,budget_id,origin,status,requested_by,title,estimated_value,created_at,updated_at)
+       VALUES($1,$2,$3::uuid,$4,$5::uuid,'budget','quoting',$6,$7,$8,now(),now())
+       RETURNING *`,
+      [
+        marketDemandCode(),
+        tid,
+        budget.project_id,
+        obraId,
+        budgetId,
+        req.user?.sub ?? null,
+        `Demanda de cotação — ${budget.version ? `orçamento v${budget.version}` : "orçamento"}`,
+        String(itemResult.rows.reduce((sum: number, row: any) => sum + n(row.total), 0)),
+      ],
+    );
+    const marketDemand = demandResult.rows[0];
+    await appendMarketEvent(
+      client,
+      String(marketDemand.id),
+      tid,
+      "demand_created",
+      req.user?.sub ?? null,
+      "budget",
+      budgetId,
+      {
+        demandCode: marketDemand.demand_code,
+        obraId,
+        projectId: budget.project_id,
+        budgetVersion: budget.version ?? null,
+        selectedBudgetItemIds: selectedIds,
+      },
+    );
+
     const created: any[] = [];
     for (const group of groups.values()) {
       const snapshotItems: any[] = [];
@@ -515,12 +578,12 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
       const packageHash = scopeHash(packageSnapshot);
       const pkg = await client.query(
         `INSERT INTO arch_rfq_packages
-         (tenant_id,obra_id,project_id,budget_id,code,title,category,discipline,version,status,scope_hash,scope_snapshot,documents,
+         (tenant_id,obra_id,project_id,budget_id,market_demand_id,code,title,category,discipline,version,status,scope_hash,scope_snapshot,documents,
           arch_proposal_id,commercial_proposal_id,proposal_revision,sale_total_snapshot,sale_source,technical_documents_snapshot,
           created_by,created_at,updated_at)
-         VALUES($1,$2,$3::uuid,$4::uuid,$5,$6,$7,$8,$9,'draft',$10,$11::jsonb,$12::jsonb,
-                $13::uuid,$14,$15,$16,$17,$12::jsonb,$18,now(),now()) RETURNING *`,
-        [tid,obraId,budget.project_id,budgetId,codeFor(group.category),`Cotação — ${group.category}`,group.category,group.discipline,
+         VALUES($1,$2,$3::uuid,$4::uuid,$5::uuid,$6,$7,$8,$9,$10,'draft',$11,$12::jsonb,$13::jsonb,
+                $14::uuid,$15,$16,$17,$18,$13::jsonb,$19,now(),now()) RETURNING *`,
+        [tid,obraId,budget.project_id,budgetId,marketDemand.id,codeFor(group.category),`Cotação — ${group.category}`,group.category,group.discipline,
          packageVersion,packageHash,JSON.stringify(packageSnapshot),JSON.stringify(docs),
          commercial.archProposalId,commercial.commercialProposalId,commercial.revision,String(saleValue || 0),commercial.saleSource,
          req.user?.sub??null],
@@ -528,10 +591,27 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
       for (let i=0;i<requestIds.length;i++) {
         await client.query(`INSERT INTO arch_rfq_package_items(package_id,compra_id,sort_order) VALUES($1::uuid,$2,$3) ON CONFLICT DO NOTHING`, [pkg.rows[0].id,requestIds[i],i]);
       }
+      await appendMarketEvent(
+        client,
+        String(marketDemand.id),
+        tid,
+        "rfq_package_created",
+        req.user?.sub ?? null,
+        "rfq_package",
+        String(pkg.rows[0].id),
+        { code: pkg.rows[0].code, category: group.category, discipline: group.discipline, itemCount: requestIds.length, packageVersion },
+      );
       created.push({ ...pkg.rows[0], itemCount: requestIds.length, saleValue, commercialSource: commercial.saleSource });
     }
     await client.query("COMMIT");
-    return res.status(201).json({ packages: created });
+    return res.status(201).json({
+      demand: {
+        id: marketDemand.id,
+        code: marketDemand.demand_code,
+        status: marketDemand.status,
+      },
+      packages: created,
+    });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => undefined);
     logger.error({ err }, "rfq from budget error"); return next(err);
