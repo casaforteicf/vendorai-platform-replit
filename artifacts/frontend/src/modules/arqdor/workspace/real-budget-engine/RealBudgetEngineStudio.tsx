@@ -7,6 +7,7 @@ import { BudgetSummaryCards } from "./BudgetSummaryCards";
 import type { BudgetViewMode } from "./budgetTypes";
 import { getClientName, getProjectId, getProjectTitle, statusClass, statusLabel } from "./budgetUtils";
 import { useRealBudgetEngine } from "./useRealBudgetEngine";
+import { ProjectCommercialFlowBar } from "../project-commercial-flow/ProjectCommercialFlowBar";
 
 type RealBudgetEngineStudioProps = {
   arqState: any;
@@ -48,10 +49,10 @@ export default function RealBudgetEngineStudio({ arqState, onNavigate }: RealBud
         <header className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm print:hidden">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Sprint 031 • Real Budget Engine</p>
-              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[var(--arq-foreground)]">Orçamento real + impressão corrigida</h1>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Orçamento do projeto</p>
+              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[var(--arq-foreground)]">Orçamento sincronizado com a especificação</h1>
               <p className="mt-1 text-sm text-[var(--arq-muted)]">
-                {projectTitle} • material e mão de obra separados, itens visíveis na impressão e versão cliente/interna.
+                {projectTitle} • quantitativos, produtos, materiais, mão de obra e versão cliente/interna na mesma revisão do projeto.
               </p>
             </div>
 
@@ -92,7 +93,7 @@ export default function RealBudgetEngineStudio({ arqState, onNavigate }: RealBud
                 disabled={generating}
                 className="rounded-2xl bg-[var(--arq-accent)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
               >
-                {generating ? "Gerando..." : "Gerar dos SpecObjects"}
+                {generating ? "Gerando..." : "Sincronizar da especificação"}
               </button>
             </div>
           </div>
@@ -103,6 +104,14 @@ export default function RealBudgetEngineStudio({ arqState, onNavigate }: RealBud
             <Info label="Budget ID" value={budget?.id || "ainda não criado"} />
           </div>
         </header>
+
+        <ProjectCommercialFlowBar
+          current="budget"
+          onNavigate={onNavigate}
+          projectReady={Boolean(projectId)}
+          specificationReady={items.length > 0}
+          budgetReady={Boolean(budget)}
+        />
 
         {error ? (
           <div className="rounded-[28px] border border-rose-100 bg-rose-50 p-4 text-sm font-medium text-rose-700 print:hidden">

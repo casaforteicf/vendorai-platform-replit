@@ -6,6 +6,8 @@ import { RenderVersionTimeline } from "./RenderVersionTimeline";
 import { SelectedRenderInspector } from "./SelectedRenderInspector";
 import { useRealRenderGallery } from "./useRealRenderGallery";
 import { getProjectId, getProjectTitle } from "./renderGalleryUtils";
+import { ProjectCommercialFlowBar } from "../project-commercial-flow/ProjectCommercialFlowBar";
+import { writeCommercialFlowHandoff } from "../project-commercial-flow/commercialFlowHandoff";
 
 type RealRenderGalleryStudioProps = {
   arqState: any;
@@ -47,7 +49,7 @@ export default function RealRenderGalleryStudio({ arqState, onNavigate }: RealRe
   async function sendToSpec() {
     if (!selectedRender) return;
 
-    await runSendToSpecification({
+    const result = await runSendToSpecification({
       renderId: selectedRender.id,
       projectId,
       ambienteId: selectedRender.ambienteId,
@@ -55,8 +57,15 @@ export default function RealRenderGalleryStudio({ arqState, onNavigate }: RealRe
       extractObjects: true,
       preservePrompt: true,
     });
+    if (!result) return;
 
-    onNavigate?.("especificacao");
+    writeCommercialFlowHandoff({
+      projectId,
+      stage: "specification",
+      renderId: selectedRender.id,
+      source: "approved-render",
+    });
+    onNavigate?.("real-specification");
   }
 
   return (
@@ -94,14 +103,21 @@ export default function RealRenderGalleryStudio({ arqState, onNavigate }: RealRe
               </button>
               <button
                 type="button"
-                onClick={() => onNavigate?.("especificacao")}
+                onClick={() => onNavigate?.("real-specification")}
                 className="rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-2 text-sm font-semibold text-[var(--arq-foreground)] hover:border-violet-200 hover:text-[var(--arq-accent)]"
               >
-                Specification
+                Especificações
               </button>
             </div>
           </div>
         </header>
+
+        <ProjectCommercialFlowBar
+          current="render"
+          onNavigate={onNavigate}
+          projectReady={Boolean(projectId)}
+          specificationReady={items.some((item) => item.status === "approved")}
+        />
 
         {error ? (
           <div className="rounded-[28px] border border-rose-100 bg-rose-50 p-4 text-sm font-medium text-rose-700">

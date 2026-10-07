@@ -8,6 +8,8 @@ import { useRealSpecificationCatalog } from "./useRealSpecificationCatalog";
 import { getProjectId, getProjectTitle } from "./specCatalogUtils";
 import { printSpecification } from "./printSpecification";
 import { useAuth } from "@/contexts/AuthContext";
+import { ProjectCommercialFlowBar } from "../project-commercial-flow/ProjectCommercialFlowBar";
+import { readCommercialFlowHandoff, writeCommercialFlowHandoff } from "../project-commercial-flow/commercialFlowHandoff";
 
 type RealSpecificationCatalogStudioProps = {
   arqState: any;
@@ -63,6 +65,12 @@ export default function RealSpecificationCatalogStudio({ arqState, onNavigate }:
     applyCatalogToObject,
     sendToBudget,
   } = useRealSpecificationCatalog(projectId, renderId || undefined, { catalogEnabled: panel === "catalog" });
+
+  useEffect(() => {
+    const handoff = readCommercialFlowHandoff(projectId);
+    if (handoff?.stage !== "specification" || !handoff.renderId) return;
+    setRenderId(handoff.renderId);
+  }, [projectId]);
 
   useEffect(() => {
     const raw = sessionStorage.getItem("arqdor:pendingCatalogItem");
@@ -161,6 +169,14 @@ export default function RealSpecificationCatalogStudio({ arqState, onNavigate }:
             </div>
           </div>
         </header>
+
+        <ProjectCommercialFlowBar
+          current="specification"
+          onNavigate={onNavigate}
+          projectReady={Boolean(projectId)}
+          specificationReady={specObjects.length > 0}
+          budgetReady={specObjects.some((item) => item.status === "sent-to-budget")}
+        />
 
         {pendingItem ? (
           <div className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900">
@@ -306,10 +322,18 @@ export default function RealSpecificationCatalogStudio({ arqState, onNavigate }:
                     <BudgetBridgePanel items={specObjects} sending={sendingToBudget} onSend={sendToBudget} />
                     <button
                       type="button"
-                      onClick={() => onNavigate?.("orcamento")}
+                      onClick={() => {
+                        writeCommercialFlowHandoff({
+                          projectId,
+                          stage: "budget",
+                          renderId: renderId || null,
+                          source: "specification",
+                        });
+                        onNavigate?.("real-budget");
+                      }}
                       className="w-full rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800"
                     >
-                      Abrir orçamento completo
+                      Abrir orçamento sincronizado
                     </button>
                   </>
                 ) : null}
