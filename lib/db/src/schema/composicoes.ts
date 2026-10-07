@@ -53,6 +53,19 @@ export const COMPOSICAO_ETAPA_KEYS = [
   "testes_comissionamento",
   "vistoria_entrega",
   "pos_obra_assistencia",
+  // Chaves legadas mantidas para compatibilidade com dados/telas existentes.
+  "projetos_legalizacao",
+  "preliminares",
+  "terraplenagem",
+  "estrutura",
+  "lajes",
+  "hidraulica",
+  "eletrica",
+  "revestimentos",
+  "forros_pintura",
+  "acabamentos",
+  "solar_automacao",
+  "limpeza_entrega",
 ] as const;
 
 export const COMPOSICAO_SISTEMAS_CONSTRUTIVOS = [
@@ -67,6 +80,10 @@ export const COMPOSICAO_SISTEMAS_CONSTRUTIVOS = [
   "estrutura_metalica_fechamento",
   "sip_paineis",
   "hibrido",
+  // Identificadores legados mantidos para compatibilidade.
+  "alvenaria",
+  "madeira",
+  "concreto",
   "outro",
 ] as const;
 
