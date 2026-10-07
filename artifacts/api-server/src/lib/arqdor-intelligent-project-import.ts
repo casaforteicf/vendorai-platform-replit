@@ -236,7 +236,7 @@ function normalizeCandidate(value: unknown, sourceFileName: string): ArqdorUnive
     metadata: sanitizeUniversalValue(record(raw.metadata)) as JsonRecord,
     provenance: {
       ...sanitizeUniversalValue(record(raw.provenance)) as JsonRecord,
-      sourceFileName,
+      sourceDocument: "imported_project",
       generatedFromImport: true,
     },
   };
