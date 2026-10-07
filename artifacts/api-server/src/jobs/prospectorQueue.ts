@@ -28,16 +28,12 @@ import {
   prospectorQueueTable,
   leadsTable,
   dealsTable,
-  prospectsTable,
-  crmCompaniesMasterTable,
-  crmTenantCompaniesTable,
 } from "@workspace/db";
 import { pickNextVendedor } from "../lib/round-robin.js";
 import { recordResponsavelChange } from "../lib/leadResponsavelHistorico.js";
 import { enrichLead } from "./leadEnrichment.js";
 import { leadRegistrationMetadata } from "../lib/lead-registration-standard.js";
-import { decideProspectNextAction } from "../services/prospect-decision-engine.js";
-import { enforceTenantSolutionPolicy, resolveColdProspectingConfig } from "../services/cold-prospecting-config.js";
+import { intakeColdProspect } from "../services/cold-prospect-intake.js";
 
 /** Returns the start-of-day in UTC for "now" (for counting daily processed leads). */
 function todayStart(): Date {
@@ -353,98 +349,8 @@ async function processQueueItem(params: {
   });
 
   const sourceRef = item.placeId;
-  const [existingProspect] = await db
-    .select({ id: prospectsTable.id })
-    .from(prospectsTable)
-    .where(and(
-      eq(prospectsTable.tenantId, tenantId),
-      eq(prospectsTable.source, source),
-      eq(prospectsTable.sourceRef, sourceRef),
-    ))
-    .limit(1);
-
-  if (existingProspect) {
-    await db.update(prospectorQueueTable)
-      .set({ status: "duplicado", updatedAt: now })
-      .where(eq(prospectorQueueTable.id, item.id));
-    log.info({ queueId: item.id, prospectId: existingProspect.id, tenantId }, "prospector-queue: duplicate prospect — skipped");
-    return;
-  }
-
-  // Link to Company Master only when a reliable existing match is available.
-  // Never fabricate a CNPJ just to satisfy the master model.
-  let companyId: string | null = null;
-  const companyMatchers: ReturnType<typeof eq>[] = [];
-  if (phoneDigits) {
-    companyMatchers.push(
-      sql`regexp_replace(coalesce(${crmCompaniesMasterTable.telefone}, ''), '[^0-9]', '', 'g') = ${phoneDigits}` as ReturnType<typeof eq>,
-    );
-  }
-  if (websiteDomain) {
-    companyMatchers.push(
-      sql`lower(regexp_replace(regexp_replace(coalesce(${crmCompaniesMasterTable.website}, ''), '^https?://', ''), '^www\\.', '')) LIKE ${websiteDomain + '%'}` as ReturnType<typeof eq>,
-    );
-  }
-  if (companyMatchers.length) {
-    const [company] = await db.select({ id: crmCompaniesMasterTable.id })
-      .from(crmCompaniesMasterTable)
-      .where(companyMatchers.length === 1 ? companyMatchers[0]! : or(...companyMatchers)!)
-      .limit(1);
-    companyId = company?.id ?? null;
-    if (companyId) {
-      await db.insert(crmTenantCompaniesTable).values({
-        tenantId,
-        companyId,
-        relationshipType: "prospect",
-        status: "ativo",
-        metadata: { source, sourceRef },
-      }).onConflictDoUpdate({
-        target: [crmTenantCompaniesTable.tenantId, crmTenantCompaniesTable.companyId],
-        set: { status: "ativo", updatedAt: now },
-      });
-    }
-  }
-
-  const baseFit = item.telefone || item.website ? 55 : 35;
-  const vendorFit = 60;
-  const arqdorFit = /(constru|arquitet|engenhar|esquadr|piscin|revest|m[oó]ve|imobili|material|telhado)/i.test(item.setor ?? "")
-    ? 70
-    : 20;
-
-  const runtime = await resolveColdProspectingConfig(tenantId);
-  const decision = enforceTenantSolutionPolicy(decideProspectNextAction({
-    stage: "analisado",
-    vendoraiFitScore: vendorFit,
-    arqdorFitScore: arqdorFit,
-    qualification: {
-      commercial: {
-        canaisAtendimento: item.telefone ? ["telefone/whatsapp"] : item.website ? ["website"] : [],
-      },
-      facts: [
-        ...(item.setor ? [{
-          key: "segment",
-          value: item.setor,
-          confidence: 100,
-          source: source,
-          confirmed: true,
-          observedAt: now.toISOString(),
-        }] : []),
-        ...(item.cidade ? [{
-          key: "city",
-          value: item.cidade,
-          confidence: 100,
-          source: source,
-          confirmed: true,
-          observedAt: now.toISOString(),
-        }] : []),
-      ],
-    },
-    opportunitySummary: null,
-  }), runtime);
-
-  const [prospect] = await db.insert(prospectsTable).values({
+  const result = await intakeColdProspect({
     tenantId,
-    companyId,
     source,
     sourceRef,
     displayName: item.nome,
@@ -453,17 +359,11 @@ async function processQueueItem(params: {
     address: item.endereco,
     segment: item.setor,
     city: item.cidade,
-    stage: decision.stage,
-    fitScore: baseFit,
-    vendoraiFitScore: vendorFit,
-    arqdorFitScore: arqdorFit,
-    recommendedSolution: decision.recommendedSolution,
-    primaryHook: decision.primaryHook,
-    currentState: decision.currentState,
-    currentObjective: decision.currentObjective,
-    nextBestAction: decision.nextBestAction,
-    nextBestActionReason: decision.nextBestActionReason,
-    qualificationScore: null,
+    fitScore: item.telefone || item.website ? 55 : 35,
+    vendoraiFitScore: 60,
+    arqdorFitScore: /(constru|arquitet|engenhar|esquadr|piscin|revest|m[oó]ve|imobili|material|telhado)/i.test(item.setor ?? "")
+      ? 70
+      : 20,
     qualification: {
       commercial: {
         canaisAtendimento: item.telefone ? ["telefone/whatsapp"] : item.website ? ["website"] : [],
@@ -487,22 +387,23 @@ async function processQueueItem(params: {
         }] : []),
       ],
     },
-    assignedUserId: assignedTo,
+    assignedUserId: await pickNextVendedor(tenantId, {
+      segmento: item.setor,
+      city: item.cidade,
+      location: item.endereco,
+    }),
     nextActionAt: new Date(now.getTime() + 2 * 60 * 60 * 1000),
-  }).returning({ id: prospectsTable.id });
-
-  if (!prospect?.id) {
-    log.error({ queueId: item.id, tenantId }, "prospector-queue: prospect insert returned no id");
-    return;
-  }
+  });
 
   await db.update(prospectorQueueTable)
-    .set({ status: "importado", leadId: null, updatedAt: now })
+    .set({ status: result.created ? "importado" : "duplicado", leadId: null, updatedAt: now })
     .where(eq(prospectorQueueTable.id, item.id));
 
   log.info(
-    { queueId: item.id, prospectId: prospect.id, tenantId, assignedTo },
-    "prospector-queue: pre-lead prospect created without CRM Lead/Deal",
+    { queueId: item.id, prospectId: result.prospect.id, tenantId, created: result.created },
+    result.created
+      ? "prospector-queue: pre-lead prospect created without CRM Lead/Deal"
+      : "prospector-queue: company already exists as Prospect — merged",
   );
 
 }
