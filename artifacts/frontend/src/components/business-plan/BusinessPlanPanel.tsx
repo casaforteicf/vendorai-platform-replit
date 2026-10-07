@@ -113,7 +113,7 @@ export function BusinessPlanPanel() {
     finally { busyRef.current = false; setBusy(""); }
   }
   function update(index: number, patch: Partial<Entry>) { setDrafts(v => ({ ...v, [sectionId]: records.map((r, i) => i === index ? { ...r, ...patch } : r) })); }
-  function newEntry(): Entry { return { id: crypto.randomUUID(), title: "Nova ficha", values: {}, evidence: "declared", source: "Informado pela empresa", productIds: [], assetIds: [] }; }
+  function newEntry(): Entry { return { id: crypto.randomUUID(), title: "Nova informação", values: {}, evidence: "declared", source: "Informado pela empresa", productIds: [], assetIds: [] }; }
   async function analisarDocumentosDiscovery(files: FileList | null) {
     if (!files?.length || !tenantId) return;
     await run("Analisando documentos...", async () => {
@@ -333,31 +333,57 @@ export function BusinessPlanPanel() {
             </div>
           </div>
 
-          <div className="mt-4 flex gap-2 overflow-x-auto pb-1" aria-label="Etapas do Plano de Negócios">
-            {data.sections.map((section, index) => {
-              const count = data.plan.sections[section.id]?.approved?.length ?? 0;
-              return <button
-                key={section.id}
-                type="button"
-                onClick={() => goToIndex(index)}
-                className={`min-w-9 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${section.id === sectionId ? "border-primary bg-primary text-primary-foreground" : count ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "bg-background text-muted-foreground"}`}
-                title={section.title}
-              >
-                {index + 1}
-              </button>;
-            })}
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span>{approvedCount} de {data.sections.length} seções aprovadas</span>
+            <span aria-hidden="true">•</span>
+            <span>Use a navegação lateral para trocar de assunto sem perder o contexto.</span>
             <button type="button" onClick={() => goToIndex(data.sections.length)} className="min-w-max rounded-full border bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground">Revisão final</button>
           </div>
         </section>
 
-        <div className="grid items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="grid items-start gap-4 xl:grid-cols-[240px_minmax(0,1fr)] 2xl:grid-cols-[240px_minmax(0,1fr)_340px]">
+          <aside className="rounded-xl border bg-card p-2 xl:sticky xl:top-4">
+            <div className="px-2 pb-2 pt-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Estrutura do PN</p>
+              <p className="mt-1 text-xs text-muted-foreground">Abra um assunto por vez.</p>
+            </div>
+            <nav className="space-y-1" aria-label="Seções do Plano de Negócios">
+              {data.sections.map((section, index) => {
+                const approvedCountForSection = data.plan.sections[section.id]?.approved?.length ?? 0;
+                const draftCountForSection = (drafts[section.id] ?? data.plan.sections[section.id]?.draft ?? []).length;
+                const status = approvedCountForSection ? "Concluído" : draftCountForSection ? "Em revisão" : "Pendente";
+                return (
+                  <button
+                    key={section.id}
+                    type="button"
+                    onClick={() => goToIndex(index)}
+                    className={`flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left transition ${section.id === sectionId ? "bg-primary/10 text-foreground" : "hover:bg-muted/60"}`}
+                  >
+                    <span className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-semibold ${section.id === sectionId ? "bg-primary text-primary-foreground" : approvedCountForSection ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground"}`}>{index + 1}</span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">{section.title}</span>
+                      <span className={`mt-0.5 block text-[11px] ${approvedCountForSection ? "text-emerald-700" : draftCountForSection ? "text-amber-700" : "text-muted-foreground"}`}>{status}</span>
+                    </span>
+                  </button>
+                );
+              })}
+              <button type="button" onClick={() => goToIndex(data.sections.length)} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-muted-foreground hover:bg-muted/60">
+                <span className="grid h-6 w-6 place-items-center rounded-full bg-muted text-[11px] font-semibold">✓</span>
+                Revisão final
+              </button>
+            </nav>
+          </aside>
+
           <div className="space-y-4">
-            <section className="rounded-xl border bg-card p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div><h4 className="font-semibold">O que já sabemos</h4><p className="mt-1 text-xs text-muted-foreground">Contexto encontrado no Perfil Mestre ou já aprovado. Abra apenas o que quiser revisar.</p></div>
+            <details className="rounded-xl border bg-card">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
+                <div>
+                  <h4 className="text-sm font-semibold">Contexto e fontes desta seção</h4>
+                  <p className="mt-0.5 text-xs text-muted-foreground">Veja o que já existe somente quando precisar conferir a origem.</p>
+                </div>
                 <span className="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground">{knownRecords.length || profileFacts.length} fonte(s)</span>
-              </div>
-              <div className="mt-3 grid gap-2 md:grid-cols-2">
+              </summary>
+              <div className="grid gap-2 border-t p-4 md:grid-cols-2">
                 {knownRecords.slice(0, 6).map((record) => (
                   <details key={record.id} className="rounded-lg border bg-muted/20 p-3">
                     <summary className="cursor-pointer text-sm font-medium">{record.title}</summary>
@@ -370,7 +396,7 @@ export function BusinessPlanPanel() {
                 ))}
                 {!knownRecords.length && sectionId !== "company" && <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground md:col-span-2">Ainda não há conteúdo oficial suficiente nesta etapa. O Vendi pode preparar uma primeira proposta.</div>}
               </div>
-            </section>
+            </details>
 
             <section className="rounded-xl border bg-card p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -409,9 +435,9 @@ export function BusinessPlanPanel() {
             </section>
           </div>
 
-          <aside className="rounded-xl border border-primary/20 bg-primary/[0.03] p-4 2xl:sticky 2xl:top-4">
-            <div className="flex items-center justify-between gap-3"><h4 className="font-semibold">Vendi</h4><span className="rounded-full bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary">Copiloto da etapa</span></div>
-            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">Eu preparo os campos usando o contexto já existente da empresa. Você revisa, edita livremente e só depois aprova.</p>
+          <aside className="rounded-xl border border-primary/20 bg-primary/[0.03] p-4 xl:col-start-2 2xl:col-start-auto 2xl:sticky 2xl:top-4">
+            <div className="flex items-center justify-between gap-3"><h4 className="font-semibold">Vendi</h4><span className="rounded-full bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary">Assistente desta seção</span></div>
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">Eu analiso somente o assunto aberto, mostro o que falta e preparo sugestões para você revisar antes de virar informação oficial.</p>
             <div className="mt-3 rounded-lg border bg-background p-3 text-xs">
               <p className="font-semibold">Base utilizada nesta etapa</p>
               <p className="mt-1 text-muted-foreground">{knownRecords.length || profileFacts.length} fonte(s) encontradas. As respostas geradas entram diretamente nos campos como rascunho.</p>
