@@ -1,15 +1,214 @@
 import { Router, type IRouter } from "express";
 import multer from "multer";
 import { and, eq } from "drizzle-orm";
-import { db, archConceptProjectsTable } from "@workspace/db";
+import { db, archConceptProjectsTable, arqdorUniversalModelsTable } from "@workspace/db";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { convertSketchupToGlb } from "../services/sketchupConverterService.js";
 import { parseIfcEditableGeometry } from "../lib/arqdor-ifc-editable.js";
 import { parseDxfEditableGeometry } from "../lib/arqdor-dxf-editable.js";
+import { analyzeArqdorProjectDocument, universalModelDedupeKey } from "../lib/arqdor-intelligent-project-import.js";
+import crypto from "node:crypto";
 
 const router: IRouter = Router();
 const sketchupUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 45 * 1024 * 1024 } });
 const geometryUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 35 * 1024 * 1024 } });
+const intelligentProjectUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+
+router.post("/arch/concept-projects/:id/import-project-intelligent", intelligentProjectUpload.single("file"), async (req, res) => {
+  const tenantId = req.user?.tenantId ?? req.tenantId;
+  const userId = req.user?.sub;
+  const projectId = String(req.params.id);
+
+  if (!tenantId || !userId) return res.status(401).json({ error: "Sessão inválida." });
+  if (!req.file?.buffer?.length) return res.status(400).json({ error: "Envie o projeto no campo file." });
+
+  const extension = req.file.originalname.split(".").pop()?.toLowerCase() ?? "";
+  if (!["pdf", "jpg", "jpeg", "png", "webp"].includes(extension)) {
+    return res.status(422).json({ error: "Use PDF, JPG, PNG ou WEBP na Importação Inteligente." });
+  }
+
+  const [concept] = await db
+    .select({
+      id: archConceptProjectsTable.id,
+      status: archConceptProjectsTable.status,
+      configuration: archConceptProjectsTable.configuration,
+    })
+    .from(archConceptProjectsTable)
+    .where(and(
+      eq(archConceptProjectsTable.id, projectId),
+      eq(archConceptProjectsTable.tenantId, tenantId),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ))
+    .limit(1);
+
+  if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+  if (concept.status === "submitted" && (concept.configuration as any)?.projectMaster) {
+    return res.status(409).json({
+      error: "O Projeto Mestre está congelado. Crie uma revisão antes de importar outro projeto.",
+      code: "PROJECT_MASTER_FROZEN",
+    });
+  }
+
+  try {
+    const mimeType = req.file.mimetype || (
+      extension === "pdf" ? "application/pdf" :
+      extension === "png" ? "image/png" :
+      extension === "webp" ? "image/webp" : "image/jpeg"
+    );
+    const analysis = await analyzeArqdorProjectDocument({
+      tenantId,
+      buffer: req.file.buffer,
+      mimeType,
+      filename: req.file.originalname,
+    });
+
+    const storage = new ObjectStorageService();
+    const storagePath = await storage.savePrivateBuffer(
+      req.file.buffer,
+      mimeType,
+      req.file.originalname,
+    );
+    const sourceUrl = `/api/storage/objects${storagePath.replace(/^\\/objects/, "")}`;
+    const importedAt = new Date().toISOString();
+    const sourceDocumentHash = crypto.createHash("sha256").update(req.file.buffer).digest("hex");
+
+    const savedModels: Array<{ id: string; kind: string; title: string; confidence: number }> = [];
+    for (const candidate of analysis.universalCandidates) {
+      const dedupeKey = universalModelDedupeKey(candidate);
+      const id = crypto.randomUUID();
+      const [saved] = await db
+        .insert(arqdorUniversalModelsTable)
+        .values({
+          id,
+          kind: candidate.kind,
+          title: candidate.title,
+          description: candidate.description ?? null,
+          sourceProjectId: projectId,
+          sourceTenantId: tenantId,
+          sourceFileName: `project-import.${extension || "bin"}`,
+          architecture: candidate.architecture,
+          metadata: candidate.metadata,
+          provenance: {
+            ...candidate.provenance,
+            sourceDocumentHash,
+            importedAt,
+          },
+          confidence: String(candidate.confidence),
+          dedupeKey,
+          status: candidate.confidence >= 0.72 ? "ready" : "needs_review",
+          isActive: true,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: arqdorUniversalModelsTable.dedupeKey,
+          set: {
+            description: candidate.description ?? null,
+            architecture: candidate.architecture,
+            metadata: candidate.metadata,
+            provenance: {
+              ...candidate.provenance,
+              sourceDocumentHash,
+              importedAt,
+            },
+            confidence: String(candidate.confidence),
+            status: candidate.confidence >= 0.72 ? "ready" : "needs_review",
+            isActive: true,
+            updatedAt: new Date(),
+          },
+        })
+        .returning({
+          id: arqdorUniversalModelsTable.id,
+          kind: arqdorUniversalModelsTable.kind,
+          title: arqdorUniversalModelsTable.title,
+          confidence: arqdorUniversalModelsTable.confidence,
+        });
+
+      if (saved) savedModels.push({
+        id: saved.id,
+        kind: saved.kind,
+        title: saved.title,
+        confidence: Number(saved.confidence),
+      });
+    }
+
+    const config = (concept.configuration ?? {}) as Record<string, any>;
+    const currentSources = Array.isArray(config.sourceFiles)
+      ? config.sourceFiles.filter((item: unknown) => item && typeof item === "object").slice(-19)
+      : [];
+    const previousImports = Array.isArray(config.projectImportHistory)
+      ? config.projectImportHistory.filter((item: unknown) => item && typeof item === "object").slice(-9)
+      : [];
+
+    const sourceFile = {
+      id: crypto.randomUUID(),
+      storagePath,
+      url: sourceUrl,
+      originalName: req.file.originalname,
+      mimeType,
+      extension,
+      kind: "architectural_project",
+      uploadedAt: importedAt,
+      status: "parsed",
+      parserStatus: "ready_project_memory",
+      summary: {
+        sheets: analysis.document.detectedSheets.length,
+        rooms: analysis.memory.rooms.length,
+        openings: analysis.memory.openings.length,
+        materials: analysis.memory.materials.length,
+        universalModels: savedModels.length,
+        warnings: analysis.warnings.length + analysis.memory.inconsistencies.length,
+      },
+    };
+
+    await db
+      .update(archConceptProjectsTable)
+      .set({
+        configuration: {
+          ...config,
+          sourceFiles: [...currentSources, sourceFile],
+          projectMemory: {
+            version: analysis.version,
+            generatedAt: importedAt,
+            sourceId: sourceFile.id,
+            document: analysis.document,
+            memory: analysis.memory,
+            warnings: analysis.warnings,
+          },
+          projectImportHistory: [
+            ...previousImports,
+            {
+              id: sourceFile.id,
+              importedAt,
+              sourceDocumentHash,
+              document: analysis.document,
+              memorySummary: analysis.memory.summary,
+              universalModelIds: savedModels.map((item) => item.id),
+            },
+          ],
+        } as any,
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(archConceptProjectsTable.id, projectId),
+        eq(archConceptProjectsTable.tenantId, tenantId),
+        eq(archConceptProjectsTable.ownerUserId, userId),
+      ));
+
+    return res.status(201).json({
+      status: "completed",
+      source: sourceFile,
+      document: analysis.document,
+      memory: analysis.memory,
+      universalModels: savedModels,
+      warnings: analysis.warnings,
+      message: "Projeto interpretado, Memória da Obra gerada e modelos reutilizáveis enviados automaticamente à Biblioteca Universal.",
+    });
+  } catch (error) {
+    return res.status(422).json({
+      error: error instanceof Error ? error.message : "Não foi possível interpretar o projeto arquitetônico.",
+    });
+  }
+});
 
 router.post("/arch/concept-projects/:id/import-geometry", geometryUpload.single("file"), async (req, res) => {
   const tenantId = req.user?.tenantId ?? req.tenantId;
