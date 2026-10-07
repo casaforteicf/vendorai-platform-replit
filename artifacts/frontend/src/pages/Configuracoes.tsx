@@ -389,7 +389,7 @@ function FocusedLegacySettings({ tab }: { tab: string }) {
   }, [currentTab, setLocation, tab]);
 
   if (currentTab !== tab) return null;
-  return <ConfiguracoesNormalized embedded />;
+  return <ConfiguracoesNormalized embedded forcedTab="perfil" />;
 }
 
 function SettingsSectionShell({
@@ -799,14 +799,14 @@ export default function Configuracoes() {
       title: "Empresa",
       description: "Dados da empresa, marca, endereço, canais e preferências.",
       icon: Building2,
-      action: () => openSettingsSection("empresa", "perfil"),
+      action: () => openSettingsSection("empresa"),
     },
     {
       key: "equipe",
       title: "Equipe e permissões",
       description: "Usuários, funções, acessos e responsáveis.",
       icon: Users,
-      action: () => openSettingsSection("equipe", "equipe"),
+      action: () => openSettingsSection("equipe"),
     },
     {
       key: "integracoes",
