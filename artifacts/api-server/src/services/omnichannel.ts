@@ -566,7 +566,7 @@ export async function sendDirectWhatsAppMessage(
   }
 }
 
-async function sendOperationalEmail(params: {
+export async function sendOperationalEmail(params: {
   to: string;
   subject: string;
   text: string;
