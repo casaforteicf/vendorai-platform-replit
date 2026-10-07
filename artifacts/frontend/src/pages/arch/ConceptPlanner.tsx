@@ -947,6 +947,12 @@ type ConceptListItem = {
   customerName: string | null;
   thumbnailUrl: string | null;
   updatedAt: string | null;
+  currentStep?: number | null;
+  projectScope?: "house" | "room" | null;
+  terrainDefined?: boolean;
+  desiredArea?: number | null;
+  floors?: number | null;
+  roomCount?: number;
 };
 
 function conceptUrlParams() {
@@ -1077,6 +1083,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const projectStartReferenceInputRef = useRef<HTMLInputElement | null>(null);
   const navigatingAwayRef = useRef(false);
   const creatingConceptRef = useRef<Promise<string | null> | null>(null);
+  const creationKeyRef = useRef<string>(
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `concept-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
   const [aiDevelopmentState, setAiDevelopmentState] = useState<"idle" | "running" | "error">("idle");
   const [customerProfile, setCustomerProfile] = useState<CustomerProfile>({});
@@ -1713,6 +1724,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         startSourceChosen,
         intakeStage,
         terrainDefined,
+        creationKey: creationKeyRef.current,
         workspaceBounds: { width: lotWidth, depth: lotDepth },
         facadeDesign: nextFacadeDesign,
       },
@@ -1842,13 +1854,16 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   });
 
   const goToJourneyStage = (index: number) => {
-    if (index > journeyIndex && blockingLayoutIssues.length > 0) {
-      setMobileValidationOpen(true);
-      return;
-    }
     const isWide = typeof window !== "undefined" && window.innerWidth >= 768;
     const stage = journeyStages[Math.max(0, Math.min(index, journeyStages.length - 1))];
-    if (!stage || stage.id === "send") {
+    if (!stage) return;
+    // O editor é não linear: terreno, briefing, planta, materiais e visual podem ser revisitados
+    // a qualquer momento. Só a apresentação final exige resolver bloqueios arquitetônicos.
+    if (stage.id === "send") {
+      if (blockingLayoutIssues.length > 0) {
+        setMobileValidationOpen(true);
+        return;
+      }
       void saveConcept(RESULT_STEP);
       setStep(RESULT_STEP);
       window.scrollTo({ top: 0 });
@@ -7390,9 +7405,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             <div className="arq-journey-row flex min-h-11 flex-wrap items-center gap-2 border-b bg-white px-3 py-1.5 sm:px-3">
               <div className="min-w-0 flex-1">
                 <div className="text-xs font-bold text-slate-950">
-                  <span className="sm:hidden">{journeyIndex + 1}/{journeyStages.length} · </span>
-                  <span className="hidden sm:inline">Etapa {journeyIndex + 1} de {journeyStages.length} · </span>
-                  {journeyStages[journeyIndex].label}
+                  <span className="text-slate-400">Área atual · </span>{journeyStages[journeyIndex].label}
                 </div>
                 <div className={journeyIndex === 2 || journeyIndex === 3 ? "hidden truncate text-xs text-slate-500 sm:block" : "truncate text-xs text-slate-500"}>
                   {journeyStages[journeyIndex].helper}
@@ -7410,7 +7423,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         ? "min-h-9 rounded-lg px-3 text-xs font-semibold text-emerald-700 hover:bg-white"
                         : "min-h-9 rounded-lg px-3 text-xs font-semibold text-slate-500 hover:bg-white"}
                   >
-                    {index < journeyIndex ? "✓ " : `${index + 1}. `}{stage.label}
+                    {stage.label}
                   </button>
                 ))}
               </div>
@@ -7457,11 +7470,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                 <button
                   type="button"
                   onClick={() => goToJourneyStage(journeyIndex + 1)}
-                  disabled={blockingLayoutIssues.length > 0}
-                  title={blockingLayoutIssues.length > 0 ? "Corrija os erros arquitetônicos antes de avançar." : undefined}
-                  className="arq-journey-continue inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl bg-orange-500 px-4 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600 disabled:shadow-none"
+                  title="Atalho sugerido; você pode abrir qualquer área do projeto diretamente."
+                  className="arq-journey-continue inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl bg-orange-500 px-4 text-sm font-semibold text-white shadow-sm hover:bg-orange-600"
                 >
-                  {blockingLayoutIssues.length > 0 ? "Corrija os erros" : conceptJourneyContinueLabel(journeyIndex, journeyStages)} <ArrowRight className="h-4 w-4" />
+                  Próxima sugestão: {journeyStages[Math.min(journeyIndex + 1, journeyStages.length - 1)]?.label} <ArrowRight className="h-4 w-4" />
                 </button>
               )}
             </div>
@@ -11302,7 +11314,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       {projectListOpen && (
         <div className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-950/60 p-0 sm:items-center sm:p-6" onClick={() => setProjectListOpen(false)}>
           <div
-            className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl bg-background shadow-2xl sm:rounded-3xl"
+            className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-t-3xl bg-background shadow-2xl sm:rounded-3xl"
             onClick={(event) => event.stopPropagation()}
             role="dialog"
             aria-label="Meus pré-projetos"
@@ -11310,7 +11322,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             <div className="flex items-center justify-between gap-3 border-b px-5 py-4">
               <div>
                 <h2 className="text-lg font-bold">Meus pré-projetos</h2>
-                <p className="text-xs text-muted-foreground">Um pré-projeto por cliente. Toque para abrir.</p>
+                <p className="text-xs text-muted-foreground">Projetos visuais com escopo, estágio e última edição. Abra qualquer um para continuar.</p>
               </div>
               <button type="button" onClick={() => setProjectListOpen(false)} className="grid h-9 w-9 place-items-center rounded-xl border" aria-label="Fechar">
                 <X className="h-4 w-4" />
@@ -11343,33 +11355,48 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               {projectListState === "idle" && projectList.length === 0 && (
                 <div className="px-2 py-8 text-center text-sm text-muted-foreground">Nenhum pré-projeto salvo ainda.</div>
               )}
-              <ul className="space-y-2">
+              <ul className="grid gap-3 md:grid-cols-2">
                 {projectList.map((item) => {
                   const isCurrent = item.id === (conceptIdRef.current ?? conceptId);
                   const label = item.customerName ?? (item.title && item.title !== "Meu pré-projeto" ? item.title : "Sem cliente definido");
                   return (
-                    <li key={item.id} className={isCurrent ? "flex items-center gap-3 rounded-2xl border border-orange-300 bg-orange-50/60 p-2" : "flex items-center gap-3 rounded-2xl border p-2"}>
+                    <li key={item.id} className={isCurrent ? "relative overflow-hidden rounded-2xl border border-orange-300 bg-orange-50/60" : "relative overflow-hidden rounded-2xl border bg-white"}>
                       <button
                         type="button"
                         onClick={() => { if (isCurrent) setProjectListOpen(false); else void goToConcept({ id: item.id }); }}
-                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                        className="block w-full text-left"
                       >
-                        <div className="h-14 w-20 shrink-0 overflow-hidden rounded-xl bg-muted">
+                        <div className="relative h-36 w-full overflow-hidden bg-slate-100">
                           {item.thumbnailUrl
                             ? <img src={item.thumbnailUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
-                            : <div className="grid h-full w-full place-items-center text-muted-foreground"><Home className="h-5 w-5" /></div>}
+                            : <div className="grid h-full w-full place-items-center bg-gradient-to-br from-slate-50 to-slate-100 text-slate-400"><Home className="h-8 w-8" /></div>}
+                          <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-slate-950/55 to-transparent" />
+                          <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5">
+                            <span className="rounded-full bg-white/95 px-2 py-1 text-[10px] font-bold text-slate-700">
+                              {item.projectScope === "room" ? "Ambiente" : "Casa"}
+                            </span>
+                            {item.terrainDefined && <span className="rounded-full bg-white/95 px-2 py-1 text-[10px] font-bold text-slate-700">Terreno definido</span>}
+                            {isCurrent && <span className="rounded-full bg-orange-500 px-2 py-1 text-[10px] font-bold text-white">Aberto</span>}
+                          </div>
                         </div>
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold">{label}</div>
-                          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                            {item.updatedAt && <span>{new Date(item.updatedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" })}</span>}
-                            {isCurrent && <span className="rounded-full bg-orange-100 px-2 py-0.5 font-semibold text-orange-700">Aberto</span>}
-                            {item.sentToProfessional && <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-700">Enviado</span>}
+                        <div className="p-4">
+                          <div className="truncate text-sm font-bold text-slate-950">{label}</div>
+                          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                            {typeof item.desiredArea === "number" && item.desiredArea > 0 && <span>≈ {Math.round(item.desiredArea)} m²</span>}
+                            {typeof item.floors === "number" && item.floors > 0 && <span>{item.floors === 1 ? "Térreo" : `${item.floors} pavimentos`}</span>}
+                            {typeof item.roomCount === "number" && <span>{item.roomCount} ambientes</span>}
+                            {item.updatedAt && <span>Editado {new Date(item.updatedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" })}</span>}
+                          </div>
+                          <div className="mt-3 flex items-center justify-between gap-2">
+                            <span className="text-[11px] font-semibold text-slate-600">
+                              {item.sentToProfessional ? "Projeto enviado" : item.status === "submitted" ? "Aguardando continuidade" : "Rascunho editável"}
+                            </span>
+                            <span className="text-[11px] font-bold text-orange-600">Abrir →</span>
                           </div>
                         </div>
                       </button>
                       {!item.sentToProfessional && confirmDeleteId === item.id && (
-                        <div className="flex shrink-0 items-center gap-1">
+                        <div className="flex items-center justify-end gap-1 border-t bg-white px-3 py-2">
                           <button
                             type="button"
                             onClick={() => void deleteConceptFromList(item)}
@@ -11388,7 +11415,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           type="button"
                           onClick={() => setConfirmDeleteId(item.id)}
                           disabled={deletingProjectId === item.id}
-                          className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border text-muted-foreground hover:text-red-600 disabled:opacity-50"
+                          className="absolute right-3 top-3 grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/70 bg-white/90 text-slate-500 shadow-sm hover:text-red-600 disabled:opacity-50"
                           aria-label="Excluir pré-projeto"
                           title="Excluir"
                         >
