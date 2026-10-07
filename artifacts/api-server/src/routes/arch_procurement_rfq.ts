@@ -372,6 +372,7 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
     const commercial = await commercialContext(tid, String(budget.project_id), budgetId);
 
     const selectedIds = Array.isArray(req.body?.budgetItemIds) ? req.body.budgetItemIds.map(String) : [];
+    const groupingMode = String(req.body?.groupingMode || "specialty") === "full_project" ? "full_project" : "specialty";
     const params: any[] = [budgetId, tid];
     let filter = "";
     if (selectedIds.length) { params.push(selectedIds); filter = ` AND id = ANY($3::uuid[])`; }
@@ -404,11 +405,19 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/from-budget", async
     }
 
     const groups = new Map<string, { category: string; discipline: string; rows: any[] }>();
-    for (const row of itemResult.rows) {
-      const scope = inferScope(row);
-      const key = `${scope.category}::${scope.discipline}`;
-      const group = groups.get(key) ?? { ...scope, rows: [] };
-      group.rows.push(row); groups.set(key, group);
+    if (groupingMode === "full_project") {
+      groups.set("projeto-completo::projeto-completo", {
+        category: "projeto-completo",
+        discipline: "projeto-completo",
+        rows: itemResult.rows,
+      });
+    } else {
+      for (const row of itemResult.rows) {
+        const scope = inferScope(row);
+        const key = `${scope.category}::${scope.discipline}`;
+        const group = groups.get(key) ?? { ...scope, rows: [] };
+        group.rows.push(row); groups.set(key, group);
+      }
     }
 
     await client.query("BEGIN");
