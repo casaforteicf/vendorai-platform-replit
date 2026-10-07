@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { ArrowLeft, Bell, Bot, Building2, ChevronRight, Database, Search, Settings2, ShieldCheck, Users, Workflow, Zap } from "lucide-react";
 import ConfiguracoesNormalized from "./ConfiguracoesNormalized";
+import ConfiguracoesLegacy from "./ConfiguracoesLegacy";
 import { BrandKitSettings } from "@/components/BrandKitSettings";
 import IntegrationSettingsHub from "./IntegrationSettingsHub";
 import DiagnosticoPlanejamento from "./DiagnosticoPlanejamento";
@@ -378,18 +379,7 @@ function SettingsUxCleanup() {
 
 
 function FocusedLegacySettings({ tab }: { tab: string }) {
-  const [, setLocation] = useLocation();
-  const currentTab = new URLSearchParams(window.location.search).get("tab");
-
-  useEffect(() => {
-    if (currentTab === tab) return;
-    const search = new URLSearchParams(window.location.search);
-    search.set("tab", tab);
-    setLocation(`${window.location.pathname}?${search.toString()}`, { replace: true });
-  }, [currentTab, setLocation, tab]);
-
-  if (currentTab !== tab) return null;
-  return <ConfiguracoesNormalized embedded />;
+  return <ConfiguracoesLegacy embedded forcedTab={tab} />;
 }
 
 function SettingsSectionShell({

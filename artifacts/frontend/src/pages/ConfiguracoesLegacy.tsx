@@ -574,7 +574,7 @@ function AnalysisLogTab({ tenantId }: { tenantId: string }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function Configuracoes({ embedded = false }: { embedded?: boolean } = {}) {
+export default function Configuracoes({ embedded = false, forcedTab }: { embedded?: boolean; forcedTab?: string } = {}) {
   const { user, token, isEffectiveAdmin } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const { toast } = useToast();
@@ -588,9 +588,15 @@ export default function Configuracoes({ embedded = false }: { embedded?: boolean
   const showFaturamento = isAdmin || (userFunction && ["financeiro", "administrador", "outro"].includes(userFunction));
 
   const [activeTab, setActiveTab] = useState<string>(() => {
+    if (forcedTab) return forcedTab;
     const params = new URLSearchParams(window.location.search);
     return params.get("tab") ?? "perfil";
   });
+
+  useEffect(() => {
+    if (!forcedTab || activeTab === forcedTab) return;
+    setActiveTab(forcedTab);
+  }, [activeTab, forcedTab]);
 
   // ── Team Management ────────────────────────────────────────────────────────
   const [inviteEmail, setInviteEmail] = useState("");
