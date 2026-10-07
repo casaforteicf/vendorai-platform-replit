@@ -23,6 +23,7 @@ import {
   tenantsTable,
   tenantCalendarSettingsTable,
   pipelineStagesTable,
+  dealTenantParticipationsTable,
   installationChecklistTemplatesTable,
   installationVisitsTable,
   installationChecklistItemsTable,
@@ -1726,6 +1727,7 @@ router.post("/tenants/:tenantId/support-cases", async (req, res) => {
 
   const [lead] = await db.select({
     id: leadsTable.id,
+    tenantId: leadsTable.tenantId,
     nome: leadsTable.nome,
     empresa: leadsTable.empresa,
     telefone: leadsTable.telefone,
@@ -1735,10 +1737,31 @@ router.post("/tenants/:tenantId/support-cases", async (req, res) => {
     dadosPj: leadsTable.dadosPj,
   })
     .from(leadsTable)
-    .where(and(eq(leadsTable.id, parsed.data.leadId), eq(leadsTable.tenantId, tenantId)));
+    .where(eq(leadsTable.id, parsed.data.leadId));
   if (!lead) {
     res.status(404).json({ error: "Cliente não encontrado" });
     return;
+  }
+
+  let sharedParticipation: typeof dealTenantParticipationsTable.$inferSelect | null = null;
+  if (lead.tenantId !== tenantId) {
+    const rows = await db.select({ participation: dealTenantParticipationsTable })
+      .from(dealTenantParticipationsTable)
+      .innerJoin(dealsTable, eq(dealsTable.id, dealTenantParticipationsTable.dealId))
+      .where(and(
+        eq(dealsTable.leadId, lead.id),
+        eq(dealTenantParticipationsTable.partnerTenantId, tenantId),
+        eq(dealTenantParticipationsTable.status, "active"),
+      ));
+    const currentUserId = String(req.user?.sub ?? "");
+    const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+    sharedParticipation = rows
+      .map((row) => row.participation)
+      .find((participation) => isAdmin || !participation.operationalUserId || participation.operationalUserId === currentUserId) ?? null;
+    if (!sharedParticipation || !sharedParticipation.permissions.includes("open_support")) {
+      res.status(403).json({ error: "Este cliente não está compartilhado com permissão para abrir suporte." });
+      return;
+    }
   }
   const [responsavel] = await db.select({ id: usersTable.id, name: usersTable.name, telefone: usersTable.telefone })
     .from(usersTable)
@@ -1749,10 +1772,16 @@ router.post("/tenants/:tenantId/support-cases", async (req, res) => {
   }
 
   if (parsed.data.dealId) {
-    const [deal] = await db.select({ id: dealsTable.id }).from(dealsTable)
-      .where(and(eq(dealsTable.id, parsed.data.dealId), eq(dealsTable.tenantId, tenantId)));
-    if (!deal) {
-      res.status(422).json({ error: "Pedido/negócio informado não pertence a este cliente/tenant" });
+    const [deal] = await db.select({ id: dealsTable.id, tenantId: dealsTable.tenantId, leadId: dealsTable.leadId }).from(dealsTable)
+      .where(eq(dealsTable.id, parsed.data.dealId));
+    const sharedDealAllowed = Boolean(
+      deal
+      && deal.leadId === parsed.data.leadId
+      && sharedParticipation
+      && sharedParticipation.dealId === deal.id
+    );
+    if (!deal || deal.leadId !== parsed.data.leadId || (deal.tenantId !== tenantId && !sharedDealAllowed)) {
+      res.status(422).json({ error: "Pedido/negócio informado não pertence a este cliente ou não está compartilhado com esta empresa" });
       return;
     }
   }
