@@ -7,6 +7,7 @@ import {
 } from "@workspace/db";
 import { callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";
 import { resolveContentContext } from "./contentContextLibrary.js";
+import { resolveColdProspectingConfig } from "./cold-prospecting-config.js";
 import type { SalesContentPlan } from "./sales-content-planner.js";
 
 type GeneratedCommercialAsset = {
@@ -185,10 +186,17 @@ export async function approveSalesContent(input: {
   assetId: string;
   autoSendAllowed?: boolean;
 }): Promise<boolean> {
+  const runtime = await resolveColdProspectingConfig(input.tenantId);
+  const requestedAutoSend = input.autoSendAllowed ?? false;
+  const effectiveAutoSend =
+    requestedAutoSend &&
+    runtime.mode === "autonomous" &&
+    runtime.autoSendApprovedContent;
+
   const [updated] = await db.update(contentLibraryTable)
     .set({
       approvalStatus: "approved",
-      autoSendAllowed: input.autoSendAllowed ?? false,
+      autoSendAllowed: effectiveAutoSend,
     })
     .where(and(
       eq(contentLibraryTable.id, input.assetId),
