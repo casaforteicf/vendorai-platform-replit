@@ -105,9 +105,8 @@ type ConceptStartWizardStage = "kind" | "terrain" | "source";
 type ConceptIntakeStage = "kind" | "terrain_choice" | "terrain_editor" | "source" | "complete";
 
 const GUIDED_LIBRARY_FLOW: Array<{ id: EditorLibraryTab; label: string; helper: string }> = [
-  { id: "site", label: "Terreno", helper: "Defina lote, frente e implantação." },
+  { id: "site", label: "Terreno", helper: "Defina lote, frente, recuos, norte e implantação quando houver terreno real." },
   { id: "brief", label: "Necessidades", helper: "Conte como a casa precisa funcionar." },
-  { id: "placement", label: "Implantação", helper: "Posicione a casa dentro dos recuos do terreno." },
   { id: "rooms", label: "Ambientes", helper: "Revise e ajuste os cômodos sugeridos." },
   { id: "build", label: "Construir", helper: "Ajuste paredes, portas, janelas e escada." },
   { id: "furniture", label: "Mobiliar", helper: "Posicione móveis e equipamentos reais." },
@@ -1230,8 +1229,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       }
       return;
     }
-    if (projectScope === "house" && !terrainDefined && (editorLibraryTab === "site" || editorLibraryTab === "placement")) {
-      setEditorLibraryTab(startSourceChosen ? "build" : "brief");
+    if (projectScope === "house" && editorLibraryTab === "placement") {
+      // "Implantação" foi consolidada dentro de Terreno. Mantém compatibilidade com estados antigos.
+      setEditorLibraryTab("site");
     }
   }, [projectScope, terrainDefined, editorView, editorLibraryTab, startSourceChosen]);
 
@@ -2367,7 +2367,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     setSelectedClosedSpaceId(null);
     setInteractionMode("room");
     setEditorView("plan");
-    setEditorLibraryTab("placement");
+    setEditorLibraryTab(terrainDefined ? "site" : "build");
     setLibraryOpen(true);
     setStep(4);
   };
@@ -7630,7 +7630,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     <div className="flex flex-col items-center gap-2">
                       {([
                         ["site", Ruler, "Terreno"],
-                        ["placement", MapPin, "Implantação"],
                         ["brief", FileText, "Necessidades"],
                         ["models", LayoutGrid, "Modelos"],
                         ["rooms", DoorOpen, "Ambientes"],
@@ -7641,9 +7640,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       ] as Array<[EditorLibraryTab, typeof Ruler, string]>)
                         .filter(([value]) => {
                           if (terrainOnly) return value === "site";
-                          if (projectScope === "room" && (value === "site" || value === "placement" || value === "outdoor")) return false;
-                          if (projectScope === "house" && !terrainDefined && (value === "site" || value === "placement")) return false;
-                          if (editorExperienceMode === "professional") return value !== "brief" && value !== "placement";
+                          if (projectScope === "room" && (value === "site" || value === "outdoor")) return false;
+                          if (editorExperienceMode === "professional") return value !== "brief";
                           return true;
                         })
                         .map(([value, Icon, label]) => (
@@ -7759,14 +7757,42 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       </div>
 
                       <div className="rounded-xl border bg-slate-50 p-4">
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Área do terreno</div>
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{terrainDefined ? "Área do terreno" : "Área técnica do workspace"}</div>
                         <div className="mt-1 text-2xl font-bold">{(lotWidth * lotDepth).toFixed(0)} m²</div>
                         <div className="mt-1 text-xs text-slate-500">{lotWidth.toFixed(1)} × {lotDepth.toFixed(1)} m</div>
                       </div>
 
-                      <div className="rounded-xl border border-dashed p-3 text-xs leading-5 text-slate-500">
-                        O lote fica no próprio workspace. Você pode ajustar as dimensões a qualquer momento sem voltar etapas.
-                      </div>
+                      {!terrainDefined ? (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                          <div className="text-xs font-bold text-amber-900">Estas medidas ainda não são um terreno real</div>
+                          <p className="mt-1 text-[11px] leading-5 text-amber-800">
+                            O Arqdor usa 12 × 30 m apenas como área técnica de desenho até você confirmar o lote. Assim a IA não inventa recuos, norte ou implantação.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => { setTerrainDefined(true); setStartWithTerrain(true); }}
+                            className="mt-3 w-full rounded-xl bg-slate-950 px-3 py-2.5 text-xs font-bold text-white"
+                          >
+                            Usar estas medidas como terreno real
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">
+                            <span className="font-bold">Terreno definido.</span> Frente, recuos, norte, declive e implantação ficam vinculados ao mesmo projeto.
+                          </div>
+                          <div className="border-t pt-4">
+                            <ConceptSitePlacementPanel
+                              lotWidth={lotWidth}
+                              lotDepth={lotDepth}
+                              rooms={safeRooms}
+                              placement={sitePlacement}
+                              onPlacementChange={handleSitePlacementChange}
+                              onMoveBuilding={moveWholeProjectTo}
+                            />
+                          </div>
+                        </>
+                      )}
                     </div>
                   )}
 
@@ -7883,7 +7909,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     />
                   )}
 
-                  {editorLibraryTab === "placement" && (
+                  {editorLibraryTab === "placement" && terrainDefined && (
                     <ConceptSitePlacementPanel
                       lotWidth={lotWidth}
                       lotDepth={lotDepth}
