@@ -6182,16 +6182,52 @@ router.post("/arch/marketplace/:itemId/comprar", authenticate, async (req, res) 
     `SELECT id,name FROM tenants WHERE id=$1 LIMIT 1`,
     [tid],
   );
-  const productMeta = item.masterProductId
-    ? await vendorPool.query(
+  let masterProduct: any = null;
+  if (item.masterProductId) {
+    const productMeta = await vendorPool.query(
+      `SELECT p.id,p.sku,p.marca,p.unidade,COALESCE(c.nome,$2) AS categoria
+         FROM produtos_catalogo p
+         LEFT JOIN categorias_produto c ON c.id=p.categoria_id
+        WHERE p.id=$1 AND p.tenant_id=$3 LIMIT 1`,
+      [item.masterProductId, item.categoria || null, item.vendedorTenantId],
+    );
+    masterProduct = productMeta.rows[0] || null;
+  }
+
+  // Compatibilidade com anúncios antigos: todo item comercializável do Market
+  // precisa convergir para o produto mestre para usar pagamento, logística e ledger.
+  if (!masterProduct) {
+    const legacySku = `ARQDOR-${item.id.slice(0, 18).toUpperCase()}`;
+    const createdMaster = await vendorPool.query(
+      `INSERT INTO produtos_catalogo
+        (id,tenant_id,nome,sku,product_type,descricao,preco_base,unidade,ativo,
+         vende_no_arqdor,preco_arqdor,project_library_enabled,created_at,updated_at)
+       VALUES(gen_random_uuid()::text,$1,$2,$3,'physical',$4,$5,'un',true,true,$5,true,now(),now())
+       ON CONFLICT DO NOTHING
+       RETURNING id,sku,marca,unidade`,
+      [item.vendedorTenantId,item.nome,legacySku,item.descricao || null,String(valorUnitario)],
+    );
+    if (createdMaster.rows[0]) {
+      masterProduct = { ...createdMaster.rows[0], categoria: item.categoria || null };
+    } else {
+      const existingMaster = await vendorPool.query(
         `SELECT p.id,p.sku,p.marca,p.unidade,COALESCE(c.nome,$2) AS categoria
            FROM produtos_catalogo p
            LEFT JOIN categorias_produto c ON c.id=p.categoria_id
-          WHERE p.id=$1 AND p.tenant_id=$3 LIMIT 1`,
-        [item.masterProductId, item.categoria || null, item.vendedorTenantId],
-      )
-    : { rows: [] as any[] };
-  const masterProduct = productMeta.rows[0] || null;
+          WHERE p.tenant_id=$1 AND p.sku=$3
+          ORDER BY p.created_at DESC LIMIT 1`,
+        [item.vendedorTenantId,item.categoria || null,legacySku],
+      );
+      masterProduct = existingMaster.rows[0] || null;
+    }
+    if (masterProduct?.id) {
+      await vendorPool.query(
+        `UPDATE arch_marketplace_items SET master_product_id=$1 WHERE id=$2 AND vendedor_tenant_id=$3`,
+        [masterProduct.id,item.id,item.vendedorTenantId],
+      );
+      (item as any).masterProductId = masterProduct.id;
+    }
+  }
 
   const commissionContext = {
     buyerTenantId: tid,
