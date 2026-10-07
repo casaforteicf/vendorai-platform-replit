@@ -71,7 +71,7 @@ async function getProposalBundleById(proposalId: string, options: { publicView?:
               pi.item, pi.description, pi.quantity, pi.unit, pi.total,
               pi.visible_to_client, pi.approval_status, pi.client_comment,
               pi.approved_at, pi.rejected_at, pi.sort_order, pi.created_at, pi.updated_at,
-              aso.product_name, aso.material_name, aso.manufacturer_name,
+              aso.product_name, aso.material_name, aso.manufacturer_name, aso.catalog_code,
               aso.width_mm, aso.height_mm, aso.depth_mm, aso.length_mm,
               aso.area_m2, aso.perimeter_m, aso.volume_m3,
               aso.project_revision, aso.measurement_source, aso.measurement_revision
@@ -80,7 +80,7 @@ async function getProposalBundleById(proposalId: string, options: { publicView?:
         WHERE pi.proposal_id = $1
           AND pi.visible_to_client = true
         ORDER BY pi.sort_order ASC, pi.created_at ASC`
-    : `SELECT pi.*, aso.product_name, aso.material_name, aso.manufacturer_name,
+    : `SELECT pi.*, aso.product_name, aso.material_name, aso.manufacturer_name, aso.catalog_code,
               aso.width_mm, aso.height_mm, aso.depth_mm, aso.length_mm,
               aso.area_m2, aso.perimeter_m, aso.volume_m3,
               aso.project_revision, aso.measurement_source, aso.measurement_revision
@@ -399,6 +399,85 @@ async function clientFinalDecision(portalToken: string, payload: ClientDecisionP
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 const archClientPortalApprovalRouter = Router();
+export const archClientPortalApprovalPublicRouter = Router();
+
+archClientPortalApprovalRouter.get("/arch/documentacao/:projectId", async (req, res, next) => {
+  try {
+    const tid = tenantId(req);
+    const projectId = String(req.params["projectId"] ?? "");
+    if (!tid || !projectId) {
+      res.status(400).json({ error: "tenant e projectId são obrigatórios" });
+      return;
+    }
+
+    const [projectResult, specsResult, budgetResult, proposalResult] = await Promise.all([
+      pool.query(
+        `SELECT id, titulo, cliente_nome, cliente_email, cliente_telefone, status, area_m2, arquiteto_responsavel, updated_at
+           FROM arch_projetos
+          WHERE id::text = $1::text AND tenant_id::text = $2::text
+          LIMIT 1`,
+        [projectId, tid],
+      ),
+      pool.query(
+        `SELECT id, name, description, category, quantity, unit,
+                product_name, material_name, manufacturer_name, supplier_name, catalog_code,
+                width_mm, height_mm, depth_mm, length_mm, area_m2, perimeter_m, volume_m3,
+                technical_approval_status, technical_approved_at, technical_approved_by,
+                project_revision, status, updated_at
+           FROM arch_spec_objects
+          WHERE project_id::text = $1::text
+            AND (tenant_id::text = $2::text OR tenant_id IS NULL)
+            AND technical_approval_status = 'approved'
+          ORDER BY category NULLS LAST, name ASC`,
+        [projectId, tid],
+      ),
+      pool.query(
+        `SELECT id, title, status, version, sale_total, sale_source, updated_at
+           FROM arch_budgets
+          WHERE project_id::text = $1::text
+            AND (tenant_id::text = $2::text OR tenant_id IS NULL)
+            AND deleted_at IS NULL
+          ORDER BY updated_at DESC
+          LIMIT 1`,
+        [projectId, tid],
+      ),
+      pool.query(
+        `SELECT id, title, status, version, portal_token, client_name, approved_at, updated_at
+           FROM arch_proposals
+          WHERE project_id::text = $1::text
+            AND (tenant_id::text = $2::text OR tenant_id IS NULL)
+            AND deleted_at IS NULL
+          ORDER BY approved_at DESC NULLS LAST, updated_at DESC
+          LIMIT 1`,
+        [projectId, tid],
+      ),
+    ]);
+
+    const project = projectResult.rows[0];
+    if (!project) {
+      res.status(404).json({ error: "Projeto não encontrado" });
+      return;
+    }
+
+    res.json({
+      generated_at: new Date().toISOString(),
+      project,
+      specifications: specsResult.rows,
+      budget: budgetResult.rows[0] ?? null,
+      proposal: proposalResult.rows[0] ?? null,
+      manual_status: specsResult.rows.length > 0 ? "ready" : "pending_specification",
+      source: {
+        project: "arch_projetos",
+        specifications: "arch_spec_objects.approved",
+        budget: "arch_budgets.latest",
+        proposal: "arch_proposals.latest",
+      },
+    });
+  } catch (err) {
+    logger.error({ err }, "arch/documentacao/:projectId GET error");
+    next(err);
+  }
+});
 
 archClientPortalApprovalRouter.get("/arch/propostas", async (req, res, next) => {
   try {
@@ -452,7 +531,7 @@ archClientPortalApprovalRouter.post("/arch/propostas/:id/send", async (req, res,
 });
 
 // ─── Public routes (no auth required) ────────────────────────────────────────
-archClientPortalApprovalRouter.get("/arch/portal/proposta/:token", async (req, res, next) => {
+archClientPortalApprovalPublicRouter.get("/arch/portal/proposta/:token", async (req, res, next) => {
   try {
     const result = await getPublicProposal(req.params["token"]!);
     res.json(result);
@@ -462,7 +541,7 @@ archClientPortalApprovalRouter.get("/arch/portal/proposta/:token", async (req, r
   }
 });
 
-archClientPortalApprovalRouter.post("/arch/portal/proposta/:token/items/:itemId/decision", async (req, res, next) => {
+archClientPortalApprovalPublicRouter.post("/arch/portal/proposta/:token/items/:itemId/decision", async (req, res, next) => {
   try {
     const result = await clientItemDecision(req.params["token"]!, req.params["itemId"]!, req.body as ClientItemDecisionPayload);
     res.json(result);
@@ -472,7 +551,7 @@ archClientPortalApprovalRouter.post("/arch/portal/proposta/:token/items/:itemId/
   }
 });
 
-archClientPortalApprovalRouter.post("/arch/portal/proposta/:token/decision", async (req, res, next) => {
+archClientPortalApprovalPublicRouter.post("/arch/portal/proposta/:token/decision", async (req, res, next) => {
   try {
     const result = await clientFinalDecision(req.params["token"]!, req.body as ClientDecisionPayload);
     res.json(result);

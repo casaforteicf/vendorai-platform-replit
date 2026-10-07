@@ -63,7 +63,7 @@ function Header({ view, setView, onNavigate }: { view: FacilityView; setView: (v
   );
 }
 
-export default function FacilityManagementCenter({ onNavigate }: Props) {
+export default function FacilityManagementCenter({ arqState, onNavigate }: Props) {
   const [view, setView] = useState<FacilityView>("dashboard");
 
   return (
@@ -76,7 +76,7 @@ export default function FacilityManagementCenter({ onNavigate }: Props) {
             <FacilityDashboard />
             <main className="grid gap-5 xl:grid-cols-[1fr_390px]">
               <div className="space-y-5">
-                <OwnerManual />
+                <OwnerManual projectId={arqState?.projectId ?? null} />
                 <AssetInventory />
                 <ServiceTickets />
               </div>
@@ -85,7 +85,7 @@ export default function FacilityManagementCenter({ onNavigate }: Props) {
           </>
         ) : null}
 
-        {view === "manual" ? <OwnerManual /> : null}
+        {view === "manual" ? <OwnerManual projectId={arqState?.projectId ?? null} /> : null}
         {view === "warranties" ? <WarrantyCenter /> : null}
         {view === "assets" ? <AssetInventory /> : null}
         {view === "maintenance" ? <MaintenanceHistory /> : null}

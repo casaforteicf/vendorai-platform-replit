@@ -1,212 +1,232 @@
-import { useState, useEffect, useCallback } from 'react'
-import { T } from '../../shared/arqdor-theme'
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { T } from "../../shared/arqdor-theme";
 
-const BASE = '/api'
+const BASE = "/api";
+
 function authHeaders(): Record<string, string> {
-  const tok = localStorage.getItem('vendorai_token')
-  return tok ? { Authorization: `Bearer ${tok}` } : {}
+  const tok = localStorage.getItem("vendorai_token");
+  return tok ? { Authorization: `Bearer ${tok}` } : {};
 }
 
-interface GalleryRender {
-  id:        string
-  imageUrl:  string | null
-  versao:    number | null
-  origem:    string | null
-  createdAt: string
-  cenaId:    string
-  cenaNome:  string | null
-  projetoId: string
+type GalleryRender = {
+  id: string;
+  imageUrl: string | null;
+  versao: number | null;
+  origem: string | null;
+  createdAt: string;
+  cenaId: string;
+  cenaNome: string | null;
+  projetoId: string;
+};
+
+type FidelityDimension = {
+  score: number;
+  confidence: number;
+  evidence: string[];
+};
+
+type FidelityIssue = {
+  category: string;
+  severity: "MINOR" | "MAJOR" | "CRITICAL";
+  description: string;
+  evidence: string;
+  unsolicited: boolean;
+};
+
+type FidelityReview = {
+  overallScore: number;
+  camera: FidelityDimension;
+  geometry: FidelityDimension;
+  openings: FidelityDimension;
+  volumetry: FidelityDimension;
+  materials: FidelityDimension;
+  lighting: FidelityDimension;
+  unsolicitedChanges: FidelityIssue[];
+  acceptedChanges: FidelityIssue[];
+  summary: string;
+  requiresHumanReview: boolean;
+};
+
+type ReviewHistoryItem = {
+  id: string;
+  review: FidelityReview;
+  created_at?: string | null;
+};
+
+async function readJson(response: Response) {
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error((data as any)?.error || `HTTP ${response.status}`);
+  return data as any;
 }
 
-const scoreColor = (s: number) => s>=85 ? '#4ade80' : s>=70 ? '#fbbf24' : '#f87171'
-
-function ScoreBar({ label, icon, value }: { label:string; icon:string; value:number }) {
-  const color = scoreColor(value)
-  return (
-    <div style={{ marginBottom:14 }}>
-      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5 }}>
-        <span style={{ fontSize:11, color:T.dim }}>{icon} {label}</span>
-        <span style={{ fontSize:12, fontWeight:700, color }}>{value}</span>
-      </div>
-      <div style={{ height:6, borderRadius:3, background:'rgba(255,255,255,0.08)' }}>
-        <div style={{ height:'100%', width:`${value}%`, borderRadius:3, background:color, transition:'width 0.4s' }}/>
-      </div>
-    </div>
-  )
-}
-
-function deriveScores(render: GalleryRender) {
-  const seed = render.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)
-  const pseudo = (offset: number, min: number, max: number) => {
-    const v = ((seed * (offset + 7)) % 100 + 100) % 100
-    return Math.round(min + (v / 100) * (max - min))
-  }
-  return {
-    geometryScore: pseudo(1, 75, 98),
-    materialScore: pseudo(2, 55, 95),
-    lightingScore: pseudo(3, 60, 96),
-    renderedAt:    render.createdAt,
-    versao:        render.versao,
-    cenaNome:      render.cenaNome,
-    overall:       pseudo(9, 68, 95),
-  }
-}
+const DIMENSIONS: Array<[keyof FidelityReview, string]> = [
+  ["camera", "Câmera"],
+  ["geometry", "Geometria"],
+  ["openings", "Aberturas"],
+  ["volumetry", "Volumetria"],
+  ["materials", "Materiais"],
+  ["lighting", "Iluminação"],
+];
 
 export function AIReviewModule() {
-  const [renders,  setRenders]  = useState<GalleryRender[]>([])
-  const [loading,  setLoading]  = useState(true)
-  const [error,    setError]    = useState<string|null>(null)
-  const [selId,    setSelId]    = useState<string|null>(null)
-  const [running,  setRunning]  = useState(false)
+  const [renders, setRenders] = useState<GalleryRender[]>([]);
+  const [selId, setSelId] = useState<string | null>(null);
+  const [history, setHistory] = useState<ReviewHistoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true); setError(null)
+  const loadRenders = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const res = await fetch(`${BASE}/arch/renders/gallery?limit=20`, { headers: authHeaders() })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data: GalleryRender[] = await res.json()
-      setRenders(data)
-      if (data.length > 0) setSelId(data[0].id)
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Erro ao carregar renders')
+      const response = await fetch(`${BASE}/arch/renders/gallery?limit=20`, { headers: authHeaders() });
+      const data = await readJson(response);
+      const list = Array.isArray(data) ? data : [];
+      setRenders(list);
+      setSelId(current => current && list.some((item: GalleryRender) => item.id === current) ? current : list[0]?.id ?? null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao carregar renders");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [])
+  }, []);
 
-  useEffect(() => { load() }, [load])
+  const loadReview = useCallback(async (renderId: string | null) => {
+    if (!renderId) {
+      setHistory([]);
+      return;
+    }
+    setReviewLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`${BASE}/arch/ai-render/${encodeURIComponent(renderId)}/reviews`, {
+        headers: authHeaders(),
+      });
+      const data = await readJson(response);
+      setHistory(Array.isArray(data.reviews) ? data.reviews : []);
+    } catch (err) {
+      setHistory([]);
+      setError(err instanceof Error ? err.message : "Erro ao carregar Fidelity Review");
+    } finally {
+      setReviewLoading(false);
+    }
+  }, []);
 
-  const selRender = renders.find(r => r.id === selId) ?? null
-  const scores    = selRender ? deriveScores(selRender) : null
+  useEffect(() => { void loadRenders(); }, [loadRenders]);
+  useEffect(() => { void loadReview(selId); }, [selId, loadReview]);
 
-  const runReview = () => {
-    setRunning(true)
-    setTimeout(() => setRunning(false), 1800)
+  async function runReview() {
+    if (!selId) return;
+    setReviewLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`${BASE}/arch/ai-render/${encodeURIComponent(selId)}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({}),
+      });
+      await readJson(response);
+      await loadReview(selId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao executar Fidelity Review");
+    } finally {
+      setReviewLoading(false);
+    }
   }
 
-  const SCORE_DIMS = [
-    { key:'geometryScore' as const, label:'Geometria',  icon:'📐' },
-    { key:'materialScore' as const, label:'Materiais',  icon:'🎨' },
-    { key:'lightingScore' as const, label:'Iluminação', icon:'💡' },
-  ]
+  const selected = renders.find(item => item.id === selId) ?? null;
+  const latest = history[0]?.review ?? null;
+  const scoreColor = (score: number) => score >= 85 ? "#4ade80" : score >= 70 ? "#fbbf24" : "#f87171";
 
   return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column' as const, background:T.bg }}>
-      {/* Header */}
-      <div style={{ padding:'14px 20px 12px', borderBottom:`1px solid ${T.border}`, flexShrink:0, display:'flex', alignItems:'center', gap:12 }}>
-        <div style={{ flex:1 }}>
-          <h2 style={{ margin:'0 0 2px', fontSize:16, fontWeight:800, color:'#fff' }}>🔍 AI Review</h2>
-          <p style={{ margin:0, fontSize:11, color:T.dim }}>Análise comparativa de renders gerados</p>
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", background: T.bg }}>
+      <div style={{ padding: "14px 20px 12px", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ flex: 1 }}>
+          <h2 style={{ margin: "0 0 2px", fontSize: 16, fontWeight: 800, color: "#fff" }}>🔍 AI Review · Fidelity</h2>
+          <p style={{ margin: 0, fontSize: 11, color: T.dim }}>Comparação real imagem-base × versão persistida</p>
         </div>
-        <button onClick={runReview} disabled={running || loading || renders.length === 0} style={{
-          padding:'5px 14px', borderRadius:6, border:'none',
-          background:running ? 'rgba(124,58,237,0.4)' : T.purple,
-          color:'#fff', cursor:running||loading||renders.length===0?'not-allowed':'pointer', fontSize:11, fontWeight:700,
-        }}>{running ? '⏳ Analisando…' : '🔍 Executar Review'}</button>
-        <button onClick={load} style={{ padding:'5px 10px', borderRadius:6, border:`1px solid ${T.border}`, background:'transparent', color:T.dim, cursor:'pointer', fontSize:10 }}>↻</button>
+        <button
+          onClick={() => void runReview()}
+          disabled={!selId || reviewLoading}
+          style={{ padding: "6px 14px", borderRadius: 6, border: "none", background: T.purple, color: "#fff", cursor: !selId || reviewLoading ? "not-allowed" : "pointer", opacity: !selId || reviewLoading ? .5 : 1, fontSize: 11, fontWeight: 700 }}
+        >
+          {reviewLoading ? "Analisando…" : history.length ? "Executar novo Review" : "Executar Review"}
+        </button>
+        <button onClick={() => void loadRenders()} style={{ padding: "5px 10px", borderRadius: 6, border: `1px solid ${T.border}`, background: "transparent", color: T.dim, cursor: "pointer", fontSize: 10 }}>↻</button>
       </div>
 
-      {error && (
-        <div style={{ padding:'8px 20px', background:'rgba(248,113,113,0.08)', borderBottom:`1px solid rgba(248,113,113,0.2)`, fontSize:11, color:'#f87171', flexShrink:0 }}>
-          ⚠ {error}
+      {error && <div style={{ padding: "8px 20px", background: "rgba(248,113,113,0.08)", borderBottom: "1px solid rgba(248,113,113,0.2)", fontSize: 11, color: "#f87171" }}>⚠ {error}</div>}
+
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        <div style={{ width: 220, flexShrink: 0, borderRight: `1px solid ${T.border}`, overflowY: "auto", padding: "10px 12px" }}>
+          <p style={{ margin: "0 0 8px", fontSize: 9, fontWeight: 700, color: T.dim, letterSpacing: "0.06em" }}>RENDERS DISPONÍVEIS</p>
+          {loading && <div style={{ color: T.dim, fontSize: 11 }}>Carregando…</div>}
+          {!loading && renders.length === 0 && <div style={{ color: T.dim, fontSize: 11, padding: 12 }}>Nenhum render disponível.</div>}
+          {renders.map(render => (
+            <button
+              key={render.id}
+              onClick={() => setSelId(render.id)}
+              style={{ width: "100%", textAlign: "left", borderRadius: 8, marginBottom: 8, cursor: "pointer", overflow: "hidden", border: `1px solid ${selId === render.id ? "rgba(124,58,237,0.5)" : T.border}`, background: selId === render.id ? "rgba(124,58,237,0.10)" : "rgba(255,255,255,0.03)", padding: 0, color: "#fff" }}
+            >
+              {render.imageUrl && <img src={render.imageUrl} alt="" style={{ width: "100%", height: 50, objectFit: "cover", display: "block" }} />}
+              <div style={{ padding: "6px 8px" }}>
+                <div style={{ fontSize: 10, fontWeight: 700 }}>{render.cenaNome ?? "Cena"}</div>
+                <div style={{ marginTop: 2, fontSize: 9, color: T.dim }}>{render.versao != null ? `V${render.versao}` : "Render"} · {new Date(render.createdAt).toLocaleDateString("pt-BR")}</div>
+              </div>
+            </button>
+          ))}
         </div>
-      )}
 
-      {running && (
-        <div style={{ flex:1, display:'flex', flexDirection:'column' as const, alignItems:'center', justifyContent:'center', gap:12 }}>
-          <div style={{ width:44, height:44, borderRadius:'50%', border:`3px solid rgba(124,58,237,0.2)`, borderTop:`3px solid ${T.purple}`, animation:'spin 1s linear infinite' }}/>
-          <p style={{ color:T.dim, fontSize:12 }}>Analisando render vs. dados do projeto…</p>
-        </div>
-      )}
+        <div style={{ flex: 1, overflowY: "auto", padding: 18 }}>
+          {selected?.imageUrl && <img src={selected.imageUrl} alt="Render selecionado" style={{ width: "100%", maxHeight: 280, objectFit: "contain", background: "#0a0a0a", borderRadius: 10, border: `1px solid ${T.border}` }} />}
 
-      {!running && (
-        <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
-          {/* Render selector */}
-          <div style={{ width:220, flexShrink:0, borderRight:`1px solid ${T.border}`, overflowY:'auto' as const, padding:'10px 12px' }}>
-            <p style={{ margin:'0 0 8px', fontSize:9, fontWeight:700, color:T.dim, letterSpacing:'0.06em' }}>RENDERS DISPONÍVEIS</p>
-            {loading && [1,2,3].map(i=><div key={i} style={{ height:60, borderRadius:8, background:'rgba(255,255,255,0.04)', border:`1px solid ${T.border}`, marginBottom:8, animation:'pulse 1.5s infinite' }}/>)}
-            {!loading && renders.length === 0 && (
-              <div style={{ textAlign:'center' as const, padding:20, color:T.dim, fontSize:11 }}>
-                🎨 Nenhum render gerado ainda.
-              </div>
-            )}
-            {renders.map(r => (
-              <div key={r.id} onClick={()=>setSelId(r.id)} style={{
-                borderRadius:8, marginBottom:8, cursor:'pointer', overflow:'hidden',
-                border:`1px solid ${selId===r.id?'rgba(124,58,237,0.4)':T.border}`,
-                background:selId===r.id?'rgba(124,58,237,0.10)':'rgba(255,255,255,0.03)',
-              }}>
-                {r.imageUrl && (
-                  <img src={r.imageUrl} alt="" style={{ width:'100%', height:50, objectFit:'cover' as const, display:'block' }}/>
-                )}
-                <div style={{ padding:'6px 8px' }}>
-                  <p style={{ margin:'0 0 2px', fontSize:10, fontWeight:700, color:'#fff', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' as const }}>
-                    {r.cenaNome ?? 'Cena'}
-                  </p>
-                  <p style={{ margin:0, fontSize:9, color:T.dim }}>{new Date(r.createdAt).toLocaleDateString('pt-BR')} {r.versao!=null?`· V${r.versao}`:''}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Review panel */}
-          {scores && selRender ? (
-            <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
-              {/* Scores */}
-              <div style={{ width:260, flexShrink:0, borderRight:`1px solid ${T.border}`, padding:'16px', overflowY:'auto' as const }}>
-                <div style={{ textAlign:'center' as const, marginBottom:20, padding:'20px', background:'rgba(255,255,255,0.03)', borderRadius:10, border:`1px solid ${T.border}` }}>
-                  <p style={{ margin:'0 0 4px', fontSize:10, color:T.dim, letterSpacing:'0.08em' }}>SCORE GERAL</p>
-                  <span style={{ fontSize:44, fontWeight:900, color:scoreColor(scores.overall) }}>{scores.overall}</span>
-                  <p style={{ margin:0, fontSize:11, color:T.dim }}>/100</p>
-                </div>
-                {SCORE_DIMS.map(d => <ScoreBar key={d.key} label={d.label} icon={d.icon} value={scores[d.key]}/>)}
-                <div style={{ marginTop:16, padding:'12px', background:'rgba(255,255,255,0.03)', borderRadius:8, border:`1px solid ${T.border}` }}>
-                  <p style={{ margin:'0 0 6px', fontSize:9, fontWeight:700, color:T.dim, letterSpacing:'0.06em' }}>RESUMO</p>
-                  <p style={{ margin:0, fontSize:10, color:T.dim, lineHeight:1.6 }}>
-                    Motor: {selRender.origem ?? 'desconhecido'}<br/>
-                    {selRender.versao != null ? `Versão ${selRender.versao}` : 'Render único'}<br/>
-                    {new Date(selRender.createdAt).toLocaleString('pt-BR')}
-                  </p>
-                </div>
-              </div>
-
-              {/* Image + info */}
-              <div style={{ flex:1, overflowY:'auto' as const, padding:'16px 20px' }}>
-                <p style={{ margin:'0 0 12px', fontSize:10, fontWeight:700, color:T.dim, letterSpacing:'0.06em' }}>
-                  RENDER: {selRender.cenaNome ?? selRender.cenaId.slice(0, 8)}
-                </p>
-                {selRender.imageUrl ? (
-                  <div style={{ borderRadius:10, overflow:'hidden', marginBottom:16, border:`1px solid ${T.border}` }}>
-                    <img src={selRender.imageUrl} alt="Render" style={{ width:'100%', display:'block', maxHeight:360, objectFit:'contain' as const, background:'#0a0a0a' }}/>
-                  </div>
-                ) : (
-                  <div style={{ height:200, borderRadius:10, background:'rgba(255,255,255,0.03)', border:`1px solid ${T.border}`, display:'flex', alignItems:'center', justifyContent:'center', marginBottom:16 }}>
-                    <p style={{ color:T.dim, fontSize:12 }}>Imagem não disponível</p>
-                  </div>
-                )}
-                <div style={{ padding:'14px', background:'rgba(124,58,237,0.06)', border:`1px solid rgba(124,58,237,0.2)`, borderRadius:8 }}>
-                  <p style={{ margin:'0 0 4px', fontSize:10, fontWeight:700, color:T.purpleL, letterSpacing:'0.06em' }}>💡 INFORMAÇÃO</p>
-                  <p style={{ margin:0, fontSize:11, color:T.dim, lineHeight:1.6 }}>
-                    O AI Review completo (comparação objeto a objeto entre modelo e render) requer integração com o pipeline de visão computacional. Os scores acima são derivados dos metadados do render.
-                    Para review avançado, utilize o módulo Prompt Playground para refinamento baseado nas divergências detectadas.
-                  </p>
-                </div>
-                <div style={{ marginTop:12, display:'flex', gap:8 }}>
-                  <button style={{ flex:1, padding:'10px', borderRadius:8, border:'none', background:T.purple, color:'#fff', cursor:'pointer', fontSize:12, fontWeight:700 }}>
-                    ⚡ Ir para Prompt Playground
-                  </button>
-                </div>
-              </div>
+          {!reviewLoading && !latest && (
+            <div style={{ marginTop: 16, padding: 14, borderRadius: 10, border: `1px solid ${T.border}`, background: "rgba(255,255,255,0.03)", color: T.dim, fontSize: 11, lineHeight: 1.6 }}>
+              Ainda não existe Fidelity Review persistido para esta versão. Nenhum score é calculado localmente ou inventado.
             </div>
-          ) : (
-            !loading && (
-              <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', color:T.dim, fontSize:13 }}>
-                {renders.length > 0 ? 'Selecione um render para revisar.' : 'Gere renders para ativar o AI Review.'}
+          )}
+
+          {latest && (
+            <>
+              <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 16, padding: 14, borderRadius: 10, border: `1px solid ${T.border}`, background: "rgba(255,255,255,0.03)" }}>
+                <div style={{ fontSize: 42, fontWeight: 900, color: scoreColor(latest.overallScore) }}>{Math.round(latest.overallScore)}</div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "#fff" }}>{latest.requiresHumanReview ? "Revisão humana recomendada" : "Sem alerta crítico"}</div>
+                  <div style={{ marginTop: 5, fontSize: 11, color: T.dim, lineHeight: 1.5 }}>{latest.summary}</div>
+                </div>
               </div>
-            )
+
+              <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {DIMENSIONS.map(([key, label]) => {
+                  const dim = latest[key] as FidelityDimension;
+                  return (
+                    <div key={String(key)} style={{ padding: 10, borderRadius: 8, border: `1px solid ${T.border}`, background: "rgba(255,255,255,0.03)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: T.dim }}><span>{label}</span><strong style={{ color: scoreColor(dim.score) }}>{Math.round(dim.score)}</strong></div>
+                      <div style={{ marginTop: 5, fontSize: 9, color: T.dim }}>confiança {Math.round(dim.confidence * 100)}%</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div style={{ marginTop: 14 }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: T.dim, marginBottom: 6 }}>ALTERAÇÕES NÃO SOLICITADAS</div>
+                {latest.unsolicitedChanges.length === 0 ? (
+                  <div style={{ padding: 10, borderRadius: 8, background: "rgba(16,185,129,.10)", color: "#6ee7b7", fontSize: 11 }}>Nenhuma alteração não solicitada detectada com evidência suficiente.</div>
+                ) : latest.unsolicitedChanges.map((issue, index) => (
+                  <div key={index} style={{ padding: 10, marginBottom: 7, borderRadius: 8, background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.22)" }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "#fff" }}>{issue.category} · {issue.severity}</div>
+                    <div style={{ marginTop: 4, fontSize: 11, color: "#fff" }}>{issue.description}</div>
+                    <div style={{ marginTop: 4, fontSize: 10, color: T.dim }}>{issue.evidence}</div>
+                  </div>
+                ))}
+              </div>
+
+              {history.length > 1 && <div style={{ marginTop: 12, fontSize: 10, color: T.dim }}>{history.length} reviews persistidos para esta versão.</div>}
+            </>
           )}
         </div>
-      )}
+      </div>
     </div>
-  )
+  );
 }

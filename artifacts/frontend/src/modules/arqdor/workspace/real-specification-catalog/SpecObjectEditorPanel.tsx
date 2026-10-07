@@ -83,6 +83,7 @@ export function SpecObjectEditorPanel({
       purchaseUnit: selectedObject.purchaseUnit,
       catalogProductId: selectedObject.catalogProductId,
       catalogMaterialId: selectedObject.catalogMaterialId,
+      catalogCode: selectedObject.catalogCode,
       manufacturerId: selectedObject.manufacturerId,
       supplierId: selectedObject.supplierId,
       productName: selectedObject.productName,
@@ -238,6 +239,7 @@ export function SpecObjectEditorPanel({
             </button>
           </div>
           <Field label="Material" value={form.materialName || ""} onChange={(value) => set("materialName", value)} />
+          <Field label="Código / SKU / referência" value={form.catalogCode || ""} onChange={(value) => set("catalogCode", value)} />
           <Field label="Fabricante" value={form.manufacturerName || ""} onChange={(value) => set("manufacturerName", value)} />
           <Field label="Fornecedor" value={form.supplierName || ""} onChange={(value) => set("supplierName", value)} />
         </div>
