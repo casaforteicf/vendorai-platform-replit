@@ -294,9 +294,6 @@ async function createBudgetItem(tId: string | null, payload: BudgetItemPayload) 
 }
 
 async function updateBudgetItem(id: string, tId: string | null, payload: Partial<BudgetItemPayload>) {
-    currentWhere += ` AND tenant_id = $2`;
-  }
-  const currentResult = await pool.query(`SELECT * FROM arch_budget_items WHERE ${currentWhere}`, currentValues);
   const currentValues: unknown[] = [id];
   let currentWhere = `id = $1`;
   if (tId) {
@@ -361,10 +358,11 @@ async function deleteBudgetItem(id: string, tId: string | null) {
     values.push(tId);
     where += ` AND tenant_id = $2`;
   }
-  const currentResult = await pool.query(`SELECT * FROM arch_budget_items WHERE ${where}`, values);
 
+  const currentResult = await pool.query(`SELECT * FROM arch_budget_items WHERE ${where}`, values);
   const current = currentResult.rows[0];
   if (!current) return false;
+
   await pool.query(`UPDATE arch_budget_items SET deleted_at = now() WHERE ${where}`, values);
   await recalculateBudget(current.budget_id);
   return true;
@@ -458,7 +456,6 @@ archBudgetEngineRouter.post("/arch/orcamento", async (req, res, next) => {
   }
 });
 
-archBudgetEngineRouter.patch("/arch/orcamento/budget/:id", async (req, res, next) => {
 archBudgetEngineRouter.post("/arch/orcamento/from-spec-objects", async (req, res, next) => {
   try {
     const result = await createBudgetFromSpecObjects(tenantId(req), req.body);
