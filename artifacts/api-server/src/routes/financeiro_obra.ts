@@ -17,6 +17,14 @@ import {
   tenantsTable,
   insertObraLancamentoSchema,
   updateObraLancamentoSchema,
+  obraFinanceiroTitulosTable,
+  obraFinanceiroMovimentosTable,
+  obraFinanceiroFluxoSnapshotsTable,
+  obraPedidosCompraTable,
+  obraExecucaoAtividadesTable,
+  obraExecucaoSnapshotsTable,
+  insertObraFinanceiroTituloSchema,
+  insertObraFinanceiroMovimentoSchema,
 } from "@workspace/db";
 import { resolveAIKey, logUsage, estimateCost } from "../lib/ai-gateway.js";
 import { gerarDrePdf } from "../lib/pdf-dre.js";
@@ -520,7 +528,334 @@ router.get("/tenants/:tenantId/obras/:obraId/financeiro/dre", async (req, res) =
   });
 });
 
-// ─── 4. DRE PDF ───────────────────────────────────────────────────────────────
+// ─── 4. Financeiro V19: contas a pagar/receber e fluxo de caixa ───────────────
+
+function num(v: unknown): number {
+  const n = Number(v ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function statusTitulo(tipo: string, valorAberto: number, dataVencimento?: string | null): string {
+  if (valorAberto <= 0.0001) return tipo === "pagar" ? "pago" : "recebido";
+  if (dataVencimento) {
+    const hoje = new Date().toISOString().slice(0, 10);
+    if (dataVencimento < hoje) return "vencido";
+  }
+  return "aberto";
+}
+
+router.get("/tenants/:tenantId/obras/:obraId/financeiro/titulos", async (req, res) => {
+  const { tenantId, obraId } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const rows = await db.select().from(obraFinanceiroTitulosTable)
+    .where(and(eq(obraFinanceiroTitulosTable.tenantId, tenantId), eq(obraFinanceiroTitulosTable.obraId, obraId)))
+    .orderBy(desc(obraFinanceiroTitulosTable.dataVencimento), desc(obraFinanceiroTitulosTable.createdAt));
+
+  return res.json(rows);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/financeiro/titulos", async (req, res) => {
+  const { tenantId, obraId } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const valor = num(req.body?.valorOriginal);
+  if (valor <= 0) return res.status(422).json({ error: "Valor original deve ser maior que zero." });
+
+  const parsed = insertObraFinanceiroTituloSchema.safeParse({
+    ...req.body,
+    tenantId,
+    obraId,
+    valorOriginal: String(valor),
+    valorAberto: req.body?.valorAberto == null ? String(valor) : String(req.body.valorAberto),
+    valorLiquidado: req.body?.valorLiquidado == null ? "0" : String(req.body.valorLiquidado),
+    criadoPorId: (req as any).user?.sub ?? null,
+  });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraFinanceiroTitulosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/financeiro/sincronizar-compras", async (req, res) => {
+  const { tenantId, obraId } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const pedidos = await db.select().from(obraPedidosCompraTable)
+    .where(and(eq(obraPedidosCompraTable.tenantId, tenantId), eq(obraPedidosCompraTable.obraId, obraId)));
+
+  const elegiveis = pedidos.filter((p) => ["aprovado","enviado","parcialmente_recebido","recebido"].includes(p.status));
+  const existentes = await db.select().from(obraFinanceiroTitulosTable)
+    .where(and(
+      eq(obraFinanceiroTitulosTable.tenantId, tenantId),
+      eq(obraFinanceiroTitulosTable.obraId, obraId),
+      eq(obraFinanceiroTitulosTable.origem, "pedido_compra"),
+    ));
+
+  const criados = [];
+  for (const pedido of elegiveis) {
+    if (existentes.some((t) => t.origemId === pedido.id || t.pedidoCompraId === pedido.id)) continue;
+
+    const valor = num(pedido.valorTotal);
+    if (valor <= 0) continue;
+
+    const [titulo] = await db.insert(obraFinanceiroTitulosTable).values({
+      tenantId,
+      obraId,
+      tipo: "pagar",
+      status: "aberto",
+      origem: "pedido_compra",
+      origemId: pedido.id,
+      pedidoCompraId: pedido.id,
+      contraparte: pedido.fornecedorNomeSnapshot,
+      documentoNumero: pedido.numeroPedido ?? null,
+      descricao: `Pedido de compra ${pedido.numeroPedido ?? pedido.id}`,
+      categoria: "compras",
+      dataEmissao: pedido.dataPedido ?? null,
+      dataVencimento: pedido.dataPrevistaEntrega ?? pedido.dataNecessidade ?? null,
+      valorOriginal: valor.toFixed(4),
+      valorAberto: valor.toFixed(4),
+      valorLiquidado: "0",
+      criadoPorId: (req as any).user?.sub ?? null,
+      metadata: { cotacaoId: pedido.cotacaoId, propostaId: pedido.propostaId },
+    }).returning();
+    criados.push(titulo);
+  }
+
+  return res.json({ criados, ignorados: elegiveis.length - criados.length });
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/financeiro/recebiveis-contrato", async (req, res) => {
+  const { tenantId, obraId } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const orcamentoId = typeof req.body?.orcamentoId === "string" ? req.body.orcamentoId : null;
+  if (!orcamentoId) return res.status(422).json({ error: "orcamentoId obrigatório." });
+
+  const [orcamento] = await db.select().from(obraOrcamentosTable)
+    .where(and(
+      eq(obraOrcamentosTable.id, orcamentoId),
+      eq(obraOrcamentosTable.tenantId, tenantId),
+      eq(obraOrcamentosTable.obraId, obraId),
+    ));
+  if (!orcamento) return res.status(404).json({ error: "Orçamento não encontrado." });
+  if (orcamento.status !== "contratado" && orcamento.status !== "aprovado") {
+    return res.status(409).json({ error: "Orçamento precisa estar aprovado ou contratado." });
+  }
+
+  const parcelas = Array.isArray(req.body?.parcelas) ? req.body.parcelas : [];
+  if (!parcelas.length) return res.status(422).json({ error: "Informe as parcelas do contrato." });
+
+  const totalParcelas = parcelas.reduce((s: number, p: any) => s + num(p.valor), 0);
+  if (totalParcelas <= 0) return res.status(422).json({ error: "Total das parcelas deve ser maior que zero." });
+
+  const criados = [];
+  for (let i = 0; i < parcelas.length; i++) {
+    const p = parcelas[i];
+    const valor = num(p.valor);
+    if (valor <= 0 || typeof p.dataVencimento !== "string") {
+      return res.status(422).json({ error: `Parcela ${i + 1} inválida.` });
+    }
+
+    const origemId = `${orcamentoId}:parcela:${i + 1}`;
+    const [existente] = await db.select({ id: obraFinanceiroTitulosTable.id }).from(obraFinanceiroTitulosTable)
+      .where(and(
+        eq(obraFinanceiroTitulosTable.tenantId, tenantId),
+        eq(obraFinanceiroTitulosTable.obraId, obraId),
+        eq(obraFinanceiroTitulosTable.origem, "contrato"),
+        eq(obraFinanceiroTitulosTable.origemId, origemId),
+      ));
+    if (existente) continue;
+
+    const [titulo] = await db.insert(obraFinanceiroTitulosTable).values({
+      tenantId,
+      obraId,
+      tipo: "receber",
+      status: "aberto",
+      origem: "contrato",
+      origemId,
+      orcamentoId,
+      contraparte: req.body?.clienteNome ?? null,
+      descricao: p.descricao ?? `Parcela ${i + 1} do contrato`,
+      categoria: "receita_contrato",
+      dataEmissao: req.body?.dataContrato ?? null,
+      dataVencimento: p.dataVencimento,
+      valorOriginal: valor.toFixed(4),
+      valorAberto: valor.toFixed(4),
+      valorLiquidado: "0",
+      criadoPorId: (req as any).user?.sub ?? null,
+      metadata: { parcela: i + 1, totalParcelas: parcelas.length },
+    }).returning();
+    criados.push(titulo);
+  }
+
+  return res.status(201).json({ criados, totalParcelas: totalParcelas.toFixed(4) });
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/financeiro/titulos/:tituloId/movimentos", async (req, res) => {
+  const { tenantId, obraId, tituloId } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [titulo] = await db.select().from(obraFinanceiroTitulosTable)
+    .where(and(
+      eq(obraFinanceiroTitulosTable.id, tituloId),
+      eq(obraFinanceiroTitulosTable.tenantId, tenantId),
+      eq(obraFinanceiroTitulosTable.obraId, obraId),
+    ));
+  if (!titulo) return res.status(404).json({ error: "Título não encontrado." });
+
+  const valor = num(req.body?.valor);
+  if (valor <= 0) return res.status(422).json({ error: "Valor do movimento deve ser maior que zero." });
+
+  const tipoEsperado = titulo.tipo === "pagar" ? "pagamento" : "recebimento";
+  const tipo = req.body?.tipo ?? tipoEsperado;
+  if (!["pagamento","recebimento","estorno"].includes(tipo)) return res.status(422).json({ error: "Tipo de movimento inválido." });
+  if (tipo !== "estorno" && tipo !== tipoEsperado) return res.status(422).json({ error: "Movimento incompatível com o título." });
+
+  const abertoAtual = num(titulo.valorAberto);
+  const liquidadoAtual = num(titulo.valorLiquidado);
+  if (tipo !== "estorno" && valor > abertoAtual + 0.0001) {
+    return res.status(422).json({ error: "Movimento excede o valor em aberto." });
+  }
+
+  const parsed = insertObraFinanceiroMovimentoSchema.safeParse({
+    ...req.body,
+    tituloId,
+    tipo,
+    valor: String(valor),
+    responsavelId: (req as any).user?.sub ?? null,
+  });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const resultado = await db.transaction(async (tx) => {
+    const [mov] = await tx.insert(obraFinanceiroMovimentosTable).values(parsed.data).returning();
+
+    const novoLiquidado = tipo === "estorno"
+      ? Math.max(0, liquidadoAtual - valor)
+      : liquidadoAtual + valor;
+    const novoAberto = tipo === "estorno"
+      ? Math.min(num(titulo.valorOriginal), abertoAtual + valor)
+      : Math.max(0, abertoAtual - valor);
+    const status = statusTitulo(titulo.tipo, novoAberto, titulo.dataVencimento);
+
+    const [updated] = await tx.update(obraFinanceiroTitulosTable)
+      .set({
+        valorLiquidado: novoLiquidado.toFixed(4),
+        valorAberto: novoAberto.toFixed(4),
+        status,
+        updatedAt: new Date(),
+      })
+      .where(eq(obraFinanceiroTitulosTable.id, tituloId))
+      .returning();
+
+    return { movimento: mov, titulo: updated };
+  });
+
+  return res.status(201).json(resultado);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/financeiro/fluxo-caixa", async (req, res) => {
+  const { tenantId, obraId } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [titulos, movimentos, execucao] = await Promise.all([
+    db.select().from(obraFinanceiroTitulosTable)
+      .where(and(eq(obraFinanceiroTitulosTable.tenantId, tenantId), eq(obraFinanceiroTitulosTable.obraId, obraId))),
+    db.select({
+      tituloId: obraFinanceiroMovimentosTable.tituloId,
+      tipo: obraFinanceiroMovimentosTable.tipo,
+      valor: obraFinanceiroMovimentosTable.valor,
+      dataMovimento: obraFinanceiroMovimentosTable.dataMovimento,
+    }).from(obraFinanceiroMovimentosTable)
+      .innerJoin(obraFinanceiroTitulosTable, eq(obraFinanceiroMovimentosTable.tituloId, obraFinanceiroTitulosTable.id))
+      .where(and(eq(obraFinanceiroTitulosTable.tenantId, tenantId), eq(obraFinanceiroTitulosTable.obraId, obraId))),
+    db.select().from(obraExecucaoAtividadesTable)
+      .where(and(eq(obraExecucaoAtividadesTable.tenantId, tenantId), eq(obraExecucaoAtividadesTable.obraId, obraId), eq(obraExecucaoAtividadesTable.ativo, true))),
+  ]);
+
+  const hoje = new Date().toISOString().slice(0, 10);
+  const pagarAberto = titulos.filter((t) => t.tipo === "pagar" && !["pago","cancelado"].includes(t.status)).reduce((s,t) => s + num(t.valorAberto), 0);
+  const receberAberto = titulos.filter((t) => t.tipo === "receber" && !["recebido","cancelado"].includes(t.status)).reduce((s,t) => s + num(t.valorAberto), 0);
+  const vencidoPagar = titulos.filter((t) => t.tipo === "pagar" && t.dataVencimento && t.dataVencimento < hoje && num(t.valorAberto) > 0).reduce((s,t) => s + num(t.valorAberto), 0);
+  const vencidoReceber = titulos.filter((t) => t.tipo === "receber" && t.dataVencimento && t.dataVencimento < hoje && num(t.valorAberto) > 0).reduce((s,t) => s + num(t.valorAberto), 0);
+  const pago = movimentos.filter((m) => m.tipo === "pagamento").reduce((s,m) => s + num(m.valor), 0) - movimentos.filter((m) => m.tipo === "estorno").reduce((s,m) => s + num(m.valor), 0);
+  const recebido = movimentos.filter((m) => m.tipo === "recebimento").reduce((s,m) => s + num(m.valor), 0);
+  const custoRealizado = execucao.reduce((s,a) => s + num(a.custoRealizado), 0);
+
+  const porData = new Map<string, { data: string; pagar: number; receber: number }>();
+  for (const titulo of titulos) {
+    if (!titulo.previsaoCaixa || !titulo.dataVencimento || ["pago","recebido","cancelado"].includes(titulo.status)) continue;
+    const row = porData.get(titulo.dataVencimento) ?? { data: titulo.dataVencimento, pagar: 0, receber: 0 };
+    if (titulo.tipo === "pagar") row.pagar += num(titulo.valorAberto);
+    else row.receber += num(titulo.valorAberto);
+    porData.set(titulo.dataVencimento, row);
+  }
+
+  const projecao = [...porData.values()].sort((a,b) => a.data.localeCompare(b.data));
+  let saldoProjetado = recebido - pago;
+  const fluxoProjetado = projecao.map((x) => {
+    saldoProjetado += x.receber - x.pagar;
+    return { ...x, saldoProjetado };
+  });
+
+  return res.json({
+    totais: {
+      pagarAberto,
+      receberAberto,
+      vencidoPagar,
+      vencidoReceber,
+      pagoAcumulado: pago,
+      recebidoAcumulado: recebido,
+      saldoCaixa: recebido - pago,
+      custoRealizado,
+    },
+    fluxoProjetado,
+    titulos,
+  });
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/financeiro/fluxo-caixa/snapshot", async (req, res) => {
+  const { tenantId, obraId } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const titulos = await db.select().from(obraFinanceiroTitulosTable)
+    .where(and(eq(obraFinanceiroTitulosTable.tenantId, tenantId), eq(obraFinanceiroTitulosTable.obraId, obraId)));
+  const movimentos = await db.select({
+    tipo: obraFinanceiroMovimentosTable.tipo,
+    valor: obraFinanceiroMovimentosTable.valor,
+  }).from(obraFinanceiroMovimentosTable)
+    .innerJoin(obraFinanceiroTitulosTable, eq(obraFinanceiroMovimentosTable.tituloId, obraFinanceiroTitulosTable.id))
+    .where(and(eq(obraFinanceiroTitulosTable.tenantId, tenantId), eq(obraFinanceiroTitulosTable.obraId, obraId)));
+  const execucao = await db.select().from(obraExecucaoAtividadesTable)
+    .where(and(eq(obraExecucaoAtividadesTable.tenantId, tenantId), eq(obraExecucaoAtividadesTable.obraId, obraId), eq(obraExecucaoAtividadesTable.ativo, true)));
+
+  const pagarAberto = titulos.filter((t) => t.tipo === "pagar" && !["pago","cancelado"].includes(t.status)).reduce((s,t) => s + num(t.valorAberto), 0);
+  const receberAberto = titulos.filter((t) => t.tipo === "receber" && !["recebido","cancelado"].includes(t.status)).reduce((s,t) => s + num(t.valorAberto), 0);
+  const pago = movimentos.filter((m) => m.tipo === "pagamento").reduce((s,m) => s + num(m.valor), 0) - movimentos.filter((m) => m.tipo === "estorno").reduce((s,m) => s + num(m.valor), 0);
+  const recebido = movimentos.filter((m) => m.tipo === "recebimento").reduce((s,m) => s + num(m.valor), 0);
+  const custoRealizado = execucao.reduce((s,a) => s + num(a.custoRealizado), 0);
+  const receitaContratada = titulos.filter((t) => t.tipo === "receber" && t.origem === "contrato").reduce((s,t) => s + num(t.valorOriginal), 0);
+  const margemRealizada = recebido - custoRealizado;
+
+  const [snapshot] = await db.insert(obraFinanceiroFluxoSnapshotsTable).values({
+    obraId,
+    dataReferencia: typeof req.body?.dataReferencia === "string" ? req.body.dataReferencia : new Date().toISOString().slice(0,10),
+    contasPagarAberto: pagarAberto.toFixed(4),
+    contasReceberAberto: receberAberto.toFixed(4),
+    pagoAcumulado: pago.toFixed(4),
+    recebidoAcumulado: recebido.toFixed(4),
+    saldoCaixa: (recebido - pago).toFixed(4),
+    custoRealizado: custoRealizado.toFixed(4),
+    receitaContratada: receitaContratada.toFixed(4),
+    margemRealizada: margemRealizada.toFixed(4),
+    memoriaCalculo: { titulos: titulos.length, movimentos: movimentos.length, atividadesExecucao: execucao.length },
+    criadoPorId: (req as any).user?.sub ?? null,
+  }).returning();
+
+  return res.status(201).json(snapshot);
+});
+
+// ─── 5. DRE PDF ───────────────────────────────────────────────────────────────
 
 router.post("/tenants/:tenantId/obras/:obraId/financeiro/dre/pdf", async (req, res) => {
   const { tenantId, obraId } = req.params as Record<string, string>;
