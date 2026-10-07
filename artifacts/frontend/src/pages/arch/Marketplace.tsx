@@ -21,6 +21,7 @@ import { useListCategoriasProduto, getListCategoriasProdutoQueryKey } from "@wor
 import {
   Search, Image, ShoppingCart, Loader2, Store, Package,
   TrendingUp, DollarSign, ReceiptText, Building2, Star, Send, ClipboardList,
+  ShieldCheck, Trash2, Plus,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -36,6 +37,16 @@ type MarketplaceItem = {
   ativo: boolean;
   totalVendas: number;
   createdAt: string;
+};
+
+type MarketProtectionRule = {
+  id: string;
+  escopo: "categoria" | "subcategoria" | "produto_servico";
+  valor: string;
+  modo: "exclusivo" | "preferencial" | "aberto" | "bloqueado";
+  prioridade: number;
+  ativo: boolean;
+  observacoes: string | null;
 };
 
 type MarketCompany = {
@@ -155,7 +166,7 @@ const STATUS_PEDIDO: Record<string, { label: string; cls: string }> = {
 // ── Main Component ─────────────────────────────────────────────────────────
 export default function Marketplace() {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, isEffectiveAdmin } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const urlParams = new URLSearchParams(window.location.search);
   const contextOrigem = urlParams.get("origem");
@@ -183,6 +194,13 @@ export default function Marketplace() {
   const [publishVisibility, setPublishVisibility] = useState<"privada" | "parceiros" | "regional" | "aberta">("privada");
   const [publishSupplierIds, setPublishSupplierIds] = useState<string[]>([]);
   const [submittingPublish, setSubmittingPublish] = useState(false);
+  const [protectionOpen, setProtectionOpen] = useState(false);
+  const [protectionRules, setProtectionRules] = useState<MarketProtectionRule[]>([]);
+  const [protectionLoading, setProtectionLoading] = useState(false);
+  const [protectionSaving, setProtectionSaving] = useState(false);
+  const [newProtectionScope, setNewProtectionScope] = useState<MarketProtectionRule["escopo"]>("categoria");
+  const [newProtectionValue, setNewProtectionValue] = useState("");
+  const [newProtectionMode, setNewProtectionMode] = useState<MarketProtectionRule["modo"]>("exclusivo");
   const { data: categoriasProduto = [] } = useListCategoriasProduto(tenantId, {
     query: {
       queryKey: getListCategoriasProdutoQueryKey(tenantId),
@@ -272,6 +290,67 @@ export default function Marketplace() {
     setItemsLoading(false);
     setItemsLoaded(true);
   }, [busca, catFilter, contextOrigem, contextOrigemId, contextQuantidade, contextUnidade]);
+
+  async function loadProtectionRules() {
+    setProtectionLoading(true);
+    try {
+      const res = await fetch("/api/arch/market/protecoes", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (res.ok) setProtectionRules(await res.json());
+    } finally {
+      setProtectionLoading(false);
+    }
+  }
+
+  async function openProtectionConfig() {
+    setProtectionOpen(true);
+    await loadProtectionRules();
+  }
+
+  async function saveProtectionRule() {
+    const value = newProtectionValue.trim();
+    if (!value) {
+      toast({ title: "Informe a categoria, subcategoria ou produto/serviço.", variant: "destructive" });
+      return;
+    }
+    setProtectionSaving(true);
+    try {
+      const res = await fetch("/api/arch/market/protecoes", {
+        method: "POST",
+        headers: authH(),
+        body: JSON.stringify({
+          escopo: newProtectionScope,
+          valor: value,
+          modo: newProtectionMode,
+          prioridade: newProtectionScope === "produto_servico" ? 10 : newProtectionScope === "subcategoria" ? 20 : 30,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error?.formErrors?.[0] ?? body?.error ?? "Não foi possível salvar a regra.");
+      setNewProtectionValue("");
+      await loadProtectionRules();
+      await loadItems();
+      toast({ title: "Proteção comercial atualizada" });
+    } catch (err: any) {
+      toast({ title: "Erro ao salvar proteção", description: String(err?.message ?? err), variant: "destructive" });
+    } finally {
+      setProtectionSaving(false);
+    }
+  }
+
+  async function deleteProtectionRule(id: string) {
+    const res = await fetch(`/api/arch/market/protecoes/${id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) {
+      toast({ title: "Não foi possível remover a regra", variant: "destructive" });
+      return;
+    }
+    setProtectionRules((rules) => rules.filter((rule) => rule.id !== id));
+    await loadItems();
+  }
 
   const loadMeusProdutos = useCallback(async () => {
     if (meusProdutosLoaded) return;
@@ -550,9 +629,16 @@ export default function Marketplace() {
               Encontre empresas, produtos e serviços compatíveis com o contexto técnico do seu projeto e orçamento.
             </p>
           </div>
+          <div className="flex flex-wrap gap-2">
+            {isEffectiveAdmin && (
+              <Button variant="outline" onClick={openProtectionConfig}>
+                <ShieldCheck className="h-4 w-4 mr-2" /> Proteção comercial
+              </Button>
+            )}
           <Button variant="outline" onClick={() => { setPublishSupplierIds([]); setPublishOpen(true); }}>
             <Send className="h-4 w-4 mr-2" /> Publicar necessidade
           </Button>
+          </div>
         </div>
       </div>
 
@@ -1035,6 +1121,76 @@ export default function Marketplace() {
           )}
         </TabsContent>
       </Tabs>
+
+      <Dialog open={protectionOpen} onOpenChange={setProtectionOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Proteção comercial do Arqdor Market</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5 mt-2">
+            <div className="rounded-xl border bg-muted/30 p-4 text-sm">
+              <p className="font-medium">Como funciona</p>
+              <p className="text-muted-foreground mt-1">
+                A proteção vale para toda entrada contextual do Market deste tenant. Em <strong>Exclusivo</strong>, apenas sua empresa aparece naquela atividade.
+                Em <strong>Preferencial</strong>, sua empresa vem primeiro. Em <strong>Aberto</strong>, o Market mostra terceiros normalmente.
+                Em <strong>Bloqueado</strong>, a categoria não é exibida.
+              </p>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-[170px_1fr_170px_auto]">
+              <Select value={newProtectionScope} onValueChange={(value) => setNewProtectionScope(value as MarketProtectionRule["escopo"])}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="categoria">Categoria</SelectItem>
+                  <SelectItem value="subcategoria">Subcategoria</SelectItem>
+                  <SelectItem value="produto_servico">Produto/serviço</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                value={newProtectionValue}
+                onChange={(e) => setNewProtectionValue(e.target.value)}
+                placeholder={newProtectionScope === "categoria" ? "Ex.: Materiais de construção" : newProtectionScope === "subcategoria" ? "Ex.: Cimento" : "Ex.: Cimento CP-II"}
+              />
+              <Select value={newProtectionMode} onValueChange={(value) => setNewProtectionMode(value as MarketProtectionRule["modo"])}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="exclusivo">Exclusivo</SelectItem>
+                  <SelectItem value="preferencial">Preferencial</SelectItem>
+                  <SelectItem value="aberto">Aberto</SelectItem>
+                  <SelectItem value="bloqueado">Bloqueado</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button onClick={saveProtectionRule} disabled={protectionSaving}>
+                {protectionSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              </Button>
+            </div>
+
+            <div className="space-y-2 max-h-[45vh] overflow-y-auto">
+              {protectionLoading ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando regras…</div>
+              ) : protectionRules.length === 0 ? (
+                <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+                  Nenhuma proteção comercial configurada. Sem regras, o Market não mostra os próprios produtos do tenant e opera normalmente com terceiros.
+                </div>
+              ) : protectionRules.map((rule) => (
+                <div key={rule.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">{rule.escopo.replace("_", "/")}</Badge>
+                      <span className="font-medium text-sm">{rule.valor}</span>
+                      <Badge variant={rule.modo === "exclusivo" ? "default" : "secondary"}>{rule.modo}</Badge>
+                    </div>
+                    {rule.observacoes && <p className="text-xs text-muted-foreground mt-1">{rule.observacoes}</p>}
+                  </div>
+                  <Button size="sm" variant="ghost" onClick={() => deleteProtectionRule(rule.id)} title="Remover regra">
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!proposalDemand} onOpenChange={() => setProposalDemand(null)}>
         <DialogContent className="max-w-2xl">
