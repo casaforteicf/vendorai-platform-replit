@@ -518,6 +518,19 @@ type ProjectSourceFile = {
     format: "glb" | "gltf";
   };
   manifest?: Record<string, unknown>;
+  summary?: {
+    sheets?: number;
+    rooms?: number;
+    openings?: number;
+    materials?: number;
+    floorPlans?: number;
+    geometryReady?: number;
+    architectural3DReady?: boolean;
+    facades?: number;
+    sections?: number;
+    universalModels?: number;
+    warnings?: number;
+  };
   ifcMetadata?: {
     schema: string | null;
     projectName: string | null;
@@ -4994,6 +5007,50 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setSourceFileMessage(error instanceof Error ? error.message : "Falha na Importação Inteligente do projeto.");
     } finally {
       if (projectStartImportInputRef.current) projectStartImportInputRef.current.value = "";
+    }
+  };
+  const applyImportedProject2D = async () => {
+    const id = conceptIdRef.current ?? conceptId;
+    if (!id || projectMaster) return;
+    setSourceFileState("uploading");
+    setSourceFileMessage("Convertendo a planta importada para paredes e esquadrias editáveis...");
+    try {
+      const { applyImportedProjectGeometryRequest } = await import("./conceptReferenceNetwork");
+      const payload = await applyImportedProjectGeometryRequest(id, { floorPlanIndex: 0, floor: 0, replace: true }) as any;
+      const preview = payload?.preview;
+      if (!preview?.canApply) throw new Error("A planta ainda não está pronta para aplicação.");
+      setCustomWalls(Array.isArray(preview.walls) ? preview.walls : []);
+      setCustomOpenings(Array.isArray(preview.openings) ? preview.openings : []);
+      setSpaceProfiles(Array.isArray(preview.spaces) ? preview.spaces : []);
+      setWallFirstFloors((current) => Array.from(new Set([...current, 0])).sort((a, b) => a - b));
+      setEditorView("plan");
+      setEditorLibraryTab("build");
+      setSourceFileState("success");
+      setSourceFileMessage("Planta importada aplicada: paredes, encontros e esquadrias agora estão editáveis no Arqdor.");
+    } catch (error) {
+      setSourceFileState("error");
+      setSourceFileMessage(error instanceof Error ? error.message : "Não foi possível aplicar a planta importada.");
+    }
+  };
+
+  const applyImportedProject3D = async () => {
+    const id = conceptIdRef.current ?? conceptId;
+    if (!id || projectMaster) return;
+    setSourceFileState("uploading");
+    setSourceFileMessage("Consolidando cortes, fachadas e cobertura no modelo 3D...");
+    try {
+      const { applyImportedProject3DRequest } = await import("./conceptReferenceNetwork");
+      const payload = await applyImportedProject3DRequest(id) as any;
+      if (payload?.facadeDesign) setFacadeDesign(normalizeFacadeDesign(payload.facadeDesign));
+      if (payload?.facadePreferences) {
+        setFacadePreferences((current) => ({ ...current, ...payload.facadePreferences }));
+      }
+      setEditorView("model3d");
+      setSourceFileState("success");
+      setSourceFileMessage("Cortes, fachadas e cobertura consolidados no perfil 3D importado.");
+    } catch (error) {
+      setSourceFileState("error");
+      setSourceFileMessage(error instanceof Error ? error.message : "Não foi possível aplicar o perfil 3D importado.");
     }
   };
   const saveReferenceCalibration = async (patch: Partial<Pick<ReferencePlan, "widthMeters" | "offsetX" | "offsetY" | "opacity">>) => {
@@ -11072,6 +11129,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                                     ? "Memória da Obra gerada"
                                     : "aguardando conversão"}
                           </div>
+                          {source.kind === "architectural_project" && source.summary && (
+                            <div className="mt-1 text-[11px] text-slate-600">
+                              {source.summary.floorPlans ?? 0} planta(s) · {source.summary.openings ?? 0} esquadria(s) · {source.summary.facades ?? 0} fachada(s) · {source.summary.sections ?? 0} corte(s) · {source.summary.universalModels ?? 0} modelo(s) universais
+                            </div>
+                          )}
                           {source.ifcMetadata && (
                             <div className="mt-1 text-[11px] text-slate-600">
                               {source.ifcMetadata.storeys.length} pav. · {source.ifcMetadata.counts.walls} paredes · {source.ifcMetadata.counts.doors} portas · {source.ifcMetadata.counts.windows} janelas · {source.ifcMetadata.counts.spaces} espaços
@@ -11084,6 +11146,26 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           ) : null}
                         </div>
                         <div className="flex items-center gap-2">
+                          {source.kind === "architectural_project" && Number(source.summary?.geometryReady ?? 0) > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => void applyImportedProject2D()}
+                              disabled={sourceFileState === "uploading" || Boolean(projectMaster)}
+                              className="rounded-lg border px-2.5 py-1.5 font-semibold text-emerald-700 disabled:opacity-50"
+                            >
+                              Abrir planta editável
+                            </button>
+                          )}
+                          {source.kind === "architectural_project" && source.summary?.architectural3DReady && (
+                            <button
+                              type="button"
+                              onClick={() => void applyImportedProject3D()}
+                              disabled={sourceFileState === "uploading" || Boolean(projectMaster)}
+                              className="rounded-lg border px-2.5 py-1.5 font-semibold text-violet-700 disabled:opacity-50"
+                            >
+                              Aplicar cortes/fachada 3D
+                            </button>
+                          )}
                           {source.extension.toLowerCase() === "skp" && source.parserStatus !== "ready_model3d" && (
                             <button
                               type="button"
