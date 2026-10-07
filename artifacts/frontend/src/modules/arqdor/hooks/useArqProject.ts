@@ -32,18 +32,27 @@ export interface ArqProjectMeta {
   areaM2:          string | null
   createdAt:       string
   updatedAt:       string
+}
+
 function normalizeClientValue(value?: string | null): string {
   return (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
 function getClientScopeKey(project?: ArqProjectMeta | null): string | null {
   if (!project) return null
   if (project.leadId) return `lead:${project.leadId}`
   if (project.dealId) return `deal:${project.dealId}`
+
   const email = normalizeClientValue(project.clienteEmail)
   if (email) return `email:${email}`
+
   const phone = (project.clienteTelefone ?? '').replace(/\D/g, '')
   if (phone) return `phone:${phone}`
+
   const name = normalizeClientValue(project.clienteNome)
   return name ? `name:${name}` : null
+}
+
 function belongsToSameClient(a?: ArqProjectMeta | null, b?: ArqProjectMeta | null): boolean {
   const aKey = getClientScopeKey(a)
   const bKey = getClientScopeKey(b)
