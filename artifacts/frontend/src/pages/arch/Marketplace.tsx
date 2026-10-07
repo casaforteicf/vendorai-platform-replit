@@ -31,12 +31,14 @@ import {
   FileText,
   Filter,
   HardHat,
+  History,
   Image,
   Loader2,
   MapPin,
   Package,
   ReceiptText,
   Search,
+  XCircle,
   ShieldCheck,
   ShoppingCart,
   Sparkles,
@@ -79,6 +81,36 @@ type Venda = {
 };
 
 type Projeto = { id: string; titulo: string };
+
+type MarketDemand = {
+  id: string;
+  demand_code: string;
+  status: string;
+  title: string | null;
+  project_id: string | null;
+  estimated_value: string | null;
+  external_supplier_name: string | null;
+  external_close_reason: string | null;
+  external_close_value: string | null;
+  commission_percentage: string | null;
+  commission_amount: string | null;
+  commission_status: string | null;
+  risk_flags: string[] | null;
+  package_count: number;
+  event_count: number;
+  created_at: string;
+  closed_at: string | null;
+};
+
+type DemandEvent = {
+  id: string;
+  event_type: string;
+  actor_type: string;
+  reference_type: string | null;
+  reference_id: string | null;
+  payload: Record<string, any>;
+  created_at: string;
+};
 
 function getToken() {
   return localStorage.getItem("vendorai_token");
@@ -158,6 +190,19 @@ export default function Marketplace() {
   const [vendas, setVendas] = useState<Venda[]>([]);
   const [vendasLoading, setVendasLoading] = useState(false);
   const [vendasLoaded, setVendasLoaded] = useState(false);
+
+  const [demands, setDemands] = useState<MarketDemand[]>([]);
+  const [demandsLoading, setDemandsLoading] = useState(false);
+  const [demandsLoaded, setDemandsLoaded] = useState(false);
+  const [demandDetail, setDemandDetail] = useState<{ demand: MarketDemand; events: DemandEvent[]; commissions: any[] } | null>(null);
+  const [demandDetailLoading, setDemandDetailLoading] = useState(false);
+  const [closingDemand, setClosingDemand] = useState<MarketDemand | null>(null);
+  const [externalSupplierName, setExternalSupplierName] = useState("");
+  const [externalSupplierDocument, setExternalSupplierDocument] = useState("");
+  const [externalSupplierContact, setExternalSupplierContact] = useState("");
+  const [externalCloseValue, setExternalCloseValue] = useState("");
+  const [externalCloseReason, setExternalCloseReason] = useState("");
+  const [submittingExternalClose, setSubmittingExternalClose] = useState(false);
 
   const loadItems = useCallback(async () => {
     setItemsLoading(true);
@@ -242,6 +287,84 @@ export default function Marketplace() {
       setVendasLoaded(true);
     }
   }, [vendasLoaded]);
+
+  const loadDemands = useCallback(async (force = false) => {
+    if (demandsLoaded && !force) return;
+    setDemandsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (projetoContexto !== "__all__") params.set("projectId", projetoContexto);
+      const res = await fetch(`/api/arch/market-demands?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) throw new Error("Falha ao carregar o rastreamento do Market.");
+      const data = await res.json();
+      setDemands(data.demands ?? []);
+    } catch (err: any) {
+      toast({ title: "Rastreamento", description: err.message, variant: "destructive" });
+    } finally {
+      setDemandsLoading(false);
+      setDemandsLoaded(true);
+    }
+  }, [demandsLoaded, projetoContexto, toast]);
+
+  const openDemandDetail = async (demand: MarketDemand) => {
+    setDemandDetailLoading(true);
+    try {
+      const res = await fetch(`/api/arch/market-demands/${demand.id}`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) throw new Error("Falha ao carregar o histórico da demanda.");
+      setDemandDetail(await res.json());
+    } catch (err: any) {
+      toast({ title: "Histórico da demanda", description: err.message, variant: "destructive" });
+    } finally {
+      setDemandDetailLoading(false);
+    }
+  };
+
+  const openExternalClose = (demand: MarketDemand) => {
+    setClosingDemand(demand);
+    setExternalSupplierName("");
+    setExternalSupplierDocument("");
+    setExternalSupplierContact("");
+    setExternalCloseValue("");
+    setExternalCloseReason("");
+  };
+
+  const submitExternalClose = async () => {
+    if (!closingDemand) return;
+    setSubmittingExternalClose(true);
+    try {
+      const res = await fetch(`/api/arch/market-demands/${closingDemand.id}/close-external`, {
+        method: "POST",
+        headers: authH(),
+        body: JSON.stringify({
+          supplierName: externalSupplierName,
+          supplierDocument: externalSupplierDocument || undefined,
+          supplierContact: externalSupplierContact || undefined,
+          value: Number(externalCloseValue),
+          reason: externalCloseReason,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Não foi possível encerrar a demanda.");
+      setClosingDemand(null);
+      setDemandDetail(null);
+      setDemandsLoaded(false);
+      await loadDemands(true);
+      toast({
+        title: "Demanda encerrada",
+        description: data.matchedMarketSupplier
+          ? "Fornecedor originado no Market identificado. A comissão ficou registrada para cobrança/auditoria."
+          : "Fechamento externo registrado no histórico da demanda.",
+      });
+    } catch (err: any) {
+      toast({ title: "Encerramento", description: err.message, variant: "destructive" });
+    } finally {
+      setSubmittingExternalClose(false);
+    }
+  };
 
   useEffect(() => {
     loadItems();
@@ -399,7 +522,13 @@ export default function Marketplace() {
               Selecione um projeto para manter compras e cotações no contexto correto.
             </p>
 
-            <Select value={projetoContexto} onValueChange={setProjetoContexto}>
+            <Select
+              value={projetoContexto}
+              onValueChange={(value) => {
+                setProjetoContexto(value);
+                setDemandsLoaded(false);
+              }}
+            >
               <SelectTrigger className="mt-4 border-white/10 bg-white text-slate-900">
                 <SelectValue placeholder="Todos os projetos" />
               </SelectTrigger>
@@ -453,6 +582,7 @@ export default function Marketplace() {
             <TabsTrigger value="market">Market</TabsTrigger>
             <TabsTrigger value="fornecedores">Fornecedores</TabsTrigger>
             <TabsTrigger value="pedidos" onClick={loadPedidos}>Pedidos</TabsTrigger>
+            <TabsTrigger value="tracking" onClick={() => loadDemands()}>Rastreamento</TabsTrigger>
             <TabsTrigger value="vitrine" onClick={loadMeusProdutos}>Minha vitrine</TabsTrigger>
             <TabsTrigger value="vendas" onClick={loadVendas}>Vendas</TabsTrigger>
           </TabsList>
@@ -757,6 +887,91 @@ export default function Marketplace() {
           )}
         </TabsContent>
 
+        <TabsContent value="tracking" className="space-y-4">
+          <div className="rounded-xl border bg-white p-5">
+            <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
+              <div>
+                <h2 className="text-base font-semibold">Rastreamento das demandas</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Cada solicitação recebe um código AMD e mantém a trilha completa da operação.
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => loadDemands(true)}>
+                Atualizar
+              </Button>
+            </div>
+          </div>
+
+          {demandsLoading && (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
+            </div>
+          )}
+
+          {!demandsLoading && demandsLoaded && demands.length === 0 && (
+            <div className="rounded-xl border border-dashed bg-white p-12 text-center">
+              <History className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
+              <p className="text-sm font-medium">Nenhuma demanda rastreada ainda</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Ao gerar uma cotação a partir do orçamento, o código AMD será criado automaticamente.
+              </p>
+            </div>
+          )}
+
+          {!demandsLoading && demands.length > 0 && (
+            <div className="space-y-3">
+              {demands.map((demand) => {
+                const isOpen = ["open", "quoting", "partially_closed"].includes(demand.status);
+                return (
+                  <Card key={demand.id} className="bg-white">
+                    <CardContent className="p-5">
+                      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-mono text-sm font-bold text-emerald-800">
+                              {demand.demand_code}
+                            </span>
+                            <Badge variant="outline">{demand.status}</Badge>
+                            {(demand.risk_flags?.length ?? 0) > 0 && (
+                              <Badge className="bg-amber-50 text-amber-800 hover:bg-amber-50">
+                                Revisão de risco
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="mt-2 truncate text-sm font-medium">
+                            {demand.title || "Demanda do Market Arqdor"}
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                            <span>{demand.package_count} pacote(s)</span>
+                            <span>{demand.event_count} evento(s)</span>
+                            <span>Criada em {fmtDate(demand.created_at)}</span>
+                            {demand.external_supplier_name && (
+                              <span>Fechado com {demand.external_supplier_name}</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <Button variant="outline" size="sm" onClick={() => openDemandDetail(demand)}>
+                            <History className="mr-2 h-4 w-4" />
+                            Ver histórico
+                          </Button>
+                          {isOpen && (
+                            <Button variant="outline" size="sm" onClick={() => openExternalClose(demand)}>
+                              <XCircle className="mr-2 h-4 w-4" />
+                              Fechei fora do Market
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+
         <TabsContent value="vitrine">
           {meusProdutosLoading && (
             <div className="space-y-2">
@@ -931,6 +1146,128 @@ export default function Marketplace() {
           </CardContent>
         </Card>
       </section>
+
+      <Dialog open={!!demandDetail || demandDetailLoading} onOpenChange={() => setDemandDetail(null)}>
+        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {demandDetail?.demand?.demand_code || "Histórico da demanda"}
+            </DialogTitle>
+          </DialogHeader>
+
+          {demandDetailLoading && <Skeleton className="h-48 rounded-xl" />}
+
+          {demandDetail && (
+            <div className="space-y-4">
+              <div className="grid gap-2 sm:grid-cols-3">
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <p className="text-[10px] uppercase text-muted-foreground">Status</p>
+                  <p className="mt-1 text-sm font-semibold">{demandDetail.demand.status}</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <p className="text-[10px] uppercase text-muted-foreground">Pacotes</p>
+                  <p className="mt-1 text-sm font-semibold">{demandDetail.demand.package_count ?? "—"}</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <p className="text-[10px] uppercase text-muted-foreground">Comissão</p>
+                  <p className="mt-1 text-sm font-semibold">
+                    {demandDetail.commissions?.length
+                      ? fmt(demandDetail.commissions.reduce((sum: number, x: any) => sum + Number(x.commission_amount || 0), 0))
+                      : "Sem lançamento"}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold">Linha do tempo</h3>
+                <div className="mt-3 space-y-2">
+                  {demandDetail.events.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Nenhum evento registrado.</p>
+                  ) : (
+                    demandDetail.events.map((event) => (
+                      <div key={event.id} className="rounded-lg border p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-xs font-semibold">{event.event_type}</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {new Date(event.created_at).toLocaleString("pt-BR")}
+                          </p>
+                        </div>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          {event.actor_type} • {event.reference_type || "operação"}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!closingDemand} onOpenChange={() => setClosingDemand(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Fechei fora do Market — {closingDemand?.demand_code}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+              O encerramento externo permanece vinculado à demanda original. Se o fornecedor tiver sido
+              apresentado ou convidado pelo Market, o sistema identifica a correspondência e preserva a
+              comissão e a trilha de auditoria.
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Com quem fechou *</Label>
+              <Input value={externalSupplierName} onChange={(e) => setExternalSupplierName(e.target.value)} placeholder="Empresa / fornecedor" />
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>CNPJ/CPF</Label>
+                <Input value={externalSupplierDocument} onChange={(e) => setExternalSupplierDocument(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Contato</Label>
+                <Input value={externalSupplierContact} onChange={(e) => setExternalSupplierContact(e.target.value)} placeholder="Telefone ou e-mail" />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Valor fechado *</Label>
+              <Input type="number" min="0" step="0.01" value={externalCloseValue} onChange={(e) => setExternalCloseValue(e.target.value)} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Por que fechou fora do Market? *</Label>
+              <textarea
+                className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={externalCloseReason}
+                onChange={(e) => setExternalCloseReason(e.target.value)}
+                placeholder="Ex.: prazo, condição comercial, fornecedor já homologado, disponibilidade..."
+              />
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setClosingDemand(null)}>Cancelar</Button>
+              <Button
+                className="bg-emerald-700 hover:bg-emerald-800"
+                onClick={submitExternalClose}
+                disabled={
+                  submittingExternalClose ||
+                  !externalSupplierName.trim() ||
+                  !externalCloseReason.trim() ||
+                  Number(externalCloseValue) <= 0
+                }
+              >
+                {submittingExternalClose ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Registrar encerramento
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!buying} onOpenChange={() => setBuying(null)}>
         <DialogContent className="max-w-md">
