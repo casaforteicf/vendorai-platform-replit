@@ -80,12 +80,13 @@ const COMMERCIAL_STAGE_TASKS: Record<string, string> = {
 };
 
 function userMatchesStageResponsibleFunctions(
-  user: { active: boolean | null; userFunction: string | null; customFunctionId: string | null },
+  user: { active: boolean | null; platformRole?: string | null; userFunction: string | null; customFunctionId: string | null },
   responsibleFunctions: string[] | null | undefined,
 ): boolean {
   if (user.active !== true) return false;
+  if (user.platformRole === "super_admin" || user.platformRole === "tenant_admin" || user.userFunction === "administrador") return true;
   const configured = responsibleFunctions ?? [];
-  if (configured.length === 0) return false;
+  if (configured.length === 0) return true;
 
   const refs = new Set<string>();
   if (user.userFunction) refs.add(`builtin:${user.userFunction}`);
@@ -363,9 +364,58 @@ router.post("/deals", async (req, res) => {
     });
     return;
   }
-  const assignedTo = parsed.data.assignedTo ?? (
+  const [initialStageConfig] = await db.select({
+    responsaveisFuncoes: pipelineStagesTable.responsaveisFuncoes,
+  }).from(pipelineStagesTable).where(and(
+    eq(pipelineStagesTable.tenantId, parsed.data.tenantId),
+    eq(pipelineStagesTable.pipeline, "comercial"),
+    eq(pipelineStagesTable.key, parsed.data.etapa),
+  )).limit(1);
+
+  const preferredAssignedTo = parsed.data.assignedTo ?? (
     req.user?.platformRole !== "super_admin" && req.user?.sub ? req.user.sub : null
   );
+
+  let assignedTo: string | null = null;
+  if (preferredAssignedTo) {
+    const [preferredOwner] = await db.select({
+      id: usersTable.id,
+      active: usersTable.active,
+      platformRole: usersTable.platformRole,
+      userFunction: usersTable.userFunction,
+      customFunctionId: usersTable.customFunctionId,
+    }).from(usersTable).where(and(
+      eq(usersTable.id, preferredAssignedTo),
+      eq(usersTable.tenantId, parsed.data.tenantId),
+    )).limit(1);
+
+    if (preferredOwner && userMatchesStageResponsibleFunctions(preferredOwner, initialStageConfig?.responsaveisFuncoes)) {
+      assignedTo = preferredOwner.id;
+    }
+  }
+
+  if (!assignedTo) {
+    const candidates = await db.select({
+      id: usersTable.id,
+      active: usersTable.active,
+      platformRole: usersTable.platformRole,
+      userFunction: usersTable.userFunction,
+      customFunctionId: usersTable.customFunctionId,
+    }).from(usersTable).where(eq(usersTable.tenantId, parsed.data.tenantId));
+
+    assignedTo = candidates.find((candidate) =>
+      userMatchesStageResponsibleFunctions(candidate, initialStageConfig?.responsaveisFuncoes)
+    )?.id ?? null;
+  }
+
+  if (!assignedTo) {
+    res.status(422).json({
+      error: "STAGE_RESPONSIBLE_REQUIRED",
+      message: "Não há responsável ativo elegível para a etapa inicial. Configure as funções responsáveis da etapa ou ative um usuário compatível.",
+    });
+    return;
+  }
+
   const [deal] = await db.insert(dealsTable).values({ ...parsed.data, assignedTo }).returning();
   await recordDealJourney({
     tenantId: deal.tenantId, leadId: deal.leadId, dealId: deal.id,
@@ -438,6 +488,7 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
     const [responsavel] = await db.select({
       id: usersTable.id,
       active: usersTable.active,
+      platformRole: usersTable.platformRole,
       userFunction: usersTable.userFunction,
       customFunctionId: usersTable.customFunctionId,
     }).from(usersTable).where(and(
@@ -1020,6 +1071,7 @@ router.post("/deals/:id/return-to-qualified", async (req, res) => {
     .select({
       id: usersTable.id,
       active: usersTable.active,
+      platformRole: usersTable.platformRole,
       userFunction: usersTable.userFunction,
       customFunctionId: usersTable.customFunctionId,
     })
@@ -1455,6 +1507,7 @@ router.patch("/deals/:id", async (req, res) => {
     const [nextOwner] = await db.select({
       id: usersTable.id,
       active: usersTable.active,
+      platformRole: usersTable.platformRole,
       userFunction: usersTable.userFunction,
       customFunctionId: usersTable.customFunctionId,
     }).from(usersTable).where(and(
@@ -1462,7 +1515,7 @@ router.patch("/deals/:id", async (req, res) => {
       eq(usersTable.tenantId, existing.tenantId),
     )).limit(1);
 
-    if (!targetStageConfig || !userMatchesStageResponsibleFunctions(nextOwner ?? { active: false, userFunction: null, customFunctionId: null }, targetStageConfig.responsaveisFuncoes)) {
+    if (!targetStageConfig || !userMatchesStageResponsibleFunctions(nextOwner ?? { active: false, platformRole: null, userFunction: null, customFunctionId: null }, targetStageConfig.responsaveisFuncoes)) {
       res.status(422).json({
         error: "STAGE_RESPONSIBLE_REQUIRED",
         message: "O responsável precisa estar ativo e ter uma função configurada como responsável pela etapa de destino.",
