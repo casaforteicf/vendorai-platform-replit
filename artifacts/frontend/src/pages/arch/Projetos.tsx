@@ -38,7 +38,9 @@ type Projeto = {
   totalAmbientes: number;
   totalRenders: number;
   totalRenderAmbientes: number;
+  thumbnailUrl?: string | null;
   createdAt: string;
+  updatedAt?: string | null;
 };
 
 type Lead = {
@@ -441,6 +443,9 @@ export default function Projetos() {
         </div>
 
         <div className="flex items-center gap-2">
+        <Button variant="outline" onClick={() => navigate("/arch/concept?novo=1")}>
+          <Plus className="h-4 w-4 mr-2" /> Novo pré-projeto
+        </Button>
         <Dialog
           open={dialogOpen}
           onOpenChange={(open) => {
@@ -449,12 +454,15 @@ export default function Projetos() {
           }}
         >
           <DialogTrigger asChild>
-            <Button><Plus className="h-4 w-4 mr-2" /> Novo Projeto</Button>
+            <Button><Plus className="h-4 w-4 mr-2" /> Projeto direto</Button>
           </DialogTrigger>
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>Novo Projeto</DialogTitle>
+              <DialogTitle>Novo projeto profissional</DialogTitle>
             </DialogHeader>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+              Use esta opção quando o projeto já nasce profissional. Se houver estudo inicial, croqui, terreno ou briefing em evolução, comece por <button type="button" onClick={() => { setDialogOpen(false); navigate("/arch/concept?novo=1"); }} className="font-bold underline">Novo pré-projeto</button> e envie para Projeto quando estiver aprovado. Isso evita projetos duplicados.
+            </div>
             <form onSubmit={handleCreate} className="space-y-4 mt-2">
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2 space-y-1.5">
@@ -697,119 +705,140 @@ export default function Projetos() {
         </Select>
       </div>
 
-      {/* Tabela */}
-      <div className="rounded-lg border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium">Cliente</th>
-                <th className="px-4 py-3 text-left font-medium">Título</th>
-                <th className="px-4 py-3 text-left font-medium hidden md:table-cell">Tipo</th>
-                <th className="px-4 py-3 text-right font-medium hidden lg:table-cell">Área m²</th>
-                <th className="px-4 py-3 text-left font-medium">Status</th>
-                <th className="px-4 py-3 text-center font-medium hidden lg:table-cell">Renders</th>
-                <th className="px-4 py-3 text-right font-medium hidden sm:table-cell">Orçamento</th>
-                <th className="px-4 py-3 text-center font-medium">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y bg-background">
-              {loading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i}>
-                    {Array.from({ length: 8 }).map((__, j) => (
-                      <td key={j} className="px-4 py-3"><Skeleton className="h-4 w-full" /></td>
-                    ))}
-                  </tr>
-                ))
-              ) : error ? (
-                <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-destructive">{error}</td>
-                </tr>
-              ) : projetos.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center">
-                    <FolderOpen className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
-                    <p className="text-muted-foreground">Nenhum projeto encontrado</p>
-                  </td>
-                </tr>
-              ) : (
-                projetos.map((p) => (
-                  <tr key={p.id} className="hover:bg-muted/30 transition-colors">
-                    <td className="px-4 py-3 font-medium">{p.clienteNome ?? "—"}</td>
-                    <td className="px-4 py-3 max-w-[180px]">
-                      <span className="truncate block">{p.titulo}</span>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">{p.tipoObra ?? "—"}</td>
-                    <td className="px-4 py-3 text-right text-muted-foreground hidden lg:table-cell">
-                      {p.areaM2 ? `${Number(p.areaM2).toFixed(0)} m²` : "—"}
-                    </td>
-                    <td className="px-4 py-3"><StatusBadge status={p.status} /></td>
-                    <td className="px-4 py-3 text-center hidden lg:table-cell">
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium hover:bg-muted"
-                        onClick={() => navigate(`/arch/projetos/${p.id}`)}
-                        title="Abrir renders salvos deste projeto"
-                      >
-                        <Image className="h-3.5 w-3.5" />
-                        {p.totalRenders ?? 0}
-                        {(p.totalRenderAmbientes ?? 0) > 0 && <span className="text-muted-foreground">· {p.totalRenderAmbientes} amb.</span>}
-                      </button>
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium text-green-700 hidden sm:table-cell">
-                      {p.orcamentoTotal ? fmt(Number(p.orcamentoTotal)) : "—"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-center gap-1">
-                        {p.leadId && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 text-xs"
-                            onClick={() => openEditLead({
-                              id: p.leadId!,
-                              nome: p.clienteNome ?? "",
-                              email: p.clienteEmail,
-                              telefone: p.clienteTelefone,
-                            }, p.id)}
-                            title="Editar lead deste projeto"
-                          >
-                            <Pencil className="h-3 w-3 mr-1" />
-                            Lead
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 text-xs"
-                          onClick={() => navigate(`/arch/projetos/${p.id}`)}
-                        >
-                          Abrir
-                        </Button>
-                        {p.portalAtivo && p.portalToken && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 text-xs text-blue-600"
-                            onClick={() => {
-                              const base = window.location.origin;
-                              window.open(`${base}/arch/portal/${encodeURIComponent(p.portalToken!)}`, "_blank", "noopener,noreferrer");
-                            }}
-                            title="Abrir portal do cliente"
-                          >
-                            <ExternalLink className="h-3 w-3 mr-1" /> Portal
-                          </Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+      {/* Visão visual de projetos — ARQ-PROJ */}
+      {loading ? (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="overflow-hidden rounded-2xl border bg-background">
+              <Skeleton className="h-40 w-full rounded-none" />
+              <div className="space-y-3 p-4">
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-3 w-1/2" />
+                <Skeleton className="h-9 w-full" />
+              </div>
+            </div>
+          ))}
         </div>
-      </div>
+      ) : error ? (
+        <div className="rounded-2xl border border-destructive/20 bg-destructive/5 px-5 py-8 text-center text-sm text-destructive">{error}</div>
+      ) : projetos.length === 0 ? (
+        <div className="rounded-2xl border border-dashed px-5 py-14 text-center">
+          <FolderOpen className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
+          <p className="font-medium">Nenhum projeto encontrado</p>
+          <p className="mt-1 text-sm text-muted-foreground">Crie um projeto ou ajuste os filtros.</p>
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {projetos.map((p) => {
+            const progressIndex = ["briefing", "orcamento", "aprovado", "em_execucao", "entregue"].indexOf(p.status);
+            const progress = p.status === "cancelado" ? 0 : Math.max(12, Math.min(100, ((progressIndex + 1) / 5) * 100));
+            const nextAction =
+              p.status === "briefing" ? "Continuar briefing"
+                : p.status === "orcamento" ? "Revisar orçamento"
+                  : p.status === "aprovado" ? "Preparar execução"
+                    : p.status === "em_execucao" ? "Acompanhar execução"
+                      : p.status === "entregue" ? "Abrir pós-venda"
+                        : "Abrir projeto";
+            return (
+              <article key={p.id} className="group overflow-hidden rounded-2xl border bg-background shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+                <button type="button" onClick={() => navigate(`/arch/projetos/${p.id}`)} className="block w-full text-left">
+                  <div className="relative h-40 overflow-hidden bg-muted">
+                    {p.thumbnailUrl ? (
+                      <img src={p.thumbnailUrl} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" loading="lazy" />
+                    ) : (
+                      <div className="grid h-full place-items-center bg-gradient-to-br from-slate-50 to-slate-100 text-slate-400">
+                        <FolderOpen className="h-9 w-9" />
+                      </div>
+                    )}
+                    <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/55 to-transparent" />
+                    <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between gap-2">
+                      <StatusBadge status={p.status} />
+                      <span className="rounded-full bg-white/90 px-2 py-1 text-[10px] font-semibold text-slate-700">
+                        {p.totalRenders ?? 0} render{(p.totalRenders ?? 0) === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h2 className="truncate text-base font-bold">{p.titulo}</h2>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">{p.clienteNome ?? "Cliente não vinculado"}</p>
+                      </div>
+                      {p.tipoObra && <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] font-semibold">{p.tipoObra}</span>}
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                      <div className="rounded-xl bg-muted/50 p-2">
+                        <div className="text-[10px] text-muted-foreground">Área</div>
+                        <div className="mt-0.5 text-xs font-bold">{p.areaM2 ? `${Number(p.areaM2).toFixed(0)} m²` : "—"}</div>
+                      </div>
+                      <div className="rounded-xl bg-muted/50 p-2">
+                        <div className="text-[10px] text-muted-foreground">Ambientes</div>
+                        <div className="mt-0.5 text-xs font-bold">{p.totalAmbientes ?? 0}</div>
+                      </div>
+                      <div className="rounded-xl bg-muted/50 p-2">
+                        <div className="text-[10px] text-muted-foreground">Orçamento</div>
+                        <div className="mt-0.5 truncate text-xs font-bold text-emerald-700">{p.orcamentoTotal ? fmt(Number(p.orcamentoTotal)) : "—"}</div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4">
+                      <div className="mb-1 flex items-center justify-between text-[10px] font-semibold text-muted-foreground">
+                        <span>Progresso</span>
+                        <span>{Math.round(progress)}%</span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                        <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} />
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-between gap-3">
+                      <span className="text-xs font-semibold text-primary">{nextAction}</span>
+                      {p.updatedAt && (
+                        <span className="text-[10px] text-muted-foreground">
+                          {new Date(p.updatedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </button>
+
+                <div className="flex items-center gap-1 border-t px-3 py-2">
+                  {p.leadId && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 text-xs"
+                      onClick={() => openEditLead({
+                        id: p.leadId!,
+                        nome: p.clienteNome ?? "",
+                        email: p.clienteEmail,
+                        telefone: p.clienteTelefone,
+                      }, p.id)}
+                    >
+                      <Pencil className="mr-1 h-3 w-3" /> Lead
+                    </Button>
+                  )}
+                  <Button size="sm" variant="ghost" className="ml-auto h-8 text-xs" onClick={() => navigate(`/arch/projetos/${p.id}`)}>
+                    Abrir
+                  </Button>
+                  {p.portalAtivo && p.portalToken && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 text-xs text-blue-600"
+                      onClick={() => window.open(`${window.location.origin}/arch/portal/${encodeURIComponent(p.portalToken!)}`, "_blank", "noopener,noreferrer")}
+                    >
+                      <ExternalLink className="mr-1 h-3 w-3" /> Portal
+                    </Button>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
