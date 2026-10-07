@@ -17,6 +17,7 @@ import {
   inventoryItemsTable,
   produtoComposicoesTable,
   archMarketplaceItemsTable,
+  tenantNavModulesTable,
 } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -67,7 +68,26 @@ async function syncArqdorMarketplaceProduct(product: typeof produtosCatalogoTabl
   ].filter((value): value is string => Boolean(value))));
   const preco = product.precoArqdor ?? product.precoBase;
 
-  if (!product.vendeNoArqdor) {
+  const [archModule] = await db
+    .select({ isEnabled: tenantNavModulesTable.isEnabled })
+    .from(tenantNavModulesTable)
+    .where(and(
+      eq(tenantNavModulesTable.tenantId, product.tenantId),
+      eq(tenantNavModulesTable.moduleKey, "arch"),
+      eq(tenantNavModulesTable.isEnabled, true),
+    ))
+    .limit(1);
+
+  // Regra oficial: todo produto ativo da Biblioteca de Projeto de um cliente
+  // com Arqdor habilitado fica disponível no ecossistema Arqdor.
+  // O switch vendeNoArqdor continua aceito como publicação explícita.
+  const availableInArqdor = Boolean(
+    product.ativo &&
+    product.projectLibraryEnabled &&
+    (product.vendeNoArqdor || archModule?.isEnabled),
+  );
+
+  if (!availableInArqdor) {
     if (existing) {
       await db.update(archMarketplaceItemsTable)
         .set({ ativo: false })
@@ -103,7 +123,7 @@ async function syncArqdorMarketplaceProduct(product: typeof produtosCatalogoTabl
       textureUrl: product.textureUrl ?? null,
       projectLibraryEnabled: product.projectLibraryEnabled,
     },
-    ativo: product.ativo,
+    ativo: availableInArqdor,
   };
 
   if (existing) {
