@@ -55,6 +55,11 @@ type Produto = {
   } | null;
   ativo: boolean;
   createdAt: string;
+  sourceTenantId?: string | null;
+  sourceTenantName?: string | null;
+  ownedByTenant?: boolean;
+  canEdit?: boolean;
+  marketplaceAvailable?: boolean;
 };
 
 type Material = {
@@ -160,7 +165,7 @@ export default function Catalogo() {
   // ── Load ───────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams({ limit: "50" });
+    const params = new URLSearchParams({ limit: "200", scope: catalogScope });
     if (busca)                    params.set("busca", busca);
     if (categoria !== "__all__")  params.set("categoria", categoria);
     const res = await fetch(`/api/arch/catalogo?${params}`, {
@@ -168,7 +173,7 @@ export default function Catalogo() {
     });
     if (res.ok) setProdutos(await res.json());
     setLoading(false);
-  }, [busca, categoria]);
+  }, [busca, categoria, catalogScope]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -409,7 +414,7 @@ export default function Catalogo() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Biblioteca de Projeto</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">A mesma base do Catálogo Comercial, sem duplicar produtos. Imagens, preço, dados técnicos, textura e GLB são reutilizados no projeto.</p>
+          <p className="text-sm text-muted-foreground mt-0.5">Catálogo integrado do ecossistema Arqdor: seus produtos e os catálogos ativos dos demais clientes Arqdor, sem duplicar produtos.</p>
         </div>
         <Button onClick={() => window.location.assign("/catalogo")}>
           <Plus className="h-4 w-4 mr-2" /> Cadastrar no Catálogo
@@ -427,6 +432,15 @@ export default function Catalogo() {
             onChange={e => setBusca(e.target.value)}
           />
         </div>
+        <Select value={catalogScope} onValueChange={(v) => setCatalogScope(v as "ecosystem" | "tenant")}>
+          <SelectTrigger className="w-52">
+            <SelectValue placeholder="Origem do catálogo" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ecosystem">Todos os catálogos Arqdor</SelectItem>
+            <SelectItem value="tenant">Meu catálogo</SelectItem>
+          </SelectContent>
+        </Select>
         <Select value={categoria} onValueChange={setCategoria}>
           <SelectTrigger className="w-48">
             <SelectValue placeholder="Todas as categorias" />
@@ -482,7 +496,8 @@ export default function Catalogo() {
                       {desconto ? `PROMOÇÃO · ${desconto}% OFF` : "PROMOÇÃO"}
                     </Badge>
                   )}
-                  {/* Hover actions */}
+                  {/* Hover actions: catálogo de outro tenant é somente leitura */}
+                  {(p.canEdit ?? p.ownedByTenant ?? true) && (
                   <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <Button
                       size="icon" variant="secondary" className="h-7 w-7"
@@ -515,10 +530,17 @@ export default function Catalogo() {
                       </AlertDialogContent>
                     </AlertDialog>
                   </div>
+                  )}
                 </div>
                 <CardContent className="p-3 space-y-1.5">
                   <p className="font-medium text-sm leading-tight truncate">{p.nome}</p>
                   <div className="flex items-center gap-1.5 flex-wrap">
+                    {p.sourceTenantName && !p.ownedByTenant && (
+                      <Badge variant="outline" className="text-xs">{p.sourceTenantName}</Badge>
+                    )}
+                    {p.marketplaceAvailable && !p.ownedByTenant && (
+                      <Badge variant="secondary" className="text-xs">Disponível no Arqdor</Badge>
+                    )}
                     {p.categoria && (
                       <Badge variant="secondary" className="text-xs">{p.categoria}</Badge>
                     )}
