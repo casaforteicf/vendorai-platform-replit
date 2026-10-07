@@ -988,6 +988,29 @@ export default function LeadAttachmentsTab() {
     }
   }
 
+  async function deleteAttachment(item: UnifiedAttachment) {
+    if (item.sourceKind !== "lead" || !leadId) return;
+    if (!window.confirm(`Excluir o arquivo "${item.name}"?`)) return;
+
+    setSaving(true);
+    try {
+      const result = await requestJson<{ lead?: LeadRecord }>(`/api/leads/${leadId}/attachments/${encodeURIComponent(item.sourceId)}`, {
+        method: "DELETE",
+      });
+      if (result.lead) setLead(result.lead);
+      else await refresh();
+      toast({ title: "Arquivo excluído" });
+    } catch (error) {
+      toast({
+        title: "Não foi possível excluir o arquivo",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function approveForMedia(item: UnifiedAttachment) {
     if (!tenantId || !leadId || item.mediaAssetId) return;
     setSaving(true);
@@ -1171,7 +1194,7 @@ export default function LeadAttachmentsTab() {
                     </div>
                   </a>
                   <div className="space-y-2 p-3">
-                    <div className="flex items-start gap-2"><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold" title={item.name}>{item.name}</p><p className="mt-0.5 truncate text-[11px] text-muted-foreground">{item.origin}{item.folderPath ? ` · ${item.folderPath}` : ""}</p></div><button type="button" className="rounded p-1 text-muted-foreground hover:bg-muted" onClick={() => openEdit(item)} title="Renomear ou mover"><Pencil className="h-3.5 w-3.5" /></button></div>
+                    <div className="flex items-start gap-2"><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold" title={item.name}>{item.name}</p><p className="mt-0.5 truncate text-[11px] text-muted-foreground">{item.origin}{item.folderPath ? ` · ${item.folderPath}` : ""}</p></div><div className="flex items-center gap-0.5"><button type="button" className="rounded p-1 text-muted-foreground hover:bg-muted" onClick={() => openEdit(item)} title="Renomear ou mover"><Pencil className="h-3.5 w-3.5" /></button>{item.sourceKind === "lead" && <button type="button" className="rounded p-1 text-destructive hover:bg-destructive/10" onClick={() => void deleteAttachment(item)} disabled={saving} title="Excluir arquivo" aria-label={`Excluir ${item.name}`}><Trash2 className="h-3.5 w-3.5" /></button>}</div></div>
                     <div className="flex flex-wrap gap-1"><Badge variant="outline" className="text-[10px]">{typeLabel(item)}</Badge><Badge variant="outline" className={`text-[10px] ${statusClass(item.marketingStatus)}`}>{statusLabel(item.marketingStatus)}</Badge></div>
                     <div className="flex items-center justify-between text-[10px] text-muted-foreground"><span>{formatBytes(item.size)}</span><span>{formatDate(item.createdAt)}</span></div>
                     {item.marketingStatus !== "approved" ? (

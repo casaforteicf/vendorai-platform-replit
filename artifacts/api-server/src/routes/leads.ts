@@ -56,6 +56,7 @@ import { reserveUniqueItem } from "../services/item-reservation.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 import { signAttachmentFolderUnlockToken } from "../lib/jwt.js";
 import { leadRegistrationMetadata, normalizeInstagramHandle, normalizeLeadEmail, normalizeLeadName } from "../lib/lead-registration-standard.js";
+import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 import { attachmentUnlockCookieName,
   isAttachmentFolderSchemaMissingError, requestCanAccessLockedObject, syncProtectedObjectsForLead } from "../lib/attachment-folder-access.js";
 
@@ -809,6 +810,72 @@ router.post("/leads/:id/reclassificar-como-lead", async (req, res) => {
     ));
 
   res.json(lead);
+});
+
+router.delete("/leads/:id/attachments/:attachmentId", async (req, res) => {
+  const access = await getLeadForAttachmentFolder(req, res);
+  if (!access) return;
+
+  const attachmentId = String(req.params.attachmentId);
+  const [lead] = await db
+    .select()
+    .from(leadsTable)
+    .where(eq(leadsTable.id, access.id))
+    .limit(1);
+
+  if (!lead) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  const discovery = lead.discoveryData && typeof lead.discoveryData === "object" && !Array.isArray(lead.discoveryData)
+    ? { ...(lead.discoveryData as Record<string, unknown>) }
+    : {};
+  const rootValue = discovery["vendoraiAttachments"];
+  const root = rootValue && typeof rootValue === "object" && !Array.isArray(rootValue)
+    ? { ...(rootValue as Record<string, unknown>) }
+    : {};
+  const files = Array.isArray(root["files"]) ? root["files"] as Array<Record<string, unknown>> : [];
+  const file = files.find((item) => String(item["id"] ?? "") === attachmentId);
+
+  if (!file) {
+    res.status(404).json({ error: "Arquivo não encontrado" });
+    return;
+  }
+
+  const storageUrl = typeof file["storageUrl"] === "string" ? file["storageUrl"] : "";
+  if (storageUrl.startsWith("/objects/")) {
+    try {
+      const storage = new ObjectStorageService();
+      const objectFile = await storage.getObjectEntityFile(storageUrl);
+      await objectFile.delete();
+    } catch (error) {
+      if (!(error instanceof ObjectNotFoundError)) {
+        req.log.error({ err: error, leadId: access.id, attachmentId, storageUrl }, "lead-attachments: failed to delete physical file");
+        res.status(500).json({ error: "Não foi possível excluir o arquivo" });
+        return;
+      }
+    }
+  }
+
+  const overridesValue = root["overrides"];
+  const overrides = overridesValue && typeof overridesValue === "object" && !Array.isArray(overridesValue)
+    ? { ...(overridesValue as Record<string, unknown>) }
+    : {};
+  delete overrides[`lead:${attachmentId}`];
+
+  root["files"] = files.filter((item) => String(item["id"] ?? "") !== attachmentId);
+  root["overrides"] = overrides;
+  discovery["vendoraiAttachments"] = root;
+
+  const [updated] = await db
+    .update(leadsTable)
+    .set({ discoveryData: discovery, updatedAt: new Date() })
+    .where(eq(leadsTable.id, access.id))
+    .returning();
+
+  await syncProtectedObjectsForLead(access.tenantId, access.id);
+  res.json({ deleted: true, attachmentId, lead: updated });
 });
 
 router.get("/leads/:id/attachment-folder-locks", async (req, res) => {
