@@ -103,6 +103,111 @@ export const COMPOSICAO_SISTEMAS_CONSTRUTIVOS = [
   "outro",
 ] as const;
 
+export const SISTEMA_REGRA_ACOES = [
+  "manter",
+  "substituir",
+  "adicionar",
+  "remover",
+  "dimensionar_pelo_projeto",
+] as const;
+
+export const SISTEMA_ESCOPO_APLICACAO = [
+  "parede_externa",
+  "parede_interna",
+  "estrutura",
+  "fundacao",
+  "cobertura",
+  "fachada",
+  "interface",
+  "outro",
+] as const;
+
+export const sistemasConstrutivosTable = pgTable("sistemas_construtivos", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  chave: text("chave").notNull(),
+  nome: text("nome").notNull(),
+  descricao: text("descricao"),
+  escoposAplicacao: text("escopos_aplicacao").array().notNull().default([]),
+  parametrosPadrao: jsonb("parametros_padrao").$type<Record<string, unknown> | null>(),
+  memorial: jsonb("memorial").$type<Record<string, unknown> | null>(),
+  ativo: boolean("ativo").notNull().default(true),
+  ordem: integer("ordem").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (table) => ({
+  tenantChaveIdx: index("sistemas_construtivos_tenant_chave_idx").on(table.tenantId, table.chave),
+  tenantAtivoIdx: index("sistemas_construtivos_tenant_ativo_idx").on(table.tenantId, table.ativo),
+}));
+
+export const sistemaVariantesTable = pgTable("sistema_variantes", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  sistemaId: text("sistema_id").notNull().references(() => sistemasConstrutivosTable.id, { onDelete: "cascade" }),
+  codigo: text("codigo"),
+  nome: text("nome").notNull(),
+  parametros: jsonb("parametros").$type<Record<string, unknown> | null>(),
+  criteriosAplicacao: jsonb("criterios_aplicacao").$type<Record<string, unknown> | null>(),
+  memorial: jsonb("memorial").$type<Record<string, unknown> | null>(),
+  ativo: boolean("ativo").notNull().default(true),
+  ordem: integer("ordem").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+export const sistemaComposicaoRegrasTable = pgTable("sistema_composicao_regras", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  sistemaId: text("sistema_id").notNull().references(() => sistemasConstrutivosTable.id, { onDelete: "cascade" }),
+  varianteId: text("variante_id").references(() => sistemaVariantesTable.id, { onDelete: "cascade" }),
+  slotKey: text("slot_key").notNull(),
+  etapaKey: text("etapa_key"),
+  acao: text("acao").notNull().default("manter"),
+  composicaoId: text("composicao_id"),
+  composicaoSubstituidaId: text("composicao_substituida_id"),
+  obrigatoria: boolean("obrigatoria").notNull().default(false),
+  parametros: jsonb("parametros").$type<Record<string, unknown> | null>(),
+  condicao: jsonb("condicao").$type<Record<string, unknown> | null>(),
+  observacoes: text("observacoes"),
+  ordem: integer("ordem").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (table) => ({
+  sistemaSlotIdx: index("sistema_composicao_regras_sistema_slot_idx").on(table.sistemaId, table.slotKey),
+}));
+
+export const sistemaInterfacesTable = pgTable("sistema_interfaces", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  chave: text("chave").notNull(),
+  nome: text("nome").notNull(),
+  sistemaOrigem: text("sistema_origem"),
+  destinoTipo: text("destino_tipo"),
+  composicaoId: text("composicao_id"),
+  parametros: jsonb("parametros").$type<Record<string, unknown> | null>(),
+  memorial: jsonb("memorial").$type<Record<string, unknown> | null>(),
+  ativo: boolean("ativo").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+export const insertSistemaConstrutivoSchema = createInsertSchema(sistemasConstrutivosTable, {
+  chave: z.enum(COMPOSICAO_SISTEMAS_CONSTRUTIVOS),
+  escoposAplicacao: z.array(z.enum(SISTEMA_ESCOPO_APLICACAO)).optional(),
+}).omit({ id: true, createdAt: true, updatedAt: true });
+
+export const updateSistemaConstrutivoSchema = createSelectSchema(sistemasConstrutivosTable, {
+  chave: z.enum(COMPOSICAO_SISTEMAS_CONSTRUTIVOS).optional(),
+  escoposAplicacao: z.array(z.enum(SISTEMA_ESCOPO_APLICACAO)).optional(),
+}).omit({ id: true, tenantId: true, createdAt: true, updatedAt: true }).partial();
+
+export const insertSistemaVarianteSchema = createInsertSchema(sistemaVariantesTable).omit({ id: true, createdAt: true, updatedAt: true });
+
+export const insertSistemaComposicaoRegraSchema = createInsertSchema(sistemaComposicaoRegrasTable, {
+  etapaKey: z.enum(COMPOSICAO_ETAPA_KEYS).nullable().optional(),
+  acao: z.enum(SISTEMA_REGRA_ACOES),
+}).omit({ id: true, createdAt: true, updatedAt: true });
+
+export const insertSistemaInterfaceSchema = createInsertSchema(sistemaInterfacesTable).omit({ id: true, createdAt: true, updatedAt: true });
+
 export const composicoesTable = pgTable("composicoes", {
   id: text("id")
     .primaryKey()
