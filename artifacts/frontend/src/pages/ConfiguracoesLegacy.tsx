@@ -574,7 +574,7 @@ function AnalysisLogTab({ tenantId }: { tenantId: string }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function Configuracoes() {
+export default function Configuracoes({ embedded = false }: { embedded?: boolean } = {}) {
   const { user, token, isEffectiveAdmin } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const { toast } = useToast();
@@ -2339,21 +2339,24 @@ export default function Configuracoes() {
           <a href="/onboarding/integracoes" className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground">Voltar às pendências</a>
         </div>
       )}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Configurações</h1>
-        <p className="text-muted-foreground text-sm mt-1">Gerencie o perfil da empresa e as configurações da conta.</p>
-      </div>
+      {!embedded && (
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Configurações</h1>
+          <p className="text-muted-foreground text-sm mt-1">Gerencie o perfil da empresa e as configurações da conta.</p>
+        </div>
+      )}
 
       <Tabs
         value={activeTab}
-        className="space-y-6"
+        className={embedded ? "space-y-0" : "space-y-6"}
         onValueChange={(tab) => {
           setActiveTab(tab);
           if (tab !== "integracoes") setIntegracoesUnlocked(false);
         }}
       >
-        <div className="overflow-x-auto pb-0.5">
-        <TabsList className={cn("grid w-max sm:w-full max-w-3xl", (isTenantAdmin && showFaturamento) ? "grid-cols-10" : isTenantAdmin ? "grid-cols-9" : showFaturamento ? "grid-cols-8" : "grid-cols-7")}>
+        {!embedded && (
+          <div className="overflow-x-auto pb-0.5">
+          <TabsList className={cn("grid w-max sm:w-full max-w-3xl", (isTenantAdmin && showFaturamento) ? "grid-cols-10" : isTenantAdmin ? "grid-cols-9" : showFaturamento ? "grid-cols-8" : "grid-cols-7")}>
           <TabsTrigger value="perfil" className="gap-1.5">
             <Building2 className="h-4 w-4" />
             Perfil
@@ -2400,8 +2403,9 @@ export default function Configuracoes() {
               Faturamento
             </TabsTrigger>
           )}
-        </TabsList>
-        </div>
+          </TabsList>
+          </div>
+        )}
 
         {/* ── Tab: Marketing / Kit da Marca ─────────────────────────────── */}
         <TabsContent value="marketing" className="min-h-[320px]">
