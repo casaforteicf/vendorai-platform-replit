@@ -37,6 +37,23 @@ import { authenticate } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
 
+// Fonte canônica de valor para indicadores comerciais:
+// usa o valor persistido no deal e, para dados históricos ainda não sincronizados,
+// cai no orçamento vinculado mais recente. Isso evita que cards antigos com
+// deal.valor nulo derrubem os totais do dashboard.
+const CANONICAL_DEAL_VALUE = sql<string>`coalesce(
+  ${dealsTable.valor},
+  (
+    select ${propostasTable.valorTotal}
+    from ${propostasTable}
+    where ${propostasTable.dealId} = ${dealsTable.id}
+      and ${propostasTable.valorTotal} is not null
+    order by ${propostasTable.updatedAt} desc, ${propostasTable.createdAt} desc
+    limit 1
+  ),
+  0
+)`;
+
 type LeadsSummaryRow = { total: number; novosUltimos30Dias: number };
 type DealsByStageRow = { etapa: string; total: number };
 type OpenDealsValueRow = { totalValor: string | null };
@@ -143,7 +160,7 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
 
     // 3. Valor total em negociação (deals abertos)
     db
-      .select({ totalValor: sum(dealsTable.valor) })
+      .select({ totalValor: sum(CANONICAL_DEAL_VALUE) })
       .from(dealsTable)
       .where(
         and(
@@ -205,7 +222,7 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
     db
       .select({
         count: sql<number>`count(*)`.mapWith(Number),
-        somaValor: sum(dealsTable.valor),
+        somaValor: sum(CANONICAL_DEAL_VALUE),
       })
       .from(dealsTable)
       .where(
@@ -219,7 +236,7 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
     // 8. Ticket médio
     db
       .select({
-        ticketMedio: sql<string | null>`avg(${dealsTable.valor})::text`,
+        ticketMedio: sql<string | null>`avg(${CANONICAL_DEAL_VALUE})::text`,
       })
       .from(dealsTable)
       .where(
@@ -650,11 +667,11 @@ router.post("/tenants/:tenantId/dashboard/perfil-insight", async (req, res) => {
         .orderBy(desc(sql`count(*)`))
         .limit(5),
       db
-        .select({ count: sql<number>`count(*)`.mapWith(Number), somaValor: sum(dealsTable.valor) })
+        .select({ count: sql<number>`count(*)`.mapWith(Number), somaValor: sum(CANONICAL_DEAL_VALUE) })
         .from(dealsTable)
         .where(and(eq(dealsTable.tenantId, tenantId), eq(dealsTable.etapa, "ganho"))),
       db
-        .select({ ticketMedio: sql<string | null>`avg(${dealsTable.valor})::text` })
+        .select({ ticketMedio: sql<string | null>`avg(${CANONICAL_DEAL_VALUE})::text` })
         .from(dealsTable)
         .where(and(eq(dealsTable.tenantId, tenantId), eq(dealsTable.etapa, "ganho"), isNotNull(dealsTable.valor))),
       db
@@ -891,7 +908,7 @@ router.get("/dashboard", authenticate, async (req, res) => {
     // Aquecimento, parceiros, execução e estados terminais não pertencem ao pipeline Comercial.
     db.select({
       total: count(),
-      somaValor: sum(dealsTable.valor),
+      somaValor: sum(CANONICAL_DEAL_VALUE),
     })
       .from(dealsTable)
       .innerJoin(leadsTable, and(
@@ -908,7 +925,7 @@ router.get("/dashboard", authenticate, async (req, res) => {
     // deals ganhos este mês
     db.select({
       total: count(),
-      somaValor: sum(dealsTable.valor),
+      somaValor: sum(CANONICAL_DEAL_VALUE),
     })
       .from(dealsTable)
       .where(and(
