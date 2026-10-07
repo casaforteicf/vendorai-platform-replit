@@ -1223,6 +1223,9 @@ archProcurementRfqRouter.post("/arch/market-commission-rules", async (req, res, 
     if (endsAt && Number.isNaN(endsAt.getTime())) return res.status(422).json({ error: "Data final inválida." });
     if (startsAt && endsAt && endsAt <= startsAt) return res.status(422).json({ error: "A data final precisa ser posterior à inicial." });
 
+    const adjustmentMode = String(req.body?.adjustmentMode || "override");
+    if (adjustmentMode !== "override") return res.status(422).json({ error: "Modelo de ajuste inválido." });
+
     const result = await pool.query(
       `INSERT INTO arqdor_market_commission_rules
         (tenant_id,scope_type,scope_key,percentage,active,priority,starts_at,ends_at,created_by,
@@ -1237,7 +1240,7 @@ archProcurementRfqRouter.post("/arch/market-commission-rules", async (req, res, 
         String(req.body?.description || "").trim() || null,
         String(req.body?.ruleKind || "standard"),
         String(req.body?.campaignCode || "").trim() || null,
-        String(req.body?.adjustmentMode || "override"),
+        adjustmentMode,
         JSON.stringify(req.body?.conditions && typeof req.body.conditions === "object" ? req.body.conditions : {}),
         req.body?.maxCommissionAmount == null || req.body?.maxCommissionAmount === "" ? null : String(Math.max(0,n(req.body.maxCommissionAmount))),
         req.body?.minCommissionAmount == null || req.body?.minCommissionAmount === "" ? null : String(Math.max(0,n(req.body.minCommissionAmount))),
@@ -1256,6 +1259,15 @@ archProcurementRfqRouter.patch("/arch/market-commission-rules/:ruleId", async (r
     const row = current.rows[0];
     const percentage = req.body?.percentage == null ? n(row.percentage) : n(req.body.percentage,-1);
     if (percentage < 0 || percentage > 100) return res.status(422).json({ error: "Percentual deve ficar entre 0 e 100." });
+    if (req.body?.adjustmentMode !== undefined && String(req.body.adjustmentMode) !== "override") {
+      return res.status(422).json({ error: "Modelo de ajuste inválido." });
+    }
+    const startsAt = req.body?.startsAt === undefined ? row.starts_at : (req.body.startsAt ? new Date(req.body.startsAt) : null);
+    const endsAt = req.body?.endsAt === undefined ? row.ends_at : (req.body.endsAt ? new Date(req.body.endsAt) : null);
+    if (startsAt && Number.isNaN(new Date(startsAt).getTime())) return res.status(422).json({ error: "Data inicial inválida." });
+    if (endsAt && Number.isNaN(new Date(endsAt).getTime())) return res.status(422).json({ error: "Data final inválida." });
+    if (startsAt && endsAt && new Date(endsAt) <= new Date(startsAt)) return res.status(422).json({ error: "A data final precisa ser posterior à inicial." });
+
     const result = await pool.query(
       `UPDATE arqdor_market_commission_rules SET
           percentage=$1,active=$2,priority=$3,starts_at=$4,ends_at=$5,
@@ -1266,13 +1278,13 @@ archProcurementRfqRouter.patch("/arch/market-commission-rules/:ruleId", async (r
         String(percentage),
         req.body?.active == null ? row.active : Boolean(req.body.active),
         req.body?.priority == null ? row.priority : Math.round(n(req.body.priority,0)),
-        req.body?.startsAt === undefined ? row.starts_at : (req.body.startsAt ? new Date(req.body.startsAt) : null),
-        req.body?.endsAt === undefined ? row.ends_at : (req.body.endsAt ? new Date(req.body.endsAt) : null),
+        startsAt,
+        endsAt,
         req.body?.name === undefined ? row.name : String(req.body.name || "").trim() || null,
         req.body?.description === undefined ? row.description : String(req.body.description || "").trim() || null,
         req.body?.ruleKind === undefined ? row.rule_kind : String(req.body.ruleKind || "standard"),
         req.body?.campaignCode === undefined ? row.campaign_code : String(req.body.campaignCode || "").trim() || null,
-        req.body?.adjustmentMode === undefined ? row.adjustment_mode : String(req.body.adjustmentMode || "override"),
+        "override",
         JSON.stringify(req.body?.conditions === undefined ? (row.conditions || {}) : (req.body.conditions || {})),
         req.body?.maxCommissionAmount === undefined ? row.max_commission_amount : (req.body.maxCommissionAmount === null || req.body.maxCommissionAmount === "" ? null : String(Math.max(0,n(req.body.maxCommissionAmount)))),
         req.body?.minCommissionAmount === undefined ? row.min_commission_amount : (req.body.minCommissionAmount === null || req.body.minCommissionAmount === "" ? null : String(Math.max(0,n(req.body.minCommissionAmount)))),
