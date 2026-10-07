@@ -1,0 +1,33 @@
+name: Frontend Build Diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "artifacts/frontend/**"
+      - "lib/api-zod/**"
+      - "lib/vendor-brain/**"
+      - ".github/workflows/frontend-build-diagnostic.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Build frontend
+        run: pnpm --filter @workspace/frontend build
