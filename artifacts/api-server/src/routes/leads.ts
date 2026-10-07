@@ -41,6 +41,7 @@ import {
   attachmentFolderLocksTable,
   attachmentFolderAuditTable,
   attachmentFolderLockObjectsTable,
+  dealTenantParticipationsTable,
 } from "@workspace/db";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { buildUserFunctionFilter, requireAdminOrUserFunction, type UserFunction } from "../middlewares/auth.js";
@@ -1021,12 +1022,35 @@ router.get("/leads/:id", async (req, res) => {
     ? null
     : await findRepresentativeLeadAccess(req, lead.tenantId, lead.representativeFunctionId);
 
-  if (!isOwnTenant && (!representativeAccess || lead.representativeFunctionId !== representativeAccess.id)) {
+  // Negócios compartilhados concedem acesso ao mesmo lead para o tenant
+  // participante. Isso torna o fluxo realmente bidirecional sem copiar o lead
+  // e sem depender de a empresa de origem ter previamente criado uma função
+  // externa específica para o outro sentido da parceria.
+  let sharedDealAccess = false;
+  if (!isOwnTenant && !representativeAccess && req.user?.tenantId) {
+    const sharedRows = await db.select({
+      operationalUserId: dealTenantParticipationsTable.operationalUserId,
+    })
+      .from(dealTenantParticipationsTable)
+      .innerJoin(dealsTable, eq(dealsTable.id, dealTenantParticipationsTable.dealId))
+      .where(and(
+        eq(dealsTable.leadId, lead.id),
+        eq(dealTenantParticipationsTable.partnerTenantId, req.user.tenantId),
+        eq(dealTenantParticipationsTable.status, "active"),
+      ));
+
+    const isParticipantAdmin = req.user?.platformRole === "tenant_admin";
+    sharedDealAccess = sharedRows.some((row) =>
+      isParticipantAdmin || !row.operationalUserId || row.operationalUserId === req.user?.sub
+    );
+  }
+
+  if (!isOwnTenant && (!representativeAccess || lead.representativeFunctionId !== representativeAccess.id) && !sharedDealAccess) {
     res.status(403).json({ error: "Access denied to this lead" });
     return;
   }
 
-  if (!representativeAccess) {
+  if (!representativeAccess && !sharedDealAccess) {
     const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
     const userFn = req.user?.userFunction as UserFunction | undefined;
     if (!isAdmin && userFn === "vendedor" && lead.assignedTo !== req.user?.sub) {
