@@ -776,7 +776,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
     const isGeradorConteudo = location === "/content";
     const isCampanhas = location.startsWith("/content?tab=campanhas");
 
-    const homeHrefs = new Set(["/", "/trabalho"]);
+    const homeHrefs = new Set(["/dashboard", "/trabalho"]);
     const commercialHrefs = new Set(["/propostas", "/catalogo", "/pacotes"]);
     const financeHrefs = new Set(["/erp"]);
     const administrationHrefs = new Set(["/organizacao", "/usuarios", "/configuracoes"]);
