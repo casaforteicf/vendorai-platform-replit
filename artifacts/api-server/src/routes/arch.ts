@@ -2685,13 +2685,6 @@ router.post("/arch/concept-projects/:id/develop-with-ai", authenticate, async (r
 
   const projectScope = config.projectScope === "room" ? "room" : "house";
   const terrainDefined = config.terrainDefined === true;
-  // O ponto de partida deve ser um programa/briefing aprovado ou geometria real já existente.
-  if (!projectBrief && rooms.length === 0 && customWalls.length === 0 && customOpenings.length === 0) {
-    return res.status(409).json({
-      error: "Defina o briefing/programa de necessidades antes de desenvolver a planta com IA.",
-      code: "ARCH_BRIEF_REQUIRED",
-    });
-  }
   const customWalls = Array.isArray(config.customWalls) ? config.customWalls : [];
   const customOpenings = Array.isArray(config.customOpenings) ? config.customOpenings : [];
 
