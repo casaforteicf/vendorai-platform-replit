@@ -250,8 +250,11 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (r
     `SELECT p.id,p.status,p.subtotal_centavos,p.frete_centavos,p.desconto_centavos,
             p.total_centavos,p.moeda,p.modelo_logistico,p.ponto_redespacho_id,
             p.cliente_nome,p.cliente_documento,p.cliente_email,p.cliente_whatsapp,p.asaas_customer_id,p.market_demand_id,
+            d.tenant_id AS market_buyer_tenant_id,
             t.asaas_api_key,t.comissao_praca_ai_percentual
-       FROM praca_pedidos p JOIN tenants t ON t.id=p.tenant_id
+       FROM praca_pedidos p
+       JOIN tenants t ON t.id=p.tenant_id
+       LEFT JOIN arqdor_market_demands d ON d.id=p.market_demand_id
       WHERE p.tenant_id=$1 AND p.id=$2`,
     [tenantId,orderId],
   );
@@ -419,7 +422,7 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (r
          RETURNING id`,
         [
           order.market_demand_id,
-          tenantId,
+          order.market_buyer_tenant_id || tenantId,
           orderId,
           String(effectiveCommissionPercent),
           String(commissionBase / 100),
@@ -507,6 +510,12 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (r
       `UPDATE praca_payment_allocations SET status='scheduled',updated_at=now()
         WHERE payment_intent_id=$1`,
       [intentId],
+    );
+    await vendorPool.query(
+      `UPDATE arch_marketplace_pedidos
+          SET payment_status='pending',payment_provider='asaas',payment_intent_id=$1
+        WHERE praca_order_id=$2`,
+      [intentId, orderId],
     );
     return res.status(201).json({
       id:intentId,
@@ -710,12 +719,24 @@ pracaPaymentsPublicRouter.post("/webhooks/asaas/payments", async (req, res) => {
             WHERE id=$1 AND tenant_id=$2 AND status='pagamento_pendente'`,
           [row.order_id,row.tenant_id],
         );
+        if (status === "confirmed") {
+          await client.query(
+            `UPDATE arch_marketplace_pedidos SET payment_status='confirmed' WHERE praca_order_id=$1`,
+            [row.order_id],
+          );
+        }
       }
       if (status === "received") {
         await client.query(
           `UPDATE praca_payment_allocations SET status='settled',settled_at=now(),updated_at=now()
             WHERE payment_intent_id=$1 AND status IN ('planned','scheduled')`,
           [row.id],
+        );
+        await client.query(
+          `UPDATE arch_marketplace_pedidos
+              SET payment_status='paid',status='aprovado'
+            WHERE praca_order_id=$1`,
+          [row.order_id],
         );
         if (row.market_commission_entry_id) {
           await client.query(
@@ -760,6 +781,12 @@ pracaPaymentsPublicRouter.post("/webhooks/asaas/payments", async (req, res) => {
             [row.market_commission_entry_id],
           );
         }
+        await client.query(
+          `UPDATE arch_marketplace_pedidos
+              SET payment_status=$1,status=CASE WHEN $1 IN ('refunded','cancelled') THEN 'cancelado' ELSE status END
+            WHERE praca_order_id=$2`,
+          [status,row.order_id],
+        );
         if (status === "refunded" || status === "cancelled") {
           await client.query(
             "UPDATE praca_payment_actions SET status='completed',completed_at=coalesce(completed_at,now()),updated_at=now() WHERE payment_intent_id=$1 AND status='provider_accepted' AND action_type=$2",
