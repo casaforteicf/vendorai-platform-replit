@@ -29,6 +29,15 @@ import {
   obraOrcamentoEtapasTable,
   obraOrcamentoItensTable,
   obraOrcamentoItemQuantitativosHistoricoTable,
+  maoObraRecursosTable,
+  maoObraEquipesTable,
+  maoObraEquipeMembrosTable,
+  maoObraCoberturasTable,
+  insertMaoObraRecursoSchema,
+  updateMaoObraRecursoSchema,
+  insertMaoObraEquipeSchema,
+  insertMaoObraEquipeMembroSchema,
+  insertMaoObraCoberturaSchema,
   insertObraSchema,
   updateObraSchema,
   insertObraEtapaSchema,
@@ -853,6 +862,272 @@ router.put("/tenants/:tenantId/compras-obras/:compraId", async (req, res) => {
     .returning();
   if (!compra) return res.status(404).json({ error: "Not found" });
   return res.json(compra);
+});
+
+// ─── Mão de obra do orçamento ─────────────────────────────────────────────────
+
+function custoHoraRecurso(recurso: typeof maoObraRecursosTable.$inferSelect): number {
+  const custoHoraInformado = numberOrZero(recurso.custoHoraCalculado);
+  if (custoHoraInformado > 0) return custoHoraInformado;
+
+  if (recurso.modalidade === "funcionario_hora" || recurso.modalidade === "funcionario_producao" || recurso.modalidade === "equipe_propria") {
+    const salario = numberOrZero(recurso.salarioMensal);
+    const encargos = numberOrZero(recurso.encargosPercentual);
+    const beneficios = numberOrZero(recurso.beneficiosMensais);
+    const outros = numberOrZero(recurso.outrosCustosMensais);
+    const horas = numberOrZero(recurso.horasMensais);
+    if (horas > 0) {
+      return (salario * (1 + encargos / 100) + beneficios + outros) / horas;
+    }
+  }
+
+  return numberOrZero(recurso.custoBase);
+}
+
+async function custoUnitarioEquipe(tenantId: string, equipeId: string, unidade: string): Promise<number> {
+  const [equipe] = await db
+    .select()
+    .from(maoObraEquipesTable)
+    .where(and(eq(maoObraEquipesTable.id, equipeId), eq(maoObraEquipesTable.tenantId, tenantId)));
+  if (!equipe) throw new Error("Equipe não encontrada");
+
+  const membros = await db
+    .select({
+      quantidade: maoObraEquipeMembrosTable.quantidade,
+      recurso: maoObraRecursosTable,
+    })
+    .from(maoObraEquipeMembrosTable)
+    .innerJoin(maoObraRecursosTable, eq(maoObraEquipeMembrosTable.recursoId, maoObraRecursosTable.id))
+    .where(and(
+      eq(maoObraEquipeMembrosTable.equipeId, equipeId),
+      eq(maoObraRecursosTable.tenantId, tenantId),
+      eq(maoObraRecursosTable.ativo, true),
+    ));
+
+  const custoHoraEquipe = membros.reduce((sum, membro) =>
+    sum + custoHoraRecurso(membro.recurso) * numberOrZero(membro.quantidade), 0);
+
+  if (unidade === "dia") return custoHoraEquipe * numberOrZero(equipe.horasDia || "8");
+  return custoHoraEquipe;
+}
+
+router.get("/tenants/:tenantId/mao-obra/recursos", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const rows = await db
+    .select()
+    .from(maoObraRecursosTable)
+    .where(eq(maoObraRecursosTable.tenantId, tid))
+    .orderBy(asc(maoObraRecursosTable.nome));
+
+  return res.json(rows.map((row) => ({
+    ...row,
+    custoHoraEfetivo: custoHoraRecurso(row).toFixed(4),
+  })));
+});
+
+router.post("/tenants/:tenantId/mao-obra/recursos", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertMaoObraRecursoSchema.safeParse({ ...req.body, tenantId: tid });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [created] = await db.insert(maoObraRecursosTable).values(parsed.data).returning();
+  return res.status(201).json({ ...created, custoHoraEfetivo: custoHoraRecurso(created).toFixed(4) });
+});
+
+router.put("/tenants/:tenantId/mao-obra/recursos/:recursoId", async (req, res) => {
+  const { tenantId: tid, recursoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = updateMaoObraRecursoSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [updated] = await db.update(maoObraRecursosTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(and(eq(maoObraRecursosTable.id, recursoId), eq(maoObraRecursosTable.tenantId, tid)))
+    .returning();
+  if (!updated) return res.status(404).json({ error: "Recurso não encontrado" });
+
+  return res.json({ ...updated, custoHoraEfetivo: custoHoraRecurso(updated).toFixed(4) });
+});
+
+router.get("/tenants/:tenantId/mao-obra/equipes", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const equipes = await db.select().from(maoObraEquipesTable)
+    .where(eq(maoObraEquipesTable.tenantId, tid))
+    .orderBy(asc(maoObraEquipesTable.nome));
+
+  const result = [];
+  for (const equipe of equipes) {
+    const membros = await db.select({
+      id: maoObraEquipeMembrosTable.id,
+      quantidade: maoObraEquipeMembrosTable.quantidade,
+      recurso: maoObraRecursosTable,
+    })
+      .from(maoObraEquipeMembrosTable)
+      .innerJoin(maoObraRecursosTable, eq(maoObraEquipeMembrosTable.recursoId, maoObraRecursosTable.id))
+      .where(eq(maoObraEquipeMembrosTable.equipeId, equipe.id));
+
+    const custoHora = membros.reduce((sum, membro) =>
+      sum + custoHoraRecurso(membro.recurso) * numberOrZero(membro.quantidade), 0);
+
+    result.push({
+      ...equipe,
+      membros,
+      custoHora: custoHora.toFixed(4),
+      custoDia: (custoHora * numberOrZero(equipe.horasDia || "8")).toFixed(4),
+    });
+  }
+
+  return res.json(result);
+});
+
+router.post("/tenants/:tenantId/mao-obra/equipes", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const { membros: rawMembros, ...rest } = req.body as { membros?: unknown; [key: string]: unknown };
+  const parsedEquipe = insertMaoObraEquipeSchema.safeParse({ ...rest, tenantId: tid });
+  if (!parsedEquipe.success) return res.status(422).json({ error: parsedEquipe.error.message });
+
+  const parsedMembros = z.array(insertMaoObraEquipeMembroSchema.omit({ equipeId: true })).safeParse(rawMembros ?? []);
+  if (!parsedMembros.success) return res.status(422).json({ error: parsedMembros.error.message });
+
+  const recursoIds = [...new Set(parsedMembros.data.map((m) => m.recursoId))];
+  if (recursoIds.length) {
+    const recursos = await db.select({ id: maoObraRecursosTable.id })
+      .from(maoObraRecursosTable)
+      .where(and(eq(maoObraRecursosTable.tenantId, tid), inArray(maoObraRecursosTable.id, recursoIds)));
+    if (recursos.length !== recursoIds.length) {
+      return res.status(422).json({ error: "Um ou mais recursos de mão de obra não pertencem ao tenant." });
+    }
+  }
+
+  const equipe = await db.transaction(async (tx) => {
+    const [created] = await tx.insert(maoObraEquipesTable).values(parsedEquipe.data).returning();
+    if (parsedMembros.data.length) {
+      await tx.insert(maoObraEquipeMembrosTable).values(parsedMembros.data.map((m) => ({
+        ...m,
+        equipeId: created.id,
+      })));
+    }
+    return created;
+  });
+
+  return res.status(201).json(equipe);
+});
+
+router.post("/tenants/:tenantId/mao-obra/coberturas", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const raw = { ...req.body, tenantId: tid, criadoPorId: (req as any).user?.sub ?? null };
+  const parsed = insertMaoObraCoberturaSchema.safeParse(raw);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const data = parsed.data;
+  const idsPresentes = [
+    data.composicaoId ? "composicao" : null,
+    data.orcamentoEtapaId ? "etapa_orcamento" : null,
+    data.orcamentoItemId ? "item_orcamento" : null,
+  ].filter(Boolean);
+
+  if (idsPresentes.length !== 1 || idsPresentes[0] !== data.escopoTipo) {
+    return res.status(422).json({
+      error: "A cobertura deve possuir exatamente um alvo e ele deve corresponder ao escopoTipo.",
+    });
+  }
+
+  let custoUnitario = numberOrZero(data.custoUnitario);
+  if (data.equipeId) {
+    custoUnitario = await custoUnitarioEquipe(tid, data.equipeId, data.unidade);
+  } else if (data.recursoId) {
+    const [recurso] = await db.select().from(maoObraRecursosTable)
+      .where(and(eq(maoObraRecursosTable.id, data.recursoId), eq(maoObraRecursosTable.tenantId, tid)));
+    if (!recurso) return res.status(422).json({ error: "Recurso de mão de obra inválido." });
+    const hora = custoHoraRecurso(recurso);
+    custoUnitario = data.unidade === "dia" ? hora * 8 : (numberOrZero(recurso.custoBase) || hora);
+  }
+
+  const custoTotal = numberOrZero(data.quantidade) * custoUnitario;
+
+  const targetCondition =
+    data.escopoTipo === "composicao"
+      ? eq(maoObraCoberturasTable.composicaoId, data.composicaoId!)
+      : data.escopoTipo === "etapa_orcamento"
+        ? eq(maoObraCoberturasTable.orcamentoEtapaId, data.orcamentoEtapaId!)
+        : eq(maoObraCoberturasTable.orcamentoItemId, data.orcamentoItemId!);
+
+  const created = await db.transaction(async (tx) => {
+    // Uma única fonte ativa por escopo/alvo. A anterior permanece para auditoria,
+    // porém fica inativa e deixa de entrar no custo.
+    await tx.update(maoObraCoberturasTable)
+      .set({ ativo: false, updatedAt: new Date() })
+      .where(and(
+        eq(maoObraCoberturasTable.tenantId, tid),
+        eq(maoObraCoberturasTable.escopoTipo, data.escopoTipo),
+        eq(maoObraCoberturasTable.ativo, true),
+        targetCondition,
+      ));
+
+    const [row] = await tx.insert(maoObraCoberturasTable).values({
+      ...data,
+      custoUnitario: custoUnitario.toFixed(4),
+      custoTotal: custoTotal.toFixed(4),
+      ativo: true,
+    }).returning();
+    return row;
+  });
+
+  return res.status(201).json(created);
+});
+
+router.get("/tenants/:tenantId/mao-obra/resolver", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const composicaoId = typeof req.query.composicaoId === "string" ? req.query.composicaoId : null;
+  const orcamentoEtapaId = typeof req.query.orcamentoEtapaId === "string" ? req.query.orcamentoEtapaId : null;
+  const orcamentoItemId = typeof req.query.orcamentoItemId === "string" ? req.query.orcamentoItemId : null;
+
+  const filtros = [eq(maoObraCoberturasTable.tenantId, tid), eq(maoObraCoberturasTable.ativo, true)];
+  const alvos = [];
+  if (composicaoId) alvos.push(eq(maoObraCoberturasTable.composicaoId, composicaoId));
+  if (orcamentoEtapaId) alvos.push(eq(maoObraCoberturasTable.orcamentoEtapaId, orcamentoEtapaId));
+  if (orcamentoItemId) alvos.push(eq(maoObraCoberturasTable.orcamentoItemId, orcamentoItemId));
+
+  if (!alvos.length) return res.status(422).json({ error: "Informe composicaoId, orcamentoEtapaId ou orcamentoItemId." });
+
+  const rows = await db.select().from(maoObraCoberturasTable)
+    .where(and(...filtros, or(...alvos)));
+
+  const prioridade = { item_orcamento: 3, etapa_orcamento: 2, composicao: 1 } as const;
+  const ordered = rows.sort((a, b) =>
+    (prioridade[b.escopoTipo as keyof typeof prioridade] ?? 0) -
+    (prioridade[a.escopoTipo as keyof typeof prioridade] ?? 0));
+
+  const efetiva = ordered[0] ?? null;
+  const suprimidas = efetiva
+    ? ordered.slice(1).map((row) => ({
+        ...row,
+        motivoSupressao: efetiva.escopoTipo === "etapa_orcamento" && efetiva.incluiMaoObraComposicoesFilhas
+          ? "incluida_na_mao_de_obra_da_etapa"
+          : "fonte_de_mao_de_obra_de_maior_prioridade_ativa",
+      }))
+    : [];
+
+  return res.json({
+    efetiva,
+    custoConsiderado: efetiva ? efetiva.custoTotal : "0",
+    suprimidas,
+    conflito: rows.length > 1,
+    regra: "item_orcamento > etapa_orcamento > composicao; somente a fonte efetiva soma no custo",
+  });
 });
 
 // ─── Base Mestre de Preços: propagação segura ─────────────────────────────────
