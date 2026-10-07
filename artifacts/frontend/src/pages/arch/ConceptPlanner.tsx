@@ -51,7 +51,7 @@ import type { AIDevelopmentResponse } from "./ConceptFacadeEditor";
 
 import { buildConceptJourney, conceptJourneyContinueLabel, conceptJourneyIndex } from "./conceptJourney";
 
-import { DEFAULT_SITE_PLACEMENT, getBuildingBounds, migrateLegacySitePlacement, normalizeSitePlacement, resolveSiteSetbacks, type SitePlacement } from "./conceptSitePlacement";
+import { DEFAULT_SITE_PLACEMENT, getBuildingBounds, getSiteBoundaryPoints, migrateLegacySitePlacement, normalizeSitePlacement, resolveSiteSetbacks, type SitePlacement } from "./conceptSitePlacement";
 import { type ClientBriefAlternative, type ProjectBriefSnapshot } from "./conceptClientBrief";
 import type { ConceptModelLevel } from "./ConceptModel3D";
 import {
@@ -9057,7 +9057,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         rooms={terrainOnly || hideCurrentGeometryForReferenceReview ? [] : visibleRooms}
                         lotWidth={lotWidth}
                         lotDepth={lotDepth}
-                        showLotBoundary={startWithTerrain === true && terrainDefined}
+                        lotBoundaryPoints={terrainDefined ? getSiteBoundaryPoints(lotWidth, lotDepth, sitePlacement) : null}
+                        showLotBoundary={terrainDefined}
                         activeFloor={activeFloor}
                         geometry={terrainOnly || hideCurrentGeometryForReferenceReview ? { ...geometry, walls: [], openings: [] } : geometry}
                         referenceImage={showReferenceImage && referencePlan?.kind === "image" ? {
