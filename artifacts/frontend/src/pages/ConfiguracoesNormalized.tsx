@@ -50,7 +50,7 @@ type IntegrationHealthPayload = {
   social?: { linkedin?: boolean; tiktok?: boolean };
 };
 
-export default function Configuracoes() {
+export default function Configuracoes({ embedded = false }: { embedded?: boolean } = {}) {
   const params = new URLSearchParams(window.location.search);
   const legacySiteDeepLink = params.get("tab") === "site";
 
@@ -483,7 +483,7 @@ export default function Configuracoes() {
           .catalog-source-note a { display: inline-block; margin-top: .5rem; margin-left: 0; }
         }
       `}</style>
-      <ConfiguracoesLegacy />
+      <ConfiguracoesLegacy embedded={embedded} />
     </div>
   );
 }
