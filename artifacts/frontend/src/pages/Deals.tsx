@@ -218,6 +218,31 @@ type StageResponsibleUser = {
   customFunctionId?: string | null;
 };
 
+type DealResponsiblePartnership = {
+  id: string;
+  ownerTenantId: string;
+  partnerTenantId: string;
+  partnerName?: string | null;
+  partnerTenantCode?: string | null;
+  status: string;
+};
+
+type DealRepresentativeFunction = {
+  id: string;
+  name: string;
+  kind?: "internal" | "external_company";
+  linkedTenantCode?: string | null;
+  permissions?: string[];
+};
+
+const DEAL_REPRESENTATIVE_PREFIX = "__representative__:";
+
+function dealRepresentativePartnershipId(value?: string | null) {
+  return value?.startsWith(DEAL_REPRESENTATIVE_PREFIX)
+    ? value.slice(DEAL_REPRESENTATIVE_PREFIX.length)
+    : null;
+}
+
 function isUserResponsibleForStage(
   user: StageResponsibleUser,
   stage?: Pick<PipelineStage, "responsaveisFuncoes"> | null,
@@ -2576,6 +2601,36 @@ export default function Deals() {
     query: { enabled: !!tenantId, queryKey: getListTenantUsersQueryKey(tenantId), staleTime: 60_000, refetchOnWindowFocus: false },
   });
 
+  const { data: responsiblePartnerships = [] } = useQuery<DealResponsiblePartnership[]>({
+    queryKey: ["commercial-partnerships", tenantId, "deal-responsible-picker"],
+    enabled: Boolean(tenantId && token && isCreateOpen),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/commercial-partnerships`, {
+        headers: { Authorization: "Bearer " + (token ?? "") },
+      });
+      if (!response.ok) throw new Error("Não foi possível carregar as empresas representantes.");
+      const rows = await response.json() as DealResponsiblePartnership[];
+      return rows.filter((item) => item.ownerTenantId === tenantId && item.status === "active");
+    },
+  });
+
+  const { data: dealRepresentativeFunctions = [] } = useQuery<DealRepresentativeFunction[]>({
+    queryKey: ["tenant-user-functions", tenantId, "deal-responsible-picker"],
+    enabled: Boolean(tenantId && token && isCreateOpen),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/user-functions`, {
+        headers: { Authorization: "Bearer " + (token ?? "") },
+      });
+      if (!response.ok) throw new Error("Não foi possível carregar as funções de representação.");
+      const rows = await response.json() as DealRepresentativeFunction[];
+      return rows.filter((item) => item.kind === "external_company");
+    },
+  });
+
   // Novas tarefas/passagens só podem ser atribuídas a usuários ativos cuja
   // função esteja configurada como responsável pela etapa de destino.
   // tenantUsers completo permanece no mapa para preservar responsáveis históricos.
@@ -2760,16 +2815,30 @@ export default function Deals() {
     const eligibleUsers = tenantUsers.filter((candidate) =>
       isUserResponsibleForStage(candidate as StageResponsibleUser, stage)
     );
+    const representativePartnershipId = dealRepresentativePartnershipId(values.assignedTo);
+    const selectedPartnership = representativePartnershipId
+      ? responsiblePartnerships.find((item) => item.id === representativePartnershipId)
+      : undefined;
+    const selectedInternalUser = !representativePartnershipId
+      ? eligibleUsers.find((candidate) => candidate.id === values.assignedTo)
+      : undefined;
 
-    if (!values.assignedTo || !eligibleUsers.some((candidate) => candidate.id === values.assignedTo)) {
-      createForm.setError("assignedTo", { message: "Selecione um responsável habilitado para a etapa inicial." });
+    if (!values.assignedTo || (!selectedInternalUser && !selectedPartnership)) {
+      createForm.setError("assignedTo", { message: "Selecione uma pessoa da equipe ou uma empresa representante." });
       toast({
         title: "Responsável obrigatório",
-        description: "Escolha uma pessoa ativa configurada como responsável pela etapa inicial.",
+        description: "Escolha uma pessoa habilitada para a etapa inicial ou uma empresa representante ativa.",
         variant: "destructive",
       });
       return;
     }
+
+    const representativeFunction = selectedPartnership?.partnerTenantCode
+      ? dealRepresentativeFunctions.find((item) =>
+          item.kind === "external_company" &&
+          item.linkedTenantCode === selectedPartnership.partnerTenantCode
+        )
+      : undefined;
 
     if (values.leadMode === "new") {
       if (!values.leadNome?.trim() || values.leadNome.trim().length < 2) {
@@ -2813,7 +2882,8 @@ export default function Deals() {
               objetivo: values.leadObjetivo?.trim() || null,
               tipoPessoa: "fisica",
               source: createQuoteFileUrl ? "pedido_importado" : (values.leadSource || "manual"),
-              assignedTo: values.assignedTo,
+              assignedTo: selectedInternalUser?.id,
+              representativeFunctionId: representativeFunction?.id,
             },
           });
           leadId = (createdLead as { id?: string }).id;
@@ -2836,44 +2906,65 @@ export default function Deals() {
       return;
     }
 
-    createDeal.mutate(
-      {
+    try {
+      const createdDeal = await createDeal.mutateAsync({
         data: {
           tenantId,
           titulo: values.titulo,
           valor: values.valor,
           etapa: values.etapa as DealEtapa,
           leadId,
-          assignedTo: values.assignedTo,
+          assignedTo: selectedInternalUser?.id,
           probabilidade: values.probabilidade,
           tipoFechamento: values.tipoFechamento as TipoFechamento | undefined,
           quoteFileUrl: createQuoteFileUrl ?? undefined,
         },
-      },
-      {
-        onSuccess: () => {
-          toast({
-            title: "Negócio criado.",
-            description: createQuoteFileName
-              ? `Pedido/orçamento ${createQuoteFileName} preservado e vinculado ao negócio.`
-              : undefined,
-          });
-          queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
-          setIsCreateOpen(false);
-          setCreateExtractedInfo(null);
-          setCreateQuoteFileUrl(null);
-          setCreateQuoteFileName(null);
-          createForm.reset();
-        },
-        onError: (error) => {
-          toast({
-            title: "Erro ao criar negócio",
-            description: error instanceof Error ? error.message : "Tente novamente.",
-            variant: "destructive",
-          });
-        },
+      });
+
+      const createdDealId = (createdDeal as { id?: string }).id;
+      if (selectedPartnership) {
+        if (!createdDealId) throw new Error("O negócio foi criado sem identificador para vincular a representante.");
+        const response = await fetch(`/api/deals/${createdDealId}/share-with-partner`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + (token ?? ""),
+          },
+          body: JSON.stringify({
+            partnershipId: selectedPartnership.id,
+            role: "responsible",
+          }),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(body.error || body.message || "Não foi possível definir a empresa representante como responsável.");
+        }
       }
-    );
+
+      toast({
+        title: "Negócio criado.",
+        description: selectedPartnership
+          ? `Responsável: ${selectedPartnership.partnerName || selectedPartnership.partnerTenantCode || "empresa representante"}.`
+          : createQuoteFileName
+            ? `Pedido/orçamento ${createQuoteFileName} preservado e vinculado ao negócio.`
+            : undefined,
+      });
+      await Promise.allSettled([
+        queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
+        queryClient.invalidateQueries({ queryKey: ["deal-participations", tenantId] }),
+      ]);
+      setIsCreateOpen(false);
+      setCreateExtractedInfo(null);
+      setCreateQuoteFileUrl(null);
+      setCreateQuoteFileName(null);
+      createForm.reset();
+    } catch (error) {
+      toast({
+        title: "Erro ao criar negócio",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    }
   }
 
   function getForwardMoveOptions(deal: Deal) {
@@ -3353,12 +3444,13 @@ export default function Deals() {
               Novo Negócio
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
-            <DialogHeader>
+          <DialogContent className="w-[calc(100vw-2rem)] max-h-[90vh] max-w-3xl overflow-y-auto overflow-x-hidden p-0">
+            <DialogHeader className="sticky top-0 z-20 border-b bg-background/95 px-6 py-4 backdrop-blur">
               <DialogTitle>Criar Novo Negócio</DialogTitle>
+              <p className="text-sm text-muted-foreground">Cadastre o cliente, defina o responsável e crie a oportunidade sem perder o contexto comercial.</p>
             </DialogHeader>
             <Form {...createForm}>
-              <form onSubmit={createForm.handleSubmit(onCreateSubmit)} className="space-y-4">
+              <form onSubmit={createForm.handleSubmit(onCreateSubmit)} className="min-w-0 space-y-5 px-6 pb-6 pt-5">
 
                 {/* ── Import Quote ────────────────────────────────────── */}
                 <div className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20 p-3 space-y-2">
@@ -3632,58 +3724,76 @@ export default function Deals() {
                   )}
                 </section>
 
-                <FormField
-                  control={createForm.control}
-                  name="assignedTo"
-                  render={({ field }) => {
-                    const selectedStage = stagesByKey[createForm.watch("etapa")];
-                    const eligible = tenantUsers.filter((candidate) => isUserResponsibleForStage(candidate as StageResponsibleUser, selectedStage));
-                    return (
-                      <FormItem>
-                        <FormLabel>Responsável *</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ""}>
-                          <FormControl><SelectTrigger><SelectValue placeholder="Selecionar responsável..." /></SelectTrigger></FormControl>
+                <section className="grid min-w-0 gap-4 rounded-xl border bg-muted/15 p-4 sm:grid-cols-2">
+                  <FormField
+                    control={createForm.control}
+                    name="assignedTo"
+                    render={({ field }) => {
+                      const selectedStage = stagesByKey[createForm.watch("etapa")];
+                      const eligible = tenantUsers.filter((candidate) => isUserResponsibleForStage(candidate as StageResponsibleUser, selectedStage));
+                      return (
+                        <FormItem className="min-w-0">
+                          <FormLabel>Responsável *</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value || ""}>
+                            <FormControl>
+                              <SelectTrigger className="w-full min-w-0">
+                                <SelectValue placeholder="Equipe ou empresa representante..." />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent className="max-h-72">
+                              {eligible.map((candidate) => (
+                                <SelectItem key={candidate.id} value={candidate.id}>
+                                  Equipe · {candidate.name || candidate.email || candidate.id}
+                                </SelectItem>
+                              ))}
+                              {responsiblePartnerships.map((partnership) => (
+                                <SelectItem key={partnership.id} value={`${DEAL_REPRESENTATIVE_PREFIX}${partnership.id}`}>
+                                  Representante · {partnership.partnerName || partnership.partnerTenantCode || partnership.partnerTenantId}
+                                </SelectItem>
+                              ))}
+                              {eligible.length === 0 && responsiblePartnerships.length === 0 && (
+                                <SelectItem value="__none_available__" disabled>
+                                  Nenhum responsável disponível
+                                </SelectItem>
+                              )}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-[11px] leading-relaxed text-muted-foreground">
+                            Você pode atribuir o negócio a uma pessoa da equipe habilitada para a etapa ou a uma empresa representante ativa.
+                          </p>
+                          <FormMessage />
+                        </FormItem>
+                      );
+                    }}
+                  />
+                  <FormField
+                    control={createForm.control}
+                    name="tipoFechamento"
+                    render={({ field }) => (
+                      <FormItem className="min-w-0">
+                        <FormLabel>Tipo de fechamento</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger className="w-full min-w-0" data-testid="select-tipo-fechamento">
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
                           <SelectContent>
-                            {eligible.map((candidate) => (
-                              <SelectItem key={candidate.id} value={candidate.id}>
-                                {candidate.name || candidate.email || candidate.id}
+                            {TIPOS_FECHAMENTO.map((t) => (
+                              <SelectItem key={t.value} value={t.value}>
+                                {t.label}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
-                        <p className="text-[11px] text-muted-foreground">São exibidas apenas pessoas habilitadas como responsáveis pela etapa inicial.</p>
+                        <p className="text-[11px] leading-relaxed text-muted-foreground">
+                          {TIPOS_FECHAMENTO.find((t) => t.value === field.value)?.description}
+                        </p>
                         <FormMessage />
                       </FormItem>
-                    );
-                  }}
-                />
-                <FormField
-                  control={createForm.control}
-                  name="tipoFechamento"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Tipo de fechamento</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger data-testid="select-tipo-fechamento">
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {TIPOS_FECHAMENTO.map((t) => (
-                            <SelectItem key={t.value} value={t.value}>
-                              {t.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">
-                        {TIPOS_FECHAMENTO.find((t) => t.value === field.value)?.description}
-                      </p>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                    )}
+                  />
+                </section>
                 <Button
                   type="submit"
                   className="w-full"
