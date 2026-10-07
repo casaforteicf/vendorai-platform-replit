@@ -16,6 +16,7 @@ export type EditableImportedWall = {
   classification: "internal" | "external" | "unknown";
   material?: string | null;
   sourceEvidence: string[];
+  sourceIndex?: number;
 };
 
 export type EditableImportedOpening = {
@@ -164,7 +165,7 @@ function resolveWallId(
     if (direct) return direct.id;
   }
   const wallIndex = n(opening.wallIndex);
-  if (wallIndex != null) return walls[Math.round(wallIndex)]?.id ?? null;
+  if (wallIndex != null) return walls.find((wall) => wall.sourceIndex === Math.round(wallIndex))?.id ?? null;
   return null;
 }
 
@@ -223,6 +224,7 @@ export function importedFloorPlanToEditableGeometry(
       classification: wall.classification ?? "unknown",
       material: wall.material ?? null,
       sourceEvidence: wall.evidence ?? [],
+      sourceIndex: index,
     } satisfies EditableImportedWall];
   });
 
