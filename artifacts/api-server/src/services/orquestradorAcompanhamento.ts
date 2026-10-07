@@ -9,6 +9,7 @@ import {
   messagesTable,
   pipelineStagesTable,
 } from "@workspace/db";
+import { resolveCanonicalDealValue } from "../lib/deal-value.js";
 import { callOpenAI } from "../lib/ai-gateway.js";
 import { resolverContextoNegocio } from "./resolvedorContextoNegocio.js";
 import { sendOutgoingMessage } from "./omnichannel.js";
@@ -85,7 +86,7 @@ async function carregarContextoBasico(tenantId: string, leadId: string, dealId?:
 
   if (!lead) throw new Error("Lead não encontrado para acompanhamento.");
 
-  const [deal] = dealId
+  const [dealRaw] = dealId
     ? await db
         .select()
         .from(dealsTable)
@@ -97,6 +98,10 @@ async function carregarContextoBasico(tenantId: string, leadId: string, dealId?:
         .where(and(eq(dealsTable.leadId, leadId), eq(dealsTable.tenantId, tenantId)))
         .orderBy(desc(dealsTable.updatedAt))
         .limit(1);
+
+  const deal = dealRaw
+    ? { ...dealRaw, valor: (await resolveCanonicalDealValue(dealRaw.id, tenantId)).toFixed(2) }
+    : null;
 
   const etapa = deal?.etapa ?? "novo";
 
