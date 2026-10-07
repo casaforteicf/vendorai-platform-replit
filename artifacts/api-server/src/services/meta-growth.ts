@@ -14,6 +14,7 @@ import {
   normalizeMetaAdAccountId,
 } from "./meta-ads-oauth.js";
 import { getInstagramStoryFunnel } from "./instagram-story-funnel.js";
+import { canonicalDealValueSql } from "../lib/deal-value.js";
 
 const IG_GRAPH_BASE = "https://graph.instagram.com/v26.0";
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -253,7 +254,7 @@ export async function getMetaGrowthOverview(tenantId: string) {
 
   const relatedDeals = metaLeadIds.length
     ? await db
-        .select({ leadId: dealsTable.leadId, valor: dealsTable.valor })
+        .select({ leadId: dealsTable.leadId, valor: canonicalDealValueSql })
         .from(dealsTable)
         .where(and(eq(dealsTable.tenantId, tenantId), gte(dealsTable.createdAt, cutoff)))
     : [];
