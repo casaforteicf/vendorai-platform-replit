@@ -135,7 +135,7 @@ export async function runRecemAbertas(log: Logger = rootLogger, onlyTenantId?: s
               : "Empresa recém-aberta; validar estrutura comercial e operação em formação.",
           });
 
-          if (result.created) totalCreated++;;
+          if (result.created) totalCreated++;
         }
       }
     } catch (err) {
