@@ -57,7 +57,7 @@ import {
   Upload, X, Image as ImageIcon, FileSpreadsheet, Copy,
   Send, ThumbsUp, ThumbsDown, ChevronRight, AlertCircle,
   Search, Loader2, FileText, Download, Sparkles,
-  Zap, Sun, BatteryCharging, CarFront, Droplets, Gauge, Flame, Waves, Activity,
+  Zap, Sun, BatteryCharging, CarFront, Droplets, Gauge, Flame, Waves, Activity, FileBarChart2, History,
 } from "lucide-react";
 import TabFinanceiro from "./TabFinanceiro";
 import EquipeProducao from "./EquipeProducao";
@@ -148,6 +148,7 @@ const TABS = [
   { id: "hidraulica",     label: "Hidráulica",     icon: Droplets },
   { id: "piscinas",        label: "Piscinas",       icon: Waves },
   { id: "execucao",         label: "Execução",       icon: Activity },
+  { id: "relatorios",       label: "Relatórios",     icon: FileBarChart2 },
 ];
 
 function MobileTabDropdown({ activeTab, onSelect }: { activeTab: string; onSelect: (id: string) => void }) {
@@ -3962,6 +3963,205 @@ function ExecucaoProdutividade({ tenantId, obraId }: { tenantId: string; obraId:
   );
 }
 
+function RelatoriosGovernanca({ tenantId, obraId }: { tenantId: string; obraId: string }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [status, setStatus] = useState("");
+  const [modulo, setModulo] = useState("");
+  const [nomeRelatorio, setNomeRelatorio] = useState("Visão consolidada da obra");
+  const [showAudit, setShowAudit] = useState(false);
+
+  const querySuffix = [
+    status ? `status=${encodeURIComponent(status)}` : "",
+    modulo ? `modulo=${encodeURIComponent(modulo)}` : "",
+  ].filter(Boolean).join("&");
+
+  const { data: report, isLoading } = useQuery<any>({
+    queryKey: ["obra-relatorio-consolidado", tenantId, obraId, status, modulo],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(
+        `/api/tenants/${tenantId}/obras/${obraId}/governanca/relatorio-consolidado${querySuffix ? `?${querySuffix}` : ""}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+      );
+      if (!res.ok) throw new Error("Erro ao carregar relatório consolidado");
+      return res.json();
+    },
+    enabled: !!tenantId && !!obraId,
+  });
+
+  const { data: saved = [] } = useQuery<any[]>({
+    queryKey: ["obra-relatorios-salvos", tenantId, obraId],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/governanca/relatorios-salvos`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Erro ao carregar relatórios salvos");
+      return res.json();
+    },
+    enabled: !!tenantId && !!obraId,
+  });
+
+  const { data: audit = [], isLoading: auditLoading } = useQuery<any[]>({
+    queryKey: ["obra-auditoria", tenantId, obraId, modulo],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const qs = modulo ? `?modulo=${encodeURIComponent(modulo)}` : "";
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/governanca/auditoria${qs}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Erro ao carregar auditoria");
+      return res.json();
+    },
+    enabled: showAudit,
+  });
+
+  async function salvarRelatorio() {
+    const token = localStorage.getItem("vendorai_token");
+    const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/governanca/relatorios-salvos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({
+        nome: nomeRelatorio.trim() || "Relatório da obra",
+        tipo: modulo && ["orcamento","cotacoes","compras","execucao","financeiro","margem"].includes(modulo) ? modulo : "consolidado",
+        filtros: { status: status || null, modulo: modulo || null },
+        colunas: [],
+        ordenacao: [],
+        compartilhado: false,
+      }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      toast({ title: "Não foi possível salvar", description: body?.error ?? "Erro inesperado.", variant: "destructive" });
+      return;
+    }
+    toast({ title: "Relatório salvo" });
+    qc.invalidateQueries({ queryKey: ["obra-relatorios-salvos", tenantId, obraId] });
+  }
+
+  function aplicarSalvo(r: any) {
+    setStatus(String(r?.filtros?.status ?? ""));
+    setModulo(String(r?.filtros?.modulo ?? ""));
+    setNomeRelatorio(r.nome ?? "Relatório");
+  }
+
+  const resumo = report?.resumo ?? {};
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <CardTitle className="text-base">Relatórios e governança</CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">Orçamento, cotação, compras, execução e financeiro em uma única leitura.</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setShowAudit((v) => !v)}>
+              <History className="h-4 w-4 mr-1" />{showAudit ? "Ocultar auditoria" : "Auditoria"}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-4">
+            <div className="space-y-2">
+              <Label>Módulo</Label>
+              <select className="w-full h-10 rounded-md border bg-background px-3 text-sm" value={modulo} onChange={(e) => setModulo(e.target.value)}>
+                <option value="">Todos</option>
+                <option value="orcamento">Orçamento</option>
+                <option value="cotacoes">Cotações</option>
+                <option value="compras">Compras</option>
+                <option value="execucao">Execução</option>
+                <option value="financeiro">Financeiro</option>
+                <option value="margem">Margem</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Input value={status} onChange={(e) => setStatus(e.target.value)} placeholder="Ex.: aprovado, enviado..." />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label>Salvar visão atual</Label>
+              <div className="flex gap-2"><Input value={nomeRelatorio} onChange={(e) => setNomeRelatorio(e.target.value)} /><Button variant="outline" onClick={salvarRelatorio}>Salvar</Button></div>
+            </div>
+          </div>
+
+          {saved.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {saved.slice(0, 12).map((r: any) => (
+                <Button key={r.id} size="sm" variant="secondary" onClick={() => aplicarSalvo(r)}>{r.nome}</Button>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {isLoading ? (
+        <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin" /></div>
+      ) : (
+        <>
+          <div className="grid gap-3 md:grid-cols-4">
+            <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Custo orçado</div><div className="font-bold text-lg mt-1">{fmtBRL(resumo.custoOrcado)}</div></CardContent></Card>
+            <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Preço de venda</div><div className="font-bold text-lg mt-1">{fmtBRL(resumo.precoVenda)}</div></CardContent></Card>
+            <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Custo realizado</div><div className="font-bold text-lg mt-1">{fmtBRL(resumo.custoReal)}</div></CardContent></Card>
+            <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Saldo de caixa</div><div className="font-bold text-lg mt-1">{fmtBRL(resumo.saldoCaixa)}</div></CardContent></Card>
+          </div>
+
+          <Card>
+            <CardContent className="pt-4 grid gap-3 md:grid-cols-3 text-sm">
+              <div><span className="text-muted-foreground">Compras:</span> <strong>{fmtBRL(resumo.compraTotal)}</strong></div>
+              <div><span className="text-muted-foreground">A pagar:</span> <strong>{fmtBRL(resumo.contasPagar)}</strong></div>
+              <div><span className="text-muted-foreground">A receber:</span> <strong>{fmtBRL(resumo.contasReceber)}</strong></div>
+              <div><span className="text-muted-foreground">Pago:</span> <strong>{fmtBRL(resumo.pago)}</strong></div>
+              <div><span className="text-muted-foreground">Recebido:</span> <strong>{fmtBRL(resumo.recebido)}</strong></div>
+              <div><span className="text-muted-foreground">Avanço médio:</span> <strong>{Number(resumo.progressoMedioPercentual ?? 0).toFixed(1)}%</strong></div>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Compras e cotações</CardTitle></CardHeader>
+              <CardContent className="text-xs space-y-2">
+                <div>Cotações: <strong>{report?.cotacoes?.registros?.length ?? 0}</strong></div>
+                <div>Propostas: <strong>{report?.cotacoes?.propostas?.length ?? 0}</strong></div>
+                <div>Pedidos: <strong>{report?.compras?.pedidos?.length ?? 0}</strong></div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Execução e financeiro</CardTitle></CardHeader>
+              <CardContent className="text-xs space-y-2">
+                <div>Atividades: <strong>{report?.execucao?.atividades?.length ?? 0}</strong></div>
+                <div>Títulos financeiros: <strong>{report?.financeiro?.titulos?.length ?? 0}</strong></div>
+                <div>Movimentos: <strong>{report?.financeiro?.movimentos?.length ?? 0}</strong></div>
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      )}
+
+      {showAudit && (
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Trilha de auditoria</CardTitle></CardHeader>
+          <CardContent>
+            {auditLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : audit.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhum evento de auditoria registrado para os filtros atuais.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {audit.slice(0, 100).map((e: any) => (
+                  <div key={e.id} className="rounded border px-3 py-2 text-xs">
+                    <div className="font-medium">{e.modulo} · {e.acao} · {e.entidade}</div>
+                    <div className="text-muted-foreground">{e.resumo || e.entidadeId || "Sem resumo"} · {new Date(e.createdAt).toLocaleString("pt-BR")}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ObraDetalhe() {
@@ -4127,6 +4327,7 @@ export default function ObraDetalhe() {
         {activeTab === "hidraulica"     && <HidraulicaSistemas tenantId={tenantId} obraId={obraId} />}
         {activeTab === "piscinas"        && <PiscinasObra tenantId={tenantId} obraId={obraId} />}
         {activeTab === "execucao"         && <ExecucaoProdutividade tenantId={tenantId} obraId={obraId} />}
+        {activeTab === "relatorios"       && <RelatoriosGovernanca tenantId={tenantId} obraId={obraId} />}
       </div>
     </div>
   );
