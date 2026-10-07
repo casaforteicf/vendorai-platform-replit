@@ -57,6 +57,14 @@ export interface ProdutoCalculo {
   fechamentoPacote?: number | null;
   /** preco_pacote — preço da embalagem fechada. Se ausente, é derivado de fechamentoPacote × precoBase. */
   precoPacote?: number | null;
+  /** Quantidade de pacotes primários contidos em uma embalagem mestre. */
+  embalagemMestreQuantidade?: number | null;
+  /** Quantidade mínima faturável, em pacotes primários. */
+  quantidadeMinimaVenda?: number | null;
+  /** Múltiplo obrigatório de venda, em pacotes primários. */
+  multiploVenda?: number | null;
+  /** Quando true, não força fechamento pela embalagem mestre. */
+  permiteFracionarEmbalagemMestre?: boolean | null;
 }
 
 export interface DetalheSuperficie {
@@ -69,8 +77,14 @@ export interface ResultadoCalculoProduto {
   produtoId: string;
   /** m² (produto principal) ou m linear (acessório), soma de todas as superfícies. */
   quantidadeNecessaria: number;
-  /** nº de pacotes/embalagens, arredondado pra cima. 0 quando o produto não tem fechamento_pacote (cobrança pela quantidade exata). */
+  /** nº de pacotes primários efetivamente faturados após regras comerciais. */
   numeroPacotes: number;
+  /** nº de pacotes necessários antes de mínimo/múltiplo/embalagem mestre. */
+  numeroPacotesNecessarios?: number;
+  /** nº de embalagens mestre faturadas, quando a regra existir. */
+  numeroEmbalagensMestre?: number;
+  /** quantidade física faturada (numeroPacotes × fechamentoPacote). */
+  quantidadeFaturada?: number;
   valorTotal: number;
   detalhamentoSuperficies: DetalheSuperficie[];
 }
@@ -142,15 +156,59 @@ export function calcularParede(par: SuperficieParede): { area: number } {
  */
 export function calcularFechamentoPacote(
   quantidadeNecessaria: number,
-  produto: Pick<ProdutoCalculo, "fechamentoPacote" | "precoPacote" | "precoBase">
-): { numeroPacotes: number; valorTotal: number } {
+  produto: Pick<
+    ProdutoCalculo,
+    | "fechamentoPacote"
+    | "precoPacote"
+    | "precoBase"
+    | "embalagemMestreQuantidade"
+    | "quantidadeMinimaVenda"
+    | "multiploVenda"
+    | "permiteFracionarEmbalagemMestre"
+  >
+): {
+  numeroPacotes: number;
+  numeroPacotesNecessarios: number;
+  numeroEmbalagensMestre?: number;
+  quantidadeFaturada?: number;
+  valorTotal: number;
+} {
   const fechamento = produto.fechamentoPacote;
   if (!fechamento || fechamento <= 0) {
-    return { numeroPacotes: 0, valorTotal: round2(quantidadeNecessaria * produto.precoBase) };
+    return {
+      numeroPacotes: 0,
+      numeroPacotesNecessarios: 0,
+      quantidadeFaturada: round3(quantidadeNecessaria),
+      valorTotal: round2(quantidadeNecessaria * produto.precoBase),
+    };
   }
-  const numeroPacotes = Math.ceil(quantidadeNecessaria / fechamento);
+
+  const numeroPacotesNecessarios = Math.ceil(quantidadeNecessaria / fechamento);
+  const minimo = Math.max(1, Math.trunc(produto.quantidadeMinimaVenda ?? 1));
+  const multiplo = Math.max(1, Math.trunc(produto.multiploVenda ?? 1));
+  const mestre = Math.max(1, Math.trunc(produto.embalagemMestreQuantidade ?? 1));
+  const mestreObrigatoria = mestre > 1 && produto.permiteFracionarEmbalagemMestre !== true;
+
+  const gcd = (a: number, b: number): number => {
+    let x = a;
+    let y = b;
+    while (y !== 0) [x, y] = [y, x % y];
+    return x;
+  };
+  const lcm = (a: number, b: number) => (a * b) / gcd(a, b);
+  const passoVenda = mestreObrigatoria ? lcm(mestre, multiplo) : multiplo;
+
+  let numeroPacotes = Math.max(numeroPacotesNecessarios, minimo);
+  numeroPacotes = Math.ceil(numeroPacotes / passoVenda) * passoVenda;
+
   const precoUnitarioPacote = produto.precoPacote ?? fechamento * produto.precoBase;
-  return { numeroPacotes, valorTotal: round2(numeroPacotes * precoUnitarioPacote) };
+  return {
+    numeroPacotes,
+    numeroPacotesNecessarios,
+    numeroEmbalagensMestre: mestreObrigatoria ? Math.ceil(numeroPacotes / mestre) : undefined,
+    quantidadeFaturada: round3(numeroPacotes * fechamento),
+    valorTotal: round2(numeroPacotes * precoUnitarioPacote),
+  };
 }
 
 /**
@@ -186,6 +244,9 @@ export function calcularOrcamentoProdutoArea(
         produtoId: produto.id,
         quantidadeNecessaria: round3(areaTotal),
         numeroPacotes: principal.numeroPacotes,
+        numeroPacotesNecessarios: principal.numeroPacotesNecessarios,
+        numeroEmbalagensMestre: principal.numeroEmbalagensMestre,
+        quantidadeFaturada: principal.quantidadeFaturada,
         valorTotal: principal.valorTotal,
         detalhamentoSuperficies: detalhamento,
       },
@@ -230,6 +291,9 @@ export function calcularOrcamentoProdutoArea(
         produtoId: produto.id,
         quantidadeNecessaria: round3(areaTotal),
         numeroPacotes: principal.numeroPacotes,
+        numeroPacotesNecessarios: principal.numeroPacotesNecessarios,
+        numeroEmbalagensMestre: principal.numeroEmbalagensMestre,
+        quantidadeFaturada: principal.quantidadeFaturada,
         valorTotal: principal.valorTotal,
         detalhamentoSuperficies: detalhamento,
       },
