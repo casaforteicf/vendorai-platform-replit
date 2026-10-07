@@ -1,12 +1,8 @@
 name: Cloudflare Pages
-# Production deploy: Pages frontend; Railway backend remains unchanged.
+# Production deploy: Cloudflare Pages Git integration is the automatic production path. This workflow is manual contingency only; Railway backend remains unchanged.
 # Redeploy marker: cloudflare-secrets-refresh-2026-10-07.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/cloudflare-pages.yml"
   workflow_dispatch:
 
 permissions:
