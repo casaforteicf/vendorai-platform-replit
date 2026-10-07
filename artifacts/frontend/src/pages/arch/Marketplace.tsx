@@ -128,6 +128,7 @@ export default function Marketplace() {
   const [itemsLoaded, setItemsLoaded] = useState(false);
   const [busca, setBusca] = useState("");
   const [catFilter, setCatFilter] = useState("__all__");
+  const [activeTab, setActiveTab] = useState("market");
 
   const { data: categoriasProduto = [] } = useListCategoriasProduto(tenantId, {
     query: {
@@ -340,6 +341,13 @@ export default function Marketplace() {
   const applySegment = (query: string) => {
     setCatFilter("__all__");
     setBusca(query);
+    setActiveTab("market");
+  };
+
+  const openProcurement = () => {
+    const params = new URLSearchParams({ module: "procurement" });
+    if (projetoContexto !== "__all__") params.set("project_id", projetoContexto);
+    window.location.assign(`/arch/studio?${params.toString()}`);
   };
 
   return (
@@ -439,7 +447,7 @@ export default function Marketplace() {
         ))}
       </section>
 
-      <Tabs defaultValue="market" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <div className="flex flex-col justify-between gap-3 xl:flex-row xl:items-center">
           <TabsList className="h-auto flex-wrap justify-start">
             <TabsTrigger value="market">Market</TabsTrigger>
@@ -450,11 +458,15 @@ export default function Marketplace() {
           </TabsList>
 
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" className="gap-2">
+            <Button variant="outline" size="sm" className="gap-2" onClick={openProcurement}>
               <FileText className="h-4 w-4" />
               Minhas cotações
             </Button>
-            <Button size="sm" className="gap-2 bg-emerald-700 hover:bg-emerald-800">
+            <Button
+              size="sm"
+              className="gap-2 bg-emerald-700 hover:bg-emerald-800"
+              onClick={openProcurement}
+            >
               <ClipboardList className="h-4 w-4" />
               Cotar itens do orçamento
             </Button>
@@ -665,6 +677,7 @@ export default function Marketplace() {
                       onClick={() => {
                         const firstCategory = [...fornecedor.categorias][0];
                         if (firstCategory) setCatFilter(firstCategory);
+                        setActiveTab("market");
                       }}
                     >
                       Ver ofertas
