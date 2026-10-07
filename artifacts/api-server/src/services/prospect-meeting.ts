@@ -2,10 +2,12 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import {
   activitiesTable,
   agendasTable,
+  businessProfilesTable,
   agendamentosTable,
   db,
   leadsTable,
   prospectsTable,
+  tenantsTable,
 } from "@workspace/db";
 import type { Logger } from "pino";
 import { createGoogleEvent } from "../lib/google-calendar.js";
@@ -157,6 +159,12 @@ export async function scheduleProspectMeeting(input: {
     timeStyle: "short",
     timeZone: runtime.timezone,
   }).format(input.start);
+  const [brand] = await db.select({ nomeFantasia: businessProfilesTable.nomeFantasia })
+    .from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, input.tenantId)).limit(1);
+  const [tenant] = await db.select({ name: tenantsTable.name, nomeEmpresa: tenantsTable.nomeEmpresa })
+    .from(tenantsTable).where(eq(tenantsTable.id, input.tenantId)).limit(1);
+  const tenantName = brand?.nomeFantasia || tenant?.nomeEmpresa || tenant?.name || "Empresa";
+
   const confirmation = [
     `Reunião confirmada para ${when}.`,
     meetLink ? `Google Meet: ${meetLink}` : input.location ? `Local: ${input.location}` : null,
@@ -170,7 +178,7 @@ export async function scheduleProspectMeeting(input: {
   } else if (lead.email && runtime.allowedChannels.includes("email")) {
     await sendOperationalEmail({
       tenantId: input.tenantId,
-      tenantName: "Vendor.ai",
+      tenantName,
       to: lead.email,
       subject: appointment.titulo,
       text: confirmation,
