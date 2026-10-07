@@ -45,6 +45,17 @@ type Stage = {
   acompanhamentoConfig?: FollowupConfig | null;
 };
 
+const DEFAULT_QUALIFICATION_QUESTIONS: Pergunta[] = [
+  { id: "perfil_cliente", texto: "Quem é o cliente/usuário e qual é o papel dele na decisão?", obrigatoria: true, campoDestino: "qualification.profile", objetivo: "Identificar quem usa, influencia e decide." },
+  { id: "necessidade", texto: "Qual necessidade, problema ou resultado o cliente quer resolver?", obrigatoria: true, campoDestino: "qualification.need", objetivo: "Definir claramente o que deve orientar a solução e o orçamento." },
+  { id: "contexto_projeto", texto: "Qual é o contexto do pedido/projeto (tipo, local e etapa atual)?", obrigatoria: true, campoDestino: "qualification.context", objetivo: "Dar contexto técnico e comercial para a solução." },
+  { id: "especificacoes", texto: "Quais medidas, quantidades, modelos, materiais ou especificações já são conhecidas?", obrigatoria: false, campoDestino: "qualification.specifications", objetivo: "Evitar orçamento genérico ou tecnicamente incompleto." },
+  { id: "faixa_investimento", texto: "Existe faixa de investimento ou orçamento previsto?", obrigatoria: false, campoDestino: "qualification.budget", objetivo: "Alinhar escopo e solução à capacidade de investimento." },
+  { id: "prazo", texto: "Qual é o prazo desejado ou a data limite?", obrigatoria: false, campoDestino: "qualification.timeline", objetivo: "Dimensionar urgência, entrega e próximos passos." },
+  { id: "decisao", texto: "Quem aprova e quais critérios serão usados para decidir?", obrigatoria: true, campoDestino: "qualification.decision", objetivo: "Mapear decisor, critérios e processo de aprovação." },
+  { id: "restricoes", texto: "Há restrições, observações ou informações que o orçamento precisa considerar?", obrigatoria: false, campoDestino: "qualification.constraints", objetivo: "Preservar condições importantes na proposta." },
+];
+
 function slug(s: string) {
   return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").slice(0, 30) || "pergunta";
 }
@@ -82,7 +93,11 @@ export function StageQuestionsPanel({
   }, [isEffectiveAdmin, editing]);
 
   if (!stage) return null;
-  const perguntas = stage.perguntas ?? [];
+  const perguntas = stage.perguntas?.length
+    ? stage.perguntas
+    : stage.key === "qualificado"
+      ? DEFAULT_QUALIFICATION_QUESTIONS
+      : [];
   const answeredCount = perguntas.filter((p) => draft[p.id]?.trim()).length;
 
   function saveQuestionSet() {
@@ -133,7 +148,7 @@ export function StageQuestionsPanel({
           <div className="min-w-0">
             <CardTitle className="flex flex-wrap items-center gap-2 text-sm font-semibold">
               <ClipboardList className="h-4 w-4 text-primary" />
-              <span>Perguntas da etapa</span>
+              <span>{stage.key === "qualificado" ? "Qualificação do negócio" : "Perguntas da etapa"}</span>
               {perguntas.length > 0 && (
                 <Badge variant={answeredCount === perguntas.length ? "outline" : "secondary"} className="h-5 px-1.5 text-[11px]">
                   {answeredCount}/{perguntas.length}
@@ -141,7 +156,7 @@ export function StageQuestionsPanel({
               )}
             </CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">
-              {stage.label} · registre somente o que ajuda a conduzir o próximo passo.
+              {stage.key === "qualificado" ? "Necessidade, contexto, especificações, investimento, prazo e decisão do negócio. Os dados cadastrais das pessoas e empresas são coletados no cadastro." : `${stage.label} · registre somente o que ajuda a conduzir o próximo passo.`}
             </p>
           </div>
           {isEffectiveAdmin && (
