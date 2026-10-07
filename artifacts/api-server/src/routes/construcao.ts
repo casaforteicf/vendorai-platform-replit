@@ -866,7 +866,9 @@ async function recalcularCustoComposicao(composicaoId: string): Promise<number> 
   const itens = await db
     .select({
       quantidade: composicaoInsumosTable.quantidade,
+      perdaPercentualOverride: composicaoInsumosTable.perdaPercentualOverride,
       precoMestre: insumosTable.precoUnitario,
+      perdaPadraoPercentual: insumosTable.perdaPadraoPercentual,
     })
     .from(composicaoInsumosTable)
     .leftJoin(insumosTable, eq(composicaoInsumosTable.insumoId, insumosTable.id))
@@ -875,7 +877,10 @@ async function recalcularCustoComposicao(composicaoId: string): Promise<number> 
   const total = itens.reduce((sum, item) => {
     const quantidade = numberOrZero(item.quantidade);
     const preco = numberOrZero(item.precoMestre);
-    return sum + quantidade * preco;
+    const perda = item.perdaPercentualOverride != null
+      ? numberOrZero(item.perdaPercentualOverride)
+      : numberOrZero(item.perdaPadraoPercentual);
+    return sum + quantidade * (1 + perda / 100) * preco;
   }, 0);
 
   await db
@@ -1893,6 +1898,7 @@ router.get("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
       id: composicaoInsumosTable.id,
       insumoId: composicaoInsumosTable.insumoId,
       quantidade: composicaoInsumosTable.quantidade,
+      perdaPercentualOverride: composicaoInsumosTable.perdaPercentualOverride,
       precoUnitario: composicaoInsumosTable.precoUnitario,
       insumo: insumosTable,
     })
@@ -1903,7 +1909,10 @@ router.get("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
   const custoTotal = itens.reduce((sum, item) => {
     const quantidade = Number(item.quantidade ?? 0);
     const preco = Number(item.insumo?.precoUnitario ?? 0);
-    return sum + quantidade * preco;
+    const perda = item.perdaPercentualOverride != null
+      ? Number(item.perdaPercentualOverride)
+      : Number(item.insumo?.perdaPadraoPercentual ?? 0);
+    return sum + quantidade * (1 + perda / 100) * preco;
   }, 0);
 
   return res.json({ ...composicao, custoTotal: custoTotal.toFixed(4), itens });
