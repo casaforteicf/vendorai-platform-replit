@@ -70,7 +70,8 @@ export default function Configuracoes() {
       .toLocaleLowerCase("pt-BR");
 
     const focusIntegration = (key: string) => {
-      window.location.assign(`/configuracoes?tab=integracoes&integration=${encodeURIComponent(key)}`);
+      window.history.pushState({}, "", `/configuracoes?tab=integracoes&integration=${encodeURIComponent(key)}`);
+      window.dispatchEvent(new PopStateEvent("popstate"));
     };
 
     const loadIntegrationHealth = async (panel: HTMLElement) => {
