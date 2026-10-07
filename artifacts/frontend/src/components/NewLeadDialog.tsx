@@ -483,7 +483,10 @@ export function NewLeadDialog({
         valor: normalizeDealValue(values.dealValue) ?? null,
       }),
     });
-    if (!response.ok) throw new Error("O contato foi salvo, mas o negócio inicial não pôde ser configurado.");
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({})) as { error?: string; message?: string };
+      throw new Error(data.message || data.error || "O contato foi salvo, mas o negócio inicial não pôde ser configurado.");
+    }
     return response.json() as Promise<{ id: string }>;
   }
 
@@ -756,6 +759,11 @@ export function NewLeadDialog({
 
       const leadId = (newLead as { id?: string }).id;
       if (!leadId) throw new Error("O contato foi criado sem identificador válido.");
+
+      // O contato já existe neste ponto. Atualiza a lista imediatamente para
+      // evitar a tela ficar em "0 contatos" caso uma etapa secundária falhe.
+      queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
+      queryClient.invalidateQueries({ queryKey: ["leads-overview-context", tenantId] });
 
       const deal = await syncInitialDeal(leadId, submissionValues);
       const dealId = (deal as { id?: string } | null | undefined)?.id;
