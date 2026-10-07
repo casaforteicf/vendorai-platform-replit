@@ -1516,6 +1516,34 @@ router.post("/arch/concept-projects/:id/real-environment/analyze", authenticate,
   }
 });
 
+router.delete("/arch/concept-projects/:id/real-environment", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const userId = req.user?.sub;
+  const id = String(req.params.id);
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const [concept] = await db.select({ configuration: archConceptProjectsTable.configuration })
+    .from(archConceptProjectsTable)
+    .where(and(
+      eq(archConceptProjectsTable.id, id),
+      eq(archConceptProjectsTable.tenantId, tid),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ))
+    .limit(1);
+  if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+
+  const config = { ...((concept.configuration ?? {}) as Record<string, unknown>) };
+  delete config.realEnvironment;
+  await db.update(archConceptProjectsTable)
+    .set({ configuration: config as any, updatedAt: new Date() })
+    .where(and(
+      eq(archConceptProjectsTable.id, id),
+      eq(archConceptProjectsTable.tenantId, tid),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ));
+  return res.status(204).end();
+});
+
 router.patch("/arch/concept-projects/:id/real-environment/elements/:elementId", authenticate, async (req, res) => {
   const tid = tenantId(req);
   const userId = req.user?.sub;
