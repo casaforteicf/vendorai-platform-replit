@@ -27,6 +27,8 @@ import {
   farmaciaPedidoTable,
   workCardsTable,
   pipelineStagesTable,
+  dealTenantParticipationsTable,
+  tenantCommercialPartnershipsTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { sendDirectWhatsAppMessage, WhatsAppNotConnectedError } from "../services/omnichannel.js";
@@ -687,9 +689,6 @@ router.get("/tenants/:tenantId/deals", async (req, res) => {
   if (funilId) conditions.push(eq(dealsTable.funilId, funilId));
   if (leadId) conditions.push(eq(dealsTable.leadId, leadId));
 
-  // Lead excluído permanece com os negócios preservados para histórico e
-  // restauração, mas nenhum desses negócios pode continuar aparecendo nas
-  // pipelines ativas enquanto o lead estiver em "Excluídos".
   conditions.push(notExists(
     db
       .select({ id: leadsTable.id })
@@ -702,9 +701,6 @@ router.get("/tenants/:tenantId/deals", async (req, res) => {
 
   conditions.push(...buildUserFunctionFilter(req, dealsTable));
 
-  // Na pipeline comercial, contatos classificados como "Não Lead" ficam fora.
-  // Pipelines de relacionamento (Aquecimento/Parceiros) precisam enxergar esses
-  // registros para preservar o histórico e permitir retomada comercial.
   if (includeNaoLead !== "true") {
     conditions.push(notExists(
       db
@@ -717,13 +713,59 @@ router.get("/tenants/:tenantId/deals", async (req, res) => {
     ));
   }
 
-  const deals = await db
+  const ownDeals = await db
     .select()
     .from(dealsTable)
     .where(and(...conditions))
     .orderBy(dealsTable.createdAt);
 
-  res.json(deals);
+  // Um negócio compartilhado não é copiado. Para o tenant participante,
+  // projetamos o mesmo negócio na posição comercial mantida pela participação.
+  // Assim cada empresa enxerga seu próprio estágio/responsável sem alterar o
+  // estágio da empresa originadora.
+  if (req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId) {
+    const sharedRows = await db.select({
+      participation: dealTenantParticipationsTable,
+      partnership: tenantCommercialPartnershipsTable,
+      deal: dealsTable,
+    })
+      .from(dealTenantParticipationsTable)
+      .innerJoin(dealsTable, eq(dealsTable.id, dealTenantParticipationsTable.dealId))
+      .leftJoin(tenantCommercialPartnershipsTable, eq(tenantCommercialPartnershipsTable.id, dealTenantParticipationsTable.partnershipId))
+      .where(and(
+        eq(dealTenantParticipationsTable.partnerTenantId, tenantId),
+        eq(dealTenantParticipationsTable.status, "active"),
+        eq(dealTenantParticipationsTable.pipeline, "comercial"),
+      ));
+
+    const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+    const currentUserId = String(req.user?.sub ?? "");
+    const sharedDeals = sharedRows
+      .filter(({ participation, partnership, deal }) => {
+        if (leadId && deal.leadId !== leadId) return false;
+        if (funilId && deal.funilId !== funilId) return false;
+        if (etapa && participation.stage !== etapa) return false;
+        if (isAdmin) return true;
+        if (participation.operationalUserId) return participation.operationalUserId === currentUserId;
+        const authorized = partnership?.authorizedUserIds ?? [];
+        return authorized.length === 0 || authorized.includes(currentUserId);
+      })
+      .map(({ participation, deal }) => ({
+        ...deal,
+        etapa: participation.stage ?? deal.etapa,
+        assignedTo: participation.operationalUserId ?? deal.assignedTo,
+        sharedParticipationId: participation.id,
+        sharedOriginTenantId: participation.ownerTenantId,
+        sharedFunctionId: participation.functionId,
+        sharedStageDueAt: participation.stageDueAt,
+        sharedStageEnteredAt: participation.stageEnteredAt,
+      }));
+
+    const ownIds = new Set(ownDeals.map((deal) => deal.id));
+    return res.json([...ownDeals, ...sharedDeals.filter((deal) => !ownIds.has(deal.id))]);
+  }
+
+  res.json(ownDeals);
 });
 
 router.get("/deals/:id", async (req, res) => {
@@ -737,9 +779,22 @@ router.get("/deals/:id", async (req, res) => {
     return;
   }
 
+  let sharedParticipation: typeof dealTenantParticipationsTable.$inferSelect | null = null;
   if (req.user?.platformRole !== "super_admin" && deal.tenantId !== req.user?.tenantId) {
-    res.status(403).json({ error: "Access denied to this tenant" });
-    return;
+    const [participation] = await db.select().from(dealTenantParticipationsTable).where(and(
+      eq(dealTenantParticipationsTable.dealId, deal.id),
+      eq(dealTenantParticipationsTable.partnerTenantId, String(req.user?.tenantId ?? "")),
+      eq(dealTenantParticipationsTable.status, "active"),
+    )).limit(1);
+    if (!participation) {
+      res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
+    if (participation.operationalUserId && req.user?.platformRole !== "tenant_admin" && participation.operationalUserId !== req.user?.sub) {
+      res.status(403).json({ error: "Access denied to this shared deal" });
+      return;
+    }
+    sharedParticipation = participation;
   }
 
   const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
@@ -770,7 +825,19 @@ router.get("/deals/:id", async (req, res) => {
     lead = leadRow ?? null;
   }
 
-  res.json({ ...deal, lead });
+  res.json({
+    ...deal,
+    ...(sharedParticipation ? {
+      etapa: sharedParticipation.stage ?? deal.etapa,
+      assignedTo: sharedParticipation.operationalUserId ?? deal.assignedTo,
+      sharedParticipationId: sharedParticipation.id,
+      sharedOriginTenantId: sharedParticipation.ownerTenantId,
+      sharedFunctionId: sharedParticipation.functionId,
+      sharedStageDueAt: sharedParticipation.stageDueAt,
+      sharedStageEnteredAt: sharedParticipation.stageEnteredAt,
+    } : {}),
+    lead,
+  });
 });
 
 const commercialReviewSchema = z.object({
