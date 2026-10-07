@@ -3,6 +3,7 @@ import { Bell, Bot, Building2, ChevronRight, Database, Search, Settings2, Shield
 import ConfiguracoesNormalized from "./ConfiguracoesNormalized";
 import { BrandKitSettings } from "@/components/BrandKitSettings";
 import IntegrationSettingsHub from "./IntegrationSettingsHub";
+import DiagnosticoPlanejamento from "./DiagnosticoPlanejamento";
 import { ConfigurationHistoryPanel } from "@/components/ConfigurationHistoryPanel";
 import { ConfigurationAccessPanel } from "@/components/ConfigurationAccessPanel";
 import { ConfigurationRollbackPanel } from "@/components/ConfigurationRollbackPanel";
@@ -378,6 +379,7 @@ export default function Configuracoes() {
   const requestedTab = params.get("tab");
   const legacySiteDeepLink = requestedTab === "site";
   const integrationsDeepLink = requestedTab === "integracoes";
+  const businessPlanDeepLink = requestedTab === "plano-negocios";
   const normalizedSectionDeepLink = requestedTab !== null && [
     "perfil",
     "marketing",
@@ -441,6 +443,10 @@ export default function Configuracoes() {
 
   if (integrationsDeepLink) {
     return <IntegrationSettingsHub />;
+  }
+
+  if (businessPlanDeepLink) {
+    return <DiagnosticoPlanejamento />;
   }
 
   // Marketing tem uma tela própria. Não misture Kit da Marca com as

@@ -124,7 +124,7 @@ export function moduleForPath(path: string): UserModuleKey | null {
   if (path.startsWith("/erp") || path.startsWith("/financeiro")) return "erp";
   if (path.startsWith("/agents") || path.startsWith("/vendi")) return "agents";
   if (path.startsWith("/base-conhecimento")) return "knowledge";
-  if (path.startsWith("/diagnostico-planejamento")) return "analytics";
+  if (path.startsWith("/diagnostico-planejamento")) return "settings";
   if (path.startsWith("/analytics") || path.startsWith("/relatorios")) return "analytics";
   if (path.startsWith("/usuarios") || path.startsWith("/organizacao")) return "team";
   if (path.startsWith("/configuracoes") || path.startsWith("/guia-implantacao")) return "settings";

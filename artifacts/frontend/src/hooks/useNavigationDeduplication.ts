@@ -49,7 +49,7 @@ const CONTEXTUAL_LINK_LABELS = [
   { href: "/solicitacao-compra", label: "Compras & Fornecedores" },
   { href: "/estoque", label: "Estoque Geral" },
   { href: "/entregas", label: "Entregas" },
-  { href: "/diagnostico-planejamento", label: "Diagnóstico & Planejamento" },
+  { href: "/configuracoes?tab=plano-negocios", label: "Plano de Negócios" },
   { href: "/analytics", label: "Analytics & Relatórios" },
   { href: "/midias", label: "Biblioteca de Mídias" },
   { href: "/midias/informacoes", label: "Biblioteca Empresarial" },
@@ -156,7 +156,7 @@ const CORE_NAVIGATION_GROUPS = [
     hrefs: [
       "/agents/config",
       "/base-conhecimento",
-      "/diagnostico-planejamento",
+      "/configuracoes",
       "/analytics",
       "/organizacao",
       "/usuarios",

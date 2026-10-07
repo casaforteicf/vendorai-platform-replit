@@ -118,7 +118,6 @@ const GuiaImplantacao    = lazy(() => import("@/pages/GuiaImplantacao"));
 const FAQ                = lazy(() => import("@/pages/faq"));
 const Questionario       = lazy(() => import("@/pages/Questionario"));
 const Analytics          = lazy(() => import("@/pages/Analytics"));
-const DiagnosticoPlanejamento = lazy(() => import("@/pages/DiagnosticoPlanejamento"));
 const AgentConfig        = lazy(() => import("@/pages/agents/AgentConfig"));
 const VendiOperations    = lazy(() => import("@/pages/agents/VendiOperations"));
 const VendiHandoff       = lazy(() => import("@/pages/agents/VendiHandoff"));
@@ -487,7 +486,7 @@ function OnboardingRoute() {
   const [, setLocation] = useLocation();
 
   useEffect(() => {
-    if (!isLoading) setLocation(token ? "/diagnostico-planejamento" : "/login", { replace: true });
+    if (!isLoading) setLocation(token ? "/configuracoes?tab=plano-negocios" : "/login", { replace: true });
   }, [token, isLoading, setLocation]);
 
   return <Spinner />;
@@ -597,7 +596,7 @@ function PublicRoute({ component: Component }: any) {
 
   useEffect(() => {
     if (!isLoading && token && user) {
-      setLocation(user.platformRole === "partner" ? "/partner" : user.platformRole === "tenant_admin" ? "/diagnostico-planejamento" : "/dashboard");
+      setLocation(user.platformRole === "partner" ? "/partner" : user.platformRole === "tenant_admin" ? "/configuracoes?tab=plano-negocios" : "/dashboard");
     }
   }, [token, user, isLoading, setLocation]);
 
@@ -739,7 +738,7 @@ function AppRoutes() {
         <Route path="/agents/config">{() => <ProtectedRoute component={AgentConfig} />}</Route>
         <Route path="/agentes">{() => <ProtectedRoute component={AgentConfig} />}</Route>
         <Route path="/vendi/operacoes">{() => <ProtectedRoute component={VendiOperations} />}</Route>
-        <Route path="/diagnostico-planejamento">{() => <ProtectedRoute component={DiagnosticoPlanejamento} />}</Route>
+        <Route path="/diagnostico-planejamento">{() => <RedirectPage to="/configuracoes?tab=plano-negocios" />}</Route>
         <Route path="/analytics">{() => <ProtectedRoute component={Analytics} />}</Route>
         <Route path="/metricas-ia">{() => <ProtectedRoute component={Analytics} />}</Route>
         <Route path="/relatorios">{() => <ProtectedRoute component={RelatoriosVisaoGeral} />}</Route>
