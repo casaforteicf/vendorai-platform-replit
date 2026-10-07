@@ -435,7 +435,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       passwordRedirectedUserRef.current = newUser.id;
       setLocation("/trocar-senha", { replace: true });
     } else {
-      setLocation(newUser.platformRole === "partner" ? "/partner" : newUser.platformRole === "tenant_admin" ? "/configuracoes?tab=plano-negocios" : "/dashboard");
+      setLocation(newUser.platformRole === "partner" ? "/partner" : "/dashboard");
     }
   };
 
