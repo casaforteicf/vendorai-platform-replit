@@ -44,6 +44,8 @@ type ProspectConversationExtraction = {
   interestSignal: boolean;
   meetingInterest: boolean;
   meetingAccepted: boolean;
+  meetingStart: string | null;
+  meetingEnd: string | null;
   summary: string;
 };
 
@@ -112,6 +114,8 @@ function parseExtraction(raw: string): ProspectConversationExtraction {
     interestSignal: bool(o["interestSignal"]),
     meetingInterest: bool(o["meetingInterest"]),
     meetingAccepted: bool(o["meetingAccepted"]),
+    meetingStart: str(o["meetingStart"]) || null,
+    meetingEnd: str(o["meetingEnd"]) || null,
     summary: str(o["summary"]),
   };
 }
@@ -267,6 +271,7 @@ Não invente nomes, cargos, dores ou intenção.
 "Inferido" pode ser provável, mas deve permanecer separado.
 Gatekeeper é quem abre caminho; responsável conduz a área/processo; decisor aprova a compra.
 Se a pessoa disser para não receber contato, optOut=true.
+Se houver data e hora EXPLICITAMENTE combinadas para reunião, retorne meetingStart e meetingEnd em ISO 8601. Se não houver horário explícito, deixe null. Não invente horário.
 Responda SOMENTE JSON válido:
 {
  "people":[{"name":"","jobTitle":null,"department":null,"roles":["gatekeeper"],"phone":null,"email":null,"confidence":0,"confirmed":true}],
@@ -278,6 +283,8 @@ Responda SOMENTE JSON válido:
  "interestSignal":false,
  "meetingInterest":false,
  "meetingAccepted":false,
+ "meetingStart":null,
+ "meetingEnd":null,
  "summary":""
 }`;
 
@@ -380,7 +387,7 @@ Responda SOMENTE JSON válido:
     primaryHook: decision.primaryHook,
     opportunitySummary: extracted.summary || prospect.opportunitySummary,
     lastInteractionAt: now,
-    nextActionAt: extracted.optOut || extracted.meetingAccepted ? null : now,
+    nextActionAt: extracted.optOut ? null : now,
     updatedAt: now,
   }).where(and(eq(prospectsTable.id, prospect.id), eq(prospectsTable.tenantId, input.tenantId))).returning();
 
