@@ -148,6 +148,17 @@ import {
   insertObraPedidoRecebimentoSchema,
   insertObraPedidoRecebimentoItemSchema,
   insertObraPedidoDevolucaoSchema,
+  obraExecucaoAtividadesTable,
+  obraExecucaoMedicoesTable,
+  obraExecucaoConsumosTable,
+  obraExecucaoMaoObraTable,
+  obraExecucaoEquipamentosTable,
+  obraExecucaoSnapshotsTable,
+  insertObraExecucaoAtividadeSchema,
+  insertObraExecucaoMedicaoSchema,
+  insertObraExecucaoConsumoSchema,
+  insertObraExecucaoMaoObraSchema,
+  insertObraExecucaoEquipamentoSchema,
   insertObraSchema,
   updateObraSchema,
   insertObraEtapaSchema,
@@ -4148,6 +4159,318 @@ router.get("/tenants/:tenantId/obras/:obraId/pedidos-compra/:pedidoId/resumo", a
       rejeitado: itens.reduce((s, i) => s + numberOrZero(i.quantidadeRejeitada), 0),
       saldoReceber: itens.reduce((s, i) => s + numberOrZero(i.saldoReceber), 0),
       valorTotal: numberOrZero(pedido.valorTotal),
+    },
+  });
+});
+
+// ─── Execução, medição, consumo e produtividade ───────────────────────────────
+
+router.post("/tenants/:tenantId/obras/:obraId/execucao/atividades", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  let payload = { ...req.body, tenantId: tid, obraId };
+
+  if (req.body?.orcamentoItemId) {
+    const [item] = await db.select().from(obraOrcamentoItensTable)
+      .where(eq(obraOrcamentoItensTable.id, req.body.orcamentoItemId));
+    if (!item) return res.status(422).json({ error: "Item de orçamento inválido." });
+
+    payload = {
+      ...payload,
+      nome: payload.nome ?? item.nome,
+      unidade: payload.unidade ?? item.unidade,
+      quantidadePlanejada: payload.quantidadePlanejada ?? item.quantidade,
+      custoPlanejado: payload.custoPlanejado ??
+        (numberOrZero(item.quantidade) * numberOrZero(item.custoUnitario)).toFixed(4),
+      composicaoId: payload.composicaoId ?? item.composicaoId ?? null,
+    };
+  }
+
+  const parsed = insertObraExecucaoAtividadeSchema.safeParse(payload);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraExecucaoAtividadesTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/execucao/atividades", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const rows = await db.select().from(obraExecucaoAtividadesTable)
+    .where(and(
+      eq(obraExecucaoAtividadesTable.tenantId, tid),
+      eq(obraExecucaoAtividadesTable.obraId, obraId),
+      eq(obraExecucaoAtividadesTable.ativo, true),
+    ))
+    .orderBy(asc(obraExecucaoAtividadesTable.createdAt));
+
+  return res.json(rows);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/execucao/atividades/:atividadeId/medicoes", async (req, res) => {
+  const { tenantId: tid, obraId, atividadeId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [atividade] = await db.select().from(obraExecucaoAtividadesTable)
+    .where(and(
+      eq(obraExecucaoAtividadesTable.id, atividadeId),
+      eq(obraExecucaoAtividadesTable.tenantId, tid),
+      eq(obraExecucaoAtividadesTable.obraId, obraId),
+    ));
+  if (!atividade) return res.status(404).json({ error: "Atividade não encontrada" });
+
+  const parsed = insertObraExecucaoMedicaoSchema.safeParse({
+    ...req.body,
+    atividadeId,
+    criadoPorId: (req as any).user?.sub ?? null,
+  });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const qtd = numberOrZero(parsed.data.quantidadeExecutada);
+  if (qtd <= 0) return res.status(422).json({ error: "Quantidade medida deve ser maior que zero." });
+
+  const medicao = await db.transaction(async (tx) => {
+    const [row] = await tx.insert(obraExecucaoMedicoesTable).values(parsed.data).returning();
+
+    const medicoes = await tx.select().from(obraExecucaoMedicoesTable)
+      .where(eq(obraExecucaoMedicoesTable.atividadeId, atividadeId));
+    const total = medicoes.reduce((s, m) => s + numberOrZero(m.quantidadeExecutada), 0);
+    const planejada = numberOrZero(atividade.quantidadePlanejada);
+    const percentual = planejada > 0 ? Math.min(100, total / planejada * 100) : 0;
+    const concluida = planejada > 0 && total >= planejada - 0.0001;
+
+    await tx.update(obraExecucaoAtividadesTable)
+      .set({
+        quantidadeExecutada: total.toFixed(4),
+        percentualExecutado: percentual.toFixed(4),
+        status: concluida ? "concluida" : atividade.status === "planejada" ? "em_execucao" : atividade.status,
+        inicioReal: atividade.inicioReal ?? new Date(),
+        fimReal: concluida ? new Date() : atividade.fimReal,
+        updatedAt: new Date(),
+      })
+      .where(eq(obraExecucaoAtividadesTable.id, atividadeId));
+
+    return row;
+  });
+
+  return res.status(201).json(medicao);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/execucao/atividades/:atividadeId/consumos", async (req, res) => {
+  const { tenantId: tid, obraId, atividadeId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [atividade] = await db.select({ id: obraExecucaoAtividadesTable.id }).from(obraExecucaoAtividadesTable)
+    .where(and(
+      eq(obraExecucaoAtividadesTable.id, atividadeId),
+      eq(obraExecucaoAtividadesTable.tenantId, tid),
+      eq(obraExecucaoAtividadesTable.obraId, obraId),
+    ));
+  if (!atividade) return res.status(404).json({ error: "Atividade não encontrada" });
+
+  let payload = { ...req.body, atividadeId };
+  if (req.body?.insumoId) {
+    const [insumo] = await db.select().from(insumosTable)
+      .where(and(eq(insumosTable.id, req.body.insumoId), eq(insumosTable.tenantId, tid)));
+    if (!insumo) return res.status(422).json({ error: "Insumo inválido." });
+    const qtd = numberOrZero(req.body.quantidade);
+    const custo = req.body.custoUnitario == null ? numberOrZero(insumo.precoUnitario) : numberOrZero(req.body.custoUnitario);
+    payload = {
+      ...payload,
+      descricao: payload.descricao ?? insumo.nome,
+      unidade: payload.unidade ?? insumo.unidade,
+      custoUnitario: String(custo),
+      custoTotal: String(qtd * custo),
+    };
+  }
+
+  const parsed = insertObraExecucaoConsumoSchema.safeParse(payload);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const qtd = numberOrZero(parsed.data.quantidade);
+  if (qtd <= 0) return res.status(422).json({ error: "Quantidade consumida deve ser maior que zero." });
+
+  const consumo = await db.transaction(async (tx) => {
+    if (parsed.data.origemEstoque && parsed.data.insumoId) {
+      const [saldo] = await tx.select().from(estoqueObrasTable)
+        .where(and(eq(estoqueObrasTable.obraId, obraId), eq(estoqueObrasTable.insumoId, parsed.data.insumoId)));
+      const atual = numberOrZero(saldo?.quantidadeAtual);
+      if (!saldo || atual < qtd - 0.0001) throw new Error("Estoque insuficiente para o consumo informado.");
+
+      await tx.update(estoqueObrasTable)
+        .set({ quantidadeAtual: (atual - qtd).toFixed(4), updatedAt: new Date() })
+        .where(eq(estoqueObrasTable.id, saldo.id));
+
+      await tx.insert(movimentacoesEstoqueObrasTable).values({
+        tenantId: tid,
+        insumoId: parsed.data.insumoId,
+        tipo: "saida",
+        quantia: qtd.toFixed(4),
+        origemTipo: "obra",
+        origemObraId: obraId,
+        destinoTipo: "execucao_atividade",
+        responsavelId: (req as any).user?.sub ?? null,
+        observacao: `Consumo na atividade ${atividadeId}`,
+      });
+    }
+
+    const [row] = await tx.insert(obraExecucaoConsumosTable).values(parsed.data).returning();
+    return row;
+  });
+
+  return res.status(201).json(consumo);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/execucao/atividades/:atividadeId/mao-obra", async (req, res) => {
+  const { tenantId: tid, obraId, atividadeId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [atividade] = await db.select({ id: obraExecucaoAtividadesTable.id }).from(obraExecucaoAtividadesTable)
+    .where(and(eq(obraExecucaoAtividadesTable.id, atividadeId), eq(obraExecucaoAtividadesTable.tenantId, tid), eq(obraExecucaoAtividadesTable.obraId, obraId)));
+  if (!atividade) return res.status(404).json({ error: "Atividade não encontrada" });
+
+  const pessoas = numberOrZero(req.body?.quantidadePessoas) || 1;
+  const horas = numberOrZero(req.body?.horas);
+  const custoHora = numberOrZero(req.body?.custoHora);
+  const parsed = insertObraExecucaoMaoObraSchema.safeParse({
+    ...req.body,
+    atividadeId,
+    quantidadePessoas: String(pessoas),
+    horas: String(horas),
+    custoHora: String(custoHora),
+    custoTotal: String(pessoas * horas * custoHora),
+  });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraExecucaoMaoObraTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/execucao/atividades/:atividadeId/equipamentos", async (req, res) => {
+  const { tenantId: tid, obraId, atividadeId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [atividade] = await db.select({ id: obraExecucaoAtividadesTable.id }).from(obraExecucaoAtividadesTable)
+    .where(and(eq(obraExecucaoAtividadesTable.id, atividadeId), eq(obraExecucaoAtividadesTable.tenantId, tid), eq(obraExecucaoAtividadesTable.obraId, obraId)));
+  if (!atividade) return res.status(404).json({ error: "Atividade não encontrada" });
+
+  const horas = numberOrZero(req.body?.horas);
+  const custoHora = numberOrZero(req.body?.custoHora);
+  const parsed = insertObraExecucaoEquipamentoSchema.safeParse({
+    ...req.body,
+    atividadeId,
+    horas: String(horas),
+    custoHora: String(custoHora),
+    custoTotal: String(horas * custoHora),
+  });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraExecucaoEquipamentosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/execucao/atividades/:atividadeId/snapshot", async (req, res) => {
+  const { tenantId: tid, obraId, atividadeId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [atividade] = await db.select().from(obraExecucaoAtividadesTable)
+    .where(and(eq(obraExecucaoAtividadesTable.id, atividadeId), eq(obraExecucaoAtividadesTable.tenantId, tid), eq(obraExecucaoAtividadesTable.obraId, obraId)));
+  if (!atividade) return res.status(404).json({ error: "Atividade não encontrada" });
+
+  const [medicoes, consumos, maoObra, equipamentos] = await Promise.all([
+    db.select().from(obraExecucaoMedicoesTable).where(eq(obraExecucaoMedicoesTable.atividadeId, atividadeId)),
+    db.select().from(obraExecucaoConsumosTable).where(eq(obraExecucaoConsumosTable.atividadeId, atividadeId)),
+    db.select().from(obraExecucaoMaoObraTable).where(eq(obraExecucaoMaoObraTable.atividadeId, atividadeId)),
+    db.select().from(obraExecucaoEquipamentosTable).where(eq(obraExecucaoEquipamentosTable.atividadeId, atividadeId)),
+  ]);
+
+  const quantidadeExecutada = medicoes.reduce((s, m) => s + numberOrZero(m.quantidadeExecutada), 0);
+  const planejada = numberOrZero(atividade.quantidadePlanejada);
+  const percentual = planejada > 0 ? Math.min(100, quantidadeExecutada / planejada * 100) : 0;
+  const horasHomem = maoObra.reduce((s, x) => s + numberOrZero(x.horas) * numberOrZero(x.quantidadePessoas), 0);
+  const horasEquip = equipamentos.reduce((s, x) => s + numberOrZero(x.horas), 0);
+  const custoMO = maoObra.reduce((s, x) => s + numberOrZero(x.custoTotal), 0);
+  const custoEq = equipamentos.reduce((s, x) => s + numberOrZero(x.custoTotal), 0);
+  const custoMat = consumos.reduce((s, x) => s + numberOrZero(x.custoTotal), 0);
+  const custoTotal = custoMO + custoEq + custoMat;
+  const produtividade = horasHomem > 0 ? quantidadeExecutada / horasHomem : null;
+  const custoPlanejado = numberOrZero(atividade.custoPlanejado);
+  const desvioCusto = custoPlanejado > 0 ? (custoTotal - custoPlanejado) / custoPlanejado * 100 : null;
+  const prodPlan = numberOrZero(atividade.produtividadePlanejada);
+  const desvioProd = produtividade != null && prodPlan > 0 ? (produtividade - prodPlan) / prodPlan * 100 : null;
+
+  const [snapshot] = await db.insert(obraExecucaoSnapshotsTable).values({
+    atividadeId,
+    dataReferencia: typeof req.body?.dataReferencia === "string" ? req.body.dataReferencia : new Date().toISOString().slice(0, 10),
+    quantidadeExecutada: quantidadeExecutada.toFixed(4),
+    percentualExecutado: percentual.toFixed(4),
+    horasHomem: horasHomem.toFixed(4),
+    horasEquipamento: horasEquip.toFixed(4),
+    custoMaoObra: custoMO.toFixed(4),
+    custoEquipamentos: custoEq.toFixed(4),
+    custoMateriais: custoMat.toFixed(4),
+    custoTotalRealizado: custoTotal.toFixed(4),
+    produtividadeReal: produtividade == null ? null : produtividade.toFixed(6),
+    desvioCustoPercentual: desvioCusto == null ? null : desvioCusto.toFixed(4),
+    desvioProdutividadePercentual: desvioProd == null ? null : desvioProd.toFixed(4),
+    memoriaCalculo: { medicoes: medicoes.length, consumos: consumos.length, registrosMaoObra: maoObra.length, registrosEquipamentos: equipamentos.length },
+    criadoPorId: (req as any).user?.sub ?? null,
+  }).returning();
+
+  await db.update(obraExecucaoAtividadesTable)
+    .set({
+      quantidadeExecutada: quantidadeExecutada.toFixed(4),
+      percentualExecutado: percentual.toFixed(4),
+      custoRealizado: custoTotal.toFixed(4),
+      produtividadeReal: produtividade == null ? null : produtividade.toFixed(6),
+      updatedAt: new Date(),
+    })
+    .where(eq(obraExecucaoAtividadesTable.id, atividadeId));
+
+  return res.status(201).json(snapshot);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/execucao/resumo", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const atividades = await db.select().from(obraExecucaoAtividadesTable)
+    .where(and(eq(obraExecucaoAtividadesTable.tenantId, tid), eq(obraExecucaoAtividadesTable.obraId, obraId), eq(obraExecucaoAtividadesTable.ativo, true)));
+
+  const ids = atividades.map((a) => a.id);
+  const snapshots = ids.length
+    ? await db.select().from(obraExecucaoSnapshotsTable).where(inArray(obraExecucaoSnapshotsTable.atividadeId, ids))
+    : [];
+
+  const latestByAtividade = new Map<string, typeof snapshots[number]>();
+  for (const snap of snapshots) {
+    const prev = latestByAtividade.get(snap.atividadeId);
+    if (!prev || new Date(snap.createdAt).getTime() > new Date(prev.createdAt).getTime()) latestByAtividade.set(snap.atividadeId, snap);
+  }
+
+  const qtdPlanejada = atividades.reduce((s, a) => s + numberOrZero(a.quantidadePlanejada), 0);
+  const qtdExecutada = atividades.reduce((s, a) => s + numberOrZero(a.quantidadeExecutada), 0);
+  const custoPlanejado = atividades.reduce((s, a) => s + numberOrZero(a.custoPlanejado), 0);
+  const custoRealizado = atividades.reduce((s, a) => s + numberOrZero(a.custoRealizado), 0);
+
+  return res.json({
+    atividades,
+    ultimosSnapshots: [...latestByAtividade.values()],
+    totais: {
+      atividades: atividades.length,
+      concluidas: atividades.filter((a) => a.status === "concluida").length,
+      emExecucao: atividades.filter((a) => a.status === "em_execucao").length,
+      quantidadePlanejada: qtdPlanejada.toFixed(4),
+      quantidadeExecutada: qtdExecutada.toFixed(4),
+      custoPlanejado: custoPlanejado.toFixed(4),
+      custoRealizado: custoRealizado.toFixed(4),
+      desvioCustoPercentual: custoPlanejado > 0 ? ((custoRealizado - custoPlanejado) / custoPlanejado * 100).toFixed(4) : null,
     },
   });
 });
