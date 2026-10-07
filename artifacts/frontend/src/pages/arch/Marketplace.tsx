@@ -112,6 +112,25 @@ type DemandEvent = {
   created_at: string;
 };
 
+type CommissionRule = {
+  id: string;
+  tenant_id: string | null;
+  tenant_name?: string | null;
+  scope_type: string;
+  scope_key: string | null;
+  percentage: string;
+  active: boolean;
+  priority: number;
+  starts_at: string | null;
+  ends_at: string | null;
+  name: string | null;
+  description: string | null;
+  rule_kind: string;
+  campaign_code: string | null;
+  adjustment_mode: string;
+  conditions: Record<string, any>;
+};
+
 function getToken() {
   return localStorage.getItem("vendorai_token");
 }
@@ -203,6 +222,26 @@ export default function Marketplace() {
   const [externalCloseValue, setExternalCloseValue] = useState("");
   const [externalCloseReason, setExternalCloseReason] = useState("");
   const [submittingExternalClose, setSubmittingExternalClose] = useState(false);
+
+  const isSuperAdmin = user?.platformRole === "super_admin";
+  const [commissionRules, setCommissionRules] = useState<CommissionRule[]>([]);
+  const [commissionRulesLoading, setCommissionRulesLoading] = useState(false);
+  const [commissionRulesLoaded, setCommissionRulesLoaded] = useState(false);
+  const [commissionRuleOpen, setCommissionRuleOpen] = useState(false);
+  const [ruleName, setRuleName] = useState("");
+  const [ruleKind, setRuleKind] = useState("standard");
+  const [ruleScopeType, setRuleScopeType] = useState("global");
+  const [ruleTenantId, setRuleTenantId] = useState("");
+  const [ruleScopeKey, setRuleScopeKey] = useState("");
+  const [rulePercentage, setRulePercentage] = useState("10");
+  const [rulePriority, setRulePriority] = useState("0");
+  const [ruleCampaignCode, setRuleCampaignCode] = useState("");
+  const [ruleStartsAt, setRuleStartsAt] = useState("");
+  const [ruleEndsAt, setRuleEndsAt] = useState("");
+  const [ruleBillingTypes, setRuleBillingTypes] = useState<string[]>([]);
+  const [ruleMinOrder, setRuleMinOrder] = useState("");
+  const [ruleMaxOrder, setRuleMaxOrder] = useState("");
+  const [savingCommissionRule, setSavingCommissionRule] = useState(false);
 
   const loadItems = useCallback(async () => {
     setItemsLoading(true);
@@ -363,6 +402,93 @@ export default function Marketplace() {
       toast({ title: "Encerramento", description: err.message, variant: "destructive" });
     } finally {
       setSubmittingExternalClose(false);
+    }
+  };
+
+  const loadCommissionRules = useCallback(async (force = false) => {
+    if (!isSuperAdmin || (commissionRulesLoaded && !force)) return;
+    setCommissionRulesLoading(true);
+    try {
+      const res = await fetch("/api/arch/market-commission-rules", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) throw new Error("Não foi possível carregar as regras de comissão.");
+      const data = await res.json();
+      setCommissionRules(data.rules ?? []);
+    } catch (err: any) {
+      toast({ title: "Comissões do Market", description: err.message, variant: "destructive" });
+    } finally {
+      setCommissionRulesLoading(false);
+      setCommissionRulesLoaded(true);
+    }
+  }, [commissionRulesLoaded, isSuperAdmin, toast]);
+
+  const resetCommissionRuleForm = () => {
+    setRuleName("");
+    setRuleKind("standard");
+    setRuleScopeType("global");
+    setRuleTenantId("");
+    setRuleScopeKey("");
+    setRulePercentage("10");
+    setRulePriority("0");
+    setRuleCampaignCode("");
+    setRuleStartsAt("");
+    setRuleEndsAt("");
+    setRuleBillingTypes([]);
+    setRuleMinOrder("");
+    setRuleMaxOrder("");
+  };
+
+  const saveCommissionRule = async () => {
+    setSavingCommissionRule(true);
+    try {
+      const conditions: Record<string, any> = {};
+      if (ruleBillingTypes.length) conditions.billingTypes = ruleBillingTypes;
+      if (ruleMinOrder) conditions.minOrderValue = Number(ruleMinOrder);
+      if (ruleMaxOrder) conditions.maxOrderValue = Number(ruleMaxOrder);
+      const res = await fetch("/api/arch/market-commission-rules", {
+        method: "POST",
+        headers: authH(),
+        body: JSON.stringify({
+          name: ruleName || undefined,
+          ruleKind,
+          scopeType: ruleScopeType,
+          tenantId: ruleScopeType === "global" ? undefined : ruleTenantId,
+          scopeKey: ["global", "tenant"].includes(ruleScopeType) ? undefined : ruleScopeKey,
+          percentage: Number(rulePercentage),
+          priority: Number(rulePriority || 0),
+          campaignCode: ruleCampaignCode || undefined,
+          startsAt: ruleStartsAt ? new Date(ruleStartsAt).toISOString() : undefined,
+          endsAt: ruleEndsAt ? new Date(ruleEndsAt).toISOString() : undefined,
+          conditions,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Não foi possível salvar a regra.");
+      setCommissionRuleOpen(false);
+      resetCommissionRuleForm();
+      setCommissionRulesLoaded(false);
+      await loadCommissionRules(true);
+      toast({ title: "Regra de comissão criada" });
+    } catch (err: any) {
+      toast({ title: "Comissões do Market", description: err.message, variant: "destructive" });
+    } finally {
+      setSavingCommissionRule(false);
+    }
+  };
+
+  const toggleCommissionRule = async (rule: CommissionRule) => {
+    try {
+      const res = await fetch(`/api/arch/market-commission-rules/${rule.id}`, {
+        method: "PATCH",
+        headers: authH(),
+        body: JSON.stringify({ active: !rule.active }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Não foi possível alterar a regra.");
+      await loadCommissionRules(true);
+    } catch (err: any) {
+      toast({ title: "Comissões do Market", description: err.message, variant: "destructive" });
     }
   };
 
@@ -583,6 +709,9 @@ export default function Marketplace() {
             <TabsTrigger value="fornecedores">Fornecedores</TabsTrigger>
             <TabsTrigger value="pedidos" onClick={loadPedidos}>Pedidos</TabsTrigger>
             <TabsTrigger value="tracking" onClick={() => loadDemands()}>Rastreamento</TabsTrigger>
+            {isSuperAdmin && (
+              <TabsTrigger value="commission" onClick={() => loadCommissionRules()}>Comissões</TabsTrigger>
+            )}
             <TabsTrigger value="vitrine" onClick={loadMeusProdutos}>Minha vitrine</TabsTrigger>
             <TabsTrigger value="vendas" onClick={loadVendas}>Vendas</TabsTrigger>
           </TabsList>
@@ -972,6 +1101,63 @@ export default function Marketplace() {
           )}
         </TabsContent>
 
+        {isSuperAdmin && (
+          <TabsContent value="commission" className="space-y-4">
+            <div className="rounded-xl border bg-white p-5">
+              <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
+                <div>
+                  <h2 className="text-base font-semibold">Regras de comissão do Market</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Padrão global de 10%, com exceções por tenant, categoria, linha, produto, SKU ou marca e regras temporárias.
+                  </p>
+                </div>
+                <Button
+                  className="bg-emerald-700 hover:bg-emerald-800"
+                  onClick={() => { resetCommissionRuleForm(); setCommissionRuleOpen(true); }}
+                >
+                  Nova regra
+                </Button>
+              </div>
+            </div>
+
+            {commissionRulesLoading && <Skeleton className="h-48 rounded-xl" />}
+
+            {!commissionRulesLoading && (
+              <div className="space-y-3">
+                {commissionRules.map((rule) => (
+                  <Card key={rule.id} className="bg-white">
+                    <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold">{rule.name || "Regra de comissão"}</span>
+                          <Badge variant="outline">{rule.scope_type}</Badge>
+                          <Badge variant="outline">{rule.rule_kind}</Badge>
+                          {rule.campaign_code && <Badge className="bg-violet-50 text-violet-700">{rule.campaign_code}</Badge>}
+                        </div>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          {Number(rule.percentage).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% •
+                          {" "}{rule.tenant_name || rule.tenant_id || "Todos os tenants"}
+                          {rule.scope_key ? ` • ${rule.scope_key}` : ""}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {rule.starts_at ? `Início ${new Date(rule.starts_at).toLocaleString("pt-BR")}` : "Início imediato"}
+                          {" • "}
+                          {rule.ends_at ? `até ${new Date(rule.ends_at).toLocaleString("pt-BR")}` : "sem data final"}
+                          {" • "}prioridade {rule.priority}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Label className="text-xs">{rule.active ? "Ativa" : "Inativa"}</Label>
+                        <Switch checked={rule.active} onCheckedChange={() => toggleCommissionRule(rule)} />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        )}
+
         <TabsContent value="vitrine">
           {meusProdutosLoading && (
             <div className="space-y-2">
@@ -1146,6 +1332,136 @@ export default function Marketplace() {
           </CardContent>
         </Card>
       </section>
+
+      <Dialog open={commissionRuleOpen} onOpenChange={setCommissionRuleOpen}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Nova regra de comissão</DialogTitle>
+          </DialogHeader>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>Nome da regra</Label>
+              <Input value={ruleName} onChange={(e) => setRuleName(e.target.value)} placeholder="Ex.: Campanha Esquadrias Dezembro" />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Tipo</Label>
+              <Select value={ruleKind} onValueChange={setRuleKind}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="standard">Padrão</SelectItem>
+                  <SelectItem value="campaign">Campanha</SelectItem>
+                  <SelectItem value="promotion">Promoção</SelectItem>
+                  <SelectItem value="exception">Exceção</SelectItem>
+                  <SelectItem value="negotiated">Negociada</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Percentual final</Label>
+              <Input type="number" min="0" max="100" step="0.01" value={rulePercentage} onChange={(e) => setRulePercentage(e.target.value)} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Escopo</Label>
+              <Select value={ruleScopeType} onValueChange={setRuleScopeType}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="global">Global</SelectItem>
+                  <SelectItem value="tenant">Tenant</SelectItem>
+                  <SelectItem value="category">Categoria</SelectItem>
+                  <SelectItem value="product_line">Linha de produto</SelectItem>
+                  <SelectItem value="product">Produto</SelectItem>
+                  <SelectItem value="sku">SKU</SelectItem>
+                  <SelectItem value="brand">Marca</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {ruleScopeType !== "global" && (
+              <div className="space-y-1.5">
+                <Label>Tenant ID</Label>
+                <Input value={ruleTenantId} onChange={(e) => setRuleTenantId(e.target.value)} placeholder="Tenant que receberá a regra" />
+              </div>
+            )}
+
+            {!["global", "tenant"].includes(ruleScopeType) && (
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>Chave do escopo</Label>
+                <Input value={ruleScopeKey} onChange={(e) => setRuleScopeKey(e.target.value)} placeholder="ID, SKU, marca, categoria ou linha" />
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label>Código da campanha</Label>
+              <Input value={ruleCampaignCode} onChange={(e) => setRuleCampaignCode(e.target.value)} placeholder="Opcional" />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Prioridade</Label>
+              <Input type="number" value={rulePriority} onChange={(e) => setRulePriority(e.target.value)} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Início</Label>
+              <Input type="datetime-local" value={ruleStartsAt} onChange={(e) => setRuleStartsAt(e.target.value)} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Fim</Label>
+              <Input type="datetime-local" value={ruleEndsAt} onChange={(e) => setRuleEndsAt(e.target.value)} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Pedido mínimo</Label>
+              <Input type="number" min="0" step="0.01" value={ruleMinOrder} onChange={(e) => setRuleMinOrder(e.target.value)} placeholder="Opcional" />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Pedido máximo</Label>
+              <Input type="number" min="0" step="0.01" value={ruleMaxOrder} onChange={(e) => setRuleMaxOrder(e.target.value)} placeholder="Opcional" />
+            </div>
+
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Formas de pagamento da regra</Label>
+              <div className="flex flex-wrap gap-3">
+                {["PIX", "CREDIT_CARD", "BOLETO"].map((billing) => (
+                  <label key={billing} className="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={ruleBillingTypes.includes(billing)}
+                      onChange={(e) => setRuleBillingTypes((current) =>
+                        e.target.checked ? [...current, billing] : current.filter((x) => x !== billing)
+                      )}
+                    />
+                    {billing}
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setCommissionRuleOpen(false)}>Cancelar</Button>
+            <Button
+              className="bg-emerald-700 hover:bg-emerald-800"
+              onClick={saveCommissionRule}
+              disabled={
+                savingCommissionRule ||
+                Number(rulePercentage) < 0 ||
+                Number(rulePercentage) > 100 ||
+                (ruleScopeType !== "global" && !ruleTenantId.trim()) ||
+                (!["global", "tenant"].includes(ruleScopeType) && !ruleScopeKey.trim())
+              }
+            >
+              {savingCommissionRule && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Salvar regra
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!demandDetail || demandDetailLoading} onOpenChange={() => setDemandDetail(null)}>
         <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
