@@ -628,6 +628,7 @@ function ProjectSelectorBar({ arqState }: { arqState: ArqProjectState }) {
               }}
             >
               ＋ Novo projeto deste cliente
+            </button>
             <button
               onClick={() => window.location.assign('/arch/projetos')}
               style={{
