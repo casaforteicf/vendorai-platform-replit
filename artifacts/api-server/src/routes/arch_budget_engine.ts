@@ -499,6 +499,10 @@ async function calculateParametricEngineeringQuote(tId: string | null, payload: 
     productKind: row.product_kind,
     openingType: row.opening_type,
     leafCount: row.leaf_count == null ? null : Number(row.leaf_count),
+    allowedLeafCounts: Array.isArray(row.allowed_leaf_counts)
+      ? row.allowed_leaf_counts.map(Number).filter(Number.isFinite)
+      : [],
+    compositionPattern: row.composition_pattern ?? null,
     minWidthMm: row.min_width_mm == null ? null : Number(row.min_width_mm),
     maxWidthMm: row.max_width_mm == null ? null : Number(row.max_width_mm),
     minHeightMm: row.min_height_mm == null ? null : Number(row.min_height_mm),
