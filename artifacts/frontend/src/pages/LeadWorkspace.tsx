@@ -1,13 +1,12 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useLocation, useParams } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCreateDeal, useGetLead, useListActivities, useListDeals, useListPipelineStages, useListTenantUsers, useUpdatePipelineStage, getGetLeadQueryKey, getListActivitiesQueryKey, getListDealsQueryKey, getListPipelineStagesQueryKey, getListTenantUsersQueryKey } from "@workspace/api-client-react";
+import { useCreateDeal, useGetLead, useListActivities, useListDeals, useListPipelineStages, useListTenantUsers, getGetLeadQueryKey, getListActivitiesQueryKey, getListDealsQueryKey, getListPipelineStagesQueryKey, getListTenantUsersQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AdminDeleteLeadButton } from "@/components/AdminDeleteLeadButton";
-import { ArrowLeft, ArrowRight, AlertTriangle, BrainCircuit, Building2, Clock3, HandCoins, Headset, Loader2, Pencil, Settings2, Sparkles, UserRound, WalletCards } from "lucide-react";
+import { PipelineStageFunctionAccess } from "@/components/PipelineStageFunctionAccess";
+import { ArrowLeft, ArrowRight, AlertTriangle, BrainCircuit, Building2, Clock3, HandCoins, Headset, Loader2, Pencil, Sparkles, UserRound, WalletCards } from "lucide-react";
 
 const LeadDetail = lazy(() => import("@/pages/LeadDetail"));
 const DealParticipantsCard = lazy(() => import("@/components/DealParticipantsCard").then((m) => ({ default: m.DealParticipantsCard })));
@@ -117,6 +117,36 @@ type PartnerUserSnap = {
   email?: string | null;
   userFunction?: string | null;
 };
+
+type ResponsibilityUser = {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  active?: boolean | null;
+  platformRole?: string | null;
+  userFunction?: string | null;
+  customFunctionId?: string | null;
+};
+
+type ResponsibilityStage = {
+  id?: string;
+  key: string;
+  label?: string | null;
+  responsaveisFuncoes?: string[] | null;
+};
+
+function userCanOwnStage(user: ResponsibilityUser, stage?: ResponsibilityStage | null): boolean {
+  if (user.active !== true) return false;
+  if (user.platformRole === "super_admin" || user.platformRole === "tenant_admin" || user.userFunction === "administrador") return true;
+
+  const configured = stage?.responsaveisFuncoes ?? [];
+  if (configured.length === 0) return true;
+
+  const refs = new Set<string>();
+  if (user.userFunction) refs.add(`builtin:${user.userFunction}`);
+  if (user.customFunctionId) refs.add(`custom:${user.customFunctionId}`);
+  return configured.some((responsible) => refs.has(responsible));
+}
 
 type FullIntelligenceResponse = {
   profile: null | {
@@ -248,7 +278,6 @@ export default function LeadWorkspace() {
     },
   });
   const createDeal = useCreateDeal({ request });
-  const updateStage = useUpdatePipelineStage();
   const deal = useMemo(() => {
     const requested = deals.find((d) => d.id === requestedDealId);
     if (requested) return requested;
@@ -294,7 +323,6 @@ export default function LeadWorkspace() {
   const [description, setDescription] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
-  const [editEligible, setEditEligible] = useState(false);
   const [savingAnswers, setSavingAnswers] = useState(false);
   const [ownerEditorOpen, setOwnerEditorOpen] = useState(false);
   const [responsibilityEditorOpen, setResponsibilityEditorOpen] = useState(false);
@@ -341,9 +369,11 @@ export default function LeadWorkspace() {
     && targetStageAI?.mode === "autonoma"
     && ((targetStageAI.allowedActions ?? []).includes("create_activity") || (targetStageAI.allowedActions ?? []).includes("send_message"))
   );
-  const eligibleIds = (targetStage as { elegiveisUserIds?: string[] | null } | undefined)?.elegiveisUserIds ?? null;
-  const eligibleUsers = eligibleIds && eligibleIds.length > 0 ? users.filter((u) => eligibleIds.includes(u.id)) : users;
-  const { data: targetPipelineStages = [] } = useQuery<Array<{ id: string; key: string; label: string; ordem?: number }>>({
+  const eligibleUsers = useMemo(
+    () => users.filter((candidate) => userCanOwnStage(candidate as ResponsibilityUser, targetStage as ResponsibilityStage | undefined)),
+    [users, targetStage],
+  );
+  const { data: targetPipelineStages = [] } = useQuery<Array<{ id: string; key: string; label: string; ordem?: number; responsaveisFuncoes?: string[] | null }>>({
     queryKey: ["pipeline-stages", tenantId, targetPipeline],
     enabled: Boolean(tenantId && token && pipelineTransferOpen),
     staleTime: 30_000,
@@ -363,18 +393,27 @@ export default function LeadWorkspace() {
     { key: "execucao", label: "Execução / Pedidos" },
     { key: "suporte", label: "Suporte" },
   ];
-  const [draftEligible, setDraftEligible] = useState<string[]>([]);
-  useEffect(() => { setDraftEligible(eligibleIds ?? []); }, [nextStage]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!ownerEditorOpen) setCurrentOwner(deal?.assignedTo ?? lead?.assignedTo ?? "");
   }, [deal?.assignedTo, lead?.assignedTo, ownerEditorOpen]);
-  useEffect(() => {
-    if (!transferOwner) setTransferOwner(deal?.assignedTo ?? users[0]?.id ?? "");
-  }, [deal?.assignedTo, transferOwner, users]);
+  const selectedTransferStage = targetPipelineStages.find((stage) => stage.key === targetPipelineStage) ?? null;
+  const transferEligibleUsers = useMemo(
+    () => users.filter((candidate) => userCanOwnStage(candidate as ResponsibilityUser, selectedTransferStage as ResponsibilityStage | null)),
+    [users, selectedTransferStage],
+  );
+
   useEffect(() => {
     const firstStage = [...targetPipelineStages].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))[0];
     setTargetPipelineStage(firstStage?.key ?? "");
   }, [targetPipeline, targetPipelineStages]);
+
+  useEffect(() => {
+    if (!selectedTransferStage) return;
+    const preferred = [deal?.assignedTo, user?.id].find((candidateId) =>
+      Boolean(candidateId) && transferEligibleUsers.some((candidate) => candidate.id === candidateId)
+    );
+    setTransferOwner(preferred ?? transferEligibleUsers[0]?.id ?? "");
+  }, [selectedTransferStage?.key, deal?.assignedTo, user?.id, transferEligibleUsers]);
   useEffect(() => {
     if (activeParticipation?.partnershipId) {
       setSelectedPartnershipId(activeParticipation.partnershipId);
@@ -434,8 +473,14 @@ export default function LeadWorkspace() {
     const aiAction = fullIntelligence?.health?.nextBestAction ?? fullIntelligence?.profile?.nextBestAction;
     const aiReason = fullIntelligence?.health?.nextBestActionReason ?? fullIntelligence?.profile?.nextBestActionReason;
 
+    const nextStageConfig = stages.find((candidate) => candidate.key === stage) as ResponsibilityStage | undefined;
+    const stageEligibleUsers = users.filter((candidate) => userCanOwnStage(candidate as ResponsibilityUser, nextStageConfig));
+    const preferredOwner = [deal?.assignedTo, user?.id].find((candidateId) =>
+      Boolean(candidateId) && stageEligibleUsers.some((candidate) => candidate.id === candidateId)
+    );
+
     setNextStage(stage);
-    setOwner(deal?.assignedTo ?? user?.id ?? "");
+    setOwner(preferredOwner ?? stageEligibleUsers[0]?.id ?? "");
     setTitle(aiAction?.trim() || guidance[stage]?.[1] || "Dar continuidade ao atendimento");
     setDescription(aiReason?.trim() || "");
     setNote("");
@@ -443,22 +488,6 @@ export default function LeadWorkspace() {
     setEditEligible(false);
     setAdvancedHandoffOpen(false);
     setOpen(true);
-  }
-
-  function saveEligible() {
-    if (!targetStage) return;
-    updateStage.mutate(
-      { tenantId, id: targetStage.id, data: { elegiveisUserIds: draftEligible } },
-      {
-        onSuccess: () => {
-          qc.invalidateQueries({ queryKey: getListPipelineStagesQueryKey(tenantId) });
-          toast({ title: "Usuários habilitados atualizados para " + targetStage.label + "." });
-          setEditEligible(false);
-          if (draftEligible.length > 0 && !draftEligible.includes(owner)) setOwner(draftEligible[0]);
-        },
-        onError: () => toast({ title: "Erro ao salvar usuários habilitados", variant: "destructive" }),
-      },
-    );
   }
 
   async function saveCurrentOwner() {
@@ -1242,11 +1271,14 @@ export default function LeadWorkspace() {
                 <Select value={transferOwner} onValueChange={setTransferOwner}>
                   <SelectTrigger><SelectValue placeholder="Selecione o responsável" /></SelectTrigger>
                   <SelectContent>
-                    {users.map((targetUser) => (
+                    {transferEligibleUsers.map((targetUser) => (
                       <SelectItem key={targetUser.id} value={targetUser.id}>
                         {targetUser.name || targetUser.email || targetUser.id}
                       </SelectItem>
                     ))}
+                    {transferEligibleUsers.length === 0 && (
+                      <SelectItem value="__none_available__" disabled>Nenhum responsável elegível para esta etapa</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </Field>
@@ -1271,7 +1303,18 @@ export default function LeadWorkspace() {
           {advancedHandoffOpen && (
             <div className="grid gap-4 rounded-xl border p-4">
               <Field label="Nova etapa">
-                <Select value={nextStage} onValueChange={(v) => { setNextStage(v); if (!fullIntelligence?.health?.nextBestAction && !fullIntelligence?.profile?.nextBestAction) setTitle(guidance[v]?.[1] ?? "Dar continuidade ao atendimento"); setEditEligible(false); }}>
+                <Select value={nextStage} onValueChange={(v) => {
+                  setNextStage(v);
+                  const selectedStage = stages.find((candidate) => candidate.key === v) as ResponsibilityStage | undefined;
+                  const nextEligible = users.filter((candidate) => userCanOwnStage(candidate as ResponsibilityUser, selectedStage));
+                  if (!nextEligible.some((candidate) => candidate.id === owner)) {
+                    const preferred = [deal?.assignedTo, user?.id].find((candidateId) =>
+                      Boolean(candidateId) && nextEligible.some((candidate) => candidate.id === candidateId)
+                    );
+                    setOwner(preferred ?? nextEligible[0]?.id ?? "");
+                  }
+                  if (!fullIntelligence?.health?.nextBestAction && !fullIntelligence?.profile?.nextBestAction) setTitle(guidance[v]?.[1] ?? "Dar continuidade ao atendimento");
+                }}>
                   <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                   <SelectContent>{stages.filter((s, index) => {
                     if (deal?.etapa === "em_aquecimento") return s.key === "novo";
@@ -1282,29 +1325,39 @@ export default function LeadWorkspace() {
               </Field>
 
               <div className="grid gap-2">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <Label>Responsável</Label>
-                  <Button type="button" variant="ghost" size="sm" className="h-7 gap-1 text-xs text-muted-foreground" onClick={() => setEditEligible((v) => !v)}>
-                    <Settings2 className="h-3.5 w-3.5" /> Habilitados
-                  </Button>
-                </div>
-                {editEligible && targetStage ? (
-                  <div className="space-y-2 rounded-lg border p-3">
-                    <div className="grid max-h-40 gap-1.5 overflow-y-auto">
-                      {users.map((u) => (
-                        <label key={u.id} className="flex items-center gap-2 text-sm">
-                          <Checkbox checked={draftEligible.includes(u.id)} onCheckedChange={(checked) => setDraftEligible((prev) => checked ? [...prev, u.id] : prev.filter((x) => x !== u.id))} />
-                          {u.name || u.email || u.id}
-                        </label>
-                      ))}
+                  {canEditOwner && targetStage ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-muted-foreground">Configurar responsáveis da etapa</span>
+                      <PipelineStageFunctionAccess
+                        tenantId={tenantId}
+                        pipeline="comercial"
+                        stageId={targetStage.id}
+                        value={(targetStage as ResponsibilityStage).responsaveisFuncoes ?? []}
+                        agentValue={(targetStage as { responsavelAgenteKey?: string | null }).responsavelAgenteKey ?? null}
+                        className="w-40"
+                      />
                     </div>
-                    <Button type="button" size="sm" disabled={updateStage.isPending} onClick={saveEligible}>Salvar habilitados</Button>
-                  </div>
-                ) : (
-                  <Select value={owner} onValueChange={setOwner}>
-                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                    <SelectContent>{eligibleUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>)}</SelectContent>
-                  </Select>
+                  ) : null}
+                </div>
+                <Select value={owner} onValueChange={setOwner}>
+                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    {eligibleUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>)}
+                    {eligibleUsers.length === 0 && (
+                      <SelectItem value="__none_available__" disabled>Nenhum responsável elegível para esta etapa</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  A lista usa a mesma regra oficial da etapa e do servidor. Administradores ativos podem assumir qualquer etapa; sem funções configuradas, a etapa fica sem restrição por função.
+                </p>
+                {activeParticipation?.role === "responsible" && (
+                  <p className="rounded-md border border-cyan-200 bg-cyan-50/50 px-3 py-2 text-[11px] text-cyan-900">
+                    Empresa responsável preservada: {activeParticipation.partnerName || "empresa representante"}
+                    {activeParticipation.operationalUserName ? ` · executor ${activeParticipation.operationalUserName}` : ""}. O avanço não remove esse vínculo.
+                  </p>
                 )}
               </div>
 
@@ -1331,4 +1384,3 @@ export default function LeadWorkspace() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <div className="grid gap-2"><Label>{label}</Label>{children}</div>;
 }
-
