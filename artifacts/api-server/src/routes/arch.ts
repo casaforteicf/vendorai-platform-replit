@@ -986,6 +986,9 @@ router.get("/arch/concept-projects", authenticate, async (req, res) => {
       customerProfile: archConceptProjectsTable.customerProfile,
       conceptRender: archConceptProjectsTable.conceptRender,
       lot: archConceptProjectsTable.lot,
+      currentStep: archConceptProjectsTable.currentStep,
+      configuration: archConceptProjectsTable.configuration,
+      rooms: archConceptProjectsTable.rooms,
       createdAt: archConceptProjectsTable.createdAt,
       updatedAt: archConceptProjectsTable.updatedAt,
     })
@@ -1003,6 +1006,13 @@ router.get("/arch/concept-projects", authenticate, async (req, res) => {
     const customer = (row.customerProfile ?? {}) as { name?: string };
     const render = (row.conceptRender ?? {}) as { resultImageUrl?: string; history?: Array<{ resultImageUrl?: string }> };
     const history = Array.isArray(render.history) ? render.history : [];
+    const configuration = (row.configuration ?? {}) as {
+      projectScope?: "house" | "room";
+      terrainDefined?: boolean;
+      desiredArea?: number;
+      floors?: number;
+    };
+    const rooms = Array.isArray(row.rooms) ? row.rooms : [];
     return {
       id: row.id,
       title: row.title,
@@ -1011,6 +1021,12 @@ router.get("/arch/concept-projects", authenticate, async (req, res) => {
       customerName: typeof customer.name === "string" && customer.name.trim() ? customer.name.trim() : null,
       thumbnailUrl: render.resultImageUrl ?? history[history.length - 1]?.resultImageUrl ?? null,
       lot: row.lot,
+      currentStep: row.currentStep,
+      projectScope: configuration.projectScope ?? null,
+      terrainDefined: Boolean(configuration.terrainDefined),
+      desiredArea: typeof configuration.desiredArea === "number" ? configuration.desiredArea : null,
+      floors: typeof configuration.floors === "number" ? configuration.floors : null,
+      roomCount: rooms.length,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
@@ -1645,12 +1661,46 @@ router.post("/arch/concept-projects", authenticate, async (req, res) => {
     return res.status(400).json({ error: "Dados do pré-projeto inválidos.", details: parsed.error.flatten() });
   }
 
-  const [created] = await db
-    .insert(archConceptProjectsTable)
-    .values(parsed.data)
-    .returning();
+  const creationKey =
+    typeof (parsed.data.configuration as any)?.creationKey === "string"
+      ? String((parsed.data.configuration as any).creationKey).trim()
+      : "";
 
-  return res.status(201).json(created);
+  if (creationKey) {
+    const [existing] = await db
+      .select()
+      .from(archConceptProjectsTable)
+      .where(and(
+        eq(archConceptProjectsTable.tenantId, tid),
+        eq(archConceptProjectsTable.ownerUserId, userId),
+        sql`${archConceptProjectsTable.configuration}->>'creationKey' = ${creationKey}`,
+      ))
+      .limit(1);
+    if (existing) return res.status(200).json(existing);
+  }
+
+  try {
+    const [created] = await db
+      .insert(archConceptProjectsTable)
+      .values(parsed.data)
+      .returning();
+    return res.status(201).json(created);
+  } catch (error) {
+    // Corrida entre autosave/cliques/abas: o índice único garante um único rascunho.
+    if (creationKey && (error as { code?: string })?.code === "23505") {
+      const [existing] = await db
+        .select()
+        .from(archConceptProjectsTable)
+        .where(and(
+          eq(archConceptProjectsTable.tenantId, tid),
+          eq(archConceptProjectsTable.ownerUserId, userId),
+          sql`${archConceptProjectsTable.configuration}->>'creationKey' = ${creationKey}`,
+        ))
+        .limit(1);
+      if (existing) return res.status(200).json(existing);
+    }
+    throw error;
+  }
 });
 
 router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
