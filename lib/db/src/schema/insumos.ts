@@ -14,7 +14,7 @@ const decimalOptional = z
 
 // ─── Insumos (central materials registry) ────────────────────────────────────
 
-export const INSUMO_TIPOS = ["material", "mao_de_obra", "equipamento", "servico"] as const;
+export const INSUMO_TIPOS = ["material", "mao_de_obra", "equipamento", "servico", "subempreitada", "consumivel", "frete", "outro_custo_direto"] as const;
 
 export const insumosTable = pgTable("insumos", {
   id: text("id")
