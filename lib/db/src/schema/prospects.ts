@@ -104,6 +104,19 @@ export const prospectsTable = pgTable("prospects", {
   nextActionAt: timestamp("next_action_at", { withTimezone: true }),
 
   qualificationScore: integer("qualification_score"),
+  meetingReadinessScore: integer("meeting_readiness_score"),
+  accountMap: jsonb("account_map").$type<Array<{
+    personId?: string | null;
+    name: string;
+    jobTitle?: string | null;
+    department?: string | null;
+    roles: Array<"gatekeeper" | "interlocutor" | "influenciador" | "responsavel" | "decisor" | "usuario_potencial">;
+    phone?: string | null;
+    email?: string | null;
+    confidence: number;
+    source: string;
+    confirmed: boolean;
+  }>>().notNull().default([]),
   qualification: jsonb("qualification").$type<ProspectQualification>().notNull().default({}),
   opportunitySummary: text("opportunity_summary"),
 
@@ -132,6 +145,7 @@ export const insertProspectSchema = createInsertSchema(prospectsTable, {
   vendoraiFitScore: z.number().int().min(0).max(100).nullable().optional(),
   arqdorFitScore: z.number().int().min(0).max(100).nullable().optional(),
   qualificationScore: z.number().int().min(0).max(100).nullable().optional(),
+  meetingReadinessScore: z.number().int().min(0).max(100).nullable().optional(),
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const updateProspectSchema = createSelectSchema(prospectsTable, {
