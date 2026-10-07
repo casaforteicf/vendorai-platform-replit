@@ -219,7 +219,7 @@ async function updateSpecObject(id: string, tId: string | null, payload: Partial
       invalidatesTechnicalApproval = true;
     }
     values.push(payloadRecord[key]);
-    sets.push(`${column} = ${values.length}`);
+    sets.push(column + " = $" + values.length);
   }
 
   if (sets.length === 0) return current;
