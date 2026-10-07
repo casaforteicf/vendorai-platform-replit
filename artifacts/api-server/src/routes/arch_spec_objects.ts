@@ -213,13 +213,23 @@ async function updateSpecObject(id: string, tId: string | null, payload: Partial
 
   let invalidatesTechnicalApproval = false;
   for (const [key, column] of Object.entries(allowed)) {
-    if (payloadRecord[key] === undefined) continue;
+    if (key === "status" || payloadRecord[key] === undefined) continue;
     if (approvalSensitiveFields.has(key)
       && normalizedComparable(payloadRecord[key]) !== normalizedComparable(currentColumnValue(column))) {
       invalidatesTechnicalApproval = true;
     }
     values.push(payloadRecord[key]);
     sets.push(column + " = $" + values.length);
+  }
+
+  if (payloadRecord.status !== undefined) {
+    const nextStatus = invalidatesTechnicalApproval
+      && current.technical_approval_status === "approved"
+      && payloadRecord.status === "approved"
+        ? "specified"
+        : payloadRecord.status;
+    values.push(nextStatus);
+    sets.push("status = $" + values.length);
   }
 
   if (sets.length === 0) return current;
@@ -229,7 +239,9 @@ async function updateSpecObject(id: string, tId: string | null, payload: Partial
     sets.push("technical_approved_at = NULL");
     sets.push("technical_approved_by = NULL");
     sets.push("technical_approval_note = NULL");
-    sets.push("status = CASE WHEN status = 'approved' THEN 'specified' ELSE status END");
+    if (payloadRecord.status === undefined) {
+      sets.push("status = CASE WHEN status = 'approved' THEN 'specified' ELSE status END");
+    }
   }
 
   const mergedTotals = totalValue({
