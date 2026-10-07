@@ -814,11 +814,25 @@ router.get("/crm/companies/:companyId/workspace", async (req, res) => {
     )).limit(1),
   ]);
 
-  const orders = opportunities.filter((deal) =>
+  const proposalValueByDeal = new Map<string, { value: string; updatedAt: number }>();
+  for (const proposal of proposals) {
+    if (!proposal.dealId || proposal.valorTotal == null) continue;
+    const updatedAt = new Date(proposal.updatedAt ?? proposal.createdAt ?? 0).getTime();
+    const current = proposalValueByDeal.get(proposal.dealId);
+    if (!current || updatedAt >= current.updatedAt) {
+      proposalValueByDeal.set(proposal.dealId, { value: String(proposal.valorTotal), updatedAt });
+    }
+  }
+  const canonicalOpportunities = opportunities.map((deal) => ({
+    ...deal,
+    valor: proposalValueByDeal.get(deal.id)?.value ?? deal.valor,
+  }));
+
+  const orders = canonicalOpportunities.filter((deal) =>
     ["ganho", "em_execucao", "entregue", "conferencia_estoque"].includes(deal.etapa),
   );
 
-  const finance = opportunities
+  const finance = canonicalOpportunities
     .filter((deal) => deal.valor || deal.chargeStatus || deal.asaasChargeId || deal.chargeLink)
     .map((deal) => ({
       id: deal.id,
@@ -860,7 +874,7 @@ router.get("/crm/companies/:companyId/workspace", async (req, res) => {
   return res.json({
     ...context,
     lead: leadRows[0] ?? null,
-    opportunities,
+    opportunities: canonicalOpportunities,
     conversations,
     orders,
     finance,
@@ -870,7 +884,7 @@ router.get("/crm/companies/:companyId/workspace", async (req, res) => {
     intelligence: intelligenceRows[0] ?? null,
     counts: {
       people: context.contacts.length,
-      opportunities: opportunities.length,
+      opportunities: canonicalOpportunities.length,
       conversations: conversations.length,
       orders: orders.length,
       finance: finance.length,
