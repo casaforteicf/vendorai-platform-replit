@@ -480,12 +480,7 @@ export function MediaPlanAutoProductionBridge() {
     const referenceImages = selectedImages.filter((asset) => asset.metadata?.aiRole !== "final_material");
     const response = await fetch(`/api/tenants/${tenantId}/content/generate`, {
       method: "POST",
-      headers: {
-        ...authHeaders(true),
-        "x-vendorai-calendar-item-id": item.id,
-        "x-vendorai-media-plan-id": plan?.id ?? "",
-        "x-vendorai-campaign-id": campaign.id,
-      },
+      headers: authHeaders(true),
       body: JSON.stringify({
         type: generatorType,
         theme: direction.slice(0, 8000),
@@ -519,7 +514,7 @@ export function MediaPlanAutoProductionBridge() {
     }
 
     return { generation: payload, variation, selectedImages };
-  }, [assets, plan?.id, tenantId]);
+  }, [assets, tenantId]);
 
   const materializeDirect = useCallback(async (item: CalendarItem, campaign: MediaPlanCampaign, project: MediaProject) => {
     const generated = await generateContent(item, campaign, {
