@@ -8055,14 +8055,6 @@ router.get("/arq/projects", authenticate, async (req, res) => {
 
   const projetos = await db
     .select({
-      clienteNome:      archProjetosTable.clienteNome,
-      clienteEmail:     archProjetosTable.clienteEmail,
-      clienteTelefone:  archProjetosTable.clienteTelefone,
-      status:           archProjetosTable.status,
-      tipoObra:         archProjetosTable.tipoObra,
-      areaM2:           archProjetosTable.areaM2,
-      createdAt:        archProjetosTable.createdAt,
-      updatedAt:        archProjetosTable.updatedAt,
       id:               archProjetosTable.id,
       leadId:           archProjetosTable.leadId,
       dealId:           archProjetosTable.dealId,
