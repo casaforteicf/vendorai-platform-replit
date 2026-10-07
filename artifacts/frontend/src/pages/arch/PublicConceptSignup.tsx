@@ -134,7 +134,7 @@ export default function PublicConceptSignup() {
 
   if (session) return <GuestEditor session={session} />;
 
-  const input = "mt-1 h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-base outline-none focus:border-orange-400";
+  const input = "mt-1 h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-base outline-none focus:border-emerald-500";
   const label = "block text-sm font-semibold text-slate-800";
 
   if (status === "loading") return <div className="grid min-h-screen place-items-center text-sm text-slate-500">Carregando…</div>;
@@ -152,10 +152,10 @@ export default function PublicConceptSignup() {
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-8">
       <form onSubmit={submit} className="mx-auto max-w-lg rounded-3xl bg-white p-6 shadow-xl">
-        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">{brand}</div>
-        <h1 className="mt-1 text-2xl font-bold text-slate-950">Projete a sua casa</h1>
+        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-600">{brand}</div>
+        <h1 className="mt-1 text-2xl font-bold text-slate-950">Transforme sua ideia em projeto</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Faça seu cadastro para desenhar a planta, ver a fachada e enviar o pré-projeto ao profissional. Leva poucos minutos.
+          Crie seu pré-projeto, visualize possibilidades e conecte a ideia ao profissional responsável. Leva poucos minutos.
         </p>
 
         <div className="mt-5 space-y-3">
@@ -169,7 +169,7 @@ export default function PublicConceptSignup() {
             <input className={input} type="email" inputMode="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} autoComplete="email" required />
           </label>
           <label className={label}>Instagram *
-            <div className="mt-1 flex h-12 items-center rounded-xl border border-slate-300 bg-white px-3 focus-within:border-orange-400">
+            <div className="mt-1 flex h-12 items-center rounded-xl border border-slate-300 bg-white px-3 focus-within:border-emerald-500">
               <span className="text-base text-slate-400">@</span>
               <input className="h-full w-full bg-transparent pl-0.5 text-base outline-none" autoCapitalize="none" autoCorrect="off" value={form.instagram} onChange={(e) => setForm({ ...form, instagram: e.target.value.replace(/^@+/, "") })} required />
             </div>
@@ -208,14 +208,14 @@ export default function PublicConceptSignup() {
           <input tabIndex={-1} autoComplete="off" aria-hidden="true" className="absolute left-[-9999px] h-0 w-0 opacity-0" value={form.site} onChange={(e) => setForm({ ...form, site: e.target.value })} />
 
           <label className="flex items-start gap-3 rounded-2xl bg-slate-50 p-3 text-sm text-slate-700">
-            <input type="checkbox" className="mt-0.5 h-5 w-5 accent-orange-500" checked={aceite} onChange={(e) => setAceite(e.target.checked)} />
+            <input type="checkbox" className="mt-0.5 h-5 w-5 accent-emerald-600" checked={aceite} onChange={(e) => setAceite(e.target.checked)} />
             <span>Autorizo {brand ?? "o profissional"} a usar meus dados para contato sobre este projeto, conforme a LGPD.</span>
           </label>
         </div>
 
         {error && <p className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{error}</p>}
 
-        <button type="submit" disabled={submitting} className="mt-5 h-12 w-full rounded-xl bg-orange-500 text-base font-semibold text-white disabled:opacity-60">
+        <button type="submit" disabled={submitting} className="mt-5 h-12 w-full rounded-xl bg-emerald-600 text-base font-semibold text-white disabled:opacity-60">
           {submitting ? "Criando seu acesso…" : "Começar meu projeto"}
         </button>
         <p className="mt-3 text-center text-xs text-slate-500">Já se cadastrou? Use o mesmo e-mail e WhatsApp para continuar de onde parou.</p>
