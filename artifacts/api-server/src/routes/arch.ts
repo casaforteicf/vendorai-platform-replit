@@ -101,6 +101,7 @@ import { buildConceptIfc, conceptIfcFilename } from "../lib/arqdor-concept-ifc.j
 import { parseIfcEditableGeometry } from "../lib/arqdor-ifc-editable.js";
 import { fitReferenceImageToLot } from "../lib/arqdor-reference-calibration.js";
 import { traceReferencePlanImage } from "../lib/arqdor-reference-ai-trace.js";
+import { analyzeReferencePhoto } from "../lib/arqdor-reference-photo-analysis.js";
 import { analyzeRealEnvironmentImage, interventionPromptContext, type RealEnvironmentAction, type RealEnvironmentAnalysis, type RealEnvironmentKind, type RealEnvironmentUseMode } from "../lib/arqdor-real-environment.js";
 
 function sanitizeAIError(err: any): { status: number; message: string } {
@@ -987,6 +988,9 @@ router.get("/arch/concept-projects", authenticate, async (req, res) => {
       customerProfile: archConceptProjectsTable.customerProfile,
       conceptRender: archConceptProjectsTable.conceptRender,
       lot: archConceptProjectsTable.lot,
+      currentStep: archConceptProjectsTable.currentStep,
+      configuration: archConceptProjectsTable.configuration,
+      rooms: archConceptProjectsTable.rooms,
       createdAt: archConceptProjectsTable.createdAt,
       updatedAt: archConceptProjectsTable.updatedAt,
     })
@@ -1004,6 +1008,13 @@ router.get("/arch/concept-projects", authenticate, async (req, res) => {
     const customer = (row.customerProfile ?? {}) as { name?: string };
     const render = (row.conceptRender ?? {}) as { resultImageUrl?: string; history?: Array<{ resultImageUrl?: string }> };
     const history = Array.isArray(render.history) ? render.history : [];
+    const configuration = (row.configuration ?? {}) as {
+      projectScope?: "house" | "room";
+      terrainDefined?: boolean;
+      desiredArea?: number;
+      floors?: number;
+    };
+    const rooms = Array.isArray(row.rooms) ? row.rooms : [];
     return {
       id: row.id,
       title: row.title,
@@ -1012,6 +1023,12 @@ router.get("/arch/concept-projects", authenticate, async (req, res) => {
       customerName: typeof customer.name === "string" && customer.name.trim() ? customer.name.trim() : null,
       thumbnailUrl: render.resultImageUrl ?? history[history.length - 1]?.resultImageUrl ?? null,
       lot: row.lot,
+      currentStep: row.currentStep,
+      projectScope: configuration.projectScope ?? null,
+      terrainDefined: Boolean(configuration.terrainDefined),
+      desiredArea: typeof configuration.desiredArea === "number" ? configuration.desiredArea : null,
+      floors: typeof configuration.floors === "number" ? configuration.floors : null,
+      roomCount: rooms.length,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
@@ -1410,6 +1427,19 @@ router.post("/arch/concept-projects/:id/reference-plan/trace", authenticate, asy
     return res.status(422).json({ error: "A planta de referência não possui arquivo persistido válido." });
   }
 
+  const photoAnalysis = referencePlan.photoAnalysis && typeof referencePlan.photoAnalysis === "object"
+    ? referencePlan.photoAnalysis as Record<string, unknown>
+    : null;
+  const classifiedKind = String(photoAnalysis?.kind ?? "");
+  const classifiedConfidence = Number(photoAnalysis?.confidence ?? 0);
+  if (classifiedKind && classifiedKind !== "plan" && classifiedKind !== "unknown" && classifiedConfidence >= 0.55) {
+    return res.status(422).json({
+      error: "Esta imagem foi reconhecida como foto real, não como planta/croqui. Use a análise de cena do pré-projeto em vez de vetorizar como planta.",
+      code: "REFERENCE_PHOTO_NOT_PLAN",
+      photoAnalysis,
+    });
+  }
+
   try {
     const lot = (concept.lot ?? {}) as { width?: number; depth?: number };
     const bounds = {
@@ -1642,6 +1672,7 @@ router.post("/arch/concept-projects/:id/reference-plan", authenticate, upload.si
     let depthMeters = lotDepth;
     let offsetX = 0;
     let offsetY = 0;
+    let photoAnalysis: Awaited<ReturnType<typeof analyzeReferencePhoto>> | null = null;
 
     if (kind === "image") {
       const metadata = await sharp(req.file.buffer).metadata();
@@ -1653,6 +1684,25 @@ router.post("/arch/concept-projects/:id/reference-plan", authenticate, upload.si
         depthMeters = fitted.depthMeters;
         offsetX = fitted.offsetX;
         offsetY = fitted.offsetY;
+      }
+      try {
+        photoAnalysis = await analyzeReferencePhoto({
+          tenantId: tid,
+          buffer: req.file.buffer,
+        });
+      } catch {
+        photoAnalysis = {
+          kind: "unknown",
+          confidence: 0,
+          summary: "Imagem recebida. A classificação automática não ficou disponível; revise o tipo de referência antes de converter.",
+          perspective: "unknown",
+          needsScaleAnchor: true,
+          detectedElements: [],
+          preserveElements: [],
+          removableElements: [],
+          projectHints: [],
+          sourceModel: "unavailable",
+        };
       }
     }
 
@@ -1672,6 +1722,7 @@ router.post("/arch/concept-projects/:id/reference-plan", authenticate, upload.si
       offsetX,
       offsetY,
       calibrationSource: kind === "image" ? "image_aspect_fit" : "lot",
+      photoAnalysis: photoAnalysis ?? undefined,
     };
 
     const currentConfig = (concept.configuration ?? {}) as Record<string, unknown>;
@@ -1781,12 +1832,46 @@ router.post("/arch/concept-projects", authenticate, async (req, res) => {
     return res.status(400).json({ error: "Dados do pré-projeto inválidos.", details: parsed.error.flatten() });
   }
 
-  const [created] = await db
-    .insert(archConceptProjectsTable)
-    .values(parsed.data)
-    .returning();
+  const creationKey =
+    typeof (parsed.data.configuration as any)?.creationKey === "string"
+      ? String((parsed.data.configuration as any).creationKey).trim()
+      : "";
 
-  return res.status(201).json(created);
+  if (creationKey) {
+    const [existing] = await db
+      .select()
+      .from(archConceptProjectsTable)
+      .where(and(
+        eq(archConceptProjectsTable.tenantId, tid),
+        eq(archConceptProjectsTable.ownerUserId, userId),
+        sql`${archConceptProjectsTable.configuration}->>'creationKey' = ${creationKey}`,
+      ))
+      .limit(1);
+    if (existing) return res.status(200).json(existing);
+  }
+
+  try {
+    const [created] = await db
+      .insert(archConceptProjectsTable)
+      .values(parsed.data)
+      .returning();
+    return res.status(201).json(created);
+  } catch (error) {
+    // Corrida entre autosave/cliques/abas: o índice único garante um único rascunho.
+    if (creationKey && (error as { code?: string })?.code === "23505") {
+      const [existing] = await db
+        .select()
+        .from(archConceptProjectsTable)
+        .where(and(
+          eq(archConceptProjectsTable.tenantId, tid),
+          eq(archConceptProjectsTable.ownerUserId, userId),
+          sql`${archConceptProjectsTable.configuration}->>'creationKey' = ${creationKey}`,
+        ))
+        .limit(1);
+      if (existing) return res.status(200).json(existing);
+    }
+    throw error;
+  }
 });
 
 router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
@@ -2599,6 +2684,18 @@ router.post("/arch/concept-projects/:id/develop-with-ai", authenticate, async (r
 
   const projectScope = config.projectScope === "room" ? "room" : "house";
   const terrainDefined = config.terrainDefined === true;
+  const customWalls = Array.isArray(config.customWalls) ? config.customWalls : [];
+  const customOpenings = Array.isArray(config.customOpenings) ? config.customOpenings : [];
+
+  // ARQ-PLANTA-001: IA não pode inventar uma planta a partir de um projeto vazio.
+  // O ponto de partida deve ser um programa/briefing aprovado ou geometria real já existente.
+  if (!projectBrief && rooms.length === 0 && customWalls.length === 0 && customOpenings.length === 0) {
+    return res.status(409).json({
+      error: "Defina o briefing/programa de necessidades antes de desenvolver a planta com IA.",
+      code: "ARCH_BRIEF_REQUIRED",
+    });
+  }
+
   const scopeDirective = projectScope === "room"
     ? `ESCOPO: UM AMBIENTE / INTERIORES.
 - Trabalhe somente no espaço interior solicitado.
@@ -3982,6 +4079,14 @@ router.get("/arch/projetos", authenticate, async (req, res) => {
       portalAtivo:     archProjetosTable.portalAtivo,
       createdAt:       archProjetosTable.createdAt,
       updatedAt:       archProjetosTable.updatedAt,
+      thumbnailUrl: sql<string | null>`(
+        select arch_ai_renders.result_image_url from arch_ai_renders
+        where arch_ai_renders.project_id = ${archProjetosTable.id}
+          and arch_ai_renders.status = 'concluido'
+          and arch_ai_renders.result_image_url is not null
+        order by arch_ai_renders.created_at desc
+        limit 1
+      )`,
       totalAmbientes: sql<number>`(
         select count(*) from arch_ambientes
         where arch_ambientes.projeto_id = ${archProjetosTable.id}
