@@ -56,7 +56,7 @@ import {
   Upload, X, Image as ImageIcon, FileSpreadsheet, Copy,
   Send, ThumbsUp, ThumbsDown, ChevronRight, AlertCircle,
   Search, Loader2, FileText, Download, Sparkles,
-  Zap, Sun, BatteryCharging, CarFront, Droplets, Gauge, Flame,
+  Zap, Sun, BatteryCharging, CarFront, Droplets, Gauge, Flame, Waves,
 } from "lucide-react";
 import TabFinanceiro from "./TabFinanceiro";
 import EquipeProducao from "./EquipeProducao";
@@ -145,6 +145,7 @@ const TABS = [
   { id: "orcamento",    label: "Orçamento",      icon: FileSpreadsheet },
   { id: "energia",       label: "Energia",        icon: Zap },
   { id: "hidraulica",     label: "Hidráulica",     icon: Droplets },
+  { id: "piscinas",        label: "Piscinas",       icon: Waves },
 ];
 
 function MobileTabDropdown({ activeTab, onSelect }: { activeTab: string; onSelect: (id: string) => void }) {
@@ -3157,6 +3158,154 @@ function HidraulicaSistemas({ tenantId, obraId }: { tenantId: string; obraId: st
   );
 }
 
+function PiscinasObra({ tenantId, obraId }: { tenantId: string; obraId: string }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [nome, setNome] = useState("Piscina principal");
+  const [tipo, setTipo] = useState("convencional");
+  const [estrutura, setEstrutura] = useState("concreto_armado");
+  const [comprimento, setComprimento] = useState("");
+  const [largura, setLargura] = useState("");
+  const [profMin, setProfMin] = useState("");
+  const [profMax, setProfMax] = useState("");
+
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["obra-piscinas-resumo", tenantId, obraId],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/piscinas/resumo`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Erro ao carregar piscinas");
+      return res.json();
+    },
+    enabled: !!tenantId && !!obraId,
+  });
+
+  async function criarPiscina() {
+    const token = localStorage.getItem("vendorai_token");
+    const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/piscinas`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        nome,
+        tipo,
+        estrutura,
+        comprimentoM: comprimento || undefined,
+        larguraM: largura || undefined,
+        profundidadeMinM: profMin || undefined,
+        profundidadeMaxM: profMax || undefined,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      toast({ title: "Não foi possível criar", description: body?.error ?? "Erro ao criar piscina", variant: "destructive" });
+      return;
+    }
+    const piscina = await res.json();
+
+    await fetch(`/api/tenants/${tenantId}/obras/${obraId}/piscinas/${piscina.id}/preconfigurar`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ aquecimento: false }),
+    }).catch(() => null);
+
+    toast({ title: "Piscina adicionada" });
+    qc.invalidateQueries({ queryKey: ["obra-piscinas-resumo", tenantId, obraId] });
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 md:grid-cols-4">
+        <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Piscinas</div><div className="text-2xl font-bold mt-1">{data?.totais?.piscinas ?? 0}</div></CardContent></Card>
+        <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Volume total</div><div className="text-2xl font-bold mt-1">{data?.totais?.volumeM3 ?? "0"} m³</div></CardContent></Card>
+        <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Espelho d'água</div><div className="text-2xl font-bold mt-1">{data?.totais?.areaEspelhoM2 ?? "0"} m²</div></CardContent></Card>
+        <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Alertas</div><div className="text-2xl font-bold mt-1">{data?.alertas?.length ?? 0}</div></CardContent></Card>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-3"><CardTitle className="text-base">Adicionar piscina</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          <div className="space-y-2 lg:col-span-2"><Label>Nome</Label><Input value={nome} onChange={(e) => setNome(e.target.value)} /></div>
+          <div className="space-y-2"><Label>Tipo</Label><select className="w-full h-10 rounded-md border bg-background px-3 text-sm" value={tipo} onChange={(e) => setTipo(e.target.value)}>
+            <option value="convencional">Convencional</option>
+            <option value="borda_infinita">Borda infinita</option>
+            <option value="overflow">Overflow</option>
+            <option value="praia">Praia</option>
+            <option value="spa">Spa</option>
+            <option value="hidromassagem">Hidromassagem</option>
+            <option value="raia">Raia</option>
+            <option value="espelho_dagua">Espelho d'água</option>
+          </select></div>
+          <div className="space-y-2"><Label>Estrutura</Label><select className="w-full h-10 rounded-md border bg-background px-3 text-sm" value={estrutura} onChange={(e) => setEstrutura(e.target.value)}>
+            <option value="concreto_armado">Concreto armado</option>
+            <option value="alvenaria_estrutural">Alvenaria estrutural</option>
+            <option value="fibra">Fibra</option>
+            <option value="vinil">Vinil</option>
+            <option value="aco_inox">Aço inox</option>
+          </select></div>
+          <div className="space-y-2"><Label>Comprimento (m)</Label><Input type="number" step="0.01" value={comprimento} onChange={(e) => setComprimento(e.target.value)} /></div>
+          <div className="space-y-2"><Label>Largura (m)</Label><Input type="number" step="0.01" value={largura} onChange={(e) => setLargura(e.target.value)} /></div>
+          <div className="space-y-2"><Label>Prof. mín. (m)</Label><Input type="number" step="0.01" value={profMin} onChange={(e) => setProfMin(e.target.value)} /></div>
+          <div className="space-y-2"><Label>Prof. máx. (m)</Label><Input type="number" step="0.01" value={profMax} onChange={(e) => setProfMax(e.target.value)} /></div>
+          <div className="lg:col-span-4 flex justify-end"><Button onClick={criarPiscina}><Plus className="h-4 w-4 mr-1" />Adicionar piscina</Button></div>
+        </CardContent>
+      </Card>
+
+      {isLoading ? (
+        <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin" /></div>
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {(data?.piscinas ?? []).map((p: any) => {
+            const circuitos = (data?.circuitos ?? []).filter((c: any) => c.piscinaId === p.id);
+            const equipamentos = (data?.equipamentos ?? []).filter((e: any) => e.piscinaId === p.id);
+            const tratamentos = (data?.tratamentos ?? []).filter((t: any) => t.piscinaId === p.id);
+            const aquecimentos = (data?.aquecimentos ?? []).filter((a: any) => a.piscinaId === p.id);
+            return (
+              <Card key={p.id}>
+                <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Waves className="h-4 w-4 text-primary" />{p.nome}</CardTitle></CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div><span className="text-muted-foreground">Tipo:</span> {p.tipo}</div>
+                    <div><span className="text-muted-foreground">Estrutura:</span> {p.estrutura}</div>
+                    <div><span className="text-muted-foreground">Volume:</span> {p.volumeM3 ?? "—"} m³</div>
+                    <div><span className="text-muted-foreground">Espelho:</span> {p.areaEspelhoM2 ?? "—"} m²</div>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {circuitos.map((x: any) => <Badge key={x.id} variant="outline">{x.tipo}</Badge>)}
+                    {tratamentos.map((x: any) => <Badge key={x.id} variant="secondary">{x.tipo}</Badge>)}
+                    {aquecimentos.map((x: any) => <Badge key={x.id} variant="secondary">aquec.: {x.tipo}</Badge>)}
+                  </div>
+                  {equipamentos.length > 0 && (
+                    <div className="space-y-1">
+                      {equipamentos.map((e: any) => <div key={e.id} className="text-xs rounded-md border px-3 py-2">{e.nome}</div>)}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {(data?.alertas ?? []).length > 0 && (
+        <Card className="border-amber-200">
+          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><AlertCircle className="h-4 w-4 text-amber-500" />Alertas técnicos</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {data.alertas.map((a: any, idx: number) => <div key={idx} className="text-xs rounded-md bg-amber-50 border border-amber-200 px-3 py-2">{a.mensagem ?? a.tipo}</div>)}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ObraDetalhe() {
@@ -3320,6 +3469,7 @@ export default function ObraDetalhe() {
         {activeTab === "orcamento"    && <TabOrcamento tenantId={tenantId} obraId={obraId} portalToken={(obra as any).portalToken} />}
         {activeTab === "energia"       && <EnergiaSistemas tenantId={tenantId} obraId={obraId} />}
         {activeTab === "hidraulica"     && <HidraulicaSistemas tenantId={tenantId} obraId={obraId} />}
+        {activeTab === "piscinas"        && <PiscinasObra tenantId={tenantId} obraId={obraId} />}
       </div>
     </div>
   );
