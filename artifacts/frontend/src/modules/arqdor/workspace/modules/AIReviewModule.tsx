@@ -125,6 +125,9 @@ export function AIReviewModule() {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({}),
+      }).catch((err) => {
+        setError(err instanceof Error ? err.message : "Falha ao executar Fidelity Review");
+        throw err;
       });
       await readJson(response);
       await loadReview(selId);
