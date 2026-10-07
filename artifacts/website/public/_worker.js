@@ -1,4 +1,4 @@
-const RAILWAY_ORIGIN = "https://vendorai-platform-replit-production.up.railway.app";
+const RAILWAY_ORIGIN = "https://api.appvendorai.com";
 const PUBLIC_ORIGIN = "https://appvendorai.com";
 const OG_IMAGE = `${PUBLIC_ORIGIN}/opengraph.jpg`;
 const MARKET_LOCALES = { BR: "pt-BR", PY: "es-PY", AR: "es-AR", UY: "es-UY", CL: "es-CL" };
