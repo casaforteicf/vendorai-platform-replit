@@ -64,6 +64,18 @@ import {
   insertSistemaVarianteSchema,
   insertSistemaComposicaoRegraSchema,
   insertSistemaInterfaceSchema,
+  obraPavimentosTable,
+  obraAmbientesTable,
+  obraElementosTable,
+  obraSuperficiesTable,
+  obraSuperficieZonasTable,
+  obraAcabamentoPadroesTable,
+  insertObraPavimentoSchema,
+  insertObraAmbienteSchema,
+  insertObraElementoSchema,
+  insertObraSuperficieSchema,
+  insertObraSuperficieZonaSchema,
+  insertObraAcabamentoPadraoSchema,
   insertObraSchema,
   updateObraSchema,
   insertObraEtapaSchema,
@@ -1723,6 +1735,239 @@ router.get("/tenants/:tenantId/sistemas-construtivos/:sistemaId/resolver", async
     interfaces,
     acoesSuportadas: ["manter", "substituir", "adicionar", "remover", "dimensionar_pelo_projeto"],
   });
+});
+
+// ─── Ambientes, elementos, superfícies, faces e zonas ─────────────────────────
+
+router.post("/tenants/:tenantId/obras/:obraId/pavimentos", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  const parsed = insertObraPavimentoSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraPavimentosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/ambientes", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  const parsed = insertObraAmbienteSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  if (parsed.data.pavimentoId) {
+    const [pav] = await db.select({ id: obraPavimentosTable.id }).from(obraPavimentosTable)
+      .where(and(eq(obraPavimentosTable.id, parsed.data.pavimentoId), eq(obraPavimentosTable.obraId, obraId)));
+    if (!pav) return res.status(422).json({ error: "Pavimento inválido para esta obra." });
+  }
+
+  const [row] = await db.insert(obraAmbientesTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/elementos", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  const parsed = insertObraElementoSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const areaBruta = numberOrZero(parsed.data.areaBruta);
+  const areaAberturas = numberOrZero(parsed.data.areaAberturas);
+  const areaLiquida = parsed.data.areaLiquida != null
+    ? numberOrZero(parsed.data.areaLiquida)
+    : Math.max(0, areaBruta - areaAberturas);
+
+  const [row] = await db.insert(obraElementosTable).values({
+    ...parsed.data,
+    areaLiquida: areaLiquida.toFixed(4),
+  }).returning();
+
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/superficies", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraSuperficieSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const areaBruta = numberOrZero(parsed.data.areaBruta);
+  const areaAberturas = numberOrZero(parsed.data.areaAberturas);
+  const areaLiquida = parsed.data.areaLiquida != null
+    ? numberOrZero(parsed.data.areaLiquida)
+    : Math.max(0, areaBruta - areaAberturas);
+
+  const [row] = await db.insert(obraSuperficiesTable).values({
+    ...parsed.data,
+    areaLiquida: areaLiquida.toFixed(4),
+  }).returning();
+
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/superficies/:superficieId/zonas", async (req, res) => {
+  const { tenantId: tid, obraId, superficieId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [superficie] = await db.select().from(obraSuperficiesTable)
+    .where(and(eq(obraSuperficiesTable.id, superficieId), eq(obraSuperficiesTable.obraId, obraId)));
+  if (!superficie) return res.status(404).json({ error: "Superfície não encontrada" });
+
+  const parsed = insertObraSuperficieZonaSchema.safeParse({ ...req.body, superficieId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const zonasAtivas = await db.select().from(obraSuperficieZonasTable)
+    .where(and(eq(obraSuperficieZonasTable.superficieId, superficieId), eq(obraSuperficieZonasTable.ativo, true)));
+
+  const areaLiquida = numberOrZero(superficie.areaLiquida);
+  const areaNova = numberOrZero(parsed.data.area);
+  const areaJaAtribuida = zonasAtivas.reduce((sum, z) => sum + numberOrZero(z.area), 0);
+
+  if (areaLiquida > 0 && areaJaAtribuida + areaNova > areaLiquida + 0.0001) {
+    return res.status(422).json({
+      error: "As zonas ultrapassam a área líquida da superfície.",
+      areaLiquida: areaLiquida.toFixed(4),
+      areaJaAtribuida: areaJaAtribuida.toFixed(4),
+      areaTentada: areaNova.toFixed(4),
+    });
+  }
+
+  const [row] = await db.insert(obraSuperficieZonasTable).values(parsed.data).returning();
+
+  const areaAtribuida = areaJaAtribuida + areaNova;
+  return res.status(201).json({
+    zona: row,
+    resumo: {
+      areaLiquida: areaLiquida.toFixed(4),
+      areaAtribuida: areaAtribuida.toFixed(4),
+      areaNaoAtribuida: Math.max(0, areaLiquida - areaAtribuida).toFixed(4),
+      completo: areaLiquida === 0 ? true : Math.abs(areaLiquida - areaAtribuida) < 0.0001,
+    },
+  });
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/superficies/:superficieId/resumo-zonas", async (req, res) => {
+  const { tenantId: tid, obraId, superficieId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [superficie] = await db.select().from(obraSuperficiesTable)
+    .where(and(eq(obraSuperficiesTable.id, superficieId), eq(obraSuperficiesTable.obraId, obraId)));
+  if (!superficie) return res.status(404).json({ error: "Superfície não encontrada" });
+
+  const zonas = await db.select().from(obraSuperficieZonasTable)
+    .where(and(eq(obraSuperficieZonasTable.superficieId, superficieId), eq(obraSuperficieZonasTable.ativo, true)))
+    .orderBy(desc(obraSuperficieZonasTable.prioridade), asc(obraSuperficieZonasTable.createdAt));
+
+  const areaLiquida = numberOrZero(superficie.areaLiquida);
+  const areaAtribuida = zonas.reduce((sum, z) => sum + numberOrZero(z.area), 0);
+
+  return res.json({
+    superficie,
+    zonas,
+    areaLiquida: areaLiquida.toFixed(4),
+    areaAtribuida: areaAtribuida.toFixed(4),
+    areaNaoAtribuida: Math.max(0, areaLiquida - areaAtribuida).toFixed(4),
+    alertaAreaNaoAtribuida: areaLiquida > 0 && areaAtribuida < areaLiquida - 0.0001,
+    alertaSobreposicao: areaLiquida > 0 && areaAtribuida > areaLiquida + 0.0001,
+  });
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/acabamentos-padroes", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraAcabamentoPadraoSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraAcabamentoPadroesTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/superficies/:superficieId/resolver-acabamento", async (req, res) => {
+  const { tenantId: tid, obraId, superficieId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [superficie] = await db.select().from(obraSuperficiesTable)
+    .where(and(eq(obraSuperficiesTable.id, superficieId), eq(obraSuperficiesTable.obraId, obraId)));
+  if (!superficie) return res.status(404).json({ error: "Superfície não encontrada" });
+
+  const ambiente = superficie.ambienteId
+    ? (await db.select().from(obraAmbientesTable).where(eq(obraAmbientesTable.id, superficie.ambienteId)))[0] ?? null
+    : null;
+
+  const padroes = await db.select().from(obraAcabamentoPadroesTable)
+    .where(and(
+      eq(obraAcabamentoPadroesTable.obraId, obraId),
+      eq(obraAcabamentoPadroesTable.ativo, true),
+    ))
+    .orderBy(asc(obraAcabamentoPadroesTable.ordem));
+
+  const prioridade = {
+    padrao_empresa: 1,
+    padrao_tipo_ambiente: 2,
+    padrao_obra: 3,
+    ambiente: 4,
+    superficie: 5,
+    zona: 6,
+  } as const;
+
+  const candidatos = padroes.filter((p) => {
+    if (p.tipoAmbiente && p.tipoAmbiente !== ambiente?.tipo) return false;
+    if (p.tipoSuperficie && p.tipoSuperficie !== superficie.tipo) return false;
+    return true;
+  }).sort((a, b) =>
+    (prioridade[b.escopo as keyof typeof prioridade] ?? 0) -
+    (prioridade[a.escopo as keyof typeof prioridade] ?? 0));
+
+  return res.json({
+    superficie,
+    ambiente,
+    acabamentoEfetivo: candidatos[0] ?? null,
+    candidatos,
+    regraHeranca: "empresa > tipo_ambiente > obra > ambiente > superficie > zona; o mais específico vence",
+  });
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/estrutura-espacial", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  const [pavimentos, ambientes, elementos, superficies] = await Promise.all([
+    db.select().from(obraPavimentosTable).where(eq(obraPavimentosTable.obraId, obraId)).orderBy(asc(obraPavimentosTable.ordem)),
+    db.select().from(obraAmbientesTable).where(eq(obraAmbientesTable.obraId, obraId)),
+    db.select().from(obraElementosTable).where(and(eq(obraElementosTable.obraId, obraId), eq(obraElementosTable.ativo, true))),
+    db.select().from(obraSuperficiesTable).where(eq(obraSuperficiesTable.obraId, obraId)),
+  ]);
+
+  const superficieIds = superficies.map((s) => s.id);
+  const zonas = superficieIds.length
+    ? await db.select().from(obraSuperficieZonasTable).where(and(
+        inArray(obraSuperficieZonasTable.superficieId, superficieIds),
+        eq(obraSuperficieZonasTable.ativo, true),
+      ))
+    : [];
+
+  return res.json({ pavimentos, ambientes, elementos, superficies, zonas });
 });
 
 // ─── Base Mestre de Preços: propagação segura ─────────────────────────────────
