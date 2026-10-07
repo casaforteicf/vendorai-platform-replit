@@ -126,6 +126,17 @@ import {
   insertOrcamentoFormacaoVendaSchema,
   updateOrcamentoFormacaoVendaSchema,
   insertOrcamentoFormacaoComponenteSchema,
+  obraCotacoesTable,
+  obraCotacaoItensTable,
+  obraCotacaoPropostasTable,
+  obraCotacaoPropostaItensTable,
+  obraCotacaoSelecoesTable,
+  insertObraCotacaoSchema,
+  insertObraCotacaoItemSchema,
+  insertObraCotacaoPropostaSchema,
+  insertObraCotacaoPropostaItemSchema,
+  insertObraCotacaoSelecaoSchema,
+  fornecedoresTable,
   insertObraSchema,
   updateObraSchema,
   insertObraEtapaSchema,
@@ -3152,6 +3163,341 @@ router.get("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/formacao-ve
     : [];
 
   return res.json({ formacoes, componentes });
+});
+
+// ─── Cotações, fornecedores, propostas e cobertura ───────────────────────────
+
+function normalizarTextoCotacao(v: string | null | undefined): string {
+  return (v ?? "").toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function similaridadeCotacao(a: string, b: string): number {
+  const A = new Set(normalizarTextoCotacao(a).split(" ").filter(Boolean));
+  const B = new Set(normalizarTextoCotacao(b).split(" ").filter(Boolean));
+  if (!A.size || !B.size) return 0;
+  let inter = 0;
+  for (const x of A) if (B.has(x)) inter++;
+  return inter / Math.max(A.size, B.size);
+}
+
+router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/cotacoes", async (req, res) => {
+  const { tenantId: tid, obraId, orcamentoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [orcamento] = await db.select().from(obraOrcamentosTable)
+    .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
+  if (!orcamento) return res.status(404).json({ error: "Orçamento não encontrado" });
+
+  const parsed = insertObraCotacaoSchema.safeParse({
+    ...req.body,
+    tenantId: tid,
+    orcamentoId,
+    criadoPorId: (req as any).user?.sub ?? null,
+  });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [cotacao] = await db.insert(obraCotacoesTable).values(parsed.data).returning();
+
+  if (req.body?.gerarItensDoOrcamento !== false) {
+    const etapas = await db.select().from(obraOrcamentoEtapasTable)
+      .where(eq(obraOrcamentoEtapasTable.orcamentoId, orcamentoId));
+    const etapaIds = etapas.map((e) => e.id);
+    const itens = etapaIds.length
+      ? await db.select().from(obraOrcamentoItensTable).where(inArray(obraOrcamentoItensTable.etapaId, etapaIds))
+      : [];
+
+    for (const item of itens) {
+      let insumo = null;
+      if (item.insumoId) {
+        [insumo] = await db.select().from(insumosTable)
+          .where(and(eq(insumosTable.id, item.insumoId), eq(insumosTable.tenantId, tid)));
+      }
+      const qtdTecnica = numberOrZero(item.quantidadeTecnica ?? item.quantidade);
+      const fator = numberOrZero(insumo?.fatorCompraParaConsumo) || 1;
+      let qtdCompra = item.quantidadeCompra != null ? numberOrZero(item.quantidadeCompra) : qtdTecnica / fator;
+      const minimo = numberOrZero(insumo?.quantidadeMinimaCompra);
+      const multiplo = numberOrZero(insumo?.multiploCompra);
+      const fraciona = Boolean(insumo?.permiteFracionarCompra);
+      if (!fraciona) {
+        if (minimo > 0) qtdCompra = Math.max(qtdCompra, minimo);
+        if (multiplo > 0) qtdCompra = Math.ceil(qtdCompra / multiplo) * multiplo;
+      }
+
+      await db.insert(obraCotacaoItensTable).values({
+        cotacaoId: cotacao.id,
+        orcamentoItemId: item.id,
+        orcamentoEtapaId: item.etapaId,
+        insumoId: item.insumoId ?? null,
+        nome: item.nome,
+        codigo: insumo?.codigo ?? null,
+        especificacao: insumo?.descricao ?? null,
+        marcaPreferencial: insumo?.marca ?? null,
+        modeloPreferencial: insumo?.modelo ?? null,
+        quantidadeTecnica: qtdTecnica.toFixed(4),
+        unidadeTecnica: item.unidade,
+        quantidadeCompra: qtdCompra.toFixed(4),
+        unidadeCompra: item.unidadeCompra ?? insumo?.unidadeCompra ?? item.unidade,
+        quantidadeMinimaCompra: insumo?.quantidadeMinimaCompra ?? null,
+        multiploCompra: insumo?.multiploCompra ?? null,
+        fatorCompraParaConsumo: insumo?.fatorCompraParaConsumo ?? null,
+        permiteEquivalente: false,
+        coberturaStatus: "nao_cotado",
+      });
+    }
+  }
+
+  return res.status(201).json(cotacao);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/cotacoes", async (req, res) => {
+  const { tenantId: tid, orcamentoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const cotacoes = await db.select().from(obraCotacoesTable)
+    .where(and(eq(obraCotacoesTable.tenantId, tid), eq(obraCotacoesTable.orcamentoId, orcamentoId)))
+    .orderBy(desc(obraCotacoesTable.createdAt));
+  return res.json(cotacoes);
+});
+
+router.get("/tenants/:tenantId/cotacoes/:cotacaoId/resumo", async (req, res) => {
+  const { tenantId: tid, cotacaoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [cotacao] = await db.select().from(obraCotacoesTable)
+    .where(and(eq(obraCotacoesTable.id, cotacaoId), eq(obraCotacoesTable.tenantId, tid)));
+  if (!cotacao) return res.status(404).json({ error: "Cotação não encontrada" });
+
+  const [itens, propostas] = await Promise.all([
+    db.select().from(obraCotacaoItensTable).where(eq(obraCotacaoItensTable.cotacaoId, cotacaoId)),
+    db.select().from(obraCotacaoPropostasTable).where(eq(obraCotacaoPropostasTable.cotacaoId, cotacaoId)),
+  ]);
+  const propostaIds = propostas.map((p) => p.id);
+  const propostaItens = propostaIds.length
+    ? await db.select().from(obraCotacaoPropostaItensTable).where(inArray(obraCotacaoPropostaItensTable.propostaId, propostaIds))
+    : [];
+  const selecoes = itens.length
+    ? await db.select().from(obraCotacaoSelecoesTable).where(inArray(obraCotacaoSelecoesTable.cotacaoItemId, itens.map((i) => i.id)))
+    : [];
+
+  const cobertura = itens.map((item) => {
+    const candidatos = propostaItens.filter((pi) => pi.cotacaoItemId === item.id && pi.coberturaStatus !== "incompativel");
+    const selecionadas = selecoes.filter((s) => s.cotacaoItemId === item.id);
+    const qtdNecessaria = numberOrZero(item.quantidadeCompra ?? item.quantidadeTecnica);
+    const qtdSelecionada = selecionadas.reduce((s, x) => s + numberOrZero(x.quantidadeSelecionada), 0);
+    return {
+      item,
+      candidatos: candidatos.length,
+      qtdNecessaria,
+      qtdSelecionada,
+      status: qtdSelecionada >= qtdNecessaria - 0.0001 ? "coberto" : qtdSelecionada > 0 ? "parcial" : candidatos.length ? "cotado" : "nao_cotado",
+    };
+  });
+
+  return res.json({
+    cotacao,
+    itens,
+    propostas,
+    propostaItens,
+    selecoes,
+    cobertura,
+    totais: {
+      itens: itens.length,
+      cobertos: cobertura.filter((x) => x.status === "coberto").length,
+      parciais: cobertura.filter((x) => x.status === "parcial").length,
+      naoCotados: cobertura.filter((x) => x.status === "nao_cotado").length,
+      propostas: propostas.length,
+    },
+  });
+});
+
+router.post("/tenants/:tenantId/cotacoes/:cotacaoId/propostas", async (req, res) => {
+  const { tenantId: tid, cotacaoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [cotacao] = await db.select().from(obraCotacoesTable)
+    .where(and(eq(obraCotacoesTable.id, cotacaoId), eq(obraCotacoesTable.tenantId, tid)));
+  if (!cotacao) return res.status(404).json({ error: "Cotação não encontrada" });
+
+  const fornecedorId = req.body?.fornecedorId ?? null;
+  let fornecedorNomeSnapshot = String(req.body?.fornecedorNomeSnapshot ?? "").trim();
+  if (fornecedorId) {
+    const [fornecedor] = await db.select().from(fornecedoresTable)
+      .where(and(eq(fornecedoresTable.id, fornecedorId), eq(fornecedoresTable.tenantId, tid)));
+    if (!fornecedor) return res.status(422).json({ error: "Fornecedor inválido." });
+    fornecedorNomeSnapshot = fornecedor.nome;
+  }
+  if (!fornecedorNomeSnapshot) return res.status(422).json({ error: "Fornecedor obrigatório." });
+
+  const parsed = insertObraCotacaoPropostaSchema.safeParse({
+    ...req.body,
+    cotacaoId,
+    fornecedorId,
+    fornecedorNomeSnapshot,
+  });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [proposta] = await db.insert(obraCotacaoPropostasTable).values(parsed.data).returning();
+  return res.status(201).json(proposta);
+});
+
+router.post("/tenants/:tenantId/cotacoes/:cotacaoId/propostas/:propostaId/itens/importar", async (req, res) => {
+  const { tenantId: tid, cotacaoId, propostaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [proposta] = await db.select().from(obraCotacaoPropostasTable)
+    .innerJoin(obraCotacoesTable, eq(obraCotacaoPropostasTable.cotacaoId, obraCotacoesTable.id))
+    .where(and(
+      eq(obraCotacaoPropostasTable.id, propostaId),
+      eq(obraCotacaoPropostasTable.cotacaoId, cotacaoId),
+      eq(obraCotacoesTable.tenantId, tid),
+    ));
+  if (!proposta) return res.status(404).json({ error: "Proposta não encontrada" });
+
+  const itensEntrada = Array.isArray(req.body?.itens) ? req.body.itens : [];
+  if (!itensEntrada.length) return res.status(422).json({ error: "Informe itens extraídos/importados." });
+
+  const itensCotacao = await db.select().from(obraCotacaoItensTable)
+    .where(eq(obraCotacaoItensTable.cotacaoId, cotacaoId));
+
+  const criados = [];
+  for (let i = 0; i < itensEntrada.length; i++) {
+    const raw = itensEntrada[i];
+    let match = null as typeof itensCotacao[number] | null;
+    let confianca = 0;
+
+    if (raw.cotacaoItemId) {
+      match = itensCotacao.find((x) => x.id === raw.cotacaoItemId) ?? null;
+      confianca = match ? 100 : 0;
+    } else {
+      for (const item of itensCotacao) {
+        const byCodigo = raw.codigoFornecedor && item.codigo && normalizarTextoCotacao(raw.codigoFornecedor) === normalizarTextoCotacao(item.codigo);
+        const sim = Math.max(
+          byCodigo ? 1 : 0,
+          similaridadeCotacao(raw.descricaoFornecedor ?? "", item.nome),
+          similaridadeCotacao(raw.descricaoFornecedor ?? "", item.especificacao ?? ""),
+        );
+        if (sim > confianca / 100) {
+          match = item;
+          confianca = Math.round(sim * 100);
+        }
+      }
+      if (confianca < 55) match = null;
+    }
+
+    const quantidadeOfertada = numberOrZero(raw.quantidadeOfertada);
+    const precoFornecedor = numberOrZero(raw.precoUnitarioFornecedor);
+    const valorTotalLinha = raw.valorTotalLinha != null ? numberOrZero(raw.valorTotalLinha) : quantidadeOfertada * precoFornecedor;
+
+    let precoNormalizado: number | null = null;
+    let qtdCompraNormalizada: number | null = null;
+    let status: "coberto" | "parcial" | "ambigua" | "incompativel" = match ? "coberto" : "ambigua";
+
+    if (match) {
+      const fator = numberOrZero(match.fatorCompraParaConsumo) || 1;
+      const unFornecedor = normalizarTextoCotacao(raw.unidadeFornecedor ?? "");
+      const unCompra = normalizarTextoCotacao(match.unidadeCompra ?? match.unidadeTecnica);
+      const unTecnica = normalizarTextoCotacao(match.unidadeTecnica);
+
+      if (unFornecedor === unCompra) {
+        precoNormalizado = precoFornecedor / fator;
+        qtdCompraNormalizada = quantidadeOfertada;
+      } else if (unFornecedor === unTecnica) {
+        precoNormalizado = precoFornecedor;
+        qtdCompraNormalizada = quantidadeOfertada / fator;
+      } else {
+        status = "ambigua";
+      }
+
+      const necessario = numberOrZero(match.quantidadeCompra ?? match.quantidadeTecnica);
+      if (qtdCompraNormalizada != null && qtdCompraNormalizada + 0.0001 < necessario) status = "parcial";
+    }
+
+    const parsed = insertObraCotacaoPropostaItemSchema.safeParse({
+      propostaId,
+      cotacaoItemId: match?.id ?? null,
+      linhaOrigem: raw.linhaOrigem ?? i + 1,
+      codigoFornecedor: raw.codigoFornecedor ?? null,
+      descricaoFornecedor: raw.descricaoFornecedor,
+      marca: raw.marca ?? null,
+      modelo: raw.modelo ?? null,
+      especificacao: raw.especificacao ?? null,
+      quantidadeOfertada: String(quantidadeOfertada),
+      unidadeFornecedor: raw.unidadeFornecedor,
+      embalagemQuantidade: raw.embalagemQuantidade,
+      quantidadeMinimaCompra: raw.quantidadeMinimaCompra,
+      multiploCompra: raw.multiploCompra,
+      permiteFracionar: Boolean(raw.permiteFracionar),
+      precoUnitarioFornecedor: String(precoFornecedor),
+      precoUnitarioNormalizado: precoNormalizado == null ? undefined : String(precoNormalizado),
+      quantidadeCompraNormalizada: qtdCompraNormalizada == null ? undefined : String(qtdCompraNormalizada),
+      valorTotalLinha: String(valorTotalLinha),
+      impostoLinha: raw.impostoLinha ?? "0",
+      freteRateado: raw.freteRateado ?? "0",
+      prazoEntregaDias: raw.prazoEntregaDias ?? null,
+      coberturaStatus: status,
+      reconciliacaoConfianca: String(confianca),
+      metadata: raw.metadata ?? null,
+    });
+    if (!parsed.success) return res.status(422).json({ error: parsed.error.message, linha: i + 1 });
+
+    const [row] = await db.insert(obraCotacaoPropostaItensTable).values(parsed.data).returning();
+    criados.push(row);
+  }
+
+  await db.update(obraCotacaoPropostasTable)
+    .set({ status: "revisao", updatedAt: new Date() })
+    .where(eq(obraCotacaoPropostasTable.id, propostaId));
+
+  return res.status(201).json({
+    itens: criados,
+    reconciliados: criados.filter((x) => !!x.cotacaoItemId).length,
+    ambiguos: criados.filter((x) => !x.cotacaoItemId || x.coberturaStatus === "ambigua").length,
+  });
+});
+
+router.post("/tenants/:tenantId/cotacoes/:cotacaoId/selecionar", async (req, res) => {
+  const { tenantId: tid, cotacaoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraCotacaoSelecaoSchema.safeParse({
+    ...req.body,
+    criadoPorId: (req as any).user?.sub ?? null,
+  });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [item] = await db.select().from(obraCotacaoItensTable)
+    .innerJoin(obraCotacoesTable, eq(obraCotacaoItensTable.cotacaoId, obraCotacoesTable.id))
+    .where(and(
+      eq(obraCotacaoItensTable.id, parsed.data.cotacaoItemId),
+      eq(obraCotacaoItensTable.cotacaoId, cotacaoId),
+      eq(obraCotacoesTable.tenantId, tid),
+    ));
+  if (!item) return res.status(404).json({ error: "Item de cotação não encontrado" });
+
+  const [propostaItem] = await db.select().from(obraCotacaoPropostaItensTable)
+    .innerJoin(obraCotacaoPropostasTable, eq(obraCotacaoPropostaItensTable.propostaId, obraCotacaoPropostasTable.id))
+    .where(and(
+      eq(obraCotacaoPropostaItensTable.id, parsed.data.propostaItemId),
+      eq(obraCotacaoPropostasTable.cotacaoId, cotacaoId),
+    ));
+  if (!propostaItem) return res.status(422).json({ error: "Item de proposta não pertence à cotação." });
+
+  const [row] = await db.insert(obraCotacaoSelecoesTable).values(parsed.data).returning();
+  await db.update(obraCotacaoPropostaItensTable)
+    .set({ selecionado: true, updatedAt: new Date() })
+    .where(eq(obraCotacaoPropostaItensTable.id, parsed.data.propostaItemId));
+
+  const qtdNecessaria = numberOrZero((item as any).obra_cotacao_itens?.quantidadeCompra ?? (item as any).obra_cotacao_itens?.quantidadeTecnica);
+  const selecoes = await db.select().from(obraCotacaoSelecoesTable)
+    .where(eq(obraCotacaoSelecoesTable.cotacaoItemId, parsed.data.cotacaoItemId));
+  const qtdSelecionada = selecoes.reduce((s, x) => s + numberOrZero(x.quantidadeSelecionada), 0);
+  const coberturaStatus = qtdSelecionada >= qtdNecessaria - 0.0001 ? "coberto" : "parcial";
+
+  await db.update(obraCotacaoItensTable)
+    .set({ coberturaStatus, updatedAt: new Date() })
+    .where(eq(obraCotacaoItensTable.id, parsed.data.cotacaoItemId));
+
+  return res.status(201).json({ selecao: row, coberturaStatus, qtdSelecionada, qtdNecessaria });
 });
 
 // ─── Base Mestre de Preços: propagação segura ─────────────────────────────────
