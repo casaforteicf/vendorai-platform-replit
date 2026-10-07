@@ -5302,6 +5302,16 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setEditorLibraryTab("build");
       setReferencePlanState("success");
 
+      if (referenceInputModeRef.current === "floorplan") {
+        await fetch(`/api/arch/concept-projects/${encodeURIComponent(id)}/real-environment`, {
+          method: "DELETE",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        }).catch(() => undefined);
+        setRealEnvironment(null);
+        setRealEnvironmentState("idle");
+        setRealEnvironmentMessage(null);
+      }
+
       if (payload.kind === "image" && referenceInputModeRef.current === "real_environment") {
         setReferenceTraceState("idle");
         setReferenceDisplayMode("reference");
