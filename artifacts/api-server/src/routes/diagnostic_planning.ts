@@ -3,7 +3,6 @@ import { Router, type IRouter } from "express";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
-import { canonicalDealValueSql } from "../lib/deal-value.js";
   businessProfilesTable,
   db,
   pool,
@@ -11,6 +10,7 @@ import { canonicalDealValueSql } from "../lib/deal-value.js";
   mediaPlansTable,
   tenantsTable,
 } from "@workspace/db";
+import { canonicalDealValueSql } from "../lib/deal-value.js";
 
 const secret = process.env["JWT_SECRET"] ?? process.env["SESSION_SECRET"];
 if (!secret) throw new Error("JWT_SECRET (or SESSION_SECRET) is required");
