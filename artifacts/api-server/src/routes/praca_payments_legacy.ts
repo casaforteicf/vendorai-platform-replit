@@ -10,6 +10,22 @@ function canAccess(req: Express.Request, tenantId: string) {
   return user?.platformRole === "super_admin" || user?.tenantId === tenantId;
 }
 
+async function canAccessOrderPayment(req: Express.Request, tenantId: string, orderId: string) {
+  if (canAccess(req, tenantId)) return true;
+  const user = (req as any).user;
+  const buyerTenantId = String(user?.tenantId || "");
+  if (!buyerTenantId) return false;
+  const linked = await vendorPool.query(
+    `SELECT 1
+       FROM praca_pedidos p
+       JOIN arqdor_market_demands d ON d.id=p.market_demand_id
+      WHERE p.tenant_id=$1 AND p.id=$2 AND d.tenant_id=$3
+      LIMIT 1`,
+    [tenantId, orderId, buyerTenantId],
+  );
+  return Boolean(linked.rowCount);
+}
+
 function safeTokenMatch(received: string, expected: string) {
   const a = Buffer.from(received);
   const b = Buffer.from(expected);
@@ -195,7 +211,7 @@ router.get("/tenants/:tenantId/praca-payment-options", async (req, res) => {
 router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   const orderId = String(req.params.orderId);
-  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  if (!await canAccessOrderPayment(req, tenantId, orderId)) return res.status(403).json({ error: "Forbidden" });
 
   const idempotencyKey = String(req.header("Idempotency-Key") || req.body?.idempotencyKey || "").trim();
   let customerId = typeof req.body?.asaasCustomerId === "string" ? req.body.asaasCustomerId.trim() : "";
@@ -605,7 +621,7 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-actions", async (r
 router.get("/tenants/:tenantId/praca-orders/:orderId/payment", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   const orderId = String(req.params.orderId);
-  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  if (!await canAccessOrderPayment(req, tenantId, orderId)) return res.status(403).json({ error: "Forbidden" });
   const intent = await vendorPool.query(
     `SELECT id,provider,provider_payment_id AS "providerPaymentId",billing_type AS "billingType",
             status,currency,gross_centavos AS "grossCentavos",
