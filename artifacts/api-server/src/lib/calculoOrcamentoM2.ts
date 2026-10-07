@@ -260,6 +260,9 @@ export function calcularOrcamentoProdutoArea(
           produtoId: itemProduto.id,
           quantidadeNecessaria: round3(quantidadeBase),
           numeroPacotes: item.numeroPacotes,
+          numeroPacotesNecessarios: item.numeroPacotesNecessarios,
+          numeroEmbalagensMestre: item.numeroEmbalagensMestre,
+          quantidadeFaturada: item.quantidadeFaturada,
           valorTotal: item.valorTotal,
           detalhamentoSuperficies: [],
         };
