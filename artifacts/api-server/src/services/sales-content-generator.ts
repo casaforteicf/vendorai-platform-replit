@@ -185,7 +185,7 @@ export async function approveSalesContent(input: {
   tenantId: string;
   assetId: string;
   autoSendAllowed?: boolean;
-}): Promise<boolean> {
+}): Promise<{ approved: boolean; autoSendAllowed: boolean }> {
   const runtime = await resolveColdProspectingConfig(input.tenantId);
   const requestedAutoSend = input.autoSendAllowed ?? false;
   const effectiveAutoSend =
@@ -205,5 +205,5 @@ export async function approveSalesContent(input: {
     ))
     .returning({ id: contentLibraryTable.id });
 
-  return Boolean(updated);
+  return { approved: Boolean(updated), autoSendAllowed: Boolean(updated) && effectiveAutoSend };
 }
