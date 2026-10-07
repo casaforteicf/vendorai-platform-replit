@@ -1162,6 +1162,14 @@ const importInsumosEmLoteSchema = z.object({
     perdaPadraoPercentual: z.union([z.string(), z.number()]).optional().nullable(),
     tipo: z.enum(["material", "mao_de_obra", "equipamento", "servico", "subempreitada", "consumivel", "frete", "outro_custo_direto"]).optional().nullable(),
     precoUnitario: z.union([z.string(), z.number()]).optional().nullable(),
+    origemPreco: z.string().trim().max(100).optional().nullable(),
+    precoValidade: z.string().trim().max(20).optional().nullable(),
+    regiaoPreco: z.string().trim().max(255).optional().nullable(),
+    fornecedorPreferencial: z.string().trim().max(255).optional().nullable(),
+    marca: z.string().trim().max(255).optional().nullable(),
+    modelo: z.string().trim().max(255).optional().nullable(),
+    fabricante: z.string().trim().max(255).optional().nullable(),
+    especificacaoTecnica: z.record(z.string(), z.unknown()).optional().nullable(),
     categoria: z.string().trim().max(255).optional().nullable(),
   })).min(1).max(5000),
 });
@@ -1216,8 +1224,16 @@ router.post("/tenants/:tenantId/insumos/importar", async (req, res) => {
       ...(raw.descricao?.trim() ? { descricao: raw.descricao.trim() } : {}),
       ...(raw.categoria?.trim() ? { categoria: raw.categoria.trim() } : {}),
       ...(raw.precoUnitario !== undefined && raw.precoUnitario !== null && String(raw.precoUnitario).trim() !== ""
-        ? { precoUnitario: String(raw.precoUnitario).trim() }
+        ? { precoUnitario: String(raw.precoUnitario).trim(), precoAtualizadoEm: new Date() }
         : {}),
+      ...(raw.origemPreco?.trim() ? { origemPreco: raw.origemPreco.trim() } : {}),
+      ...(raw.precoValidade?.trim() ? { precoValidade: raw.precoValidade.trim() } : {}),
+      ...(raw.regiaoPreco?.trim() ? { regiaoPreco: raw.regiaoPreco.trim() } : {}),
+      ...(raw.fornecedorPreferencial?.trim() ? { fornecedorPreferencial: raw.fornecedorPreferencial.trim() } : {}),
+      ...(raw.marca?.trim() ? { marca: raw.marca.trim() } : {}),
+      ...(raw.modelo?.trim() ? { modelo: raw.modelo.trim() } : {}),
+      ...(raw.fabricante?.trim() ? { fabricante: raw.fabricante.trim() } : {}),
+      ...(raw.especificacaoTecnica ? { especificacaoTecnica: raw.especificacaoTecnica } : {}),
     };
 
     const parsed = insertInsumoSchema.safeParse(payload);
@@ -1368,6 +1384,55 @@ router.post("/tenants/:tenantId/insumos/:insumoId/calcular-compra", async (req, 
     embalagemQuantidade: numberOrZero(insumo.embalagemQuantidade),
     ...calculo,
   });
+});
+
+router.post("/tenants/:tenantId/insumos/:insumoId/duplicar", async (req, res) => {
+  const { tenantId: tid, insumoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [original] = await db
+    .select()
+    .from(insumosTable)
+    .where(and(eq(insumosTable.id, insumoId), eq(insumosTable.tenantId, tid)));
+  if (!original) return res.status(404).json({ error: "Insumo não encontrado" });
+
+  const nome = typeof req.body?.nome === "string" && req.body.nome.trim()
+    ? req.body.nome.trim()
+    : `${original.nome} — cópia`;
+  const codigo = typeof req.body?.codigo === "string" && req.body.codigo.trim()
+    ? req.body.codigo.trim()
+    : original.codigo
+      ? `${original.codigo}-COPIA`
+      : null;
+
+  const [created] = await db.insert(insumosTable).values({
+    tenantId: tid,
+    nome,
+    descricao: original.descricao,
+    unidade: original.unidade,
+    unidadeCompra: original.unidadeCompra,
+    fatorCompraParaConsumo: original.fatorCompraParaConsumo,
+    embalagemQuantidade: original.embalagemQuantidade,
+    quantidadeMinimaCompra: original.quantidadeMinimaCompra,
+    multiploCompra: original.multiploCompra,
+    permiteFracionarCompra: original.permiteFracionarCompra,
+    perdaPadraoPercentual: original.perdaPadraoPercentual,
+    tipo: original.tipo,
+    precoUnitario: original.precoUnitario,
+    origemPreco: original.origemPreco,
+    precoValidade: original.precoValidade,
+    precoAtualizadoEm: original.precoAtualizadoEm,
+    regiaoPreco: original.regiaoPreco,
+    fornecedorPreferencial: original.fornecedorPreferencial,
+    marca: original.marca,
+    modelo: original.modelo,
+    fabricante: original.fabricante,
+    especificacaoTecnica: original.especificacaoTecnica,
+    categoria: original.categoria,
+    codigo,
+  }).returning();
+
+  return res.status(201).json(created);
 });
 
 router.post("/tenants/:tenantId/insumos", async (req, res) => {
