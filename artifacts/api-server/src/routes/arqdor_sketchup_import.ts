@@ -8,6 +8,7 @@ import { parseIfcEditableGeometry } from "../lib/arqdor-ifc-editable.js";
 import { parseDxfEditableGeometry } from "../lib/arqdor-dxf-editable.js";
 import { analyzeArqdorProjectDocument, universalModelDedupeKey, type ArqdorImportedFloorPlan } from "../lib/arqdor-intelligent-project-import.js";
 import { importedFloorPlanToEditableGeometry } from "../lib/arqdor-imported-geometry.js";
+import { buildImportedArchitectural3DProfile } from "../lib/arqdor-imported-3d.js";
 import crypto from "node:crypto";
 
 const router: IRouter = Router();
@@ -206,6 +207,7 @@ router.post("/arch/concept-projects/:id/import-project-intelligent", intelligent
         index,
         ...importedFloorPlanToEditableGeometry(floorPlan),
       })),
+      architectural3DPreview: buildImportedArchitectural3DProfile(analysis),
       warnings: analysis.warnings,
       message: "Projeto interpretado, Memória da Obra gerada e modelos reutilizáveis enviados automaticamente à Biblioteca Universal.",
     });
@@ -393,6 +395,144 @@ router.post("/arch/concept-projects/:id/imported-project/apply-geometry", async 
     floorPlanIndex: index,
     preview,
     message: "Planta importada convertida em paredes e aberturas editáveis do Arqdor.",
+  });
+});
+
+
+router.get("/arch/concept-projects/:id/imported-project/3d-preview", async (req, res) => {
+  const tenantId = req.user?.tenantId ?? req.tenantId;
+  const userId = req.user?.sub;
+  const projectId = String(req.params.id);
+  if (!tenantId || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const [concept] = await db
+    .select({ configuration: archConceptProjectsTable.configuration })
+    .from(archConceptProjectsTable)
+    .where(and(
+      eq(archConceptProjectsTable.id, projectId),
+      eq(archConceptProjectsTable.tenantId, tenantId),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ))
+    .limit(1);
+
+  if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+  const config = (concept.configuration ?? {}) as Record<string, any>;
+  const memory = config.projectMemory?.memory;
+  if (!memory || typeof memory !== "object") {
+    return res.status(422).json({
+      error: "Importe um projeto arquitetônico antes de gerar a reconstrução 3D.",
+      code: "PROJECT_MEMORY_NOT_FOUND",
+    });
+  }
+
+  return res.json({
+    preview: buildImportedArchitectural3DProfile({ memory } as any),
+  });
+});
+
+router.post("/arch/concept-projects/:id/imported-project/apply-3d", async (req, res) => {
+  const tenantId = req.user?.tenantId ?? req.tenantId;
+  const userId = req.user?.sub;
+  const projectId = String(req.params.id);
+  if (!tenantId || !userId) return res.status(401).json({ error: "Sessão inválida." });
+
+  const confirmed = req.body?.confirm === true || String(req.body?.confirm ?? "").toLowerCase() === "true";
+  if (!confirmed) {
+    return res.status(400).json({
+      error: "Confirme explicitamente a aplicação das informações verticais importadas.",
+      code: "CONFIRMATION_REQUIRED",
+    });
+  }
+
+  const [concept] = await db
+    .select({
+      status: archConceptProjectsTable.status,
+      configuration: archConceptProjectsTable.configuration,
+      facadePreferences: archConceptProjectsTable.facadePreferences,
+      facadeDesign: archConceptProjectsTable.facadeDesign,
+    })
+    .from(archConceptProjectsTable)
+    .where(and(
+      eq(archConceptProjectsTable.id, projectId),
+      eq(archConceptProjectsTable.tenantId, tenantId),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ))
+    .limit(1);
+
+  if (!concept) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+  const config = (concept.configuration ?? {}) as Record<string, any>;
+  if (concept.status === "submitted" && config.projectMaster) {
+    return res.status(409).json({
+      error: "O Projeto Mestre está congelado. Crie uma revisão antes de aplicar a reconstrução 3D.",
+      code: "PROJECT_MASTER_FROZEN",
+    });
+  }
+
+  const memory = config.projectMemory?.memory;
+  if (!memory || typeof memory !== "object") {
+    return res.status(422).json({
+      error: "A importação atual não possui Memória da Obra.",
+      code: "PROJECT_MEMORY_NOT_FOUND",
+    });
+  }
+
+  const preview = buildImportedArchitectural3DProfile({ memory } as any);
+  if (!preview.canApply) {
+    return res.status(422).json({
+      error: "Os cortes/fachadas/cobertura ainda não têm evidência suficiente para parametrização 3D.",
+      code: "IMPORTED_3D_LOW_CONFIDENCE",
+      preview,
+    });
+  }
+
+  const currentFacadeDesign = (concept.facadeDesign ?? config.facadeDesign ?? {}) as Record<string, any>;
+  const currentRoofConfig = (currentFacadeDesign.roofConfig ?? {}) as Record<string, any>;
+  const nextFacadeDesign = preview.roof.pitchDegrees != null
+    ? {
+        ...currentFacadeDesign,
+        roofConfig: {
+          ...currentRoofConfig,
+          pitchDegrees: Math.round(preview.roof.pitchDegrees * 10) / 10,
+        },
+      }
+    : currentFacadeDesign;
+
+  const currentFacadePreferences = (concept.facadePreferences ?? {}) as Record<string, any>;
+  const roofText = [preview.roof.type, preview.roof.material].filter(Boolean).join(" ").toLowerCase();
+  const explicitPitchedRoof = /shingle|telha|duas águas|duas aguas|quatro águas|quatro aguas|gable|hip/.test(roofText);
+  const nextFacadePreferences = explicitPitchedRoof
+    ? { ...currentFacadePreferences, roof: "aparente" }
+    : currentFacadePreferences;
+
+  const appliedAt = new Date().toISOString();
+  await db
+    .update(archConceptProjectsTable)
+    .set({
+      configuration: {
+        ...config,
+        importedArchitecturalModel: {
+          version: 1,
+          appliedAt,
+          ...preview,
+        },
+        facadeDesign: nextFacadeDesign,
+      } as any,
+      facadeDesign: nextFacadeDesign as any,
+      facadePreferences: nextFacadePreferences as any,
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(archConceptProjectsTable.id, projectId),
+      eq(archConceptProjectsTable.tenantId, tenantId),
+      eq(archConceptProjectsTable.ownerUserId, userId),
+    ));
+
+  return res.json({
+    mode: "applied",
+    preview,
+    facadeDesign: nextFacadeDesign,
+    facadePreferences: nextFacadePreferences,
+    message: "Cortes, fachadas e cobertura foram consolidados no perfil 3D importado do Arqdor.",
   });
 });
 
