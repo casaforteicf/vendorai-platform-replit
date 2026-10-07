@@ -25,7 +25,17 @@ export const insumosTable = pgTable("insumos", {
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
   nome: text("nome").notNull(),
   descricao: text("descricao"),
+  // unidade legado continua representando a unidade técnica/consumo para
+  // preservar compatibilidade. unidadeCompra e fatorCompraParaConsumo
+  // permitem comprar em saco/caixa/barra/rolo/pallet etc.
   unidade: text("unidade").notNull(),
+  unidadeCompra: text("unidade_compra"),
+  fatorCompraParaConsumo: numeric("fator_compra_para_consumo", { precision: 15, scale: 6 }),
+  embalagemQuantidade: numeric("embalagem_quantidade", { precision: 15, scale: 4 }),
+  quantidadeMinimaCompra: numeric("quantidade_minima_compra", { precision: 15, scale: 4 }),
+  multiploCompra: numeric("multiplo_compra", { precision: 15, scale: 4 }),
+  permiteFracionarCompra: boolean("permite_fracionar_compra").notNull().default(false),
+  perdaPadraoPercentual: numeric("perda_padrao_percentual", { precision: 7, scale: 3 }).notNull().default("0"),
   tipo: text("tipo").notNull().default("material"),
   precoUnitario: numeric("preco_unitario", { precision: 15, scale: 4 }),
   categoria: text("categoria"),
@@ -36,11 +46,21 @@ export const insumosTable = pgTable("insumos", {
 
 export const insertInsumoSchema = createInsertSchema(insumosTable, {
   precoUnitario: decimalOptional,
+  fatorCompraParaConsumo: decimalOptional,
+  embalagemQuantidade: decimalOptional,
+  quantidadeMinimaCompra: decimalOptional,
+  multiploCompra: decimalOptional,
+  perdaPadraoPercentual: decimalOptional,
   tipo: z.enum(INSUMO_TIPOS).optional(),
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const updateInsumoSchema = createSelectSchema(insumosTable, {
   precoUnitario: decimalOptional,
+  fatorCompraParaConsumo: decimalOptional,
+  embalagemQuantidade: decimalOptional,
+  quantidadeMinimaCompra: decimalOptional,
+  multiploCompra: decimalOptional,
+  perdaPadraoPercentual: decimalOptional,
   tipo: z.enum(INSUMO_TIPOS).optional(),
 })
   .omit({ id: true, tenantId: true, createdAt: true, updatedAt: true })
