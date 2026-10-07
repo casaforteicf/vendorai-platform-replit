@@ -46,7 +46,7 @@ import {
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { buildUserFunctionFilter, requireAdminOrUserFunction, type UserFunction } from "../middlewares/auth.js";
 import { callOpenAI } from "../lib/ai-gateway.js";
-import { pickNextVendedor } from "../lib/round-robin.js";
+import { pickNextLeadResponsibility } from "../lib/round-robin.js";
 import { geocodeAddressWithTimeout } from "../lib/geocoding.js";
 import { recordResponsavelChange } from "../lib/leadResponsavelHistorico.js";
 import { captureLeadFeatureSnapshot } from "../lib/mlFeatureStore.js";
@@ -291,29 +291,30 @@ router.post("/leads", async (req, res) => {
   const isAdminCreator = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
   const isSellerCreator = !isAdminCreator && (req.user?.platformRole === "tenant_seller" || (req.user?.userFunction as string) === "vendedor" || (req.user?.userFunction as string) === "representante_comercial");
   let resolvedAssignedTo: string | null;
+  let resolvedRepresentativeFunctionId: string | null = data.representativeFunctionId ?? null;
   let geocoded: { lat: number; lng: number } | null = null;
-  if (data.representativeFunctionId) {
+  if (resolvedRepresentativeFunctionId) {
     resolvedAssignedTo = null;
   } else if (isSellerCreator) {
     resolvedAssignedTo = req.user?.sub ?? null;
   } else if (data.assignedTo) {
     resolvedAssignedTo = data.assignedTo;
   } else {
-    // Geocoding só roda quando a atribuição automática vai de fato precisar
-    // (round-robin abaixo) — evita gastar a cota de 1 req/s do Nominatim em
-    // todo lead criado, e nunca bloqueia a criação por mais de ~2.5s: se o
-    // serviço demorar ou falhar, o motor cai pro resto da cascata (cidade/
-    // região/geral) normalmente, sem coordenadas.
+    // A distribuição automática usa um único pool lógico: usuários internos
+    // e empresas/equipes externas comerciais configuradas disputam o lead
+    // pelos mesmos critérios de segmento, território, raio e rodízio.
     geocoded = data.endereco ? await geocodeAddressWithTimeout(data.endereco) : null;
-    resolvedAssignedTo = await pickNextVendedor(data.tenantId, {
+    const assignment = await pickNextLeadResponsibility(data.tenantId, {
       segmento: data.mercadoSegmento,
       location: data.endereco,
       lat: geocoded?.lat ?? null,
       lng: geocoded?.lng ?? null,
     });
+    resolvedAssignedTo = assignment?.kind === "user" ? assignment.id : null;
+    resolvedRepresentativeFunctionId = assignment?.kind === "external_company" ? assignment.id : null;
   }
 
-  if (!resolvedAssignedTo && !data.representativeFunctionId) {
+  if (!resolvedAssignedTo && !resolvedRepresentativeFunctionId) {
     res.status(422).json({
       error: "Responsável obrigatório. Selecione um usuário da equipe, uma empresa representante ou configure a distribuição automática com ao menos um responsável elegível.",
     });
@@ -326,6 +327,7 @@ router.post("/leads", async (req, res) => {
     email: normalizeLeadEmail(data.email),
     instagramHandle: normalizeInstagramHandle(data.instagramHandle),
     assignedTo: resolvedAssignedTo,
+    representativeFunctionId: resolvedRepresentativeFunctionId,
     latitude: geocoded?.lat ?? null,
     longitude: geocoded?.lng ?? null,
     telefone: storePhone(data.telefone),
