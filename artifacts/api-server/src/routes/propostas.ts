@@ -754,6 +754,20 @@ router.post("/propostas", async (req, res) => {
     })
     .returning();
 
+  // O valor comercial do deal deve acompanhar o orçamento vinculado desde a
+  // criação. Antes, essa sincronização só acontecia no PATCH da proposta, então
+  // orçamentos importados/criados com valor correto podiam deixar o card do
+  // pipeline e o dashboard com valor vazio ou antigo.
+  if (proposta.dealId && proposta.valorTotal !== null && proposta.valorTotal !== undefined) {
+    await db
+      .update(dealsTable)
+      .set({ valor: String(proposta.valorTotal), updatedAt: new Date() })
+      .where(and(
+        eq(dealsTable.id, proposta.dealId),
+        eq(dealsTable.tenantId, proposta.tenantId),
+      ));
+  }
+
   void recordIntelligenceEvent({
     tenantId: proposta.tenantId,
     leadId: proposta.leadId,
