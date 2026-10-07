@@ -1150,7 +1150,9 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
     phone: telefone,
     text: mensagem,
     channel: "whatsapp",
-    externalId: typeof payload.messageId === "string" ? payload.messageId : null,
+    externalId: typeof (payload as Record<string, unknown>)["messageId"] === "string"
+      ? String((payload as Record<string, unknown>)["messageId"])
+      : null,
   });
   if (coldProspectReply.handled) {
     res.status(200).json({ coldProspect: true, prospectId: coldProspectReply.prospectId });
