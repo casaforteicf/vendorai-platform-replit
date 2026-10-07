@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { contentLibraryTable, db, type Prospect } from "@workspace/db";
+import { resolveColdProspectingConfig } from "./cold-prospecting-config.js";
 
 export type SalesContentContext = {
   segment?: string | null;
@@ -41,8 +42,36 @@ export async function planSalesContent(input: {
   context: SalesContentContext;
 }): Promise<SalesContentPlan> {
   const { tenantId, prospect, context } = input;
-  const primaryProduct: "vendorai" | "arqdor" =
+  const runtime = await resolveColdProspectingConfig(tenantId);
+  const requestedProduct: "vendorai" | "arqdor" =
     prospect.primaryHook === "arqdor" ? "arqdor" : "vendorai";
+  const primaryProduct: "vendorai" | "arqdor" =
+    runtime.allowedSolutions.includes(requestedProduct)
+      ? requestedProduct
+      : runtime.allowedSolutions[0] ?? "vendorai";
+
+  if (runtime.mode === "off") {
+    return {
+      action: "generate",
+      reason: "A prospecção fria está desativada para este tenant. O material pode ser preparado, mas não deve ser enviado automaticamente.",
+      generationBrief: {
+        product: primaryProduct,
+        segment: context.segment,
+        persona: context.persona,
+        pains: context.pains ?? [],
+        prospectStage: prospect.stage,
+        objective: context.objective || prospect.currentObjective || "preparar material para revisão",
+        channel: runtime.allowedChannels.includes((context.channel ?? "") as any)
+          ? (context.channel ?? "whatsapp")
+          : runtime.allowedChannels[0] ?? "whatsapp",
+        titleDirection: "Preparar conteúdo comercial contextual para revisão, sem envio automático",
+        factPolicy: "approved_sources_only",
+        brandPolicy: "tenant_brand_kit",
+        saveToLibrary: true,
+        approvalRequired: true,
+      },
+    };
+  }
 
   const items = await db
     .select()
@@ -89,7 +118,10 @@ export async function planSalesContent(input: {
     : prospect.qualification?.confirmedPains ?? prospect.qualification?.inferredPains ?? [];
 
   const objective = context.objective || prospect.currentObjective || "gerar interesse para avançar a conversa";
-  const channel = context.channel || "whatsapp";
+  const requestedChannel = context.channel || runtime.allowedChannels[0] || "whatsapp";
+  const channel = runtime.allowedChannels.includes(requestedChannel as any)
+    ? requestedChannel
+    : runtime.allowedChannels[0] || "whatsapp";
 
   return {
     action: "generate",
