@@ -18,6 +18,8 @@ export type ArchConceptConfiguration = {
   startSourceChosen?: boolean;
   intakeStage?: "kind" | "terrain_choice" | "terrain_editor" | "source" | "complete";
   terrainDefined?: boolean;
+  /** Idempotency token created once per new-project browser session. */
+  creationKey?: string;
   workspaceBounds?: { width: number; depth: number };
   typology?: "terrea_2q" | "terrea_3q" | "terrea_lazer" | "sobrado_3q" | "sobrado_master";
   layoutPreferences?: Record<string, boolean>;
