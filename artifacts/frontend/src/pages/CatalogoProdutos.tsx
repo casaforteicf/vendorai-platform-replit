@@ -178,6 +178,7 @@ type CatalogPricePreview = {
   vigencia?: string | null;
   products: CatalogPricePreviewItem[];
   importableCount: number;
+  updateableCount?: number;
   exactOrHighConfidenceCount: number;
   reviewCount: number;
   duplicateCount: number;
@@ -1490,17 +1491,40 @@ function CatalogPriceImporter({
     if (!preview?.csv || !tenantId) return;
     setImporting(true);
     try {
-      const response = await fetch(`/api/tenants/${tenantId}/produtos-catalogo/import`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({ csv: preview.csv }),
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || "Falha ao importar produtos compatibilizados.");
+      const updates = preview.products.filter(
+        (item) => item.duplicate && item.precoBase != null && (item.priceMatch?.score ?? 0) >= 0.58,
+      );
+
+      for (const item of updates) {
+        const patch: Record<string, unknown> = {
+          precoBase: Number(item.precoBase).toFixed(2),
+        };
+        if (item.colecao) patch.colecao = item.colecao;
+        if (item.cor) patch.cor = item.cor;
+        if (item.fechamentoPacote != null) patch.fechamentoPacote = Number(item.fechamentoPacote).toFixed(3);
+        if (item.quantidadePacote != null) patch.quantidadePacote = Math.trunc(item.quantidadePacote);
+        if (item.embalagemMestreQuantidade != null) patch.embalagemMestreQuantidade = Math.trunc(item.embalagemMestreQuantidade);
+        if (item.quantidadeMinimaVenda != null) patch.quantidadeMinimaVenda = Math.trunc(item.quantidadeMinimaVenda);
+        if (item.multiploVenda != null) patch.multiploVenda = Math.trunc(item.multiploVenda);
+        await patchCatalogProduct(item.duplicate!.id, patch);
+      }
+
+      let created = 0;
+      if (preview.importableCount > 0) {
+        const response = await fetch(`/api/tenants/${tenantId}/produtos-catalogo/import`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({ csv: preview.csv }),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error || "Falha ao importar produtos compatibilizados.");
+        created = body.imported ?? 0;
+      }
+
       await onImported();
       toast({
-        title: "Catálogo compatibilizado importado",
-        description: `${body.imported ?? 0} produto(s) criados com preço e engenharia comercial.`,
+        title: "Catálogo e tabela aplicados",
+        description: `${created} novo(s) produto(s) e ${updates.length} cadastro(s) existente(s) atualizado(s), preservando a engenharia já existente.`,
       });
       setPreview(null);
       setCatalogFile(null);
@@ -1582,10 +1606,10 @@ function CatalogPriceImporter({
       {preview && (
         <div className="mt-4 space-y-3">
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-lg border bg-background p-3"><p className="text-[11px] text-muted-foreground">Prontos</p><p className="text-lg font-semibold">{preview.importableCount}</p></div>
+            <div className="rounded-lg border bg-background p-3"><p className="text-[11px] text-muted-foreground">Novos</p><p className="text-lg font-semibold">{preview.importableCount}</p></div>
+            <div className="rounded-lg border bg-background p-3"><p className="text-[11px] text-muted-foreground">Atualizar existentes</p><p className="text-lg font-semibold">{preview.updateableCount ?? 0}</p></div>
             <div className="rounded-lg border bg-background p-3"><p className="text-[11px] text-muted-foreground">Alta confiança</p><p className="text-lg font-semibold">{preview.exactOrHighConfidenceCount}</p></div>
             <div className="rounded-lg border bg-background p-3"><p className="text-[11px] text-muted-foreground">Revisar vínculo</p><p className="text-lg font-semibold">{preview.reviewCount}</p></div>
-            <div className="rounded-lg border bg-background p-3"><p className="text-[11px] text-muted-foreground">Já cadastrados</p><p className="text-lg font-semibold">{preview.duplicateCount}</p></div>
           </div>
 
           <div className="max-h-72 overflow-auto rounded-xl border bg-background">
@@ -1625,7 +1649,7 @@ function CatalogPriceImporter({
               A página de origem do catálogo é preservada como referência visual. Itens sem correspondência segura ou já cadastrados não entram na importação automática.
             </p>
             <Button type="button" onClick={() => void importMatched()} disabled={importing || preview.importableCount === 0}>
-              {importing ? "Importando…" : `Importar ${preview.importableCount} compatibilizados`}
+              {importing ? "Aplicando…" : `Aplicar ${preview.importableCount + (preview.updateableCount ?? 0)} compatibilizados`}
             </Button>
           </div>
         </div>
