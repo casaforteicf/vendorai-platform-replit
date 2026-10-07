@@ -333,12 +333,50 @@ export type InsertObraOrcamentoEtapa = z.infer<typeof insertObraOrcamentoEtapaSc
 export type UpdateObraOrcamentoEtapa = z.infer<typeof updateObraOrcamentoEtapaSchema>;
 export type ObraOrcamentoEtapa = typeof obraOrcamentoEtapasTable.$inferSelect;
 
+export const ORIGENS_QUANTIDADE = [
+  "manual",
+  "pdf",
+  "arqdor",
+  "ifc_bim",
+  "projeto_arquitetonico",
+  "projeto_estrutural",
+  "quadro_tecnico",
+  "memorial",
+  "formula_parametrica",
+  "levantamento_obra",
+  "estimativa",
+  "importacao_externa",
+] as const;
+
+export const NIVEIS_PRECISAO_QUANTIDADE = [
+  "estimativo",
+  "parametrico",
+  "executivo",
+] as const;
+
 export const obraOrcamentoItensTable = pgTable("obra_orcamento_itens", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   etapaId: text("etapa_id").notNull().references(() => obraOrcamentoEtapasTable.id, { onDelete: "cascade" }),
   nome: text("nome").notNull(),
   unidade: text("unidade").notNull().default("un"),
+  // Quantidade vigente utilizada no orçamento.
   quantidade: numeric("quantidade", { precision: 15, scale: 4 }).notNull().default("1"),
+  // Rastreabilidade do quantitativo: valor extraído originalmente, necessidade
+  // técnica, necessidade já acrescida de perda e quantidade comercial de compra.
+  quantidadeOriginal: numeric("quantidade_original", { precision: 15, scale: 4 }),
+  quantidadeTecnica: numeric("quantidade_tecnica", { precision: 15, scale: 4 }),
+  quantidadeComPerda: numeric("quantidade_com_perda", { precision: 15, scale: 4 }),
+  quantidadeCompra: numeric("quantidade_compra", { precision: 15, scale: 4 }),
+  unidadeCompra: text("unidade_compra"),
+  origemQuantidade: text("origem_quantidade").notNull().default("manual"),
+  nivelPrecisaoQuantidade: text("nivel_precisao_quantidade").notNull().default("estimativo"),
+  memoriaCalculo: jsonb("memoria_calculo").$type<Record<string, unknown> | null>(),
+  projetoReferencia: text("projeto_referencia"),
+  projetoVersao: text("projeto_versao"),
+  confiancaExtracao: numeric("confianca_extracao", { precision: 5, scale: 2 }),
+  revisadoManual: boolean("revisado_manual").notNull().default(false),
+  motivoAjusteQuantidade: text("motivo_ajuste_quantidade"),
+  quantidadeAtualizadaEm: timestamp("quantidade_atualizada_em", { withTimezone: true }),
   custoUnitario: numeric("custo_unitario", { precision: 15, scale: 4 }).notNull().default("0"),
   insumoId: text("insumo_id"),
   composicaoId: text("composicao_id"),
@@ -356,16 +394,64 @@ export const obraOrcamentoItensTable = pgTable("obra_orcamento_itens", {
 
 export const insertObraOrcamentoItemSchema = createInsertSchema(obraOrcamentoItensTable, {
   quantidade: decimalOptional,
+  quantidadeOriginal: decimalOptional,
+  quantidadeTecnica: decimalOptional,
+  quantidadeComPerda: decimalOptional,
+  quantidadeCompra: decimalOptional,
+  confiancaExtracao: decimalOptional,
   custoUnitario: decimalOptional,
   bdi: decimalOptional,
+  origemQuantidade: z.enum(ORIGENS_QUANTIDADE).optional(),
+  nivelPrecisaoQuantidade: z.enum(NIVEIS_PRECISAO_QUANTIDADE).optional(),
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const updateObraOrcamentoItemSchema = createSelectSchema(obraOrcamentoItensTable, {
   quantidade: decimalOptional,
+  quantidadeOriginal: decimalOptional,
+  quantidadeTecnica: decimalOptional,
+  quantidadeComPerda: decimalOptional,
+  quantidadeCompra: decimalOptional,
+  confiancaExtracao: decimalOptional,
   custoUnitario: decimalOptional,
   bdi: decimalOptional,
+  origemQuantidade: z.enum(ORIGENS_QUANTIDADE).optional(),
+  nivelPrecisaoQuantidade: z.enum(NIVEIS_PRECISAO_QUANTIDADE).optional(),
 }).omit({ id: true, etapaId: true, createdAt: true, updatedAt: true }).partial();
 
 export type InsertObraOrcamentoItem = z.infer<typeof insertObraOrcamentoItemSchema>;
 export type UpdateObraOrcamentoItem = z.infer<typeof updateObraOrcamentoItemSchema>;
 export type ObraOrcamentoItem = typeof obraOrcamentoItensTable.$inferSelect;
+
+export const obraOrcamentoItemQuantitativosHistoricoTable = pgTable("obra_orcamento_item_quantitativos_historico", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  itemId: text("item_id").notNull().references(() => obraOrcamentoItensTable.id, { onDelete: "cascade" }),
+  quantidadeAnterior: numeric("quantidade_anterior", { precision: 15, scale: 4 }),
+  quantidadeNova: numeric("quantidade_nova", { precision: 15, scale: 4 }),
+  unidade: text("unidade"),
+  origemQuantidade: text("origem_quantidade"),
+  nivelPrecisaoQuantidade: text("nivel_precisao_quantidade"),
+  memoriaCalculo: jsonb("memoria_calculo").$type<Record<string, unknown> | null>(),
+  projetoReferencia: text("projeto_referencia"),
+  projetoVersao: text("projeto_versao"),
+  confiancaExtracao: numeric("confianca_extracao", { precision: 5, scale: 2 }),
+  motivo: text("motivo"),
+  responsavelId: text("responsavel_id").references(() => usersTable.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  itemCreatedIdx: index("obra_orc_item_quant_hist_item_created_idx").on(table.itemId, table.createdAt),
+}));
+
+export const insertObraOrcamentoItemQuantitativoHistoricoSchema = createInsertSchema(
+  obraOrcamentoItemQuantitativosHistoricoTable,
+  {
+    quantidadeAnterior: decimalOptional,
+    quantidadeNova: decimalOptional,
+    confiancaExtracao: decimalOptional,
+  },
+).omit({ id: true, createdAt: true });
+
+export type InsertObraOrcamentoItemQuantitativoHistorico = z.infer<
+  typeof insertObraOrcamentoItemQuantitativoHistoricoSchema
+>;
+export type ObraOrcamentoItemQuantitativoHistorico =
+  typeof obraOrcamentoItemQuantitativosHistoricoTable.$inferSelect;
