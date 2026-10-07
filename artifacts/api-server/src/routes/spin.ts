@@ -21,6 +21,7 @@ import {
 } from "@workspace/db";
 import { callOpenAI } from "../lib/ai-gateway.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
+import { canonicalDealValueSql } from "../lib/deal-value.js";
 
 const router: IRouter = Router();
 
@@ -67,7 +68,7 @@ export async function generateSpinForActivity(
   let deal = null;
   if (activity.dealId) {
     const [d] = await db
-      .select({ titulo: dealsTable.titulo, valor: dealsTable.valor, etapa: dealsTable.etapa, aiBriefing: dealsTable.aiBriefing, respostasEtapas: dealsTable.respostasEtapas })
+      .select({ titulo: dealsTable.titulo, valor: canonicalDealValueSql, etapa: dealsTable.etapa, aiBriefing: dealsTable.aiBriefing, respostasEtapas: dealsTable.respostasEtapas })
       .from(dealsTable)
       .where(eq(dealsTable.id, activity.dealId))
       .limit(1);
