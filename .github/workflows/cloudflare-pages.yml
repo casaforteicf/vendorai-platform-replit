@@ -1,6 +1,6 @@
 name: Cloudflare Pages
 # Production deploy: Pages frontend; Railway backend remains unchanged.
-# Redeploy marker: settings-routing-fix-2026-10-06-2250.
+# Redeploy marker: settings-navigation-release-2026-10-07-0159.
 
 on:
   push:
