@@ -1600,6 +1600,25 @@ const prospectorConfigBodySchema = z.object({
   ritmoDiario: z.number().int().min(1).max(500).optional(),
   ativo:       z.boolean().optional(),
   horarioCron: z.string().optional(),
+
+  coldProspectingMode: z.enum(["off", "assisted", "autonomous"]).optional(),
+  allowedSolutions: z.array(z.enum(["vendorai", "arqdor"])).min(1).max(2).optional(),
+  targetSegments: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
+  targetPersonas: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
+  allowedChannels: z.array(z.enum(["whatsapp", "email", "phone", "instagram"])).min(1).max(4).optional(),
+  contactWindowStart: z.string().regex(/^([01]\\d|2[0-3]):[0-5]\\d$/).optional(),
+  contactWindowEnd: z.string().regex(/^([01]\\d|2[0-3]):[0-5]\\d$/).optional(),
+  timezone: z.string().min(1).max(100).optional(),
+  maxContactsPerPerson7d: z.number().int().min(1).max(30).optional(),
+  qualificationThreshold: z.number().int().min(0).max(100).optional(),
+  meetingReadinessThreshold: z.number().int().min(0).max(100).optional(),
+  autoSendApprovedContent: z.boolean().optional(),
+  conversionCriteria: z.object({
+    requireResponsible: z.boolean().optional(),
+    requireConfirmedPain: z.boolean().optional(),
+    requireDecisionMakerOrPath: z.boolean().optional(),
+    requireMeetingAccepted: z.boolean().optional(),
+  }).optional(),
 });
 
 router.put("/prospector/config", async (req, res) => {
