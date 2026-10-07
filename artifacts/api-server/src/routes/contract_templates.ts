@@ -23,6 +23,7 @@ import {
 import { VENDORAI_SAAS_CONTRACT_HTML } from "../lib/vendorai-contract-template.js";
 import { createDocument, isZapSignConfigured } from "../lib/zapsign.js";
 import { requireRole } from "../middlewares/auth.js";
+import { resolveCanonicalDealValue } from "../lib/deal-value.js";
 
 const router = Router();
 
@@ -405,15 +406,21 @@ router.post("/deals/:dealId/generate-contract", async (req, res) => {
     }
 
     // ── Build values ────────────────────────────────────────────────────────
-    const pedidosHtml = buildPedidosTable(selectedDeals);
+    const selectedDealsWithCanonicalValue = await Promise.all(
+      selectedDeals.map(async (selectedDeal) => ({
+        ...selectedDeal,
+        valor: (await resolveCanonicalDealValue(selectedDeal.id, tenantId)).toFixed(2),
+      })),
+    );
+    const pedidosHtml = buildPedidosTable(selectedDealsWithCanonicalValue);
 
-    const totalValor = selectedDeals.reduce(
+    const totalValor = selectedDealsWithCanonicalValue.reduce(
       (sum, d) => sum + (d.valor ? Number(d.valor) : 0),
       0
     );
     const valorBruto = totalValor > 0
       ? totalValor
-      : deal.valor ? Number(deal.valor) : 0;
+      : await resolveCanonicalDealValue(deal.id, tenantId);
 
     const valorMensalFormatado = valorBruto > 0
       ? valorBruto.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
