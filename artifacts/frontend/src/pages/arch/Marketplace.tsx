@@ -96,6 +96,25 @@ type Venda = {
   itemNome: string;
 };
 
+type MarketProposal = {
+  proposta: {
+    id: string;
+    demandaId: string;
+    fornecedorTenantId: string;
+    status: string;
+    valorTotal: string | null;
+    frete: string | null;
+    desconto: string | null;
+    impostos: string | null;
+    prazoEntregaDias: number | null;
+    validadeAte: string | null;
+    condicaoPagamento: string | null;
+    observacoes: string | null;
+    itens: Array<Record<string, unknown>>;
+  };
+  fornecedorNome: string;
+};
+
 type MarketDemand = {
   id: string;
   titulo: string;
@@ -191,6 +210,15 @@ export default function Marketplace() {
   const [pedidosLoading, setPedidosLoading] = useState(false);
   const [pedidosLoaded, setPedidosLoaded]   = useState(false);
 
+  // ── Minhas cotações state
+  const [minhasDemandas, setMinhasDemandas] = useState<MarketDemand[]>([]);
+  const [minhasDemandasLoading, setMinhasDemandasLoading] = useState(false);
+  const [minhasDemandasLoaded, setMinhasDemandasLoaded] = useState(false);
+  const [proposalDemand, setProposalDemand] = useState<MarketDemand | null>(null);
+  const [proposalOptions, setProposalOptions] = useState<MarketProposal[]>([]);
+  const [proposalOptionsLoading, setProposalOptionsLoading] = useState(false);
+  const [selectingProposalId, setSelectingProposalId] = useState<string | null>(null);
+
   // ── Cotações recebidas state
   const [demandasRecebidas, setDemandasRecebidas] = useState<MarketDemand[]>([]);
   const [demandasLoading, setDemandasLoading] = useState(false);
@@ -266,6 +294,61 @@ export default function Marketplace() {
     setPedidosLoading(false);
     setPedidosLoaded(true);
   }, [pedidosLoaded]);
+
+  const loadMinhasDemandas = useCallback(async () => {
+    if (minhasDemandasLoaded) return;
+    setMinhasDemandasLoading(true);
+    try {
+      const res = await fetch("/api/arch/market/demandas/minhas", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (res.ok) setMinhasDemandas(await res.json());
+    } finally {
+      setMinhasDemandasLoading(false);
+      setMinhasDemandasLoaded(true);
+    }
+  }, [minhasDemandasLoaded]);
+
+  async function openDemandProposals(demanda: MarketDemand) {
+    setProposalDemand(demanda);
+    setProposalOptions([]);
+    setProposalOptionsLoading(true);
+    try {
+      const res = await fetch(`/api/arch/market/demandas/${demanda.id}/propostas`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (res.ok) setProposalOptions(await res.json());
+    } finally {
+      setProposalOptionsLoading(false);
+    }
+  }
+
+  async function selectMarketProposal(propostaId: string) {
+    if (!proposalDemand) return;
+    setSelectingProposalId(propostaId);
+    try {
+      const res = await fetch(`/api/arch/market/demandas/${proposalDemand.id}/propostas/${propostaId}/selecionar`, {
+        method: "POST",
+        headers: authH(),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error ?? "Não foi possível selecionar a proposta.");
+      setProposalDemand(null);
+      setMinhasDemandasLoaded(false);
+      toast({
+        title: "Proposta selecionada",
+        description: body?.procurementSync?.synced
+          ? body.procurementSync.requiresReconciliation
+            ? "Proposta vinculada às cotações da obra; alguns itens precisam de reconciliação."
+            : "Proposta vinculada automaticamente à cotação da obra."
+          : "A seleção foi registrada no Arqdor Market.",
+      });
+    } catch (err: any) {
+      toast({ title: "Erro ao selecionar", description: err.message, variant: "destructive" });
+    } finally {
+      setSelectingProposalId(null);
+    }
+  }
 
   const loadDemandasRecebidas = useCallback(async () => {
     if (demandasLoaded) return;
@@ -476,6 +559,7 @@ export default function Marketplace() {
       <Tabs defaultValue="explorar">
         <TabsList>
           <TabsTrigger value="explorar">Explorar</TabsTrigger>
+          <TabsTrigger value="minhas-cotacoes" onClick={loadMinhasDemandas}>Minhas cotações</TabsTrigger>
           <TabsTrigger value="cotacoes" onClick={loadDemandasRecebidas}>Cotações recebidas</TabsTrigger>
           <TabsTrigger value="meus-produtos" onClick={loadMeusProdutos}>Meus Produtos</TabsTrigger>
           <TabsTrigger value="pedidos" onClick={loadPedidos}>Pedidos</TabsTrigger>
@@ -681,6 +765,42 @@ export default function Marketplace() {
               </div>
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="minhas-cotacoes" className="mt-4 space-y-3">
+          {minhasDemandasLoading && (
+            <div className="space-y-2">
+              {[1,2,3].map(i => <Skeleton key={i} className="h-24 rounded-xl" />)}
+            </div>
+          )}
+          {!minhasDemandasLoading && minhasDemandasLoaded && minhasDemandas.length === 0 && (
+            <div className="rounded-lg border border-dashed p-12 text-center">
+              <Send className="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" />
+              <p className="font-medium text-sm">Nenhuma necessidade publicada</p>
+              <p className="text-xs text-muted-foreground mt-1">Publique uma necessidade para receber propostas de fornecedores.</p>
+            </div>
+          )}
+          {!minhasDemandasLoading && minhasDemandas.map((demanda) => (
+            <Card key={demanda.id}>
+              <CardContent className="p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold">{demanda.titulo}</p>
+                      <Badge variant={demanda.status === "adjudicada" ? "default" : "secondary"}>{demanda.status}</Badge>
+                      <Badge variant="outline">{demanda.visibilidade}</Badge>
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {demanda.quantidade ? `${demanda.quantidade} ${demanda.unidade ?? ""}` : demanda.produtoServico ?? demanda.descricao ?? "Necessidade técnica"}
+                    </p>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => openDemandProposals(demanda)}>
+                    Ver propostas
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </TabsContent>
 
         <TabsContent value="cotacoes" className="mt-4 space-y-3">
@@ -915,6 +1035,52 @@ export default function Marketplace() {
           )}
         </TabsContent>
       </Tabs>
+
+      <Dialog open={!!proposalDemand} onOpenChange={() => setProposalDemand(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Propostas — {proposalDemand?.titulo}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-2 max-h-[65vh] overflow-y-auto">
+            {proposalOptionsLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando propostas…</div>
+            ) : proposalOptions.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-8 text-center">Ainda não há propostas para esta cotação.</p>
+            ) : proposalOptions.map(({ proposta, fornecedorNome }) => (
+              <div key={proposta.id} className="rounded-xl border p-4 space-y-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">{fornecedorNome}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {proposta.prazoEntregaDias != null ? `Entrega em ${proposta.prazoEntregaDias} dias` : "Prazo não informado"}
+                      {proposta.condicaoPagamento ? ` · ${proposta.condicaoPagamento}` : ""}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-lg">{proposta.valorTotal != null ? fmt(Number(proposta.valorTotal)) : "Valor não informado"}</p>
+                    <Badge variant="outline">{proposta.status}</Badge>
+                  </div>
+                </div>
+                {(proposta.frete || proposta.desconto || proposta.impostos) && (
+                  <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                    {proposta.frete && <span>Frete: {fmt(Number(proposta.frete))}</span>}
+                    {proposta.desconto && <span>Desconto: {fmt(Number(proposta.desconto))}</span>}
+                    {proposta.impostos && <span>Impostos: {fmt(Number(proposta.impostos))}</span>}
+                  </div>
+                )}
+                {proposta.observacoes && <p className="text-sm text-muted-foreground">{proposta.observacoes}</p>}
+                {proposalDemand?.status !== "adjudicada" && proposta.status !== "recusada" && (
+                  <div className="flex justify-end">
+                    <Button size="sm" onClick={() => selectMarketProposal(proposta.id)} disabled={selectingProposalId !== null}>
+                      {selectingProposalId === proposta.id ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Selecionando…</> : "Selecionar proposta"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!respondendoDemanda} onOpenChange={() => setRespondendoDemanda(null)}>
         <DialogContent className="max-w-lg">
