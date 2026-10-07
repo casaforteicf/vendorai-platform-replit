@@ -13,7 +13,7 @@ import {
 import {
   Upload, FileText, CheckCircle2, AlertCircle, Loader2,
   Trash2, Pencil, TrendingDown, TrendingUp, DollarSign,
-  BarChart3, X, ChevronDown, ChevronUp, FileSpreadsheet,
+  BarChart3, X, ChevronDown, ChevronUp, FileSpreadsheet, ShoppingCart,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
