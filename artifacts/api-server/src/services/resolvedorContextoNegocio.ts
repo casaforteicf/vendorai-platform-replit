@@ -2,6 +2,7 @@ import { pool } from "@workspace/db";
 
 export type TipoFonteContextoNegocio =
   | "perfil_negocio"
+  | "kit_marca"
   | "produto_catalogo"
   | "biblioteca_contexto"
   | "base_conhecimento"
@@ -226,6 +227,31 @@ export async function resolverContextoNegocio(input: {
         titulo: profile.nome_fantasia || "Perfil da empresa",
         resumo: compact(profileText, 500),
         pontuacao: 1000,
+        aprovado: true,
+      });
+    }
+
+    const brandKitText = [
+      typeof discovery["posicionamento"] === "string" ? `Posicionamento: ${compact(discovery["posicionamento"], 900)}` : "",
+      typeof discovery["tomVoz"] === "string" ? `Tom de voz: ${compact(discovery["tomVoz"], 900)}` : "",
+      typeof discovery["mensagensChave"] === "string" ? `Mensagens-chave: ${compact(discovery["mensagensChave"], 1200)}` : "",
+      typeof discovery["estiloVisual"] === "string" ? `Estilo visual: ${compact(discovery["estiloVisual"], 700)}` : "",
+      typeof discovery["tipografia"] === "string" ? `Tipografia: ${compact(discovery["tipografia"], 500)}` : "",
+      typeof discovery["coresSecundarias"] === "string" ? `Cores secundárias: ${compact(discovery["coresSecundarias"], 500)}` : "",
+      typeof discovery["ctaPadrao"] === "string" ? `CTA padrão: ${compact(discovery["ctaPadrao"], 500)}` : "",
+      typeof discovery["palavrasEvitar"] === "string" ? `Palavras e expressões a evitar: ${compact(discovery["palavrasEvitar"], 700)}` : "",
+      typeof discovery["referenciasVisuais"] === "string" ? `Referências visuais: ${compact(discovery["referenciasVisuais"], 900)}` : "",
+    ].filter(Boolean).join("\n");
+
+    if (brandKitText) {
+      blocks.push(`### KIT DA MARCA\n${brandKitText}`);
+      fontes.push({
+        id: `${profile.id}:brand-kit`,
+        tipo: "kit_marca",
+        categoria: "marca",
+        titulo: "Kit da Marca",
+        resumo: compact(brandKitText, 700),
+        pontuacao: 1200,
         aprovado: true,
       });
     }
