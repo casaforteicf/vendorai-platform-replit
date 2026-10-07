@@ -1526,13 +1526,27 @@ router.get("/tenants/:tenantId/work-cards", async (req, res) => {
   const storedCards = await db.select().from(workCardsTable)
     .where(and(...conditions))
     .orderBy(workCardsTable.updatedAt, workCardsTable.createdAt);
-  const cards = includeClosed === "1" ? storedCards : storedCards.filter((card) => !TERMINAL_WORK_STAGES.has(card.etapa));
+  const candidateCards = includeClosed === "1"
+    ? storedCards
+    : storedCards.filter((card) => !TERMINAL_WORK_STAGES.has(card.etapa));
 
-  const leadIds = [...new Set(cards.map((card) => card.leadId).filter((id): id is string => Boolean(id)))];
+  // Soft delete do lead não apaga a execução/suporte, mas também não pode
+  // deixar o processo aparecendo nas pipelines ativas.
+  const candidateLeadIds = [...new Set(candidateCards.map((card) => card.leadId).filter((id): id is string => Boolean(id)))];
+  const leadRows = candidateLeadIds.length
+    ? await db.select({
+        id: leadsTable.id,
+        nome: leadsTable.nome,
+        empresa: leadsTable.empresa,
+        excluidoEm: leadsTable.excluidoEm,
+      }).from(leadsTable).where(inArray(leadsTable.id, candidateLeadIds))
+    : [];
+  const activeLeadIds = new Set(leadRows.filter((lead) => !lead.excluidoEm).map((lead) => lead.id));
+  const cards = candidateCards.filter((card) => !card.leadId || activeLeadIds.has(card.leadId));
+
   const userIds = [...new Set(cards.map((card) => card.responsavelId).filter((id): id is string => Boolean(id)))];
   const dealIds = [...new Set(cards.map((card) => card.dealId).filter((id): id is string => Boolean(id)))];
-  const [leadRows, userRows, dealRows] = await Promise.all([
-    leadIds.length ? db.select({ id: leadsTable.id, nome: leadsTable.nome, empresa: leadsTable.empresa }).from(leadsTable).where(inArray(leadsTable.id, leadIds)) : Promise.resolve([]),
+  const [userRows, dealRows] = await Promise.all([
     userIds.length ? db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email }).from(usersTable).where(inArray(usersTable.id, userIds)) : Promise.resolve([]),
     dealIds.length ? db.select({ id: dealsTable.id, titulo: dealsTable.titulo }).from(dealsTable).where(inArray(dealsTable.id, dealIds)) : Promise.resolve([]),
   ]);
