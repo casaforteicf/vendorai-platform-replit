@@ -74,4 +74,28 @@ describe("Arqdor imported project geometry", () => {
     expect(preview.topologyRepairs).toBeGreaterThan(0);
     expect(preview.canApply).toBe(true);
   });
+  it("mantém o vínculo da esquadria ao índice original mesmo se outra parede for descartada", () => {
+    const preview = importedFloorPlanToEditableGeometry({
+      page: 1,
+      confidence: 0.92,
+      widthMeters: 10,
+      depthMeters: 8,
+      requiresCalibration: false,
+      walls: [
+        { x1: 0.1, y1: 0.1, x2: 0.101, y2: 0.1, confidence: 0.1 },
+        { id: "parede-j4", x1: 0.2, y1: 0.2, x2: 0.8, y2: 0.2, confidence: 0.98 },
+        { x1: 0.8, y1: 0.2, x2: 0.8, y2: 0.8, confidence: 0.95 },
+        { x1: 0.8, y1: 0.8, x2: 0.2, y2: 0.8, confidence: 0.95 },
+      ],
+      openings: [
+        { code: "J04", wallIndex: 1, type: "window", offset: 0.5, width: 1.2, height: 2.2, confidence: 0.99 },
+      ],
+      rooms: [],
+      dimensions: [],
+      warnings: [],
+    });
+
+    expect(preview.discardedWalls).toBe(1);
+    expect(preview.openings[0]?.wallId).toBe("parede-j4");
+  });
 });
