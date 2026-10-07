@@ -240,9 +240,9 @@ export function BusinessPlanPanel() {
     {tab === "plan" && (() => {
       const wizardIndex = Math.max(0, data.sections.findIndex((item) => item.id === sectionId));
       const isReview = sectionId === "__review__";
-      const totalSteps = data.sections.length + 1;
-      const stepNumber = isReview ? totalSteps : wizardIndex + 1;
-      const progress = Math.round((stepNumber / totalSteps) * 100);
+      const totalSteps = data.sections.length;
+      const stepNumber = wizardIndex + 1;
+      const progress = totalSteps ? Math.round((approvedCount / totalSteps) * 100) : 0;
       const approved = saved?.approved ?? [];
       const invalidRecords = records.filter((record) => !entryValidation(record).ready);
       const canApprove = records.length > 0 && invalidRecords.length === 0;
@@ -267,12 +267,12 @@ export function BusinessPlanPanel() {
           <section className="rounded-xl border bg-card p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-primary">Etapa {stepNumber} de {totalSteps}</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">Revisão final</p>
                 <h3 className="mt-1 text-xl font-semibold">Revisão final e ativação do contexto</h3>
                 <p className="mt-1 text-sm text-muted-foreground">Revise o que foi aprovado. Os agentes compatíveis usam automaticamente apenas as informações aprovadas e permitidas para cada função.</p>
               </div>
               <div className="min-w-[220px]">
-                <div className="mb-1 flex justify-between text-xs text-muted-foreground"><span>Progresso do PN</span><span>{progress}%</span></div>
+                <div className="mb-1 flex justify-between text-xs text-muted-foreground"><span>Etapas aprovadas</span><span>{approvedCount} de {totalSteps} · {progress}%</span></div>
                 <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} /></div>
               </div>
             </div>
@@ -327,7 +327,7 @@ export function BusinessPlanPanel() {
               <p className="mt-1 text-sm text-muted-foreground">Revise o contexto existente, use a IA para preencher lacunas e confirme somente o que deve virar informação oficial.</p>
             </div>
             <div className="min-w-[220px]">
-              <div className="mb-1 flex justify-between text-xs text-muted-foreground"><span>Progresso</span><span>{progress}%</span></div>
+              <div className="mb-1 flex justify-between text-xs text-muted-foreground"><span>Progresso do PN</span><span>{approvedCount} de {totalSteps} · {progress}%</span></div>
               <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} /></div>
               <p className="mt-2 text-xs text-muted-foreground">{approved.length ? "Etapa com versão aprovada" : "Etapa ainda não aprovada"}</p>
             </div>
@@ -346,7 +346,7 @@ export function BusinessPlanPanel() {
                 {index + 1}
               </button>;
             })}
-            <button type="button" onClick={() => goToIndex(data.sections.length)} className="min-w-max rounded-full border bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground">Revisão</button>
+            <button type="button" onClick={() => goToIndex(data.sections.length)} className="min-w-max rounded-full border bg-background px-3 py-1.5 text-xs font-semibold text-muted-foreground">Revisão final</button>
           </div>
         </section>
 
