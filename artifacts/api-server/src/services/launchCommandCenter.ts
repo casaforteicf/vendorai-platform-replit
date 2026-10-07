@@ -1,6 +1,5 @@
 import { and, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import {
-import { canonicalDealValueSql } from "../lib/deal-value.js";
   adCampaignEventsTable,
   adCampaignsTable,
   adPerformanceSnapshotsTable,
@@ -11,6 +10,7 @@ import { canonicalDealValueSql } from "../lib/deal-value.js";
   tenantsTable,
   webBehaviorEventsTable,
 } from "@workspace/db";
+import { canonicalDealValueSql } from "../lib/deal-value.js";
 
 export type LaunchPeriod = "7d" | "30d" | "90d" | "all";
 export type BehaviorIntentTier = "baixo" | "medio" | "alto" | "muito_alto";
