@@ -5183,7 +5183,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           setReferenceTraceState("ready");
           setReferenceDisplayMode("overlay");
           setReferencePlanMessage(
-            "A imagem foi analisada, mas falta confiança suficiente para gerar a planta automaticamente. Calibre uma medida e tente novamente.",
+            "Confiança insuficiente. Calibre uma medida e tente novamente.",
           );
         }
       } catch (error) {
@@ -5256,7 +5256,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           );
         } else {
           setReferenceTraceState("loading");
-          setReferencePlanMessage("Planta/croqui reconhecido. A IA está reconstruindo paredes e aberturas para gerar geometria editável...");
+          setReferencePlanMessage("Planta/croqui reconhecido. Gerando geometria editável...");
           try {
             const tracePayload = await requestReferenceTrace(id, payload);
           setReferenceTracePreview(tracePayload);
@@ -5278,7 +5278,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             setReferencePlanMessage(
               tracePayload.canApply
                 ? `Planta reconhecida: ${tracePayload.walls.length} paredes e ${tracePayload.openings.length} aberturas · confiança ${Math.round(tracePayload.confidence * 100)}%. Há geometria existente; revise a sobreposição antes de substituir.`
-                : `Leitura concluída, mas a confiança foi insuficiente para aplicar automaticamente. Revise a referência e calibre uma medida antes de tentar novamente.`,
+                : `Confiança insuficiente para aplicar. Revise e calibre uma medida.`,
             );
           }
           } catch (traceError) {
@@ -5767,8 +5767,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const renderProjectId = await saveConcept(5);
     if (!renderProjectId) { renderSubmittingRef.current = false; return; }
 
-    const source = options?.source ?? "facade";
-    const renderView = options?.renderView ?? (source === "model3d" ? "interior" : "exterior");
+    let source: "facade" | "model3d" | "scene_photo" = options?.source ?? "facade";
+    let renderView = options?.renderView ?? (source === "model3d" ? "interior" : "exterior");
     const lightingMode = options?.lightingMode ?? facadeDesign.lighting;
     // A imagem de referência precisa estar na mesma luz pedida ao motor.
     if (source === "facade" && lightingMode !== facadeDesign.lighting) {
@@ -5888,12 +5888,27 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
       if (source === "model3d") setEditorView("render");
 
+      let designReferenceImage: string | undefined;
+      if (referenceIsScenePhoto && referencePlan?.url) {
+        const { prepareScenePhotoRender } = await import("./conceptReferenceScene");
+        const scene = await prepareScenePhotoRender({
+          url: referencePlan.url,
+          designReferenceImage: originalImage,
+          analysis: referencePlan.photoAnalysis,
+        });
+        originalImage = scene.originalImage;
+        designReferenceImage = scene.designReferenceImage;
+        renderView = scene.renderView;
+        source = "scene_photo";
+      }
+
       const response = await fetch("/api/arch/ai-render", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           concept_project_id: renderProjectId,
           original_image_url: originalImage,
+          design_reference_image_url: designReferenceImage,
           mode: "preservar",
           iluminacao: lightingMode,
           source,
@@ -10577,7 +10592,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                                   ? "Planta editável criada. A imagem original continua disponível como referência."
                                   : referenceImportStage === "error"
                                     ? "A leitura precisa de revisão antes de continuar."
-                                    : "A imagem será convertida em geometria editável, não apenas inserida no canvas."}
+                                    : "A imagem será convertida em geometria editável."}
                         </div>
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           {[
@@ -10637,7 +10652,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       ))}
                     </div>
                     <div className="mt-1 text-[10px] text-blue-800/75">
-                      Referência mostra somente a imagem importada; Vetorizado mostra somente o traçado; Sobreposição serve para conferir coincidência antes de aplicar.
+                      Use Sobreposição para conferir o traçado antes de aplicar.
                     </div>
                     {referenceTracePreview && (
                       <div className="mt-2 space-y-1 text-[11px] text-blue-900">
@@ -10668,13 +10683,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           );
                         })()}
                         <div className="text-[10px] text-blue-800/75">
-                          Azul = parede sugerida · verde/roxo = porta/janela · laranja = elemento que merece revisão antes de aplicar.
+                          Azul = parede · verde/roxo = abertura · laranja = revisar.
                         </div>
                         <div className="mt-2 rounded-lg border border-blue-200 bg-white/80 p-2">
                           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                             <div>
                               <div className="font-semibold text-blue-950">Revisar traçado antes de aplicar</div>
-                              <div className="text-[10px] text-blue-800/75">Edite coordenadas, espessuras e aberturas. Excluir uma parede também remove suas portas e janelas sugeridas.</div>
+                              <div className="text-[10px] text-blue-800/75">Edite medidas e aberturas; excluir parede remove suas aberturas.</div>
                             </div>
                             {selectedTraceElement ? (
                               <button
