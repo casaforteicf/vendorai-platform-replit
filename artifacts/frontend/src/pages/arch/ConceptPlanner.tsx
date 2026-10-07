@@ -2249,10 +2249,17 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               : referencePlan?.kind === "image"
                 ? "received"
                 : "idle";
-  const referenceReviewActive = editorView === "plan" && referencePlan?.kind === "image" && referenceTraceState !== "applied";
+  const referenceReviewActive =
+    referenceInputMode === "floorplan" &&
+    editorView === "plan" &&
+    referencePlan?.kind === "image" &&
+    referenceTraceState !== "applied";
   const hideCurrentGeometryForReferenceReview = referenceReviewActive;
-  const showReferenceImage = referencePlan?.kind === "image" && referenceDisplayMode !== "vector";
-  const showReferenceVector = referenceDisplayMode !== "reference";
+  const showReferenceImage =
+    referenceInputMode === "floorplan" &&
+    referencePlan?.kind === "image" &&
+    referenceDisplayMode !== "vector";
+  const showReferenceVector = referenceInputMode === "floorplan" && referenceDisplayMode !== "reference";
 
   const selected = safeRooms.find((r) => r.id === selectedId) ?? null;
   const selectedObject = safeObjects.find((object) => object.id === selectedObjectId) ?? null;
@@ -5261,7 +5268,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setReferenceTracePreview(null);
       setReferenceTraceState("idle");
     }
-    referencePlanInputRef.current?.click();
+    const input = referencePlanInputRef.current;
+    if (!input) return;
+    input.accept = mode === "real_environment"
+      ? "image/png,image/jpeg,image/webp"
+      : "image/png,image/jpeg,image/webp,application/pdf,.pdf";
+    input.value = "";
+    input.click();
   };
 
   const uploadReferencePlan = async (file: File) => {
