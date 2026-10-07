@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -484,6 +484,140 @@ function DrePanel({
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
+function FinanceiroV19Panel({ tenantId, obraId }: { tenantId: string; obraId: string }) {
+  const [fluxo, setFluxo] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [tipo, setTipo] = useState<"pagar" | "receber">("pagar");
+  const [descricao, setDescricao] = useState("");
+  const [valor, setValor] = useState("");
+  const [vencimento, setVencimento] = useState("");
+  const [contraparte, setContraparte] = useState("");
+
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/financeiro/fluxo-caixa`, { headers: authHeaders() });
+      if (res.ok) setFluxo(await res.json());
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { void load(); }, [tenantId, obraId]);
+
+  async function syncCompras() {
+    setSyncing(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/financeiro/sincronizar-compras`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({}),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.error ?? "Erro ao sincronizar compras.");
+      await load();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function criarTitulo() {
+    if (!descricao.trim() || Number(valor) <= 0) return;
+    const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/financeiro/titulos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({
+        tipo,
+        origem: "manual",
+        descricao: descricao.trim(),
+        contraparte: contraparte || undefined,
+        dataVencimento: vencimento || undefined,
+        valorOriginal: valor,
+        status: "aberto",
+      }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) return alert(body?.error ?? "Erro ao criar título.");
+    setDescricao(""); setValor(""); setVencimento(""); setContraparte("");
+    await load();
+  }
+
+  async function liquidar(titulo: any) {
+    const valorMov = prompt(`Valor para ${titulo.tipo === "pagar" ? "pagar" : "receber"} (aberto: ${fmtBRL(titulo.valorAberto)}):`, String(titulo.valorAberto ?? ""));
+    if (!valorMov || Number(valorMov) <= 0) return;
+    const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/financeiro/titulos/${titulo.id}/movimentos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({
+        tipo: titulo.tipo === "pagar" ? "pagamento" : "recebimento",
+        dataMovimento: new Date().toISOString().slice(0,10),
+        valor: valorMov,
+      }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) return alert(body?.error ?? "Erro ao registrar movimento.");
+    await load();
+  }
+
+  const t = fluxo?.totais ?? {};
+  const titulos = fluxo?.titulos ?? [];
+
+  return (
+    <div className="border rounded-xl p-4 space-y-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="font-semibold text-sm">Fluxo de caixa da obra</h3>
+          <p className="text-xs text-muted-foreground">Contas a pagar/receber, compras, pagamentos, recebimentos e custo realizado.</p>
+        </div>
+        <Button size="sm" variant="outline" onClick={syncCompras} disabled={syncing}>
+          {syncing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ShoppingCart className="h-4 w-4 mr-1" />}
+          Sincronizar compras
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <div className="rounded border p-3"><div className="text-xs text-muted-foreground">A pagar</div><div className="font-bold">{fmtBRL(t.pagarAberto)}</div></div>
+        <div className="rounded border p-3"><div className="text-xs text-muted-foreground">A receber</div><div className="font-bold">{fmtBRL(t.receberAberto)}</div></div>
+        <div className="rounded border p-3"><div className="text-xs text-muted-foreground">Saldo caixa</div><div className="font-bold">{fmtBRL(t.saldoCaixa)}</div></div>
+        <div className="rounded border p-3"><div className="text-xs text-muted-foreground">Custo realizado</div><div className="font-bold">{fmtBRL(t.custoRealizado)}</div></div>
+      </div>
+
+      <div className="grid gap-2 md:grid-cols-5">
+        <Select value={tipo} onValueChange={(v) => setTipo(v as "pagar" | "receber")}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent><SelectItem value="pagar">Conta a pagar</SelectItem><SelectItem value="receber">Conta a receber</SelectItem></SelectContent>
+        </Select>
+        <Input placeholder="Descrição" value={descricao} onChange={(e) => setDescricao(e.target.value)} />
+        <Input placeholder="Contraparte" value={contraparte} onChange={(e) => setContraparte(e.target.value)} />
+        <Input type="number" step="0.01" placeholder="Valor" value={valor} onChange={(e) => setValor(e.target.value)} />
+        <div className="flex gap-2"><Input type="date" value={vencimento} onChange={(e) => setVencimento(e.target.value)} /><Button onClick={criarTitulo}>Adicionar</Button></div>
+      </div>
+
+      {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : (
+        <div className="space-y-1.5">
+          {titulos.slice(0, 30).map((x: any) => (
+            <div key={x.id} className="rounded border px-3 py-2 flex items-center justify-between gap-3 text-xs">
+              <div className="min-w-0">
+                <div className="font-medium truncate">{x.descricao}</div>
+                <div className="text-muted-foreground">
+                  {x.tipo === "pagar" ? "Pagar" : "Receber"} · {x.contraparte || "sem contraparte"}{x.dataVencimento ? ` · venc. ${fmtDate(x.dataVencimento)}` : ""}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="text-right"><div className="font-semibold">{fmtBRL(x.valorAberto)}</div><div className="text-muted-foreground">{x.status}</div></div>
+                {!["pago","recebido","cancelado"].includes(x.status) && <Button size="sm" variant="outline" onClick={() => liquidar(x)}>Liquidar</Button>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function TabFinanceiro({
   tenantId,
   obraId,
@@ -646,6 +780,8 @@ export default function TabFinanceiro({
 
       {/* ── DRE ── */}
       {dre && <DrePanel dre={dre} onOpenOrcamento={onOpenOrcamento} />}
+
+      <FinanceiroV19Panel tenantId={tenantId} obraId={obraId} />
 
       {/* ── Upload + actions ── */}
       <div className="space-y-3">
