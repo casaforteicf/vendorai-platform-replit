@@ -577,7 +577,7 @@ export default function Configuracoes() {
         title="Empresa"
         description="Dados da empresa, marca, endereço, canais e preferências."
       >
-        <ConfiguracoesNormalized embedded />
+        <div className="settings-section-native"><ConfiguracoesLegacy /></div>
       </SettingsSectionShell>
     );
   }
@@ -588,7 +588,7 @@ export default function Configuracoes() {
         title="Equipe e permissões"
         description="Usuários, funções, acessos, responsáveis e permissões."
       >
-        <ConfiguracoesNormalized embedded />
+        <div className="settings-section-native"><ConfiguracoesLegacy /></div>
       </SettingsSectionShell>
     );
   }
