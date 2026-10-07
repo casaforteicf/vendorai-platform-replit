@@ -55,6 +55,15 @@ import {
   insertServicoCoberturaSchema,
   insertServicoMedicaoSchema,
   insertServicoAditivoSchema,
+  sistemasConstrutivosTable,
+  sistemaVariantesTable,
+  sistemaComposicaoRegrasTable,
+  sistemaInterfacesTable,
+  insertSistemaConstrutivoSchema,
+  updateSistemaConstrutivoSchema,
+  insertSistemaVarianteSchema,
+  insertSistemaComposicaoRegraSchema,
+  insertSistemaInterfaceSchema,
   insertObraSchema,
   updateObraSchema,
   insertObraEtapaSchema,
@@ -1545,6 +1554,174 @@ router.get("/tenants/:tenantId/servicos-contratos/:contratoId/resumo", async (re
     saldoMedir: Math.max(0, valorContratoAtual - valorMedido).toFixed(4),
     medicoes,
     aditivos,
+  });
+});
+
+// ─── Sistemas construtivos parametrizados ────────────────────────────────────
+
+const SISTEMAS_PADRAO = [
+  { chave: "icf", nome: "ICF", escoposAplicacao: ["parede_externa", "parede_interna"] },
+  { chave: "alvenaria_convencional", nome: "Alvenaria convencional", escoposAplicacao: ["parede_externa", "parede_interna"] },
+  { chave: "alvenaria_estrutural", nome: "Alvenaria estrutural", escoposAplicacao: ["parede_externa", "parede_interna", "estrutura"] },
+  { chave: "concreto_armado_vedacao", nome: "Concreto armado + vedação", escoposAplicacao: ["estrutura", "parede_externa", "parede_interna"] },
+  { chave: "parede_concreto", nome: "Parede de concreto", escoposAplicacao: ["parede_externa", "parede_interna", "estrutura"] },
+  { chave: "steel_frame", nome: "Light Steel Frame", escoposAplicacao: ["parede_externa", "parede_interna", "estrutura"] },
+  { chave: "wood_frame", nome: "Wood Frame", escoposAplicacao: ["parede_externa", "parede_interna", "estrutura"] },
+  { chave: "pre_moldado_concreto", nome: "Pré-moldado de concreto", escoposAplicacao: ["estrutura", "parede_externa"] },
+  { chave: "estrutura_metalica_fechamento", nome: "Estrutura metálica + fechamento", escoposAplicacao: ["estrutura", "parede_externa", "cobertura"] },
+  { chave: "sip_paineis", nome: "SIP / painéis industrializados", escoposAplicacao: ["parede_externa", "parede_interna", "cobertura"] },
+  { chave: "hibrido", nome: "Sistema híbrido", escoposAplicacao: ["outro"] },
+] as const;
+
+router.post("/tenants/:tenantId/sistemas-construtivos/catalogo-padrao", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const existentes = await db.select().from(sistemasConstrutivosTable)
+    .where(eq(sistemasConstrutivosTable.tenantId, tid));
+  const porChave = new Map(existentes.map((s) => [s.chave, s]));
+  const criados = [];
+
+  for (let i = 0; i < SISTEMAS_PADRAO.length; i++) {
+    const sistema = SISTEMAS_PADRAO[i];
+    if (porChave.has(sistema.chave)) continue;
+    const [created] = await db.insert(sistemasConstrutivosTable).values({
+      tenantId: tid,
+      chave: sistema.chave,
+      nome: sistema.nome,
+      escoposAplicacao: [...sistema.escoposAplicacao],
+      ativo: true,
+      ordem: i,
+    }).returning();
+    criados.push(created);
+  }
+
+  return res.json({ existentes: existentes.length, criados: criados.length, itens: criados });
+});
+
+router.get("/tenants/:tenantId/sistemas-construtivos", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+  const rows = await db.select().from(sistemasConstrutivosTable)
+    .where(eq(sistemasConstrutivosTable.tenantId, tid))
+    .orderBy(asc(sistemasConstrutivosTable.ordem), asc(sistemasConstrutivosTable.nome));
+  return res.json(rows);
+});
+
+router.post("/tenants/:tenantId/sistemas-construtivos", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = insertSistemaConstrutivoSchema.safeParse({ ...req.body, tenantId: tid });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const [row] = await db.insert(sistemasConstrutivosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.put("/tenants/:tenantId/sistemas-construtivos/:sistemaId", async (req, res) => {
+  const { tenantId: tid, sistemaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = updateSistemaConstrutivoSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const [row] = await db.update(sistemasConstrutivosTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(and(eq(sistemasConstrutivosTable.id, sistemaId), eq(sistemasConstrutivosTable.tenantId, tid)))
+    .returning();
+  if (!row) return res.status(404).json({ error: "Sistema não encontrado" });
+  return res.json(row);
+});
+
+router.post("/tenants/:tenantId/sistemas-construtivos/:sistemaId/variantes", async (req, res) => {
+  const { tenantId: tid, sistemaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [sistema] = await db.select({ id: sistemasConstrutivosTable.id })
+    .from(sistemasConstrutivosTable)
+    .where(and(eq(sistemasConstrutivosTable.id, sistemaId), eq(sistemasConstrutivosTable.tenantId, tid)));
+  if (!sistema) return res.status(404).json({ error: "Sistema não encontrado" });
+
+  const parsed = insertSistemaVarianteSchema.safeParse({ ...req.body, sistemaId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const [row] = await db.insert(sistemaVariantesTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/sistemas-construtivos/:sistemaId/regras", async (req, res) => {
+  const { tenantId: tid, sistemaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [sistema] = await db.select({ id: sistemasConstrutivosTable.id })
+    .from(sistemasConstrutivosTable)
+    .where(and(eq(sistemasConstrutivosTable.id, sistemaId), eq(sistemasConstrutivosTable.tenantId, tid)));
+  if (!sistema) return res.status(404).json({ error: "Sistema não encontrado" });
+
+  const parsed = insertSistemaComposicaoRegraSchema.safeParse({ ...req.body, sistemaId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  if (parsed.data.varianteId) {
+    const [variante] = await db.select({ id: sistemaVariantesTable.id })
+      .from(sistemaVariantesTable)
+      .where(and(eq(sistemaVariantesTable.id, parsed.data.varianteId), eq(sistemaVariantesTable.sistemaId, sistemaId)));
+    if (!variante) return res.status(422).json({ error: "Variante não pertence ao sistema." });
+  }
+
+  const [row] = await db.insert(sistemaComposicaoRegrasTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/sistemas-interfaces", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = insertSistemaInterfaceSchema.safeParse({ ...req.body, tenantId: tid });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const [row] = await db.insert(sistemaInterfacesTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.get("/tenants/:tenantId/sistemas-construtivos/:sistemaId/resolver", async (req, res) => {
+  const { tenantId: tid, sistemaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [sistema] = await db.select().from(sistemasConstrutivosTable)
+    .where(and(eq(sistemasConstrutivosTable.id, sistemaId), eq(sistemasConstrutivosTable.tenantId, tid)));
+  if (!sistema) return res.status(404).json({ error: "Sistema não encontrado" });
+
+  const varianteId = typeof req.query.varianteId === "string" ? req.query.varianteId : null;
+  const etapaKey = typeof req.query.etapaKey === "string" ? req.query.etapaKey : null;
+
+  const filtros = [eq(sistemaComposicaoRegrasTable.sistemaId, sistemaId)];
+  if (varianteId) filtros.push(eq(sistemaComposicaoRegrasTable.varianteId, varianteId));
+  if (etapaKey) filtros.push(eq(sistemaComposicaoRegrasTable.etapaKey, etapaKey));
+
+  const regras = await db.select().from(sistemaComposicaoRegrasTable)
+    .where(and(...filtros))
+    .orderBy(asc(sistemaComposicaoRegrasTable.ordem));
+
+  const interfaces = await db.select().from(sistemaInterfacesTable)
+    .where(and(
+      eq(sistemaInterfacesTable.tenantId, tid),
+      eq(sistemaInterfacesTable.ativo, true),
+      or(
+        eq(sistemaInterfacesTable.sistemaOrigem, sistema.chave),
+        eq(sistemaInterfacesTable.sistemaOrigem, "todos"),
+      ),
+    ));
+
+  const porSlot = new Map<string, typeof regras>();
+  for (const regra of regras) {
+    if (!porSlot.has(regra.slotKey)) porSlot.set(regra.slotKey, []);
+    porSlot.get(regra.slotKey)!.push(regra);
+  }
+
+  return res.json({
+    sistema,
+    varianteId,
+    etapaKey,
+    slots: [...porSlot.entries()].map(([slotKey, slotRegras]) => ({
+      slotKey,
+      regras: slotRegras,
+    })),
+    interfaces,
+    acoesSuportadas: ["manter", "substituir", "adicionar", "remover", "dimensionar_pelo_projeto"],
   });
 });
 
