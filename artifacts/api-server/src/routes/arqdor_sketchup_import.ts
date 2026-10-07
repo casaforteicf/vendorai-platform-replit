@@ -456,7 +456,6 @@ router.post("/arch/concept-projects/:id/imported-project/apply-3d", async (req, 
       status: archConceptProjectsTable.status,
       configuration: archConceptProjectsTable.configuration,
       facadePreferences: archConceptProjectsTable.facadePreferences,
-      facadeDesign: archConceptProjectsTable.facadeDesign,
     })
     .from(archConceptProjectsTable)
     .where(and(
@@ -492,7 +491,7 @@ router.post("/arch/concept-projects/:id/imported-project/apply-3d", async (req, 
     });
   }
 
-  const currentFacadeDesign = (concept.facadeDesign ?? config.facadeDesign ?? {}) as Record<string, any>;
+  const currentFacadeDesign = (config.facadeDesign ?? {}) as Record<string, any>;
   const currentRoofConfig = (currentFacadeDesign.roofConfig ?? {}) as Record<string, any>;
   const nextFacadeDesign = preview.roof.pitchDegrees != null
     ? {
@@ -524,7 +523,6 @@ router.post("/arch/concept-projects/:id/imported-project/apply-3d", async (req, 
         },
         facadeDesign: nextFacadeDesign,
       } as any,
-      facadeDesign: nextFacadeDesign as any,
       facadePreferences: nextFacadePreferences as any,
       updatedAt: new Date(),
     })
