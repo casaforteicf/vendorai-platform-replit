@@ -944,7 +944,7 @@ async function getSpecObjectApprovals(tId: string | null, specObjectId: string) 
   let specWhere = "id=$1";
   if (tId) {
     specValues.push(tId);
-    specWhere += ` AND tenant_id=${specValues.length}`;
+    specWhere += ` AND tenant_id=$${specValues.length}`;
   }
 
   const specResult = await pool.query(
@@ -958,7 +958,7 @@ async function getSpecObjectApprovals(tId: string | null, specObjectId: string) 
   let approvalWhere = "spec_object_id=$1";
   if (spec.tenant_id) {
     approvalValues.push(spec.tenant_id);
-    approvalWhere += ` AND tenant_id=${approvalValues.length}`;
+    approvalWhere += ` AND tenant_id=$${approvalValues.length}`;
   } else {
     approvalWhere += " AND tenant_id IS NULL";
   }
@@ -1033,7 +1033,7 @@ async function recordSpecObjectApproval(params: {
   let itemWhere = "id=$1";
   if (spec.tenant_id) {
     itemValues.push(spec.tenant_id);
-    itemWhere += ` AND tenant_id=${itemValues.length}`;
+    itemWhere += ` AND tenant_id=$${itemValues.length}`;
   }
   const item = await pool.query(`SELECT * FROM arch_spec_objects WHERE ${itemWhere} LIMIT 1`, itemValues);
   const approvals = await getSpecObjectApprovals(params.tenantId, params.specObjectId);
