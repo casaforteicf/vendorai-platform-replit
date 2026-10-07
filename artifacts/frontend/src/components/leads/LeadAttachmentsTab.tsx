@@ -989,21 +989,21 @@ export default function LeadAttachmentsTab() {
   }
 
   async function deleteAttachment(item: UnifiedAttachment) {
-    if (item.sourceKind !== "lead") return;
+    if (item.sourceKind !== "lead" || !leadId) return;
     if (!window.confirm(`Excluir o arquivo "${item.name}"?`)) return;
 
-    const overrides = { ...attachmentState.overrides };
-    delete overrides[item.key];
-
+    setSaving(true);
     try {
-      await persistAttachmentState({
-        ...attachmentState,
-        files: attachmentState.files.filter((file) => file.id !== item.sourceId),
-        overrides,
+      const result = await requestJson<{ lead?: LeadRecord }>(`/api/leads/${leadId}/attachments/${encodeURIComponent(item.sourceId)}`, {
+        method: "DELETE",
       });
+      if (result.lead) setLead(result.lead);
+      else await refresh();
       toast({ title: "Arquivo excluído" });
     } catch (error) {
       toast({ title: "Não foi possível excluir o arquivo", description: String(error), variant: "destructive" });
+    } finally {
+      setSaving(false);
     }
   }
 
