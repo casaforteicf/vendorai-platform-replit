@@ -134,14 +134,12 @@ interface FlowStep {
 }
 
 const FLOW_STEPS: FlowStep[] = [
-  { id:'criar',       icon:'✦',  label:'Projeto',      sublabel:'Cliente e projeto', primary:'home',          extras:['projeto'],                          color: PHX.purple },
-  { id:'inspirar',    icon:'🖼️', label:'Inspirar',    sublabel:'Biblioteca',        primary:'biblioteca',    extras:[],                                   color: PHX.blue   },
-  { id:'renderizar',  icon:'✨', label:'Renderizar',   sublabel:'Criar e editar render', primary:'renders', extras:['prompt'], color: PHX.purple },
-  { id:'melhorar',    icon:'🔄', label:'Melhorar',    sublabel:'Galeria, versões e aprovação', primary:'real-render-gallery', extras:['correcoes','ai-review','render-gallery','post-render'], color: PHX.amber  },
-  { id:'especificar', icon:'📋', label:'Especificar', sublabel:'Memorial técnico',  primary:'especificacao', extras:[],                                   color: '#16a34a'  },
-  { id:'orcamento',   icon:'💰', label:'Orçamento',   sublabel:'Budget executivo',  primary:'orcamento',     extras:['orcamento-pro'],                    color: '#0369a1'  },
-  { id:'apresentar',  icon:'👤', label:'Proposta',    sublabel:'Apresentar ao cliente',primary:'cliente',     extras:[],                                   color: PHX.cyan   },
-  { id:'entregar',    icon:'📦', label:'Entregar',    sublabel:'Obra e entrega',    primary:'office',        extras:[],                                   color: '#0d9488'  },
+  { id:'projeto',     icon:'✦',  label:'Projeto',          sublabel:'Criar, importar e concluir', primary:'home',               extras:['projeto','biblioteca','renders','prompt','real-render-gallery','correcoes','ai-review','render-gallery','post-render'], color: PHX.purple },
+  { id:'especificar', icon:'📋', label:'Especificar',     sublabel:'Opcional após o projeto',    primary:'real-specification', extras:['especificacao','specification','especificacao-produto','spec-catalog','spec-objects'], color: '#16a34a' },
+  { id:'quantificar', icon:'📐', label:'Quantificar',      sublabel:'Geometria e quantitativos',  primary:'real-budget',        extras:['orcamento-real','budget-engine'], color: PHX.blue },
+  { id:'orcar',       icon:'💰', label:'Orçar',            sublabel:'Preliminar ou detalhado',    primary:'orcamento',           extras:['budget','orcamento-pro'], color: '#0369a1' },
+  { id:'cotar',       icon:'🤝', label:'Contratar / Cotar',sublabel:'Profissionais e fornecedores',primary:'marketplace',          extras:['arq-marketplace','compras','procurement'], color: PHX.cyan },
+  { id:'executar',    icon:'⚙️', label:'Execução',         sublabel:'Atividades, medições e obra', primary:'execution',            extras:['production-procurement','construction','construction-hub','production','producao','production-studio'], color: '#0d9488' },
 ]
 
 // Legado — mantido para keyboard shortcuts e command palette
