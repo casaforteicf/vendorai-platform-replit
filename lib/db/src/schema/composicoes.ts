@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, numeric, boolean, integer, index } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, numeric, boolean, integer, index, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -68,6 +68,22 @@ export const COMPOSICAO_ETAPA_KEYS = [
   "limpeza_entrega",
 ] as const;
 
+export const COMPOSICAO_TIPOS = [
+  "elementar",
+  "sistema",
+  "interface",
+  "mao_de_obra",
+  "equipamento",
+  "servico",
+  "subempreitada",
+] as const;
+
+export const COMPOSICAO_STATUS_VERSAO = [
+  "rascunho",
+  "ativa",
+  "arquivada",
+] as const;
+
 export const COMPOSICAO_SISTEMAS_CONSTRUTIVOS = [
   "icf",
   "alvenaria_convencional",
@@ -97,6 +113,22 @@ export const composicoesTable = pgTable("composicoes", {
   nome: text("nome").notNull(),
   descricao: text("descricao"),
   unidade: text("unidade").notNull(),
+  tipoComposicao: text("tipo_composicao").notNull().default("elementar"),
+  // Memorial técnico para "Entender composição".
+  aplicacao: text("aplicacao"),
+  inclui: text("inclui"),
+  naoInclui: text("nao_inclui"),
+  criterioMedicao: text("criterio_medicao"),
+  observacoesTecnicas: text("observacoes_tecnicas"),
+  // Fórmula/parametrização estruturada; não executar expressão arbitrária.
+  formulaCalculo: jsonb("formula_calculo").$type<Record<string, unknown> | null>(),
+  parametrosPadrao: jsonb("parametros_padrao").$type<Record<string, unknown> | null>(),
+  // Versionamento explícito da biblioteca.
+  composicaoOrigemId: text("composicao_origem_id"),
+  varianteDeId: text("variante_de_id"),
+  versao: integer("versao").notNull().default(1),
+  statusVersao: text("status_versao").notNull().default("ativa"),
+  versaoAtual: boolean("versao_atual").notNull().default(true),
   custoTotal: numeric("custo_total", { precision: 15, scale: 4 }),
   produtividadeDia: numeric("produtividade_dia", { precision: 15, scale: 4 }),
   equipePadrao: integer("equipe_padrao").notNull().default(1),
@@ -118,6 +150,8 @@ export const insertComposicaoSchema = createInsertSchema(composicoesTable, {
   custoTotal: decimalOptional,
   produtividadeDia: decimalOptional,
   horasDiaPadrao: decimalOptional,
+  tipoComposicao: z.enum(COMPOSICAO_TIPOS).optional(),
+  statusVersao: z.enum(COMPOSICAO_STATUS_VERSAO).optional(),
   etapaKey: z.enum(COMPOSICAO_ETAPA_KEYS).nullable().optional(),
   sistemasConstrutivos: z.array(z.enum(COMPOSICAO_SISTEMAS_CONSTRUTIVOS)).optional(),
 }).omit({ id: true, createdAt: true, updatedAt: true });
@@ -126,6 +160,8 @@ export const updateComposicaoSchema = createSelectSchema(composicoesTable, {
   custoTotal: decimalOptional,
   produtividadeDia: decimalOptional,
   horasDiaPadrao: decimalOptional,
+  tipoComposicao: z.enum(COMPOSICAO_TIPOS).optional(),
+  statusVersao: z.enum(COMPOSICAO_STATUS_VERSAO).optional(),
   etapaKey: z.enum(COMPOSICAO_ETAPA_KEYS).nullable().optional(),
   sistemasConstrutivos: z.array(z.enum(COMPOSICAO_SISTEMAS_CONSTRUTIVOS)).optional(),
 })
@@ -152,6 +188,10 @@ export const composicaoInsumosTable = pgTable("composicao_insumos", {
   // Override opcional. Quando nulo, usa perdaPadraoPercentual do insumo.
   // Nunca somar perda padrão + override: o override substitui o padrão.
   perdaPercentualOverride: numeric("perda_percentual_override", { precision: 7, scale: 3 }),
+  // Quantidade pode ser fixa ou derivada de parâmetros técnicos da composição.
+  formulaQuantidade: jsonb("formula_quantidade").$type<Record<string, unknown> | null>(),
+  condicaoAplicabilidade: jsonb("condicao_aplicabilidade").$type<Record<string, unknown> | null>(),
+  observacaoTecnica: text("observacao_tecnica"),
   precoUnitario: numeric("preco_unitario", { precision: 15, scale: 4 }),
 });
 
