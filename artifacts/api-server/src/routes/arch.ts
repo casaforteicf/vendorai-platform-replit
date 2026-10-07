@@ -101,6 +101,7 @@ import { buildConceptIfc, conceptIfcFilename } from "../lib/arqdor-concept-ifc.j
 import { parseIfcEditableGeometry } from "../lib/arqdor-ifc-editable.js";
 import { fitReferenceImageToLot } from "../lib/arqdor-reference-calibration.js";
 import { traceReferencePlanImage } from "../lib/arqdor-reference-ai-trace.js";
+import { analyzeReferencePhoto } from "../lib/arqdor-reference-photo-analysis.js";
 
 function sanitizeAIError(err: any): { status: number; message: string } {
   const raw: string = err?.message ?? String(err ?? "");
@@ -1425,6 +1426,19 @@ router.post("/arch/concept-projects/:id/reference-plan/trace", authenticate, asy
     return res.status(422).json({ error: "A planta de referência não possui arquivo persistido válido." });
   }
 
+  const photoAnalysis = referencePlan.photoAnalysis && typeof referencePlan.photoAnalysis === "object"
+    ? referencePlan.photoAnalysis as Record<string, unknown>
+    : null;
+  const classifiedKind = String(photoAnalysis?.kind ?? "");
+  const classifiedConfidence = Number(photoAnalysis?.confidence ?? 0);
+  if (classifiedKind && classifiedKind !== "plan" && classifiedKind !== "unknown" && classifiedConfidence >= 0.55) {
+    return res.status(422).json({
+      error: "Esta imagem foi reconhecida como foto real, não como planta/croqui. Use a análise de cena do pré-projeto em vez de vetorizar como planta.",
+      code: "REFERENCE_PHOTO_NOT_PLAN",
+      photoAnalysis,
+    });
+  }
+
   try {
     const lot = (concept.lot ?? {}) as { width?: number; depth?: number };
     const bounds = {
@@ -1522,6 +1536,7 @@ router.post("/arch/concept-projects/:id/reference-plan", authenticate, upload.si
     let depthMeters = lotDepth;
     let offsetX = 0;
     let offsetY = 0;
+    let photoAnalysis: Awaited<ReturnType<typeof analyzeReferencePhoto>> | null = null;
 
     if (kind === "image") {
       const metadata = await sharp(req.file.buffer).metadata();
@@ -1533,6 +1548,25 @@ router.post("/arch/concept-projects/:id/reference-plan", authenticate, upload.si
         depthMeters = fitted.depthMeters;
         offsetX = fitted.offsetX;
         offsetY = fitted.offsetY;
+      }
+      try {
+        photoAnalysis = await analyzeReferencePhoto({
+          tenantId: tid,
+          buffer: req.file.buffer,
+        });
+      } catch {
+        photoAnalysis = {
+          kind: "unknown",
+          confidence: 0,
+          summary: "Imagem recebida. A classificação automática não ficou disponível; revise o tipo de referência antes de converter.",
+          perspective: "unknown",
+          needsScaleAnchor: true,
+          detectedElements: [],
+          preserveElements: [],
+          removableElements: [],
+          projectHints: [],
+          sourceModel: "unavailable",
+        };
       }
     }
 
@@ -1552,6 +1586,7 @@ router.post("/arch/concept-projects/:id/reference-plan", authenticate, upload.si
       offsetX,
       offsetY,
       calibrationSource: kind === "image" ? "image_aspect_fit" : "lot",
+      photoAnalysis: photoAnalysis ?? undefined,
     };
 
     const currentConfig = (concept.configuration ?? {}) as Record<string, unknown>;
