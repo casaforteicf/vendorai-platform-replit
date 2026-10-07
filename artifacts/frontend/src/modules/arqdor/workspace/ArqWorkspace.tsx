@@ -138,7 +138,7 @@ const FLOW_STEPS: FlowStep[] = [
   { id:'especificar', icon:'📋', label:'Especificar',     sublabel:'Opcional após o projeto',    primary:'real-specification', extras:['especificacao','specification','especificacao-produto','spec-catalog','spec-objects'], color: '#16a34a' },
   { id:'quantificar', icon:'📐', label:'Quantificar',      sublabel:'Geometria e quantitativos',  primary:'real-budget',        extras:['orcamento-real','budget-engine'], color: PHX.blue },
   { id:'orcar',       icon:'💰', label:'Orçar',            sublabel:'Preliminar ou detalhado',    primary:'orcamento',           extras:['budget','orcamento-pro'], color: '#0369a1' },
-  { id:'cotar',       icon:'🤝', label:'Contratar / Cotar',sublabel:'Profissionais e fornecedores',primary:'marketplace',          extras:['arq-marketplace','compras','procurement'], color: PHX.cyan },
+  { id:'cotar',       icon:'🤝', label:'Contratar / Cotar',sublabel:'Profissionais e fornecedores',primary:'compras',              extras:['procurement','marketplace','arq-marketplace'], color: PHX.cyan },
   { id:'executar',    icon:'⚙️', label:'Execução',         sublabel:'Atividades, medições e obra', primary:'execution',            extras:['production-procurement','construction','construction-hub','production','producao','production-studio'], color: '#0d9488' },
 ]
 
