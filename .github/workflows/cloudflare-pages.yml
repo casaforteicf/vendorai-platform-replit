@@ -1,6 +1,6 @@
 name: Cloudflare Pages
 # Production deploy: Pages frontend; Railway backend remains unchanged.
-# Redeploy marker: arqdor-real-environment-production-2026-10-07.
+# Redeploy marker: arqdor-real-environment-flow-fix-2026-10-07.
 
 on:
   push:
