@@ -574,6 +574,7 @@ export default function PortalObra() {
               onRefresh={() => void loadPortal(portalSession)} />
           </Section>
         ) : null}
+
         <PortalClientDecisions token={token} decisions={decisions} onResolved={(decisionId) => setData((current) => current ? { ...current, decisions: (current.decisions ?? []).filter((item) => item.id !== decisionId) } : current)} />
 
         {ocorrencias.length > 0 ? <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 p-5"><h2 className="mb-3 flex items-center gap-2 font-semibold text-amber-800"><AlertTriangle className="h-5 w-5" />Ocorrências em aberto ({ocorrencias.length})</h2><div className="space-y-3">{ocorrencias.map((oc) => <div key={oc.id} className="rounded-lg border border-amber-100 bg-white p-3"><div className="mb-1 flex items-center justify-between text-xs text-gray-500"><span>{fmt(oc.data)}</span>{oc.responsavelNome ? <span>{oc.responsavelNome}</span> : null}</div><p className="text-sm text-gray-700">{oc.observacoes}</p></div>)}</div></div> : null}
@@ -587,6 +588,7 @@ export default function PortalObra() {
             {globalSearchResults.length ? globalSearchResults.map((result) => result.url ? <a key={result.id} href={result.url} target="_blank" rel="noreferrer" className="block rounded-xl px-3 py-2 hover:bg-gray-50"><p className="text-sm font-medium text-gray-800">{result.title}</p><p className="text-xs text-gray-400">{result.subtitle}</p></a> : <button key={result.id} onClick={() => { if (result.tab) handleTabChange(result.tab); setGlobalSearch(""); }} className="block w-full rounded-xl px-3 py-2 text-left hover:bg-gray-50"><p className="text-sm font-medium text-gray-800">{result.title}</p><p className="text-xs text-gray-400">{result.subtitle}</p></button>) : <p className="px-3 py-4 text-center text-sm text-gray-400">Nenhum resultado publicado encontrado.</p>}
           </div> : null}
         </div>
+
         {visibleTabs.length > 0 ? <div className="mb-6"><div className="sm:hidden"><select value={activeTab} onChange={(e) => handleTabChange(e.target.value as TabId)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-700">{visibleTabs.map((tab) => <option key={tab.id} value={tab.id}>{tab.label}</option>)}</select></div><div className="hidden overflow-x-auto border-b border-gray-200 sm:flex">{visibleTabs.map((tab) => <button key={tab.id} onClick={() => handleTabChange(tab.id)} className={`flex items-center gap-2 whitespace-nowrap border-b-2 px-5 py-3 text-sm font-medium transition-colors ${activeTab === tab.id ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"}`}>{tab.icon}{tab.label}</button>)}</div></div> : null}
 
         {activeTab === "pendencias" && data.publication?.showClientTasks !== false ? (
