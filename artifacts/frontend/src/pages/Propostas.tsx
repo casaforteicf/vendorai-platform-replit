@@ -7372,15 +7372,9 @@ export default function Propostas() {
       : undefined
   );
 
-  const proposalListParams = urlLeadId
-    ? { leadId: urlLeadId }
-    : urlDealId
-      ? { dealId: urlDealId }
-      : undefined;
-
-  const { data: propostas = [], isLoading } = useListPropostas(tenantId, proposalListParams, {
+  const { data: propostas = [], isLoading } = useListPropostas(tenantId, undefined, {
     query: {
-      queryKey: getListPropostasQueryKey(tenantId, proposalListParams),
+      queryKey: getListPropostasQueryKey(tenantId),
       enabled: !!tenantId,
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,

@@ -28,15 +28,6 @@ type PortalConfig = {
   showManuals: boolean;
   showSupport: boolean;
   showChat: boolean;
-  showBriefing: boolean;
-  showTimeline: boolean;
-  showAgenda: boolean;
-  showChangeOrders: boolean;
-  showSignatures: boolean;
-  showDelivery: boolean;
-  showVendi: boolean;
-  showNotifications: boolean;
-  showClientTasks: boolean;
 };
 
 const DEFAULT_CONFIG: PortalConfig = {
@@ -62,15 +53,6 @@ const DEFAULT_CONFIG: PortalConfig = {
   showManuals: true,
   showSupport: true,
   showChat: true,
-  showBriefing: true,
-  showTimeline: true,
-  showAgenda: true,
-  showChangeOrders: true,
-  showSignatures: true,
-  showDelivery: true,
-  showVendi: true,
-  showNotifications: true,
-  showClientTasks: true,
 };
 
 function token() { return localStorage.getItem("vendorai_token") ?? ""; }
@@ -102,15 +84,6 @@ function projectMeta(arqState: any, projectCtx: any) {
 
 const ITEMS: Array<{ key: keyof PortalConfig; title: string; description: string; dependsOn?: keyof PortalConfig }> = [
   { key: "showOverview", title: "Visão geral da obra", description: "Status, endereço, avanço físico, etapa atual, próximas etapas e previsão de entrega." },
-  { key: "showBriefing", title: "Briefing", description: "Briefing do cliente, referências, respostas e aprovações publicadas." },
-  { key: "showTimeline", title: "Linha do tempo", description: "Histórico consolidado do briefing ao pós-venda." },
-  { key: "showClientTasks", title: "Pendências do cliente", description: "Ações que dependem do cliente: aprovações, escolhas, assinaturas e confirmações." },
-  { key: "showAgenda", title: "Agenda", description: "Reuniões, visitas, medições, instalações, vistorias e entregas." },
-  { key: "showChangeOrders", title: "Alterações e aditivos", description: "Mudanças de escopo com impacto em prazo e valor para aceite do cliente." },
-  { key: "showSignatures", title: "Assinaturas e aceites", description: "Contratos, termos, documentos e aceites pendentes ou concluídos." },
-  { key: "showDelivery", title: "Entrega e pós-venda", description: "Checklist final, garantias, assistência, manuais e satisfação." },
-  { key: "showNotifications", title: "Notificações", description: "Avisos importantes e atualizações publicadas para o cliente." },
-  { key: "showVendi", title: "Vendi no portal", description: "Assistente contextual que responde somente com informações autorizadas desta obra." },
   { key: "showSchedule", title: "Cronograma", description: "Etapas, datas previstas, responsáveis e avanço físico." },
   { key: "showMilestones", title: "Marcos da obra", description: "Marcos previstos, concluídos e próximos eventos do cronograma.", dependsOn: "showSchedule" },
   { key: "showMeasurements", title: "Medições", description: "Histórico de evolução física registrada nas etapas.", dependsOn: "showSchedule" },

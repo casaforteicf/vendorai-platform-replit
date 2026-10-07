@@ -3,7 +3,6 @@ import ConfiguracoesLegacy from "./ConfiguracoesLegacy";
 
 const SECTION_LABELS: Record<string, { label: string; title: string }> = {
   Perfil: { label: "Empresa", title: "Dados da empresa, marca, posicionamento e contexto institucional" },
-  Marketing: { label: "Kit da Marca", title: "Logo, cores, linguagem visual e padrões de comunicação" },
   Marketing: { label: "Kit da Marca", title: "Logo, cores, linguagem visual e padrões de comunicação; estratégia e Plano de Negócios ficam em Configurações" },
   "Análise": { label: "Comercial", title: "Parâmetros comerciais, análises e sinais usados pela inteligência" },
   "Calendário": { label: "Agenda e Automações", title: "Regras de agenda, disponibilidade, calendários e automações relacionadas" },
@@ -16,8 +15,7 @@ const SECTION_LABELS: Record<string, { label: string; title: string }> = {
 
 const CONFIG_SEARCH_INDEX = [
   { section: "Empresa", terms: "empresa perfil razão social nome fantasia cnpj telefone email instagram endereço segmento marca logo favicon cor missão visão história público alvo diferenciais concorrentes" },
-  { section: "Marca e Negócio", terms: "marketing kit da marca branding identidade logo cores posicionamento" },
-  { section: "Inteligência da Empresa", terms: "plano de negócios pn empresa posicionamento missão visão valores público icp proposta valor metas região capacidade mercado concorrentes operação financeiro documentos fontes vendi" },
+  { section: "Marca e Negócio", terms: "marketing kit da marca plano de negócios pn swot segmentos públicos riscos oportunidades ferramentas agentes campanhas branding identidade logo cores posicionamento" },
   { section: "Comercial", terms: "comercial fechamento venda preço desconto margem comissão estoque aprovação inteligência análise regras abordagem" },
   { section: "Agenda e Automações", terms: "agenda calendário disponibilidade horário agendamento automação avaliação google pós-venda gatilho lembrete" },
   { section: "Integrações", terms: "integrações whatsapp instagram facebook meta ads google gmail smtp zapsign pagamento erp estoque ecommerce api webhook token conexão" },
@@ -52,13 +50,7 @@ type IntegrationHealthPayload = {
   social?: { linkedin?: boolean; tiktok?: boolean };
 };
 
-export default function Configuracoes({
-  embedded = false,
-  forcedTab,
-}: {
-  embedded?: boolean;
-  forcedTab?: string;
-} = {}) {
+export default function Configuracoes({ embedded = false }: { embedded?: boolean } = {}) {
   const params = new URLSearchParams(window.location.search);
   const legacySiteDeepLink = params.get("tab") === "site";
 
@@ -408,13 +400,6 @@ export default function Configuracoes({
 
   return (
     <div className="vendor-config-without-site">
-      <section className="mb-4 flex flex-col gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-base font-semibold">Inteligência da Empresa</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Perfil estratégico, informações oficiais, apoio do Vendi e Plano de Negócios.</p>
-        </div>
-        <a href="/diagnostico-planejamento" className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90">Abrir Inteligência da Empresa</a>
-      </section>
       <style>{`
         .vendor-config-without-site,
         .vendor-config-without-site > div,
@@ -498,7 +483,7 @@ export default function Configuracoes({
           .catalog-source-note a { display: inline-block; margin-top: .5rem; margin-left: 0; }
         }
       `}</style>
-      <ConfiguracoesLegacy embedded={embedded} forcedTab={forcedTab} />
+      <ConfiguracoesLegacy embedded={embedded} />
     </div>
   );
 }

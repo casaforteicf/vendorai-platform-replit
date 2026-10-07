@@ -4,13 +4,6 @@ type QuoteExtractionResponse = {
   titulo?: string | null;
   valorTotal?: number | null;
   cliente?: string | null;
-  clienteDocumento?: string | null;
-  clienteTelefone?: string | null;
-  clienteEmail?: string | null;
-  clienteCidade?: string | null;
-  clienteEstado?: string | null;
-  clienteCep?: string | null;
-  clienteEndereco?: string | null;
   fornecedor?: string | null;
   validade?: string | null;
   itens?: Array<{
@@ -24,54 +17,6 @@ type QuoteExtractionResponse = {
 };
 
 type SupportedControl = HTMLInputElement | HTMLTextAreaElement;
-
-const BUDGET_IMPORT_MAX_SIZE = 10 * 1024 * 1024;
-const BUDGET_IMPORT_EXTENSIONS = new Set(["pdf", "png", "jpg", "jpeg", "webp", "doc", "docx"]);
-
-function validateBudgetFile(file: File): string | null {
-  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
-  if (!BUDGET_IMPORT_EXTENSIONS.has(extension)) return "Use PDF, imagem, DOC ou DOCX.";
-  if (file.size <= 0) return "O arquivo selecionado está vazio.";
-  if (file.size > BUDGET_IMPORT_MAX_SIZE) return "O limite para leitura automática é 10 MB.";
-  return null;
-}
-
-async function extractBudgetWithRetry(tenantId: string, file: File): Promise<QuoteExtractionResponse> {
-  const transient = new Set([408, 425, 429, 502, 503, 504]);
-  const token = localStorage.getItem("vendorai_token");
-  let lastError = "Não foi possível ler o orçamento.";
-
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 45_000);
-    try {
-      const formData = new FormData();
-      formData.append("file", file, file.name);
-      const response = await fetch(`/api/tenants/${encodeURIComponent(tenantId)}/deals/extract-quote`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        body: formData,
-        signal: controller.signal,
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (response.ok) return payload as QuoteExtractionResponse;
-      lastError = payload?.error || payload?.message || `Falha ao ler orçamento (HTTP ${response.status})`;
-      if (!transient.has(response.status) || attempt === 1) throw new Error(lastError);
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        lastError = "A leitura demorou demais e foi interrompida.";
-      } else if (error instanceof Error && error.message) {
-        lastError = error.message;
-      }
-      if (attempt === 1) throw new Error(lastError);
-    } finally {
-      window.clearTimeout(timeout);
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, 700));
-  }
-
-  throw new Error(lastError);
-}
 
 function normalizeText(value: string | null | undefined): string {
   return (value ?? "")
@@ -276,9 +221,8 @@ export function BudgetImportAutofill() {
       const key = `${file.name}:${file.size}:${file.lastModified}`;
       if (processingKeys.has(key) || completedKeys.has(key)) return;
 
-      const validationError = validateBudgetFile(file);
-      if (validationError) {
-        setStatus(context.statusHost, `Arquivo anexado, mas não foi enviado para leitura automática: ${validationError} Você ainda pode preencher os campos manualmente.`, "warning");
+      if (file.size > 10 * 1024 * 1024) {
+        setStatus(context.statusHost, "Arquivo anexado. A leitura automática por IA aceita arquivos de até 10 MB; revise os campos manualmente.", "warning");
         return;
       }
 
@@ -290,7 +234,17 @@ export function BudgetImportAutofill() {
           const tenantId = await resolveTenantId();
           if (!tenantId) throw new Error("tenant_not_found");
 
-          const result = await extractBudgetWithRetry(tenantId, file);
+          const formData = new FormData();
+          formData.append("file", file, file.name);
+          const token = localStorage.getItem("vendorai_token");
+          const response = await fetch(`/api/tenants/${encodeURIComponent(tenantId)}/deals/extract-quote`, {
+            method: "POST",
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+            body: formData,
+          });
+
+          if (!response.ok) throw new Error(`extract_quote_${response.status}`);
+          const result = (await response.json()) as QuoteExtractionResponse;
           const populated = populateBudgetFields(context.dialog, result);
           const itemCount = result.itens?.length ?? 0;
           const confidence = typeof result.confianca === "number" ? result.confianca : null;
@@ -306,20 +260,17 @@ export function BudgetImportAutofill() {
           } else {
             const confidenceText = confidence !== null ? ` · confiança ${Math.round(confidence * 100)}%` : "";
             const itemsText = itemCount > 0 ? ` · ${itemCount} item(ns) identificado(s)` : "";
-            const customerText = result.cliente
-              ? ` · cliente: ${result.cliente}${result.clienteCidade ? ` / ${result.clienteCidade}${result.clienteEstado ? `-${result.clienteEstado}` : ""}` : ""}`
-              : "";
             setStatus(
               context.statusHost,
-              `Dados puxados do anexo: ${populated.join(", ")}${itemsText}${customerText}${confidenceText}. Revise antes de criar o orçamento.`,
+              `Dados puxados do anexo: ${populated.join(", ")}${itemsText}${confidenceText}. Revise antes de criar o orçamento.`,
               "success",
             );
           }
           completedKeys.add(key);
-        } catch (error) {
+        } catch {
           setStatus(
             context.statusHost,
-            `O arquivo foi anexado normalmente, mas a leitura automática falhou: ${error instanceof Error ? error.message : "erro desconhecido"}. Você ainda pode preencher os campos manualmente.`,
+            "O arquivo foi anexado normalmente, mas não consegui ler os dados automaticamente. Você ainda pode preencher os campos manualmente.",
             "warning",
           );
         } finally {

@@ -20,43 +20,14 @@ function authHeaders() {
 }
 
 export interface ArqProjectMeta {
-  id:              string
-  titulo:          string
-  clienteNome:     string | null
-  clienteEmail?:   string | null
-  clienteTelefone?:string | null
-  leadId?:         string | null
-  dealId?:         string | null
-  status:          string | null
-  tipoObra:        string | null
-  areaM2:          string | null
-  createdAt:       string
-  updatedAt:       string
-}
-
-function normalizeClientValue(value?: string | null): string {
-  return (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
-}
-
-function getClientScopeKey(project?: ArqProjectMeta | null): string | null {
-  if (!project) return null
-  if (project.leadId) return `lead:${project.leadId}`
-  if (project.dealId) return `deal:${project.dealId}`
-
-  const email = normalizeClientValue(project.clienteEmail)
-  if (email) return `email:${email}`
-
-  const phone = (project.clienteTelefone ?? '').replace(/\D/g, '')
-  if (phone) return `phone:${phone}`
-
-  const name = normalizeClientValue(project.clienteNome)
-  return name ? `name:${name}` : null
-}
-
-function belongsToSameClient(a?: ArqProjectMeta | null, b?: ArqProjectMeta | null): boolean {
-  const aKey = getClientScopeKey(a)
-  const bKey = getClientScopeKey(b)
-  return Boolean(aKey && bKey && aKey === bKey)
+  id:          string
+  titulo:      string
+  clienteNome: string | null
+  status:      string | null
+  tipoObra:    string | null
+  areaM2:      string | null
+  createdAt:   string
+  updatedAt:   string
 }
 
 export interface ArqProjectState {
@@ -94,12 +65,11 @@ export function useArqProject(): ArqProjectState {
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  async function fetchProjects(clientProjectId?: string | null) {
+  async function fetchProjects() {
     setProjectsLoading(true)
     setError(null)
     try {
-      const query = clientProjectId ? `?clientProjectId=${encodeURIComponent(clientProjectId)}` : ''
-      const res = await fetch(`${BASE}/arq/projects${query}`, { headers: authHeaders() })
+      const res = await fetch(`${BASE}/arq/projects`, { headers: authHeaders() })
       if (res.ok) {
         const data: ArqProjectMeta[] = await res.json()
         setProjects(data)
@@ -162,7 +132,7 @@ export function useArqProject(): ArqProjectState {
   useEffect(() => {
     const stored = localStorage.getItem('arq_last_project_id')
     const requestedProjectId = new URLSearchParams(window.location.search).get('project_id')?.trim() || null
-    fetchProjects(requestedProjectId ?? stored).then(list => {
+    fetchProjects().then(list => {
       if (list.length === 0) return
       const target =
         requestedProjectId && list.find(p => p.id === requestedProjectId)
@@ -189,11 +159,6 @@ export function useArqProject(): ArqProjectState {
   }
 
   async function selectProject(id: string) {
-    const target = projects.find(project => project.id === id)
-    if (projectMeta && target && !belongsToSameClient(projectMeta, target)) {
-      setError('Este projeto pertence a outro cliente. Troque o cliente antes de abrir o projeto.')
-      return
-    }
     await loadProject(id)
   }
 
@@ -284,10 +249,6 @@ export function useArqProject(): ArqProjectState {
     }
   }
 
-  const scopedProjects = projectMeta
-    ? projects.filter(project => belongsToSameClient(projectMeta, project))
-    : projects
-
   return {
     loading,
     saving,
@@ -296,7 +257,7 @@ export function useArqProject(): ArqProjectState {
     projectMeta,
     objects,
     materials,
-    projects: scopedProjects,
+    projects,
     projectsLoading,
     createProject,
     selectProject,

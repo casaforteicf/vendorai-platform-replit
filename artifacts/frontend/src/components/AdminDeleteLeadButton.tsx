@@ -55,19 +55,6 @@ export function AdminDeleteLeadButton({
         throw new Error(data?.error || "Não foi possível excluir o lead.");
       }
 
-      // Remove o lead e todos os cards/processos ligados a ele do cache imediatamente.
-      // O refetch continua abaixo como reconciliação com o backend.
-      queryClient.setQueriesData({ predicate: () => true }, (cached: unknown) => {
-        if (!Array.isArray(cached)) return cached;
-        return cached.filter((item: unknown) => {
-          if (!item || typeof item !== "object") return true;
-          const record = item as Record<string, unknown>;
-          if (record.leadId === leadId) return false;
-          const looksLikeLead = record.id === leadId
-            && ("nome" in record || "empresa" in record || "excluidoEm" in record || "motivoExclusao" in record);
-          return !looksLikeLead;
-        });
-      });
       await queryClient.invalidateQueries();
       setOpen(false);
       setMotivo("");

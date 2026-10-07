@@ -111,7 +111,7 @@ export function StageQuestionsPanel({
       {
         onSuccess: () => {
           qc.invalidateQueries({ queryKey: getListPipelineStagesQueryKey(tenantId) });
-          toast({ title: "Padrão de perguntas da etapa salvo." });
+          toast({ title: "Perguntas da etapa atualizadas." });
           setEditing(false);
         },
         onError: () => toast({ title: "Erro ao salvar perguntas", variant: "destructive" }),
@@ -173,9 +173,8 @@ export function StageQuestionsPanel({
             <div className="mb-3 rounded-lg border border-primary/20 bg-primary/[0.04] px-3 py-2">
               <p className="text-xs font-semibold">Configuração do modelo da etapa</p>
               <p className="mt-0.5 text-[11px] text-muted-foreground">
-                Disponível somente para administradores do tenant. As alterações ficam como padrão desta etapa para todos os negócios. Respostas já registradas nos negócios são preservadas quando o modelo é atualizado.
+                Disponível somente para administradores do tenant. As alterações ficam como padrão desta etapa para todos os negócios.
               </p>
-
             </div>
             {editList.map((p, i) => (
               <div key={p.id} className="flex items-center gap-2">
@@ -199,7 +198,7 @@ export function StageQuestionsPanel({
                 className="h-8 text-sm"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && newQuestion.trim()) {
-                    setEditList((prev) => [...prev, { id: slug(newQuestion) + "_" + Date.now().toString(36), texto: newQuestion.trim() }]);
+                    setEditList((prev) => [...prev, { id: slug(newQuestion) + "_" + prev.length, texto: newQuestion.trim() }]);
                     setNewQuestion("");
                   }
                 }}
@@ -207,7 +206,7 @@ export function StageQuestionsPanel({
               <Button
                 type="button" size="sm" variant="outline" className="h-8 shrink-0 gap-1"
                 disabled={!newQuestion.trim()}
-                onClick={() => { setEditList((prev) => [...prev, { id: slug(newQuestion) + "_" + Date.now().toString(36), texto: newQuestion.trim() }]); setNewQuestion(""); }}
+                onClick={() => { setEditList((prev) => [...prev, { id: slug(newQuestion) + "_" + prev.length, texto: newQuestion.trim() }]); setNewQuestion(""); }}
               >
                 <Plus className="h-3.5 w-3.5" />
               </Button>
@@ -348,4 +347,3 @@ export function StageQuestionsPanel({
     </Card>
   );
 }
-
