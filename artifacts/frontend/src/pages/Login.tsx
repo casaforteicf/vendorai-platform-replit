@@ -511,7 +511,7 @@ export default function Login() {
       login(payload.token, payload.user);
       const target = returnPath && returnPath !== "/" && returnPath !== "/login"
         ? returnPath
-        : "/diagnostico-planejamento";
+        : "/configuracoes?tab=plano-negocios";
       window.location.replace(target);
     } catch (error) {
       console.error("Homologation passwordless login failed", error);
@@ -532,7 +532,7 @@ export default function Login() {
       const returnPath = consumeSafePostLoginPath();
       const target = returnPath && returnPath !== "/" && returnPath !== "/login"
         ? returnPath
-        : "/diagnostico-planejamento";
+        : "/configuracoes?tab=plano-negocios";
       window.location.replace(target);
       return;
     }
