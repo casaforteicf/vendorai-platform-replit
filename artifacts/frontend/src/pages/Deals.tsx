@@ -247,6 +247,7 @@ function dealRepresentativePartnershipId(value?: string | null) {
 
 function canReceiveCommercialAssignment(user: StageResponsibleUser): boolean {
   if (user.active === false) return false;
+  if (user.platformRole === "super_admin" || user.platformRole === "tenant_admin" || user.userFunction === "administrador") return true;
   if (user.leadAssignmentEnabled === false) return false;
   if (user.leadAssignmentEnabled === true) return true;
   return user.platformRole === "tenant_seller"
@@ -259,10 +260,11 @@ function isUserResponsibleForStage(
   stage?: Pick<PipelineStage, "responsaveisFuncoes"> | null,
 ): boolean {
   if (!canReceiveCommercialAssignment(user)) return false;
+  if (user.platformRole === "super_admin" || user.platformRole === "tenant_admin" || user.userFunction === "administrador") return true;
   const responsibleFunctions = stage?.responsaveisFuncoes ?? [];
 
   // Etapas sem função responsável configurada não devem esvaziar o seletor.
-  // Nelas, reutilizamos a mesma regra de elegibilidade do cadastro de Lead.
+  // Nelas, qualquer usuário comercial elegível permanece disponível.
   if (responsibleFunctions.length === 0) return true;
 
   const refs = new Set<string>();
