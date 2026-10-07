@@ -15,6 +15,7 @@ import {
   tenantsTable,
   dealsTable,
   leadsTable,
+  leadBriefingsTable,
   type PropostaItem,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
@@ -69,11 +70,43 @@ async function buildBudgetContextSnapshot(input: {
   baseBudgetId?: string;
   baseBudgetNumber?: string;
   revisionLabel?: string;
+  dealId?: string | null;
 }) {
   const [lead] = await db
     .select()
     .from(leadsTable)
     .where(and(eq(leadsTable.id, input.leadId), eq(leadsTable.tenantId, input.tenantId)))
+    .limit(1);
+
+  const [deal] = input.dealId
+    ? await db
+        .select({
+          id: dealsTable.id,
+          respostasEtapas: dealsTable.respostasEtapas,
+          etapa: dealsTable.etapa,
+        })
+        .from(dealsTable)
+        .where(and(
+          eq(dealsTable.id, input.dealId),
+          eq(dealsTable.tenantId, input.tenantId),
+          eq(dealsTable.leadId, input.leadId),
+        ))
+        .limit(1)
+    : await db
+        .select({
+          id: dealsTable.id,
+          respostasEtapas: dealsTable.respostasEtapas,
+          etapa: dealsTable.etapa,
+        })
+        .from(dealsTable)
+        .where(and(eq(dealsTable.tenantId, input.tenantId), eq(dealsTable.leadId, input.leadId)))
+        .orderBy(desc(dealsTable.updatedAt))
+        .limit(1);
+
+  const [briefing] = await db
+    .select()
+    .from(leadBriefingsTable)
+    .where(and(eq(leadBriefingsTable.tenantId, input.tenantId), eq(leadBriefingsTable.leadId, input.leadId)))
     .limit(1);
 
   const [profile] = await db
@@ -108,7 +141,7 @@ async function buildBudgetContextSnapshot(input: {
   ].filter((value): value is string => typeof value === "string" && value.trim().length > 0)));
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     capturedAt: new Date().toISOString(),
     immutableForVersion: true,
     origin: input.origin,
@@ -125,6 +158,27 @@ async function buildBudgetContextSnapshot(input: {
       objetivo: lead.objetivo,
       mercadoSegmento: lead.mercadoSegmento,
     } : undefined,
+    qualification: {
+      dealId: deal?.id ?? input.dealId ?? null,
+      dealStage: deal?.etapa ?? null,
+      stageAnswers: (deal?.respostasEtapas as Record<string, Record<string, string>> | null | undefined)?.qualificado ?? {},
+      briefing: briefing ? {
+        contactType: briefing.contactType,
+        situationAnswers: briefing.situationAnswers ?? [],
+        problemAnswers: briefing.problemAnswers ?? [],
+        implicationAnswers: briefing.implicationAnswers ?? [],
+        implicationEstimatedValue: briefing.implicationEstimatedValue,
+        needAnswers: briefing.needAnswers ?? [],
+        needThermometer: briefing.needThermometer,
+        objections: briefing.objections ?? [],
+        prospectSize: briefing.prospectSize,
+        nextStepType: briefing.nextStepType,
+        nextStepDate: briefing.nextStepDate,
+        freeNotes: briefing.freeNotes,
+        aiSummary: briefing.aiSummary,
+        journeyStage: briefing.journeyStage,
+      } : null,
+    },
     company: profile ? {
       nomeFantasia: profile.nomeFantasia,
       razaoSocial: profile.razaoSocial,
@@ -731,6 +785,7 @@ router.post("/propostas", async (req, res) => {
     origin: parsed.data.arquivoImportadoUrl ? "imported" : "manual",
     items: itensNormalizados,
     presentation: parsed.data.apresentacao,
+    dealId: parsed.data.dealId ?? null,
   });
 
   const [proposta] = await db
@@ -1766,6 +1821,7 @@ router.post(
       origin: composicaoIds.length && produtoIds.length ? "composition" : produtoIds.length ? "catalog" : "composition",
       items: normalizedCatalogItems,
       presentation: apresentacao,
+      dealId: dealId ?? null,
     });
 
     const [proposta] = await db
