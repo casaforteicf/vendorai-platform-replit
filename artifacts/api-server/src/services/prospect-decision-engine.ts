@@ -129,6 +129,17 @@ export function decideProspectNextAction(input: DecisionInput): ProspectDecision
     };
   }
 
+  if (input.stage === "reuniao_em_negociacao") {
+    return {
+      stage: "reuniao_em_negociacao",
+      currentState: "Reunião aceita, horário ainda não definido",
+      currentObjective: "Definir data e horário da reunião",
+      nextBestAction: "Confirmar uma janela de horário e registrar a reunião na Agenda",
+      nextBestActionReason: "O prospect aceitou avançar; agora o objetivo é transformar o interesse em compromisso de agenda.",
+      ...recommendation,
+    };
+  }
+
   if (input.stage === "reuniao_agendada" || input.stage === "qualificado") {
     return {
       stage: input.stage,
