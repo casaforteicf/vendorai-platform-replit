@@ -406,7 +406,228 @@ const SISTEMAS: StandardConstructionComposition[] = [
   ],90,["hibrido"],"Composição de coordenação para obras híbridas. Os elementos físicos devem usar as composições dos sistemas efetivamente aplicados.")
 ];
 
+
+const SISTEMAS_DETALHADOS: StandardConstructionComposition[] = [
+  // ICF — variantes e complementos
+  C("SYS-ICF-05-001","Arranques de parede ICF em fundação","fundacoes","m",[
+    mat("ARQ-MAT-ACO","Aço CA-50/CA-60","kg","1.80","Aço"),
+    mat("SYS-MAT-ANCICF","Ancoragem/esperas para ICF","cj","0.20","ICF"),
+    mo("SYS-MO-ARRICF","Execução de arranques ICF","m","1.00")
+  ],110,["icf"]),
+  C("SYS-ICF-08-002","Parede ICF não estrutural","sistema_construtivo_paredes","m²",[
+    mat("SYS-MAT-ICF","Forma/bloco ICF","m²","1.05","ICF"),
+    mat("ARQ-MAT-CONC30","Concreto de preenchimento","m³","0.09","Concreto"),
+    mat("ARQ-MAT-ACO","Aço de reforço","kg","3.00","Aço"),
+    mo("SYS-MO-ICF","Montagem e concretagem ICF","m²","1.00")
+  ],120,["icf"]),
+  C("SYS-ICF-08-003","Reforço de vãos em ICF","sistema_construtivo_paredes","m",[
+    mat("ARQ-MAT-ACO","Aço de reforço","kg","2.50","Aço"),
+    mat("SYS-MAT-ICFACC","Acessórios/fechamentos de forma ICF","cj","0.15","ICF"),
+    mo("SYS-MO-ICFVAO","Execução de verga/contraverga ICF","m","1.00")
+  ],130,["icf"]),
+  C("SYS-ICF-20-002","Tela metálica + reboco bruto externo sobre ICF","revestimento_bruto_externo","m²",[
+    mat("SYS-MAT-TELAACO","Tela metálica para revestimento","m²","1.10","Interface ICF"),
+    mat("SYS-MAT-FIXTELA","Fixadores para tela","un","6.00","Interface ICF"),
+    mat("ARQ-MAT-CHAP","Chapisco/ponte de aderência","kg","4.00","Argamassas"),
+    mat("ARQ-MAT-REVARG","Argamassa para emboço/reboco","kg","22.00","Argamassas"),
+    mo("SYS-MO-ICFREBEXT","Preparação e reboco externo sobre ICF","m²","1.00")
+  ],140,["icf"]),
+
+  // Alvenaria convencional
+  C("SYS-ALVC-07-001","Estrutura convencional de concreto — pilares e vigas","estrutura_principal","m³",[
+    mat("ARQ-MAT-CONC30","Concreto estrutural C30","m³","1.00","Concreto"),
+    mat("ARQ-MAT-ACO","Aço CA-50/CA-60","kg","125.00","Aço"),
+    mat("ARQ-MAT-FORMA","Forma para concreto","m²","9.50","Formas"),
+    mo("SYS-MO-ESTCONV","Execução estrutura convencional","m³","1.00")
+  ],110,["alvenaria_convencional","concreto_armado_vedacao"]),
+  C("SYS-ALVC-08-002","Verga e contraverga em alvenaria convencional","sistema_construtivo_paredes","m",[
+    mat("SYS-MAT-CANALETA","Canaleta/bloco para verga","un","2.50","Alvenaria"),
+    mat("ARQ-MAT-ACO","Aço de reforço","kg","1.50","Aço"),
+    mat("SYS-MAT-GRAUTE","Graute/concreto de enchimento","m³","0.01","Concreto"),
+    mo("SYS-MO-VERGA","Execução verga/contraverga","m","1.00")
+  ],120,["alvenaria_convencional"]),
+  C("SYS-ALVC-20-001","Preparação de alvenaria para reboco externo","revestimento_bruto_externo","m²",[
+    mat("ARQ-MAT-CHAP","Chapisco","kg","4.00","Argamassas"),
+    mo("SYS-MO-CHAPALVEXT","Aplicação chapisco externo","m²","1.00")
+  ],130,["alvenaria_convencional"]),
+
+  // Alvenaria estrutural
+  C("SYS-ALVE-05-001","Arranques para alvenaria estrutural","fundacoes","m",[
+    mat("ARQ-MAT-ACO","Aço para arranques","kg","1.50","Aço"),
+    mo("SYS-MO-ARRALVE","Execução de arranques","m","1.00")
+  ],110,["alvenaria_estrutural"]),
+  C("SYS-ALVE-08-002","Grauteamento vertical de alvenaria estrutural","sistema_construtivo_paredes","m",[
+    mat("SYS-MAT-GRAUTE","Graute estrutural","m³","0.012","Concreto"),
+    mat("ARQ-MAT-ACO","Armadura vertical","kg","1.20","Aço"),
+    mo("SYS-MO-GRAUTE","Grauteamento de células","m","1.00")
+  ],120,["alvenaria_estrutural"]),
+  C("SYS-ALVE-08-003","Cinta/verga em alvenaria estrutural","sistema_construtivo_paredes","m",[
+    mat("SYS-MAT-CANALETAEST","Canaleta estrutural","un","2.50","Alvenaria estrutural"),
+    mat("SYS-MAT-GRAUTE","Graute estrutural","m³","0.012","Concreto"),
+    mat("ARQ-MAT-ACO","Aço CA-50/CA-60","kg","1.80","Aço"),
+    mo("SYS-MO-CINTAEST","Execução cinta/verga","m","1.00")
+  ],130,["alvenaria_estrutural"]),
+  C("SYS-ALVE-19-001","Reboco interno sobre alvenaria estrutural","revestimento_bruto_interno","m²",[
+    mat("ARQ-MAT-CHAP","Chapisco","kg","4.00","Argamassas"),
+    mat("ARQ-MAT-REVARG","Argamassa para reboco","kg","20.00","Argamassas"),
+    mo("SYS-MO-REBALVE","Chapisco e reboco","m²","1.00")
+  ],140,["alvenaria_estrutural"]),
+
+  // Concreto armado + vedação
+  C("SYS-CAV-08-002","Encunhamento de vedação em estrutura de concreto","sistema_construtivo_paredes","m",[
+    mat("SYS-MAT-ENCUNH","Material de encunhamento","kg","2.00","Alvenaria"),
+    mo("SYS-MO-ENCUNH","Execução de encunhamento","m","1.00")
+  ],120,["concreto_armado_vedacao"]),
+  C("SYS-CAV-19-001","Interface concreto/alvenaria para revestimento interno","revestimento_bruto_interno","m²",[
+    mat("SYS-MAT-TELAJUNTA","Tela de reforço em encontro concreto/alvenaria","m","0.15","Revestimentos"),
+    mat("ARQ-MAT-CHAP","Chapisco/ponte de aderência","kg","4.00","Argamassas"),
+    mo("SYS-MO-JUNTACAV","Tratamento de interfaces","m²","1.00")
+  ],130,["concreto_armado_vedacao"]),
+
+  // Parede de concreto
+  C("SYS-PCON-05-001","Arranques de parede de concreto","fundacoes","m",[
+    mat("ARQ-MAT-ACO","Aço para esperas","kg","2.00","Aço"),
+    mat("SYS-MAT-ANCPC","Ancoragens/esperas","cj","0.20","Parede de concreto"),
+    mo("SYS-MO-ARRPC","Execução arranques parede concreto","m","1.00")
+  ],110,["parede_concreto"]),
+  C("SYS-PCON-08-002","Tratamento de juntas em parede de concreto","sistema_construtivo_paredes","m",[
+    mat("SYS-MAT-SELJUNTA","Selante/tratamento de junta","m","1.05","Parede de concreto"),
+    mo("SYS-MO-JUNTAPC","Tratamento de junta","m","1.00")
+  ],120,["parede_concreto"]),
+  C("SYS-PCON-19-001","Regularização interna de parede de concreto","revestimento_bruto_interno","m²",[
+    mat("SYS-MAT-PONTE","Ponte de aderência","kg","0.30","Revestimentos"),
+    mat("SYS-MAT-REGFINA","Massa de regularização","kg","3.00","Revestimentos"),
+    mo("SYS-MO-REGPC","Regularização parede concreto","m²","1.00")
+  ],130,["parede_concreto"]),
+
+  // Light Steel Frame
+  C("SYS-LSF-05-001","Ancoragem de painéis LSF à fundação","fundacoes","m",[
+    mat("SYS-MAT-ANCLSF","Chumbadores/ancoragens LSF","un","1.50","Steel Frame"),
+    mat("SYS-MAT-FITAISO","Fita de isolamento sob guia","m","1.05","Steel Frame"),
+    mo("SYS-MO-ANCLSF","Instalação ancoragem LSF","m","1.00")
+  ],110,["steel_frame"]),
+  C("SYS-LSF-08-002","Parede Light Steel Frame interna","sistema_construtivo_paredes","m²",[
+    mat("SYS-MAT-LSFPERF","Perfis galvanizados LSF","kg","4.50","Steel Frame"),
+    mat("SYS-MAT-DRYCHAPA","Chapa drywall","m²","2.10","Drywall"),
+    mat("SYS-MAT-LA","Isolamento termoacústico","m²","1.00","Isolamento"),
+    mat("SYS-MAT-LSFFIX","Parafusos/fixadores","un","24.00","Steel Frame"),
+    mo("SYS-MO-LSFINT","Montagem parede interna LSF","m²","1.00")
+  ],120,["steel_frame"]),
+  C("SYS-LSF-08-003","Reforço estrutural de vão em LSF","sistema_construtivo_paredes","m",[
+    mat("SYS-MAT-LSFREF","Perfis reforçados de vão","kg","3.00","Steel Frame"),
+    mat("SYS-MAT-LSFFIX","Parafusos/fixadores","un","8.00","Steel Frame"),
+    mo("SYS-MO-LSFVAO","Montagem reforço de vão","m","1.00")
+  ],130,["steel_frame"]),
+  C("SYS-LSF-12-001","Passagem hidráulica em LSF","instalacoes_hidraulicas","ponto",[
+    mat("SYS-MAT-PROTILHOS","Ilhós/proteção de passagem","un","2.00","Instalações"),
+    mat("SYS-MAT-REFHID","Reforço/suporte de ponto hidráulico","cj","1.00","Steel Frame"),
+    mo("SYS-MO-LSFHID","Passagem hidráulica em LSF","ponto","1.00")
+  ],140,["steel_frame"]),
+
+  // Wood Frame
+  C("SYS-WF-05-001","Ancoragem de Wood Frame à fundação","fundacoes","m",[
+    mat("SYS-MAT-ANCWF","Chumbadores/ancoragens Wood Frame","un","1.50","Wood Frame"),
+    mat("SYS-MAT-BARREIRABASE","Barreira capilar sob base","m","1.05","Wood Frame"),
+    mo("SYS-MO-ANCWF","Instalação ancoragem Wood Frame","m","1.00")
+  ],110,["wood_frame"]),
+  C("SYS-WF-08-002","Parede Wood Frame interna","sistema_construtivo_paredes","m²",[
+    mat("SYS-MAT-MADESTR","Madeira estrutural tratada","m³","0.018","Wood Frame"),
+    mat("SYS-MAT-DRYCHAPA","Chapa drywall","m²","2.10","Drywall"),
+    mat("SYS-MAT-LA","Isolamento termoacústico","m²","1.00","Isolamento"),
+    mat("SYS-MAT-WFFIX","Fixadores Wood Frame","un","24.00","Wood Frame"),
+    mo("SYS-MO-WFINT","Montagem parede interna Wood Frame","m²","1.00")
+  ],120,["wood_frame"]),
+  C("SYS-WF-08-003","Tratamento/proteção de madeira estrutural","sistema_construtivo_paredes","m²",[
+    mat("SYS-MAT-PROTMAD","Produto de proteção/tratamento de madeira","l","0.15","Wood Frame"),
+    mo("SYS-MO-PROTMAD","Aplicação de proteção","m²","1.00")
+  ],130,["wood_frame"]),
+  C("SYS-WF-12-001","Passagem hidráulica em Wood Frame","instalacoes_hidraulicas","ponto",[
+    mat("SYS-MAT-REFHIDWF","Reforço/suporte hidráulico","cj","1.00","Wood Frame"),
+    mo("SYS-MO-WFHID","Passagem hidráulica em Wood Frame","ponto","1.00")
+  ],140,["wood_frame"]),
+
+  // Pré-moldado de concreto
+  C("SYS-PRE-05-001","Bloco/cálice para pilar pré-moldado","fundacoes","un",[
+    mat("ARQ-MAT-CONC30","Concreto estrutural C30","m³","0.60","Concreto"),
+    mat("ARQ-MAT-ACO","Aço CA-50/CA-60","kg","65.00","Aço"),
+    mat("ARQ-MAT-FORMA","Forma para concreto","m²","4.00","Formas"),
+    mo("SYS-MO-BLOCPRE","Execução bloco/cálice","un","1.00")
+  ],110,["pre_moldado_concreto"]),
+  C("SYS-PRE-08-001","Painel pré-moldado de fechamento","sistema_construtivo_paredes","m²",[
+    svc("SYS-SRV-PAINELPRE","Painel pré-moldado","m²","1.00","Pré-moldado"),
+    svc("SYS-SRV-ICAPRE","Içamento/montagem de painel","m²","1.00","Equipamentos"),
+    mat("SYS-MAT-SELJUNTA","Selante de juntas","m","0.30","Pré-moldado"),
+    mo("SYS-MO-PAINELPRE","Equipe montagem painel","m²","1.00")
+  ],120,["pre_moldado_concreto"]),
+  C("SYS-PRE-20-001","Tratamento de juntas externas em pré-moldado","revestimento_bruto_externo","m",[
+    mat("SYS-MAT-FUNDOJUNTA","Fundo de junta","m","1.00","Pré-moldado"),
+    mat("SYS-MAT-SELJUNTA","Selante elastomérico","m","1.05","Pré-moldado"),
+    mo("SYS-MO-JUNTAPRE","Tratamento de juntas","m","1.00")
+  ],130,["pre_moldado_concreto"]),
+
+  // Estrutura metálica + fechamento
+  C("SYS-EMF-05-001","Base/placa de ancoragem de estrutura metálica","fundacoes","un",[
+    mat("SYS-MAT-PLACABASE","Placa base metálica","un","1.00","Estrutura metálica"),
+    mat("SYS-MAT-CHUMBEST","Chumbadores estruturais","cj","1.00","Estrutura metálica"),
+    mat("SYS-MAT-GRAUTENA","Graute não retrátil","kg","10.00","Estrutura metálica"),
+    mo("SYS-MO-BASEMET","Montagem/nivelamento placa base","un","1.00")
+  ],110,["estrutura_metalica_fechamento"]),
+  C("SYS-EMF-08-002","Fechamento em painel termoacústico","sistema_construtivo_paredes","m²",[
+    mat("SYS-MAT-PAINELTERM","Painel termoacústico","m²","1.05","Fechamentos"),
+    mat("SYS-MAT-FIXPAINEL","Fixadores/vedações","cj","0.10","Fechamentos"),
+    mo("SYS-MO-PAINELTERM","Instalação painel termoacústico","m²","1.00")
+  ],120,["estrutura_metalica_fechamento"]),
+  C("SYS-EMF-09-001","Cobertura metálica integrada","cobertura","m²",[
+    mat("ARQ-MAT-ACOPERF","Perfis de aço estrutural","kg","8.00","Cobertura"),
+    mat("ARQ-MAT-TELHATERM","Telha termoacústica","m²","1.08","Cobertura"),
+    mat("ARQ-MAT-FIXTELHA","Fixadores","un","5.00","Cobertura"),
+    mo("SYS-MO-COBEMF","Montagem cobertura metálica","m²","1.00")
+  ],130,["estrutura_metalica_fechamento"]),
+
+  // SIP
+  C("SYS-SIP-05-001","Ancoragem de painel SIP à fundação","fundacoes","m",[
+    mat("SYS-MAT-ANCSIP","Ancoragens/conectores de base SIP","cj","0.20","SIP"),
+    mat("SYS-MAT-SELSIP","Selante/barreira de base SIP","m","1.05","SIP"),
+    mo("SYS-MO-ANCSIP","Instalação ancoragem SIP","m","1.00")
+  ],110,["sip_paineis"]),
+  C("SYS-SIP-08-002","Reforço e união de painéis SIP","sistema_construtivo_paredes","m",[
+    mat("SYS-MAT-SIPCON","Conector/spline SIP","m","1.00","SIP"),
+    mat("SYS-MAT-SIPFIX","Fixadores/selantes SIP","cj","0.10","SIP"),
+    mo("SYS-MO-SIPUNIAO","Montagem união SIP","m","1.00")
+  ],120,["sip_paineis"]),
+  C("SYS-SIP-19-001","Revestimento interno sobre SIP","revestimento_bruto_interno","m²",[
+    mat("SYS-MAT-DRYCHAPA","Chapa drywall","m²","1.05","Drywall"),
+    mat("SYS-MAT-DRYFITA","Fita de juntas","m","1.50","Drywall"),
+    mat("SYS-MAT-DRYMASSA","Massa de juntas","kg","0.60","Drywall"),
+    mo("SYS-MO-SIPINT","Revestimento interno SIP","m²","1.00")
+  ],130,["sip_paineis"]),
+  C("SYS-SIP-20-001","Revestimento externo sobre SIP","revestimento_bruto_externo","m²",[
+    mat("SYS-MAT-MEMB","Membrana hidrófuga","m²","1.10","SIP"),
+    mat("SYS-MAT-CIMENT","Placa cimentícia","m²","1.05","SIP"),
+    mat("SYS-MAT-TELAFV","Tela fibra de vidro AR","m²","1.10","Fachada"),
+    mat("SYS-MAT-BASECOAT","Basecoat","kg","4.00","Fachada"),
+    mo("SYS-MO-SIPEXT","Revestimento externo SIP","m²","1.00")
+  ],140,["sip_paineis"]),
+
+  // Híbrido — interfaces entre tecnologias
+  C("SYS-HIB-07-001","Ligação entre estruturas de tecnologias distintas","estrutura_principal","un",[
+    svc("SYS-SRV-HIBLIG","Conector/ligação conforme projeto estrutural"),
+    mo("SYS-MO-HIBLIG","Execução de ligação híbrida","un","1.00")
+  ],110,["hibrido"]),
+  C("SYS-HIB-10-001","Impermeabilização de encontro entre sistemas","impermeabilizacao","m",[
+    mat("SYS-MAT-HIBMEMB","Membrana/fita de transição","m","1.10","Impermeabilização"),
+    mat("SYS-MAT-HIBSEL","Selante compatível","un","0.10","Impermeabilização"),
+    mo("SYS-MO-HIBIMP","Tratamento de encontro híbrido","m","1.00")
+  ],120,["hibrido"]),
+  C("SYS-HIB-20-001","Tratamento de fachada em encontro híbrido","revestimento_bruto_externo","m",[
+    mat("SYS-MAT-HIBTELA","Tela de reforço de interface","m","1.10","Fachada"),
+    mat("SYS-MAT-HIBMASSA","Massa/basecoat compatível","kg","2.00","Fachada"),
+    mo("SYS-MO-HIBFACH","Tratamento de interface de fachada","m","1.00")
+  ],130,["hibrido"])
+];
+
 export const STANDARD_CONSTRUCTION_COMPOSITIONS: StandardConstructionComposition[] = [
   ...UNIVERSAIS,
   ...SISTEMAS,
+  ...SISTEMAS_DETALHADOS,
 ];
