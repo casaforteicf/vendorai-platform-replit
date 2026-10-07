@@ -495,6 +495,7 @@ router.get("/portal/obra/:token", async (req, res) => {
         : null;
       const presentation = snapshot?.apresentacao && typeof snapshot.apresentacao === "object"
         ? snapshot.apresentacao
+        : null;
       orcamentoComEtapas = {
         id: orcamento.id,
         status: orcamento.status,
@@ -1249,16 +1250,19 @@ router.get("/portal/obra/:token/invoices/:invoiceId/document", async (req, res, 
   }
 });
 router.post("/portal/obra/:token/items/:itemId/respond", async (req, res) => {
+  const token = String(req.params.token ?? "");
   const itemId = String(req.params.itemId ?? "");
   const action = String(req.body?.action ?? "").trim().slice(0, 80);
   const comment = typeof req.body?.comment === "string" ? req.body.comment.trim().slice(0, 15000) : "";
   const payload = req.body?.payload && typeof req.body.payload === "object" ? req.body.payload : {};
   if (!itemId || !action) return res.status(422).json({ error: "Item e ação são obrigatórios." });
+
   const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
   if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
   const user = await resolvePortalUser(req, obra.id);
   const config = configForPortalUser(portalConfig(obra.portalConfig), user);
   if (config.requireLogin && !user) return res.status(401).json({ error: "Entre no portal para responder." });
+
   const itemResult = await pool.query(
     `SELECT * FROM obra_portal_items
       WHERE id=$1 AND obra_id=$2 AND tenant_id=$3 AND visibility='publicado' LIMIT 1`,
@@ -1268,6 +1272,7 @@ router.post("/portal/obra/:token/items/:itemId/respond", async (req, res) => {
   if (!item || !itemIsPublishedByConfig(config, String(item.kind ?? ""))) {
     return res.status(404).json({ error: "Item não disponível neste portal." });
   }
+
   const response = await pool.query(
     `INSERT INTO obra_portal_item_responses
       (id,tenant_id,obra_id,item_id,portal_user_id,action,comment,payload)
@@ -1285,15 +1290,19 @@ router.post("/portal/obra/:token/items/:itemId/respond", async (req, res) => {
   });
   return res.status(201).json({ response: response.rows[0] });
 });
+
 router.post("/portal/obra/:token/vendi", async (req, res) => {
+  const token = String(req.params.token ?? "");
   const question = String(req.body?.question ?? "").trim().slice(0, 4000);
   if (!question) return res.status(422).json({ error: "Digite uma pergunta." });
+
   const [obra] = await db.select().from(obrasTable).where(eq(obrasTable.portalToken, token));
   if (!obra) return res.status(404).json({ error: "Portal não encontrado." });
   const user = await resolvePortalUser(req, obra.id);
   const config = configForPortalUser(portalConfig(obra.portalConfig), user);
   if (config.showVendi === false) return res.status(403).json({ error: "Vendi não está habilitado neste portal." });
   if (config.requireLogin && !user) return res.status(401).json({ error: "Entre no portal para conversar com o Vendi." });
+
   const [stagesResult, itemsResult, docsResult] = await Promise.all([
     config.showSchedule
       ? pool.query(`SELECT nome,status,percentual_executado,data_inicio_prevista,data_fim_prevista
@@ -1322,6 +1331,7 @@ router.post("/portal/obra/:token/vendi", async (req, res) => {
     itensPublicados: safeItems,
     documentosPublicados: docsResult.rows,
   };
+
   try {
     const openai = await getOpenAIForTenant(obra.tenantId);
     const completion = await openai.chat.completions.create({
@@ -1347,6 +1357,7 @@ router.post("/portal/obra/:token/vendi", async (req, res) => {
     return res.status(503).json({ error: "O Vendi está temporariamente indisponível. Tente novamente em instantes." });
   }
 });
+
 
 router.post("/portal/obra/:token/decisions/:decisionId/respond", async (req, res) => {
   const token = String(req.params.token ?? "");
@@ -1410,6 +1421,9 @@ function canManagePortal(req: any, tenantId: string) {
 }
 
 router.get("/tenants/:tenantId/obras/:obraId/portal/users", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? ""); // tenant-audit: reviewed authenticated route validates tenant with canManagePortal before tenant-scoped access
+  const obraId = String(req.params.obraId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
   const result = await pool.query(
     `SELECT id,nome,email,telefone,status,access_role,permissions,access_expires_at,ultimo_login_em,created_at,updated_at
        FROM obra_portal_users
@@ -1421,7 +1435,11 @@ router.get("/tenants/:tenantId/obras/:obraId/portal/users", authenticate, async 
 });
 
 router.patch("/tenants/:tenantId/obras/:obraId/portal/users/:userId", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? ""); // tenant-audit: reviewed authenticated route validates tenant with canManagePortal before tenant-scoped access
+  const obraId = String(req.params.obraId ?? "");
   const userId = String(req.params.userId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
+
   const role = ["proprietario","conjuge","arquiteto","engenheiro","financeiro","fornecedor","representante"].includes(String(req.body?.accessRole))
     ? String(req.body.accessRole) : null;
   const status = ["ativo","revogado"].includes(String(req.body?.status)) ? String(req.body.status) : null;
@@ -1459,7 +1477,11 @@ router.patch("/tenants/:tenantId/obras/:obraId/portal/users/:userId", authentica
   return res.json({ user: result.rows[0] });
 });
 
+
 router.get("/tenants/:tenantId/obras/:obraId/portal/budget-items", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? ""); // tenant-audit: reviewed authenticated route validates tenant with canManagePortal before tenant-scoped access
+  const obraId = String(req.params.obraId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
   const result = await pool.query(
     `WITH selected_budget AS (
        SELECT id FROM obra_orcamentos
@@ -1479,7 +1501,10 @@ router.get("/tenants/:tenantId/obras/:obraId/portal/budget-items", authenticate,
 });
 
 router.patch("/tenants/:tenantId/obras/:obraId/portal/budget-items/:itemId", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? ""); // tenant-audit: reviewed authenticated route validates tenant with canManagePortal before tenant-scoped access
+  const obraId = String(req.params.obraId ?? "");
   const itemId = String(req.params.itemId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
   const result = await pool.query(
     `UPDATE obra_orcamento_itens i SET
        visible_to_client=COALESCE($1,visible_to_client),
@@ -1511,7 +1536,11 @@ router.patch("/tenants/:tenantId/obras/:obraId/portal/budget-items/:itemId", aut
   return res.json({ item: result.rows[0] });
 });
 
+
 router.get("/tenants/:tenantId/obras/:obraId/portal/items", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? ""); // tenant-audit: reviewed authenticated route validates tenant with canManagePortal before tenant-scoped access
+  const obraId = String(req.params.obraId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
   const result = await pool.query(
     `SELECT * FROM obra_portal_items WHERE tenant_id=$1 AND obra_id=$2
       ORDER BY kind, sort_order ASC, created_at DESC`,
@@ -1521,6 +1550,9 @@ router.get("/tenants/:tenantId/obras/:obraId/portal/items", authenticate, async 
 });
 
 router.post("/tenants/:tenantId/obras/:obraId/portal/items", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? ""); // tenant-audit: reviewed authenticated route validates tenant with canManagePortal before tenant-scoped access
+  const obraId = String(req.params.obraId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
   const kind = String(req.body?.kind ?? "").trim().toLowerCase();
   const title = String(req.body?.title ?? "").trim();
   if (!kind || !title) return res.status(422).json({ error: "Tipo e título são obrigatórios." });
@@ -1551,7 +1583,10 @@ router.post("/tenants/:tenantId/obras/:obraId/portal/items", authenticate, async
 });
 
 router.patch("/tenants/:tenantId/obras/:obraId/portal/items/:itemId", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? ""); // tenant-audit: reviewed authenticated route validates tenant with canManagePortal before tenant-scoped access
+  const obraId = String(req.params.obraId ?? "");
   const itemId = String(req.params.itemId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
   const visibility = ["interno","compartilhavel","publicado","arquivado"].includes(String(req.body?.visibility))
     ? String(req.body.visibility) : null;
   const result = await pool.query(
@@ -1587,12 +1622,16 @@ router.patch("/tenants/:tenantId/obras/:obraId/portal/items/:itemId", authentica
 });
 
 router.get("/tenants/:tenantId/obras/:obraId/portal/audit", authenticate, async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? ""); // tenant-audit: reviewed authenticated route validates tenant with canManagePortal before tenant-scoped access
+  const obraId = String(req.params.obraId ?? "");
+  if (!canManagePortal(req, tenantId)) return res.status(403).json({ error: "Sem permissão." });
   const result = await pool.query(
     `SELECT * FROM obra_portal_audit WHERE tenant_id=$1 AND obra_id=$2 ORDER BY created_at DESC LIMIT 500`,
     [tenantId, obraId],
   );
   return res.json({ audit: result.rows });
 });
+
 
 router.get("/tenants/:tenantId/obras/:obraId/portal/documents", authenticate, async (req, res) => {
   const tenantId = String(req.params.tenantId ?? ""); // tenant-audit: reviewed authenticated route validates tenant with canManagePortal before tenant-scoped access
