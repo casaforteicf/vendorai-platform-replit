@@ -27,6 +27,7 @@ import {
   obraOrcamentosTable,
   obraOrcamentoEtapasTable,
   obraOrcamentoItensTable,
+  obraOrcamentoItemQuantitativosHistoricoTable,
   insertObraSchema,
   updateObraSchema,
   insertObraEtapaSchema,
@@ -2294,6 +2295,16 @@ router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas/:et
 
   const data: Record<string, unknown> = { ...source, etapaId };
 
+  // Quantitativos sempre nascem rastreáveis. Quando o importador (PDF, Arqdor,
+  // IFC/BIM etc.) enviar metadados, eles são preservados; no cadastro manual,
+  // quantidadeOriginal/quantidadeTecnica partem da quantidade informada.
+  const quantidadeBase = source.quantidade ?? "1";
+  if (data.quantidadeOriginal == null) data.quantidadeOriginal = quantidadeBase;
+  if (data.quantidadeTecnica == null) data.quantidadeTecnica = quantidadeBase;
+  if (data.origemQuantidade == null) data.origemQuantidade = "manual";
+  if (data.nivelPrecisaoQuantidade == null) data.nivelPrecisaoQuantidade = "estimativo";
+  data.quantidadeAtualizadaEm = new Date();
+
   if (typeof source.insumoId === "string" && source.insumoId) {
     const [insumo] = await db
       .select({
@@ -2353,13 +2364,93 @@ router.put("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas/:eta
   const parsed = updateObraOrcamentoItemSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
 
-  const [row] = await db
-    .update(obraOrcamentoItensTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
-    .where(and(eq(obraOrcamentoItensTable.id, itemId), eq(obraOrcamentoItensTable.etapaId, etapaId)))
-    .returning();
-  if (!row) return res.status(404).json({ error: "Item not found" });
+  const [anterior] = await db
+    .select()
+    .from(obraOrcamentoItensTable)
+    .where(and(eq(obraOrcamentoItensTable.id, itemId), eq(obraOrcamentoItensTable.etapaId, etapaId)));
+  if (!anterior) return res.status(404).json({ error: "Item not found" });
+
+  const camposQuantitativo = [
+    "quantidade",
+    "unidade",
+    "quantidadeOriginal",
+    "quantidadeTecnica",
+    "quantidadeComPerda",
+    "quantidadeCompra",
+    "unidadeCompra",
+    "origemQuantidade",
+    "nivelPrecisaoQuantidade",
+    "memoriaCalculo",
+    "projetoReferencia",
+    "projetoVersao",
+    "confiancaExtracao",
+    "revisadoManual",
+    "motivoAjusteQuantidade",
+  ] as const;
+
+  const mudouQuantitativo = camposQuantitativo.some((campo) =>
+    Object.prototype.hasOwnProperty.call(parsed.data, campo) &&
+    JSON.stringify((parsed.data as any)[campo]) !== JSON.stringify((anterior as any)[campo])
+  );
+
+  const updateData: Record<string, unknown> = { ...parsed.data, updatedAt: new Date() };
+  if (mudouQuantitativo) updateData.quantidadeAtualizadaEm = new Date();
+
+  const row = await db.transaction(async (tx) => {
+    if (mudouQuantitativo) {
+      await tx.insert(obraOrcamentoItemQuantitativosHistoricoTable).values({
+        itemId,
+        quantidadeAnterior: anterior.quantidade,
+        quantidadeNova: (parsed.data as any).quantidade ?? anterior.quantidade,
+        unidade: (parsed.data as any).unidade ?? anterior.unidade,
+        origemQuantidade: (parsed.data as any).origemQuantidade ?? anterior.origemQuantidade,
+        nivelPrecisaoQuantidade: (parsed.data as any).nivelPrecisaoQuantidade ?? anterior.nivelPrecisaoQuantidade,
+        memoriaCalculo: (parsed.data as any).memoriaCalculo ?? anterior.memoriaCalculo,
+        projetoReferencia: (parsed.data as any).projetoReferencia ?? anterior.projetoReferencia,
+        projetoVersao: (parsed.data as any).projetoVersao ?? anterior.projetoVersao,
+        confiancaExtracao: (parsed.data as any).confiancaExtracao ?? anterior.confiancaExtracao,
+        motivo: (parsed.data as any).motivoAjusteQuantidade ?? anterior.motivoAjusteQuantidade,
+        responsavelId: (req as any).user?.id ?? null,
+      });
+    }
+
+    const [updated] = await tx
+      .update(obraOrcamentoItensTable)
+      .set(updateData)
+      .where(and(eq(obraOrcamentoItensTable.id, itemId), eq(obraOrcamentoItensTable.etapaId, etapaId)))
+      .returning();
+
+    return updated;
+  });
+
   return res.json(row);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas/:etapaId/itens/:itemId/quantitativos-historico", async (req, res) => {
+  const { tenantId: tid, obraId, orcamentoId, etapaId, itemId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [owned] = await db
+    .select({ id: obraOrcamentoItensTable.id })
+    .from(obraOrcamentoItensTable)
+    .innerJoin(obraOrcamentoEtapasTable, eq(obraOrcamentoEtapasTable.id, obraOrcamentoItensTable.etapaId))
+    .innerJoin(obraOrcamentosTable, eq(obraOrcamentosTable.id, obraOrcamentoEtapasTable.orcamentoId))
+    .where(and(
+      eq(obraOrcamentoItensTable.id, itemId),
+      eq(obraOrcamentoItensTable.etapaId, etapaId),
+      eq(obraOrcamentoEtapasTable.orcamentoId, orcamentoId),
+      eq(obraOrcamentosTable.obraId, obraId),
+      eq(obraOrcamentosTable.tenantId, tid),
+    ));
+  if (!owned) return res.status(404).json({ error: "Item not found" });
+
+  const rows = await db
+    .select()
+    .from(obraOrcamentoItemQuantitativosHistoricoTable)
+    .where(eq(obraOrcamentoItemQuantitativosHistoricoTable.itemId, itemId))
+    .orderBy(desc(obraOrcamentoItemQuantitativosHistoricoTable.createdAt));
+
+  return res.json(rows);
 });
 
 router.delete("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas/:etapaId/itens/:itemId", async (req, res) => {
