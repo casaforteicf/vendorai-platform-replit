@@ -177,7 +177,7 @@ async function syncPeopleToCompany(input: {
   people: ExtractedPerson[];
   accountMap: NonNullable<Prospect["accountMap"]>;
 }) {
-  const companyId = companyId;
+  const companyId = input.prospect.companyId;
   if (!companyId || input.people.length === 0) return input.accountMap;
   const [tenantCompany] = await db.select().from(crmTenantCompaniesTable)
     .where(and(
