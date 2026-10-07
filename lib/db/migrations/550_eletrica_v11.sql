@@ -83,3 +83,46 @@ CREATE TABLE IF NOT EXISTS obra_eletrica_redes_especiais (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS obra_energia_sistemas (
+  id text PRIMARY KEY,
+  obra_id text NOT NULL REFERENCES obras(id) ON DELETE CASCADE,
+  tipo text NOT NULL,
+  codigo text,
+  nome text,
+  potencia_kw numeric(15,4),
+  energia_kwh numeric(15,4),
+  tensao_v numeric(10,2),
+  fases integer,
+  autonomia_horas numeric(10,2),
+  potencia_pico_kw numeric(15,4),
+  somente_infraestrutura boolean NOT NULL DEFAULT false,
+  parametros jsonb,
+  origem text,
+  origem_ref text,
+  ativo boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS obra_energia_sistemas_obra_tipo_idx
+  ON obra_energia_sistemas(obra_id, tipo);
+
+CREATE TABLE IF NOT EXISTS obra_energia_componentes (
+  id text PRIMARY KEY,
+  sistema_id text NOT NULL REFERENCES obra_energia_sistemas(id) ON DELETE CASCADE,
+  tipo text NOT NULL,
+  slot_key text NOT NULL,
+  nome text NOT NULL,
+  quantidade numeric(15,4) NOT NULL DEFAULT 1,
+  unidade text NOT NULL DEFAULT 'un',
+  composicao_id text REFERENCES composicoes(id) ON DELETE SET NULL,
+  circuito_id text REFERENCES obra_eletrica_circuitos(id) ON DELETE SET NULL,
+  inclui_infraestrutura boolean NOT NULL DEFAULT false,
+  parametros jsonb,
+  observacoes text,
+  ativo boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS obra_energia_componentes_sistema_slot_idx
+  ON obra_energia_componentes(sistema_id, slot_key);
