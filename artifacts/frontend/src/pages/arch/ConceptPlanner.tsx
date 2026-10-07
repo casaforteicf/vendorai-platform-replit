@@ -505,10 +505,10 @@ type ProjectSourceFile = {
   originalName: string;
   mimeType: string;
   extension: string;
-  kind: "bim" | "cad" | "model3d" | "architectural_geometry";
+  kind: "bim" | "cad" | "model3d" | "architectural_geometry" | "architectural_project";
   uploadedAt: string;
   status: "stored_only" | "converted" | "parsed";
-  parserStatus: "pending_ifc_parser" | "conversion_required" | "parsed_metadata" | "ready_model3d" | "ready_editable_geometry";
+  parserStatus: "pending_ifc_parser" | "conversion_required" | "parsed_metadata" | "ready_model3d" | "ready_editable_geometry" | "ready_project_memory";
   parsedAt?: string;
   convertedAt?: string;
   conversionEngine?: string;
