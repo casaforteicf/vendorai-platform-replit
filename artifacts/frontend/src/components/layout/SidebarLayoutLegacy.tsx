@@ -440,7 +440,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
   const isPetShop = effectiveVertical === "Pet Shop (Varejo)";
 
   const allNavItems = [
-    { name: "Dashboard",     href: "/",             icon: LayoutDashboard, sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "suporte", "entrega", "administrador", "outro"] as UserFunction[] },
+    { name: "Dashboard",     href: "/dashboard",    icon: LayoutDashboard, sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "suporte", "entrega", "administrador", "outro"] as UserFunction[] },
     { name: "Central de Trabalho", href: "/trabalho", icon: ClipboardCheck, sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "entrega", "administrador", "outro"] as UserFunction[] },
     { name: "Leads",         href: "/leads",         icon: Users,           sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
     { name: "Empresas",      href: "/empresas",      icon: Building2,       sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
