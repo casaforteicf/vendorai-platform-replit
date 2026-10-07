@@ -8,6 +8,7 @@ import {
   usersTable,
 } from "@workspace/db";
 import {
+import { canonicalDealValueSql } from "../lib/deal-value.js";
   loadJarvisTemporalIntelligence,
   type JarvisTemporalAnomaly,
   type JarvisTemporalIntelligence,
@@ -311,7 +312,7 @@ export async function loadJarvisAnomalyCorrelationIntelligence(
       leadId: dealsTable.leadId,
       assignedTo: dealsTable.assignedTo,
       etapa: dealsTable.etapa,
-      valor: dealsTable.valor,
+      valor: canonicalDealValueSql,
       createdAt: dealsTable.createdAt,
       updatedAt: dealsTable.updatedAt,
       dataFechamento: dealsTable.dataFechamento,
