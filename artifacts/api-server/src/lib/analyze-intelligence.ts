@@ -16,6 +16,7 @@ import {
   dealsTable,
   propostasTable,
 } from "@workspace/db";
+import { canonicalDealValueSql } from "./deal-value.js";
 import { evaluateForLead } from "../routes/rules.js";
 
 /**
@@ -252,7 +253,7 @@ export async function analyzeLeadIntelligence(params: {
   const activeDeals = await db
     .select({
       titulo:                dealsTable.titulo,
-      valor:                 dealsTable.valor,
+      valor:                 canonicalDealValueSql,
       etapa:                 dealsTable.etapa,
       etapaSaas:             dealsTable.etapaSaas,
       probabilidade:         dealsTable.probabilidade,
