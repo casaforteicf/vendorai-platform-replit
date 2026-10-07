@@ -1183,6 +1183,119 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
   } finally { client.release(); }
 });
 
+archProcurementRfqRouter.get("/arch/market-commission-rules", async (req, res, next) => {
+  try {
+    if (req.user?.platformRole !== "super_admin") return res.status(403).json({ error: "Acesso restrito ao Super Admin." });
+    const tenantId = String(req.query["tenantId"] || "").trim();
+    const params: any[] = [];
+    let filter = "";
+    if (tenantId) { params.push(tenantId); filter = "WHERE r.tenant_id=$1 OR r.tenant_id IS NULL"; }
+    const result = await pool.query(
+      `SELECT r.*, t.name AS tenant_name
+         FROM arqdor_market_commission_rules r
+         LEFT JOIN tenants t ON t.id=r.tenant_id
+         ${filter}
+        ORDER BY r.active DESC,
+                 CASE r.scope_type WHEN 'product' THEN 7 WHEN 'sku' THEN 6 WHEN 'brand' THEN 5
+                   WHEN 'product_line' THEN 4 WHEN 'category' THEN 3 WHEN 'tenant' THEN 2 ELSE 1 END DESC,
+                 r.priority DESC,r.created_at DESC`,
+      params,
+    );
+    return res.json({ rules: result.rows });
+  } catch (err) { logger.error({ err }, "market commission rules list error"); return next(err); }
+});
+
+archProcurementRfqRouter.post("/arch/market-commission-rules", async (req, res, next) => {
+  try {
+    if (req.user?.platformRole !== "super_admin") return res.status(403).json({ error: "Acesso restrito ao Super Admin." });
+    const scopeType = String(req.body?.scopeType || "global");
+    const allowedScopes = new Set(["global","tenant","category","product_line","product","sku","brand"]);
+    if (!allowedScopes.has(scopeType)) return res.status(422).json({ error: "Escopo de comissão inválido." });
+    const percentage = n(req.body?.percentage, -1);
+    if (percentage < 0 || percentage > 100) return res.status(422).json({ error: "Percentual deve ficar entre 0 e 100." });
+    const tenantId = scopeType === "global" ? null : String(req.body?.tenantId || "").trim() || null;
+    if (scopeType !== "global" && !tenantId) return res.status(422).json({ error: "Tenant obrigatório para esta regra." });
+    const scopeKey = ["global","tenant"].includes(scopeType) ? null : String(req.body?.scopeKey || "").trim() || null;
+    if (!["global","tenant"].includes(scopeType) && !scopeKey) return res.status(422).json({ error: "Informe o item/linha/categoria/brand/SKU da regra." });
+    const startsAt = req.body?.startsAt ? new Date(req.body.startsAt) : null;
+    const endsAt = req.body?.endsAt ? new Date(req.body.endsAt) : null;
+    if (startsAt && Number.isNaN(startsAt.getTime())) return res.status(422).json({ error: "Data inicial inválida." });
+    if (endsAt && Number.isNaN(endsAt.getTime())) return res.status(422).json({ error: "Data final inválida." });
+    if (startsAt && endsAt && endsAt <= startsAt) return res.status(422).json({ error: "A data final precisa ser posterior à inicial." });
+
+    const result = await pool.query(
+      `INSERT INTO arqdor_market_commission_rules
+        (tenant_id,scope_type,scope_key,percentage,active,priority,starts_at,ends_at,created_by,
+         name,description,rule_kind,campaign_code,adjustment_mode,conditions,max_commission_amount,min_commission_amount,
+         created_at,updated_at)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16,$17,now(),now())
+       RETURNING *`,
+      [
+        tenantId,scopeType,scopeKey,String(percentage),req.body?.active !== false,Math.round(n(req.body?.priority,0)),
+        startsAt,endsAt,req.user?.sub ?? null,
+        String(req.body?.name || "").trim() || null,
+        String(req.body?.description || "").trim() || null,
+        String(req.body?.ruleKind || "standard"),
+        String(req.body?.campaignCode || "").trim() || null,
+        String(req.body?.adjustmentMode || "override"),
+        JSON.stringify(req.body?.conditions && typeof req.body.conditions === "object" ? req.body.conditions : {}),
+        req.body?.maxCommissionAmount == null || req.body?.maxCommissionAmount === "" ? null : String(Math.max(0,n(req.body.maxCommissionAmount))),
+        req.body?.minCommissionAmount == null || req.body?.minCommissionAmount === "" ? null : String(Math.max(0,n(req.body.minCommissionAmount))),
+      ],
+    );
+    return res.status(201).json({ rule: result.rows[0] });
+  } catch (err) { logger.error({ err }, "market commission rule create error"); return next(err); }
+});
+
+archProcurementRfqRouter.patch("/arch/market-commission-rules/:ruleId", async (req, res, next) => {
+  try {
+    if (req.user?.platformRole !== "super_admin") return res.status(403).json({ error: "Acesso restrito ao Super Admin." });
+    const ruleId = String(req.params["ruleId"] || "");
+    const current = await pool.query(`SELECT * FROM arqdor_market_commission_rules WHERE id=$1::uuid LIMIT 1`, [ruleId]);
+    if (!current.rows[0]) return res.status(404).json({ error: "Regra não encontrada." });
+    const row = current.rows[0];
+    const percentage = req.body?.percentage == null ? n(row.percentage) : n(req.body.percentage,-1);
+    if (percentage < 0 || percentage > 100) return res.status(422).json({ error: "Percentual deve ficar entre 0 e 100." });
+    const result = await pool.query(
+      `UPDATE arqdor_market_commission_rules SET
+          percentage=$1,active=$2,priority=$3,starts_at=$4,ends_at=$5,
+          name=$6,description=$7,rule_kind=$8,campaign_code=$9,adjustment_mode=$10,
+          conditions=$11::jsonb,max_commission_amount=$12,min_commission_amount=$13,updated_at=now()
+        WHERE id=$14::uuid RETURNING *`,
+      [
+        String(percentage),
+        req.body?.active == null ? row.active : Boolean(req.body.active),
+        req.body?.priority == null ? row.priority : Math.round(n(req.body.priority,0)),
+        req.body?.startsAt === undefined ? row.starts_at : (req.body.startsAt ? new Date(req.body.startsAt) : null),
+        req.body?.endsAt === undefined ? row.ends_at : (req.body.endsAt ? new Date(req.body.endsAt) : null),
+        req.body?.name === undefined ? row.name : String(req.body.name || "").trim() || null,
+        req.body?.description === undefined ? row.description : String(req.body.description || "").trim() || null,
+        req.body?.ruleKind === undefined ? row.rule_kind : String(req.body.ruleKind || "standard"),
+        req.body?.campaignCode === undefined ? row.campaign_code : String(req.body.campaignCode || "").trim() || null,
+        req.body?.adjustmentMode === undefined ? row.adjustment_mode : String(req.body.adjustmentMode || "override"),
+        JSON.stringify(req.body?.conditions === undefined ? (row.conditions || {}) : (req.body.conditions || {})),
+        req.body?.maxCommissionAmount === undefined ? row.max_commission_amount : (req.body.maxCommissionAmount === null || req.body.maxCommissionAmount === "" ? null : String(Math.max(0,n(req.body.maxCommissionAmount)))),
+        req.body?.minCommissionAmount === undefined ? row.min_commission_amount : (req.body.minCommissionAmount === null || req.body.minCommissionAmount === "" ? null : String(Math.max(0,n(req.body.minCommissionAmount)))),
+        ruleId,
+      ],
+    );
+    return res.json({ rule: result.rows[0] });
+  } catch (err) { logger.error({ err }, "market commission rule update error"); return next(err); }
+});
+
+archProcurementRfqRouter.delete("/arch/market-commission-rules/:ruleId", async (req, res, next) => {
+  try {
+    if (req.user?.platformRole !== "super_admin") return res.status(403).json({ error: "Acesso restrito ao Super Admin." });
+    const ruleId = String(req.params["ruleId"] || "");
+    const result = await pool.query(
+      `UPDATE arqdor_market_commission_rules SET active=false,updated_at=now() WHERE id=$1::uuid RETURNING id`,
+      [ruleId],
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: "Regra não encontrada." });
+    return res.json({ ok: true });
+  } catch (err) { logger.error({ err }, "market commission rule disable error"); return next(err); }
+});
+
 archProcurementRfqRouter.get("/arch/market-demands", async (req, res, next) => {
   try {
     const tid = requireTenant(req, res); if (!tid) return;
