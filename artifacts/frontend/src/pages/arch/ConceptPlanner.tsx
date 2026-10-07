@@ -2130,6 +2130,17 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
   const runAiDevelopment = async (projectBriefOverride?: ProjectBriefSnapshot) => {
     if (aiDevelopmentState === "running") return;
+    // ARQ-PLANTA: nunca desenvolver um projeto vazio a partir de texto solto.
+    // Primeiro é necessário consolidar o programa/briefing; projetos já desenhados podem ser refinados.
+    const hasEditableGeometry =
+      safeRooms.length > 0 || safeCustomWalls.length > 0 || safeCustomOpenings.length > 0;
+    if (!projectBriefOverride && !projectBrief && !hasEditableGeometry) {
+      setEditorExperienceMode("guided");
+      setEditorView("plan");
+      setEditorLibraryTab("brief");
+      setLibraryOpen(true);
+      return;
+    }
     setAiDevelopmentState("running");
     try {
       if (projectBriefOverride) setProjectBrief(projectBriefOverride);
