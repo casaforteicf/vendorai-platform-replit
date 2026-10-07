@@ -551,8 +551,8 @@ export function BrandKitSettings() {
               <Button variant="outline" type="button" onClick={() => window.location.assign("/configuracoes?tab=perfil")}>
                 Editar em Empresa <ExternalLink className="ml-2 h-4 w-4" />
               </Button>
-              <Button variant="ghost" type="button" onClick={() => window.location.assign("/diagnostico-planejamento")}>
-                Ver Diagnóstico & Planejamento
+              <Button variant="ghost" type="button" onClick={() => window.location.assign("/configuracoes?tab=plano-negocios")}>
+                Abrir Plano de Negócios
               </Button>
             </div>
           </div>
