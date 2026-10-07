@@ -387,11 +387,7 @@ async function processQueueItem(params: {
         }] : []),
       ],
     },
-    assignedUserId: await pickNextVendedor(tenantId, {
-      segmento: item.setor,
-      city: item.cidade,
-      location: item.endereco,
-    }),
+    assignedUserId: assignedTo,
     nextActionAt: new Date(now.getTime() + 2 * 60 * 60 * 1000),
   });
 
