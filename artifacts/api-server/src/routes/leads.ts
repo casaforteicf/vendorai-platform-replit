@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
 import { rateLimit } from "express-rate-limit";
-import { and, eq, inArray, desc, ilike, isNull, isNotNull } from "drizzle-orm";
+import { and, eq, inArray, desc, ilike, isNull, isNotNull, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
@@ -597,6 +597,40 @@ router.get("/tenants/:tenantId/leads", async (req, res) => {
     .from(leadsTable)
     .where(and(...conditions))
     .orderBy(leadsTable.createdAt);
+
+  if (isOwnTenant) {
+    const sharedRows = await db.select({
+      lead: leadsTable,
+      operationalUserId: dealTenantParticipationsTable.operationalUserId,
+      participationId: dealTenantParticipationsTable.id,
+      ownerTenantId: dealTenantParticipationsTable.ownerTenantId,
+    })
+      .from(dealTenantParticipationsTable)
+      .innerJoin(dealsTable, eq(dealsTable.id, dealTenantParticipationsTable.dealId))
+      .innerJoin(leadsTable, eq(leadsTable.id, dealsTable.leadId))
+      .where(and(
+        eq(dealTenantParticipationsTable.partnerTenantId, tenantId),
+        eq(dealTenantParticipationsTable.status, "active"),
+        eq(leadsTable.possivelDuplicata, false),
+        incluirExcluidos === "apenas" ? isNotNull(leadsTable.excluidoEm) : incluirExcluidos === "incluir" ? sql`true` : isNull(leadsTable.excluidoEm),
+        incluirNaoLeads === "apenas" ? isNotNull(leadsTable.naoLeadTipo) : incluirNaoLeads === "incluir" ? sql`true` : isNull(leadsTable.naoLeadTipo),
+      ));
+
+    const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+    const currentUserId = String(req.user?.sub ?? "");
+    const sharedLeads = sharedRows
+      .filter((row) => isAdmin || !row.operationalUserId || row.operationalUserId === currentUserId)
+      .map((row) => ({
+        ...row.lead,
+        sharedParticipationId: row.participationId,
+        sharedOriginTenantId: row.ownerTenantId,
+        sharedReadOnly: true,
+      }));
+
+    const ownIds = new Set(leads.map((lead) => lead.id));
+    return res.json([...leads, ...sharedLeads.filter((lead) => !ownIds.has(lead.id))]);
+  }
+
   res.json(leads);
 });
 
