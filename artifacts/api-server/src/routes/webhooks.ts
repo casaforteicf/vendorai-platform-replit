@@ -1144,6 +1144,19 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
     res.status(200).json({ supportFeedback: true, ...supportFeedback });
     return;
   }
+
+  const coldProspectReply = await tryIngestColdProspectReply({
+    tenantId,
+    phone: telefone,
+    text: mensagem,
+    channel: "whatsapp",
+    externalId: typeof payload.messageId === "string" ? payload.messageId : null,
+  });
+  if (coldProspectReply.handled) {
+    res.status(200).json({ coldProspect: true, prospectId: coldProspectReply.prospectId });
+    return;
+  }
+
   const nome = payload.chatName ?? payload.senderName ?? telefone;
 
   req.log.info({ telefone, nome, tipoConteudo, type: payload.type }, "zapi-webhook: processing message");
