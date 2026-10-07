@@ -4962,6 +4962,40 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     }
   };
 
+  const uploadIntelligentProject = async (file: File) => {
+    if (sourceFileState === "uploading") return;
+    setSourceFileState("uploading");
+    setSourceFileMessage("Interpretando projeto completo, quadro de esquadrias, cortes, fachadas e cobertura...");
+    try {
+      const id = await saveConcept(4);
+      if (!id) throw new Error("Não foi possível salvar o pré-projeto antes da importação.");
+      const { importProjectIntelligentRequest } = await import("./conceptReferenceNetwork");
+      const payload = await importProjectIntelligentRequest(id, file) as any;
+      if (payload?.source?.id) {
+        setSourceFiles((current) => [
+          ...current.filter((item) => item.id !== payload.source.id),
+          payload.source as ProjectSourceFile,
+        ].slice(-20));
+      }
+      const previews = Array.isArray(payload?.geometryPreviews) ? payload.geometryPreviews : [];
+      const applicable = previews.filter((item: any) => item?.canApply).length;
+      const floorPlans = Number(payload?.memory?.floorPlans?.length ?? previews.length ?? 0);
+      const models = Number(payload?.universalModels?.length ?? 0);
+      const openings = Number(payload?.memory?.openings?.length ?? 0);
+      setSourceFileState("success");
+      setSourceFileMessage(
+        "Importação Inteligente concluída: " + floorPlans + " planta(s), " + openings +
+        " esquadria(s)/abertura(s) e " + models + " modelo(s) enviados à Biblioteca Universal. " +
+        (applicable ? applicable + " planta(s) já podem virar geometria editável." : "A geometria aguarda calibração/revisão técnica."),
+      );
+      window.setTimeout(() => setSourceFileState("idle"), 9000);
+    } catch (error) {
+      setSourceFileState("error");
+      setSourceFileMessage(error instanceof Error ? error.message : "Falha na Importação Inteligente do projeto.");
+    } finally {
+      if (projectStartImportInputRef.current) projectStartImportInputRef.current.value = "";
+    }
+  };
   const saveReferenceCalibration = async (patch: Partial<Pick<ReferencePlan, "widthMeters" | "offsetX" | "offsetY" | "opacity">>) => {
     if (!referencePlan || referencePlan.kind !== "image" || projectMaster) return;
 
@@ -7417,13 +7451,15 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                             : "O terreno fica opcional por enquanto. Você pode criar a casa primeiro e posicioná-la no lote depois."}
                       </p>
 
-                      <input ref={projectStartImportInputRef} type="file" accept=".dxf,.ifc,.dwg,.rvt,.skp,application/dxf" className="hidden"
+                      <input ref={projectStartImportInputRef} type="file" accept=".pdf,.dxf,.ifc,.dwg,.rvt,.skp,application/pdf,application/dxf" className="hidden"
                         onChange={(event) => {
                           const file = event.target.files?.[0]; if (!file) return;
                           setStartSourceChosen(true); setIntakeStage("complete"); setStartChooserDismissed(true);
                           setEditorView("plan"); setEditorLibraryTab("build"); setLibraryOpen(true);
                           const extension = file.name.split(".").pop()?.toLowerCase();
-                          if (extension && ["dxf", "ifc", "dwg", "skp"].includes(extension)) {
+                          if (extension === "pdf") {
+                            void uploadIntelligentProject(file);
+                          } else if (extension && ["dxf", "ifc", "dwg", "skp"].includes(extension)) {
                             void previewGeometryImport(file);
                           } else {
                             void uploadProjectSourceFile(file);
@@ -7461,7 +7497,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           className="group min-h-32 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm">
                           <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-800"><FolderOpen className="h-5 w-5" /></span>
                             <span><span className="block text-base font-bold text-slate-950">Importar projeto</span>
-                            <span className="mt-1 block text-xs leading-5 text-slate-600">DXF, IFC, DWG e SKP passam primeiro por prévia de escala/geometria antes de substituir a planta. RVT fica preservado como fonte vinculada.</span></span></div>
+                            <span className="mt-1 block text-xs leading-5 text-slate-600">PDF usa Importação Inteligente: lê pranchas, gera Memória da Obra e alimenta a Biblioteca Universal. DXF/IFC/DWG/SKP continuam com prévia de geometria antes de aplicar.</span></span></div>
                         </button>
 
                         <button type="button" onClick={() => chooseProjectStartReferenceMode("real_environment")}
@@ -11032,7 +11068,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                                 ? "IFC lido"
                                 : source.parserStatus === "pending_ifc_parser"
                                   ? "aguardando parser BIM"
-                                  : "aguardando conversão"}
+                                  : source.parserStatus === "ready_project_memory"
+                                    ? "Memória da Obra gerada"
+                                    : "aguardando conversão"}
                           </div>
                           {source.ifcMetadata && (
                             <div className="mt-1 text-[11px] text-slate-600">
