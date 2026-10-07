@@ -684,12 +684,12 @@ type CatalogPdfPreviewProduct = {
 };
 
 function cleanAiJson(raw: string): string {
-  return raw.trim().replace(/^\`\`\`json\\s*/i, "").replace(/\\s*\`\`\`$/i, "");
+  return raw.trim().replace(/^\`\`\`json\s*/i, "").replace(/\s*\`\`\`$/i, "");
 }
 
 function csvEscape(value: unknown): string {
   const text = value == null ? "" : String(value);
-  return /[",\\n\\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 router.post(
