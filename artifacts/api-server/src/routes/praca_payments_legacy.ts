@@ -24,6 +24,91 @@ function integerCents(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) >= 0;
 }
 
+async function resolveMarketplaceCommissionForOrder(
+  tenantId: string,
+  orderId: string,
+  billingType: string,
+  grossCentavos: number,
+) {
+  const items = await vendorPool.query(
+    `SELECT i.produto_id,i.sku,i.total_centavos,
+            p.marca,p.categoria_id,
+            COALESCE(cat.nome,'') AS categoria
+       FROM praca_pedido_itens i
+       JOIN produtos_catalogo p ON p.id=i.produto_id
+       LEFT JOIN categorias_produto cat ON cat.id=p.categoria_id
+      WHERE i.tenant_id=$1 AND i.pedido_id=$2
+      ORDER BY i.id`,
+    [tenantId, orderId],
+  );
+
+  let totalCommissionCentavos = 0;
+  const itemRules: any[] = [];
+  for (const item of items.rows) {
+    const ctx = {
+      billingType,
+      orderValue: grossCentavos / 100,
+      sellerTenantId: tenantId,
+    };
+    const resolved = await vendorPool.query(
+      `SELECT * FROM public.arqdor_market_resolve_commission_v2(
+        $1,$2,$3,$4,$5,$6,$7::jsonb
+      )`,
+      [
+        tenantId,
+        item.categoria || null,
+        item.categoria || null,
+        item.produto_id || null,
+        item.sku || null,
+        item.marca || null,
+        JSON.stringify(ctx),
+      ],
+    );
+    const rule = resolved.rows[0] || null;
+    const percentage = Number(rule?.percentage ?? 10);
+    const itemBase = Math.max(0, Number(item.total_centavos || 0));
+    const itemCommission = Math.round(itemBase * percentage / 100);
+    totalCommissionCentavos += itemCommission;
+    itemRules.push({
+      productId: item.produto_id,
+      sku: item.sku,
+      brand: item.marca,
+      category: item.categoria,
+      baseCentavos: itemBase,
+      commissionCentavos: itemCommission,
+      ruleId: rule?.rule_id || null,
+      percentage,
+      ruleName: rule?.rule_name || null,
+      ruleKind: rule?.rule_kind || null,
+      campaignCode: rule?.campaign_code || null,
+    });
+  }
+
+  if (!items.rows.length) {
+    const fallback = await vendorPool.query(
+      `SELECT * FROM public.arqdor_market_resolve_commission_v2(
+        $1,NULL,NULL,NULL,NULL,NULL,$2::jsonb
+      )`,
+      [tenantId, JSON.stringify({ billingType, orderValue: grossCentavos / 100, sellerTenantId: tenantId })],
+    );
+    const rule = fallback.rows[0] || null;
+    const percentage = Number(rule?.percentage ?? 10);
+    totalCommissionCentavos = Math.round(grossCentavos * percentage / 100);
+    itemRules.push({
+      productId: null,
+      baseCentavos: grossCentavos,
+      commissionCentavos: totalCommissionCentavos,
+      ruleId: rule?.rule_id || null,
+      percentage,
+      ruleName: rule?.rule_name || null,
+      ruleKind: rule?.rule_kind || null,
+      campaignCode: rule?.campaign_code || null,
+    });
+  }
+
+  return { totalCommissionCentavos, itemRules };
+}
+
 const EVENT_STATUS: Record<string, string> = {
   PAYMENT_CREATED: "pending",
   PAYMENT_UPDATED: "pending",
@@ -145,7 +230,7 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (r
   const orderResult = await vendorPool.query(
     `SELECT p.id,p.status,p.subtotal_centavos,p.frete_centavos,p.desconto_centavos,
             p.total_centavos,p.moeda,p.modelo_logistico,p.ponto_redespacho_id,
-            p.cliente_nome,p.cliente_documento,p.cliente_email,p.cliente_whatsapp,p.asaas_customer_id,
+            p.cliente_nome,p.cliente_documento,p.cliente_email,p.cliente_whatsapp,p.asaas_customer_id,p.market_demand_id,
             t.asaas_api_key,t.comissao_praca_ai_percentual
        FROM praca_pedidos p JOIN tenants t ON t.id=p.tenant_id
       WHERE p.tenant_id=$1 AND p.id=$2`,
@@ -213,8 +298,10 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (r
   const gross = Number(order.total_centavos);
   const freight = Number(order.frete_centavos);
   const commissionBase = Math.max(0, Number(order.subtotal_centavos) - Number(order.desconto_centavos));
-  const commissionBps = Math.round(Number(order.comissao_praca_ai_percentual ?? 0) * 100);
-  const pracaAmount = Math.round(commissionBase * commissionBps / 10000);
+  const resolvedCommission = await resolveMarketplaceCommissionForOrder(tenantId, orderId, billingType, gross);
+  const pracaAmount = Math.min(commissionBase, resolvedCommission.totalCommissionCentavos);
+  const effectiveCommissionPercent = commissionBase > 0 ? (pracaAmount / commissionBase) * 100 : 0;
+  const commissionBps = Math.round(effectiveCommissionPercent * 100);
   const courierAmount = freight;
   const sellerAmount = gross - pracaAmount - courierAmount;
   if (![gross,pracaAmount,courierAmount,sellerAmount].every(integerCents) ||
@@ -269,12 +356,14 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (r
     const inserted = await client.query(
       `INSERT INTO praca_payment_intents
         (tenant_id,order_id,provider,provider_customer_id,idempotency_key,billing_type,
-         status,currency,gross_centavos,due_date,request_snapshot)
-       VALUES ($1,$2,'asaas',$3,$4,$5,'created',$6,$7,$8,$9::jsonb)
+         status,currency,gross_centavos,due_date,request_snapshot,market_demand_id)
+       VALUES ($1,$2,'asaas',$3,$4,$5,'created',$6,$7,$8,$9::jsonb,$10::uuid)
        RETURNING id`,
       [tenantId,orderId,customerId,idempotencyKey,billingType,order.moeda,gross,dueDate,
-       JSON.stringify({ commissionBps, commissionBaseCentavos: commissionBase, modeloLogistico: requestedMode,
-         pontoRedespachoId: requestedMode === "redespacho" ? relayPointId : null, courierSplits })],
+       JSON.stringify({ commissionBps, commissionBaseCentavos: commissionBase, commissionRules: resolvedCommission.itemRules,
+         marketDemandId: order.market_demand_id || null, modeloLogistico: requestedMode,
+         pontoRedespachoId: requestedMode === "redespacho" ? relayPointId : null, courierSplits }),
+       order.market_demand_id || null],
     );
     intentId = inserted.rows[0].id;
     const allocations = [
@@ -290,6 +379,37 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (r
            amount_centavos,basis,status)
          VALUES ($1,$2,$3,$4,$5,$6,$7,'planned')`,
         [tenantId,intentId,...allocation],
+      );
+    }
+    if (order.market_demand_id && pracaAmount > 0) {
+      const entryResult = await client.query(
+        `INSERT INTO arqdor_market_commission_entries
+          (demand_id,tenant_id,source,percentage,base_value,commission_amount,status,
+           payment_intent_id,provider,rule_snapshot,metadata)
+         VALUES($1::uuid,$2,'internal',$3,$4,$5,'invoiced',$6,'asaas',$7::jsonb,$8::jsonb)
+         RETURNING id`,
+        [
+          order.market_demand_id,
+          tenantId,
+          String(effectiveCommissionPercent),
+          String(commissionBase / 100),
+          String(pracaAmount / 100),
+          intentId,
+          JSON.stringify(resolvedCommission.itemRules),
+          JSON.stringify({ orderId, billingType, retainedAtCheckout: true }),
+        ],
+      );
+      await client.query(
+        `UPDATE praca_payment_intents SET market_commission_entry_id=$1::uuid WHERE id=$2`,
+        [entryResult.rows[0].id, intentId],
+      );
+      await client.query(
+        `UPDATE arqdor_market_demands
+            SET commission_base_value=COALESCE(commission_base_value,0)+$1,
+                commission_amount=COALESCE(commission_amount,0)+$2,
+                commission_status='invoiced',updated_at=now()
+          WHERE id=$3::uuid AND tenant_id=$4`,
+        [String(commissionBase / 100), String(pracaAmount / 100), order.market_demand_id, tenantId],
       );
     }
     await client.query(
@@ -513,7 +633,7 @@ pracaPaymentsPublicRouter.post("/webhooks/asaas/payments", async (req, res) => {
   const splitEvent = ["PAYMENT_SPLIT_DONE","PAYMENT_SPLIT_CANCELLED","PAYMENT_SPLIT_DIVERGENCE_BLOCK","PAYMENT_SPLIT_DIVERGENCE_BLOCK_FINISHED"].includes(eventType);
   const recognizedEvent = Boolean(status) || splitEvent;
   const intent = await vendorPool.query(
-    `SELECT id,tenant_id,order_id,gross_centavos FROM praca_payment_intents
+    `SELECT id,tenant_id,order_id,gross_centavos,market_demand_id,market_commission_entry_id FROM praca_payment_intents
       WHERE provider='asaas' AND provider_payment_id=$1`,
     [paymentId],
   );
@@ -561,12 +681,49 @@ pracaPaymentsPublicRouter.post("/webhooks/asaas/payments", async (req, res) => {
             WHERE payment_intent_id=$1 AND status IN ('planned','scheduled')`,
           [row.id],
         );
+        if (row.market_commission_entry_id) {
+          await client.query(
+            `UPDATE arqdor_market_commission_entries
+                SET status='paid',provider='asaas',provider_payment_id=$1,settled_at=now(),updated_at=now()
+              WHERE id=$2::uuid`,
+            [paymentId, row.market_commission_entry_id],
+          );
+          if (row.market_demand_id) {
+            await client.query(
+              `UPDATE arqdor_market_demands
+                  SET commission_status=CASE
+                    WHEN EXISTS (
+                      SELECT 1 FROM arqdor_market_commission_entries e
+                      WHERE e.demand_id=arqdor_market_demands.id AND e.status NOT IN ('paid','waived','cancelled')
+                    ) THEN 'invoiced'
+                    ELSE 'paid'
+                  END,
+                  updated_at=now()
+                WHERE id=$1::uuid`,
+              [row.market_demand_id],
+            );
+            await client.query(
+              `INSERT INTO arqdor_market_demand_events
+                (demand_id,tenant_id,event_type,actor_type,source,reference_type,reference_id,payload,created_at)
+               VALUES($1::uuid,$2,'commission_settled','system','asaas','payment_intent',$3,$4::jsonb,now())`,
+              [row.market_demand_id,row.tenant_id,row.id,JSON.stringify({ providerPaymentId: paymentId, eventType })],
+            );
+          }
+        }
       } else if (["refunded","chargeback","cancelled"].includes(status)) {
         await client.query(
           `UPDATE praca_payment_allocations SET status='reversed',updated_at=now()
             WHERE payment_intent_id=$1 AND status IN ('planned','scheduled','settled','blocked')`,
           [row.id],
         );
+        if (row.market_commission_entry_id) {
+          await client.query(
+            `UPDATE arqdor_market_commission_entries
+                SET status='cancelled',updated_at=now()
+              WHERE id=$1::uuid`,
+            [row.market_commission_entry_id],
+          );
+        }
         if (status === "refunded" || status === "cancelled") {
           await client.query(
             "UPDATE praca_payment_actions SET status='completed',completed_at=coalesce(completed_at,now()),updated_at=now() WHERE payment_intent_id=$1 AND status='provider_accepted' AND action_type=$2",
