@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Router, type IRouter } from "express";
 import { z } from "zod";
 import { db, agentActionsLogTable } from "@workspace/db";
@@ -45,7 +46,24 @@ router.post("/server-agent/execute", async (req, res) => {
     return;
   }
 
-  const tenantId = req.user?.tenantId ?? "platform";
+  const tenantId = req.user?.tenantId as string | undefined;
+  const commandHash = createHash("sha256").update(parsed.data.command).digest("hex").slice(0, 16);
+
+  async function audit(status: "executed" | "failed", extra: Record<string, unknown>) {
+    if (!tenantId) return;
+    await db.insert(agentActionsLogTable).values({
+      tenantId,
+      agentName: "server",
+      actionType: parsed.data.mode === "write" ? "server_write_command" : "server_read_command",
+      status,
+      payload: {
+        commandHash,
+        mode: parsed.data.mode,
+        ...extra,
+      },
+    });
+  }
+
   try {
     const result = await executeServerCommand({
       command: parsed.data.command,
@@ -53,31 +71,17 @@ router.post("/server-agent/execute", async (req, res) => {
       timeoutMs: parsed.data.timeoutMs,
     });
 
-    await db.insert(agentActionsLogTable).values({
-      tenantId,
-      agentName: "server",
-      actionType: parsed.data.mode === "write" ? "server_write_command" : "server_read_command",
-      status: result.ok ? "executed" : "failed",
-      payload: {
-        host: result.host,
-        user: result.user,
-        command: parsed.data.command,
-        exitCode: result.exitCode,
-        durationMs: result.durationMs,
-      },
+    await audit(result.ok ? "executed" : "failed", {
+      host: result.host,
+      user: result.user,
+      exitCode: result.exitCode,
+      durationMs: result.durationMs,
     });
 
     res.status(result.ok ? 200 : 502).json(result);
   } catch (error: any) {
-    await db.insert(agentActionsLogTable).values({
-      tenantId,
-      agentName: "server",
-      actionType: parsed.data.mode === "write" ? "server_write_command" : "server_read_command",
-      status: "failed",
-      payload: {
-        command: parsed.data.command,
-        error: error?.message ?? "SERVER_AGENT_FAILED",
-      },
+    await audit("failed", {
+      error: error?.message ?? "SERVER_AGENT_FAILED",
     }).catch(() => undefined);
 
     res.status(502).json({ error: error?.message ?? "SERVER_AGENT_FAILED" });
