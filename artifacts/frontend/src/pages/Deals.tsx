@@ -454,6 +454,8 @@ function DealCard({
     data: { deal },
   });
 
+  const sharedParticipationId = (deal as Deal & { sharedParticipationId?: string | null }).sharedParticipationId;
+  const isSharedDeal = Boolean(sharedParticipationId);
   const deadline = deal.dataFechamentoPrevista ? new Date(deal.dataFechamentoPrevista) : null;
   const isOverdue = !overlay && deadline && deadline < new Date() && !TERMINAL_ETAPAS.has(deal.etapa ?? "");
   const isSlaLate = !overlay && slaOverdue;
@@ -480,6 +482,13 @@ function DealCard({
       onClick={onClick}
       data-testid={`deal-card-${deal.id}`}
     >
+      {isSharedDeal && (
+        <div className="flex items-center gap-1 rounded-full px-2 py-0.5 bg-indigo-50 border border-indigo-200 w-fit">
+          <Link2 className="h-3 w-3 text-indigo-700" />
+          <span className="text-[10px] font-semibold text-indigo-800">Negócio compartilhado</span>
+        </div>
+      )}
+
       {/* Tempo na etapa estourado — SLA configurado pelo admin */}
       {isSlaLate && (
         <div className="flex items-center gap-1 rounded-full px-2 py-0.5 bg-red-100 border border-red-300 w-fit">
@@ -510,7 +519,7 @@ function DealCard({
             {deal.titulo}
           </p>
         </div>
-        {!overlay && (
+        {!overlay && !isSharedDeal && (
           <AdminDeleteLeadButton
             leadId={deal.leadId}
             leadName={leadName || deal.titulo}
@@ -1015,7 +1024,9 @@ function KanbanColumn({
     const stage = stagesByKey[deal.etapa];
     if (!stage?.slaMinutos) return false;
     if (TERMINAL_ETAPAS.has(deal.etapa ?? "")) return false;
-    const changedAt = (deal as Deal & { etapaAlteradaEm?: string }).etapaAlteradaEm;
+    const timeline = deal as Deal & { etapaAlteradaEm?: string; sharedStageEnteredAt?: string | null; sharedStageDueAt?: string | null };
+    if (timeline.sharedStageDueAt) return new Date(timeline.sharedStageDueAt).getTime() < Date.now();
+    const changedAt = timeline.sharedStageEnteredAt ?? timeline.etapaAlteradaEm;
     if (!changedAt) return false;
     const elapsedMin = (Date.now() - new Date(changedAt).getTime()) / 60000;
     return elapsedMin > stage.slaMinutos;
