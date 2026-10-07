@@ -278,6 +278,8 @@ export default function IntegrationSettingsHub() {
   const [busy, setBusy] = useState<string | null>(null);
   const [checkingAll, setCheckingAll] = useState(false);
   const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("Todas");
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [catalogIntegrations, setCatalogIntegrations] = useState<CatalogIntegration[]>([]);
   const [showCustomGuide, setShowCustomGuide] = useState<"api" | "webhook" | "n8n" | null>(null);
   const [helpKey, setHelpKey] = useState<IntegrationKey | null>(null);
@@ -1230,6 +1232,21 @@ export default function IntegrationSettingsHub() {
   });
   const connectedCount = rows.filter((row) => row.connected).length;
   const attentionCount = rows.filter((row) => row.attention).length;
+  const compactTerm = search.trim().toLowerCase();
+  const compactMatches = (...parts: Array<string | undefined | null>) =>
+    !compactTerm || parts.filter(Boolean).join(" ").toLowerCase().includes(compactTerm);
+  const showCategory = (name: string) => categoryFilter === "Todas" || categoryFilter === name;
+  const getRow = (key: IntegrationKey) => rows.find((row) => row.key === key);
+  const compactFinance = tenantCatalog.filter((item) => /open.?finance|pix|asaas|finance|bank|banco/i.test([item.providerKey, item.name, item.category].join(" ")));
+  const compactDocuments = tenantCatalog.filter((item) => /clicksign|docusign|zapsign|assin/i.test([item.providerKey, item.name, item.category].join(" ")));
+  const compactImports = tenantCatalog.filter((item) => /csv|xlsx|excel|ofx|cnab|import|arquivo/i.test([item.providerKey, item.name, item.category].join(" ")));
+  const revealAdvanced = (integrationKey?: string) => {
+    setShowAdvanced(true);
+    window.setTimeout(() => {
+      const selector = integrationKey ? `[data-integration-key="${integrationKey}"]` : '[data-advanced-integrations="true"]';
+      document.querySelector<HTMLElement>(selector)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+  };
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-5 px-4 pb-10 sm:px-6">
@@ -1272,12 +1289,8 @@ export default function IntegrationSettingsHub() {
 
       {emailAvailability.resend?.configured === false && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
-          <p className="text-sm font-semibold">E-mail transacional precisa de configuração no servidor</p>
-          <p className="mt-1 text-xs">
-            {emailAvailability.resend?.apiConfigured
-              ? "A API do Resend está configurada, mas falta RESEND_WEBHOOK_SECRET para confirmar entrega, abertura, clique, bounce e falhas."
-              : "Faltam RESEND_API_KEY e/ou RESEND_WEBHOOK_SECRET. Os eventos de entrega não podem ser considerados operacionais até a configuração do ambiente."}
-          </p>
+          <p className="text-sm font-semibold">E-mail transacional precisa de atenção</p>
+          <p className="mt-1 text-xs">A infraestrutura de envio ainda não está totalmente operacional. A configuração técnica fica restrita ao Superadmin.</p>
         </div>
       )}
 
@@ -1309,6 +1322,224 @@ export default function IntegrationSettingsHub() {
         </div>
       )}
 
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="space-y-5">
+          <div className="rounded-2xl border bg-card p-4 shadow-sm">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Buscar integração ou serviço..."
+                className="lg:max-w-md"
+              />
+              <div className="flex flex-wrap gap-2">
+                {["Todas", "Comunicação", "Marketing", "Google", "Financeiro", "Documentos", "Importação", "Medição"].map((item) => (
+                  <Button
+                    key={item}
+                    size="sm"
+                    variant={categoryFilter === item ? "default" : "outline"}
+                    onClick={() => setCategoryFilter(item)}
+                  >
+                    {item}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {(showCategory("Comunicação") || showCategory("Google")) && (
+            <section>
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-base font-semibold">Essenciais</h2>
+                <span className="text-xs text-muted-foreground">Contas principais da operação</span>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                {(["whatsapp", "email-webmail"] as IntegrationKey[]).map((key) => {
+                  const row = getRow(key);
+                  if (!row || !compactMatches(row.label, row.description, row.usedBy)) return null;
+                  return (
+                    <div key={row.key} className="rounded-xl border bg-card p-4 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="font-semibold">{row.label}</h3>
+                          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{row.description}</p>
+                        </div>
+                        <span className={row.connected ? "rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700" : row.attention ? "rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700" : "rounded-full bg-muted px-2 py-1 text-[11px] font-semibold text-muted-foreground"}>
+                          {row.connected ? "Conectado" : row.attention ? "Atenção" : "Desconectado"}
+                        </span>
+                      </div>
+                      <p className="mt-5 text-xs text-muted-foreground">{row.detail || (row.connected ? "Conta ativa" : "Não configurado")}</p>
+                      <Button className="mt-3" size="sm" variant={row.connected ? "outline" : "default"} onClick={() => void handleRowAction(row)}>
+                        {row.connected ? "Gerenciar" : row.attention ? "Revisar" : "Conectar"}
+                      </Button>
+                    </div>
+                  );
+                })}
+                {ecosystems.filter((ecosystem) => ["google", "microsoft"].includes(ecosystem.key) && compactMatches(ecosystem.name, ecosystem.description)).map((ecosystem) => (
+                  <div key={ecosystem.key} className="rounded-xl border bg-card p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="font-semibold">{ecosystem.name}</h3>
+                        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{ecosystem.description}</p>
+                      </div>
+                      <span className="rounded-full bg-muted px-2 py-1 text-[11px] font-semibold text-muted-foreground">{ecosystem.connected} ativos</span>
+                    </div>
+                    <p className="mt-5 text-xs text-muted-foreground">{ecosystem.services.length} serviços disponíveis</p>
+                    <Button className="mt-3" size="sm" variant="outline" onClick={() => revealAdvanced()}>Gerenciar</Button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {showCategory("Marketing") && (
+            <section>
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-base font-semibold">Marketing e redes sociais</h2>
+                <span className="text-xs text-muted-foreground">Publicação, mídia e presença digital</span>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                {ecosystems.filter((ecosystem) => ecosystem.key === "meta" && compactMatches(ecosystem.name, ecosystem.description)).map((ecosystem) => (
+                  <div key={ecosystem.key} className="rounded-xl border bg-card p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div><h3 className="font-semibold">{ecosystem.name}</h3><p className="mt-1 text-xs text-muted-foreground">{ecosystem.description}</p></div>
+                      <span className="rounded-full bg-muted px-2 py-1 text-[11px] font-semibold text-muted-foreground">{ecosystem.connected} ativos</span>
+                    </div>
+                    <Button className="mt-5" size="sm" variant="outline" onClick={() => revealAdvanced()}>Gerenciar</Button>
+                  </div>
+                ))}
+                {(["instagram", "linkedin", "tiktok"] as IntegrationKey[]).map((key) => {
+                  const row = getRow(key);
+                  if (!row || !compactMatches(row.label, row.description, row.usedBy)) return null;
+                  return (
+                    <div key={row.key} className="rounded-xl border bg-card p-4 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div><h3 className="font-semibold">{row.label}</h3><p className="mt-1 text-xs text-muted-foreground">{row.description}</p></div>
+                        <span className={row.connected ? "rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700" : row.attention ? "rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700" : "rounded-full bg-muted px-2 py-1 text-[11px] font-semibold text-muted-foreground"}>
+                          {row.connected ? "Conectado" : row.attention ? "Atenção" : "Desconectado"}
+                        </span>
+                      </div>
+                      <Button className="mt-5" size="sm" variant={row.connected ? "outline" : "default"} onClick={() => void handleRowAction(row)}>
+                        {row.connected ? "Gerenciar" : row.attention ? "Revisar" : "Conectar"}
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {(showCategory("Financeiro") || showCategory("Documentos") || showCategory("Importação")) && (
+            <div className="grid gap-5 xl:grid-cols-3">
+              {showCategory("Financeiro") && (
+                <section>
+                  <h2 className="mb-3 text-base font-semibold">Financeiro</h2>
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                    {compactFinance.slice(0, 4).map((item) => (
+                      <div key={item.providerKey} className="rounded-xl border bg-card p-4">
+                        <div className="flex items-start justify-between gap-3"><h3 className="font-semibold">{item.name}</h3><span className="text-[11px] font-semibold text-muted-foreground">{item.status === "connected" ? "Conectado" : "Disponível"}</span></div>
+                        <p className="mt-1 text-xs text-muted-foreground">{(item.capabilities || []).slice(0, 3).join(" · ") || "Integração financeira"}</p>
+                        <Button className="mt-3" size="sm" variant="outline" onClick={() => revealAdvanced()}>Configurar</Button>
+                      </div>
+                    ))}
+                    {!compactFinance.length && <p className="text-xs text-muted-foreground">Nenhum conector financeiro disponível.</p>}
+                  </div>
+                </section>
+              )}
+              {showCategory("Documentos") && (
+                <section>
+                  <h2 className="mb-3 text-base font-semibold">Documentos e assinaturas</h2>
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                    {compactDocuments.slice(0, 4).map((item) => (
+                      <div key={item.providerKey} className="rounded-xl border bg-card p-4">
+                        <div className="flex items-start justify-between gap-3"><h3 className="font-semibold">{item.name}</h3><span className="text-[11px] font-semibold text-muted-foreground">{item.status === "connected" ? "Conectado" : "Disponível"}</span></div>
+                        <p className="mt-1 text-xs text-muted-foreground">{(item.capabilities || []).slice(0, 3).join(" · ") || "Documentos e assinaturas"}</p>
+                        <Button className="mt-3" size="sm" variant="outline" onClick={() => revealAdvanced()}>Configurar</Button>
+                      </div>
+                    ))}
+                    {!compactDocuments.length && <p className="text-xs text-muted-foreground">Nenhum conector de assinatura disponível.</p>}
+                  </div>
+                </section>
+              )}
+              {showCategory("Importação") && (
+                <section>
+                  <h2 className="mb-3 text-base font-semibold">Importação e troca de dados</h2>
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                    {compactImports.slice(0, 4).map((item) => (
+                      <div key={item.providerKey} className="rounded-xl border bg-card p-4">
+                        <div className="flex items-start justify-between gap-3"><h3 className="font-semibold">{item.name}</h3><span className="text-[11px] font-semibold text-muted-foreground">Disponível</span></div>
+                        <p className="mt-1 text-xs text-muted-foreground">{(item.capabilities || []).slice(0, 3).join(" · ") || "Importar ou exportar dados"}</p>
+                        <Button className="mt-3" size="sm" variant="outline" onClick={() => revealAdvanced()}>Importar</Button>
+                      </div>
+                    ))}
+                    {!compactImports.length && <p className="text-xs text-muted-foreground">Nenhum formato de importação disponível.</p>}
+                  </div>
+                </section>
+              )}
+            </div>
+          )}
+
+          {showCategory("Medição") && (
+            <section>
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-base font-semibold">Medição e conversões</h2>
+                <Button size="sm" variant="ghost" onClick={() => revealAdvanced("tracking")}>Gerenciar tracking</Button>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {[
+                  ["Google Analytics 4", status?.tracking?.ga4],
+                  ["Google Tag Manager", status?.tracking?.gtm],
+                  ["Google Ads Conversion", status?.tracking?.googleAds],
+                  ["Meta Pixel", status?.tracking?.metaPixel],
+                  ["LinkedIn Insight Tag", status?.tracking?.linkedinInsightTag],
+                  ["TikTok Pixel", status?.tracking?.tiktokPixel],
+                ].filter(([name]) => compactMatches(String(name))).map(([name, configured]) => (
+                  <button key={String(name)} type="button" onClick={() => revealAdvanced("tracking")} className="rounded-xl border bg-card p-4 text-left transition hover:bg-muted/30">
+                    <div className="flex items-start justify-between gap-3">
+                      <h3 className="text-sm font-semibold">{String(name)}</h3>
+                      <span className={configured ? "rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700" : "rounded-full bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700"}>{configured ? "Configurado" : "Não configurado"}</span>
+                    </div>
+                    <p className="mt-3 text-xs text-muted-foreground">Clique para configurar.</p>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <div className="flex justify-center pt-1">
+            <Button variant="outline" onClick={() => setShowAdvanced((value) => !value)}>
+              {showAdvanced ? "Ocultar configurações avançadas" : "Abrir configurações avançadas"}
+            </Button>
+          </div>
+        </div>
+
+        <aside className="space-y-4">
+          <div className="rounded-2xl border bg-card p-4 shadow-sm">
+            <h2 className="font-semibold">Vendi te ajuda</h2>
+            <p className="mt-2 text-sm text-muted-foreground">Precisa integrar alguma conta? O Vendi orienta o próximo passo e mantém a configuração centralizada.</p>
+            <Button className="mt-4 w-full" variant="outline" onClick={() => toast({ title: "Ajuda do Vendi", description: "Abra a integração desejada e use a ajuda passo a passo. O Vendi usa o status real para orientar o próximo passo." })}>Pedir ajuda ao Vendi</Button>
+          </div>
+          <div className="rounded-2xl border bg-card p-4">
+            <h2 className="font-semibold">Central de Conexões</h2>
+            <div className="mt-3 space-y-2 text-sm text-muted-foreground">
+              <p>✓ Conecte suas contas</p>
+              <p>✓ Acompanhe o status</p>
+              <p>✓ Receba alertas de vencimento</p>
+              <p>✓ Teste as integrações</p>
+              <p>✓ Tire dúvidas sem sair da tela</p>
+            </div>
+          </div>
+          <div className="rounded-2xl border bg-card p-4">
+            <h2 className="font-semibold">Status da plataforma</h2>
+            <p className="mt-2 text-sm text-emerald-700">● Central operacional</p>
+            <p className="mt-1 text-xs text-muted-foreground">Última verificação: {lastHealthCheckAt}</p>
+          </div>
+        </aside>
+      </div>
+
+      {showAdvanced && (
+        <div data-advanced-integrations="true" className="space-y-5">
       <div className="rounded-2xl border bg-card p-5">
         <div>
           <h2 className="font-semibold">Ecossistemas conectados</h2>
@@ -1841,6 +2072,8 @@ export default function IntegrationSettingsHub() {
           </div>
         )}
       </div>
+        </div>
+      )}
     </div>
   );
 }
