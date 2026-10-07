@@ -239,6 +239,7 @@ export async function resolverContextoNegocio(input: {
       typeof discovery["tipografia"] === "string" ? `Tipografia: ${compact(discovery["tipografia"], 500)}` : "",
       typeof discovery["coresSecundarias"] === "string" ? `Cores secundárias: ${compact(discovery["coresSecundarias"], 500)}` : "",
       typeof discovery["ctaPadrao"] === "string" ? `CTA padrão: ${compact(discovery["ctaPadrao"], 500)}` : "",
+      typeof discovery["palavrasEvitar"] === "string" ? `Palavras e expressões a evitar: ${compact(discovery["palavrasEvitar"], 700)}` : "",
       typeof discovery["referenciasVisuais"] === "string" ? `Referências visuais: ${compact(discovery["referenciasVisuais"], 900)}` : "",
     ].filter(Boolean).join("\n");
 
