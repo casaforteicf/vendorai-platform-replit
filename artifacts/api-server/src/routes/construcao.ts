@@ -2416,7 +2416,7 @@ router.put("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas/:eta
 
     const [updated] = await tx
       .update(obraOrcamentoItensTable)
-      .set(updateData)
+      .set(updateData as any)
       .where(and(eq(obraOrcamentoItensTable.id, itemId), eq(obraOrcamentoItensTable.etapaId, etapaId)))
       .returning();
 
