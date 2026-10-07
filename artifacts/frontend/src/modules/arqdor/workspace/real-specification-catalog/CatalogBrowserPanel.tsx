@@ -144,7 +144,6 @@ export function CatalogBrowserPanel({
                 <Info label="Material" value={money(item.price)} />
                 <Info label="Mão de obra" value={money(item.laborPrice)} />
               </div>
-              ) : null}
               {(item.width || item.height || item.depth) ? (
                 <div className="mt-2 rounded-2xl bg-[var(--arq-card-soft)] p-3 text-xs text-[var(--arq-muted)]">
                   Dimensões de referência: {[item.width, item.height, item.depth].filter((v) => v != null).join(" × ")}
