@@ -1,3 +1,4 @@
+import { SYSTEM_DETAIL_COMPOSITIONS_V2 } from "./construction-system-compositions-v2";
 /**
  * Catálogo universal de composições de obra — v2026.10.07.
  *
@@ -630,4 +631,5 @@ export const STANDARD_CONSTRUCTION_COMPOSITIONS: StandardConstructionComposition
   ...UNIVERSAIS,
   ...SISTEMAS,
   ...SISTEMAS_DETALHADOS,
+  ...SYSTEM_DETAIL_COMPOSITIONS_V2,
 ];
