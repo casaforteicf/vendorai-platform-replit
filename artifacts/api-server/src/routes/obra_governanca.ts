@@ -90,8 +90,8 @@ router.get("/tenants/:tenantId/obras/:obraId/governanca/relatorio-consolidado", 
 
   let etapasOrcamento: typeof obraOrcamentoEtapasTable.$inferSelect[] = [];
   let itensOrcamento: typeof obraOrcamentoItensTable.$inferSelect[] = [];
-  let formacao = null;
-  let formacaoSnapshot = null;
+  let formacao: typeof orcamentoFormacaoVendaTable.$inferSelect | null = null;
+  let formacaoSnapshot: typeof orcamentoFormacaoSnapshotsTable.$inferSelect | null = null;
   let cotacoes: typeof obraCotacoesTable.$inferSelect[] = [];
 
   if (orcamentoAtual) {
@@ -120,12 +120,14 @@ router.get("/tenants/:tenantId/obras/:obraId/governanca/relatorio-consolidado", 
   }
 
   const cotacaoIds = cotacoes.map((c) => c.id);
-  const [cotacaoItens, propostas] = cotacaoIds.length
-    ? await Promise.all([
-        db.select().from(obraCotacaoItensTable).where(inArray(obraCotacaoItensTable.cotacaoId, cotacaoIds)),
-        db.select().from(obraCotacaoPropostasTable).where(inArray(obraCotacaoPropostasTable.cotacaoId, cotacaoIds)),
-      ])
-    : [[], []];
+  let cotacaoItens: typeof obraCotacaoItensTable.$inferSelect[] = [];
+  let propostas: typeof obraCotacaoPropostasTable.$inferSelect[] = [];
+  if (cotacaoIds.length) {
+    [cotacaoItens, propostas] = await Promise.all([
+      db.select().from(obraCotacaoItensTable).where(inArray(obraCotacaoItensTable.cotacaoId, cotacaoIds)),
+      db.select().from(obraCotacaoPropostasTable).where(inArray(obraCotacaoPropostasTable.cotacaoId, cotacaoIds)),
+    ]);
+  }
 
   const [pedidos, atividades, titulos, fluxoSnapshots] = await Promise.all([
     db.select().from(obraPedidosCompraTable)
