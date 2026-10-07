@@ -3777,4 +3777,3 @@ router.post("/work-cards/:id/attachments", async (req, res) => {
 });
 
 export default router;
-
