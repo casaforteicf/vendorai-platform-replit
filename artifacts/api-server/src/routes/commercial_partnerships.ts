@@ -5,8 +5,12 @@ import { requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
 import {
   db,
   dealsTable,
+  leadsTable,
   usersTable,
   tenantsTable,
+  pipelineStagesTable,
+  activitiesTable,
+  tenantUserFunctionsTable,
   tenantCommercialPartnershipsTable,
   dealTenantParticipationsTable,
   intercompanyCommissionsTable,
@@ -28,6 +32,8 @@ const DEFAULT_PARTNER_PERMISSIONS = [
   "negotiate",
   "close_deal",
   "assign_partner_user",
+  "view_partner_progress",
+  "open_support",
 ];
 
 function isSuperAdmin(req: any) {
@@ -84,8 +90,22 @@ async function assertParticipationAccess(req: any, participationId: string) {
           .where(eq(tenantCommercialPartnershipsTable.id, participation.partnershipId)).limit(1)
       : [null];
 
-    const authorized = partnership?.authorizedUserIds ?? [];
-    if (authorized.length > 0 && !authorized.includes(String(req.user?.sub ?? ""))) {
+    const isAdmin = req.user?.platformRole === "tenant_admin" || req.user?.userFunction === "administrador";
+    const currentUserId = String(req.user?.sub ?? "");
+
+    // authorizedUserIds pertence semanticamente ao tenant cadastrado como
+    // partner na parceria. Quando o negócio nasceu nesse lado e foi enviado
+    // no sentido inverso, não aplique essa lista aos usuários da outra empresa.
+    if (partnership?.partnerTenantId === tenantId) {
+      const authorized = partnership.authorizedUserIds ?? [];
+      if (!isAdmin && authorized.length > 0 && !authorized.includes(currentUserId)) {
+        return { error: "FORBIDDEN" as const };
+      }
+    }
+
+    // Em qualquer sentido, se o trabalho foi atribuído a uma pessoa específica,
+    // só ela (ou admin) pode operar o card.
+    if (!isAdmin && participation.operationalUserId && participation.operationalUserId !== currentUserId) {
       return { error: "FORBIDDEN" as const };
     }
   }
@@ -230,11 +250,98 @@ const shareDealSchema = z.object({
   partnershipId: z.string().min(1),
   role: z.enum(["responsible", "participant"]).default("responsible"),
   operationalUserId: z.string().min(1).nullable().optional(),
+  functionId: z.string().min(1).nullable().optional(),
+  pipeline: z.enum(["comercial", "aquecimento", "parceiros", "execucao", "suporte"]).default("comercial"),
+  stage: z.string().trim().min(1).max(120).optional(),
   permissions: z.array(z.string()).max(100).optional(),
   commissionType: z.enum(["percent", "fixed"]).default("percent"),
   commissionPercent: z.coerce.number().min(0).max(100).optional(),
   commissionFixedAmount: z.coerce.number().min(0).nullable().optional(),
 });
+
+const SHARED_PIPELINES = ["comercial", "aquecimento", "parceiros", "execucao", "suporte"] as const;
+
+function normalizeStageLabel(value: string | null | undefined) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function userMatchesResponsibleFunctions(
+  user: { active?: boolean | null; platformRole?: string | null; userFunction?: string | null; customFunctionId?: string | null },
+  responsibleFunctions: string[] | null | undefined,
+) {
+  if (user.active !== true) return false;
+  if (user.platformRole === "super_admin" || user.platformRole === "tenant_admin" || user.userFunction === "administrador") return true;
+  const configured = responsibleFunctions ?? [];
+  if (configured.length === 0) return true;
+  const refs = new Set<string>();
+  if (user.userFunction) refs.add(`builtin:${user.userFunction}`);
+  if (user.customFunctionId) refs.add(`custom:${user.customFunctionId}`);
+  return configured.some((value) => refs.has(value));
+}
+
+async function resolveStageForTenant(input: {
+  tenantId: string;
+  pipeline: typeof SHARED_PIPELINES[number];
+  requestedStage?: string | null;
+  sourceStage?: string | null;
+  sourceLabel?: string | null;
+}) {
+  const stages = await db.select({
+    id: pipelineStagesTable.id,
+    key: pipelineStagesTable.key,
+    label: pipelineStagesTable.label,
+    ordem: pipelineStagesTable.ordem,
+    slaMinutos: pipelineStagesTable.slaMinutos,
+    responsaveisFuncoes: pipelineStagesTable.responsaveisFuncoes,
+  }).from(pipelineStagesTable).where(and(
+    eq(pipelineStagesTable.tenantId, input.tenantId),
+    eq(pipelineStagesTable.pipeline, input.pipeline),
+  ));
+
+  const ordered = [...stages].sort((a, b) => a.ordem - b.ordem);
+  if (input.requestedStage) {
+    return ordered.find((stage) => stage.key === input.requestedStage) ?? null;
+  }
+
+  const byKey = input.sourceStage
+    ? ordered.find((stage) => stage.key === input.sourceStage)
+    : null;
+  if (byKey) return byKey;
+
+  const normalizedSource = normalizeStageLabel(input.sourceLabel || input.sourceStage);
+  if (normalizedSource) {
+    const byLabel = ordered.find((stage) => normalizeStageLabel(stage.label) === normalizedSource);
+    if (byLabel) return byLabel;
+  }
+
+  return null;
+}
+
+async function resolveOperationalUser(input: {
+  tenantId: string;
+  requestedUserId?: string | null;
+  responsibleFunctions?: string[] | null;
+}) {
+  const users = await db.select({
+    id: usersTable.id,
+    active: usersTable.active,
+    platformRole: usersTable.platformRole,
+    userFunction: usersTable.userFunction,
+    customFunctionId: usersTable.customFunctionId,
+  }).from(usersTable).where(eq(usersTable.tenantId, input.tenantId));
+
+  if (input.requestedUserId) {
+    const requested = users.find((user) => user.id === input.requestedUserId);
+    if (requested && userMatchesResponsibleFunctions(requested, input.responsibleFunctions)) return requested.id;
+  }
+
+  return users.find((user) => userMatchesResponsibleFunctions(user, input.responsibleFunctions))?.id ?? null;
+}
 
 router.post("/deals/:dealId/share-with-partner", async (req, res) => {
   const dealId = String(req.params.dealId);
@@ -297,6 +404,10 @@ router.post("/deals/:dealId/share-with-partner", async (req, res) => {
           role: parsed.data.role,
           status: "active",
           operationalUserId: parsed.data.operationalUserId ?? null,
+          functionId: parsed.data.functionId ?? current.functionId ?? null,
+          pipeline: parsed.data.pipeline,
+          stage: parsed.data.stage ?? current.stage ?? deal.etapa,
+          stageEnteredAt: new Date(),
           permissions,
           commissionType: parsed.data.commissionType,
           commissionPercent: String(commissionPercent),
@@ -312,6 +423,10 @@ router.post("/deals/:dealId/share-with-partner", async (req, res) => {
           role: parsed.data.role,
           status: "active",
           operationalUserId: parsed.data.operationalUserId ?? null,
+          functionId: parsed.data.functionId ?? null,
+          pipeline: parsed.data.pipeline,
+          stage: parsed.data.stage ?? deal.etapa,
+          stageEnteredAt: new Date(),
           permissions,
           commissionType: parsed.data.commissionType,
           commissionPercent: String(commissionPercent),
@@ -407,6 +522,233 @@ router.post("/deals/:dealId/share-with-partner", async (req, res) => {
   return res.status(201).json(result);
 });
 
+const handoffCompanySchema = z.object({
+  partnershipId: z.string().min(1),
+  targetPipeline: z.enum(SHARED_PIPELINES).optional(),
+  targetStage: z.string().trim().min(1).max(120).optional(),
+  operationalUserId: z.string().min(1).nullable().optional(),
+  note: z.string().trim().max(2000).nullable().optional(),
+});
+
+router.post("/deals/:dealId/handoff-company", async (req, res) => {
+  const parsed = handoffCompanySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const dealId = String(req.params.dealId);
+  const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, dealId)).limit(1);
+  if (!deal) return res.status(404).json({ error: "Negócio não encontrado." });
+
+  const [partnership] = await db.select().from(tenantCommercialPartnershipsTable)
+    .where(and(
+      eq(tenantCommercialPartnershipsTable.id, parsed.data.partnershipId),
+      eq(tenantCommercialPartnershipsTable.status, "active"),
+    )).limit(1);
+  if (!partnership) return res.status(404).json({ error: "Vínculo entre empresas não encontrado." });
+
+  const companies = new Set([partnership.ownerTenantId, partnership.partnerTenantId]);
+  if (!companies.has(deal.tenantId)) {
+    return res.status(422).json({ error: "O negócio não pertence a nenhuma das empresas deste vínculo." });
+  }
+
+  const senderTenantId = currentTenantId(req);
+  if (!isSuperAdmin(req) && !companies.has(senderTenantId)) {
+    return res.status(403).json({ error: "FORBIDDEN" });
+  }
+
+  // A empresa que cadastrou o negócio é a origem canônica deste negócio,
+  // independentemente do sentido cadastrado na parceria.
+  const originTenantId = deal.tenantId;
+  const participantTenantId = originTenantId === partnership.ownerTenantId
+    ? partnership.partnerTenantId
+    : partnership.ownerTenantId;
+
+  if (!isSuperAdmin(req) && senderTenantId !== originTenantId && senderTenantId !== participantTenantId) {
+    return res.status(403).json({ error: "FORBIDDEN" });
+  }
+
+  const [participation] = await db.select().from(dealTenantParticipationsTable)
+    .where(and(
+      eq(dealTenantParticipationsTable.dealId, dealId),
+      eq(dealTenantParticipationsTable.partnerTenantId, participantTenantId),
+    )).limit(1);
+
+  // Se quem está enviando não é a origem, precisa existir participação ativa.
+  if (!isSuperAdmin(req) && senderTenantId === participantTenantId && (!participation || participation.status !== "active")) {
+    return res.status(403).json({ error: "Este negócio ainda não foi compartilhado com esta empresa." });
+  }
+
+  const destinationTenantId = senderTenantId === participantTenantId
+    ? originTenantId
+    : participantTenantId;
+
+  const senderIsOrigin = senderTenantId === originTenantId || isSuperAdmin(req) && senderTenantId !== participantTenantId;
+  const senderPipeline = senderIsOrigin
+    ? "comercial"
+    : ((participation?.pipeline as typeof SHARED_PIPELINES[number] | null) ?? "comercial");
+  const senderStage = senderIsOrigin
+    ? deal.etapa
+    : (participation?.stage ?? deal.etapa);
+
+  const [sourceStageConfig] = await db.select({ label: pipelineStagesTable.label })
+    .from(pipelineStagesTable)
+    .where(and(
+      eq(pipelineStagesTable.tenantId, senderIsOrigin ? originTenantId : participantTenantId),
+      eq(pipelineStagesTable.pipeline, senderPipeline),
+      eq(pipelineStagesTable.key, senderStage),
+    ))
+    .limit(1);
+
+  const targetPipeline = parsed.data.targetPipeline ?? senderPipeline;
+  const targetStage = await resolveStageForTenant({
+    tenantId: destinationTenantId,
+    pipeline: targetPipeline,
+    requestedStage: parsed.data.targetStage,
+    sourceStage: senderStage,
+    sourceLabel: sourceStageConfig?.label ?? senderStage,
+  });
+
+  if (!targetStage) {
+    const available = await db.select({
+      key: pipelineStagesTable.key,
+      label: pipelineStagesTable.label,
+      ordem: pipelineStagesTable.ordem,
+    }).from(pipelineStagesTable).where(and(
+      eq(pipelineStagesTable.tenantId, destinationTenantId),
+      eq(pipelineStagesTable.pipeline, targetPipeline),
+    ));
+    return res.status(409).json({
+      error: "STAGE_MAPPING_REQUIRED",
+      message: "Não existe uma etapa equivalente configurada na empresa de destino. Selecione a etapa de entrada.",
+      source: { pipeline: senderPipeline, stage: senderStage, label: sourceStageConfig?.label ?? senderStage },
+      targetPipeline,
+      availableStages: available.sort((a, b) => a.ordem - b.ordem),
+    });
+  }
+
+  const operationalUserId = await resolveOperationalUser({
+    tenantId: destinationTenantId,
+    requestedUserId: parsed.data.operationalUserId ?? null,
+    responsibleFunctions: targetStage.responsaveisFuncoes,
+  });
+  if (!operationalUserId) {
+    return res.status(422).json({
+      error: "STAGE_RESPONSIBLE_REQUIRED",
+      message: "Não há usuário ativo compatível com a função responsável pela etapa de destino.",
+    });
+  }
+
+  const now = new Date();
+  const stageDueAt = targetStage.slaMinutos
+    ? new Date(now.getTime() + targetStage.slaMinutos * 60 * 1000)
+    : null;
+
+  // A função externa é sempre procurada na empresa de origem, apontando para a
+  // empresa participante. Isso preserva permissões/equipe sem transformar
+  // usuários externos em usuários internos.
+  const [externalFunction] = await db.select({ id: tenantUserFunctionsTable.id })
+    .from(tenantUserFunctionsTable)
+    .where(and(
+      eq(tenantUserFunctionsTable.tenantId, originTenantId),
+      eq(tenantUserFunctionsTable.kind, "external_company"),
+      eq(tenantUserFunctionsTable.linkedTenantId, participantTenantId),
+    ))
+    .limit(1);
+
+  let updatedParticipation = participation;
+
+  if (destinationTenantId === participantTenantId) {
+    const permissions = participation?.permissions?.length
+      ? participation.permissions
+      : (partnership.defaultPermissions ?? DEFAULT_PARTNER_PERMISSIONS);
+
+    if (participation) {
+      [updatedParticipation] = await db.update(dealTenantParticipationsTable).set({
+        partnershipId: partnership.id,
+        status: "active",
+        operationalUserId,
+        functionId: externalFunction?.id ?? participation.functionId ?? null,
+        pipeline: targetPipeline,
+        stage: targetStage.key,
+        stageEnteredAt: now,
+        stageDueAt,
+        lastHandoffFromTenantId: originTenantId,
+        lastHandoffAt: now,
+        permissions,
+        endedAt: null,
+        updatedAt: now,
+      }).where(eq(dealTenantParticipationsTable.id, participation.id)).returning();
+    } else {
+      [updatedParticipation] = await db.insert(dealTenantParticipationsTable).values({
+        dealId,
+        ownerTenantId: originTenantId,
+        partnerTenantId: participantTenantId,
+        partnershipId: partnership.id,
+        role: "participant",
+        status: "active",
+        operationalUserId,
+        functionId: externalFunction?.id ?? null,
+        pipeline: targetPipeline,
+        stage: targetStage.key,
+        stageEnteredAt: now,
+        stageDueAt,
+        lastHandoffFromTenantId: originTenantId,
+        lastHandoffAt: now,
+        permissions,
+        sharedByUserId: req.user?.sub ?? null,
+      }).returning();
+    }
+
+    if (externalFunction?.id && deal.leadId) {
+      await db.update(leadsTable).set({
+        representativeFunctionId: externalFunction.id,
+        updatedAt: now,
+      }).where(eq(leadsTable.id, deal.leadId));
+    }
+  } else {
+    // Retorno para quem cadastrou: atualiza a posição da origem sem apagar a
+    // participação da outra empresa, que continua disponível para consulta.
+    if (targetPipeline !== "comercial") {
+      return res.status(409).json({
+        error: "OWNER_PIPELINE_TRANSFER_REQUIRED",
+        message: "Para retornar a uma pipeline operacional da empresa de origem, conclua o handoff e use a movimentação de pipeline da própria empresa.",
+      });
+    }
+
+    await db.update(dealsTable).set({
+      etapa: targetStage.key,
+      assignedTo: operationalUserId,
+      updatedAt: now,
+    }).where(eq(dealsTable.id, dealId));
+
+    if (participation) {
+      [updatedParticipation] = await db.update(dealTenantParticipationsTable).set({
+        role: "participant",
+        lastHandoffFromTenantId: participantTenantId,
+        lastHandoffAt: now,
+        updatedAt: now,
+      }).where(eq(dealTenantParticipationsTable.id, participation.id)).returning();
+    }
+  }
+
+  return res.json({
+    dealId,
+    shared: true,
+    originTenantId,
+    sourceTenantId: senderTenantId || originTenantId,
+    destinationTenantId,
+    destination: {
+      pipeline: targetPipeline,
+      stage: targetStage.key,
+      stageLabel: targetStage.label,
+      operationalUserId,
+      stageDueAt,
+      slaMinutes: targetStage.slaMinutos ?? null,
+    },
+    participation: updatedParticipation,
+    note: parsed.data.note ?? null,
+  });
+});
+
 router.get("/tenants/:tenantId/representation-work", requireSameTenanOrSuperAdmin(), async (req, res) => {
   // tenant-audit: reviewed protected by requireSameTenanOrSuperAdmin before tenant data access
   const tenantId = String(req.params.tenantId);
@@ -415,9 +757,19 @@ router.get("/tenants/:tenantId/representation-work", requireSameTenanOrSuperAdmi
   const rows = await db.select({
     participation: dealTenantParticipationsTable,
     deal: dealsTable,
+    lead: {
+      id: leadsTable.id,
+      nome: leadsTable.nome,
+      empresa: leadsTable.empresa,
+      telefone: leadsTable.telefone,
+      email: leadsTable.email,
+    },
+    functionName: tenantUserFunctionsTable.name,
     commission: intercompanyCommissionsTable,
   }).from(dealTenantParticipationsTable)
     .innerJoin(dealsTable, eq(dealsTable.id, dealTenantParticipationsTable.dealId))
+    .leftJoin(leadsTable, eq(leadsTable.id, dealsTable.leadId))
+    .leftJoin(tenantUserFunctionsTable, eq(tenantUserFunctionsTable.id, dealTenantParticipationsTable.functionId))
     .leftJoin(intercompanyCommissionsTable, eq(intercompanyCommissionsTable.participationId, dealTenantParticipationsTable.id))
     .where(and(
       eq(dealTenantParticipationsTable.partnerTenantId, tenantId),
@@ -458,7 +810,13 @@ router.patch("/representation-work/:participationId/assign", async (req, res) =>
   return res.json(updated);
 });
 
-const stageSchema = z.object({ etapa: z.string().trim().min(1).max(80) });
+const stageSchema = z.object({
+  etapa: z.string().trim().min(1).max(120),
+  pipeline: z.enum(SHARED_PIPELINES).optional(),
+  atividadeTitulo: z.string().trim().min(3).max(200).optional(),
+  atividadeDescricao: z.string().trim().max(2000).optional(),
+  observacaoPassagem: z.string().trim().max(2000).optional(),
+});
 
 router.patch("/representation-work/:participationId/stage", async (req, res) => {
   const participationId = String(req.params.participationId);
@@ -471,12 +829,136 @@ router.patch("/representation-work/:participationId/stage", async (req, res) => 
     return res.status(403).json({ error: "A representação não possui autonomia para movimentar a pipeline." });
   }
 
-  const [updated] = await db.update(dealsTable).set({
-    etapa: parsed.data.etapa,
-    updatedAt: new Date(),
-  }).where(eq(dealsTable.id, access.participation.dealId)).returning();
+  const participation = access.participation;
+  const pipeline = parsed.data.pipeline ?? (participation.pipeline as typeof SHARED_PIPELINES[number] | null) ?? "comercial";
+  const [targetStage] = await db.select({
+    key: pipelineStagesTable.key,
+    label: pipelineStagesTable.label,
+    slaMinutos: pipelineStagesTable.slaMinutos,
+    responsaveisFuncoes: pipelineStagesTable.responsaveisFuncoes,
+    atividadesPadrao: pipelineStagesTable.atividadesPadrao,
+    atividadePadraoTitulo: pipelineStagesTable.atividadePadraoTitulo,
+    atividadePadraoDescricao: pipelineStagesTable.atividadePadraoDescricao,
+    atividadePadraoPrazoMinutos: pipelineStagesTable.atividadePadraoPrazoMinutos,
+  }).from(pipelineStagesTable).where(and(
+    eq(pipelineStagesTable.tenantId, participation.partnerTenantId),
+    eq(pipelineStagesTable.pipeline, pipeline),
+    eq(pipelineStagesTable.key, parsed.data.etapa),
+  )).limit(1);
 
-  return res.json({ deal: updated, participation: access.participation });
+  if (!targetStage) {
+    return res.status(422).json({ error: "A etapa escolhida não existe na pipeline desta empresa." });
+  }
+
+  const operationalUserId = await resolveOperationalUser({
+    tenantId: participation.partnerTenantId,
+    requestedUserId: participation.operationalUserId,
+    responsibleFunctions: targetStage.responsaveisFuncoes,
+  });
+  if (!operationalUserId) {
+    return res.status(422).json({
+      error: "STAGE_RESPONSIBLE_REQUIRED",
+      message: "Não há usuário ativo compatível com a função responsável pela etapa.",
+    });
+  }
+
+  const now = new Date();
+  const stageDueAt = targetStage.slaMinutos
+    ? new Date(now.getTime() + targetStage.slaMinutos * 60 * 1000)
+    : null;
+
+  // A empresa parceira movimenta somente a própria posição do negócio.
+  // O estágio comercial da empresa originadora permanece intacto.
+  const [updatedParticipation] = await db.update(dealTenantParticipationsTable).set({
+    pipeline,
+    stage: targetStage.key,
+    operationalUserId,
+    stageEnteredAt: now,
+    stageDueAt,
+    updatedAt: now,
+  }).where(eq(dealTenantParticipationsTable.id, participation.id)).returning();
+
+  const [deal] = await db.select().from(dealsTable)
+    .where(eq(dealsTable.id, participation.dealId)).limit(1);
+
+  if (deal?.leadId) {
+    const configuredTemplates = targetStage.atividadesPadrao ?? [];
+    const fallback = targetStage.atividadePadraoTitulo?.trim()
+      ? [{
+          id: "legacy-default",
+          titulo: targetStage.atividadePadraoTitulo.trim(),
+          descricao: targetStage.atividadePadraoDescricao ?? null,
+          prazoMinutos: targetStage.atividadePadraoPrazoMinutos ?? targetStage.slaMinutos ?? 24 * 60,
+          tipo: "tarefa",
+          categoria: "sugerida",
+          responsavel: "deal_owner",
+          prioridade: "normal",
+          bloqueiaAvanco: false,
+        }]
+      : [];
+    const templates = configuredTemplates.length > 0 ? configuredTemplates : fallback;
+
+    if (templates.length > 0) {
+      for (const template of templates) {
+        const templateKey = template.id || template.titulo.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 80);
+        const [existingTask] = await db.select({ id: activitiesTable.id }).from(activitiesTable).where(and(
+          eq(activitiesTable.tenantId, participation.partnerTenantId),
+          eq(activitiesTable.dealId, participation.dealId),
+          eq(activitiesTable.origemEtapaKey, targetStage.key),
+          eq(activitiesTable.origemTemplateKey, templateKey),
+        )).limit(1);
+        if (existingTask) continue;
+
+        const dueMinutes = template.prazoMinutos ?? targetStage.slaMinutos ?? 24 * 60;
+        await db.insert(activitiesTable).values({
+          tenantId: participation.partnerTenantId,
+          leadId: deal.leadId,
+          dealId: participation.dealId,
+          tipo: template.tipo ?? "tarefa",
+          titulo: `${template.titulo} — ${deal.titulo}`,
+          descricao: template.descricao?.trim() || parsed.data.atividadeDescricao || `Atividade criada ao entrar em ${targetStage.label}.`,
+          prioridade: template.prioridade ?? "normal",
+          estadoExecucao: template.categoria === "automatica" ? "planejada_ia" : "planejada",
+          categoriaExecucao: template.categoria ?? "sugerida",
+          origem: "pipeline_stage",
+          origemEtapaKey: targetStage.key,
+          origemTemplateKey: templateKey,
+          bloqueiaAvanco: Boolean(template.bloqueiaAvanco || template.categoria === "obrigatoria"),
+          status: "planejado",
+          responsavelId: operationalUserId,
+          dataVencimento: new Date(now.getTime() + dueMinutes * 60 * 1000),
+        });
+      }
+    } else if (parsed.data.atividadeTitulo) {
+      await db.insert(activitiesTable).values({
+        tenantId: participation.partnerTenantId,
+        leadId: deal.leadId,
+        dealId: participation.dealId,
+        tipo: "tarefa",
+        titulo: parsed.data.atividadeTitulo,
+        descricao: parsed.data.atividadeDescricao ?? parsed.data.observacaoPassagem ?? null,
+        origem: "pipeline_stage",
+        origemEtapaKey: targetStage.key,
+        origemTemplateKey: "shared-handoff",
+        status: "planejado",
+        responsavelId: operationalUserId,
+        dataVencimento: stageDueAt ?? new Date(now.getTime() + 24 * 60 * 60 * 1000),
+      });
+    }
+  }
+
+  return res.json({
+    deal,
+    participation: updatedParticipation,
+    destination: {
+      pipeline,
+      stage: targetStage.key,
+      stageLabel: targetStage.label,
+      operationalUserId,
+      stageDueAt,
+      slaMinutes: targetStage.slaMinutos ?? null,
+    },
+  });
 });
 
 const adjustCommissionSchema = z.object({

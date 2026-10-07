@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { db, usersTable, tenantDistribuicaoConfigTable } from "@workspace/db";
+import { db, usersTable, tenantUserFunctionsTable, tenantDistribuicaoConfigTable } from "@workspace/db";
 import { distanceKm } from "./geocoding.js";
 
 export type AssignmentCandidate = {
@@ -168,6 +168,106 @@ export function narrowByTerritorio(pool: AssignmentCandidate[], context: LeadAss
  * vale o lastAssignedAt mais antigo (exceto no caso de raio, que já vem
  * ordenado por distância — o mais próximo é escolhido direto).
  */
+export type LeadResponsibilityAssignment =
+  | { kind: "user"; id: string }
+  | { kind: "external_company"; id: string };
+
+/**
+ * Mesmo motor de distribuição para usuários internos e equipes/empresas
+ * externas comerciais. O critério, território, segmento, raio e fila são
+ * exatamente os mesmos; muda apenas onde a responsabilidade é persistida.
+ */
+export async function pickNextLeadResponsibility(
+  tenantId: string,
+  context: LeadAssignmentContext = {},
+): Promise<LeadResponsibilityAssignment | null> {
+  const [userRows, externalRows] = await Promise.all([
+    db.select({
+      id: usersTable.id,
+      lastAssignedAt: usersTable.lastAssignedAt,
+      platformRole: usersTable.platformRole,
+      userFunction: usersTable.userFunction,
+      leadAssignmentEnabled: usersTable.leadAssignmentEnabled,
+      leadAssignmentCities: usersTable.leadAssignmentCities,
+      leadAssignmentRegions: usersTable.leadAssignmentRegions,
+      leadAssignmentSegments: usersTable.leadAssignmentSegments,
+      leadAssignmentLat: usersTable.leadAssignmentLat,
+      leadAssignmentLng: usersTable.leadAssignmentLng,
+      leadAssignmentRaioKm: usersTable.leadAssignmentRaioKm,
+    }).from(usersTable).where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true))),
+    db.select({
+      id: tenantUserFunctionsTable.id,
+      lastAssignedAt: tenantUserFunctionsTable.lastAssignedAt,
+      systemKey: tenantUserFunctionsTable.systemKey,
+      leadAssignmentEnabled: tenantUserFunctionsTable.leadAssignmentEnabled,
+      leadAssignmentCities: tenantUserFunctionsTable.leadAssignmentCities,
+      leadAssignmentRegions: tenantUserFunctionsTable.leadAssignmentRegions,
+      leadAssignmentSegments: tenantUserFunctionsTable.leadAssignmentSegments,
+      leadAssignmentLat: tenantUserFunctionsTable.leadAssignmentLat,
+      leadAssignmentLng: tenantUserFunctionsTable.leadAssignmentLng,
+      leadAssignmentRaioKm: tenantUserFunctionsTable.leadAssignmentRaioKm,
+    }).from(tenantUserFunctionsTable).where(and(
+      eq(tenantUserFunctionsTable.tenantId, tenantId),
+      eq(tenantUserFunctionsTable.kind, "external_company"),
+    )),
+  ]);
+
+  const candidates: Array<AssignmentCandidate & { assignmentKind: "user" | "external_company" }> = [
+    ...userRows
+      .filter(canReceiveLeads)
+      .map((candidate) => ({
+        ...candidate,
+        assignmentKind: "user" as const,
+        leadAssignmentCities: Array.isArray(candidate.leadAssignmentCities) ? candidate.leadAssignmentCities : [],
+        leadAssignmentRegions: Array.isArray(candidate.leadAssignmentRegions) ? candidate.leadAssignmentRegions : [],
+        leadAssignmentSegments: Array.isArray(candidate.leadAssignmentSegments) ? candidate.leadAssignmentSegments : [],
+      })),
+    ...externalRows
+      .map((candidate) => ({
+        id: candidate.id,
+        lastAssignedAt: candidate.lastAssignedAt,
+        platformRole: "external_company",
+        userFunction: candidate.systemKey,
+        leadAssignmentEnabled: candidate.leadAssignmentEnabled,
+        leadAssignmentCities: Array.isArray(candidate.leadAssignmentCities) ? candidate.leadAssignmentCities : [],
+        leadAssignmentRegions: Array.isArray(candidate.leadAssignmentRegions) ? candidate.leadAssignmentRegions : [],
+        leadAssignmentSegments: Array.isArray(candidate.leadAssignmentSegments) ? candidate.leadAssignmentSegments : [],
+        leadAssignmentLat: candidate.leadAssignmentLat,
+        leadAssignmentLng: candidate.leadAssignmentLng,
+        leadAssignmentRaioKm: candidate.leadAssignmentRaioKm,
+        assignmentKind: "external_company" as const,
+      }))
+      .filter(canReceiveLeads),
+  ];
+
+  if (!candidates.length) return null;
+
+  const ordem = await getCriteriosOrdenados(tenantId);
+  let pool = candidates;
+  let raioJaOrdenou = false;
+  for (const criterio of ordem) {
+    if (criterio === "segmento") {
+      pool = (narrowBySegmento(pool, context) as typeof pool | null) ?? pool;
+    } else if (criterio === "territorio") {
+      const before = pool;
+      pool = (narrowByTerritorio(pool, context) as typeof pool | null) ?? pool;
+      raioJaOrdenou = pool !== before && pool.some((candidate) => candidate.leadAssignmentLat != null);
+    }
+  }
+
+  const selected = raioJaOrdenou ? pool[0] : [...pool].sort(oldestFirst)[0];
+  if (!selected) return null;
+
+  const assignedAt = new Date();
+  if (selected.assignmentKind === "user") {
+    await db.update(usersTable).set({ lastAssignedAt: assignedAt }).where(eq(usersTable.id, selected.id));
+  } else {
+    await db.update(tenantUserFunctionsTable).set({ lastAssignedAt: assignedAt }).where(eq(tenantUserFunctionsTable.id, selected.id));
+  }
+
+  return { kind: selected.assignmentKind, id: selected.id };
+}
+
 export async function pickNextVendedor(
   tenantId: string,
   context: LeadAssignmentContext = {},

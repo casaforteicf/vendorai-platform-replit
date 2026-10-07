@@ -23,6 +23,7 @@ import {
   tenantsTable,
   tenantCalendarSettingsTable,
   pipelineStagesTable,
+  dealTenantParticipationsTable,
   installationChecklistTemplatesTable,
   installationVisitsTable,
   installationChecklistItemsTable,
@@ -39,7 +40,6 @@ import { triggerDeliveryFeedbackRequest } from "../services/post-venda.js";
 import { sendAgentAttachments, sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { generateSupportReportDraft } from "../services/support-report.js";
 import { requestSupportFeedback } from "../services/support-feedback.js";
-import { executeConfiguredStageEvents } from "../services/pipeline-stage-events.js";
 import { canAdvanceWorkCard, TERMINAL_WORK_STAGES } from "../lib/pipeline-progress.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { generateDeliveryAcceptancePdf } from "../lib/delivery-acceptance-pdf.js";
@@ -922,38 +922,6 @@ async function supportStageConfig(tenantId: string, stageKey: string) {
   return operationalStageConfig(tenantId, "suporte", stageKey);
 }
 
-function userMatchesOperationalStageFunctions(
-  user: { active: boolean | null; userFunction: string | null; customFunctionId: string | null },
-  responsibleFunctions: string[] | null | undefined,
-): boolean {
-  if (user.active !== true) return false;
-  const configured = responsibleFunctions ?? [];
-  if (configured.length === 0) return true;
-
-  const refs = new Set<string>();
-  if (user.userFunction) refs.add(`builtin:${user.userFunction}`);
-  if (user.customFunctionId) refs.add(`custom:${user.customFunctionId}`);
-  return configured.some((responsible) => refs.has(responsible));
-}
-
-async function eligibleUsersForOperationalStage(tenantId: string, pipeline: string, stageKey: string) {
-  const stage = await operationalStageConfig(tenantId, pipeline, stageKey);
-  const users = await db.select({
-    id: usersTable.id,
-    name: usersTable.name,
-    email: usersTable.email,
-    telefone: usersTable.telefone,
-    active: usersTable.active,
-    userFunction: usersTable.userFunction,
-    customFunctionId: usersTable.customFunctionId,
-  }).from(usersTable).where(eq(usersTable.tenantId, tenantId));
-
-  return {
-    stage,
-    users: users.filter((user) => userMatchesOperationalStageFunctions(user, stage?.responsaveisFuncoes)),
-  };
-}
-
 async function ensureWorkStageTask(card: typeof workCardsTable.$inferSelect) {
   if (!card.leadId) return [];
 
@@ -1064,44 +1032,6 @@ async function notifySupportStageChange(
   log: Request["log"],
 ) {
   if (card.pipeline !== "suporte" || !card.leadId) return;
-
-  const [[leadForEvent], [ownerForEvent]] = await Promise.all([
-    db.select({ nome: leadsTable.nome, empresa: leadsTable.empresa, telefone: leadsTable.telefone })
-      .from(leadsTable)
-      .where(and(eq(leadsTable.id, card.leadId), eq(leadsTable.tenantId, card.tenantId)))
-      .limit(1),
-    card.responsavelId
-      ? db.select({ id: usersTable.id, name: usersTable.name, telefone: usersTable.telefone })
-          .from(usersTable)
-          .where(and(eq(usersTable.id, card.responsavelId), eq(usersTable.tenantId, card.tenantId)))
-          .limit(1)
-      : Promise.resolve([]),
-  ]);
-
-  await executeConfiguredStageEvents({
-    tenantId: card.tenantId,
-    pipeline: "suporte",
-    stageKey: card.etapa,
-    gatilho: "entrada",
-    entityType: "work_card",
-    entityId: card.id,
-    leadId: card.leadId,
-    dealId: card.dealId,
-    workCardId: card.id,
-    client: {
-      name: leadForEvent?.empresa || leadForEvent?.nome || "Cliente",
-      phone: leadForEvent?.telefone ?? null,
-    },
-    owner: {
-      id: ownerForEvent?.id ?? card.responsavelId,
-      name: ownerForEvent?.name ?? null,
-      phone: ownerForEvent?.telefone ?? null,
-    },
-    processTitle: card.titulo,
-    processCode: card.codigo,
-    url: `https://app.appvendorai.com/pipeline-operacional/suporte?card=${encodeURIComponent(card.id)}`,
-    log,
-  });
 
   const metadata = (card.metadata ?? {}) as Record<string, unknown>;
   const access = metadata.supportPublicAccess && typeof metadata.supportPublicAccess === "object" && !Array.isArray(metadata.supportPublicAccess)
@@ -1369,9 +1299,7 @@ router.post("/tenants/:tenantId/entregas", async (req, res) => {
   }
 
   const [entrega] = await db.insert(entregasTable).values(data).returning();
-  // O lote nasce no início da execução. Entrega/transporte são etapas posteriores
-  // do mesmo lote e não podem pular medição, projeto, produção ou instalação.
-  const stage = "pedido_confirmado";
+  const stage = deliveryStage(entrega);
   const [tenantContext] = await db.select({
     segmento: tenantsTable.segmento,
     vertical: tenantsTable.vertical,
@@ -1384,11 +1312,11 @@ router.post("/tenants/:tenantId/entregas", async (req, res) => {
   });
   const [card] = await db.insert(workCardsTable).values({
     tenantId,
-    codigo: workCode("OP"),
+    codigo: workCode("ENT"),
     pipeline: "execucao",
     tipo: "entrega",
     etapa: stage,
-    titulo: `Lote de execução ${String(entrega.loteNumero ?? nextLot).padStart(2, "0")} • ${deal.titulo}`,
+    titulo: `Entrega ${String(entrega.loteNumero ?? nextLot).padStart(2, "0")} • ${deal.titulo}`,
     descricao: entrega.observacoes,
     prioridade: "normal",
     leadId: entrega.leadId,
@@ -1405,8 +1333,6 @@ router.post("/tenants/:tenantId/entregas", async (req, res) => {
       loteNumero: entrega.loteNumero,
       itens: entrega.itens,
       saldoParcial: true,
-      natureza: "lote_execucao",
-      origem: "orcamento_aprovado",
       checklistExpedicao,
     },
   }).returning();
@@ -1418,7 +1344,7 @@ router.post("/tenants/:tenantId/entregas", async (req, res) => {
       dealId: deal.id,
       tipo: "tarefa",
       titulo: `Acompanhar ${card.codigo} — ${card.titulo}`,
-      descricao: `Lote de execução criado com ${entrega.itens.length} item(ns). O saldo não selecionado permanece disponível no orçamento. Etapa inicial: ${WORK_STAGE_LABELS[stage] ?? stage}.`,
+      descricao: `Lote parcial criado com ${entrega.itens.length} item(ns). Etapa inicial: ${WORK_STAGE_LABELS[stage] ?? stage}.`,
       responsavelId: entrega.assignedTo,
       status: "planejado",
       dataVencimento: entrega.dataPrevista,
@@ -1536,14 +1462,7 @@ router.patch("/entregas/:id", async (req, res) => {
     .where(eq(workCardsTable.entregaId, entrega.id)).limit(1);
   if (linkedCard) {
     const requestedStage = deliveryStage(entrega);
-    const currentIndex = EXECUTION_STAGES.indexOf(linkedCard.etapa as typeof EXECUTION_STAGES[number]);
-    const deliverySyncIndex = EXECUTION_STAGES.indexOf("aguardando_liberacao");
-    // Atualizações logísticas só sincronizam o lote depois que a execução chegou
-    // à fase de liberação; datas de entrega não podem pular a produção.
-    const canSyncDeliveryStage = requestedStage === "cancelado" || currentIndex >= deliverySyncIndex;
-    const nextStage = canSyncDeliveryStage && canAdvanceWorkCard("execucao", linkedCard.etapa, requestedStage)
-      ? requestedStage
-      : linkedCard.etapa;
+    const nextStage = canAdvanceWorkCard("execucao", linkedCard.etapa, requestedStage) ? requestedStage : linkedCard.etapa;
     const stageChanged = nextStage !== linkedCard.etapa;
     const [updatedCard] = await db.update(workCardsTable).set({
       etapa: nextStage,
@@ -1608,27 +1527,13 @@ router.get("/tenants/:tenantId/work-cards", async (req, res) => {
   const storedCards = await db.select().from(workCardsTable)
     .where(and(...conditions))
     .orderBy(workCardsTable.updatedAt, workCardsTable.createdAt);
-  const candidateCards = includeClosed === "1"
-    ? storedCards
-    : storedCards.filter((card) => !TERMINAL_WORK_STAGES.has(card.etapa));
+  const cards = includeClosed === "1" ? storedCards : storedCards.filter((card) => !TERMINAL_WORK_STAGES.has(card.etapa));
 
-  // Soft delete do lead não apaga a execução/suporte, mas também não pode
-  // deixar o processo aparecendo nas pipelines ativas.
-  const candidateLeadIds = [...new Set(candidateCards.map((card) => card.leadId).filter((id): id is string => Boolean(id)))];
-  const leadRows = candidateLeadIds.length
-    ? await db.select({
-        id: leadsTable.id,
-        nome: leadsTable.nome,
-        empresa: leadsTable.empresa,
-        excluidoEm: leadsTable.excluidoEm,
-      }).from(leadsTable).where(inArray(leadsTable.id, candidateLeadIds))
-    : [];
-  const activeLeadIds = new Set(leadRows.filter((lead) => !lead.excluidoEm).map((lead) => lead.id));
-  const cards = candidateCards.filter((card) => !card.leadId || activeLeadIds.has(card.leadId));
-
+  const leadIds = [...new Set(cards.map((card) => card.leadId).filter((id): id is string => Boolean(id)))];
   const userIds = [...new Set(cards.map((card) => card.responsavelId).filter((id): id is string => Boolean(id)))];
   const dealIds = [...new Set(cards.map((card) => card.dealId).filter((id): id is string => Boolean(id)))];
-  const [userRows, dealRows] = await Promise.all([
+  const [leadRows, userRows, dealRows] = await Promise.all([
+    leadIds.length ? db.select({ id: leadsTable.id, nome: leadsTable.nome, empresa: leadsTable.empresa }).from(leadsTable).where(inArray(leadsTable.id, leadIds)) : Promise.resolve([]),
     userIds.length ? db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email }).from(usersTable).where(inArray(usersTable.id, userIds)) : Promise.resolve([]),
     dealIds.length ? db.select({ id: dealsTable.id, titulo: dealsTable.titulo }).from(dealsTable).where(inArray(dealsTable.id, dealIds)) : Promise.resolve([]),
   ]);
@@ -1822,6 +1727,7 @@ router.post("/tenants/:tenantId/support-cases", async (req, res) => {
 
   const [lead] = await db.select({
     id: leadsTable.id,
+    tenantId: leadsTable.tenantId,
     nome: leadsTable.nome,
     empresa: leadsTable.empresa,
     telefone: leadsTable.telefone,
@@ -1831,39 +1737,51 @@ router.post("/tenants/:tenantId/support-cases", async (req, res) => {
     dadosPj: leadsTable.dadosPj,
   })
     .from(leadsTable)
-    .where(and(eq(leadsTable.id, parsed.data.leadId), eq(leadsTable.tenantId, tenantId)));
+    .where(eq(leadsTable.id, parsed.data.leadId));
   if (!lead) {
     res.status(404).json({ error: "Cliente não encontrado" });
     return;
   }
-  const [responsavel] = await db.select({
-    id: usersTable.id,
-    name: usersTable.name,
-    telefone: usersTable.telefone,
-    active: usersTable.active,
-    userFunction: usersTable.userFunction,
-    customFunctionId: usersTable.customFunctionId,
-  })
+
+  let sharedParticipation: typeof dealTenantParticipationsTable.$inferSelect | null = null;
+  if (lead.tenantId !== tenantId) {
+    const rows = await db.select({ participation: dealTenantParticipationsTable })
+      .from(dealTenantParticipationsTable)
+      .innerJoin(dealsTable, eq(dealsTable.id, dealTenantParticipationsTable.dealId))
+      .where(and(
+        eq(dealsTable.leadId, lead.id),
+        eq(dealTenantParticipationsTable.partnerTenantId, tenantId),
+        eq(dealTenantParticipationsTable.status, "active"),
+      ));
+    const currentUserId = String(req.user?.sub ?? "");
+    const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+    sharedParticipation = rows
+      .map((row) => row.participation)
+      .find((participation) => isAdmin || !participation.operationalUserId || participation.operationalUserId === currentUserId) ?? null;
+    if (!sharedParticipation || !sharedParticipation.permissions.includes("open_support")) {
+      res.status(403).json({ error: "Este cliente não está compartilhado com permissão para abrir suporte." });
+      return;
+    }
+  }
+  const [responsavel] = await db.select({ id: usersTable.id, name: usersTable.name, telefone: usersTable.telefone })
     .from(usersTable)
     .where(and(eq(usersTable.id, parsed.data.responsavelId), eq(usersTable.tenantId, tenantId)));
   if (!responsavel) {
     res.status(422).json({ error: "Responsável não pertence a este tenant" });
     return;
   }
-  const openingStageConfig = await supportStageConfig(tenantId, "chamado_cliente");
-  if (!userMatchesOperationalStageFunctions(responsavel, openingStageConfig?.responsaveisFuncoes)) {
-    res.status(422).json({
-      error: "STAGE_RESPONSIBLE_REQUIRED",
-      message: "Selecione um usuário ativo cuja função esteja habilitada como responsável pela etapa Chamado cliente.",
-    });
-    return;
-  }
 
   if (parsed.data.dealId) {
-    const [deal] = await db.select({ id: dealsTable.id }).from(dealsTable)
-      .where(and(eq(dealsTable.id, parsed.data.dealId), eq(dealsTable.tenantId, tenantId)));
-    if (!deal) {
-      res.status(422).json({ error: "Pedido/negócio informado não pertence a este cliente/tenant" });
+    const [deal] = await db.select({ id: dealsTable.id, tenantId: dealsTable.tenantId, leadId: dealsTable.leadId }).from(dealsTable)
+      .where(eq(dealsTable.id, parsed.data.dealId));
+    const sharedDealAllowed = Boolean(
+      deal
+      && deal.leadId === parsed.data.leadId
+      && sharedParticipation
+      && sharedParticipation.dealId === deal.id
+    );
+    if (!deal || deal.leadId !== parsed.data.leadId || (deal.tenantId !== tenantId && !sharedDealAllowed)) {
+      res.status(422).json({ error: "Pedido/negócio informado não pertence a este cliente ou não está compartilhado com esta empresa" });
       return;
     }
   }
@@ -2154,42 +2072,7 @@ router.patch("/work-cards/:id", async (req, res) => {
     res.status(409).json({ error: "CARD_BACKWARD_FORBIDDEN", message: "O card só pode avançar. Administradores podem corrigir manualmente a etapa quando necessário." });
     return;
   }
-
-  if (["execucao", "suporte"].includes(targetPipeline)) {
-    const eligible = await eligibleUsersForOperationalStage(existing.tenantId, targetPipeline, targetStage);
-    const stageHasFunctionRestriction = (eligible.stage?.responsaveisFuncoes?.length ?? 0) > 0;
-
-    if (stageHasFunctionRestriction) {
-      if (eligible.users.length === 0) {
-        res.status(409).json({
-          error: "STAGE_WITHOUT_ELIGIBLE_USERS",
-          message: "A etapa possui função responsável configurada, mas não há usuário ativo habilitado nessa função.",
-          stage: targetStage,
-        });
-        return;
-      }
-
-      if (parsed.data.responsavelId !== undefined) {
-        if (parsed.data.responsavelId === null || !eligible.users.some((user) => user.id === parsed.data.responsavelId)) {
-          res.status(422).json({
-            error: "STAGE_RESPONSIBLE_REQUIRED",
-            message: "O responsável selecionado não está habilitado pela função responsável desta etapa.",
-            eligibleUserIds: eligible.users.map((user) => user.id),
-          });
-          return;
-        }
-      } else if (!existing.responsavelId || !eligible.users.some((user) => user.id === existing.responsavelId)) {
-        const [nextResponsible] = [...eligible.users].sort((a, b) =>
-          String(a.name || a.email || a.id).localeCompare(String(b.name || b.email || b.id), "pt-BR")
-        );
-        parsed.data.responsavelId = nextResponsible.id;
-      }
-    }
-  }
-
-  const effectiveResponsibleId =
-    parsed.data.responsavelId === undefined ? existing.responsavelId : parsed.data.responsavelId;
-  if (targetPipeline === "suporte" && !effectiveResponsibleId) {
+  if (targetPipeline === "suporte" && parsed.data.responsavelId === null) {
     res.status(422).json({ error: "Card de suporte não pode ficar sem responsável" });
     return;
   }

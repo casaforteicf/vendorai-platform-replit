@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
 import { rateLimit } from "express-rate-limit";
-import { and, eq, inArray, desc, ilike, isNull, isNotNull } from "drizzle-orm";
+import { and, eq, inArray, desc, ilike, isNull, isNotNull, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
@@ -41,11 +41,12 @@ import {
   attachmentFolderLocksTable,
   attachmentFolderAuditTable,
   attachmentFolderLockObjectsTable,
+  dealTenantParticipationsTable,
 } from "@workspace/db";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { buildUserFunctionFilter, requireAdminOrUserFunction, type UserFunction } from "../middlewares/auth.js";
 import { callOpenAI } from "../lib/ai-gateway.js";
-import { pickNextVendedor } from "../lib/round-robin.js";
+import { pickNextLeadResponsibility } from "../lib/round-robin.js";
 import { geocodeAddressWithTimeout } from "../lib/geocoding.js";
 import { recordResponsavelChange } from "../lib/leadResponsavelHistorico.js";
 import { captureLeadFeatureSnapshot } from "../lib/mlFeatureStore.js";
@@ -290,29 +291,30 @@ router.post("/leads", async (req, res) => {
   const isAdminCreator = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
   const isSellerCreator = !isAdminCreator && (req.user?.platformRole === "tenant_seller" || (req.user?.userFunction as string) === "vendedor" || (req.user?.userFunction as string) === "representante_comercial");
   let resolvedAssignedTo: string | null;
+  let resolvedRepresentativeFunctionId: string | null = data.representativeFunctionId ?? null;
   let geocoded: { lat: number; lng: number } | null = null;
-  if (data.representativeFunctionId) {
+  if (resolvedRepresentativeFunctionId) {
     resolvedAssignedTo = null;
   } else if (isSellerCreator) {
     resolvedAssignedTo = req.user?.sub ?? null;
   } else if (data.assignedTo) {
     resolvedAssignedTo = data.assignedTo;
   } else {
-    // Geocoding só roda quando a atribuição automática vai de fato precisar
-    // (round-robin abaixo) — evita gastar a cota de 1 req/s do Nominatim em
-    // todo lead criado, e nunca bloqueia a criação por mais de ~2.5s: se o
-    // serviço demorar ou falhar, o motor cai pro resto da cascata (cidade/
-    // região/geral) normalmente, sem coordenadas.
+    // A distribuição automática usa um único pool lógico: usuários internos
+    // e empresas/equipes externas comerciais configuradas disputam o lead
+    // pelos mesmos critérios de segmento, território, raio e rodízio.
     geocoded = data.endereco ? await geocodeAddressWithTimeout(data.endereco) : null;
-    resolvedAssignedTo = await pickNextVendedor(data.tenantId, {
+    const assignment = await pickNextLeadResponsibility(data.tenantId, {
       segmento: data.mercadoSegmento,
       location: data.endereco,
       lat: geocoded?.lat ?? null,
       lng: geocoded?.lng ?? null,
     });
+    resolvedAssignedTo = assignment?.kind === "user" ? assignment.id : null;
+    resolvedRepresentativeFunctionId = assignment?.kind === "external_company" ? assignment.id : null;
   }
 
-  if (!resolvedAssignedTo && !data.representativeFunctionId) {
+  if (!resolvedAssignedTo && !resolvedRepresentativeFunctionId) {
     res.status(422).json({
       error: "Responsável obrigatório. Selecione um usuário da equipe, uma empresa representante ou configure a distribuição automática com ao menos um responsável elegível.",
     });
@@ -325,6 +327,7 @@ router.post("/leads", async (req, res) => {
     email: normalizeLeadEmail(data.email),
     instagramHandle: normalizeInstagramHandle(data.instagramHandle),
     assignedTo: resolvedAssignedTo,
+    representativeFunctionId: resolvedRepresentativeFunctionId,
     latitude: geocoded?.lat ?? null,
     longitude: geocoded?.lng ?? null,
     telefone: storePhone(data.telefone),
@@ -596,6 +599,40 @@ router.get("/tenants/:tenantId/leads", async (req, res) => {
     .from(leadsTable)
     .where(and(...conditions))
     .orderBy(leadsTable.createdAt);
+
+  if (isOwnTenant) {
+    const sharedRows = await db.select({
+      lead: leadsTable,
+      operationalUserId: dealTenantParticipationsTable.operationalUserId,
+      participationId: dealTenantParticipationsTable.id,
+      ownerTenantId: dealTenantParticipationsTable.ownerTenantId,
+    })
+      .from(dealTenantParticipationsTable)
+      .innerJoin(dealsTable, eq(dealsTable.id, dealTenantParticipationsTable.dealId))
+      .innerJoin(leadsTable, eq(leadsTable.id, dealsTable.leadId))
+      .where(and(
+        eq(dealTenantParticipationsTable.partnerTenantId, tenantId),
+        eq(dealTenantParticipationsTable.status, "active"),
+        eq(leadsTable.possivelDuplicata, false),
+        incluirExcluidos === "apenas" ? isNotNull(leadsTable.excluidoEm) : incluirExcluidos === "incluir" ? sql`true` : isNull(leadsTable.excluidoEm),
+        incluirNaoLeads === "apenas" ? isNotNull(leadsTable.naoLeadTipo) : incluirNaoLeads === "incluir" ? sql`true` : isNull(leadsTable.naoLeadTipo),
+      ));
+
+    const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+    const currentUserId = String(req.user?.sub ?? "");
+    const sharedLeads = sharedRows
+      .filter((row) => isAdmin || !row.operationalUserId || row.operationalUserId === currentUserId)
+      .map((row) => ({
+        ...row.lead,
+        sharedParticipationId: row.participationId,
+        sharedOriginTenantId: row.ownerTenantId,
+        sharedReadOnly: true,
+      }));
+
+    const ownIds = new Set(leads.map((lead) => lead.id));
+    return res.json([...leads, ...sharedLeads.filter((lead) => !ownIds.has(lead.id))]);
+  }
+
   res.json(leads);
 });
 
@@ -1021,12 +1058,35 @@ router.get("/leads/:id", async (req, res) => {
     ? null
     : await findRepresentativeLeadAccess(req, lead.tenantId, lead.representativeFunctionId);
 
-  if (!isOwnTenant && (!representativeAccess || lead.representativeFunctionId !== representativeAccess.id)) {
+  // Negócios compartilhados concedem acesso ao mesmo lead para o tenant
+  // participante. Isso torna o fluxo realmente bidirecional sem copiar o lead
+  // e sem depender de a empresa de origem ter previamente criado uma função
+  // externa específica para o outro sentido da parceria.
+  let sharedDealAccess = false;
+  if (!isOwnTenant && !representativeAccess && req.user?.tenantId) {
+    const sharedRows = await db.select({
+      operationalUserId: dealTenantParticipationsTable.operationalUserId,
+    })
+      .from(dealTenantParticipationsTable)
+      .innerJoin(dealsTable, eq(dealsTable.id, dealTenantParticipationsTable.dealId))
+      .where(and(
+        eq(dealsTable.leadId, lead.id),
+        eq(dealTenantParticipationsTable.partnerTenantId, req.user.tenantId),
+        eq(dealTenantParticipationsTable.status, "active"),
+      ));
+
+    const isParticipantAdmin = req.user?.platformRole === "tenant_admin";
+    sharedDealAccess = sharedRows.some((row) =>
+      isParticipantAdmin || !row.operationalUserId || row.operationalUserId === req.user?.sub
+    );
+  }
+
+  if (!isOwnTenant && (!representativeAccess || lead.representativeFunctionId !== representativeAccess.id) && !sharedDealAccess) {
     res.status(403).json({ error: "Access denied to this lead" });
     return;
   }
 
-  if (!representativeAccess) {
+  if (!representativeAccess && !sharedDealAccess) {
     const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
     const userFn = req.user?.userFunction as UserFunction | undefined;
     if (!isAdmin && userFn === "vendedor" && lead.assignedTo !== req.user?.sub) {
@@ -2010,4 +2070,3 @@ router.post("/leads/:id/conversation-starter", async (req, res) => {
 });
 
 export default router;
-

@@ -373,6 +373,13 @@ router.post(
           linkedTenantCode: representativeLink.linkedTenantCode,
           leadAccessScope: parsed.data.leadAccessScope,
           representativeUserIds,
+          leadAssignmentEnabled: parsed.data.kind === "external_company" ? (parsed.data.leadAssignmentEnabled ?? null) : null,
+          leadAssignmentCities: parsed.data.kind === "external_company" ? parsed.data.leadAssignmentCities : [],
+          leadAssignmentRegions: parsed.data.kind === "external_company" ? parsed.data.leadAssignmentRegions : [],
+          leadAssignmentSegments: parsed.data.kind === "external_company" ? parsed.data.leadAssignmentSegments : [],
+          leadAssignmentLat: parsed.data.kind === "external_company" ? (parsed.data.leadAssignmentLat ?? null) : null,
+          leadAssignmentLng: parsed.data.kind === "external_company" ? (parsed.data.leadAssignmentLng ?? null) : null,
+          leadAssignmentRaioKm: parsed.data.kind === "external_company" ? (parsed.data.leadAssignmentRaioKm ?? null) : null,
         })
         .returning();
 
@@ -453,6 +460,13 @@ router.patch(
           linkedTenantCode: representativeLink.linkedTenantCode,
           leadAccessScope: parsed.data.leadAccessScope,
           representativeUserIds,
+          leadAssignmentEnabled: parsed.data.kind === "external_company" ? (parsed.data.leadAssignmentEnabled ?? null) : null,
+          leadAssignmentCities: parsed.data.kind === "external_company" ? parsed.data.leadAssignmentCities : [],
+          leadAssignmentRegions: parsed.data.kind === "external_company" ? parsed.data.leadAssignmentRegions : [],
+          leadAssignmentSegments: parsed.data.kind === "external_company" ? parsed.data.leadAssignmentSegments : [],
+          leadAssignmentLat: parsed.data.kind === "external_company" ? (parsed.data.leadAssignmentLat ?? null) : null,
+          leadAssignmentLng: parsed.data.kind === "external_company" ? (parsed.data.leadAssignmentLng ?? null) : null,
+          leadAssignmentRaioKm: parsed.data.kind === "external_company" ? (parsed.data.leadAssignmentRaioKm ?? null) : null,
           updatedAt: new Date(),
         })
         .where(
