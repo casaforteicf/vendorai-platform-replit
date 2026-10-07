@@ -54,7 +54,7 @@ const LIFECYCLE: LifecycleItem[] = [
   { id: "specify", icon: "📋", label: "Especificar", description: "Opcional. Defina sistemas, materiais, tecnologias e acabamentos quando quiser aprofundar o projeto.", module: "real-specification", group: "projeto", badge: "OPCIONAL" },
   { id: "quantity", icon: "📐", label: "Quantificar", description: "Gere quantitativos geométricos imediatamente e aprofunde-os quando houver especificações técnicas.", module: "real-budget", group: "projeto" },
   { id: "budget", icon: "💰", label: "Orçar", description: "Crie orçamento preliminar pela geometria ou orçamento detalhado usando sistemas e composições.", module: "real-budget", group: "obra", badge: "REAL" },
-  { id: "marketplace", icon: "🤝", label: "Contratar / Cotar", description: "Envie o projeto ou pacotes para arquitetos, engenheiros, construtoras, empreiteiros e fornecedores dentro do sistema.", module: "marketplace", group: "obra", badge: "REDE" },
+  { id: "marketplace", icon: "🤝", label: "Contratar / Cotar", description: "Envie o projeto ou pacotes para arquitetos, engenheiros, construtoras, empreiteiros e fornecedores dentro do sistema.", module: "compras", group: "obra", badge: "REDE" },
   { id: "purchases", icon: "🛒", label: "Compras & Cotações", description: "Compare retornos de materiais, serviços, esquadrias, móveis e demais fornecedores.", module: "compras", group: "obra" },
   { id: "execution", icon: "⚙️", label: "Enviar para Execução", description: "Transforme o que foi contratado em atividades, medições, consumo, custo e produtividade.", module: "execution", group: "obra" },
 
@@ -247,7 +247,7 @@ export default function ProjectHomeV2({ arqState, onNavigate }: ProjectHomeV2Pro
                   <button type="button" onClick={() => onNavigate?.("real-specification")} className="rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-white hover:bg-white/15">Especificar</button>
                   <button type="button" onClick={() => onNavigate?.("real-budget")} className="rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-white hover:bg-white/15">Quantificar</button>
                   <button type="button" onClick={() => onNavigate?.("real-budget")} className="rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-white hover:bg-white/15">Orçar</button>
-                  <button type="button" onClick={() => onNavigate?.("marketplace")} className="rounded-2xl border border-violet-300/30 bg-violet-500/20 px-5 py-3 text-sm font-semibold text-violet-100 hover:bg-violet-500/30">Contratar / Cotar</button>
+                  <button type="button" onClick={() => onNavigate?.("compras")} className="rounded-2xl border border-violet-300/30 bg-violet-500/20 px-5 py-3 text-sm font-semibold text-violet-100 hover:bg-violet-500/30">Contratar / Cotar</button>
                 </div>
               </div>
             </div>
