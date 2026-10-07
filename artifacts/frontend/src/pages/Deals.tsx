@@ -2631,6 +2631,17 @@ export default function Deals() {
     },
   });
 
+  const availableResponsiblePartnerships = useMemo(
+    () => responsiblePartnerships.filter((partnership) =>
+      Boolean(partnership.partnerTenantCode) &&
+      dealRepresentativeFunctions.some((item) =>
+        item.kind === "external_company" &&
+        item.linkedTenantCode === partnership.partnerTenantCode
+      )
+    ),
+    [responsiblePartnerships, dealRepresentativeFunctions],
+  );
+
   // Novas tarefas/passagens só podem ser atribuídas a usuários ativos cuja
   // função esteja configurada como responsável pela etapa de destino.
   // tenantUsers completo permanece no mapa para preservar responsáveis históricos.
@@ -2817,7 +2828,7 @@ export default function Deals() {
     );
     const representativePartnershipId = dealRepresentativePartnershipId(values.assignedTo);
     const selectedPartnership = representativePartnershipId
-      ? responsiblePartnerships.find((item) => item.id === representativePartnershipId)
+      ? availableResponsiblePartnerships.find((item) => item.id === representativePartnershipId)
       : undefined;
     const selectedInternalUser = !representativePartnershipId
       ? eligibleUsers.find((candidate) => candidate.id === values.assignedTo)
@@ -3746,12 +3757,12 @@ export default function Deals() {
                                   Equipe · {candidate.name || candidate.email || candidate.id}
                                 </SelectItem>
                               ))}
-                              {responsiblePartnerships.map((partnership) => (
+                              {availableResponsiblePartnerships.map((partnership) => (
                                 <SelectItem key={partnership.id} value={`${DEAL_REPRESENTATIVE_PREFIX}${partnership.id}`}>
                                   Representante · {partnership.partnerName || partnership.partnerTenantCode || partnership.partnerTenantId}
                                 </SelectItem>
                               ))}
-                              {eligible.length === 0 && responsiblePartnerships.length === 0 && (
+                              {eligible.length === 0 && availableResponsiblePartnerships.length === 0 && (
                                 <SelectItem value="__none_available__" disabled>
                                   Nenhum responsável disponível
                                 </SelectItem>
