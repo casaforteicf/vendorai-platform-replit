@@ -27,3 +27,24 @@ END $$;
 
 CREATE INDEX IF NOT EXISTS deal_tenant_participation_pipeline_stage_idx
   ON deal_tenant_participations (partner_tenant_id, pipeline, stage, status);
+
+
+-- Novos vínculos interempresa podem consultar o andamento compartilhado e
+-- abrir suporte pelo formulário padrão. Mantém as demais permissões intactas.
+UPDATE tenant_commercial_partnerships
+SET default_permissions = (
+  SELECT jsonb_agg(DISTINCT permission)
+  FROM jsonb_array_elements_text(
+    COALESCE(default_permissions, '[]'::jsonb) || '["view_partner_progress","open_support"]'::jsonb
+  ) AS permission
+)
+WHERE status = 'active';
+
+UPDATE deal_tenant_participations
+SET permissions = (
+  SELECT jsonb_agg(DISTINCT permission)
+  FROM jsonb_array_elements_text(
+    COALESCE(permissions, '[]'::jsonb) || '["view_partner_progress","open_support"]'::jsonb
+  ) AS permission
+)
+WHERE status = 'active';
