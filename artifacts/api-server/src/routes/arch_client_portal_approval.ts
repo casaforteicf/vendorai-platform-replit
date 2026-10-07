@@ -71,7 +71,7 @@ async function getProposalBundleById(proposalId: string, options: { publicView?:
               pi.item, pi.description, pi.quantity, pi.unit, pi.total,
               pi.visible_to_client, pi.approval_status, pi.client_comment,
               pi.approved_at, pi.rejected_at, pi.sort_order, pi.created_at, pi.updated_at,
-              aso.product_name, aso.material_name, aso.manufacturer_name,
+              aso.product_name, aso.material_name, aso.manufacturer_name, aso.catalog_code,
               aso.width_mm, aso.height_mm, aso.depth_mm, aso.length_mm,
               aso.area_m2, aso.perimeter_m, aso.volume_m3,
               aso.project_revision, aso.measurement_source, aso.measurement_revision
@@ -80,7 +80,7 @@ async function getProposalBundleById(proposalId: string, options: { publicView?:
         WHERE pi.proposal_id = $1
           AND pi.visible_to_client = true
         ORDER BY pi.sort_order ASC, pi.created_at ASC`
-    : `SELECT pi.*, aso.product_name, aso.material_name, aso.manufacturer_name,
+    : `SELECT pi.*, aso.product_name, aso.material_name, aso.manufacturer_name, aso.catalog_code,
               aso.width_mm, aso.height_mm, aso.depth_mm, aso.length_mm,
               aso.area_m2, aso.perimeter_m, aso.volume_m3,
               aso.project_revision, aso.measurement_source, aso.measurement_revision
