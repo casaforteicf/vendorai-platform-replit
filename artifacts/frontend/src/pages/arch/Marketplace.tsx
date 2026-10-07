@@ -21,7 +21,7 @@ import { useListCategoriasProduto, getListCategoriasProdutoQueryKey } from "@wor
 import {
   Search, Image, ShoppingCart, Loader2, Store, Package,
   TrendingUp, DollarSign, ReceiptText, Building2, Star, Send, ClipboardList,
-  ShieldCheck, Trash2, Plus,
+  ShieldCheck, Trash2, Plus, Link2, Copy,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -195,6 +195,24 @@ export default function Marketplace() {
   const [publishSupplierIds, setPublishSupplierIds] = useState<string[]>([]);
   const [submittingPublish, setSubmittingPublish] = useState(false);
   const [protectionOpen, setProtectionOpen] = useState(false);
+  const [publicExperienceOpen, setPublicExperienceOpen] = useState(false);
+  const [publicExperienceLoading, setPublicExperienceLoading] = useState(false);
+  const [publicExperienceSaving, setPublicExperienceSaving] = useState(false);
+  const [publicExperience, setPublicExperience] = useState({
+    enabled: false,
+    showOnSite: false,
+    siteButtonLabel: "Projete sua casa",
+    siteButtonColor: "#f97316",
+    marketEnabled: false,
+    headline: "",
+    subheadline: "",
+    logoUrl: "",
+    primaryColor: "#f97316",
+    embedEnabled: true,
+    marketButtonLabel: "Ver produtos e soluções",
+    publicPath: "",
+    embedCode: "",
+  });
   const [protectionRules, setProtectionRules] = useState<MarketProtectionRule[]>([]);
   const [protectionLoading, setProtectionLoading] = useState(false);
   const [protectionSaving, setProtectionSaving] = useState(false);
@@ -290,6 +308,65 @@ export default function Marketplace() {
     setItemsLoading(false);
     setItemsLoaded(true);
   }, [busca, catFilter, contextOrigem, contextOrigemId, contextQuantidade, contextUnidade]);
+
+  async function openPublicExperience() {
+    setPublicExperienceOpen(true);
+    setPublicExperienceLoading(true);
+    try {
+      const res = await fetch("/api/arch/public-link", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setPublicExperience({
+          enabled: Boolean(body.enabled),
+          showOnSite: Boolean(body.showOnSite),
+          siteButtonLabel: body.siteButtonLabel ?? "Projete sua casa",
+          siteButtonColor: body.siteButtonColor ?? "#f97316",
+          marketEnabled: Boolean(body.marketEnabled),
+          headline: body.headline ?? "",
+          subheadline: body.subheadline ?? "",
+          logoUrl: body.logoUrl ?? "",
+          primaryColor: body.primaryColor ?? "#f97316",
+          embedEnabled: body.embedEnabled !== false,
+          marketButtonLabel: body.marketButtonLabel ?? "Ver produtos e soluções",
+          publicPath: body.publicPath ?? "",
+          embedCode: body.embedCode ?? "",
+        });
+      } else {
+        throw new Error(body?.error ?? "Não foi possível carregar a configuração pública.");
+      }
+    } catch (err: any) {
+      toast({ title: "Erro ao carregar experiência pública", description: err.message, variant: "destructive" });
+    } finally {
+      setPublicExperienceLoading(false);
+    }
+  }
+
+  async function savePublicExperience() {
+    setPublicExperienceSaving(true);
+    try {
+      const res = await fetch("/api/arch/public-link", {
+        method: "PUT",
+        headers: authH(),
+        body: JSON.stringify(publicExperience),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error ?? "Não foi possível salvar.");
+      toast({ title: "Experiência pública atualizada" });
+      await openPublicExperience();
+    } catch (err: any) {
+      toast({ title: "Erro ao salvar", description: err.message, variant: "destructive" });
+    } finally {
+      setPublicExperienceSaving(false);
+    }
+  }
+
+  async function copyPublicValue(value: string, label: string) {
+    if (!value) return;
+    await navigator.clipboard.writeText(value);
+    toast({ title: `${label} copiado` });
+  }
 
   async function loadProtectionRules() {
     setProtectionLoading(true);
@@ -631,9 +708,14 @@ export default function Marketplace() {
           </div>
           <div className="flex flex-wrap gap-2">
             {isEffectiveAdmin && (
-              <Button variant="outline" onClick={openProtectionConfig}>
-                <ShieldCheck className="h-4 w-4 mr-2" /> Proteção comercial
-              </Button>
+              <>
+                <Button variant="outline" onClick={openPublicExperience}>
+                  <Link2 className="h-4 w-4 mr-2" /> Link do parceiro
+                </Button>
+                <Button variant="outline" onClick={openProtectionConfig}>
+                  <ShieldCheck className="h-4 w-4 mr-2" /> Proteção comercial
+                </Button>
+              </>
             )}
           <Button variant="outline" onClick={() => { setPublishSupplierIds([]); setPublishOpen(true); }}>
             <Send className="h-4 w-4 mr-2" /> Publicar necessidade
@@ -1121,6 +1203,95 @@ export default function Marketplace() {
           )}
         </TabsContent>
       </Tabs>
+
+      <Dialog open={publicExperienceOpen} onOpenChange={setPublicExperienceOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Experiência pública do parceiro</DialogTitle>
+          </DialogHeader>
+          {publicExperienceLoading ? (
+            <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando…</div>
+          ) : (
+            <div className="space-y-5 mt-2 max-h-[72vh] overflow-y-auto pr-1">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="flex items-center justify-between gap-3 rounded-xl border p-3 text-sm font-medium">
+                  Link público ativo
+                  <Switch checked={publicExperience.enabled} onCheckedChange={(checked) => setPublicExperience((v) => ({ ...v, enabled: checked }))} />
+                </label>
+                <label className="flex items-center justify-between gap-3 rounded-xl border p-3 text-sm font-medium">
+                  Market no pré-projeto
+                  <Switch checked={publicExperience.marketEnabled} onCheckedChange={(checked) => setPublicExperience((v) => ({ ...v, marketEnabled: checked }))} />
+                </label>
+                <label className="flex items-center justify-between gap-3 rounded-xl border p-3 text-sm font-medium">
+                  Botão no site gerado
+                  <Switch checked={publicExperience.showOnSite} onCheckedChange={(checked) => setPublicExperience((v) => ({ ...v, showOnSite: checked }))} />
+                </label>
+                <label className="flex items-center justify-between gap-3 rounded-xl border p-3 text-sm font-medium">
+                  Permitir embed/iframe
+                  <Switch checked={publicExperience.embedEnabled} onCheckedChange={(checked) => setPublicExperience((v) => ({ ...v, embedEnabled: checked }))} />
+                </label>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>Título público</Label>
+                  <Input value={publicExperience.headline} onChange={(e) => setPublicExperience((v) => ({ ...v, headline: e.target.value }))} placeholder="Projete a sua casa" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Texto do botão do Market</Label>
+                  <Input value={publicExperience.marketButtonLabel} onChange={(e) => setPublicExperience((v) => ({ ...v, marketButtonLabel: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>Subtítulo</Label>
+                  <Input value={publicExperience.subheadline} onChange={(e) => setPublicExperience((v) => ({ ...v, subheadline: e.target.value }))} placeholder="Crie seu pré-projeto e encontre soluções compatíveis." />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Logo pública (URL)</Label>
+                  <Input value={publicExperience.logoUrl} onChange={(e) => setPublicExperience((v) => ({ ...v, logoUrl: e.target.value }))} placeholder="https://..." />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Cor principal</Label>
+                  <div className="flex gap-2">
+                    <input type="color" value={publicExperience.primaryColor} onChange={(e) => setPublicExperience((v) => ({ ...v, primaryColor: e.target.value }))} className="h-10 w-12 rounded border p-1" />
+                    <Input value={publicExperience.primaryColor} onChange={(e) => setPublicExperience((v) => ({ ...v, primaryColor: e.target.value }))} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border bg-muted/30 p-4 space-y-3">
+                <p className="text-sm font-semibold">Link para colocar no site do parceiro</p>
+                <div className="flex gap-2">
+                  <Input readOnly value={publicExperience.publicPath ? `${window.location.origin}${publicExperience.publicPath}` : ""} />
+                  <Button variant="outline" size="icon" onClick={() => void copyPublicValue(publicExperience.publicPath ? `${window.location.origin}${publicExperience.publicPath}` : "", "Link")}>
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+                {publicExperience.embedEnabled && (
+                  <>
+                    <p className="text-sm font-semibold pt-1">Código para incorporar no próprio site</p>
+                    <div className="flex gap-2">
+                      <Input readOnly value={publicExperience.embedCode} />
+                      <Button variant="outline" size="icon" onClick={() => void copyPublicValue(publicExperience.embedCode, "Código de incorporação")}>
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  O Market público usa as mesmas regras de Proteção comercial. Categorias exclusivas do parceiro não exibem concorrentes.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setPublicExperienceOpen(false)}>Fechar</Button>
+                <Button onClick={savePublicExperience} disabled={publicExperienceSaving}>
+                  {publicExperienceSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Salvando…</> : "Salvar experiência"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={protectionOpen} onOpenChange={setProtectionOpen}>
         <DialogContent className="max-w-3xl">
