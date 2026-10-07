@@ -25,7 +25,11 @@ const catalogPdfUpload = multer({
   limits: { fileSize: 25 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, cb) => {
     const isPdf = file.mimetype === "application/pdf" || file.originalname.toLowerCase().endsWith(".pdf");
-    cb(isPdf ? null : new Error("Envie um arquivo PDF."), isPdf);
+    if (!isPdf) {
+      cb(new Error("Envie um arquivo PDF."));
+      return;
+    }
+    cb(null, true);
   },
 });
 
