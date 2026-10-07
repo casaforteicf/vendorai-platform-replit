@@ -28,14 +28,14 @@ import {
   prospectorConfigTable,
   prospectorQueueTable,
   leadsTable,
-  funisTable,
   dealsTable,
-  activitiesTable,
+  prospectsTable,
 } from "@workspace/db";
 import { pickNextVendedor } from "../lib/round-robin.js";
 import { recordResponsavelChange } from "../lib/leadResponsavelHistorico.js";
 import { enrichLead } from "./leadEnrichment.js";
 import { leadRegistrationMetadata } from "../lib/lead-registration-standard.js";
+import { decideProspectNextAction } from "../services/prospect-decision-engine.js";
 
 /** Returns the start-of-day in UTC for "now" (for counting daily processed leads). */
 function todayStart(): Date {
@@ -206,17 +206,9 @@ export async function runProspectorQueueWorker(log: Logger): Promise<void> {
         continue;
       }
 
-      // 4. Resolve first funil once per tenant (used for deal creation)
-      const [funil] = await db
-        .select({ id: funisTable.id })
-        .from(funisTable)
-        .where(eq(funisTable.tenantId, tenantId))
-        .orderBy(asc(funisTable.createdAt))
-        .limit(1);
-
       for (const item of pendingItems) {
         try {
-          await processQueueItem({ item, tenantId, funilId: funil?.id ?? null, log });
+          await processQueueItem({ item, tenantId, log });
 
           // Anti-ban delay between imports (1.5 s)
           await new Promise<void>((r) => setTimeout(r, 1500));
@@ -249,10 +241,9 @@ export async function runProspectorQueueWorker(log: Logger): Promise<void> {
 async function processQueueItem(params: {
   item:     typeof prospectorQueueTable.$inferSelect;
   tenantId: string;
-  funilId:  string | null;
   log:      Logger;
 }): Promise<void> {
-  const { item, tenantId, funilId, log } = params;
+  const { item, tenantId, log } = params;
   const now = new Date();
 
   // ── Duplicate detection ────────────────────────────────────────────────────
@@ -351,129 +342,130 @@ async function processQueueItem(params: {
     }
   }
 
-  // ── New lead ───────────────────────────────────────────────────────────────
-  // Segmento + cidade/endereço alimentam o mesmo motor de distribuição usado
-  // nos outros pontos do CRM, para o lead já entrar com a pessoa certa.
+  // ── New cold Prospect (pre-Lead) ─────────────────────────────────────────
+  // Cold discovery must NOT create Lead/Deal before qualification.
   const assignedTo = await pickNextVendedor(tenantId, {
     segmento: item.setor,
     city: item.cidade,
     location: item.endereco,
   });
 
-  if (!assignedTo) {
-    log.warn({ queueId: item.id, tenantId, setor: item.setor, cidade: item.cidade }, "prospector-queue: no eligible seller found — lead will remain unassigned");
-  }
+  const sourceRef = item.placeId;
+  const [existingProspect] = await db
+    .select({ id: prospectsTable.id })
+    .from(prospectsTable)
+    .where(and(
+      eq(prospectsTable.tenantId, tenantId),
+      eq(prospectsTable.source, source),
+      eq(prospectsTable.sourceRef, sourceRef),
+    ))
+    .limit(1);
 
-  const [created] = await db
-    .insert(leadsTable)
-    .values({
-      tenantId,
-      nome:       item.nome,
-      telefone:   item.telefone,
-      empresa:    item.nome,
-      endereco:   item.endereco,
-      websiteUrl: item.website,
-      source:     "prospector_auto",
-      tipoPessoa: "juridica",
-      status:     "novo",
-      mercadoSegmento: item.setor,
-      proximaAcao: "Pesquisar o negócio, validar o decisor e preparar abordagem consultiva personalizada",
-      assignedTo,
-      metadata: leadRegistrationMetadata(
-        mergeProspectorMetadata({}, {
-          setor: item.setor,
-          cidade: item.cidade,
-          fonte: source,
-          placeId: item.placeId,
-          prospectadoEm: now.toISOString(),
-        }),
-        {
-          entryChannel: "prospeccao",
-          entrySource: "prospector_auto",
-          capturedAt: now.toISOString(),
-          details: { sourceProvider: source },
-        },
-      ),
-    })
-    .returning({ id: leadsTable.id });
-
-  const leadId = created?.id;
-  if (!leadId) {
-    log.error({ queueId: item.id, tenantId }, "prospector-queue: lead insert returned no id");
+  if (existingProspect) {
+    await db.update(prospectorQueueTable)
+      .set({ status: "duplicado", updatedAt: now })
+      .where(eq(prospectorQueueTable.id, item.id));
+    log.info({ queueId: item.id, prospectId: existingProspect.id, tenantId }, "prospector-queue: duplicate prospect — skipped");
     return;
   }
 
-  if (assignedTo) {
-    recordResponsavelChange({
-      leadId,
-      responsavelAnteriorId: null,
-      responsavelNovoId: assignedTo,
-      alteradoPorId: null,
-      motivo: "automatico",
-    }).catch(() => {});
+  const baseFit = item.telefone || item.website ? 55 : 35;
+  const vendorFit = 60;
+  const arqdorFit = /(constru|arquitet|engenhar|esquadr|piscin|revest|m[oó]ve|imobili|material|telhado)/i.test(item.setor ?? "")
+    ? 70
+    : 20;
+
+  const decision = decideProspectNextAction({
+    stage: "analisado",
+    vendoraiFitScore: vendorFit,
+    arqdorFitScore: arqdorFit,
+    qualification: {
+      commercial: {
+        canaisAtendimento: item.telefone ? ["telefone/whatsapp"] : item.website ? ["website"] : [],
+      },
+      facts: [
+        ...(item.setor ? [{
+          key: "segment",
+          value: item.setor,
+          confidence: 100,
+          source: source,
+          confirmed: true,
+          observedAt: now.toISOString(),
+        }] : []),
+        ...(item.cidade ? [{
+          key: "city",
+          value: item.cidade,
+          confidence: 100,
+          source: source,
+          confirmed: true,
+          observedAt: now.toISOString(),
+        }] : []),
+      ],
+    },
+    opportunitySummary: null,
+  });
+
+  const [prospect] = await db.insert(prospectsTable).values({
+    tenantId,
+    companyId: null,
+    source,
+    sourceRef,
+    displayName: item.nome,
+    phone: item.telefone,
+    website: item.website,
+    address: item.endereco,
+    segment: item.setor,
+    city: item.cidade,
+    stage: decision.stage,
+    fitScore: baseFit,
+    vendoraiFitScore: vendorFit,
+    arqdorFitScore: arqdorFit,
+    recommendedSolution: decision.recommendedSolution,
+    primaryHook: decision.primaryHook,
+    currentState: decision.currentState,
+    currentObjective: decision.currentObjective,
+    nextBestAction: decision.nextBestAction,
+    nextBestActionReason: decision.nextBestActionReason,
+    qualificationScore: 0,
+    qualification: {
+      commercial: {
+        canaisAtendimento: item.telefone ? ["telefone/whatsapp"] : item.website ? ["website"] : [],
+      },
+      facts: [
+        ...(item.setor ? [{
+          key: "segment",
+          value: item.setor,
+          confidence: 100,
+          source,
+          confirmed: true,
+          observedAt: now.toISOString(),
+        }] : []),
+        ...(item.cidade ? [{
+          key: "city",
+          value: item.cidade,
+          confidence: 100,
+          source,
+          confirmed: true,
+          observedAt: now.toISOString(),
+        }] : []),
+      ],
+    },
+    assignedUserId: assignedTo,
+    nextActionAt: new Date(now.getTime() + 2 * 60 * 60 * 1000),
+  }).returning({ id: prospectsTable.id });
+
+  if (!prospect?.id) {
+    log.error({ queueId: item.id, tenantId }, "prospector-queue: prospect insert returned no id");
+    return;
   }
 
-  // ── Deal in first funil, etapa "novo" ─────────────────────────────────────
-  const [newDeal] = await db
-    .insert(dealsTable)
-    .values({
-      tenantId,
-      leadId,
-      titulo:  `${item.nome} — Prospector Auto`,
-      funilId: funilId,
-      etapa:   "novo",
-      assignedTo,
-    })
-    .returning({ id: dealsTable.id });
-
-  const dealId = newDeal?.id ?? null;
-
-  await db.insert(activitiesTable).values({
-    tenantId,
-    leadId,
-    dealId,
-    tipo:      "tarefa",
-    titulo:    "Lead importado via Prospector Automático",
-    descricao: `Importado automaticamente da fila do Prospector (atividade: ${item.setor ?? "N/A"}, localidade: ${item.cidade ?? "N/A"}).`,
-    status:    "concluida",
-    responsavelId: assignedTo,
-  });
-
-  // Every imported lead must already enter the work center with a concrete
-  // next action and SLA. LeadWorkspace uses the earliest pending activity as
-  // "Próxima atividade", so this removes the undefined state immediately.
-  const firstContactDeadline = new Date(now.getTime() + 2 * 60 * 60 * 1000);
-  await db.insert(activitiesTable).values({
-    tenantId,
-    leadId,
-    dealId,
-    tipo: item.telefone ? "whatsapp" : "tarefa",
-    titulo: item.telefone
-      ? "Realizar primeiro contato com o lead"
-      : "Localizar canal de contato e iniciar abordagem",
-    descricao: item.telefone
-      ? "Fazer a primeira abordagem, confirmar o decisor e a necessidade. Registrar o resultado e combinar o próximo passo."
-      : "Identificar telefone, WhatsApp, e-mail ou outro canal válido. Iniciar a abordagem e registrar o próximo passo.",
-    status: "pendente",
-    dataVencimento: firstContactDeadline,
-    responsavelId: assignedTo,
-  });
-
-  // ── Mark queue as importado ───────────────────────────────────────────────
-  await db
-    .update(prospectorQueueTable)
-    .set({ status: "importado", leadId, updatedAt: now })
+  await db.update(prospectorQueueTable)
+    .set({ status: "importado", leadId: null, updatedAt: now })
     .where(eq(prospectorQueueTable.id, item.id));
 
-  log.info({ queueId: item.id, leadId, dealId, tenantId, assignedTo }, "prospector-queue: lead created — starting predictive enrichment");
-
-  // ── Motor Preditivo (Cmd 22): enrich → score → auto-dispatch ─────────────
-  await db
-    .update(leadsTable)
-    .set({ enrichmentStatus: "pending", updatedAt: new Date() })
-    .where(eq(leadsTable.id, leadId));
-
-  enrichLead(leadId, tenantId, log).catch((err) =>
-    log.error({ err, leadId, tenantId }, "prospector-queue: enrichLead failed (non-fatal)"),
+  log.info(
+    { queueId: item.id, prospectId: prospect.id, tenantId, assignedTo },
+    "prospector-queue: pre-lead prospect created without CRM Lead/Deal",
   );
+
 }
