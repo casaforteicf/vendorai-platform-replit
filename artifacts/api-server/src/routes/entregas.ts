@@ -1298,7 +1298,9 @@ router.post("/tenants/:tenantId/entregas", async (req, res) => {
   }
 
   const [entrega] = await db.insert(entregasTable).values(data).returning();
-  const stage = deliveryStage(entrega);
+  // O lote nasce no início da execução. Entrega/transporte são etapas posteriores
+  // do mesmo lote e não podem pular medição, projeto, produção ou instalação.
+  const stage = "pedido_confirmado";
   const [tenantContext] = await db.select({
     segmento: tenantsTable.segmento,
     vertical: tenantsTable.vertical,
@@ -1311,11 +1313,11 @@ router.post("/tenants/:tenantId/entregas", async (req, res) => {
   });
   const [card] = await db.insert(workCardsTable).values({
     tenantId,
-    codigo: workCode("ENT"),
+    codigo: workCode("OP"),
     pipeline: "execucao",
     tipo: "entrega",
     etapa: stage,
-    titulo: `Entrega ${String(entrega.loteNumero ?? nextLot).padStart(2, "0")} • ${deal.titulo}`,
+    titulo: `Lote de execução ${String(entrega.loteNumero ?? nextLot).padStart(2, "0")} • ${deal.titulo}`,
     descricao: entrega.observacoes,
     prioridade: "normal",
     leadId: entrega.leadId,
@@ -1332,6 +1334,8 @@ router.post("/tenants/:tenantId/entregas", async (req, res) => {
       loteNumero: entrega.loteNumero,
       itens: entrega.itens,
       saldoParcial: true,
+      natureza: "lote_execucao",
+      origem: "orcamento_aprovado",
       checklistExpedicao,
     },
   }).returning();
@@ -1343,7 +1347,7 @@ router.post("/tenants/:tenantId/entregas", async (req, res) => {
       dealId: deal.id,
       tipo: "tarefa",
       titulo: `Acompanhar ${card.codigo} — ${card.titulo}`,
-      descricao: `Lote parcial criado com ${entrega.itens.length} item(ns). Etapa inicial: ${WORK_STAGE_LABELS[stage] ?? stage}.`,
+      descricao: `Lote de execução criado com ${entrega.itens.length} item(ns). O saldo não selecionado permanece disponível no orçamento. Etapa inicial: ${WORK_STAGE_LABELS[stage] ?? stage}.`,
       responsavelId: entrega.assignedTo,
       status: "planejado",
       dataVencimento: entrega.dataPrevista,
@@ -1461,7 +1465,14 @@ router.patch("/entregas/:id", async (req, res) => {
     .where(eq(workCardsTable.entregaId, entrega.id)).limit(1);
   if (linkedCard) {
     const requestedStage = deliveryStage(entrega);
-    const nextStage = canAdvanceWorkCard("execucao", linkedCard.etapa, requestedStage) ? requestedStage : linkedCard.etapa;
+    const currentIndex = EXECUTION_STAGES.indexOf(linkedCard.etapa as typeof EXECUTION_STAGES[number]);
+    const deliverySyncIndex = EXECUTION_STAGES.indexOf("aguardando_liberacao");
+    // Atualizações logísticas só sincronizam o lote depois que a execução chegou
+    // à fase de liberação; datas de entrega não podem pular a produção.
+    const canSyncDeliveryStage = requestedStage === "cancelado" || currentIndex >= deliverySyncIndex;
+    const nextStage = canSyncDeliveryStage && canAdvanceWorkCard("execucao", linkedCard.etapa, requestedStage)
+      ? requestedStage
+      : linkedCard.etapa;
     const stageChanged = nextStage !== linkedCard.etapa;
     const [updatedCard] = await db.update(workCardsTable).set({
       etapa: nextStage,
