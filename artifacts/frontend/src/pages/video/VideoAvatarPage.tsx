@@ -10,12 +10,17 @@ import {
   FileAudio,
   FileVideo,
   Globe2,
+  HelpCircle,
   ImagePlus,
   Loader2,
   Mic2,
+  MoreHorizontal,
+  Pencil,
+  Play,
   Plus,
   QrCode,
   RefreshCw,
+  Search,
   ShieldCheck,
   Sparkles,
   Smartphone,
@@ -757,8 +762,8 @@ export default function VideoAvatarPage() {
   const captureCount = [Boolean(faceFile), Boolean(voiceFile), Boolean(videoFile)].filter(Boolean).length;
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto max-w-6xl space-y-5 px-4 py-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/40 text-slate-950">
+      <div className="mx-auto max-w-[1440px] space-y-4 px-4 py-5 lg:px-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <button onClick={() => navigate("/content-studio/video")} className="mb-3 flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
@@ -772,17 +777,26 @@ export default function VideoAvatarPage() {
               </div>
             </div>
           </div>
-          <button
-            onClick={() => { resetCreate(); setShowCreate(true); setCreateStep(1); }}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-500"
-          >
-            <Plus className="h-4 w-4" /> Criar Dublê Digital
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => toast({ title: "Como funciona", description: "Cadastre a pessoa uma vez, faça foto, voz e vídeo, confirme as autorizações e reutilize o Dublê Digital nos próximos vídeos." })}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+            >
+              <HelpCircle className="h-4 w-4" /> Como funciona
+            </button>
+            <button
+              onClick={() => { resetCreate(); setShowCreate(true); setCreateStep(1); }}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-500"
+            >
+              <Plus className="h-4 w-4" /> Criar Dublê Digital
+            </button>
+          </div>
         </div>
 
         {!showCreate && (
           <>
-            <section className="rounded-2xl border bg-card p-4 shadow-sm">
+            <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex flex-wrap gap-2">
                   {([
@@ -806,21 +820,24 @@ export default function VideoAvatarPage() {
                       onClick={() => setDubleFilter(value)}
                       className={cn(
                         "rounded-lg px-3 py-2 text-xs font-medium transition-colors",
-                        dubleFilter === value ? "bg-foreground text-background" : "border bg-background text-muted-foreground hover:text-foreground",
+                        dubleFilter === value
+                          ? "border border-orange-200 bg-orange-50 text-orange-700"
+                          : "border border-slate-200 bg-slate-50 text-slate-600 hover:bg-white hover:text-slate-900",
                       )}
                     >
                       {label}
                     </button>
                   ))}
                 </div>
-                <div className="flex gap-2">
+                <div className="relative flex gap-2">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <input
                     value={dubleSearch}
                     onChange={(event) => setDubleSearch(event.target.value)}
-                    placeholder="Buscar dublê pelo nome"
-                    className="w-full min-w-[220px] rounded-xl border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orange-500/20"
+                    placeholder="Buscar dublê..."
+                    className="w-full min-w-[250px] rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm outline-none focus:border-orange-300 focus:ring-2 focus:ring-orange-500/10"
                   />
-                  <button onClick={() => void loadAll(true)} className="rounded-xl border p-2 text-muted-foreground hover:bg-muted" aria-label="Atualizar">
+                  <button onClick={() => void loadAll(true)} className="rounded-xl border border-slate-200 bg-white p-2 text-slate-500 hover:bg-slate-50" aria-label="Atualizar">
                     <RefreshCw className="h-4 w-4" />
                   </button>
                 </div>
@@ -830,7 +847,7 @@ export default function VideoAvatarPage() {
             {loading ? (
               <div className="flex min-h-[300px] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-purple-500" /></div>
             ) : filteredIdentities.length === 0 ? (
-              <section className="rounded-2xl border border-dashed bg-card px-6 py-16 text-center">
+              <section className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center shadow-sm">
                 <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-500/10 text-purple-600">
                   <UserRound className="h-7 w-7" />
                 </div>
@@ -858,29 +875,41 @@ export default function VideoAvatarPage() {
                   const references = [Boolean(identity.face_reference_asset_id), Boolean(capture?.voice?.referenceAssetId), Boolean(capture?.video?.referenceAssetId)].filter(Boolean).length;
                   const ready = identity.status === "active" && references === 3;
                   return (
-                    <article key={identity.id} className="rounded-2xl border bg-card p-4 shadow-sm">
+                    <article key={identity.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-3">
-                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-purple-500/10 text-purple-600"><UserRound className="h-5 w-5" /></div>
+                          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-gradient-to-br from-violet-100 to-slate-100 text-violet-600"><UserRound className="h-8 w-8" /></div>
                           <div className="min-w-0">
                             <h3 className="truncate font-semibold">{identity.display_name}</h3>
-                            <p className="mt-0.5 text-xs text-muted-foreground">{identityMarket.name} · {identityMarket.locale}</p>
+                            <p className="mt-1 text-xs text-slate-500">{identity.kind === "person" ? "Pessoa real autorizada" : "Persona da marca"}</p>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] text-slate-600">{identityMarket.name}</span>
+                              <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] text-slate-600">{identityMarket.locale}</span>
+                            </div>
                           </div>
                         </div>
                         <span className={cn("rounded-full px-2 py-1 text-[10px] font-medium", ready ? "bg-emerald-500/10 text-emerald-700" : "bg-amber-500/10 text-amber-700")}>
                           {ready ? "Pronto" : `${references}/3 capturas`}
                         </span>
                       </div>
-                      <div className="mt-4 grid grid-cols-3 gap-2 text-center text-[11px]">
-                        <div className="rounded-lg border p-2"><div className={identity.face_reference_asset_id ? "text-emerald-600" : "text-muted-foreground"}>{identity.face_reference_asset_id ? "✓" : "—"}</div><div className="mt-1 text-muted-foreground">Foto</div></div>
-                        <div className="rounded-lg border p-2"><div className={capture?.voice?.referenceAssetId ? "text-emerald-600" : "text-muted-foreground"}>{capture?.voice?.referenceAssetId ? "✓" : "—"}</div><div className="mt-1 text-muted-foreground">Voz</div></div>
-                        <div className="rounded-lg border p-2"><div className={capture?.video?.referenceAssetId ? "text-emerald-600" : "text-muted-foreground"}>{capture?.video?.referenceAssetId ? "✓" : "—"}</div><div className="mt-1 text-muted-foreground">Vídeo</div></div>
+                      <div className="mt-4 grid grid-cols-3 divide-x divide-slate-100 rounded-xl border border-slate-200 bg-slate-50/60 py-2 text-center text-xs">
+                        <div className="px-2"><div className={identity.face_reference_asset_id ? "font-semibold text-emerald-600" : "text-slate-400"}>{identity.face_reference_asset_id ? "✓" : "○"}</div><div className="mt-1 text-slate-600">Foto</div></div>
+                        <div className="px-2"><div className={capture?.voice?.referenceAssetId ? "font-semibold text-emerald-600" : "text-slate-400"}>{capture?.voice?.referenceAssetId ? "✓" : "○"}</div><div className="mt-1 text-slate-600">Voz</div></div>
+                        <div className="px-2"><div className={capture?.video?.referenceAssetId ? "font-semibold text-emerald-600" : "text-slate-400"}>{capture?.video?.referenceAssetId ? "✓" : "○"}</div><div className="mt-1 text-slate-600">Vídeo</div></div>
                       </div>
                       <div className="mt-4 flex gap-2">
-                        <button type="button" onClick={() => void loadIdentity(identity.id)} className="flex-1 rounded-lg bg-foreground px-3 py-2 text-xs font-semibold text-background hover:opacity-90">
-                          {ready ? "Abrir dublê" : "Continuar captura"}
+                        <button
+                          type="button"
+                          onClick={() => void loadIdentity(identity.id)}
+                          className={cn(
+                            "inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold",
+                            ready ? "border border-slate-200 bg-white text-slate-800 hover:bg-slate-50" : "bg-violet-600 text-white hover:bg-violet-500",
+                          )}
+                        >
+                          <Play className="h-3.5 w-3.5" /> {ready ? "Abrir dublê" : "Continuar captura"}
                         </button>
-                        <button type="button" onClick={() => void loadIdentity(identity.id)} className="rounded-lg border px-3 py-2 text-xs font-medium hover:bg-muted">Editar</button>
+                        <button type="button" onClick={() => void loadIdentity(identity.id)} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"><Pencil className="h-3.5 w-3.5" /> Editar</button>
+                        <button type="button" className="rounded-lg border border-slate-200 px-2.5 py-2 text-slate-500 hover:bg-slate-50" aria-label="Mais ações"><MoreHorizontal className="h-4 w-4" /></button>
                       </div>
                     </article>
                   );
@@ -889,7 +918,7 @@ export default function VideoAvatarPage() {
             )}
 
             {detail && (
-              <section className="rounded-2xl border bg-card p-5 shadow-sm">
+              <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -936,31 +965,48 @@ export default function VideoAvatarPage() {
         )}
 
         {showCreate && (
-          <section className="rounded-2xl border bg-card shadow-sm">
-            <div className="border-b px-5 py-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-lg font-bold">Criar Dublê Digital</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Uma captura guiada, feita uma vez. Você poderá reutilizar o dublê em novos vídeos.</p>
-                </div>
-                <button type="button" onClick={() => { resetCreate(); setShowCreate(false); }} className="rounded-lg border px-3 py-2 text-xs hover:bg-muted">Cancelar</button>
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <div>
+                <h2 className="text-xl font-bold">Criar Dublê Digital</h2>
+                <p className="mt-1 text-sm text-slate-500">Uma captura guiada, feita uma vez. Depois, é só reutilizar.</p>
               </div>
-              <div className="mt-5 grid grid-cols-5 gap-2">
-                {wizardSteps.map((label, index) => {
-                  const step = (index + 1) as 1 | 2 | 3 | 4 | 5;
-                  const active = createStep === step;
-                  const done = createStep > step;
-                  return (
-                    <div key={label} className="min-w-0">
-                      <div className={cn("h-1.5 rounded-full", done ? "bg-emerald-500" : active ? "bg-orange-500" : "bg-muted")} />
-                      <p className={cn("mt-1 truncate text-[11px]", active ? "font-semibold text-foreground" : "text-muted-foreground")}>{step}. {label}</p>
-                    </div>
-                  );
-                })}
-              </div>
+              <button type="button" onClick={() => { resetCreate(); setShowCreate(false); }} className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50">Cancelar</button>
             </div>
 
-            <div className="p-5">
+            <div className="grid lg:grid-cols-[280px_1fr]">
+              <aside className="border-b border-slate-200 bg-slate-50/70 p-4 lg:min-h-[520px] lg:border-b-0 lg:border-r">
+                <div className="grid grid-cols-5 gap-2 lg:grid-cols-1 lg:gap-1">
+                  {wizardSteps.map((label, index) => {
+                    const step = (index + 1) as 1 | 2 | 3 | 4 | 5;
+                    const active = createStep === step;
+                    const done = createStep > step;
+                    const subtitles = ["Nome, tipo e idioma", "Foto, voz e vídeo", "Uso da imagem e voz", "Revisão das capturas", "Finalizar criação"];
+                    return (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => { if (step <= createStep) setCreateStep(step); }}
+                        className={cn(
+                          "flex min-w-0 items-center gap-3 rounded-xl p-3 text-left transition-colors",
+                          active ? "bg-violet-100 text-violet-800" : done ? "text-slate-700 hover:bg-white" : "cursor-default text-slate-400",
+                        )}
+                      >
+                        <span className={cn(
+                          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
+                          active ? "bg-violet-600 text-white" : done ? "bg-emerald-500 text-white" : "bg-slate-200 text-slate-500",
+                        )}>{done ? "✓" : step}</span>
+                        <span className="hidden min-w-0 lg:block">
+                          <span className="block text-sm font-semibold">{label}</span>
+                          <span className="mt-0.5 block text-xs text-slate-500">{subtitles[index]}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </aside>
+
+              <div className="p-5 lg:p-7">
               {createStep === 1 && (
                 <div className="mx-auto max-w-2xl space-y-5">
                   <div>
@@ -969,19 +1015,19 @@ export default function VideoAvatarPage() {
                   </div>
                   <label className="block space-y-1.5">
                     <span className="text-sm font-medium">Nome</span>
-                    <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Ex.: Marcos — Comercial" className="w-full rounded-xl border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-orange-500/20" />
+                    <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Ex.: Marcos — Comercial" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-orange-500/20" />
                   </label>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <label className="space-y-1.5">
                       <span className="text-sm font-medium">Tipo</span>
-                      <select value={kind} onChange={(event) => setKind(event.target.value as "person" | "persona")} className="w-full rounded-xl border bg-background px-3 py-2.5 text-sm outline-none">
+                      <select value={kind} onChange={(event) => setKind(event.target.value as "person" | "persona")} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none">
                         <option value="person">Pessoa real autorizada</option>
                         <option value="persona">Persona da marca</option>
                       </select>
                     </label>
                     <label className="space-y-1.5">
                       <span className="text-sm font-medium">Idioma base</span>
-                      <select value={captureMarket} onChange={(event) => setCaptureMarket(event.target.value as MarketCode)} className="w-full rounded-xl border bg-background px-3 py-2.5 text-sm outline-none">
+                      <select value={captureMarket} onChange={(event) => setCaptureMarket(event.target.value as MarketCode)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none">
                         {Object.values(CAPTURE_MARKETS).map((market) => <option key={market.code} value={market.code}>{market.name} · {market.locale}</option>)}
                       </select>
                     </label>
@@ -1130,9 +1176,10 @@ export default function VideoAvatarPage() {
                   </button>
                 </div>
               )}
+              </div>
             </div>
 
-            <div className="flex items-center justify-between border-t px-5 py-4">
+            <div className="flex items-center justify-between border-t border-slate-200 bg-white px-5 py-4 lg:pl-[300px]">
               <button
                 type="button"
                 disabled={createStep === 1 || saving}
@@ -1151,7 +1198,7 @@ export default function VideoAvatarPage() {
                     (createStep === 3 && !canContinueStep3)
                   }
                   onClick={() => setCreateStep((Math.min(5, createStep + 1)) as 1 | 2 | 3 | 4 | 5)}
-                  className="rounded-xl bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-500 disabled:opacity-40"
+                  className="rounded-xl bg-orange-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-500 disabled:opacity-40"
                 >
                   Continuar
                 </button>
