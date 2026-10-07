@@ -248,6 +248,8 @@ export default function Marketplace() {
   const [ruleBillingTypes, setRuleBillingTypes] = useState<string[]>([]);
   const [ruleMinOrder, setRuleMinOrder] = useState("");
   const [ruleMaxOrder, setRuleMaxOrder] = useState("");
+  const [ruleMinCommission, setRuleMinCommission] = useState("");
+  const [ruleMaxCommission, setRuleMaxCommission] = useState("");
   const [savingCommissionRule, setSavingCommissionRule] = useState(false);
 
   const [pendingPayment, setPendingPayment] = useState<PendingMarketPayment | null>(null);
@@ -453,6 +455,8 @@ export default function Marketplace() {
     setRuleBillingTypes([]);
     setRuleMinOrder("");
     setRuleMaxOrder("");
+    setRuleMinCommission("");
+    setRuleMaxCommission("");
   };
 
   const saveCommissionRule = async () => {
@@ -477,6 +481,8 @@ export default function Marketplace() {
           startsAt: ruleStartsAt ? new Date(ruleStartsAt).toISOString() : undefined,
           endsAt: ruleEndsAt ? new Date(ruleEndsAt).toISOString() : undefined,
           conditions,
+          minCommissionAmount: ruleMinCommission ? Number(ruleMinCommission) : undefined,
+          maxCommissionAmount: ruleMaxCommission ? Number(ruleMaxCommission) : undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -1651,6 +1657,16 @@ export default function Marketplace() {
             <div className="space-y-1.5">
               <Label>Pedido máximo</Label>
               <Input type="number" min="0" step="0.01" value={ruleMaxOrder} onChange={(e) => setRuleMaxOrder(e.target.value)} placeholder="Opcional" />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Comissão mínima (R$)</Label>
+              <Input type="number" min="0" step="0.01" value={ruleMinCommission} onChange={(e) => setRuleMinCommission(e.target.value)} placeholder="Opcional" />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Comissão máxima (R$)</Label>
+              <Input type="number" min="0" step="0.01" value={ruleMaxCommission} onChange={(e) => setRuleMaxCommission(e.target.value)} placeholder="Opcional" />
             </div>
 
             <div className="space-y-2 sm:col-span-2">
