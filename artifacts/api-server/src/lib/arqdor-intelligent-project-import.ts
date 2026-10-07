@@ -3,6 +3,47 @@ import { callOpenAIFileExtraction } from "./ai-gateway.js";
 
 type JsonRecord = Record<string, unknown>;
 
+export type ArqdorImportedWall = {
+  id?: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  thickness?: number;
+  classification?: "internal" | "external" | "unknown";
+  material?: string | null;
+  confidence?: number;
+  evidence?: string[];
+};
+
+export type ArqdorImportedOpening = {
+  id?: string;
+  code?: string | null;
+  wallIndex?: number | null;
+  wallId?: string | null;
+  type: "door" | "window" | "opening";
+  offset?: number | null;
+  width?: number | null;
+  height?: number | null;
+  sillHeight?: number | null;
+  confidence?: number;
+  evidence?: string[];
+};
+
+export type ArqdorImportedFloorPlan = {
+  page: number;
+  label?: string | null;
+  confidence: number;
+  widthMeters?: number | null;
+  depthMeters?: number | null;
+  requiresCalibration: boolean;
+  walls: ArqdorImportedWall[];
+  openings: ArqdorImportedOpening[];
+  rooms: Array<JsonRecord>;
+  dimensions: Array<JsonRecord>;
+  warnings: string[];
+};
+
 export type ArqdorProjectImportMemory = {
   summary: string;
   projectType?: string | null;
@@ -15,6 +56,7 @@ export type ArqdorProjectImportMemory = {
   technicalNotes: Array<string>;
   inconsistencies: Array<string>;
   sourcePages: Array<JsonRecord>;
+  floorPlans: ArqdorImportedFloorPlan[];
 };
 
 export type ArqdorUniversalCandidate = {
@@ -82,6 +124,81 @@ function stringList(value: unknown, limit = 100): string[] {
     : [];
 }
 
+function normalizeImportedWall(value: unknown): ArqdorImportedWall | null {
+  const raw = record(value);
+  const x1 = Number(raw.x1);
+  const y1 = Number(raw.y1);
+  const x2 = Number(raw.x2);
+  const y2 = Number(raw.y2);
+  if (![x1, y1, x2, y2].every(Number.isFinite)) return null;
+  const classification = ["internal", "external"].includes(String(raw.classification))
+    ? String(raw.classification) as "internal" | "external"
+    : "unknown";
+  return {
+    id: raw.id == null ? undefined : String(raw.id).slice(0, 120),
+    x1: clamp01(x1),
+    y1: clamp01(y1),
+    x2: clamp01(x2),
+    y2: clamp01(y2),
+    thickness: Number.isFinite(Number(raw.thickness)) ? Math.max(0.05, Math.min(0.6, Number(raw.thickness))) : undefined,
+    classification,
+    material: raw.material == null ? null : String(raw.material).slice(0, 180),
+    confidence: clamp01(raw.confidence, 0.5),
+    evidence: stringList(raw.evidence, 20),
+  };
+}
+
+function normalizeImportedOpening(value: unknown): ArqdorImportedOpening | null {
+  const raw = record(value);
+  const typeRaw = String(raw.type ?? "opening").toLowerCase();
+  const type: ArqdorImportedOpening["type"] = typeRaw === "door" ? "door" : typeRaw === "window" ? "window" : "opening";
+  const width = Number(raw.width);
+  const height = Number(raw.height);
+  const sillHeight = Number(raw.sillHeight);
+  const offset = Number(raw.offset);
+  const wallIndex = Number(raw.wallIndex);
+  return {
+    id: raw.id == null ? undefined : String(raw.id).slice(0, 120),
+    code: raw.code == null ? null : String(raw.code).slice(0, 60),
+    wallIndex: Number.isFinite(wallIndex) ? Math.max(0, Math.round(wallIndex)) : null,
+    wallId: raw.wallId == null ? null : String(raw.wallId).slice(0, 120),
+    type,
+    offset: Number.isFinite(offset) ? clamp01(offset, 0.5) : null,
+    width: Number.isFinite(width) ? Math.max(0.1, Math.min(12, width)) : null,
+    height: Number.isFinite(height) ? Math.max(0.1, Math.min(8, height)) : null,
+    sillHeight: Number.isFinite(sillHeight) ? Math.max(0, Math.min(5, sillHeight)) : null,
+    confidence: clamp01(raw.confidence, 0.5),
+    evidence: stringList(raw.evidence, 20),
+  };
+}
+
+function normalizeFloorPlan(value: unknown): ArqdorImportedFloorPlan | null {
+  const raw = record(value);
+  const page = Math.max(1, Math.round(Number(raw.page) || 1));
+  const widthMeters = Number(raw.widthMeters);
+  const depthMeters = Number(raw.depthMeters);
+  const walls = Array.isArray(raw.walls)
+    ? raw.walls.map(normalizeImportedWall).filter(Boolean) as ArqdorImportedWall[]
+    : [];
+  const openings = Array.isArray(raw.openings)
+    ? raw.openings.map(normalizeImportedOpening).filter(Boolean) as ArqdorImportedOpening[]
+    : [];
+  const calibrated = Number.isFinite(widthMeters) && widthMeters > 0 && Number.isFinite(depthMeters) && depthMeters > 0;
+  return {
+    page,
+    label: raw.label == null ? null : String(raw.label).slice(0, 180),
+    confidence: clamp01(raw.confidence, walls.length ? 0.6 : 0),
+    widthMeters: calibrated ? widthMeters : null,
+    depthMeters: calibrated ? depthMeters : null,
+    requiresCalibration: raw.requiresCalibration === true || !calibrated,
+    walls: walls.slice(0, 800),
+    openings: openings.slice(0, 500),
+    rooms: Array.isArray(raw.rooms) ? raw.rooms.map(record).slice(0, 300) : [],
+    dimensions: Array.isArray(raw.dimensions) ? raw.dimensions.map(record).slice(0, 1000) : [],
+    warnings: stringList(raw.warnings, 100),
+  };
+}
+
 function normalizeCandidate(value: unknown, sourceFileName: string): ArqdorUniversalCandidate | null {
   const raw = record(value);
   const allowed = new Set(["pre_project", "facade", "roof", "opening", "room", "complete_project"]);
@@ -126,6 +243,10 @@ export function normalizeArqdorIntelligentProjectImport(
       }).slice(0, 100)
     : [];
 
+  const floorPlans = Array.isArray(memory.floorPlans)
+    ? memory.floorPlans.map(normalizeFloorPlan).filter(Boolean) as ArqdorImportedFloorPlan[]
+    : [];
+
   const candidates = Array.isArray(value.universalCandidates)
     ? value.universalCandidates.map((item) => normalizeCandidate(item, sourceFileName)).filter(Boolean) as ArqdorUniversalCandidate[]
     : [];
@@ -148,6 +269,7 @@ export function normalizeArqdorIntelligentProjectImport(
       technicalNotes: stringList(memory.technicalNotes, 200),
       inconsistencies: stringList(memory.inconsistencies, 100),
       sourcePages,
+      floorPlans,
     },
     universalCandidates: candidates,
     warnings: stringList(value.warnings, 100),
@@ -178,6 +300,10 @@ export async function analyzeArqdorProjectDocument(input: {
     "Cruze planta baixa, cotas, quadro de esquadrias, cortes, fachadas, cobertura, detalhes e notas. Quando houver conflito, registre em inconsistencies/warnings.",
     "Para esquadrias, preserve código (J1/J01/P1 etc.), dimensões, peitoril, tipologia, material, acabamento, vidro, quantidade e páginas de origem quando presentes.",
     "Para paredes, registre quando disponível espessura, material, pavimento, classificação interna/externa e evidência de origem. Não trate linhas de cota, terreno ou anotação como paredes.",
+    "Para cada planta baixa detectada, gere memory.floorPlans. As coordenadas x1,y1,x2,y2 de walls devem estar normalizadas de 0 a 1 no retângulo EXATO da planta baixa, excluindo carimbo e outras pranchas da folha. Preserve recuos e forma do perímetro.",
+    "Quando as cadeias de cotas permitirem determinar com segurança a largura/profundidade total do retângulo da planta, preencha widthMeters/depthMeters. Caso contrário deixe null e requiresCalibration=true; nunca estime.",
+    "dimensions deve registrar cotas explícitas legíveis com valor em metros, orientação, pontos/trecho associados e evidência. Cota explícita tem prioridade sobre proporção visual.",
+    "openings deve ligar cada abertura à parede por wallIndex (índice em walls, base zero) quando isso estiver inequívoco e cruzar o código J/P com o quadro de esquadrias e detalhes.",
     "Para a Biblioteca Universal, remova/ignore nomes de pessoas, CPF/CNPJ, e-mails, telefones, endereço, matrícula e qualquer dado identificável do cliente ou obra.",
     "Crie candidatos automaticamente, sem pedir autorização: pre_project para plantas reutilizáveis, facade para fachadas, roof para coberturas, opening para esquadrias especiais, room para ambientes relevantes e complete_project quando planta+fachadas+cortes forem coerentes.",
     "architecture deve conter apenas informação arquitetônica reutilizável. metadata deve conter área aproximada, pavimentos, quartos/suítes, estilo, cobertura, dimensões e tags quando suportado.",
@@ -196,7 +322,20 @@ export async function analyzeArqdorProjectDocument(input: {
         roof: null,
         technicalNotes: [],
         inconsistencies: [],
-        sourcePages: []
+        sourcePages: [],
+        floorPlans: [{
+          page: 1,
+          label: "Planta baixa",
+          confidence: 0.9,
+          widthMeters: null,
+          depthMeters: null,
+          requiresCalibration: true,
+          walls: [{ x1: 0.1, y1: 0.1, x2: 0.9, y2: 0.1, thickness: 0.15, classification: "external", confidence: 0.95, evidence: ["parede visível + cota"] }],
+          openings: [{ code: "J04", wallIndex: 0, type: "window", offset: 0.5, width: 1.2, height: 2.2, sillHeight: 0.7, confidence: 0.98, evidence: ["quadro de esquadrias"] }],
+          rooms: [],
+          dimensions: [],
+          warnings: []
+        }]
       },
       universalCandidates: [{
         kind: "pre_project",
