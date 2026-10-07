@@ -76,6 +76,14 @@ import {
   insertObraSuperficieSchema,
   insertObraSuperficieZonaSchema,
   insertObraAcabamentoPadraoSchema,
+  obraEletricaPontosTable,
+  obraEletricaCircuitosTable,
+  obraEletricaQuadrosTable,
+  obraEletricaRedesEspeciaisTable,
+  insertObraEletricaPontoSchema,
+  insertObraEletricaCircuitoSchema,
+  insertObraEletricaQuadroSchema,
+  insertObraEletricaRedeEspecialSchema,
   insertObraSchema,
   updateObraSchema,
   insertObraEtapaSchema,
@@ -1968,6 +1976,146 @@ router.get("/tenants/:tenantId/obras/:obraId/estrutura-espacial", async (req, re
     : [];
 
   return res.json({ pavimentos, ambientes, elementos, superficies, zonas });
+});
+
+// ─── Elétrica: pontos/dispositivos separados de circuitos/redes ───────────────
+
+router.post("/tenants/:tenantId/obras/:obraId/eletrica/pontos", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  const parsed = insertObraEletricaPontoSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  if (parsed.data.ambienteId) {
+    const [amb] = await db.select({ id: obraAmbientesTable.id }).from(obraAmbientesTable)
+      .where(and(eq(obraAmbientesTable.id, parsed.data.ambienteId), eq(obraAmbientesTable.obraId, obraId)));
+    if (!amb) return res.status(422).json({ error: "Ambiente inválido para esta obra." });
+  }
+
+  const [row] = await db.insert(obraEletricaPontosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/eletrica/circuitos", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraEletricaCircuitoSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraEletricaCircuitosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/eletrica/quadros", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraEletricaQuadroSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraEletricaQuadrosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/eletrica/redes-especiais", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraEletricaRedeEspecialSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraEletricaRedesEspeciaisTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/eletrica/resumo", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  const [pontos, circuitos, quadros, redes] = await Promise.all([
+    db.select().from(obraEletricaPontosTable).where(and(eq(obraEletricaPontosTable.obraId, obraId), eq(obraEletricaPontosTable.ativo, true))),
+    db.select().from(obraEletricaCircuitosTable).where(and(eq(obraEletricaCircuitosTable.obraId, obraId), eq(obraEletricaCircuitosTable.ativo, true))),
+    db.select().from(obraEletricaQuadrosTable).where(and(eq(obraEletricaQuadrosTable.obraId, obraId), eq(obraEletricaQuadrosTable.ativo, true))),
+    db.select().from(obraEletricaRedesEspeciaisTable).where(and(eq(obraEletricaRedesEspeciaisTable.obraId, obraId), eq(obraEletricaRedesEspeciaisTable.ativo, true))),
+  ]);
+
+  const circuitosPorCodigo = new Map(circuitos.map((c) => [c.id, c]));
+  const alertas = [];
+
+  for (const ponto of pontos) {
+    if (ponto.circuitoId && !circuitosPorCodigo.has(ponto.circuitoId)) {
+      alertas.push({
+        tipo: "ponto_sem_circuito_valido",
+        pontoId: ponto.id,
+        circuitoId: ponto.circuitoId,
+      });
+    }
+  }
+
+  const potenciaPontosW = pontos.reduce((sum, p) => sum + numberOrZero(p.potenciaW) * numberOrZero(p.quantidade), 0);
+  const potenciaCircuitosW = circuitos.reduce((sum, circuito) => sum + numberOrZero(circuito.potenciaInstaladaW), 0);
+
+  return res.json({
+    pontos,
+    circuitos,
+    quadros,
+    redes,
+    totais: {
+      pontos: pontos.reduce((sum, p) => sum + numberOrZero(p.quantidade), 0),
+      circuitos: circuitos.length,
+      quadros: quadros.length,
+      redesEspeciais: redes.length,
+      potenciaPontosW: potenciaPontosW.toFixed(4),
+      potenciaCircuitosW: potenciaCircuitosW.toFixed(4),
+    },
+    alertas,
+    regraAntiduplicidade: {
+      pontos: "caixa/dispositivo/ponto",
+      circuitos: "cabos/eletrodutos/proteções e infraestrutura de rede",
+      principio: "o mesmo material/serviço não deve constar simultaneamente na composição do ponto e do circuito",
+    },
+  });
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/eletrica/verificar-duplicidade", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const pontos = await db.select().from(obraEletricaPontosTable)
+    .where(and(eq(obraEletricaPontosTable.obraId, obraId), eq(obraEletricaPontosTable.ativo, true)));
+  const circuitos = await db.select().from(obraEletricaCircuitosTable)
+    .where(and(eq(obraEletricaCircuitosTable.obraId, obraId), eq(obraEletricaCircuitosTable.ativo, true)));
+
+  const conflitos = [];
+  for (const ponto of pontos) {
+    if (!ponto.circuitoId) continue;
+    const circuito = circuitos.find((circuito) => circuito.id === ponto.circuitoId);
+    if (!circuito) continue;
+
+    if (ponto.incluiInfraestruturaAteCaixa && circuito.composicaoId) {
+      conflitos.push({
+        pontoId: ponto.id,
+        circuitoId: circuito.id,
+        tipo: "infraestrutura_potencialmente_duplicada",
+        mensagem: "O ponto inclui infraestrutura até a caixa e o circuito possui composição própria. Revisar escopo das composições.",
+      });
+    }
+  }
+
+  return res.json({
+    conflitos,
+    possuiConflito: conflitos.length > 0,
+  });
 });
 
 // ─── Base Mestre de Preços: propagação segura ─────────────────────────────────
