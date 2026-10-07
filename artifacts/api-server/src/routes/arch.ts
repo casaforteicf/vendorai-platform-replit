@@ -4087,10 +4087,6 @@ router.get("/arch/projetos", authenticate, async (req, res) => {
       portalAtivo:     archProjetosTable.portalAtivo,
       createdAt:       archProjetosTable.createdAt,
       updatedAt:       archProjetosTable.updatedAt,
-          and arch_ai_renders.result_image_url is not null
-        order by arch_ai_renders.created_at desc
-        limit 1
-      )`,
       thumbnailUrl: sql<string | null>`(
         select arch_ai_renders.result_image_url from arch_ai_renders
         where arch_ai_renders.project_id = ${archProjetosTable.id}
