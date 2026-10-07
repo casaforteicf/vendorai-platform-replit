@@ -11,6 +11,14 @@ import {
   obrasTable,
   notificationsTable,
   tenantsTable,
+  obraOrcamentosTable,
+  obraOrcamentoEtapasTable,
+  obraOrcamentoItensTable,
+  obraCotacoesTable,
+  obraCotacaoItensTable,
+  obraCotacaoPropostasTable,
+  obraCotacaoPropostaItensTable,
+  obraCotacaoSelecoesTable,
   insertArqdorMarketDemandaSchema,
   insertArqdorMarketPropostaSchema,
 } from "@workspace/db";
@@ -59,6 +67,202 @@ async function notifyTenant(tenantId: string, title: string, message: string) {
     type: "info",
     category: "general",
   });
+}
+
+async function syncSelectedMarketProposalToBudget(input: {
+  demanda: typeof arqdorMarketDemandasTable.$inferSelect;
+  proposta: typeof arqdorMarketPropostasTable.$inferSelect;
+  buyerTenantId: string;
+  buyerUserId: string | null;
+}) {
+  const { demanda, proposta, buyerTenantId, buyerUserId } = input;
+  if (!demanda.obraId || !demanda.orcamentoId) {
+    return { synced: false, reason: "Demanda sem obra/orçamento vinculado." };
+  }
+
+  const [budget] = await db
+    .select()
+    .from(obraOrcamentosTable)
+    .where(and(
+      eq(obraOrcamentosTable.id, demanda.orcamentoId),
+      eq(obraOrcamentosTable.obraId, demanda.obraId),
+      eq(obraOrcamentosTable.tenantId, buyerTenantId),
+    ))
+    .limit(1);
+  if (!budget) return { synced: false, reason: "Orçamento de origem não encontrado." };
+
+  const marker = `ARQDOR_MARKET_DEMANDA:${demanda.id}`;
+  const existingQuotes = await db
+    .select()
+    .from(obraCotacoesTable)
+    .where(and(
+      eq(obraCotacoesTable.tenantId, buyerTenantId),
+      eq(obraCotacoesTable.orcamentoId, budget.id),
+    ));
+  let cotacao = existingQuotes.find((row) => String(row.observacoes ?? "").includes(marker)) ?? null;
+
+  if (!cotacao) {
+    [cotacao] = await db.insert(obraCotacoesTable).values({
+      tenantId: buyerTenantId,
+      orcamentoId: budget.id,
+      titulo: `Arqdor Market — ${demanda.titulo}`,
+      status: "em_analise",
+      dataNecessidade: demanda.dataNecessidade ? demanda.dataNecessidade.toISOString().slice(0, 10) : null,
+      prazoResposta: demanda.prazoResposta ? demanda.prazoResposta.toISOString().slice(0, 10) : null,
+      observacoes: `${marker}\nOrigem automática do Arqdor Market. Valores internos do orçamento não foram publicados.`,
+      criadoPorId: buyerUserId,
+    }).returning();
+
+    const stages = await db
+      .select()
+      .from(obraOrcamentoEtapasTable)
+      .where(eq(obraOrcamentoEtapasTable.orcamentoId, budget.id));
+    const stageIds = stages.map((row) => row.id);
+    const budgetItems = stageIds.length
+      ? await db.select().from(obraOrcamentoItensTable).where(inArray(obraOrcamentoItensTable.etapaId, stageIds))
+      : [];
+
+    const scopedItems = demanda.orcamentoItemId
+      ? budgetItems.filter((row) => row.id === demanda.orcamentoItemId)
+      : budgetItems;
+
+    if (scopedItems.length > 0) {
+      await db.insert(obraCotacaoItensTable).values(scopedItems.map((item) => ({
+        cotacaoId: cotacao!.id,
+        orcamentoItemId: item.id,
+        orcamentoEtapaId: item.etapaId,
+        insumoId: item.insumoId ?? null,
+        nome: item.nome,
+        quantidadeTecnica: String(item.quantidadeTecnica ?? item.quantidade),
+        unidadeTecnica: item.unidade,
+        quantidadeCompra: item.quantidadeCompra == null ? null : String(item.quantidadeCompra),
+        unidadeCompra: item.unidadeCompra ?? item.unidade,
+        coberturaStatus: "nao_cotado",
+        observacoes: "Gerado a partir da necessidade publicada no Arqdor Market.",
+      })));
+    }
+  }
+
+  const proposals = await db
+    .select()
+    .from(obraCotacaoPropostasTable)
+    .where(eq(obraCotacaoPropostasTable.cotacaoId, cotacao.id));
+  let quoteProposal = proposals.find((row) => (row.metadata as any)?.arqdorMarketProposalId === proposta.id) ?? null;
+
+  const [supplier] = await db
+    .select({ name: tenantsTable.name })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, proposta.fornecedorTenantId))
+    .limit(1);
+
+  if (!quoteProposal) {
+    [quoteProposal] = await db.insert(obraCotacaoPropostasTable).values({
+      cotacaoId: cotacao.id,
+      fornecedorId: null,
+      fornecedorNomeSnapshot: supplier?.name ?? "Fornecedor Arqdor Market",
+      validadeAte: proposta.validadeAte ? proposta.validadeAte.toISOString().slice(0, 10) : null,
+      prazoEntregaDias: proposta.prazoEntregaDias,
+      condicaoPagamento: proposta.condicaoPagamento,
+      freteValor: String(proposta.frete ?? 0),
+      impostosValor: String(proposta.impostos ?? 0),
+      descontoValor: String(proposta.desconto ?? 0),
+      valorTotalInformado: proposta.valorTotal == null ? null : String(proposta.valorTotal),
+      origemFormato: "api",
+      status: "selecionada",
+      observacoes: proposta.observacoes,
+      metadata: {
+        origem: "arqdor_market",
+        arqdorMarketDemandaId: demanda.id,
+        arqdorMarketProposalId: proposta.id,
+        fornecedorTenantId: proposta.fornecedorTenantId,
+      },
+    }).returning();
+  }
+
+  const quoteItems = await db
+    .select()
+    .from(obraCotacaoItensTable)
+    .where(eq(obraCotacaoItensTable.cotacaoId, cotacao.id));
+
+  const proposalItems = Array.isArray(proposta.itens) ? proposta.itens : [];
+  const createdProposalItems: Array<{ id: string; cotacaoItemId: string | null; quantidade: number; total: number }> = [];
+
+  for (const marketItem of proposalItems) {
+    const direct = demanda.orcamentoItemId
+      ? quoteItems.find((row) => row.orcamentoItemId === demanda.orcamentoItemId)
+      : quoteItems.length === 1 ? quoteItems[0] : null;
+
+    const quantity = Number(marketItem.quantidade ?? demanda.quantidade ?? 0);
+    const unitTotal = Number(marketItem.valorTotal ?? 0);
+    const unitPrice = Number(marketItem.valorUnitario ?? (quantity > 0 ? unitTotal / quantity : 0));
+
+    const [created] = await db.insert(obraCotacaoPropostaItensTable).values({
+      propostaId: quoteProposal.id,
+      cotacaoItemId: direct?.id ?? null,
+      descricaoFornecedor: marketItem.descricao,
+      marca: marketItem.marca ?? null,
+      modelo: marketItem.modelo ?? null,
+      especificacao: marketItem.especificacoes ? JSON.stringify(marketItem.especificacoes) : null,
+      quantidadeOfertada: String(Math.max(0, quantity)),
+      unidadeFornecedor: marketItem.unidade ?? demanda.unidade ?? direct?.unidadeCompra ?? direct?.unidadeTecnica ?? "un",
+      precoUnitarioFornecedor: String(Math.max(0, unitPrice)),
+      precoUnitarioNormalizado: direct ? String(Math.max(0, unitPrice)) : null,
+      quantidadeCompraNormalizada: direct ? String(Math.max(0, quantity)) : null,
+      valorTotalLinha: String(Math.max(0, unitTotal)),
+      prazoEntregaDias: proposta.prazoEntregaDias,
+      coberturaStatus: direct ? "coberto" : "ambigua",
+      reconciliacaoConfianca: direct ? "100" : null,
+      selecionado: Boolean(direct),
+      motivoSelecao: direct ? "Proposta selecionada no Arqdor Market." : null,
+      metadata: {
+        origem: "arqdor_market",
+        marketProposalId: proposta.id,
+        requerReconciliacao: !direct,
+      },
+    }).returning();
+
+    createdProposalItems.push({
+      id: created.id,
+      cotacaoItemId: created.cotacaoItemId,
+      quantidade,
+      total: unitTotal,
+    });
+  }
+
+  for (const item of createdProposalItems) {
+    if (!item.cotacaoItemId) continue;
+    const quoteItem = quoteItems.find((row) => row.id === item.cotacaoItemId);
+    if (!quoteItem) continue;
+    const needed = Number(quoteItem.quantidadeCompra ?? quoteItem.quantidadeTecnica ?? 0);
+    const selectedQty = Math.min(Math.max(0, item.quantidade || needed), needed || Math.max(0, item.quantidade));
+    if (selectedQty <= 0) continue;
+    const cost = item.quantidade > 0 ? (item.total / item.quantidade) * selectedQty : item.total;
+    await db.insert(obraCotacaoSelecoesTable).values({
+      cotacaoItemId: quoteItem.id,
+      propostaItemId: item.id,
+      quantidadeSelecionada: String(selectedQty),
+      custoSelecionado: String(Math.max(0, cost)),
+      principal: true,
+      criadoPorId: buyerUserId,
+    });
+    await db.update(obraCotacaoItensTable)
+      .set({ coberturaStatus: selectedQty >= needed ? "coberto" : "parcial" })
+      .where(eq(obraCotacaoItensTable.id, quoteItem.id));
+  }
+
+  await db.update(obraCotacoesTable)
+    .set({
+      status: createdProposalItems.some((row) => !row.cotacaoItemId) ? "em_analise" : "selecionada",
+      updatedAt: new Date(),
+    })
+    .where(eq(obraCotacoesTable.id, cotacao.id));
+
+  return {
+    synced: true,
+    cotacaoId: cotacao.id,
+    propostaCotacaoId: quoteProposal.id,
+    requiresReconciliation: createdProposalItems.some((row) => !row.cotacaoItemId),
+  };
 }
 
 router.get("/arch/market/contexto", authenticate, async (req, res) => {
@@ -502,13 +706,20 @@ router.post("/arch/market/demandas/:demandaId/propostas/:propostaId/selecionar",
     .set({ status: "adjudicada", encerradaEm: new Date(), updatedAt: new Date() })
     .where(eq(arqdorMarketDemandasTable.id, demanda.id));
 
+  const procurementSync = await syncSelectedMarketProposalToBudget({
+    demanda,
+    proposta: selected,
+    buyerTenantId: tenantId,
+    buyerUserId: currentUserId(req),
+  });
+
   await notifyTenant(
     selected.fornecedorTenantId,
     "Proposta selecionada",
     `Sua proposta para "${demanda.titulo}" foi selecionada.`,
   );
 
-  return res.json(selected);
+  return res.json({ proposta: selected, procurementSync });
 });
 
 export default router;
