@@ -249,14 +249,33 @@ router.get("/tenants/:tenantId/media/assets", async (req, res) => {
       : {};
     return typeof metadata["leadId"] === "string" ? metadata["leadId"] : "";
   }).filter(Boolean))];
-  for (const leadId of leadIds) await syncProtectedObjectsForLead(tenantId, leadId);
 
-  const visibleAssets = [];
-  for (const asset of assets) {
-    if (await requestCanAccessLockedObject(req, tenantId, asset.storageUrl)) {
-      visibleAssets.push(asset);
-    }
+  // A listagem da Biblioteca pode retornar até 150 itens. Executar sincronização e
+  // checagem de pasta protegida em série transforma a rota em um N+1 bloqueante
+  // (centenas de round-trips ao banco), o que fazia o navegador abortar a chamada.
+  // Mantemos a proteção, mas processamos com concorrência limitada para não saturar
+  // o pool de conexões.
+  const ACCESS_CHECK_CONCURRENCY = 16;
+
+  for (let offset = 0; offset < leadIds.length; offset += ACCESS_CHECK_CONCURRENCY) {
+    await Promise.all(
+      leadIds
+        .slice(offset, offset + ACCESS_CHECK_CONCURRENCY)
+        .map((leadId) => syncProtectedObjectsForLead(tenantId, leadId)),
+    );
   }
+
+  const visibleAssets: typeof assets = [];
+  for (let offset = 0; offset < assets.length; offset += ACCESS_CHECK_CONCURRENCY) {
+    const batch = assets.slice(offset, offset + ACCESS_CHECK_CONCURRENCY);
+    const access = await Promise.all(
+      batch.map((asset) => requestCanAccessLockedObject(req, tenantId, asset.storageUrl)),
+    );
+    access.forEach((allowed, index) => {
+      if (allowed) visibleAssets.push(batch[index]!);
+    });
+  }
+
   res.json({ assets: await withAccessUrls(visibleAssets) });
 });
 
