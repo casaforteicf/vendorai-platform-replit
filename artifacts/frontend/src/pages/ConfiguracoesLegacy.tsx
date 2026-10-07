@@ -574,13 +574,6 @@ function AnalysisLogTab({ tenantId }: { tenantId: string }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function Configuracoes({
-  embedded = false,
-  forcedTab,
-}: {
-  embedded?: boolean;
-  forcedTab?: string;
-} = {}) {
 export default function Configuracoes({ embedded = false, forcedTab }: { embedded?: boolean; forcedTab?: string } = {}) {
   const { user, token, isEffectiveAdmin } = useAuth();
   const tenantId = user?.tenantId ?? "";
@@ -600,8 +593,6 @@ export default function Configuracoes({ embedded = false, forcedTab }: { embedde
     return params.get("tab") ?? "perfil";
   });
 
-    if (forcedTab && activeTab !== forcedTab) setActiveTab(forcedTab);
-  }, [forcedTab, activeTab]);
   useEffect(() => {
     if (!forcedTab || activeTab === forcedTab) return;
     setActiveTab(forcedTab);
