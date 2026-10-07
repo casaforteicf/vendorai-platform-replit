@@ -673,6 +673,18 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
           await sendDirectWhatsAppMessage(tid, destination, message, logger);
         }
         await pool.query(`UPDATE arch_rfq_invitations SET status='sent',sent_at=now(),updated_at=now() WHERE id=$1::uuid`, [invite.id]);
+        if (pkg.market_demand_id) {
+          await appendMarketEvent(
+            pool,
+            String(pkg.market_demand_id),
+            tid,
+            "supplier_invited",
+            req.user?.sub ?? null,
+            "rfq_invitation",
+            String(invite.id),
+            { packageId, supplierId: supplier.id, supplierName: supplier.nome, channel, destination, status: "sent" },
+          );
+        }
         created.push({ ...invite, status: "sent", publicUrl });
       } catch (sendErr) {
         await pool.query(`UPDATE arch_rfq_invitations SET status='failed',updated_at=now() WHERE id=$1::uuid`, [invite.id]);
@@ -777,6 +789,29 @@ archProcurementRfqRouter.post("/arch/procurement-rfq/:obraId/packages/:packageId
         `UPDATE arch_rfq_packages SET status=CASE WHEN status='draft' THEN 'sent' ELSE status END,updated_at=now()
           WHERE id=$1::uuid`,
         [packageId],
+      );
+    }
+
+    if (pkg.market_demand_id) {
+      await appendMarketEvent(
+        pool,
+        String(pkg.market_demand_id),
+        tid,
+        sent ? "supplier_invited" : "supplier_invitation_failed",
+        req.user?.sub ?? null,
+        "rfq_invitation",
+        String(invite.id),
+        {
+          packageId,
+          supplierId: null,
+          supplierName: name,
+          channel: primaryChannel,
+          email: email || null,
+          phone: phone || null,
+          accessMode: "guest",
+          status: sent ? "sent" : "failed",
+          errors,
+        },
       );
     }
 
@@ -1218,7 +1253,6 @@ archProcurementRfqRouter.post("/arch/market-demands/:demandId/close-external", a
       [demandId, tid],
     );
     const normName = normalizeText(supplierName);
-    const normDoc = supplierDocument.replace(/\D/g, "");
     const normContact = supplierContact.replace(/\D/g, "");
     const matchedInvite = inviteResult.rows.find((inv: any) => {
       const nameMatch = normName && normalizeText(inv.supplier_name) === normName;
@@ -1319,6 +1353,20 @@ archProcurementRfqPublicRouter.get("/public/arqdor/rfq/:token", async (req, res,
     );
     const tenantBrand = tenantBrandResult.rows[0] ?? {};
     await pool.query(`SELECT public.arch_rfq_public_mark_viewed($1::uuid)`, [token]);
+    if (pkg.market_demand_id && ["sent","draft"].includes(String(inv.status))) {
+      await pool.query(
+        `INSERT INTO arqdor_market_demand_events
+          (demand_id,tenant_id,event_type,actor_type,actor_id,source,reference_type,reference_id,payload,created_at)
+         VALUES($1::uuid,$2,'supplier_viewed','supplier',$3,'arqdor_public_rfq','rfq_invitation',$4,$5::jsonb,now())`,
+        [
+          pkg.market_demand_id,
+          String(inv.tenant_id),
+          inv.supplier_id || inv.supplier_email || inv.supplier_phone || null,
+          String(inv.id),
+          JSON.stringify({ packageId: pkg.id, supplierName: inv.supplier_name, accessMode: inv.access_mode }),
+        ],
+      );
+    }
     const quoteClosed = ["accepted","rejected","expired"].includes(String(inv.status))
       || ["completed","cancelled"].includes(String(pkg.status));
     const quoteClosedReason = String(inv.status) === "accepted"
@@ -1507,6 +1555,20 @@ archProcurementRfqPublicRouter.post("/public/arqdor/rfq/:token/documents", publi
 
     const document = await saveSupplierDocument(String(inv.tenant_id), String(pkg.obra_id), file);
     await pool.query(`SELECT public.arch_rfq_public_add_document($1::uuid,$2::jsonb)`, [token, JSON.stringify(document)]);
+    if (pkg.market_demand_id) {
+      await pool.query(
+        `INSERT INTO arqdor_market_demand_events
+          (demand_id,tenant_id,event_type,actor_type,actor_id,source,reference_type,reference_id,payload,created_at)
+         VALUES($1::uuid,$2,'supplier_document_uploaded','supplier',$3,'arqdor_public_rfq','rfq_invitation',$4,$5::jsonb,now())`,
+        [
+          pkg.market_demand_id,
+          String(inv.tenant_id),
+          inv.supplier_id || inv.supplier_email || inv.supplier_phone || null,
+          String(inv.id),
+          JSON.stringify({ packageId: pkg.id, supplierName: inv.supplier_name, document: { name: document.name, mimeType: document.mimeType, size: document.size } }),
+        ],
+      );
+    }
     return res.status(201).json({ document });
   } catch (err) {
     logger.error({ err }, "public rfq document upload error");
@@ -1517,7 +1579,39 @@ archProcurementRfqPublicRouter.post("/public/arqdor/rfq/:token/documents", publi
 archProcurementRfqPublicRouter.post("/public/arqdor/rfq/:token/respond", async (req, res, next) => {
   try {
     const token = String(req.params["token"] || "");
+    const bundleResult = await pool.query(`SELECT public.arch_rfq_public_bundle($1::uuid) AS bundle`, [token]);
+    const bundle = bundleResult.rows[0]?.bundle;
+    if (!bundle) return res.status(404).json({ error: "Cotação não encontrada." });
     const result = await pool.query(`SELECT public.arch_rfq_public_submit($1::uuid,$2::jsonb) AS result`, [token, JSON.stringify(req.body ?? {})]);
+    const inv = bundle.invitation;
+    const pkg = bundle.package;
+    if (pkg.market_demand_id) {
+      const responseItems = Array.isArray(req.body?.items) ? req.body.items : [];
+      const itemsTotal = responseItems.reduce((sum: number, item: any) => sum + n(item.quantity) * n(item.unitValue), 0);
+      const responseTotal = Math.max(0, itemsTotal + n(req.body?.freight) + n(req.body?.taxes) - n(req.body?.discount));
+      await pool.query(
+        `INSERT INTO arqdor_market_demand_events
+          (demand_id,tenant_id,event_type,actor_type,actor_id,source,reference_type,reference_id,payload,created_at)
+         VALUES($1::uuid,$2,'supplier_responded','supplier',$3,'arqdor_public_rfq','rfq_invitation',$4,$5::jsonb,now())`,
+        [
+          pkg.market_demand_id,
+          String(inv.tenant_id),
+          inv.supplier_id || inv.supplier_email || inv.supplier_phone || null,
+          String(inv.id),
+          JSON.stringify({
+            packageId: pkg.id,
+            supplierName: inv.supplier_name,
+            responseTotal,
+            freight: n(req.body?.freight),
+            taxes: n(req.body?.taxes),
+            discount: n(req.body?.discount),
+            leadTimeDays: req.body?.leadTimeDays ?? null,
+            validityDate: req.body?.validityDate ?? null,
+            paymentTerms: req.body?.paymentTerms ?? null,
+          }),
+        ],
+      );
+    }
     return res.json(result.rows[0]?.result ?? { ok: true });
   } catch (err) {
     logger.error({ err }, "public rfq response error");
