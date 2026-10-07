@@ -6316,7 +6316,7 @@ router.post("/arch/marketplace/:itemId/comprar", authenticate, async (req, res) 
          RETURNING id`,
         [
           demand.id,
-          item.vendedorTenantId,
+          tid,
           pracaOrderId,
           item.vendedorTenantId,
           item.vendedorTenantId,
