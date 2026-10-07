@@ -18,6 +18,7 @@ import { Bot, CheckCircle2, Sparkles, Users } from "lucide-react";
 import LegacyAgentConfig from "./AgentConfigLegacy";
 import AgentGuidedSetup, { type GuidedAgentData } from "./AgentGuidedSetup";
 import BrowserAgentPanel from "./BrowserAgentPanel";
+import ServerAgentPanel from "./ServerAgentPanel";
 
 const FLOW_ORDER = [
   "prospector",
@@ -203,7 +204,7 @@ export default function AgentConfig() {
         <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 [&::-webkit-details-marker]:hidden">
           <div className="min-w-0">
             <p className="text-sm font-semibold">Ferramentas avançadas</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Vendi, conhecimento compartilhado e Browser Agent ficam disponíveis sob demanda.</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Vendi, conhecimento compartilhado, Browser Agent e Server Agent ficam disponíveis sob demanda.</p>
           </div>
           <span className="text-xs font-medium text-primary">Abrir</span>
         </summary>
@@ -225,6 +226,7 @@ export default function AgentConfig() {
           </Card>
 
           <BrowserAgentPanel />
+          {user?.platformRole === "super_admin" && <ServerAgentPanel />}
         </div>
       </details>
 
