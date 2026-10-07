@@ -1008,9 +1008,6 @@ router.get("/arch/concept-projects", authenticate, async (req, res) => {
     const customer = (row.customerProfile ?? {}) as { name?: string };
     const render = (row.conceptRender ?? {}) as { resultImageUrl?: string; history?: Array<{ resultImageUrl?: string }> };
     const history = Array.isArray(render.history) ? render.history : [];
-      floors?: number;
-    };
-    const rooms = Array.isArray(row.rooms) ? row.rooms : [];
     const configuration = (row.configuration ?? {}) as {
       projectScope?: "house" | "room";
       terrainDefined?: boolean;
