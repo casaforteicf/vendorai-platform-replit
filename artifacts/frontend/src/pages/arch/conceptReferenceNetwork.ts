@@ -51,3 +51,56 @@ export async function traceReferencePlanRequest(projectId: string) {
   if (!response.ok) throw new Error(payload?.error ?? "Não foi possível interpretar a planta com IA.");
   return payload;
 }
+
+
+export async function importProjectIntelligentRequest(projectId: string, file: File) {
+  const { response, payload } = await postFile(projectId, "import-project-intelligent", file);
+  if (!response.ok) throw new Error(payload?.error ?? "Não foi possível interpretar o projeto.");
+  return payload;
+}
+
+export async function importedProjectGeometryPreviewRequest(
+  projectId: string,
+  options: { floorPlanIndex?: number; floor?: number; widthMeters?: number; depthMeters?: number } = {},
+) {
+  const auth = token();
+  const params = new URLSearchParams();
+  if (options.floorPlanIndex != null) params.set("floorPlanIndex", String(options.floorPlanIndex));
+  if (options.floor != null) params.set("floor", String(options.floor));
+  if (options.widthMeters != null) params.set("widthMeters", String(options.widthMeters));
+  if (options.depthMeters != null) params.set("depthMeters", String(options.depthMeters));
+  const response = await fetch(
+    `/api/arch/concept-projects/${encodeURIComponent(projectId)}/imported-project/geometry-preview?${params.toString()}`,
+    { headers: auth ? { Authorization: `Bearer ${auth}` } : undefined },
+  );
+  const payload = await response.json().catch(() => ({})) as any;
+  if (!response.ok) throw new Error(payload?.error ?? "Não foi possível gerar a prévia da planta importada.");
+  return payload;
+}
+
+export async function applyImportedProjectGeometryRequest(
+  projectId: string,
+  options: {
+    floorPlanIndex?: number;
+    floor?: number;
+    widthMeters?: number;
+    depthMeters?: number;
+    replace?: boolean;
+  } = {},
+) {
+  const auth = token();
+  const response = await fetch(
+    `/api/arch/concept-projects/${encodeURIComponent(projectId)}/imported-project/apply-geometry`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(auth ? { Authorization: `Bearer ${auth}` } : {}),
+      },
+      body: JSON.stringify({ ...options, confirm: true }),
+    },
+  );
+  const payload = await response.json().catch(() => ({})) as any;
+  if (!response.ok) throw new Error(payload?.error ?? "Não foi possível aplicar a planta importada.");
+  return payload;
+}
