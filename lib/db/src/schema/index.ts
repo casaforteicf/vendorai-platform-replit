@@ -64,6 +64,7 @@ export * from "./mao_obra_orcamento";
 export * from "./equipamentos_orcamento";
 export * from "./obra_superficies";
 export * from "./obra_eletrica";
+export * from "./obra_hidraulica";
 export * from "./tabelas_precos_obras";
 export * from "./varejo_colecoes";
 export * from "./varejo_fornecedores";
