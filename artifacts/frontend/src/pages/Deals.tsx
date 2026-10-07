@@ -214,8 +214,10 @@ function formatCurrency(value: string | null | undefined): string {
 type StageResponsibleUser = {
   id: string;
   active?: boolean | null;
+  platformRole?: string | null;
   userFunction?: string | null;
   customFunctionId?: string | null;
+  leadAssignmentEnabled?: boolean | null;
 };
 
 type DealResponsiblePartnership = {
@@ -243,13 +245,25 @@ function dealRepresentativePartnershipId(value?: string | null) {
     : null;
 }
 
+function canReceiveCommercialAssignment(user: StageResponsibleUser): boolean {
+  if (user.active === false) return false;
+  if (user.leadAssignmentEnabled === false) return false;
+  if (user.leadAssignmentEnabled === true) return true;
+  return user.platformRole === "tenant_seller"
+    || user.userFunction === "vendedor"
+    || user.userFunction === "representante_comercial";
+}
+
 function isUserResponsibleForStage(
   user: StageResponsibleUser,
   stage?: Pick<PipelineStage, "responsaveisFuncoes"> | null,
 ): boolean {
-  if (user.active !== true) return false;
+  if (!canReceiveCommercialAssignment(user)) return false;
   const responsibleFunctions = stage?.responsaveisFuncoes ?? [];
-  if (responsibleFunctions.length === 0) return false;
+
+  // Etapas sem função responsável configurada não devem esvaziar o seletor.
+  // Nelas, reutilizamos a mesma regra de elegibilidade do cadastro de Lead.
+  if (responsibleFunctions.length === 0) return true;
 
   const refs = new Set<string>();
   if (user.userFunction) refs.add(`builtin:${user.userFunction}`);
