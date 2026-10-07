@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ElementType } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import ImageAdvisorPanel from "@/components/media/ImageAdvisorPanel";
 import {
   AudioLines,
   Bot,
@@ -8,21 +9,25 @@ import {
   FileText,
   Film,
   Folder,
-  FolderOpen,
   Grid3X3,
   Image as ImageIcon,
+  Link2,
+  List,
   Loader2,
   MoreHorizontal,
   Search,
   Sparkles,
   Star,
+  Tags,
   Trash2,
   Upload,
+  WandSparkles,
   X,
 } from "lucide-react";
 
 type MediaType = "image" | "video" | "audio" | "document";
 type Filter = "all" | MediaType | "favorites" | "ai";
+type SortMode = "newest" | "oldest" | "name";
 
 type MediaAsset = {
   id: string;
@@ -45,8 +50,8 @@ const CORE_LIBRARY_CATEGORIES = [
   "Obras e projetos",
   "Equipe",
   "Campanhas",
-  "Redes sociais",
-  "Apresentações",
+  "Manuais e documentos",
+  "Outras",
 ];
 
 function authHeaders(json = false): Record<string, string> {
@@ -85,7 +90,7 @@ function label(type: MediaType) {
 
 function folderOf(asset: MediaAsset) {
   const value = asset.metadata?.folderPath;
-  return typeof value === "string" && value.trim() ? value.trim() : "Sem categoria";
+  return typeof value === "string" && value.trim() ? value.trim() : "Outras";
 }
 
 function tagsOf(asset: MediaAsset): string[] {
@@ -96,11 +101,6 @@ function tagsOf(asset: MediaAsset): string[] {
 function descriptionOf(asset: MediaAsset) {
   const value = asset.metadata?.description;
   return typeof value === "string" ? value : "";
-}
-
-function libraryFolderOf(asset: MediaAsset) {
-  const value = asset.metadata?.libraryFolder;
-  return typeof value === "string" && value.trim() ? value.trim() : "Sem pasta";
 }
 
 function isFavorite(asset: MediaAsset) {
@@ -114,10 +114,8 @@ function isAiApproved(asset: MediaAsset) {
 function friendlyName(asset: MediaAsset) {
   const explicit = asset.metadata?.displayName;
   if (typeof explicit === "string" && explicit.trim()) return explicit.trim();
-  const raw = (asset.originalFilename || "Mídia sem nome").replace(/\.[^.]+$/, "");
-  const scene = raw.match(/video[-_ ]generate[-_ ]scene[-_ ]?(\d+)/i);
-  if (scene) return `Cena gerada ${scene[1]}`;
-  return raw
+  return (asset.originalFilename || "Mídia sem nome")
+    .replace(/\.[^.]+$/, "")
     .replace(/[-_]+/g, " ")
     .replace(/\s+/g, " ")
     .trim()
@@ -141,35 +139,41 @@ export default function MediaLibraryV2() {
   const tenantId = tenantOverride?.id ?? user?.tenantId ?? "";
   const { toast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
+
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [urlOpen, setUrlOpen] = useState(false);
   const [importUrl, setImportUrl] = useState("");
   const [importingUrl, setImportingUrl] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
-  const [folder, setFolder] = useState("Todas as mídias");
+  const [folder, setFolder] = useState("Todas");
   const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<SortMode>("newest");
+  const [view, setView] = useState<"grid" | "list">("grid");
   const [inspectedId, setInspectedId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [description, setDescription] = useState("");
   const [tagDraft, setTagDraft] = useState("");
-  const [moveFolderOpen, setMoveFolderOpen] = useState(false);
-  const [newFolderName, setNewFolderName] = useState("");
 
   const inspected = assets.find((asset) => asset.id === inspectedId) ?? null;
 
   const load = async () => {
     if (!tenantId) return;
     setLoading(true);
+    setLoadError("");
     try {
       const response = await fetch(`/api/tenants/${tenantId}/media/assets?limit=150`, { headers: authHeaders(), cache: "no-store" });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || "Não foi possível carregar a Biblioteca de Mídias.");
+      if (!response.ok) throw new Error(body.error || "Não foi possível carregar a Biblioteca.");
       const next = Array.isArray(body.assets) ? body.assets as MediaAsset[] : [];
       setAssets(next);
       if (inspectedId && !next.some((asset) => asset.id === inspectedId)) setInspectedId(null);
     } catch (error) {
-      toast({ title: "Biblioteca indisponível", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+      const message = error instanceof Error ? error.message : "Tente novamente.";
+      setLoadError(message);
+      toast({ title: "Biblioteca indisponível", description: message, variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -178,43 +182,43 @@ export default function MediaLibraryV2() {
   useEffect(() => { void load(); }, [tenantId]);
   useEffect(() => {
     if (inspected) setDescription(descriptionOf(inspected));
-    setMoveFolderOpen(false);
-    setNewFolderName("");
   }, [inspected?.id]);
 
   const folders = useMemo(() => {
     const counts = new Map<string, number>();
     for (const asset of assets) counts.set(folderOf(asset), (counts.get(folderOf(asset)) ?? 0) + 1);
-    const dynamic = Array.from(counts.keys())
-      .filter((item) => item !== "Sem categoria" && !CORE_LIBRARY_CATEGORIES.includes(item))
-      .sort((a, b) => a.localeCompare(b, "pt-BR"));
-    return ["Todas as mídias", ...CORE_LIBRARY_CATEGORIES, ...dynamic];
-  }, [assets]);
-
-  const libraryFolders = useMemo(() => {
-    return Array.from(new Set(assets.map(libraryFolderOf).filter((item) => item !== "Sem pasta")))
-      .sort((a, b) => a.localeCompare(b, "pt-BR"));
+    const dynamic = Array.from(counts.keys()).filter((item) => !CORE_LIBRARY_CATEGORIES.includes(item)).sort((a, b) => a.localeCompare(b, "pt-BR"));
+    return ["Todas", ...CORE_LIBRARY_CATEGORIES, ...dynamic];
   }, [assets]);
 
   const counts = useMemo(() => ({
     all: assets.length,
     image: assets.filter((asset) => asset.type === "image").length,
     video: assets.filter((asset) => asset.type === "video").length,
+    document: assets.filter((asset) => asset.type === "document").length,
+    favorites: assets.filter(isFavorite).length,
     ai: assets.filter(isAiApproved).length,
   }), [assets]);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLocaleLowerCase("pt-BR");
-    return assets.filter((asset) => {
+    const next = assets.filter((asset) => {
       if (filter !== "all" && filter !== "favorites" && filter !== "ai" && asset.type !== filter) return false;
       if (filter === "favorites" && !isFavorite(asset)) return false;
       if (filter === "ai" && !isAiApproved(asset)) return false;
-      if (folder !== "Todas as mídias" && folderOf(asset) !== folder) return false;
+      if (folder !== "Todas" && folderOf(asset) !== folder) return false;
       if (!term) return true;
       const haystack = [friendlyName(asset), asset.originalFilename ?? "", descriptionOf(asset), folderOf(asset), ...tagsOf(asset)].join(" ").toLocaleLowerCase("pt-BR");
       return haystack.includes(term);
     });
-  }, [assets, filter, folder, search]);
+    next.sort((a, b) => {
+      if (sort === "name") return friendlyName(a).localeCompare(friendlyName(b), "pt-BR");
+      const av = new Date(a.createdAt ?? 0).getTime();
+      const bv = new Date(b.createdAt ?? 0).getTime();
+      return sort === "oldest" ? av - bv : bv - av;
+    });
+    return next;
+  }, [assets, filter, folder, search, sort]);
 
   async function upload(files: FileList | null) {
     if (!files?.length || !tenantId) return;
@@ -234,13 +238,13 @@ export default function MediaLibraryV2() {
         const register = await fetch(`/api/tenants/${tenantId}/media/assets`, {
           method: "POST", headers: authHeaders(true), body: JSON.stringify({
             type, role: "source", source: "upload", storageUrl: prepared.objectPath, originalFilename: file.name, mimeType: file.type || null, fileSize: file.size,
-            metadata: { uploadedFrom: "media_library_v2", uploadedAt: new Date().toISOString(), folderPath: folder === "Todas as mídias" ? "" : folder },
+            metadata: { uploadedFrom: "media_library_v2", uploadedAt: new Date().toISOString(), folderPath: folder === "Todas" ? "" : folder },
           }),
         });
         if (!register.ok) throw new Error(`Falha ao registrar ${file.name}`);
         sent += 1;
       }
-      toast({ title: `${sent} mídia(s) adicionada(s)` });
+      toast({ title: `${sent} conteúdo(s) adicionado(s)` });
       await load();
     } catch (error) {
       toast({ title: "Falha no upload", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
@@ -250,22 +254,20 @@ export default function MediaLibraryV2() {
     }
   }
 
-  async function importPresentationFromUrl() {
+  async function importFromUrl() {
     if (!tenantId || !importUrl.trim()) return;
     setImportingUrl(true);
     try {
       const response = await fetch(`/api/tenants/${tenantId}/media/assets/import-dropbox`, {
         method: "POST",
         headers: authHeaders(true),
-        body: JSON.stringify({
-          url: importUrl.trim(),
-          originalFilename: "VendorAI_MASTER_LOGO_CORRIGIDA_FINAL_V3-1.pptx",
-        }),
+        body: JSON.stringify({ url: importUrl.trim(), originalFilename: importUrl.split("/").pop() || "documento-importado" }),
       });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || "Falha ao importar apresentação");
+      if (!response.ok) throw new Error(body.error || "Falha ao importar conteúdo.");
       setImportUrl("");
-      toast({ title: "Apresentação adicionada à Biblioteca" });
+      setUrlOpen(false);
+      toast({ title: "Conteúdo adicionado à Biblioteca" });
       await load();
     } catch (error) {
       toast({ title: "Falha na importação", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
@@ -286,174 +288,239 @@ export default function MediaLibraryV2() {
       setAssets((current) => current.map((item) => item.id === asset.id ? { ...item, metadata } : item));
     } catch (error) {
       toast({ title: "Não foi possível salvar", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
-    } finally { setSaving(false); }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function smartClassify(asset: MediaAsset) {
+    const name = friendlyName(asset).toLocaleLowerCase("pt-BR");
+    let category = folderOf(asset);
+    if (category === "Outras") {
+      if (/fachada|obra|projeto|planta|ambiente|casa|piscina/.test(name)) category = "Obras e projetos";
+      else if (/produto|catálogo|catalogo|material|paleta/.test(name)) category = "Produtos do catálogo";
+      else if (/marca|logo|empresa|institucional/.test(name)) category = "Empresa e marca";
+      else if (/manual|proposta|contrato|documento/.test(name)) category = "Manuais e documentos";
+    }
+    const autoTags = Array.from(new Set([
+      ...tagsOf(asset),
+      asset.type,
+      ...name.split(" ").filter((part) => part.length > 4).slice(0, 4),
+    ]));
+    await patchAsset(asset, {
+      folderPath: category,
+      tags: autoTags,
+      aiUsage: "approved",
+      smartClassifiedAt: new Date().toISOString(),
+    });
+    toast({ title: "Classificação inteligente aplicada" });
+  }
+
+  async function smartClassifyVisible() {
+    const items = filtered.filter((asset) => !asset.metadata?.smartClassifiedAt).slice(0, 25);
+    if (!items.length) {
+      toast({ title: "Tudo certo", description: "Os itens visíveis já estão classificados." });
+      return;
+    }
+    for (const asset of items) await smartClassify(asset);
   }
 
   async function remove(asset: MediaAsset) {
-    if (!window.confirm(`Excluir permanentemente “${asset.originalFilename ?? "esta mídia"}”?`)) return;
+    if (!window.confirm(`Excluir permanentemente “${asset.originalFilename ?? "este conteúdo"}”?`)) return;
     const response = await fetch(`/api/tenants/${tenantId}/media/assets/${asset.id}`, { method: "DELETE", headers: authHeaders() });
     if (!response.ok) { toast({ title: "Não foi possível excluir", variant: "destructive" }); return; }
     setAssets((current) => current.filter((item) => item.id !== asset.id));
     setInspectedId(null);
-    toast({ title: "Mídia excluída" });
+    toast({ title: "Conteúdo excluído" });
   }
 
-  const filterTabs: Array<{ id: Filter; label: string; icon: React.ElementType }> = [
-    { id: "all", label: "Tudo", icon: Grid3X3 },
-    { id: "image", label: "Imagens", icon: ImageIcon },
-    { id: "video", label: "Vídeos", icon: Film },
-    { id: "document", label: "Documentos", icon: FileText },
-    { id: "favorites", label: "Favoritos", icon: Star },
-    { id: "ai", label: "Base IA", icon: Sparkles },
+  const stats: Array<{ id: Filter; label: string; value: number; icon: ElementType }> = [
+    { id: "all", label: "Tudo", value: counts.all, icon: Grid3X3 },
+    { id: "image", label: "Imagens", value: counts.image, icon: ImageIcon },
+    { id: "video", label: "Vídeos", value: counts.video, icon: Film },
+    { id: "document", label: "Documentos", value: counts.document, icon: FileText },
+    { id: "favorites", label: "Favoritos", value: counts.favorites, icon: Star },
+    { id: "ai", label: "Conhecimento da IA", value: counts.ai, icon: Sparkles },
   ];
 
   return (
-    <div className="mx-auto w-full max-w-[1500px] px-3 pb-24 pt-4 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-[1700px] px-3 pb-24 pt-4 sm:px-6 lg:px-8">
       <input ref={inputRef} type="file" multiple className="hidden" accept="image/*,video/*,audio/*,.pdf,.txt,.ppt,.pptx,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" onChange={(event) => void upload(event.target.files)} />
 
-      <header className="mb-5 rounded-3xl border bg-card p-4 shadow-sm sm:p-5">
-        <div>
+      <header className="mb-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Biblioteca da Empresa</h1>
-            <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">Centralize as referências que a IA deve conhecer: empresa e marca, produtos do catálogo, obras e projetos, equipe, campanhas, fotos, vídeos e documentos.</p>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-950">Biblioteca da Empresa</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Conteúdos usados pela equipe e pela IA. Centralize imagens, vídeos, documentos e referências da empresa.</p>
           </div>
-          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div className="flex min-w-0 flex-1 gap-2">
-              <input value={importUrl} onChange={(event) => setImportUrl(event.target.value)} placeholder="URL temporária do documento" className="h-11 min-w-0 flex-1 rounded-xl border bg-background px-3 text-sm outline-none focus:border-orange-300" />
-              <button type="button" onClick={() => void importPresentationFromUrl()} disabled={importingUrl || !importUrl.trim()} className="h-11 shrink-0 rounded-xl border bg-background px-4 text-sm font-medium disabled:opacity-50">
-                {importingUrl ? "Importando..." : "Importar"}
-              </button>
-            </div>
-            <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading} className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 font-semibold text-white shadow-sm transition hover:bg-orange-600 disabled:opacity-60">
-              {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}Adicionar mídia
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setUrlOpen((value) => !value)} className="inline-flex h-11 items-center gap-2 rounded-xl border bg-background px-4 text-sm font-semibold shadow-sm hover:bg-muted/40">
+              <Link2 className="h-4 w-4 text-blue-600" /> Importar por URL
+            </button>
+            <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading} className="inline-flex h-11 items-center gap-2 rounded-xl bg-orange-500 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-600 disabled:opacity-60">
+              {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Adicionar conteúdo
             </button>
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {[
-            { key: "all", label: "Todas", value: counts.all, icon: Grid3X3 },
-            { key: "image", label: "Imagens", value: counts.image, icon: ImageIcon },
-            { key: "video", label: "Vídeos", value: counts.video, icon: Film },
-            { key: "ai", label: "Base IA", value: counts.ai, icon: Sparkles },
-          ].map(({ key, label: statLabel, value, icon: Icon }) => (
-            <button key={key} type="button" onClick={() => setFilter(key as Filter)} className={`rounded-2xl border p-3 text-left transition ${filter === key ? "border-orange-300 bg-orange-50" : "bg-background hover:border-slate-300"}`}>
-              <div className="flex items-center justify-between"><span className="text-xs font-medium text-muted-foreground">{statLabel}</span><Icon className={`h-4 w-4 ${key === "ai" ? "text-emerald-600" : "text-orange-500"}`} /></div>
-              <p className="mt-2 text-xl font-semibold">{value}</p>
+        {urlOpen && (
+          <div className="mt-3 flex max-w-2xl gap-2 rounded-2xl border bg-card p-3 shadow-sm">
+            <input value={importUrl} onChange={(event) => setImportUrl(event.target.value)} placeholder="Cole a URL temporária do documento" className="h-10 min-w-0 flex-1 rounded-xl border bg-background px-3 text-sm outline-none focus:border-orange-300" />
+            <button type="button" onClick={() => void importFromUrl()} disabled={importingUrl || !importUrl.trim()} className="h-10 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white disabled:opacity-50">
+              {importingUrl ? "Importando..." : "Importar"}
+            </button>
+          </div>
+        )}
+
+        <div className="mt-5 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+          {stats.map(({ id, label: statLabel, value, icon: Icon }) => (
+            <button key={id} type="button" onClick={() => setFilter(id)} className={`rounded-2xl border p-3 text-left transition ${filter === id ? "border-orange-400 bg-orange-50 shadow-sm" : "bg-card hover:border-slate-300"}`}>
+              <div className="flex items-center justify-between gap-2"><span className={`text-xs font-medium ${filter === id ? "text-orange-600" : "text-muted-foreground"}`}>{statLabel}</span><Icon className={`h-4 w-4 ${id === "ai" ? "text-emerald-600" : id === "favorites" ? "text-amber-500" : "text-blue-600"}`} /></div>
+              <p className="mt-1 text-xl font-bold">{loadError ? "—" : value}</p>
             </button>
           ))}
         </div>
       </header>
 
-      <div className={`grid gap-5 ${inspected ? "xl:grid-cols-[minmax(0,1fr)_360px]" : ""}`}>
+      <div className={`grid gap-4 ${inspected ? "xl:grid-cols-[240px_minmax(0,1fr)_360px]" : "xl:grid-cols-[240px_minmax(0,1fr)]"}`}>
+        <aside className="h-fit rounded-2xl border bg-card p-3 xl:sticky xl:top-4">
+          <div className="mb-2 flex items-center justify-between px-1"><h2 className="text-base font-bold">Categorias</h2><span className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-muted-foreground">+</span></div>
+          <div className="space-y-1">
+            {folders.map((item) => {
+              const count = item === "Todas" ? assets.length : assets.filter((asset) => folderOf(asset) === item).length;
+              return (
+                <button key={item} type="button" onClick={() => setFolder(item)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition ${folder === item ? "bg-orange-50 font-semibold text-orange-600" : "text-slate-600 hover:bg-muted/60"}`}>
+                  <Folder className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1 truncate">{item}</span><span className="text-xs text-muted-foreground">{loadError ? "—" : count}</span>
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+
         <main className="min-w-0">
-          <div className="mb-4 flex items-center gap-2">
-            <label className="relative min-w-0 flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar produto, obra, equipe, campanha ou arquivo" className="h-11 w-full rounded-xl border bg-background pl-10 pr-3 text-sm outline-none focus:border-orange-300" />
-            </label>
-            <button type="button" onClick={() => void load()} className="h-11 shrink-0 rounded-xl border bg-background px-3 text-xs font-medium sm:px-4 sm:text-sm">Atualizar</button>
-          </div>
-
-          <section className="mb-4">
-            <div className="mb-2 flex items-center justify-between"><div><h2 className="text-sm font-semibold">Referências da empresa</h2><p className="text-[11px] text-muted-foreground">Organize cada mídia pelo assunto que ela representa para a IA.</p></div><span className="text-xs text-muted-foreground">{folders.length - 1} categorias</span></div>
-            <div className="flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {folders.map((item, index) => {
-                const count = item === "Todas as mídias" ? assets.length : assets.filter((asset) => folderOf(asset) === item).length;
-                return <button key={item} type="button" onClick={() => setFolder(item)} className={`min-w-[155px] shrink-0 rounded-2xl border p-3 text-left transition ${folder === item ? "border-orange-300 bg-orange-50" : "bg-card hover:border-slate-300"}`}>
-                  <div className="flex items-center justify-between"><div className={`flex h-9 w-9 items-center justify-center rounded-xl ${folder === item ? "bg-orange-100 text-orange-600" : "bg-slate-100 text-slate-500"}`}>{index === 0 ? <FolderOpen className="h-4 w-4" /> : <Folder className="h-4 w-4" />}</div><span className="text-xs text-muted-foreground">{count}</span></div>
-                  <p className="mt-3 line-clamp-2 text-sm font-semibold">{item}</p>
-                </button>;
-              })}
+          <div className="rounded-2xl border bg-card p-3">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+              <label className="relative min-w-0 flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar na biblioteca (nome, categoria, tipo, descrição...)" className="h-11 w-full rounded-xl border bg-background pl-10 pr-3 text-sm outline-none focus:border-orange-300" />
+              </label>
+              <select value={folder} onChange={(event) => setFolder(event.target.value)} className="h-11 rounded-xl border bg-background px-3 text-sm lg:w-40">
+                {folders.map((item) => <option key={item}>{item}</option>)}
+              </select>
+              <select value={filter} onChange={(event) => setFilter(event.target.value as Filter)} className="h-11 rounded-xl border bg-background px-3 text-sm lg:w-36">
+                <option value="all">Todos os tipos</option>
+                <option value="image">Imagens</option>
+                <option value="video">Vídeos</option>
+                <option value="document">Documentos</option>
+                <option value="favorites">Favoritos</option>
+                <option value="ai">Conhecimento IA</option>
+              </select>
+              <select value={sort} onChange={(event) => setSort(event.target.value as SortMode)} className="h-11 rounded-xl border bg-background px-3 text-sm lg:w-40">
+                <option value="newest">Mais recentes</option>
+                <option value="oldest">Mais antigos</option>
+                <option value="name">Nome A–Z</option>
+              </select>
+              <div className="flex h-11 rounded-xl border bg-background p-1">
+                <button type="button" onClick={() => setView("grid")} className={`rounded-lg px-3 ${view === "grid" ? "bg-blue-50 text-blue-600" : "text-muted-foreground"}`}><Grid3X3 className="h-4 w-4" /></button>
+                <button type="button" onClick={() => setView("list")} className={`rounded-lg px-3 ${view === "list" ? "bg-blue-50 text-blue-600" : "text-muted-foreground"}`}><List className="h-4 w-4" /></button>
+              </div>
             </div>
-          </section>
-
-          <div className="mb-4 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {filterTabs.map(({ id, label: tabLabel, icon: Icon }) => (
-              <button key={id} type="button" onClick={() => setFilter(id)} className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3 text-xs font-medium ${filter === id ? "border-orange-300 bg-orange-50 text-orange-700" : "bg-background text-muted-foreground hover:text-foreground"}`}>
-                <Icon className="h-3.5 w-3.5" />{tabLabel}
-              </button>
-            ))}
           </div>
 
-          {loading ? <div className="flex min-h-[360px] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-orange-500" /></div> : filtered.length === 0 ? (
-            <div className="rounded-3xl border border-dashed p-10 text-center"><ImageIcon className="mx-auto h-10 w-10 text-muted-foreground" /><p className="mt-3 font-semibold">Nenhuma mídia encontrada</p><p className="mt-1 text-sm text-muted-foreground">Adicione fotos, vídeos ou documentos e classifique como empresa, produto, obra, equipe ou outra referência.</p></div>
-          ) : (
-            <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+          {!loadError && !loading && assets.length > 0 && (
+            <div className="mt-3 flex flex-col gap-2 rounded-2xl border border-violet-200 bg-violet-50/70 p-3 lg:flex-row lg:items-center">
+              <div className="flex min-w-0 flex-1 items-start gap-3">
+                <WandSparkles className="mt-0.5 h-5 w-5 shrink-0 text-violet-600" />
+                <div><p className="text-sm font-semibold text-violet-950">Sugestões da IA</p><p className="text-xs text-violet-700">Organize, classifique e prepare os conteúdos para reutilização pelos agentes.</p></div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => void smartClassifyVisible()} disabled={saving} className="inline-flex h-9 items-center gap-2 rounded-lg border border-violet-200 bg-white px-3 text-xs font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50"><Sparkles className="h-3.5 w-3.5" /> Classificar automaticamente</button>
+                <button type="button" onClick={() => setFilter("ai")} className="inline-flex h-9 items-center gap-2 rounded-lg border border-violet-200 bg-white px-3 text-xs font-semibold text-violet-700 hover:bg-violet-50"><Tags className="h-3.5 w-3.5" /> Ver conhecimento IA</button>
+              </div>
+            </div>
+          )}
+
+          {loading ? (
+            <div className="flex min-h-[420px] items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-orange-500" /></div>
+          ) : loadError ? (
+            <div className="mt-4 rounded-3xl border border-red-200 bg-red-50 p-10 text-center">
+              <Bot className="mx-auto h-10 w-10 text-red-500" />
+              <h3 className="mt-3 text-base font-bold text-red-900">Não foi possível carregar a Biblioteca</h3>
+              <p className="mx-auto mt-2 max-w-xl text-sm text-red-700">Seus arquivos não foram apagados. Houve uma falha ao consultar a Biblioteca. {loadError}</p>
+              <button type="button" onClick={() => void load()} className="mt-5 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-red-700">Tentar novamente</button>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="mt-4 rounded-3xl border border-dashed p-10 text-center"><ImageIcon className="mx-auto h-10 w-10 text-muted-foreground" /><p className="mt-3 font-semibold">Nenhum conteúdo encontrado</p><p className="mt-1 text-sm text-muted-foreground">Adicione imagens, vídeos ou documentos, ou ajuste os filtros.</p></div>
+          ) : view === "grid" ? (
+            <section className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
               {filtered.map((asset) => (
                 <article key={asset.id} onClick={() => setInspectedId(asset.id)} className={`group cursor-pointer overflow-hidden rounded-2xl border bg-card transition hover:-translate-y-0.5 hover:shadow-md ${inspectedId === asset.id ? "border-orange-400 ring-2 ring-orange-100" : ""}`}>
                   <div className="relative aspect-[4/3] overflow-hidden bg-muted">
                     <Preview asset={asset} />
-                    <div className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-1 text-[10px] font-semibold text-white backdrop-blur">{label(asset.type)}</div>
-                    {isAiApproved(asset) && <div className="absolute bottom-2 left-2 rounded-full bg-emerald-600 px-2 py-1 text-[9px] font-bold text-white">BASE IA</div>}
-                    {asset.type === "video" && <div className="absolute inset-0 flex items-center justify-center"><div className="rounded-full bg-black/55 p-3 text-white"><Film className="h-5 w-5" /></div></div>}
+                    <div className="absolute left-2 top-2 rounded-md bg-black/60 px-2 py-1 text-[10px] font-semibold text-white backdrop-blur">{asset.type === "document" ? "PDF" : label(asset.type)}</div>
+                    {asset.metadata?.smartClassifiedAt ? <div className="absolute bottom-2 left-2 rounded-md bg-violet-600 px-2 py-1 text-[9px] font-bold text-white">Classificado pela IA</div> : isAiApproved(asset) ? <div className="absolute bottom-2 left-2 rounded-md bg-blue-600 px-2 py-1 text-[9px] font-bold text-white">IA</div> : null}
+                    <button type="button" onClick={(event) => { event.stopPropagation(); void patchAsset(asset, { favorite: !isFavorite(asset) }); }} className="absolute right-2 top-2 rounded-full bg-white/90 p-1.5 shadow-sm">{isFavorite(asset) ? <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" /> : <Star className="h-3.5 w-3.5 text-slate-500" />}</button>
                   </div>
-                  <div className="p-3"><div className="flex items-start gap-2"><p className="min-w-0 flex-1 truncate text-sm font-semibold">{friendlyName(asset)}</p><MoreHorizontal className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" /></div><p className="mt-1 truncate text-xs text-muted-foreground">{label(asset.type)} · {bytes(asset.fileSize)}</p>{folderOf(asset) !== "Sem categoria" && <p className="mt-1 truncate text-[10px] text-muted-foreground">{folderOf(asset)}</p>}</div>
+                  <div className="p-3"><div className="flex items-start gap-2"><p className="min-w-0 flex-1 truncate text-sm font-semibold">{friendlyName(asset)}</p><MoreHorizontal className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" /></div><p className="mt-1 truncate text-xs text-muted-foreground">{folderOf(asset)}</p><p className="mt-2 text-[10px] text-muted-foreground">{asset.createdAt ? new Date(asset.createdAt).toLocaleDateString("pt-BR") : ""}</p></div>
                 </article>
               ))}
             </section>
+          ) : (
+            <section className="mt-3 overflow-hidden rounded-2xl border bg-card">
+              {filtered.map((asset) => (
+                <button key={asset.id} type="button" onClick={() => setInspectedId(asset.id)} className="flex w-full items-center gap-3 border-b p-3 text-left last:border-0 hover:bg-muted/30">
+                  <div className="h-14 w-20 shrink-0 overflow-hidden rounded-lg bg-muted"><Preview asset={asset} /></div>
+                  <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{friendlyName(asset)}</p><p className="mt-1 text-xs text-muted-foreground">{folderOf(asset)} · {label(asset.type)} · {bytes(asset.fileSize)}</p></div>
+                  {isAiApproved(asset) && <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">IA</span>}
+                </button>
+              ))}
+            </section>
           )}
-          <p className="mt-5 text-xs text-muted-foreground">Mostrando {filtered.length} de {assets.length} itens</p>
+          {!loading && !loadError && <p className="mt-4 text-xs text-muted-foreground">Mostrando {filtered.length} de {assets.length} itens</p>}
         </main>
 
         {inspected && (
-          <aside className="h-fit overflow-hidden rounded-3xl border bg-card shadow-sm xl:sticky xl:top-4">
+          <aside className="h-fit overflow-hidden rounded-2xl border bg-card shadow-sm xl:sticky xl:top-4">
             <div className="relative aspect-[16/10] overflow-hidden bg-muted"><Preview asset={inspected} /><button type="button" onClick={() => setInspectedId(null)} className="absolute right-3 top-3 rounded-full bg-black/50 p-2 text-white backdrop-blur"><X className="h-4 w-4" /></button></div>
-            <div className="space-y-5 p-4">
-              <div><h2 className="break-words text-lg font-semibold">{friendlyName(inspected)}</h2><p className="mt-1 text-xs text-muted-foreground">{label(inspected.type)} · {bytes(inspected.fileSize)} · {inspected.createdAt ? new Date(inspected.createdAt).toLocaleDateString("pt-BR") : ""}</p><p className="mt-1 truncate text-[10px] text-muted-foreground">Arquivo: {inspected.originalFilename || "—"}</p></div>
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => void patchAsset(inspected, { aiUsage: isAiApproved(inspected) ? "manual" : "approved", aiCollection: isAiApproved(inspected) ? "" : "Base IA da Empresa" })} className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl text-sm font-semibold ${isAiApproved(inspected) ? "border border-emerald-200 bg-emerald-50 text-emerald-700" : "bg-orange-500 text-white"}`}><Sparkles className="h-4 w-4" />{isAiApproved(inspected) ? "Na Base IA" : "Usar na IA"}</button>
-                <a href={assetAccessUrl(inspected)} download={inspected.originalFilename ?? undefined} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-medium"><Download className="h-4 w-4" />Baixar</a>
-                <button type="button" onClick={() => void patchAsset(inspected, { favorite: !isFavorite(inspected) })} className={`col-span-2 inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-medium ${isFavorite(inspected) ? "text-amber-600" : ""}`}><Star className="h-4 w-4" />{isFavorite(inspected) ? "Favorito" : "Adicionar aos favoritos"}</button>
-                <button type="button" onClick={() => setMoveFolderOpen((value) => !value)} className="col-span-2 inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-medium hover:bg-muted/50"><Folder className="h-4 w-4" />Mover para pasta</button>
+            <div className="space-y-4 p-4">
+              <div className="flex items-start gap-2"><div className="min-w-0 flex-1"><h2 className="break-words text-lg font-bold">{friendlyName(inspected)}</h2><div className="mt-2 flex flex-wrap gap-1.5">{inspected.metadata?.smartClassifiedAt && <span className="rounded-full bg-violet-50 px-2 py-1 text-[10px] font-semibold text-violet-700">Classificado pela IA</span>}{isAiApproved(inspected) && <span className="rounded-full bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700">Conhecimento IA</span>}</div></div><button type="button" onClick={() => void patchAsset(inspected, { favorite: !isFavorite(inspected) })}>{isFavorite(inspected) ? <Star className="h-5 w-5 fill-amber-400 text-amber-400" /> : <Star className="h-5 w-5 text-amber-500" />}</button></div>
+
+              <dl className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-2 text-xs">
+                <dt className="text-muted-foreground">Tipo</dt><dd>{label(inspected.type)} {inspected.mimeType ? `(${inspected.mimeType.split("/").pop()?.toUpperCase()})` : ""}</dd>
+                <dt className="text-muted-foreground">Categoria</dt><dd>{folderOf(inspected)}</dd>
+                <dt className="text-muted-foreground">Tamanho</dt><dd>{bytes(inspected.fileSize)}</dd>
+                <dt className="text-muted-foreground">Data</dt><dd>{inspected.createdAt ? new Date(inspected.createdAt).toLocaleString("pt-BR") : "—"}</dd>
+                <dt className="text-muted-foreground">Usado pela IA</dt><dd>{isAiApproved(inspected) ? <span className="font-semibold text-emerald-600">● Sim</span> : "Não"}</dd>
+              </dl>
+
+              <div>
+                <div className="mb-1 flex items-center justify-between"><p className="text-xs font-semibold">Descrição</p></div>
+                <textarea value={description} onChange={(event) => setDescription(event.target.value)} onBlur={() => void patchAsset(inspected, { description })} rows={3} placeholder="Descrição do conteúdo e contexto de uso." className="w-full resize-none rounded-xl border bg-background p-3 text-xs outline-none focus:border-orange-300" />
               </div>
-              {moveFolderOpen && (
-                <div className="rounded-2xl border bg-muted/20 p-3">
-                  <p className="text-xs font-medium text-muted-foreground">Escolher pasta</p>
-                  <select
-                    value={libraryFolderOf(inspected)}
-                    onChange={(event) => void patchAsset(inspected, { libraryFolder: event.target.value === "Sem pasta" ? "" : event.target.value })}
-                    className="mt-2 h-10 w-full rounded-xl border bg-background px-3 text-sm outline-none focus:border-orange-300"
-                  >
-                    <option>Sem pasta</option>
-                    {libraryFolders.map((item) => <option key={item} value={item}>{item}</option>)}
-                  </select>
-                  <div className="mt-2 flex gap-2">
-                    <input
-                      value={newFolderName}
-                      onChange={(event) => setNewFolderName(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && newFolderName.trim()) {
-                          event.preventDefault();
-                          void patchAsset(inspected, { libraryFolder: newFolderName.trim() });
-                          setNewFolderName("");
-                        }
-                      }}
-                      placeholder="Nome da nova pasta"
-                      className="h-10 min-w-0 flex-1 rounded-xl border bg-background px-3 text-sm outline-none focus:border-orange-300"
-                    />
-                    <button
-                      type="button"
-                      disabled={!newFolderName.trim()}
-                      onClick={() => {
-                        const nextFolder = newFolderName.trim();
-                        if (!nextFolder) return;
-                        void patchAsset(inspected, { libraryFolder: nextFolder });
-                        setNewFolderName("");
-                      }}
-                      className="h-10 rounded-xl border bg-background px-3 text-xs font-semibold disabled:opacity-50"
-                    >
-                      + Nova pasta
-                    </button>
-                  </div>
+
+              <div className="rounded-xl border border-violet-200 bg-violet-50 p-3">
+                <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-violet-600" /><p className="text-xs font-bold text-violet-950">Insights da IA</p></div>
+                <p className="mt-2 text-xs leading-relaxed text-violet-800">{descriptionOf(inspected) || "A IA pode classificar este item, sugerir tags e prepará-lo para uso em propostas, campanhas e agentes."}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => void smartClassify(inspected)} className="rounded-lg bg-white px-3 py-2 text-[11px] font-semibold text-violet-700 shadow-sm">Classificar e sugerir tags</button>
+                  <button type="button" onClick={() => void patchAsset(inspected, { aiUsage: isAiApproved(inspected) ? "manual" : "approved" })} className="rounded-lg bg-white px-3 py-2 text-[11px] font-semibold text-violet-700 shadow-sm">{isAiApproved(inspected) ? "Remover da IA" : "Usar na IA"}</button>
                 </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold">Tags</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">{tagsOf(inspected).map((tag) => <button key={tag} type="button" onClick={() => void patchAsset(inspected, { tags: tagsOf(inspected).filter((item) => item !== tag) })} className="rounded-full bg-blue-50 px-2 py-1 text-[10px] text-blue-700">{tag} ×</button>)}</div>
+                <div className="mt-2 flex gap-2"><input value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder="Adicionar tag" className="h-9 min-w-0 flex-1 rounded-lg border bg-background px-3 text-xs" /><button type="button" onClick={() => { if (!tagDraft.trim()) return; void patchAsset(inspected, { tags: Array.from(new Set([...tagsOf(inspected), tagDraft.trim()])) }); setTagDraft(""); }} className="rounded-lg border px-3 text-xs font-medium">+</button></div>
+              </div>
+
+              {inspected.type === "image" && (
+                <ImageAdvisorPanel tenantId={tenantId} assetId={inspected.id} filename={inspected.originalFilename} canGenerateAi={true} onUpdated={load} />
               )}
-              <div className="border-t pt-4"><p className="mb-3 text-sm font-semibold text-orange-600">Informações</p><label className="block text-xs font-medium text-muted-foreground">Descrição<textarea value={description} onChange={(event) => setDescription(event.target.value)} onBlur={() => void patchAsset(inspected, { description })} rows={3} placeholder="Explique o que esta mídia representa: produto, obra, pessoa, ambiente, uso, benefício ou contexto." className="mt-1 w-full resize-none rounded-xl border bg-background p-3 text-sm text-foreground outline-none focus:border-orange-300" /></label></div>
-              <div><p className="text-xs font-medium text-muted-foreground">Categoria da referência</p><div className="mt-2 flex flex-wrap gap-2"><span className="rounded-full bg-muted px-3 py-1.5 text-xs">{folderOf(inspected)}</span>{CORE_LIBRARY_CATEGORIES.filter((item) => item !== folderOf(inspected)).map((item) => <button key={item} type="button" onClick={() => void patchAsset(inspected, { folderPath: item })} className="rounded-full border px-3 py-1.5 text-xs">+ {item}</button>)}</div></div>
-              <div><p className="text-xs font-medium text-muted-foreground">Pasta</p><div className="mt-2 flex items-center gap-2"><span className="inline-flex items-center gap-2 rounded-full bg-muted px-3 py-1.5 text-xs"><Folder className="h-3.5 w-3.5" />{libraryFolderOf(inspected)}</span><button type="button" onClick={() => setMoveFolderOpen(true)} className="rounded-full border px-3 py-1.5 text-xs">Alterar</button></div></div>
-              <div><p className="text-xs font-medium text-muted-foreground">Tags</p><div className="mt-2 flex flex-wrap gap-2">{tagsOf(inspected).map((tag) => <button key={tag} type="button" onClick={() => void patchAsset(inspected, { tags: tagsOf(inspected).filter((item) => item !== tag) })} className="rounded-full bg-muted px-3 py-1.5 text-xs">{tag} ×</button>)}</div><div className="mt-2 flex gap-2"><input value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && tagDraft.trim()) { event.preventDefault(); void patchAsset(inspected, { tags: Array.from(new Set([...tagsOf(inspected), tagDraft.trim()])) }); setTagDraft(""); } }} placeholder="Ex.: produto, obra, equipe, fachada" className="h-9 min-w-0 flex-1 rounded-lg border bg-background px-3 text-xs" /><button type="button" onClick={() => { if (!tagDraft.trim()) return; void patchAsset(inspected, { tags: Array.from(new Set([...tagsOf(inspected), tagDraft.trim()])) }); setTagDraft(""); }} className="rounded-lg border px-3 text-xs font-medium">Adicionar</button></div></div>
-              <div className="rounded-2xl border bg-muted/30 p-3"><div className="flex items-start gap-2"><Bot className="mt-0.5 h-4 w-4 text-orange-500" /><div><p className="text-sm font-semibold">Como a IA usa esta biblioteca</p><p className="mt-1 text-xs leading-relaxed text-muted-foreground">A IA cruza estas mídias com os dados já cadastrados da empresa e do catálogo. Ao classificar produto, obra, equipe ou marca, a referência fica mais fácil de encontrar e reutilizar corretamente.</p></div></div></div>
-              <button type="button" onClick={() => void remove(inspected)} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-red-200 text-sm font-semibold text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" />Excluir mídia</button>
+
+              <div className="grid grid-cols-[1fr_auto] gap-2">
+                <a href={assetAccessUrl(inspected)} download={inspected.originalFilename ?? undefined} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 text-sm font-semibold text-white hover:bg-orange-600"><Download className="h-4 w-4" /> Baixar</a>
+                <button type="button" onClick={() => void remove(inspected)} className="inline-flex h-11 items-center justify-center rounded-xl border border-red-200 px-3 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
+              </div>
               {saving && <p className="text-center text-xs text-muted-foreground">Salvando…</p>}
             </div>
           </aside>
