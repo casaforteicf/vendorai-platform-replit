@@ -151,6 +151,7 @@ export const insertArqdorMarketDemandaSchema = createInsertSchema(arqdorMarketDe
   origem: z.enum(ARQDOR_MARKET_ORIGENS).optional(),
   visibilidade: z.enum(ARQDOR_MARKET_VISIBILIDADES).optional(),
   status: z.enum(ARQDOR_MARKET_DEMANDA_STATUS).optional(),
+  quantidade: z.coerce.number().nonnegative().optional().nullable(),
 }).omit({
   id: true,
   tenantId: true,
@@ -163,6 +164,12 @@ export const insertArqdorMarketDemandaSchema = createInsertSchema(arqdorMarketDe
 
 export const insertArqdorMarketPropostaSchema = createInsertSchema(arqdorMarketPropostasTable, {
   status: z.enum(ARQDOR_MARKET_PROPOSTA_STATUS).optional(),
+  valorProdutos: z.coerce.number().nonnegative().optional().nullable(),
+  frete: z.coerce.number().nonnegative().optional().nullable(),
+  desconto: z.coerce.number().nonnegative().optional().nullable(),
+  impostos: z.coerce.number().nonnegative().optional().nullable(),
+  valorTotal: z.coerce.number().nonnegative().optional().nullable(),
+  prazoEntregaDias: z.coerce.number().int().nonnegative().optional().nullable(),
 }).omit({
   id: true,
   fornecedorTenantId: true,
