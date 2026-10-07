@@ -96,6 +96,16 @@ import {
   insertObraHidraulicaPontoSchema,
   insertObraHidraulicaSegmentoSchema,
   insertObraHidraulicaEquipamentoSchema,
+  obraHidraulicaAreasTecnicasTable,
+  obraHidraulicaManifoldsTable,
+  obraHidraulicaAquecimentoTable,
+  obraHidraulicaPressurizacaoTable,
+  obraHidraulicaReservatoriosTable,
+  insertObraHidraulicaAreaTecnicaSchema,
+  insertObraHidraulicaManifoldSchema,
+  insertObraHidraulicaAquecimentoSchema,
+  insertObraHidraulicaPressurizacaoSchema,
+  insertObraHidraulicaReservatorioSchema,
   insertObraSchema,
   updateObraSchema,
   insertObraEtapaSchema,
@@ -2460,6 +2470,176 @@ router.post("/tenants/:tenantId/obras/:obraId/hidraulica/preconfigurar", async (
   }).returning();
 
   return res.status(201).json({ rede });
+});
+
+// ─── Área técnica, água quente, pressurização e reservação ───────────────────
+
+router.post("/tenants/:tenantId/obras/:obraId/hidraulica/areas-tecnicas", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  const parsed = insertObraHidraulicaAreaTecnicaSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraHidraulicaAreasTecnicasTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/hidraulica/manifolds", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraHidraulicaManifoldSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  if (parsed.data.areaTecnicaId) {
+    const [area] = await db.select({ id: obraHidraulicaAreasTecnicasTable.id })
+      .from(obraHidraulicaAreasTecnicasTable)
+      .where(and(eq(obraHidraulicaAreasTecnicasTable.id, parsed.data.areaTecnicaId), eq(obraHidraulicaAreasTecnicasTable.obraId, obraId)));
+    if (!area) return res.status(422).json({ error: "Área técnica inválida para esta obra." });
+  }
+
+  const [row] = await db.insert(obraHidraulicaManifoldsTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/hidraulica/aquecimento", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraHidraulicaAquecimentoSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraHidraulicaAquecimentoTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/hidraulica/pressurizacao", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraHidraulicaPressurizacaoSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraHidraulicaPressurizacaoTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/hidraulica/reservatorios", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraHidraulicaReservatorioSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraHidraulicaReservatoriosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/hidraulica/area-tecnica-resumo", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [areas, manifolds, aquecimento, pressurizacao, reservatorios] = await Promise.all([
+    db.select().from(obraHidraulicaAreasTecnicasTable)
+      .where(and(eq(obraHidraulicaAreasTecnicasTable.obraId, obraId), eq(obraHidraulicaAreasTecnicasTable.ativo, true))),
+    db.select().from(obraHidraulicaManifoldsTable)
+      .where(and(eq(obraHidraulicaManifoldsTable.obraId, obraId), eq(obraHidraulicaManifoldsTable.ativo, true))),
+    db.select().from(obraHidraulicaAquecimentoTable)
+      .where(and(eq(obraHidraulicaAquecimentoTable.obraId, obraId), eq(obraHidraulicaAquecimentoTable.ativo, true))),
+    db.select().from(obraHidraulicaPressurizacaoTable)
+      .where(and(eq(obraHidraulicaPressurizacaoTable.obraId, obraId), eq(obraHidraulicaPressurizacaoTable.ativo, true))),
+    db.select().from(obraHidraulicaReservatoriosTable)
+      .where(and(eq(obraHidraulicaReservatoriosTable.obraId, obraId), eq(obraHidraulicaReservatoriosTable.ativo, true))),
+  ]);
+
+  const alertas = [];
+
+  for (const aq of aquecimento) {
+    if (aq.tipoGeracao === "solar_termico" && !aq.apoioEletrico && !aq.apoioGas) {
+      alertas.push({
+        tipo: "solar_termico_sem_apoio",
+        aquecimentoId: aq.id,
+        mensagem: "Sistema solar térmico sem apoio configurado. Revisar estratégia de contingência.",
+      });
+    }
+    if (aq.recirculacao && !aq.areaTecnicaId) {
+      alertas.push({
+        tipo: "recirculacao_sem_area_tecnica",
+        aquecimentoId: aq.id,
+        mensagem: "Sistema com recirculação sem área técnica associada.",
+      });
+    }
+  }
+
+  for (const p of pressurizacao) {
+    if (!p.areaTecnicaId && !p.somenteInfraestrutura) {
+      alertas.push({
+        tipo: "pressurizador_sem_area_tecnica",
+        pressurizacaoId: p.id,
+        mensagem: "Pressurização sem área técnica associada.",
+      });
+    }
+  }
+
+  for (const m of manifolds) {
+    if (!m.areaTecnicaId) {
+      alertas.push({
+        tipo: "manifold_sem_area_tecnica",
+        manifoldId: m.id,
+        mensagem: "Manifold sem área técnica/shaft associado.",
+      });
+    }
+  }
+
+  const volumeReservacaoL = reservatorios.reduce((sum, r) => sum + numberOrZero(r.volumeL), 0);
+  const volumeQuenteL = aquecimento.reduce((sum, a) => sum + numberOrZero(a.volumeAcumulacaoL), 0);
+  const potenciaAquecimentoKw = aquecimento.reduce((sum, a) => sum + numberOrZero(a.potenciaKw), 0);
+  const potenciaPressurizacaoKw = pressurizacao.reduce((sum, p) => sum + numberOrZero(p.potenciaKw), 0);
+
+  return res.json({
+    areas,
+    manifolds,
+    aquecimento,
+    pressurizacao,
+    reservatorios,
+    totais: {
+      volumeReservacaoL: volumeReservacaoL.toFixed(2),
+      volumeAguaQuenteL: volumeQuenteL.toFixed(2),
+      potenciaAquecimentoKw: potenciaAquecimentoKw.toFixed(4),
+      potenciaPressurizacaoKw: potenciaPressurizacaoKw.toFixed(4),
+    },
+    alertas,
+  });
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/hidraulica/preconfigurar-area-tecnica", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const nome = typeof req.body?.nome === "string" && req.body.nome.trim()
+    ? req.body.nome.trim()
+    : "Central hidráulica";
+  const tipo = typeof req.body?.tipo === "string" ? req.body.tipo : "central_hidraulica";
+
+  const [area] = await db.insert(obraHidraulicaAreasTecnicasTable).values({
+    obraId,
+    nome,
+    tipo,
+    ventilacaoObrigatoria: Boolean(req.body?.ventilacaoObrigatoria),
+    drenoObrigatorio: req.body?.drenoObrigatorio !== false,
+    pontoEletricoObrigatorio: Boolean(req.body?.pontoEletricoObrigatorio),
+    pontoGasObrigatorio: Boolean(req.body?.pontoGasObrigatorio),
+    acessoManutencao: true,
+    parametros: req.body?.parametros ?? null,
+    ativo: true,
+  }).returning();
+
+  return res.status(201).json({ areaTecnica: area });
 });
 
 // ─── Base Mestre de Preços: propagação segura ─────────────────────────────────
