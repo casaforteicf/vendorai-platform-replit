@@ -141,6 +141,12 @@ router.post("/arch/concept-projects/:id/import-project-intelligent", intelligent
       ? config.projectImportHistory.filter((item: unknown) => item && typeof item === "object").slice(-9)
       : [];
 
+    const geometryPreviews = analysis.memory.floorPlans.map((floorPlan, index) => ({
+      index,
+      ...importedFloorPlanToEditableGeometry(floorPlan),
+    }));
+    const architectural3DPreview = buildImportedArchitectural3DProfile(analysis);
+
     const sourceFile = {
       id: crypto.randomUUID(),
       storagePath,
@@ -158,6 +164,10 @@ router.post("/arch/concept-projects/:id/import-project-intelligent", intelligent
         openings: analysis.memory.openings.length,
         materials: analysis.memory.materials.length,
         floorPlans: analysis.memory.floorPlans.length,
+        geometryReady: geometryPreviews.filter((item) => item.canApply).length,
+        architectural3DReady: architectural3DPreview.canApply,
+        facades: analysis.memory.facades.length,
+        sections: analysis.memory.sections.length,
         universalModels: savedModels.length,
         warnings: analysis.warnings.length + analysis.memory.inconsistencies.length,
       },
@@ -203,11 +213,8 @@ router.post("/arch/concept-projects/:id/import-project-intelligent", intelligent
       document: analysis.document,
       memory: analysis.memory,
       universalModels: savedModels,
-      geometryPreviews: analysis.memory.floorPlans.map((floorPlan, index) => ({
-        index,
-        ...importedFloorPlanToEditableGeometry(floorPlan),
-      })),
-      architectural3DPreview: buildImportedArchitectural3DProfile(analysis),
+      geometryPreviews,
+      architectural3DPreview,
       warnings: analysis.warnings,
       message: "Projeto interpretado, Memória da Obra gerada e modelos reutilizáveis enviados automaticamente à Biblioteca Universal.",
     });
