@@ -38,6 +38,7 @@ function isUniqueViolation(err: unknown): boolean {
 }
 
 async function canAccessLead(req: any, tenantId: string, leadId: string): Promise<boolean> {
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) return false;
   const [lead] = await db.select({ id: leadsTable.id }).from(leadsTable).where(and(
     eq(leadsTable.id, leadId),
     eq(leadsTable.tenantId, tenantId),
@@ -341,7 +342,7 @@ router.patch("/customer-intelligence/:id", async (req, res) => {
 
 router.delete("/customer-intelligence/:id", async (req, res) => {
   const [existing] = await db
-    .select({ id: customerIntelligenceTable.id, tenantId: customerIntelligenceTable.tenantId })
+    .select({ id: customerIntelligenceTable.id, tenantId: customerIntelligenceTable.tenantId, leadId: customerIntelligenceTable.leadId })
     .from(customerIntelligenceTable)
     .where(eq(customerIntelligenceTable.id, String(req.params.id)));
 
