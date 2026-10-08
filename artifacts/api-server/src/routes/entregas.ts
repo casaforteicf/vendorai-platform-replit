@@ -23,7 +23,6 @@ import {
   tenantsTable,
   tenantCalendarSettingsTable,
   pipelineStagesTable,
-  dealTenantParticipationsTable,
   installationChecklistTemplatesTable,
   installationVisitsTable,
   installationChecklistItemsTable,
@@ -922,6 +921,38 @@ async function supportStageConfig(tenantId: string, stageKey: string) {
   return operationalStageConfig(tenantId, "suporte", stageKey);
 }
 
+function userMatchesOperationalStageFunctions(
+  user: { active: boolean | null; userFunction: string | null; customFunctionId: string | null },
+  responsibleFunctions: string[] | null | undefined,
+): boolean {
+  if (user.active !== true) return false;
+  const configured = responsibleFunctions ?? [];
+  if (configured.length === 0) return true;
+
+  const refs = new Set<string>();
+  if (user.userFunction) refs.add(`builtin:${user.userFunction}`);
+  if (user.customFunctionId) refs.add(`custom:${user.customFunctionId}`);
+  return configured.some((responsible) => refs.has(responsible));
+}
+
+async function eligibleUsersForOperationalStage(tenantId: string, pipeline: string, stageKey: string) {
+  const stage = await operationalStageConfig(tenantId, pipeline, stageKey);
+  const users = await db.select({
+    id: usersTable.id,
+    name: usersTable.name,
+    email: usersTable.email,
+    telefone: usersTable.telefone,
+    active: usersTable.active,
+    userFunction: usersTable.userFunction,
+    customFunctionId: usersTable.customFunctionId,
+  }).from(usersTable).where(eq(usersTable.tenantId, tenantId));
+
+  return {
+    stage,
+    users: users.filter((user) => userMatchesOperationalStageFunctions(user, stage?.responsaveisFuncoes)),
+  };
+}
+
 async function ensureWorkStageTask(card: typeof workCardsTable.$inferSelect) {
   if (!card.leadId) return [];
 
@@ -1727,61 +1758,47 @@ router.post("/tenants/:tenantId/support-cases", async (req, res) => {
 
   const [lead] = await db.select({
     id: leadsTable.id,
-    tenantId: leadsTable.tenantId,
     nome: leadsTable.nome,
     empresa: leadsTable.empresa,
     telefone: leadsTable.telefone,
-    email: leadsTable.email,
     endereco: leadsTable.endereco,
     tipoPessoa: leadsTable.tipoPessoa,
     dadosPj: leadsTable.dadosPj,
   })
     .from(leadsTable)
-    .where(eq(leadsTable.id, parsed.data.leadId));
+    .where(and(eq(leadsTable.id, parsed.data.leadId), eq(leadsTable.tenantId, tenantId)));
   if (!lead) {
     res.status(404).json({ error: "Cliente não encontrado" });
     return;
   }
-
-  let sharedParticipation: typeof dealTenantParticipationsTable.$inferSelect | null = null;
-  if (lead.tenantId !== tenantId) {
-    const rows = await db.select({ participation: dealTenantParticipationsTable })
-      .from(dealTenantParticipationsTable)
-      .innerJoin(dealsTable, eq(dealsTable.id, dealTenantParticipationsTable.dealId))
-      .where(and(
-        eq(dealsTable.leadId, lead.id),
-        eq(dealTenantParticipationsTable.partnerTenantId, tenantId),
-        eq(dealTenantParticipationsTable.status, "active"),
-      ));
-    const currentUserId = String(req.user?.sub ?? "");
-    const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-    sharedParticipation = rows
-      .map((row) => row.participation)
-      .find((participation) => isAdmin || !participation.operationalUserId || participation.operationalUserId === currentUserId) ?? null;
-    if (!sharedParticipation || !sharedParticipation.permissions.includes("open_support")) {
-      res.status(403).json({ error: "Este cliente não está compartilhado com permissão para abrir suporte." });
-      return;
-    }
-  }
-  const [responsavel] = await db.select({ id: usersTable.id, name: usersTable.name, telefone: usersTable.telefone })
+  const [responsavel] = await db.select({
+    id: usersTable.id,
+    name: usersTable.name,
+    telefone: usersTable.telefone,
+    active: usersTable.active,
+    userFunction: usersTable.userFunction,
+    customFunctionId: usersTable.customFunctionId,
+  })
     .from(usersTable)
     .where(and(eq(usersTable.id, parsed.data.responsavelId), eq(usersTable.tenantId, tenantId)));
   if (!responsavel) {
     res.status(422).json({ error: "Responsável não pertence a este tenant" });
     return;
   }
+  const openingStageConfig = await supportStageConfig(tenantId, "chamado_cliente");
+  if (!userMatchesOperationalStageFunctions(responsavel, openingStageConfig?.responsaveisFuncoes)) {
+    res.status(422).json({
+      error: "STAGE_RESPONSIBLE_REQUIRED",
+      message: "Selecione um usuário ativo cuja função esteja habilitada como responsável pela etapa Chamado cliente.",
+    });
+    return;
+  }
 
   if (parsed.data.dealId) {
-    const [deal] = await db.select({ id: dealsTable.id, tenantId: dealsTable.tenantId, leadId: dealsTable.leadId }).from(dealsTable)
-      .where(eq(dealsTable.id, parsed.data.dealId));
-    const sharedDealAllowed = Boolean(
-      deal
-      && deal.leadId === parsed.data.leadId
-      && sharedParticipation
-      && sharedParticipation.dealId === deal.id
-    );
-    if (!deal || deal.leadId !== parsed.data.leadId || (deal.tenantId !== tenantId && !sharedDealAllowed)) {
-      res.status(422).json({ error: "Pedido/negócio informado não pertence a este cliente ou não está compartilhado com esta empresa" });
+    const [deal] = await db.select({ id: dealsTable.id }).from(dealsTable)
+      .where(and(eq(dealsTable.id, parsed.data.dealId), eq(dealsTable.tenantId, tenantId)));
+    if (!deal) {
+      res.status(422).json({ error: "Pedido/negócio informado não pertence a este cliente/tenant" });
       return;
     }
   }
@@ -1876,21 +1893,7 @@ router.post("/tenants/:tenantId/support-cases", async (req, res) => {
       relato: parsed.data.relato,
       produtos: parsed.data.produtos,
       origem: parsed.data.origem,
-      legacyOrder: parsed.data.legacyOrder ? {
-        ...parsed.data.legacyOrder,
-        extractedCustomer: parsed.data.legacyOrder.customer ?? null,
-        customer: lead.nome || lead.empresa || parsed.data.legacyOrder.customer || null,
-        canonicalCustomer: {
-          leadId: lead.id,
-          nome: lead.nome ?? null,
-          empresa: lead.empresa ?? null,
-          telefone: lead.telefone ?? null,
-          email: lead.email ?? null,
-          endereco: lead.endereco ?? null,
-          tipoPessoa: lead.tipoPessoa ?? null,
-          dadosPj: lead.dadosPj ?? null,
-        },
-      } : null,
+      legacyOrder: parsed.data.legacyOrder ?? null,
       substatus: null,
       supportPublicAccess: {
         version: 1,
@@ -2072,7 +2075,42 @@ router.patch("/work-cards/:id", async (req, res) => {
     res.status(409).json({ error: "CARD_BACKWARD_FORBIDDEN", message: "O card só pode avançar. Administradores podem corrigir manualmente a etapa quando necessário." });
     return;
   }
-  if (targetPipeline === "suporte" && parsed.data.responsavelId === null) {
+
+  if (["execucao", "suporte"].includes(targetPipeline)) {
+    const eligible = await eligibleUsersForOperationalStage(existing.tenantId, targetPipeline, targetStage);
+    const stageHasFunctionRestriction = (eligible.stage?.responsaveisFuncoes?.length ?? 0) > 0;
+
+    if (stageHasFunctionRestriction) {
+      if (eligible.users.length === 0) {
+        res.status(409).json({
+          error: "STAGE_WITHOUT_ELIGIBLE_USERS",
+          message: "A etapa possui função responsável configurada, mas não há usuário ativo habilitado nessa função.",
+          stage: targetStage,
+        });
+        return;
+      }
+
+      if (parsed.data.responsavelId !== undefined) {
+        if (parsed.data.responsavelId === null || !eligible.users.some((user) => user.id === parsed.data.responsavelId)) {
+          res.status(422).json({
+            error: "STAGE_RESPONSIBLE_REQUIRED",
+            message: "O responsável selecionado não está habilitado pela função responsável desta etapa.",
+            eligibleUserIds: eligible.users.map((user) => user.id),
+          });
+          return;
+        }
+      } else if (!existing.responsavelId || !eligible.users.some((user) => user.id === existing.responsavelId)) {
+        const [nextResponsible] = [...eligible.users].sort((a, b) =>
+          String(a.name || a.email || a.id).localeCompare(String(b.name || b.email || b.id), "pt-BR")
+        );
+        parsed.data.responsavelId = nextResponsible.id;
+      }
+    }
+  }
+
+  const effectiveResponsibleId =
+    parsed.data.responsavelId === undefined ? existing.responsavelId : parsed.data.responsavelId;
+  if (targetPipeline === "suporte" && !effectiveResponsibleId) {
     res.status(422).json({ error: "Card de suporte não pode ficar sem responsável" });
     return;
   }
