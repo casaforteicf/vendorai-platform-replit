@@ -21,12 +21,19 @@ export async function canViewAllConversations(req: Request): Promise<boolean> {
   if (!userId) return false;
 
   const [user] = await db
-    .select({ permissions: usersTable.permissions })
+    .select({
+      permissions: usersTable.permissions,
+      platformRole: usersTable.platformRole,
+      userFunction: usersTable.userFunction,
+    })
     .from(usersTable)
     .where(eq(usersTable.id, userId))
     .limit(1);
 
-  return user?.permissions?.includes("conversations:view_all") === true;
+  const isTenantAdmin =
+    user?.platformRole === "tenant_admin" || user?.userFunction === "administrador";
+
+  return isTenantAdmin && user?.permissions?.includes("conversations:view_all") === true;
 }
 
 export function conversationOwnedByUserCondition(userId: string) {
