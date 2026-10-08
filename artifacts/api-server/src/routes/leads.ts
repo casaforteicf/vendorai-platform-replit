@@ -1155,8 +1155,9 @@ router.get("/leads/:id", async (req, res) => {
 
   if (!representativeAccess && !sharedDealAccess) {
     const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-    const userFn = req.user?.userFunction as UserFunction | undefined;
-    if (!isAdmin && userFn === "vendedor" && lead.assignedTo !== req.user?.sub) {
+    // A leitura por ID deve respeitar a mesma carteira da listagem, para
+    // todas as funções humanas (não apenas a função "vendedor").
+    if (!isAdmin && lead.assignedTo !== req.user?.sub) {
       res.status(403).json({ error: "Access denied to this lead" });
       return;
     }
