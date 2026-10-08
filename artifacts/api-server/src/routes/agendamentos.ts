@@ -404,7 +404,7 @@ router.get("/tenants/:tenantId/agendamentos", async (req, res) => {
   >;
 
   const conditions = [
-    eq(agendamentosTable.tenantId, String(req.params.tenantId)),
+    eq(agendamentosTable.tenantId, tenantId),
   ];
 
   const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
@@ -455,6 +455,10 @@ router.get("/tenants/:tenantId/agendamentos/slots", async (req, res) => {
 
   const { date, duracao, agendaId, responsavelId, responsavelIds } = parsed.data;
   const tenantId = String(req.params.tenantId);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
   const selectedResponsavelIds = Array.from(new Set(
     (responsavelIds ?? responsavelId ?? "")
       .split(",")
@@ -578,6 +582,12 @@ router.get(
         error:
           "Query params required: responsavelId, from (ISO date), to (ISO date)",
       });
+      return;
+    }
+
+    const tenantId = String(req.params.tenantId);
+    if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+      res.status(403).json({ error: "Access denied to this tenant" });
       return;
     }
 
