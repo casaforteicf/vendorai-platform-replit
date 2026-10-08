@@ -223,7 +223,7 @@ router.get("/tenants/:tenantId/activities", async (req, res) => {
   const isSeller = req.user?.platformRole === "tenant_seller";
   const userFn = req.user?.userFunction as string | undefined;
   const userId = req.user?.sub;
-  if (!isAdmin && userId && (isSeller || userFn === "vendedor" || userFn === "entrega")) {
+  if (!isAdmin && userId && (isSeller || userFn === "vendedor" || userFn === "representante_comercial" || userFn === "entrega")) {
     conditions.push(eq(activitiesTable.responsavelId, userId));
   }
 
@@ -278,7 +278,7 @@ router.get("/tenants/:tenantId/activities/overdue", async (req, res) => {
   const isSellerOverdue = req.user?.platformRole === "tenant_seller";
   const userFnOverdue = req.user?.userFunction as string | undefined;
   const userIdOverdue = req.user?.sub;
-  if (!isAdminOverdue && userIdOverdue && (isSellerOverdue || userFnOverdue === "vendedor" || userFnOverdue === "entrega")) {
+  if (!isAdminOverdue && userIdOverdue && (isSellerOverdue || userFnOverdue === "vendedor" || userFnOverdue === "representante_comercial" || userFnOverdue === "entrega")) {
     overdueConditions.push(eq(activitiesTable.responsavelId, userIdOverdue));
   }
 
