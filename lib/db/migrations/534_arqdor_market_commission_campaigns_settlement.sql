@@ -19,16 +19,16 @@ UPDATE public.arqdor_market_commission_rules
 SET adjustment_mode='override'
 WHERE adjustment_mode IS DISTINCT FROM 'override';
 
-DO $ BEGIN
+DO $$ BEGIN
   ALTER TABLE public.arqdor_market_commission_rules
     DROP CONSTRAINT IF EXISTS arqdor_market_commission_rules_adjustment_chk;
-EXCEPTION WHEN undefined_object THEN NULL; END $;
+EXCEPTION WHEN undefined_object THEN NULL; END $$;
 
-DO $ BEGIN
+DO $$ BEGIN
   ALTER TABLE public.arqdor_market_commission_rules
     ADD CONSTRAINT arqdor_market_commission_rules_adjustment_chk
     CHECK (adjustment_mode IN ('override'));
-EXCEPTION WHEN duplicate_object THEN NULL; END $;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
   ALTER TABLE public.arqdor_market_commission_rules
