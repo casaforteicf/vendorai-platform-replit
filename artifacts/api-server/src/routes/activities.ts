@@ -11,12 +11,14 @@ import {
   updateActivitySchema,
   dealsTable,
   pipelineStagesTable,
+  usersTable,
 } from "@workspace/db";
 import { createGoogleEvent, updateGoogleEvent, deleteGoogleEvent } from "../lib/google-calendar.js";
 import { generateSpinForActivity } from "./spin.js";
 import { recordIntelligenceEvent } from "../services/customer-intelligence-history.js";
 import { evaluatePipelineAI } from "../services/pipeline-ai-orchestrator.js";
 import { analyzeLeadIntelligence, AnalysisAlreadyInFlightError } from "../lib/analyze-intelligence.js";
+import { buildUserFunctionFilter } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
 
@@ -30,6 +32,44 @@ router.post("/activities", async (req, res) => {
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
     return;
+  }
+
+  const leadConditions = [
+    eq(leadsTable.id, parsed.data.leadId),
+    eq(leadsTable.tenantId, parsed.data.tenantId),
+    ...buildUserFunctionFilter(req, leadsTable),
+  ];
+  const [accessibleLead] = await db.select({ id: leadsTable.id }).from(leadsTable).where(and(...leadConditions)).limit(1);
+  if (!accessibleLead) {
+    res.status(403).json({ error: "Access denied to this lead" });
+    return;
+  }
+
+  if (parsed.data.dealId) {
+    const [linkedDeal] = await db.select({ id: dealsTable.id, leadId: dealsTable.leadId }).from(dealsTable)
+      .where(and(eq(dealsTable.id, parsed.data.dealId), eq(dealsTable.tenantId, parsed.data.tenantId))).limit(1);
+    if (!linkedDeal || linkedDeal.leadId !== parsed.data.leadId) {
+      res.status(422).json({ error: "Deal does not belong to this lead and tenant" });
+      return;
+    }
+  }
+
+  if (parsed.data.responsavelId) {
+    const [responsavel] = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(and(eq(usersTable.id, parsed.data.responsavelId), eq(usersTable.tenantId, parsed.data.tenantId))).limit(1);
+    if (!responsavel) {
+      res.status(422).json({ error: "Responsible user does not belong to this tenant" });
+      return;
+    }
+  }
+
+  if (parsed.data.agendaId) {
+    const [agenda] = await db.select({ id: agendasTable.id }).from(agendasTable)
+      .where(and(eq(agendasTable.id, parsed.data.agendaId), eq(agendasTable.tenantId, parsed.data.tenantId))).limit(1);
+    if (!agenda) {
+      res.status(422).json({ error: "Agenda does not belong to this tenant" });
+      return;
+    }
   }
 
   let insertData = { ...parsed.data };
@@ -370,9 +410,50 @@ router.patch("/activities/:id", async (req, res) => {
   const isSellerPatch = req.user?.platformRole === "tenant_seller";
   const userFnPatch = req.user?.userFunction as string | undefined;
   const userIdPatch = req.user?.sub;
-  if (!isAdminPatch && userIdPatch && (isSellerPatch || userFnPatch === "vendedor" || userFnPatch === "entrega")) {
+  if (!isAdminPatch && userIdPatch && (isSellerPatch || userFnPatch === "vendedor" || userFnPatch === "representante_comercial" || userFnPatch === "entrega")) {
     if (existing.responsavelId !== userIdPatch) {
       res.status(403).json({ error: "Acesso negado: esta atividade pertence a outro responsável" });
+      return;
+    }
+  }
+
+  const targetLeadId = parsed.data.leadId ?? existing.leadId;
+  const targetDealId = parsed.data.dealId === undefined ? existing.dealId : parsed.data.dealId;
+
+  const targetLeadConditions = [
+    eq(leadsTable.id, targetLeadId),
+    eq(leadsTable.tenantId, existing.tenantId),
+    ...buildUserFunctionFilter(req, leadsTable),
+  ];
+  const [targetLead] = await db.select({ id: leadsTable.id }).from(leadsTable).where(and(...targetLeadConditions)).limit(1);
+  if (!targetLead) {
+    res.status(403).json({ error: "Access denied to this lead" });
+    return;
+  }
+
+  if (targetDealId) {
+    const [targetDeal] = await db.select({ id: dealsTable.id, leadId: dealsTable.leadId }).from(dealsTable)
+      .where(and(eq(dealsTable.id, targetDealId), eq(dealsTable.tenantId, existing.tenantId))).limit(1);
+    if (!targetDeal || targetDeal.leadId !== targetLeadId) {
+      res.status(422).json({ error: "Deal does not belong to this lead and tenant" });
+      return;
+    }
+  }
+
+  if (parsed.data.responsavelId) {
+    const [responsavel] = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(and(eq(usersTable.id, parsed.data.responsavelId), eq(usersTable.tenantId, existing.tenantId))).limit(1);
+    if (!responsavel) {
+      res.status(422).json({ error: "Responsible user does not belong to this tenant" });
+      return;
+    }
+  }
+
+  if (parsed.data.agendaId) {
+    const [agenda] = await db.select({ id: agendasTable.id }).from(agendasTable)
+      .where(and(eq(agendasTable.id, parsed.data.agendaId), eq(agendasTable.tenantId, existing.tenantId))).limit(1);
+    if (!agenda) {
+      res.status(422).json({ error: "Agenda does not belong to this tenant" });
       return;
     }
   }
@@ -504,7 +585,7 @@ router.delete("/activities/:id", async (req, res) => {
   const isSellerDelete = req.user?.platformRole === "tenant_seller";
   const userFnDelete = req.user?.userFunction as string | undefined;
   const userIdDelete = req.user?.sub;
-  if (!isAdminDelete && userIdDelete && (isSellerDelete || userFnDelete === "vendedor" || userFnDelete === "entrega")) {
+  if (!isAdminDelete && userIdDelete && (isSellerDelete || userFnDelete === "vendedor" || userFnDelete === "representante_comercial" || userFnDelete === "entrega")) {
     if (existing.responsavelId !== userIdDelete) {
       res.status(403).json({ error: "Acesso negado: esta atividade pertence a outro responsável" });
       return;
