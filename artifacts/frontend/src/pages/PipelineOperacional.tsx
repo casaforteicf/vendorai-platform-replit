@@ -832,7 +832,7 @@ export default function PipelineOperacional() {
                           );
                         })}
                       </div>
-
+                    )}
 
                     {(() => {
                       const nextStage = nextExecutionStage(selectedCard.etapa);
@@ -873,7 +873,7 @@ export default function PipelineOperacional() {
                           </Button>
                         </div>
                       );
-                    })()}                    )}
+                    })()}
                   </div>
                 ) : (
                   <>
