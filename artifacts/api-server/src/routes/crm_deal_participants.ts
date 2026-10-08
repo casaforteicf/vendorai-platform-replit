@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, ilike, or } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, or } from "drizzle-orm";
 import { z } from "zod/v4";
+import { buildUserFunctionFilter } from "../middlewares/auth.js";
 import {
   db,
   dealsTable,
@@ -34,9 +35,9 @@ function tenantIdFromRequest(req: any, requested?: string) {
   return req.user.tenantId as string;
 }
 
-async function assertDeal(tenantId: string, dealId: string) {
+async function assertDeal(req: any, tenantId: string, dealId: string) {
   const [deal] = await db.select({ id: dealsTable.id }).from(dealsTable)
-    .where(and(eq(dealsTable.id, dealId), eq(dealsTable.tenantId, tenantId))).limit(1);
+    .where(and(eq(dealsTable.id, dealId), eq(dealsTable.tenantId, tenantId), ...buildUserFunctionFilter(req, dealsTable))).limit(1);
   if (!deal) throw Object.assign(new Error("Negócio não encontrado neste tenant"), { status: 404 });
 }
 
@@ -48,13 +49,21 @@ router.get("/crm/people", async (req, res) => {
     const tenantId = tenantIdFromRequest(req, typeof req.query.tenantId === "string" ? req.query.tenantId : undefined);
     const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
     const like = `%${q}%`;
+    const dealPersonIds = await db.select({ personId: crmDealPeopleTable.personId }).from(crmDealPeopleTable)
+      .where(eq(crmDealPeopleTable.tenantId, tenantId));
+    const companyContactIds = await db.select({ personId: crmTenantCompanyContactsTable.personId }).from(crmTenantCompanyContactsTable)
+      .where(eq(crmTenantCompanyContactsTable.tenantId, tenantId));
+    const visiblePersonIds = [...new Set([...dealPersonIds, ...companyContactIds].map((row) => row.personId))];
+    if (visiblePersonIds.length === 0) return res.json({ tenantId, items: [] });
+
+    const visibility = inArray(crmPeopleMasterTable.id, visiblePersonIds);
+    const search = q ? or(
+      ilike(crmPeopleMasterTable.nome, like),
+      ilike(crmPeopleMasterTable.documento, `%${digits(q)}%`),
+    ) : undefined;
     const rows = await db.select().from(crmPeopleMasterTable)
-      .where(q ? or(
-        ilike(crmPeopleMasterTable.nome, like),
-        ilike(crmPeopleMasterTable.documento, `%${digits(q)}%`),
-      ) : undefined)
+      .where(search ? and(visibility, search) : visibility)
       .orderBy(desc(crmPeopleMasterTable.updatedAt)).limit(100);
-    // tenantId é validado mesmo sendo cadastro mestre; o vínculo de tenant acontece no negócio/empresa.
     return res.json({ tenantId, items: rows });
   } catch (error: any) {
     return res.status(error.status ?? 500).json({ error: error.message });
@@ -172,7 +181,7 @@ router.get("/crm/deals/:dealId/participants", async (req, res) => {
   try {
     // tenant-audit: reviewed tenantIdFromRequest enforces authenticated same-tenant access or explicit super_admin override.
     const tenantId = tenantIdFromRequest(req, typeof req.query.tenantId === "string" ? req.query.tenantId : undefined);
-    await assertDeal(tenantId, req.params.dealId);
+    await assertDeal(req, tenantId, req.params.dealId);
 
     const people = await db.select({
       relationId: crmDealPeopleTable.id,
@@ -215,7 +224,7 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
   try {
     const tenantId = tenantIdFromRequest(req, parsed.data.tenantId);
-    await assertDeal(tenantId, req.params.dealId);
+    await assertDeal(req, tenantId, req.params.dealId);
 
     let personId = parsed.data.personId;
     if (!personId && parsed.data.person) {
@@ -296,7 +305,7 @@ router.post("/crm/deals/:dealId/companies", async (req, res) => {
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
   try {
     const tenantId = tenantIdFromRequest(req, parsed.data.tenantId);
-    await assertDeal(tenantId, req.params.dealId);
+    await assertDeal(req, tenantId, req.params.dealId);
     const [tenantCompany] = await db.select().from(crmTenantCompaniesTable).where(and(
       eq(crmTenantCompaniesTable.tenantId, tenantId),
       eq(crmTenantCompaniesTable.companyId, parsed.data.companyId),
@@ -324,7 +333,7 @@ router.post("/crm/deals/:dealId/companies", async (req, res) => {
 router.delete("/crm/deals/:dealId/people/:relationId", async (req, res) => {
   try {
     const tenantId = tenantIdFromRequest(req);
-    await assertDeal(tenantId, req.params.dealId);
+    await assertDeal(req, tenantId, req.params.dealId);
     await db.delete(crmDealPeopleTable).where(and(
       eq(crmDealPeopleTable.id, req.params.relationId),
       eq(crmDealPeopleTable.tenantId, tenantId),
@@ -337,7 +346,7 @@ router.delete("/crm/deals/:dealId/people/:relationId", async (req, res) => {
 router.delete("/crm/deals/:dealId/companies/:relationId", async (req, res) => {
   try {
     const tenantId = tenantIdFromRequest(req);
-    await assertDeal(tenantId, req.params.dealId);
+    await assertDeal(req, tenantId, req.params.dealId);
     await db.delete(crmDealCompaniesTable).where(and(
       eq(crmDealCompaniesTable.id, req.params.relationId),
       eq(crmDealCompaniesTable.tenantId, tenantId),
