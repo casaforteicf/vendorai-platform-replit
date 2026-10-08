@@ -374,6 +374,22 @@ async function handleSchedulerProcess(req: Request, res: Response): Promise<void
   }
   const { leadId, mensagem, agendamento: agendamentoInput } = parsed.data;
 
+  const schedulerLeadConditions = [
+    eq(leadsTable.id, leadId),
+    eq(leadsTable.tenantId, tenantId),
+    ...buildUserFunctionFilter(req, leadsTable),
+  ];
+  const [accessibleLead] = await db
+    .select({ id: leadsTable.id })
+    .from(leadsTable)
+    .where(and(...schedulerLeadConditions))
+    .limit(1);
+
+  if (!accessibleLead) {
+    res.status(403).json({ error: "Access denied to this lead" });
+    return;
+  }
+
   const [config] = await db.select().from(agentConfigsTable).where(eq(agentConfigsTable.tenantId, tenantId));
   if (!config) { res.status(400).json({ error: "Agente não configurado", code: "AGENT_NOT_CONFIGURED" }); return; }
 
