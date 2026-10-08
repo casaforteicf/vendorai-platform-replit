@@ -255,6 +255,7 @@ router.post("/crm/companies/:companyId/link-lead", async (req, res) => {
     ))
     .limit(1);
   if (!tenantCompany) return res.status(404).json({ error: "Empresa não encontrada neste tenant" });
+  if (!(await loadCompanyContext(tenantId, req.params.companyId, req))) return res.status(404).json({ error: "Empresa não acessível" });
 
   const [company] = await db
     .select()
@@ -585,6 +586,7 @@ router.post("/crm/companies/:companyId/contacts", async (req, res) => {
     ))
     .limit(1);
   if (!tenantCompany) return res.status(404).json({ error: "Empresa não vinculada a este tenant" });
+  if (!(await loadCompanyContext(tenantId, req.params.companyId, req))) return res.status(404).json({ error: "Empresa não acessível" });
 
   const [person] = await db
     .insert(crmPeopleMasterTable)
@@ -656,6 +658,7 @@ router.patch("/crm/companies/:companyId/contacts/:relationId/roles", async (req,
     ))
     .limit(1);
   if (!tenantCompany) return res.status(404).json({ error: "Empresa não vinculada a este tenant" });
+  if (!(await loadCompanyContext(tenantId, req.params.companyId, req))) return res.status(404).json({ error: "Empresa não acessível" });
 
   const [existing] = await db
     .select()
