@@ -236,7 +236,7 @@ router.post("/crm/companies/:companyId/link-lead", async (req, res) => {
   const [lead] = await db
     .select({ id: leadsTable.id })
     .from(leadsTable)
-    .where(and(eq(leadsTable.id, parsed.data.leadId), eq(leadsTable.tenantId, tenantId)))
+    .where(and(eq(leadsTable.id, parsed.data.leadId), eq(leadsTable.tenantId, tenantId), ...buildUserFunctionFilter(req, leadsTable)))
     .limit(1);
   if (!lead) return res.status(404).json({ error: "Lead não encontrado neste tenant" });
 
@@ -274,7 +274,7 @@ router.post("/crm/companies/:companyId/link-lead", async (req, res) => {
       empresa: company.nomeFantasia || company.razaoSocial || null,
       updatedAt: new Date(),
     } as any)
-    .where(and(eq(leadsTable.id, parsed.data.leadId), eq(leadsTable.tenantId, tenantId)));
+    .where(and(eq(leadsTable.id, parsed.data.leadId), eq(leadsTable.tenantId, tenantId), ...buildUserFunctionFilter(req, leadsTable)));
 
   const context = await loadCompanyContext(tenantId, company.id, req);
   return res.json(context);
@@ -298,7 +298,7 @@ router.post("/crm/companies/enrich", async (req, res) => {
     const [lead] = await db
       .select({ id: leadsTable.id })
       .from(leadsTable)
-      .where(and(eq(leadsTable.id, parsed.data.leadId), eq(leadsTable.tenantId, tenantId)))
+      .where(and(eq(leadsTable.id, parsed.data.leadId), eq(leadsTable.tenantId, tenantId), ...buildUserFunctionFilter(req, leadsTable)))
       .limit(1);
     if (!lead) return res.status(404).json({ error: "Lead não encontrado neste tenant" });
   }
@@ -500,7 +500,7 @@ router.post("/crm/companies/enrich", async (req, res) => {
         },
         updatedAt: now,
       })
-      .where(and(eq(leadsTable.id, parsed.data.leadId), eq(leadsTable.tenantId, tenantId)));
+      .where(and(eq(leadsTable.id, parsed.data.leadId), eq(leadsTable.tenantId, tenantId), ...buildUserFunctionFilter(req, leadsTable)));
   }
 
   return res.status(200).json(await loadCompanyContext(tenantId, company.id, req));
