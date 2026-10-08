@@ -644,6 +644,11 @@ router.post(
   async (req, res) => {
     const { tenantId, leadId } = req.params;
 
+    if (!(await canAccessLead(req, tenantId, leadId))) {
+      res.status(404).json({ error: "Lead not found" });
+      return;
+    }
+
     const [lead] = await db
       .select({ id: leadsTable.id, isChurned: leadsTable.isChurned })
       .from(leadsTable)
@@ -663,7 +668,7 @@ router.post(
     await db
       .update(leadsTable)
       .set({ isChurned: true, churnedAt: new Date(), updatedAt: new Date() })
-      .where(eq(leadsTable.id, leadId));
+      .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
 
     // Mark latest pending churn action as unsuccessful (feedback loop)
     const [latestAction] = await db
