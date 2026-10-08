@@ -14,7 +14,7 @@
 import { Router, type Request, type Response, type IRouter } from "express";
 import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { z } from "zod";
-import { db, agentConfigsTable, agendamentosTable, agendasTable } from "@workspace/db";
+import { db, agentConfigsTable, agendamentosTable, agendasTable, leadsTable } from "@workspace/db";
 import type { Agendamento } from "@workspace/db";
 import { createGoogleEvent } from "../lib/google-calendar.js";
 import { detectMeetingIntent } from "../lib/detect-meeting-intent.js";
@@ -42,6 +42,7 @@ import {
   type PromptBuilder,
 } from "../lib/agent-engine.js";
 import { checkAgentPlan } from "../middlewares/plan-guard.js";
+import { buildUserFunctionFilter } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
 
@@ -88,6 +89,22 @@ async function handleAgentProcess(
     return;
   }
   const { leadId, mensagem } = parsed.data;
+
+  const leadAccessConditions = [
+    eq(leadsTable.id, leadId),
+    eq(leadsTable.tenantId, tenantId),
+    ...buildUserFunctionFilter(req, leadsTable),
+  ];
+  const [accessibleLead] = await db
+    .select({ id: leadsTable.id })
+    .from(leadsTable)
+    .where(and(...leadAccessConditions))
+    .limit(1);
+
+  if (!accessibleLead) {
+    res.status(403).json({ error: "Access denied to this lead" });
+    return;
+  }
 
   const [config] = await db.select().from(agentConfigsTable).where(eq(agentConfigsTable.tenantId, tenantId));
   if (!config) { res.status(400).json({ error: "Agente não configurado", code: "AGENT_NOT_CONFIGURED" }); return; }
@@ -356,6 +373,22 @@ async function handleSchedulerProcess(req: Request, res: Response): Promise<void
     return;
   }
   const { leadId, mensagem, agendamento: agendamentoInput } = parsed.data;
+
+  const schedulerLeadConditions = [
+    eq(leadsTable.id, leadId),
+    eq(leadsTable.tenantId, tenantId),
+    ...buildUserFunctionFilter(req, leadsTable),
+  ];
+  const [accessibleLead] = await db
+    .select({ id: leadsTable.id })
+    .from(leadsTable)
+    .where(and(...schedulerLeadConditions))
+    .limit(1);
+
+  if (!accessibleLead) {
+    res.status(403).json({ error: "Access denied to this lead" });
+    return;
+  }
 
   const [config] = await db.select().from(agentConfigsTable).where(eq(agentConfigsTable.tenantId, tenantId));
   if (!config) { res.status(400).json({ error: "Agente não configurado", code: "AGENT_NOT_CONFIGURED" }); return; }
