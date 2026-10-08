@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, ilike, or } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull, or } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
@@ -148,7 +148,13 @@ router.get("/crm/companies", async (req, res) => {
   const status = typeof req.query.status === "string" ? req.query.status.trim() : "";
   const relationshipType = typeof req.query.relationshipType === "string" ? req.query.relationshipType.trim() : "";
 
-  const filters = [eq(crmTenantCompaniesTable.tenantId, tenantId)];
+  const visibleLeadRows = await db.select({ id: leadsTable.id }).from(leadsTable)
+    .where(and(eq(leadsTable.tenantId, tenantId), ...buildUserFunctionFilter(req, leadsTable)));
+  const visibleLeadIds = visibleLeadRows.map((row) => row.id);
+  const companyVisibility = visibleLeadIds.length > 0
+    ? or(isNull(crmTenantCompaniesTable.leadId), inArray(crmTenantCompaniesTable.leadId, visibleLeadIds))
+    : isNull(crmTenantCompaniesTable.leadId);
+  const filters = [eq(crmTenantCompaniesTable.tenantId, tenantId), companyVisibility!];
   if (status) filters.push(eq(crmTenantCompaniesTable.status, status));
   if (relationshipType) filters.push(eq(crmTenantCompaniesTable.relationshipType, relationshipType));
   if (q) {
@@ -729,10 +735,16 @@ router.post("/crm/companies/:companyId/relationships", async (req, res) => {
     return res.status(422).json({ error: "Uma empresa não pode ser relacionada a ela mesma" });
   }
 
+  const visibleLeadRows = await db.select({ id: leadsTable.id }).from(leadsTable)
+    .where(and(eq(leadsTable.tenantId, tenantId), ...buildUserFunctionFilter(req, leadsTable)));
+  const visibleLeadIds = visibleLeadRows.map((row) => row.id);
+  const companyVisibility = visibleLeadIds.length > 0
+    ? or(isNull(crmTenantCompaniesTable.leadId), inArray(crmTenantCompaniesTable.leadId, visibleLeadIds))
+    : isNull(crmTenantCompaniesTable.leadId);
   const tenantLinks = await db
     .select({ companyId: crmTenantCompaniesTable.companyId })
     .from(crmTenantCompaniesTable)
-    .where(eq(crmTenantCompaniesTable.tenantId, tenantId));
+    .where(and(eq(crmTenantCompaniesTable.tenantId, tenantId), companyVisibility!));
   const allowed = new Set(tenantLinks.map((row) => row.companyId));
   if (!allowed.has(companyId) || !allowed.has(parsed.data.relatedCompanyId)) {
     return res.status(403).json({ error: "As duas empresas precisam estar vinculadas a este tenant" });
