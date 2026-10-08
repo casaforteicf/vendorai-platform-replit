@@ -1,10 +1,11 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, ilike, inArray, or } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull, or } from "drizzle-orm";
 import { z } from "zod/v4";
 import { buildUserFunctionFilter } from "../middlewares/auth.js";
 import {
   db,
   dealsTable,
+  leadsTable,
   crmPeopleMasterTable,
   crmCompaniesMasterTable,
   crmTenantCompaniesTable,
@@ -50,9 +51,21 @@ router.get("/crm/people", async (req, res) => {
     const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
     const like = `%${q}%`;
     const dealPersonIds = await db.select({ personId: crmDealPeopleTable.personId }).from(crmDealPeopleTable)
-      .where(eq(crmDealPeopleTable.tenantId, tenantId));
+      .innerJoin(dealsTable, eq(dealsTable.id, crmDealPeopleTable.dealId))
+      .where(and(eq(crmDealPeopleTable.tenantId, tenantId), eq(dealsTable.tenantId, tenantId), ...buildUserFunctionFilter(req, dealsTable)));
+    const visibleLeads = await db.select({ id: leadsTable.id }).from(leadsTable)
+      .where(and(eq(leadsTable.tenantId, tenantId), ...buildUserFunctionFilter(req, leadsTable)));
+    const visibleLeadIds = visibleLeads.map((lead) => lead.id);
     const companyContactIds = await db.select({ personId: crmTenantCompanyContactsTable.personId }).from(crmTenantCompanyContactsTable)
-      .where(eq(crmTenantCompanyContactsTable.tenantId, tenantId));
+      .innerJoin(crmTenantCompaniesTable, eq(crmTenantCompaniesTable.id, crmTenantCompanyContactsTable.tenantCompanyId))
+      .where(and(
+        eq(crmTenantCompanyContactsTable.tenantId, tenantId),
+        eq(crmTenantCompaniesTable.tenantId, tenantId),
+        or(
+          isNull(crmTenantCompaniesTable.leadId),
+          ...(visibleLeadIds.length ? [inArray(crmTenantCompaniesTable.leadId, visibleLeadIds)] : []),
+        ),
+      ));
     const visiblePersonIds = [...new Set([...dealPersonIds, ...companyContactIds].map((row) => row.personId))];
     if (visiblePersonIds.length === 0) return res.json({ tenantId, items: [] });
 
