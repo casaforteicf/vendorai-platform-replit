@@ -515,6 +515,12 @@ export default function PipelineOperacional() {
   const stageIndex = (stage: string) => stages.findIndex(([key]) => key === stage);
   const canMoveForward = (card: WorkCard, target: string) =>
     target === card.etapa || stageIndex(target) >= stageIndex(card.etapa) || (card.pipeline === "execucao" && isAdmin);
+  const nextExecutionStage = (stage: string) => {
+    const index = EXECUTION_STAGES.findIndex(([key]) => key === stage);
+    return index >= 0 && index < EXECUTION_STAGES.length - 1 ? EXECUTION_STAGES[index + 1] : null;
+  };
+  const currentStageRequirementsCompleted = (card: WorkCard) =>
+    (EXECUTION_STAGE_REQUIREMENTS[card.etapa] ?? []).every((requirement) => requirementCompleted(card, requirement.key));
 
   function setPipeline(next: PipelineKind | "comercial" | "aquecimento" | "parceiros") {
     if (next === "comercial") navigate("/deals");
@@ -826,7 +832,48 @@ export default function PipelineOperacional() {
                           );
                         })}
                       </div>
-                    )}
+
+
+                    {(() => {
+                      const nextStage = nextExecutionStage(selectedCard.etapa);
+                      const requirementsCompleted = currentStageRequirementsCompleted(selectedCard);
+                      if (!nextStage) {
+                        return (
+                          <div className="rounded-xl border bg-muted/20 p-3 text-sm text-muted-foreground">
+                            Este pedido já está na etapa final da execução.
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="flex flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="text-sm font-semibold">Avançar etapa</p>
+                            <p className="text-xs text-muted-foreground">
+                              Próxima etapa: <strong className="text-foreground">{nextStage[1]}</strong>
+                              {!requirementsCompleted ? " • conclua os requisitos obrigatórios acima para liberar o avanço." : ""}
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            disabled={patchCard.isPending || !requirementsCompleted}
+                            onClick={() => {
+                              patchCard.mutate(
+                                { id: selectedCard.id, data: { etapa: nextStage[0] } },
+                                {
+                                  onSuccess: () => toast({
+                                    title: "Etapa avançada",
+                                    description: `Pedido movido para ${nextStage[1]}.`,
+                                  }),
+                                },
+                              );
+                            }}
+                          >
+                            {patchCard.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Avançar para {nextStage[1]}
+                          </Button>
+                        </div>
+                      );
+                    })()}                    )}
                   </div>
                 ) : (
                   <>
