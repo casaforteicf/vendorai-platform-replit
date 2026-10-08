@@ -48,6 +48,52 @@ const INITIAL_FORM: FormState = {
   observacoes: "",
 };
 
+const CAPTURE_MAX_SIZE = 10 * 1024 * 1024;
+
+function validateCaptureFile(file: File): string | null {
+  if (file.size <= 0) return "O arquivo selecionado está vazio.";
+  if (file.size > CAPTURE_MAX_SIZE) return "O limite para leitura automática é 10 MB.";
+  if (!(file.type.startsWith("image/") || file.type === "application/pdf" || /\.pdf$/i.test(file.name))) {
+    return "Use uma imagem ou PDF.";
+  }
+  return null;
+}
+
+async function analyzeQuoteDocument(tenantId: string, token: string | null | undefined, file: File): Promise<DocumentAnalysis> {
+  const transient = new Set([408, 425, 429, 502, 503, 504]);
+  let lastError = "Não foi possível analisar o documento.";
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 45_000);
+    try {
+      const body = new FormData();
+      body.append("file", file, file.name);
+      const response = await fetch(`/api/tenants/${tenantId}/deals/extract-quote`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body,
+        signal: controller.signal,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) return data as DocumentAnalysis;
+      lastError = data?.error ?? data?.message ?? `Falha ao analisar documento (HTTP ${response.status})`;
+      if (!transient.has(response.status) || attempt === 1) throw new Error(lastError);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        lastError = "A leitura demorou demais e foi interrompida.";
+      } else if (error instanceof Error && error.message) {
+        lastError = error.message;
+      }
+      if (attempt === 1) throw new Error(lastError);
+    } finally {
+      window.clearTimeout(timeout);
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 700));
+  }
+  throw new Error(lastError);
+}
+
 export default function ERPCapture() {
   const { user, token } = useAuth();
   const tenantId = user?.tenantId ?? "";
@@ -68,6 +114,12 @@ export default function ERPCapture() {
   function handleFile(event: ChangeEvent<HTMLInputElement>) {
     const selected = event.target.files?.[0];
     if (!selected) return;
+    const validationError = validateCaptureFile(selected);
+    if (validationError) {
+      toast({ title: "Arquivo não aceito", description: validationError, variant: "destructive" });
+      event.target.value = "";
+      return;
+    }
     if (preview?.startsWith("blob:")) URL.revokeObjectURL(preview);
     setFile(selected);
     setPreview(selected.type.startsWith("image/") ? URL.createObjectURL(selected) : null);
@@ -80,16 +132,7 @@ export default function ERPCapture() {
     mutationFn: async () => {
       if (!tenantId) throw new Error("Tenant não identificado.");
       if (!file) throw new Error("Selecione uma foto ou PDF.");
-      const body = new FormData();
-      body.append("file", file);
-      const response = await fetch(`/api/tenants/${tenantId}/deals/extract-quote`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        body,
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error ?? "Não foi possível analisar o documento.");
-      return data as DocumentAnalysis;
+      return analyzeQuoteDocument(tenantId, token, file);
     },
     onSuccess: (data) => {
       setAnalysis(data);
