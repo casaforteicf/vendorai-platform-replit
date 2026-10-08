@@ -316,7 +316,7 @@ router.patch("/messages/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: messagesTable.id, tenantId: messagesTable.tenantId })
+    .select({ id: messagesTable.id, tenantId: messagesTable.tenantId, conversationId: messagesTable.conversationId })
     .from(messagesTable)
     .where(eq(messagesTable.id, String(req.params.id)));
 
@@ -327,6 +327,14 @@ router.patch("/messages/:id", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  if (existing.conversationId && !(await canAccessConversation(req, existing.tenantId, existing.conversationId))) {
+    res.status(403).json({ error: "Access denied to this conversation" });
+    return;
+  }
+  if (existing.conversationId && !(await canAccessConversation(req, existing.tenantId, existing.conversationId))) {
+    res.status(403).json({ error: "Access denied to this conversation" });
     return;
   }
 
