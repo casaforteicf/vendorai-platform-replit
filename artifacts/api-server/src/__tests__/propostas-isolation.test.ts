@@ -360,6 +360,42 @@ describe("GET propostas — same-tenant responsible isolation", () => {
   });
 });
 
+
+describe("Proposal mutations — same-tenant responsible isolation", () => {
+  const memberToken = makeToken(TENANT_A, "member");
+  const otherProposal = {
+    id: "proposal-other-owner",
+    tenantId: TENANT_A,
+    leadId: "lead-other",
+    dealId: null,
+    titulo: "Privada",
+    status: "rascunho",
+    itens: [],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it.each([
+    ["patch", "/api/propostas/proposal-other-owner", { titulo: "Não autorizado" }],
+    ["patch", "/api/propostas/proposal-other-owner/status", { status: "enviada" }],
+    ["post", "/api/propostas/proposal-other-owner/public-link", {}],
+    ["post", "/api/propostas/proposal-other-owner/accept-manual", { via: "manual" }],
+    ["delete", "/api/propostas/proposal-other-owner", undefined],
+  ] as const)("returns 403 for %s on another seller proposal", async (method, url, body) => {
+    mockDbSelect
+      .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([otherProposal]), then: undefined }) }) })
+      .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ assignedTo: "another-user" }]) }) }) });
+
+    let req = request(app)[method](url).set("Authorization", `Bearer ${memberToken}`);
+    if (body !== undefined) req = req.send(body);
+    const res = await req;
+
+    expect(res.status).toBe(403);
+  });
+});
+
 describe("Unauthenticated access — propostas", () => {
   it("returns 401 for GET without a token", async () => {
     const res = await request(app).get(`/api/propostas/${RECORD_ID}`);
