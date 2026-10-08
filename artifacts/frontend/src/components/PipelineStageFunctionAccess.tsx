@@ -94,7 +94,14 @@ export function PipelineStageFunctionAccess({
       }),
   });
 
-  const activeAgents = useMemo(() => agents.filter((agent) => agent.ativo), [agents]);
+  const sortedAgents = useMemo(
+    () =>
+      [...agents].sort((a, b) => {
+        if (a.ativo !== b.ativo) return a.ativo ? -1 : 1;
+        return a.nome.localeCompare(b.nome, "pt-BR");
+      }),
+    [agents],
+  );
 
   const options = useMemo(() => {
     const overrides = new Map(
@@ -131,6 +138,15 @@ export function PipelineStageFunctionAccess({
     setSelectedAgent(next);
     setSaving(true);
     try {
+      const selectedOption = next ? agents.find((agent) => agent.agentKey === next) : null;
+
+      if (selectedOption && !selectedOption.ativo) {
+        await customFetch(`/api/agent-configs/${selectedOption.agentKey}/activate`, {
+          method: "POST",
+          responseType: "json",
+        });
+      }
+
       await customFetch(`/api/tenants/${tenantId}/pipeline-stages/${stageId}`, {
         method: "PATCH",
         body: JSON.stringify({ responsavelAgenteKey: next }),
@@ -139,6 +155,7 @@ export function PipelineStageFunctionAccess({
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["pipeline-stages", tenantId, pipeline] }),
         queryClient.invalidateQueries({ queryKey: getListPipelineStagesQueryKey(tenantId) }),
+        queryClient.invalidateQueries({ queryKey: ["agent-configs", tenantId] }),
       ]);
     } catch (error) {
       setSelectedAgent(previous);
@@ -237,25 +254,30 @@ export function PipelineStageFunctionAccess({
               <span>Sem agente de IA</span>
               {selectedAgent === null && <Check className="h-3.5 w-3.5 text-primary" />}
             </button>
-            {activeAgents.map((agent) => (
+            {sortedAgents.map((agent) => (
               <button
                 key={agent.agentKey}
                 type="button"
                 disabled={saving}
                 onClick={() => void persistAgent(agent.agentKey)}
                 className={cn(
-                  "flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs hover:bg-muted",
+                  "flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-muted",
                   selectedAgent === agent.agentKey && "bg-muted font-medium",
                 )}
               >
-                <span className="truncate">{agent.nome}</span>
-                {selectedAgent === agent.agentKey && <Check className="h-3.5 w-3.5 text-primary" />}
+                <span className="min-w-0 flex-1 truncate">{agent.nome}</span>
+                <span className="flex shrink-0 items-center gap-1.5">
+                  {!agent.ativo && (
+                    <span className="text-[10px] text-muted-foreground">ativa ao selecionar</span>
+                  )}
+                  {selectedAgent === agent.agentKey && <Check className="h-3.5 w-3.5 text-primary" />}
+                </span>
               </button>
             ))}
           </div>
-          {activeAgents.length === 0 && (
+          {sortedAgents.length === 0 && (
             <p className="px-2 py-1 text-[11px] text-muted-foreground">
-              Ative um agente em Agentes de IA para vinculá-lo à etapa.
+              Nenhum agente de IA disponível para este tenant.
             </p>
           )}
         </div>
