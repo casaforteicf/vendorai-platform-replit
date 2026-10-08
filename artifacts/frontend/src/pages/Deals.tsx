@@ -211,6 +211,57 @@ function formatCurrency(value: string | null | undefined): string {
   return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+const QUOTE_IMPORT_MAX_SIZE = 10 * 1024 * 1024;
+const QUOTE_IMPORT_EXTENSIONS = new Set(["pdf", "png", "jpg", "jpeg", "webp", "docx", "doc"]);
+
+function validateQuoteImportFile(file: File): string | null {
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  if (!QUOTE_IMPORT_EXTENSIONS.has(extension)) return "Use PDF, imagem, DOC ou DOCX.";
+  if (file.size <= 0) return "O arquivo selecionado está vazio.";
+  if (file.size > QUOTE_IMPORT_MAX_SIZE) return "O limite para importar orçamento é 10 MB.";
+  return null;
+}
+
+async function extractQuoteWithRetry(tenantId: string, file: File): Promise<any> {
+  const token = localStorage.getItem("vendorai_token") ?? "";
+  const transientStatuses = new Set([408, 425, 429, 502, 503, 504]);
+  let lastError = "Não foi possível processar o orçamento.";
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 45_000);
+    try {
+      const fd = new FormData();
+      fd.append("file", file, file.name);
+      const response = await fetch(`/api/tenants/${tenantId}/deals/extract-quote`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: fd,
+        signal: controller.signal,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok) return payload;
+
+      lastError = payload?.error || payload?.message || `Falha ao ler orçamento (HTTP ${response.status})`;
+      if (!transientStatuses.has(response.status) || attempt === 1) throw new Error(lastError);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        lastError = "A leitura demorou demais e foi interrompida. Tente novamente.";
+      } else if (error instanceof Error) {
+        lastError = error.message || lastError;
+      }
+      if (attempt === 1) throw new Error(lastError);
+    } finally {
+      window.clearTimeout(timeout);
+    }
+
+    await new Promise((resolve) => window.setTimeout(resolve, 700));
+  }
+
+  throw new Error(lastError);
+}
+
+
 type StageResponsibleUser = {
   id: string;
   active?: boolean | null;
@@ -1748,18 +1799,16 @@ function EditDealSheet({
 
 
   async function handleQuoteUpload(file: File) {
+    const validationError = validateQuoteImportFile(file);
+    if (validationError) {
+      toast({ title: "Não foi possível importar", description: validationError, variant: "destructive" });
+      return;
+    }
+
     setExtracting(true);
     setExtractedInfo(null);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch(`/api/tenants/${tenantId}/deals/extract-quote`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
-        body: fd,
-      });
-      if (!res.ok) throw new Error("Falha");
-      const data = await res.json();
+      const data = await extractQuoteWithRetry(tenantId, file);
       if (data.valorTotal != null) form.setValue("valor", data.valorTotal);
       if (data.titulo) {
         const current = form.getValues("titulo");
@@ -1780,8 +1829,12 @@ function EditDealSheet({
         title: confianca >= 0.5 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)",
         description: confianca < 0.5 ? leituraAviso : undefined,
       });
-    } catch {
-      toast({ title: "Erro ao ler o orçamento", variant: "destructive" });
+    } catch (error) {
+      toast({
+        title: "Erro ao ler o orçamento",
+        description: error instanceof Error ? error.message : "Não foi possível processar o arquivo.",
+        variant: "destructive",
+      });
     } finally {
       setExtracting(false);
     }
@@ -2469,6 +2522,8 @@ export default function Deals() {
   const [saasOverColumn, setSaasOverColumn] = useState<DealEtapaSaas | null>(null);
   const [isCreateSaasOpen, setIsCreateSaasOpen] = useState(false);
   const [createExtracting, setCreateExtracting] = useState(false);
+  const [createQuoteFile, setCreateQuoteFile] = useState<File | null>(null);
+  const [createQuoteStatus, setCreateQuoteStatus] = useState<"idle" | "processing" | "review" | "partial" | "error">("idle");
   const [createExtractedInfo, setCreateExtractedInfo] = useState<{
     itens?: Array<{ descricao: string; quantidade?: number | null; valorUnitario?: number | null; valorTotal?: number | null }>;
     fornecedor?: string | null;
@@ -2477,7 +2532,11 @@ export default function Deals() {
     clienteEndereco?: string | null;
     clienteTelefone?: string | null;
     clienteEmail?: string | null;
+    clienteCidade?: string | null;
+    clienteEstado?: string | null;
+    clienteCep?: string | null;
     observacoes?: string | null;
+    confianca?: number | null;
   } | null>(null);
   const [createQuoteFileUrl, setCreateQuoteFileUrl] = useState<string | null>(null);
   const [createQuoteFileName, setCreateQuoteFileName] = useState<string | null>(null);
@@ -2744,31 +2803,34 @@ export default function Deals() {
   const createLead = useCreateLead();
 
   async function handleCreateQuoteUpload(file: File) {
+    const validationError = validateQuoteImportFile(file);
+    if (validationError) {
+      setCreateQuoteStatus("error");
+      toast({ title: "Não foi possível importar", description: validationError, variant: "destructive" });
+      return;
+    }
+
+    const isNewFile = !createQuoteFile
+      || createQuoteFile.name !== file.name
+      || createQuoteFile.size !== file.size
+      || createQuoteFile.lastModified !== file.lastModified;
+    setCreateQuoteFile(file);
+    if (isNewFile) setCreateExtractedInfo(null);
+    setCreateQuoteStatus("processing");
     setCreateExtracting(true);
-    setCreateExtractedInfo(null);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch(`/api/tenants/${tenantId}/deals/extract-quote`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
-        body: fd,
-      });
-      if (!res.ok) {
-        toast({
-          title: "Erro ao ler o pedido/orçamento",
-          description: `Falha na importação (HTTP ${res.status}).`,
-          variant: "destructive",
-        });
-        throw new Error("Falha");
-      }
-      const data = await res.json();
+      const data = await extractQuoteWithRetry(tenantId, file);
       if (data.valorTotal != null) createForm.setValue("valor", data.valorTotal);
       if (data.titulo) {
         const current = createForm.getValues("titulo");
         if (!current || current.trim() === "") createForm.setValue("titulo", data.titulo);
       }
-      if (data.itens?.length || data.fornecedor || data.cliente || data.observacoes) {
+
+      if (
+        data.itens?.length || data.fornecedor || data.cliente || data.observacoes ||
+        data.clienteDocumento || data.clienteEndereco || data.clienteTelefone ||
+        data.clienteEmail || data.clienteCidade || data.clienteEstado || data.clienteCep
+      ) {
         setCreateExtractedInfo({
           itens: data.itens,
           fornecedor: data.fornecedor,
@@ -2777,7 +2839,11 @@ export default function Deals() {
           clienteEndereco: data.clienteEndereco,
           clienteTelefone: data.clienteTelefone,
           clienteEmail: data.clienteEmail,
+          clienteCidade: data.clienteCidade,
+          clienteEstado: data.clienteEstado,
+          clienteCep: data.clienteCep,
           observacoes: data.observacoes,
+          confianca: data.confianca ?? 0,
         });
       }
       if (data.quoteFileUrl) {
@@ -2788,11 +2854,15 @@ export default function Deals() {
       const normalize = (value: unknown) => String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
       const digitsOnly = (value: unknown) => String(value ?? "").replace(/\D/g, "");
       const extractedDocument = digitsOnly(data.clienteDocumento);
+      const extractedPhone = digitsOnly(data.clienteTelefone);
+      const extractedEmail = normalize(data.clienteEmail);
       const extractedName = normalize(data.cliente);
       const existingLead = leads.find((lead) => {
         const sameDocument = extractedDocument.length >= 8 && digitsOnly((lead as any).documento) === extractedDocument;
+        const samePhone = extractedPhone.length >= 8 && digitsOnly(lead.telefone) === extractedPhone;
+        const sameEmail = Boolean(extractedEmail) && normalize(lead.email) === extractedEmail;
         const sameName = extractedName.length >= 3 && [lead.nome, (lead as any).empresa].some((value) => normalize(value) === extractedName);
-        return sameDocument || sameName;
+        return sameDocument || samePhone || sameEmail || sameName;
       });
 
       if (existingLead) {
@@ -2807,16 +2877,27 @@ export default function Deals() {
         if (data.clienteTelefone) createForm.setValue("leadTelefone", data.clienteTelefone);
         if (data.clienteEmail) createForm.setValue("leadEmail", data.clienteEmail);
       }
+
       const confianca = data.confianca ?? 0;
+      setCreateQuoteStatus(confianca >= 0.7 ? "review" : "partial");
       const leituraAviso = Array.isArray(data.informacoesAdicionais)
         ? data.informacoesAdicionais.filter(Boolean).join(" ")
         : undefined;
       toast({
-        title: confianca >= 0.5 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)",
-        description: confianca < 0.5 ? leituraAviso : undefined,
+        title: confianca >= 0.7 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)",
+        description: existingLead
+          ? `Cliente identificado e vinculado: ${existingLead.nome}`
+          : data.cliente
+            ? "Dados do cliente foram extraídos. Confira nome, telefone e cidade antes de criar o negócio."
+            : leituraAviso,
       });
-    } catch {
-      toast({ title: "Erro ao ler o orçamento", variant: "destructive" });
+    } catch (error) {
+      setCreateQuoteStatus("error");
+      toast({
+        title: "Erro ao ler o orçamento",
+        description: error instanceof Error ? error.message : "Não foi possível processar o arquivo.",
+        variant: "destructive",
+      });
     } finally {
       setCreateExtracting(false);
     }
@@ -2994,6 +3075,8 @@ export default function Deals() {
       ]);
       setIsCreateOpen(false);
       setCreateExtractedInfo(null);
+      setCreateQuoteFile(null);
+      setCreateQuoteStatus("idle");
       setCreateQuoteFileUrl(null);
       setCreateQuoteFileName(null);
       createForm.reset();
@@ -3519,8 +3602,27 @@ export default function Deals() {
                     )}
                   </Button>
                   <p className="text-[11px] text-muted-foreground text-center">
-                    PDF, imagem ou Word — IA extrai o valor e itens automaticamente
+                    PDF, imagem ou Word — o sistema valida, lê e traz os dados para conferência antes de salvar
                   </p>
+                  {createQuoteFile && (
+                    <div className="rounded-md bg-background/80 border px-2.5 py-2 text-[11px] space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium truncate">{createQuoteFile.name}</span>
+                        <span className="text-muted-foreground whitespace-nowrap">{(createQuoteFile.size / 1024 / 1024).toFixed(2)} MB</span>
+                      </div>
+                      <div className="text-muted-foreground">
+                        {createQuoteStatus === "processing" && "1/3 Arquivo validado • 2/3 Lendo cliente, itens e valores…"}
+                        {createQuoteStatus === "review" && "3/3 Leitura concluída • confira os dados abaixo antes de criar"}
+                        {createQuoteStatus === "partial" && "3/3 Leitura parcial • confira os campos destacados antes de criar"}
+                        {createQuoteStatus === "error" && "A leitura falhou, mas o arquivo foi mantido para tentar novamente"}
+                      </div>
+                      {!createExtracting && (
+                        <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => handleCreateQuoteUpload(createQuoteFile)}>
+                          Reler orçamento
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {createExtractedInfo && (
@@ -3529,6 +3631,26 @@ export default function Deals() {
                       <Sparkles className="h-3.5 w-3.5" />
                       Dados extraídos do orçamento
                     </p>
+                    {createExtractedInfo.confianca != null && (
+                      <div className={cn(
+                        "rounded px-2 py-1.5 text-[11px]",
+                        createExtractedInfo.confianca >= 0.7
+                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                          : "bg-amber-50 text-amber-800 border border-amber-200"
+                      )}>
+                        Confiança da leitura: {Math.round(createExtractedInfo.confianca * 100)}%
+                        {createExtractedInfo.confianca < 0.7 && " — revise os dados antes de continuar."}
+                      </div>
+                    )}
+                    {(!createExtractedInfo.cliente || !createExtractedInfo.clienteTelefone || !createExtractedInfo.clienteCidade) && (
+                      <div className="rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
+                        Conferir:
+                        {!createExtractedInfo.cliente && " nome do cliente;"}
+                        {!createExtractedInfo.clienteTelefone && " telefone;"}
+                        {!createExtractedInfo.clienteCidade && " cidade;"}
+                        {" "}a ausência de um campo não impede o aproveitamento dos demais dados.
+                      </div>
+                    )}
                     {createExtractedInfo.fornecedor && (
                       <p className="text-xs text-violet-700">Fornecedor: <span className="font-medium">{createExtractedInfo.fornecedor}</span></p>
                     )}
