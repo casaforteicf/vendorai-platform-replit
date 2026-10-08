@@ -86,7 +86,8 @@ RETURNS TABLE(
 )
 LANGUAGE sql
 STABLE
-AS $$
+SET search_path = public, pg_temp
+AS $
   WITH eligible AS (
     SELECT r.*,
       CASE r.scope_type
