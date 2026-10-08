@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import "./planner5d-reference.css";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,13 +17,38 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { ordenarArvoreCategorias } from "@/lib/categoriaTree";
-import { useListCategoriasProduto, getListCategoriasProdutoQueryKey } from "@workspace/api-client-react";
 import {
-  Search, Image, ShoppingCart, Loader2, Store, Package,
-  TrendingUp, DollarSign, ReceiptText,
+  getListCategoriasProdutoQueryKey,
+  useListCategoriasProduto,
+} from "@workspace/api-client-react";
+import {
+  ArrowRight,
+  Boxes,
+  Building2,
+  CheckCircle2,
+  ClipboardList,
+  Factory,
+  FileText,
+  Filter,
+  HardHat,
+  History,
+  Image,
+  Loader2,
+  MapPin,
+  Package,
+  ReceiptText,
+  Search,
+  XCircle,
+  ShieldCheck,
+  ShoppingCart,
+  Sparkles,
+  Star,
+  Store,
+  Truck,
+  Users,
+  Wrench,
 } from "lucide-react";
 
-// ── Types ──────────────────────────────────────────────────────────────────
 type MarketplaceItem = {
   id: string;
   vendedorTenantId: string;
@@ -57,37 +82,112 @@ type Venda = {
 
 type Projeto = { id: string; titulo: string };
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-function getToken() { return localStorage.getItem("vendorai_token"); }
-function getBase()  { return (import.meta.env.BASE_URL ?? "/").replace(/\/$/, ""); }
-function authH(): Record<string, string> {
-  return { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` };
+type MarketDemand = {
+  id: string;
+  demand_code: string;
+  status: string;
+  title: string | null;
+  project_id: string | null;
+  estimated_value: string | null;
+  external_supplier_name: string | null;
+  external_close_reason: string | null;
+  external_close_value: string | null;
+  commission_percentage: string | null;
+  commission_amount: string | null;
+  commission_status: string | null;
+  risk_flags: string[] | null;
+  package_count: number;
+  event_count: number;
+  created_at: string;
+  closed_at: string | null;
+};
+
+type DemandEvent = {
+  id: string;
+  event_type: string;
+  actor_type: string;
+  reference_type: string | null;
+  reference_id: string | null;
+  payload: Record<string, any>;
+  created_at: string;
+};
+
+type CommissionRule = {
+  id: string;
+  tenant_id: string | null;
+  tenant_name?: string | null;
+  scope_type: string;
+  scope_key: string | null;
+  percentage: string;
+  active: boolean;
+  priority: number;
+  starts_at: string | null;
+  ends_at: string | null;
+  name: string | null;
+  description: string | null;
+  rule_kind: string;
+  campaign_code: string | null;
+  adjustment_mode: string;
+  conditions: Record<string, any>;
+};
+
+type PendingMarketPayment = {
+  sellerTenantId: string;
+  pracaOrderId: string;
+  demandCode: string;
+  idempotencyKey: string;
+};
+
+function getToken() {
+  return localStorage.getItem("vendorai_token");
 }
+
+function getBase() {
+  return (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+}
+
+function authH(): Record<string, string> {
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${getToken()}`,
+  };
+}
+
 function fmt(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
+
 function fmtDate(d: string) {
   return new Date(d).toLocaleDateString("pt-BR");
 }
 
 const STATUS_PEDIDO: Record<string, { label: string; cls: string }> = {
-  pendente:   { label: "Pendente",   cls: "bg-yellow-50 text-yellow-700 border-yellow-200" },
-  aprovado:   { label: "Aprovado",   cls: "bg-green-50 text-green-700 border-green-200" },
-  cancelado:  { label: "Cancelado",  cls: "bg-red-50 text-red-700 border-red-200" },
+  pendente: { label: "Pendente", cls: "bg-amber-50 text-amber-700 border-amber-200" },
+  aprovado: { label: "Aprovado", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  cancelado: { label: "Cancelado", cls: "bg-red-50 text-red-700 border-red-200" },
 };
 
-// ── Main Component ─────────────────────────────────────────────────────────
+const SEGMENTOS = [
+  { label: "Materiais", icon: Boxes, query: "material" },
+  { label: "Esquadrias", icon: Building2, query: "esquadria" },
+  { label: "Móveis", icon: Package, query: "móvel" },
+  { label: "Construção", icon: HardHat, query: "construção" },
+  { label: "Instalação", icon: Wrench, query: "instalação" },
+  { label: "Fabricantes", icon: Factory, query: "fabricante" },
+];
+
 export default function Marketplace() {
   const { toast } = useToast();
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
 
-  // ── Explorar state
-  const [items, setItems]           = useState<MarketplaceItem[]>([]);
+  const [items, setItems] = useState<MarketplaceItem[]>([]);
   const [itemsLoading, setItemsLoading] = useState(false);
-  const [itemsLoaded, setItemsLoaded]   = useState(false);
-  const [busca, setBusca]           = useState("");
-  const [catFilter, setCatFilter]   = useState("__all__");
+  const [itemsLoaded, setItemsLoaded] = useState(false);
+  const [busca, setBusca] = useState("");
+  const [catFilter, setCatFilter] = useState("__all__");
+  const [activeTab, setActiveTab] = useState("market");
+
   const { data: categoriasProduto = [] } = useListCategoriasProduto(tenantId, {
     query: {
       queryKey: getListCategoriasProdutoQueryKey(tenantId),
@@ -97,121 +197,511 @@ export default function Marketplace() {
   });
   const categoriasOrdenadas = ordenarArvoreCategorias(categoriasProduto);
 
-  // ── Comprar dialog
-  const [buying, setBuying]               = useState<MarketplaceItem | null>(null);
-  const [buyQty, setBuyQty]               = useState("1");
-  const [buyProjeto, setBuyProjeto]       = useState("__none__");
-  const [projetos, setProjetos]           = useState<Projeto[]>([]);
+  const [buying, setBuying] = useState<MarketplaceItem | null>(null);
+  const [buyQty, setBuyQty] = useState("1");
+  const [buyProjeto, setBuyProjeto] = useState("__none__");
+  const [projetos, setProjetos] = useState<Projeto[]>([]);
   const [submittingBuy, setSubmittingBuy] = useState(false);
+  const [projetoContexto, setProjetoContexto] = useState("__all__");
 
-  // ── Meus Produtos state
-  const [meusProdutos, setMeusProdutos]         = useState<MarketplaceItem[]>([]);
+  const [meusProdutos, setMeusProdutos] = useState<MarketplaceItem[]>([]);
   const [meusProdutosLoading, setMeusProdutosLoading] = useState(false);
-  const [meusProdutosLoaded, setMeusProdutosLoaded]   = useState(false);
-  const [togglingId, setTogglingId]             = useState<string | null>(null);
+  const [meusProdutosLoaded, setMeusProdutosLoaded] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
-  // ── Pedidos state
-  const [pedidos, setPedidos]           = useState<Pedido[]>([]);
+  const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [pedidosLoading, setPedidosLoading] = useState(false);
-  const [pedidosLoaded, setPedidosLoaded]   = useState(false);
+  const [pedidosLoaded, setPedidosLoaded] = useState(false);
 
-  // ── Vendas state
-  const [vendas, setVendas]                 = useState<Venda[]>([]);
-  const [totalComissoes, setTotalComissoes] = useState(0);
-  const [vendasLoading, setVendasLoading]   = useState(false);
-  const [vendasLoaded, setVendasLoaded]     = useState(false);
+  const [vendas, setVendas] = useState<Venda[]>([]);
+  const [vendasLoading, setVendasLoading] = useState(false);
+  const [vendasLoaded, setVendasLoaded] = useState(false);
 
-  // ── Loaders ────────────────────────────────────────────────────────────
+  const [demands, setDemands] = useState<MarketDemand[]>([]);
+  const [demandsLoading, setDemandsLoading] = useState(false);
+  const [demandsLoaded, setDemandsLoaded] = useState(false);
+  const [demandDetail, setDemandDetail] = useState<{ demand: MarketDemand; events: DemandEvent[]; commissions: any[] } | null>(null);
+  const [demandDetailLoading, setDemandDetailLoading] = useState(false);
+  const [closingDemand, setClosingDemand] = useState<MarketDemand | null>(null);
+  const [externalSupplierName, setExternalSupplierName] = useState("");
+  const [externalSupplierDocument, setExternalSupplierDocument] = useState("");
+  const [externalSupplierContact, setExternalSupplierContact] = useState("");
+  const [externalCloseValue, setExternalCloseValue] = useState("");
+  const [externalCloseReason, setExternalCloseReason] = useState("");
+  const [submittingExternalClose, setSubmittingExternalClose] = useState(false);
+
+  const isSuperAdmin = user?.platformRole === "super_admin";
+  const [commissionRules, setCommissionRules] = useState<CommissionRule[]>([]);
+  const [commissionRulesLoading, setCommissionRulesLoading] = useState(false);
+  const [commissionRulesLoaded, setCommissionRulesLoaded] = useState(false);
+  const [commissionRuleOpen, setCommissionRuleOpen] = useState(false);
+  const [ruleName, setRuleName] = useState("");
+  const [ruleKind, setRuleKind] = useState("standard");
+  const [ruleScopeType, setRuleScopeType] = useState("global");
+  const [ruleTenantId, setRuleTenantId] = useState("");
+  const [ruleScopeKey, setRuleScopeKey] = useState("");
+  const [rulePercentage, setRulePercentage] = useState("10");
+  const [rulePriority, setRulePriority] = useState("0");
+  const [ruleCampaignCode, setRuleCampaignCode] = useState("");
+  const [ruleStartsAt, setRuleStartsAt] = useState("");
+  const [ruleEndsAt, setRuleEndsAt] = useState("");
+  const [ruleBillingTypes, setRuleBillingTypes] = useState<string[]>([]);
+  const [ruleMinOrder, setRuleMinOrder] = useState("");
+  const [ruleMaxOrder, setRuleMaxOrder] = useState("");
+  const [ruleMinCommission, setRuleMinCommission] = useState("");
+  const [ruleMaxCommission, setRuleMaxCommission] = useState("");
+  const [savingCommissionRule, setSavingCommissionRule] = useState(false);
+
+  const [pendingPayment, setPendingPayment] = useState<PendingMarketPayment | null>(null);
+  const [paymentBillingType, setPaymentBillingType] = useState<"PIX" | "CREDIT_CARD">("PIX");
+  const [paymentDocument, setPaymentDocument] = useState("");
+  const [creatingPayment, setCreatingPayment] = useState(false);
+  const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
+  const [paymentCheckoutUrl, setPaymentCheckoutUrl] = useState<string | null>(null);
+  const [pixData, setPixData] = useState<{ encodedImage: string; payload: string; expirationDate: string } | null>(null);
+  const [checkingPayment, setCheckingPayment] = useState(false);
+
   const loadItems = useCallback(async () => {
     setItemsLoading(true);
-    const params = new URLSearchParams({ limit: "40" });
-    if (busca)                   params.set("busca", busca);
-    if (catFilter !== "__all__") params.set("categoria", catFilter);
-    const res = await fetch(`/api/arch/marketplace?${params}`, {
+    try {
+      const params = new URLSearchParams({ limit: "60" });
+      if (busca) params.set("busca", busca);
+      if (catFilter !== "__all__") params.set("categoria", catFilter);
+
+      const res = await fetch(`/api/arch/marketplace?${params}`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+
+      if (!res.ok) throw new Error("Não foi possível carregar o Market Arqdor.");
+      setItems(await res.json());
+    } catch (err: any) {
+      toast({
+        title: "Market Arqdor",
+        description: err.message,
+        variant: "destructive",
+      });
+    } finally {
+      setItemsLoading(false);
+      setItemsLoaded(true);
+    }
+  }, [busca, catFilter, toast]);
+
+  const loadProjetos = useCallback(async () => {
+    if (projetos.length > 0) return;
+    const res = await fetch("/api/arch/projetos?limit=50", {
       headers: { Authorization: `Bearer ${getToken()}` },
     });
-    if (res.ok) setItems(await res.json());
-    setItemsLoading(false);
-    setItemsLoaded(true);
-  }, [busca, catFilter]);
+    if (res.ok) {
+      const data = await res.json();
+      setProjetos(
+        (data.projetos ?? data).map((p: any) => ({ id: p.id, titulo: p.titulo })),
+      );
+    }
+  }, [projetos.length]);
 
   const loadMeusProdutos = useCallback(async () => {
     if (meusProdutosLoaded) return;
     setMeusProdutosLoading(true);
-    const res = await fetch(`/api/arch/marketplace/meus-produtos`, {
-      headers: { Authorization: `Bearer ${getToken()}` },
-    });
-    if (res.ok) setMeusProdutos(await res.json());
-    setMeusProdutosLoading(false);
-    setMeusProdutosLoaded(true);
+    try {
+      const res = await fetch("/api/arch/marketplace/meus-produtos", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) throw new Error("Falha ao carregar sua vitrine.");
+      setMeusProdutos(await res.json());
+    } finally {
+      setMeusProdutosLoading(false);
+      setMeusProdutosLoaded(true);
+    }
   }, [meusProdutosLoaded]);
 
   const loadPedidos = useCallback(async () => {
     if (pedidosLoaded) return;
     setPedidosLoading(true);
-    const res = await fetch(`/api/arch/marketplace/pedidos`, {
-      headers: { Authorization: `Bearer ${getToken()}` },
-    });
-    if (res.ok) setPedidos(await res.json());
-    setPedidosLoading(false);
-    setPedidosLoaded(true);
+    try {
+      const res = await fetch("/api/arch/marketplace/pedidos", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) throw new Error("Falha ao carregar pedidos.");
+      setPedidos(await res.json());
+    } finally {
+      setPedidosLoading(false);
+      setPedidosLoaded(true);
+    }
   }, [pedidosLoaded]);
 
   const loadVendas = useCallback(async () => {
     if (vendasLoaded) return;
     setVendasLoading(true);
-    const res = await fetch(`/api/arch/marketplace/vendas`, {
-      headers: { Authorization: `Bearer ${getToken()}` },
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch("/api/arch/marketplace/vendas", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) throw new Error("Falha ao carregar vendas.");
       const data = await res.json();
       setVendas(data.vendas ?? []);
-      setTotalComissoes(Number(data.totalComissoes ?? 0));
+    } finally {
+      setVendasLoading(false);
+      setVendasLoaded(true);
     }
-    setVendasLoading(false);
-    setVendasLoaded(true);
   }, [vendasLoaded]);
 
-  const loadProjetos = useCallback(async () => {
-    if (projetos.length > 0) return;
-    const res = await fetch(`/api/arch/projetos?limit=50`, {
-      headers: { Authorization: `Bearer ${getToken()}` },
-    });
-    if (res.ok) {
+  const loadDemands = useCallback(async (force = false) => {
+    if (demandsLoaded && !force) return;
+    setDemandsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (projetoContexto !== "__all__") params.set("projectId", projetoContexto);
+      const res = await fetch(`/api/arch/market-demands?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) throw new Error("Falha ao carregar o rastreamento do Market.");
       const data = await res.json();
-      setProjetos((data.projetos ?? data).map((p: any) => ({ id: p.id, titulo: p.titulo })));
+      setDemands(data.demands ?? []);
+    } catch (err: any) {
+      toast({ title: "Rastreamento", description: err.message, variant: "destructive" });
+    } finally {
+      setDemandsLoading(false);
+      setDemandsLoaded(true);
     }
-  }, [projetos.length]);
+  }, [demandsLoaded, projetoContexto, toast]);
 
-  useEffect(() => { loadItems(); }, [loadItems]);
+  const openDemandDetail = async (demand: MarketDemand) => {
+    setDemandDetailLoading(true);
+    try {
+      const res = await fetch(`/api/arch/market-demands/${demand.id}`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) throw new Error("Falha ao carregar o histórico da demanda.");
+      setDemandDetail(await res.json());
+    } catch (err: any) {
+      toast({ title: "Histórico da demanda", description: err.message, variant: "destructive" });
+    } finally {
+      setDemandDetailLoading(false);
+    }
+  };
 
-  // ── Comprar ────────────────────────────────────────────────────────────
+  const openExternalClose = (demand: MarketDemand) => {
+    setClosingDemand(demand);
+    setExternalSupplierName("");
+    setExternalSupplierDocument("");
+    setExternalSupplierContact("");
+    setExternalCloseValue("");
+    setExternalCloseReason("");
+  };
+
+  const submitExternalClose = async () => {
+    if (!closingDemand) return;
+    setSubmittingExternalClose(true);
+    try {
+      const res = await fetch(`/api/arch/market-demands/${closingDemand.id}/close-external`, {
+        method: "POST",
+        headers: authH(),
+        body: JSON.stringify({
+          supplierName: externalSupplierName,
+          supplierDocument: externalSupplierDocument || undefined,
+          supplierContact: externalSupplierContact || undefined,
+          value: Number(externalCloseValue),
+          reason: externalCloseReason,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Não foi possível encerrar a demanda.");
+      setClosingDemand(null);
+      setDemandDetail(null);
+      setDemandsLoaded(false);
+      await loadDemands(true);
+      toast({
+        title: "Demanda encerrada",
+        description: data.matchedMarketSupplier
+          ? "Fornecedor originado no Market identificado. A comissão ficou registrada para cobrança/auditoria."
+          : "Fechamento externo registrado no histórico da demanda.",
+      });
+    } catch (err: any) {
+      toast({ title: "Encerramento", description: err.message, variant: "destructive" });
+    } finally {
+      setSubmittingExternalClose(false);
+    }
+  };
+
+  const loadCommissionRules = useCallback(async (force = false) => {
+    if (!isSuperAdmin || (commissionRulesLoaded && !force)) return;
+    setCommissionRulesLoading(true);
+    try {
+      const res = await fetch("/api/arch/market-commission-rules", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) throw new Error("Não foi possível carregar as regras de comissão.");
+      const data = await res.json();
+      setCommissionRules(data.rules ?? []);
+    } catch (err: any) {
+      toast({ title: "Comissões do Market", description: err.message, variant: "destructive" });
+    } finally {
+      setCommissionRulesLoading(false);
+      setCommissionRulesLoaded(true);
+    }
+  }, [commissionRulesLoaded, isSuperAdmin, toast]);
+
+  const resetCommissionRuleForm = () => {
+    setRuleName("");
+    setRuleKind("standard");
+    setRuleScopeType("global");
+    setRuleTenantId("");
+    setRuleScopeKey("");
+    setRulePercentage("10");
+    setRulePriority("0");
+    setRuleCampaignCode("");
+    setRuleStartsAt("");
+    setRuleEndsAt("");
+    setRuleBillingTypes([]);
+    setRuleMinOrder("");
+    setRuleMaxOrder("");
+    setRuleMinCommission("");
+    setRuleMaxCommission("");
+  };
+
+  const saveCommissionRule = async () => {
+    setSavingCommissionRule(true);
+    try {
+      const conditions: Record<string, any> = {};
+      if (ruleBillingTypes.length) conditions.billingTypes = ruleBillingTypes;
+      if (ruleMinOrder) conditions.minOrderValue = Number(ruleMinOrder);
+      if (ruleMaxOrder) conditions.maxOrderValue = Number(ruleMaxOrder);
+      const res = await fetch("/api/arch/market-commission-rules", {
+        method: "POST",
+        headers: authH(),
+        body: JSON.stringify({
+          name: ruleName || undefined,
+          ruleKind,
+          scopeType: ruleScopeType,
+          tenantId: ruleScopeType === "global" ? undefined : ruleTenantId,
+          scopeKey: ["global", "tenant"].includes(ruleScopeType) ? undefined : ruleScopeKey,
+          percentage: Number(rulePercentage),
+          priority: Number(rulePriority || 0),
+          campaignCode: ruleCampaignCode || undefined,
+          startsAt: ruleStartsAt ? new Date(ruleStartsAt).toISOString() : undefined,
+          endsAt: ruleEndsAt ? new Date(ruleEndsAt).toISOString() : undefined,
+          conditions,
+          minCommissionAmount: ruleMinCommission ? Number(ruleMinCommission) : undefined,
+          maxCommissionAmount: ruleMaxCommission ? Number(ruleMaxCommission) : undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Não foi possível salvar a regra.");
+      setCommissionRuleOpen(false);
+      resetCommissionRuleForm();
+      setCommissionRulesLoaded(false);
+      await loadCommissionRules(true);
+      toast({ title: "Regra de comissão criada" });
+    } catch (err: any) {
+      toast({ title: "Comissões do Market", description: err.message, variant: "destructive" });
+    } finally {
+      setSavingCommissionRule(false);
+    }
+  };
+
+  const toggleCommissionRule = async (rule: CommissionRule) => {
+    try {
+      const res = await fetch(`/api/arch/market-commission-rules/${rule.id}`, {
+        method: "PATCH",
+        headers: authH(),
+        body: JSON.stringify({ active: !rule.active }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Não foi possível alterar a regra.");
+      await loadCommissionRules(true);
+    } catch (err: any) {
+      toast({ title: "Comissões do Market", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const resetPayment = () => {
+    setPendingPayment(null);
+    setPaymentBillingType("PIX");
+    setPaymentDocument("");
+    setCreatingPayment(false);
+    setPaymentIntentId(null);
+    setPaymentCheckoutUrl(null);
+    setPixData(null);
+  };
+
+  const localIsoDate = () => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+
+  const createMarketPayment = async () => {
+    if (!pendingPayment) return;
+    const documentDigits = paymentDocument.replace(/\D/g, "");
+    if (![11, 14].includes(documentDigits.length)) {
+      toast({ title: "Pagamento", description: "Informe um CPF ou CNPJ válido.", variant: "destructive" });
+      return;
+    }
+    setCreatingPayment(true);
+    try {
+      const res = await fetch(
+        `/api/tenants/${pendingPayment.sellerTenantId}/praca-orders/${pendingPayment.pracaOrderId}/payment-intents`,
+        {
+          method: "POST",
+          headers: {
+            ...authH(),
+            "Idempotency-Key": pendingPayment.idempotencyKey,
+          },
+          body: JSON.stringify({
+            billingType: paymentBillingType,
+            dueDate: localIsoDate(),
+            clienteDocumento: documentDigits,
+          }),
+        },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Não foi possível criar a cobrança.");
+      setPaymentIntentId(data.id);
+      setPaymentCheckoutUrl(data.checkoutUrl || data.invoiceUrl || null);
+
+      if (paymentBillingType === "PIX") {
+        const pixRes = await fetch(
+          `/api/tenants/${pendingPayment.sellerTenantId}/praca-orders/${pendingPayment.pracaOrderId}/payment-intents/${data.id}/pix`,
+          { headers: { Authorization: `Bearer ${getToken()}` } },
+        );
+        const pix = await pixRes.json().catch(() => ({}));
+        if (!pixRes.ok) throw new Error(pix.error || "Cobrança criada, mas não foi possível carregar o QR Code PIX.");
+        setPixData(pix);
+      } else if (data.checkoutUrl || data.invoiceUrl) {
+        window.open(data.checkoutUrl || data.invoiceUrl, "_blank", "noopener,noreferrer");
+      }
+
+      toast({
+        title: paymentBillingType === "PIX" ? "PIX gerado" : "Checkout do cartão criado",
+        description: "A comissão do Market já está vinculada ao split desta cobrança.",
+      });
+    } catch (err: any) {
+      toast({ title: "Pagamento", description: err.message, variant: "destructive" });
+    } finally {
+      setCreatingPayment(false);
+    }
+  };
+
+  const checkMarketPayment = async () => {
+    if (!pendingPayment) return;
+    setCheckingPayment(true);
+    try {
+      const res = await fetch(
+        `/api/tenants/${pendingPayment.sellerTenantId}/praca-orders/${pendingPayment.pracaOrderId}/payment`,
+        { headers: { Authorization: `Bearer ${getToken()}` } },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Não foi possível consultar o pagamento.");
+      if (["received", "confirmed"].includes(String(data.status))) {
+        toast({
+          title: data.status === "received" ? "Pagamento liquidado" : "Pagamento confirmado",
+          description: data.status === "received"
+            ? "A comissão do Market foi liquidada pelo split."
+            : "Pagamento confirmado. A liquidação será atualizada pelo Asaas.",
+        });
+        if (data.status === "received") {
+          resetPayment();
+          setPedidosLoaded(false);
+          setDemandsLoaded(false);
+        }
+      } else {
+        toast({ title: "Pagamento", description: `Status atual: ${data.status || "pendente"}.` });
+      }
+    } catch (err: any) {
+      toast({ title: "Pagamento", description: err.message, variant: "destructive" });
+    } finally {
+      setCheckingPayment(false);
+    }
+  };
+
+  useEffect(() => {
+    loadItems();
+  }, [loadItems]);
+
+  useEffect(() => {
+    loadProjetos();
+  }, [loadProjetos]);
+
+  const fornecedores = useMemo(() => {
+    const grouped = new Map<
+      string,
+      { tenantId: string; itens: MarketplaceItem[]; categorias: Set<string> }
+    >();
+
+    items.forEach((item) => {
+      const current = grouped.get(item.vendedorTenantId) ?? {
+        tenantId: item.vendedorTenantId,
+        itens: [],
+        categorias: new Set<string>(),
+      };
+      current.itens.push(item);
+      if (item.categoria) current.categorias.add(item.categoria);
+      grouped.set(item.vendedorTenantId, current);
+    });
+
+    return [...grouped.values()].sort((a, b) => b.itens.length - a.itens.length);
+  }, [items]);
+
+  const projetoSelecionado = projetos.find((p) => p.id === projetoContexto);
+
   function openBuy(item: MarketplaceItem) {
     setBuying(item);
     setBuyQty("1");
-    setBuyProjeto("__none__");
+    setBuyProjeto(projetoContexto !== "__all__" ? projetoContexto : "__none__");
     loadProjetos();
   }
 
   async function handleComprar() {
     if (!buying) return;
     setSubmittingBuy(true);
+
     try {
       const res = await fetch(`/api/arch/marketplace/${buying.id}/comprar`, {
         method: "POST",
         headers: authH(),
         body: JSON.stringify({
           quantidade: Number(buyQty),
-          projetoId:  buyProjeto !== "__none__" ? buyProjeto : undefined,
+          projetoId: buyProjeto !== "__none__" ? buyProjeto : undefined,
         }),
       });
+
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err?.error ?? "Falha ao realizar compra.");
       }
+
+      const data = await res.json();
       setBuying(null);
-      toast({ title: "Compra realizada!", description: buyProjeto !== "__none__" ? "Item adicionado ao orçamento do projeto." : undefined });
       setPedidosLoaded(false);
+      setDemandsLoaded(false);
+
+      if (data?.payment?.required && data.payment.pracaOrderId && data.payment.sellerTenantId) {
+        setPendingPayment({
+          sellerTenantId: data.payment.sellerTenantId,
+          pracaOrderId: data.payment.pracaOrderId,
+          demandCode: data?.demand?.code || "AMD",
+          idempotencyKey: crypto.randomUUID(),
+        });
+        setPaymentBillingType("PIX");
+        setPaymentDocument("");
+        setPaymentIntentId(null);
+        setPaymentCheckoutUrl(null);
+        setPixData(null);
+        toast({
+          title: "Pedido criado",
+          description: `${data?.demand?.code || "Demanda"} registrada. Conclua o pagamento para liquidar a operação.`,
+        });
+      } else {
+        toast({
+          title: "Pedido criado",
+          description:
+            buyProjeto !== "__none__"
+              ? "Item vinculado ao projeto e ao orçamento."
+              : "Pedido registrado no Market Arqdor.",
+        });
+      }
     } catch (err: any) {
       toast({ title: "Erro", description: err.message, variant: "destructive" });
     } finally {
@@ -219,18 +709,22 @@ export default function Marketplace() {
     }
   }
 
-  // ── Toggle ativo (Meus Produtos) ───────────────────────────────────────
   async function toggleAtivo(item: MarketplaceItem) {
     setTogglingId(item.id);
+
     try {
       const res = await fetch(`/api/arch/marketplace/${item.id}`, {
         method: "PATCH",
         headers: authH(),
         body: JSON.stringify({ ativo: !item.ativo }),
       });
+
       if (!res.ok) throw new Error("Falha ao atualizar.");
+
       const updated: MarketplaceItem = await res.json();
-      setMeusProdutos(prev => prev.map(p => p.id === item.id ? updated : p));
+      setMeusProdutos((prev) =>
+        prev.map((p) => (p.id === item.id ? updated : p)),
+      );
     } catch (err: any) {
       toast({ title: "Erro", description: err.message, variant: "destructive" });
     } finally {
@@ -238,46 +732,175 @@ export default function Marketplace() {
     }
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────
+  const applySegment = (query: string) => {
+    setCatFilter("__all__");
+    setBusca(query);
+    setActiveTab("market");
+  };
+
+  const openProcurement = () => {
+    const params = new URLSearchParams({ module: "procurement" });
+    if (projetoContexto !== "__all__") params.set("project_id", projetoContexto);
+    window.location.assign(`/arch/studio?${params.toString()}`);
+  };
+
   return (
-    <div className="arqdor-reference-ui max-w-6xl mx-auto space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Marketplace Arch</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Compre e venda produtos entre arquitetos e designers
-        </p>
-      </div>
+    <div className="arqdor-reference-ui mx-auto max-w-[1480px] space-y-5 pb-10">
+      <section className="overflow-hidden rounded-2xl border border-emerald-100 bg-[linear-gradient(135deg,#061510_0%,#0c261c_56%,#103426_100%)] text-white shadow-sm">
+        <div className="grid gap-8 px-6 py-7 lg:grid-cols-[1fr_420px] lg:px-8">
+          <div>
+            <div className="mb-4 flex items-center gap-2">
+              <Badge className="border-emerald-400/30 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/10">
+                ARQDOR MARKET
+              </Badge>
+              <span className="text-xs text-emerald-100/65">
+                Ecossistema de fornecedores, produtos e serviços
+              </span>
+            </div>
 
-      <Tabs defaultValue="explorar">
-        <TabsList>
-          <TabsTrigger value="explorar">Explorar</TabsTrigger>
-          <TabsTrigger value="meus-produtos" onClick={loadMeusProdutos}>Meus Produtos</TabsTrigger>
-          <TabsTrigger value="pedidos" onClick={loadPedidos}>Pedidos</TabsTrigger>
-          <TabsTrigger value="vendas" onClick={loadVendas}>Vendas</TabsTrigger>
-        </TabsList>
+            <h1 className="max-w-3xl text-3xl font-semibold tracking-tight lg:text-4xl">
+              Do projeto à cotação, compra e contratação em um único fluxo.
+            </h1>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-emerald-50/70">
+              Encontre materiais, esquadrias, móveis, construtoras, instaladores e
+              parceiros do ecossistema. O Market Arqdor reutiliza o motor comercial
+              do Praça.ai e mantém cada pedido ligado ao projeto e ao orçamento.
+            </p>
 
-        {/* ── ABA: EXPLORAR ───────────────────────────────────────────── */}
-        <TabsContent value="explorar" className="mt-4 space-y-4">
-          {/* Filters */}
-          <div className="flex flex-wrap gap-3">
-            <div className="relative flex-1 min-w-48">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <div className="mt-6 flex flex-wrap gap-2">
+              {[
+                ["Fornecedores verificados", ShieldCheck],
+                ["Logística integrada", Truck],
+                ["Pedidos vinculados ao projeto", ClipboardList],
+                ["Catálogo técnico", Boxes],
+              ].map(([label, Icon]: any) => (
+                <span
+                  key={label}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/75"
+                >
+                  <Icon className="h-3.5 w-3.5 text-emerald-300" />
+                  {label}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-white/10 bg-white/[0.06] p-4 backdrop-blur-sm">
+            <p className="text-xs font-medium uppercase tracking-[0.14em] text-emerald-200/70">
+              Contexto do projeto
+            </p>
+            <p className="mt-1 text-sm text-white/70">
+              Selecione um projeto para manter compras e cotações no contexto correto.
+            </p>
+
+            <Select
+              value={projetoContexto}
+              onValueChange={(value) => {
+                setProjetoContexto(value);
+                setDemandsLoaded(false);
+              }}
+            >
+              <SelectTrigger className="mt-4 border-white/10 bg-white text-slate-900">
+                <SelectValue placeholder="Todos os projetos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Navegar sem projeto</SelectItem>
+                {projetos.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.titulo}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <div className="mt-4 rounded-lg border border-white/10 bg-black/10 p-3">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Sparkles className="h-4 w-4 text-emerald-300" />
+                {projetoSelecionado ? projetoSelecionado.titulo : "Market aberto"}
+              </div>
+              <p className="mt-1 text-xs leading-5 text-white/60">
+                {projetoSelecionado
+                  ? "Novas compras já podem ser vinculadas a este projeto."
+                  : "Você pode explorar fornecedores e selecionar o projeto no momento da compra."}
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        {SEGMENTOS.map(({ label, icon: Icon, query }) => (
+          <button
+            key={label}
+            type="button"
+            onClick={() => applySegment(query)}
+            className="group flex items-center gap-3 rounded-xl border bg-white px-4 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md"
+          >
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
+              <Icon className="h-4 w-4" />
+            </span>
+            <span>
+              <span className="block text-sm font-medium">{label}</span>
+              <span className="block text-[11px] text-muted-foreground">Explorar</span>
+            </span>
+          </button>
+        ))}
+      </section>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <div className="flex flex-col justify-between gap-3 xl:flex-row xl:items-center">
+          <TabsList className="h-auto flex-wrap justify-start">
+            <TabsTrigger value="market">Market</TabsTrigger>
+            <TabsTrigger value="fornecedores">Fornecedores</TabsTrigger>
+            <TabsTrigger value="pedidos" onClick={loadPedidos}>Pedidos</TabsTrigger>
+            <TabsTrigger value="tracking" onClick={() => loadDemands()}>Rastreamento</TabsTrigger>
+            {isSuperAdmin && (
+              <TabsTrigger value="commission" onClick={() => loadCommissionRules()}>Comissões</TabsTrigger>
+            )}
+            <TabsTrigger value="vitrine" onClick={loadMeusProdutos}>Minha vitrine</TabsTrigger>
+            <TabsTrigger value="vendas" onClick={loadVendas}>Vendas</TabsTrigger>
+          </TabsList>
+
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" className="gap-2" onClick={openProcurement}>
+              <FileText className="h-4 w-4" />
+              Minhas cotações
+            </Button>
+            <Button
+              size="sm"
+              className="gap-2 bg-emerald-700 hover:bg-emerald-800"
+              onClick={openProcurement}
+            >
+              <ClipboardList className="h-4 w-4" />
+              Cotar itens do orçamento
+            </Button>
+          </div>
+        </div>
+
+        <TabsContent value="market" className="space-y-4">
+          <div className="grid gap-3 lg:grid-cols-[1fr_240px]">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                className="pl-9"
-                placeholder="Buscar produtos..."
+                className="h-11 bg-white pl-9"
+                placeholder="Buscar cimento, esquadrias, revestimentos, móveis, serviços..."
                 value={busca}
-                onChange={e => setBusca(e.target.value)}
+                onChange={(e) => setBusca(e.target.value)}
               />
             </div>
+
             <Select value={catFilter} onValueChange={setCatFilter}>
-              <SelectTrigger className="w-48">
+              <SelectTrigger className="h-11 bg-white">
+                <Filter className="mr-2 h-4 w-4 text-muted-foreground" />
                 <SelectValue placeholder="Categoria" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all__">Todas as categorias</SelectItem>
                 {categoriasOrdenadas.map(({ categoria: c, profundidade }) => (
                   <SelectItem key={c.id} value={c.nome}>
-                    {"　".repeat(profundidade)}{profundidade > 0 ? "↳ " : ""}{c.nome}
+                    {"　".repeat(profundidade)}
+                    {profundidade > 0 ? "↳ " : ""}
+                    {c.nome}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -285,60 +908,98 @@ export default function Marketplace() {
           </div>
 
           {itemsLoading && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-56 rounded-xl" />)}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <Skeleton key={i} className="h-80 rounded-xl" />
+              ))}
             </div>
           )}
 
           {!itemsLoading && itemsLoaded && items.length === 0 && (
-            <div className="rounded-lg border border-dashed p-16 text-center">
-              <Store className="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" />
-              <p className="font-medium text-sm">Nenhum produto disponível</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                {busca || catFilter !== "__all__"
-                  ? "Tente outros filtros."
-                  : "Outros arquitetos ainda não publicaram produtos."}
+            <div className="rounded-xl border border-dashed bg-white p-16 text-center">
+              <Store className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
+              <p className="text-sm font-medium">Nenhuma oferta encontrada</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Ajuste a busca ou escolha outra categoria.
               </p>
             </div>
           )}
 
           {!itemsLoading && items.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {items.map(item => {
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {items.map((item) => {
                 const thumb = item.imagens?.[0];
+                const preco = Number(item.preco ?? 0);
+
                 return (
-                  <Card key={item.id} className="overflow-hidden">
-                    <div className="relative h-40 bg-muted flex items-center justify-center">
+                  <Card
+                    key={item.id}
+                    className="group overflow-hidden border-slate-200 bg-white transition hover:-translate-y-0.5 hover:shadow-md"
+                  >
+                    <div className="relative h-44 overflow-hidden bg-slate-50">
                       {thumb ? (
                         <img
                           src={`${getBase()}${thumb}`}
                           alt={item.nome}
-                          className="w-full h-full object-cover"
+                          className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
                         />
                       ) : (
-                        <Image className="h-10 w-10 text-muted-foreground/20" />
+                        <div className="flex h-full items-center justify-center">
+                          <Image className="h-10 w-10 text-muted-foreground/20" />
+                        </div>
                       )}
+
+                      <div className="absolute left-3 top-3 flex gap-1.5">
+                        <Badge className="border-white/60 bg-white/90 text-slate-700 hover:bg-white">
+                          {item.categoria ?? "Produto"}
+                        </Badge>
+                      </div>
                     </div>
-                    <CardContent className="p-3 space-y-2">
+
+                    <CardContent className="space-y-3 p-4">
                       <div>
-                        <p className="font-medium text-sm truncate">{item.nome}</p>
-                        {item.categoria && (
-                          <p className="text-xs text-muted-foreground">{item.categoria}</p>
+                        <h3 className="line-clamp-2 text-sm font-semibold">{item.nome}</h3>
+                        <p className="mt-1 line-clamp-2 min-h-8 text-xs leading-4 text-muted-foreground">
+                          {item.descricao || "Item disponível no ecossistema Arqdor."}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                        <span className="inline-flex items-center gap-1">
+                          <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                          Ecossistema
+                        </span>
+                        {item.totalVendas > 0 && (
+                          <span className="inline-flex items-center gap-1">
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            {item.totalVendas} pedido(s)
+                          </span>
                         )}
                       </div>
-                      <div className="flex items-center justify-between">
-                        {item.preco && Number(item.preco) > 0 ? (
-                          <p className="font-semibold text-sm text-green-700">{fmt(Number(item.preco))}</p>
-                        ) : (
-                          <p className="text-xs text-muted-foreground">Sob consulta</p>
-                        )}
-                        <Button size="sm" className="h-7 text-xs" onClick={() => openBuy(item)}>
-                          <ShoppingCart className="h-3 w-3 mr-1" /> Comprar
+
+                      <div className="flex items-end justify-between gap-3 border-t pt-3">
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                            Valor
+                          </p>
+                          <p className="text-base font-semibold text-slate-900">
+                            {preco > 0 ? fmt(preco) : "Sob consulta"}
+                          </p>
+                        </div>
+
+                        <Button
+                          size="sm"
+                          className="gap-1.5 bg-emerald-700 hover:bg-emerald-800"
+                          onClick={() => openBuy(item)}
+                        >
+                          {preco > 0 ? (
+                            <ShoppingCart className="h-3.5 w-3.5" />
+                          ) : (
+                            <ReceiptText className="h-3.5 w-3.5" />
+                          )}
+                          {preco > 0 ? "Comprar" : "Solicitar"}
                         </Button>
                       </div>
-                      {item.totalVendas > 0 && (
-                        <p className="text-xs text-muted-foreground">{item.totalVendas} venda(s)</p>
-                      )}
                     </CardContent>
                   </Card>
                 );
@@ -347,49 +1008,350 @@ export default function Marketplace() {
           )}
         </TabsContent>
 
-        {/* ── ABA: MEUS PRODUTOS ──────────────────────────────────────── */}
-        <TabsContent value="meus-produtos" className="mt-4">
-          {meusProdutosLoading && (
+        <TabsContent value="fornecedores" className="space-y-4">
+          <div className="rounded-xl border bg-white p-5">
+            <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
+              <div>
+                <h2 className="text-base font-semibold">Fornecedores do ecossistema</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Empresas com itens disponíveis para compra ou cotação no Market Arqdor.
+                </p>
+              </div>
+              <Badge variant="outline">{fornecedores.length} fornecedor(es)</Badge>
+            </div>
+          </div>
+
+          {fornecedores.length === 0 ? (
+            <div className="rounded-xl border border-dashed bg-white p-14 text-center">
+              <Users className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
+              <p className="text-sm font-medium">Nenhum fornecedor disponível</p>
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {fornecedores.map((fornecedor, index) => (
+                <Card key={fornecedor.tenantId} className="bg-white">
+                  <CardContent className="p-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
+                          <Building2 className="h-5 w-5" />
+                        </span>
+                        <div>
+                          <p className="text-sm font-semibold">
+                            Fornecedor {String(index + 1).padStart(2, "0")}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Parceiro do ecossistema VendorAI
+                          </p>
+                        </div>
+                      </div>
+                      <Badge className="bg-emerald-50 text-emerald-700 hover:bg-emerald-50">
+                        Verificado
+                      </Badge>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      <div className="rounded-lg bg-slate-50 p-3">
+                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          Ofertas
+                        </p>
+                        <p className="mt-1 text-sm font-semibold">{fornecedor.itens.length}</p>
+                      </div>
+                      <div className="rounded-lg bg-slate-50 p-3">
+                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          Categorias
+                        </p>
+                        <p className="mt-1 text-sm font-semibold">
+                          {fornecedor.categorias.size}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-1.5">
+                      {[...fornecedor.categorias].slice(0, 4).map((categoria) => (
+                        <Badge key={categoria} variant="outline" className="font-normal">
+                          {categoria}
+                        </Badge>
+                      ))}
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      className="mt-4 w-full justify-between"
+                      onClick={() => {
+                        const firstCategory = [...fornecedor.categorias][0];
+                        if (firstCategory) setCatFilter(firstCategory);
+                        setActiveTab("market");
+                      }}
+                    >
+                      Ver ofertas
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="pedidos">
+          {pedidosLoading && (
             <div className="space-y-2">
-              {[1,2,3].map(i => <Skeleton key={i} className="h-14 rounded-lg" />)}
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-16 rounded-lg" />
+              ))}
             </div>
           )}
-          {!meusProdutosLoading && meusProdutosLoaded && meusProdutos.length === 0 && (
-            <div className="rounded-lg border border-dashed p-12 text-center">
-              <Package className="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" />
-              <p className="font-medium text-sm">Você ainda não publicou produtos</p>
-              <p className="text-xs text-muted-foreground mt-1">Adicione um produto no Catálogo e marque "Publicar no Marketplace".</p>
+
+          {!pedidosLoading && pedidosLoaded && pedidos.length === 0 && (
+            <div className="rounded-xl border border-dashed bg-white p-12 text-center">
+              <ReceiptText className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
+              <p className="text-sm font-medium">Nenhum pedido realizado</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Compras e solicitações feitas no Market aparecem aqui.
+              </p>
             </div>
           )}
-          {!meusProdutosLoading && meusProdutos.length > 0 && (
-            <div className="rounded-lg border overflow-hidden">
+
+          {!pedidosLoading && pedidos.length > 0 && (
+            <div className="overflow-hidden rounded-xl border bg-white">
               <table className="w-full text-sm">
-                <thead className="bg-muted/50 border-b">
+                <thead className="border-b bg-slate-50/70">
                   <tr>
-                    <th className="text-left px-4 py-3 font-medium">Produto</th>
-                    <th className="text-left px-4 py-3 font-medium">Categoria</th>
-                    <th className="text-right px-4 py-3 font-medium">Preço</th>
-                    <th className="text-right px-4 py-3 font-medium">Vendas</th>
-                    <th className="text-center px-4 py-3 font-medium">Ativo</th>
+                    <th className="px-4 py-3 text-left font-medium">Data</th>
+                    <th className="px-4 py-3 text-left font-medium">Item</th>
+                    <th className="px-4 py-3 text-right font-medium">Qtd</th>
+                    <th className="px-4 py-3 text-right font-medium">Total</th>
+                    <th className="px-4 py-3 text-center font-medium">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {meusProdutos.map(p => (
-                    <tr key={p.id} className="hover:bg-muted/30">
+                  {pedidos.map((p) => {
+                    const st =
+                      STATUS_PEDIDO[p.status ?? "pendente"] ??
+                      STATUS_PEDIDO.pendente;
+
+                    return (
+                      <tr key={p.id} className="hover:bg-slate-50/60">
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {fmtDate(p.createdAt)}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                          {p.itemId.slice(0, 8)}…
+                        </td>
+                        <td className="px-4 py-3 text-right">{p.quantidade ?? "—"}</td>
+                        <td className="px-4 py-3 text-right font-medium">
+                          {p.valorTotal ? fmt(Number(p.valorTotal)) : "—"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex justify-center">
+                            <span
+                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${st.cls}`}
+                            >
+                              {st.label}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="tracking" className="space-y-4">
+          <div className="rounded-xl border bg-white p-5">
+            <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
+              <div>
+                <h2 className="text-base font-semibold">Rastreamento das demandas</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Cada solicitação recebe um código AMD e mantém a trilha completa da operação.
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => loadDemands(true)}>
+                Atualizar
+              </Button>
+            </div>
+          </div>
+
+          {demandsLoading && (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
+            </div>
+          )}
+
+          {!demandsLoading && demandsLoaded && demands.length === 0 && (
+            <div className="rounded-xl border border-dashed bg-white p-12 text-center">
+              <History className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
+              <p className="text-sm font-medium">Nenhuma demanda rastreada ainda</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Ao gerar uma cotação a partir do orçamento, o código AMD será criado automaticamente.
+              </p>
+            </div>
+          )}
+
+          {!demandsLoading && demands.length > 0 && (
+            <div className="space-y-3">
+              {demands.map((demand) => {
+                const isOpen = ["open", "quoting", "partially_closed"].includes(demand.status);
+                return (
+                  <Card key={demand.id} className="bg-white">
+                    <CardContent className="p-5">
+                      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-mono text-sm font-bold text-emerald-800">
+                              {demand.demand_code}
+                            </span>
+                            <Badge variant="outline">{demand.status}</Badge>
+                            {(demand.risk_flags?.length ?? 0) > 0 && (
+                              <Badge className="bg-amber-50 text-amber-800 hover:bg-amber-50">
+                                Revisão de risco
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="mt-2 truncate text-sm font-medium">
+                            {demand.title || "Demanda do Market Arqdor"}
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                            <span>{demand.package_count} pacote(s)</span>
+                            <span>{demand.event_count} evento(s)</span>
+                            <span>Criada em {fmtDate(demand.created_at)}</span>
+                            {demand.external_supplier_name && (
+                              <span>Fechado com {demand.external_supplier_name}</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <Button variant="outline" size="sm" onClick={() => openDemandDetail(demand)}>
+                            <History className="mr-2 h-4 w-4" />
+                            Ver histórico
+                          </Button>
+                          {isOpen && (
+                            <Button variant="outline" size="sm" onClick={() => openExternalClose(demand)}>
+                              <XCircle className="mr-2 h-4 w-4" />
+                              Fechei fora do Market
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+
+        {isSuperAdmin && (
+          <TabsContent value="commission" className="space-y-4">
+            <div className="rounded-xl border bg-white p-5">
+              <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
+                <div>
+                  <h2 className="text-base font-semibold">Regras de comissão do Market</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Padrão global de 10%, com exceções por tenant, categoria, linha, produto, SKU ou marca e regras temporárias.
+                  </p>
+                </div>
+                <Button
+                  className="bg-emerald-700 hover:bg-emerald-800"
+                  onClick={() => { resetCommissionRuleForm(); setCommissionRuleOpen(true); }}
+                >
+                  Nova regra
+                </Button>
+              </div>
+            </div>
+
+            {commissionRulesLoading && <Skeleton className="h-48 rounded-xl" />}
+
+            {!commissionRulesLoading && (
+              <div className="space-y-3">
+                {commissionRules.map((rule) => (
+                  <Card key={rule.id} className="bg-white">
+                    <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold">{rule.name || "Regra de comissão"}</span>
+                          <Badge variant="outline">{rule.scope_type}</Badge>
+                          <Badge variant="outline">{rule.rule_kind}</Badge>
+                          {rule.campaign_code && <Badge className="bg-violet-50 text-violet-700">{rule.campaign_code}</Badge>}
+                        </div>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          {Number(rule.percentage).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% •
+                          {" "}{rule.tenant_name || rule.tenant_id || "Todos os tenants"}
+                          {rule.scope_key ? ` • ${rule.scope_key}` : ""}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {rule.starts_at ? `Início ${new Date(rule.starts_at).toLocaleString("pt-BR")}` : "Início imediato"}
+                          {" • "}
+                          {rule.ends_at ? `até ${new Date(rule.ends_at).toLocaleString("pt-BR")}` : "sem data final"}
+                          {" • "}prioridade {rule.priority}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Label className="text-xs">{rule.active ? "Ativa" : "Inativa"}</Label>
+                        <Switch checked={rule.active} onCheckedChange={() => toggleCommissionRule(rule)} />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        )}
+
+        <TabsContent value="vitrine">
+          {meusProdutosLoading && (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-16 rounded-lg" />
+              ))}
+            </div>
+          )}
+
+          {!meusProdutosLoading && meusProdutosLoaded && meusProdutos.length === 0 && (
+            <div className="rounded-xl border border-dashed bg-white p-12 text-center">
+              <Package className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
+              <p className="text-sm font-medium">Sua vitrine ainda está vazia</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Publique itens do catálogo no Market Arqdor para receber pedidos.
+              </p>
+            </div>
+          )}
+
+          {!meusProdutosLoading && meusProdutos.length > 0 && (
+            <div className="overflow-hidden rounded-xl border bg-white">
+              <table className="w-full text-sm">
+                <thead className="border-b bg-slate-50/70">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-medium">Produto</th>
+                    <th className="px-4 py-3 text-left font-medium">Categoria</th>
+                    <th className="px-4 py-3 text-right font-medium">Preço</th>
+                    <th className="px-4 py-3 text-right font-medium">Pedidos</th>
+                    <th className="px-4 py-3 text-center font-medium">Publicado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {meusProdutos.map((p) => (
+                    <tr key={p.id} className="hover:bg-slate-50/60">
                       <td className="px-4 py-3">
-                        <p className="font-medium truncate max-w-52">{p.nome}</p>
-                        {p.descricao && <p className="text-xs text-muted-foreground truncate max-w-52">{p.descricao}</p>}
+                        <p className="max-w-60 truncate font-medium">{p.nome}</p>
+                        {p.descricao && (
+                          <p className="max-w-60 truncate text-xs text-muted-foreground">
+                            {p.descricao}
+                          </p>
+                        )}
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground">{p.categoria ?? "—"}</td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {p.categoria ?? "—"}
+                      </td>
                       <td className="px-4 py-3 text-right font-medium">
-                        {p.preco && Number(p.preco) > 0 ? fmt(Number(p.preco)) : "—"}
+                        {p.preco && Number(p.preco) > 0 ? fmt(Number(p.preco)) : "Sob consulta"}
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="inline-flex items-center gap-1">
-                          <TrendingUp className="h-3.5 w-3.5 text-green-600" />
-                          {p.totalVendas}
-                        </span>
-                      </td>
+                      <td className="px-4 py-3 text-right">{p.totalVendas}</td>
                       <td className="px-4 py-3">
                         <div className="flex justify-center">
                           <Switch
@@ -407,46 +1369,60 @@ export default function Marketplace() {
           )}
         </TabsContent>
 
-        {/* ── ABA: PEDIDOS ────────────────────────────────────────────── */}
-        <TabsContent value="pedidos" className="mt-4">
-          {pedidosLoading && (
+        <TabsContent value="vendas">
+          {vendasLoading && (
             <div className="space-y-2">
-              {[1,2,3].map(i => <Skeleton key={i} className="h-14 rounded-lg" />)}
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-16 rounded-lg" />
+              ))}
             </div>
           )}
-          {!pedidosLoading && pedidosLoaded && pedidos.length === 0 && (
-            <div className="rounded-lg border border-dashed p-12 text-center">
-              <ReceiptText className="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" />
-              <p className="font-medium text-sm">Nenhum pedido realizado</p>
-              <p className="text-xs text-muted-foreground mt-1">Explore o marketplace e compre produtos de outros arquitetos.</p>
+
+          {!vendasLoading && vendasLoaded && vendas.length === 0 && (
+            <div className="rounded-xl border border-dashed bg-white p-12 text-center">
+              <Store className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" />
+              <p className="text-sm font-medium">Nenhuma venda ainda</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Pedidos recebidos pela sua vitrine aparecerão aqui.
+              </p>
             </div>
           )}
-          {!pedidosLoading && pedidos.length > 0 && (
-            <div className="rounded-lg border overflow-hidden">
+
+          {!vendasLoading && vendas.length > 0 && (
+            <div className="overflow-hidden rounded-xl border bg-white">
               <table className="w-full text-sm">
-                <thead className="bg-muted/50 border-b">
+                <thead className="border-b bg-slate-50/70">
                   <tr>
-                    <th className="text-left px-4 py-3 font-medium">Data</th>
-                    <th className="text-left px-4 py-3 font-medium">Item</th>
-                    <th className="text-right px-4 py-3 font-medium">Qtd</th>
-                    <th className="text-right px-4 py-3 font-medium">Total</th>
-                    <th className="text-center px-4 py-3 font-medium">Status</th>
+                    <th className="px-4 py-3 text-left font-medium">Data</th>
+                    <th className="px-4 py-3 text-left font-medium">Produto</th>
+                    <th className="px-4 py-3 text-right font-medium">Qtd</th>
+                    <th className="px-4 py-3 text-right font-medium">Total</th>
+                    <th className="px-4 py-3 text-center font-medium">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {pedidos.map(p => {
-                    const st = STATUS_PEDIDO[p.status ?? "pendente"] ?? STATUS_PEDIDO["pendente"];
+                  {vendas.map(({ pedido, itemNome }) => {
+                    const st =
+                      STATUS_PEDIDO[pedido.status ?? "pendente"] ??
+                      STATUS_PEDIDO.pendente;
+
                     return (
-                      <tr key={p.id} className="hover:bg-muted/30">
-                        <td className="px-4 py-3 text-muted-foreground">{fmtDate(p.createdAt)}</td>
-                        <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{p.itemId.slice(0, 8)}…</td>
-                        <td className="px-4 py-3 text-right">{p.quantidade ?? "—"}</td>
-                        <td className="px-4 py-3 text-right font-medium">
-                          {p.valorTotal ? fmt(Number(p.valorTotal)) : "—"}
+                      <tr key={pedido.id} className="hover:bg-slate-50/60">
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {fmtDate(pedido.createdAt)}
+                        </td>
+                        <td className="px-4 py-3 font-medium">{itemNome}</td>
+                        <td className="px-4 py-3 text-right">
+                          {pedido.quantidade ?? "—"}
+                        </td>
+                        <td className="px-4 py-3 text-right font-medium text-emerald-700">
+                          {pedido.valorTotal ? fmt(Number(pedido.valorTotal)) : "—"}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex justify-center">
-                            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${st.cls}`}>
+                            <span
+                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${st.cls}`}
+                            >
                               {st.label}
                             </span>
                           </div>
@@ -459,91 +1435,421 @@ export default function Marketplace() {
             </div>
           )}
         </TabsContent>
-
-        {/* ── ABA: VENDAS ─────────────────────────────────────────────── */}
-        <TabsContent value="vendas" className="mt-4 space-y-4">
-          {vendasLoading && (
-            <div className="space-y-2">
-              {[1,2,3].map(i => <Skeleton key={i} className="h-14 rounded-lg" />)}
-            </div>
-          )}
-          {!vendasLoading && vendasLoaded && (
-            <>
-              {/* Summary card */}
-              {totalComissoes > 0 && (
-                <div className="inline-flex items-center gap-3 rounded-lg border bg-amber-50 border-amber-200 px-4 py-3">
-                  <DollarSign className="h-5 w-5 text-amber-600" />
-                  <div>
-                    <p className="text-xs text-amber-700">Total em comissões pagas</p>
-                    <p className="font-bold text-amber-800">{fmt(totalComissoes)}</p>
-                  </div>
-                </div>
-              )}
-
-              {vendas.length === 0 ? (
-                <div className="rounded-lg border border-dashed p-12 text-center">
-                  <TrendingUp className="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" />
-                  <p className="font-medium text-sm">Nenhuma venda ainda</p>
-                  <p className="text-xs text-muted-foreground mt-1">Ative seus produtos no Marketplace para começar a vender.</p>
-                </div>
-              ) : (
-                <div className="rounded-lg border overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted/50 border-b">
-                      <tr>
-                        <th className="text-left px-4 py-3 font-medium">Data</th>
-                        <th className="text-left px-4 py-3 font-medium">Produto</th>
-                        <th className="text-right px-4 py-3 font-medium">Qtd</th>
-                        <th className="text-right px-4 py-3 font-medium">Total</th>
-                        <th className="text-right px-4 py-3 font-medium">Comissão</th>
-                        <th className="text-center px-4 py-3 font-medium">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {vendas.map(({ pedido, itemNome }) => {
-                        const st = STATUS_PEDIDO[pedido.status ?? "pendente"] ?? STATUS_PEDIDO["pendente"];
-                        return (
-                          <tr key={pedido.id} className="hover:bg-muted/30">
-                            <td className="px-4 py-3 text-muted-foreground">{fmtDate(pedido.createdAt)}</td>
-                            <td className="px-4 py-3 font-medium max-w-52 truncate">{itemNome}</td>
-                            <td className="px-4 py-3 text-right">{pedido.quantidade ?? "—"}</td>
-                            <td className="px-4 py-3 text-right font-medium text-green-700">
-                              {pedido.valorTotal ? fmt(Number(pedido.valorTotal)) : "—"}
-                            </td>
-                            <td className="px-4 py-3 text-right text-amber-700">
-                              {pedido.comissao ? fmt(Number(pedido.comissao)) : "—"}
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex justify-center">
-                                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${st.cls}`}>
-                                  {st.label}
-                                </span>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </>
-          )}
-        </TabsContent>
       </Tabs>
 
-      {/* ── Dialog: Comprar ─────────────────────────────────────────────── */}
-      <Dialog open={!!buying} onOpenChange={() => setBuying(null)}>
-        <DialogContent className="max-w-sm">
+      <section className="grid gap-4 lg:grid-cols-3">
+        <Card className="bg-white">
+          <CardContent className="p-5">
+            <div className="flex items-center gap-2">
+              <ClipboardList className="h-4 w-4 text-emerald-700" />
+              <p className="text-sm font-semibold">Cotação orientada pelo orçamento</p>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">
+              A entrada pelo orçamento deve filtrar fornecedores pela atividade e pelos
+              itens selecionados, preservando quantidade, unidade, especificação e projeto.
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white">
+          <CardContent className="p-5">
+            <div className="flex items-center gap-2">
+              <Star className="h-4 w-4 text-emerald-700" />
+              <p className="text-sm font-semibold">Reputação e qualidade</p>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">
+              A classificação do parceiro deve considerar qualidade, pontualidade,
+              atendimento, histórico de pedidos e avaliações do ecossistema.
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white">
+          <CardContent className="p-5">
+            <div className="flex items-center gap-2">
+              <MapPin className="h-4 w-4 text-emerald-700" />
+              <p className="text-sm font-semibold">Cobertura e logística</p>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">
+              Região atendida, retirada, entrega, prazo e logística permanecem ligados
+              ao mesmo motor comercial utilizado pelo Praça.ai.
+            </p>
+          </CardContent>
+        </Card>
+      </section>
+
+      <Dialog open={!!pendingPayment} onOpenChange={(open) => { if (!open) resetPayment(); }}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Comprar — {buying?.nome}</DialogTitle>
+            <DialogTitle>Pagamento • {pendingPayment?.demandCode}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 mt-2">
-            {buying?.preco && Number(buying.preco) > 0 && (
-              <div className="rounded-lg bg-muted p-3">
-                <p className="text-xs text-muted-foreground">Preço unitário</p>
-                <p className="font-bold text-lg">{fmt(Number(buying.preco))}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">+ 10% comissão VendorAI</p>
+
+          <div className="space-y-4">
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-900">
+              A cobrança é criada no Asaas do fornecedor com o split da comissão do Market já aplicado.
+              O lançamento permanece como devido até a liquidação confirmada pelo provedor.
+            </div>
+
+            {!paymentIntentId && (
+              <>
+                <div className="space-y-1.5">
+                  <Label>Forma de pagamento</Label>
+                  <Select value={paymentBillingType} onValueChange={(v) => setPaymentBillingType(v as "PIX" | "CREDIT_CARD")}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PIX">PIX</SelectItem>
+                      <SelectItem value="CREDIT_CARD">Cartão de crédito</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>CPF ou CNPJ do pagador</Label>
+                  <Input value={paymentDocument} onChange={(e) => setPaymentDocument(e.target.value)} placeholder="Somente números ou formatado" />
+                </div>
+
+                <Button
+                  className="w-full bg-emerald-700 hover:bg-emerald-800"
+                  onClick={createMarketPayment}
+                  disabled={creatingPayment}
+                >
+                  {creatingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {paymentBillingType === "PIX" ? "Gerar PIX" : "Ir para pagamento com cartão"}
+                </Button>
+              </>
+            )}
+
+            {pixData && (
+              <div className="space-y-3 rounded-xl border p-4 text-center">
+                <p className="text-sm font-semibold">PIX pronto para pagamento</p>
+                <img
+                  src={`data:image/png;base64,${pixData.encodedImage}`}
+                  alt="QR Code PIX"
+                  className="mx-auto h-52 w-52 rounded-lg border bg-white p-2"
+                />
+                <div className="rounded-lg bg-slate-50 p-3 text-left">
+                  <p className="mb-1 text-[10px] font-semibold uppercase text-muted-foreground">PIX copia e cola</p>
+                  <p className="break-all font-mono text-xs">{pixData.payload}</p>
+                </div>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => navigator.clipboard?.writeText(pixData.payload)}
+                >
+                  Copiar código PIX
+                </Button>
+              </div>
+            )}
+
+            {paymentIntentId && paymentBillingType === "CREDIT_CARD" && (
+              <div className="space-y-3 rounded-xl border p-4">
+                <p className="text-sm font-semibold">Checkout seguro criado</p>
+                <p className="text-xs text-muted-foreground">
+                  Os dados do cartão são informados no ambiente seguro do provedor e não ficam armazenados no VendorAI.
+                </p>
+                {paymentCheckoutUrl && (
+                  <Button className="w-full" onClick={() => window.open(paymentCheckoutUrl, "_blank", "noopener,noreferrer")}>
+                    Abrir checkout do cartão
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {paymentIntentId && (
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={checkMarketPayment} disabled={checkingPayment}>
+                  {checkingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Verificar pagamento
+                </Button>
+                <Button variant="ghost" onClick={resetPayment}>Fechar</Button>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={commissionRuleOpen} onOpenChange={setCommissionRuleOpen}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Nova regra de comissão</DialogTitle>
+          </DialogHeader>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>Nome da regra</Label>
+              <Input value={ruleName} onChange={(e) => setRuleName(e.target.value)} placeholder="Ex.: Campanha Esquadrias Dezembro" />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Tipo</Label>
+              <Select value={ruleKind} onValueChange={setRuleKind}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="standard">Padrão</SelectItem>
+                  <SelectItem value="campaign">Campanha</SelectItem>
+                  <SelectItem value="promotion">Promoção</SelectItem>
+                  <SelectItem value="exception">Exceção</SelectItem>
+                  <SelectItem value="negotiated">Negociada</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Percentual final</Label>
+              <Input type="number" min="0" max="100" step="0.01" value={rulePercentage} onChange={(e) => setRulePercentage(e.target.value)} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Escopo</Label>
+              <Select value={ruleScopeType} onValueChange={setRuleScopeType}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="global">Global</SelectItem>
+                  <SelectItem value="tenant">Tenant</SelectItem>
+                  <SelectItem value="category">Categoria</SelectItem>
+                  <SelectItem value="product_line">Linha de produto</SelectItem>
+                  <SelectItem value="product">Produto</SelectItem>
+                  <SelectItem value="sku">SKU</SelectItem>
+                  <SelectItem value="brand">Marca</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {ruleScopeType !== "global" && (
+              <div className="space-y-1.5">
+                <Label>Tenant ID</Label>
+                <Input value={ruleTenantId} onChange={(e) => setRuleTenantId(e.target.value)} placeholder="Tenant que receberá a regra" />
+              </div>
+            )}
+
+            {!["global", "tenant"].includes(ruleScopeType) && (
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>Chave do escopo</Label>
+                <Input value={ruleScopeKey} onChange={(e) => setRuleScopeKey(e.target.value)} placeholder="ID, SKU, marca, categoria ou linha" />
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label>Código da campanha</Label>
+              <Input value={ruleCampaignCode} onChange={(e) => setRuleCampaignCode(e.target.value)} placeholder="Opcional" />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Prioridade</Label>
+              <Input type="number" value={rulePriority} onChange={(e) => setRulePriority(e.target.value)} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Início</Label>
+              <Input type="datetime-local" value={ruleStartsAt} onChange={(e) => setRuleStartsAt(e.target.value)} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Fim</Label>
+              <Input type="datetime-local" value={ruleEndsAt} onChange={(e) => setRuleEndsAt(e.target.value)} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Pedido mínimo</Label>
+              <Input type="number" min="0" step="0.01" value={ruleMinOrder} onChange={(e) => setRuleMinOrder(e.target.value)} placeholder="Opcional" />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Pedido máximo</Label>
+              <Input type="number" min="0" step="0.01" value={ruleMaxOrder} onChange={(e) => setRuleMaxOrder(e.target.value)} placeholder="Opcional" />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Comissão mínima (R$)</Label>
+              <Input type="number" min="0" step="0.01" value={ruleMinCommission} onChange={(e) => setRuleMinCommission(e.target.value)} placeholder="Opcional" />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Comissão máxima (R$)</Label>
+              <Input type="number" min="0" step="0.01" value={ruleMaxCommission} onChange={(e) => setRuleMaxCommission(e.target.value)} placeholder="Opcional" />
+            </div>
+
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Formas de pagamento da regra</Label>
+              <div className="flex flex-wrap gap-3">
+                {["PIX", "CREDIT_CARD", "BOLETO"].map((billing) => (
+                  <label key={billing} className="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={ruleBillingTypes.includes(billing)}
+                      onChange={(e) => setRuleBillingTypes((current) =>
+                        e.target.checked ? [...current, billing] : current.filter((x) => x !== billing)
+                      )}
+                    />
+                    {billing}
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setCommissionRuleOpen(false)}>Cancelar</Button>
+            <Button
+              className="bg-emerald-700 hover:bg-emerald-800"
+              onClick={saveCommissionRule}
+              disabled={
+                savingCommissionRule ||
+                Number(rulePercentage) < 0 ||
+                Number(rulePercentage) > 100 ||
+                (ruleScopeType !== "global" && !ruleTenantId.trim()) ||
+                (!["global", "tenant"].includes(ruleScopeType) && !ruleScopeKey.trim())
+              }
+            >
+              {savingCommissionRule && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Salvar regra
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!demandDetail || demandDetailLoading} onOpenChange={() => setDemandDetail(null)}>
+        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {demandDetail?.demand?.demand_code || "Histórico da demanda"}
+            </DialogTitle>
+          </DialogHeader>
+
+          {demandDetailLoading && <Skeleton className="h-48 rounded-xl" />}
+
+          {demandDetail && (
+            <div className="space-y-4">
+              <div className="grid gap-2 sm:grid-cols-3">
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <p className="text-[10px] uppercase text-muted-foreground">Status</p>
+                  <p className="mt-1 text-sm font-semibold">{demandDetail.demand.status}</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <p className="text-[10px] uppercase text-muted-foreground">Pacotes</p>
+                  <p className="mt-1 text-sm font-semibold">{demandDetail.demand.package_count ?? "—"}</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <p className="text-[10px] uppercase text-muted-foreground">Comissão</p>
+                  <p className="mt-1 text-sm font-semibold">
+                    {demandDetail.commissions?.length
+                      ? fmt(demandDetail.commissions.reduce((sum: number, x: any) => sum + Number(x.commission_amount || 0), 0))
+                      : "Sem lançamento"}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold">Linha do tempo</h3>
+                <div className="mt-3 space-y-2">
+                  {demandDetail.events.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Nenhum evento registrado.</p>
+                  ) : (
+                    demandDetail.events.map((event) => (
+                      <div key={event.id} className="rounded-lg border p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-xs font-semibold">{event.event_type}</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {new Date(event.created_at).toLocaleString("pt-BR")}
+                          </p>
+                        </div>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          {event.actor_type} • {event.reference_type || "operação"}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!closingDemand} onOpenChange={() => setClosingDemand(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Fechei fora do Market — {closingDemand?.demand_code}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+              O encerramento externo permanece vinculado à demanda original. Se o fornecedor tiver sido
+              apresentado ou convidado pelo Market, o sistema identifica a correspondência e preserva a
+              comissão e a trilha de auditoria.
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Com quem fechou *</Label>
+              <Input value={externalSupplierName} onChange={(e) => setExternalSupplierName(e.target.value)} placeholder="Empresa / fornecedor" />
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>CNPJ/CPF</Label>
+                <Input value={externalSupplierDocument} onChange={(e) => setExternalSupplierDocument(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Contato</Label>
+                <Input value={externalSupplierContact} onChange={(e) => setExternalSupplierContact(e.target.value)} placeholder="Telefone ou e-mail" />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Valor fechado *</Label>
+              <Input type="number" min="0" step="0.01" value={externalCloseValue} onChange={(e) => setExternalCloseValue(e.target.value)} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Por que fechou fora do Market? *</Label>
+              <textarea
+                className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={externalCloseReason}
+                onChange={(e) => setExternalCloseReason(e.target.value)}
+                placeholder="Ex.: prazo, condição comercial, fornecedor já homologado, disponibilidade..."
+              />
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setClosingDemand(null)}>Cancelar</Button>
+              <Button
+                className="bg-emerald-700 hover:bg-emerald-800"
+                onClick={submitExternalClose}
+                disabled={
+                  submittingExternalClose ||
+                  !externalSupplierName.trim() ||
+                  !externalCloseReason.trim() ||
+                  Number(externalCloseValue) <= 0
+                }
+              >
+                {submittingExternalClose ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Registrar encerramento
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!buying} onOpenChange={() => setBuying(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{buying?.preco && Number(buying.preco) > 0 ? "Comprar" : "Solicitar"} — {buying?.nome}</DialogTitle>
+          </DialogHeader>
+
+          <div className="mt-2 space-y-4">
+            {buying?.preco && Number(buying.preco) > 0 ? (
+              <div className="rounded-lg border border-emerald-100 bg-emerald-50/60 p-3">
+                <p className="text-xs text-emerald-800/70">Preço unitário</p>
+                <p className="text-lg font-bold text-emerald-900">
+                  {fmt(Number(buying.preco))}
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-lg border bg-slate-50 p-3">
+                <p className="text-sm font-medium">Valor sob consulta</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  A solicitação será vinculada ao projeto selecionado quando informado.
+                </p>
               </div>
             )}
 
@@ -553,35 +1859,62 @@ export default function Marketplace() {
                 type="number"
                 min="1"
                 value={buyQty}
-                onChange={e => setBuyQty(e.target.value)}
+                onChange={(e) => setBuyQty(e.target.value)}
               />
             </div>
 
             <div className="space-y-1.5">
-              <Label>Vincular a projeto <span className="text-muted-foreground text-xs">(opcional)</span></Label>
+              <Label>
+                Projeto <span className="text-xs text-muted-foreground">(recomendado)</span>
+              </Label>
               <Select value={buyProjeto} onValueChange={setBuyProjeto}>
-                <SelectTrigger><SelectValue placeholder="Nenhum projeto" /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione um projeto" />
+                </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none__">Nenhum projeto</SelectItem>
-                  {projetos.map(p => <SelectItem key={p.id} value={p.id}>{p.titulo}</SelectItem>)}
+                  <SelectItem value="__none__">Sem projeto</SelectItem>
+                  {projetos.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.titulo}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               {buyProjeto !== "__none__" && (
-                <p className="text-xs text-primary">Item será adicionado ao orçamento do projeto.</p>
+                <p className="text-xs text-emerald-700">
+                  O item ficará ligado ao orçamento e histórico do projeto.
+                </p>
               )}
             </div>
 
             {buying?.preco && Number(buying.preco) > 0 && Number(buyQty) > 0 && (
               <div className="rounded-lg border p-3 text-right">
                 <p className="text-xs text-muted-foreground">Total estimado</p>
-                <p className="font-bold">{fmt(Number(buying.preco) * Number(buyQty))}</p>
+                <p className="font-bold">
+                  {fmt(Number(buying.preco) * Number(buyQty))}
+                </p>
               </div>
             )}
 
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setBuying(null)}>Cancelar</Button>
-              <Button onClick={handleComprar} disabled={submittingBuy || !buyQty || Number(buyQty) < 1}>
-                {submittingBuy ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Comprando…</> : "Confirmar compra"}
+              <Button variant="outline" onClick={() => setBuying(null)}>
+                Cancelar
+              </Button>
+              <Button
+                className="bg-emerald-700 hover:bg-emerald-800"
+                onClick={handleComprar}
+                disabled={submittingBuy || !buyQty || Number(buyQty) < 1}
+              >
+                {submittingBuy ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Processando…
+                  </>
+                ) : buying?.preco && Number(buying.preco) > 0 ? (
+                  "Confirmar compra"
+                ) : (
+                  "Enviar solicitação"
+                )}
               </Button>
             </div>
           </div>

@@ -74,6 +74,7 @@ import {
 import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { authenticate } from "../middlewares/auth.js";
+import { vendorPool } from "../lib/vendorDb";
 import { objectStorageClient, ObjectStorageService } from "../lib/objectStorage.js";
 import { captureGeneratedMedia } from "../services/media-library.js";
 import { iniciarRender, processarSolicitacao } from "../services/blenderService.js";
@@ -6149,11 +6150,11 @@ router.patch("/arch/marketplace/:itemId", authenticate, async (req, res) => {
 // POST /api/arch/marketplace/:itemId/comprar
 router.post("/arch/marketplace/:itemId/comprar", authenticate, async (req, res) => {
   const itemId = String(req.params.itemId);
-  const tid    = tenantId(req);
+  const tid = tenantId(req);
 
   const bodySchema = z.object({
     quantidade: z.coerce.number().positive(),
-    projetoId:  z.string().optional(),
+    projetoId: z.string().optional(),
   });
 
   const parsed = bodySchema.safeParse(req.body);
@@ -6172,56 +6173,298 @@ router.post("/arch/marketplace/:itemId/comprar", authenticate, async (req, res) 
 
   const { quantidade, projetoId } = parsed.data;
   const valorUnitario = Number(item.preco ?? 0);
-  const valorTotal    = quantidade * valorUnitario;
-  const comissao      = valorTotal * 0.10;
-
-  const [pedido] = await db
-    .insert(archMarketplacePedidosTable)
-    .values({
-      compradorTenantId: tid,
-      itemId,
-      projetoId:         projetoId ?? null,
-      quantidade:        String(quantidade),
-      valorUnitario:     String(valorUnitario),
-      valorTotal:        String(valorTotal.toFixed(2)),
-      comissao:          String(comissao.toFixed(2)),
-    })
-    .returning();
-
-  // Incrementar totalVendas do item
-  await db
-    .update(archMarketplaceItemsTable)
-    .set({ totalVendas: sql`${archMarketplaceItemsTable.totalVendas} + 1` })
-    .where(eq(archMarketplaceItemsTable.id, itemId));
-
-  // Se projetoId, adicionar ao orçamento do projeto
-  if (projetoId) {
-    const vTotal = valorTotal.toFixed(2);
-    await db.insert(archOrcamentoItensTable).values({
-      projetoId,
-      ambienteId:    null,
-      categoria:     item.categoria ?? "Marketplace",
-      descricao:     item.nome,
-      quantidade:    String(quantidade),
-      unidade:       "un",
-      valorUnitario: String(valorUnitario),
-      valorTotal:    vTotal,
-      fornecedor:    item.vendedorTenantId,
-      produtoId:     itemId,
-    });
-    await recalcularOrcamentoTotal(projetoId);
+  const valorTotal = quantidade * valorUnitario;
+  if (valorTotal <= 0) {
+    return res.status(422).json({ error: "Este item deve seguir pelo fluxo de solicitação/cotação." });
   }
 
-  // Notificar vendedor
-  await db.insert(notificationsTable).values({
-    tenantId: item.vendedorTenantId,
-    title:    "Nova venda no Marketplace",
-    message:  `Seu produto "${item.nome}" foi comprado (qtd: ${quantidade}). Valor: R$ ${valorTotal.toFixed(2)} — Comissão VendorAI: R$ ${comissao.toFixed(2)}.`,
-    type:     "info",
-    category: "general",
-  });
+  const buyerTenant = await vendorPool.query(
+    `SELECT id,name FROM tenants WHERE id=$1 LIMIT 1`,
+    [tid],
+  );
+  let masterProduct: any = null;
+  if (item.masterProductId) {
+    const productMeta = await vendorPool.query(
+      `SELECT p.id,p.sku,p.marca,p.unidade,COALESCE(c.nome,$2) AS categoria
+         FROM produtos_catalogo p
+         LEFT JOIN categorias_produto c ON c.id=p.categoria_id
+        WHERE p.id=$1 AND p.tenant_id=$3 LIMIT 1`,
+      [item.masterProductId, item.categoria || null, item.vendedorTenantId],
+    );
+    masterProduct = productMeta.rows[0] || null;
+  }
 
-  return res.status(201).json({ pedido, comissao });
+  // Compatibilidade com anúncios antigos: todo item comercializável do Market
+  // precisa convergir para o produto mestre para usar pagamento, logística e ledger.
+  if (!masterProduct) {
+    const legacySku = `ARQDOR-${item.id.slice(0, 18).toUpperCase()}`;
+    const createdMaster = await vendorPool.query(
+      `INSERT INTO produtos_catalogo
+        (id,tenant_id,nome,sku,product_type,descricao,preco_base,unidade,ativo,
+         vende_no_arqdor,preco_arqdor,project_library_enabled,created_at,updated_at)
+       VALUES(gen_random_uuid()::text,$1,$2,$3,'physical',$4,$5,'un',true,true,$5,true,now(),now())
+       ON CONFLICT DO NOTHING
+       RETURNING id,sku,marca,unidade`,
+      [item.vendedorTenantId,item.nome,legacySku,item.descricao || null,String(valorUnitario)],
+    );
+    if (createdMaster.rows[0]) {
+      masterProduct = { ...createdMaster.rows[0], categoria: item.categoria || null };
+    } else {
+      const existingMaster = await vendorPool.query(
+        `SELECT p.id,p.sku,p.marca,p.unidade,COALESCE(c.nome,$2) AS categoria
+           FROM produtos_catalogo p
+           LEFT JOIN categorias_produto c ON c.id=p.categoria_id
+          WHERE p.tenant_id=$1 AND p.sku=$3
+          ORDER BY p.created_at DESC LIMIT 1`,
+        [item.vendedorTenantId,item.categoria || null,legacySku],
+      );
+      masterProduct = existingMaster.rows[0] || null;
+    }
+    if (masterProduct?.id) {
+      await vendorPool.query(
+        `UPDATE arch_marketplace_items SET master_product_id=$1 WHERE id=$2 AND vendedor_tenant_id=$3`,
+        [masterProduct.id,item.id,item.vendedorTenantId],
+      );
+      (item as any).masterProductId = masterProduct.id;
+    }
+  }
+
+  const commissionContext = {
+    buyerTenantId: tid,
+    sellerTenantId: item.vendedorTenantId,
+    orderValue: valorTotal,
+  };
+  const resolvedRule = await vendorPool.query(
+    `SELECT * FROM public.arqdor_market_resolve_commission_v2(
+      $1,$2,$3,$4,$5,$6,$7::jsonb
+    )`,
+    [
+      item.vendedorTenantId,
+      item.categoria || masterProduct?.categoria || null,
+      item.categoria || masterProduct?.categoria || null,
+      item.masterProductId || null,
+      masterProduct?.sku || null,
+      masterProduct?.marca || null,
+      JSON.stringify(commissionContext),
+    ],
+  );
+  const rule = resolvedRule.rows[0] || null;
+  const commissionPercentage = Number(rule?.percentage ?? 10);
+  const rawCommission = valorTotal * commissionPercentage / 100;
+  const commissionMin = rule?.min_commission_amount == null ? null : Number(rule.min_commission_amount);
+  const commissionMax = rule?.max_commission_amount == null ? null : Number(rule.max_commission_amount);
+  const comissao = Math.max(
+    commissionMin ?? 0,
+    Math.min(rawCommission, commissionMax ?? Number.POSITIVE_INFINITY),
+  );
+
+  const client = await vendorPool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const demandResult = await client.query(
+      `INSERT INTO arqdor_market_demands
+        (demand_code,tenant_id,project_id,origin,status,requested_by,title,estimated_value,
+         commission_rule_id,commission_percentage,commission_base_value,commission_amount,
+         commission_status,opened_at,created_at,updated_at)
+       VALUES($1,$2,$3::uuid,'market','open',$4,$5,$6,$7::uuid,$8,$6,$9,'due',now(),now(),now())
+       RETURNING *`,
+      [
+        `AMD-${new Date().toISOString().slice(0,10).replaceAll("-","")}-${crypto.randomUUID().slice(0,8).toUpperCase()}`,
+        tid,
+        projetoId || null,
+        req.user?.sub ?? null,
+        `Compra Market — ${item.nome}`,
+        String(valorTotal.toFixed(2)),
+        rule?.rule_id || null,
+        String(commissionPercentage),
+        String(comissao.toFixed(2)),
+      ],
+    );
+    const demand = demandResult.rows[0];
+
+    const pedidoResult = await client.query(
+      `INSERT INTO arch_marketplace_pedidos
+        (id,comprador_tenant_id,item_id,projeto_id,quantidade,valor_unitario,valor_total,comissao,
+         market_demand_id,commission_rule_id,commission_percentage,payment_status,status,created_at)
+       VALUES(gen_random_uuid()::text,$1,$2,$3,$4,$5,$6,$7,$8::uuid,$9::uuid,$10,'pending','pendente',now())
+       RETURNING *`,
+      [
+        tid,
+        itemId,
+        projetoId || null,
+        String(quantidade),
+        String(valorUnitario),
+        String(valorTotal.toFixed(2)),
+        String(comissao.toFixed(2)),
+        demand.id,
+        rule?.rule_id || null,
+        String(commissionPercentage),
+      ],
+    );
+    const pedido = pedidoResult.rows[0];
+
+    let pracaOrderId: string | null = null;
+    let commissionEntryId: string | null = null;
+
+    if (masterProduct?.id) {
+      const order = await client.query(
+        `INSERT INTO praca_pedidos
+          (tenant_id,id_externo,idempotency_key,canal,status,moeda,subtotal_centavos,frete_centavos,
+           desconto_centavos,total_centavos,cliente_id,cliente_nome,endereco_entrega,observacoes,
+           market_demand_id,created_at,updated_at)
+         VALUES($1,$2,$3,'arqdor_market','recebido','BRL',$4,0,0,$4,$5,$6,'{}'::jsonb,$7,$8::uuid,now(),now())
+         RETURNING id`,
+        [
+          item.vendedorTenantId,
+          pedido.id,
+          `ARQDOR-${pedido.id}`,
+          Math.round(valorTotal * 100),
+          tid,
+          buyerTenant.rows[0]?.name || "Cliente Arqdor Market",
+          `Pedido originado no Market Arqdor • ${demand.demand_code}`,
+          demand.id,
+        ],
+      );
+      pracaOrderId = String(order.rows[0].id);
+
+      await client.query(
+        `INSERT INTO praca_pedido_itens
+          (tenant_id,pedido_id,produto_id,sku,nome_snapshot,quantidade,unidade,
+           valor_unitario_centavos,total_centavos,created_at)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,now())`,
+        [
+          item.vendedorTenantId,
+          pracaOrderId,
+          masterProduct.id,
+          masterProduct.sku || null,
+          item.nome,
+          String(quantidade),
+          masterProduct.unidade || "un",
+          Math.round(valorUnitario * 100),
+          Math.round(valorTotal * 100),
+        ],
+      );
+
+      const entry = await client.query(
+        `INSERT INTO arqdor_market_commission_entries
+          (demand_id,tenant_id,praca_order_id,supplier_id,supplier_name,source,rule_id,percentage,
+           base_value,commission_amount,status,rule_snapshot,metadata,created_at,updated_at)
+         VALUES($1::uuid,$2,$3,$4,$5,'internal',$6::uuid,$7,$8,$9,'due',$10::jsonb,$11::jsonb,now(),now())
+         ON CONFLICT (praca_order_id) WHERE praca_order_id IS NOT NULL
+         DO UPDATE SET rule_id=EXCLUDED.rule_id,percentage=EXCLUDED.percentage,
+                       base_value=EXCLUDED.base_value,commission_amount=EXCLUDED.commission_amount,
+                       status='due',rule_snapshot=EXCLUDED.rule_snapshot,metadata=EXCLUDED.metadata,updated_at=now()
+         RETURNING id`,
+        [
+          demand.id,
+          tid,
+          pracaOrderId,
+          item.vendedorTenantId,
+          item.vendedorTenantId,
+          rule?.rule_id || null,
+          String(commissionPercentage),
+          String(valorTotal.toFixed(2)),
+          String(comissao.toFixed(2)),
+          JSON.stringify({
+            ruleId: rule?.rule_id || null,
+            ruleName: rule?.rule_name || null,
+            ruleKind: rule?.rule_kind || null,
+            campaignCode: rule?.campaign_code || null,
+            provisionalUntilPaymentMethod: true,
+          }),
+          JSON.stringify({ archMarketplacePedidoId: pedido.id, itemId, buyerTenantId: tid }),
+        ],
+      );
+      commissionEntryId = String(entry.rows[0].id);
+
+      await client.query(
+        `UPDATE arch_marketplace_pedidos
+            SET praca_order_id=$1
+          WHERE id=$2`,
+        [pracaOrderId, pedido.id],
+      );
+    }
+
+    await client.query(
+      `INSERT INTO arqdor_market_demand_events
+        (demand_id,tenant_id,event_type,actor_type,actor_id,source,reference_type,reference_id,payload,created_at)
+       VALUES($1::uuid,$2,'market_order_created','user',$3,'arqdor_market','market_order',$4,$5::jsonb,now())`,
+      [
+        demand.id,
+        tid,
+        req.user?.sub ?? null,
+        pedido.id,
+        JSON.stringify({
+          itemId,
+          sellerTenantId: item.vendedorTenantId,
+          quantity: quantidade,
+          orderValue: valorTotal,
+          commissionPercentage,
+          commissionAmount: comissao,
+          commissionRuleId: rule?.rule_id || null,
+          pracaOrderId,
+        }),
+      ],
+    );
+
+    await client.query("COMMIT");
+
+    // Incrementar totalVendas do item
+    await db
+      .update(archMarketplaceItemsTable)
+      .set({ totalVendas: sql`${archMarketplaceItemsTable.totalVendas} + 1` })
+      .where(eq(archMarketplaceItemsTable.id, itemId));
+
+    // Se projetoId, adicionar ao orçamento do projeto
+    if (projetoId) {
+      const vTotal = valorTotal.toFixed(2);
+      await db.insert(archOrcamentoItensTable).values({
+        projetoId,
+        ambienteId: null,
+        categoria: item.categoria ?? "Marketplace",
+        descricao: item.nome,
+        quantidade: String(quantidade),
+        unidade: masterProduct?.unidade || "un",
+        valorUnitario: String(valorUnitario),
+        valorTotal: vTotal,
+        fornecedor: item.vendedorTenantId,
+        produtoId: item.masterProductId || itemId,
+      });
+      await recalcularOrcamentoTotal(projetoId);
+    }
+
+    await db.insert(notificationsTable).values({
+      tenantId: item.vendedorTenantId,
+      title: "Nova venda no Market Arqdor",
+      message: `Seu produto "${item.nome}" recebeu um pedido (qtd: ${quantidade}). Valor: R$ ${valorTotal.toFixed(2)}. A comissão do Market será liquidada automaticamente no pagamento.`,
+      type: "info",
+      category: "general",
+    });
+
+    return res.status(201).json({
+      pedido: { ...pedido, pracaOrderId, marketDemandId: demand.id },
+      demand: { id: demand.id, code: demand.demand_code },
+      commission: {
+        entryId: commissionEntryId,
+        ruleId: rule?.rule_id || null,
+        percentage: commissionPercentage,
+        amount: comissao,
+        status: "due",
+      },
+      payment: {
+        required: Boolean(pracaOrderId),
+        sellerTenantId: item.vendedorTenantId,
+        pracaOrderId,
+        supportedProviders: pracaOrderId ? ["asaas"] : [],
+      },
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
