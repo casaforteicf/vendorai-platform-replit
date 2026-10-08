@@ -765,6 +765,11 @@ function normalizarComposicoesPagamento(
   }));
 }
 
+
+async function canAccessProposalTarget(req: Express.Request, target: { tenantId: string; leadId: string; dealId?: string | null }): Promise<boolean> {
+  return canAccessProposalOwnership(req, target);
+}
+
 async function generateNumero(tenantId: string): Promise<string> {
   const now = new Date();
   const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -799,6 +804,15 @@ router.post("/propostas", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (!(await canAccessProposalTarget(req, {
+    tenantId: parsed.data.tenantId,
+    leadId: parsed.data.leadId,
+    dealId: parsed.data.dealId ?? null,
+  }))) {
+    res.status(403).json({ error: "Access denied to this proposal target" });
     return;
   }
 
@@ -876,6 +890,11 @@ router.post("/tenants/:tenantId/leads/:leadId/propostas/reconcile", async (req, 
 
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (!(await canAccessProposalTarget(req, { tenantId, leadId, dealId }))) {
+    res.status(403).json({ error: "Access denied to this proposal target" });
     return;
   }
 
@@ -2318,6 +2337,11 @@ router.post("/tenants/:tenantId/propostas/from-template", async (req, res) => {
 
   if (!lead) {
     res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  if (!(await canAccessProposalTarget(req, { tenantId, leadId, dealId: dealId ?? null }))) {
+    res.status(403).json({ error: "Access denied to this proposal target" });
     return;
   }
 
