@@ -126,6 +126,64 @@ function money(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+const PROCUREMENT_IMPORT_MAX_SIZE = 10 * 1024 * 1024;
+const PROCUREMENT_SHEET_MAX_SIZE = 15 * 1024 * 1024;
+const PROCUREMENT_IMPORT_EXTENSIONS = new Set(["pdf", "png", "jpg", "jpeg", "webp", "csv", "xls", "xlsx", "txt", "xml"]);
+
+function validateProcurementImport(file: File): string | null {
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  if (!PROCUREMENT_IMPORT_EXTENSIONS.has(extension)) {
+    return "Use PDF, imagem, Excel, CSV, TXT ou XML.";
+  }
+  if (file.size <= 0) return "O arquivo selecionado está vazio.";
+  const maxSize = ["xls", "xlsx"].includes(extension) ? PROCUREMENT_SHEET_MAX_SIZE : PROCUREMENT_IMPORT_MAX_SIZE;
+  if (file.size > maxSize) {
+    return `Arquivo muito grande. Limite: ${Math.round(maxSize / 1024 / 1024)} MB.`;
+  }
+  return null;
+}
+
+async function fetchProcurementDocumentAnalysis(
+  obraId: string,
+  file: File,
+  context: "request" | "quote",
+): Promise<any> {
+  const transient = new Set([408, 425, 429, 502, 503, 504]);
+  let lastError = "Falha ao importar documento.";
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 45_000);
+    try {
+      const data = new FormData();
+      data.append("documento", file, file.name);
+      data.append("context", context);
+      const response = await fetch(`/api/arch/procurement/${obraId}/analyze-document`, {
+        method: "POST",
+        headers: token() ? { Authorization: `Bearer ${token()}` } : undefined,
+        body: data,
+        signal: controller.signal,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok) return payload;
+      lastError = payload?.error ?? payload?.message ?? `Falha ao importar documento (HTTP ${response.status})`;
+      if (!transient.has(response.status) || attempt === 1) throw new Error(lastError);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        lastError = "A leitura demorou demais e foi interrompida.";
+      } else if (error instanceof Error && error.message) {
+        lastError = error.message;
+      }
+      if (attempt === 1) throw new Error(lastError);
+    } finally {
+      window.clearTimeout(timeout);
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 700));
+  }
+
+  throw new Error(lastError);
+}
+
 function normalizeRequest(raw: any): PurchaseRequest {
   return {
     id: String(raw?.id ?? ""),
@@ -271,6 +329,7 @@ type ExtractedItem = {
 
 type ProcurementDocumentExtraction = {
   tipo?: string | null;
+  confianca?: number | null;
   fornecedor?: string | null;
   numero?: string | null;
   dataPrevista?: string | null;
@@ -502,16 +561,10 @@ export default function RealProcurementWorkspace({ arqState = {}, onNavigate, ob
 
   async function analyzeDocument(file: File, context: "request" | "quote") {
     if (!bundle) throw new Error("Obra não carregada.");
-    const data = new FormData();
-    data.append("documento", file);
-    data.append("context", context);
-    const response = await fetch(`/api/arch/procurement/${bundle.obra.id}/analyze-document`, {
-      method: "POST",
-      headers: token() ? { Authorization: `Bearer ${token()}` } : undefined,
-      body: data,
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload?.error ?? "Falha ao importar documento.");
+    const validationError = validateProcurementImport(file);
+    if (validationError) throw new Error(validationError);
+
+    const payload = await fetchProcurementDocumentAnalysis(bundle.obra.id, file, context);
     const extracted = /\.(xlsx|xls)$/i.test(file.name)
       ? { ...(payload?.extracted ?? {}), ...(await parseSpreadsheetFile(file)) }
       : (payload?.extracted ?? {});
