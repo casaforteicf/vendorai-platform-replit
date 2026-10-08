@@ -1386,6 +1386,11 @@ router.patch("/propostas/:id", async (req, res) => {
     return;
   }
 
+  if (!(await canAccessProposalOwnership(req, existing))) {
+    res.status(403).json({ error: "Access denied to this proposal" });
+    return;
+  }
+
   const commercialFields = [
     "itens", "valorTotal", "validadeAte", "formaPagamento", "condPagamento",
     "prazoEntrega", "paymentCompositions", "apresentacao", "observacoes",
@@ -1471,6 +1476,11 @@ router.patch("/propostas/:id/execucao/:itemIndex", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && proposta.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (!(await canAccessProposalOwnership(req, proposta))) {
+    res.status(403).json({ error: "Access denied to this proposal" });
     return;
   }
 
@@ -1604,6 +1614,11 @@ router.patch("/propostas/:id/status", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && proposta.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (!(await canAccessProposalOwnership(req, proposta))) {
+    res.status(403).json({ error: "Access denied to this proposal" });
     return;
   }
 
@@ -1999,6 +2014,11 @@ router.delete("/propostas/:id", async (req, res) => {
     return;
   }
 
+  if (!(await canAccessProposalOwnership(req, existing))) {
+    res.status(403).json({ error: "Access denied to this proposal" });
+    return;
+  }
+
   await db.delete(propostasTable).where(eq(propostasTable.id, existing.id));
 
   res.status(204).send();
@@ -2026,6 +2046,11 @@ router.post("/propostas/:id/public-link", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (!(await canAccessProposalOwnership(req, existing))) {
+    res.status(403).json({ error: "Access denied to this proposal" });
     return;
   }
 
@@ -2174,6 +2199,11 @@ router.post("/propostas/:id/accept-manual", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && proposta.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (!(await canAccessProposalOwnership(req, proposta))) {
+    res.status(403).json({ error: "Access denied to this proposal" });
     return;
   }
 
