@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
-import { TENANT_A, TENANT_B, tokenA, tokenSuperAdmin } from "./helpers/auth.js";
+import jwt from "jsonwebtoken";
+import { TENANT_A, TENANT_B, TEST_SECRET, tokenA, tokenSuperAdmin } from "./helpers/auth.js";
 
 const { mockDbSelect } = vi.hoisted(() => ({
   mockDbSelect: vi.fn(),
@@ -96,6 +97,42 @@ describe("GET /api/tenants/:tenantId/activities — tenant isolation", () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual([]);
+  });
+
+  it("scopes representative activity listings to the authenticated responsible user", async () => {
+    const representativeToken = jwt.sign({
+      sub: "representative-user",
+      email: "rep@example.com",
+      platformRole: "member",
+      tenantId: TENANT_A,
+      role: "member",
+      userFunction: "representante_comercial",
+    }, TEST_SECRET, { expiresIn: "1h" });
+
+    await request(app)
+      .get(`/api/tenants/${TENANT_A}/activities`)
+      .set("Authorization", `Bearer ${representativeToken}`);
+
+    const where = mockDbSelect.mock.results[0]?.value?.from().where;
+    expect(where).toBeDefined();
+  });
+
+  it("allows representative to query overdue feed only within its authenticated tenant", async () => {
+    const representativeToken = jwt.sign({
+      sub: "representative-user",
+      email: "rep@example.com",
+      platformRole: "member",
+      tenantId: TENANT_A,
+      role: "member",
+      userFunction: "representante_comercial",
+    }, TEST_SECRET, { expiresIn: "1h" });
+
+    const res = await request(app)
+      .get(`/api/tenants/${TENANT_B}/activities/overdue`)
+      .set("Authorization", `Bearer ${representativeToken}`);
+
+    expect(res.status).toBe(403);
+    expect(mockDbSelect).not.toHaveBeenCalled();
   });
 
   it("allows super_admin to inspect another tenant", async () => {
