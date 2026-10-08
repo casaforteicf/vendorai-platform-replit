@@ -261,9 +261,19 @@ router.get(
 );
 
 router.get("/tenants/:tenantId/messages", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
   const { conversationId, leadId } = req.query as Record<string, string | undefined>;
 
-  const conditions = [eq(messagesTable.tenantId, String(req.params.tenantId))];
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  if (conversationId && !(await canAccessConversation(req, tenantId, conversationId))) {
+    res.status(403).json({ error: "Access denied to this conversation" });
+    return;
+  }
+
+  const conditions = [eq(messagesTable.tenantId, tenantId)];
   if (conversationId) conditions.push(eq(messagesTable.conversationId, conversationId));
   if (leadId) conditions.push(eq(messagesTable.leadId, leadId));
 
