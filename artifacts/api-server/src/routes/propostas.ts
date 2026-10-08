@@ -44,6 +44,34 @@ import { syncDealValueFromProposal } from "../lib/deal-value.js";
 
 const router: IRouter = Router();
 
+function canViewAllProposals(req: Express.Request): boolean {
+  return req.user?.platformRole === "super_admin"
+    || req.user?.platformRole === "tenant_admin"
+    || req.user?.userFunction === "administrador";
+}
+
+async function canAccessProposalOwnership(req: Express.Request, proposta: { tenantId: string; leadId: string; dealId?: string | null }): Promise<boolean> {
+  if (canViewAllProposals(req)) return true;
+  const userId = req.user?.sub;
+  if (!userId) return false;
+
+  if (proposta.dealId) {
+    const [deal] = await db
+      .select({ assignedTo: dealsTable.assignedTo })
+      .from(dealsTable)
+      .where(and(eq(dealsTable.id, proposta.dealId), eq(dealsTable.tenantId, proposta.tenantId)))
+      .limit(1);
+    if (deal) return deal.assignedTo === userId;
+  }
+
+  const [lead] = await db
+    .select({ assignedTo: leadsTable.assignedTo })
+    .from(leadsTable)
+    .where(and(eq(leadsTable.id, proposta.leadId), eq(leadsTable.tenantId, proposta.tenantId)))
+    .limit(1);
+  return lead?.assignedTo === userId;
+}
+
 type BudgetSnapshotPending = {
   code: string;
   severity: "blocker" | "warning";
@@ -1035,7 +1063,16 @@ router.get("/tenants/:tenantId/propostas", async (req, res) => {
 
   // GET é somente leitura. Reconciliação de dados legados acontece no endpoint
   // explícito /propostas/reconcile e nunca cria um orçamento novo.
-  res.json(propostas);
+  if (canViewAllProposals(req)) {
+    res.json(propostas);
+    return;
+  }
+
+  const visible = [];
+  for (const proposta of propostas) {
+    if (await canAccessProposalOwnership(req, proposta)) visible.push(proposta);
+  }
+  res.json(visible);
 });
 
 router.get("/propostas/:id", async (req, res) => {
@@ -1051,6 +1088,11 @@ router.get("/propostas/:id", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && proposta.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (!(await canAccessProposalOwnership(req, proposta))) {
+    res.status(403).json({ error: "Access denied to this proposal" });
     return;
   }
 
