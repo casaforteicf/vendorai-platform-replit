@@ -361,6 +361,25 @@ router.put("/prospector/config-multi", async (req, res) => {
       return res.status(400).json({ error: "Use no máximo 60 combinações de nicho × localidade por configuração automática." });
     }
 
+    const [strategyConfig] = await db.select().from(prospectorConfigTable)
+      .where(eq(prospectorConfigTable.tenantId, tenantId))
+      .limit(1);
+    const strategy = strategyConfig ? {
+      coldProspectingMode: strategyConfig.coldProspectingMode,
+      allowedSolutions: strategyConfig.allowedSolutions,
+      targetSegments: strategyConfig.targetSegments,
+      targetPersonas: strategyConfig.targetPersonas,
+      allowedChannels: strategyConfig.allowedChannels,
+      contactWindowStart: strategyConfig.contactWindowStart,
+      contactWindowEnd: strategyConfig.contactWindowEnd,
+      timezone: strategyConfig.timezone,
+      maxContactsPerPerson7d: strategyConfig.maxContactsPerPerson7d,
+      qualificationThreshold: strategyConfig.qualificationThreshold,
+      meetingReadinessThreshold: strategyConfig.meetingReadinessThreshold,
+      autoSendApprovedContent: strategyConfig.autoSendApprovedContent,
+      conversionCriteria: strategyConfig.conversionCriteria,
+    } : {};
+
     await db.transaction(async (tx) => {
       await tx.delete(prospectorConfigTable).where(eq(prospectorConfigTable.tenantId, tenantId));
 
@@ -377,6 +396,7 @@ router.put("/prospector/config-multi", async (req, res) => {
               longitude: geo?.lng ?? null,
               ritmoDiario: parsed.data.ritmoDiario,
               ativo: parsed.data.ativo,
+              ...strategy,
             };
           }),
         );
@@ -388,6 +408,7 @@ router.put("/prospector/config-multi", async (req, res) => {
           cidade: cidades[0] ?? null,
           ritmoDiario: parsed.data.ritmoDiario,
           ativo: false,
+          ...strategy,
         });
       }
     });

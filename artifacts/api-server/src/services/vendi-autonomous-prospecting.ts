@@ -230,6 +230,7 @@ export async function runAutonomousProspectingAllTenants(log: Logger) {
     .innerJoin(agentConfigsTable, eq(agentConfigsTable.tenantId, prospectorConfigTable.tenantId))
     .where(and(
       eq(prospectorConfigTable.ativo, true),
+      eq(prospectorConfigTable.coldProspectingMode, "autonomous"),
       sql`${agentConfigsTable.autonomyEnabledAt} IS NOT NULL`,
     ));
 

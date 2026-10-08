@@ -10,6 +10,11 @@ export type CompanyContactPurpose =
   | "tecnico"
   | "administrativo"
   | "suporte"
+  | "gatekeeper"
+  | "interlocutor"
+  | "influenciador"
+  | "responsavel"
+  | "usuario_potencial"
   | "outro";
 
 export type CompanyRelationshipType =

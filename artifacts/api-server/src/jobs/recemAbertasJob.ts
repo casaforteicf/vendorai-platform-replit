@@ -2,25 +2,21 @@
  * Cmd 23 — Job: Recém-abertas
  *
  * Busca semanalmente empresas abertas nos últimos 30 dias para os
- * CNAEs configurados no tenant, cria leads com boost +20 no score.
+ * CNAEs configurados no tenant e cria Prospects pré-Lead para qualificação.
  */
 import { eq, and, sql } from "drizzle-orm";
 import type { Logger } from "pino";
 import {
   db,
   leadsTable,
-  dealsTable,
-  activitiesTable,
   prospectorConfigTable,
   tenantsTable,
-  funisTable,
 } from "@workspace/db";
 import { searchByCnae, normalizeCnpj } from "../services/cnpjService.js";
-import { enrichLead } from "./leadEnrichment.js";
 import { logger as rootLogger } from "../lib/logger.js";
-import { leadRegistrationMetadata, normalizeLeadEmail, normalizeLeadName } from "../lib/lead-registration-standard.js";
+import { normalizeLeadEmail } from "../lib/lead-registration-standard.js";
+import { intakeColdProspect } from "../services/cold-prospect-intake.js";
 
-const BOOST_SCORE = 20;
 const DEFAULT_CNAES = [
   "4120-4/00", // Construção
   "5611-2/01", // Restaurantes
@@ -61,14 +57,6 @@ export async function runRecemAbertas(log: Logger = rootLogger, onlyTenantId?: s
       const cnaeAlvo: string[] = (config as unknown as { cnaeAlvo?: string[] }).cnaeAlvo?.length
         ? (config as unknown as { cnaeAlvo: string[] }).cnaeAlvo
         : DEFAULT_CNAES;
-
-      const [firstFunil] = await db
-        .select({ id: funisTable.id })
-        .from(funisTable)
-        .where(eq(funisTable.tenantId, tenant.id))
-        .limit(1);
-
-      if (!firstFunil) continue;
 
       // Get the city from config
       const cidade = config.cidade ?? "";
@@ -120,73 +108,34 @@ export async function runRecemAbertas(log: Logger = rootLogger, onlyTenantId?: s
             ? Math.floor((Date.now() - abertura.getTime()) / 86_400_000)
             : null;
 
-          const [lead] = await db.insert(leadsTable).values({
+          const result = await intakeColdProspect({
             tenantId: tenant.id,
-            nome: normalizeLeadName(empresa.nomeFantasia || empresa.razaoSocial, "Empresa recém-aberta"),
-            empresa: empresa.razaoSocial,
-            telefone: empresa.telefone,
-            documento: cnpjClean,
-            endereco: empresa.enderecoCompleto,
-            tipoPessoa: "juridica",
             source: "recem_aberta",
+            sourceRef: `recem_aberta:${cnpjClean}`,
+            displayName: empresa.nomeFantasia || empresa.razaoSocial,
+            cnpj: cnpjClean,
+            razaoSocial: empresa.razaoSocial,
+            phone: empresa.telefone,
             email: normalizeLeadEmail(empresa.email),
-            enrichmentStatus: "pending",
-            mercadoSegmento: empresa.cnaeDescricao,
-            dadosPj: {
-              cnpj: cnpjClean,
-              razaoSocial: empresa.razaoSocial,
-              segmento: empresa.cnaeDescricao,
-              socios: empresa.socios.map((s) => ({ nome: s.nome } as any)),
+            address: empresa.enderecoCompleto,
+            segment: empresa.cnaeDescricao,
+            city: empresa.municipio,
+            fitScore: 78,
+            vendoraiFitScore: 75,
+            arqdorFitScore: /(constru|arquitet|engenhar|esquadr|material|imobili)/i.test(empresa.cnaeDescricao ?? "") ? 72 : 15,
+            qualification: {
+              facts: [
+                { key: "cnpj", value: cnpjClean, confidence: 100, source: "recem_aberta", confirmed: true, observedAt: new Date().toISOString() },
+                ...(empresa.dataAbertura ? [{ key: "data_abertura", value: empresa.dataAbertura, confidence: 100, source: "recem_aberta", confirmed: true, observedAt: new Date().toISOString() }] : []),
+                ...(empresa.socios[0]?.nome ? [{ key: "qsa_contact", value: empresa.socios[0].nome, confidence: 100, source: "recem_aberta", confirmed: true, observedAt: new Date().toISOString() }] : []),
+              ],
             },
-            metadata: leadRegistrationMetadata({
-              origem: "recem_aberta",
-              prospectado_em: new Date().toISOString(),
-              cnae: empresa.cnaeCode,
-              data_abertura: empresa.dataAbertura,
-              dias_aberto: diasAberto,
-              cidade: empresa.municipio,
-            }, {
-              entryChannel: "prospeccao",
-              entrySource: "recem_aberta",
-              details: { cnpj: cnpjClean },
-            }),
-            priorityReason: diasAberto != null
-              ? `Empresa aberta há ${diasAberto} dias — montando operação`
-              : "Empresa recém-aberta — montando operação",
-          }).returning({ id: leadsTable.id });
-
-          if (!lead) continue;
-
-          // Create deal
-          await db.insert(dealsTable).values({
-            tenantId: tenant.id,
-            leadId: lead.id,
-            funilId: firstFunil.id,
-            titulo: `${empresa.nomeFantasia || empresa.razaoSocial} — Recém-aberta`,
-            etapa: "novo",
+            opportunitySummary: diasAberto != null
+              ? `Empresa aberta há ${diasAberto} dias; validar estrutura comercial e operação em formação.`
+              : "Empresa recém-aberta; validar estrutura comercial e operação em formação.",
           });
 
-          // Log activity
-          await db.insert(activitiesTable).values({
-            tenantId: tenant.id,
-            leadId: lead.id,
-            tipo: "tarefa",
-            titulo: "Lead importado via Recém-abertas",
-            descricao: `Lead gerado via Recém-abertas (CNAE ${empresa.cnaeCode} as any) — ${empresa.municipio}`,
-            status: "concluida",
-          });
-
-          // Enrich with +20 score boost
-          enrichLead({
-            leadId: lead.id,
-            tenantId: tenant.id,
-            scoreBoost: BOOST_SCORE,
-            boostReason: "empresa_recem_aberta",
-          }).catch((err) =>
-            log.error({ err, leadId: lead.id }, "recem-abertas: enrichLead failed"),
-          );
-
-          totalCreated++;
+          if (result.created) totalCreated++;
         }
       }
     } catch (err) {

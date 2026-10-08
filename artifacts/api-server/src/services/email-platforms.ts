@@ -3,6 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db, socialConnectionsTable, leadsTable, conversationsTable, messagesTable, notificationsTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { fetchWebmailMessages, getWebmailConnection, sendWebmailEmail, webmailConfigFromConnection } from "./webmail-email.js";
+import { tryIngestColdProspectEmailReply } from "./prospect-conversation-intelligence.js";
 
 export type EmailProvider = "google" | "microsoft" | "webmail";
 
@@ -448,6 +449,23 @@ async function persistInboundEmail(input: {
     eq(leadsTable.email, input.from),
   )).limit(1);
   if (!lead) {
+    const coldProspect = await tryIngestColdProspectEmailReply({
+      tenantId: input.tenantId,
+      email: input.from,
+      subject: input.subject,
+      text: input.text,
+      externalId: input.externalId,
+    });
+    if (coldProspect.handled) {
+      return {
+        status: "prospect" as const,
+        prospectId: coldProspect.prospectId,
+        email: input.from,
+        externalId: input.externalId,
+        subject: input.subject,
+      };
+    }
+
     const notificationTitle = `[email:${input.externalId}] ${input.subject || "E-mail sem assunto"}`;
     const [existingNotification] = await db.select({ id: notificationsTable.id }).from(notificationsTable).where(and(
       eq(notificationsTable.tenantId, input.tenantId),
@@ -591,6 +609,7 @@ export async function syncConnectedEmailInbox(tenantId: string, preferredProvide
     provider: connection.provider === GOOGLE_PROVIDER ? "google" : connection.provider === MICROSOFT_PROVIDER ? "microsoft" : "webmail",
     imported: results.filter((item) => item.status === "imported").length,
     duplicates: results.filter((item) => item.status === "duplicate").length,
+    prospects: results.filter((item) => item.status === "prospect").length,
     unmatched: results.filter((item) => item.status === "unmatched").length,
     results,
   };

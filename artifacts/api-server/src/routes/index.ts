@@ -145,7 +145,7 @@ import tenantCalendarSettingsRouter from "./tenant_calendar_settings";
 import tenantDistribuicaoConfigRouter from "./tenant_distribuicao_config";
 import leadSpouseConsentRouter from "./lead_spouse_consent";
 import aiGatewayRouter from "./ai_gateway";
-import prospectorRouter from "./prospector";
+import prospectorRouter from "./prospector";\nimport prospectsRouter from "./prospects";
 import prospectorMultiRouter from "./prospector-multi";
 import partnerProspectorRouter from "./partner-prospector";
 import prospectorFlowsRouter from "./prospector-flows";

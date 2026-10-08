@@ -1,13 +1,14 @@
 import { useState } from "react";
-import { Building2, HardHat, LayoutDashboard, Radar, Target } from "lucide-react";
+import { Bot, Building2, HardHat, LayoutDashboard, Radar, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import ConstructionRadarWorkspace from "./prospector/ConstructionRadarWorkspace";
 import JarvisProspectingSignals from "./prospector/JarvisProspectingSignals";
 import ProspectorClassicWorkspace from "./prospector/ProspectorClassicWorkspace";
 import ProspectorOverview, { type ProspectorNavigationTarget } from "./prospector/ProspectorOverview";
+import ColdProspectingWorkspace from "./prospector/ColdProspectingWorkspace";
 
-type ProspectorMode = "painel" | "empresas" | "oportunidades" | "obras";
+type ProspectorMode = "painel" | "empresas" | "oportunidades" | "jornada" | "obras";
 
 function initialMode(): ProspectorMode {
   if (typeof window === "undefined") return "painel";
@@ -16,6 +17,7 @@ function initialMode(): ProspectorMode {
   const tab = params.get("tab");
 
   if (value === "obras") return "obras";
+  if (value === "jornada") return "jornada";
   if (value === "oportunidades" || (value === "empresas" && (tab === "fila" || tab === "aprovacoes"))) {
     return "oportunidades";
   }
@@ -34,8 +36,8 @@ export default function Prospector() {
     if (next === "painel") {
       url.searchParams.delete("mode");
       url.searchParams.delete("tab");
-    } else if (next === "obras") {
-      url.searchParams.set("mode", "obras");
+    } else if (next === "obras" || next === "jornada") {
+      url.searchParams.set("mode", next);
       url.searchParams.delete("tab");
     } else if (next === "oportunidades") {
       url.searchParams.set("mode", "oportunidades");
@@ -86,7 +88,7 @@ export default function Prospector() {
               </div>
             </div>
 
-            <div className="grid shrink-0 grid-cols-4 gap-1 rounded-lg bg-muted p-1">
+            <div className="grid shrink-0 grid-cols-5 gap-1 rounded-lg bg-muted p-1">
               <Button
                 type="button"
                 size="sm"
@@ -120,6 +122,16 @@ export default function Prospector() {
               <Button
                 type="button"
                 size="sm"
+                variant={mode === "jornada" ? "default" : "ghost"}
+                onClick={() => changeMode("jornada")}
+                className="h-8 gap-1.5 px-2 sm:px-3"
+              >
+                <Bot className="h-3.5 w-3.5" />
+                <span className="hidden lg:inline">Prospecção IA</span>
+              </Button>
+              <Button
+                type="button"
+                size="sm"
                 variant={mode === "obras" ? "default" : "ghost"}
                 onClick={() => changeMode("obras")}
                 className="h-8 gap-1.5 px-2 sm:px-3"
@@ -137,6 +149,7 @@ export default function Prospector() {
       {mode === "painel" && <ProspectorOverview onNavigate={navigate} />}
       {mode === "empresas" && <ProspectorClassicWorkspace key={`empresas-${classicKey}`} section="empresas" />}
       {mode === "oportunidades" && <ProspectorClassicWorkspace key={`oportunidades-${classicKey}`} section="oportunidades" />}
+      {mode === "jornada" && <ColdProspectingWorkspace />}
       {mode === "obras" && <ConstructionRadarWorkspace />}
     </div>
   );
