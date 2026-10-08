@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, sql, count, sum, desc, gte, lte } from "drizzle-orm";
+import { and, eq, sql, count, sum, desc, gte, lte, inArray } from "drizzle-orm";
 import {
   db,
   customerIntelligenceTable,
@@ -22,6 +22,7 @@ import {
   MAX_ANALYSES_PER_TENANT_PER_HOUR,
 } from "../lib/analyze-intelligence.js";
 import { suggestDynamicStageQuestions } from "../services/stage-question-intelligence.js";
+import { buildUserFunctionFilter } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
 
@@ -34,6 +35,16 @@ function isPgCode(err: unknown, code: string): boolean {
 
 function isUniqueViolation(err: unknown): boolean {
   return isPgCode(err, "23505");
+}
+
+async function canAccessLead(req: any, tenantId: string, leadId: string): Promise<boolean> {
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) return false;
+  const [lead] = await db.select({ id: leadsTable.id }).from(leadsTable).where(and(
+    eq(leadsTable.id, leadId),
+    eq(leadsTable.tenantId, tenantId),
+    ...buildUserFunctionFilter(req, leadsTable),
+  )).limit(1);
+  return Boolean(lead);
 }
 
 
@@ -64,7 +75,8 @@ router.post("/customer-intelligence", async (req, res) => {
     .where(
       and(
         eq(leadsTable.id, parsed.data.leadId),
-        eq(leadsTable.tenantId, parsed.data.tenantId)
+        eq(leadsTable.tenantId, parsed.data.tenantId),
+        ...buildUserFunctionFilter(req, leadsTable)
       )
     );
 
@@ -96,10 +108,13 @@ router.get("/tenants/:tenantId/customer-intelligence", async (req, res) => {
     return;
   }
 
-  const records = await db
+  const visibleLeads = await db.select({ id: leadsTable.id }).from(leadsTable)
+    .where(and(eq(leadsTable.tenantId, tenantId), ...buildUserFunctionFilter(req, leadsTable)));
+  const visibleLeadIds = visibleLeads.map((lead) => lead.id);
+  const records = visibleLeadIds.length === 0 ? [] : await db
     .select()
     .from(customerIntelligenceTable)
-    .where(eq(customerIntelligenceTable.tenantId, tenantId))
+    .where(and(eq(customerIntelligenceTable.tenantId, tenantId), inArray(customerIntelligenceTable.leadId, visibleLeadIds)))
     .orderBy(customerIntelligenceTable.createdAt);
 
   res.json(records);
@@ -120,7 +135,7 @@ router.get(
     const [leadCheck] = await db
       .select({ id: leadsTable.id })
       .from(leadsTable)
-      .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
+      .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId), ...buildUserFunctionFilter(req, leadsTable)));
 
     if (!leadCheck) {
       res.status(404).json({ error: "Lead not found in this tenant" });
@@ -167,7 +182,7 @@ router.get(
     const [lead] = await db
       .select({ id: leadsTable.id })
       .from(leadsTable)
-      .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
+      .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId), ...buildUserFunctionFilter(req, leadsTable)))
       .limit(1);
     if (!lead) {
       res.status(404).json({ error: "Lead not found in this tenant" });
@@ -241,6 +256,11 @@ router.post(
       return;
     }
 
+    if (!(await canAccessLead(req, tenantId, leadId))) {
+      res.status(404).json({ error: "Lead not found" });
+      return;
+    }
+
     try {
       const questions = await suggestDynamicStageQuestions({
         tenantId,
@@ -272,6 +292,11 @@ router.get("/customer-intelligence/:id", async (req, res) => {
     return;
   }
 
+  if (!(await canAccessLead(req, record.tenantId, record.leadId))) {
+    res.status(404).json({ error: "Customer intelligence record not found" });
+    return;
+  }
+
   res.json(record);
 });
 
@@ -287,7 +312,7 @@ router.patch("/customer-intelligence/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: customerIntelligenceTable.id, tenantId: customerIntelligenceTable.tenantId })
+    .select({ id: customerIntelligenceTable.id, tenantId: customerIntelligenceTable.tenantId, leadId: customerIntelligenceTable.leadId })
     .from(customerIntelligenceTable)
     .where(eq(customerIntelligenceTable.id, String(req.params.id)));
 
@@ -298,6 +323,11 @@ router.patch("/customer-intelligence/:id", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (!(await canAccessLead(req, existing.tenantId, existing.leadId))) {
+    res.status(404).json({ error: "Customer intelligence record not found" });
     return;
   }
 
@@ -312,7 +342,7 @@ router.patch("/customer-intelligence/:id", async (req, res) => {
 
 router.delete("/customer-intelligence/:id", async (req, res) => {
   const [existing] = await db
-    .select({ id: customerIntelligenceTable.id, tenantId: customerIntelligenceTable.tenantId })
+    .select({ id: customerIntelligenceTable.id, tenantId: customerIntelligenceTable.tenantId, leadId: customerIntelligenceTable.leadId })
     .from(customerIntelligenceTable)
     .where(eq(customerIntelligenceTable.id, String(req.params.id)));
 
@@ -323,6 +353,11 @@ router.delete("/customer-intelligence/:id", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (!(await canAccessLead(req, existing.tenantId, existing.leadId))) {
+    res.status(404).json({ error: "Customer intelligence record not found" });
     return;
   }
 
@@ -503,6 +538,11 @@ router.post(
       return;
     }
 
+    if (!(await canAccessLead(req, tenantId, leadId))) {
+      res.status(404).json({ error: "Lead not found" });
+      return;
+    }
+
     // Tenant hourly rate limit: count analyses in the rolling last hour and reject if over the cap
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     const [[hourlyRow], [tenantRow]] = await Promise.all([
@@ -607,7 +647,7 @@ router.post(
     const [lead] = await db
       .select({ id: leadsTable.id, isChurned: leadsTable.isChurned })
       .from(leadsTable)
-      .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
+      .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId), ...buildUserFunctionFilter(req, leadsTable)))
       .limit(1);
 
     if (!lead) {
@@ -664,12 +704,17 @@ router.post(
     }
 
     const [action] = await db
-      .select({ id: churnActionsTable.id, tenantId: churnActionsTable.tenantId })
+      .select({ id: churnActionsTable.id, tenantId: churnActionsTable.tenantId, leadId: churnActionsTable.leadId })
       .from(churnActionsTable)
       .where(and(eq(churnActionsTable.id, actionId), eq(churnActionsTable.tenantId, tenantId)))
       .limit(1);
 
     if (!action) {
+      res.status(404).json({ error: "Churn action not found" });
+      return;
+    }
+
+    if (!(await canAccessLead(req, tenantId, action.leadId))) {
       res.status(404).json({ error: "Churn action not found" });
       return;
     }
