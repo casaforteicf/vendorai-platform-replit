@@ -9,6 +9,7 @@ import {
   updateMessageSchema,
 } from "@workspace/db";
 import { maybeReanalyze } from "../lib/analyze-intelligence.js";
+import { canAccessConversation } from "../lib/conversation-access.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { recordIntelligenceEvent, recordIntelligenceFact } from "../services/customer-intelligence-history.js";
 import { resolveStageQuestionsFromInboundMessage } from "../services/stage-question-resolution.js";
@@ -234,13 +235,23 @@ router.post("/messages", async (req, res): Promise<void> => {
 router.get(
   "/tenants/:tenantId/conversations/:conversationId/messages",
   async (req, res) => {
+    const tenantId = String(req.params.tenantId);
+    const conversationId = String(req.params.conversationId);
+    if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+      res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
+    if (!(await canAccessConversation(req, tenantId, conversationId))) {
+      res.status(403).json({ error: "Access denied to this conversation" });
+      return;
+    }
     const messages = await db
       .select()
       .from(messagesTable)
       .where(
         and(
-          eq(messagesTable.tenantId, String(req.params.tenantId)),
-          eq(messagesTable.conversationId, String(req.params.conversationId))
+          eq(messagesTable.tenantId, tenantId),
+          eq(messagesTable.conversationId, conversationId)
         )
       )
       .orderBy(asc(messagesTable.createdAt));
