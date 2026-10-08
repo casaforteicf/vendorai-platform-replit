@@ -485,7 +485,6 @@ export default function LeadWorkspace() {
     setDescription(aiReason?.trim() || "");
     setNote("");
     setDue(tomorrow());
-    setEditEligible(false);
     setAdvancedHandoffOpen(false);
     setOpen(true);
   }
