@@ -276,7 +276,7 @@ router.post("/crm/companies/:companyId/link-lead", async (req, res) => {
     } as any)
     .where(and(eq(leadsTable.id, parsed.data.leadId), eq(leadsTable.tenantId, tenantId)));
 
-  const context = await loadCompanyContext(tenantId, company.id);
+  const context = await loadCompanyContext(tenantId, company.id, req);
   return res.json(context);
 });
 
@@ -503,7 +503,7 @@ router.post("/crm/companies/enrich", async (req, res) => {
       .where(and(eq(leadsTable.id, parsed.data.leadId), eq(leadsTable.tenantId, tenantId)));
   }
 
-  return res.status(200).json(await loadCompanyContext(tenantId, company.id));
+  return res.status(200).json(await loadCompanyContext(tenantId, company.id, req));
 });
 
 router.get("/crm/companies/:companyId/context", async (req, res) => {
@@ -514,7 +514,7 @@ router.get("/crm/companies/:companyId/context", async (req, res) => {
     return res.status(err.status ?? 403).json({ error: err.message });
   }
 
-  const context = await loadCompanyContext(tenantId, req.params.companyId);
+  const context = await loadCompanyContext(tenantId, req.params.companyId, req);
   if (!context) return res.status(404).json({ error: "Empresa não vinculada a este tenant" });
   return res.json(context);
 });
@@ -537,7 +537,7 @@ router.get("/crm/leads/:leadId/company-context", async (req, res) => {
     .limit(1);
 
   if (!link) return res.status(404).json({ error: "Lead ainda não possui empresa mestre vinculada" });
-  return res.json(await loadCompanyContext(tenantId, link.companyId));
+  return res.json(await loadCompanyContext(tenantId, link.companyId, req));
 });
 
 const addContactSchema = z.object({
@@ -614,7 +614,7 @@ router.post("/crm/companies/:companyId/contacts", async (req, res) => {
     metadata: { roleStatus: "confirmed" },
   });
 
-  return res.status(201).json(await loadCompanyContext(tenantId, req.params.companyId));
+  return res.status(201).json(await loadCompanyContext(tenantId, req.params.companyId, req));
 });
 
 const contactRolePatchSchema = z.object({
@@ -691,7 +691,7 @@ router.patch("/crm/companies/:companyId/contacts/:relationId/roles", async (req,
     })
     .where(eq(crmTenantCompanyContactsTable.id, existing.id));
 
-  return res.json(await loadCompanyContext(tenantId, req.params.companyId));
+  return res.json(await loadCompanyContext(tenantId, req.params.companyId, req));
 });
 
 const relationshipSchema = z.object({
@@ -780,7 +780,7 @@ router.get("/crm/companies/:companyId/workspace", async (req, res) => {
     return res.status(err.status ?? 403).json({ error: err.message });
   }
 
-  const context = await loadCompanyContext(tenantId, req.params.companyId);
+  const context = await loadCompanyContext(tenantId, req.params.companyId, req);
   if (!context) return res.status(404).json({ error: "Empresa não vinculada a este tenant" });
 
   const leadId = context.tenantCompany.leadId;
@@ -913,7 +913,7 @@ router.get("/crm/companies/:companyId/contact-for", async (req, res) => {
     return res.status(err.status ?? 403).json({ error: err.message });
   }
 
-  const context = await loadCompanyContext(tenantId, req.params.companyId);
+  const context = await loadCompanyContext(tenantId, req.params.companyId, req);
   if (!context) return res.status(404).json({ error: "Empresa não vinculada a este tenant" });
 
   const ranked = [...context.contacts]
