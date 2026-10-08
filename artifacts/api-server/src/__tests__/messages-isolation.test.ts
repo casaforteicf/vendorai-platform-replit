@@ -170,6 +170,44 @@ describe("POST /api/messages — cross-tenant isolation", () => {
   });
 });
 
+
+describe("GET message reads — conversation privacy", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCanViewAllConversations.mockResolvedValue(false);
+    mockCanAccessConversation.mockResolvedValue(false);
+  });
+
+  it("returns 403 when a same-tenant user cannot access the conversation message feed", async () => {
+    const res = await request(app)
+      .get(`/api/tenants/${TENANT_B}/conversations/conv-private/messages`)
+      .set("Authorization", `Bearer ${tokenB}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body).toMatchObject({ error: expect.stringContaining("conversation") });
+  });
+
+  it("returns 403 when a same-tenant user cannot access an individual message conversation", async () => {
+    setupSelectReturning([{ ...recordOwnedByTenantB, conversationId: "conv-private" }]);
+
+    const res = await request(app)
+      .get(`/api/messages/${RECORD_ID}`)
+      .set("Authorization", `Bearer ${tokenB}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body).toMatchObject({ error: expect.stringContaining("conversation") });
+  });
+
+  it("returns 403 when tenant A requests tenant B message feed", async () => {
+    const res = await request(app)
+      .get(`/api/tenants/${TENANT_B}/messages`)
+      .set("Authorization", `Bearer ${tokenA}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body).toMatchObject({ error: expect.stringContaining("tenant") });
+  });
+});
+
 describe("PATCH /api/messages/:id — cross-tenant isolation", () => {
   beforeEach(() => {
     vi.clearAllMocks();

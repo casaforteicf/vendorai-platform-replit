@@ -4,11 +4,13 @@ import { z } from "zod/v4";
 import {
   db,
   messagesTable,
+  conversationsTable,
   mediaAssetsTable,
   insertMessageSchema,
   updateMessageSchema,
 } from "@workspace/db";
 import { maybeReanalyze } from "../lib/analyze-intelligence.js";
+import { canAccessConversation, canViewAllConversations, conversationOwnedByUserCondition } from "../lib/conversation-access.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { recordIntelligenceEvent, recordIntelligenceFact } from "../services/customer-intelligence-history.js";
 import { resolveStageQuestionsFromInboundMessage } from "../services/stage-question-resolution.js";
@@ -234,13 +236,23 @@ router.post("/messages", async (req, res): Promise<void> => {
 router.get(
   "/tenants/:tenantId/conversations/:conversationId/messages",
   async (req, res) => {
+    const tenantId = String(req.params.tenantId);
+    const conversationId = String(req.params.conversationId);
+    if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+      res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
+    if (!(await canAccessConversation(req, tenantId, conversationId))) {
+      res.status(403).json({ error: "Access denied to this conversation" });
+      return;
+    }
     const messages = await db
       .select()
       .from(messagesTable)
       .where(
         and(
-          eq(messagesTable.tenantId, String(req.params.tenantId)),
-          eq(messagesTable.conversationId, String(req.params.conversationId))
+          eq(messagesTable.tenantId, tenantId),
+          eq(messagesTable.conversationId, conversationId)
         )
       )
       .orderBy(asc(messagesTable.createdAt));
@@ -250,11 +262,49 @@ router.get(
 );
 
 router.get("/tenants/:tenantId/messages", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
   const { conversationId, leadId } = req.query as Record<string, string | undefined>;
 
-  const conditions = [eq(messagesTable.tenantId, String(req.params.tenantId))];
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  if (conversationId && !(await canAccessConversation(req, tenantId, conversationId))) {
+    res.status(403).json({ error: "Access denied to this conversation" });
+    return;
+  }
+
+  const conditions = [eq(messagesTable.tenantId, tenantId)];
   if (conversationId) conditions.push(eq(messagesTable.conversationId, conversationId));
   if (leadId) conditions.push(eq(messagesTable.leadId, leadId));
+
+  if (!(await canViewAllConversations(req))) {
+    const userId = req.user?.sub;
+    if (!userId) {
+      res.status(403).json({ error: "Access denied to conversations" });
+      return;
+    }
+
+    const allowedConversations = await db
+      .select({ id: conversationsTable.id })
+      .from(conversationsTable)
+      .where(
+        and(
+          eq(conversationsTable.tenantId, tenantId),
+          conversationOwnedByUserCondition(userId),
+        ),
+      );
+    const allowedIds = new Set(allowedConversations.map((row) => row.id));
+
+    const messages = await db
+      .select()
+      .from(messagesTable)
+      .where(and(...conditions))
+      .orderBy(asc(messagesTable.createdAt));
+
+    res.json(messages.filter((message) => allowedIds.has(message.conversationId)));
+    return;
+  }
 
   const messages = await db
     .select()
@@ -275,6 +325,14 @@ router.get("/messages/:id", async (req, res) => {
     res.status(404).json({ error: "Message not found" });
     return;
   }
+  if (req.user?.platformRole !== "super_admin" && message.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  if (message.conversationId && !(await canAccessConversation(req, message.tenantId, message.conversationId))) {
+    res.status(403).json({ error: "Access denied to this conversation" });
+    return;
+  }
 
   res.json(message);
 });
@@ -287,7 +345,7 @@ router.patch("/messages/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: messagesTable.id, tenantId: messagesTable.tenantId })
+    .select({ id: messagesTable.id, tenantId: messagesTable.tenantId, conversationId: messagesTable.conversationId })
     .from(messagesTable)
     .where(eq(messagesTable.id, String(req.params.id)));
 
@@ -298,6 +356,14 @@ router.patch("/messages/:id", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  if (existing.conversationId && !(await canAccessConversation(req, existing.tenantId, existing.conversationId))) {
+    res.status(403).json({ error: "Access denied to this conversation" });
+    return;
+  }
+  if (existing.conversationId && !(await canAccessConversation(req, existing.tenantId, existing.conversationId))) {
+    res.status(403).json({ error: "Access denied to this conversation" });
     return;
   }
 
