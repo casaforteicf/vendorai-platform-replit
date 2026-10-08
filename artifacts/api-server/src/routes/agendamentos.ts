@@ -742,6 +742,31 @@ router.patch("/agendamentos/:id", async (req, res) => {
   }
 
   const data = parsed.data;
+
+  if (data.responsavelId) {
+    const [responsavel] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(and(eq(usersTable.id, data.responsavelId), eq(usersTable.tenantId, existing.tenantId)))
+      .limit(1);
+    if (!responsavel) {
+      res.status(422).json({ error: "Responsible user does not belong to this tenant" });
+      return;
+    }
+  }
+
+  if (data.agendaId) {
+    const [agenda] = await db
+      .select({ id: agendasTable.id })
+      .from(agendasTable)
+      .where(and(eq(agendasTable.id, data.agendaId), eq(agendasTable.tenantId, existing.tenantId)))
+      .limit(1);
+    if (!agenda) {
+      res.status(422).json({ error: "Agenda does not belong to this tenant" });
+      return;
+    }
+  }
+
   if (
     data.dataHoraInicio &&
     data.dataHoraFim &&
