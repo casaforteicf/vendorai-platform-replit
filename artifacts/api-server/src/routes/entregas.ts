@@ -40,6 +40,7 @@ import { triggerDeliveryFeedbackRequest } from "../services/post-venda.js";
 import { sendAgentAttachments, sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { generateSupportReportDraft } from "../services/support-report.js";
 import { requestSupportFeedback } from "../services/support-feedback.js";
+import { executeConfiguredStageEvents } from "../services/pipeline-stage-events.js";
 import { canAdvanceWorkCard, TERMINAL_WORK_STAGES } from "../lib/pipeline-progress.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { generateDeliveryAcceptancePdf } from "../lib/delivery-acceptance-pdf.js";
@@ -1064,6 +1065,44 @@ async function notifySupportStageChange(
   log: Request["log"],
 ) {
   if (card.pipeline !== "suporte" || !card.leadId) return;
+
+  const [[leadForEvent], [ownerForEvent]] = await Promise.all([
+    db.select({ nome: leadsTable.nome, empresa: leadsTable.empresa, telefone: leadsTable.telefone })
+      .from(leadsTable)
+      .where(and(eq(leadsTable.id, card.leadId), eq(leadsTable.tenantId, card.tenantId)))
+      .limit(1),
+    card.responsavelId
+      ? db.select({ id: usersTable.id, name: usersTable.name, telefone: usersTable.telefone })
+          .from(usersTable)
+          .where(and(eq(usersTable.id, card.responsavelId), eq(usersTable.tenantId, card.tenantId)))
+          .limit(1)
+      : Promise.resolve([]),
+  ]);
+
+  await executeConfiguredStageEvents({
+    tenantId: card.tenantId,
+    pipeline: "suporte",
+    stageKey: card.etapa,
+    gatilho: "entrada",
+    entityType: "work_card",
+    entityId: card.id,
+    leadId: card.leadId,
+    dealId: card.dealId,
+    workCardId: card.id,
+    client: {
+      name: leadForEvent?.empresa || leadForEvent?.nome || "Cliente",
+      phone: leadForEvent?.telefone ?? null,
+    },
+    owner: {
+      id: ownerForEvent?.id ?? card.responsavelId,
+      name: ownerForEvent?.name ?? null,
+      phone: ownerForEvent?.telefone ?? null,
+    },
+    processTitle: card.titulo,
+    processCode: card.codigo,
+    url: `https://app.appvendorai.com/pipeline-operacional/suporte?card=${encodeURIComponent(card.id)}`,
+    log,
+  });
 
   const metadata = (card.metadata ?? {}) as Record<string, unknown>;
   const access = metadata.supportPublicAccess && typeof metadata.supportPublicAccess === "object" && !Array.isArray(metadata.supportPublicAccess)
