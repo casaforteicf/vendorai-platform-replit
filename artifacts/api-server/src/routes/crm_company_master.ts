@@ -18,6 +18,7 @@ import {
   type CompanyContactPurpose,
 } from "@workspace/db";
 import { getCompanyByCnpj, normalizeCnpj, normalizeName } from "../services/cnpjService.js";
+import { buildUserFunctionFilter } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
 
@@ -45,7 +46,7 @@ function tenantIdFromRequest(req: any, requested?: string): string {
   return req.user.tenantId;
 }
 
-async function loadCompanyContext(tenantId: string, companyId: string) {
+async function loadCompanyContext(tenantId: string, companyId: string, req?: any) {
   const [company] = await db
     .select()
     .from(crmCompaniesMasterTable)
@@ -62,6 +63,12 @@ async function loadCompanyContext(tenantId: string, companyId: string) {
     ))
     .limit(1);
   if (!tenantCompany) return null;
+
+  if (tenantCompany.leadId && req) {
+    const [accessibleLead] = await db.select({ id: leadsTable.id }).from(leadsTable)
+      .where(and(eq(leadsTable.id, tenantCompany.leadId), eq(leadsTable.tenantId, tenantId), ...buildUserFunctionFilter(req, leadsTable))).limit(1);
+    if (!accessibleLead) return null;
+  }
 
   const contacts = await db
     .select({
