@@ -286,6 +286,14 @@ router.get("/messages/:id", async (req, res) => {
     res.status(404).json({ error: "Message not found" });
     return;
   }
+  if (req.user?.platformRole !== "super_admin" && message.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  if (message.conversationId && !(await canAccessConversation(req, message.tenantId, message.conversationId))) {
+    res.status(403).json({ error: "Access denied to this conversation" });
+    return;
+  }
 
   res.json(message);
 });
