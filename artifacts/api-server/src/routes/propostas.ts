@@ -1372,7 +1372,7 @@ router.patch("/propostas/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: propostasTable.id, tenantId: propostasTable.tenantId, status: propostasTable.status })
+    .select({ id: propostasTable.id, tenantId: propostasTable.tenantId, leadId: propostasTable.leadId, dealId: propostasTable.dealId, status: propostasTable.status })
     .from(propostasTable)
     .where(eq(propostasTable.id, String(req.params.id)));
 
@@ -2000,7 +2000,7 @@ ${sourceRules}
 
 router.delete("/propostas/:id", async (req, res) => {
   const [existing] = await db
-    .select({ id: propostasTable.id, tenantId: propostasTable.tenantId })
+    .select({ id: propostasTable.id, tenantId: propostasTable.tenantId, leadId: propostasTable.leadId, dealId: propostasTable.dealId })
     .from(propostasTable)
     .where(eq(propostasTable.id, String(req.params.id)));
 
@@ -2033,6 +2033,8 @@ router.post("/propostas/:id/public-link", async (req, res) => {
     .select({
       id: propostasTable.id,
       tenantId: propostasTable.tenantId,
+      leadId: propostasTable.leadId,
+      dealId: propostasTable.dealId,
       publicToken: propostasTable.publicToken,
     })
     .from(propostasTable)
