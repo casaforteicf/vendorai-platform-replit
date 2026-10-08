@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom"
 import { useToast } from "@/hooks/use-toast"
 import {
   Toast,
@@ -11,7 +12,7 @@ import {
 export function Toaster() {
   const { toasts } = useToast()
 
-  return (
+  const content = (
     <ToastProvider>
       {toasts.map(function ({ id, title, description, action, ...props }) {
         return (
@@ -30,4 +31,10 @@ export function Toaster() {
       <ToastViewport />
     </ToastProvider>
   )
+
+  // Toasts precisam ficar fora de qualquer stacking context criado por páginas,
+  // drawers ou modais. Assim mensagens de erro/sucesso sempre aparecem na frente.
+  return typeof document !== "undefined"
+    ? createPortal(content, document.body)
+    : content
 }
