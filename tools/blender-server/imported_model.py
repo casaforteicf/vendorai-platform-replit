@@ -38,7 +38,7 @@ def import_model(config):
     path = resolve_model(config, root)
     if path.stat().st_size > 200 * 1024 * 1024:
         raise ValueError("Modelo excede 200 MB")
-    check_embedded_glb(path)
+    glb_metadata = check_embedded_glb(path)
     version = fingerprint(path)
     expected_version = config.get("sha256")
     if not isinstance(expected_version, str) or version != expected_version:
@@ -64,7 +64,13 @@ def import_model(config):
     dimensions = [high[i] - low[i] for i in range(3)]
     validation = check_dimensions(dimensions, config.get("referenceDimensions"),
                                   config.get("tolerance", 0.01))
-    report = {"modelSha256": version, "scaleFactor": factor,
+    source_material_names = [item.get("name") for item in glb_metadata.get("materials", [])]
+    material_mapping = {}
+    for index, name in enumerate(source_material_names):
+        # Only unambiguous, unchanged material names can be matched safely.
+        if isinstance(name, str) and name and source_material_names.count(name) == 1 and bpy.data.materials.get(name):
+            material_mapping[f"mat-{index}"] = name
+    report = {"materialMapping": material_mapping, "modelSha256": version, "scaleFactor": factor,
               "bounds": {"min": low, "max": high}, **validation,
               "objects": [{"name": obj.name, "polygons": len(obj.data.polygons),
                            "materials": [slot.material.name if slot.material else None
