@@ -270,3 +270,13 @@ conversores, build TypeScript e UI isolada antes de integrar.
 - **Escopo ainda pendente:** endpoint autenticado de relatórios vinculados à versão, renderização 3D destacando a malha, persistência/autorização das decisões, validação TypeScript, testes automatizados da UI e homologação.
 - **Validação:** alterações registradas no GitHub; testes/build não executados nesta sessão; PR segue Draft; homologação Contabo e produção adiadas conforme solicitação, nenhum deploy/merge.
 - **Próximo conjunto executável:** introduzir vínculo seguro entre relatório de conversão e versão GLB, reutilizando isolamento de tenant e projeto, antes de disponibilizar revisão como funcionalidade plena.
+
+
+## Lote ampliado — vínculo privado OBJ/FBX → GLB → revisão (09/10/2026)
+- **Lote/versão:** ARQDOR-RENDER-BIM-3422 / desenvolvimento sem release; PR #3422 Draft.
+- **Melhorias integradas:** `ModelFileStore.conversionReport()` lê o relatório privado da conversão vinculada à versão GLB, verifica SHA-256 do GLB e a origem do JSON antes de retornar candidatos; rota autenticada e isolada por tenant/projeto `GET /arch/projetos/:projectId/model-files/:modelId/conversion-report`; o painel React agora consulta o relatório automaticamente pela rota e confere `modelSha256`/identidade dos objetos, sem exigir carregamento manual do arquivo JSON.
+- **Commits:** `c55d713`, `c3346fb`, `e163ce1`, `668db4f`.
+- **Arquivos:** `artifacts/api-server/src/lib/arqdor-model-files.ts`, `artifacts/api-server/src/routes/arqdor_model_files.ts`, `artifacts/frontend/src/pages/arch/render-studio/RenderStudioOpeningReview.tsx` e `RenderStudioModels.tsx`.
+- **Proteções:** o relatório é leitura privada e não permite aprovar fabricação, geometria nem quantitativos; GLB nativo sem relatório de conversão retorna 404, comunicado na tela. Conversão OBJ/FBX permanece desabilitada por padrão.
+- **Limites:** a ligação SHA original→GLB foi escrita, mas não verificada em execução real; criação/persistência autorizada de decisões, destaque no visualizador 3D, calibração técnica e controle granular por usuário ainda pendentes.
+- **Validação:** sem execução de testes, build ou Blender nesta sessão; não afirmar aprovação técnica. Homologação Contabo e publicação adiadas por decisão do usuário; nenhum merge/deploy em produção.
