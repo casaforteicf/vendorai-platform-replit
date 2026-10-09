@@ -33,6 +33,7 @@ import {
   roundOrcamentoNumber,
 } from "../lib/orcamento-numbers.js";
 import { auditProposalBudget, calculateBudgetItemsTotal } from "../lib/budget-integrity.js";
+import { matchesApprovedBudget } from "../lib/budget-import-integrity.js";
 import { recordIntelligenceEvent } from "../services/customer-intelligence-history.js";
 import {
   defaultProposalBuilderTemplate,
@@ -834,31 +835,17 @@ router.post("/propostas", async (req, res) => {
       res.status(409).json({ code: "BUDGET_IMPORT_REVIEW_REQUIRED", error: "Importação não aprovada ou sem arquivo anexado." });
       return;
     }
-    const approvedData = reviewed.rows[0].review_json as { itens?: Array<{ descricao?: string; quantidade?: number; valorUnitario?: number }> } | null;
-    const approvedItems = approvedData?.itens ?? [];
-    const submittedItems = parsed.data.itens ?? [];
-    const sameItems = approvedItems.length > 0 && approvedItems.length === submittedItems.length &&
-      approvedItems.every((approved, index) => {
-        const submitted = submittedItems[index] as PropostaItem;
-        const submittedName = String(submitted?.nome ?? "").trim();
-        const approvedName = String(approved.descricao ?? "").trim();
-        return submittedName === approvedName &&
-          Math.abs(Number(submitted.quantidade) - Number(approved.quantidade)) <= 0.0001 &&
-          Math.abs(Number(submitted.valorUnitario) - Number(approved.valorUnitario)) <= 0.011;
-      });
-    // O total aprovado pode incorporar frete, tributos, descontos e acréscimos.
-    // Compare-o ao total assinado na revisão, nunca apenas ao subtotal dos itens.
-    const reviewedTotal = approvedData && "valorTotal" in approvedData
-      ? Number(approvedData.valorTotal)
-      : NaN;
-    const submittedTotal = parsed.data.valorTotal == null ? NaN : Number(parsed.data.valorTotal);
-    const totalMatches = Number.isFinite(reviewedTotal) && reviewedTotal > 0 &&
-      Number.isFinite(submittedTotal) &&
-      Math.abs(reviewedTotal - submittedTotal) <= 0.011;
-    if (!sameItems || !totalMatches) {
+    const approvedData = reviewed.rows[0].review_json as {
+      valorTotal?: number | null;
+      itens?: Array<{ descricao?: string | null; quantidade?: number | null; valorUnitario?: number | null }>;
+    } | null;
+    if (!matchesApprovedBudget(approvedData, {
+      valorTotal: parsed.data.valorTotal,
+      itens: (parsed.data.itens ?? []) as PropostaItem[],
+    })) {
       res.status(409).json({
         code: "BUDGET_IMPORT_CONTENT_MISMATCH",
-        error: "Os itens enviados diferem da revisão aprovada. Importe novamente para alterar os itens.",
+        error: "Os itens ou o total diferem da revisão aprovada. Importe novamente para alterar os dados.",
       });
       return;
     }
