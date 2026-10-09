@@ -123,14 +123,25 @@ router.post("/crm/people", async (req, res) => {
       // A master record can be shared across tenants; do not return its personal data
       // to a tenant without an existing authorized relationship.
       const linkedDeal = await db.select({ id: crmDealPeopleTable.id })
-        .from(crmDealPeopleTable).where(and(
+        .from(crmDealPeopleTable)
+        .innerJoin(dealsTable, eq(dealsTable.id, crmDealPeopleTable.dealId))
+        .where(and(
           eq(crmDealPeopleTable.tenantId, tenantId),
+          eq(dealsTable.tenantId, tenantId),
           eq(crmDealPeopleTable.personId, exact.id),
+          sql`COALESCE(${crmDealPeopleTable.metadata}->>'inactive', 'false') <> 'true'`,
+          ...buildUserFunctionFilter(req, dealsTable),
         )).limit(1);
       const linkedContact = await db.select({ id: crmTenantCompanyContactsTable.id })
-        .from(crmTenantCompanyContactsTable).where(and(
+        .from(crmTenantCompanyContactsTable)
+        .innerJoin(crmTenantCompaniesTable, eq(crmTenantCompaniesTable.id, crmTenantCompanyContactsTable.tenantCompanyId))
+        .where(and(
           eq(crmTenantCompanyContactsTable.tenantId, tenantId),
+          eq(crmTenantCompaniesTable.tenantId, tenantId),
           eq(crmTenantCompanyContactsTable.personId, exact.id),
+          inArray(crmTenantCompaniesTable.leadId,
+            db.select({ id: leadsTable.id }).from(leadsTable)
+              .where(and(eq(leadsTable.tenantId, tenantId), ...buildUserFunctionFilter(req, leadsTable)))),
         )).limit(1);
       if (!linkedDeal.length && !linkedContact.length) {
         return res.status(409).json({
