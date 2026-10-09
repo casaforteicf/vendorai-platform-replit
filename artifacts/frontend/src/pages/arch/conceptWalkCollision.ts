@@ -31,3 +31,20 @@ export function canWalkTo(x: number, y: number, walls: WalkWall[], radius = 0.24
   }
   return true;
 }
+
+export function moveWalkPosition(start: { x: number; y: number }, target: { x: number; y: number }, walls: WalkWall[], radius = 0.24) {
+  if (![start.x, start.y, target.x, target.y, radius].every(Number.isFinite) || radius <= 0) return start;
+  const distance = Math.hypot(target.x - start.x, target.y - start.y);
+  const steps = Math.max(1, Math.ceil(distance / Math.min(0.05, radius / 2)));
+  const dx = (target.x - start.x) / steps, dy = (target.y - start.y) / steps;
+  let position = { ...start };
+  for (let i = 0; i < steps; i++) {
+    const next = { x: position.x + dx, y: position.y + dy };
+    if (canWalkTo(next.x, next.y, walls, radius)) position = next;
+    else {
+      if (canWalkTo(next.x, position.y, walls, radius)) position.x = next.x;
+      if (canWalkTo(position.x, next.y, walls, radius)) position.y = next.y;
+    }
+  }
+  return position;
+}

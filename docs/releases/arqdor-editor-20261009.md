@@ -149,3 +149,10 @@ Validação: 83 testes em 18 arquivos passaram; transformação TSX do component
 Passagens derivadas do recorte físico compartilhado de portas, incluindo vínculo à parede, orientação, diagonais e união de vãos sobrepostos. Sem ampliação artificial de portas estreitas; visitante de raio 24 cm e altura 1,70 m deve caber no vão. Janelas e portas baixas não liberam passagem. Todas as paredes de cruzamentos continuam verificadas.
 
 Validação: 88 testes em 19 arquivos passaram; esbuild da cena e tipagem isolada do helper passaram. Navegação visual integrada e build completo pendentes. Homologação/publicação adiadas no lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Deslocamento e teclado da caminhada
+
+Movimento subdividido em passos de no máximo 5 cm, verificando colisões ao longo do trajeto e permitindo deslizamento lateral. Evita o salto através de paredes em deslocamentos grandes nos cenários cobertos. Atalhos de caminhada ignoram campos editáveis e eventos já consumidos; perda de foco da janela limpa teclas, controles e arraste.
+
+Validação: 92 testes em 19 arquivos passaram; transformação TSX da cena e tipagem isolada do helper passaram. Conferência visual integrada, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.

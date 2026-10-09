@@ -1,4 +1,4 @@
-import { canWalkTo, walkWall } from "./conceptWalkCollision";
+import { moveWalkPosition, walkWall } from "./conceptWalkCollision";
 import { exposedWallFaces } from "./conceptWallSurfaces";
 import { partitionOrthogonalWallSolids } from "./conceptWallSolidUnion";
 import { splitWallVoids, openingVerticalBounds } from "./conceptWallVoids";
@@ -642,6 +642,7 @@ export default function ConceptWebGLScene({
 
         const handleWalkKeyDown = (event: KeyboardEvent) => {
           if (runtime.navigationMode !== "walk") return;
+          if (event.defaultPrevented || (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable=\"true\"], [role=\"textbox\"]"))) return;
           const key = event.key.toLowerCase();
           if (["w","a","s","d","arrowup","arrowdown","arrowleft","arrowright"].includes(key)) {
             event.preventDefault();
@@ -669,6 +670,12 @@ export default function ConceptWebGLScene({
           runtime.walkDragging = false;
           runtime.walkLastPointer = null;
         };
+        const handleWalkBlur = () => {
+          runtime.walkKeys.clear();
+          runtime.walkControl = { forward: 0, strafe: 0 };
+          handleWalkPointerUp();
+        };
+        window.addEventListener("blur", handleWalkBlur);
         window.addEventListener("keydown", handleWalkKeyDown);
         window.addEventListener("keyup", handleWalkKeyUp);
         renderer.domElement.addEventListener("pointerdown", handleWalkPointerDown);
@@ -717,23 +724,13 @@ export default function ConceptWebGLScene({
               const targetX = Math.max(-maxX, Math.min(maxX, camera.position.x + stepX));
               const targetZ = Math.max(-maxZ, Math.min(maxZ, camera.position.z + stepZ));
 
-              const planX = targetX + lotWidth / 2;
-              const planY = targetZ + lotDepth / 2;
-              if (canWalkTo(planX, planY, runtime.walkWalls)) {
-                camera.position.x = targetX;
-                camera.position.z = targetZ;
-              } else {
-                const slideX = targetX + lotWidth / 2;
-                const currentPlanY = camera.position.z + lotDepth / 2;
-                if (canWalkTo(slideX, currentPlanY, runtime.walkWalls)) {
-                  camera.position.x = targetX;
-                }
-                const currentPlanX = camera.position.x + lotWidth / 2;
-                const slideY = targetZ + lotDepth / 2;
-                if (canWalkTo(currentPlanX, slideY, runtime.walkWalls)) {
-                  camera.position.z = targetZ;
-                }
-              }
+              const position = moveWalkPosition(
+                { x: camera.position.x + lotWidth / 2, y: camera.position.z + lotDepth / 2 },
+                { x: targetX + lotWidth / 2, y: targetZ + lotDepth / 2 },
+                runtime.walkWalls,
+              );
+              camera.position.x = position.x - lotWidth / 2;
+              camera.position.z = position.y - lotDepth / 2;
             }
             const lookDistance = 5;
             const cosPitch = Math.cos(runtime.walkPitch);
@@ -771,6 +768,7 @@ export default function ConceptWebGLScene({
 
         (runtime as any).observer = observer;
         (runtime as any).handlePointer = handlePointer;
+        (runtime as any).handleWalkBlur = handleWalkBlur;
         (runtime as any).handleWalkKeyDown = handleWalkKeyDown;
         (runtime as any).handleWalkKeyUp = handleWalkKeyUp;
         (runtime as any).handleWalkPointerDown = handleWalkPointerDown;
@@ -796,6 +794,7 @@ export default function ConceptWebGLScene({
       const runtime = runtimeRef.current;
       if (!runtime) return;
       cancelAnimationFrame(runtime.animationFrame);
+      window.removeEventListener("blur", (runtime as any).handleWalkBlur);
       window.removeEventListener("keydown", (runtime as any).handleWalkKeyDown);
       window.removeEventListener("keyup", (runtime as any).handleWalkKeyUp);
       runtime.renderer.domElement.removeEventListener("pointerdown", (runtime as any).handleWalkPointerDown);
