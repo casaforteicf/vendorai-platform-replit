@@ -42,7 +42,7 @@ def mesh_parametric_wall(wall, openings=None):
         # exist only at the boundary with air, including the opening reveal.
         for side in (-1, 1):
             quad = [(a, side, lo), (b, side, lo), (b, side, hi), (a, side, hi)]
-            if side == -1:
+            if side == 1:
                 quad.reverse()
             faces.append([vertex(*p) for p in quad])
         if (i - 1, j) not in cells:
@@ -52,11 +52,11 @@ def mesh_parametric_wall(wall, openings=None):
             faces.append([vertex(b, -1, hi), vertex(b, -1, lo),
                           vertex(b, 1, lo), vertex(b, 1, hi)])
         if (i, j - 1) not in cells:
-            faces.append([vertex(a, -1, lo), vertex(b, -1, lo),
-                          vertex(b, 1, lo), vertex(a, 1, lo)])
+            faces.append([vertex(a, 1, lo), vertex(b, 1, lo),
+                          vertex(b, -1, lo), vertex(a, -1, lo)])
         if (i, j + 1) not in cells:
-            faces.append([vertex(b, -1, hi), vertex(a, -1, hi),
-                          vertex(a, 1, hi), vertex(b, 1, hi)])
+            faces.append([vertex(b, 1, hi), vertex(a, 1, hi),
+                          vertex(a, -1, hi), vertex(b, -1, hi)])
     topology = inspect_mesh_edges({"vertices": vertices, "faces": faces})
     return {"vertices": vertices, "faces": faces, "topology": topology,
             "openingCount": len(openings), "localWallClosedSurface": topology["watertightByEdgeIncidence"],
