@@ -259,3 +259,14 @@ conversores, build TypeScript e UI isolada antes de integrar.
 - **Validação:** testes escritos mas não executados neste marco; sem resultados de build/Blender real. Estados: implementado sem validação técnica, homologado NÃO, aprovado NÃO, publicado NÃO.
 - **Decisão do usuário:** deixar homologação Contabo, desbloqueio de acesso do Vendi e publicação para depois. Não executar merge/deploy; PR #3422 segue Draft.
 - **Próximo conjunto independente:** alinhar payload da futura UI ao contexto de projeto/tenant e validar autorização antes de integrar quaisquer ações persistentes.
+
+
+## Lote ampliado — interface de conferência de esquadrias (09/10/2026)
+- **Lote / versão:** ARQDOR-RENDER-BIM-3422 / desenvolvimento, sem release.
+- **Implementado no frontend:** componente `RenderStudioOpeningReview.tsx` com carregamento manual do relatório JSON, conferência de SHA-256 do modelo selecionado, identificação de janelas/portas, contagem de pendências, busca, filtro de conflitos, medidas aproximadas e avisos de segurança BIM. Arquivo limitado a 2 MB e 2000 registros; rejeita IDs duplicados ou incorretos; nenhuma escrita/persistência é efetuada.
+- **Integração:** `RenderStudioModels.tsx` carrega o componente sob demanda e mantém a calibração e o visualizador existente. Seção de render renumerada para 5.
+- **Commits:** `fdaef06` (componente) e `208ff12` (integração frontend).
+- **Limitação de vinculação:** relatórios de conversão OBJ/FBX descrevem o SHA-256 do arquivo original, enquanto o registro de modelos GLB pode descrever o SHA do GLB convertido; nesses casos, o componente rejeitará corretamente a comparação e será necessário um vínculo explícito original→GLB na API antes do fluxo completo. **Não é possível afirmar revisão funcional de OBJ/FBX convertidos nesse caminho.**
+- **Escopo ainda pendente:** endpoint autenticado de relatórios vinculados à versão, renderização 3D destacando a malha, persistência/autorização das decisões, validação TypeScript, testes automatizados da UI e homologação.
+- **Validação:** alterações registradas no GitHub; testes/build não executados nesta sessão; PR segue Draft; homologação Contabo e produção adiadas conforme solicitação, nenhum deploy/merge.
+- **Próximo conjunto executável:** introduzir vínculo seguro entre relatório de conversão e versão GLB, reutilizando isolamento de tenant e projeto, antes de disponibilizar revisão como funcionalidade plena.
