@@ -43,7 +43,7 @@ docker cp "$SRC" "$C":$WORK/src/index.ts >/dev/null
 docker exec "$C" /app/node_modules/.bin/tsc -p "$WORK/tsconfig.json"
 docker exec "$C" test -s "$WORK/dist/index.js"
 echo "=== ATIVANDO MCP EXISTENTE ==="
-docker cp "$TMP/index.js" "$TMP/index.rollback.js"
+cp "$TMP/index.js" "$TMP/index.rollback.js"
 docker cp "$C":$WORK/dist/index.js "$TMP/index.new.js" >/dev/null
 docker cp "$TMP/index.new.js" "$C":/app/dist/index.js >/dev/null
 swapped=1
