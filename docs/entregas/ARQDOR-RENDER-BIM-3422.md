@@ -103,3 +103,15 @@ aprovado NÃO; publicado NÃO.
 - **Próxima ação:** executar `python -m unittest -v test_arqdor_feature_contracts.py`
 no checkout exato na Contabo de homologação e anexar saída e SHA; validar Blender,
 conversores, build TypeScript e UI isolada antes de integrar.
+
+
+## Marco de estabilização — 09/10/2026
+
+- Head antes das correções: `c4defa5b4cea681cee72ed32dbb3cb97e56e3af9` (PR #3422 Draft).
+- Correção `d9752f1`: rejeitar arestas duplicadas e limitar vértices / orçamento explícito de arestas da inspeção de contornos.
+- Testes adicionados `1aff234`: duplicatas, `max_edges` inválido e limite de 200000 vértices.
+- Arquivos: `tools/blender-server/arqdor_feature_contracts.py` e `tools/blender-server/test_arqdor_feature_contracts.py`.
+- Verificação nesta sessão: tentativa local `git ls-remote https://github.com/casaforteicf/vendorai-platform-replit.git HEAD` **falhou por DNS** (`Could not resolve host: github.com`). Os novos testes **não foram executados**; nenhum build/Blender real na Contabo foi executado.
+- O Vendi na homologação continua com último erro observado `VENDI_HOMOLOG_AUTH_EXCHANGE_FAILED 401 upstream_token_rejected`. Não alegar indisponibilidade do servidor Contabo com base nesta falha de autenticação.
+- Estado: **implementado sem validação técnica integral**. Homologação: não. Aprovação: não. Publicação: não. PR permanece Draft.
+- Próxima ação: autenticar o caminho Vendi/Contabo para homologação; no checkout do commit correto executar `python3 -m unittest -v test_arqdor_feature_contracts.py` no diretório `tools/blender-server`, `python3 -m py_compile arqdor_feature_contracts.py arqdor_convert_obj_fbx.py`, build e validação de conversão em Blender; registrar logs/exit codes/head testado e corrigir falhas antes de qualquer promoção.
