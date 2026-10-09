@@ -75,10 +75,7 @@ router.get("/crm/people", async (req, res) => {
       .where(and(
         eq(crmTenantCompanyContactsTable.tenantId, tenantId),
         eq(crmTenantCompaniesTable.tenantId, tenantId),
-        or(
-          isNull(crmTenantCompaniesTable.leadId),
-          ...(visibleLeadIds.length ? [inArray(crmTenantCompaniesTable.leadId, visibleLeadIds)] : []),
-        ),
+        ...(visibleLeadIds.length ? [inArray(crmTenantCompaniesTable.leadId, visibleLeadIds)] : [sql`false`]),
       ));
     const visiblePersonIds = [...new Set([...dealPersonIds, ...companyContactIds].map((row) => row.personId))];
     if (visiblePersonIds.length === 0) return res.json({ tenantId, items: [] });
