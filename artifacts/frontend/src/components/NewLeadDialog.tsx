@@ -616,11 +616,6 @@ export function NewLeadDialog({
           ],
         },
       );
-      if (companyId) {
-        await crmPostJson(`/api/crm/deals/${dealId}/companies`, {
-          tenantId, companyId, role: "contratante", isPrimary: true,
-        });
-      }
       return {
         personId: coupleData.items[0]?.personId,
         coClientPersonId: coupleData.items[1]?.personId,
