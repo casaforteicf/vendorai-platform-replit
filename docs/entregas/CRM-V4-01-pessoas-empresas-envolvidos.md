@@ -32,14 +32,19 @@ Reutilizar o cadastro mestre existente e permitir casal (dois consumidores com q
 - [ ] Executar os gates documentados: `pnpm install --no-frozen-lockfile`; `../../node_modules/.bin/tsc -p tsconfig.launch-ci.json --noEmit`; `node ./build.mjs`.
 - [ ] Registrar SHA, PR, arquivos e evidências de homologação/produção somente após verificação.
 
-## Registro mestre de entregas
+## Registro mestre de entregas (09/10/2026)
 | Campo | Estado |
 |---|---|
 | Lote | CRM V4-01 |
-| Branch | feat/crm-lote-v4-relacionamentos |
-| Entrega comprovada | Especificação técnica e rastreabilidade inicial |
-| Código funcional alterado | Não |
-| TypeScript / esbuild | Não executados |
-| Homologação / produção | Não alteradas |
-| Bloqueio | Acesso remoto Desktop Commander indisponível por cota; sem clone Git privado no ambiente atual |
-| Infra | Fora de escopo: outro agente |
+| Branch | `feat/crm-lote-v4-relacionamentos` |
+| PR | [#3428](https://github.com/casaforteicf/vendorai-platform-replit/pull/3428) — rascunho |
+| Escopo implementado na branch | Casal, dados pessoais, papéis, contato principal, deduplicação cautelosa, vínculo contextual por tenant, exclusão lógica e histórico dos vínculos |
+| Últimos commits de integridade | `2c5e9c1`, `34a458e`, `a9f7acd`, `7959edb`, `e7e866b`, `5305dcf`, `ab84cf3`, `1fb000e`, `a235c86`, `1faded8` |
+| Arquivos alterados no lote | `artifacts/frontend/src/components/NewLeadDialog.tsx`, `LeadQuickEditButton.tsx`, `DealParticipantsCard.tsx`, `artifacts/api-server/src/routes/crm_deal_participants.ts`, este registro |
+| TypeScript / esbuild | **Não executados**, não afirmar compilação |
+| Homologação | **Não realizada** |
+| Produção | **Não alterada** |
+| Próximas verificações | Consistência transacional do histórico (especialmente reativações simultâneas), fluxo de cadastro existente, compartilhamento de cadastros e privacidade multi-tenant, testes de formulário e gates oficiais |
+| Responsável infraestrutura/deploy | Outro agente; fora do escopo deste lote |
+
+> Atenção: implementação registrada não equivale a funcionalidade homologada. Não realizar merge/deploy sem os gates operacionais previstos.
