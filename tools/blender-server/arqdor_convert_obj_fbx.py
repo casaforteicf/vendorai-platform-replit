@@ -11,7 +11,7 @@ from mathutils import Vector
 from pathlib import Path
 
 import bpy
-from arqdor_feature_contracts import validate_conversion_request, suggest_architectural_classification
+from arqdor_feature_contracts import validate_conversion_request, suggest_architectural_classification, suggest_geometry_role
 
 
 def convert(src: Path, dst: Path, sha256: str):
@@ -51,10 +51,18 @@ def convert(src: Path, dst: Path, sha256: str):
     dimensions = [maximum[axis] - minimum[axis] for axis in range(3)]
     if any(not math.isfinite(value) or value > 100000 for value in dimensions):
         raise ValueError("Dimensões incompatíveis com limites do conversor")
-    classification_hints = [
-        {"name": obj.name, **suggest_architectural_classification(obj.name)}
-        for obj in meshes[:2000]
-    ]
+    classification_hints = []
+    for obj in meshes[:2000]:
+        world_corners = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
+        local_bounds = [max(point[axis] for point in world_corners)
+                        - min(point[axis] for point in world_corners)
+                        for axis in range(3)]
+        classification_hints.append({
+            "name": obj.name,
+            "boundsDimensions": local_bounds,
+            **suggest_architectural_classification(obj.name),
+            **suggest_geometry_role(local_bounds),
+        })
     bpy.ops.export_scene.gltf(filepath=str(dst.resolve()), export_format="GLB",
                               use_selection=False, export_apply=False)
     if not dst.is_file() or dst.stat().st_size == 0:
