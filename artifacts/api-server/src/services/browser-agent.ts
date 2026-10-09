@@ -508,7 +508,9 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
             headers: { Authorization: `Bearer ${token}` },
             credentials: "same-origin",
           });
-          return { ok: response.ok, status: response.status };
+          const body = await response.json().catch(() => ({}));
+          const reason = typeof body?.error === "string" ? body.error : "unknown";
+          return { ok: response.ok, status: response.status, reason: reason.slice(0, 100), responseOrigin: new URL(response.url).origin };
         } catch (error) {
           return { ok: false, status: 0, error: String(error) };
         }
@@ -517,7 +519,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
       if (!authProbe.ok) {
         throw new Error(
           authProbe.status === 401 || authProbe.status === 403
-            ? `VENDI_AUTH_REJECTED:${authProbe.status}`
+            ? `VENDI_AUTH_REJECTED:${authProbe.status}:${authProbe.reason ?? 'unknown'}:${authProbe.responseOrigin ?? 'unknown'}`
             : `VENDI_AUTH_PROBE_FAILED:${authProbe.status}`,
         );
       }
