@@ -794,8 +794,8 @@ export function NewLeadDialog({
         });
         return;
       }
-      const primaryDocument = values.documento.replace(/\\D/g, "");
-      const secondDocument = coClient.documento.replace(/\\D/g, "");
+      const primaryDocument = values.documento.replace(/\D/g, "");
+      const secondDocument = coClient.documento.replace(/\D/g, "");
       if (primaryDocument && secondDocument && primaryDocument === secondDocument) {
         toast({
           title: "Documentos duplicados",
