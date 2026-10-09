@@ -15,3 +15,23 @@ describe("object transform commit", () => {
     expect(objectTransformPatch({ x: 0, z: 0 }, 0, 0, 1, 10, 10)).toBeNull();
   });
 });
+
+describe("rotated object bounds", () => {
+  it("keeps every corner within the lot at diagonal angles", () => {
+    for (const degrees of [5, 45, 90, 135, 225, 315]) {
+      const patch = objectTransformPatch({ x: 100, z: -100 }, -degrees * Math.PI / 180, 2, 4, 10, 12)!;
+      const angle = patch.rotation * Math.PI / 180;
+      for (const x of [-1, 1]) for (const y of [-2, 2]) {
+        const px = patch.x + 1 + x * Math.cos(angle) - y * Math.sin(angle);
+        const py = patch.y + 2 + x * Math.sin(angle) + y * Math.cos(angle);
+        expect(px).toBeGreaterThanOrEqual(-1e-8); expect(px).toBeLessThanOrEqual(10 + 1e-8);
+        expect(py).toBeGreaterThanOrEqual(-1e-8); expect(py).toBeLessThanOrEqual(12 + 1e-8);
+      }
+    }
+  });
+  it("bounds according to the final snapped angle", () => {
+    const patch = objectTransformPatch({ x: 100, z: 100 }, -43 * Math.PI / 180, 2, 4, 10, 10)!;
+    expect(patch.rotation).toBe(45);
+    expect(patch.x + 1 + 3 / Math.sqrt(2)).toBeCloseTo(10);
+  });
+});

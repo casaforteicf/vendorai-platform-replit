@@ -198,3 +198,10 @@ Validação: 102 testes existentes em 21 arquivos passaram; transformação TSX 
 Gizmo WebGL consulta dimensões atuais do lote e callbacks atuais de alteração/início/fim de edição, sem capturar valores iniciais da cena. Conversão de posição e rotação extraída para helper; snap de 5 cm limitado ao lote após arredondamento, evitando ultrapassar bordas fora da grade. Valores não finitos e dimensões não positivas rejeitados; objetos maiores que o lote mantêm origem não negativa, sem redimensionamento automático. Limites ainda usam largura/profundidade nominais, sem envelope rotacionado.
 
 Validação: 106 testes em 22 arquivos passaram; transformação TSX da cena passou. Interação integrada do gizmo/histórico, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Limites de objetos rotacionados no gizmo
+
+Commit do gizmo WebGL calcula envelope horizontal com largura/profundidade e ângulo final arredondado a 5 graus. Limita posição após snap usando esse envelope. Testes verificam quatro cantos em seis ângulos e borda no ângulo arredondado. Objetos que não cabem no envelope do terreno não são reduzidos; origem centralizada quando possível. Aviso para esse caso, padronização dos demais caminhos de edição/2D e colisões com ambientes permanecem pendentes.
+
+Validação: 108 testes em 22 arquivos passaram; tipagem isolada do helper passou. Verificação visual integrada, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
