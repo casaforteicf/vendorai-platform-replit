@@ -539,7 +539,7 @@ router.post("/crm/deals/:dealId/companies", async (req, res) => {
     if (!tenantCompany) return res.status(422).json({ error: "Empresa não está vinculada a este tenant." });
 
     const link = await db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${tenantId}), hashtext(${req.params.dealId + ":" + parsed.data.companyId}))`);
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${tenantId}), hashtext(${req.params.dealId}))`);
     const [previousCompanyLink] = await tx.select({ metadata: crmDealCompaniesTable.metadata })
       .from(crmDealCompaniesTable).where(and(eq(crmDealCompaniesTable.tenantId, tenantId),
         eq(crmDealCompaniesTable.dealId, req.params.dealId),
@@ -596,7 +596,7 @@ router.delete("/crm/deals/:dealId/companies/:relationId", async (req, res) => {
     const tenantId = tenantIdFromRequest(req);
     await assertDeal(req, tenantId, req.params.dealId);
     await db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${tenantId}), hashtext(${req.params.dealId} + ":" + req.params.relationId))`);
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${tenantId}), hashtext(${req.params.dealId}))`);
     const [relation] = await tx.select().from(crmDealCompaniesTable).where(and(
       eq(crmDealCompaniesTable.id, req.params.relationId),
       eq(crmDealCompaniesTable.tenantId, tenantId),
