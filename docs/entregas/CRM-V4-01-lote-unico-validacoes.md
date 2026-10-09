@@ -67,3 +67,9 @@ Este relatório corresponde a inspeção estática de código remoto e planejame
 - `0d57a28`: a tela `DealParticipantsCard` usa apenas esse PATCH quando o usuário edita um participante; adição de novo participante continua via POST tradicional.
 - **Escopo real:** a atomicidade vale para edição de participante existente por essa interface. Cadastro de pessoa nova, vínculo permanente a empresa e outras telas ainda precisam de revisão específica.
 - **Sem comprovação de execução:** TypeScript, build, testes e homologação não executados nesta sessão. Homologação e publicação adiadas. Produção não alterada.
+
+## Cadastro novo e vínculo permanente — 09/10/2026
+- Commit `355d2aa`: `POST /crm/deals/:dealId/people` reúne a criação de nova pessoa mestre, vinculação ao negócio e registro de contato corporativo permanente na mesma transação Drizzle, protegida por bloqueio consultivo de tenant/negócio.
+- Em caso de falha em qualquer etapa transacional, a operação inteira deve reverter, evitando cadastro mestre órfão ou vínculo sem contato permanente.
+- Limites: verificações prévias de vínculo de pessoa existente ocorrem antes da transação; outros endpoints, como `POST /crm/people` usado em criação de lead/casal, não foram convertidos nesta alteração.
+- Evidência: revisão do arquivo remoto após commit; sem TypeScript/build, testes concorrentes ou homologação executados. Homologação Contabo e publicação seguem adiadas e produção inalterada.
