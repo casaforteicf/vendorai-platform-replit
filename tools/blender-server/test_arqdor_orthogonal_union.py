@@ -12,6 +12,8 @@ def wall(a, b, thickness=.2, height=3, openings=None):
 class OrthogonalUnionTests(unittest.TestCase):
     def assert_closed(self, result):
         topology = inspect_mesh_edges(result)
+        self.assertEqual(result["topology"], topology)
+        self.assertEqual(result["meshClosedByEdgeIncidence"], topology["watertightByEdgeIncidence"])
         self.assertEqual(topology["boundaryEdges"], 0)
         self.assertEqual(topology["nonmanifoldEdges"], 0)
         self.assertEqual(topology["orientationErrors"], 0)
