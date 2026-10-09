@@ -308,37 +308,40 @@ router.patch("/crm/deals/:dealId/people/:personId/profile", async (req, res) => 
   try {
     const tenantId = tenantIdFromRequest(req, parsed.data.tenantId);
     await assertDeal(req, tenantId, req.params.dealId);
-    const [linked] = await db.select({ id: crmDealPeopleTable.id, metadata: crmDealPeopleTable.metadata })
+    const updated = await db.transaction(async (tx) => {
+      // Uses the same deal lock as link/unlink to avoid editing an already detached relation.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${tenantId}), hashtext(${req.params.dealId}))`);
+    const [linked] = await tx.select({ id: crmDealPeopleTable.id, metadata: crmDealPeopleTable.metadata })
       .from(crmDealPeopleTable)
       .where(and(eq(crmDealPeopleTable.tenantId, tenantId),
         eq(crmDealPeopleTable.dealId, req.params.dealId),
         eq(crmDealPeopleTable.personId, req.params.personId))).limit(1);
-    if (!linked) return res.status(404).json({ error: "Pessoa não vinculada a este negócio." });
-    if (linked.metadata?.inactive === true) return res.status(409).json({ error: "Vínculo inativo. Reative antes de editar o perfil." });
+    if (!linked) throw Object.assign(new Error("Pessoa não vinculada a este negócio."), { status: 404 });
+    if (linked.metadata?.inactive === true) throw Object.assign(new Error("Vínculo inativo. Reative antes de editar o perfil."), { status: 409 });
     // A master person's profile is global. Editing it from one tenant would change
     // personal data visible to another tenant, so require a separate ownership workflow.
-    const foreignDeal = await db.select({ id: crmDealPeopleTable.id }).from(crmDealPeopleTable)
+    const foreignDeal = await tx.select({ id: crmDealPeopleTable.id }).from(crmDealPeopleTable)
       .where(and(eq(crmDealPeopleTable.personId, req.params.personId),
         sql`${crmDealPeopleTable.tenantId} <> ${tenantId}`)).limit(1);
-    const foreignContact = await db.select({ id: crmTenantCompanyContactsTable.id }).from(crmTenantCompanyContactsTable)
+    const foreignContact = await tx.select({ id: crmTenantCompanyContactsTable.id }).from(crmTenantCompanyContactsTable)
       .where(and(eq(crmTenantCompanyContactsTable.personId, req.params.personId),
         sql`${crmTenantCompanyContactsTable.tenantId} <> ${tenantId}`)).limit(1);
     if (foreignDeal.length || foreignContact.length) {
-      return res.status(409).json({ error: "Cadastro compartilhado com outra empresa. Edição global bloqueada para proteger os dados." });
+      throw Object.assign(new Error("Cadastro compartilhado com outra empresa. Edição global bloqueada para proteger os dados."), { status: 409 });
     }
     const documento = digits(parsed.data.documento);
     if (documento) {
-      const matches = await db.select({ id: crmPeopleMasterTable.id })
+      const matches = await tx.select({ id: crmPeopleMasterTable.id })
         .from(crmPeopleMasterTable).where(eq(crmPeopleMasterTable.documento, documento)).limit(1);
       if (matches.length && matches[0].id !== req.params.personId)
-        return res.status(409).json({ error: "Documento já pertence a outra pessoa." });
+        throw Object.assign(new Error("Documento já pertence a outra pessoa."), { status: 409 });
     }
-    const [current] = await db.select().from(crmPeopleMasterTable)
+    const [current] = await tx.select().from(crmPeopleMasterTable)
       .where(eq(crmPeopleMasterTable.id, req.params.personId)).limit(1);
-    if (!current) return res.status(404).json({ error: "Cadastro da pessoa não encontrado." });
+    if (!current) throw Object.assign(new Error("Cadastro da pessoa não encontrado."), { status: 404 });
     const newPhone = parsed.data.telefone?.trim();
     const newEmail = parsed.data.email?.trim().toLowerCase();
-    const [updated] = await db.update(crmPeopleMasterTable).set({
+    const [updated] = await tx.update(crmPeopleMasterTable).set({
       nome: parsed.data.nome,
       documento: parsed.data.documento === undefined ? current.documento : documento || null,
       telefones: parsed.data.telefone === undefined ? current.telefones :
@@ -352,6 +355,8 @@ router.patch("/crm/deals/:dealId/people/:personId/profile", async (req, res) => 
       dataNascimento: parsed.data.dataNascimento === undefined ? current.dataNascimento : parsed.data.dataNascimento || null,
       updatedAt: new Date(),
     }).where(eq(crmPeopleMasterTable.id, req.params.personId)).returning();
+      return updated;
+    });
     return res.json({ item: updated });
   } catch (error: any) {
     return res.status(error.status ?? 500).json({ error: error.message });
