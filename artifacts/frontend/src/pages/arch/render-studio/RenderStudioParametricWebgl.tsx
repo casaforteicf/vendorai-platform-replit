@@ -77,6 +77,10 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
     let cleanup = () => {};
     loadThree().then(() => {
       if (disposed || !holder.current) return;
+      // Validate and build union before allocating a WebGL context, so invalid
+      // geometry does not leave a renderer/canvas attached after rejection.
+      const orthogonal = walls.every(w => Math.abs(w.start[0] - w.end[0]) < 1e-8 || Math.abs(w.start[1] - w.end[1]) < 1e-8);
+      const union = orthogonal && walls.length ? unionOrthogonalWalls(walls) : null;
       const THREE = (window as any).THREE;
       const scene = new THREE.Scene(); scene.background = new THREE.Color(0xf8fafc);
       scene.up?.set?.(0, 0, 1);
@@ -90,9 +94,7 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
       const sun = new THREE.DirectionalLight(0xffffff, 1.2);
       sun.position.set(8, -7, 16); scene.add(sun);
       const geometryObjects: any[] = [];
-      const orthogonal = walls.every(w => Math.abs(w.start[0] - w.end[0]) < 1e-8 || Math.abs(w.start[1] - w.end[1]) < 1e-8);
-      if (orthogonal && walls.length) {
-        const union = unionOrthogonalWalls(walls);
+      if (union) {
         const positions: number[] = [];
         for (const face of union.faces) {
           const [a, b, c, d] = face.map(index => union.vertices[index]);
