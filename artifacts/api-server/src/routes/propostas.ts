@@ -816,6 +816,27 @@ router.post("/propostas", async (req, res) => {
     return;
   }
 
+  // Imported documents recognized by the audit trail cannot be saved as
+  // proposals until explicitly approved. Legacy/manual files are unchanged.
+  if (parsed.data.arquivoImportadoUrl) {
+    const known = await db.execute(sql`
+      SELECT id, review_status FROM public.budget_imports
+      WHERE tenant_id = ${parsed.data.tenantId}
+        AND file_url = ${parsed.data.arquivoImportadoUrl}
+      ORDER BY created_at DESC LIMIT 1
+    `);
+    if (known.rows.length) {
+      const submittedImportId = (req.body as Record<string, unknown>).budgetImportId;
+      if (known.rows[0].review_status !== "approved" || submittedImportId !== known.rows[0].id) {
+        res.status(409).json({
+          code: "BUDGET_IMPORT_REVIEW_REQUIRED",
+          error: "Revise e aprove o orçamento importado antes de gravar a proposta.",
+        });
+        return;
+      }
+    }
+  }
+
   const numero = await generateNumero(parsed.data.tenantId);
 
   const itensNormalizadosBase = normalizarItensExecucao((parsed.data.itens ?? []) as PropostaItem[]);
