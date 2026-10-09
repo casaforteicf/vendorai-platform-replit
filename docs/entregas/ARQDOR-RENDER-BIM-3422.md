@@ -477,3 +477,11 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Commits:** `3d0932e` (classificação), `ee94dc2` (testes), `8e0a61d` (nomenclatura correta da regressão).
 - **Execução:** conexão local a raw.githubusercontent.com permanece indisponível por DNS. O conector GitHub possibilitou leitura e commits, mas não forneceu checkout ao runtime local para executar o código; testes/build não executados neste lote. Não há homologação nem validação topológica real.
 - **Estado:** lote 3422-A ainda em estabilização e parcial; PR #3422 Draft; produção, Contabo e release inalterados.
+
+
+## Lote 3422-A — verificação de conectividade volumétrica (09/10/2026)
+- **Defeito identificado:** uma malha de vários sólidos separados pode apresentar todas as arestas com duas incidências e ser erroneamente interpretada como volume único. O verificador de arestas isoladamente não estabelece conectividade do conjunto.
+- **Correção:** `union_orthogonal_walls` agora faz busca por adjacência de faces entre células sólidas XYZ e retorna `connectedSolidComponents`. O `integrityStatus` passa a exigir reparo quando o número de componentes for diferente de 1, mesmo com `meshClosedByEdgeIncidence=true`.
+- **Regressão:** teste atualizado para duas paredes separadas exigir dois componentes e `requires_geometric_repair`; parede única requer um componente.
+- **Commits:** `6891357` (núcleo) e `1f76e1a` (testes).
+- **Validação:** mudanças no GitHub realizadas. Execução da suíte Python e build ainda **não comprovados** devido a ausência de checkout acessível no ambiente local; homologação Contabo adiada, sem merge/deploy e produção intacta.
