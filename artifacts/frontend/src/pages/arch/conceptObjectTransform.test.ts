@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boundedObjectGeometry, duplicateObjectGeometry, insertedObjectGeometry, objectTransformPatch } from "./conceptObjectTransform";
+import { boundedObjectGeometry, duplicateObjectGeometry, insertedObjectGeometry, objectBatchPlacementError, objectTransformPatch } from "./conceptObjectTransform";
 describe("object transform commit", () => {
   it("snaps position and yaw", () => {
     expect(objectTransformPatch({ x: 0, z: 0 }, -Math.PI / 2, 1, 2, 10, 10)).toEqual({ x: 4.5, y: 4, rotation: 90 });
@@ -66,4 +66,19 @@ it("rejects oversized catalog items without changing their dimensions", () => {
 it("places catalog items by their center and bounds drops near the edge", () => {
   expect(insertedObjectGeometry(2, 4, 10, 10, { x: 9.9, y: 0.1 })).toEqual({ x: 8, y: 0, rotation: 0 });
   expect(insertedObjectGeometry(2, 4, 10, 10)).toEqual({ x: 4, y: 3, rotation: 0 });
+});
+
+describe("atomic furniture layout validation", () => {
+  const object = { x: 2, y: 2, width: 1, depth: 2, rotation: 0, floor: 0 };
+  it("accepts a complete valid layout", () => {
+    expect(objectBatchPlacementError([object, { ...object, x: 4 }], 10, 10, 0)).toBeNull();
+  });
+  it("rejects a batch if any item is invalid or belongs to another floor", () => {
+    expect(objectBatchPlacementError([object, { ...object, width: NaN }], 10, 10, 0)).toContain("item 2");
+    expect(objectBatchPlacementError([object], 10, 10, 1)).toContain("pavimento");
+  });
+  it("rejects rotated corners outside the lot and empty batches", () => {
+    expect(objectBatchPlacementError([{ ...object, x: 0, y: 0, rotation: 45 }], 10, 10, 0)).toContain("ultrapassa");
+    expect(objectBatchPlacementError([], 10, 10, 0)).toContain("não contém");
+  });
 });

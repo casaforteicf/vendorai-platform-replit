@@ -1,4 +1,4 @@
-import { boundedObjectGeometry, duplicateObjectGeometry, insertedObjectGeometry } from "./conceptObjectTransform";
+import { boundedObjectGeometry, duplicateObjectGeometry, insertedObjectGeometry, objectBatchPlacementError } from "./conceptObjectTransform";
 import { openingCoordinates } from "./conceptOpeningCoordinates";
 import { flushSync } from "react-dom";
 import { conceptReferenceSize } from "./conceptReferenceImage";
@@ -4344,6 +4344,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const applyFurnishLayoutOption = (optionId: string) => {
     const option = furnishLayoutOptions.find((item) => item.id === optionId);
     if (!option || !selectedClosedSpace || furnishLayoutSpaceId !== selectedClosedSpace.id) return;
+    const placementError = objectBatchPlacementError(option.objects, lotWidth, lotDepth, activeFloor);
+    if (placementError) { setObjectPlacementError(placementError); return; }
+    setObjectPlacementError(null);
     const before = snapshotEditor();
     const created = option.objects.map((object) => ({
       ...object,

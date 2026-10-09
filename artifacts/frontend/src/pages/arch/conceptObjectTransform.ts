@@ -43,3 +43,21 @@ export function insertedObjectGeometry(width: number, depth: number, lotWidth: n
   const geometry = boundedObjectGeometry({ x: (point?.x ?? lotWidth / 2) - width / 2, y: (point?.y ?? lotDepth / 2) - depth / 2, width, depth, rotation: 0 }, lotWidth, lotDepth);
   return geometry ?? { error: "A posição escolhida para o objeto é inválida." };
 }
+
+export function objectBatchPlacementError(objects: Array<{ x: number; y: number; width: number; depth: number; rotation: number; floor: number }>, lotWidth: number, lotDepth: number, activeFloor: number) {
+  if (!objects.length) return "O layout não contém objetos para inserir.";
+  if (![lotWidth, lotDepth].every(Number.isFinite) || lotWidth <= 0 || lotDepth <= 0) return "As medidas do terreno são inválidas.";
+  for (let i = 0; i < objects.length; i++) {
+    const object = objects[i];
+    if (![object.x, object.y, object.width, object.depth, object.rotation].every(Number.isFinite) || object.width <= 0 || object.depth <= 0)
+      return `O item ${i + 1} do layout tem medidas ou posição inválidas.`;
+    if (object.floor !== activeFloor) return "O layout pertence a outro pavimento. Gere uma nova opção no pavimento atual.";
+    const angle = object.rotation * Math.PI / 180;
+    const halfX = (Math.abs(Math.cos(angle)) * object.width + Math.abs(Math.sin(angle)) * object.depth) / 2;
+    const halfY = (Math.abs(Math.sin(angle)) * object.width + Math.abs(Math.cos(angle)) * object.depth) / 2;
+    const centerX = object.x + object.width / 2, centerY = object.y + object.depth / 2;
+    if (centerX - halfX < -1e-8 || centerY - halfY < -1e-8 || centerX + halfX > lotWidth + 1e-8 || centerY + halfY > lotDepth + 1e-8)
+      return `O item ${i + 1} do layout ultrapassa o terreno. Gere uma nova opção com as medidas atuais.`;
+  }
+  return null;
+}

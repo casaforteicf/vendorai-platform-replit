@@ -233,3 +233,10 @@ Validação: 113 testes em 22 arquivos passaram; transformação TSX do planner 
 addObjectAt compartilhado por biblioteca e drops 2D/3D valida dimensões e posição antes de criar objeto ou histórico. Itens maiores que o lote são rejeitados com aviso específico, preservando dimensões de catálogo. Posição por centro limitada à borda pelo helper compartilhado. Outros caminhos de inserção em lote/importação seguem independentes.
 
 Validação: 115 testes em 22 arquivos passaram; transformação TSX do planner passou. Interação integrada de catálogo/drop, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Aplicação integral de layout de mobiliário
+
+applyFurnishLayoutOption valida todos os itens antes de snapshot, IDs ou atualização do modelo. Verifica medidas/posição finitas, dimensões positivas, pavimento atual e envelope rotacionado dentro do lote. Erro identifica item ou pavimento; mantém preview/opções para revisão e não gera histórico. Não reposiciona ou redimensiona itens para forçar encaixe. Validação de permanência no ambiente e conflitos com móveis existentes permanece pendente.
+
+Validação: 118 testes em 22 arquivos passaram; transformação TSX do planner passou. Interação integrada, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
