@@ -846,12 +846,15 @@ router.post("/propostas", async (req, res) => {
           Math.abs(Number(submitted.quantidade) - Number(approved.quantidade)) <= 0.0001 &&
           Math.abs(Number(submitted.valorUnitario) - Number(approved.valorUnitario)) <= 0.011;
       });
-    const approvedSubtotal = approvedItems.reduce((total, item) =>
-      total + Number(item.quantidade) * Number(item.valorUnitario), 0);
-    const submittedTotal = Number(parsed.data.valorTotal);
-    const totalMatches = Number.isFinite(approvedSubtotal) &&
+    // O total aprovado pode incorporar frete, tributos, descontos e acréscimos.
+    // Compare-o ao total assinado na revisão, nunca apenas ao subtotal dos itens.
+    const reviewedTotal = approvedData && "valorTotal" in approvedData
+      ? Number(approvedData.valorTotal)
+      : NaN;
+    const submittedTotal = parsed.data.valorTotal == null ? NaN : Number(parsed.data.valorTotal);
+    const totalMatches = Number.isFinite(reviewedTotal) && reviewedTotal > 0 &&
       Number.isFinite(submittedTotal) &&
-      Math.abs(approvedSubtotal - submittedTotal) <= 0.011;
+      Math.abs(reviewedTotal - submittedTotal) <= 0.011;
     if (!sameItems || !totalMatches) {
       res.status(409).json({
         code: "BUDGET_IMPORT_CONTENT_MISMATCH",
