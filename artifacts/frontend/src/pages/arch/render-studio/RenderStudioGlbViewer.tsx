@@ -21,8 +21,8 @@ function loadScript(src: string): Promise<void> {
   return promise;
 }
 
-type Props = { url: string; modelId: string; onSelect: (name: string | null) => void };
-export default function RenderStudioGlbViewer({ url, modelId, onSelect }: Props) {
+type Props = { url: string; modelId: string; onSelect: (name: string | null) => void; focusName?: string | null };
+export default function RenderStudioGlbViewer({ url, modelId, onSelect, focusName }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const selectRef = useRef(onSelect);
   const [status, setStatus] = useState("Carregando modelo 3D…");
@@ -164,6 +164,32 @@ export default function RenderStudioGlbViewer({ url, modelId, onSelect }: Props)
     });
     return () => { cancelled = true; controller.abort(); cleanup(); };
   }, [url, modelId]);
+
+  useEffect(() => {
+    const current = runtime.current;
+    if (!current || !focusName?.trim()) return;
+    const matches: any[] = [];
+    current.root.traverse((node: any) => {
+      if (node.isMesh && node.name === focusName) matches.push(node);
+    });
+    // Blender mesh ordering and GLB node identities are not equivalent.
+    // Only focus when the exported name identifies exactly one mesh.
+    if (matches.length !== 1) {
+      setSaveMessage("Não foi possível localizar uma malha única com esse nome no GLB. Confira manualmente.");
+      return;
+    }
+    const THREE = (window as any).THREE;
+    const box = new THREE.Box3().setFromObject(matches[0]);
+    if (box.isEmpty()) return;
+    const target = box.getCenter(new THREE.Vector3());
+    const extent = box.getSize(new THREE.Vector3());
+    const radius = Math.max(extent.x, extent.y, extent.z, 0.1);
+    current.controls.target.copy(target);
+    current.camera.position.copy(target).add(new THREE.Vector3(radius * 1.8, radius * 1.4, radius * 1.8));
+    current.camera.updateProjectionMatrix();
+    current.controls.update();
+    setSaveMessage("Esquadria localizada por nome único no GLB. Confirme visualmente a correspondência.");
+  }, [focusName, modelId]);
 
   function applyColor(next: string) {
     setColor(next);
