@@ -171,3 +171,14 @@ conversores, build TypeScript e UI isolada antes de integrar.
 - Testes adicionados para duas janelas com nome igual e para ID ambíguo; **não executados na Contabo**, sem homologação. Medidas continuam estimativas AABB, nunca de fabricação.
 - Status: implementado sem validação técnica completa. Homologação Contabo e publicação **adiadas por determinação do usuário**; aprovação não realizada; produção sem alteração. PR #3422 em Draft.
 - Próximo desenvolvimento independente: rastrear identidade por versão do arquivo e preparar revisão visual das esquadrias com conflitos, sem ativar quantitativos BIM automáticos.
+
+
+## Marco — origem verificável de objetos por arquivo (09/10/2026)
+- **Lote:** ARQDOR-RENDER-BIM-3422. **Versão:** desenvolvimento, sem release.
+- **Escopo:** incluir SHA-256 do arquivo de origem e `sourceObjectKey` composto por digest+índice local da malha, preservando o identificador nos candidatos de paredes, contornos e quadro preliminar de esquadrias.
+- **Commits:** `5bc6078`, `868ba16`, `e479cfa`.
+- **Arquivos alterados:** `tools/blender-server/arqdor_convert_obj_fbx.py`, `tools/blender-server/arqdor_feature_contracts.py`, `tools/blender-server/test_arqdor_feature_contracts.py`, este Registro Mestre.
+- **Limitação obrigatória:** o índice da malha é associado à versão exata do arquivo, não identifica semanticamente o mesmo componente após reexportação/edição; não é GUID BIM/IFC estável. Não autoriza aprovar geometria, vãos, medidas ou quantitativos.
+- **Evidências:** código e testes novos registrados na branch do PR #3422. **Testes não executados** nesta revisão; validação completa permanece pendente.
+- **Situação:** implementado sem validação técnica, não homologado, não aprovado, não publicado. Homologação Contabo/Vendi e publicação continuam adiadas a pedido do usuário.
+- **Próxima etapa independente:** estruturação de fila de revisão por conflitos e auditoria de identidades, sem liberação automática para fabricação.
