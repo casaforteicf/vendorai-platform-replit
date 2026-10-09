@@ -1,3 +1,4 @@
+import { isWalkEditingTarget, walkDirection } from "./conceptWalkInput";
 import { moveWalkPosition, walkStep, walkWall } from "./conceptWalkCollision";
 import { exposedWallFaces } from "./conceptWallSurfaces";
 import { partitionOrthogonalWallSolids } from "./conceptWallSolidUnion";
@@ -97,6 +98,7 @@ type Runtime = {
   };
   navigationMode: "orbit" | "walk" | "spin" | "tour" | "panorama";
   walkKeys: Set<string>;
+  walkPointers: Map<number, string>;
   walkControl: { forward: number; strafe: number };
   walkSpeed: number;
   walkYaw: number;
@@ -519,6 +521,7 @@ export default function ConceptWebGLScene({
           cameraGoal: null,
           navigationMode: "orbit",
           walkKeys: new Set(),
+          walkPointers: new Map(),
           walkControl: { forward: 0, strafe: 0 },
           walkSpeed: Math.max(0.05, Math.min(0.28, walkSpeed)),
           walkYaw: 0,
@@ -642,7 +645,7 @@ export default function ConceptWebGLScene({
 
         const handleWalkKeyDown = (event: KeyboardEvent) => {
           if (runtime.navigationMode !== "walk") return;
-          if (event.defaultPrevented || (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable=\"true\"], [role=\"textbox\"]"))) return;
+          if (event.defaultPrevented || isWalkEditingTarget(event.target)) return;
           const key = event.key.toLowerCase();
           if (["w","a","s","d","arrowup","arrowdown","arrowleft","arrowright"].includes(key)) {
             event.preventDefault();
@@ -672,9 +675,14 @@ export default function ConceptWebGLScene({
         };
         const handleWalkBlur = () => {
           runtime.walkKeys.clear();
+          runtime.walkPointers.clear();
           runtime.walkControl = { forward: 0, strafe: 0 };
           handleWalkPointerUp();
         };
+        const handleWalkVisibility = () => { if (document.hidden) handleWalkBlur(); };
+        const handleWalkFocus = (event: FocusEvent) => { if (isWalkEditingTarget(event.target)) handleWalkBlur(); };
+        document.addEventListener("visibilitychange", handleWalkVisibility);
+        document.addEventListener("focusin", handleWalkFocus);
         window.addEventListener("blur", handleWalkBlur);
         window.addEventListener("keydown", handleWalkKeyDown);
         window.addEventListener("keyup", handleWalkKeyUp);
@@ -713,12 +721,9 @@ export default function ConceptWebGLScene({
           }
 
           if (runtime.navigationMode === "walk") {
-            const keyboardForward = Number(runtime.walkKeys.has("w") || runtime.walkKeys.has("arrowup"))
-              - Number(runtime.walkKeys.has("s") || runtime.walkKeys.has("arrowdown"));
-            const keyboardStrafe = Number(runtime.walkKeys.has("d") || runtime.walkKeys.has("arrowright"))
-              - Number(runtime.walkKeys.has("a") || runtime.walkKeys.has("arrowleft"));
-            const forward = Math.max(-1, Math.min(1, keyboardForward + runtime.walkControl.forward));
-            const strafe = Math.max(-1, Math.min(1, keyboardStrafe + runtime.walkControl.strafe));
+            const direction = walkDirection(runtime.walkKeys, runtime.walkPointers.values());
+            const forward = Math.max(-1, Math.min(1, direction.forward + runtime.walkControl.forward));
+            const strafe = Math.max(-1, Math.min(1, direction.strafe + runtime.walkControl.strafe));
             const step = walkStep(runtime.walkYaw, forward, strafe, runtime.walkSpeed, elapsedMs);
             if (forward || strafe) {
               const stepX = step.x;
@@ -772,6 +777,8 @@ export default function ConceptWebGLScene({
 
         (runtime as any).observer = observer;
         (runtime as any).handlePointer = handlePointer;
+        (runtime as any).handleWalkVisibility = handleWalkVisibility;
+        (runtime as any).handleWalkFocus = handleWalkFocus;
         (runtime as any).handleWalkBlur = handleWalkBlur;
         (runtime as any).handleWalkKeyDown = handleWalkKeyDown;
         (runtime as any).handleWalkKeyUp = handleWalkKeyUp;
@@ -798,6 +805,8 @@ export default function ConceptWebGLScene({
       const runtime = runtimeRef.current;
       if (!runtime) return;
       cancelAnimationFrame(runtime.animationFrame);
+      document.removeEventListener("visibilitychange", (runtime as any).handleWalkVisibility);
+      document.removeEventListener("focusin", (runtime as any).handleWalkFocus);
       window.removeEventListener("blur", (runtime as any).handleWalkBlur);
       window.removeEventListener("keydown", (runtime as any).handleWalkKeyDown);
       window.removeEventListener("keyup", (runtime as any).handleWalkKeyUp);
@@ -1943,6 +1952,7 @@ export default function ConceptWebGLScene({
     if (!runtime || engineState !== "ready" || !savedCameraViewpoint) return;
     runtime.navigationMode = "orbit";
     runtime.walkKeys.clear();
+    runtime.walkPointers.clear();
     runtime.controls.enabled = true;
     runtime.cameraGoal = {
       position: { ...savedCameraViewpoint.position },
@@ -1959,6 +1969,7 @@ export default function ConceptWebGLScene({
     runtime.walkYaw = Math.PI;
     runtime.walkPitch = 0;
     runtime.walkKeys.clear();
+    runtime.walkPointers.clear();
     runtime.walkControl = { forward: 0, strafe: 0 };
     const lookDistance = 5;
     runtime.controls.target.set(0, floorY, startZ + lookDistance);
@@ -2000,6 +2011,7 @@ export default function ConceptWebGLScene({
 
     runtime.navigationMode = navigationMode;
     runtime.walkKeys.clear();
+    runtime.walkPointers.clear();
     runtime.cameraGoal = null;
     runtime.controls.enabled = navigationMode === "orbit";
 
@@ -2044,10 +2056,12 @@ export default function ConceptWebGLScene({
         camera.updateProjectionMatrix();
       }
       runtime.walkKeys.clear();
+      runtime.walkPointers.clear();
       runtime.walkControl = { forward: 0, strafe: 0 };
     } else if (navigationMode === "tour") {
       runtime.walkPitch = 0;
       runtime.walkKeys.clear();
+      runtime.walkPointers.clear();
       runtime.walkControl = { forward: 0, strafe: 0 };
     } else if (navigationMode === "walk") {
       const floorY = activeFloor * 2.96 + 1.62;
@@ -2185,11 +2199,11 @@ export default function ConceptWebGLScene({
               onPointerDown={(event) => {
                 event.preventDefault();
                 event.currentTarget.setPointerCapture(event.pointerId);
-                runtimeRef.current?.walkKeys.add(key);
+                runtimeRef.current?.walkPointers.set(event.pointerId, key);
               }}
-              onPointerUp={() => runtimeRef.current?.walkKeys.delete(key)}
-              onPointerCancel={() => runtimeRef.current?.walkKeys.delete(key)}
-              onLostPointerCapture={() => runtimeRef.current?.walkKeys.delete(key)}
+              onPointerUp={(event) => runtimeRef.current?.walkPointers.delete(event.pointerId)}
+              onPointerCancel={(event) => runtimeRef.current?.walkPointers.delete(event.pointerId)}
+              onLostPointerCapture={(event) => runtimeRef.current?.walkPointers.delete(event.pointerId)}
               aria-label={`Mover ${label}`}
             >
               {label}

@@ -163,3 +163,10 @@ Validação: 92 testes em 19 arquivos passaram; transformação TSX da cena e ti
 Caminhada baseada no tempo transcorrido, preservando a velocidade configurada equivalente a 60 fps; movimento diagonal normalizado e intervalo limitado a 100 ms após pausas. Botões de toque capturam o ponteiro, desativam gestos nativos e encerram a tecla ao perder a captura.
 
 Validação: 95 testes em 19 arquivos passaram; sintaxe TSX verificada. Verificação em dispositivos reais, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Controles independentes e interrupção da caminhada
+
+Teclado e botões de toque usam fontes independentes; cada ponteiro tem seu comando, evitando que a liberação de um toque cancele uma tecla física ou outro toque. Direções opostas se cancelam. Ocultar a aba, focar um campo editável, perder foco, trocar modo e reiniciar a câmera limpam os comandos de toque junto com o teclado.
+
+Validação: 98 testes em 20 arquivos passaram; transformação TSX da cena passou. Teste integrado de teclado/toque em dispositivo real e build completo pendentes. Homologação/publicação permanecem adiadas. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
