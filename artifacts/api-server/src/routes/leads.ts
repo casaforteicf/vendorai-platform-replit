@@ -253,6 +253,10 @@ router.post("/leads", async (req, res) => {
   const registrationRequestId = typeof data.metadata?.registrationRequestId === "string"
     && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(data.metadata.registrationRequestId)
       ? data.metadata.registrationRequestId.toLowerCase() : null;
+  if (data.metadata?.registrationRequestId !== undefined && !registrationRequestId) {
+    res.status(422).json({ error: "Identificador de solicitação inválido." });
+    return;
+  }
   const registrationActorId = req.user?.sub ?? req.user?.id ?? null;
   const registrationPayloadHash = registrationRequestId
     ? createHash("sha256").update(JSON.stringify(data)).digest("hex") : null;
@@ -293,6 +297,17 @@ router.post("/leads", async (req, res) => {
   const match = await findLeadByDedup(data.tenantId, data.telefone ?? null, data.documento ?? null, data.nome);
 
   if (match.found) {
+    // A concurrent request may have completed between the first replay lookup
+    // and the legacy dedup query; recognise that committed registration.
+    if (registrationRequestId && match.lead?.metadata?.registrationRequestId === registrationRequestId) {
+      if (match.lead.metadata.registrationActorId === registrationActorId
+          && match.lead.metadata.registrationPayloadHash === registrationPayloadHash) {
+        res.status(200).json(match.lead);
+      } else {
+        res.status(409).json({ code: "IDEMPOTENCY_KEY_REUSED", error: "Identificador já usado em outro cadastro." });
+      }
+      return;
+    }
     res.status(409).json({
       error: "Lead already exists",
       isDuplicate: true,
@@ -303,6 +318,15 @@ router.post("/leads", async (req, res) => {
   }
 
   if (match.similar) {
+    if (registrationRequestId && match.similar?.metadata?.registrationRequestId === registrationRequestId) {
+      if (match.similar.metadata.registrationActorId === registrationActorId
+          && match.similar.metadata.registrationPayloadHash === registrationPayloadHash) {
+        res.status(200).json(match.similar);
+      } else {
+        res.status(409).json({ code: "IDEMPOTENCY_KEY_REUSED", error: "Identificador já usado em outro cadastro." });
+      }
+      return;
+    }
     res.status(409).json({
       error: "Já existe um lead com nome semelhante",
       isDuplicate: true,
