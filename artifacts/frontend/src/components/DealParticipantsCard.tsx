@@ -213,15 +213,6 @@ export function DealParticipantsCard({
     }
     setSaving(true);
     try {
-      if (editingPerson) {
-        const responseProfile = await fetch(`/api/crm/deals/${dealId}/people/${editingPerson.personId}/profile`, {
-          method: "PATCH", headers,
-          body: JSON.stringify({ tenantId, nome: personName.trim(), telefone: personPhone.trim(),
-            email: personEmail.trim(), documento: personDocument.trim(), dataNascimento: personBirthDate }),
-        });
-        const profileResult = await responseProfile.json().catch(() => ({}));
-        if (!responseProfile.ok) throw new Error(profileResult.error ?? "Falha ao editar dados pessoais.");
-      }
       const response = await fetch(`/api/crm/deals/${dealId}/people`, {
         method: "POST",
         headers,
@@ -248,6 +239,20 @@ export function DealParticipantsCard({
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error ?? "Não foi possível adicionar a pessoa.");
+      // Persist the deal relationship first: invalid role/company must not modify the global person profile.
+      if (editingPerson) {
+        const responseProfile = await fetch(`/api/crm/deals/${dealId}/people/${editingPerson.personId}/profile`, {
+          method: "PATCH", headers,
+          body: JSON.stringify({ tenantId, nome: personName.trim(), telefone: personPhone.trim(),
+            email: personEmail.trim(), documento: personDocument.trim(), dataNascimento: personBirthDate }),
+        });
+        const profileResult = await responseProfile.json().catch(() => ({}));
+        if (!responseProfile.ok) {
+          await qc.invalidateQueries({ queryKey: ["crm-deal-participants", tenantId, dealId] });
+          throw new Error(`Vínculo salvo, mas o perfil não foi atualizado: ${profileResult.error ?? "falha ao editar dados pessoais"}. Revise o cadastro antes de continuar.`);
+        }
+      }
+
       await qc.invalidateQueries({ queryKey: ["crm-deal-participants", tenantId, dealId] });
       setOpen(false);
       resetForm();
