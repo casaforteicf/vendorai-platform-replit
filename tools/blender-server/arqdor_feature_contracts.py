@@ -82,3 +82,48 @@ def bim_review_manifest(project_id, geometry_verified=False):
                          "door_window_schedule", "installations", "quantities"),
         "disciplines": {name: "pending_model_validation" for name in BIM_DISCIPLINES},
     }
+
+
+RENDER_PRESETS = {
+    "preview": ([960, 540], 16),
+    "full_hd": ([1920, 1080], 64),
+    "4k": ([3840, 2160], 256),
+    "print": ([5760, 3240], 512),
+}
+
+
+def resolve_render_preset(config):
+    """Return validated dimensions and samples independently of Blender."""
+    if not isinstance(config, dict):
+        raise ValueError("Configuração de render inválida")
+    preset = config.get("qualityPreset")
+    if preset is not None and preset not in RENDER_PRESETS:
+        raise ValueError("Preset de render desconhecido")
+    defaults = RENDER_PRESETS.get(preset, ([1920, 1080], 64))
+    resolution = config.get("resolution")
+    samples = config.get("samples")
+    if resolution is None:
+        resolution = defaults[0]
+    if samples is None:
+        samples = defaults[1]
+    if (not isinstance(resolution, (list, tuple)) or len(resolution) != 2
+            or any(type(value) is not int or value < 64 or value > 8192 for value in resolution)):
+        raise ValueError("Resolução inválida")
+    if type(samples) is not int or not 1 <= samples <= 4096:
+        raise ValueError("Amostras inválidas")
+    return list(resolution), samples
+
+
+def validate_postproduction(config):
+    if config is None:
+        config = {}
+    if not isinstance(config, dict):
+        raise ValueError("Pós-produção inválida")
+    exposure, gamma = config.get("exposure", 0), config.get("gamma", 1)
+    if (type(exposure) not in (int, float) or not math.isfinite(exposure)
+            or not -5 <= exposure <= 5):
+        raise ValueError("Exposição inválida")
+    if (type(gamma) not in (int, float) or not math.isfinite(gamma)
+            or not 0.2 <= gamma <= 4):
+        raise ValueError("Gamma inválido")
+    return {"exposure": exposure, "gamma": gamma}
