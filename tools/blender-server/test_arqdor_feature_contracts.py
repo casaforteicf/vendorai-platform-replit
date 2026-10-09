@@ -27,6 +27,16 @@ class FeatureContractsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_camera_path(path, fps=100)
 
+    def test_video_limit_prevents_unbounded_worker_render(self):
+        long_path = [
+            {"second": 0, "position": [0, 1, 2], "target": [0, 0, 0]},
+            {"second": 40, "position": [2, 1, 2], "target": [0, 0, 0]},
+        ]
+        with self.assertRaises(ValueError):
+            validate_camera_path(long_path, fps=24)
+        short_path = [{**long_path[0]}, {**long_path[1], "second": 29}]
+        self.assertEqual(validate_camera_path(short_path, fps=24)["frames"], 697)
+
     def test_4k_and_print_presets(self):
         self.assertEqual(resolve_render_preset({"qualityPreset": "4k"}), ([3840, 2160], 256))
         self.assertEqual(resolve_render_preset({"qualityPreset": "print"}), ([5760, 3240], 512))
