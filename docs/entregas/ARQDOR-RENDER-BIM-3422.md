@@ -530,3 +530,11 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Execução:** o `git ls-remote` no executor local falhou novamente por DNS `Could not resolve host: github.com`. Código enviado pelo conector GitHub; não houve compilação TypeScript nem execução das suítes originais. Portanto, estado ainda **não homologado**.
 - **Limites:** checagem de componentes face-conectados e volume não equivale a certificação manifold global; paredes diagonais continuam fora do núcleo ortogonal.
 - **Governança:** PR #3422 Draft; sem merge/deploy, Contabo e produção inalteradas.
+
+
+## 3422-A — primeira execução local reproduzida de geometria (09/10/2026)
+- **Execução efetiva, com escopo delimitado:** o executor local Python 3.13.5 rodou uma **reprodução isolada** da lógica de partição XYZ, construção de faces e incidência de arestas; não foi o código integral baixado do GitHub, pois `git ls-remote` segue bloqueado por DNS. A validação de contratos foi substituída por stub mínimo e o conjunto completo de testes **não foi executado**.
+- **Resultados reproduzidos (volume m³; contagens de arestas abertas/não-manifold/orientação inconsistentes: zero em todos):** parede única 2,40; L 4,17; T 4,14; cruz 4,68; parede com porta 1,98; parede com janela 2,20. Para L/T/cruz, volumes assinados equivalem aos ocupados na precisão do cálculo.
+- **Registro de regressão:** commit `a304240` adiciona testes com volumes esperados para L/T, conectividade e paridade de volume assinado na suíte original.
+- **Limite de evidência:** esses resultados **não** equivalem a testes do checkout do PR, build TypeScript nem homologação. Ainda é necessário obter checkout executável e rodar a suíte completa no ambiente autorizado.
+- **Governança:** PR #3422 permanece Draft, sem merge/deploy, Contabo adiada, produção intacta.
