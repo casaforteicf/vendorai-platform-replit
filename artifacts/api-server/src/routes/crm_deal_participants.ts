@@ -3,6 +3,7 @@ import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { buildUserFunctionFilter } from "../middlewares/auth.js";
 import { fingerprintRegistrationPayload, parseRegistrationRequestId } from "../lib/crm-lead-idempotency.js";
+import { appendRelationshipEvent } from "../lib/crm-relationship-history.js";
 import {
   db,
   dealsTable,
@@ -17,22 +18,6 @@ import {
 } from "@workspace/db";
 
 const router: IRouter = Router();
-
-function appendRelationshipEvent(metadata: Record<string, unknown> | null | undefined, action: "linked" | "updated" | "unlinked", actorId?: string | null) {
-  const previous = metadata ?? {};
-  const history = Array.isArray(previous.relationshipHistory) ? previous.relationshipHistory : [];
-  // Legacy relationships have no event log: preserve that fact without inventing an event date.
-  const legacyBaseline = history.length === 0 && previous.legacyRelationship === true
-    ? [{ action: "legacy_existing", at: null, actorId: null }]
-    : [];
-  return {
-    ...previous,
-    inactive: action === "unlinked",
-    relationshipHistory: [...legacyBaseline, ...history, { action, at: new Date().toISOString(), actorId: actorId ?? null }],
-  };
-}
-
-
 
 const personRoles = [
   "consumidor_final","proprietario","contratante","comprador","contato_comercial","decisor",
