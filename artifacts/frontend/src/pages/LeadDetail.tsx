@@ -400,6 +400,7 @@ export default function LeadDetail() {
   const [, setLocation] = useLocation();
   const [openConvId, setOpenConvId] = useState<string | null>(null);
   const [openActivityId, setOpenActivityId] = useState<string | null>(null);
+  const [handoffSending, setHandoffSending] = useState(false);
   const queryClient = useQueryClient();
 
   const [propostaModalOpen, setPropostaModalOpen] = useState(false);
@@ -1823,6 +1824,26 @@ export default function LeadDetail() {
 
   const leadConversations = (conversations ?? []).filter((c) => c.leadId === id);
 
+  async function transferActivityToCompany(activity: any) {
+    if (!activity?.id || handoffSending) return;
+    const toTenantId = window.prompt("ID da empresa destino (tenant):", "");
+    if (!toTenantId?.trim()) return;
+    const reason = window.prompt("Motivo da transferência:", "Continuidade da execução entre empresas");
+    if (!reason?.trim()) return;
+    const modeInput = window.prompt("Tipo: responsabilidade ou etapa", "responsabilidade");
+    const mode = modeInput?.trim().toLowerCase() === "etapa" ? "stage" : "responsibility";
+    const slaInput = window.prompt("SLA (data/hora opcional, ex.: 2026-10-10T18:00):", "");
+    setHandoffSending(true);
+    try {
+      const response = await fetch(`/api/activities/${activity.id}/handoff`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` }, body: JSON.stringify({ toTenantId: toTenantId.trim(), reason: reason.trim(), mode, slaDueAt: slaInput?.trim() ? new Date(slaInput.trim()).toISOString() : undefined }) });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.message || body?.error || "Não foi possível transferir.");
+      await queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }) });
+      toast({ title: "Transferência enviada", description: "A empresa destino agora precisa aceitar a atividade." });
+    } catch (error) {
+      toast({ title: "Transferência não realizada", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
+    } finally { setHandoffSending(false); }
+  }
   function getActivityOpenLabel(activity: any): string {
     const text = `${activity?.tipo ?? ""} ${activity?.origem ?? ""} ${activity?.titulo ?? ""}`.toLowerCase();
     if (text.includes("assistencia") || text.includes("assistência")) return "Abrir assistência";
@@ -3289,6 +3310,7 @@ export default function LeadDetail() {
                             )}
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
+                            {activity.dealId && <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" disabled={handoffSending} onClick={(e) => { e.stopPropagation(); void transferActivityToCompany(activity); }} data-testid={`btn-handoff-activity-${activity.id}`}><Building2 className="h-3.5 w-3.5" />Transferir</Button>}
                             <Button
                               type="button"
                               size="sm"
