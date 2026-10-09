@@ -244,7 +244,8 @@ def propose_opening_hosts(objects, tolerance=0.15):
                 matches.append(wall.get("name"))
         # Repeated names cannot safely identify a unique BIM host.
         unique = len(matches) == 1 and isinstance(matches[0], str) and bool(matches[0].strip())
-        proposals.append({"opening": opening.get("name"), "type": opening["suggestedClass"],
+        proposals.append({"opening": opening.get("name"), "objectId": opening.get("objectId"),
+                          "type": opening["suggestedClass"],
                           "candidateWalls": matches[:20],
                           "hostRelationStatus": "single_spatial_candidate" if unique else
                               ("ambiguous_spatial_candidates" if matches else "no_spatial_candidate"),
@@ -428,6 +429,8 @@ def associate_boundary_candidates(opening_hosts, classifications, tolerance=0.15
             raise ValueError("Relação espacial inválida")
         name = relation.get("opening")
         matches = openings.get(name, [])
+        if relation.get("objectId") is not None:
+            matches = [item for item in matches if item.get("objectId") == relation["objectId"]]
         candidates = relation.get("candidateWalls", [])
         verified_candidates = []
         if len(matches) == 1 and isinstance(candidates, list):
