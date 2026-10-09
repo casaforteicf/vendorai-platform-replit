@@ -4,7 +4,7 @@ set -Eeuo pipefail
 ACTION="${1:-}"
 LOT="${2:-}"
 [[ "$#" -eq 2 && "$LOT" =~ ^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$ ]] || { echo "INVALID_ARGUMENTS"; exit 64; }
-case "$ACTION" in build|homologate|rollback|releaseStatus) ;; *) echo "UNSUPPORTED_ACTION"; exit 64;; esac
+case "$ACTION" in build|homologate|rollback|releaseStatus|preflight) ;; *) echo "UNSUPPORTED_ACTION"; exit 64;; esac
 LOCK=/run/lock/vendi-operator.lock
 exec 9>"$LOCK"
 flock -n 9 || { echo "OPERATION_BUSY"; exit 75; }
@@ -22,6 +22,10 @@ API=vendorai-homolog-api
 BACK=vendorai-homolog-pre-vendi02
 check_health(){ curl --fail --silent --max-time 8 "$HEALTH" >/dev/null; }
 case "$ACTION" in
+  preflight)
+    /usr/local/sbin/vendi04-release-preflight "$LOT"
+    audit "PREFLIGHT_OK"
+    ;;
   releaseStatus)
     echo "LOT=$LOT"
     echo "HOMOLOG_HEALTH=$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 8 "$HEALTH" || true)"
