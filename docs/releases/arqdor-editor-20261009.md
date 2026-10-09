@@ -156,3 +156,10 @@ Validação: 88 testes em 19 arquivos passaram; esbuild da cena e tipagem isolad
 Movimento subdividido em passos de no máximo 5 cm, verificando colisões ao longo do trajeto e permitindo deslizamento lateral. Evita o salto através de paredes em deslocamentos grandes nos cenários cobertos. Atalhos de caminhada ignoram campos editáveis e eventos já consumidos; perda de foco da janela limpa teclas, controles e arraste.
 
 Validação: 92 testes em 19 arquivos passaram; transformação TSX da cena e tipagem isolada do helper passaram. Conferência visual integrada, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Velocidade e controles de toque
+
+Caminhada baseada no tempo transcorrido, preservando a velocidade configurada equivalente a 60 fps; movimento diagonal normalizado e intervalo limitado a 100 ms após pausas. Botões de toque capturam o ponteiro, desativam gestos nativos e encerram a tecla ao perder a captura.
+
+Validação: 95 testes em 19 arquivos passaram; sintaxe TSX verificada. Verificação em dispositivos reais, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.

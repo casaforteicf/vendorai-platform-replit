@@ -1,4 +1,4 @@
-import { moveWalkPosition, walkWall } from "./conceptWalkCollision";
+import { moveWalkPosition, walkStep, walkWall } from "./conceptWalkCollision";
 import { exposedWallFaces } from "./conceptWallSurfaces";
 import { partitionOrthogonalWallSolids } from "./conceptWallSolidUnion";
 import { splitWallVoids, openingVerticalBounds } from "./conceptWallVoids";
@@ -687,7 +687,11 @@ export default function ConceptWebGLScene({
           runtime.cameraGoal = null;
         });
 
+        let previousFrameTime = performance.now();
         const loop = () => {
+          const frameTime = performance.now();
+          const elapsedMs = frameTime - previousFrameTime;
+          previousFrameTime = frameTime;
           if (runtime.navigationMode === "spin" && !runtime.cameraGoal) {
             const target = controls.target;
             const dx = camera.position.x - target.x;
@@ -715,10 +719,10 @@ export default function ConceptWebGLScene({
               - Number(runtime.walkKeys.has("a") || runtime.walkKeys.has("arrowleft"));
             const forward = Math.max(-1, Math.min(1, keyboardForward + runtime.walkControl.forward));
             const strafe = Math.max(-1, Math.min(1, keyboardStrafe + runtime.walkControl.strafe));
-            const speed = runtime.walkSpeed;
+            const step = walkStep(runtime.walkYaw, forward, strafe, runtime.walkSpeed, elapsedMs);
             if (forward || strafe) {
-              const stepX = (-Math.sin(runtime.walkYaw) * forward + Math.cos(runtime.walkYaw) * strafe) * speed;
-              const stepZ = (-Math.cos(runtime.walkYaw) * forward - Math.sin(runtime.walkYaw) * strafe) * speed;
+              const stepX = step.x;
+              const stepZ = step.y;
               const maxX = Math.max(1, lotWidth / 2 - 0.25);
               const maxZ = Math.max(1, lotDepth / 2 - 0.25);
               const targetX = Math.max(-maxX, Math.min(maxX, camera.position.x + stepX));
@@ -2177,14 +2181,15 @@ export default function ConceptWebGLScene({
             <button
               key={key}
               type="button"
-              className="grid h-11 w-11 place-items-center rounded-xl border border-white/10 bg-white/10 text-lg font-black text-white active:bg-orange-500"
+              className="touch-none grid h-11 w-11 place-items-center rounded-xl border border-white/10 bg-white/10 text-lg font-black text-white active:bg-orange-500"
               onPointerDown={(event) => {
                 event.preventDefault();
+                event.currentTarget.setPointerCapture(event.pointerId);
                 runtimeRef.current?.walkKeys.add(key);
               }}
               onPointerUp={() => runtimeRef.current?.walkKeys.delete(key)}
               onPointerCancel={() => runtimeRef.current?.walkKeys.delete(key)}
-              onPointerLeave={() => runtimeRef.current?.walkKeys.delete(key)}
+              onLostPointerCapture={() => runtimeRef.current?.walkKeys.delete(key)}
               aria-label={`Mover ${label}`}
             >
               {label}

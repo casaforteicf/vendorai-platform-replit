@@ -48,3 +48,13 @@ export function moveWalkPosition(start: { x: number; y: number }, target: { x: n
   }
   return position;
 }
+
+export function walkStep(yaw: number, forward: number, strafe: number, speed: number, elapsedMs: number) {
+  if (![yaw, forward, strafe, speed, elapsedMs].every(Number.isFinite)) return { x: 0, y: 0 };
+  const magnitude = Math.max(1, Math.hypot(forward, strafe));
+  const distance = Math.max(0, speed) * Math.max(0, Math.min(100, elapsedMs)) / (1000 / 60);
+  return {
+    x: (-Math.sin(yaw) * forward + Math.cos(yaw) * strafe) * distance / magnitude,
+    y: (-Math.cos(yaw) * forward - Math.sin(yaw) * strafe) * distance / magnitude,
+  };
+}

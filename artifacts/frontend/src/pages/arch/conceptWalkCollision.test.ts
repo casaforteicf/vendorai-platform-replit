@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canWalkTo, moveWalkPosition, walkWall } from "./conceptWalkCollision";
+import { canWalkTo, moveWalkPosition, walkStep, walkWall } from "./conceptWalkCollision";
 const wall = { id: "w", x1: 0, y1: 0, x2: 4, y2: 0, thickness: 0.15 };
 const door = { type: "door" as const, orientation: "horizontal" as const, x: 2, y: 0, width: 0.9, height: 2.1 };
 describe("walk collision matches physical door voids", () => {
@@ -46,5 +46,22 @@ describe("walk movement", () => {
   });
   it("ignores invalid movement coordinates", () => {
     expect(moveWalkPosition({ x: 1, y: 1 }, { x: NaN, y: 2 }, [])).toEqual({ x: 1, y: 1 });
+  });
+});
+
+describe("walk speed", () => {
+  it("travels the same distance at 30 and 60 fps", () => {
+    const slow = walkStep(0, 1, 0, 0.12, 1000 / 30);
+    const fast = walkStep(0, 1, 0, 0.12, 1000 / 60);
+    expect(slow.y).toBeCloseTo(fast.y * 2);
+  });
+  it("keeps diagonal movement at the configured speed", () => {
+    const straight = walkStep(0, 1, 0, 0.12, 1000 / 60);
+    const diagonal = walkStep(0, 1, 1, 0.12, 1000 / 60);
+    expect(Math.hypot(diagonal.x, diagonal.y)).toBeCloseTo(Math.hypot(straight.x, straight.y));
+  });
+  it("limits the first movement after a long pause", () => {
+    expect(walkStep(0, 1, 0, 0.12, 5000)).toEqual(walkStep(0, 1, 0, 0.12, 100));
+    expect(walkStep(0, 1, 0, 0.12, -10)).toEqual({ x: 0, y: -0 });
   });
 });
