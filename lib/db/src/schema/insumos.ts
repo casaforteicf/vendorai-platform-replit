@@ -14,7 +14,7 @@ const decimalOptional = z
 
 // ─── Insumos (central materials registry) ────────────────────────────────────
 
-export const INSUMO_TIPOS = ["material", "mao_de_obra", "equipamento", "servico"] as const;
+export const INSUMO_TIPOS = ["material", "mao_de_obra", "equipamento", "servico", "subempreitada", "consumivel", "frete", "outro_custo_direto"] as const;
 
 export const insumosTable = pgTable("insumos", {
   id: text("id")
@@ -25,9 +25,28 @@ export const insumosTable = pgTable("insumos", {
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
   nome: text("nome").notNull(),
   descricao: text("descricao"),
+  // unidade legado continua representando a unidade técnica/consumo para
+  // preservar compatibilidade. unidadeCompra e fatorCompraParaConsumo
+  // permitem comprar em saco/caixa/barra/rolo/pallet etc.
   unidade: text("unidade").notNull(),
+  unidadeCompra: text("unidade_compra"),
+  fatorCompraParaConsumo: numeric("fator_compra_para_consumo", { precision: 15, scale: 6 }),
+  embalagemQuantidade: numeric("embalagem_quantidade", { precision: 15, scale: 4 }),
+  quantidadeMinimaCompra: numeric("quantidade_minima_compra", { precision: 15, scale: 4 }),
+  multiploCompra: numeric("multiplo_compra", { precision: 15, scale: 4 }),
+  permiteFracionarCompra: boolean("permite_fracionar_compra").notNull().default(false),
+  perdaPadraoPercentual: numeric("perda_padrao_percentual", { precision: 7, scale: 3 }).notNull().default("0"),
   tipo: text("tipo").notNull().default("material"),
   precoUnitario: numeric("preco_unitario", { precision: 15, scale: 4 }),
+  origemPreco: text("origem_preco").notNull().default("manual"),
+  precoValidade: date("preco_validade", { mode: "string" }),
+  precoAtualizadoEm: timestamp("preco_atualizado_em", { withTimezone: true }),
+  regiaoPreco: text("regiao_preco"),
+  fornecedorPreferencial: text("fornecedor_preferencial"),
+  marca: text("marca"),
+  modelo: text("modelo"),
+  fabricante: text("fabricante"),
+  especificacaoTecnica: jsonb("especificacao_tecnica").$type<Record<string, unknown> | null>(),
   categoria: text("categoria"),
   codigo: text("codigo"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -36,11 +55,21 @@ export const insumosTable = pgTable("insumos", {
 
 export const insertInsumoSchema = createInsertSchema(insumosTable, {
   precoUnitario: decimalOptional,
+  fatorCompraParaConsumo: decimalOptional,
+  embalagemQuantidade: decimalOptional,
+  quantidadeMinimaCompra: decimalOptional,
+  multiploCompra: decimalOptional,
+  perdaPadraoPercentual: decimalOptional,
   tipo: z.enum(INSUMO_TIPOS).optional(),
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const updateInsumoSchema = createSelectSchema(insumosTable, {
   precoUnitario: decimalOptional,
+  fatorCompraParaConsumo: decimalOptional,
+  embalagemQuantidade: decimalOptional,
+  quantidadeMinimaCompra: decimalOptional,
+  multiploCompra: decimalOptional,
+  perdaPadraoPercentual: decimalOptional,
   tipo: z.enum(INSUMO_TIPOS).optional(),
 })
   .omit({ id: true, tenantId: true, createdAt: true, updatedAt: true })
