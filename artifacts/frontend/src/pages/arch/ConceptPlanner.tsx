@@ -7,7 +7,7 @@ import { ConceptIdeaEntry } from "./ConceptIdeaEntry";
 import { ConceptMetricInput } from "./ConceptMetricInput";
 import { wallLengthLimit } from "./conceptWallLengthLimits";
 import { duplicateWallPlacement, openingCrossesWallMidpoint } from "./conceptWallOperations";
-import { freeOpeningOffset, openingsOverlap, openingFitsWall } from "./conceptOpeningPlacement";
+import { freeOpeningOffset, openingsOverlap, openingFitsWall, convertedOpening, openingPlacementError } from "./conceptOpeningPlacement";
 import { reconcileWallOpenings } from "./conceptWallOpeningReconciliation";
 import {
   ArrowLeft,
@@ -2698,26 +2698,27 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       const wallLength = Math.hypot(dx, dy);
       if (wallLength < 0.001) return;
       const projectedDistance = ((patch.x - wall.x1) * dx + (patch.y - wall.y1) * dy) / wallLength;
-      const halfOpening = Math.min(wallLength / 2, Math.max(0.25, (custom.width ?? (custom.type === "door" ? 0.9 : 1.2)) / 2));
+      const requested = patch.type === custom.type ? custom : { ...convertedOpening(custom, patch.type), catalogProductId: undefined, familyId: undefined, familyLabel: undefined };
+      const halfOpening = Math.min(wallLength / 2, (requested.width ?? (requested.type === "door" ? 0.9 : 1.2)) / 2);
       const minDistance = Math.min(halfOpening, wallLength / 2);
       const maxDistance = Math.max(minDistance, wallLength - halfOpening);
       const clampedDistance = Math.max(minDistance, Math.min(maxDistance, projectedDistance));
       const offset = Math.max(0, Math.min(1, clampedDistance / wallLength));
-      const candidate = { ...custom, offset, type: patch.type };
-      if (!openingFitsWall(candidate, wallLength) || safeCustomOpenings.some((item) => item.wallId === wall.id && item.id !== openingId && openingsOverlap(candidate, item, wallLength))) {
-        setOpeningEditError("A abertura não cabe nessa posição ou sobrepõe outra abertura."); return;
-      }
+      const candidate = { ...requested, offset };
+      const error = openingPlacementError(candidate, safeCustomOpenings.filter(item => item.wallId === wall.id && item.id !== openingId), wallLength);
+      if (error) { setOpeningEditError(error); return false; }
       setOpeningEditError(null);
       setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) =>
-        opening.id === openingId ? { ...opening, offset, type: patch.type } : opening
+        opening.id === openingId ? candidate : opening
       ));
-      return;
+      return true;
     }
 
     setOpeningOverrides((prev) => ({
       ...prev,
       [openingId]: patch,
     }));
+    return true;
   };
 
   const updateOpeningWidth = (openingId: string, width: number) => {
@@ -4566,6 +4567,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     if (!wall) return;
     const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
     const candidate = { ...opening, width: dims.width ?? opening.width, height: dims.height ?? opening.height };
+    if ((candidate.width != null && (!Number.isFinite(candidate.width) || candidate.width < 0.5 || candidate.width > 4)) || (candidate.height != null && (!Number.isFinite(candidate.height) || candidate.height < 0.5 || candidate.height > 2.8))) {
+      setOpeningEditError("As medidas do produto estão fora dos limites atuais do editor (largura de 0,50 a 4 m; altura de 0,50 a 2,80 m). O produto não foi aplicado."); return;
+    }
     if (!openingFitsWall(candidate, wallLength) || safeCustomOpenings.some((other) => other.wallId === wall.id && other.id !== openingId && openingsOverlap(candidate, other, wallLength))) {
       setOpeningEditError("O produto não cabe na posição atual. Ajuste a abertura antes de aplicar."); return;
     }
@@ -4661,34 +4665,19 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     if (!selectedOpening) return;
     const before = snapshotEditor();
     const next = nudgeOpening(selectedOpening, amount, lotWidth, lotDepth);
-    updateOpeningById(selectedOpening.id, { x: next.x, y: next.y, type: next.type });
-    pushRoomHistory(before);
+    if (updateOpeningById(selectedOpening.id, { x: next.x, y: next.y, type: next.type })) pushRoomHistory(before);
   };
 
   const toggleOpeningType = () => {
     if (!selectedOpening) return;
     const before = snapshotEditor();
     const nextType = selectedOpening.type === "door" ? "window" : "door";
-    updateOpeningById(selectedOpening.id, {
+    const accepted = updateOpeningById(selectedOpening.id, {
       x: selectedOpening.x,
       y: selectedOpening.y,
       type: nextType,
     });
-    const custom = safeCustomOpenings.find((opening) => opening.id === selectedOpening.id);
-    if (custom) {
-      setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) =>
-        opening.id === selectedOpening.id
-          ? {
-              ...opening,
-              type: nextType,
-              width: nextType === "door" ? Math.min(opening.width ?? 0.9, 1.4) : Math.max(opening.width ?? 1.2, 0.8),
-              height: nextType === "door" ? 2.1 : 1.2,
-              sillHeight: nextType === "door" ? 0 : 0.9,
-              openingStyle: nextType === "door" ? "hinged" : "sliding",
-            }
-          : opening
-      ));
-    }
+    if (!accepted) return;
     pushRoomHistory(before);
   };
 

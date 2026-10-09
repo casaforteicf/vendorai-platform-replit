@@ -68,3 +68,10 @@ Esta entrega não implementa BIM completo, colaboração simultânea, importaç�
 Padrão aprovado de 0,15 m para novas paredes e paredes derivadas de ambientes; medidas explícitas existentes preservadas. Seletores de desenho e edição oferecem 10, 12, 15, 20, 25 e 30 cm. Planta 2D representa a espessura real das paredes personalizadas e sugestões sem alterar a largura na seleção; paredes derivadas usam 15 cm, alinhadas ao 3D. Fallback paramétrico e 3D alinhados a 15 cm.
 
 Verificação: 10 testes específicos passaram em 2 arquivos, incluindo parede de 25 cm antes/depois da seleção; sintaxe de ConceptPlanner e ConceptModel3D verificada com esbuild. Validação integrada, homologação Contabo e publicação permanecem pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+## Conversão e aplicação de produtos em aberturas
+
+Conversão porta/janela usa uma única atualização após validar largura final, altura e peitoril, com bloqueio de sobreposição horizontal/vertical. Remove vínculo de produto/família ao mudar tipo para evitar associação incompatível. Movimentação bloqueada e conversão rejeitada não adicionam entrada vazia ao histórico. Produtos do catálogo fora da faixa atual de largura/altura são rejeitados com aviso antes da aplicação, evitando redução silenciosa das medidas do produto.
+
+Arquivos: ConceptPlanner.tsx, conceptOpeningPlacement.ts e conceptOpeningConversion.test.ts. Verificação consolidada: 47 testes passaram em 12 arquivos; sintaxe de ConceptPlanner verificada com esbuild. Sem build completo ou validação integrada. Lote ARQ-EDITOR-20261009, versão em desenvolvimento; homologação Contabo e publicação adiadas conforme orientação do usuário.
