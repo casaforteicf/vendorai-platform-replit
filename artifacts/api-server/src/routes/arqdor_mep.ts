@@ -279,3 +279,62 @@ arqdorMepRouter.post("/arch/concept-projects/:conceptId/mep/host-impact-preview"
   res.json({workspaceProjectId:workspaceId,baselineUpdatedAt:record.updated_at,impacts,requiresReview:impacts.length>0,applied:false,warning:"Comparação com paredes persistidas; nenhuma instalação foi movida ou aprovada."});
  }catch(err){next(err);}
 });
+
+
+/** List persisted unresolved impacts; reviewer actions are separate from geometrical updates. */
+arqdorMepRouter.get("/arch/concept-projects/:conceptId/mep/host-reviews",async(req,res,next)=>{
+ try{
+  const tid=tenant(req,res);if(!tid)return;
+  const concept=id.safeParse(req.params.conceptId);
+  if(!concept.success){res.status(400).json({error:"Pré-projeto inválido"});return;}
+  const rows=await pool.query(
+   `SELECT r.id,r.node_id,r.host_element_id,r.reason,r.status,r.architecture_updated_at,r.created_at
+    FROM arqdor_mep_host_reviews r
+    JOIN arqdor_mep_project_bindings b ON b.tenant_id=r.tenant_id AND b.workspace_project_id=r.project_id
+      AND b.concept_project_id=r.concept_project_id
+    WHERE r.tenant_id=$1 AND r.concept_project_id=$2
+    ORDER BY r.created_at DESC LIMIT 500`,[tid,concept.data]);
+  res.json({reviews:rows.rows});
+ }catch(err){next(err);}
+});
+/** Explicitly record a review-required state, scoped by verified binding, current stored
+ *  concept revision and recomputed host impact. Reject client-supplied impact claims. */
+arqdorMepRouter.post("/arch/concept-projects/:conceptId/mep/host-reviews",async(req,res,next)=>{
+ try{
+  const tid=tenant(req,res);if(!tid)return;
+  const concept=id.safeParse(req.params.conceptId);
+  const body=hostPreviewSchema.safeParse(req.body);
+  if(!concept.success||!body.success){res.status(422).json({error:"Geometria ou versão inválida"});return;}
+  const client=await pool.connect();
+  try{
+   await client.query("BEGIN");
+   const baseline=await client.query(
+    `SELECT c.configuration,c.updated_at,b.workspace_project_id
+     FROM arch_concept_projects c
+     JOIN arqdor_mep_project_bindings b ON b.tenant_id=c.tenant_id AND b.concept_project_id=c.id
+     JOIN arqdor_workspace_projects w ON w.tenant_id=b.tenant_id AND w.id=b.workspace_project_id
+     WHERE c.tenant_id=$1 AND c.id=$2 FOR UPDATE OF c`,[tid,concept.data]);
+   if(!baseline.rowCount){await client.query("ROLLBACK");res.status(409).json({code:"MEP_BINDING_REQUIRED"});return;}
+   const record=baseline.rows[0];
+   if(new Date(record.updated_at).getTime()!==new Date(body.data.expectedProjectUpdatedAt).getTime()){
+    await client.query("ROLLBACK");res.status(409).json({code:"MEP_STALE_GEOMETRY"});return;
+   }
+   const stored=wallShape.array().max(5000).safeParse(record.configuration?.customWalls);
+   if(!stored.success){await client.query("ROLLBACK");res.status(409).json({code:"MEP_BASELINE_UNAVAILABLE"});return;}
+   const nodes=await client.query(
+    "SELECT id,host_element_id,floor_id FROM arqdor_mep_nodes WHERE tenant_id=$1 AND project_id=$2 AND host_element_id IS NOT NULL",
+    [tid,record.workspace_project_id]);
+   const impact=inspectMepWallImpact(stored.data,body.data.after,nodes.rows.map(p=>({id:p.id,hostElementId:p.host_element_id,floorId:p.floor_id})));
+   for(const item of impact){
+    await client.query(
+     `INSERT INTO arqdor_mep_host_reviews
+      (id,tenant_id,project_id,node_id,host_element_id,reason,concept_project_id,architecture_updated_at)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+     [crypto.randomUUID(),tid,record.workspace_project_id,item.nodeId,item.hostElementId,item.reason,concept.data,record.updated_at]);
+   }
+   await client.query("COMMIT");
+   res.status(201).json({recorded:impact.length,requiresReview:impact.length>0,applied:false,
+    warning:"Revisões registradas. Nenhuma parede ou instalação foi movida."});
+  }catch(err){await client.query("ROLLBACK").catch(()=>{});throw err;}finally{client.release();}
+ }catch(err){next(err);}
+});
