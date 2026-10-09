@@ -585,3 +585,43 @@ def create_opening_review_queue(schedule, source_sha256, project_version):
         })
     return {"projectVersion": project_version, "sourceSha256": digest,
             "reviewRequired": True, "rows": rows}
+
+
+def record_opening_review_decision(queue, review_key, reviewer_id, decision,
+                                   reason, reviewed_at):
+    """Pure append-only audit proposal; persistence and authorization are external.
+
+    A reviewer decision records disposition only. It never certifies source
+    geometry, fabrication dimensions, quantities or releases.
+    """
+    if not isinstance(queue, dict) or not isinstance(queue.get("rows"), list):
+        raise ValueError("Fila de revisão inválida")
+    if decision not in ("accept_for_detailed_review", "reject_candidate", "request_information"):
+        raise ValueError("Decisão inválida")
+    if (not isinstance(reviewer_id, str) or not reviewer_id.strip()
+            or len(reviewer_id) > 128 or not isinstance(reason, str)
+            or not reason.strip() or len(reason) > 2000):
+        raise ValueError("Responsável e justificativa obrigatórios")
+    if (not isinstance(reviewed_at, str) or len(reviewed_at) > 40
+            or not reviewed_at.endswith("Z")):
+        raise ValueError("Data de revisão UTC obrigatória")
+    from datetime import datetime, timezone
+    try:
+        parsed = datetime.fromisoformat(reviewed_at.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("Data de revisão inválida") from exc
+    if parsed.tzinfo is None or parsed.utcoffset().total_seconds() != 0:
+        raise ValueError("Data deve ser UTC")
+    matches = [row for row in queue["rows"]
+               if isinstance(row, dict) and row.get("reviewKey") == review_key]
+    if len(matches) != 1:
+        raise ValueError("Chave de revisão ausente ou duplicada")
+    row = matches[0]
+    event = {"reviewKey": review_key, "projectVersion": row.get("projectVersion"),
+             "sourceSha256": row.get("sourceSha256"), "objectId": row.get("objectId"),
+             "reviewerId": reviewer_id.strip(), "decision": decision,
+             "reason": reason.strip(), "reviewedAt": parsed.astimezone(timezone.utc).isoformat(),
+             "geometryApproved": False, "fabricationReady": False,
+             "quantitiesEnabled": False}
+    return {"event": event, "persisted": False,
+            "requiresAuthorizedAuditStore": True}
