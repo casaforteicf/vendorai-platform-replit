@@ -109,3 +109,62 @@ arqdorMepRouter.post("/arch/projects/:projectId/mep/segments",async(req,res,next
     res.status(201).json({segment:r.rows[0]});
   }catch(err){next(err);}
 });
+
+
+const nodePatch = z.object({
+  xMm: z.number().int().safe().optional(), yMm: z.number().int().safe().optional(), zMm: z.number().int().safe().optional(),
+  kind: z.string().trim().min(1).max(80).optional(), roomId: id.nullable().optional(), hostElementId: id.nullable().optional(),
+}).strict().refine(value => Object.keys(value).length > 0);
+const segmentPatch = z.object({
+  material: z.string().max(120).nullable().optional(), nominalSizeMm: z.number().int().positive().nullable().optional(),
+}).strict().refine(value => Object.keys(value).length > 0);
+
+arqdorMepRouter.patch("/arch/projects/:projectId/mep/nodes/:nodeId",async(req,res,next)=>{
+  try{
+    const tid=tenant(req,res),pid=routeId(req,res),nodeId=id.safeParse(req.params.nodeId);
+    if(!tid||!pid)return;if(!nodeId.success){res.status(400).json({error:"Ponto inválido"});return;}
+    const body=validation(nodePatch,req,res);if(!body)return;
+    const changes:{column:string;value:unknown}[]=[];
+    for(const [key,column] of Object.entries({xMm:"x_mm",yMm:"y_mm",zMm:"z_mm",kind:"kind",roomId:"room_id",hostElementId:"host_element_id"})){
+      if(Object.prototype.hasOwnProperty.call(body,key))changes.push({column,value:(body as Record<string,unknown>)[key]});
+    }
+    const values:unknown[]=[tid,pid,nodeId.data];
+    const sets=changes.map(({column,value})=>{values.push(value);return column+"=$"+values.length;});
+    const r=await pool.query("UPDATE arqdor_mep_nodes SET "+sets.join(",")+" WHERE tenant_id=$1 AND project_id=$2 AND id=$3 RETURNING *",values);
+    if(!r.rowCount){res.status(404).json({error:"Ponto não encontrado"});return;}
+    res.json({node:r.rows[0]});
+  }catch(err){next(err);}
+});
+arqdorMepRouter.delete("/arch/projects/:projectId/mep/nodes/:nodeId",async(req,res,next)=>{
+  try{
+    const tid=tenant(req,res),pid=routeId(req,res),nodeId=id.safeParse(req.params.nodeId);
+    if(!tid||!pid)return;if(!nodeId.success){res.status(400).json({error:"Ponto inválido"});return;}
+    const r=await pool.query("DELETE FROM arqdor_mep_nodes WHERE tenant_id=$1 AND project_id=$2 AND id=$3 RETURNING id",[tid,pid,nodeId.data]);
+    if(!r.rowCount){res.status(404).json({error:"Ponto não encontrado"});return;}
+    res.json({deleted:true,id:nodeId.data,warning:"Trechos vinculados foram excluídos por cascata"});
+  }catch(err){next(err);}
+});
+arqdorMepRouter.patch("/arch/projects/:projectId/mep/segments/:segmentId",async(req,res,next)=>{
+  try{
+    const tid=tenant(req,res),pid=routeId(req,res),segmentId=id.safeParse(req.params.segmentId);
+    if(!tid||!pid)return;if(!segmentId.success){res.status(400).json({error:"Trecho inválido"});return;}
+    const body=validation(segmentPatch,req,res);if(!body)return;
+    const fields:{column:string;value:unknown}[]=[];
+    if("material" in body)fields.push({column:"material",value:body.material??null});
+    if("nominalSizeMm" in body)fields.push({column:"nominal_size_mm",value:body.nominalSizeMm??null});
+    const values:unknown[]=[tid,pid,segmentId.data];
+    const sets=fields.map(x=>{values.push(x.value);return x.column+"=$"+values.length;});
+    const r=await pool.query("UPDATE arqdor_mep_segments SET "+sets.join(",")+" WHERE tenant_id=$1 AND project_id=$2 AND id=$3 RETURNING *",values);
+    if(!r.rowCount){res.status(404).json({error:"Trecho não encontrado"});return;}
+    res.json({segment:r.rows[0]});
+  }catch(err){next(err);}
+});
+arqdorMepRouter.delete("/arch/projects/:projectId/mep/segments/:segmentId",async(req,res,next)=>{
+  try{
+    const tid=tenant(req,res),pid=routeId(req,res),segmentId=id.safeParse(req.params.segmentId);
+    if(!tid||!pid)return;if(!segmentId.success){res.status(400).json({error:"Trecho inválido"});return;}
+    const r=await pool.query("DELETE FROM arqdor_mep_segments WHERE tenant_id=$1 AND project_id=$2 AND id=$3 RETURNING id",[tid,pid,segmentId.data]);
+    if(!r.rowCount){res.status(404).json({error:"Trecho não encontrado"});return;}
+    res.json({deleted:true,id:segmentId.data});
+  }catch(err){next(err);}
+});
