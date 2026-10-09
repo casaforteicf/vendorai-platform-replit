@@ -17,7 +17,8 @@
     "ci:railway": "tsc -p tsconfig.launch-ci.json --noEmit && vitest run src/services/browser-live-session.test.ts src/lib/dev-agent-check-evidence.test.ts src/lib/dev-agent-deploy-relevance.test.ts src/lib/dev-agent-main-governance.test.ts src/lib/dev-agent-playbook-policy.test.ts src/lib/onboarding-implementation.test.ts src/lib/paid-media-budget-execution.test.ts src/lib/paid-media-budget-optimizer.test.ts src/lib/paid-media-spend-ceiling.test.ts src/lib/trial-tenant-resolution.test.ts src/lib/vendorai-subscription-lifecycle.test.ts src/lib/vendorai-subscription-rules.test.ts src/services/guided-video-audio-director.test.ts src/services/jarvis-priority-intelligence.test.ts src/__tests__/tenant-switch-isolation.test.ts src/__tests__/session-tenant-context.test.ts src/__tests__/construction-tenant-guard.test.ts src/__tests__/arch-prompt-variations.test.ts src/__tests__/arch-concept-projects.test.ts src/__tests__/arqdor-concept-dxf.test.ts src/__tests__/arqdor-dxf-import.test.ts src/__tests__/arqdor-ifc-metadata.test.ts src/__tests__/arqdor-concept-ifc.test.ts src/__tests__/arqdor-ifc-editable.test.ts src/__tests__/arqdor-reference-calibration.test.ts src/__tests__/arqdor-reference-ai-trace.test.ts src/__tests__/runtime-database-url.test.ts && pnpm run audit:tenant:baseline && pnpm run audit:production-integrity && pnpm run build",
     "seed-segment-templates": "tsx ./src/seed-segment-templates.ts",
     "r2:smoke": "tsx ./src/scripts/r2-smoke.ts",
-    "migrate:r2": "tsx ./src/scripts/migrate-storage-to-r2.ts"
+    "migrate:r2": "tsx ./src/scripts/migrate-storage-to-r2.ts",
+    "delete:supabase-after-r2": "tsx ./src/scripts/delete-supabase-after-r2.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
