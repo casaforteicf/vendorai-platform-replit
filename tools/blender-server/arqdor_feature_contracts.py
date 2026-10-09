@@ -732,3 +732,81 @@ def prepare_opening_review_workspace(queue, events=None, search="", status="all"
             "rows": records[:limit], "truncated": len(records) > limit,
             "readOnly": True, "requiresManualReview": True,
             "fabricationReady": False, "quantitiesEnabled": False}
+
+
+def inspect_parametric_wall(wall, openings=None):
+    """Geometry-first Z-up wall preview; conservative, never modifies the BIM model."""
+    if not isinstance(wall, dict) or not isinstance(openings, list) or len(openings) > 500:
+        raise ValueError("Parede ou aberturas inválidas")
+    def point(value):
+        if not isinstance(value, (list, tuple)) or len(value) != 3 or any(
+                type(v) not in (int, float) or not math.isfinite(v) or abs(v) > 100000
+                for v in value):
+            raise ValueError("Coordenada inválida")
+        return [float(v) for v in value]
+    start, end = point(wall.get("start")), point(wall.get("end"))
+    thickness, height = wall.get("thickness"), wall.get("height")
+    if any(type(v) not in (int, float) or not math.isfinite(v) or not 0.05 <= v <= 20
+           for v in (thickness, height)):
+        raise ValueError("Espessura ou altura inválida")
+    planar = math.hypot(end[0] - start[0], end[1] - start[1])
+    if planar < 0.1 or abs(end[2] - start[2]) > 1e-6:
+        raise ValueError("Parede não horizontal em planta")
+    reviewed = []
+    occupied = []
+    for opening in openings:
+        if not isinstance(opening, dict) or opening.get("kind") not in ("door", "window"):
+            raise ValueError("Abertura inválida")
+        offset, width, sill, opening_height = (opening.get(k) for k in ("offset", "width", "sill", "height"))
+        if any(type(v) not in (int, float) or not math.isfinite(v) for v in
+               (offset, width, sill, opening_height)):
+            raise ValueError("Dimensões de abertura inválidas")
+        if (offset < 0 or width <= 0 or sill < 0 or opening_height <= 0 or
+                offset + width > planar or sill + opening_height > height):
+            raise ValueError("Abertura ultrapassa parede")
+        if any(offset < hi and offset + width > lo and sill < zhi and
+               sill + opening_height > zlo for lo, hi, zlo, zhi in occupied):
+            raise ValueError("Aberturas sobrepostas")
+        occupied.append((offset, offset + width, sill, sill + opening_height))
+        reviewed.append({"kind": opening["kind"], "offset": offset, "width": width,
+                         "sill": sill, "height": opening_height,
+                         "openingConfirmed": False})
+    return {"wallLength": round(planar, 5), "thickness": thickness, "height": height,
+            "openingCandidates": reviewed, "geometryApproved": False,
+            "quantitiesEnabled": False, "requiresManualReview": True}
+
+
+def draft_architectural_deliverables(walls):
+    """Count validated draft wall inputs and flag all downstream documents for review."""
+    if not isinstance(walls, list) or len(walls) > 2000:
+        raise ValueError("Lista de paredes inválida")
+    drafts = [inspect_parametric_wall(item.get("wall"), item.get("openings", []))
+              for item in walls if isinstance(item, dict)]
+    if len(drafts) != len(walls):
+        raise ValueError("Item inválido")
+    return {"wallCount": len(drafts),
+            "openingCandidateCount": sum(len(w["openingCandidates"]) for w in drafts),
+            "floorPlans": "pending_bim_geometry_validation",
+            "sections": "pending_bim_geometry_validation",
+            "elevations": "pending_bim_geometry_validation",
+            "doorWindowSchedule": "draft_only",
+            "quantityTakeoff": "disabled_pending_review",
+            "fabricationReady": False, "geometryApproved": False}
+
+
+def validate_professional_render_job(job):
+    """Bound image/video render requests before any Blender or GPU dispatch."""
+    if not isinstance(job, dict):
+        raise ValueError("Job inválido")
+    preset = job.get("preset", "preview")
+    if preset not in RENDER_PRESETS:
+        raise ValueError("Preset desconhecido")
+    mode = job.get("mode", "image")
+    if mode not in ("image", "video"):
+        raise ValueError("Modo inválido")
+    resolution, samples = resolve_render_preset({"qualityPreset": preset})
+    result = {"mode": mode, "resolution": resolution, "samples": samples,
+              "status": "validated_not_rendered"}
+    if mode == "video":
+        result["cameraPath"] = validate_camera_path(job.get("keyframes"), job.get("fps", 24))
+    return result
