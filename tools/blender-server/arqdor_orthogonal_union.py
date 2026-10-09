@@ -156,7 +156,8 @@ def union_orthogonal_walls(entries, tolerance=1e-8):
     signed_volume_matches = (total_volume > 0 and signed_volume > 0 and
                              volume_error <= max(1e-7, total_volume * 1e-7))
     topology = inspect_mesh_edges({"vertices": vertices, "faces": faces})
-    if (not topology["watertightByEdgeIncidence"] or components != 1 or\n            surface_components != 1 or not signed_volume_matches):
+    if (not topology["watertightByEdgeIncidence"] or components != 1 or
+            surface_components != 1 or not signed_volume_matches):
         # Non-manifold point/edge contacts and degenerate unions are previews only.
         # Never advertise a clean continuous solid when edge-incidence fails.
         integrity = "requires_geometric_repair"
@@ -166,7 +167,9 @@ def union_orthogonal_walls(entries, tolerance=1e-8):
             "integrityStatus": integrity,
             "meshClosedByEdgeIncidence": topology["watertightByEdgeIncidence"],
             "connectedSolidComponents": components,
-            "connectedBoundaryComponents": surface_components,\n            "signedVolumeM3": round(signed_volume, 9),\n            "signedVolumeMatchesOccupancy": signed_volume_matches,
+            "connectedBoundaryComponents": surface_components,
+            "signedVolumeM3": round(signed_volume, 9),
+            "signedVolumeMatchesOccupancy": signed_volume_matches,
             "solidUnionMethod": "orthogonal_coordinate_partition",
             "internalFacesRemoved": True, "openingCount": sum(map(len, apertures)),
             "occupiedCells": len(filled), "volumePreviewM3": round(total_volume, 9),
