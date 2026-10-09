@@ -38,6 +38,7 @@ import { eq, or, and, desc } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { ModelFileStore, safeSegment } from "../lib/arqdor-model-files.js";
 
 // ─── Tipos locais ──────────────────────────────────────────────────────────────
 
@@ -386,6 +387,23 @@ export async function iniciarRender(
     ambienteNome = amb?.nome ?? null;
   }
 
+  // Attach only a private scene configuration tied to the exact imported model.
+  // Fail before creating a render job if the saved version cannot be verified.
+  let storedSettings: Record<string, unknown> | undefined;
+  if (sceneData.model) {
+    const root = process.env.ARQDOR_MODEL_ROOT;
+    if (!root?.trim()) throw new Error("Armazenamento privado de modelos não configurado");
+    const key = sceneData.model.key;
+    const match = /^([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)\/model\\.glb$/.exec(key);
+    if (!match || match[1] !== cena.projetoId) throw new Error("Referência de modelo incompatível com o projeto");
+    const modelId = safeSegment(match[2]);
+    const storage = new ModelFileStore(root);
+    const record = await storage.get(projeto.tenantId, cena.projetoId, modelId);
+    if (record.sha256 !== sceneData.model.sha256) throw new Error("Versão do modelo divergente");
+    const persisted = await storage.sceneSettings(projeto.tenantId, cena.projetoId, modelId);
+    storedSettings = persisted.settings;
+  }
+
   // 2. Inserir registro de render (aguardando)
   const [render] = await db
     .insert(archRendersTable)
@@ -402,6 +420,7 @@ export async function iniciarRender(
 
   // 4. Montar sceneConfig
   const sceneConfig = buildSceneConfig(sceneData, ambienteNome ?? cena.nome);
+  if (storedSettings) sceneConfig.sceneSettings = storedSettings;
   if (sceneData.model) {
     sceneConfig.model = { ...sceneData.model, tenantId: projeto.tenantId };
   }
