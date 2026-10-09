@@ -536,3 +536,52 @@ def build_opening_review_queue(schedule_rows, boundary_reviews):
     for item in queue:
         del item["_index"]
     return queue
+
+
+def create_opening_review_queue(schedule, source_sha256, project_version):
+    """Build a read-only review queue scoped to a specific import and project version.
+
+    Review rows are proposals, not approved BIM elements. The caller must persist
+    review decisions separately, with reviewer and audit history.
+    """
+    import re
+    if (not isinstance(source_sha256, str)
+            or not re.fullmatch(r"[a-fA-F0-9]{64}", source_sha256)):
+        raise ValueError("Hash de origem inválido")
+    if (not isinstance(project_version, str) or not project_version.strip()
+            or len(project_version) > 128):
+        raise ValueError("Versão do projeto inválida")
+    if not isinstance(schedule, list) or len(schedule) > 2000:
+        raise ValueError("Quadro de revisão inválido")
+    digest = source_sha256.lower()
+    rows = []
+    seen = set()
+    for entry in schedule:
+        if not isinstance(entry, dict):
+            raise ValueError("Registro inválido")
+        key = entry.get("sourceObjectKey")
+        object_id = entry.get("objectId")
+        expected = f"{digest}:{object_id}" if isinstance(object_id, str) else None
+        if not isinstance(key, str) or key.lower() != expected or key in seen:
+            raise ValueError("Identidade de objeto ausente, divergente ou duplicada")
+        seen.add(key)
+        status = entry.get("measurementStatus")
+        conflict = (status != "aabb_estimate_requires_review"
+                    or entry.get("hostRelationStatus") != "single_spatial_candidate")
+        rows.append({
+            "reviewKey": f"{project_version}:{key}",
+            "projectVersion": project_version,
+            "sourceSha256": digest,
+            "objectId": object_id,
+            "sourceObjectKey": key,
+            "name": entry.get("opening"),
+            "kind": entry.get("type"),
+            "conflict": conflict,
+            "reviewStatus": "needs_manual_review",
+            "estimatedDimensionsMeters": entry.get("dimensionsMeters"),
+            "geometryApproved": False,
+            "fabricationReady": False,
+            "quantitiesEnabled": False,
+        })
+    return {"projectVersion": project_version, "sourceSha256": digest,
+            "reviewRequired": True, "rows": rows}
