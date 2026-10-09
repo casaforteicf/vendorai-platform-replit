@@ -218,6 +218,20 @@ class FeatureContractsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             associate_boundary_candidates([{}] * 2001, [])
 
+    def test_exterior_wall_ring_does_not_raise_opening_priority(self):
+        wall = {"name": "Parede", "suggestedClass": "wall",
+                "bounds": {"min": [0, 0, 0], "max": [4, 0.2, 3]},
+                "topologyReview": {"boundaryLoopReview": {"closedBoundaryCandidates": [
+                    {"bounds": {"min": [0, 0, 0], "max": [4, 0.2, 3]}}
+                ]}}}
+        window = {"name": "Janela", "suggestedClass": "window",
+                  "bounds": {"min": [1, 0, 1], "max": [2, 0.2, 2]}}
+        relation = propose_opening_hosts([wall, window])
+        review = associate_boundary_candidates(relation, [wall, window])
+        self.assertEqual(review[0]["reviewPriority"], "spatial_only")
+        self.assertEqual(review[0]["candidateBoundaryMatches"], [])
+        self.assertFalse(review[0]["openingConfirmed"])
+
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
         self.assertFalse(data["quantitiesEnabled"])
