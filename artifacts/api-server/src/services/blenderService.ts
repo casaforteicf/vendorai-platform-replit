@@ -394,7 +394,7 @@ export async function iniciarRender(
     const root = process.env.ARQDOR_MODEL_ROOT;
     if (!root?.trim()) throw new Error("Armazenamento privado de modelos não configurado");
     const key = sceneData.model.key;
-    const match = /^([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)\/model\\.glb$/.exec(key);
+    const match = /^([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)\/model\.glb$/.exec(key);
     if (!match || match[1] !== cena.projetoId) throw new Error("Referência de modelo incompatível com o projeto");
     const modelId = safeSegment(match[2]);
     const storage = new ModelFileStore(root);
