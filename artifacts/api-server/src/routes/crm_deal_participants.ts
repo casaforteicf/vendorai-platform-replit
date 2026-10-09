@@ -460,7 +460,7 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
         .where(and(eq(crmDealPeopleTable.tenantId, tenantId), eq(crmDealPeopleTable.dealId, req.params.dealId)));
     }
 
-      const [previousLink] = await tx.select({ metadata: crmDealPeopleTable.metadata, isPrimary: crmDealPeopleTable.isPrimary })
+      const [previousLink] = await tx.select({ metadata: crmDealPeopleTable.metadata })
         .from(crmDealPeopleTable).where(and(eq(crmDealPeopleTable.tenantId, tenantId),
           eq(crmDealPeopleTable.dealId, req.params.dealId), eq(crmDealPeopleTable.personId, personId))).limit(1);
       // Reativação nunca recupera automaticamente o contato principal antigo.
