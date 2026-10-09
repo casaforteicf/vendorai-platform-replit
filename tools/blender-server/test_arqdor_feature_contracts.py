@@ -1,6 +1,6 @@
 import unittest
 from arqdor_feature_contracts import (
-    summarize_opening_review_history, record_opening_review_decision, create_opening_review_queue, inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, preview_scale_calibration, draft_opening_schedule, evaluate_wall_mesh_topology, inspect_boundary_loops, associate_boundary_candidates, build_opening_review_queue,
+    opening_review_dashboard, summarize_opening_review_history, record_opening_review_decision, create_opening_review_queue, inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, preview_scale_calibration, draft_opening_schedule, evaluate_wall_mesh_topology, inspect_boundary_loops, associate_boundary_candidates, build_opening_review_queue,
 )
 
 
@@ -386,6 +386,22 @@ class FeatureContractsTests(unittest.TestCase):
             summarize_opening_review_history(queue, [{**late, "sourceSha256": "cd" * 32}])
         with self.assertRaises(ValueError):
             summarize_opening_review_history(queue, [{**late, "reviewKey": "other"}])
+
+    def test_review_dashboard_counts_conflicts_without_certifying(self):
+        digest = "ab" * 32
+        row = {"sourceObjectKey": f"{digest}:mesh-000001", "objectId": "mesh-000001",
+               "opening": "Janela", "type": "window",
+               "measurementStatus": "ambiguous_object_name",
+               "hostRelationStatus": "ambiguous_spatial_candidates"}
+        queue = create_opening_review_queue([row], digest, "R2")
+        summary = summarize_opening_review_history(queue, [])
+        dashboard = opening_review_dashboard(summary)
+        self.assertEqual(dashboard["totalCandidates"], 1)
+        self.assertEqual(dashboard["conflicts"], 1)
+        self.assertEqual(dashboard["statuses"]["needs_manual_review"], 1)
+        self.assertFalse(dashboard["fabricationReady"])
+        with self.assertRaises(ValueError):
+            opening_review_dashboard({"rows": [{**summary["rows"][0], "reviewStatus": "approved"}]})
 
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
