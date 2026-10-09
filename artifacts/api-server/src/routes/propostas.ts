@@ -846,7 +846,13 @@ router.post("/propostas", async (req, res) => {
           Math.abs(Number(submitted.quantidade) - Number(approved.quantidade)) <= 0.0001 &&
           Math.abs(Number(submitted.valorUnitario) - Number(approved.valorUnitario)) <= 0.011;
       });
-    if (!sameItems) {
+    const approvedSubtotal = approvedItems.reduce((total, item) =>
+      total + Number(item.quantidade) * Number(item.valorUnitario), 0);
+    const submittedTotal = Number(parsed.data.valorTotal);
+    const totalMatches = Number.isFinite(approvedSubtotal) &&
+      Number.isFinite(submittedTotal) &&
+      Math.abs(approvedSubtotal - submittedTotal) <= 0.011;
+    if (!sameItems || !totalMatches) {
       res.status(409).json({
         code: "BUDGET_IMPORT_CONTENT_MISMATCH",
         error: "Os itens enviados diferem da revisão aprovada. Importe novamente para alterar os itens.",
