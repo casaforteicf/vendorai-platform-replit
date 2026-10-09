@@ -1,6 +1,6 @@
 import unittest
 from arqdor_feature_contracts import (
-    opening_review_dashboard, summarize_opening_review_history, record_opening_review_decision, create_opening_review_queue, inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, preview_scale_calibration, draft_opening_schedule, evaluate_wall_mesh_topology, inspect_boundary_loops, associate_boundary_candidates, build_opening_review_queue,
+    prepare_opening_review_workspace, opening_review_dashboard, summarize_opening_review_history, record_opening_review_decision, create_opening_review_queue, inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, preview_scale_calibration, draft_opening_schedule, evaluate_wall_mesh_topology, inspect_boundary_loops, associate_boundary_candidates, build_opening_review_queue,
 )
 
 
@@ -402,6 +402,33 @@ class FeatureContractsTests(unittest.TestCase):
         self.assertFalse(dashboard["fabricationReady"])
         with self.assertRaises(ValueError):
             opening_review_dashboard({"rows": [{**summary["rows"][0], "reviewStatus": "approved"}]})
+
+    def test_review_workspace_prioritizes_conflicts_and_supports_filters(self):
+        digest = "ab" * 32
+        entries = [
+            {"sourceObjectKey": f"{digest}:mesh-000001", "objectId": "mesh-000001",
+             "opening": "Janela 1", "type": "window",
+             "measurementStatus": "aabb_estimate_requires_review",
+             "hostRelationStatus": "single_spatial_candidate"},
+            {"sourceObjectKey": f"{digest}:mesh-000002", "objectId": "mesh-000002",
+             "opening": "Janela 2", "type": "window",
+             "measurementStatus": "ambiguous_object_name",
+             "hostRelationStatus": "ambiguous_spatial_candidates"},
+        ]
+        queue = create_opening_review_queue(entries, digest, "R3")
+        view = prepare_opening_review_workspace(queue)
+        self.assertEqual(view["filteredCount"], 2)
+        self.assertEqual(view["rows"][0]["name"], "Janela 2")
+        self.assertTrue(view["readOnly"])
+        self.assertFalse(view["fabricationReady"])
+        filtered = prepare_opening_review_workspace(queue, search="Janela 2",
+                                                    conflicts_only=True)
+        self.assertEqual(filtered["filteredCount"], 1)
+        self.assertEqual(filtered["dashboard"]["totalCandidates"], 2)
+        with self.assertRaises(ValueError):
+            prepare_opening_review_workspace(queue, status="approved_for_fabrication")
+        with self.assertRaises(ValueError):
+            prepare_opening_review_workspace(queue, limit=True)
 
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
