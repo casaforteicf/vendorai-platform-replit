@@ -302,6 +302,87 @@ const personalDataSchema = z.object({
   dataNascimento: z.union([z.iso.date(), z.literal("")]).optional(),
 });
 
+// Atomic editing of an EXISTING participant: the global profile and deal link commit together.
+const participantUpdateSchema = dealPersonSchema.omit({ personId: true, person: true }).extend({
+  profile: personalDataSchema.omit({ tenantId: true }),
+});
+router.patch("/crm/deals/:dealId/people/:personId", async (req, res) => {
+  const parsed = participantUpdateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  try {
+    const tenantId = tenantIdFromRequest(req, parsed.data.tenantId);
+    await assertDeal(req, tenantId, req.params.dealId);
+    const result = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${tenantId}), hashtext(${req.params.dealId}))`);
+      const [linked] = await tx.select().from(crmDealPeopleTable).where(and(
+        eq(crmDealPeopleTable.tenantId, tenantId),
+        eq(crmDealPeopleTable.dealId, req.params.dealId),
+        eq(crmDealPeopleTable.personId, req.params.personId),
+      )).limit(1);
+      if (!linked || linked.metadata?.inactive === true)
+        throw Object.assign(new Error("Vínculo ativo não encontrado. Reative a pessoa antes de editar."), { status: 409 });
+      if (parsed.data.contextualCompanyId) {
+        const [company] = await tx.select({ id: crmTenantCompaniesTable.id }).from(crmTenantCompaniesTable)
+          .where(and(eq(crmTenantCompaniesTable.tenantId, tenantId),
+            eq(crmTenantCompaniesTable.companyId, parsed.data.contextualCompanyId))).limit(1);
+        if (!company) throw Object.assign(new Error("Empresa contextual inválida neste tenant."), { status: 422 });
+      }
+      // Global master profile cannot be edited from a tenant sharing this person with another tenant.
+      const foreignDeal = await tx.select({ id: crmDealPeopleTable.id }).from(crmDealPeopleTable)
+        .where(and(eq(crmDealPeopleTable.personId, req.params.personId),
+          sql`${crmDealPeopleTable.tenantId} <> ${tenantId}`)).limit(1);
+      const foreignContact = await tx.select({ id: crmTenantCompanyContactsTable.id }).from(crmTenantCompanyContactsTable)
+        .where(and(eq(crmTenantCompanyContactsTable.personId, req.params.personId),
+          sql`${crmTenantCompanyContactsTable.tenantId} <> ${tenantId}`)).limit(1);
+      if (foreignDeal.length || foreignContact.length)
+        throw Object.assign(new Error("Cadastro compartilhado com outro tenant. Edição global bloqueada."), { status: 409 });
+      const [current] = await tx.select().from(crmPeopleMasterTable)
+        .where(eq(crmPeopleMasterTable.id, req.params.personId)).limit(1);
+      if (!current) throw Object.assign(new Error("Pessoa não encontrada."), { status: 404 });
+      const documento = digits(parsed.data.profile.documento);
+      if (documento) {
+        const matches = await tx.select({ id: crmPeopleMasterTable.id }).from(crmPeopleMasterTable)
+          .where(eq(crmPeopleMasterTable.documento, documento)).limit(1);
+        if (matches.length && matches[0].id !== current.id)
+          throw Object.assign(new Error("Documento já pertence a outra pessoa."), { status: 409 });
+      }
+      const newPhone = parsed.data.profile.telefone?.trim();
+      const newEmail = parsed.data.profile.email?.trim().toLowerCase();
+      const [person] = await tx.update(crmPeopleMasterTable).set({
+        nome: parsed.data.profile.nome,
+        documento: parsed.data.profile.documento === undefined ? current.documento : documento || null,
+        telefones: parsed.data.profile.telefone === undefined ? current.telefones :
+          newPhone ? [newPhone, ...(current.telefones ?? []).filter(v => digits(v) !== digits(newPhone))] : current.telefones,
+        emails: parsed.data.profile.email === undefined ? current.emails :
+          newEmail ? [newEmail, ...(current.emails ?? []).filter(v => v.toLowerCase() !== newEmail)] : current.emails,
+        dataNascimento: parsed.data.profile.dataNascimento === undefined ? current.dataNascimento : parsed.data.profile.dataNascimento || null,
+        updatedAt: new Date(),
+      }).where(eq(crmPeopleMasterTable.id, current.id)).returning();
+      if (parsed.data.isPrimary) {
+        await tx.update(crmDealPeopleTable).set({ isPrimary: false, updatedAt: new Date() })
+          .where(and(eq(crmDealPeopleTable.tenantId, tenantId), eq(crmDealPeopleTable.dealId, req.params.dealId)));
+      }
+      const safeMetadata = Object.fromEntries(Object.entries(parsed.data.metadata ?? {})
+        .filter(([key]) => !["relationshipHistory", "inactive", "unlinkedAt", "unlinkedBy", "createdTenantId", "legacyRelationship"].includes(key)));
+      const metadata = appendRelationshipEvent({ ...(linked.metadata ?? {}), ...safeMetadata,
+        legacyRelationship: !Array.isArray(linked.metadata?.relationshipHistory) }, "updated", req.user?.id);
+      const [link] = await tx.update(crmDealPeopleTable).set({
+        role: parsed.data.role,
+        isPrimary: parsed.data.isPrimary,
+        contextualCompanyId: parsed.data.contextualCompanyId ?? null,
+        relationshipScope: parsed.data.relationshipScope,
+        notes: parsed.data.notes ?? null,
+        metadata,
+        updatedAt: new Date(),
+      }).where(eq(crmDealPeopleTable.id, linked.id)).returning();
+      return { person, link };
+    });
+    return res.json(result);
+  } catch (error: any) {
+    return res.status(error.status ?? 500).json({ error: error.message });
+  }
+});
+
 router.patch("/crm/deals/:dealId/people/:personId/profile", async (req, res) => {
   const parsed = personalDataSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
