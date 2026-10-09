@@ -485,3 +485,11 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Regressão:** teste atualizado para duas paredes separadas exigir dois componentes e `requires_geometric_repair`; parede única requer um componente.
 - **Commits:** `6891357` (núcleo) e `1f76e1a` (testes).
 - **Validação:** mudanças no GitHub realizadas. Execução da suíte Python e build ainda **não comprovados** devido a ausência de checkout acessível no ambiente local; homologação Contabo adiada, sem merge/deploy e produção intacta.
+
+
+## 3422-A — conectividade da superfície de contorno (09/10/2026)
+- **Implementação:** o núcleo de união ortogonal agora computa `connectedBoundaryComponents` por adjacência de *arestas compartilhadas entre faces* e exige um único componente de superfície, além dos critérios anteriores de fechamento de arestas e conectividade das células sólidas. Isso impede considerar múltiplas cascas independentes como um único volume contínuo sob o critério atual.
+- **Teste:** `test_surface_connectivity_is_reported` compara parede única (uma casca) e paredes separadas (duas cascas, integridade requer reparo).
+- **Commits:** `b4e8c58` núcleo geométrico, `fb9ff2f` testes.
+- **Limitação:** contagem de cascas é validação conservadora; volumes com cavidade fechada legítima podem necessitar regra separada para múltiplas superfícies. Não substitui verificação manifold por vértice, orientação global nem aprovação BIM.
+- **Testes e build:** ainda não executados; PR Draft; sem merge/deploy. Homologação Contabo permanece adiada; produção inalterada.
