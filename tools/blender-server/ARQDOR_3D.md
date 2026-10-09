@@ -206,3 +206,22 @@ Custo, filas, orçamento por tenant, watchdog e retomada ainda são pendentes.
 
 Não habilitar render 3D para usuário final até provar importação, fidelidade,
 permissões, transferência privada, persistência e geração de arquivo real.
+
+
+## Fila do worker — lote 09/10/2026
+
+O serviço Flask agora utiliza executor com concorrência limitada
+(`ARQDOR_RENDER_WORKERS`, padrão 1, máximo 4) e registra status da execução em
+SQLite (`ARQDOR_RENDER_QUEUE_DB`, padrão `/tmp/renders/jobs.sqlite3`).
+Requisições repetidas com mesmo `jobId`, tenant e cena não iniciam uma segunda
+execução enquanto o job não falhou. O mesmo ID vinculado a outra cena ou tenant
+é recusado. Identificadores são validados antes de montar paths de saída.
+
+**Limites:** o banco SQLite precisa ficar em volume persistente configurado;
+o default em `/tmp` não garante retenção após troca de container. Após reiniciar,
+jobs que estavam aguardando/processando são marcados como interrompidos, sem
+retomada automática. Ainda falta recuperação supervisionada, controle real de
+orçamento/recursos, cancelamento e validação de fluxo completo. O upload legado
+para Supabase Storage público ainda existe — **não habilitar o render 3D para
+usuários** até migrar para R2 privado/Biblioteca e validar autorização da mídia.
+A fila continua local por host, não distribui jobs entre múltiplas GPUs.
