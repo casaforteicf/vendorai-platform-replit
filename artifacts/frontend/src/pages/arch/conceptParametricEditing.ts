@@ -61,7 +61,8 @@ export function normalizeOpeningDimensions(
   return {
     width: Math.max(0.5, Math.min(4, Number(opening.width) || (isDoor ? 0.9 : 1.2))),
     height: Math.max(0.5, Math.min(2.8, Number(opening.height) || (isDoor ? 2.1 : 1.2))),
-    sillHeight: isDoor ? 0 : Math.max(0, Math.min(2.2, Number(opening.sillHeight) || 0.9)),
+    sillHeight: isDoor ? 0 : Math.max(0, Math.min(2.2,
+      opening.sillHeight != null && Number.isFinite(Number(opening.sillHeight)) ? Number(opening.sillHeight) : 0.9)),
     openingStyle: opening.openingStyle ?? (isDoor ? "hinged" : "sliding"),
     swing: opening.swing ?? "left",
   };
@@ -72,3 +73,4 @@ export function sameRoomIdentity(before: ConceptRoomShape[], after: ConceptRoomS
   const afterIds = after.map((room) => room.id).sort();
   return beforeIds.length === afterIds.length && beforeIds.every((id, index) => id === afterIds[index]);
 }
+

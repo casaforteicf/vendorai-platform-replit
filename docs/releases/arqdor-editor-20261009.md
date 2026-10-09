@@ -1,5 +1,7 @@
 # Arqdor — registro de entrega do editor
 
+Correção adicional: normalização do peitoril preserva 0,00 m para janelas até o piso. Três testes específicos cobrem zero, ausência/NaN, limites e portas. Arquivos conceptParametricEditing.ts e conceptOpeningSill.test.ts. Esta evidência é unitária; visualização integrada permanece pendente.
+
 Identificador desta entrega: ARQ-EDITOR-20261009. Versão: desenvolvimento, PR #3423.
 
 ## Entrada e espaço de trabalho
