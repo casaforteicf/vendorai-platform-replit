@@ -61,6 +61,8 @@ type SceneData = {
   // Campos extendidos (editor futuro)
   resolution?:   [number, number];
   samples?:      number;
+  qualityPreset?: "preview" | "full_hd" | "4k" | "print";
+  postproduction?: { exposure?: number; gamma?: number };
   hdri?:         string;
   hdriStrength?: number;
   room?:         Record<string, unknown>;
@@ -164,7 +166,9 @@ function buildSceneConfig(
     return {
       model: sceneData.model,
       resolution: sceneData.resolution ?? [1920, 1080],
-      samples: sceneData.samples ?? 64,
+      samples: sceneData.samples,
+      qualityPreset: sceneData.qualityPreset,
+      postproduction: sceneData.postproduction,
       hdri: sceneData.hdri ?? "natural",
       hdriStrength: sceneData.hdriStrength ?? 1,
       camera: sceneData.camera ?? {},
@@ -174,7 +178,9 @@ function buildSceneConfig(
   if (sceneData.objects && sceneData.objects.length > 0 && sceneData.hdri) {
     return {
       resolution:   sceneData.resolution  ?? [1920, 1080],
-      samples:      sceneData.samples     ?? 64,
+      samples:      sceneData.samples,
+      qualityPreset: sceneData.qualityPreset,
+      postproduction: sceneData.postproduction,
       hdri:         sceneData.hdri,
       hdriStrength: sceneData.hdriStrength ?? 1.0,
       room:         sceneData.room        ?? {},
