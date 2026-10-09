@@ -60,3 +60,10 @@ Este relatório corresponde a inspeção estática de código remoto e planejame
 - Commit `c73d54b`: a edição do perfil passa a validar vínculo ativo, ausência de relacionamentos de outros tenants, CPF e atualização do cadastro mestre dentro de transação com o mesmo bloqueio consultivo por tenant e negócio empregado nas alterações dos envolvidos.
 - **Limite importante:** esta mudança torna atômica a validação/gravação dentro da rota de perfil, mas NÃO torna atômicas as duas requisições da interface (`POST` do vínculo seguido de `PATCH` do perfil). A operação combinada permanece pendente de um endpoint único e testes de integração.
 - Revisão textual do código concluída; sem execução de TypeScript, build ou homologação Contabo. Produção sem publicação neste lote.
+
+## Operação única de edição de participante — 09/10/2026
+- `66f603e`: criada rota `PATCH /crm/deals/:dealId/people/:personId` para vínculo **já existente**, com Zod, autorização do negócio, conferência de vínculo ativo, autorização global do cadastro mestre, duplicidade de documento e empresa contextual.
+- A rota executa atualização de **perfil e vínculo na mesma transação** Drizzle, com bloqueio por tenant/negócio e erro revertendo ambas as alterações.
+- `0d57a28`: a tela `DealParticipantsCard` usa apenas esse PATCH quando o usuário edita um participante; adição de novo participante continua via POST tradicional.
+- **Escopo real:** a atomicidade vale para edição de participante existente por essa interface. Cadastro de pessoa nova, vínculo permanente a empresa e outras telas ainda precisam de revisão específica.
+- **Sem comprovação de execução:** TypeScript, build, testes e homologação não executados nesta sessão. Homologação e publicação adiadas. Produção não alterada.
