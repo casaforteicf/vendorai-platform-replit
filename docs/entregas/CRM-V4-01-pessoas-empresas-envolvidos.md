@@ -143,3 +143,8 @@ Reutilizar o cadastro mestre existente e permitir casal (dois consumidores com q
 - `0969d5f`: limpeza de leitura desnecessária no backend.
 - **Evidência disponível:** commits registrados em branch/PR #3428. **Sem execução comprovada de TypeScript/esbuild ou testes concorrentes.** A homologação na Contabo permanece adiada por decisão do usuário, com bloqueio de autenticação Vendi anteriormente documentado. Produção não foi alterada.
 - **Próxima frente:** validações estáticas adicionais e regressões da integração de pessoas e empresas; regras de múltiplos consumidores principais e contato principal devem permanecer distintas.
+
+## Integração do cadastro de casal com empresa — 09/10/2026
+- Commit `c944a10`: `NewLeadDialog` deixou de criar automaticamente o Cliente 1 como contato comercial permanente da empresa quando o tipo de cadastro é casal. Nesse caso, ambos são cadastrados como pessoas e vinculados ao negócio; a empresa, quando informada, é vinculada no contexto, sem tornar os clientes contatos permanentes.
+- O Cliente 1 mantém papel de consumidor final, `isPrimary` de comunicação; o Cliente 2 mantém consumidor final com identificação de consumidor principal nos metadados, sem receber preferência de comunicação automaticamente.
+- Estado: implementado sem validação técnica. Integração funcional ainda sujeita a testes de cadastro de casal PF e casal em negócio com empresa. Build/homologação Contabo e publicação seguem adiados; produção não alterada.
