@@ -8578,20 +8578,17 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   )}
 
                   {editorView === "plan" && !terrainOnly && (
-                      <div className={`absolute top-3 z-30 flex snap-x items-center gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-white/96 p-1.5 shadow-md backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
+                      <div role="toolbar" aria-label="Ferramentas da planta" className={`arq-drawing-tools absolute top-3 z-30 flex snap-x items-center gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-white/96 p-1.5 shadow-md backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
                         left-16 right-3 md:right-auto
                         ${libraryOpen ? (editorLibraryTab === "furniture" || editorLibraryTab === "materials" ? "md:left-[460px]" : "md:left-[380px]") : "md:left-20"}
                       `}>
                         <button
                           type="button"
+                          aria-pressed={interactionMode === "navigate"}
                           title="Selecionar e editar paredes, ambientes, portas e janelas"
                           onClick={() => {
                             setInteractionMode("navigate");
-                            setSelectedId(null);
-                            setSelectedClosedSpaceId(null);
-                            setSelectedOpeningId(null);
-                            setSelectedWallId(null);
-                            setSelectedCustomWallId(null);
+                            clearEditorSelection();
                           }}
                           className={interactionMode === "navigate"
                             ? "shrink-0 rounded-xl bg-foreground px-3 py-2 text-xs font-semibold text-background"
@@ -8601,6 +8598,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         </button>
                         <button
                           type="button"
+                          aria-pressed={interactionMode === "draw-wall"}
                           onClick={() => {
                             if (!wallFirstActive) activateWallFirstFloor();
                             setInteractionMode("draw-wall");
@@ -8643,6 +8641,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         >
                           Portas / janelas
                         </button>
+                        <button type="button" disabled={!selectedCustomWall} title={selectedCustomWall ? "Inserir porta na parede selecionada" : "Selecione uma parede para inserir uma porta"} onClick={() => { if (selectedCustomWall) addOpeningToCustomWall(selectedCustomWall.id, "door"); }} className="shrink-0 rounded-xl border bg-background px-3 py-2 text-xs font-semibold disabled:opacity-40">+ Porta</button>
+                        <button type="button" disabled={!selectedCustomWall} title={selectedCustomWall ? "Inserir janela na parede selecionada" : "Selecione uma parede para inserir uma janela"} onClick={() => { if (selectedCustomWall) addOpeningToCustomWall(selectedCustomWall.id, "window"); }} className="shrink-0 rounded-xl border bg-background px-3 py-2 text-xs font-semibold disabled:opacity-40">+ Janela</button>
                         <button
                           type="button"
                           title="Abrir biblioteca de produtos e objetos"

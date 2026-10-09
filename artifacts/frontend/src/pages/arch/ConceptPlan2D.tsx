@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
+import { measuredWallEnd, boundSnappedWallPoint } from "./conceptWallDrawing";
 import { Magnet, Maximize2, Move, Route, ZoomIn, ZoomOut } from "lucide-react";
 import type { ConceptGeometry, ConceptRoomShape, OpeningMarker } from "./conceptGeometry";
 import { orthogonalEnd, snapPointToWallNetwork, snapPointToWallNetworkDetailed, wallLength, wallMidpoint, type ClosedSpace, type WallSnapKind, type WallTopologyEndpointRef, type WallTopologyNode } from "./conceptWallNetwork";
@@ -436,6 +437,7 @@ export default function ConceptPlan2D({
   const [wallChainOrigin, setWallChainOrigin] = useState<{ x: number; y: number } | null>(null);
   const [wallDrawPreview, setWallDrawPreview] = useState<{ x: number; y: number } | null>(null);
   const [wallLengthInput, setWallLengthInput] = useState("");
+  const [drawingWallThickness, setDrawingWallThickness] = useState(0.15);
   const [wallLengthError, setWallLengthError] = useState<string | null>(null);
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [orthogonalEnabled, setOrthogonalEnabled] = useState(true);
@@ -615,18 +617,44 @@ export default function ConceptPlan2D({
   }>(null);
   const spacePanRef = useRef(false);
 
+  const finishWallChain = () => {
+    setWallDrawStart(null);
+    setWallChainOrigin(null);
+    setWallDrawPreview(null);
+    setWallLengthInput("");
+    setWallLengthError(null);
+    setSnapGuides({});
+  };
+
+  const createMeasuredWall = () => {
+    if (!wallDrawStart || !wallDrawPreview || !onCreateCustomWall) return;
+    const result = measuredWallEnd(wallDrawStart, wallDrawPreview, wallLengthInput, { width: lotWidth, depth: lotDepth });
+    if ("error" in result) { setWallLengthError(result.error); return; }
+    onCreateCustomWall({
+      id: `custom-wall-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      floor: activeFloor,
+      x1: wallDrawStart.x, y1: wallDrawStart.y,
+      x2: result.end.x, y2: result.end.y,
+      thickness: drawingWallThickness,
+    });
+    setWallDrawStart(result.end);
+    setWallDrawPreview(result.end);
+    setWallLengthInput("");
+    setWallLengthError(null);
+  };
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const editingText = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.tagName === "SELECT" || target?.isContentEditable;
-      if (editingText) return;
+      if (editingText || event.ctrlKey || event.metaKey || event.altKey) return;
 
       if (event.code === "Space") {
         spacePanRef.current = true;
         return;
       }
 
-      if (event.key.toLowerCase() === "f" || event.key === "0") {
+      if (event.key.toLowerCase() === "f" || (event.key === "0" && !(interactionMode === "draw-wall" && wallDrawStart))) {
         event.preventDefault();
         setView(fitView);
         return;
@@ -663,40 +691,7 @@ export default function ConceptPlan2D({
         }
         if (event.key === "Enter" && wallLengthInput.trim()) {
           event.preventDefault();
-          const requestedLength = Number(wallLengthInput.replace(",", "."));
-          if (Number.isFinite(requestedLength) && requestedLength >= 0.5 && wallDrawPreview && onCreateCustomWall) {
-            const dx = wallDrawPreview.x - wallDrawStart.x;
-            const dy = wallDrawPreview.y - wallDrawStart.y;
-            const magnitude = Math.hypot(dx, dy);
-            const direction = magnitude > 0.001
-              ? { x: dx / magnitude, y: dy / magnitude }
-              : { x: 1, y: 0 };
-            const rawEnd = {
-              x: wallDrawStart.x + direction.x * requestedLength,
-              y: wallDrawStart.y + direction.y * requestedLength,
-            };
-            if (rawEnd.x < 0 || rawEnd.x > lotWidth || rawEnd.y < 0 || rawEnd.y > lotDepth) {
-              setWallLengthError("A medida ultrapassa o limite do terreno.");
-              return;
-            }
-            const end = rawEnd;
-            const actualLength = Math.hypot(end.x - wallDrawStart.x, end.y - wallDrawStart.y);
-            if (actualLength >= 0.5) {
-              onCreateCustomWall({
-                id: `custom-wall-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-                floor: activeFloor,
-                x1: wallDrawStart.x,
-                y1: wallDrawStart.y,
-                x2: end.x,
-                y2: end.y,
-                thickness: 0.15,
-              });
-              setWallDrawStart(end);
-              setWallDrawPreview(end);
-              setWallLengthInput("");
-              setWallLengthError(null);
-            }
-          }
+          createMeasuredWall();
           return;
         }
       }
@@ -722,7 +717,7 @@ export default function ConceptPlan2D({
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [activeFloor, fitView, interactionMode, onCreateCustomWall, wallDrawPreview, wallDrawStart, wallLengthInput]);
+  }, [activeFloor, fitView, interactionMode, onCreateCustomWall, wallDrawPreview, wallDrawStart, wallLengthInput, drawingWallThickness, lotWidth, lotDepth]);
 
 
 
@@ -798,7 +793,7 @@ export default function ConceptPlan2D({
     const snapResult = snapEnabled
       ? snapPointToWallNetworkDetailed(clamped, wallNetwork, 0.35)
       : { point: clamped, kind: "none" as const, distance: Number.POSITIVE_INFINITY };
-    const snapped = clampPoint(snapResult.point);
+    const snapped = boundSnappedWallPoint(snapResult.point, { width: lotWidth, depth: lotDepth });
     setActiveWallSnap(snapResult.kind === "none" ? null : { kind: snapResult.kind, point: snapped });
     if (!wallDrawStart) {
       setWallDrawStart(snapped);
@@ -813,7 +808,7 @@ export default function ConceptPlan2D({
       ? snapPointToWallNetworkDetailed(rawEnd, wallNetwork, 0.35)
       : { point: rawEnd, kind: "none" as const, distance: Number.POSITIVE_INFINITY };
     const networkEnd = endSnapResult.point;
-    let end = clampPoint(orthogonalEnabled ? orthogonalEnd(wallDrawStart, networkEnd) : networkEnd);
+    let end = boundSnappedWallPoint(endSnapResult.kind !== "none" ? networkEnd : (orthogonalEnabled ? orthogonalEnd(wallDrawStart, networkEnd) : networkEnd), { width: lotWidth, depth: lotDepth });
     setActiveWallSnap(endSnapResult.kind === "none" ? null : { kind: endSnapResult.kind, point: end });
     const closeThreshold = 0.42;
     const nearOrigin = wallChainOrigin
@@ -832,7 +827,7 @@ export default function ConceptPlan2D({
         y1: wallDrawStart.y,
         x2: end.x,
         y2: end.y,
-        thickness: 0.15,
+        thickness: drawingWallThickness,
       });
       if (nearOrigin) {
         pendingClosedSpaceSelectRef.current = true;
@@ -914,7 +909,7 @@ export default function ConceptPlan2D({
         ? snapPointToWallNetworkDetailed(orthogonal, wallNetwork, 0.35)
         : { point: orthogonal, kind: "none" as const, distance: Number.POSITIVE_INFINITY };
       const networkEnd = finalSnap.point;
-      let preview = clampPoint(orthogonalEnabled ? orthogonalEnd(wallDrawStart, networkEnd) : networkEnd);
+      let preview = boundSnappedWallPoint(finalSnap.kind !== "none" ? networkEnd : (orthogonalEnabled ? orthogonalEnd(wallDrawStart, networkEnd) : networkEnd), { width: lotWidth, depth: lotDepth });
       const snapKind = finalSnap.kind !== "none" ? finalSnap.kind : initialSnap.kind;
       setActiveWallSnap(snapKind === "none" ? null : { kind: snapKind, point: preview });
       if (wallChainOrigin && Math.hypot(preview.x - wallChainOrigin.x, preview.y - wallChainOrigin.y) <= 0.42) {
@@ -1301,6 +1296,8 @@ export default function ConceptPlan2D({
           className={snapEnabled
             ? "flex h-9 items-center gap-1.5 rounded-xl bg-sky-50 px-2.5 text-[11px] font-bold text-sky-700"
             : "flex h-9 items-center gap-1.5 rounded-xl px-2.5 text-[11px] font-semibold text-slate-500 hover:bg-slate-100"}
+          aria-label="Encaixe inteligente"
+          aria-pressed={snapEnabled}
           title={snapEnabled ? "Snap inteligente ativo" : "Ativar snap inteligente"}
         >
           <Magnet className="h-3.5 w-3.5" />
@@ -1312,6 +1309,8 @@ export default function ConceptPlan2D({
           className={orthogonalEnabled
             ? "flex h-9 items-center gap-1.5 rounded-xl bg-emerald-50 px-2.5 text-[11px] font-bold text-emerald-700"
             : "flex h-9 items-center gap-1.5 rounded-xl px-2.5 text-[11px] font-semibold text-slate-500 hover:bg-slate-100"}
+          aria-label="Trava ortogonal"
+          aria-pressed={orthogonalEnabled}
           title={orthogonalEnabled ? "Trava ortogonal ativa" : "Ativar trava ortogonal"}
         >
           <Route className="h-3.5 w-3.5" />
@@ -1331,21 +1330,24 @@ export default function ConceptPlan2D({
             <Move className="h-3.5 w-3.5" /> Arraste
           </div>
         )}
-        {interactionMode === "draw-wall" && wallDrawStart && (
-          <div className="hidden items-center gap-2 rounded-xl bg-orange-50 px-2.5 py-2 text-[11px] font-semibold text-orange-700 xl:flex">
-            {wallLengthInput ? (
-              <>
-                <span className="rounded-md bg-white px-2 py-1 font-bold tabular-nums text-orange-700 shadow-sm">
-                  {wallLengthInput} m
-                </span>
-                <span>Enter cria a parede</span>
-              </>
-            ) : (
-              <span className={wallLengthError ? "font-semibold text-red-600" : ""}>{wallLengthError ?? <>Clique para continuar ou digite a medida + Enter · Snap {snapEnabled ? "ON" : "OFF"} · Orto {orthogonalEnabled ? "ON" : "OFF"}</>}</span>
-            )}
-          </div>
-        )}
       </div>
+      {interactionMode === "draw-wall" && (
+        <div className="arq-wall-drawing-input absolute inset-x-3 top-16 z-20 flex flex-wrap items-end gap-2 rounded-xl border bg-white/95 p-3 shadow-sm">
+          <label className="text-xs font-semibold text-slate-700">Espessura (m)
+            <select aria-label="Espessura das novas paredes" value={drawingWallThickness} onChange={(event) => setDrawingWallThickness(Number(event.target.value))} className="ml-2 h-10 rounded-lg border px-2">
+              {[0.1, 0.15, 0.2, 0.25, 0.3].map((value) => <option key={value} value={value}>{value.toFixed(2).replace(".", ",")}</option>)}
+            </select>
+          </label>
+          {wallDrawStart ? <>
+            <label className="text-xs font-semibold text-slate-700">Comprimento (m)
+              <input aria-label="Comprimento da nova parede" inputMode="decimal" value={wallLengthInput} onChange={(event) => { setWallLengthInput(event.target.value); setWallLengthError(null); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); createMeasuredWall(); } }} className="ml-2 h-10 w-24 rounded-lg border px-2" placeholder="4,20" />
+            </label>
+            <button type="button" onClick={createMeasuredWall} disabled={!wallLengthInput.trim()} className="h-10 rounded-lg bg-emerald-700 px-3 text-xs font-semibold text-white disabled:opacity-40">Aplicar medida</button>
+            <button type="button" onClick={finishWallChain} className="h-10 rounded-lg border px-3 text-xs font-semibold">Encerrar desenho</button>
+          </> : <span className="text-xs text-slate-600">Clique na planta para iniciar a parede.</span>}
+          {wallLengthError && <p role="alert" className="w-full text-xs font-semibold text-red-600">{wallLengthError}</p>}
+        </div>
+      )}
       <svg
         ref={svgRef}
         className={`block h-full min-h-[420px] w-full touch-none select-none sm:min-h-[620px] ${interactionMode === "navigate" ? (panGesture ? "cursor-grabbing" : "cursor-grab") : ""}`}
@@ -3267,3 +3269,4 @@ export default function ConceptPlan2D({
     </div>
   );
 }
+
