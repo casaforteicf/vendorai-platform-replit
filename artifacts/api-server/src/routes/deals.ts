@@ -2497,7 +2497,14 @@ router.post(
 const budgetImportReviewSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("approve"),
-    reviewedData: z.object({ itens: z.array(z.record(z.string(), z.unknown())).min(1).max(500) }).passthrough(),
+    reviewedData: z.object({
+      itens: z.array(z.object({
+        descricao: z.string().trim().min(1).max(1000),
+        quantidade: z.number().finite().positive(),
+        valorUnitario: z.number().finite().nonnegative(),
+        valorTotal: z.number().finite().nonnegative(),
+      }).passthrough()).min(1).max(500),
+    }).passthrough(),
     note: z.string().trim().max(2000).optional(),
   }),
   z.object({
@@ -2540,6 +2547,15 @@ router.post("/tenants/:tenantId/deals/budget-imports/:importId/review", async (r
   const parsed = budgetImportReviewSchema.safeParse(req.body);
   if (!parsed.success) { res.status(422).json({ error: parsed.error.message }); return; }
   const payload = parsed.data;
+  if (payload.action === "approve") {
+    const invalidTotal = payload.reviewedData.itens.some(item =>
+      Math.abs(item.valorTotal - item.quantidade * item.valorUnitario) > 0.011
+    );
+    if (invalidTotal) {
+      res.status(422).json({ error: "Totais inconsistentes: confira quantidade e valor unitário." });
+      return;
+    }
+  }
   try {
     const updated = await db.execute(sql`
       UPDATE public.budget_imports
