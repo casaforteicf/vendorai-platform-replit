@@ -46,6 +46,24 @@ class OrthogonalUnionTests(unittest.TestCase):
         self.assert_closed(result)
         self.assertGreater(len(result["faces"]), 6)
 
+    def test_union_volume_does_not_double_count_intersection(self):
+        horizontal = wall((0, 0), (4, 0))
+        vertical = wall((2, -2), (2, 2))
+        result = union_orthogonal_walls([horizontal, vertical])
+        # Each wall is 4 * .2 * 3; overlapping core is .2 * .2 * 3.
+        self.assertAlmostEqual(result["volumePreviewM3"], 4.68, places=7)
+        self.assertFalse(result["geometryApproved"])
+
+    def test_openings_subtract_preview_volume(self):
+        opening = [{"kind": "window", "offset": 1, "width": 1, "sill": 1, "height": 1}]
+        result = union_orthogonal_walls([wall((0, 0), (4, 0), openings=opening)])
+        self.assertAlmostEqual(result["volumePreviewM3"], 2.2, places=7)
+        self.assert_closed(result)
+
+    def test_nonfinite_tolerance_rejected(self):
+        with self.assertRaises(ValueError):
+            union_orthogonal_walls([wall((0, 0), (4, 0))], tolerance=float("nan"))
+
     def test_diagonal_is_explicitly_unsupported(self):
         with self.assertRaisesRegex(ValueError, "diagonais"):
             union_orthogonal_walls([wall((0, 0), (3, 2))])
