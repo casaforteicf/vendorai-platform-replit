@@ -183,7 +183,9 @@ def execute_render(job_id: str, cena_id: str, tenant_id: str, scene_config: dict
                 f"STDERR:\n{result.stderr[-1000:]}"
             )
 
-        if not os.path.exists(output_path):
+        is_video = isinstance(scene_config.get("video"), dict)
+        artifact_path = os.path.splitext(output_path)[0] + (".mp4" if is_video else ".png")
+        if not os.path.exists(artifact_path):
             raise RuntimeError(
                 f"Blender concluiu mas o arquivo de saída não foi criado: {output_path}\n"
                 f"STDOUT:\n{result.stdout[-1000:]}"
@@ -191,12 +193,15 @@ def execute_render(job_id: str, cena_id: str, tenant_id: str, scene_config: dict
 
         # Result remains private on the worker until the authenticated API
         # transfers it into the tenant media library.
-        with open(output_path, "rb") as source:
-            signature = source.read(8)
-        if signature != bytes.fromhex("89504e470d0a1a0a"):
+        with open(artifact_path, "rb") as source:
+            signature = source.read(12)
+        if is_video:
+            if signature[4:8] != b"ftyp":
+                raise RuntimeError("Resultado Blender não é MP4 válido")
+        elif signature[:8] != bytes.fromhex("89504e470d0a1a0a"):
             raise RuntimeError("Resultado Blender não é PNG válido")
-        private_result = os.path.join(OUTPUT_DIR, f"{job_id}.result.png")
-        os.replace(output_path, private_result)
+        private_result = os.path.join(OUTPUT_DIR, f"{job_id}.result." + ("mp4" if is_video else "png"))
+        os.replace(artifact_path, private_result)
         set_status("concluido")
 
     except subprocess.TimeoutExpired:
@@ -210,11 +215,12 @@ def execute_render(job_id: str, cena_id: str, tenant_id: str, scene_config: dict
                 os.unlink(config_file)
             except OSError:
                 pass
-        if os.path.exists(output_path):
-            try:
-                os.unlink(output_path)
-            except OSError:
-                pass
+        for transient in (output_path, os.path.splitext(output_path)[0] + ".mp4"):
+            if os.path.exists(transient):
+                try:
+                    os.unlink(transient)
+                except OSError:
+                    pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -256,6 +262,7 @@ def post_render():
         "jobId":       job_id,
         "cenaId":      cena_id,
         "tenantId":    tenant_id,
+        "artifactType": "video" if isinstance(scene_config.get("video"), dict) else "image",
         "status":      "aguardando",
         "imageUrl":    None,
         "erro":        None,
@@ -308,10 +315,13 @@ def get_render_artifact(job_id):
             return jsonify({"error": "Job não encontrado"}), 404
         if job["status"] != "concluido":
             return jsonify({"error": "Resultado ainda indisponível"}), 409
-    artifact = os.path.join(OUTPUT_DIR, f"{job_id}.result.png")
+    is_video = job.get("artifactType") == "video"
+    extension = "mp4" if is_video else "png"
+    artifact = os.path.join(OUTPUT_DIR, f"{job_id}.result.{extension}")
     if not os.path.isfile(artifact):
-        return jsonify({"error": "PNG não encontrado no worker"}), 404
-    response = send_file(artifact, mimetype="image/png", as_attachment=True, download_name=f"{job_id}.png")
+        return jsonify({"error": "Artefato não encontrado no worker"}), 404
+    mime_type = "video/mp4" if is_video else "image/png"
+    response = send_file(artifact, mimetype=mime_type, as_attachment=True, download_name=f"{job_id}.{extension}")
     response.headers["Cache-Control"] = "private, no-store"
     response.headers["X-Content-Type-Options"] = "nosniff"
     return response
