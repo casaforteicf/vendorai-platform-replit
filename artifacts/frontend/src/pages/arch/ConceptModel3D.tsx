@@ -1,3 +1,4 @@
+import { sceneGesture } from "./conceptSceneGesture";
 import { exposedWallFaces } from "./conceptWallSurfaces";
 import { partitionOrthogonalWallSolids } from "./conceptWallSolidUnion";
 import { alignOpeningSegment, alignOpeningPoint, openingVerticalBounds } from "./conceptWallVoids";
@@ -565,6 +566,8 @@ export default function ConceptModel3D({
   const [panoramaExportError, setPanoramaExportError] = useState<string | null>(null);
   const sceneRootRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const selectionGestureRef = useRef<ReturnType<typeof sceneGesture> | null>(null);
+  if (!selectionGestureRef.current) selectionGestureRef.current = sceneGesture();
   const [orbitGesture, setOrbitGesture] = useState<null | {
     pointerId: number;
     startX: number;
@@ -1732,6 +1735,16 @@ export default function ConceptModel3D({
         ref={svgRef}
         data-concept-model3d-source="true"
         viewBox={`${-sceneWidth / 2 + panX} ${-sceneHeight / 2 + panY} ${sceneWidth} ${sceneHeight}`}
+        onPointerDownCapture={(event) => selectionGestureRef.current?.down(event.pointerId, event.clientX, event.clientY)}
+        onPointerMoveCapture={(event) => selectionGestureRef.current?.move(event.pointerId, event.clientX, event.clientY)}
+        onPointerUpCapture={(event) => selectionGestureRef.current?.up(event.pointerId, event.clientX, event.clientY)}
+        onPointerCancelCapture={(event) => selectionGestureRef.current?.cancel(event.pointerId)}
+        onClickCapture={(event) => {
+          if (event.button !== 0 || !selectionGestureRef.current?.canClick()) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        }}
         onPointerDown={handleOrbitStart}
         onPointerMove={handleOrbitMove}
         onPointerUp={handleOrbitEnd}
@@ -2239,7 +2252,6 @@ export default function ConceptModel3D({
                   if (event.button !== 0) return;
                   event.stopPropagation();
                   if (paintTool?.target === "object" && onPaintObject) {
-                    onPaintObject(object.id, paintTool.materialId);
                     return;
                   }
                   onSelectObject?.(object.id);

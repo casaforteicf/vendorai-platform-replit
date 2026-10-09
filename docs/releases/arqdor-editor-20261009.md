@@ -177,3 +177,10 @@ Validação: 98 testes em 20 arquivos passaram; transformação TSX da cena pass
 Seleção/pintura WebGL restritas ao modo órbita e botão principal. Arrastes acima de 5 pixels, múltiplos ponteiros e gestos cancelados bloqueiam o clique subsequente, incluindo arraste que retorna à posição inicial. Eventos de liberação fora do canvas acompanhados; listeners removidos no encerramento da cena.
 
 Validação: 102 testes em 21 arquivos passaram; transformação TSX da cena passou. Teste integrado dos gestos, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Proteção de gestos na vista SVG
+
+Vista compatível reutiliza o rastreamento de gestos para bloquear clique após arraste, multitoque ou cancelamento, antes dos handlers de paredes, ambientes, aberturas e objetos. Pintura de objetos passa a ocorrer no clique validado, evitando dupla aplicação no pressionamento e na liberação. Arraste de objetos continua com seleção inicial para edição.
+
+Validação: 102 testes em 21 arquivos passaram; transformação TSX do componente passou. Verificação integrada de SVG/WebGL, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
