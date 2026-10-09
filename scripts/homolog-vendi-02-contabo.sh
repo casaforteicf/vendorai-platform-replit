@@ -83,7 +83,7 @@ if [[ "$health" != 1 ]]; then
 fi
 echo "=== CONSULTA REAL CRM / AUTENTICACAO ==="
 # Run inside homolog; do not expose token.
-if ! docker exec "$OLD" node - <<'JS'
+if ! docker exec -i "$OLD" node - <<'JS'
 const base="http://127.0.0.1:5000/api/internal/browser-mcp/crm-summary";
 async function call(tenant,auth=true){
  const response=await fetch(base,{method:"POST",headers:{"content-type":"application/json",...(auth?{"authorization":"Bearer "+process.env.BROWSER_MCP_ACCESS_TOKEN}:{})},body:JSON.stringify({tenantKey:tenant}),signal:AbortSignal.timeout(15000)});
