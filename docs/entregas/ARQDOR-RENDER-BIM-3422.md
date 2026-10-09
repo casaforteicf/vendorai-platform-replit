@@ -412,3 +412,11 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Commit:** `2e42dcb`; arquivo alterado `artifacts/frontend/src/pages/arch/render-studio/RenderStudioParametricEditor.tsx`.
 - **Limites:** união colinear paramétrica **não é** operação boolean robusta. Encontros em L/T/cruz continuam apenas identificados para revisão; sobreposições tridimensionais e topologia global não certificadas. Ausência de validação funcional do botão, build TypeScript e execução de testes.
 - **Estados:** parcial, não homologado, não publicado, sem merge/deploy. Contabo e acesso Vendi adiados conforme orientação.
+
+
+## Lote B/C — diagnóstico volumétrico de encontros 3D (09/10/2026)
+- **Implementação:** `classify_wall_solid_joins` em `tools/blender-server/arqdor_parametric_mesh.py` classifica possíveis encontros L, T e cruz para paredes com sobreposição real de altura, computando aproximação de distância entre eixos e largura das paredes. Paredes de pavimentos distintos sem interseção vertical não são marcadas como união. Retorna expressamente `requiresSolidUnion=true`, `resolved=false`, `solidJoinsResolved=false`, `geometryApproved=false`.
+- **Testes:** `test_solid_join_candidate_classification_and_vertical_separation` adicionado à suíte Python; inclui cruz, L, T e paredes em cotas verticais distintas. Arquivo conferido e normalizado após a adição; **testes não executados neste lote**.
+- **Commits:** `8c07d40` (candidatos sólidos), `5d5ae50` (testes), `f325aad` (conferência do arquivo de testes).
+- **Limite:** classificação geométrica não é união de sólidos; o núcleo boolean real com remoção de faces internas e reconstituição topológica **permanece pendente**, assim como validação em Blender e editor WebGL para situações L/T/cruz.
+- **Controles:** PR #3422 Draft; não houve merge, homologação, deploy ou mudança em produção.
