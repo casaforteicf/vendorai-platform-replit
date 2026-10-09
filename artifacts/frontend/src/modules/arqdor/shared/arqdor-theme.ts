@@ -13,11 +13,11 @@ export const T = {
   border:  'rgba(255,255,255,0.07)',
   borderM: 'rgba(255,255,255,0.12)',
 
-  // Brand purples
-  purple:  '#7c3aed',
-  purpleD: '#6d28d9',
-  purpleL: '#a78bfa',
-  purpleXL:'#c4b5fd',
+  // ARQDOR brand — technological emerald
+  purple:  '#0f9f6e',
+  purpleD: '#087a55',
+  purpleL: '#35d399',
+  purpleXL:'#8be8c0',
 
   // Text
   text:    'rgba(255,255,255,0.88)',
@@ -63,7 +63,7 @@ export const T = {
 export type ArqdorTheme = typeof T
 
 // ─── PHX — Phoenix light theme (Project Phoenix) ─────────────────────────────
-// Premium light palette: white surface, purple accent only.
+// Premium light palette: architectural white + technological emerald.
 // Referências: Apple, Notion, Figma, Linear.
 export const PHX = {
   // Backgrounds
@@ -77,11 +77,11 @@ export const PHX = {
   border:  'rgba(0,0,0,0.07)',
   borderM: 'rgba(0,0,0,0.12)',
 
-  // Brand purple — accent only
-  purple:  '#7c3aed',
-  purpleD: '#6d28d9',
-  purpleL: '#8b5cf6',
-  purpleXL:'#a78bfa',
+  // Brand emerald — kept on legacy purple keys for compatibility
+  purple:  '#0f9f6e',
+  purpleD: '#087a55',
+  purpleL: '#35d399',
+  purpleXL:'#8be8c0',
 
   // Text
   text:    '#111827',
