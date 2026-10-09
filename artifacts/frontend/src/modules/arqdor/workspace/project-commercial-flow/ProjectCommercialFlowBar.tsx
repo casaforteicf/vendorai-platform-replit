@@ -10,9 +10,9 @@ type Props = {
 };
 
 const steps: Array<{ id: CommercialFlowStage; label: string; module: string }> = [
-  { id: "render", label: "1. Render", module: "real-render-gallery" },
-  { id: "specification", label: "2. Especificação", module: "real-specification" },
-  { id: "budget", label: "3. Orçamento", module: "real-budget" },
+  { id: "render", label: "1. Projeto", module: "projeto" },
+  { id: "specification", label: "2. Especificar (opcional)", module: "real-specification" },
+  { id: "budget", label: "3. Quantificar / Orçar", module: "real-budget" },
 ];
 
 export function ProjectCommercialFlowBar({
