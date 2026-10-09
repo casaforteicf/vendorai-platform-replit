@@ -448,10 +448,11 @@ router.post("/crm/deals/:dealId/companies", async (req, res) => {
       role: parsed.data.role,
       isPrimary: parsed.data.isPrimary,
       notes: parsed.data.notes ?? null,
+      metadata: { inactive: false },
       updatedAt: new Date(),
     }).onConflictDoUpdate({
       target: [crmDealCompaniesTable.dealId, crmDealCompaniesTable.companyId],
-      set: { role: parsed.data.role, isPrimary: parsed.data.isPrimary, notes: parsed.data.notes ?? null, updatedAt: new Date() },
+      set: { role: parsed.data.role, isPrimary: parsed.data.isPrimary, notes: parsed.data.notes ?? null, metadata: { inactive: false }, updatedAt: new Date() },
     }).returning();
     return res.status(201).json(link);
   } catch (error: any) {
