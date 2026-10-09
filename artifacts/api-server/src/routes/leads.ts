@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
+import { createHash } from "node:crypto";
 import { rateLimit } from "express-rate-limit";
 import { and, eq, inArray, desc, ilike, isNull, isNotNull, sql } from "drizzle-orm";
 import { z } from "zod/v4";
@@ -248,6 +249,32 @@ router.post("/leads", async (req, res) => {
   }
 
   const data = parsed.data;
+  // Idempotência de cadastro manual: chave única por solicitação, associada ao autor e ao conteúdo.
+  const registrationRequestId = typeof data.metadata?.registrationRequestId === "string"
+    && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(data.metadata.registrationRequestId)
+      ? data.metadata.registrationRequestId.toLowerCase() : null;
+  const registrationActorId = req.user?.sub ?? req.user?.id ?? null;
+  const registrationPayloadHash = registrationRequestId
+    ? createHash("sha256").update(JSON.stringify(data)).digest("hex") : null;
+  if (registrationRequestId && !registrationActorId) {
+    res.status(403).json({ error: "Autor do cadastro não identificado." });
+    return;
+  }
+  const replayFilter = registrationRequestId
+    ? and(eq(leadsTable.tenantId, data.tenantId),
+        sql`${leadsTable.metadata}->>'registrationRequestId' = ${registrationRequestId}`) : undefined;
+  if (replayFilter) {
+    const [previous] = await db.select().from(leadsTable).where(replayFilter).limit(1);
+    if (previous) {
+      if (previous.metadata?.registrationActorId !== registrationActorId
+        || previous.metadata?.registrationPayloadHash !== registrationPayloadHash) {
+        res.status(409).json({ code: "IDEMPOTENCY_KEY_REUSED", error: "Identificador já usado em outro cadastro." });
+        return;
+      }
+      res.status(200).json(previous);
+      return;
+    }
+  }
 
   if (data.representativeFunctionId) {
     const representativeFunction = await validateRepresentativeFunction(data.tenantId, data.representativeFunctionId);
@@ -323,7 +350,18 @@ router.post("/leads", async (req, res) => {
   }
 
   // Lead and its automatic pipeline deal either persist together or roll back together.
-  const lead = await db.transaction(async (tx) => {
+  const creation = await db.transaction(async (tx) => {
+    if (registrationRequestId && replayFilter) {
+      // Serialize across processes and browser sessions; replay reads the committed row.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${data.tenantId}), hashtext(${registrationRequestId}))`);
+      const [previous] = await tx.select().from(leadsTable).where(replayFilter).limit(1);
+      if (previous) {
+        if (previous.metadata?.registrationActorId !== registrationActorId
+          || previous.metadata?.registrationPayloadHash !== registrationPayloadHash)
+          throw Object.assign(new Error("Identificador já usado em outro cadastro."), { status: 409 });
+        return { lead: previous, replay: true };
+      }
+    }
   const [lead] = await tx.insert(leadsTable).values({
     ...data,
     nome: normalizeLeadName(data.nome, "Lead"),
@@ -351,6 +389,19 @@ router.post("/leads", async (req, res) => {
                   : "manual",
       entrySource: data.source || "manual",
     }),
+    // Stored values below are derived server-side, never trusted from request metadata.
+    ...(registrationRequestId ? { metadata: {
+      ...leadRegistrationMetadata(data.metadata, {
+        entryChannel: data.source === "whatsapp" ? "whatsapp" :
+          data.source === "instagram" ? "instagram" :
+          data.source === "email" ? "email" :
+          data.source?.includes("site") || data.source?.includes("website") ? "site" :
+          data.source?.includes("prospec") ? "prospeccao" :
+          data.source?.includes("indicacao") ? "parceiro" : "manual",
+        entrySource: data.source || "manual",
+      }),
+      registrationRequestId, registrationActorId, registrationPayloadHash,
+    }} : {}),
     possivelDuplicata: false,
     leadSimilarId: null,
   } as any).returning();
@@ -366,8 +417,13 @@ router.post("/leads", async (req, res) => {
     });
   }
 
-    return lead;
+    return { lead, replay: false };
   });
+  const lead = creation.lead;
+  if (creation.replay) {
+    res.status(200).json(lead);
+    return;
+  }
 
   if (resolvedAssignedTo) {
     recordResponsavelChange({
