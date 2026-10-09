@@ -129,3 +129,24 @@ def validate_postproduction(config):
             or not 0.2 <= gamma <= 4):
         raise ValueError("Gamma inválido")
     return {"exposure": exposure, "gamma": gamma}
+
+
+def validate_conversion_request(filename, size_bytes, expected_sha256):
+    """Admission only: actual OBJ/FBX conversion and geometry QA are separate."""
+    import re
+    info = inspect_import_request(filename)
+    if info["format"] not in ("obj", "fbx"):
+        raise ValueError("Conversão direta permitida somente para OBJ/FBX nesta etapa")
+    if type(size_bytes) is not int or not 0 < size_bytes <= 200 * 1024 * 1024:
+        raise ValueError("Tamanho do modelo inválido")
+    if not isinstance(expected_sha256, str) or not re.fullmatch(r"[a-fA-F0-9]{64}", expected_sha256):
+        raise ValueError("SHA256 obrigatório")
+    return {
+        "format": info["format"],
+        "sha256": expected_sha256.lower(),
+        "maxBytes": 200 * 1024 * 1024,
+        "conversionStatus": "requires_isolated_blender_conversion",
+        "geometryReviewRequired": True,
+        "materialsReviewRequired": True,
+        "approvedForRender": False,
+    }
