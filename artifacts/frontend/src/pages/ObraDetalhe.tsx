@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import * as XLSX from "xlsx";
 import { useRoute, Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -55,7 +56,8 @@ import {
   ChevronDown, ChevronUp, BookOpen, User, Building2,
   Upload, X, Image as ImageIcon, FileSpreadsheet, Copy,
   Send, ThumbsUp, ThumbsDown, ChevronRight, AlertCircle,
-  Search, Loader2, FileText, Download, Sparkles,
+  Search, Loader2, FileText, Download, Sparkles, Store,
+  Zap, Sun, BatteryCharging, CarFront, Droplets, Gauge, Flame, Waves, Activity, FileBarChart2, History,
 } from "lucide-react";
 import TabFinanceiro from "./TabFinanceiro";
 import EquipeProducao from "./EquipeProducao";
@@ -142,6 +144,11 @@ const TABS = [
   { id: "estoque",      label: "Estoque",        icon: Package },
   { id: "compras",      label: "Compras",        icon: ShoppingCart },
   { id: "orcamento",    label: "Orçamento",      icon: FileSpreadsheet },
+  { id: "energia",       label: "Energia",        icon: Zap },
+  { id: "hidraulica",     label: "Hidráulica",     icon: Droplets },
+  { id: "piscinas",        label: "Piscinas",       icon: Waves },
+  { id: "execucao",         label: "Execução",       icon: Activity },
+  { id: "relatorios",       label: "Relatórios",     icon: FileBarChart2 },
 ];
 
 function MobileTabDropdown({ activeTab, onSelect }: { activeTab: string; onSelect: (id: string) => void }) {
@@ -1886,8 +1893,61 @@ function EstoqueObra({ tenantId, obraId }: { tenantId: string; obraId: string })
     );
 }
 
-function Compras({ obraId }: { tenantId: string; obraId: string }) {
-  return <RealProcurementWorkspace obraId={obraId} compact />;
+function Compras({ tenantId, obraId }: { tenantId: string; obraId: string }) {
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["obra-pedidos-compra-v17", tenantId, obraId],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/pedidos-compra`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Erro ao carregar pedidos de compra");
+      return res.json();
+    },
+    enabled: !!tenantId && !!obraId,
+  });
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Pedidos gerados das cotações</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando…</div>
+          ) : (data?.pedidos ?? []).length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhum pedido gerado a partir das seleções de cotação.</p>
+          ) : (
+            <div className="space-y-2">
+              {(data.pedidos ?? []).map((p: any) => {
+                const itens = (data.itens ?? []).filter((i: any) => i.pedidoId === p.id);
+                const saldo = itens.reduce((s: number, i: any) => s + Number(i.saldoReceber ?? 0), 0);
+                return (
+                  <div key={p.id} className="rounded-lg border px-3 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium">{p.fornecedorNomeSnapshot}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          {itens.length} item(ns) · {fmtBRL(p.valorTotal)}
+                          {p.dataLimiteCompra ? ` · comprar até ${p.dataLimiteCompra}` : ""}
+                        </div>
+                      </div>
+                      <Badge variant="outline">{p.status}</Badge>
+                    </div>
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      Saldo a receber: <span className="font-medium text-foreground">{fmtNum(saldo)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      <RealProcurementWorkspace obraId={obraId} compact />
+    </div>
+  );
 }
 
 // ─── TabOrcamento ─────────────────────────────────────────────────────────────
@@ -2717,7 +2777,482 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
       {selectedId && (orcamento?.etapas ?? []).length > 0 && (
         <CurvaABC tenantId={tenantId} obraId={obraId} orcamentoId={selectedId} />
       )}
+
+      {selectedId && (orcamento?.etapas ?? []).length > 0 && (
+        <FormacaoVenda tenantId={tenantId} obraId={obraId} orcamentoId={selectedId} locked={locked} />
+      )}
+      {selectedId && (orcamento?.etapas ?? []).length > 0 && (
+        <CotacoesOrcamento tenantId={tenantId} obraId={obraId} orcamentoId={selectedId} locked={locked} />
+      )}
     </div>
+  );
+}
+
+function CotacoesOrcamento({ tenantId, obraId, orcamentoId, locked }: { tenantId: string; obraId: string; orcamentoId: string; locked: boolean }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [titulo, setTitulo] = useState("Cotação de materiais");
+
+  const { data: cotacoes = [], isLoading } = useQuery<any[]>({
+    queryKey: ["obra-cotacoes", tenantId, obraId, orcamentoId],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}/cotacoes`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Erro ao carregar cotações");
+      return res.json();
+    },
+    enabled: !!orcamentoId,
+  });
+
+  async function criarCotacao() {
+    const token = localStorage.getItem("vendorai_token");
+    const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}/cotacoes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ titulo, status: "aberta", gerarItensDoOrcamento: true }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      toast({ title: "Não foi possível criar", description: body?.error ?? "Erro ao criar cotação", variant: "destructive" });
+      return;
+    }
+    toast({ title: "Cotação criada com os itens do orçamento" });
+    qc.invalidateQueries({ queryKey: ["obra-cotacoes", tenantId, obraId, orcamentoId] });
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <CardTitle className="text-sm">Cotações e fornecedores</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">RFQ vinculada aos itens do orçamento, com cobertura, unidade comercial e seleção por fornecedor.</p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              const params = new URLSearchParams({
+                origem: "orcamento",
+                origemId: orcamentoId,
+                obraId,
+                orcamentoId,
+                titulo: titulo || "Cotação da obra",
+              });
+              window.location.href = `/arch/marketplace?${params.toString()}`;
+            }}
+          >
+            <Store className="h-4 w-4 mr-1.5" /> Abrir no Arqdor Market
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {!locked && (
+          <div className="flex gap-2">
+            <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Título da cotação" />
+            <Button onClick={criarCotacao}><Plus className="h-4 w-4 mr-1" />Nova cotação</Button>
+          </div>
+        )}
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando…</div>
+        ) : cotacoes.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhuma cotação vinculada a este orçamento.</p>
+        ) : (
+          <div className="space-y-2">
+            {cotacoes.map((cotacao: any) => (
+              <CotacaoResumo key={cotacao.id} tenantId={tenantId} obraId={obraId} cotacao={cotacao} />
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function CotacaoResumo({ tenantId, obraId, cotacao }: { tenantId: string; obraId: string; cotacao: any }) {
+  const [open, setOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [generatingOrders, setGeneratingOrders] = useState(false);
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["cotacao-resumo", tenantId, cotacao.id],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/cotacoes/${cotacao.id}/resumo`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Erro ao carregar resumo da cotação");
+      return res.json();
+    },
+    enabled: open,
+  });
+
+  async function prepararArquivoCotacao(file: File): Promise<File> {
+    if (!/\.(xlsx|xls)$/i.test(file.name)) return file;
+
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array", cellDates: false });
+    const partes: string[] = [];
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName];
+      if (!sheet) continue;
+      partes.push(`=== PLANILHA: ${sheetName} ===`);
+      partes.push(XLSX.utils.sheet_to_csv(sheet, { FS: ";", RS: "\n" }));
+    }
+    const csv = partes.join("\n");
+    return new File([csv], file.name, { type: "text/csv" });
+  }
+
+  async function importarArquivo(file?: File) {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const token = localStorage.getItem("vendorai_token");
+      const preparado = await prepararArquivoCotacao(file);
+      const form = new FormData();
+      form.append("file", preparado, file.name);
+
+      const res = await fetch(`/api/tenants/${tenantId}/cotacoes/${cotacao.id}/propostas/importar-arquivo`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast({
+          title: "Não foi possível importar",
+          description: body?.error ?? "Falha ao ler a proposta.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const reconciliados = Number(body?.reconciliados ?? 0);
+      const ambiguos = Number(body?.ambiguos ?? 0);
+      toast({
+        title: "Proposta importada",
+        description: `${reconciliados} item(ns) reconciliado(s)${ambiguos ? ` · ${ambiguos} para revisar` : ""}.`,
+      });
+      qc.invalidateQueries({ queryKey: ["cotacao-resumo", tenantId, cotacao.id] });
+      setOpen(true);
+    } catch (error) {
+      toast({
+        title: "Erro na importação",
+        description: error instanceof Error ? error.message : "Falha inesperada.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  async function gerarPedidos() {
+    setGeneratingOrders(true);
+    try {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/cotacoes/${cotacao.id}/gerar-pedidos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ bufferLogisticoDias: 0 }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast({ title: "Não foi possível gerar pedidos", description: body?.error ?? "Revise as seleções da cotação.", variant: "destructive" });
+        return;
+      }
+      toast({ title: "Pedidos gerados", description: `${body?.pedidos?.length ?? 0} pedido(s) criado(s) por fornecedor.` });
+      qc.invalidateQueries({ queryKey: ["obra-pedidos-compra-v17", tenantId, obraId] });
+    } finally {
+      setGeneratingOrders(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border">
+      <div className="flex items-center justify-between gap-3 px-3 py-3">
+        <button type="button" className="flex-1 text-left" onClick={() => setOpen((v) => !v)}>
+          <div className="text-sm font-medium">{cotacao.titulo}</div>
+          <div className="text-xs text-muted-foreground">{cotacao.status}</div>
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          className="hidden"
+          accept=".pdf,.doc,.docx,.csv,.txt,.xls,.xlsx,image/*"
+          onChange={(e) => importarArquivo(e.target.files?.[0])}
+        />
+        <Button size="sm" variant="outline" disabled={uploading} onClick={() => fileRef.current?.click()}>
+          {uploading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />}
+          Importar proposta
+        </Button>
+        <button type="button" onClick={() => setOpen((v) => !v)}>
+          {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
+      </div>
+
+      {open && (
+        <div className="border-t px-3 py-3">
+          {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : data ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
+                <div className="rounded border p-2"><span className="text-muted-foreground">Itens</span><div className="font-bold text-base">{data.totais?.itens ?? 0}</div></div>
+                <div className="rounded border p-2"><span className="text-muted-foreground">Cobertos</span><div className="font-bold text-base">{data.totais?.cobertos ?? 0}</div></div>
+                <div className="rounded border p-2"><span className="text-muted-foreground">Parciais</span><div className="font-bold text-base">{data.totais?.parciais ?? 0}</div></div>
+                <div className="rounded border p-2"><span className="text-muted-foreground">Não cotados</span><div className="font-bold text-base">{data.totais?.naoCotados ?? 0}</div></div>
+                <div className="rounded border p-2"><span className="text-muted-foreground">Propostas</span><div className="font-bold text-base">{data.totais?.propostas ?? 0}</div></div>
+              </div>
+
+              {(data.selecoes ?? []).length > 0 && (
+                <div className="flex justify-end">
+                  <Button size="sm" variant="outline" onClick={gerarPedidos} disabled={generatingOrders}>
+                    {generatingOrders ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <ShoppingCart className="h-4 w-4 mr-1" />}
+                    Gerar pedidos
+                  </Button>
+                </div>
+              )}
+
+              {(data.propostas ?? []).length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="text-xs font-medium text-muted-foreground">Propostas recebidas</div>
+                  {(data.propostas ?? []).map((p: any) => {
+                    const itens = (data.propostaItens ?? []).filter((i: any) => i.propostaId === p.id);
+                    const ambiguos = itens.filter((i: any) => !i.cotacaoItemId || i.coberturaStatus === "ambigua").length;
+                    return (
+                      <div key={p.id} className="rounded border px-3 py-2 text-xs flex items-center justify-between gap-3">
+                        <div>
+                          <div className="font-medium">{p.fornecedorNomeSnapshot}</div>
+                          <div className="text-muted-foreground">
+                            {p.arquivoNome || p.origemFormato} · {itens.length} item(ns)
+                            {p.validadeAte ? ` · validade ${p.validadeAte}` : ""}
+                          </div>
+                        </div>
+                        <div className="flex gap-1.5">
+                          <Badge variant="outline">{p.status}</Badge>
+                          {ambiguos > 0 && <Badge variant="secondary">{ambiguos} revisar</Badge>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="space-y-1">
+                {(data.cobertura ?? []).slice(0, 50).map((x: any) => (
+                  <div key={x.item.id} className="flex items-center justify-between gap-3 rounded border px-3 py-2 text-xs">
+                    <div>
+                      <div className="font-medium">{x.item.nome}</div>
+                      <div className="text-muted-foreground">
+                        {x.qtdNecessaria} {x.item.unidadeCompra ?? x.item.unidadeTecnica} · {x.candidatos} proposta(s)
+                      </div>
+                    </div>
+                    <Badge variant={x.status === "coberto" ? "default" : "outline"}>{x.status}</Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FormacaoVenda({ tenantId, obraId, orcamentoId, locked }: { tenantId: string; obraId: string; orcamentoId: string; locked: boolean }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [margem, setMargem] = useState("15");
+  const [metodo, setMetodo] = useState("margem_sobre_venda");
+  const [tipoComponente, setTipoComponente] = useState("impostos");
+  const [nomeComponente, setNomeComponente] = useState("Impostos");
+  const [percentual, setPercentual] = useState("0");
+  const [baseCalculo, setBaseCalculo] = useState("preco_venda");
+
+  const { data: config, isLoading } = useQuery<any>({
+    queryKey: ["formacao-venda", tenantId, obraId, orcamentoId],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}/formacao-venda`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Erro ao carregar formação de venda");
+      return res.json();
+    },
+    enabled: !!orcamentoId,
+  });
+
+  const ativa = (config?.formacoes ?? []).find((f: any) => f.ativo) ?? null;
+
+  const { data: calc, isLoading: calculating } = useQuery<any>({
+    queryKey: ["formacao-venda-calculo", tenantId, obraId, orcamentoId, ativa?.id],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}/formacao-venda/${ativa.id}/calcular`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error ?? "Erro no cálculo");
+      }
+      return res.json();
+    },
+    enabled: !!ativa?.id,
+  });
+
+  async function criarFormacao() {
+    const token = localStorage.getItem("vendorai_token");
+    const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}/formacao-venda`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ nome: "Formação de venda", metodoMargem: metodo, margemPercentual: margem }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      toast({ title: "Não foi possível criar", description: body?.error ?? "Erro na formação de venda", variant: "destructive" });
+      return;
+    }
+    toast({ title: "Formação de venda criada" });
+    qc.invalidateQueries({ queryKey: ["formacao-venda", tenantId, obraId, orcamentoId] });
+  }
+
+  async function adicionarComponente() {
+    if (!ativa?.id) return;
+    const token = localStorage.getItem("vendorai_token");
+    const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}/formacao-venda/${ativa.id}/componentes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({
+        escopo: "orcamento",
+        tipo: tipoComponente,
+        nome: nomeComponente || tipoComponente,
+        modo: "percentual",
+        baseCalculo,
+        percentual,
+        incluiNaVenda: true,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      toast({ title: "Não foi possível adicionar", description: body?.error ?? "Erro no componente", variant: "destructive" });
+      return;
+    }
+    setPercentual("0");
+    qc.invalidateQueries({ queryKey: ["formacao-venda", tenantId, obraId, orcamentoId] });
+    qc.invalidateQueries({ queryKey: ["formacao-venda-calculo", tenantId, obraId, orcamentoId, ativa.id] });
+  }
+
+  async function gerarSnapshot() {
+    if (!ativa?.id) return;
+    const token = localStorage.getItem("vendorai_token");
+    const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}/formacao-venda/${ativa.id}/snapshot`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      toast({ title: "Não foi possível registrar", description: body?.error ?? "Erro ao gerar snapshot", variant: "destructive" });
+      return;
+    }
+    toast({ title: "Snapshot financeiro registrado" });
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <CardTitle className="text-sm">Formação de custo e preço de venda</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">Custo direto → indiretos → impostos/comissão/risco → margem → preço de venda.</p>
+          </div>
+          {ativa && !locked && <Button size="sm" variant="outline" onClick={gerarSnapshot}>Registrar snapshot</Button>}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando…</div>
+        ) : !ativa ? (
+          <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+            <div className="space-y-2">
+              <Label>Método da margem</Label>
+              <select className="w-full h-10 rounded-md border bg-background px-3 text-sm" value={metodo} onChange={(e) => setMetodo(e.target.value)}>
+                <option value="margem_sobre_venda">Margem sobre preço de venda</option>
+                <option value="markup_sobre_custo">Markup sobre custo</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label>Margem (%)</Label>
+              <Input type="number" step="0.01" value={margem} onChange={(e) => setMargem(e.target.value)} />
+            </div>
+            <Button onClick={criarFormacao} disabled={locked}>Criar formação</Button>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Custo direto</div><div className="font-bold mt-1">{calculating ? "…" : fmtBRL(calc?.custoDireto)}</div></div>
+              <div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Indiretos + risco</div><div className="font-bold mt-1">{calculating ? "…" : fmtBRL(Number(calc?.custosIndiretos ?? 0) + Number(calc?.risco ?? 0))}</div></div>
+              <div className="rounded-lg border p-3"><div className="text-xs text-muted-foreground">Impostos + comissão</div><div className="font-bold mt-1">{calculating ? "…" : fmtBRL(Number(calc?.impostos ?? 0) + Number(calc?.comissao ?? 0))}</div></div>
+              <div className="rounded-lg border p-3 bg-primary/5"><div className="text-xs text-muted-foreground">Preço de venda</div><div className="font-bold mt-1">{calculating ? "…" : fmtBRL(calc?.precoVenda)}</div></div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-4">
+              <div className="space-y-2">
+                <Label>Componente</Label>
+                <select className="w-full h-10 rounded-md border bg-background px-3 text-sm" value={tipoComponente} onChange={(e) => {
+                  setTipoComponente(e.target.value);
+                  const labels: Record<string,string> = { impostos:"Impostos", comissao:"Comissão", risco:"Risco", administracao_obra:"Administração da obra", canteiro:"Canteiro", engenharia:"Engenharia", seguro:"Seguro", garantia:"Garantia", frete_logistica:"Frete/logística", despesas_financeiras:"Despesas financeiras", outro_indireto:"Outro indireto" };
+                  setNomeComponente(labels[e.target.value] ?? e.target.value);
+                }}>
+                  <option value="administracao_obra">Administração da obra</option>
+                  <option value="canteiro">Canteiro</option>
+                  <option value="engenharia">Engenharia</option>
+                  <option value="seguro">Seguro</option>
+                  <option value="garantia">Garantia</option>
+                  <option value="frete_logistica">Frete/logística</option>
+                  <option value="despesas_financeiras">Despesas financeiras</option>
+                  <option value="impostos">Impostos</option>
+                  <option value="comissao">Comissão</option>
+                  <option value="risco">Risco</option>
+                  <option value="outro_indireto">Outro indireto</option>
+                </select>
+              </div>
+              <div className="space-y-2"><Label>Nome</Label><Input value={nomeComponente} onChange={(e) => setNomeComponente(e.target.value)} /></div>
+              <div className="space-y-2"><Label>Percentual</Label><Input type="number" step="0.01" value={percentual} onChange={(e) => setPercentual(e.target.value)} /></div>
+              <div className="space-y-2"><Label>Base</Label><select className="w-full h-10 rounded-md border bg-background px-3 text-sm" value={baseCalculo} onChange={(e) => setBaseCalculo(e.target.value)}>
+                <option value="custo_direto">Custo direto</option>
+                <option value="custo_total">Custo acumulado</option>
+                <option value="preco_venda">Preço de venda</option>
+              </select></div>
+            </div>
+            {!locked && <div className="flex justify-end"><Button size="sm" variant="outline" onClick={adicionarComponente}><Plus className="h-3.5 w-3.5 mr-1" />Adicionar componente</Button></div>}
+
+            {(config?.componentes ?? []).filter((x: any) => x.formacaoId === ativa.id && x.ativo).length > 0 && (
+              <div className="space-y-1">
+                {(config.componentes ?? []).filter((x: any) => x.formacaoId === ativa.id && x.ativo).map((x: any) => (
+                  <div key={x.id} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-xs">
+                    <div><div className="font-medium">{x.nome}</div><div className="text-muted-foreground">{x.tipo} · {x.baseCalculo}</div></div>
+                    <Badge variant="outline">{x.modo === "percentual" ? `${x.percentual}%` : fmtBRL(x.valorFixo)}</Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {calc && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-muted-foreground">
+                <div>Margem: <span className="font-medium text-foreground">{fmtBRL(calc.margemValor)}</span></div>
+                <div>Margem efetiva: <span className="font-medium text-foreground">{Number(calc.margemEfetivaPercentual ?? 0).toFixed(2)}%</span></div>
+                <div>Markup efetivo: <span className="font-medium text-foreground">{Number(calc.markupEfetivo ?? 0).toFixed(4)}x</span></div>
+                <div>Método: <span className="font-medium text-foreground">{ativa.metodoMargem === "margem_sobre_venda" ? "margem sobre venda" : "markup sobre custo"}</span></div>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -2841,6 +3376,805 @@ function CurvaABC({ tenantId, obraId, orcamentoId }: { tenantId: string; obraId:
         </CardContent>
       )}
     </Card>
+  );
+}
+
+function EnergiaSistemas({ tenantId, obraId }: { tenantId: string; obraId: string }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [tipo, setTipo] = useState("fotovoltaico_on_grid");
+  const [somenteInfraestrutura, setSomenteInfraestrutura] = useState(false);
+
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["obra-energia-resumo", tenantId, obraId],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/energia/resumo`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Erro ao carregar sistemas de energia");
+      return res.json();
+    },
+    enabled: !!tenantId && !!obraId,
+  });
+
+  async function preconfigurar() {
+    const token = localStorage.getItem("vendorai_token");
+    const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/energia/preconfigurar`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ tipo, somenteInfraestrutura }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      toast({ title: "Não foi possível adicionar", description: body?.error ?? "Erro ao criar sistema de energia", variant: "destructive" });
+      return;
+    }
+    toast({ title: "Sistema de energia adicionado" });
+    qc.invalidateQueries({ queryKey: ["obra-energia-resumo", tenantId, obraId] });
+  }
+
+  const labelTipo: Record<string, string> = {
+    fotovoltaico_on_grid: "Solar fotovoltaico on-grid",
+    fotovoltaico_hibrido: "Solar fotovoltaico híbrido",
+    off_grid: "Sistema off-grid",
+    banco_baterias: "Banco de baterias",
+    carregador_ve: "Carregador de veículo elétrico",
+    gerador: "Gerador",
+    nobreak_ups: "Nobreak / UPS",
+    quadro_cargas_essenciais: "Quadro de cargas essenciais",
+    chave_transferencia: "Chave de transferência",
+    gestao_energia: "Gestão de energia",
+  };
+
+  const iconTipo = (t: string) => t.includes("fotovoltaico") ? Sun : t === "carregador_ve" ? CarFront : t.includes("bateria") || t === "off_grid" ? BatteryCharging : Zap;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 md:grid-cols-3">
+        <Card>
+          <CardContent className="pt-4">
+            <div className="text-xs text-muted-foreground">Potência instalada</div>
+            <div className="text-2xl font-bold mt-1">{data?.totais?.potenciaKw ?? "0.0000"} kW</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <div className="text-xs text-muted-foreground">Armazenamento</div>
+            <div className="text-2xl font-bold mt-1">{data?.totais?.energiaKwh ?? "0.0000"} kWh</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <div className="text-xs text-muted-foreground">Alertas técnicos</div>
+            <div className="text-2xl font-bold mt-1">{data?.alertas?.length ?? 0}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Adicionar sistema especial</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
+          <div className="space-y-2">
+            <Label>Tipo</Label>
+            <select
+              className="w-full h-10 rounded-md border bg-background px-3 text-sm"
+              value={tipo}
+              onChange={(e) => setTipo(e.target.value)}
+            >
+              {Object.entries(labelTipo).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </div>
+          <label className="flex items-center gap-2 h-10 px-3 rounded-md border bg-muted/20 text-sm">
+            <input
+              type="checkbox"
+              checked={somenteInfraestrutura}
+              onChange={(e) => setSomenteInfraestrutura(e.target.checked)}
+            />
+            Somente infraestrutura
+          </label>
+          <Button onClick={preconfigurar}><Plus className="h-4 w-4 mr-1" />Adicionar</Button>
+        </CardContent>
+      </Card>
+
+      {isLoading ? (
+        <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin" /></div>
+      ) : (data?.sistemas ?? []).length === 0 ? (
+        <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">Nenhum sistema especial configurado nesta obra.</CardContent></Card>
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {(data?.sistemas ?? []).map((s: any) => {
+            const Icon = iconTipo(s.tipo);
+            const comps = (data?.componentes ?? []).filter((c: any) => c.sistemaId === s.id);
+            return (
+              <Card key={s.id}>
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Icon className="h-4 w-4 text-primary" />
+                      {s.nome || labelTipo[s.tipo] || s.tipo}
+                    </CardTitle>
+                    {s.somenteInfraestrutura && <Badge variant="secondary">Só infraestrutura</Badge>}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div><span className="text-muted-foreground">Potência:</span> <strong>{s.potenciaKw ?? "—"} kW</strong></div>
+                    <div><span className="text-muted-foreground">Energia:</span> <strong>{s.energiaKwh ?? "—"} kWh</strong></div>
+                    <div><span className="text-muted-foreground">Tensão:</span> <strong>{s.tensaoV ?? "—"} V</strong></div>
+                    <div><span className="text-muted-foreground">Autonomia:</span> <strong>{s.autonomiaHoras ?? "—"} h</strong></div>
+                  </div>
+                  <div className="space-y-1.5">
+                    {comps.map((comp: any) => (
+                      <div key={comp.id} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-xs">
+                        <div>
+                          <div className="font-medium">{comp.nome}</div>
+                          <div className="text-muted-foreground">{comp.tipo} · {comp.slotKey}</div>
+                        </div>
+                        <Badge variant="outline">{comp.quantidade} {comp.unidade}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {(data?.alertas ?? []).length > 0 && (
+        <Card className="border-amber-200">
+          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><AlertCircle className="h-4 w-4 text-amber-500" />Alertas</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {(data.alertas ?? []).map((a: any, idx: number) => (
+              <div key={idx} className="text-xs rounded-md bg-amber-50 border border-amber-200 px-3 py-2">{a.mensagem ?? a.tipo}</div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function HidraulicaSistemas({ tenantId, obraId }: { tenantId: string; obraId: string }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [tipoArea, setTipoArea] = useState("central_hidraulica");
+
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["obra-hidraulica-area-tecnica", tenantId, obraId],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/hidraulica/area-tecnica-resumo`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Erro ao carregar área técnica hidráulica");
+      return res.json();
+    },
+    enabled: !!tenantId && !!obraId,
+  });
+
+  async function criarAreaTecnica() {
+    const token = localStorage.getItem("vendorai_token");
+    const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/hidraulica/preconfigurar-area-tecnica`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        tipo: tipoArea,
+        nome: tipoArea === "central_aquecimento" ? "Central de aquecimento" :
+          tipoArea === "central_pressurizacao" ? "Central de pressurização" :
+          tipoArea === "casa_maquinas" ? "Casa de máquinas" : "Central hidráulica",
+        drenoObrigatorio: true,
+        acessoManutencao: true,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      toast({ title: "Não foi possível criar", description: body?.error ?? "Erro ao criar área técnica", variant: "destructive" });
+      return;
+    }
+    toast({ title: "Área técnica adicionada" });
+    qc.invalidateQueries({ queryKey: ["obra-hidraulica-area-tecnica", tenantId, obraId] });
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 md:grid-cols-4">
+        <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Reservação</div><div className="text-2xl font-bold mt-1">{data?.totais?.volumeReservacaoL ?? "0"} L</div></CardContent></Card>
+        <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Água quente</div><div className="text-2xl font-bold mt-1">{data?.totais?.volumeAguaQuenteL ?? "0"} L</div></CardContent></Card>
+        <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Potência aquecimento</div><div className="text-2xl font-bold mt-1">{data?.totais?.potenciaAquecimentoKw ?? "0"} kW</div></CardContent></Card>
+        <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Potência pressurização</div><div className="text-2xl font-bold mt-1">{data?.totais?.potenciaPressurizacaoKw ?? "0"} kW</div></CardContent></Card>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-3"><CardTitle className="text-base">Adicionar área técnica</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+          <div className="space-y-2">
+            <Label>Tipo</Label>
+            <select className="w-full h-10 rounded-md border bg-background px-3 text-sm" value={tipoArea} onChange={(e) => setTipoArea(e.target.value)}>
+              <option value="central_hidraulica">Central hidráulica</option>
+              <option value="central_aquecimento">Central de aquecimento</option>
+              <option value="central_pressurizacao">Central de pressurização</option>
+              <option value="casa_maquinas">Casa de máquinas</option>
+              <option value="shaft">Shaft técnico</option>
+              <option value="reservatorio">Área de reservatórios</option>
+              <option value="central_reuso">Central de reuso</option>
+            </select>
+          </div>
+          <Button onClick={criarAreaTecnica}><Plus className="h-4 w-4 mr-1" />Adicionar</Button>
+        </CardContent>
+      </Card>
+
+      {isLoading ? (
+        <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin" /></div>
+      ) : (
+        <>
+          <div className="grid gap-3 lg:grid-cols-2">
+            {(data?.areas ?? []).map((a: any) => (
+              <Card key={a.id}>
+                <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Droplets className="h-4 w-4 text-primary" />{a.nome}</CardTitle></CardHeader>
+                <CardContent className="grid grid-cols-2 gap-2 text-xs">
+                  <div><span className="text-muted-foreground">Tipo:</span> {a.tipo}</div>
+                  <div><span className="text-muted-foreground">Manutenção:</span> {a.acessoManutencao ? "sim" : "não"}</div>
+                  <div><span className="text-muted-foreground">Dreno:</span> {a.drenoObrigatorio ? "sim" : "não"}</div>
+                  <div><span className="text-muted-foreground">Ventilação:</span> {a.ventilacaoObrigatoria ? "sim" : "não"}</div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {(data?.aquecimento ?? []).length > 0 && (
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Flame className="h-4 w-4 text-primary" />Água quente</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {data.aquecimento.map((a: any) => (
+                  <div key={a.id} className="rounded-md border px-3 py-2 text-xs flex justify-between gap-3">
+                    <div><div className="font-medium">{a.nome}</div><div className="text-muted-foreground">{a.tipoGeracao}{a.recirculacao ? " · recirculação" : ""}</div></div>
+                    <div className="text-right">{a.volumeAcumulacaoL ? `${a.volumeAcumulacaoL} L` : "—"}<br />{a.potenciaKw ? `${a.potenciaKw} kW` : ""}</div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {(data?.pressurizacao ?? []).length > 0 && (
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Gauge className="h-4 w-4 text-primary" />Pressurização</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {data.pressurizacao.map((p: any) => (
+                  <div key={p.id} className="rounded-md border px-3 py-2 text-xs flex justify-between gap-3">
+                    <div><div className="font-medium">{p.nome}</div><div className="text-muted-foreground">{p.tipo}{p.bypass ? " · bypass" : ""}</div></div>
+                    <div className="text-right">{p.vazaoProjetoLMin ? `${p.vazaoProjetoLMin} L/min` : "—"}<br />{p.pressaoProjetoMca ? `${p.pressaoProjetoMca} mca` : ""}</div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {(data?.manifolds ?? []).length > 0 && (
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Manifolds / registros centralizados</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {data.manifolds.map((m: any) => (
+                  <div key={m.id} className="rounded-md border px-3 py-2 text-xs flex justify-between">
+                    <div><div className="font-medium">{m.nome}</div><div className="text-muted-foreground">{m.funcao} · {m.tecnologia}</div></div>
+                    <Badge variant="outline">{m.numeroSaidas} saídas</Badge>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {(data?.alertas ?? []).length > 0 && (
+            <Card className="border-amber-200">
+              <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><AlertCircle className="h-4 w-4 text-amber-500" />Alertas técnicos</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {data.alertas.map((a: any, idx: number) => (
+                  <div key={idx} className="text-xs rounded-md bg-amber-50 border border-amber-200 px-3 py-2">{a.mensagem ?? a.tipo}</div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function PiscinasObra({ tenantId, obraId }: { tenantId: string; obraId: string }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [nome, setNome] = useState("Piscina principal");
+  const [tipo, setTipo] = useState("convencional");
+  const [estrutura, setEstrutura] = useState("concreto_armado");
+  const [comprimento, setComprimento] = useState("");
+  const [largura, setLargura] = useState("");
+  const [profMin, setProfMin] = useState("");
+  const [profMax, setProfMax] = useState("");
+
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["obra-piscinas-resumo", tenantId, obraId],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/piscinas/resumo`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Erro ao carregar piscinas");
+      return res.json();
+    },
+    enabled: !!tenantId && !!obraId,
+  });
+
+  async function criarPiscina() {
+    const token = localStorage.getItem("vendorai_token");
+    const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/piscinas`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        nome,
+        tipo,
+        estrutura,
+        comprimentoM: comprimento || undefined,
+        larguraM: largura || undefined,
+        profundidadeMinM: profMin || undefined,
+        profundidadeMaxM: profMax || undefined,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      toast({ title: "Não foi possível criar", description: body?.error ?? "Erro ao criar piscina", variant: "destructive" });
+      return;
+    }
+    const piscina = await res.json();
+
+    await fetch(`/api/tenants/${tenantId}/obras/${obraId}/piscinas/${piscina.id}/preconfigurar`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ aquecimento: false }),
+    }).catch(() => null);
+
+    toast({ title: "Piscina adicionada" });
+    qc.invalidateQueries({ queryKey: ["obra-piscinas-resumo", tenantId, obraId] });
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 md:grid-cols-4">
+        <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Piscinas</div><div className="text-2xl font-bold mt-1">{data?.totais?.piscinas ?? 0}</div></CardContent></Card>
+        <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Volume total</div><div className="text-2xl font-bold mt-1">{data?.totais?.volumeM3 ?? "0"} m³</div></CardContent></Card>
+        <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Espelho d'água</div><div className="text-2xl font-bold mt-1">{data?.totais?.areaEspelhoM2 ?? "0"} m²</div></CardContent></Card>
+        <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Alertas</div><div className="text-2xl font-bold mt-1">{data?.alertas?.length ?? 0}</div></CardContent></Card>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-3"><CardTitle className="text-base">Adicionar piscina</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          <div className="space-y-2 lg:col-span-2"><Label>Nome</Label><Input value={nome} onChange={(e) => setNome(e.target.value)} /></div>
+          <div className="space-y-2"><Label>Tipo</Label><select className="w-full h-10 rounded-md border bg-background px-3 text-sm" value={tipo} onChange={(e) => setTipo(e.target.value)}>
+            <option value="convencional">Convencional</option>
+            <option value="borda_infinita">Borda infinita</option>
+            <option value="overflow">Overflow</option>
+            <option value="praia">Praia</option>
+            <option value="spa">Spa</option>
+            <option value="hidromassagem">Hidromassagem</option>
+            <option value="raia">Raia</option>
+            <option value="espelho_dagua">Espelho d'água</option>
+          </select></div>
+          <div className="space-y-2"><Label>Estrutura</Label><select className="w-full h-10 rounded-md border bg-background px-3 text-sm" value={estrutura} onChange={(e) => setEstrutura(e.target.value)}>
+            <option value="concreto_armado">Concreto armado</option>
+            <option value="alvenaria_estrutural">Alvenaria estrutural</option>
+            <option value="fibra">Fibra</option>
+            <option value="vinil">Vinil</option>
+            <option value="aco_inox">Aço inox</option>
+          </select></div>
+          <div className="space-y-2"><Label>Comprimento (m)</Label><Input type="number" step="0.01" value={comprimento} onChange={(e) => setComprimento(e.target.value)} /></div>
+          <div className="space-y-2"><Label>Largura (m)</Label><Input type="number" step="0.01" value={largura} onChange={(e) => setLargura(e.target.value)} /></div>
+          <div className="space-y-2"><Label>Prof. mín. (m)</Label><Input type="number" step="0.01" value={profMin} onChange={(e) => setProfMin(e.target.value)} /></div>
+          <div className="space-y-2"><Label>Prof. máx. (m)</Label><Input type="number" step="0.01" value={profMax} onChange={(e) => setProfMax(e.target.value)} /></div>
+          <div className="lg:col-span-4 flex justify-end"><Button onClick={criarPiscina}><Plus className="h-4 w-4 mr-1" />Adicionar piscina</Button></div>
+        </CardContent>
+      </Card>
+
+      {isLoading ? (
+        <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin" /></div>
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {(data?.piscinas ?? []).map((p: any) => {
+            const circuitos = (data?.circuitos ?? []).filter((c: any) => c.piscinaId === p.id);
+            const equipamentos = (data?.equipamentos ?? []).filter((e: any) => e.piscinaId === p.id);
+            const tratamentos = (data?.tratamentos ?? []).filter((t: any) => t.piscinaId === p.id);
+            const aquecimentos = (data?.aquecimentos ?? []).filter((a: any) => a.piscinaId === p.id);
+            return (
+              <Card key={p.id}>
+                <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Waves className="h-4 w-4 text-primary" />{p.nome}</CardTitle></CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div><span className="text-muted-foreground">Tipo:</span> {p.tipo}</div>
+                    <div><span className="text-muted-foreground">Estrutura:</span> {p.estrutura}</div>
+                    <div><span className="text-muted-foreground">Volume:</span> {p.volumeM3 ?? "—"} m³</div>
+                    <div><span className="text-muted-foreground">Espelho:</span> {p.areaEspelhoM2 ?? "—"} m²</div>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {circuitos.map((x: any) => <Badge key={x.id} variant="outline">{x.tipo}</Badge>)}
+                    {tratamentos.map((x: any) => <Badge key={x.id} variant="secondary">{x.tipo}</Badge>)}
+                    {aquecimentos.map((x: any) => <Badge key={x.id} variant="secondary">aquec.: {x.tipo}</Badge>)}
+                  </div>
+                  {equipamentos.length > 0 && (
+                    <div className="space-y-1">
+                      {equipamentos.map((e: any) => <div key={e.id} className="text-xs rounded-md border px-3 py-2">{e.nome}</div>)}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {(data?.alertas ?? []).length > 0 && (
+        <Card className="border-amber-200">
+          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><AlertCircle className="h-4 w-4 text-amber-500" />Alertas técnicos</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {data.alertas.map((a: any, idx: number) => <div key={idx} className="text-xs rounded-md bg-amber-50 border border-amber-200 px-3 py-2">{a.mensagem ?? a.tipo}</div>)}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function ExecucaoProdutividade({ tenantId, obraId }: { tenantId: string; obraId: string }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [nome, setNome] = useState("");
+  const [unidade, setUnidade] = useState("m²");
+  const [quantidade, setQuantidade] = useState("");
+  const [custoPlanejado, setCustoPlanejado] = useState("");
+  const [medicoes, setMedicoes] = useState<Record<string,string>>({});
+
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ["obra-execucao-resumo", tenantId, obraId],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/execucao/resumo`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Erro ao carregar execução");
+      return res.json();
+    },
+    enabled: !!tenantId && !!obraId,
+  });
+
+  async function criarAtividade() {
+    if (!nome.trim() || !quantidade) return;
+    const token = localStorage.getItem("vendorai_token");
+    const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/execucao/atividades`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({
+        nome: nome.trim(),
+        unidade,
+        quantidadePlanejada: quantidade,
+        custoPlanejado: custoPlanejado || "0",
+        status: "planejada",
+        origem: "manual",
+      }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      toast({ title: "Não foi possível criar atividade", description: body?.error ?? "Erro inesperado.", variant: "destructive" });
+      return;
+    }
+    setNome(""); setQuantidade(""); setCustoPlanejado("");
+    qc.invalidateQueries({ queryKey: ["obra-execucao-resumo", tenantId, obraId] });
+    toast({ title: "Atividade criada" });
+  }
+
+  async function registrarMedicao(atividadeId: string) {
+    const qtd = medicoes[atividadeId];
+    if (!qtd) return;
+    const token = localStorage.getItem("vendorai_token");
+    const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/execucao/atividades/${atividadeId}/medicoes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({
+        dataMedicao: new Date().toISOString().slice(0,10),
+        quantidadeExecutada: qtd,
+        origem: "manual",
+      }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      toast({ title: "Não foi possível medir", description: body?.error ?? "Erro inesperado.", variant: "destructive" });
+      return;
+    }
+    setMedicoes((prev) => ({ ...prev, [atividadeId]: "" }));
+    qc.invalidateQueries({ queryKey: ["obra-execucao-resumo", tenantId, obraId] });
+  }
+
+  async function gerarSnapshot(atividadeId: string) {
+    const token = localStorage.getItem("vendorai_token");
+    const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/execucao/atividades/${atividadeId}/snapshot`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({}),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      toast({ title: "Não foi possível consolidar", description: body?.error ?? "Erro inesperado.", variant: "destructive" });
+      return;
+    }
+    qc.invalidateQueries({ queryKey: ["obra-execucao-resumo", tenantId, obraId] });
+    toast({ title: "Snapshot de execução registrado" });
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 md:grid-cols-4">
+        <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Atividades</div><div className="text-2xl font-bold mt-1">{data?.totais?.atividades ?? 0}</div></CardContent></Card>
+        <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Concluídas</div><div className="text-2xl font-bold mt-1">{data?.totais?.concluidas ?? 0}</div></CardContent></Card>
+        <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Custo planejado</div><div className="text-xl font-bold mt-1">{fmtBRL(data?.totais?.custoPlanejado)}</div></CardContent></Card>
+        <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Custo realizado</div><div className="text-xl font-bold mt-1">{fmtBRL(data?.totais?.custoRealizado)}</div></CardContent></Card>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-3"><CardTitle className="text-base">Nova atividade de execução</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-4 md:items-end">
+          <div className="space-y-2 md:col-span-2"><Label>Atividade</Label><Input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Montagem paredes ICF térreo" /></div>
+          <div className="space-y-2"><Label>Quantidade planejada</Label><div className="flex gap-2"><Input type="number" step="0.01" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} /><Input className="w-24" value={unidade} onChange={(e) => setUnidade(e.target.value)} /></div></div>
+          <div className="space-y-2"><Label>Custo planejado</Label><Input type="number" step="0.01" value={custoPlanejado} onChange={(e) => setCustoPlanejado(e.target.value)} /></div>
+          <div className="md:col-span-4 flex justify-end"><Button onClick={criarAtividade}><Plus className="h-4 w-4 mr-1" />Adicionar atividade</Button></div>
+        </CardContent>
+      </Card>
+
+      {isLoading ? (
+        <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin" /></div>
+      ) : (
+        <div className="space-y-3">
+          {(data?.atividades ?? []).map((a: any) => {
+            const snap = (data?.ultimosSnapshots ?? []).find((s: any) => s.atividadeId === a.id);
+            return (
+              <Card key={a.id}>
+                <CardContent className="pt-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-medium text-sm">{a.nome}</div>
+                      <div className="text-xs text-muted-foreground">{a.quantidadeExecutada} / {a.quantidadePlanejada} {a.unidade}</div>
+                    </div>
+                    <Badge variant="outline">{a.status}</Badge>
+                  </div>
+                  <Progress value={Math.min(100, Number(a.percentualExecutado ?? 0))} />
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                    <div>Executado: <strong>{Number(a.percentualExecutado ?? 0).toFixed(1)}%</strong></div>
+                    <div>Custo real: <strong>{fmtBRL(a.custoRealizado)}</strong></div>
+                    <div>Produtividade: <strong>{a.produtividadeReal ?? "—"}</strong></div>
+                    <div>Desvio custo: <strong>{snap?.desvioCustoPercentual == null ? "—" : `${Number(snap.desvioCustoPercentual).toFixed(1)}%`}</strong></div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <Input className="w-40" type="number" step="0.01" placeholder={`Medir (${a.unidade})`} value={medicoes[a.id] ?? ""} onChange={(e) => setMedicoes((prev) => ({ ...prev, [a.id]: e.target.value }))} />
+                    <Button size="sm" variant="outline" onClick={() => registrarMedicao(a.id)}>Registrar medição</Button>
+                    <Button size="sm" variant="outline" onClick={() => gerarSnapshot(a.id)}>Consolidar custo/produtividade</Button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RelatoriosGovernanca({ tenantId, obraId }: { tenantId: string; obraId: string }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [status, setStatus] = useState("");
+  const [modulo, setModulo] = useState("");
+  const [nomeRelatorio, setNomeRelatorio] = useState("Visão consolidada da obra");
+  const [showAudit, setShowAudit] = useState(false);
+
+  const querySuffix = [
+    status ? `status=${encodeURIComponent(status)}` : "",
+    modulo ? `modulo=${encodeURIComponent(modulo)}` : "",
+  ].filter(Boolean).join("&");
+
+  const { data: report, isLoading } = useQuery<any>({
+    queryKey: ["obra-relatorio-consolidado", tenantId, obraId, status, modulo],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(
+        `/api/tenants/${tenantId}/obras/${obraId}/governanca/relatorio-consolidado${querySuffix ? `?${querySuffix}` : ""}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+      );
+      if (!res.ok) throw new Error("Erro ao carregar relatório consolidado");
+      return res.json();
+    },
+    enabled: !!tenantId && !!obraId,
+  });
+
+  const { data: saved = [] } = useQuery<any[]>({
+    queryKey: ["obra-relatorios-salvos", tenantId, obraId],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/governanca/relatorios-salvos`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Erro ao carregar relatórios salvos");
+      return res.json();
+    },
+    enabled: !!tenantId && !!obraId,
+  });
+
+  const { data: audit = [], isLoading: auditLoading } = useQuery<any[]>({
+    queryKey: ["obra-auditoria", tenantId, obraId, modulo],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const qs = modulo ? `?modulo=${encodeURIComponent(modulo)}` : "";
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/governanca/auditoria${qs}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Erro ao carregar auditoria");
+      return res.json();
+    },
+    enabled: showAudit,
+  });
+
+  async function salvarRelatorio() {
+    const token = localStorage.getItem("vendorai_token");
+    const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/governanca/relatorios-salvos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({
+        nome: nomeRelatorio.trim() || "Relatório da obra",
+        tipo: modulo && ["orcamento","cotacoes","compras","execucao","financeiro","margem"].includes(modulo) ? modulo : "consolidado",
+        filtros: { status: status || null, modulo: modulo || null },
+        colunas: [],
+        ordenacao: [],
+        compartilhado: false,
+      }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      toast({ title: "Não foi possível salvar", description: body?.error ?? "Erro inesperado.", variant: "destructive" });
+      return;
+    }
+    toast({ title: "Relatório salvo" });
+    qc.invalidateQueries({ queryKey: ["obra-relatorios-salvos", tenantId, obraId] });
+  }
+
+  function aplicarSalvo(r: any) {
+    setStatus(String(r?.filtros?.status ?? ""));
+    setModulo(String(r?.filtros?.modulo ?? ""));
+    setNomeRelatorio(r.nome ?? "Relatório");
+  }
+
+  const resumo = report?.resumo ?? {};
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <CardTitle className="text-base">Relatórios e governança</CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">Orçamento, cotação, compras, execução e financeiro em uma única leitura.</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setShowAudit((v) => !v)}>
+              <History className="h-4 w-4 mr-1" />{showAudit ? "Ocultar auditoria" : "Auditoria"}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-4">
+            <div className="space-y-2">
+              <Label>Módulo</Label>
+              <select className="w-full h-10 rounded-md border bg-background px-3 text-sm" value={modulo} onChange={(e) => setModulo(e.target.value)}>
+                <option value="">Todos</option>
+                <option value="orcamento">Orçamento</option>
+                <option value="cotacoes">Cotações</option>
+                <option value="compras">Compras</option>
+                <option value="execucao">Execução</option>
+                <option value="financeiro">Financeiro</option>
+                <option value="margem">Margem</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Input value={status} onChange={(e) => setStatus(e.target.value)} placeholder="Ex.: aprovado, enviado..." />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label>Salvar visão atual</Label>
+              <div className="flex gap-2"><Input value={nomeRelatorio} onChange={(e) => setNomeRelatorio(e.target.value)} /><Button variant="outline" onClick={salvarRelatorio}>Salvar</Button></div>
+            </div>
+          </div>
+
+          {saved.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {saved.slice(0, 12).map((r: any) => (
+                <Button key={r.id} size="sm" variant="secondary" onClick={() => aplicarSalvo(r)}>{r.nome}</Button>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {isLoading ? (
+        <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin" /></div>
+      ) : (
+        <>
+          <div className="grid gap-3 md:grid-cols-4">
+            <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Custo orçado</div><div className="font-bold text-lg mt-1">{fmtBRL(resumo.custoOrcado)}</div></CardContent></Card>
+            <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Preço de venda</div><div className="font-bold text-lg mt-1">{fmtBRL(resumo.precoVenda)}</div></CardContent></Card>
+            <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Custo realizado</div><div className="font-bold text-lg mt-1">{fmtBRL(resumo.custoReal)}</div></CardContent></Card>
+            <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">Saldo de caixa</div><div className="font-bold text-lg mt-1">{fmtBRL(resumo.saldoCaixa)}</div></CardContent></Card>
+          </div>
+
+          <Card>
+            <CardContent className="pt-4 grid gap-3 md:grid-cols-3 text-sm">
+              <div><span className="text-muted-foreground">Compras:</span> <strong>{fmtBRL(resumo.compraTotal)}</strong></div>
+              <div><span className="text-muted-foreground">A pagar:</span> <strong>{fmtBRL(resumo.contasPagar)}</strong></div>
+              <div><span className="text-muted-foreground">A receber:</span> <strong>{fmtBRL(resumo.contasReceber)}</strong></div>
+              <div><span className="text-muted-foreground">Pago:</span> <strong>{fmtBRL(resumo.pago)}</strong></div>
+              <div><span className="text-muted-foreground">Recebido:</span> <strong>{fmtBRL(resumo.recebido)}</strong></div>
+              <div><span className="text-muted-foreground">Avanço médio:</span> <strong>{Number(resumo.progressoMedioPercentual ?? 0).toFixed(1)}%</strong></div>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Compras e cotações</CardTitle></CardHeader>
+              <CardContent className="text-xs space-y-2">
+                <div>Cotações: <strong>{report?.cotacoes?.registros?.length ?? 0}</strong></div>
+                <div>Propostas: <strong>{report?.cotacoes?.propostas?.length ?? 0}</strong></div>
+                <div>Pedidos: <strong>{report?.compras?.pedidos?.length ?? 0}</strong></div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Execução e financeiro</CardTitle></CardHeader>
+              <CardContent className="text-xs space-y-2">
+                <div>Atividades: <strong>{report?.execucao?.atividades?.length ?? 0}</strong></div>
+                <div>Títulos financeiros: <strong>{report?.financeiro?.titulos?.length ?? 0}</strong></div>
+                <div>Movimentos: <strong>{report?.financeiro?.movimentos?.length ?? 0}</strong></div>
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      )}
+
+      {showAudit && (
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Trilha de auditoria</CardTitle></CardHeader>
+          <CardContent>
+            {auditLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : audit.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhum evento de auditoria registrado para os filtros atuais.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {audit.slice(0, 100).map((e: any) => (
+                  <div key={e.id} className="rounded border px-3 py-2 text-xs">
+                    <div className="font-medium">{e.modulo} · {e.acao} · {e.entidade}</div>
+                    <div className="text-muted-foreground">{e.resumo || e.entidadeId || "Sem resumo"} · {new Date(e.createdAt).toLocaleString("pt-BR")}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 }
 
@@ -3005,6 +4339,11 @@ export default function ObraDetalhe() {
         {activeTab === "estoque"      && <EstoqueObra tenantId={tenantId} obraId={obraId} />}
         {activeTab === "compras"      && <Compras tenantId={tenantId} obraId={obraId} />}
         {activeTab === "orcamento"    && <TabOrcamento tenantId={tenantId} obraId={obraId} portalToken={(obra as any).portalToken} />}
+        {activeTab === "energia"       && <EnergiaSistemas tenantId={tenantId} obraId={obraId} />}
+        {activeTab === "hidraulica"     && <HidraulicaSistemas tenantId={tenantId} obraId={obraId} />}
+        {activeTab === "piscinas"        && <PiscinasObra tenantId={tenantId} obraId={obraId} />}
+        {activeTab === "execucao"         && <ExecucaoProdutividade tenantId={tenantId} obraId={obraId} />}
+        {activeTab === "relatorios"       && <RelatoriosGovernanca tenantId={tenantId} obraId={obraId} />}
       </div>
     </div>
   );
