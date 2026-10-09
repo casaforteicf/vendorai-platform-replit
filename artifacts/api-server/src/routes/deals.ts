@@ -367,6 +367,23 @@ router.post("/deals", async (req, res) => {
   // Verificação no servidor: o importId aprovado deve pertencer ao mesmo tenant
   // e corresponder exatamente ao arquivo enviado ao criar o negócio.
   const rawImportId = (req.body as Record<string, unknown>).budgetImportId;
+  // If a file originated from the audited extractor, every creation path must
+  // provide its approved importId; legacy/manual attachments remain supported.
+  if (parsed.data.quoteFileUrl && rawImportId === undefined) {
+    const knownImports = await db.execute(sql`
+      SELECT id FROM public.budget_imports
+      WHERE tenant_id = ${parsed.data.tenantId}
+        AND file_url = ${parsed.data.quoteFileUrl}
+      LIMIT 1
+    `);
+    if (knownImports.rows.length) {
+      res.status(409).json({
+        error: "Este arquivo foi importado automaticamente. Revise e aprove a importação antes de criar o negócio.",
+        code: "BUDGET_IMPORT_REVIEW_REQUIRED",
+      });
+      return;
+    }
+  }
   if (rawImportId !== undefined) {
     if (typeof rawImportId !== "string" || !/^[0-9a-f-]{36}$/i.test(rawImportId)) {
       res.status(422).json({ error: "Identificador de importação inválido." });
