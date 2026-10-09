@@ -109,7 +109,7 @@ router.post("/crm/people", async (req, res) => {
   const parsed = personSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
   try {
-    tenantIdFromRequest(req, parsed.data.tenantId);
+    const tenantId = tenantIdFromRequest(req, parsed.data.tenantId);
     const documento = digits(parsed.data.documento);
     const telefone = digits(parsed.data.telefone);
     const email = parsed.data.email?.trim().toLowerCase();
@@ -123,7 +123,6 @@ router.post("/crm/people", async (req, res) => {
     if (exact) {
       // A master record can be shared across tenants; do not return its personal data
       // to a tenant without an existing authorized relationship.
-      const tenantId = tenantIdFromRequest(req, parsed.data.tenantId);
       const linkedDeal = await db.select({ id: crmDealPeopleTable.id })
         .from(crmDealPeopleTable).where(and(
           eq(crmDealPeopleTable.tenantId, tenantId),
@@ -164,6 +163,7 @@ router.post("/crm/people", async (req, res) => {
       telefones: parsed.data.telefone ? [parsed.data.telefone.trim()] : [],
       emails: email ? [email] : [],
       source: parsed.data.source,
+      metadata: { createdTenantId: tenantId },
       updatedAt: new Date(),
     }).returning();
     return res.status(201).json({ item: person, reused: false });
@@ -362,7 +362,7 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
 
     let personId = parsed.data.personId;
     if (personId) {
-      const [masterPerson] = await db.select({ id: crmPeopleMasterTable.id })
+      const [masterPerson] = await db.select({ id: crmPeopleMasterTable.id, metadata: crmPeopleMasterTable.metadata })
         .from(crmPeopleMasterTable).where(eq(crmPeopleMasterTable.id, personId)).limit(1);
       if (!masterPerson) return res.status(404).json({ error: "Pessoa não encontrada." });
       const [localDeal] = await db.select({ id: crmDealPeopleTable.id })
@@ -376,7 +376,7 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
           .from(crmDealPeopleTable).where(eq(crmDealPeopleTable.personId, personId)).limit(1);
         const [foreignContact] = await db.select({ id: crmTenantCompanyContactsTable.id })
           .from(crmTenantCompanyContactsTable).where(eq(crmTenantCompanyContactsTable.personId, personId)).limit(1);
-        if (foreignDeal || foreignContact) {
+        if (foreignDeal || foreignContact || masterPerson.metadata?.createdTenantId !== tenantId) {
           return res.status(403).json({ error: "Pessoa sem vínculo autorizado neste tenant." });
         }
       }
