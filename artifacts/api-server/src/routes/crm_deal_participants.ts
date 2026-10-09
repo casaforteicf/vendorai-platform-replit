@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, ilike, inArray, isNull, or } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { buildUserFunctionFilter } from "../middlewares/auth.js";
 import {
@@ -300,12 +300,15 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
     }
     if (!personId) return res.status(422).json({ error: "Selecione ou cadastre uma pessoa." });
 
-    if (parsed.data.isPrimary) {
-      await db.update(crmDealPeopleTable).set({ isPrimary: false, updatedAt: new Date() })
+    const link = await db.transaction(async (tx) => {
+      // Serialize primary-contact changes per tenant/deal, preventing concurrent primary flags.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${tenantId}), hashtext(${req.params.dealId}))`);
+      if (parsed.data.isPrimary) {
+        await tx.update(crmDealPeopleTable).set({ isPrimary: false, updatedAt: new Date() })
         .where(and(eq(crmDealPeopleTable.tenantId, tenantId), eq(crmDealPeopleTable.dealId, req.params.dealId)));
     }
 
-    const [link] = await db.insert(crmDealPeopleTable).values({
+      const [link] = await tx.insert(crmDealPeopleTable).values({
       tenantId,
       dealId: req.params.dealId,
       personId,
@@ -328,6 +331,8 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
         updatedAt: new Date(),
       },
     }).returning();
+      return link;
+    });
 
     if (parsed.data.relationshipScope === "persistent" && parsed.data.contextualCompanyId) {
       const [tc] = await db.select().from(crmTenantCompaniesTable).where(and(
