@@ -40,6 +40,7 @@ export default function SupplierRfqWorkspace({arqState,onNavigate}:{arqState:any
   const [guestName,setGuestName]=useState("");
   const [guestEmail,setGuestEmail]=useState("");
   const [guestPhone,setGuestPhone]=useState("");
+  const [groupingMode,setGroupingMode]=useState<"specialty"|"full_project">("specialty");
 
   const load=useCallback(async()=>{
     if(!meta.id)return;
@@ -147,11 +148,15 @@ export default function SupplierRfqWorkspace({arqState,onNavigate}:{arqState:any
   return <div className="space-y-5">
     <header className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <div><p className="text-xs font-bold uppercase tracking-[.14em] text-violet-600">Cotação de fornecedores</p><h1 className="mt-1 text-2xl font-semibold text-slate-950">Especificação → fornecedores → custo real → proposta</h1>
-        <p className="mt-1 text-sm text-slate-500">{meta.name} • cada fornecedor recebe somente os itens compatíveis com seu escopo.</p></div>
+        <div><p className="text-xs font-bold uppercase tracking-[.14em] text-violet-600">Contratar / Cotar</p><h1 className="mt-1 text-2xl font-semibold text-slate-950">Projeto → pacote → profissional/empresa → proposta</h1>
+        <p className="mt-1 text-sm text-slate-500">{meta.name} • envie o projeto completo para arquitetos, engenheiros e construtoras ou somente um pacote para empreiteiros, instaladores e fornecedores.</p></div>
         <div className="flex flex-wrap gap-2">
           <button onClick={()=>onNavigate?.("real-budget")} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold">Voltar ao orçamento</button>
-          <button disabled={!budgetId||busy==="generate"} onClick={()=>void generate()} className="rounded-2xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy==="generate"?"Preparando...":"Gerar cotações do orçamento"}</button>
+          <select value={groupingMode} onChange={e=>setGroupingMode(e.target.value as "specialty"|"full_project")} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700">
+            <option value="specialty">Por especialidade</option>
+            <option value="full_project">Projeto completo</option>
+          </select>
+          <button disabled={!budgetId||busy==="generate"} onClick={()=>void generate()} className="rounded-2xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy==="generate"?"Preparando...":groupingMode==="full_project"?"Gerar pacote do projeto completo":"Gerar pacotes por especialidade"}</button>
         </div>
       </div>
     </header>
@@ -167,7 +172,7 @@ export default function SupplierRfqWorkspace({arqState,onNavigate}:{arqState:any
 
     <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
       <section className="rounded-[34px] border border-slate-100 bg-white p-4 shadow-sm">
-        <div className="px-2 pb-3"><p className="text-xs font-bold uppercase tracking-wide text-slate-400">Pacotes por especialidade</p><p className="mt-1 text-sm text-slate-500">Gerados automaticamente a partir do orçamento.</p></div>
+        <div className="px-2 pb-3"><p className="text-xs font-bold uppercase tracking-wide text-slate-400">Pacotes para contratação/cotação</p><p className="mt-1 text-sm text-slate-500">Podem representar o projeto completo ou uma especialidade específica.</p></div>
         <div className="space-y-2">{(bundle?.packages||[]).map(p=>{
           const count=(bundle?.items||[]).filter(i=>i.package_id===p.id).length;
           const responses=(bundle?.invitations||[]).filter(i=>i.package_id===p.id&&["responded","accepted"].includes(i.status)).length;
@@ -189,18 +194,18 @@ export default function SupplierRfqWorkspace({arqState,onNavigate}:{arqState:any
         </section>
 
         <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
-          <div><p className="text-xs font-bold uppercase tracking-wide text-violet-600">Fornecedores compatíveis</p><h2 className="mt-1 text-xl font-semibold">Enviar para vários fornecedores</h2><p className="mt-1 text-sm text-slate-500">A lista respeita categoria/disciplina cadastrada. Fornecedor sem escopo definido permanece disponível até ser classificado.</p></div>
+          <div><p className="text-xs font-bold uppercase tracking-wide text-violet-600">Profissionais e empresas compatíveis</p><h2 className="mt-1 text-xl font-semibold">Enviar para vários parceiros</h2><p className="mt-1 text-sm text-slate-500">Use projeto completo para arquitetos, engenheiros e construtoras; por especialidade para empreiteiros, instaladores, materiais, móveis, esquadrias e demais fornecedores.</p></div>
           <div className="mt-4 grid gap-3 md:grid-cols-2">{suppliers.map(s=><label key={s.id} className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-100 p-4 hover:border-violet-200">
             <input type="checkbox" className="mt-1" checked={selectedSuppliers.includes(s.id)} onChange={e=>setSelectedSuppliers(cur=>e.target.checked?[...cur,s.id]:cur.filter(x=>x!==s.id))}/>
             <div className="flex-1"><p className="font-semibold">{s.nome}</p><p className="text-xs text-slate-500">{s.email||s.telefone||"Será gerado link manual"}{s.prazo_medio_dias?` • prazo médio ${s.prazo_medio_dias} dias`:""}</p>{(()=>{const st=(bundle?.supplierStats||[]).find(x=>x.supplier_key===s.nome.toLowerCase());if(!st)return null;const punctual=st.delivered_orders>0?Math.round((st.on_time_orders/st.delivered_orders)*100):null;return <p className="mt-1 text-[11px] text-slate-400">{st.total_orders} histórico(s){punctual!=null?` • ${punctual}% no prazo`:""}{st.avg_lead_time_days!=null?` • média ${Number(st.avg_lead_time_days).toFixed(0)} dias`:""}</p>})()}
               {!(s.categorias?.length||s.disciplinas?.length)&&selectedPackage?<button type="button" disabled={busy===`scope-${s.id}`} onClick={(e)=>{e.preventDefault();e.stopPropagation();void classifySupplier(s)}} className="mt-2 text-[11px] font-bold text-violet-700 hover:underline">{busy===`scope-${s.id}`?"Salvando...":`Vincular a ${selectedPackage.category||selectedPackage.discipline}`}</button>:null}
             </div>
           </label>)}</div>
-          <button disabled={!selectedSuppliers.length||busy==="invite"} onClick={()=>void invite()} className="mt-4 rounded-2xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{busy==="invite"?"Enviando...":`Enviar cotação para ${selectedSuppliers.length} fornecedor(es)`}</button>
+          <button disabled={!selectedSuppliers.length||busy==="invite"} onClick={()=>void invite()} className="mt-4 rounded-2xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{busy==="invite"?"Enviando...":`Enviar solicitação para ${selectedSuppliers.length} parceiro(s)`}</button>
           <div className="my-5 border-t border-slate-100"/>
-          <div><p className="text-xs font-bold uppercase tracking-wide text-slate-400">Fornecedor ainda não cadastrado</p><p className="mt-1 text-sm text-slate-500">O arquiteto pode enviar a cotação apenas com nome e telefone ou e-mail. O fornecedor responde pelo link sem precisar criar conta.</p></div>
+          <div><p className="text-xs font-bold uppercase tracking-wide text-slate-400">Profissional ou empresa ainda não cadastrado</p><p className="mt-1 text-sm text-slate-500">Convide arquiteto, engenheiro, construtora, empreiteiro, instalador ou fornecedor apenas com nome e telefone/e-mail. Ele pode responder pelo link sem criar conta.</p></div>
           <div className="mt-4 grid gap-3 md:grid-cols-3">
-            <label className="text-xs font-semibold text-slate-600">Nome<input value={guestName} onChange={e=>setGuestName(e.target.value)} placeholder="Fornecedor / empresa" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-normal text-slate-900"/></label>
+            <label className="text-xs font-semibold text-slate-600">Nome<input value={guestName} onChange={e=>setGuestName(e.target.value)} placeholder="Profissional / empresa" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-normal text-slate-900"/></label>
             <label className="text-xs font-semibold text-slate-600">E-mail<input type="email" value={guestEmail} onChange={e=>setGuestEmail(e.target.value)} placeholder="fornecedor@empresa.com" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-normal text-slate-900"/></label>
             <label className="text-xs font-semibold text-slate-600">Telefone / WhatsApp<input value={guestPhone} onChange={e=>setGuestPhone(e.target.value)} placeholder="+55 49 ..." className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-normal text-slate-900"/></label>
           </div>
