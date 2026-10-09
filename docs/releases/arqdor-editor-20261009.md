@@ -264,3 +264,11 @@ Validação: 122 testes em 23 arquivos passaram; tipagem isolada do helper e tra
 - Folga de circulação acompanha a orientação do móvel; decoração não bloqueia mobiliário sólido.
 - Sem posições possíveis, remove prévias antigas e informa a falta de espaço livre.
 - Verificação: 130 testes passaram em 24 arquivos; tipagem do helper e transformação sintática do editor passaram. Validação visual integrada, homologação e publicação na Contabo seguem pendentes.
+
+
+### Contorno rotacionado nas zonas de portas e janelas
+
+- Geração de mobiliário compara o contorno rotacionado às zonas de acesso das portas e às zonas de janelas já calculadas pelo editor, mantendo as respectivas margens.
+- O teste também abrange itens de parede; removida a comparação antiga sem rotação.
+- Verificação: 133 testes passaram em 24 arquivos, incluindo ponta rotacionada invadindo a zona, espaço livre e margens de contato. Tipagem do helper e transformação sintática do editor passaram.
+- Zonas continuam sendo estimativas preliminares; não representam arco exato de abertura nem validação normativa. Validação visual integrada e homologação/publicação Contabo permanecem pendentes.

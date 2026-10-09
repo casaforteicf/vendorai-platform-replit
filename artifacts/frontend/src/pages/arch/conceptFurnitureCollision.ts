@@ -42,3 +42,16 @@ export function furnitureHasClearance(a: Furniture, b: Furniture, gap: number): 
   if (!Number.isFinite(gap) || gap < 0) return false;
   return !furnitureOverlaps({ ...a, x: a.x - gap, y: a.y - gap, width: a.width + gap * 2, depth: a.depth + gap * 2 }, b);
 }
+
+/** Opening clearance zones use the same rotated footprint test, including wall-mounted items. */
+export function furnitureBlocksZone(
+  object: { x: number; y: number; width: number; depth: number; rotation: number },
+  zone: { x: number; y: number; width: number; height: number; rotation?: number },
+  margin = 0,
+): boolean {
+  return !furnitureHasClearance(
+    { ...object, kind: "sofa", floor: 0 },
+    { ...zone, depth: zone.height, rotation: zone.rotation ?? 0, kind: "sofa", floor: 0 },
+    margin,
+  );
+}

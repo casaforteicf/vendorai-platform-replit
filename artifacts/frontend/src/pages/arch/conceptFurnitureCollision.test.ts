@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { furnitureOverlaps, furnitureLayoutCollisionError, furnitureHasClearance } from "./conceptFurnitureCollision";
+import { furnitureOverlaps, furnitureLayoutCollisionError, furnitureHasClearance, furnitureBlocksZone } from "./conceptFurnitureCollision";
 const item = { kind: "sofa", label: "Sofá", floor: 0, x: 0, y: 0, width: 2, depth: 1, rotation: 0 };
 describe("layout furniture collisions", () => {
   it("rejects overlapping footprints but allows touching edges", () => {
@@ -40,5 +40,21 @@ describe("furniture circulation clearance", () => {
     expect(furnitureHasClearance(item, { ...item, kind: "rug" }, 0.4)).toBe(true);
     expect(furnitureHasClearance(item, { ...item, floor: 1 }, 0.4)).toBe(true);
     expect(furnitureHasClearance(item, item, NaN)).toBe(false);
+  });
+});
+
+describe("opening clearance zones", () => {
+  const zone = { x: 1.6, y: 0, width: 0.2, height: 1 };
+  it("detects a rotated tip entering a zone outside the unrotated box", () => {
+    expect(furnitureBlocksZone({ ...item, width: 1, depth: 2, rotation: 90 }, zone)).toBe(false);
+    expect(furnitureBlocksZone({ ...item, x: 0.7, width: 1, depth: 2, rotation: 90 }, zone)).toBe(true);
+  });
+  it("allows an opening zone clear of the rotated contour", () => {
+    expect(furnitureBlocksZone({ ...item, rotation: 90 }, { x: 0, y: 0, width: 0.2, height: 0.2 })).toBe(false);
+  });
+  it("checks margins and supports rotated zones", () => {
+    expect(furnitureBlocksZone(item, { x: 2.1, y: 0, width: 1, height: 1 }, 0.2)).toBe(true);
+    expect(furnitureBlocksZone(item, { x: 2.2, y: 0, width: 1, height: 1 }, 0.2)).toBe(false);
+    expect(furnitureBlocksZone(item, { x: 1, y: 0, width: 1, height: 1, rotation: 45 })).toBe(true);
   });
 });

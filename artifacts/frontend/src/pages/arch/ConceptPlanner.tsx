@@ -1,4 +1,4 @@
-import { furnitureLayoutCollisionError, furnitureHasClearance } from "./conceptFurnitureCollision";
+import { furnitureLayoutCollisionError, furnitureHasClearance, furnitureBlocksZone } from "./conceptFurnitureCollision";
 import { furnitureFitsRoom } from "./conceptFurnitureRoomFit";
 import { boundedObjectGeometry, duplicateObjectGeometry, insertedObjectGeometry, objectBatchPlacementError } from "./conceptObjectTransform";
 import { openingCoordinates } from "./conceptOpeningCoordinates";
@@ -4105,20 +4105,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         .sort((a, b) => b.score - a.score)[0];
     })();
 
-    const overlaps = (
-      a: { x: number; y: number; width: number; depth: number },
-      b: { x: number; y: number; width: number; depth?: number; height?: number },
-      margin = 0.12,
-    ) => {
-      const bDepth = b.depth ?? b.height ?? 0;
-      return !(
-        a.x + a.width + margin <= b.x ||
-        a.x >= b.x + b.width + margin ||
-        a.y + a.depth + margin <= b.y ||
-        a.y >= b.y + bDepth + margin
-      );
-    };
-
     const preferredSide = bestWallSide?.score > 0.8 ? bestWallSide.side : null;
     const effectiveLandscape = preferredSide === "left" || preferredSide === "right"
       ? false
@@ -4255,9 +4241,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           const candidate = { ...item, x, y, floor: activeFloor, rotation: item.rotation ?? 0 };
           if (!furnitureFitsRoom(candidate, selectedClosedSpace.cells)) continue;
           if (objectBatchPlacementError([candidate], lotWidth, lotDepth, activeFloor)) continue;
-          const hitsDoor = doorClearances.some((clearance) => overlaps(candidate, clearance, 0.05));
+          const hitsDoor = doorClearances.some((clearance) => furnitureBlocksZone(candidate, clearance, 0.05));
           const wallMounted = item.kind === "tv" || item.kind === "cabinet" || item.kind === "bed" || item.kind === "sofa";
-          const hitsWindow = wallMounted && windowClearances.some((clearance) => overlaps(candidate, clearance, 0.03));
+          const hitsWindow = wallMounted && windowClearances.some((clearance) => furnitureBlocksZone(candidate, clearance, 0.03));
           const minFurnitureGap =
             item.kind === "chair" || item.kind === "table" ? 0.45 :
             item.kind === "bed" || item.kind === "sofa" ? 0.35 : 0.25;
