@@ -12,6 +12,7 @@ import {
   dealsTable,
   pipelineStagesTable,
   usersTable,
+  dealTenantParticipationsTable,
 } from "@workspace/db";
 import { createGoogleEvent, updateGoogleEvent, deleteGoogleEvent } from "../lib/google-calendar.js";
 import { generateSpinForActivity } from "./spin.js";
@@ -246,6 +247,153 @@ router.post("/activities", async (req, res) => {
       }
     }
   }
+});
+
+
+router.post("/activities/:id/handoff", async (req, res) => {
+  const activityId = String(req.params.id);
+  const mode = req.body?.mode === "stage" ? "stage" : "responsibility";
+  const toTenantId = String(req.body?.toTenantId || "").trim();
+  const toUserId = req.body?.toUserId ? String(req.body.toUserId).trim() : null;
+  const toStageKey = req.body?.toStageKey ? String(req.body.toStageKey).trim() : null;
+  const reason = req.body?.reason ? String(req.body.reason).trim() : "";
+  const slaDueAt = req.body?.slaDueAt ? new Date(req.body.slaDueAt) : null;
+
+  if (!toTenantId || !reason) {
+    return res.status(422).json({ error: "TO_TENANT_AND_REASON_REQUIRED" });
+  }
+  if (slaDueAt && Number.isNaN(slaDueAt.getTime())) {
+    return res.status(422).json({ error: "INVALID_SLA_DATE" });
+  }
+
+  const [activity] = await db.select().from(activitiesTable)
+    .where(eq(activitiesTable.id, activityId)).limit(1);
+  if (!activity) return res.status(404).json({ error: "Activity not found" });
+
+  const currentTenantId = req.user?.tenantId;
+  if (req.user?.platformRole !== "super_admin" && activity.tenantId !== currentTenantId) {
+    return res.status(403).json({ error: "Access denied to this activity" });
+  }
+
+  if (!activity.dealId) {
+    return res.status(422).json({ error: "HANDOFF_REQUIRES_DEAL", message: "A atividade precisa estar vinculada a um negócio." });
+  }
+
+  if (toTenantId === activity.tenantId) {
+    return res.status(422).json({ error: "HANDOFF_REQUIRES_DIFFERENT_TENANT" });
+  }
+
+  const [participation] = await db.select({
+    id: dealTenantParticipationsTable.id,
+    partnerTenantId: dealTenantParticipationsTable.partnerTenantId,
+    ownerTenantId: dealTenantParticipationsTable.ownerTenantId,
+    status: dealTenantParticipationsTable.status,
+  }).from(dealTenantParticipationsTable).where(and(
+    eq(dealTenantParticipationsTable.dealId, activity.dealId),
+    eq(dealTenantParticipationsTable.ownerTenantId, activity.tenantId),
+    eq(dealTenantParticipationsTable.partnerTenantId, toTenantId),
+    eq(dealTenantParticipationsTable.status, "active"),
+  )).limit(1);
+
+  if (!participation) {
+    return res.status(403).json({
+      error: "TENANT_NOT_ACTIVE_PARTICIPANT",
+      message: "A empresa destino não é participante ativa deste negócio.",
+    });
+  }
+
+  if (toUserId) {
+    const [destinationUser] = await db.select({ id: usersTable.id })
+      .from(usersTable)
+      .where(and(eq(usersTable.id, toUserId), eq(usersTable.tenantId, toTenantId))).limit(1);
+    if (!destinationUser) {
+      return res.status(422).json({ error: "DESTINATION_USER_NOT_FOUND" });
+    }
+  }
+
+  const now = new Date();
+  const [updated] = await db.update(activitiesTable).set({
+    handoffMode: mode,
+    handoffStatus: "requested",
+    handoffFromTenantId: activity.tenantId,
+    handoffToTenantId: toTenantId,
+    handoffFromUserId: req.user?.sub ?? null,
+    handoffToUserId: toUserId,
+    handoffFromStageKey: activity.origemEtapaKey ?? null,
+    handoffToStageKey: toStageKey,
+    handoffRequestedAt: now,
+    handoffAcceptedAt: null,
+    handoffRejectedAt: null,
+    handoffRejectionReason: null,
+    handoffSlaDueAt: slaDueAt,
+    updatedAt: now,
+  }).where(eq(activitiesTable.id, activityId)).returning();
+
+  return res.status(201).json({
+    activity: updated,
+    handoff: {
+      mode,
+      status: "requested",
+      fromTenantId: activity.tenantId,
+      toTenantId,
+      fromUserId: req.user?.sub ?? null,
+      toUserId,
+      fromStageKey: activity.origemEtapaKey ?? null,
+      toStageKey,
+      requestedAt: now,
+      slaDueAt,
+      reason,
+    },
+  });
+});
+
+router.post("/activities/:id/handoff/accept", async (req, res) => {
+  const activityId = String(req.params.id);
+  const [activity] = await db.select().from(activitiesTable).where(eq(activitiesTable.id, activityId)).limit(1);
+  if (!activity) return res.status(404).json({ error: "Activity not found" });
+
+  if (req.user?.platformRole !== "super_admin" && activity.handoffToTenantId !== req.user?.tenantId) {
+    return res.status(403).json({ error: "Access denied to this handoff" });
+  }
+  if (activity.handoffStatus !== "requested") {
+    return res.status(409).json({ error: "HANDOFF_NOT_PENDING" });
+  }
+
+  const now = new Date();
+  const [updated] = await db.update(activitiesTable).set({
+    handoffStatus: "accepted",
+    handoffAcceptedAt: now,
+    responsavelId: activity.handoffToUserId ?? activity.responsavelId,
+    updatedAt: now,
+  }).where(eq(activitiesTable.id, activityId)).returning();
+
+  return res.json(updated);
+});
+
+router.post("/activities/:id/handoff/reject", async (req, res) => {
+  const activityId = String(req.params.id);
+  const reason = req.body?.reason ? String(req.body.reason).trim() : "";
+  if (!reason) return res.status(422).json({ error: "REJECTION_REASON_REQUIRED" });
+
+  const [activity] = await db.select().from(activitiesTable).where(eq(activitiesTable.id, activityId)).limit(1);
+  if (!activity) return res.status(404).json({ error: "Activity not found" });
+
+  if (req.user?.platformRole !== "super_admin" && activity.handoffToTenantId !== req.user?.tenantId) {
+    return res.status(403).json({ error: "Access denied to this handoff" });
+  }
+  if (activity.handoffStatus !== "requested") {
+    return res.status(409).json({ error: "HANDOFF_NOT_PENDING" });
+  }
+
+  const now = new Date();
+  const [updated] = await db.update(activitiesTable).set({
+    handoffStatus: "rejected",
+    handoffRejectedAt: now,
+    handoffRejectionReason: reason,
+    updatedAt: now,
+  }).where(eq(activitiesTable.id, activityId)).returning();
+
+  return res.json(updated);
 });
 
 router.get("/tenants/:tenantId/activities", async (req, res) => {
