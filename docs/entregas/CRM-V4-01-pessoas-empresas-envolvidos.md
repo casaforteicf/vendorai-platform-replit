@@ -109,3 +109,9 @@ Reutilizar o cadastro mestre existente e permitir casal (dois consumidores com q
 - `2a94d78`: consulta `GET /crm/people` passa a aplicar a mesma restrição; sem leads visíveis, a via de contatos corporativos não amplia o conjunto de pessoas.
 - **Possível impacto:** contatos de empresas sem lead deixam de aparecer por essa via. É necessária política explícita de autorização e testes para esse caso antes de habilitar novamente.
 - **Estado:** implementado sem validação de TypeScript/esbuild. Homologação na Contabo segue não comprovada; Vendi retornou 401 na última tentativa. Não há merge ou publicação.
+
+## Continuidade sem homologação — determinação de 09/10/2026
+- Por orientação expressa do solicitante, **homologação na Contabo, autenticação do Vendi e publicação ficam para depois**. Não criar bloqueio para as correções de código independentes, nem tentar promoção por conta própria.
+- Commit `1a58aca`: no reaproveitamento por documento, o vínculo existente só autoriza a resposta com dados da pessoa se o negócio for visível ao usuário e o vínculo estiver ativo; contatos de empresa exigem lead vinculado visível. Corrige divergência em relação aos demais caminhos de consulta.
+- **Estado:** implementado sem validação técnica. Testes locais, build na Contabo, homologação, aprovação de release e produção seguem não realizados/não comprovados. O PR #3428 continua isolado.
+- **Próxima frente de código:** revisar demais caminhos de vínculo legado e proteger preservação de metadados históricos nas alterações. 
