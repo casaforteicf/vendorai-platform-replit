@@ -68,16 +68,20 @@ arqdorMepRouter.post("/arch/projects/:projectId/mep/systems",async(req,res,next)
   }catch(err){next(err);}
 });
 arqdorMepRouter.post("/arch/projects/:projectId/mep/networks",async(req,res,next)=>{
-  try {
-    const tid=tenant(req,res),pid=routeId(req,res);if(!tid||!pid)return;
-    const body=validation(networkInput,req,res);if(!body)return;
-    if(!await projectExists(tid,pid)){res.status(404).json({error:"Projeto não encontrado"});return;}
-    const r=await pool.query(`INSERT INTO arqdor_mep_networks(id,tenant_id,project_id,system_id,name)
-      SELECT $1,tenant_id,project_id,id,$5 FROM arqdor_mep_systems WHERE tenant_id=$2 AND project_id=$3 AND id=$4 RETURNING *`,
-      [crypto.randomUUID(),tid,pid,body.systemId,body.name]);
-    if(!r.rowCount){res.status(404).json({error:"Sistema não encontrado no projeto"});return;}
-    res.status(201).json({network:r.rows[0]});
-  }catch(err){next(err);}
+ try {
+  const tid=tenant(req,res),pid=routeId(req,res);if(!tid||!pid)return;
+  const body=validation(networkInput,req,res);if(!body)return;
+  const result=await withLockedMepConcept(tid,pid,async(client)=>{
+   const r=await client.query(`INSERT INTO arqdor_mep_networks(id,tenant_id,project_id,system_id,name)
+     SELECT $1,tenant_id,project_id,id,$5 FROM arqdor_mep_systems
+     WHERE tenant_id=$2 AND project_id=$3 AND id=$4 RETURNING *`,
+     [crypto.randomUUID(),tid,pid,body.systemId,body.name]);
+   return r.rowCount?{network:r.rows[0]}:undefined;
+  });
+  if(result===null){res.status(409).json({code:"MEP_BINDING_REQUIRED"});return;}
+  if(!result){res.status(404).json({error:"Sistema não encontrado no projeto"});return;}
+  res.status(201).json(result);
+ }catch(err){next(err);}
 });
 arqdorMepRouter.post("/arch/projects/:projectId/mep/nodes",async(req,res,next)=>{
   try {
