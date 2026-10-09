@@ -445,3 +445,11 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Commits:** `7ac028d` (núcleo), `7b75ffb` (testes).
 - **Evidência de execução:** testes novos escritos e GitHub atualizado, porém **não executados**. O contêiner local não conseguiu resolver `raw.githubusercontent.com` (erro DNS), portanto não foi possível obter o código integral do projeto no executor local. Build frontend/backend também **não executado**. Não afirmar validação concluída.
 - **Etapas restantes do 3422-A:** executar suíte no runtime autorizado ou checkout disponível, corrigir quaisquer falhas, build TS e teste visual WebGL, validar estanqueidade e orientação de faces em modelos reais. Manter PR em Draft e produção intocada.
+
+## 3422-A — reparo bloqueante no núcleo ortogonal (09/10/2026)
+- **Falha concreta localizada:** `arqdor_orthogonal_union.py` continha sequências literais `\\n` nas expressões de volume e no dicionário de retorno, causando erro de sintaxe Python. Foram substituídas por quebras reais.
+- **Correção geométrica:** orientação das faces externas ±Y corrigida para orientação externa consistente. Mantida extração de superfície por partição ortogonal e remoção das faces internas.
+- **Teste de regressão acrescentado:** comparação entre volume assinado derivado da triangulação das faces e `volumePreviewM3`, para detectar superfícies invertidas. As suites anteriores também cobrem porta, janela, L/T/cruz, volume e orientação por arestas.
+- **Commits:** `aebcc75` (reparo sintático e winding), `7e67fea` (teste de volume assinado).
+- **Validação real:** os testes **não foram executados**. O contêiner continua sem resolução DNS do github.com. Build frontend/backend também não foi executado. Não homologado, sem merge/deploy, PR #3422 Draft e produção inalterada.
+- **A seguir:** executar testes em ambiente com checkout autorizado; verificar eventuais faces T-junction, gerador TypeScript e orientação no WebGL, e então corrigir falhas antes de homologar.
