@@ -816,24 +816,34 @@ router.post("/propostas", async (req, res) => {
     return;
   }
 
-  // Imported documents recognized by the audit trail cannot be saved as
-  // proposals until explicitly approved. Legacy/manual files are unchanged.
-  if (parsed.data.arquivoImportadoUrl) {
+  // The proposal's own upload URL may differ from the private extraction URL.
+  // Validate approved import by tenant and id rather than comparing two stores.
+  const budgetImportId = (req.body as Record<string, unknown>).budgetImportId;
+  if (budgetImportId !== undefined) {
+    if (typeof budgetImportId !== "string" || !/^[0-9a-f-]{36}$/i.test(budgetImportId)) {
+      res.status(422).json({ error: "Identificador de importação inválido." });
+      return;
+    }
+    const reviewed = await db.execute(sql`
+      SELECT id FROM public.budget_imports
+      WHERE id = ${budgetImportId} AND tenant_id = ${parsed.data.tenantId}
+        AND review_status = 'approved'
+      LIMIT 1
+    `);
+    if (!reviewed.rows.length || !parsed.data.arquivoImportadoUrl) {
+      res.status(409).json({ code: "BUDGET_IMPORT_REVIEW_REQUIRED", error: "Importação não aprovada ou sem arquivo anexado." });
+      return;
+    }
+  } else if (parsed.data.arquivoImportadoUrl) {
     const known = await db.execute(sql`
-      SELECT id, review_status FROM public.budget_imports
+      SELECT id FROM public.budget_imports
       WHERE tenant_id = ${parsed.data.tenantId}
         AND file_url = ${parsed.data.arquivoImportadoUrl}
-      ORDER BY created_at DESC LIMIT 1
+      LIMIT 1
     `);
     if (known.rows.length) {
-      const submittedImportId = (req.body as Record<string, unknown>).budgetImportId;
-      if (known.rows[0].review_status !== "approved" || submittedImportId !== known.rows[0].id) {
-        res.status(409).json({
-          code: "BUDGET_IMPORT_REVIEW_REQUIRED",
-          error: "Revise e aprove o orçamento importado antes de gravar a proposta.",
-        });
-        return;
-      }
+      res.status(409).json({ code: "BUDGET_IMPORT_REVIEW_REQUIRED", error: "Revise a importação antes de gravar a proposta." });
+      return;
     }
   }
 
