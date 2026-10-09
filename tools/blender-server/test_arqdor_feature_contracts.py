@@ -260,6 +260,21 @@ class FeatureContractsTests(unittest.TestCase):
             self.assertIsNone(entry["dimensionsMeters"])
             self.assertFalse(entry["fabricationReady"])
 
+    def test_object_ids_disambiguate_same_named_windows(self):
+        wall = {"name": "Parede", "objectId": "mesh-000000", "suggestedClass": "wall",
+                "bounds": {"min": [0, 0, 0], "max": [5, .2, 3]}}
+        first = {"name": "Janela", "objectId": "mesh-000001", "suggestedClass": "window",
+                 "bounds": {"min": [1, 0, 1], "max": [2, .2, 2]}}
+        second = {"name": "Janela", "objectId": "mesh-000002", "suggestedClass": "window",
+                  "bounds": {"min": [3, 0, 1], "max": [4.5, .2, 2]}}
+        rows = draft_opening_schedule([wall, first, second], calibrated_scale=1)
+        self.assertEqual([r["objectId"] for r in rows], ["mesh-000001", "mesh-000002"])
+        self.assertEqual([r["dimensionsMeters"]["approxWidth"] for r in rows], [1, 1.5])
+        self.assertTrue(all(not r["approved"] and not r["fabricationReady"] for r in rows))
+        ambiguous = draft_opening_schedule(
+            [wall, {**first, "objectId": "duplicate"}, {**second, "objectId": "duplicate"}], 1)
+        self.assertTrue(all(r["dimensionsMeters"] is None for r in ambiguous))
+
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
         self.assertFalse(data["quantitiesEnabled"])
