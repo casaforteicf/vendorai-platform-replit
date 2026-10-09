@@ -240,3 +240,10 @@ Validação: 115 testes em 22 arquivos passaram; transformação TSX do planner 
 applyFurnishLayoutOption valida todos os itens antes de snapshot, IDs ou atualização do modelo. Verifica medidas/posição finitas, dimensões positivas, pavimento atual e envelope rotacionado dentro do lote. Erro identifica item ou pavimento; mantém preview/opções para revisão e não gera histórico. Não reposiciona ou redimensiona itens para forçar encaixe. Validação de permanência no ambiente e conflitos com móveis existentes permanece pendente.
 
 Validação: 118 testes em 22 arquivos passaram; transformação TSX do planner passou. Interação integrada, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Mobiliário contido no ambiente atual
+
+Antes de aplicar layout, compara área do polígono rotacionado de cada móvel com a área coberta pelas células disjuntas do ambiente selecionado. Aceita cruzar fronteiras internas das células; rejeita partes fora do ambiente, recortes em L e lacunas, mesmo com cantos dentro. Falha mantém opções/preview e impede inserção/histórico. Baseado nas células ortogonais de detectClosedSpaces; não considera espessura/acabamentos internos, folgas de uso ou colisões com móveis existentes.
+
+Validação: 122 testes em 23 arquivos passaram; tipagem isolada do helper e transformação TSX do planner passaram. Integração visual, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.

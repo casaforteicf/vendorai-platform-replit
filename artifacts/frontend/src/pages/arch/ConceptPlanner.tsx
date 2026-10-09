@@ -1,3 +1,4 @@
+import { furnitureFitsRoom } from "./conceptFurnitureRoomFit";
 import { boundedObjectGeometry, duplicateObjectGeometry, insertedObjectGeometry, objectBatchPlacementError } from "./conceptObjectTransform";
 import { openingCoordinates } from "./conceptOpeningCoordinates";
 import { flushSync } from "react-dom";
@@ -4346,6 +4347,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     if (!option || !selectedClosedSpace || furnishLayoutSpaceId !== selectedClosedSpace.id) return;
     const placementError = objectBatchPlacementError(option.objects, lotWidth, lotDepth, activeFloor);
     if (placementError) { setObjectPlacementError(placementError); return; }
+    if (!option.objects.every(object => furnitureFitsRoom(object, selectedClosedSpace.cells))) {
+      setObjectPlacementError("O layout não cabe mais no ambiente escolhido. Gere uma nova opção com a planta atual.");
+      return;
+    }
     setObjectPlacementError(null);
     const before = snapshotEditor();
     const created = option.objects.map((object) => ({
