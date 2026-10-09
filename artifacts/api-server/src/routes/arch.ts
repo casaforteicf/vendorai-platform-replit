@@ -2003,6 +2003,7 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
         eq(archConceptProjectsTable.ownerUserId, userId),
       ),
     )
+    .returning();
 
   if (!updated) return res.status(404).json({ error: "Pré-projeto não encontrado." });
   return res.json(updated);
