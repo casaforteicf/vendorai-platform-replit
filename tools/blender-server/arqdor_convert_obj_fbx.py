@@ -73,6 +73,7 @@ def convert(src: Path, dst: Path, sha256: str):
                     len(obj.data.vertices), len(obj.data.edges),
                     len(obj.data.polygons), boundary, nonmanifold)
                 if boundary <= 50000:
+                    bm.verts.index_update()
                     boundary_vertices = [[float(v) for v in (obj.matrix_world @ vertex.co)]
                                          for vertex in obj.data.vertices]
                     boundary_connections = [[edge.verts[0].index, edge.verts[1].index]
