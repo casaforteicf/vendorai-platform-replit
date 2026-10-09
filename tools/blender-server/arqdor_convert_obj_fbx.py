@@ -11,7 +11,7 @@ from mathutils import Vector
 from pathlib import Path
 
 import bpy
-from arqdor_feature_contracts import validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, draft_opening_schedule, associate_boundary_candidates, evaluate_wall_mesh_topology, inspect_boundary_loops
+from arqdor_feature_contracts import validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, draft_opening_schedule, associate_boundary_candidates, build_opening_review_queue, evaluate_wall_mesh_topology, inspect_boundary_loops
 
 
 def convert(src: Path, dst: Path, sha256: str):
@@ -105,6 +105,7 @@ def convert(src: Path, dst: Path, sha256: str):
     opening_hosts = propose_opening_hosts(classification_hints)
     opening_schedule = draft_opening_schedule(classification_hints)
     boundary_matches = associate_boundary_candidates(opening_hosts, classification_hints)
+    opening_review_queue = build_opening_review_queue(opening_schedule, boundary_matches)
     bpy.ops.export_scene.gltf(filepath=str(dst.resolve()), export_format="GLB",
                               use_selection=False, export_apply=False)
     if not dst.is_file() or dst.stat().st_size == 0:
@@ -120,6 +121,7 @@ def convert(src: Path, dst: Path, sha256: str):
             "openingHostCandidates": opening_hosts,
             "openingScheduleDraft": opening_schedule,
             "boundaryOpeningReview": boundary_matches,
+            "openingReviewQueue": opening_review_queue,
             "outputBytes": dst.stat().st_size,
             "geometryApproved": False, "materialsApproved": False}
 
