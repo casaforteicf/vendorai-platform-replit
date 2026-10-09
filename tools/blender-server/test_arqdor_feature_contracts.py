@@ -245,6 +245,21 @@ class FeatureContractsTests(unittest.TestCase):
             self.assertEqual(result[0]["candidateBoundaryMatches"], [])
             self.assertFalse(result[0]["openingConfirmed"])
 
+    def test_duplicate_window_names_never_produce_measured_schedule(self):
+        wall = {"name": "Parede", "suggestedClass": "wall",
+                "bounds": {"min": [0, 0, 0], "max": [5, .2, 3]}}
+        first = {"name": "Janela", "suggestedClass": "window",
+                 "bounds": {"min": [1, 0, 1], "max": [2, .2, 2]}}
+        second = {"name": "Janela", "suggestedClass": "window",
+                  "bounds": {"min": [3, 0, 1], "max": [4, .2, 2]}}
+        records = draft_opening_schedule([wall, first, second], calibrated_scale=1)
+        self.assertEqual(len(records), 2)
+        for entry in records:
+            self.assertEqual(entry["measurementStatus"], "ambiguous_object_name")
+            self.assertEqual(entry["objectCountWithName"], 2)
+            self.assertIsNone(entry["dimensionsMeters"])
+            self.assertFalse(entry["fabricationReady"])
+
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
         self.assertFalse(data["quantitiesEnabled"])
