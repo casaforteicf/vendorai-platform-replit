@@ -309,6 +309,9 @@ export function DealParticipantsCard({
       return;
     }
     await qc.invalidateQueries({ queryKey: ["crm-deal-participants", tenantId, dealId] });
+    if (kindToRemove === "people" && people.find((item) => item.relationId === relationId)?.isPrimary) {
+      toast({ title: "Contato principal removido", description: "Selecione outro envolvido e marque Contato principal deste negócio." });
+    }
   }
 
   const hasParticipants = people.length > 0 || companies.length > 0;
