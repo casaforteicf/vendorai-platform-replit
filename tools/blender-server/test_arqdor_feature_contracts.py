@@ -1,6 +1,6 @@
 import unittest
 from arqdor_feature_contracts import (
-    inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, preview_scale_calibration, draft_opening_schedule,
+    inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, preview_scale_calibration, draft_opening_schedule, evaluate_wall_mesh_topology,
 )
 
 
@@ -152,6 +152,18 @@ class FeatureContractsTests(unittest.TestCase):
         self.assertFalse(calibrated[0]["fabricationReady"])
         with self.assertRaises(ValueError):
             draft_opening_schedule([wall, window], 0)
+
+    def test_wall_topology_does_not_claim_apertures(self):
+        closed = evaluate_wall_mesh_topology(8, 12, 6, 0, 0)
+        self.assertEqual(closed["topologyStatus"], "closed_surface_not_void_verified")
+        self.assertFalse(closed["openingDetected"])
+        open_wall = evaluate_wall_mesh_topology(8, 12, 5, 4, 0)
+        self.assertEqual(open_wall["topologyStatus"], "open_surface_requires_review")
+        self.assertFalse(open_wall["quantitiesEnabled"])
+        broken = evaluate_wall_mesh_topology(8, 12, 5, 4, 2)
+        self.assertEqual(broken["topologyStatus"], "nonmanifold_requires_review")
+        with self.assertRaises(ValueError):
+            evaluate_wall_mesh_topology(8, 4, 2, 5, 0)
 
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
