@@ -115,3 +115,14 @@ conversores, build TypeScript e UI isolada antes de integrar.
 - O Vendi na homologação continua com último erro observado `VENDI_HOMOLOG_AUTH_EXCHANGE_FAILED 401 upstream_token_rejected`. Não alegar indisponibilidade do servidor Contabo com base nesta falha de autenticação.
 - Estado: **implementado sem validação técnica integral**. Homologação: não. Aprovação: não. Publicação: não. PR permanece Draft.
 - Próxima ação: autenticar o caminho Vendi/Contabo para homologação; no checkout do commit correto executar `python3 -m unittest -v test_arqdor_feature_contracts.py` no diretório `tools/blender-server`, `python3 -m py_compile arqdor_feature_contracts.py arqdor_convert_obj_fbx.py`, build e validação de conversão em Blender; registrar logs/exit codes/head testado e corrigir falhas antes de qualquer promoção.
+
+
+## Correção de falso positivo no perímetro de paredes — 09/10/2026
+- **Lote/versão:** ARQDOR-RENDER-BIM-3422 / desenvolvimento, sem release.
+- **Implementação:** `70c76fb` exclui anéis que encostam no perímetro externo da parede na análise de correspondência com esquadrias; critérios geométricos permanecem candidatos, nunca aprovação BIM.
+- **Teste acrescentado:** `028339b` cobre um anel externo coincidente com a fachada, mantendo `openingConfirmed=false` e prioridade espacial simples.
+- **Arquivos:** `tools/blender-server/arqdor_feature_contracts.py`; `tools/blender-server/test_arqdor_feature_contracts.py`.
+- **Evidência real:** GitHub recebeu os commits acima. Tentativa de acesso direto `git ls-remote` neste ambiente falhou por DNS de `github.com`; suíte Python/Blender/build **não executados nesta atualização**. Nenhuma evidência de execução na Contabo.
+- **Estados:** implementado, **não validado tecnicamente neste HEAD**, não homologado, não aprovado, não publicado. PR Draft, sem merge/deploy.
+- **Impedimento remanescente:** autenticação Vendi homologação HTTP 401 `upstream_token_rejected` na última tentativa; recuperar conexão homolog/terminal Contabo sem tocar produção.
+- **Próxima ação:** rodar testes completos e conversão real na Contabo de homologação, arquivar logs e SHA; revisar recortes reais da malha e a associação à esquadria.
