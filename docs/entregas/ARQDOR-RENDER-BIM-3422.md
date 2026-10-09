@@ -508,3 +508,9 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Correção:** união ortogonal passa a ser validada/construída antes de instanciar o renderer; a falha de validação não aloca contexto WebGL. Commit `09478e4`.
 - **Validação:** alteração registrada no GitHub. **Build, testes automatizados e teste no navegador não executados** por indisponibilidade de checkout direto neste ambiente. A correção cobre o caminho identificado, não todas as possíveis falhas de inicialização WebGL.
 - **Estado:** PR #3422 Draft, sem merge/deploy, Contabo adiada, produção intacta.
+
+## 3422-A — correção sintática crítica após volume assinado (09/10/2026)
+- **Erro confirmado pelo conteúdo do repositório:** strings literais `\\n` introduzidas em `arqdor_orthogonal_union.py` quebravam duas instruções Python, incluindo o predicado de integridade e os campos de volume assinado.
+- **Correção:** commit `c5930d3` troca as sequências literais por quebras reais de linha; nenhum critério de integridade foi relaxado.
+- **Tentativa de execução:** a URL raw.githubusercontent.com testada localmente falhou com `URLError [Errno -3] Temporary failure in name resolution`; sem checkout local, não foi possível executar a suíte do repositório. Não há resultado de testes ou build para declarar aprovado.
+- **Status:** PR #3422 Draft, execução Python/TypeScript pendente, homologação Contabo adiada, sem merge nem publicação.
