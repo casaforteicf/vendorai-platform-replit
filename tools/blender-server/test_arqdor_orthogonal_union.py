@@ -16,6 +16,22 @@ class OrthogonalUnionTests(unittest.TestCase):
         self.assertEqual(topology["nonmanifoldEdges"], 0)
         self.assertEqual(topology["orientationErrors"], 0)
 
+    def test_outward_faces_have_positive_signed_volume(self):
+        mesh = union_orthogonal_walls([wall((0, 0), (4, 0))])
+        volume = 0.0
+        for face in mesh["faces"]:
+            a, b, c = (mesh["vertices"][i] for i in face[:3])
+            # Signed volume from a consistently outward-oriented polygon mesh.
+            cross = (b[1]*c[2]-b[2]*c[1], b[2]*c[0]-b[0]*c[2],
+                     b[0]*c[1]-b[1]*c[0])
+            volume += sum(a[n]*cross[n] for n in range(3)) / 6
+            if len(face) == 4:
+                a, b, c = (mesh["vertices"][i] for i in (face[0], face[2], face[3]))
+                cross = (b[1]*c[2]-b[2]*c[1], b[2]*c[0]-b[0]*c[2],
+                         b[0]*c[1]-b[1]*c[0])
+                volume += sum(a[n]*cross[n] for n in range(3)) / 6
+        self.assertAlmostEqual(volume, mesh["volumePreviewM3"], places=6)
+
     def test_single_wall(self):
         mesh = union_orthogonal_walls([wall((0, 0), (4, 0))])
         self.assertEqual(len(mesh["faces"]), 6)
