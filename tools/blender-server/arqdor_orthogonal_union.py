@@ -76,7 +76,9 @@ def union_orthogonal_walls(entries, tolerance=1e-8):
                        not any(inside(void, x, y, z) for void in apertures[n])
                        for n, box in enumerate(solids)):
                     filled.add((i, j, k))
-    total_volume = sum((xs[i+1]-xs[i])*(ys[j+1]-ys[j])*(zs[k+1]-zs[k])\n                       for i, j, k in filled)\n    vertices, faces, indexed = [], [], {}
+    total_volume = sum((xs[i+1]-xs[i])*(ys[j+1]-ys[j])*(zs[k+1]-zs[k])
+                       for i, j, k in filled)
+    vertices, faces, indexed = [], [], {}
     def vert(x, y, z):
         key = (round(x, 9), round(y, 9), round(z, 9))
         if key not in indexed:
@@ -95,9 +97,9 @@ def union_orthogonal_walls(entries, tolerance=1e-8):
         if (i + 1, j, k) not in filled:
             face([(x1, y0, z1), (x1, y0, z0), (x1, y1, z0), (x1, y1, z1)])
         if (i, j - 1, k) not in filled:
-            face([(x0, y0, z1), (x0, y0, z0), (x1, y0, z0), (x1, y0, z1)])
+            face([(x0, y0, z0), (x0, y0, z1), (x1, y0, z1), (x1, y0, z0)])
         if (i, j + 1, k) not in filled:
-            face([(x0, y1, z0), (x0, y1, z1), (x1, y1, z1), (x1, y1, z0)])
+            face([(x0, y1, z1), (x0, y1, z0), (x1, y1, z0), (x1, y1, z1)])
         if (i, j, k - 1) not in filled:
             face([(x0, y0, z0), (x0, y1, z0), (x1, y1, z0), (x1, y0, z0)])
         if (i, j, k + 1) not in filled:
@@ -105,5 +107,6 @@ def union_orthogonal_walls(entries, tolerance=1e-8):
     return {"vertices": vertices, "faces": faces,
             "solidUnionMethod": "orthogonal_coordinate_partition",
             "internalFacesRemoved": True, "openingCount": sum(map(len, apertures)),
-            "occupiedCells": len(filled), "volumePreviewM3": round(total_volume, 9),\n            "geometryApproved": False,
+            "occupiedCells": len(filled), "volumePreviewM3": round(total_volume, 9),
+            "geometryApproved": False,
             "quantitiesEnabled": False, "requiresManualReview": True}
