@@ -162,8 +162,8 @@ async function deleteSaasCustomHostname(hostnameId: string) {
 }
 
 
-async function vendorApi<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const base = (process.env["VENDORAI_API_BASE"] || "https://vendorai-platform-replit-production.up.railway.app").replace(/\/$/, "");
+async function vendorApi<T>(path: string, init: RequestInit = {}, baseOverride?: string): Promise<T> {
+  const base = (baseOverride || process.env["VENDORAI_API_BASE"] || "https://vendorai-platform-replit-production.up.railway.app").replace(/\/$/, "");
   const token = requiredEnv("BROWSER_MCP_ACCESS_TOKEN");
   const response = await fetch(`${base}${path}`, {
     ...init,
@@ -401,7 +401,7 @@ function createCloudflareMcpServer() {
   server.registerTool(
     "vendi_crm_summary",
     {
-      description: "Consulta somente leitura à quantidade de leads ativos do CRM do tenant especificado, diretamente pela API VendorAI. Não utiliza Chromium.",
+      description: "Consulta somente leitura à quantidade de leads ativos do CRM na HOMOLOGAÇÃO VendorAI. Use tenantKey de homologação (ex.: krafht-homolog). Não altera produção nem utiliza Chromium.",
       inputSchema: z.object({ tenantKey: z.string().min(1).max(255) }),
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
@@ -409,7 +409,7 @@ function createCloudflareMcpServer() {
       const result = await vendorApi<unknown>("/internal/browser-mcp/crm-summary", {
         method: "POST",
         body: JSON.stringify({ tenantKey }),
-      });
+      }, process.env["VENDI_HOMOLOG_API_BASE"] || "http://vendorai-homolog-api:5000/api");
       return toolText(result);
     },
   );
