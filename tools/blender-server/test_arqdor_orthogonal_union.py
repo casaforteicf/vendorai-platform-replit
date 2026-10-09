@@ -32,6 +32,19 @@ class OrthogonalUnionTests(unittest.TestCase):
                 volume += sum(a[n]*cross[n] for n in range(3)) / 6
         self.assertAlmostEqual(volume, mesh["volumePreviewM3"], places=6)
 
+    def test_y_normals_point_outward(self):
+        mesh = union_orthogonal_walls([wall((0, 0), (4, 0))])
+        for face in mesh["faces"]:
+            pts = [mesh["vertices"][idx] for idx in face]
+            if len({p[1] for p in pts}) != 1:
+                continue
+            a, b, c = pts[:3]
+            normal_y = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2])
+            if abs(pts[0][1] + .1) < 1e-8:
+                self.assertLess(normal_y, 0)
+            if abs(pts[0][1] - .1) < 1e-8:
+                self.assertGreater(normal_y, 0)
+
     def test_single_wall(self):
         mesh = union_orthogonal_walls([wall((0, 0), (4, 0))])
         self.assertEqual(len(mesh["faces"]), 6)
