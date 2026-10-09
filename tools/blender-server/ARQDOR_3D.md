@@ -114,3 +114,78 @@ node --experimental-strip-types --test tools/arqdor-tests/model-files.test.mjs
 
 Relaciona-se à issue #3421. Nenhuma contratação, chave ou implantação é feita
 por estes arquivos.
+
+
+## Objetivo Render Pro — referência funcional V-Ray / Lumion (09/10/2026)
+
+Este escopo é **planejamento**, não funcionalidade concluída, nem integração licenciada
+com software Chaos. A interface terá identidade própria Arqdor. Não chamar preview
+WebGL rasterizado de ray tracing ou de render final; não declarar paridade de qualidade
+sem benchmark comparativo com as mesmas cenas.
+
+### Três modos de trabalho
+
+1. **Editor interativo**: importar GLB e demais formatos homologados, orbitar, selecionar
+   materiais por identificador verificável, modificar parâmetros PBR, luzes, objetos e câmera.
+   Prévia responsiva com qualidade explicitamente identificada; não consumir GPU remota
+   desnecessariamente a cada edição.
+2. **Prévia progressiva**: cenas versionadas e snapshots, render de menor resolução com
+   Cycles e denoise, refinamento sob demanda, opção de cancelar. Render remoto e retorno
+   privado; feedback de progresso real e orçamento.
+3. **Imagem final**: presets de marketing Full HD, 4K e impressão de alta resolução,
+   Cycles com path tracing, iluminação global, reflexos, refração, cáusticas quando
+   suportadas, composição, denoise e exportação com metadados de origem.
+
+### Recursos de arquitetura e IA
+
+| Capacidade | Contrato e critérios de aceitação |
+| --- | --- |
+| Mood Match | Usuário fornece referência; IA sugere iluminação, cor e atmosfera; geometria bloqueada; revisão antes da aplicação |
+| Material PBR por imagem | Gerar ou estimar base color, normal, roughness, metallic e height quando possível; preservar escala real e origem; mapas 4K opcionais |
+| Detalhe de grandes superfícies | Adicionar microvariações ao shader sem deformar paredes/lajes ou inventar elementos construtivos |
+| Interiores com paralaxe | Shader opcional para fachadas; identificar que é simulação, não modelo BIM nem fonte de quantitativos |
+| Piscinas e vidros | Fresnel, transmissão, refração e cáusticas configuráveis e testadas, com fallback visual informado |
+| Gaussian splats | Tratar como referência visual com limitações; revisar formatos, licenciamento e relighting antes de habilitar |
+| Material Node Editor | Interface simples por padrões PBR; edição nodal avançada somente sob opção explícita |
+| Frame Buffer Arqdor | Exposição, balanço de branco, curvas, comparação de versões, máscaras, camadas, regiões, exportação |
+| Câmeras avançadas | Autofoco por objeto, pontos de vista salvos, exclusão visual por câmera sem mudar geometria original |
+| Vídeo | Câmera animada, keyframes, jobs retomáveis e exportação, orçamento separado de imagem |
+| Preservação BIM | Identificar e conferir paredes, portas, janelas, pavimentos, cortes, plantas e quadro de esquadrias antes de liberar quantitativos |
+
+### Sequência técnica e gates
+
+- **Gate 0 — Confiabilidade:** build completo, testes de API/frontend, inspeção Blender
+  com GLB real, geometria e escala preservadas. Conferir os mesmos materiais entre
+  GLTFLoader e Blender; nomes repetidos, instâncias e materiais com múltiplos slots
+  devem ser tratados explicitamente. Não habilitar render sem esses testes.
+- **Gate 1 — Render funcional:** transportar arquivo privado Contabo ↔ GPU, fila
+  persistente, custo visível apenas no superadmin, imagens salvas automaticamente
+  na Biblioteca do tenant, fallback GPT por imagem com referência e rotulagem IA.
+- **Gate 2 — Qualidade:** comparar arquitetura de referência e resultado lado a lado
+  em ao menos exterior diurno, exterior noturno, interior e piscina. Medir resolução,
+  fidelidade de câmera, geometrias, materiais, iluminação, ruído, tempo e custo.
+- **Gate 3 — Premium:** material PBR/4K, editor avançado, efeitos óticos, mood match,
+  compositing, interior de paralaxe, vídeo e integração de gaussian splats.
+- **Gate 4 — Entrega técnica:** importações SKP/IFC/OBJ/FBX/GLTF homologadas,
+  extração de plantas, cortes, fachadas, esquadrias e quantitativos validados
+  por modelo; nunca deduzir dimensões técnicas de uma imagem estilizada.
+
+### Política de capacidade
+
+Contabo permanece no controle e armazenamento privado; GPU externa sob demanda,
+com concorrência por tenant, idempotência, timeout, cancelamento e escalonamento.
+Cycles suporta vários backends de GPU, mas não assumir que CPU+GPU simultâneas sejam
+mais rápidas; medir por hardware, memória da cena e resolução. Não contratar GPU
+nem novos serviços automaticamente.
+
+### Estado atual
+
+Somente base GLB, configurações de cena e correspondência de materiais restrita
+estão parcialmente implementadas no PR. A qualidade V-Ray, o viewport ray-traced
+real, todos os efeitos premium, a importação ampliada e os detalhamentos não foram
+homologados. As metas acima não são alegações de funcionalidade existente.
+
+Referências:
+- https://www.chaos.com/press/v-ray-7-update-3-real-time-rendering-meets-the-v-ray-viewport
+- https://docs.blender.org/manual/en/4.5/render/cycles/gpu_rendering.html
+- https://docs.blender.org/manual/en/4.5/render/cycles/render_settings/sampling.html
