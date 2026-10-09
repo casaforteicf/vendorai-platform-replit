@@ -269,3 +269,47 @@ def preview_scale_calibration(measured_distance, actual_meters, dimensions):
     return {"scaleFactor": factor, "dimensionsMeters": [v * factor for v in dimensions],
             "status": "pending_geometry_review", "appliedToModel": False,
             "quantitiesEnabled": False}
+
+
+def draft_opening_schedule(objects, calibrated_scale=None):
+    """Unapproved door/window schedule using mesh AABBs; never fabrication sizes.
+
+    Blender coordinates are Z-up. AABB dimensions differ from real frame sizes
+    for rotated elements, hardware, composite meshes or uncalibrated imports.
+    """
+    relations = propose_opening_hosts(objects)
+    if calibrated_scale is not None and (
+            type(calibrated_scale) not in (int, float)
+            or not math.isfinite(calibrated_scale)
+            or not 0.00001 <= calibrated_scale <= 100000):
+        raise ValueError("Escala inválida")
+    by_name = {}
+    for item in objects:
+        name = item.get("name")
+        if not isinstance(name, str) or not name:
+            raise ValueError("Nome de objeto inválido")
+        by_name.setdefault(name, []).append(item)
+    output = []
+    for relation in relations:
+        elements = by_name.get(relation["opening"], [])
+        if len(elements) != 1:
+            output.append({**relation, "measurementStatus": "ambiguous_object_name",
+                           "dimensionsMeters": None, "approved": False})
+            continue
+        box = elements[0]["bounds"]
+        lo, hi = box["min"], box["max"]
+        span = [hi[i] - lo[i] for i in range(3)]
+        # Smaller XY AABB dimension approximates wall depth; the larger is
+        # only a candidate opening width, not a verified technical dimension.
+        width = max(span[0], span[1])
+        height = span[2]
+        dimensions = None if calibrated_scale is None else {
+            "approxWidth": round(width * calibrated_scale, 4),
+            "approxHeight": round(height * calibrated_scale, 4),
+            "approxSillElevation": round(lo[2] * calibrated_scale, 4),
+        }
+        output.append({**relation, "measurementStatus": "aabb_estimate_requires_review",
+                       "dimensionsMeters": dimensions,
+                       "scaleCalibrated": calibrated_scale is not None,
+                       "approved": False, "fabricationReady": False})
+    return output
