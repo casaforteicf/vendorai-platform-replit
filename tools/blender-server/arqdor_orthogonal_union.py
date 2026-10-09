@@ -6,6 +6,7 @@ not an approved BIM or manufacturing geometry.
 """
 import math
 from arqdor_feature_contracts import inspect_parametric_wall
+from arqdor_parametric_mesh import inspect_mesh_edges
 
 
 def union_orthogonal_walls(entries, tolerance=1e-8):
@@ -104,7 +105,9 @@ def union_orthogonal_walls(entries, tolerance=1e-8):
             face([(x0, y0, z0), (x0, y1, z0), (x1, y1, z0), (x1, y0, z0)])
         if (i, j, k + 1) not in filled:
             face([(x0, y1, z1), (x0, y0, z1), (x1, y0, z1), (x1, y1, z1)])
-    return {"vertices": vertices, "faces": faces,
+    topology = inspect_mesh_edges({"vertices": vertices, "faces": faces})
+    return {"vertices": vertices, "faces": faces, "topology": topology,
+            "meshClosedByEdgeIncidence": topology["watertightByEdgeIncidence"],
             "solidUnionMethod": "orthogonal_coordinate_partition",
             "internalFacesRemoved": True, "openingCount": sum(map(len, apertures)),
             "occupiedCells": len(filled), "volumePreviewM3": round(total_volume, 9),
