@@ -47,6 +47,22 @@ class OrthogonalUnionTests(unittest.TestCase):
             if abs(pts[0][1] - .1) < 1e-8:
                 self.assertGreater(normal_y, 0)
 
+    def test_integrity_status_matches_calculated_topology(self):
+        result = union_orthogonal_walls([wall((0, 0), (4, 0))])
+        if result["meshClosedByEdgeIncidence"]:
+            self.assertEqual(result["integrityStatus"], "closed_by_edge_incidence_unreviewed")
+        else:
+            self.assertEqual(result["integrityStatus"], "requires_geometric_repair")
+        self.assertFalse(result["geometryApproved"])
+
+    def test_shared_edge_contacts_not_automatically_approved(self):
+        first = wall((0, 0), (2, 0))
+        second = wall((2.1, 0), (4.1, 0))
+        result = union_orthogonal_walls([first, second])
+        self.assertFalse(result["geometryApproved"])
+        self.assertTrue(result["meshClosedByEdgeIncidence"] or
+                        result["integrityStatus"] == "requires_geometric_repair")
+
     def test_single_wall(self):
         mesh = union_orthogonal_walls([wall((0, 0), (4, 0))])
         self.assertEqual(len(mesh["faces"]), 6)
