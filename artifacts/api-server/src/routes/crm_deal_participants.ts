@@ -236,6 +236,7 @@ router.get("/crm/deals/:dealId/participants", async (req, res) => {
       role: crmDealCompaniesTable.role,
       isPrimary: crmDealCompaniesTable.isPrimary,
       notes: crmDealCompaniesTable.notes,
+      metadata: crmDealCompaniesTable.metadata,
     }).from(crmDealCompaniesTable)
       .innerJoin(crmCompaniesMasterTable, eq(crmCompaniesMasterTable.id, crmDealCompaniesTable.companyId))
       .where(and(eq(crmDealCompaniesTable.tenantId, tenantId), eq(crmDealCompaniesTable.dealId, req.params.dealId)));
