@@ -244,3 +244,20 @@ def propose_opening_hosts(objects, tolerance=0.15):
                           "candidateWalls": matches[:20], "status": "unverified_spatial_overlap",
                           "openingDetected": False, "quantitiesEnabled": False})
     return proposals
+
+
+def preview_scale_calibration(measured_distance, actual_meters, dimensions):
+    """Explicit scale preview, not a geometry modification or BIM approval."""
+    for number in (measured_distance, actual_meters):
+        if type(number) not in (int, float) or not math.isfinite(number) or number <= 0:
+            raise ValueError("Medidas de referência inválidas")
+    if (not isinstance(dimensions, (list, tuple)) or len(dimensions) != 3
+            or any(type(v) not in (int, float) or not math.isfinite(v) or v < 0
+                   for v in dimensions)):
+        raise ValueError("Dimensões inválidas")
+    factor = actual_meters / measured_distance
+    if not math.isfinite(factor) or factor < 0.00001 or factor > 100000:
+        raise ValueError("Escala fora dos limites")
+    return {"scaleFactor": factor, "dimensionsMeters": [v * factor for v in dimensions],
+            "status": "pending_geometry_review", "appliedToModel": False,
+            "quantitiesEnabled": False}
