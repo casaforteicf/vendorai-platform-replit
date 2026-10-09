@@ -96,3 +96,10 @@ Arquivos: ConceptPlanner.tsx, ConceptMetricInput.tsx, ConceptMetricInput.test.ts
 Divisão e duplicação preservam o material da parede. Divisão extraída para operação pura preserva posição física, dimensões e metadados das aberturas, inclusive em diagonais; impede corte através de vão e trechos menores que 0,50 m. Exclusão remove acabamento e seleção da abertura excluída, sem criar histórico para ID inexistente. Restaurar snapshot limpa aviso de erro e interação pendente. Undo/redo agora executam restauração fora dos callbacks atualizadores de estado, evitando efeitos laterais dentro desses callbacks.
 
 Arquivos: ConceptPlanner.tsx, conceptWallOperations.ts e conceptWallSplit.test.ts. Validação: 59 testes passaram em 14 arquivos; sintaxe de ConceptPlanner verificada com esbuild. Fluxo integrado de undo/redo ainda requer inspeção em homologação. Lote ARQ-EDITOR-20261009, versão em desenvolvimento; homologação Contabo e publicação adiadas.
+
+
+## Coordenadas comuns das aberturas nas vistas
+
+Removido clamp visual de offset entre 8% e 92% dos marcadores personalizados da planta e dos níveis do modelo 3D. Ambas derivações usam openingCoordinates com posição exata desde o extremo inicial, inclusive paredes no sentido inverso. Dados de lado de abertura, folhas, perfil, vidro, fabricante e vínculo de produto propagados ao nível 3D. Isso corrige coordenadas e propagação; não conclui recortes/malhas diagonais ou suporte completo a aberturas empilhadas no 3D.
+
+Arquivos: ConceptPlanner.tsx, conceptOpeningCoordinates.ts e conceptOpeningCoordinates.test.ts. Validação consolidada: 62 testes passaram em 15 arquivos; sintaxe de Planner verificada isoladamente. Build completo e inspeção integrada pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento; homologação Contabo e publicação adiadas.

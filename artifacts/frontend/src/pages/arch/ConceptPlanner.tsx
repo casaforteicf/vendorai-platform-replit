@@ -1,3 +1,4 @@
+import { openingCoordinates } from "./conceptOpeningCoordinates";
 import { flushSync } from "react-dom";
 import { conceptReferenceSize } from "./conceptReferenceImage";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
@@ -3228,9 +3229,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         .flatMap((opening) => {
           const wall = safeCustomWalls.find((item) => item.id === opening.wallId && item.floor === activeFloor);
           if (!wall) return [];
-          const offset = Math.max(0.08, Math.min(0.92, opening.offset));
-          const x = wall.x1 + (wall.x2 - wall.x1) * offset;
-          const y = wall.y1 + (wall.y2 - wall.y1) * offset;
+          const { x, y } = openingCoordinates(wall, opening.offset);
           const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
           return [{
             id: opening.id,
@@ -3361,13 +3360,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         .flatMap((opening) => {
           const wall = floorCustomWalls.find((item) => item.id === opening.wallId);
           if (!wall) return [];
-          const offset = Math.max(0.08, Math.min(0.92, opening.offset));
+          const { x, y } = openingCoordinates(wall, opening.offset);
           const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
           return [{
             id: opening.id,
             type: opening.type,
-            x: wall.x1 + (wall.x2 - wall.x1) * offset,
-            y: wall.y1 + (wall.y2 - wall.y1) * offset,
+            x,
+            y,
             orientation: horizontal ? "horizontal" as const : "vertical" as const,
             roomId: `custom-wall:${wall.id}`,
             width: opening.width,
@@ -3375,6 +3374,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             sillHeight: opening.sillHeight,
             openingStyle: opening.openingStyle,
             swing: opening.swing,
+            swingSide: opening.swingSide,
+            leafCount: opening.leafCount,
+            frameProfile: opening.frameProfile,
+            glassType: opening.glassType,
+            manufacturer: opening.manufacturer,
+            catalogProductId: opening.catalogProductId,
           }];
         });
       const floorClosedSpaces = detectClosedSpaces(
