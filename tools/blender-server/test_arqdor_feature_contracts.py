@@ -1,6 +1,6 @@
 import unittest
 from arqdor_feature_contracts import (
-    inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, preview_scale_calibration,
+    inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, preview_scale_calibration, draft_opening_schedule,
 )
 
 
@@ -137,6 +137,21 @@ class FeatureContractsTests(unittest.TestCase):
             preview_scale_calibration(0, 1, [1, 2, 3])
         with self.assertRaises(ValueError):
             preview_scale_calibration(1, 2, [1, float("inf"), 3])
+
+    def test_opening_schedule_requires_review_and_calibration(self):
+        wall = {"name": "Parede A", "suggestedClass": "wall",
+                "bounds": {"min": [0, 0, 0], "max": [4, .2, 3]}}
+        window = {"name": "Janela A", "suggestedClass": "window",
+                  "bounds": {"min": [1, .1, 1], "max": [2, .3, 2]}}
+        raw = draft_opening_schedule([wall, window])
+        self.assertIsNone(raw[0]["dimensionsMeters"])
+        self.assertFalse(raw[0]["approved"])
+        calibrated = draft_opening_schedule([wall, window], 2)
+        self.assertEqual(calibrated[0]["dimensionsMeters"]["approxWidth"], 2)
+        self.assertEqual(calibrated[0]["dimensionsMeters"]["approxSillElevation"], 2)
+        self.assertFalse(calibrated[0]["fabricationReady"])
+        with self.assertRaises(ValueError):
+            draft_opening_schedule([wall, window], 0)
 
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
