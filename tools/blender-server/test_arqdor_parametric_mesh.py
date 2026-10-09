@@ -1,5 +1,5 @@
 import unittest
-from arqdor_parametric_mesh import mesh_parametric_wall, mesh_parametric_project, inspect_mesh_edges, merge_collinear_end_to_end_walls
+from arqdor_parametric_mesh import mesh_parametric_wall, mesh_parametric_project, inspect_mesh_edges, merge_collinear_end_to_end_walls, classify_wall_solid_joins
 
 
 class ParametricMeshTests(unittest.TestCase):
@@ -37,6 +37,23 @@ class ParametricMeshTests(unittest.TestCase):
                                        "thickness": .3, "height": 3}}
         self.assertEqual(len(merge_collinear_end_to_end_walls([a, perpendicular])["walls"]), 2)
         self.assertEqual(len(merge_collinear_end_to_end_walls([a, different_thickness])["walls"]), 2)
+
+    def test_solid_join_candidate_classification_and_vertical_separation(self):
+        horizontal = {"wall": self.wall}
+        vertical = {"wall": {"start": [2, -2, 0], "end": [2, 2, 0],
+                             "height": 3, "thickness": .2}}
+        cross = classify_wall_solid_joins([horizontal, vertical])
+        self.assertEqual(cross["joinCandidates"][0]["kind"], "cross")
+        self.assertFalse(cross["solidJoinsResolved"])
+        upstairs = {"wall": {"start": [2, -2, 3], "end": [2, 2, 3],
+                             "height": 3, "thickness": .2}}
+        self.assertEqual(classify_wall_solid_joins([horizontal, upstairs])["joinCandidates"], [])
+        terminal = {"wall": {"start": [4, 0, 0], "end": [4, 3, 0],
+                             "height": 3, "thickness": .2}}
+        self.assertEqual(classify_wall_solid_joins([horizontal, terminal])["joinCandidates"][0]["kind"], "L")
+        tee = {"wall": {"start": [2, 0, 0], "end": [2, 2, 0],
+                        "height": 3, "thickness": .2}}
+        self.assertEqual(classify_wall_solid_joins([horizontal, tee])["joinCandidates"][0]["kind"], "T")
 
     def test_single_wall_has_faces_and_no_automatic_approval(self):
         mesh = mesh_parametric_wall(self.wall)
