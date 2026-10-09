@@ -72,7 +72,7 @@ def convert(src: Path, dst: Path, sha256: str):
                 topology = evaluate_wall_mesh_topology(
                     len(obj.data.vertices), len(obj.data.edges),
                     len(obj.data.polygons), boundary, nonmanifold)
-                if boundary <= 50000:
+                if boundary <= 50000 and len(obj.data.vertices) <= 200000:
                     bm.verts.index_update()
                     boundary_vertices = [[float(v) for v in (obj.matrix_world @ vertex.co)]
                                          for vertex in obj.data.vertices]
@@ -80,6 +80,13 @@ def convert(src: Path, dst: Path, sha256: str):
                                             for edge in bm.edges if edge.is_boundary]
                     topology["boundaryLoopReview"] = inspect_boundary_loops(
                         boundary_vertices, boundary_connections)
+                else:
+                    topology["boundaryLoopReview"] = {
+                        "closedBoundaryCandidates": [],
+                        "status": "skipped_resource_limits",
+                        "requiresManualReview": True,
+                        "quantitiesEnabled": False,
+                    }
             finally:
                 bm.free()
         classification_hints.append({
