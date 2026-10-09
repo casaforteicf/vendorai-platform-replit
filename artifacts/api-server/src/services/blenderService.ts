@@ -35,7 +35,7 @@ import {
   type ItemAdicionado,
   type TexturaAlterada,
 } from "@workspace/db";
-import { eq, or, and, desc } from "drizzle-orm";
+import { eq, or, and, desc, sql } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -573,6 +573,14 @@ export async function checkRenderStatus(renderId: string): Promise<void> {
   let erroMsg = statusResp.erro ?? null;
   if (remoteStatus === "concluido" && !imageUrl) {
     try {
+      const [previousAsset] = await db.select({ storageUrl: mediaAssetsTable.storageUrl, mimeType: mediaAssetsTable.mimeType })
+        .from(mediaAssetsTable)
+        .where(and(eq(mediaAssetsTable.source, "generated"),
+          sql`${mediaAssetsTable.metadata}->>'archRenderId' = ${renderId}`))
+        .limit(1);
+      if (previousAsset) {
+        imageUrl = previousAsset.mimeType === "video/mp4" ? null : `/api/storage${previousAsset.storageUrl}`;
+      } else {
       const [scene] = await db.select({ projetoId: archCenasTable.projetoId })
         .from(archCenasTable).where(eq(archCenasTable.id, render.cenaId)).limit(1);
       if (!scene) throw new Error("Cena do render não encontrada");
@@ -622,6 +630,7 @@ export async function checkRenderStatus(renderId: string): Promise<void> {
       }
       // Never place an MP4 in an image-only field.
       imageUrl = isVideo ? null : `/api/storage${objectPath}`;
+      }
     } catch (error) {
       logger.error({ error, renderId }, "blenderService: falha ao armazenar PNG privado");
       // Keep the render in progress so polling can retry the transfer.
