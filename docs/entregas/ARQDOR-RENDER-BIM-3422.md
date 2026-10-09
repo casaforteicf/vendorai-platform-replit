@@ -514,3 +514,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Correção:** commit `c5930d3` troca as sequências literais por quebras reais de linha; nenhum critério de integridade foi relaxado.
 - **Tentativa de execução:** a URL raw.githubusercontent.com testada localmente falhou com `URLError [Errno -3] Temporary failure in name resolution`; sem checkout local, não foi possível executar a suíte do repositório. Não há resultado de testes ou build para declarar aprovado.
 - **Status:** PR #3422 Draft, execução Python/TypeScript pendente, homologação Contabo adiada, sem merge nem publicação.
+
+
+## 3422-A — verificação topológica também na prévia WebGL (09/10/2026)
+- **Mudança:** `arqdorOrthogonalUnion.ts` agora computa incidência de arestas, arestas com mais de duas faces e erros de orientação de faces da própria malha enviada ao navegador; retorna `topology.closedByEdgeIncidence` em vez de presumir integridade.
+- **Segurança da interface:** `RenderStudioParametricWebgl.tsx` impede renderizar a união como malha íntegra quando esses critérios falham e informa contagens concretas de falhas ao usuário.
+- **Commits:** `333b274` (análise topológica frontend) e `86cc339` (bloqueio de prévia inconsistente).
+- **Limitações:** edge-incidence é diagnóstico preliminar, não aprovação BIM; faltam conectividade volumétrica e paridade com Python no browser. Não houve compilação real do projeto nem testes end-to-end, pois o checkout segue indisponível ao executor local (DNS GitHub bloqueado). PR permanece Draft, sem merge/deploy, homologação Contabo adiada, produção inalterada.
