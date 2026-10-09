@@ -136,3 +136,14 @@ conversores, build TypeScript e UI isolada antes de integrar.
 - Evidência: commit GitHub registrado; **não foram executados testes Blender/Contabo** nesta sessão. `git ls-remote` local continua indisponível por resolução DNS de github.com. Vendi CDP indica disponibilidade, porém o último acesso à homologação retornou HTTP 401 na troca de autenticação.
 - Estados: implementado sem validação técnica, não homologado, não aprovado e não publicado. PR #3422 segue Draft.
 - Próxima ação: verificar correção contra modelo de malha grande em worker isolado, executar testes Python/Blender e builds no checkout Contabo com logs; resolver acesso Vendi para homologação.
+
+
+## Decisão de prioridade e avanço independente — 09/10/2026
+- **Determinação do solicitante:** deixar a homologação na Contabo, a autenticação Vendi e a publicação para depois. Não insistir nem bloquear melhorias independentes por essa dependência neste momento. Produção protegida.
+- **Lote e versão:** ARQDOR-RENDER-BIM-3422, desenvolvimento sem release; responsável pela execução no PR #3422.
+- **Escopo avançado:** tratamento defensivo de relatórios topológicos ausentes/malformados, para não promover correspondências de esquadrias a falsas evidências de aberturas.
+- **Commits:** `b08b625` (contrato de classificação), `b1960bb` (regressão).
+- **Arquivos:** `tools/blender-server/arqdor_feature_contracts.py`, `tools/blender-server/test_arqdor_feature_contracts.py`, este registro.
+- **Evidência de implementação:** commits registrados no GitHub na branch do PR. Testes desta revisão **não executados**; não há log de Blender ou de build correspondente. Não reivindicar validação técnica.
+- **Estado:** implementado sem validação técnica completa; homologado NÃO; aprovado NÃO; publicado NÃO. Nenhum merge/deploy.
+- **Próxima atividade executável:** continuar as melhorias BIM e de UX independentes, preservar revisão humana e quantitativos bloqueados. Retomar testes, homologação Contabo e publicação no momento definido pelo usuário.
