@@ -73,3 +73,9 @@ Reutilizar o cadastro mestre existente e permitir casal (dois consumidores com q
 - Revisões de código registradas no PR #3428, ainda **sem execução de build/tsc e sem homologação**.
 - Autenticação da homologação via Vendi continua bloqueada por `VENDI_HOMOLOG_AUTH_EXCHANGE_FAILED:401:upstream_token_rejected`, runId `4fb493af-a000-451f-aaf9-c9505d8544e3`. Não confundir esse impedimento de acesso com falha do GitHub Actions.
 - Segurança ainda a avaliar: reaproveitamento de registros globais no endpoint `POST /crm/people` exige análise completa de visibilidade por tenant antes da homologação.
+
+## Revisão de isolamento multi-tenant — 09/10/2026
+- `f2a2ea5`: `POST /crm/people` não devolve o cadastro mestre completo quando o documento pertence a pessoa sem relacionamento conhecido com o tenant solicitante; retorna conflito genérico.
+- `330bbc9`: `PATCH /crm/deals/:dealId/people/:personId/profile` bloqueia edição do perfil mestre global quando detecta vínculos da mesma pessoa com outro tenant (negócios ou contatos da empresa), evitando que um tenant altere dados usados por outro.
+- Pendência arquitetural: fluxo específico para autorização/vinculação de documentos já existentes em outro tenant, sem divulgar identificadores ou PII. A mudança conservadora pode exigir UX adicional para cadastros compartilhados.
+- Estado: **implementado sem validação**; não foram obtidos logs de Contabo nem evidências de homologação. Vendi homologação segue com 401 no fluxo de troca de token.
