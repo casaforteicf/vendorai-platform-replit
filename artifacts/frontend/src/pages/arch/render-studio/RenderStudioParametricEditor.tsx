@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+const RenderStudioParametricWebgl = lazy(() => import("./RenderStudioParametricWebgl"));
 import { renderAuthHeader } from "./renderStudioApi";
 
 type Point = [number, number];
@@ -184,6 +185,12 @@ export default function RenderStudioParametricEditor({ url, modelId, modelSha256
           })}
         </svg>
       </div>
+    </div>
+    <div className="space-y-2">
+      <h4 className="text-sm font-semibold">Malhas 3D — visualização WebGL</h4>
+      <Suspense fallback={<p role="status">Preparando malhas WebGL…</p>}>
+        <RenderStudioParametricWebgl walls={walls} active={active} />
+      </Suspense>
     </div>
     <div className="grid gap-2 sm:grid-cols-3">
       {field("Espessura", chosen.thickness, n => change(chosen.id, wall => ({ ...wall, thickness: n })))}
