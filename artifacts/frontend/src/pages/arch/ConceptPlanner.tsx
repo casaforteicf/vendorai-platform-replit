@@ -3598,45 +3598,47 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     recordHistory = false,
   ) => {
     const wall = safeCustomWalls.find((item) => item.id === wallId);
-    if (!wall) return;
+    if (!wall) return false;
     const nextWall = { ...wall, ...patch };
     const nextLength = Math.hypot(nextWall.x2 - nextWall.x1, nextWall.y2 - nextWall.y1);
     const widestOpening = safeCustomOpenings
       .filter((opening) => opening.wallId === wallId)
       .reduce((max, opening) => Math.max(max, opening.width ?? (opening.type === "door" ? 0.9 : 1.2)), 0);
     const minimumWallLength = widestOpening > 0 ? Math.max(0.5, widestOpening + 0.1) : 0.5;
-    if (nextLength < minimumWallLength) { setOpeningEditError("A parede ficaria curta demais para suas aberturas."); return; }
+    if (nextLength < minimumWallLength) { setOpeningEditError("A parede ficaria curta demais para suas aberturas."); return false; }
 
     const reconciled = reconcileWallOpenings([wall], [nextWall], safeCustomOpenings);
-    if ("error" in reconciled) { setOpeningEditError(reconciled.error); return; }
+    if ("error" in reconciled) { setOpeningEditError(reconciled.error); return false; }
     setOpeningEditError(null);
 
     const before = recordHistory ? snapshotEditor() : null;
     setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).map((item) => item.id === wallId ? nextWall : item));
     setCustomOpenings(reconciled.openings);
     if (before) pushRoomHistory(before);
+    return true;
   };
 
   const setCustomWallLength = (wallId: string, rawLength: number) => {
     const wall = safeCustomWalls.find((item) => item.id === wallId);
-    if (!wall || !Number.isFinite(rawLength)) return;
+    if (!wall || !Number.isFinite(rawLength)) return false;
     const openingMinimum = safeCustomOpenings
       .filter((opening) => opening.wallId === wallId)
       .reduce((max, opening) => Math.max(max, (opening.width ?? (opening.type === "door" ? 0.9 : 1.2)) + 0.1), 0.5);
-    if (rawLength < openingMinimum || rawLength > wallLengthLimit(wall, lotWidth, lotDepth)) return;
+    if (rawLength < openingMinimum || rawLength > wallLengthLimit(wall, lotWidth, lotDepth)) return false;
     const length = rawLength;
     const dx = wall.x2 - wall.x1;
     const dy = wall.y2 - wall.y1;
     const currentLength = Math.hypot(dx, dy);
-    if (currentLength < 0.001) return;
+    if (currentLength < 0.001) return false;
     const ux = dx / currentLength;
     const uy = dy / currentLength;
     const before = snapshotEditor();
     const target = { x: wall.x1 + ux * length, y: wall.y1 + uy * length };
-    if (target.x < 0 || target.x > lotWidth || target.y < 0 || target.y > lotDepth) return;
+    if (target.x < 0 || target.x > lotWidth || target.y < 0 || target.y > lotDepth) return false;
 
-    updateCustomWall(wallId, { x2: target.x, y2: target.y });
+    if (!updateCustomWall(wallId, { x2: target.x, y2: target.y })) return false;
     pushRoomHistory(before);
+    return true;
   };
 
   const setCustomWallStart = (wallId: string, axis: "x" | "y", value: number) => {
@@ -4427,32 +4429,34 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   ) => {
     const current = safeCustomOpenings.find((item) => item.id === openingId);
     const wall = current ? safeCustomWalls.find((item) => item.id === current.wallId) : null;
-    if (!current || !wall) return;
+    if (!current || !wall) return false;
     const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
     const result = exactOpeningEdit(current, patch, safeCustomOpenings.filter(item => item.wallId === wall.id && item.id !== openingId), wallLength);
-    if ("error" in result) { setOpeningEditError(result.error); return; }
+    if ("error" in result) { setOpeningEditError(result.error); return false; }
     setOpeningEditError(null);
     const before = snapshotEditor();
     setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map(opening => opening.id === openingId ? result.opening : opening));
     pushRoomHistory(before);
+    return true;
   };
 
   const setCustomOpeningOffset = (openingId: string, rawPercent: number) => {
     const opening = safeCustomOpenings.find((item) => item.id === openingId);
     const wall = opening ? safeCustomWalls.find((item) => item.id === opening.wallId) : null;
-    if (!opening || !wall || !Number.isFinite(rawPercent)) return;
+    if (!opening || !wall || !Number.isFinite(rawPercent)) return false;
     const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
-    if (wallLength < 0.001) return;
+    if (wallLength < 0.001) return false;
     const nextOffset = rawPercent / 100;
     const result = exactOpeningEdit(opening, { offset: nextOffset }, safeCustomOpenings.filter(item => item.wallId === wall.id && item.id !== openingId), wallLength);
-    if ("error" in result) { setOpeningEditError(result.error); return; }
-    if (Math.abs(opening.offset - nextOffset) < 1e-9) return;
+    if ("error" in result) { setOpeningEditError(result.error); return false; }
+    if (Math.abs(opening.offset - nextOffset) < 1e-9) return true;
     setOpeningEditError(null);
     const before = snapshotEditor();
     setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((item) =>
       item.id === openingId ? { ...item, offset: nextOffset } : item
     ));
     pushRoomHistory(before);
+    return true;
   };
 
   const toggleCustomOpeningSwing = (openingId: string) => {

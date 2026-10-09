@@ -3,6 +3,12 @@ import { exactOpeningEdit } from "./conceptOpeningPlacement";
 
 const window = { type: "window" as const, offset: 0.25, width: 1, height: 1.2, sillHeight: 0.9 };
 describe("medidas exatas das aberturas", () => {
+  it("desvincula produto com medidas alteradas e preserva vínculo ao reposicionar", () => {
+    const product = { ...window, catalogProductId: "product-1" };
+    expect(exactOpeningEdit(product, { width: 1.2 }, [], 4)).toMatchObject({ opening: { catalogProductId: undefined } });
+    expect(exactOpeningEdit(product, { offset: 0.5 }, [], 4)).toMatchObject({ opening: { catalogProductId: "product-1" } });
+    expect(exactOpeningEdit(product, { width: 1 }, [], 4)).toMatchObject({ opening: { catalogProductId: "product-1" } });
+  });
   it("mantém largura e posição solicitadas quando cabem", () => {
     expect(exactOpeningEdit(window, { width: 1.37 }, [], 4)).toEqual({ opening: { ...window, width: 1.37 } });
   });

@@ -82,3 +82,10 @@ Arquivos: ConceptPlanner.tsx, conceptOpeningPlacement.ts e conceptOpeningConvers
 Edição de largura pela planta e de parâmetros pelo painel agora valida a medida solicitada sem reduzir largura ou deslocar o centro silenciosamente. Posição percentual também rejeita posição inválida em vez de prender no limite. Largura, altura e peitoril usam validação comum; valores fora da faixa ou não finitos rejeitados. Dimensões existentes de importação são preservadas ao editar outro parâmetro. Helper de ajuste silencioso removido por ficar sem consumidores.
 
 Arquivos: ConceptPlanner.tsx, conceptOpeningPlacement.ts e conceptOpeningExactEdit.test.ts. Validação consolidada: 53 testes passaram em 13 arquivos; sintaxe TSX de ConceptPlanner verificada com esbuild. Sem build completo ou inspeção integrada. Lote ARQ-EDITOR-20261009, versão em desenvolvimento. Homologação Contabo e publicação permanecem adiadas.
+
+
+## Retorno da edição e vínculo com catálogo
+
+ConceptMetricInput aceita retorno booleano do commit. Se o modelo rejeitar a alteração, restaura o valor real e informa que a medida foi mantida. Handlers de largura/altura/peitoril/posição e comprimento de parede retornam resultado; comprimento rejeitado por reconciliação não adiciona entrada vazia de histórico. Alterações efetivas de largura/altura via edição exata removem catalogProductId; reposicionamento ou medida idêntica preservam vínculo.
+
+Arquivos: ConceptPlanner.tsx, ConceptMetricInput.tsx, ConceptMetricInput.test.tsx, conceptOpeningPlacement.ts, conceptOpeningExactEdit.test.ts. Verificação consolidada: 56 testes passaram em 13 arquivos; sintaxe TSX de Planner e MetricInput verificada isoladamente. Lote ARQ-EDITOR-20261009, versão em desenvolvimento. Build completo, inspeção integrada, homologação Contabo e publicação pendentes.

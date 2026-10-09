@@ -1,4 +1,4 @@
-type Opening = { offset: number; width?: number; type: "door" | "window"; height?: number; sillHeight?: number };
+type Opening = { offset: number; width?: number; type: "door" | "window"; height?: number; sillHeight?: number; catalogProductId?: string };
 const size = (o: Opening) => o.width ?? (o.type === "door" ? 0.9 : 1.2);
 const bottom = (o: Opening) => o.type === "door" ? 0 : o.sillHeight ?? 0.9;
 const top = (o: Opening) => bottom(o) + (o.height ?? (o.type === "door" ? 2.1 : 1.2));
@@ -28,6 +28,9 @@ export function openingDimensionError(patch: Partial<Opening>): string | null {
 export function exactOpeningEdit<T extends Opening>(current: T, patch: Partial<T>, existing: Opening[], length: number): { opening: T } | { error: string } {
   const candidate = { ...current, ...patch };
   const error = openingDimensionError(patch) ?? openingPlacementError(candidate, existing, length);
+  if (!error && ((patch.width !== undefined && patch.width !== size(current)) || (patch.height !== undefined && patch.height !== (current.height ?? (current.type === "door" ? 2.1 : 1.2))))) {
+    candidate.catalogProductId = undefined;
+  }
   return error ? { error } : { opening: candidate };
 }
 export function convertedOpening<T extends Opening>(opening: T, type: Opening["type"]): T & { openingStyle: "hinged" | "sliding" } {
