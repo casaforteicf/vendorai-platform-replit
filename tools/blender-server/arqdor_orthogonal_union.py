@@ -77,6 +77,21 @@ def union_orthogonal_walls(entries, tolerance=1e-8):
                        not any(inside(void, x, y, z) for void in apertures[n])
                        for n, box in enumerate(solids)):
                     filled.add((i, j, k))
+    # Connected volume means face-connected occupied cells, not merely a closed
+    # edge mesh: two disjoint walls or point-contacting bodies are not one solid.
+    unseen = set(filled)
+    components = 0
+    while unseen:
+        components += 1
+        pending = [unseen.pop()]
+        while pending:
+            i, j, k = pending.pop()
+            for neighbor in ((i-1, j, k), (i+1, j, k),
+                             (i, j-1, k), (i, j+1, k),
+                             (i, j, k-1), (i, j, k+1)):
+                if neighbor in unseen:
+                    unseen.remove(neighbor)
+                    pending.append(neighbor)
     total_volume = sum((xs[i+1]-xs[i])*(ys[j+1]-ys[j])*(zs[k+1]-zs[k])
                        for i, j, k in filled)
     vertices, faces, indexed = [], [], {}
@@ -106,7 +121,7 @@ def union_orthogonal_walls(entries, tolerance=1e-8):
         if (i, j, k + 1) not in filled:
             face([(x0, y1, z1), (x0, y0, z1), (x1, y0, z1), (x1, y1, z1)])
     topology = inspect_mesh_edges({"vertices": vertices, "faces": faces})
-    if not topology["watertightByEdgeIncidence"]:
+    if not topology["watertightByEdgeIncidence"] or components != 1:
         # Non-manifold point/edge contacts and degenerate unions are previews only.
         # Never advertise a clean continuous solid when edge-incidence fails.
         integrity = "requires_geometric_repair"
@@ -115,6 +130,7 @@ def union_orthogonal_walls(entries, tolerance=1e-8):
     return {"vertices": vertices, "faces": faces, "topology": topology,
             "integrityStatus": integrity,
             "meshClosedByEdgeIncidence": topology["watertightByEdgeIncidence"],
+            "connectedSolidComponents": components,
             "solidUnionMethod": "orthogonal_coordinate_partition",
             "internalFacesRemoved": True, "openingCount": sum(map(len, apertures)),
             "occupiedCells": len(filled), "volumePreviewM3": round(total_volume, 9),
