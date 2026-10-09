@@ -396,3 +396,11 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Limitações fundamentais:** malhas individuais não unidas; não há união sólida automática L/T/cruz nem resolução de nós; as superfícies 3D WebGL precisam de validação de topologia, desempenho, orientação e usabilidade; API de rascunhos não exporta diretamente GLB/IFC. Não considerar editor BIM completo.
 - **Validação:** código gravado no GitHub, sem build TypeScript, execução de testes ou renderização real verificada na Contabo; homologação e produção adiadas, PR #3422 permanece Draft e sem merge.
 - **Próximo conjunto:** implementar união geométrica rigorosa por tipos de encontro, validar o núcleo 3D com testes reais e separar rascunho editável de geometria aprovada.
+
+
+## Lote BIM — união colinear segura (09/10/2026)
+- **Novo avanço:** `merge_collinear_end_to_end_walls` em `tools/blender-server/arqdor_parametric_mesh.py` funde sequências de paredes com eixos colineares, mesma direção, extremidades coincidentes e espessura/altura compatíveis. Preserva aberturas deslocando o `offset` das portas/janelas da segunda parede para o eixo da parede consolidada. Não modifica entradas originais.
+- **Não abrangido:** união sólida de encontros em L, T e cruzamentos, sobreposições parciais e materializações de malhas globais. Em caso de incompatibilidade, as paredes permanecem separadas. Geometria continua não aprovada para quantitativos/fabricação.
+- **Commits:** `0370722` (implementação), `4752443` (cenários de união, manutenção de aberturas, rejeição de junções incompatíveis).
+- **Validação:** testes escritos, não executados; nenhuma homologação ou deploy. PR #3422 Draft, produção inalterada.
+- **Pendente para lote completo:** kernel boolean robusto para L/T/cruz; testes de topologia em geometria real, integração da fusão à UX/WebGL e comprovação de sincronismo ponta a ponta.
