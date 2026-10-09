@@ -320,3 +320,15 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Arquivos:** `tools/blender-server/arqdor_feature_contracts.py`, `tools/blender-server/test_arqdor_feature_contracts.py`, este Registro Mestre.
 - **Estado:** código registrado, testes adicionados **não executados nesta sessão**; sem comprovação de editor 2D/3D real, edição sincronizada, IFC, quantitativos ou cortes. Homologação Contabo e publicação adiadas por determinação do usuário, PR #3422 Draft, sem merge/deploy.
 - **Próximos passos independentes:** ligar a projeção à interface de edição com histórico/versões, implementar geometria 3D derivada e detecção de interseções; integrar posteriormente documentação e orçamento mediante conferência técnica.
+
+
+## Lote C ampliado — correspondência 2D/3D e encontros de paredes (09/10/2026)
+- **Lote/versão:** ARQDOR-RENDER-BIM-3422 / desenvolvimento sem release, relacionado aos lotes B, C e E.
+- **Entregas:** `draft_parametric_wall_solids` deriva bases e topos de prismas e descritores de volumes candidatos de portas/janelas a partir do mesmo conjunto de parâmetros da planta 2D. `draft_wall_centerline_intersections` detecta cruzamentos de linhas centrais e encontros de extremidades, sem editar ou unir geometrias.
+- **Commits de código:** `e755f6c` (descritores 3D), `26417b0` (interseções preliminares).
+- **Commits de testes:** `84c832d` (consistência 2D/3D, janela), `39276c8` (cruzamento e encontro).
+- **Arquivos:** `tools/blender-server/arqdor_feature_contracts.py`, `tools/blender-server/test_arqdor_feature_contracts.py`, este Registro Mestre.
+- **Limites explícitos:** os prismas ainda não são malhas fechadas, não há subtração booleana de vãos nem fusão/miter de encontros. Detector de linhas centrais é preliminar e não substitui verificação topológica/IFC ou resolução de paredes colineares.
+- **Validação:** alterações escritas no GitHub; testes adicionados mas **não executados nesta atualização**. Não afirmar editor BIM sincronizado nem entregáveis técnicos concluídos.
+- **Estados:** implementado parcialmente sem validação completa; homologação Contabo adiada, publicação não realizada, PR #3422 Draft, sem merge/deploy.
+- **Próximas frentes autorizadas:** preparar malhas reais com vazios por abertura, sincronização de edição 2D/3D, snap, cotas, identificação de pavimento e testes com modelos reais; preservar autorização humana para documentos técnicos.
