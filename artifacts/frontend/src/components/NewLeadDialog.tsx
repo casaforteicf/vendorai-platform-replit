@@ -55,6 +55,7 @@ const newLeadSchema = z.object({
   profissao: z.string().optional().or(z.literal("")),
   endereco: z.string().optional().or(z.literal("")),
   documento: z.string().optional().or(z.literal("")),
+  dataNascimento: z.string().optional().or(z.literal("")),
   tipoPessoa: z.enum(["fisica", "juridica"]).default("fisica"),
   mercadoSegmento: z.string().optional().or(z.literal("")),
   cupomCodigo: z.string().optional().or(z.literal("")),
@@ -136,6 +137,7 @@ type EndCustomerDraft = {
 };
 
 type CoClientDraft = {
+  dataNascimento: string;
   nome: string;
   telefone: string;
   email: string;
@@ -289,6 +291,7 @@ export function NewLeadDialog({
     funcao: "",
   });
   const [coClient, setCoClient] = useState<CoClientDraft>({
+    dataNascimento: "",
     nome: "",
     telefone: "",
     email: "",
@@ -427,7 +430,7 @@ export function NewLeadDialog({
     setExtraContacts([]);
     setCommercialPartners([]);
     setEndCustomer({ enabled: false, nome: "", telefone: "", email: "", documento: "", funcao: "" });
-    setCoClient({ nome: "", telefone: "", email: "", documento: "", funcao: "" });
+    setCoClient({ dataNascimento: "", nome: "", telefone: "", email: "", documento: "", funcao: "" });
     setServerDuplicate(null);
     resetCoupon();
     form.reset(DEFAULT_VALUES);
@@ -631,6 +634,7 @@ export function NewLeadDialog({
         telefone: values.telefone || undefined,
         email: values.email || undefined,
         documento: values.documento || undefined,
+        dataNascimento: values.cadastroTipo === "casal" ? values.dataNascimento || undefined : undefined,
         source: values.source,
       });
       personId = personData.item?.id as string | undefined;
@@ -646,6 +650,7 @@ export function NewLeadDialog({
         telefone: coClient.telefone.trim() || undefined,
         email: coClient.email.trim() || undefined,
         documento: coClient.documento.trim() || undefined,
+        dataNascimento: coClient.dataNascimento || undefined,
         profissao: coClient.funcao.trim() || undefined,
         source: values.source,
       });
@@ -1143,6 +1148,20 @@ export function NewLeadDialog({
               </div>
 
               {cadastroTipo === "casal" && (
+                <FormField
+                  control={form.control}
+                  name="dataNascimento"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Data de nascimento — Cliente 1</FormLabel>
+                      <FormControl><Input type="date" {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              {cadastroTipo === "casal" && (
                 <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
                   <div>
                     <p className="text-sm font-semibold">Cliente 2</p>
@@ -1183,6 +1202,15 @@ export function NewLeadDialog({
                         placeholder="000.000.000-00"
                         value={coClient.documento}
                         onChange={(event) => setCoClient((current) => ({ ...current, documento: event.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Data de nascimento — Cliente 2</label>
+                      <Input
+                        className="mt-2"
+                        type="date"
+                        value={coClient.dataNascimento}
+                        onChange={(event) => setCoClient((current) => ({ ...current, dataNascimento: event.target.value }))}
                       />
                     </div>
                     <div>
