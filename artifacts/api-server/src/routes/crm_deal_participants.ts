@@ -319,11 +319,40 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
     if (!personId && parsed.data.person) {
       const p = parsed.data.person;
       const documento = digits(p.documento);
+      if (documento) {
+        const [existing] = await db.select({ id: crmPeopleMasterTable.id })
+          .from(crmPeopleMasterTable).where(eq(crmPeopleMasterTable.documento, documento)).limit(1);
+        if (existing) {
+          return res.status(409).json({
+            error: "Documento já cadastrado. Selecione a pessoa existente para vinculá-la ao negócio.",
+            candidateIds: [existing.id],
+          });
+        }
+      }
+      const telefone = digits(p.telefone);
+      const email = p.email?.trim().toLowerCase();
+      const candidates = await db.select({
+        id: crmPeopleMasterTable.id,
+        nome: crmPeopleMasterTable.nome,
+        telefones: crmPeopleMasterTable.telefones,
+        emails: crmPeopleMasterTable.emails,
+      }).from(crmPeopleMasterTable).where(ilike(crmPeopleMasterTable.nome, p.nome.trim())).limit(30);
+      const possible = candidates.filter((person) =>
+        (telefone && (person.telefones ?? []).some((v) => digits(v) === telefone)) ||
+        (email && (person.emails ?? []).some((v) => v.toLowerCase() === email))
+      );
+      if (possible.length) {
+        return res.status(409).json({
+          error: "Possível pessoa já cadastrada. Selecione o cadastro existente antes de vincular.",
+          candidateIds: possible.map((person) => person.id),
+        });
+      }
       const [person] = await db.insert(crmPeopleMasterTable).values({
         nome: p.nome.trim(),
         documento: documento || null,
+        dataNascimento: p.dataNascimento ?? null,
         telefones: p.telefone ? [p.telefone.trim()] : [],
-        emails: p.email ? [p.email.trim().toLowerCase()] : [],
+        emails: email ? [email] : [],
         source: p.source ?? "manual",
         updatedAt: new Date(),
       }).returning({ id: crmPeopleMasterTable.id });
