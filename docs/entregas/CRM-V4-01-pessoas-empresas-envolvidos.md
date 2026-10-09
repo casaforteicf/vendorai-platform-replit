@@ -154,3 +154,10 @@ Reutilizar o cadastro mestre existente e permitir casal (dois consumidores com q
 - Revisão estática de quatro arquivos da branch, incluindo regras de casal, contato principal, deduplicação, auditoria e isolamento. Isso **não** substitui compilação nem testes em runtime.
 - Build TypeScript, esbuild e homologação não executados; homologação Contabo e publicação ficam adiadas por decisão expressa do usuário.
 - Próximo passo após liberação de acesso: rodar a matriz inteira de validação em ambiente isolado na Contabo, registrar logs, resultados e SHA, sem depender de GitHub Actions.
+
+## Atualização consolidada do lote — 09/10/2026
+- Matriz oficial com todos os 11 itens e estados reais: [CRM-V4-01-lote-unico-validacoes.md](./CRM-V4-01-lote-unico-validacoes.md), commit `0bc96ed`.
+- Novos componentes: idempotência de lead por tenant/autor/hash com trava transacional (`a1bf152`, `5b60f1c`, `d968220`), chave estável na interface (`2b3c0f6`), replay de casal (`db9a620` / `52e128e`), lead + negócio automático atômicos (`d38f7f4`) e criação/associação de empresa atômicas (`9af33ae`).
+- Testes **escritos**: `f51a483` e `fb7e890`; **nenhum resultado de Vitest, TypeScript ou build obtido**.
+- Regras preservadas: GitHub como fonte de código, Contabo para build/homologação, sem exigência de Actions, sem merges/deploy automáticos. Contabo/Vendi/homologação adiados por decisão do usuário. A publicação permanece não iniciada.
+- Classificação: **desenvolvimento avançou em lote, mas o lote integral NÃO está fechado** (fluxo ponta a ponta, revisão de segurança e validação executável pendentes).
