@@ -443,6 +443,36 @@ class FeatureContractsTests(unittest.TestCase):
         self.assertEqual(item["conflictReasons"], ["uncalibrated_or_missing_dimensions"])
         self.assertFalse(item["fabricationReady"])
 
+    def test_parametric_wall_preview_and_opening_collision(self):
+        wall = {"start": [0, 0, 0], "end": [5, 0, 0],
+                "thickness": 0.15, "height": 3}
+        first = {"kind": "window", "offset": 1, "width": 1.5, "sill": 1, "height": 1.2}
+        preview = inspect_parametric_wall(wall, [first])
+        self.assertEqual(preview["wallLength"], 5)
+        self.assertFalse(preview["geometryApproved"])
+        self.assertEqual(len(preview["openingCandidates"]), 1)
+        with self.assertRaises(ValueError):
+            inspect_parametric_wall(wall, [first, {**first, "offset": 2}])
+        with self.assertRaises(ValueError):
+            inspect_parametric_wall(wall, [{**first, "offset": 4.5}])
+
+    def test_architectural_documents_remain_draft_only(self):
+        wall = {"start": [0, 0, 0], "end": [4, 0, 0],
+                "thickness": .2, "height": 3}
+        documents = draft_architectural_deliverables([{"wall": wall, "openings": []}])
+        self.assertEqual(documents["wallCount"], 1)
+        self.assertEqual(documents["quantityTakeoff"], "disabled_pending_review")
+        self.assertFalse(documents["fabricationReady"])
+
+    def test_render_request_is_admission_not_gpu_execution(self):
+        preview = validate_professional_render_job({"preset": "4k", "mode": "image"})
+        self.assertEqual(preview["resolution"], [3840, 2160])
+        self.assertEqual(preview["status"], "validated_not_rendered")
+        with self.assertRaises(ValueError):
+            validate_professional_render_job({"preset": "ultra", "mode": "image"})
+        with self.assertRaises(ValueError):
+            validate_professional_render_job({"mode": "video", "keyframes": []})
+
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
         self.assertFalse(data["quantitiesEnabled"])
