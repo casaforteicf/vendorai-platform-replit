@@ -148,3 +148,9 @@ Reutilizar o cadastro mestre existente e permitir casal (dois consumidores com q
 - Commit `c944a10`: `NewLeadDialog` deixou de criar automaticamente o Cliente 1 como contato comercial permanente da empresa quando o tipo de cadastro é casal. Nesse caso, ambos são cadastrados como pessoas e vinculados ao negócio; a empresa, quando informada, é vinculada no contexto, sem tornar os clientes contatos permanentes.
 - O Cliente 1 mantém papel de consumidor final, `isPrimary` de comunicação; o Cliente 2 mantém consumidor final com identificação de consumidor principal nos metadados, sem receber preferência de comunicação automaticamente.
 - Estado: implementado sem validação técnica. Integração funcional ainda sujeita a testes de cadastro de casal PF e casal em negócio com empresa. Build/homologação Contabo e publicação seguem adiados; produção não alterada.
+
+## Lote único de validações — 09/10/2026
+- Matriz consolidada criada em [CRM-V4-01-lote-unico-validacoes.md](./CRM-V4-01-lote-unico-validacoes.md), commit `ba2a49c`.
+- Revisão estática de quatro arquivos da branch, incluindo regras de casal, contato principal, deduplicação, auditoria e isolamento. Isso **não** substitui compilação nem testes em runtime.
+- Build TypeScript, esbuild e homologação não executados; homologação Contabo e publicação ficam adiadas por decisão expressa do usuário.
+- Próximo passo após liberação de acesso: rodar a matriz inteira de validação em ambiente isolado na Contabo, registrar logs, resultados e SHA, sem depender de GitHub Actions.
