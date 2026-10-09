@@ -347,19 +347,26 @@ def inspect_boundary_loops(vertices, edges, max_edges=50000):
     Only degree-2 components can form candidate loops. A closed boundary ring
     can also be a missing exterior face: never certify it as a door/window.
     """
-    if not isinstance(vertices, list) or not isinstance(edges, list) or len(edges) > max_edges:
+    if (type(max_edges) is not int or not 1 <= max_edges <= 50000
+            or not isinstance(vertices, list) or not isinstance(edges, list)
+            or len(edges) > max_edges or len(vertices) > 200000):
         raise ValueError("Contorno excede limite ou está inválido")
     for point in vertices:
         if (not isinstance(point, (list, tuple)) or len(point) != 3
                 or any(type(v) not in (int, float) or not math.isfinite(v) for v in point)):
             raise ValueError("Vértice inválido")
     adjacency = {}
+    unique_edges = set()
     for edge in edges:
         if (not isinstance(edge, (list, tuple)) or len(edge) != 2
                 or any(type(i) is not int or not 0 <= i < len(vertices) for i in edge)
                 or edge[0] == edge[1]):
             raise ValueError("Aresta inválida")
         a, b = edge
+        normalized_edge = (min(a, b), max(a, b))
+        if normalized_edge in unique_edges:
+            raise ValueError("Aresta duplicada no contorno")
+        unique_edges.add(normalized_edge)
         adjacency.setdefault(a, set()).add(b)
         adjacency.setdefault(b, set()).add(a)
     seen = set()
