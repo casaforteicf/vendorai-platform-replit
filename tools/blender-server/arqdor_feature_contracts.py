@@ -810,3 +810,43 @@ def validate_professional_render_job(job):
     if mode == "video":
         result["cameraPath"] = validate_camera_path(job.get("keyframes"), job.get("fps", 24))
     return result
+
+
+def draft_parametric_floor_plan(walls):
+    """Deterministic 2D orthogonal-offset polygons from validated Z-up walls.
+
+    This is a draft projection, not a boolean union, solved intersection, BIM
+    topology or approved construction drawing.
+    """
+    if not isinstance(walls, list) or len(walls) > 2000:
+        raise ValueError("Lista de paredes inválida")
+    result = []
+    for index, entry in enumerate(walls):
+        if not isinstance(entry, dict):
+            raise ValueError("Parede inválida")
+        wall = entry.get("wall")
+        openings = entry.get("openings", [])
+        review = inspect_parametric_wall(wall, openings)
+        start, end = wall["start"], wall["end"]
+        dx, dy = end[0] - start[0], end[1] - start[1]
+        length = math.hypot(dx, dy)
+        nx, ny = -dy / length * review["thickness"] / 2, dx / length * review["thickness"] / 2
+        outline = [[round(x, 6), round(y, 6)] for x, y in (
+            (start[0] + nx, start[1] + ny), (end[0] + nx, end[1] + ny),
+            (end[0] - nx, end[1] - ny), (start[0] - nx, start[1] - ny))]
+        guides = []
+        for opening in review["openingCandidates"]:
+            a = opening["offset"] / length
+            b = (opening["offset"] + opening["width"]) / length
+            guides.append({"kind": opening["kind"],
+                           "segment": [[round(start[0] + dx * t, 6),
+                                        round(start[1] + dy * t, 6)] for t in (a, b)],
+                           "sill": opening["sill"], "height": opening["height"],
+                           "geometryApproved": False})
+        result.append({"wallIndex": index, "outline": outline,
+                       "centerline": [[start[0], start[1]], [end[0], end[1]]],
+                       "openingGuides": guides, "height": review["height"],
+                       "wallLength": review["wallLength"], "approved": False})
+    return {"walls": result, "coordinateSystem": "z_up_meters_unverified",
+            "intersectionsResolved": False, "openingVoidsApplied": False,
+            "geometryApproved": False, "requiresManualReview": True}
