@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
-import { createHash } from "node:crypto";
+import { parseRegistrationRequestId, fingerprintRegistrationPayload, matchesRegistrationReplay } from "../lib/crm-lead-idempotency.js";
 import { rateLimit } from "express-rate-limit";
 import { and, eq, inArray, desc, ilike, isNull, isNotNull, sql } from "drizzle-orm";
 import { z } from "zod/v4";
@@ -250,16 +250,16 @@ router.post("/leads", async (req, res) => {
 
   const data = parsed.data;
   // Idempotência de cadastro manual: chave única por solicitação, associada ao autor e ao conteúdo.
-  const registrationRequestId = typeof data.metadata?.registrationRequestId === "string"
-    && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(data.metadata.registrationRequestId)
-      ? data.metadata.registrationRequestId.toLowerCase() : null;
-  if (data.metadata?.registrationRequestId !== undefined && !registrationRequestId) {
-    res.status(422).json({ error: "Identificador de solicitação inválido." });
+  let registrationRequestId: string | null;
+  try {
+    registrationRequestId = parseRegistrationRequestId(data.metadata?.registrationRequestId);
+  } catch (error: any) {
+    res.status(error.status ?? 422).json({ error: error.message });
     return;
   }
   const registrationActorId = req.user?.sub ?? req.user?.id ?? null;
   const registrationPayloadHash = registrationRequestId
-    ? createHash("sha256").update(JSON.stringify(data)).digest("hex") : null;
+    ? fingerprintRegistrationPayload(data) : null;
   if (registrationRequestId && !registrationActorId) {
     res.status(403).json({ error: "Autor do cadastro não identificado." });
     return;
@@ -270,8 +270,7 @@ router.post("/leads", async (req, res) => {
   if (replayFilter) {
     const [previous] = await db.select().from(leadsTable).where(replayFilter).limit(1);
     if (previous) {
-      if (previous.metadata?.registrationActorId !== registrationActorId
-        || previous.metadata?.registrationPayloadHash !== registrationPayloadHash) {
+      if (!matchesRegistrationReplay(previous.metadata, registrationActorId, registrationPayloadHash!)) {
         res.status(409).json({ code: "IDEMPOTENCY_KEY_REUSED", error: "Identificador já usado em outro cadastro." });
         return;
       }
@@ -380,8 +379,7 @@ router.post("/leads", async (req, res) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${data.tenantId}), hashtext(${registrationRequestId}))`);
       const [previous] = await tx.select().from(leadsTable).where(replayFilter).limit(1);
       if (previous) {
-        if (previous.metadata?.registrationActorId !== registrationActorId
-          || previous.metadata?.registrationPayloadHash !== registrationPayloadHash)
+        if (!matchesRegistrationReplay(previous.metadata, registrationActorId, registrationPayloadHash!))
           throw Object.assign(new Error("Identificador já usado em outro cadastro."), { status: 409 });
         return { lead: previous, replay: true };
       }
