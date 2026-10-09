@@ -49,6 +49,7 @@ import json
 import math
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from imported_model import import_model
+from arqdor_feature_contracts import validate_camera_path
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -642,6 +643,45 @@ def main():
         setup_camera(config.get("camera", {}))
         if config.get("model"):
             apply_imported_scene_settings({**config.get("sceneSettings", {}), "cameras": []}, report.get("materialMapping", {}))
+
+    video = config.get("video")
+    if video is not None:
+        if not isinstance(video, dict):
+            raise ValueError("Configuração de vídeo inválida")
+        path = validate_camera_path(video.get("keyframes"), video.get("fps", 24),
+                                    video.get("maxSeconds", 120))
+        if path["frames"] > 720:
+            raise ValueError("Render de vídeo limitado a 720 quadros nesta etapa")
+        from mathutils import Vector
+        animation_camera = bpy.context.scene.camera
+        if animation_camera is None:
+            setup_camera({})
+            animation_camera = bpy.context.scene.camera
+        for key in path["keyframes"]:
+            frame = round(key["second"] * path["fps"]) + 1
+            pos = key["position"]
+            target = key["target"]
+            location = Vector((pos[0], -pos[2], pos[1]))
+            aim = Vector((target[0], -target[2], target[1]))
+            direction = aim - location
+            if direction.length < 0.00001:
+                raise ValueError("Câmera e alvo coincidentes")
+            animation_camera.location = location
+            animation_camera.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
+            animation_camera.keyframe_insert(data_path="location", frame=frame)
+            animation_camera.keyframe_insert(data_path="rotation_euler", frame=frame)
+        scene = bpy.context.scene
+        scene.render.fps = path["fps"]
+        scene.frame_start = 1
+        scene.frame_end = path["frames"]
+        scene.render.image_settings.file_format = "FFMPEG"
+        scene.render.ffmpeg.format = "MPEG4"
+        scene.render.ffmpeg.codec = "H264"
+        video_path = os.path.splitext(out_path)[0] + ".mp4"
+        scene.render.filepath = video_path
+        bpy.ops.render.render(animation=True)
+        print(f"VIDEO_DONE:{video_path}")
+        return
 
     print("Iniciando render...")
     bpy.ops.render.render(write_still=True)
