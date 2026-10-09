@@ -93,11 +93,11 @@ router.post("/internal/browser-mcp/homolog-bootstrap", async (req, res) => {
     .from(usersTable)
     .where(and(eq(usersTable.platformRole, "super_admin"), eq(usersTable.active, true)))
     .limit(1);
-  const [tenantPrincipal] = platformPrincipal ? [] : await db.select(principalSelect)
+  const [tenantPrincipal] = await db.select(principalSelect)
     .from(usersTable)
     .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)))
     .limit(1);
-  const servicePrincipal = platformPrincipal ?? tenantPrincipal;
+  const servicePrincipal = tenantPrincipal;
 
   if (!servicePrincipal) {
     res.status(409).json({ error: "vendi_auth_principal_not_found" });
@@ -368,11 +368,11 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
         .from(usersTable)
         .where(and(eq(usersTable.platformRole, "super_admin"), eq(usersTable.active, true)))
         .limit(1);
-      const [tenantPrincipal] = platformPrincipal ? [] : await db.select(principalSelect)
+      const [tenantPrincipal] = await db.select(principalSelect)
         .from(usersTable)
         .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)))
         .limit(1);
-      const servicePrincipal = platformPrincipal ?? tenantPrincipal;
+      const servicePrincipal = tenantPrincipal;
       if (!servicePrincipal) throw new Error("VENDI_AUTH_PRINCIPAL_NOT_FOUND");
 
       firstPartyAuthToken = signToken({
@@ -411,11 +411,11 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
         .from(usersTable)
         .where(and(eq(usersTable.platformRole, "super_admin"), eq(usersTable.active, true)))
         .limit(1);
-      const [tenantPrincipal] = platformPrincipal ? [] : await db.select(principalSelect)
+      const [tenantPrincipal] = await db.select(principalSelect)
         .from(usersTable)
         .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)))
         .limit(1);
-      const servicePrincipal = platformPrincipal ?? tenantPrincipal;
+      const servicePrincipal = tenantPrincipal;
       if (!servicePrincipal) throw new Error("VENDI_AUTH_PRINCIPAL_NOT_FOUND");
 
       firstPartyAuthToken = signToken({
