@@ -192,6 +192,21 @@ class FeatureContractsTests(unittest.TestCase):
         far = associate_boundary_candidates(relations, [wall, frame])
         self.assertEqual(far[0]["reviewPriority"], "spatial_only")
 
+    def test_boundary_matching_rejects_untrusted_topology(self):
+        ring = {"bounds": {"min": [float("nan"), 0, 0], "max": [2, 1, 2]}}
+        wall = {"name": "Parede", "suggestedClass": "wall",
+                "topologyReview": {"boundaryLoopReview": {"closedBoundaryCandidates": [ring]}}}
+        frame = {"name": "Janela", "suggestedClass": "window",
+                 "bounds": {"min": [1, 0, 1], "max": [2, 1, 2]}}
+        relation = [{"opening": "Janela", "candidateWalls": ["Parede"]}]
+        output = associate_boundary_candidates(relation, [wall, frame])
+        self.assertEqual(output[0]["candidateBoundaryMatches"], [])
+        self.assertFalse(output[0]["openingConfirmed"])
+        with self.assertRaises(ValueError):
+            associate_boundary_candidates([None], [])
+        with self.assertRaises(ValueError):
+            associate_boundary_candidates([{}] * 2001, [])
+
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
         self.assertFalse(data["quantitiesEnabled"])
