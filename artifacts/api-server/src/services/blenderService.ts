@@ -63,6 +63,7 @@ type SceneData = {
   samples?:      number;
   qualityPreset?: "preview" | "full_hd" | "4k" | "print";
   postproduction?: { exposure?: number; gamma?: number };
+  video?: { fps?: number; maxSeconds?: number; keyframes: Array<{ second: number; position: number[]; target: number[] }> };
   hdri?:         string;
   hdriStrength?: number;
   room?:         Record<string, unknown>;
@@ -169,6 +170,7 @@ function buildSceneConfig(
       samples: sceneData.samples,
       qualityPreset: sceneData.qualityPreset,
       postproduction: sceneData.postproduction,
+      video: sceneData.video,
       hdri: sceneData.hdri ?? "natural",
       hdriStrength: sceneData.hdriStrength ?? 1,
       camera: sceneData.camera ?? {},
@@ -181,6 +183,7 @@ function buildSceneConfig(
       samples:      sceneData.samples,
       qualityPreset: sceneData.qualityPreset,
       postproduction: sceneData.postproduction,
+      video: sceneData.video,
       hdri:         sceneData.hdri,
       hdriStrength: sceneData.hdriStrength ?? 1.0,
       room:         sceneData.room        ?? {},
@@ -581,11 +584,15 @@ export async function checkRenderStatus(renderId: string): Promise<void> {
       });
       if (!artifact.ok) throw new Error(`Não foi possível recuperar PNG privado (${artifact.status})`);
       const bytes = Buffer.from(await artifact.arrayBuffer());
-      if (bytes.length < 8 || bytes.length > 80 * 1024 * 1024 ||
-          !bytes.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex")))
+      const isVideo = artifact.headers.get("content-type")?.toLowerCase().startsWith("video/mp4") ?? false;
+      const extension = isVideo ? "mp4" : "png";
+      const mimeType = isVideo ? "video/mp4" : "image/png";
+      if (bytes.length < 12 || bytes.length > 80 * 1024 * 1024 ||
+          (isVideo ? bytes.toString("ascii", 4, 8) !== "ftyp" :
+          !bytes.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"))))
         throw new Error("Artefato de render inválido");
       const objectPath = await new ObjectStorageService().savePrivateBuffer(
-        bytes, "image/png", `arqdor-render-${renderId}.png`, project.tenantId,
+        bytes, mimeType, `arqdor-render-${renderId}.${extension}`, project.tenantId,
       );
       // Link the private render to the tenant media library. A retry must
       // not create duplicate library assets after the render has completed.
@@ -598,22 +605,23 @@ export async function checkRenderStatus(renderId: string): Promise<void> {
           tenantId: project.tenantId,
           title: `Render Arqdor — ${render.cenaId}`,
           operation: "arqdor_blender_render",
-          kind: "image",
+          kind: isVideo ? "video" : "image",
           context: { archCenaId: render.cenaId, archRenderId: renderId },
         });
         await registerGeneratedMediaOutput({
           tenantId: project.tenantId,
           projectId: mediaProjectId,
           storageUrl: objectPath,
-          mimeType: "image/png",
+          mimeType,
           fileSize: bytes.length,
-          type: "image",
-          originalFilename: `arqdor-render-${renderId}.png`,
+          type: isVideo ? "video" : "image",
+          originalFilename: `arqdor-render-${renderId}.${extension}`,
           operation: "arqdor_blender_render",
           metadata: { archCenaId: render.cenaId, archRenderId: renderId },
         });
       }
-      imageUrl = `/api/storage${objectPath}`;
+      // Never place an MP4 in an image-only field.
+      imageUrl = isVideo ? null : `/api/storage${objectPath}`;
     } catch (error) {
       logger.error({ error, renderId }, "blenderService: falha ao armazenar PNG privado");
       // Keep the render in progress so polling can retry the transfer.
