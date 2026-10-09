@@ -260,3 +260,22 @@ de falha após upload e antes de registrar ativo, prevenção de duplicação po
 `archRenderId`, geração da imagem no worker e verificação visual. O código
 não comprova que GPU, fila, Biblioteca ou preview estejam operacionais.
 O worker e a API precisam estar homologados juntos.
+
+
+## Passeio virtual MP4 (etapa de implementação)
+
+O worker Blender recebe `sceneConfig.video` com `fps` e `keyframes`
+(`second`, `position`, `target`, coordenadas do visualizador Y-up).
+O contrato valida ordem crescente, duração, FPS e números finitos.
+O Blender converte para Z-up, anima uma câmera e solicita saída H.264/MP4.
+Esta primeira etapa impõe até 720 frames por job; a configuração não implica
+que o limite atual de execução do worker (600 s) seja suficiente.
+
+O worker armazena o MP4 na mesma pasta privada do PNG e só o disponibiliza
+pela rota autenticada de artefatos. A API registra o arquivo como `video/mp4`
+na Biblioteca do tenant via R2, sem inserir MP4 nos campos exclusivos de imagem.
+
+**Status:** código integrado, ainda sem teste Blender/FFmpeg, sem preview de
+vídeo no Arqdor, sem timeline visual, progresso por quadro, cancelamento ou
+retomada confiável. Não habilitar vídeos em produção. SKP/IFC/FBX/OBJ, geração
+de documentações BIM e IA avançada também não foram implementados integralmente.
