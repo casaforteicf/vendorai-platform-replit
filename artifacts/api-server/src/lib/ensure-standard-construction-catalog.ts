@@ -7,7 +7,7 @@ import {
   insertComposicaoSchema,
   insertInsumoSchema,
 } from "@workspace/db";
-import { STANDARD_CONSTRUCTION_COMPOSITIONS } from "../data/construction-composition-catalog";
+import { STANDARD_CONSTRUCTION_COMPOSITIONS } from "../data/construction-composition-catalog-universal";
 
 export type StandardCatalogBootstrapResult = {
   catalogVersion: string;
@@ -125,7 +125,7 @@ export async function ensureStandardConstructionCatalog(
   }
 
   return {
-    catalogVersion: "2026-09-21",
+    catalogVersion: "2026-10-07-universal-v1",
     totalCatalogo: STANDARD_CONSTRUCTION_COMPOSITIONS.length,
     insumosCriados,
     composicoesCriadas,
