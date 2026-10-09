@@ -298,3 +298,25 @@ Isso evita anunciar uma imagem inferida como produto de um modelo 3D.
 **Validação pendente:** build TypeScript, teste com modelo importado, teste
 de presets 4K, vídeo H.264 real, sincronização com R2, autorização de tenant
 e inspeção visual. Não houve homologação ou publicação nesta alteração.
+
+
+## Conversão privada OBJ/FBX — lote 09/10/2026
+
+Na API `POST /arch/projetos/:projectId/model-files/convert`, um usuário
+autenticado com acesso ao tenant/projeto pode enviar OBJ ou FBX de até
+`MODEL_FILE_LIMIT` (45 MB). O fluxo calcula SHA-256, cria diretório temporário,
+chama `arqdor_convert_obj_fbx.py` com timeout de 180 segundos, valida o GLB
+gerado com o verificador já existente e salva o modelo no repositório privado.
+O OBJ/FBX original permanece como `source.obj` ou `source.fbx` no diretório
+privado do modelo, acompanhado de `conversion-report.json`, sem declarar
+aprovação geométrica/material.
+
+**Segurança:** endpoint desabilitado por padrão. Requer
+`ARQDOR_ENABLE_MODEL_CONVERSION=true`,
+`ARQDOR_BLENDER_BINARY` e `ARQDOR_MODEL_CONVERTER_SCRIPT`. O Blender deve
+executar em sandbox isolado, usuário não privilegiado, sem acesso a segredos,
+com limites de memória/CPU, sistema de arquivos e rede restringidos: OBJ/FBX
+e referências externas são conteúdo não confiável. Não habilitar no host
+compartilhado da API sem essas garantias. O fluxo permanece síncrono, não possui
+fila persistente de conversão nem recupera modelos parcialmente salvos após
+falha no relatório; depende de homologação real. SKP/IFC seguem sem conversor.
