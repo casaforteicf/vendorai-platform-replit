@@ -165,7 +165,7 @@ export default function RenderStudioModels({ projectId, onClose }: { projectId: 
             {!selected.materials.length ? <p className="text-sm">Nenhum material declarado no arquivo.</p> : null}
           </section>
           <Suspense fallback={<p role="status">Preparando revisão de esquadrias…</p>}>
-            <RenderStudioOpeningReview key={selected.id} sourceSha256={selected.sha256} />
+            <RenderStudioOpeningReview key={selected.id} sourceSha256={selected.sha256} url={url} modelId={selected.id} />
           </Suspense>
           <section className="rounded-md border p-4 space-y-2"><h3 className="font-semibold">5. Câmera, iluminação e render</h3>
             <p className="text-sm text-slate-600">O render 3D está em desenvolvimento e ainda não pode ser gerado por esta tela. O Render IA por imagem continua disponível no Studio.</p>
