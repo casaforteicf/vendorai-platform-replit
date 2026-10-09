@@ -558,8 +558,34 @@ export async function checkRenderStatus(renderId: string): Promise<void> {
   }
 
   // 5. Concluído ou erro — atualizar render + cena
-  const imageUrl = statusResp.imageUrl ?? null;
-  const erroMsg  = statusResp.erro     ?? null;
+  let imageUrl = statusResp.imageUrl ?? null;
+  let erroMsg = statusResp.erro ?? null;
+  if (remoteStatus === "concluido" && !imageUrl) {
+    try {
+      const [scene] = await db.select({ projetoId: archCenasTable.projetoId })
+        .from(archCenasTable).where(eq(archCenasTable.id, render.cenaId)).limit(1);
+      if (!scene) throw new Error("Cena do render não encontrada");
+      const [project] = await db.select({ tenantId: archProjetosTable.tenantId })
+        .from(archProjetosTable).where(eq(archProjetosTable.id, scene.projetoId)).limit(1);
+      if (!project) throw new Error("Tenant do render não encontrado");
+      const artifact = await fetch(`${getBlenderUrl()}/render/${encodeURIComponent(render.blenderJobId)}/artifact`, {
+        headers: blenderHeaders(), signal: AbortSignal.timeout(60_000),
+      });
+      if (!artifact.ok) throw new Error(`Não foi possível recuperar PNG privado (${artifact.status})`);
+      const bytes = Buffer.from(await artifact.arrayBuffer());
+      if (bytes.length < 8 || bytes.length > 80 * 1024 * 1024 ||
+          !bytes.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex")))
+        throw new Error("Artefato de render inválido");
+      const objectPath = await new ObjectStorageService().savePrivateBuffer(
+        bytes, "image/png", `arqdor-render-${renderId}.png`, project.tenantId,
+      );
+      imageUrl = `/api/storage${objectPath}`;
+    } catch (error) {
+      logger.error({ error, renderId }, "blenderService: falha ao armazenar PNG privado");
+      // Keep the render in progress so polling can retry the transfer.
+      return;
+    }
+  }
   const agora    = Date.now();
 
   await db
