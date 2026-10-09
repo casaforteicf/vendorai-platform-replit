@@ -225,3 +225,23 @@ orçamento/recursos, cancelamento e validação de fluxo completo. O upload lega
 para Supabase Storage público ainda existe — **não habilitar o render 3D para
 usuários** até migrar para R2 privado/Biblioteca e validar autorização da mídia.
 A fila continua local por host, não distribui jobs entre múltiplas GPUs.
+
+
+## Entrega de PNG privado — transição para R2 (09/10/2026)
+
+O worker não envia mais automaticamente os novos PNGs ao bucket público legado
+Supabase neste fluxo: o resultado é guardado localmente em
+`OUTPUT_DIR/<jobId>.result.png`. Após concluir o job, um cliente de backend
+autenticado com `X-Blender-Secret` pode solicitar
+`GET /render/<jobId>/artifact` e receber `image/png` com cache privado.
+A rota somente aceita IDs validados, jobs concluídos e arquivo existente.
+Não expor o segredo ao navegador. O arquivo é retido no worker para futura
+transferência autenticada.
+
+**Gate obrigatório:** esta mudança isolada NÃO conclui a integração R2 ou a
+Biblioteca do tenant. A branch atual contém um adaptador `objectStorage.ts`
+anterior à migração R2 da main; antes de conectar a API ao artefato, é preciso
+reconciliar o adaptador R2 atualizado e a autorização específica de mídia por
+tenant/projeto. O artefato local pode desaparecer caso o volume não seja
+persistente e ainda não há limpeza por retenção, comprovação de gravação ou
+retentativa do upload. Render 3D permanece desabilitado e sem homologação.
