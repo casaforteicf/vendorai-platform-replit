@@ -90,3 +90,8 @@ Este relatório corresponde a inspeção estática de código remoto e planejame
 - `86b81f1`: `NewLeadDialog` passa a registrar o ID do lead e negócio após sua criação; se uma etapa posterior falhar, a interface deixa de afirmar que tudo falhou, comunica que **o lead já foi criado**, atualiza listas e abre o registro existente para revisão, reduzindo risco de duplicação por novo envio.
 - Essa alteração é mitigação de UX e recuperação, **não** constitui transação única de criação de lead, negócio e empresa. Para essa atomicidade é preciso consolidar serviços de criação existentes no backend, preservando todas as regras de distribuição, cupom, origem e automações.
 - Evidência: commit em branch, sem build/teste runtime. Homologação Contabo e publicação adiadas; produção sem alterações.
+
+## Prevenção de duplo envio no cadastro inicial — 09/10/2026
+- `412d8f3`: bloqueio síncrono por `useRef` no `NewLeadDialog` impede submissões simultâneas da mesma instância do formulário; `finally` libera o bloqueio inclusive nos fluxos de erro e de lead parcialmente criado.
+- **Limite de segurança:** não oferece idempotência entre sessões, navegadores ou requisições distintas. O backend de criação de lead deve receber um identificador de idempotência, respeitando as regras atuais, antes de classificar o fluxo ponta a ponta como seguro contra duplicidade.
+- **Validação:** revisão estática e commit na branch, sem build nem teste em execução. Homologação Contabo e publicação seguem adiadas por decisão do usuário.
