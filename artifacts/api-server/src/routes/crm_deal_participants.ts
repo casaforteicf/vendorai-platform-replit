@@ -295,6 +295,15 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
     const tenantId = tenantIdFromRequest(req, parsed.data.tenantId);
     await assertDeal(req, tenantId, req.params.dealId);
 
+    if (parsed.data.contextualCompanyId) {
+      const [tenantCompany] = await db.select({ id: crmTenantCompaniesTable.id })
+        .from(crmTenantCompaniesTable).where(and(
+          eq(crmTenantCompaniesTable.tenantId, tenantId),
+          eq(crmTenantCompaniesTable.companyId, parsed.data.contextualCompanyId),
+        )).limit(1);
+      if (!tenantCompany) return res.status(422).json({ error: "Empresa contextual não vinculada a este tenant." });
+    }
+
     let personId = parsed.data.personId;
     if (!personId && parsed.data.person) {
       const p = parsed.data.person;
