@@ -1,3 +1,4 @@
+import { boundedObjectGeometry } from "./conceptObjectTransform";
 import { openingCoordinates } from "./conceptOpeningCoordinates";
 import { flushSync } from "react-dom";
 import { conceptReferenceSize } from "./conceptReferenceImage";
@@ -2778,11 +2779,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const updateObjectById = (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation" | "materialId" | "materialScale" | "materialRotation" | "model3dUrl" | "materialSelections" | "configuredPrice">>) => {
     setObjects((prev) => (Array.isArray(prev) ? prev : []).map((object) => {
       if (object.id !== objectId) return object;
+      const hasGeometryChange = ["x", "y", "width", "depth", "rotation"].some(key => key in patch);
+      if (!hasGeometryChange) return { ...object, ...patch };
       const width = Math.max(0.3, Math.min(lotWidth, patch.width ?? object.width));
       const depth = Math.max(0.3, Math.min(lotDepth, patch.depth ?? object.depth));
-      const x = Math.max(0, Math.min(lotWidth - width, patch.x ?? object.x));
-      const y = Math.max(0, Math.min(lotDepth - depth, patch.y ?? object.y));
-      return { ...object, ...patch, width, depth, x, y };
+      const geometry = boundedObjectGeometry({ ...object, ...patch, width, depth }, lotWidth, lotDepth);
+      if (!geometry) return object;
+      return { ...object, ...patch, width, depth, ...geometry };
     }));
   };
 

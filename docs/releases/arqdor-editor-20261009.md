@@ -212,3 +212,10 @@ Validação: 108 testes em 22 arquivos passaram; tipagem isolada do helper passo
 Arraste, redimensionamento por alça, botões de escala e giro de 90 graus da vista SVG usam o envelope rotacionado compartilhado. Ao mover ou redimensionar, ângulo existente preservado sem snap angular adicional. Giro local envolve callbacks de início/fim de edição. Redimensionamento continua limitado às dimensões nominais do lote; objetos cujo envelope não cabe não são reduzidos automaticamente.
 
 Validação: 109 testes em 22 arquivos passaram; transformação TSX da vista SVG passou. Interação integrada/histórico, edição 2D/painel, aviso de objeto que não cabe, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Limites rotacionados na atualização central de objetos
+
+updateObjectById usa envelope rotacionado compartilhado nos caminhos de 2D/3D/painel que passam por esse handler. Coordenadas e ângulos preservados sem snap adicional; campos geométricos não finitos rejeitados. Alterações somente de material/produto preservam geometria sem recalcular posição/dimensões. Clamps dimensionais existentes mantidos; inserção, duplicação e outros setters diretos ainda não usam esse handler.
+
+Validação: 111 testes em 22 arquivos passaram; transformação TSX do planner passou. Integração visual, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { objectTransformPatch } from "./conceptObjectTransform";
+import { boundedObjectGeometry, objectTransformPatch } from "./conceptObjectTransform";
 describe("object transform commit", () => {
   it("snaps position and yaw", () => {
     expect(objectTransformPatch({ x: 0, z: 0 }, -Math.PI / 2, 1, 2, 10, 10)).toEqual({ x: 4.5, y: 4, rotation: 90 });
@@ -39,4 +39,14 @@ describe("rotated object bounds", () => {
 it("preserves exact angles when only translating or resizing in SVG", () => {
   const patch = objectTransformPatch({ x: 0, z: 0 }, -13 * Math.PI / 180, 2, 4, 10, 10, false)!;
   expect(patch.rotation).toBeCloseTo(13);
+});
+
+it("keeps exact panel coordinates without imposing the drag grid", () => {
+  const patch = boundedObjectGeometry({ x: 2.123, y: 3.456, width: 1, depth: 2, rotation: 13 }, 10, 10)!;
+  expect(patch.x).toBeCloseTo(2.123); expect(patch.y).toBeCloseTo(3.456); expect(patch.rotation).toBeCloseTo(13);
+});
+it("repositions a rotated rectangle away from the edge in the central model", () => {
+  const patch = boundedObjectGeometry({ x: 0, y: 0, width: 2, depth: 4, rotation: 45 }, 10, 10)!;
+  expect(patch.x).toBeCloseTo(3 / Math.sqrt(2) - 1);
+  expect(patch.y).toBeCloseTo(3 / Math.sqrt(2) - 2);
 });
