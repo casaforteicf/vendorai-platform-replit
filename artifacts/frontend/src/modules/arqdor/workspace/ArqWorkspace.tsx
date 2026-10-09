@@ -134,14 +134,12 @@ interface FlowStep {
 }
 
 const FLOW_STEPS: FlowStep[] = [
-  { id:'criar',       icon:'✦',  label:'Projeto',      sublabel:'Cliente e projeto', primary:'home',          extras:['projeto'],                          color: PHX.purple },
-  { id:'inspirar',    icon:'🖼️', label:'Inspirar',    sublabel:'Biblioteca',        primary:'biblioteca',    extras:[],                                   color: PHX.blue   },
-  { id:'renderizar',  icon:'✨', label:'Renderizar',   sublabel:'Criar e editar render', primary:'renders', extras:['prompt'], color: PHX.purple },
-  { id:'melhorar',    icon:'🔄', label:'Melhorar',    sublabel:'Galeria, versões e aprovação', primary:'real-render-gallery', extras:['correcoes','ai-review','render-gallery','post-render'], color: PHX.amber  },
-  { id:'especificar', icon:'📋', label:'Especificar', sublabel:'Memorial técnico',  primary:'especificacao', extras:[],                                   color: '#16a34a'  },
-  { id:'orcamento',   icon:'💰', label:'Orçamento',   sublabel:'Budget executivo',  primary:'orcamento',     extras:['orcamento-pro'],                    color: '#0369a1'  },
-  { id:'apresentar',  icon:'👤', label:'Proposta',    sublabel:'Apresentar ao cliente',primary:'cliente',     extras:[],                                   color: PHX.cyan   },
-  { id:'entregar',    icon:'📦', label:'Entregar',    sublabel:'Obra e entrega',    primary:'office',        extras:[],                                   color: '#0d9488'  },
+  { id:'projeto',     icon:'✦',  label:'Projeto',          sublabel:'Criar, importar e concluir', primary:'home',               extras:['projeto','biblioteca','renders','prompt','real-render-gallery','correcoes','ai-review','render-gallery','post-render'], color: PHX.purple },
+  { id:'especificar', icon:'📋', label:'Especificar',     sublabel:'Opcional após o projeto',    primary:'real-specification', extras:['especificacao','specification','especificacao-produto','spec-catalog','spec-objects'], color: '#16a34a' },
+  { id:'quantificar', icon:'📐', label:'Quantificar',      sublabel:'Geometria e quantitativos',  primary:'real-budget',        extras:['orcamento-real','budget-engine'], color: PHX.blue },
+  { id:'orcar',       icon:'💰', label:'Orçar',            sublabel:'Preliminar ou detalhado',    primary:'orcamento',           extras:['budget','orcamento-pro'], color: '#0369a1' },
+  { id:'cotar',       icon:'🤝', label:'Contratar / Cotar',sublabel:'Profissionais e fornecedores',primary:'compras',              extras:['procurement','marketplace','arq-marketplace'], color: PHX.cyan },
+  { id:'executar',    icon:'⚙️', label:'Execução',         sublabel:'Atividades, medições e obra', primary:'execution',            extras:['production-procurement','construction','construction-hub','production','producao','production-studio'], color: '#0d9488' },
 ]
 
 // Legado — mantido para keyboard shortcuts e command palette
@@ -613,8 +611,13 @@ function ProjectSelectorBar({ arqState }: { arqState: ArqProjectState }) {
               <p style={{ margin:0, padding:'12px 14px', fontSize:10, color:PHX.dim }}>Nenhum projeto ainda</p>
             )}
           </div>
-          {/* Criação canônica: cliente/lead e projeto no mesmo fluxo */}
-          <div style={{ borderTop:`1px solid ${PHX.border}`, padding:'10px' }}>
+          {/* Workspace do cliente: projetos/pastas do cliente ativo apenas */}
+          <div style={{ borderTop:`1px solid ${PHX.border}`, padding:'10px', display:'flex', flexDirection:'column', gap:7 }}>
+            {arqState.projectMeta?.clienteNome && (
+              <p style={{ margin:0, padding:'0 2px 2px', fontSize:9, color:PHX.dim }}>
+                Cliente ativo: <strong style={{ color:PHX.text }}>{arqState.projectMeta.clienteNome}</strong>
+              </p>
+            )}
             <button
               onClick={() => window.location.assign('/arch/projetos/novo')}
               style={{
@@ -622,7 +625,16 @@ function ProjectSelectorBar({ arqState }: { arqState: ArqProjectState }) {
                 background:PHX.purple, color:'#fff', cursor:'pointer', fontSize:11, fontWeight:800,
               }}
             >
-              ＋ Novo projeto com cliente
+              ＋ Novo projeto deste cliente
+            </button>
+            <button
+              onClick={() => window.location.assign('/arch/projetos')}
+              style={{
+                width:'100%', padding:'7px 12px', borderRadius:8, border:`1px solid ${PHX.border}`,
+                background:'transparent', color:PHX.textSub, cursor:'pointer', fontSize:10, fontWeight:700,
+              }}
+            >
+              Trocar cliente
             </button>
           </div>
         </div>
@@ -974,10 +986,10 @@ function WorkspaceInner() {
               <kbd style={{ fontSize:8, padding:'1px 5px', borderRadius:4, background:PHX.muted, color:PHX.dim, border:`1px solid ${PHX.border}`, fontFamily:'monospace' }}>⌘K</kbd>
             </button>
 
-            {/* Copilot toggle */}
+            {/* Vendi contextual toggle */}
             <button
               onClick={() => setCopilotCollapsed(p => !p)}
-              title={copilotCollapsed ? 'Abrir assistente' : 'Recolher assistente'}
+              title={copilotCollapsed ? 'Abrir Vendi — ajuda contextual desta tela' : 'Recolher Vendi'}
               style={{
                 padding:'5px 11px', borderRadius:8,
                 border:`1px solid ${copilotCollapsed ? PHX.border : PHX.purple}`,
@@ -988,7 +1000,7 @@ function WorkspaceInner() {
                 transition:'all 0.15s ease',
               }}
             >
-              🤖 {copilotCollapsed ? 'Assistente' : '▸'}
+              🤖 {copilotCollapsed ? 'Vendi · posso ajudar aqui' : 'Vendi ▸'}
             </button>
 
             {/* ✨ Gerar Render — CTA principal */}
@@ -1033,11 +1045,12 @@ function WorkspaceInner() {
             </div>
           </div>
 
-          {/* ── ARQ COPILOT sidebar (right, same row as content) ── */}
+          {/* ── Vendi contextual sidebar (right, same row as content) ── */}
           <ArqCopilot
             collapsed={copilotCollapsed}
             onToggle={() => setCopilotCollapsed(p => !p)}
             nextAction={computeNextAction(arqState, 0)}
+            moduleId={activeModule}
           />
         </div>
 
