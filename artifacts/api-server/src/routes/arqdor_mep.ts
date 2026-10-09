@@ -196,3 +196,48 @@ arqdorMepRouter.get("/arch/concept-projects/:conceptId/mep-binding", async(req,r
     res.json({conceptProjectId:parsed.data,workspaceProjectId:result.rows[0].workspace_project_id});
   } catch(err){next(err);}
 });
+
+
+/**
+ * Explicit linking is permitted only when the workspace itself declares the
+ * same concept identity in its persisted context. Never infer from title/IDs.
+ */
+arqdorMepRouter.post("/arch/concept-projects/:conceptId/mep-binding", async(req,res,next)=>{
+  const tid=tenant(req,res);if(!tid)return;
+  const concept=id.safeParse(req.params.conceptId);
+  const body=z.object({workspaceProjectId:id}).strict().safeParse(req.body);
+  if(!concept.success||!body.success){res.status(422).json({error:"Identificadores inválidos"});return;}
+  const client=await pool.connect();
+  try{
+    await client.query("BEGIN");
+    const project=await client.query(
+      "SELECT id FROM arch_concept_projects WHERE id=$1 AND tenant_id=$2 FOR UPDATE",
+      [concept.data,tid]);
+    const workspace=await client.query(
+      "SELECT id,context_blob FROM arqdor_workspace_projects WHERE id=$1 AND tenant_id=$2 FOR UPDATE",
+      [body.data.workspaceProjectId,tid]);
+    if(!project.rowCount||!workspace.rowCount){
+      await client.query("ROLLBACK");res.status(404).json({error:"Pré-projeto ou workspace não encontrado"});return;
+    }
+    const context=workspace.rows[0].context_blob as Record<string,unknown>|null;
+    if(!context || context.conceptProjectId!==concept.data){
+      await client.query("ROLLBACK");
+      res.status(409).json({code:"MEP_WORKSPACE_IDENTITY_MISMATCH",error:"Workspace não identifica este pré-projeto; vínculo recusado"});
+      return;
+    }
+    const collision=await client.query(
+      `SELECT concept_project_id,workspace_project_id FROM arqdor_mep_project_bindings
+       WHERE tenant_id=$1 AND (concept_project_id=$2 OR workspace_project_id=$3) FOR UPDATE`,
+      [tid,concept.data,body.data.workspaceProjectId]);
+    if(collision.rows.some(row=>row.concept_project_id!==concept.data||row.workspace_project_id!==body.data.workspaceProjectId)){
+      await client.query("ROLLBACK");res.status(409).json({code:"MEP_BINDING_CONFLICT",error:"Projeto já possui outro vínculo"});return;
+    }
+    await client.query(
+      `INSERT INTO arqdor_mep_project_bindings(tenant_id,concept_project_id,workspace_project_id)
+       VALUES($1,$2,$3) ON CONFLICT (tenant_id,concept_project_id) DO NOTHING`,
+      [tid,concept.data,body.data.workspaceProjectId]);
+    await client.query("COMMIT");
+    res.json({conceptProjectId:concept.data,workspaceProjectId:body.data.workspaceProjectId,verified:true});
+  }catch(err){await client.query("ROLLBACK").catch(()=>{});next(err);}
+  finally{client.release();}
+});
