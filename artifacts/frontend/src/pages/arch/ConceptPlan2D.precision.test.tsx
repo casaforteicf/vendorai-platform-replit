@@ -90,3 +90,15 @@ describe("desenho de paredes com precisão", () => {
     expect(screen.getByRole("alert").textContent).toContain("ultrapassa");
   });
 });
+
+
+describe("espessura real na planta", () => {
+  it("mantém 25 cm ao selecionar a parede", () => {
+    const props = { rooms: [], lotWidth: 12, lotDepth: 30, geometry: { walls: [], openings: [] }, selectedId: null, onSelect: () => undefined, customWalls: [{ id: "thick-wall", floor: 0, x1: 1, y1: 2, x2: 5, y2: 2, thickness: 0.25 }] };
+    const result = render(<ConceptPlan2D {...props} selectedCustomWallId={null} />);
+    const wallLine = () => Array.from(result.container.querySelectorAll("line")).find((line) => line.getAttribute("x1") === "1" && line.getAttribute("x2") === "5" && line.getAttribute("pointer-events") === "none");
+    expect(wallLine()?.getAttribute("stroke-width")).toBe("0.25");
+    result.rerender(<ConceptPlan2D {...props} selectedCustomWallId="thick-wall" />);
+    expect(wallLine()?.getAttribute("stroke-width")).toBe("0.25");
+  });
+});

@@ -2140,7 +2140,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         y1: Math.max(0, Math.min(lotDepth, wall.y1)),
         x2: Math.max(0, Math.min(lotWidth, wall.x2)),
         y2: Math.max(0, Math.min(lotDepth, wall.y2)),
-        thickness: Math.max(0.08, Math.min(0.35, wall.thickness ?? 0.14)),
+        thickness: Math.max(0.08, Math.min(0.35, wall.thickness ?? 0.15)),
       });
       existingWallIds.add(wall.id);
     }
@@ -3108,7 +3108,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         y1: wall.y1,
         x2: wall.x2,
         y2: wall.y2,
-        thickness: wall.exterior ? 0.18 : 0.12,
+        thickness: 0.15,
       });
     }
 
@@ -9482,6 +9482,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         <option value={0.15}>15 cm</option>
                         <option value={0.20}>20 cm</option>
                         <option value={0.25}>25 cm</option>
+                        <option value={0.30}>30 cm</option>
                       </select>
                     </label>
                     <div className="mt-2 flex w-full items-center gap-1.5 md:ml-auto md:mt-0 md:w-auto">

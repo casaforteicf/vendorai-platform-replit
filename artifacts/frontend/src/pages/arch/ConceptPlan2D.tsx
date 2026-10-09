@@ -1335,7 +1335,7 @@ export default function ConceptPlan2D({
         <div className="arq-wall-drawing-input absolute inset-x-3 top-16 z-20 flex flex-wrap items-end gap-2 rounded-xl border bg-white/95 p-3 shadow-sm">
           <label className="text-xs font-semibold text-slate-700">Espessura (m)
             <select aria-label="Espessura das novas paredes" value={drawingWallThickness} onChange={(event) => setDrawingWallThickness(Number(event.target.value))} className="ml-2 h-10 rounded-lg border px-2">
-              {[0.1, 0.15, 0.2, 0.25, 0.3].map((value) => <option key={value} value={value}>{value.toFixed(2).replace(".", ",")}</option>)}
+              {[0.1, 0.12, 0.15, 0.2, 0.25, 0.3].map((value) => <option key={value} value={value}>{value.toFixed(2).replace(".", ",")}</option>)}
             </select>
           </label>
           {wallDrawStart ? <>
@@ -1538,7 +1538,7 @@ export default function ConceptPlan2D({
                     x2={wall.x2}
                     y2={wall.y2}
                     stroke={needsReview ? "#f97316" : "#0284c7"}
-                    strokeWidth={Math.max(0.07, Math.min(0.18, wall.thickness ?? 0.12))}
+                    strokeWidth={wall.thickness ?? 0.15}
                     strokeDasharray={needsReview ? "0.12 0.09" : "0.22 0.12"}
                     opacity={needsReview ? 0.92 : 0.55 + confidence * 0.35}
                   />
@@ -2494,7 +2494,7 @@ export default function ConceptPlan2D({
                 x2={wall.x2}
                 y2={wall.y2}
                 stroke={selected ? "#f97316" : wallMaterialStroke(wallMaterials[wall.id]) ?? "#1e293b"}
-                strokeWidth={selected ? "0.18" : String(Math.max(0.10, Math.min(0.15, wall.thickness ?? 0.15)))}
+                strokeWidth={wall.thickness ?? 0.15}
                 strokeLinecap="square"
                 pointerEvents="none"
               />
@@ -2820,7 +2820,7 @@ export default function ConceptPlan2D({
                 x2={wall.x2}
                 y2={wall.y2}
                 stroke={selectedWall ? "#f97316" : wallMaterialStroke(wallMaterials[wall.id]) ?? (wall.exterior ? "#1e293b" : "#475569")}
-                strokeWidth={selectedWall ? "0.18" : wall.exterior ? "0.14" : "0.085"}
+                strokeWidth={0.15}
                 strokeLinecap="square"
                 pointerEvents="none"
               />

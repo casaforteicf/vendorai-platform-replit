@@ -384,7 +384,7 @@ function wallPolygon(
   zMin: number,
   zMax: number,
 ) {
-  const thickness = Math.max(0.08, wall.thickness ?? 0.14);
+  const thickness = Math.max(0.08, wall.thickness ?? 0.15);
   const dx = wall.x2 - wall.x1;
   const dy = wall.y2 - wall.y1;
   const length = Math.max(0.001, Math.hypot(dx, dy));
@@ -1923,7 +1923,7 @@ export default function ConceptModel3D({
               y1: wall.y1,
               x2: wall.x2,
               y2: wall.y2,
-              thickness: wall.exterior ? 0.18 : 0.12,
+              thickness: 0.15,
               exterior: wall.exterior,
               custom: false,
             })),

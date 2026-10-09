@@ -61,3 +61,10 @@ Incremento de posicionamento: distância do centro da abertura desde o início d
 Build completo, inspeção visual integrada e E2E em homologação ainda pendentes. A consulta e tentativa de operação somente leitura pelo Vendi retornaram tenant_not_found para casaforteicf. Nenhuma publicação ou alteração em produção nesta entrega. A aprovação não depende do GitHub Actions; exige validação na Contabo conforme o fluxo do projeto.
 
 Esta entrega não implementa BIM completo, colaboração simultânea, importação DWG, renderização fotorrealista ou documentação automática. Esses itens permanecem no roteiro de evolução.
+
+
+## Espessura padrão e representação real — revisão 15 cm
+
+Padrão aprovado de 0,15 m para novas paredes e paredes derivadas de ambientes; medidas explícitas existentes preservadas. Seletores de desenho e edição oferecem 10, 12, 15, 20, 25 e 30 cm. Planta 2D representa a espessura real das paredes personalizadas e sugestões sem alterar a largura na seleção; paredes derivadas usam 15 cm, alinhadas ao 3D. Fallback paramétrico e 3D alinhados a 15 cm.
+
+Verificação: 10 testes específicos passaram em 2 arquivos, incluindo parede de 25 cm antes/depois da seleção; sintaxe de ConceptPlanner e ConceptModel3D verificada com esbuild. Validação integrada, homologação Contabo e publicação permanecem pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
