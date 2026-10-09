@@ -397,24 +397,7 @@ router.post("/leads", async (req, res) => {
     longitude: geocoded?.lng ?? null,
     telefone: storePhone(data.telefone),
     documento: data.documento ? data.documento.replace(/\D/g, "") : data.documento,
-    metadata: leadRegistrationMetadata(data.metadata, {
-      entryChannel: data.source === "whatsapp"
-        ? "whatsapp"
-        : data.source === "instagram"
-          ? "instagram"
-          : data.source === "email"
-            ? "email"
-            : data.source?.includes("site") || data.source?.includes("website")
-              ? "site"
-              : data.source?.includes("prospec")
-                ? "prospeccao"
-                : data.source?.includes("indicacao")
-                  ? "parceiro"
-                  : "manual",
-      entrySource: data.source || "manual",
-    }),
-    // Stored values below are derived server-side, never trusted from request metadata.
-    ...(registrationRequestId ? { metadata: {
+    metadata: {
       ...leadRegistrationMetadata(data.metadata, {
         entryChannel: data.source === "whatsapp" ? "whatsapp" :
           data.source === "instagram" ? "instagram" :
@@ -424,8 +407,10 @@ router.post("/leads", async (req, res) => {
           data.source?.includes("indicacao") ? "parceiro" : "manual",
         entrySource: data.source || "manual",
       }),
-      registrationRequestId, registrationActorId, registrationPayloadHash,
-    }} : {}),
+      ...(registrationRequestId ? {
+        registrationRequestId, registrationActorId, registrationPayloadHash,
+      } : {}),
+    },
     possivelDuplicata: false,
     leadSimilarId: null,
   } as any).returning();
