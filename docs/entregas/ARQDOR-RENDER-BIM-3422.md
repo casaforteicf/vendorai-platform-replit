@@ -385,3 +385,14 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Teste adicionado:** caso de paredes colineares separadas, sobrepostas e encostadas em `test_arqdor_feature_contracts.py`.
 - **Commits:** `8b77faa`, `7862a24`, `63fa962`; este registro complementa o lote.
 - **Estados:** código registrado; testes e build **não executados**. Integração WebGL, união sólida L/T/cruz e verificação topológica ponta-a-ponta permanecem pendentes. Não declarar lote completo. PR #3422 Draft, homologação Contabo e publicação adiadas, sem merge/deploy.
+
+
+## Lote agrupado — WebGL paramétrico conectado ao editor (09/10/2026)
+- **Escopo:** evoluir o lote anterior para visualização WebGL das paredes parametrizadas, reduzindo a dependência da projeção SVG.
+- **Implementação:** novo `RenderStudioParametricWebgl.tsx` com geometria `BufferGeometry`/Three.js r128 formada por painéis paramétricos em X/Z, faces de revelo e exclusão dos painéis dentro de portas e janelas. O componente utiliza diretamente o mesmo estado `walls` do editor 2D/3D; alterações nas dimensões ou posições recriam a prévia espacial. Isola descarte de malhas, materiais e contexto de renderização.
+- **Integração:** `RenderStudioParametricEditor.tsx` carrega a prévia via React lazy/Suspense, mantendo a vista SVG anterior para comparação.
+- **Validação de entrada:** rejeita comprimento, espessura, altura e vãos fora dos limites antes de construir a malha WebGL.
+- **Commits:** `b0e2a5e` (componente Three.js), `443c39f` (integração no editor) e `9b0291f` (limites geométricos).
+- **Limitações fundamentais:** malhas individuais não unidas; não há união sólida automática L/T/cruz nem resolução de nós; as superfícies 3D WebGL precisam de validação de topologia, desempenho, orientação e usabilidade; API de rascunhos não exporta diretamente GLB/IFC. Não considerar editor BIM completo.
+- **Validação:** código gravado no GitHub, sem build TypeScript, execução de testes ou renderização real verificada na Contabo; homologação e produção adiadas, PR #3422 permanece Draft e sem merge.
+- **Próximo conjunto:** implementar união geométrica rigorosa por tipos de encontro, validar o núcleo 3D com testes reais e separar rascunho editável de geometria aprovada.
