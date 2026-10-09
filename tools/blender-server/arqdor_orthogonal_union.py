@@ -140,8 +140,23 @@ def union_orthogonal_walls(entries, tolerance=1e-8):
             for next_face in neighbors[pending_faces.pop()] & unseen_faces:
                 unseen_faces.remove(next_face)
                 pending_faces.append(next_face)
+    # A closed surface with reversed winding can still pass edge incidence.
+    # Compute signed volume directly from oriented triangle fans, including
+    # aperture reveal faces and complex orthogonal intersections.
+    signed_volume = 0.0
+    for polygon in faces:
+        origin = vertices[polygon[0]]
+        for index in range(1, len(polygon) - 1):
+            p, q = vertices[polygon[index]], vertices[polygon[index + 1]]
+            cross = (p[1] * q[2] - p[2] * q[1],
+                     p[2] * q[0] - p[0] * q[2],
+                     p[0] * q[1] - p[1] * q[0])
+            signed_volume += sum(origin[axis] * cross[axis] for axis in range(3)) / 6.0
+    volume_error = abs(signed_volume - total_volume)
+    signed_volume_matches = (total_volume > 0 and signed_volume > 0 and
+                             volume_error <= max(1e-7, total_volume * 1e-7))
     topology = inspect_mesh_edges({"vertices": vertices, "faces": faces})
-    if not topology["watertightByEdgeIncidence"] or components != 1 or surface_components != 1:
+    if (not topology["watertightByEdgeIncidence"] or components != 1 or\n            surface_components != 1 or not signed_volume_matches):
         # Non-manifold point/edge contacts and degenerate unions are previews only.
         # Never advertise a clean continuous solid when edge-incidence fails.
         integrity = "requires_geometric_repair"
@@ -151,7 +166,7 @@ def union_orthogonal_walls(entries, tolerance=1e-8):
             "integrityStatus": integrity,
             "meshClosedByEdgeIncidence": topology["watertightByEdgeIncidence"],
             "connectedSolidComponents": components,
-            "connectedBoundaryComponents": surface_components,
+            "connectedBoundaryComponents": surface_components,\n            "signedVolumeM3": round(signed_volume, 9),\n            "signedVolumeMatchesOccupancy": signed_volume_matches,
             "solidUnionMethod": "orthogonal_coordinate_partition",
             "internalFacesRemoved": True, "openingCount": sum(map(len, apertures)),
             "occupiedCells": len(filled), "volumePreviewM3": round(total_volume, 9),
