@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 const RenderStudioGlbViewer = lazy(() => import("./RenderStudioGlbViewer"));
+const RenderStudioOpeningReview = lazy(() => import("./RenderStudioOpeningReview"));
 import type { FormEvent } from "react";
 import { renderAuthHeader } from "./renderStudioApi";
 
@@ -163,7 +164,10 @@ export default function RenderStudioModels({ projectId, onClose }: { projectId: 
             <ul className="grid gap-2 sm:grid-cols-2">{selected.materials.map((material, index) => <li key={index} className="rounded-md border p-2 text-sm break-words">{material.name}<span className="block text-xs text-amber-800">Especificação não confirmada</span></li>)}</ul>
             {!selected.materials.length ? <p className="text-sm">Nenhum material declarado no arquivo.</p> : null}
           </section>
-          <section className="rounded-md border p-4 space-y-2"><h3 className="font-semibold">4. Câmera, iluminação e render</h3>
+          <Suspense fallback={<p role="status">Preparando revisão de esquadrias…</p>}>
+            <RenderStudioOpeningReview key={selected.id} sourceSha256={selected.sha256} />
+          </Suspense>
+          <section className="rounded-md border p-4 space-y-2"><h3 className="font-semibold">5. Câmera, iluminação e render</h3>
             <p className="text-sm text-slate-600">O render 3D está em desenvolvimento e ainda não pode ser gerado por esta tela. O Render IA por imagem continua disponível no Studio.</p>
             <button type="button" disabled className="rounded-md bg-slate-200 px-4 py-2 text-slate-600">Render 3D aguardando integração</button>
           </section>
