@@ -97,9 +97,9 @@ def union_orthogonal_walls(entries, tolerance=1e-8):
         if (i + 1, j, k) not in filled:
             face([(x1, y0, z1), (x1, y0, z0), (x1, y1, z0), (x1, y1, z1)])
         if (i, j - 1, k) not in filled:
-            face([(x0, y0, z0), (x0, y0, z1), (x1, y0, z1), (x1, y0, z0)])
+            face([(x0, y0, z1), (x0, y0, z0), (x1, y0, z0), (x1, y0, z1)])
         if (i, j + 1, k) not in filled:
-            face([(x0, y1, z1), (x0, y1, z0), (x1, y1, z0), (x1, y1, z1)])
+            face([(x0, y1, z0), (x0, y1, z1), (x1, y1, z1), (x1, y1, z0)])
         if (i, j, k - 1) not in filled:
             face([(x0, y0, z0), (x0, y1, z0), (x1, y1, z0), (x1, y0, z0)])
         if (i, j, k + 1) not in filled:
