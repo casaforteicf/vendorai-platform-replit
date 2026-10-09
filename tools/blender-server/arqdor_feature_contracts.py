@@ -181,3 +181,28 @@ def suggest_architectural_classification(name):
                 "confidence": "none", "quantitiesEnabled": False}
     return {"suggestedClass": matches[0], "classificationStatus": "unverified_name_hint",
             "confidence": "low", "quantitiesEnabled": False}
+
+
+def suggest_geometry_role(dimensions):
+    """Conservative shape hint in Blender Z-up coordinates, not BIM recognition.
+
+    Units, rotations, openings and object composition may be unknown: no
+    candidate is approved and no quantities may be derived from these hints.
+    """
+    if (not isinstance(dimensions, (list, tuple)) or len(dimensions) != 3
+            or any(type(v) not in (int, float) or not math.isfinite(v) or v < 0
+                   for v in dimensions)):
+        raise ValueError("Dimensões geométricas inválidas")
+    ordered = sorted(dimensions)
+    thin, middle, long = ordered
+    if long <= 0 or thin <= 0:
+        role = None
+    elif thin / long < 0.12 and middle / long >= 0.25:
+        role = "thin_panel_candidate"
+    elif middle / long < 0.12:
+        role = "linear_member_candidate"
+    else:
+        role = None
+    return {"shapeHint": role, "geometryVerified": False,
+            "suggestedOnly": True, "quantitiesEnabled": False,
+            "requiresScaleCalibration": True}
