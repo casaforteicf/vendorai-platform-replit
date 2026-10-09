@@ -911,7 +911,14 @@ def draft_wall_centerline_intersections(walls, tolerance=1e-8):
             if abs(den) <= tolerance:
                 # Collinear overlaps need dedicated join-resolution review.
                 if abs(cross(relative, r)) <= tolerance:
-                    intersections.append({"walls": [i, j], "type": "parallel_or_collinear_review"})
+                    length_sq = r[0] * r[0] + r[1] * r[1]
+                    t0 = (relative[0] * r[0] + relative[1] * r[1]) / length_sq
+                    t1 = ((d[0] - a[0]) * r[0] + (d[1] - a[1]) * r[1]) / length_sq
+                    lo, hi = max(0.0, min(t0, t1)), min(1.0, max(t0, t1))
+                    if hi >= lo - tolerance:
+                        intersections.append({"walls": [i, j],
+                                              "type": "collinear_overlap" if hi > lo + tolerance else "collinear_endpoint",
+                                              "range": [round(lo, 6), round(hi, 6)]})
                 continue
             t, u = cross(relative, vec) / den, cross(relative, r) / den
             if -tolerance <= t <= 1 + tolerance and -tolerance <= u <= 1 + tolerance:
