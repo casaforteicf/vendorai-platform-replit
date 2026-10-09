@@ -80,6 +80,7 @@ export default function RenderStudioModels({ projectId, onClose }: { projectId: 
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [selectedMesh, setSelectedMesh] = useState<string | null>(null);
+  const [focusName, setFocusName] = useState<string | null>(null);
   const url = `/api/arch/projetos/${encodeURIComponent(projectId)}/model-files`;
   const selected = models.find(model => model.id === selectedId);
 
@@ -138,7 +139,7 @@ export default function RenderStudioModels({ projectId, onClose }: { projectId: 
         </label>
         {uploading ? <p role="status">Importando e salvando arquivo original…</p> : null}
         <ul className="space-y-2" aria-label="Versões importadas">{models.map(model => <li key={model.id}>
-          <button type="button" disabled={uploading} aria-pressed={selectedId === model.id} onClick={() => { setSelectedId(model.id); setSelectedMesh(null); }}
+          <button type="button" disabled={uploading} aria-pressed={selectedId === model.id} onClick={() => { setSelectedId(model.id); setSelectedMesh(null); setFocusName(null); }}
             className={`w-full break-words rounded-md border p-3 text-left text-sm ${selectedId === model.id ? "border-emerald-600 bg-emerald-50" : "bg-white"}`}>
             <strong className="block">{model.originalName}</strong><span className="text-xs">{new Date(model.createdAt).toLocaleString("pt-BR")}</span>
           </button>
@@ -155,7 +156,7 @@ export default function RenderStudioModels({ projectId, onClose }: { projectId: 
             <p className="text-xs text-slate-600">Este resumo lê as informações declaradas no arquivo. A visualização 3D e a conferência da geometria estão em desenvolvimento.</p>
           </section>
           <Suspense fallback={<p role="status">Preparando visualização 3D…</p>}>
-            <RenderStudioGlbViewer key={selected.id} url={url} modelId={selected.id} onSelect={setSelectedMesh} />
+            <RenderStudioGlbViewer key={selected.id} url={url} modelId={selected.id} onSelect={setSelectedMesh} focusName={focusName} />
           </Suspense>
           <p className="text-sm text-emerald-800" role="status">Elemento selecionado: {selectedMesh ?? "nenhum"}. Edição de materiais ainda indisponível.</p>
           <CalibrationForm key={selected.id} url={url} model={selected} />
@@ -165,7 +166,7 @@ export default function RenderStudioModels({ projectId, onClose }: { projectId: 
             {!selected.materials.length ? <p className="text-sm">Nenhum material declarado no arquivo.</p> : null}
           </section>
           <Suspense fallback={<p role="status">Preparando revisão de esquadrias…</p>}>
-            <RenderStudioOpeningReview key={selected.id} sourceSha256={selected.sha256} url={url} modelId={selected.id} />
+            <RenderStudioOpeningReview key={selected.id} sourceSha256={selected.sha256} url={url} modelId={selected.id} onLocate={name => { setFocusName(null); queueMicrotask(() => setFocusName(name)); }} />
           </Suspense>
           <section className="rounded-md border p-4 space-y-2"><h3 className="font-semibold">5. Câmera, iluminação e render</h3>
             <p className="text-sm text-slate-600">O render 3D está em desenvolvimento e ainda não pode ser gerado por esta tela. O Render IA por imagem continua disponível no Studio.</p>
