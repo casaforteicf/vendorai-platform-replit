@@ -1,3 +1,9 @@
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { Router, type IRouter } from "express";
 import multer from "multer";
 import { and, eq } from "drizzle-orm";
@@ -54,6 +60,53 @@ router.post(prefix, (req, res, next) => {
     if (error instanceof SyntaxError || (error instanceof Error && /GLB|glTF|malhas|recursos|Modelo excede/.test(error.message)))
       return res.status(422).json({ error: "GLB inválido ou com recursos externos. Exporte com todas as texturas incorporadas." });
     next(error);
+  }
+});
+
+// Staging-only conversion: requires a dedicated sandboxed Blender worker.
+// Never enable on a general production API host without OS isolation.
+router.post(`${prefix}/convert`, (req, res, next) => {
+  if (process.env.ARQDOR_ENABLE_MODEL_CONVERSION !== "true")
+    return res.status(503).json({ error: "Conversão OBJ/FBX não habilitada neste ambiente" });
+  if (!store()) return res.status(503).json({ error: "Armazenamento privado não configurado" });
+  upload.single("file")(req, res, error => {
+    if (error) return res.status(error.code === "LIMIT_FILE_SIZE" ? 413 : 400)
+      .json({ error: "Arquivo excede o limite ou upload inválido" });
+    next();
+  });
+}, async (req, res, next) => {
+  if (!req.file || !/\\.(obj|fbx)$/i.test(req.file.originalname))
+    return res.status(422).json({ error: "Envie OBJ ou FBX no campo file" });
+  const blender = process.env.ARQDOR_BLENDER_BINARY;
+  const converter = process.env.ARQDOR_MODEL_CONVERTER_SCRIPT;
+  if (!blender || !converter) return res.status(503).json({ error: "Conversor isolado não configurado" });
+  const storage = store();
+  if (!storage) return res.status(503).json({ error: "Armazenamento privado indisponível" });
+  const { tenantId, projectId } = res.locals.modelScope;
+  const extension = path.extname(req.file.originalname).toLowerCase();
+  const sha256 = createHash("sha256").update(req.file.buffer).digest("hex");
+  const workDir = await mkdtemp(path.join(tmpdir(), "arqdor-convert-"));
+  try {
+    const input = path.join(workDir, `source${extension}`);
+    const output = path.join(workDir, "converted.glb");
+    await writeFile(input, req.file.buffer, { flag: "wx", mode: 0o600 });
+    const run = promisify(execFile);
+    await run(blender, ["--background", "--python", converter, "--",
+      "--input", input, "--output", output, "--sha256", sha256], {
+      timeout: 180_000, maxBuffer: 1024 * 1024, cwd: workDir,
+    });
+    const converted = await readFile(output);
+    // ModelFileStore.save validates GLB structure, embedded resources and limit.
+    const model = await storage.save(tenantId, projectId, req.file.originalname + ".glb", converted);
+    const audit = await storage.attachConvertedSource(
+      tenantId, projectId, model.id, req.file.originalname, req.file.buffer, sha256);
+    return res.status(201).json({ model, conversion: audit });
+  } catch (error) {
+    if (error instanceof Error && /GLB|glTF|malhas|recursos|Modelo excede/.test(error.message))
+      return res.status(422).json({ error: "Conversão inválida: GLB não passou pela validação" });
+    next(error);
+  } finally {
+    await rm(workDir, { recursive: true, force: true });
   }
 });
 
