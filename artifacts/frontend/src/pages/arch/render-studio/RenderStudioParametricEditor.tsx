@@ -71,6 +71,58 @@ function wallPreview(wall: Wall): WallPreview {
   ]) };
 }
 
+function consolidateAlignedWalls(walls: Wall[]): { walls: Wall[]; merged: number } {
+  const result = walls.map(w => ({ ...w, start: [...w.start] as Point, end: [...w.end] as Point, openings: w.openings.map(o => ({ ...o })) }));
+  let merged = 0;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    outer: for (let i = 0; i < result.length; i++) for (let j = 0; j < result.length; j++) {
+      if (i === j) continue;
+      const a = result[i], b = result[j], al = length(a), bl = length(b);
+      const dx = a.end[0] - a.start[0], dy = a.end[1] - a.start[1];
+      const ex = b.end[0] - b.start[0], ey = b.end[1] - b.start[1];
+      if (Math.hypot(a.end[0] - b.start[0], a.end[1] - b.start[1]) > .000001 ||
+          Math.abs(dx * ey - dy * ex) > .000001 * Math.max(1, al, bl) ||
+          dx * ex + dy * ey <= 0 || Math.abs(a.thickness - b.thickness) > .000001 ||
+          Math.abs(a.height - b.height) > .000001) continue;
+      const joined: Wall = { ...a, end: b.end,
+        openings: [...a.openings, ...b.openings.map(o => ({ ...o, offset: fixed(o.offset + al) }))] };
+      if (validation(joined).length) continue;
+      result.splice(Math.max(i, j), 1); result.splice(Math.min(i, j), 1); result.push(joined);
+      merged++; changed = true; break outer;
+    }
+  }
+  return { walls: result, merged };
+}
+
+function wallJoinConflicts(walls: Wall[]) {
+  const findings: string[] = [];
+  const cross = (a: Point, b: Point) => a[0] * b[1] - a[1] * b[0];
+  for (let i = 0; i < walls.length; i++) for (let j = i + 1; j < walls.length; j++) {
+    const a = walls[i], b = walls[j];
+    const r: Point = [a.end[0] - a.start[0], a.end[1] - a.start[1]];
+    const v: Point = [b.end[0] - b.start[0], b.end[1] - b.start[1]];
+    const delta: Point = [b.start[0] - a.start[0], b.start[1] - a.start[1]];
+    const den = cross(r, v);
+    if (Math.abs(den) < 1e-8) {
+      if (Math.abs(cross(delta, r)) < 1e-8) {
+        const rr = r[0] ** 2 + r[1] ** 2;
+        if (rr < 1e-10) continue;
+        const t0 = (delta[0] * r[0] + delta[1] * r[1]) / rr;
+        const t1 = ((b.end[0] - a.start[0]) * r[0] + (b.end[1] - a.start[1]) * r[1]) / rr;
+        if (Math.min(1, Math.max(t0, t1)) >= Math.max(0, Math.min(t0, t1)) - 1e-8)
+          findings.push(`${a.id} / ${b.id}: encontro colinear não consolidado`);
+      }
+      continue;
+    }
+    const t = cross(delta, v) / den, u = cross(delta, r) / den;
+    if (t >= -1e-8 && t <= 1 + 1e-8 && u >= -1e-8 && u <= 1 + 1e-8)
+      findings.push(`${a.id} / ${b.id}: encontro em L/T/cruz requer união sólida`);
+  }
+  return findings;
+}
+
 export default function RenderStudioParametricEditor({ url, modelId, modelSha256 }: { url: string; modelId: string; modelSha256: string }) {
   const [walls, setWalls] = useState<Wall[]>(initial);
   const [storedRevision, setStoredRevision] = useState(0);
@@ -83,6 +135,7 @@ export default function RenderStudioParametricEditor({ url, modelId, modelSha256
   const [snap, setSnap] = useState(true);
   const chosen = walls.find(wall => wall.id === active) ?? walls[0];
   const errors = useMemo(() => walls.flatMap(wall => validation(wall).map(message => `${wall.id}: ${message}`)), [walls]);
+  const joinWarnings = useMemo(() => wallJoinConflicts(walls), [walls]);
   useEffect(() => {
     const controller = new AbortController();
     fetch(`${url}/${encodeURIComponent(modelId)}/parametric-draft`,
@@ -150,6 +203,13 @@ export default function RenderStudioParametricEditor({ url, modelId, modelSha256
         setWalls(current => [...current, { id: `parede-${number}`, start: [0, number], end: [3, number], thickness: .2, height: 2.8, openings: [] }]);
         setActive(`parede-${number}`); setDirty(true); setRevision(n => n + 1);
       }}>+ Parede</button>
+      <button type="button" className="rounded border px-2 py-1 text-sm" onClick={() => {
+        const result = consolidateAlignedWalls(walls);
+        if (!result.merged) { setNotice("Nenhum trecho colinear compatível para consolidar."); return; }
+        setWalls(result.walls); setActive(result.walls[0]?.id ?? "");
+        setDirty(true); setRevision(n => n + 1);
+        setNotice(`${result.merged} união(ões) colinear(es) consolidada(s). Confira as aberturas.`);
+      }}>Consolidar paredes alinhadas</button>
       <label className="text-xs"><input type="checkbox" checked={snap} onChange={event => setSnap(event.target.checked)} /> Snap 25 cm</label>
     </div>
     <div className="grid gap-3 lg:grid-cols-2">
@@ -210,6 +270,7 @@ export default function RenderStudioParametricEditor({ url, modelId, modelSha256
     </div>
     <div className="flex items-center gap-3"><button type="button" disabled={saving || !valid} onClick={() => void save()} className="rounded bg-emerald-700 px-3 py-2 text-sm text-white disabled:opacity-50">Salvar rascunho da versão</button><span className="text-xs">{dirty ? "Alterações não salvas" : `Revisão persistida: ${storedRevision}`}</span></div>
     {notice && <p role="status" className="text-sm">{notice}</p>}
+    {joinWarnings.length > 0 && <div role="status" className="rounded bg-amber-50 p-2 text-xs text-amber-900"><strong>Encontros para revisar:</strong><ul>{joinWarnings.map((message, i) => <li key={i}>{message}</li>)}</ul></div>}
     <p role="status" className={valid ? "text-sm text-emerald-800" : "text-sm text-red-700"}>
       {valid ? `Revisão local ${revision}: dados preliminares consistentes.` : errors.join(" · ")}
     </p>
