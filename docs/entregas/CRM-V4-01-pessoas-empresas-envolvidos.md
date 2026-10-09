@@ -103,3 +103,9 @@ Reutilizar o cadastro mestre existente e permitir casal (dois consumidores com q
 - Commit `e1cb8ef`: reutilização de pessoa por contato corporativo passa a depender de empresa do tenant com lead acessível ao usuário, ou vínculo de empresa sem lead associado.
 - Revisão ainda necessária: permissões para empresa sem lead (política de acesso coletivo vs. restrito), compatibilidade de tipos da subconsulta Drizzle e testes de regressão de isolamento por usuário.
 - Estado: implementado sem validação; não há execução comprovada de TypeScript/esbuild nem homologação na Contabo; produção não modificada.
+
+## Correção de política para empresas sem lead — 09/10/2026
+- `770c86f`: associação de pessoa por contato corporativo passa a exigir um lead visível na empresa vinculada; empresa sem lead não é autorização implícita de acesso aos dados pessoais.
+- `2a94d78`: consulta `GET /crm/people` passa a aplicar a mesma restrição; sem leads visíveis, a via de contatos corporativos não amplia o conjunto de pessoas.
+- **Possível impacto:** contatos de empresas sem lead deixam de aparecer por essa via. É necessária política explícita de autorização e testes para esse caso antes de habilitar novamente.
+- **Estado:** implementado sem validação de TypeScript/esbuild. Homologação na Contabo segue não comprovada; Vendi retornou 401 na última tentativa. Não há merge ou publicação.
