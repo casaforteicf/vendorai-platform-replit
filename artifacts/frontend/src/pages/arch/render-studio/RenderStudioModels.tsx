@@ -61,7 +61,7 @@ function CalibrationForm({ url, model }: { url: string; model: Model }) {
         <input className="w-full rounded-md border p-2" type="number" min="0.000001" step="any" required value={fields[field]}
           onChange={event => { setFields(previous => ({ ...previous, [field]: event.target.value })); setSaved(false); }} />
       </label>)}
-      <button className="rounded-md bg-orange-600 px-4 py-2 text-white sm:col-span-2" type="submit">{saving ? "Salvando…" : "Salvar referências desta versão"}</button>
+      <button className="rounded-md bg-emerald-700 hover:bg-emerald-800 px-4 py-2 text-white sm:col-span-2" type="submit">{saving ? "Salvando…" : "Salvar referências desta versão"}</button>
     </fieldset>}
     {error ? <p role="alert" className="text-sm text-red-700">{error}</p> : null}
     {saved ? <p role="status" className="text-sm text-emerald-700">Referências salvas. A conferência das dimensões no worker ainda está pendente.</p> : null}
@@ -136,7 +136,7 @@ export default function RenderStudioModels({ projectId, onClose }: { projectId: 
         {uploading ? <p role="status">Importando e salvando arquivo original…</p> : null}
         <ul className="space-y-2" aria-label="Versões importadas">{models.map(model => <li key={model.id}>
           <button type="button" disabled={uploading} aria-pressed={selectedId === model.id} onClick={() => setSelectedId(model.id)}
-            className={`w-full break-words rounded-md border p-3 text-left text-sm ${selectedId === model.id ? "border-orange-500 bg-orange-50" : "bg-white"}`}>
+            className={`w-full break-words rounded-md border p-3 text-left text-sm ${selectedId === model.id ? "border-emerald-600 bg-emerald-50" : "bg-white"}`}>
             <strong className="block">{model.originalName}</strong><span className="text-xs">{new Date(model.createdAt).toLocaleString("pt-BR")}</span>
           </button>
         </li>)}</ul>
