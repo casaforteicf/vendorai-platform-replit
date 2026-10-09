@@ -126,3 +126,13 @@ conversores, build TypeScript e UI isolada antes de integrar.
 - **Estados:** implementado, **não validado tecnicamente neste HEAD**, não homologado, não aprovado, não publicado. PR Draft, sem merge/deploy.
 - **Impedimento remanescente:** autenticação Vendi homologação HTTP 401 `upstream_token_rejected` na última tentativa; recuperar conexão homolog/terminal Contabo sem tocar produção.
 - **Próxima ação:** rodar testes completos e conversão real na Contabo de homologação, arquivar logs e SHA; revisar recortes reais da malha e a associação à esquadria.
+
+
+## Robustez de conversão de malhas grandes — 09/10/2026
+- Lote `ARQDOR-RENDER-BIM-3422` — desenvolvimento sem release.
+- Implementado `8f007da`: conversor agora limita a inspeção detalhada de loops a 50.000 arestas de borda **e** 200.000 vértices por objeto. Acima desse limite, emite `boundaryLoopReview.status=skipped_resource_limits` com `requiresManualReview=true`, sem descartar a importação nem certificar vãos.
+- Arquivo alterado: `tools/blender-server/arqdor_convert_obj_fbx.py`.
+- Diagnóstico: antes, o classificador impunha máximo de 200.000 vértices, mas o chamador só comparava a quantidade de bordas, podendo falhar a conversão de uma malha muito grande com poucas bordas.
+- Evidência: commit GitHub registrado; **não foram executados testes Blender/Contabo** nesta sessão. `git ls-remote` local continua indisponível por resolução DNS de github.com. Vendi CDP indica disponibilidade, porém o último acesso à homologação retornou HTTP 401 na troca de autenticação.
+- Estados: implementado sem validação técnica, não homologado, não aprovado e não publicado. PR #3422 segue Draft.
+- Próxima ação: verificar correção contra modelo de malha grande em worker isolado, executar testes Python/Blender e builds no checkout Contabo com logs; resolver acesso Vendi para homologação.
