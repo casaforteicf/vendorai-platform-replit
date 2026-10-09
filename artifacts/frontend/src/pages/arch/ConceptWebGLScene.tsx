@@ -1,4 +1,4 @@
-import { splitWallVoids } from "./conceptWallVoids";
+import { splitWallVoids, openingVerticalBounds } from "./conceptWallVoids";
 import { buildFacadeMeshBoxes } from "./conceptFacadeMeshes";
 import { getFacadeMaterial, type FacadeDesignState } from "./conceptFacadeDesign";
 import { buildRoofPlan } from "./conceptRoofPlan";
@@ -1400,6 +1400,8 @@ export default function ConceptWebGLScene({
       }
 
       for (const opening of level.openings ?? []) {
+        const bounds = openingVerticalBounds(opening, 2.8);
+        if (!bounds) continue;
         const linkedWall = opening.roomId?.startsWith("custom-wall:")
           ? (level.customWalls ?? []).find(wall => opening.roomId === `custom-wall:${wall.id}`) : undefined;
         const openingRoot = new THREE.Group();
@@ -1407,17 +1409,17 @@ export default function ConceptWebGLScene({
         if (linkedWall) openingRoot.rotation.y = -(Math.atan2(linkedWall.y2 - linkedWall.y1, linkedWall.x2 - linkedWall.x1) - (opening.orientation === "vertical" ? Math.PI / 2 : 0));
         modelRoot.add(openingRoot);
         const width = Math.max(0.05, opening.width ?? (opening.type === "door" ? 0.9 : 1.2));
-        const height = Math.max(0.05, opening.height ?? (opening.type === "door" ? 2.1 : 1.2));
-        const sill = opening.type === "door" ? 0 : Math.max(0, opening.sillHeight ?? 0.9);
+        const height = bounds.height;
+        const sill = bounds.bottom;
         const glass = opening.type === "window";
         const frameColor = facadeDesign ? Number.parseInt(getFacadeMaterial(facadeDesign.surfaceMaterials.frames).baseColor.slice(1), 16) : 0x334155;
-        const frameThickness = 0.055;
+        const frameThickness = Math.min(0.055, width / 3, height / 3);
         const panelDepth = 0.035;
         const panel = makeBox(
           openingRoot,
-          opening.orientation === "horizontal" ? Math.max(0.1, width - frameThickness * 2) : panelDepth,
-          Math.max(0.1, height - frameThickness * 2),
-          opening.orientation === "vertical" ? Math.max(0.1, width - frameThickness * 2) : panelDepth,
+          opening.orientation === "horizontal" ? Math.max(0.001, width - frameThickness * 2) : panelDepth,
+          Math.max(0.001, height - frameThickness * 2),
+          opening.orientation === "vertical" ? Math.max(0.001, width - frameThickness * 2) : panelDepth,
           0,
           floorBase + 0.16 + sill + height / 2,
           0,

@@ -1,5 +1,13 @@
 type Wall = { id: string; x1: number; y1: number; x2: number; y2: number; thickness?: number };
 type Opening = { x: number; y: number; roomId?: string; orientation: "horizontal" | "vertical"; type: "door" | "window"; width?: number; height?: number; sillHeight?: number };
+export function openingVerticalBounds(opening: Pick<Opening, "type" | "height" | "sillHeight">, wallHeight: number) {
+  const sill = opening.type === "door" ? 0 : opening.sillHeight ?? 0.9;
+  const height = opening.height ?? (opening.type === "door" ? 2.1 : 1.2);
+  if (![sill, height, wallHeight].every(Number.isFinite) || height <= 0 || wallHeight <= 0) return null;
+  const bottom = Math.max(0, Math.min(wallHeight, sill));
+  const top = Math.max(0, Math.min(wallHeight, sill + height));
+  return top > bottom ? { bottom, top, height: top - bottom } : null;
+}
 
 export function splitWallVoids<W extends Wall>(wall: W, openings: Opening[], height: number) {
   const dx = wall.x2 - wall.x1, dy = wall.y2 - wall.y1, length = Math.hypot(dx, dy);
@@ -8,15 +16,15 @@ export function splitWallVoids<W extends Wall>(wall: W, openings: Opening[], hei
   const holes = openings.flatMap(opening => {
     const linked = opening.roomId?.startsWith("custom-wall:");
     if (linked && opening.roomId !== `custom-wall:${wall.id}`) return [];
+    if (!linked && ((opening.orientation === "horizontal" && Math.abs(dy) > 0.01) || (opening.orientation === "vertical" && Math.abs(dx) > 0.01))) return [];
     const along = ((opening.x - wall.x1) * dx + (opening.y - wall.y1) * dy) / length;
     const distance = Math.abs((opening.x - wall.x1) * dy - (opening.y - wall.y1) * dx) / length;
     if (!Number.isFinite(along) || !Number.isFinite(distance) || distance > 0.08 || along < 0 || along > length) return [];
     const width = opening.width ?? (opening.type === "door" ? 0.9 : 1.2);
-    const sill = opening.type === "door" ? 0 : opening.sillHeight ?? 0.9;
-    const openingHeight = opening.height ?? (opening.type === "door" ? 2.1 : 1.2);
-    if (![width, sill, openingHeight].every(Number.isFinite) || width <= 0 || openingHeight <= 0) return [];
+    const vertical = openingVerticalBounds(opening, height);
+    if (!Number.isFinite(width) || width <= 0 || !vertical) return [];
     const start = Math.max(0, along - width / 2), end = Math.min(length, along + width / 2);
-    const bottom = Math.max(0, Math.min(height, sill)), top = Math.max(0, Math.min(height, sill + openingHeight));
+    const { bottom, top } = vertical;
     return end > start && top > bottom ? [{ start, end, bottom, top }] : [];
   });
   const cuts = [...new Set([0, length, ...holes.flatMap(h => [h.start, h.end])])].sort((a, b) => a - b);

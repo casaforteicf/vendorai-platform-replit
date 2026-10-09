@@ -110,3 +110,10 @@ Arquivos: ConceptPlanner.tsx, conceptOpeningCoordinates.ts e conceptOpeningCoord
 ConceptModel3D (SVG) e ConceptWebGLScene (WebGL) usam splitWallVoids, com coordenada ao longo do eixo da parede e subtração de intervalos verticais. Implementado recorte em paredes diagonais/invertidas, aberturas empilhadas e união de aberturas sobrepostas sem duplicação dos sólidos. WebGL materializa trechos com caixas fechadas rotacionadas; SVG usa a projeção existente dos trechos. Esquadrias, caixilhos e montantes seguem direção da parede personalizada vinculada. Vínculo custom-wall impede abertura de parede vizinha e passagem de caminhada indevida. Fallback de espessura WebGL alinhado a 15 cm.
 
 Arquivos: ConceptModel3D.tsx, ConceptWebGLScene.tsx, conceptWallVoids.ts e conceptWallVoids.test.ts. 68 testes passaram em 16 arquivos; sintaxe das duas cenas verificada com esbuild; helper tipado isoladamente com tsc. Não realizada inspeção WebGL real ou build completo. Não resolve união booleana entre paredes nem malha única contínua BIM. Lote ARQ-EDITOR-20261009, versão em desenvolvimento; homologação Contabo e publicação adiadas.
+
+
+## Limites verticais e cruzamentos no 3D
+
+openingVerticalBounds compartilha limites entre recorte e esquadria nas cenas SVG/WebGL. Esquadrias parcialmente acima da parede são representadas somente na faixa da parede; inteiramente acima ou inválidas não geram geometria. Dados do modelo preservados. Espessura de caixilho adapta-se a esquadrias pequenas e montantes não geram altura negativa. Maçaneta acompanha altura efetivamente representada. Marcadores legados sem vínculo custom-wall só recortam paredes compatíveis com sua orientação, evitando recorte perpendicular em cruzamentos.
+
+Arquivos: ConceptModel3D.tsx, ConceptWebGLScene.tsx, conceptWallVoids.ts e conceptWallVoids.test.ts. 72 testes passaram em 16 arquivos; sintaxe TSX das cenas verificada isoladamente. Build completo, união booleana entre paredes e inspeção integrada pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento; homologação Contabo e publicação adiadas.

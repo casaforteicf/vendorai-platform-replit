@@ -1,4 +1,4 @@
-import { splitWallVoids, alignOpeningSegment, alignOpeningPoint } from "./conceptWallVoids";
+import { splitWallVoids, alignOpeningSegment, alignOpeningPoint, openingVerticalBounds } from "./conceptWallVoids";
 import type { SiteFrontSide } from "./conceptSitePlacement";
 import { buildFacadeMeshBoxes, facadeBoxFaces } from "./conceptFacadeMeshes";
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
@@ -1962,10 +1962,10 @@ export default function ConceptModel3D({
               {level.openings.map((opening) => {
                 const linkedWall = opening.roomId?.startsWith("custom-wall:") ? level.customWalls.find(wall => opening.roomId === `custom-wall:${wall.id}`) : undefined;
                 const width = Math.max(0.05, opening.width ?? (opening.type === "door" ? 0.9 : 1.2));
-                const height = Math.max(0.05, Math.min(WALL_HEIGHT, opening.height ?? (opening.type === "door" ? 2.1 : 1.2)));
-                const sill = opening.type === "door"
-                  ? 0
-                  : Math.max(0, Math.min(WALL_HEIGHT, opening.sillHeight ?? 0.9));
+                const bounds = openingVerticalBounds(opening, WALL_HEIGHT);
+                if (!bounds) return null;
+                const height = bounds.height;
+                const sill = bounds.bottom;
                 const rawSegment = opening.orientation === "vertical"
                   ? {
                       x1: opening.x,
@@ -2091,8 +2091,8 @@ export default function ConceptModel3D({
                             projectionWidth,
                             projectionDepth,
                             zoom,
-                            zMin + 0.06,
-                            zMax - 0.06,
+                            zMin + Math.min(0.06, height / 3),
+                            zMax - Math.min(0.06, height / 3),
                           );
                           return (
                             <g>
@@ -2108,7 +2108,7 @@ export default function ConceptModel3D({
                       const handlePoint = project(
                         {
                           ...alignOpeningPoint({ x: opening.orientation === "vertical" ? opening.x + 0.02 : opening.x + width * 0.28, y: opening.orientation === "vertical" ? opening.y + width * 0.28 : opening.y + 0.02 }, opening, linkedWall),
-                          z: levelBase + 1.0,
+                          z: wallBase + sill + height * 0.45,
                         },
                         rotation,
                         projectionWidth,
