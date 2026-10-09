@@ -222,6 +222,25 @@ async function contaboReadOnly(action: keyof typeof CONTABO_READ_ONLY_COMMANDS) 
   return { action, readOnly: true, server: "contabo", output: stdout.slice(0, 16000), warnings: stderr.slice(0, 600) };
 }
 
+// Structured operations only: fixed script on the host, no arbitrary shell from the model.
+// Host-side operator enforces its own action allowlist and audit trail.
+async function contaboOperate(action: "build" | "homologate" | "rollback" | "releaseStatus", lot: string) {
+  if (!/^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$/.test(lot)) throw new Error("Invalid lot identifier");
+  const host = process.env["VENDI_CONTABO_SSH_HOST"] || (existsSync("/app/.vendi-ssh/host") ? readFileSync("/app/.vendi-ssh/host", "utf8").trim() : undefined);
+  const key = process.env["VENDI_CONTABO_SSH_KEY_PATH"] || "/app/.vendi-ssh/id_ed25519";
+  const knownHosts = process.env["VENDI_CONTABO_KNOWN_HOSTS"] || "/app/.vendi-ssh/known_hosts";
+  if (!host || !existsSync(key) || !existsSync(knownHosts)) throw new Error("Contabo SSH is not provisioned");
+  const user = process.env["VENDI_CONTABO_SSH_USER"] || "vendorai";
+  if (!/^[a-zA-Z0-9.-]+$/.test(host) || !/^[a-z_][a-z0-9_-]*$/.test(user)) throw new Error("Invalid SSH endpoint");
+  const { stdout, stderr } = await execFileAsync("ssh", [
+    "-i", key, "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
+    "-o", "StrictHostKeyChecking=yes", "-o", `UserKnownHostsFile=${knownHosts}`,
+    "-o", "ConnectTimeout=8", `${user}@${host}`,
+    `sudo -n /usr/local/sbin/vendi-contabo-operator ${action} ${lot}`,
+  ], { timeout: 180000, maxBuffer: 256 * 1024 });
+  return { action, lot, output: stdout.slice(0, 16000), warnings: stderr.slice(0, 600) };
+}
+
 function createCloudflareMcpServer() {
   const server = new McpServer(
     { name: "vendorai-cloudflare", version: "0.1.0" },
@@ -437,6 +456,19 @@ function createCloudflareMcpServer() {
     )),
   );
 
+
+  server.registerTool(
+    "vendi_contabo_operate",
+    {
+      description: "Executa operações predefinidas do operador Vendi na Contabo: build de lote homologado, homologação, rollback ou consulta de estágio. Não aceita comandos livres. Produção depende dos gates implementados no host.",
+      inputSchema: z.object({
+        action: z.enum(["build", "homologate", "rollback", "releaseStatus"]),
+        lot: z.string().regex(/^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$/),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ action, lot }) => toolText(await contaboOperate(action, lot)),
+  );
 
   server.registerTool(
     "vendi_contabo_status",
