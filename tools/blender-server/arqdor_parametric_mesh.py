@@ -99,3 +99,56 @@ def mesh_parametric_project(walls):
             "joinsResolved": not bool(joins["intersections"]),
             "globalWatertight": False, "geometryApproved": False,
             "quantitiesEnabled": False}
+
+
+def merge_collinear_end_to_end_walls(walls, tolerance=1e-6):
+    """Resolve safe collinear endpoint joins by replacing two runs with one.
+
+    Orthogonal L/T/cross joins and intersections near openings are intentionally
+    not altered; they need robust solid union rather than snapping centerlines.
+    """
+    if not isinstance(walls, list) or len(walls) > 500:
+        raise ValueError("Paredes inválidas")
+    if type(tolerance) not in (int, float) or not math.isfinite(tolerance) or not 0 < tolerance <= .001:
+        raise ValueError("Tolerância inválida")
+    result = []
+    for entry in walls:
+        if not isinstance(entry, dict):
+            raise ValueError("Parede inválida")
+        inspect_parametric_wall(entry.get("wall"), entry.get("openings", []))
+        result.append({"wall": {**entry["wall"]}, "openings": [dict(o) for o in entry.get("openings", [])]})
+    merged_pairs = []
+    changed = True
+    while changed:
+        changed = False
+        for i in range(len(result)):
+            if changed:
+                break
+            for j in range(len(result)):
+                if i == j:
+                    continue
+                left, right = result[i], result[j]
+                a, b = left["wall"]["start"], left["wall"]["end"]
+                c, d = right["wall"]["start"], right["wall"]["end"]
+                if math.dist(b, c) > tolerance:
+                    continue
+                dx, dy = b[0] - a[0], b[1] - a[1]
+                ex, ey = d[0] - c[0], d[1] - c[1]
+                if (abs(dx * ey - dy * ex) > tolerance * max(1, math.hypot(dx, dy), math.hypot(ex, ey))
+                        or dx * ex + dy * ey <= 0):
+                    continue
+                if any(abs(left["wall"][field] - right["wall"][field]) > tolerance
+                       for field in ("height", "thickness")):
+                    continue
+                left_len = math.hypot(dx, dy)
+                merged = {"wall": {**left["wall"], "end": list(d)},
+                          "openings": left["openings"] + [
+                              {**opening, "offset": opening["offset"] + left_len}
+                              for opening in right["openings"]]}
+                inspect_parametric_wall(merged["wall"], merged["openings"])
+                merged_pairs.append([i, j])
+                result = [v for k, v in enumerate(result) if k not in (i, j)] + [merged]
+                changed = True
+                break
+    return {"walls": result, "collinearPairsMerged": len(merged_pairs),
+            "nonCollinearJoinsResolved": False, "geometryApproved": False}
