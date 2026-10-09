@@ -152,3 +152,68 @@ def merge_collinear_end_to_end_walls(walls, tolerance=1e-6):
                 break
     return {"walls": result, "collinearPairsMerged": len(merged_pairs),
             "nonCollinearJoinsResolved": False, "geometryApproved": False}
+
+
+def classify_wall_solid_joins(walls, tolerance=1e-7):
+    """Classify potential 3D wall junctions; never claim a boolean union.
+
+    Only intersecting vertical ranges are eligible. Footprint overlaps are
+    computed from wall centerlines and expanded by half-width as a conservative
+    diagnostic, not as a manufacturing-grade CSG operation.
+    """
+    if not isinstance(walls, list) or len(walls) > 500:
+        raise ValueError("Lista de paredes inválida")
+    normalized = []
+    for entry in walls:
+        if not isinstance(entry, dict):
+            raise ValueError("Parede inválida")
+        wall = entry.get("wall")
+        inspect_parametric_wall(wall, entry.get("openings", []))
+        normalized.append(wall)
+
+    def cross(a, b):
+        return a[0] * b[1] - a[1] * b[0]
+
+    def point_segment_distance(p, a, b):
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        length_squared = dx * dx + dy * dy
+        if length_squared == 0:
+            return math.dist(p, a)
+        u = max(0, min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / length_squared))
+        return math.hypot(p[0] - a[0] - u * dx, p[1] - a[1] - u * dy)
+
+    issues = []
+    for i, a in enumerate(normalized):
+        for j in range(i + 1, len(normalized)):
+            b = normalized[j]
+            floor = max(a["start"][2], b["start"][2])
+            ceiling = min(a["start"][2] + a["height"], b["start"][2] + b["height"])
+            if ceiling <= floor + tolerance:
+                continue
+            p, q = a["start"][:2], a["end"][:2]
+            u, v = b["start"][:2], b["end"][:2]
+            r = (q[0] - p[0], q[1] - p[1])
+            s = (v[0] - u[0], v[1] - u[1])
+            delta = (u[0] - p[0], u[1] - p[1])
+            den = cross(r, s)
+            threshold = (a["thickness"] + b["thickness"]) / 2
+            nearest = min(point_segment_distance(point, seg[0], seg[1])
+                          for point, seg in ((p, (u, v)), (q, (u, v)),
+                                             (u, (p, q)), (v, (p, q))))
+            intersects = False
+            classification = "near_contact"
+            if abs(den) > tolerance:
+                t, w = cross(delta, s) / den, cross(delta, r) / den
+                intersects = -tolerance <= t <= 1 + tolerance and -tolerance <= w <= 1 + tolerance
+                if intersects:
+                    interior_a = tolerance < t < 1 - tolerance
+                    interior_b = tolerance < w < 1 - tolerance
+                    classification = "cross" if interior_a and interior_b else "T" if interior_a or interior_b else "L"
+            elif abs(cross(delta, r)) <= tolerance * max(1, math.hypot(*r)):
+                classification = "collinear_overlap_or_endpoint"
+            if intersects or nearest <= threshold + tolerance:
+                issues.append({"walls": [i, j], "kind": classification,
+                               "verticalOverlap": round(ceiling - floor, 6),
+                               "resolved": False, "requiresSolidUnion": True})
+    return {"joinCandidates": issues, "solidJoinsResolved": False,
+            "globalWatertight": False, "geometryApproved": False}
