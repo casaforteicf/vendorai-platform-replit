@@ -203,6 +203,7 @@ router.get("/crm/deals/:dealId/participants", async (req, res) => {
       personId: crmPeopleMasterTable.id,
       nome: crmPeopleMasterTable.nome,
       documento: crmPeopleMasterTable.documento,
+      dataNascimento: crmPeopleMasterTable.dataNascimento,
       telefones: crmPeopleMasterTable.telefones,
       emails: crmPeopleMasterTable.emails,
       role: crmDealPeopleTable.role,
@@ -229,6 +230,48 @@ router.get("/crm/deals/:dealId/participants", async (req, res) => {
       .where(and(eq(crmDealCompaniesTable.tenantId, tenantId), eq(crmDealCompaniesTable.dealId, req.params.dealId)));
 
     return res.json({ people, companies });
+  } catch (error: any) {
+    return res.status(error.status ?? 500).json({ error: error.message });
+  }
+});
+
+const personalDataSchema = z.object({
+  tenantId: z.string().optional(),
+  nome: z.string().trim().min(2),
+  documento: z.string().optional(),
+  telefone: z.string().optional(),
+  email: z.union([z.email(), z.literal("")]).optional(),
+  dataNascimento: z.union([z.iso.date(), z.literal("")]).optional(),
+});
+
+router.patch("/crm/deals/:dealId/people/:personId/profile", async (req, res) => {
+  const parsed = personalDataSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  try {
+    const tenantId = tenantIdFromRequest(req, parsed.data.tenantId);
+    await assertDeal(req, tenantId, req.params.dealId);
+    const [linked] = await db.select({ id: crmDealPeopleTable.id })
+      .from(crmDealPeopleTable)
+      .where(and(eq(crmDealPeopleTable.tenantId, tenantId),
+        eq(crmDealPeopleTable.dealId, req.params.dealId),
+        eq(crmDealPeopleTable.personId, req.params.personId))).limit(1);
+    if (!linked) return res.status(404).json({ error: "Pessoa não vinculada a este negócio." });
+    const documento = digits(parsed.data.documento);
+    if (documento) {
+      const matches = await db.select({ id: crmPeopleMasterTable.id })
+        .from(crmPeopleMasterTable).where(eq(crmPeopleMasterTable.documento, documento)).limit(1);
+      if (matches.length && matches[0].id !== req.params.personId)
+        return res.status(409).json({ error: "Documento já pertence a outra pessoa." });
+    }
+    const [updated] = await db.update(crmPeopleMasterTable).set({
+      nome: parsed.data.nome,
+      documento: documento || null,
+      telefones: parsed.data.telefone?.trim() ? [parsed.data.telefone.trim()] : [],
+      emails: parsed.data.email?.trim() ? [parsed.data.email.trim().toLowerCase()] : [],
+      dataNascimento: parsed.data.dataNascimento || null,
+      updatedAt: new Date(),
+    }).where(eq(crmPeopleMasterTable.id, req.params.personId)).returning();
+    return res.json({ item: updated });
   } catch (error: any) {
     return res.status(error.status ?? 500).json({ error: error.message });
   }
