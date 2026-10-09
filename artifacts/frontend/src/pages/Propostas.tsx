@@ -3728,6 +3728,10 @@ function newFreeItem(): FreeItem {
 
     async function approveImportedBudget() {
       if (!importAuditId || importReviewStatus !== "pending_review") return;
+      if (!Number.isFinite(importValorTotal) || importValorTotal <= 0) {
+        setImportError("Informe um valor total válido antes de aprovar.");
+        return;
+      }
       if (!importItens.length || importItens.some(item => !item.nome.trim()
         || !(item.quantidade > 0) || !Number.isFinite(item.quantidade)
         || !Number.isFinite(item.valorUnitario) || item.valorUnitario < 0
@@ -3743,6 +3747,7 @@ function newFreeItem(): FreeItem {
           body: JSON.stringify({
             action: "approve",
             reviewedData: {
+              valorTotal: importValorTotal,
               itens: importItens.map(item => ({
                 descricao: item.nome, quantidade: item.quantidade,
                 valorUnitario: item.valorUnitario,
