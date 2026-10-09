@@ -189,3 +189,20 @@ Referências:
 - https://www.chaos.com/press/v-ray-7-update-3-real-time-rendering-meets-the-v-ray-viewport
 - https://docs.blender.org/manual/en/4.5/render/cycles/gpu_rendering.html
 - https://docs.blender.org/manual/en/4.5/render/cycles/render_settings/sampling.html
+
+
+## GPU e limites de render — contrato do worker (09/10/2026)
+
+O worker aceita `ARQDOR_CYCLES_GPU_BACKEND=CUDA|OPTIX|HIP|ONEAPI|METAL` como
+seleção **explícita** do backend de GPU. Quando ausente, usa CPU. Se o dispositivo
+compatível não for detectado, registra o motivo e mantém CPU; backend desconhecido
+é rejeitado. A disponibilidade de GPU não é garantida e precisa de benchmark real
+no host contratado.
+
+O Blender valida antes de alocar memória: resolução de 64 a 8192 pixels por eixo,
+com máximo de 8192×8192, e amostras inteiras entre 1 e 4096. Esses limites são
+proteções técnicas, não garantia de que a memória disponível suporta a cena.
+Custo, filas, orçamento por tenant, watchdog e retomada ainda são pendentes.
+
+Não habilitar render 3D para usuário final até provar importação, fidelidade,
+permissões, transferência privada, persistência e geração de arquivo real.
