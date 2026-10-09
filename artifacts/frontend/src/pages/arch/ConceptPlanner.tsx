@@ -6,6 +6,7 @@ import "./concept-editor-workspace.css";
 import { ConceptIdeaEntry } from "./ConceptIdeaEntry";
 import { ConceptMetricInput } from "./ConceptMetricInput";
 import { wallLengthLimit } from "./conceptWallLengthLimits";
+import { duplicateWallPlacement, openingCrossesWallMidpoint } from "./conceptWallOperations";
 import {
   ArrowLeft,
   ArrowRight,
@@ -3714,40 +3715,16 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   };
 
   const updateCustomWallLength = (wallId: string, requestedLength: number) => {
-    const wall = safeCustomWalls.find((item) => item.id === wallId);
-    if (!wall) return;
-    const length = Math.max(0.5, Math.min(Math.hypot(lotWidth, lotDepth), Number(requestedLength) || 0.5));
-    const dx = wall.x2 - wall.x1;
-    const dy = wall.y2 - wall.y1;
-    const currentLength = Math.hypot(dx, dy);
-    if (currentLength < 0.001) return;
-    const before = snapshotEditor();
-    const ux = dx / currentLength;
-    const uy = dy / currentLength;
-    const x2 = Math.max(0, Math.min(lotWidth, wall.x1 + ux * length));
-    const y2 = Math.max(0, Math.min(lotDepth, wall.y1 + uy * length));
-    updateCustomWall(wall.id, { x2, y2 });
-    pushRoomHistory(before);
+    setCustomWallLength(wallId, requestedLength);
   };
 
   const duplicateCustomWall = (wallId: string) => {
     const wall = safeCustomWalls.find((item) => item.id === wallId);
     if (!wall) return;
+    const placement = duplicateWallPlacement(wall, lotWidth, lotDepth);
+    if (!placement) return;
     const before = snapshotEditor();
-    const dx = wall.x2 - wall.x1;
-    const dy = wall.y2 - wall.y1;
-    const length = Math.max(0.001, Math.hypot(dx, dy));
-    const offset = 0.25;
-    const ox = (-dy / length) * offset;
-    const oy = (dx / length) * offset;
-    const copy: CustomWall = {
-      ...wall,
-      id: `custom-wall-${uid()}`,
-      x1: Math.max(0, Math.min(lotWidth, wall.x1 + ox)),
-      y1: Math.max(0, Math.min(lotDepth, wall.y1 + oy)),
-      x2: Math.max(0, Math.min(lotWidth, wall.x2 + ox)),
-      y2: Math.max(0, Math.min(lotDepth, wall.y2 + oy)),
-    };
+    const copy: CustomWall = { ...wall, ...placement, id: `custom-wall-${uid()}` };
     setCustomWalls((prev) => [...(Array.isArray(prev) ? prev : []), copy]);
     setSelectedCustomWallId(copy.id);
     setSelectedWallId(null);
@@ -3758,7 +3735,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const wall = safeCustomWalls.find((item) => item.id === wallId);
     if (!wall) return;
     const length = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
-    if (length < 1) return;
+    if (length < 1 || openingCrossesWallMidpoint(length, safeCustomOpenings.filter((opening) => opening.wallId === wallId))) return;
 
     const before = snapshotEditor();
     const midpoint = {
@@ -3784,12 +3761,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) => {
       if (opening.wallId !== wallId) return opening;
       if (opening.offset < 0.5) {
-        return { ...opening, offset: Math.max(0.02, Math.min(0.98, opening.offset * 2)) };
+        return { ...opening, offset: opening.offset * 2 };
       }
       return {
         ...opening,
         wallId: secondWallId,
-        offset: Math.max(0.02, Math.min(0.98, (opening.offset - 0.5) * 2)),
+        offset: (opening.offset - 0.5) * 2,
       };
     }));
 
@@ -9478,6 +9455,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       <button
                         type="button"
                         onClick={() => splitCustomWall(selectedCustomWall.id)}
+                        disabled={openingCrossesWallMidpoint(Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1), safeCustomOpenings.filter((opening) => opening.wallId === selectedCustomWall.id))}
+                        title="Dividir ao meio; mova aberturas que atravessam o ponto de divisão antes de dividir"
                         disabled={Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1) < 1}
                         className="h-9 rounded-lg border px-3 text-xs font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
                         title="Dividir a parede no ponto médio"
