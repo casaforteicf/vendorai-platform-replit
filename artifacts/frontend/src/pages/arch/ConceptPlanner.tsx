@@ -7,7 +7,7 @@ import { ConceptIdeaEntry } from "./ConceptIdeaEntry";
 import { ConceptMetricInput } from "./ConceptMetricInput";
 import { wallLengthLimit } from "./conceptWallLengthLimits";
 import { duplicateWallPlacement, openingCrossesWallMidpoint } from "./conceptWallOperations";
-import { freeOpeningOffset, openingsOverlap, openingFitsWall, convertedOpening, openingPlacementError } from "./conceptOpeningPlacement";
+import { freeOpeningOffset, openingsOverlap, openingFitsWall, convertedOpening, openingPlacementError, openingDimensionError, exactOpeningEdit } from "./conceptOpeningPlacement";
 import { reconcileWallOpenings } from "./conceptWallOpeningReconciliation";
 import {
   ArrowLeft,
@@ -2726,19 +2726,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const wall = custom ? safeCustomWalls.find((item) => item.id === custom.wallId) : null;
     if (!custom || !wall) return;
     const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
-    const maximumWidth = Math.max(0.3, wallLength - 0.1);
-    const safeWidth = Math.max(0.3, Math.min(4, maximumWidth, Number(width) || 0.5));
-    if (Math.abs((custom.width ?? (custom.type === "door" ? 0.9 : 1.2)) - safeWidth) < 0.001) return;
-    const candidate = constrainOpeningToWall({ ...custom, width: safeWidth }, wallLength);
-    if (safeCustomOpenings.some((item) => item.wallId === wall.id && item.id !== openingId && openingsOverlap(candidate, item, wallLength))) {
-      setOpeningEditError("Essa largura sobrepõe outra abertura."); return;
-    }
+    const result = exactOpeningEdit(custom, { width }, safeCustomOpenings.filter(item => item.wallId === wall.id && item.id !== openingId), wallLength);
+    if ("error" in result) { setOpeningEditError(result.error); return; }
+    if (Math.abs((custom.width ?? (custom.type === "door" ? 0.9 : 1.2)) - width) < 0.001) return;
     setOpeningEditError(null);
-    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) =>
-      opening.id === openingId
-        ? constrainOpeningToWall({ ...opening, width: safeWidth }, wallLength)
-        : opening
-    ));
+    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map(opening => opening.id === openingId ? result.opening : opening));
   };
 
   const addObjectAt = (
@@ -3599,35 +3591,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     setSelectedWallId(null);
   };
 
-  const constrainOpeningToWall = (
-    opening: CustomOpening,
-    wallLength: number,
-    preserveFrom: "start" | "end" | "ratio" = "ratio",
-    previousWallLength = wallLength,
-  ): CustomOpening => {
-    const requestedWidth = opening.width ?? (opening.type === "door" ? 0.9 : 1.2);
-    const maxWidth = Math.max(0.3, wallLength - 0.1);
-    const width = Math.max(0.3, Math.min(requestedWidth, maxWidth));
-    const halfRatio = wallLength > 0.001 ? Math.min(0.49, width / 2 / wallLength) : 0.49;
-    const minOffset = halfRatio;
-    const maxOffset = 1 - halfRatio;
-
-    let offset = opening.offset;
-    if (previousWallLength > 0.001 && wallLength > 0.001) {
-      if (preserveFrom === "start") {
-        offset = (opening.offset * previousWallLength) / wallLength;
-      } else if (preserveFrom === "end") {
-        const distanceFromEnd = (1 - opening.offset) * previousWallLength;
-        offset = 1 - distanceFromEnd / wallLength;
-      }
-    }
-
-    return {
-      ...opening,
-      width,
-      offset: Math.max(minOffset, Math.min(maxOffset, offset)),
-    };
-  };
 
   const updateCustomWall = (
     wallId: string,
@@ -4463,30 +4426,14 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     patch: Partial<Pick<CustomOpening, "width" | "height" | "sillHeight" | "openingStyle" | "swing" | "swingSide" | "leafCount" | "frameProfile" | "glassType" | "manufacturer" | "catalogProductId">>,
   ) => {
     const current = safeCustomOpenings.find((item) => item.id === openingId);
-    const currentWall = current ? safeCustomWalls.find((item) => item.id === current.wallId) : null;
-    if (current && currentWall) {
-      const wallLength = Math.hypot(currentWall.x2 - currentWall.x1, currentWall.y2 - currentWall.y1);
-      const requested = { ...current, ...patch };
-      const candidate = constrainOpeningToWall({ ...requested, ...normalizeOpeningDimensions(requested) }, wallLength);
-      if (safeCustomOpenings.some((item) => item.wallId === current.wallId && item.id !== openingId && openingsOverlap(candidate, item, wallLength))) {
-        setOpeningEditError("Essa medida sobrepõe outra abertura. Ajuste a medida ou a posição.");
-        return;
-      }
-    }
+    const wall = current ? safeCustomWalls.find((item) => item.id === current.wallId) : null;
+    if (!current || !wall) return;
+    const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    const result = exactOpeningEdit(current, patch, safeCustomOpenings.filter(item => item.wallId === wall.id && item.id !== openingId), wallLength);
+    if ("error" in result) { setOpeningEditError(result.error); return; }
     setOpeningEditError(null);
     const before = snapshotEditor();
-    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) => {
-      if (opening.id !== openingId) return opening;
-      const next = { ...opening, ...patch };
-      const normalized = {
-        ...next,
-        ...normalizeOpeningDimensions(next),
-      };
-      const wall = safeCustomWalls.find((item) => item.id === normalized.wallId);
-      if (!wall) return normalized;
-      const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
-      return constrainOpeningToWall(normalized, wallLength);
-    }));
+    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map(opening => opening.id === openingId ? result.opening : opening));
     pushRoomHistory(before);
   };
 
@@ -4496,14 +4443,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     if (!opening || !wall || !Number.isFinite(rawPercent)) return;
     const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
     if (wallLength < 0.001) return;
-    const halfOpening = Math.min(wallLength / 2, Math.max(0.25, (opening.width ?? (opening.type === "door" ? 0.9 : 1.2)) / 2));
-    const minOffset = halfOpening / wallLength;
-    const maxOffset = 1 - minOffset;
-    const nextOffset = Math.max(minOffset, Math.min(maxOffset, rawPercent / 100));
-    if (safeCustomOpenings.some((item) => item.wallId === wall.id && item.id !== openingId && openingsOverlap({ ...opening, offset: nextOffset }, item, wallLength))) {
-      setOpeningEditError("Essa posição sobrepõe outra abertura. Escolha uma posição livre.");
-      return;
-    }
+    const nextOffset = rawPercent / 100;
+    const result = exactOpeningEdit(opening, { offset: nextOffset }, safeCustomOpenings.filter(item => item.wallId === wall.id && item.id !== openingId), wallLength);
+    if ("error" in result) { setOpeningEditError(result.error); return; }
+    if (Math.abs(opening.offset - nextOffset) < 1e-9) return;
     setOpeningEditError(null);
     const before = snapshotEditor();
     setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((item) =>
@@ -4567,9 +4510,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     if (!wall) return;
     const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
     const candidate = { ...opening, width: dims.width ?? opening.width, height: dims.height ?? opening.height };
-    if ((candidate.width != null && (!Number.isFinite(candidate.width) || candidate.width < 0.5 || candidate.width > 4)) || (candidate.height != null && (!Number.isFinite(candidate.height) || candidate.height < 0.5 || candidate.height > 2.8))) {
-      setOpeningEditError("As medidas do produto estão fora dos limites atuais do editor (largura de 0,50 a 4 m; altura de 0,50 a 2,80 m). O produto não foi aplicado."); return;
-    }
+    const dimensionError = openingDimensionError({ width: dims.width, height: dims.height });
+    if (dimensionError) { setOpeningEditError(dimensionError + " O produto não foi aplicado."); return; }
     if (!openingFitsWall(candidate, wallLength) || safeCustomOpenings.some((other) => other.wallId === wall.id && other.id !== openingId && openingsOverlap(candidate, other, wallLength))) {
       setOpeningEditError("O produto não cabe na posição atual. Ajuste a abertura antes de aplicar."); return;
     }

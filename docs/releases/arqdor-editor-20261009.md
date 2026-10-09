@@ -75,3 +75,10 @@ Verificação: 10 testes específicos passaram em 2 arquivos, incluindo parede d
 Conversão porta/janela usa uma única atualização após validar largura final, altura e peitoril, com bloqueio de sobreposição horizontal/vertical. Remove vínculo de produto/família ao mudar tipo para evitar associação incompatível. Movimentação bloqueada e conversão rejeitada não adicionam entrada vazia ao histórico. Produtos do catálogo fora da faixa atual de largura/altura são rejeitados com aviso antes da aplicação, evitando redução silenciosa das medidas do produto.
 
 Arquivos: ConceptPlanner.tsx, conceptOpeningPlacement.ts e conceptOpeningConversion.test.ts. Verificação consolidada: 47 testes passaram em 12 arquivos; sintaxe de ConceptPlanner verificada com esbuild. Sem build completo ou validação integrada. Lote ARQ-EDITOR-20261009, versão em desenvolvimento; homologação Contabo e publicação adiadas conforme orientação do usuário.
+
+
+## Medidas exatas e validação comum das aberturas
+
+Edição de largura pela planta e de parâmetros pelo painel agora valida a medida solicitada sem reduzir largura ou deslocar o centro silenciosamente. Posição percentual também rejeita posição inválida em vez de prender no limite. Largura, altura e peitoril usam validação comum; valores fora da faixa ou não finitos rejeitados. Dimensões existentes de importação são preservadas ao editar outro parâmetro. Helper de ajuste silencioso removido por ficar sem consumidores.
+
+Arquivos: ConceptPlanner.tsx, conceptOpeningPlacement.ts e conceptOpeningExactEdit.test.ts. Validação consolidada: 53 testes passaram em 13 arquivos; sintaxe TSX de ConceptPlanner verificada com esbuild. Sem build completo ou inspeção integrada. Lote ARQ-EDITOR-20261009, versão em desenvolvimento. Homologação Contabo e publicação permanecem adiadas.

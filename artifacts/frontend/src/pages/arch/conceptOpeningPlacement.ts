@@ -18,6 +18,18 @@ export function openingPlacementError(candidate: Opening, existing: Opening[], l
   if (existing.some(other => openingsOverlap(candidate, other, length))) return "A abertura sobrepõe outra abertura.";
   return null;
 }
+export function openingDimensionError(patch: Partial<Opening>): string | null {
+  for (const [key, min, max] of [["width", 0.5, 4], ["height", 0.5, 2.8], ["sillHeight", 0, 2.2]] as const) {
+    const value = patch[key];
+    if (value !== undefined && (!Number.isFinite(value) || value < min || value > max)) return "Medida fora dos limites: largura de 0,50 a 4 m, altura de 0,50 a 2,80 m e peitoril de 0 a 2,20 m.";
+  }
+  return null;
+}
+export function exactOpeningEdit<T extends Opening>(current: T, patch: Partial<T>, existing: Opening[], length: number): { opening: T } | { error: string } {
+  const candidate = { ...current, ...patch };
+  const error = openingDimensionError(patch) ?? openingPlacementError(candidate, existing, length);
+  return error ? { error } : { opening: candidate };
+}
 export function convertedOpening<T extends Opening>(opening: T, type: Opening["type"]): T & { openingStyle: "hinged" | "sliding" } {
   return {
     ...opening, type,
