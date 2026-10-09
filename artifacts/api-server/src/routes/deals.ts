@@ -389,11 +389,19 @@ router.post("/deals", async (req, res) => {
       res.status(422).json({ error: "Identificador de importação inválido." });
       return;
     }
+    if (!parsed.data.quoteFileUrl) {
+      res.status(422).json({
+        code: "BUDGET_IMPORT_FILE_REQUIRED",
+        error: "A importação aprovada precisa de arquivo original armazenado para ser vinculada ao negócio.",
+      });
+      return;
+    }
     const approved = await db.execute(sql`
       SELECT id FROM public.budget_imports
       WHERE id = ${rawImportId} AND tenant_id = ${parsed.data.tenantId}
         AND review_status = 'approved'
-        AND file_url IS NOT DISTINCT FROM ${parsed.data.quoteFileUrl ?? null}
+        AND file_url IS NOT NULL
+        AND file_url = ${parsed.data.quoteFileUrl}
       LIMIT 1
     `);
     if (!approved.rows.length) {
