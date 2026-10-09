@@ -519,11 +519,11 @@ def resolve_render_preset(config):
     }
     preset = config.get("qualityPreset")
     if preset is None:
-        return config.get("resolution", [1920, 1080]), config.get("samples", 64)
+        return config.get("resolution") or [1920, 1080], config.get("samples") or 64
     if preset not in profiles:
         raise ValueError("Preset de render desconhecido")
     resolution, samples = profiles[preset]
-    return config.get("resolution", resolution), config.get("samples", samples)
+    return config.get("resolution") or resolution, config.get("samples") or samples
 
 
 def configure_postproduction(config):
