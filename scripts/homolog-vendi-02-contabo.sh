@@ -100,7 +100,7 @@ const main=async()=>{
 
  // Existing tenants differ between production and isolated homolog DB.
  // Test read-only candidates without ever using a production API or changing data.
- const candidates=[...new Set([process.env.VENDI_HOMOLOG_TENANT_KEY,"casaforteicf","windoor","shoppingdapiscina","vendorai-e2e"].filter(Boolean))];
+ const candidates=[...new Set([process.env.VENDI_HOMOLOG_TENANT_KEY,"krafht-homolog","windoor-homolog","homolog-praca-ai","demo"].filter(Boolean))];
  let found=false;
  for(const tenantKey of candidates){
    const actual=await call(tenantKey);
