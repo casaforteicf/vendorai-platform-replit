@@ -384,3 +384,55 @@ def inspect_boundary_loops(vertices, edges, max_edges=50000):
                       "status": "closed_boundary_candidate", "openingConfirmed": False})
     return {"closedBoundaryCandidates": loops[:100],
             "requiresManualReview": True, "quantitiesEnabled": False}
+
+
+def associate_boundary_candidates(opening_hosts, classifications, tolerance=0.15):
+    """Cross-check candidate boundary rings with nearby door/window AABBs.
+
+    A ring can be an outside mesh boundary; matching it with an object only
+    raises a review priority. Neither an opening nor its size is certified.
+    """
+    if not isinstance(opening_hosts, list) or not isinstance(classifications, list):
+        raise ValueError("Dados espaciais inválidos")
+    if type(tolerance) not in (int, float) or not math.isfinite(tolerance) or not 0 <= tolerance <= 1:
+        raise ValueError("Tolerância inválida")
+    walls = {}
+    for item in classifications:
+        if not isinstance(item, dict):
+            raise ValueError("Elemento inválido")
+        if item.get("suggestedClass") == "wall":
+            walls.setdefault(item.get("name"), []).append(item)
+    openings = {}
+    for item in classifications:
+        if item.get("suggestedClass") in ("door", "window"):
+            openings.setdefault(item.get("name"), []).append(item)
+    findings = []
+    for relation in opening_hosts:
+        name = relation.get("opening")
+        matches = openings.get(name, [])
+        candidates = relation.get("candidateWalls", [])
+        verified_candidates = []
+        if len(matches) == 1 and isinstance(candidates, list):
+            opening_bounds = matches[0].get("bounds", {})
+            low, high = opening_bounds.get("min"), opening_bounds.get("max")
+            if isinstance(low, list) and isinstance(high, list) and len(low) == len(high) == 3:
+                for wall_name in candidates[:20]:
+                    wall_items = walls.get(wall_name, [])
+                    if len(wall_items) != 1:
+                        continue
+                    review = wall_items[0].get("topologyReview") or {}
+                    loops = (review.get("boundaryLoopReview") or {}).get("closedBoundaryCandidates", [])
+                    for loop in loops[:100]:
+                        box = loop.get("bounds", {})
+                        bmin, bmax = box.get("min"), box.get("max")
+                        if not isinstance(bmin, list) or not isinstance(bmax, list) or len(bmin) != 3 or len(bmax) != 3:
+                            continue
+                        if all(low[i] <= bmax[i] + tolerance and high[i] >= bmin[i] - tolerance for i in range(3)):
+                            verified_candidates.append({"wall": wall_name, "boundaryBounds": box})
+        findings.append({
+            "opening": name, "candidateBoundaryMatches": verified_candidates[:20],
+            "reviewPriority": "boundary_and_object_overlap" if verified_candidates else "spatial_only",
+            "openingConfirmed": False, "fabricationReady": False,
+            "requiresManualReview": True, "quantitiesEnabled": False,
+        })
+    return findings
