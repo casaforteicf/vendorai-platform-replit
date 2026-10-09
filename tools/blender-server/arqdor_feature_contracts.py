@@ -150,3 +150,34 @@ def validate_conversion_request(filename, size_bytes, expected_sha256):
         "materialsReviewRequired": True,
         "approvedForRender": False,
     }
+
+
+# Names are *hints* only. Imported mesh topology and wall openings are not
+# sufficient to certify IFC semantics, quantities or technical documentation.
+ARCHITECTURAL_HINTS = {
+    "wall": ("wall", "parede", "muro", "ifcwall"),
+    "slab": ("slab", "laje", "piso", "floor", "ifcslab"),
+    "door": ("door", "porta", "ifcdoor"),
+    "window": ("window", "janela", "esquadria", "ifcwindow"),
+    "roof": ("roof", "telhado", "cobertura", "ifcroof"),
+    "column": ("column", "pilar", "coluna", "ifccolumn"),
+    "beam": ("beam", "viga", "ifcbeam"),
+}
+
+
+def suggest_architectural_classification(name):
+    """Conservative, non-authoritative classification of named 3D objects."""
+    import unicodedata
+    if not isinstance(name, str) or len(name) > 500:
+        raise ValueError("Nome do objeto inválido")
+    normalized = unicodedata.normalize("NFKD", name.casefold())
+    normalized = "".join(c for c in normalized if not unicodedata.combining(c))
+    import re
+    tokens = set(re.findall(r"[a-z0-9]+", normalized))
+    matches = [category for category, aliases in ARCHITECTURAL_HINTS.items()
+               if any(alias in tokens for alias in aliases)]
+    if len(matches) != 1:
+        return {"suggestedClass": None, "classificationStatus": "manual_review_required",
+                "confidence": "none", "quantitiesEnabled": False}
+    return {"suggestedClass": matches[0], "classificationStatus": "unverified_name_hint",
+            "confidence": "low", "quantitiesEnabled": False}
