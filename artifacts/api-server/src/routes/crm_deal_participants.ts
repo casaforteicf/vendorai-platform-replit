@@ -361,6 +361,26 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
     }
 
     let personId = parsed.data.personId;
+    if (personId) {
+      const [masterPerson] = await db.select({ id: crmPeopleMasterTable.id })
+        .from(crmPeopleMasterTable).where(eq(crmPeopleMasterTable.id, personId)).limit(1);
+      if (!masterPerson) return res.status(404).json({ error: "Pessoa não encontrada." });
+      const [localDeal] = await db.select({ id: crmDealPeopleTable.id })
+        .from(crmDealPeopleTable).where(and(eq(crmDealPeopleTable.tenantId, tenantId),
+          eq(crmDealPeopleTable.personId, personId))).limit(1);
+      const [localContact] = await db.select({ id: crmTenantCompanyContactsTable.id })
+        .from(crmTenantCompanyContactsTable).where(and(eq(crmTenantCompanyContactsTable.tenantId, tenantId),
+          eq(crmTenantCompanyContactsTable.personId, personId))).limit(1);
+      if (!localDeal && !localContact) {
+        const [foreignDeal] = await db.select({ id: crmDealPeopleTable.id })
+          .from(crmDealPeopleTable).where(eq(crmDealPeopleTable.personId, personId)).limit(1);
+        const [foreignContact] = await db.select({ id: crmTenantCompanyContactsTable.id })
+          .from(crmTenantCompanyContactsTable).where(eq(crmTenantCompanyContactsTable.personId, personId)).limit(1);
+        if (foreignDeal || foreignContact) {
+          return res.status(403).json({ error: "Pessoa sem vínculo autorizado neste tenant." });
+        }
+      }
+    }
     if (!personId && parsed.data.person) {
       const p = parsed.data.person;
       const documento = digits(p.documento);
