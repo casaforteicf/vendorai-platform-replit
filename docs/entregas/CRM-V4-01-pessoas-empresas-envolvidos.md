@@ -120,3 +120,8 @@ Reutilizar o cadastro mestre existente e permitir casal (dois consumidores com q
 - Commit `7a27eac`: ao atualizar vínculo de pessoa, campos internos de auditoria (`relationshipHistory`, `inactive`, `unlinkedAt`, `unlinkedBy`, `createdTenantId`) deixam de ser sobrescritos pelo objeto `metadata` enviado pela interface; preserva histórico anterior e calcula status no servidor.
 - Cadastros legados: a alteração não requer migração de tabela; permanece pendente validar em execução vínculos sem histórico e sem `createdTenantId`.
 - **Validação:** alteração de código registrada, sem build ou testes executados nesta etapa. Homologação Contabo e publicação adiadas por determinação do usuário. Produção não alterada.
+
+## Compatibilidade do histórico legado — 09/10/2026
+- Commit `436d1b7`: vínculos já existentes sem `relationshipHistory` recebem, quando atualizados, um marcador `legacy_existing` com data nula, sem fabricar uma data ou um usuário de vinculação passado.
+- O evento efetivamente realizado (edição/reativação) é registrado com sua data atual. Vínculos novos mantêm somente os eventos reais.
+- **Limite:** nenhuma migração retroativa de dados foi executada. Validação TypeScript e build ainda não comprovados; homologação e produção seguem adiadas conforme solicitação.
