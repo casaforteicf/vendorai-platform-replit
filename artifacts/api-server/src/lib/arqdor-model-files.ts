@@ -141,6 +141,23 @@ export class ModelFileStore {
     }
   }
 
+  async attachConvertedSource(tenantId: string, projectId: string, modelId: string,
+    originalName: string, source: Buffer, sourceSha256: string) {
+    const record = await this.get(tenantId, projectId, modelId);
+    if (!/\\.(obj|fbx)$/i.test(originalName)) throw new Error("Extensão de origem inválida");
+    const sha = createHash("sha256").update(source).digest("hex");
+    if (sha !== sourceSha256) throw new Error("SHA256 de origem divergente");
+    const directory = await this.directory(tenantId, projectId, modelId);
+    const extension = path.extname(originalName).toLowerCase();
+    await writeFile(path.join(directory, `source${extension}`), source, { flag: "wx", mode: 0o600 });
+    const audit = { originalName: path.basename(originalName).slice(0, 200), sourceSha256: sha,
+      sourceBytes: source.length, convertedSha256: record.sha256,
+      geometryApproved: false, materialsApproved: false,
+      status: "converted_pending_geometry_review" };
+    await writeFile(path.join(directory, "conversion-report.json"), JSON.stringify(audit), { flag: "wx", mode: 0o600 });
+    return audit;
+  }
+
   async list(tenantId: string, projectId: string): Promise<ModelRecord[]> {
     const directory = await this.directory(tenantId, projectId);
     const entries = await readdir(directory, { withFileTypes: true });
