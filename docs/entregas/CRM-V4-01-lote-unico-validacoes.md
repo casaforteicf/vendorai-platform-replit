@@ -50,3 +50,8 @@ Responsável: agente CRM; validação Contabo/deploy sob fluxo oficial coordenad
 ## Evidência operacional
 
 Este relatório corresponde a inspeção estática de código remoto e planejamento de execução consolidada. **Nenhum teste de runtime nem operação de homologação foi concluído nesta sessão.**
+
+## Correção incremental após revisão — 09/10/2026
+- Commit `5b988b0`: na edição de participante, a interface grava primeiro o vínculo do negócio e somente depois altera o perfil mestre. Erro de vínculo já não deixa edição pessoal isolada; erro de perfil após vínculo exibe aviso explícito de sucesso parcial e atualiza cache dos participantes.
+- **Não é operação atômica:** continuam duas requisições HTTP. Uma implementação transacional de API permanece como melhoria futura, sujeita a desenho de autorização de perfil global e testes.
+- **Status da verificação:** inspeção estática do diff, sem build ou testes de integração. Homologação e publicação adiadas por determinação do usuário.
