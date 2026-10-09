@@ -16,7 +16,7 @@ rollback(){
      docker restart "$MCP" >/dev/null 2>&1 || true
    fi
    for F in "${FILES[@]}"; do
-     TARGET=/usr/local/sbin/$F
+     TARGET=/usr/local/sbin/${F%.sh}
      if [[ -f "$TMP/$F" ]]; then install -o root -g root -m 0750 "$TMP/$F" "$TARGET"; else rm -f "$TARGET"; fi
    done
  fi
@@ -27,7 +27,7 @@ trap rollback EXIT
 for F in "${FILES[@]}"; do
  test -s "$ROOT/scripts/$F" || { echo "SOURCE_MISSING:$F";exit 65; }
  bash -n "$ROOT/scripts/$F" || { echo "SYNTAX_INVALID:$F";exit 65; }
- [[ ! -f "/usr/local/sbin/$F" ]] || cp "/usr/local/sbin/$F" "$TMP/$F"
+ [[ ! -f "/usr/local/sbin/${F%.sh}" ]] || cp "/usr/local/sbin/${F%.sh}" "$TMP/$F"
 done
 test -s "$ROOT/artifacts/cloudflare-mcp/src/index.ts"
 docker cp "$MCP":/app/dist/index.js "$TMP/mcp-index.js" >/dev/null
@@ -37,7 +37,7 @@ docker cp "$ROOT/artifacts/cloudflare-mcp/src/index.ts" "$MCP":$WORK/src/index.t
 docker exec "$MCP" /app/node_modules/.bin/tsc -p "$WORK/tsconfig.json"
 docker cp "$MCP":$WORK/dist/index.js "$TMP/new-index.js" >/dev/null
 echo "=== INSTALL HOST OPERATORS, NO RELEASE ==="
-for F in "${FILES[@]}"; do install -o root -g root -m 0750 "$ROOT/scripts/$F" "/usr/local/sbin/$F"; done
+for F in "${FILES[@]}"; do install -o root -g root -m 0750 "$ROOT/scripts/$F" "/usr/local/sbin/${F%.sh}"; done
 install -d -o root -g root -m 0700 /var/lib/vendi-release/manifests /var/lib/vendi-release/state /var/lib/vendi-release/work
 docker cp "$TMP/new-index.js" "$MCP":/app/dist/index.js >/dev/null
 SWAPPED=1
