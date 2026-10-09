@@ -625,3 +625,49 @@ def record_opening_review_decision(queue, review_key, reviewer_id, decision,
              "quantitiesEnabled": False}
     return {"event": event, "persisted": False,
             "requiresAuthorizedAuditStore": True}
+
+
+def summarize_opening_review_history(queue, events):
+    """Rebuild a read-only review view from scoped audit events, without approvals."""
+    from datetime import datetime
+    if not isinstance(queue, dict) or not isinstance(queue.get("rows"), list):
+        raise ValueError("Fila inválida")
+    if not isinstance(events, list) or len(events) > 10000:
+        raise ValueError("Histórico inválido")
+    keys = [r.get("reviewKey") for r in queue["rows"] if isinstance(r, dict)]
+    if len(keys) != len(queue["rows"]) or len(set(keys)) != len(keys):
+        raise ValueError("Identidades de revisão duplicadas")
+    indexed = {key: [] for key in keys}
+    for i, event in enumerate(events):
+        if not isinstance(event, dict) or event.get("reviewKey") not in indexed:
+            raise ValueError("Evento não pertence à revisão")
+        if (event.get("projectVersion") != queue.get("projectVersion")
+                or event.get("sourceSha256") != queue.get("sourceSha256")
+                or event.get("decision") not in (
+                    "accept_for_detailed_review", "reject_candidate", "request_information")):
+            raise ValueError("Evento incompatível com versão ou decisão")
+        timestamp = event.get("reviewedAt")
+        try:
+            parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise ValueError("Data de evento inválida") from exc
+        if parsed.tzinfo is None or parsed.utcoffset().total_seconds() != 0:
+            raise ValueError("Data sem fuso UTC")
+        indexed[event["reviewKey"]].append((parsed, i, event))
+    result = []
+    dispositions = {
+        "accept_for_detailed_review": "awaiting_detailed_review",
+        "reject_candidate": "rejected_candidate",
+        "request_information": "waiting_for_information",
+    }
+    for row in queue["rows"]:
+        timeline = sorted(indexed[row["reviewKey"]], key=lambda e: (e[0], e[1]))
+        latest = timeline[-1][2] if timeline else None
+        result.append({**row, "reviewStatus": (
+            dispositions[latest["decision"]] if latest else "needs_manual_review"),
+            "lastReviewerId": latest.get("reviewerId") if latest else None,
+            "lastReviewedAt": latest.get("reviewedAt") if latest else None,
+            "eventCount": len(timeline), "geometryApproved": False,
+            "fabricationReady": False, "quantitiesEnabled": False})
+    return {"rows": result, "auditEventCount": len(events),
+            "persisted": False, "reviewRequired": True}
