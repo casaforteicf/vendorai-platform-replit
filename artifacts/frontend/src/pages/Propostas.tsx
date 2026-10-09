@@ -6500,12 +6500,20 @@ function newFreeItem(): FreeItem {
 
                 <div className="grid gap-1.5 max-w-xs">
                   <FormLabel>Valor total do documento (R$)</FormLabel>
-                  <BudgetMoneyInput
-                    value={importValorTotal || undefined}
-                    onChange={(value) => setImportValorTotal(value ?? 0)}
-                  />
+                  {importReviewStatus === "approved" ? (
+                    <p className="rounded border bg-muted/40 px-3 py-2 text-sm font-semibold" aria-label="Valor total aprovado">
+                      {importValorTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                    </p>
+                  ) : (
+                    <BudgetMoneyInput
+                      value={importValorTotal || undefined}
+                      onChange={(value) => setImportValorTotal(value ?? 0)}
+                    />
+                  )}
                   <p className="text-[11px] text-muted-foreground">
-                    O total permanece editável para preservar descontos, frete, impostos ou ajustes existentes no documento original.
+                    {importReviewStatus === "approved"
+                      ? "Total aprovado e bloqueado para edição. Importe novamente para modificar valores."
+                      : "Revise o total incluindo descontos, frete, impostos e outros ajustes antes de aprovar."}
                   </p>
                 </div>
 
