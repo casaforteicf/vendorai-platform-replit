@@ -572,18 +572,21 @@ router.delete("/crm/deals/:dealId/people/:relationId", async (req, res) => {
   try {
     const tenantId = tenantIdFromRequest(req);
     await assertDeal(req, tenantId, req.params.dealId);
-    const [relation] = await db.select().from(crmDealPeopleTable).where(and(
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${tenantId}), hashtext(${req.params.dealId}))`);
+    const [relation] = await tx.select().from(crmDealPeopleTable).where(and(
       eq(crmDealPeopleTable.id, req.params.relationId),
       eq(crmDealPeopleTable.tenantId, tenantId),
       eq(crmDealPeopleTable.dealId, req.params.dealId),
     )).limit(1);
-    if (!relation) return res.status(404).json({ error: "Vínculo não encontrado." });
-    if (relation.metadata?.inactive === true) return res.status(204).end();
-    await db.update(crmDealPeopleTable).set({
+    if (!relation) throw Object.assign(new Error("Vínculo não encontrado."), { status: 404 });
+    if (relation.metadata?.inactive === true) return;
+    await tx.update(crmDealPeopleTable).set({
       isPrimary: false,
       metadata: appendRelationshipEvent(relation.metadata, "unlinked", req.user?.id),
       updatedAt: new Date(),
     }).where(eq(crmDealPeopleTable.id, relation.id));
+    });
     return res.status(204).end();
   } catch (error: any) { return res.status(error.status ?? 500).json({ error: error.message }); }
 });
@@ -592,18 +595,21 @@ router.delete("/crm/deals/:dealId/companies/:relationId", async (req, res) => {
   try {
     const tenantId = tenantIdFromRequest(req);
     await assertDeal(req, tenantId, req.params.dealId);
-    const [relation] = await db.select().from(crmDealCompaniesTable).where(and(
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${tenantId}), hashtext(${req.params.dealId} + ":" + req.params.relationId))`);
+    const [relation] = await tx.select().from(crmDealCompaniesTable).where(and(
       eq(crmDealCompaniesTable.id, req.params.relationId),
       eq(crmDealCompaniesTable.tenantId, tenantId),
       eq(crmDealCompaniesTable.dealId, req.params.dealId),
     )).limit(1);
-    if (!relation) return res.status(404).json({ error: "Vínculo não encontrado." });
-    if (relation.metadata?.inactive === true) return res.status(204).end();
-    await db.update(crmDealCompaniesTable).set({
+    if (!relation) throw Object.assign(new Error("Vínculo não encontrado."), { status: 404 });
+    if (relation.metadata?.inactive === true) return;
+    await tx.update(crmDealCompaniesTable).set({
       isPrimary: false,
       metadata: appendRelationshipEvent(relation.metadata, "unlinked", req.user?.id),
       updatedAt: new Date(),
     }).where(eq(crmDealCompaniesTable.id, relation.id));
+    });
     return res.status(204).end();
   } catch (error: any) { return res.status(error.status ?? 500).json({ error: error.message }); }
 });
