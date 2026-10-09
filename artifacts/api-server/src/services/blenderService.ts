@@ -42,6 +42,14 @@ import { ObjectStorageService } from "../lib/objectStorage.js";
 // ─── Tipos locais ──────────────────────────────────────────────────────────────
 
 type SceneData = {
+  // Private worker staging key; never an arbitrary filesystem path or URL.
+  model?: {
+    key: string;
+    sha256: string;
+    calibration: { measuredDistance: number; actualMeters: number };
+    referenceDimensions: { width: number; depth: number; height: number };
+    tolerance?: number;
+  };
   estilo?:       string;
   cores?:        string;
   produtos?:     string[];
@@ -149,6 +157,16 @@ function buildSceneConfig(
   sceneData: SceneData,
   ambienteNome: string | null,
 ): Record<string, unknown> {
+  if (sceneData.model) {
+    return {
+      model: sceneData.model,
+      resolution: sceneData.resolution ?? [1920, 1080],
+      samples: sceneData.samples ?? 64,
+      hdri: sceneData.hdri ?? "natural",
+      hdriStrength: sceneData.hdriStrength ?? 1,
+      camera: sceneData.camera ?? {},
+    };
+  }
   // Se o sceneData já traz um sceneConfig completo (editor futuro), usa direto
   if (sceneData.objects && sceneData.objects.length > 0 && sceneData.hdri) {
     return {
@@ -351,6 +369,13 @@ export async function iniciarRender(
 
   if (!projeto) throw new Error(`Projeto ${cena.projetoId} não encontrado.`);
 
+  // A text-only AI fallback cannot reproduce an imported model faithfully.
+  // Preserve the existing image path, but reject this request before creating a job.
+  const sceneData = (cena.sceneData ?? {}) as SceneData;
+  if (sceneData.model && !process.env.BLENDER_SERVER_URL?.trim()) {
+    throw new Error("Render 3D indisponível. Configure o worker Blender; use o Render IA com uma imagem de referência para uma alternativa visual.");
+  }
+
   let ambienteNome: string | null = null;
   if (cena.ambienteId) {
     const [amb] = await db
@@ -376,8 +401,10 @@ export async function iniciarRender(
     .where(eq(archCenasTable.id, cenaId));
 
   // 4. Montar sceneConfig
-  const sceneData   = (cena.sceneData ?? {}) as SceneData;
   const sceneConfig = buildSceneConfig(sceneData, ambienteNome ?? cena.nome);
+  if (sceneData.model) {
+    sceneConfig.model = { ...sceneData.model, tenantId: projeto.tenantId };
+  }
 
   // 5. Verificar se o servidor Blender está configurado; se não, usar fallback gpt-image-1
   if (!process.env.BLENDER_SERVER_URL?.trim()) {
@@ -761,3 +788,4 @@ export async function pollPendingRenders(log: typeof logger): Promise<void> {
     ),
   );
 }
+

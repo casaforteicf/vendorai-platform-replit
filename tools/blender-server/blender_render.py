@@ -47,6 +47,8 @@ import os
 import sys
 import json
 import math
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from imported_model import import_model
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -510,14 +512,24 @@ def main():
     clear_scene()
     configure_render(config, out_path)
 
-    room_cfg = config.get("room", {})
-    build_room(room_cfg)
+    if config.get("model"):
+        report = import_model(config["model"])
+        report_path = os.environ.get("MODEL_REPORT_PATH")
+        if report_path:
+            with open(report_path, "w", encoding="utf-8") as report_file:
+                json.dump(report, report_file, ensure_ascii=False)
+        if os.environ.get("MODEL_INSPECT_ONLY") == "1":
+            print("MODEL_INSPECTION_DONE")
+            return
+    else:
+        room_cfg = config.get("room", {})
+        build_room(room_cfg)
 
     hdri_key      = config.get("hdri", "interior_warm")
     hdri_strength = float(config.get("hdriStrength", 1.0))
     setup_hdri(hdri_key, hdri_strength)
 
-    for obj_spec in config.get("objects", []):
+    for obj_spec in ([] if config.get("model") else config.get("objects", [])):
         try:
             add_object(obj_spec)
         except Exception as e:
@@ -531,3 +543,4 @@ def main():
 
 
 main()
+
