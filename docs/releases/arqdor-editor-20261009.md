@@ -142,3 +142,10 @@ Arquivos: ConceptWebGLScene.tsx, conceptWallSurfaces.ts e conceptWallSurfaces.te
 A vista 3D alternativa reutiliza as faces expostas da união de paredes ortogonais, com descarte de faces voltadas para trás e ordenação dos trechos pela profundidade da câmera. Materiais, seleção e pintura continuam vinculados à parede original. Paredes diagonais mantêm a renderização anterior.
 
 Validação: 83 testes em 18 arquivos passaram; transformação TSX do componente por esbuild passou. A conferência visual integrada, o build completo e a homologação/publicação não foram realizados neste lote.
+
+
+### Colisão de caminhada consistente com os vãos
+
+Passagens derivadas do recorte físico compartilhado de portas, incluindo vínculo à parede, orientação, diagonais e união de vãos sobrepostos. Sem ampliação artificial de portas estreitas; visitante de raio 24 cm e altura 1,70 m deve caber no vão. Janelas e portas baixas não liberam passagem. Todas as paredes de cruzamentos continuam verificadas.
+
+Validação: 88 testes em 19 arquivos passaram; esbuild da cena e tipagem isolada do helper passaram. Navegação visual integrada e build completo pendentes. Homologação/publicação adiadas no lote ARQ-EDITOR-20261009, versão em desenvolvimento.

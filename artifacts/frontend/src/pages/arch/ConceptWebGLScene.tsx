@@ -1,3 +1,4 @@
+import { canWalkTo, walkWall } from "./conceptWalkCollision";
 import { exposedWallFaces } from "./conceptWallSurfaces";
 import { partitionOrthogonalWallSolids } from "./conceptWallSolidUnion";
 import { splitWallVoids, openingVerticalBounds } from "./conceptWallVoids";
@@ -268,37 +269,6 @@ function disposeTree(root: any) {
     else node.material?.dispose?.();
     node.texture?.dispose?.();
   });
-}
-
-function canWalkTo(
-  x: number,
-  y: number,
-  walls: Runtime["walkWalls"],
-  radius = 0.24,
-) {
-  for (const wall of walls) {
-    const dx = wall.x2 - wall.x1;
-    const dy = wall.y2 - wall.y1;
-    const length = Math.max(0.001, Math.hypot(dx, dy));
-    const ux = dx / length;
-    const uy = dy / length;
-    const relX = x - wall.x1;
-    const relY = y - wall.y1;
-    const along = relX * ux + relY * uy;
-    if (along < -radius || along > length + radius) continue;
-
-    const clampedAlong = Math.max(0, Math.min(length, along));
-    const closestX = wall.x1 + ux * clampedAlong;
-    const closestY = wall.y1 + uy * clampedAlong;
-    const perpendicular = Math.hypot(x - closestX, y - closestY);
-    if (perpendicular > wall.thickness / 2 + radius) continue;
-
-    const throughDoor = wall.doorGaps.some((gap) =>
-      Math.abs(along - gap.center) <= Math.max(0.18, gap.halfWidth - radius * 0.35),
-    );
-    if (!throughDoor) return false;
-  }
-  return true;
 }
 
 export default function ConceptWebGLScene({
@@ -1308,40 +1278,13 @@ export default function ConceptWebGLScene({
 
     const activeLevel = levels.find((level) => level.floor === activeFloor);
     const collisionWalls = [
-      ...(activeLevel?.walls ?? []),
+      ...(activeLevel?.walls ?? []).map(wall => ({ ...wall, thickness: 0.15 })),
       ...(activeLevel?.customWalls ?? []),
     ];
-    runtime.walkWalls = collisionWalls.map((wall: any) => {
-      const dx = wall.x2 - wall.x1;
-      const dy = wall.y2 - wall.y1;
-      const length = Math.max(0.001, Math.hypot(dx, dy));
-      const ux = dx / length;
-      const uy = dy / length;
-      const doorGaps = (activeLevel?.openings ?? [])
-        .filter((opening: any) => opening.type === "door" && (!opening.roomId?.startsWith("custom-wall:") || opening.roomId === `custom-wall:${wall.id}`))
-        .map((opening: any) => {
-          const relX = opening.x - wall.x1;
-          const relY = opening.y - wall.y1;
-          const center = relX * ux + relY * uy;
-          const projectedX = wall.x1 + ux * center;
-          const projectedY = wall.y1 + uy * center;
-          const distance = Math.hypot(opening.x - projectedX, opening.y - projectedY);
-          const width = Math.max(0.7, opening.width ?? 0.9);
-          return { center, halfWidth: width / 2, distance };
-        })
-        .filter((gap: any) => gap.distance <= Math.max(0.22, (wall.thickness ?? 0.15) * 1.75)
-          && gap.center >= -0.1
-          && gap.center <= length + 0.1)
-        .map(({ center, halfWidth }: any) => ({ center, halfWidth }));
-      return {
-        x1: wall.x1,
-        y1: wall.y1,
-        x2: wall.x2,
-        y2: wall.y2,
-        thickness: Math.max(0.08, wall.thickness ?? 0.15),
-        doorGaps,
-      };
-    });
+    runtime.walkWalls = collisionWalls.map((wall) => walkWall(
+      { ...wall, thickness: wall.thickness ?? 0.15 },
+      activeLevel?.openings ?? [],
+    ));
 
     if (interiorMode && activeLevel) {
       const roomLights = (activeLevel.closedSpaces ?? [])
