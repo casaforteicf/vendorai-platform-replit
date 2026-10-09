@@ -117,3 +117,12 @@ Arquivos: ConceptModel3D.tsx, ConceptWebGLScene.tsx, conceptWallVoids.ts e conce
 openingVerticalBounds compartilha limites entre recorte e esquadria nas cenas SVG/WebGL. Esquadrias parcialmente acima da parede são representadas somente na faixa da parede; inteiramente acima ou inválidas não geram geometria. Dados do modelo preservados. Espessura de caixilho adapta-se a esquadrias pequenas e montantes não geram altura negativa. Maçaneta acompanha altura efetivamente representada. Marcadores legados sem vínculo custom-wall só recortam paredes compatíveis com sua orientação, evitando recorte perpendicular em cruzamentos.
 
 Arquivos: ConceptModel3D.tsx, ConceptWebGLScene.tsx, conceptWallVoids.ts e conceptWallVoids.test.ts. 72 testes passaram em 16 arquivos; sintaxe TSX das cenas verificada isoladamente. Build completo, união booleana entre paredes e inspeção integrada pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento; homologação Contabo e publicação adiadas.
+
+
+## Partição da união de volumes ortogonais
+
+partitionOrthogonalWallSolids subtrai volumes já ocupados dos trechos seguintes após o recorte dos vãos. L, T, cruzamentos e paredes duplicadas ortogonais geram volumes sem sobreposição nas cenas SVG/WebGL. Materiais e IDs preservados por trecho; a primeira parede é proprietária do volume compartilhado. Fragmentos finos preservados sem engrossamento mínimo visual. Modelo editável original não modificado.
+
+Limites: paredes diagonais permanecem no caminho anterior; não há união booleana geral de polígonos, remoção de faces internas nem malha única contínua BIM. Paredes inferidas da cena não participam da partição do conjunto explícito. Inspeção visual integrada e desempenho em projetos grandes pendentes.
+
+Arquivos: ConceptModel3D.tsx, ConceptWebGLScene.tsx, conceptWallSolidUnion.ts e conceptWallSolidUnion.test.ts. 78 testes passaram em 17 arquivos; sintaxe TSX das cenas e tipagem isolada do helper verificadas. Lote ARQ-EDITOR-20261009, versão em desenvolvimento. Homologação Contabo e publicação adiadas.

@@ -1,3 +1,4 @@
+import { partitionOrthogonalWallSolids } from "./conceptWallSolidUnion";
 import { splitWallVoids, openingVerticalBounds } from "./conceptWallVoids";
 import { buildFacadeMeshBoxes } from "./conceptFacadeMeshes";
 import { getFacadeMaterial, type FacadeDesignState } from "./conceptFacadeDesign";
@@ -1261,15 +1262,16 @@ export default function ConceptWebGLScene({
       openingsForFloor: ConceptModelLevel["openings"],
       materialId?: string,
       custom = false,
+      prepared?: ReturnType<typeof partitionOrthogonalWallSolids>,
     ) => {
       const baseY = floor * 2.96 + 0.16;
       const thickness = Math.max(0.08, wall.thickness ?? 0.15);
       const color = !materialId && wall.exterior && facadeDesign
         ? Number.parseInt(getFacadeMaterial(facadeDesign.surfaceMaterials.main).baseColor.slice(1), 16)
         : materialColor(materialId ?? "pintura-branca");
-      for (const piece of splitWallVoids(wall, openingsForFloor ?? [], 2.8)) {
+      for (const piece of prepared ?? splitWallVoids(wall, openingsForFloor ?? [], 2.8)) {
         const dx = piece.wall.x2 - piece.wall.x1, dy = piece.wall.y2 - piece.wall.y1;
-        const mesh = makeBox(parent, Math.hypot(dx, dy), piece.zMax - piece.zMin, thickness,
+        const mesh = makeBox(parent, Math.hypot(dx, dy), piece.zMax - piece.zMin, Math.max(0.000001, piece.wall.thickness ?? thickness),
           (piece.wall.x1 + piece.wall.x2) / 2 - lotWidth / 2,
           baseY + (piece.zMin + piece.zMax) / 2,
           (piece.wall.y1 + piece.wall.y2) / 2 - lotDepth / 2, color,
@@ -1386,11 +1388,15 @@ export default function ConceptWebGLScene({
         }
       }
 
+      const joinedWalls = partitionOrthogonalWallSolids([
+        ...(level.walls ?? []).map(wall => ({ ...wall, thickness: 0.15 })),
+        ...(level.customWalls ?? []),
+      ], level.openings ?? [], 2.8);
       for (const wall of level.walls ?? []) {
-        addWall(modelRoot, wall, level.floor, level.openings ?? [], level.wallMaterials?.[wall.id], false);
+        addWall(modelRoot, wall, level.floor, level.openings ?? [], level.wallMaterials?.[wall.id], false, joinedWalls.filter(piece => piece.wall.id === wall.id));
       }
       for (const wall of level.customWalls ?? []) {
-        addWall(modelRoot, wall, level.floor, level.openings ?? [], level.wallMaterials?.[wall.id], true);
+        addWall(modelRoot, wall, level.floor, level.openings ?? [], level.wallMaterials?.[wall.id], true, joinedWalls.filter(piece => piece.wall.id === wall.id));
       }
 
       // Geometry guard: recover missing external envelope from the detected room grid.

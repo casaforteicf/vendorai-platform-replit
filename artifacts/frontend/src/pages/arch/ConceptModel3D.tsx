@@ -1,4 +1,5 @@
-import { splitWallVoids, alignOpeningSegment, alignOpeningPoint, openingVerticalBounds } from "./conceptWallVoids";
+import { partitionOrthogonalWallSolids } from "./conceptWallSolidUnion";
+import { alignOpeningSegment, alignOpeningPoint, openingVerticalBounds } from "./conceptWallVoids";
 import type { SiteFrontSide } from "./conceptSitePlacement";
 import { buildFacadeMeshBoxes, facadeBoxFaces } from "./conceptFacadeMeshes";
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
@@ -385,7 +386,7 @@ function wallPolygon(
   zMin: number,
   zMax: number,
 ) {
-  const thickness = Math.max(0.08, wall.thickness ?? 0.15);
+  const thickness = Math.max(0.000001, wall.thickness ?? 0.15);
   const dx = wall.x2 - wall.x1;
   const dy = wall.y2 - wall.y1;
   const length = Math.max(0.001, Math.hypot(dx, dy));
@@ -1910,8 +1911,8 @@ export default function ConceptModel3D({
               ))}
 
               <g filter="url(#concept3d-shadow)">
-                {allWalls.flatMap((wall) =>
-                  splitWallVoids(wall, level.openings, WALL_HEIGHT).map((piece, index) => {
+                {partitionOrthogonalWallSolids(allWalls, level.openings, WALL_HEIGHT).map((piece, index) => {
+                    const wall = piece.wall;
                     const shape = wallPolygon(
                       piece.wall,
                       rotation, projectionWidth, projectionDepth, zoom,
@@ -1955,8 +1956,7 @@ export default function ConceptModel3D({
                         />
                       </g>
                     );
-                  })
-                )}
+                  })}
               </g>
 
               {level.openings.map((opening) => {
