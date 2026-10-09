@@ -52,6 +52,7 @@ def convert(src: Path, dst: Path, sha256: str):
     if any(not math.isfinite(value) or value > 100000 for value in dimensions):
         raise ValueError("Dimensões incompatíveis com limites do conversor")
     classification_hints = []
+    source_digest = request["sha256"]
     for mesh_index, obj in enumerate(meshes[:2000]):
         world_corners = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
         local_bounds = [max(point[axis] for point in world_corners)
@@ -92,6 +93,8 @@ def convert(src: Path, dst: Path, sha256: str):
         classification_hints.append({
             "name": obj.name,
             "objectId": f"mesh-{mesh_index:06d}",
+            "sourceSha256": source_digest,
+            "sourceObjectKey": f"{source_digest}:mesh-{mesh_index:06d}",
             "topologyReview": topology or None,
             "boundsDimensions": local_bounds,
             "bounds": {"min": [min(p[a] for p in world_corners) for a in range(3)],
@@ -111,7 +114,9 @@ def convert(src: Path, dst: Path, sha256: str):
             "polygonCount": polygon_count,
             "materialNames": sorted(material_names)[:1000],
             "bounds": {"min": minimum, "max": maximum, "dimensions": dimensions},
-            "units": "unverified", "classifications": classification_hints,
+            "units": "unverified", "sourceSha256": source_digest,
+            "objectIdentityScope": "source_sha256_and_mesh_index_not_cross_version_stable",
+            "classifications": classification_hints,
             "openingHostCandidates": opening_hosts,
             "openingScheduleDraft": opening_schedule,
             "boundaryOpeningReview": boundary_matches,
