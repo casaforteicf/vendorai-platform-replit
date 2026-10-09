@@ -275,6 +275,23 @@ class FeatureContractsTests(unittest.TestCase):
             [wall, {**first, "objectId": "duplicate"}, {**second, "objectId": "duplicate"}], 1)
         self.assertTrue(all(r["dimensionsMeters"] is None for r in ambiguous))
 
+    def test_source_scoped_object_key_is_preserved_in_draft(self):
+        digest = "ab" * 32
+        wall = {"name": "Parede", "objectId": "mesh-000000",
+                "sourceObjectKey": f"{digest}:mesh-000000", "suggestedClass": "wall",
+                "bounds": {"min": [0, 0, 0], "max": [4, .2, 3]}}
+        window = {"name": "Janela", "objectId": "mesh-000001",
+                  "sourceObjectKey": f"{digest}:mesh-000001", "suggestedClass": "window",
+                  "bounds": {"min": [1, 0, 1], "max": [2, .2, 2]}}
+        hosts = propose_opening_hosts([wall, window])
+        self.assertEqual(hosts[0]["sourceObjectKey"], window["sourceObjectKey"])
+        schedule = draft_opening_schedule([wall, window])
+        self.assertEqual(schedule[0]["sourceObjectKey"], window["sourceObjectKey"])
+        self.assertFalse(schedule[0]["fabricationReady"])
+        review = associate_boundary_candidates(hosts, [wall, window])
+        self.assertEqual(review[0]["sourceObjectKey"], window["sourceObjectKey"])
+        self.assertFalse(review[0]["openingConfirmed"])
+
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
         self.assertFalse(data["quantitiesEnabled"])
