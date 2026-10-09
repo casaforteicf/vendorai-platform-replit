@@ -79,3 +79,9 @@ Reutilizar o cadastro mestre existente e permitir casal (dois consumidores com q
 - `330bbc9`: `PATCH /crm/deals/:dealId/people/:personId/profile` bloqueia edição do perfil mestre global quando detecta vínculos da mesma pessoa com outro tenant (negócios ou contatos da empresa), evitando que um tenant altere dados usados por outro.
 - Pendência arquitetural: fluxo específico para autorização/vinculação de documentos já existentes em outro tenant, sem divulgar identificadores ou PII. A mudança conservadora pode exigir UX adicional para cadastros compartilhados.
 - Estado: **implementado sem validação**; não foram obtidos logs de Contabo nem evidências de homologação. Vendi homologação segue com 401 no fluxo de troca de token.
+
+## Continuação — controle de acesso de pessoa por negócio (09/10/2026)
+- `c3176cd`: o endpoint de edição do perfil rejeita relação com `metadata.inactive=true`.
+- `3e52b91`: o endpoint de vínculo por `personId` rejeita IDs que possuam referências em outros tenants, sem referência local, impedindo associação arbitrária entre tenants.
+- **Limitação remanescente:** cadastros globais ainda sem nenhum vínculo exigem um mecanismo de titularidade/autorização de criação para impedir associação por conhecimento de ID; este ajuste isolado não encerra toda a segurança multi-tenant.
+- Build na Contabo e homologação: não realizados. A conexão Vendi de homologação segue com troca de token recusada (401). Produção intocada.
