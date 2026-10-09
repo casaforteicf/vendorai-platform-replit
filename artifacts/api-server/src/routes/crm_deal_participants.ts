@@ -444,6 +444,78 @@ router.patch("/crm/deals/:dealId/people/:personId/profile", async (req, res) => 
   }
 });
 
+// The two consumers in a couple must be committed together (no orphan master record).
+const coupleSchema = z.object({
+  tenantId: z.string().optional(),
+  people: z.tuple([personSchema.omit({ tenantId: true }), personSchema.omit({ tenantId: true })]),
+  contextualCompanyId: z.string().nullable().optional(),
+});
+router.post("/crm/deals/:dealId/couple", async (req, res) => {
+  const parsed = coupleSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  try {
+    const tenantId = tenantIdFromRequest(req, parsed.data.tenantId);
+    await assertDeal(req, tenantId, req.params.dealId);
+    const [first, second] = parsed.data.people;
+    const firstDoc = digits(first.documento);
+    const secondDoc = digits(second.documento);
+    if (firstDoc && secondDoc && firstDoc === secondDoc)
+      return res.status(422).json({ error: "Os dois clientes devem possuir documentos distintos." });
+    const result = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${tenantId}), hashtext(${req.params.dealId}))`);
+      if (parsed.data.contextualCompanyId) {
+        const [company] = await tx.select({ id: crmTenantCompaniesTable.id }).from(crmTenantCompaniesTable)
+          .where(and(eq(crmTenantCompaniesTable.tenantId, tenantId),
+            eq(crmTenantCompaniesTable.companyId, parsed.data.contextualCompanyId))).limit(1);
+        if (!company) throw Object.assign(new Error("Empresa contextual não pertence ao tenant."), { status: 422 });
+      }
+      const people = [];
+      for (const [index, person] of parsed.data.people.entries()) {
+        const documento = digits(person.documento);
+        const telefone = digits(person.telefone);
+        const email = person.email?.trim().toLowerCase();
+        if (documento) {
+          const [duplicate] = await tx.select({ id: crmPeopleMasterTable.id }).from(crmPeopleMasterTable)
+            .where(eq(crmPeopleMasterTable.documento, documento)).limit(1);
+          if (duplicate) throw Object.assign(new Error(`Documento do Cliente ${index + 1} já cadastrado. Selecione o cadastro existente.`), { status: 409 });
+        }
+        const candidates = await tx.select({
+          nome: crmPeopleMasterTable.nome, telefones: crmPeopleMasterTable.telefones, emails: crmPeopleMasterTable.emails,
+        }).from(crmPeopleMasterTable).where(ilike(crmPeopleMasterTable.nome, person.nome.trim())).limit(30);
+        if (candidates.some(candidate =>
+          (telefone && (candidate.telefones ?? []).some(v => digits(v) === telefone)) ||
+          (email && (candidate.emails ?? []).some(v => v.toLowerCase() === email))))
+          throw Object.assign(new Error(`Possível duplicidade no Cliente ${index + 1}. Revise o cadastro existente.`), { status: 409 });
+        const [created] = await tx.insert(crmPeopleMasterTable).values({
+          nome: person.nome.trim(), documento: documento || null,
+          dataNascimento: person.dataNascimento ?? null,
+          telefones: person.telefone ? [person.telefone.trim()] : [],
+          emails: email ? [email] : [],
+          source: person.source ?? "manual", metadata: { createdTenantId: tenantId },
+          updatedAt: new Date(),
+        }).returning({ id: crmPeopleMasterTable.id });
+        const [link] = await tx.insert(crmDealPeopleTable).values({
+          tenantId, dealId: req.params.dealId, personId: created.id, role: "consumidor_final",
+          isPrimary: index === 0, contextualCompanyId: parsed.data.contextualCompanyId ?? null,
+          relationshipScope: "deal_only",
+          metadata: appendRelationshipEvent({ clientePrincipal: true, ordemClientePrincipal: index + 1, grupoCliente: "multiplo" },
+            "linked", req.user?.id),
+          updatedAt: new Date(),
+        }).returning();
+        people.push({ personId: created.id, link });
+      }
+      await tx.update(crmDealPeopleTable).set({ isPrimary: false, updatedAt: new Date() })
+        .where(and(eq(crmDealPeopleTable.tenantId, tenantId),
+          eq(crmDealPeopleTable.dealId, req.params.dealId),
+          sql`${crmDealPeopleTable.personId} <> ${people[0].personId}`));
+      return people;
+    });
+    return res.status(201).json({ items: result });
+  } catch (error: any) {
+    return res.status(error.status ?? 500).json({ error: error.message });
+  }
+});
+
 router.post("/crm/deals/:dealId/people", async (req, res) => {
   const parsed = dealPersonSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
