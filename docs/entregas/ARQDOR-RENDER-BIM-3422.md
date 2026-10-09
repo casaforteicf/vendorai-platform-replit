@@ -461,3 +461,11 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Regressão:** `3850d1e` acrescenta `test_y_normals_point_outward` para verificar separadamente as duas faces laterais além do teste de volume assinado.
 - **Verificação:** código obtido e analisado pela conexão GitHub; tentativa de obter checkout no contêiner via raw.githubusercontent.com retornou `curl: (6) Could not resolve host`. Portanto a suíte real **não foi executada**; nenhum build ou homologação ocorreu.
 - **Segurança:** permanece não aprovado para fabricação/quantitativos; PR #3422 Draft, sem merge/deploy, produção inalterada.
+
+
+## 3422-A — estado topológico calculado no resultado da união (09/10/2026)
+- **Novo comportamento:** `union_orthogonal_walls` passa a chamar `inspect_mesh_edges` sobre vértices e faces gerados e retorna `topology` e `meshClosedByEdgeIncidence`. Assim o fechamento não é inferido da presença de faces, mas contabiliza bordas abertas, arestas não-manifold e erros de orientação.
+- **Regressão:** `test_arqdor_orthogonal_union.py` verifica que a informação retornada coincide com a inspeção topológica independente.
+- **Commits:** `55fd063` (diagnóstico no resultado) e `d26a87b` (assertivas).
+- **Critério de aceite:** **não satisfeito ainda**. Testes escritos mas não executados nesta sessão; build TypeScript, testes visuais e verificação com projetos reais continuam pendentes. `meshClosedByEdgeIncidence` é um diagnóstico limitado, não aprovação BIM nem garantia de volume manifold global.
+- **Estado:** PR #3422 Draft; homologação Contabo adiada, sem merge/deploy; produção inalterada.
