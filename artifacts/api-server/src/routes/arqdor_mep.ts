@@ -59,13 +59,18 @@ arqdorMepRouter.get("/arch/projects/:projectId/mep", async(req,res,next)=>{
   } catch(err){next(err);}
 });
 arqdorMepRouter.post("/arch/projects/:projectId/mep/systems",async(req,res,next)=>{
-  try {
-    const tid=tenant(req,res),pid=routeId(req,res);if(!tid||!pid)return;
-    const body=validation(systemInput,req,res);if(!body)return;
-    if(!await projectExists(tid,pid)){res.status(404).json({error:"Projeto não encontrado"});return;}
-    const r=await pool.query("INSERT INTO arqdor_mep_systems(id,tenant_id,project_id,discipline,name) VALUES ($1,$2,$3,$4,$5) RETURNING *",[crypto.randomUUID(),tid,pid,body.discipline,body.name]);
-    res.status(201).json({system:r.rows[0]});
-  }catch(err){next(err);}
+ try {
+  const tid=tenant(req,res),pid=routeId(req,res);if(!tid||!pid)return;
+  const body=validation(systemInput,req,res);if(!body)return;
+  const result=await withLockedMepConcept(tid,pid,async(client)=>{
+   const r=await client.query(
+    "INSERT INTO arqdor_mep_systems(id,tenant_id,project_id,discipline,name) VALUES ($1,$2,$3,$4,$5) RETURNING *",
+    [crypto.randomUUID(),tid,pid,body.discipline,body.name]);
+   return {system:r.rows[0]};
+  });
+  if(result===null){res.status(409).json({code:"MEP_BINDING_REQUIRED",error:"Workspace BIM não vinculado ao pré-projeto"});return;}
+  res.status(201).json(result);
+ }catch(err){next(err);}
 });
 arqdorMepRouter.post("/arch/projects/:projectId/mep/networks",async(req,res,next)=>{
  try {
