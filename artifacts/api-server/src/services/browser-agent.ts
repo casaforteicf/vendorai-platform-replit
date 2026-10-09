@@ -439,6 +439,30 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
         host.endsWith(".vendorai.pages.dev") ||
         configuredHosts.includes(host);
       if (!trustedFirstParty) throw new Error("VENDI_AUTH_ORIGIN_MISMATCH");
+      
+      // A identidade técnica deve acompanhar TODAS as chamadas à API feitas pelo
+      // navegador; caches, perfis restaurados e interceptors do SPA podem manter
+      // cabeçalhos de uma sessão anterior. Nunca envie o token a outros domínios.
+      await page.setBypassServiceWorker(true);
+      await page.setCacheEnabled(false);
+      await page.setRequestInterception(true);
+      page.on("request", (request) => {
+        const requestUrl = new URL(request.url());
+        const isVendorApi = requestUrl.protocol === "https:" || requestUrl.hostname === "127.0.0.1";
+        const trustedApiHost = requestUrl.hostname === host || requestUrl.hostname === "api.appvendorai.com";
+        const apiPath = requestUrl.pathname === "/api" || requestUrl.pathname.startsWith("/api/");
+        if (isVendorApi && trustedApiHost && apiPath) {
+          void request.continue({
+            headers: {
+              ...request.headers(),
+              authorization: `Bearer ${input.firstPartyAuthToken}`,
+            },
+          }).catch(() => undefined);
+        } else {
+          void request.continue().catch(() => undefined);
+        }
+      });
+
 
       // Instala a identidade técnica antes do primeiro carregamento. Assim o app
       // não chega a redirecionar a Vendi para /login por ausência momentânea de token.
