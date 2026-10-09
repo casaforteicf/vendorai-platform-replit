@@ -65,6 +65,20 @@ export const activitiesTable = pgTable("activities", {
   agenteResponsavelKey: text("agente_responsavel_key"),
   proximaAcaoTexto: text("proxima_acao_texto"),
   atividadePaiId: text("atividade_pai_id"),
+  // Intertenant handoff: responsibility/step transfer stays on the same activity.
+  handoffMode: text("handoff_mode").$type<"none" | "responsibility" | "stage">().notNull().default("none"),
+  handoffStatus: text("handoff_status").$type<"none" | "requested" | "accepted" | "rejected">().notNull().default("none"),
+  handoffFromTenantId: text("handoff_from_tenant_id"),
+  handoffToTenantId: text("handoff_to_tenant_id"),
+  handoffFromUserId: text("handoff_from_user_id"),
+  handoffToUserId: text("handoff_to_user_id"),
+  handoffFromStageKey: text("handoff_from_stage_key"),
+  handoffToStageKey: text("handoff_to_stage_key"),
+  handoffRequestedAt: timestamp("handoff_requested_at"),
+  handoffAcceptedAt: timestamp("handoff_accepted_at"),
+  handoffRejectedAt: timestamp("handoff_rejected_at"),
+  handoffRejectionReason: text("handoff_rejection_reason"),
+  handoffSlaDueAt: timestamp("handoff_sla_due_at"),
   // Vincula a atividade diretamente ao processo operacional (ex.: assistência).
   workCardId: text("work_card_id"),
   // Snapshot imutável do formulário/perguntas vigente quando a atividade foi criada.
