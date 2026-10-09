@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { ModelFileStore, inspectEmbeddedGlb, safeSegment, validateCalibration } from '../../artifacts/api-server/src/lib/arqdor-model-files.ts';
+import { ModelFileStore, inspectEmbeddedGlb, safeSegment, validateCalibration, validateSceneSettings } from '../../artifacts/api-server/src/lib/arqdor-model-files.ts';
 
 function glb(extra = {}) {
   let text = JSON.stringify({ asset: { version: '2.0' }, meshes: [{ primitives: [] }], materials: [{ name: 'Piso' }], ...extra });
@@ -98,3 +98,10 @@ test('symlinked original is never served', async () => withStore(async (store, r
   await rm(target); await symlink('/etc/passwd', target);
   await assert.rejects(store.file('tenant-a', 'project-a', model.id), /privado/);
 }));
+
+test('scene settings validate numeric sunlight and RGB colors', () => {
+  const v = {sunlight:1,materials:{['0'.repeat(36)]:'#abcdef'},cameras:[]};
+  assert.deepEqual(validateSceneSettings(v),v);
+  assert.throws(()=>validateSceneSettings({...v,sunlight:10}));
+  assert.throws(()=>validateSceneSettings({...v,materials:{['0'.repeat(36)]:'invalid'}}));
+});
