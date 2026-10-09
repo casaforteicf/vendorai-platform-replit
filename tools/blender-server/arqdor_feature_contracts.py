@@ -206,3 +206,41 @@ def suggest_geometry_role(dimensions):
     return {"shapeHint": role, "geometryVerified": False,
             "suggestedOnly": True, "quantitiesEnabled": False,
             "requiresScaleCalibration": True}
+
+
+def propose_opening_hosts(objects, tolerance=0.15):
+    """AABB proximity suggestions, never confirmation of a real wall opening.
+
+    Expected records: {name, suggestedClass, bounds:{min:[x,y,z],max:[x,y,z]}}.
+    All coordinates must share the same reference frame and calibrated scale.
+    """
+    if not isinstance(objects, list) or len(objects) > 2000:
+        raise ValueError("Lista de objetos inválida")
+    if type(tolerance) not in (int, float) or not math.isfinite(tolerance) or not 0 <= tolerance <= 1:
+        raise ValueError("Tolerância inválida")
+    def bounds(item):
+        box = item.get("bounds") if isinstance(item, dict) else None
+        if not isinstance(box, dict):
+            raise ValueError("Limites ausentes")
+        lo, hi = box.get("min"), box.get("max")
+        if not isinstance(lo, (list, tuple)) or not isinstance(hi, (list, tuple)) or len(lo) != 3 or len(hi) != 3:
+            raise ValueError("Limites inválidos")
+        for low, high in zip(lo, hi):
+            if (type(low) not in (int, float) or type(high) not in (int, float)
+                    or not math.isfinite(low) or not math.isfinite(high) or low > high):
+                raise ValueError("Coordenadas inválidas")
+        return lo, hi
+    indexed = [(item, *bounds(item)) for item in objects]
+    walls = [(item, lo, hi) for item, lo, hi in indexed if item.get("suggestedClass") == "wall"]
+    proposals = []
+    for opening, lo, hi in indexed:
+        if opening.get("suggestedClass") not in ("door", "window"):
+            continue
+        matches = []
+        for wall, wlo, whi in walls:
+            if all(lo[i] <= whi[i] + tolerance and hi[i] >= wlo[i] - tolerance for i in range(3)):
+                matches.append(wall.get("name"))
+        proposals.append({"opening": opening.get("name"), "type": opening["suggestedClass"],
+                          "candidateWalls": matches[:20], "status": "unverified_spatial_overlap",
+                          "openingDetected": False, "quantitiesEnabled": False})
+    return proposals
