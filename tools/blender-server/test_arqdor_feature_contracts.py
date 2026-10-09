@@ -1,6 +1,6 @@
 import unittest
 from arqdor_feature_contracts import (
-    inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction,
+    inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request,
 )
 
 
@@ -57,6 +57,20 @@ class FeatureContractsTests(unittest.TestCase):
             validate_postproduction({"gamma": 0})
         with self.assertRaises(ValueError):
             validate_postproduction({"exposure": float("inf")})
+
+    def test_obj_fbx_require_review_before_render(self):
+        digest = "ab" * 32
+        for extension in ("obj", "fbx"):
+            report = validate_conversion_request("house." + extension, 4096, digest)
+            self.assertFalse(report["approvedForRender"])
+            self.assertTrue(report["geometryReviewRequired"])
+        for extension in ("skp", "ifc", "exe"):
+            with self.assertRaises(ValueError):
+                validate_conversion_request("house." + extension, 4096, digest)
+        with self.assertRaises(ValueError):
+            validate_conversion_request("house.fbx", 0, digest)
+        with self.assertRaises(ValueError):
+            validate_conversion_request("house.obj", 4096, "../not-a-sha")
 
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
