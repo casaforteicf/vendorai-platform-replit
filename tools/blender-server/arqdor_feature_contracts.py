@@ -497,3 +497,42 @@ def associate_boundary_candidates(opening_hosts, classifications, tolerance=0.15
             "requiresManualReview": True, "quantitiesEnabled": False,
         })
     return findings
+
+
+def build_opening_review_queue(schedule_rows, boundary_reviews):
+    """Deterministic, read-only triage of draft opening issues; no BIM approval."""
+    if (not isinstance(schedule_rows, list) or not isinstance(boundary_reviews, list)
+            or len(schedule_rows) > 2000 or len(boundary_reviews) > 2000):
+        raise ValueError("Fila de revisão inválida")
+    reviews = {}
+    for review in boundary_reviews:
+        if not isinstance(review, dict):
+            raise ValueError("Revisão inválida")
+        key = review.get("sourceObjectKey") or review.get("objectId")
+        if isinstance(key, str) and key:
+            reviews.setdefault(key, []).append(review)
+    queue = []
+    for index, row in enumerate(schedule_rows):
+        if not isinstance(row, dict):
+            raise ValueError("Esquadria inválida")
+        key = row.get("sourceObjectKey") or row.get("objectId")
+        related = reviews.get(key, []) if isinstance(key, str) else []
+        reasons = []
+        if row.get("measurementStatus") == "ambiguous_object_name":
+            reasons.append("ambiguous_identity")
+        if row.get("hostRelationStatus") != "single_spatial_candidate":
+            reasons.append("missing_or_ambiguous_wall")
+        if row.get("dimensionsMeters") is None:
+            reasons.append("unverified_dimensions")
+        if not any(r.get("candidateBoundaryMatches") for r in related):
+            reasons.append("no_matching_boundary_evidence")
+        severity = "high" if "ambiguous_identity" in reasons or "missing_or_ambiguous_wall" in reasons else "medium"
+        queue.append({"sourceObjectKey": row.get("sourceObjectKey"),
+                      "objectId": row.get("objectId"), "name": row.get("opening"),
+                      "priority": severity, "issues": reasons, "reviewStatus": "pending_manual_review",
+                      "approved": False, "fabricationReady": False,
+                      "quantitiesEnabled": False, "_index": index})
+    queue.sort(key=lambda item: (0 if item["priority"] == "high" else 1, item["_index"]))
+    for item in queue:
+        del item["_index"]
+    return queue
