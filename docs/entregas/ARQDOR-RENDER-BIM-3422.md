@@ -368,3 +368,12 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Estado:** integração no código; execução de testes, verificação TypeScript e homologação **não efetuadas** nesta atualização. A API retorna conflito para versão divergente, mas a verificação revisão→rename não é transacional em gravações concorrentes; não tratar controle de concorrência como totalmente resolvido.
 - **Pendências críticas para considerar lote concluído:** uniões físicas robustas L/T/cruz e malha global estanque, geometria paramétrica efetivamente renderizada no 3D (prévia atual SVG), versionamento transacional com autorização granular, validação completa de interseções/aberturas e testes reais ponta a ponta.
 - **Homologação Contabo e publicação:** adiadas. PR #3422 Draft, sem merge/deploy, produção inalterada.
+
+
+## Avanço de validação geométrica e concorrência — 09/10/2026
+- **Implementado:** `inspect_mesh_edges` em `arqdor_parametric_mesh.py` inspeciona incidência das arestas (abertas, mais de duas faces, faces com orientação inconsistente) e passa a derivar `localWallClosedSurface` do diagnóstico em vez de marcá-lo automaticamente como verdadeiro.
+- **Correção geométrica:** reorientação das faces frontais, superiores e inferiores para direcionamento externo consistente, sujeita ainda a teste em Blender e a casos de subdivisão T-junction.
+- **Testes escritos:** verificação de face com borda aberta e índice inválido em `test_arqdor_parametric_mesh.py`. **Não executados** nesta rodada.
+- **Persistência:** `ModelFileStore.saveParametricDraft` passa a serializar leitura da revisão e escrita através de `mkdir` exclusivo `parametric-write.lock` no diretório do modelo. Escritas simultâneas retornam conflito; remoção via `finally`. Lock abandonado após crash ainda exigirá recuperação operacional, não implementada.
+- **Commits:** `0be7b0d` (validação), `bdc5532` (testes), `3af15f1` (lock), `5ad2cba` (orientação de faces).
+- **Situação:** diagnóstico e persistência melhorados mas sem execução de build, teste Python ou homologação; uniões de sólidos L/T/cruz e exibição WebGL das malhas paramétricas ainda pendentes. PR #3422 Draft, sem merge ou deploy; produção inalterada.
