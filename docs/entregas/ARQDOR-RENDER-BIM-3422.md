@@ -429,3 +429,11 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Commits:** `e22d5c5` (algoritmo de união) e `62337a8` (testes).
 - **Validação:** código e testes registrados, **testes ainda não executados neste ambiente**. A verificação topológica descrita na suíte é uma expectativa, não evidência de aprovação. Necessário testar casos degenerados, desempenho e integrar a malha unida ao fluxo WebGL/API.
 - **Estado:** núcleo de união ortogonal implementado isoladamente, não integrado ao editor; lote original ainda parcial. PR #3422 Draft, sem homologação, merge ou deploy, produção intacta.
+
+
+## Lote C — integração da união ortogonal no WebGL (09/10/2026)
+- **Código desenvolvido:** `artifacts/frontend/src/pages/arch/render-studio/arqdorOrthogonalUnion.ts` implementa no navegador a partição espacial compartilhada das paredes ortogonais, extrai a fronteira externa do conjunto, remove faces internas e mantém vazios retangulares por parede. `RenderStudioParametricWebgl.tsx` passa a renderizar esta malha unificada para paredes horizontais/verticais; casos com diagonais seguem a rota antiga de malhas individuais. O editor continua alimentando ambos pelo estado `walls`.
+- **Commits:** `19545dc` (núcleo de união na UI), `e1ba598` (integração WebGL), `348293c` (tipagem de caixa de abertura).
+- **Limites:** não foi executado build TypeScript nem validação visual/geométrica em navegador. O gerador browser e o Python ainda são implementações paralelas; precisam de contrato compartilhado e testes de paridade. A união só trata eixos ortogonais, não paredes inclinadas ou curvas. Aprovação BIM/IFC e quantitativos desabilitados.
+- **Impedimento para testes locais:** tentativa de acessar GitHub pelo ambiente local falhou com erro DNS; commits realizados via conector do GitHub.
+- **Estado:** código registrado no PR #3422 Draft, sem merge ou deploy, Contabo e produção intocadas.
