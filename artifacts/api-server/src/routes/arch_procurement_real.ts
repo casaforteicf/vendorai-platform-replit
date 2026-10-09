@@ -190,6 +190,7 @@ router.post("/arch/procurement/:obraId/analyze-document", upload.single("documen
       clienteEndereco: quote.clienteEndereco ?? null,
       valorTotal: quote.valorTotal ?? null,
     };
+
     res.json({ extracted, document });
   } catch (err) {
     logger.error({ err }, "arch procurement document analysis error");
