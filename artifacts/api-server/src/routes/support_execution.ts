@@ -29,6 +29,20 @@ type QuestionSnapshot = {
   evidenciaExigida?: "nenhuma" | "foto" | "video" | "audio" | "documento" | "midia";
 };
 
+type SupportOrderSection = {
+  id: string;
+  stage: string;
+  title: string;
+  status: "aberto" | "em_andamento" | "concluido";
+  fields: Array<{ key: string; label: string; value: unknown; visibility: "interno" | "cliente" }>;
+  checklist: Array<Record<string, unknown>>;
+  attachments: Array<Record<string, unknown>>;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string | null;
+  actor?: { id?: string | null; name?: string | null; type?: string | null };
+};
+
 type StoredAnswer = {
   value: unknown;
   answeredAt: string;
@@ -149,6 +163,69 @@ async function supportActivities(card: typeof workCardsTable.$inferSelect) {
   )).orderBy(asc(activitiesTable.createdAt));
 }
 
+function supportSectionKey(entry: { kind: string; text: string }) {
+  const map: Record<string, string> = {
+    chamado: "chamado",
+    triagem: "triagem",
+    agendamento: "agendamento",
+    execucao: "execucao",
+    relatorio: "relatorio",
+    feedback: "feedback",
+    fechamento: "fechamento",
+  };
+  const normalized = String(entry.kind ?? "").toLowerCase();
+  for (const [key, value] of Object.entries(map)) if (normalized.includes(key)) return value;
+  const text = String(entry.text ?? "").toLowerCase();
+  if (/agenda|agendad|visita|reagend/.test(text)) return "agendamento";
+  if (/execu|serviço execut|material|peça/.test(text)) return "execucao";
+  if (/relat|diagnóstico|diagnostico|causa|solução|solucao/.test(text)) return "relatorio";
+  if (/feedback|avaliação|avaliacao/.test(text)) return "feedback";
+  if (/fech|conclu|encerr/.test(text)) return "fechamento";
+  if (/triagem|análise|analise/.test(text)) return "triagem";
+  return "chamado";
+}
+
+function ensureSupportSection(order: Record<string, any>, entry: { userName: string; text: string; visibility: "interno" | "cliente"; kind: string }, at: string): Record<string, any> {
+  const sections: SupportOrderSection[] = Array.isArray(order.sections) ? order.sections : [];
+  const stage = supportSectionKey(entry);
+  const titleMap: Record<string,string> = {
+    chamado: "Chamado do cliente",
+    triagem: "Triagem / análise",
+    agendamento: "Agendamento da assistência",
+    execucao: "Execução da assistência",
+    relatorio: "Relatório",
+    feedback: "Feedback do cliente",
+    fechamento: "Fechamento",
+  };
+  let section = sections.find((item) => item.stage === stage);
+  if (!section) {
+    section = {
+      id: `support-section-${stage}`,
+      stage,
+      title: titleMap[stage] ?? stage,
+      status: "aberto",
+      fields: [],
+      checklist: [],
+      attachments: [],
+      createdAt: at,
+      updatedAt: at,
+      completedAt: null,
+    };
+    sections.push(section);
+  }
+  section.updatedAt = at;
+  section.status = /conclu|fech|encerr/.test(entry.kind) ? "concluido" : "em_andamento";
+  if (section.status === "concluido") section.completedAt = at;
+  const fieldKey = `event_${at.replace(/\D/g, "").slice(-14)}`;
+  section.fields = [...section.fields, {
+    key: fieldKey,
+    label: "Registro",
+    value: entry.text,
+    visibility: entry.visibility,
+  }].slice(-100);
+  return { ...order, sections: sections.slice(-20) };
+}
+
 async function appendSupportTimeline(
   card: typeof workCardsTable.$inferSelect,
   entry: { userName: string; text: string; visibility: "interno" | "cliente"; kind: string },
@@ -165,10 +242,11 @@ async function appendSupportTimeline(
   const timeline = Array.isArray(order.timeline) ? order.timeline : [];
   const at = new Date().toISOString();
   const timelineEntry = { ...entry, at };
+  const structuredOrder = ensureSupportSection(order, entry, at);
   const nextMetadata = {
     ...metadata,
     supportWorkOrder: {
-      ...order,
+      ...structuredOrder,
       updatedAt: at,
       timeline: [...timeline, timelineEntry].slice(-500),
     },
@@ -390,6 +468,7 @@ publicSupportRouter.get("/public/support/:token", async (req, res) => {
     stages,
     activities: activities.map(publicActivity).filter((activity) => activity.questions.length > 0),
     timeline: clientTimeline,
+    sections: Array.isArray(order.sections) ? order.sections : [],
   });
 });
 
