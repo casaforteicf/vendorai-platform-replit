@@ -1,5 +1,11 @@
 # Arqdor — registro de entrega do editor
 
+## Bloco de arraste, modelos e catálogo
+
+Arraste e movimentação de aberturas livres verificam encaixe físico e colisões na parede; edição de largura na planta verifica colisões antes de aplicar; modelos de aberturas buscam intervalo livre; aplicação de produto do catálogo rejeita dimensões que não cabem na posição atual ou sobrepõem outra abertura. Validador de encaixe rejeita coordenadas/larguras não finitas. Avisos explicam falhas sem modificar a geometria nessas operações.
+
+Arquivos ConceptPlanner.tsx, conceptOpeningPlacement.ts e conceptOpeningPlacement.test.ts. Rodada consolidada: 37 testes passaram em 10 arquivos; sintaxe TSX passou. Importação, movimentação de nós de paredes e reconciliação global permanecem fora da proteção deste bloco. Homologação e publicação adiadas.
+
 ## Bloco de espaço livre para aberturas
 
 Inserção e duplicação buscam um intervalo livre na parede, rejeitando quando não cabe. Alteração de offset pelo painel e alteração de dimensões verificam colisões com outras aberturas na mesma parede. Comparação considera altura e peitoril, permitindo aberturas separadas verticalmente. Falha informa o motivo em aviso dispensável. Não é uma validação global: importações, catálogo, arraste e reconciliação de paredes precisam de revisão posterior.

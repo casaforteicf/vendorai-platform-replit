@@ -1,5 +1,14 @@
 import { expect, it } from "vitest";
-import { freeOpeningOffset, openingsOverlap } from "./conceptOpeningPlacement";
+import { freeOpeningOffset, openingsOverlap, openingFitsWall } from "./conceptOpeningPlacement";
+it("verifica largura real do produto sem reduzir para fazê-lo caber", () => {
+  expect(openingFitsWall({ type: "window", width: 3, offset: 0.5 }, 2)).toBe(false);
+  expect(openingFitsWall({ type: "door", width: 1, offset: 0.25 }, 2)).toBe(true);
+  expect(openingFitsWall({ type: "door", width: 1, offset: 0.1 }, 2)).toBe(false);
+});
+it("rejeita posição e largura não finitas", () => {
+  expect(openingFitsWall({ type: "door", offset: NaN }, 4)).toBe(false);
+  expect(openingFitsWall({ type: "door", offset: 0.5, width: Infinity }, 4)).toBe(false);
+});
 it("insere no centro quando livre e busca outro intervalo quando ocupado", () => {
   const door = { type: "door" as const, width: 0.9, offset: 0.5 };
   expect(freeOpeningOffset(door, [], 4)).toBe(0.5);

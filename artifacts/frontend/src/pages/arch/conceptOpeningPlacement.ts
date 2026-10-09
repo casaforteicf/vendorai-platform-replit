@@ -2,6 +2,11 @@ type Opening = { offset: number; width?: number; type: "door" | "window"; height
 const size = (o: Opening) => o.width ?? (o.type === "door" ? 0.9 : 1.2);
 const bottom = (o: Opening) => o.type === "door" ? 0 : o.sillHeight ?? 0.9;
 const top = (o: Opening) => bottom(o) + (o.height ?? (o.type === "door" ? 2.1 : 1.2));
+export function openingFitsWall(candidate: Opening, length: number) {
+  const half = size(candidate) / 2;
+  const center = candidate.offset * length;
+  return Number.isFinite(length) && Number.isFinite(center) && Number.isFinite(half) && half > 0 && center - half >= -1e-9 && center + half <= length + 1e-9;
+}
 export function openingsOverlap(a: Opening, b: Opening, length: number) {
   return Math.abs(a.offset - b.offset) * length < (size(a) + size(b)) / 2 - 1e-9 && bottom(a) < top(b) - 1e-9 && bottom(b) < top(a) - 1e-9;
 }

@@ -7,7 +7,7 @@ import { ConceptIdeaEntry } from "./ConceptIdeaEntry";
 import { ConceptMetricInput } from "./ConceptMetricInput";
 import { wallLengthLimit } from "./conceptWallLengthLimits";
 import { duplicateWallPlacement, openingCrossesWallMidpoint } from "./conceptWallOperations";
-import { freeOpeningOffset, openingsOverlap } from "./conceptOpeningPlacement";
+import { freeOpeningOffset, openingsOverlap, openingFitsWall } from "./conceptOpeningPlacement";
 import {
   ArrowLeft,
   ArrowRight,
@@ -2702,6 +2702,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       const maxDistance = Math.max(minDistance, wallLength - halfOpening);
       const clampedDistance = Math.max(minDistance, Math.min(maxDistance, projectedDistance));
       const offset = Math.max(0, Math.min(1, clampedDistance / wallLength));
+      const candidate = { ...custom, offset, type: patch.type };
+      if (!openingFitsWall(candidate, wallLength) || safeCustomOpenings.some((item) => item.wallId === wall.id && item.id !== openingId && openingsOverlap(candidate, item, wallLength))) {
+        setOpeningEditError("A abertura não cabe nessa posição ou sobrepõe outra abertura."); return;
+      }
+      setOpeningEditError(null);
       setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) =>
         opening.id === openingId ? { ...opening, offset, type: patch.type } : opening
       ));
@@ -2722,6 +2727,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const maximumWidth = Math.max(0.3, wallLength - 0.1);
     const safeWidth = Math.max(0.3, Math.min(4, maximumWidth, Number(width) || 0.5));
     if (Math.abs((custom.width ?? (custom.type === "door" ? 0.9 : 1.2)) - safeWidth) < 0.001) return;
+    const candidate = constrainOpeningToWall({ ...custom, width: safeWidth }, wallLength);
+    if (safeCustomOpenings.some((item) => item.wallId === wall.id && item.id !== openingId && openingsOverlap(candidate, item, wallLength))) {
+      setOpeningEditError("Essa largura sobrepõe outra abertura."); return;
+    }
+    setOpeningEditError(null);
     setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) =>
       opening.id === openingId
         ? constrainOpeningToWall({ ...opening, width: safeWidth }, wallLength)
@@ -4443,6 +4453,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       familyId: preset.familyId,
       familyLabel: preset.familyLabel,
     };
+    const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    const offset = freeOpeningOffset(opening, safeCustomOpenings.filter((item) => item.wallId === wallId), wallLength);
+    if (offset == null) { setOpeningEditError("Não há espaço livre nessa parede para esse modelo de abertura."); return; }
+    opening.offset = offset;
+    setOpeningEditError(null);
     setCustomOpenings((prev) => [...(Array.isArray(prev) ? prev : []), opening]);
     pushRoomHistory(before);
     setInteractionMode("opening");
@@ -4556,6 +4571,14 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const kind = catalogOpeningKind(item);
     if (!kind || kind !== opening.type) return;
     const dims = catalogOpeningDimensions(item);
+    const wall = safeCustomWalls.find((candidate) => candidate.id === opening.wallId);
+    if (!wall) return;
+    const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    const candidate = { ...opening, width: dims.width ?? opening.width, height: dims.height ?? opening.height };
+    if (!openingFitsWall(candidate, wallLength) || safeCustomOpenings.some((other) => other.wallId === wall.id && other.id !== openingId && openingsOverlap(candidate, other, wallLength))) {
+      setOpeningEditError("O produto não cabe na posição atual. Ajuste a abertura antes de aplicar."); return;
+    }
+    setOpeningEditError(null);
     const before = snapshotEditor();
     setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((candidate) => {
       if (candidate.id !== openingId) return candidate;
