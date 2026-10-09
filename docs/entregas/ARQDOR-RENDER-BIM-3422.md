@@ -332,3 +332,15 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Validação:** alterações escritas no GitHub; testes adicionados mas **não executados nesta atualização**. Não afirmar editor BIM sincronizado nem entregáveis técnicos concluídos.
 - **Estados:** implementado parcialmente sem validação completa; homologação Contabo adiada, publicação não realizada, PR #3422 Draft, sem merge/deploy.
 - **Próximas frentes autorizadas:** preparar malhas reais com vazios por abertura, sincronização de edição 2D/3D, snap, cotas, identificação de pavimento e testes com modelos reais; preservar autorização humana para documentos técnicos.
+
+
+## Lote integrado — malha com aberturas reais por parede (09/10/2026)
+
+- **Escopo autorizado:** posições de portas/janelas, encontros, malhas fechadas, recortes, uniões e edição 2D/3D.
+- **Implementado nesta etapa:** `tools/blender-server/arqdor_parametric_mesh.py` cria malhas de superfície de paredes individuais a partir de um mesmo conjunto paramétrico utilizado pela projeção 2D. Divide os eixos local X/Z nas bordas de portas/janelas, remove células correspondentes aos vãos e acrescenta faces internas de revelo. Inclui `mesh_parametric_project` para agrupar malhas e candidatos a encontros.
+- **Entregas anteriores reutilizadas:** `draft_wall_centerline_intersections` identifica cruzamentos e encontros preliminares. Isso **não resolve automaticamente** as uniões físicas.
+- **Commits:** `a106247` (gerador da geometria de parede), `ff26716` (testes para aberturas, faces, encontros e bloqueio de aprovação).
+- **Validação:** testes adicionados sem execução e sem Blender ou certificação topológica. Declaração de superfície local fechada ainda exige validação geométrica, sobretudo para vãos atravessando bordas e interfaces de paredes.
+- **Pendente neste lote:** resolver junções via núcleo geométrico/booleans robusto; sincronização interativa de edição em 2D/3D com histórico de mudanças e persistência; testes visuais e topológicos; integração com export IFC e detalhamento técnico.
+- **Segurança:** `globalWatertight=false`, `geometryApproved=false`, `quantitiesEnabled=false`. Dados não servem para fabricação, compras ou quantitativos sem conferência.
+- **Estados:** código em desenvolvimento no PR #3422 Draft; sem merge; homologação Contabo e publicação adiadas.
