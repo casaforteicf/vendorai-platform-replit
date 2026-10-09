@@ -521,3 +521,12 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Segurança da interface:** `RenderStudioParametricWebgl.tsx` impede renderizar a união como malha íntegra quando esses critérios falham e informa contagens concretas de falhas ao usuário.
 - **Commits:** `333b274` (análise topológica frontend) e `86cc339` (bloqueio de prévia inconsistente).
 - **Limitações:** edge-incidence é diagnóstico preliminar, não aprovação BIM; faltam conectividade volumétrica e paridade com Python no browser. Não houve compilação real do projeto nem testes end-to-end, pois o checkout segue indisponível ao executor local (DNS GitHub bloqueado). PR permanece Draft, sem merge/deploy, homologação Contabo adiada, produção inalterada.
+
+
+## Lote 3422-A — paridade adicional no frontend (09/10/2026)
+- **Código:** `arqdorOrthogonalUnion.ts` implementa contagem dos componentes sólidos conectados por faces e confronto entre volume assinado da malha e volume ocupado pelas células. A sinalização `closedByEdgeIncidence` da UI só é verdadeira quando esses dois critérios também passam.
+- **Interface:** `RenderStudioParametricWebgl.tsx` exibe a contagem dos sólidos desconectados e divergência de volume quando o bloqueio topológico é acionado.
+- **Commits:** `4afb895` (gerador frontend) e `6546fd7` (mensagem no visualizador).
+- **Execução:** o `git ls-remote` no executor local falhou novamente por DNS `Could not resolve host: github.com`. Código enviado pelo conector GitHub; não houve compilação TypeScript nem execução das suítes originais. Portanto, estado ainda **não homologado**.
+- **Limites:** checagem de componentes face-conectados e volume não equivale a certificação manifold global; paredes diagonais continuam fora do núcleo ortogonal.
+- **Governança:** PR #3422 Draft; sem merge/deploy, Contabo e produção inalteradas.
