@@ -609,6 +609,7 @@ export function NewLeadDialog({
         `/api/crm/deals/${dealId}/couple`, {
           tenantId,
           contextualCompanyId: companyId,
+          registrationRequestId: registrationRequestIdRef.current ?? undefined,
           people: [
             { nome: values.nome.trim(), telefone: values.telefone || undefined,
               email: values.email || undefined, documento: values.documento || undefined,
