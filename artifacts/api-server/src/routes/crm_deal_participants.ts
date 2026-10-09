@@ -17,6 +17,18 @@ import {
 
 const router: IRouter = Router();
 
+function appendRelationshipEvent(metadata: Record<string, unknown> | null | undefined, action: "linked" | "unlinked", actorId?: string | null) {
+  const previous = metadata ?? {};
+  const history = Array.isArray(previous.relationshipHistory) ? previous.relationshipHistory : [];
+  return {
+    ...previous,
+    inactive: action === "unlinked",
+    relationshipHistory: [...history, { action, at: new Date().toISOString(), actorId: actorId ?? null }],
+  };
+}
+
+
+
 const personRoles = [
   "consumidor_final","proprietario","contratante","comprador","contato_comercial","decisor",
   "responsavel_financeiro","indicador","arquiteto","engenheiro","representante","instalador","parceiro","outro",
@@ -369,6 +381,12 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
         .where(and(eq(crmDealPeopleTable.tenantId, tenantId), eq(crmDealPeopleTable.dealId, req.params.dealId)));
     }
 
+      const [previousLink] = await tx.select({ metadata: crmDealPeopleTable.metadata })
+        .from(crmDealPeopleTable).where(and(eq(crmDealPeopleTable.tenantId, tenantId),
+          eq(crmDealPeopleTable.dealId, req.params.dealId), eq(crmDealPeopleTable.personId, personId))).limit(1);
+      const relationshipMetadata = appendRelationshipEvent(
+        { ...(previousLink?.metadata ?? {}), ...(parsed.data.metadata ?? {}) }, "linked", req.user?.id,
+      );
       const [link] = await tx.insert(crmDealPeopleTable).values({
       tenantId,
       dealId: req.params.dealId,
@@ -388,7 +406,7 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
         contextualCompanyId: parsed.data.contextualCompanyId ?? null,
         relationshipScope: parsed.data.relationshipScope,
         notes: parsed.data.notes ?? null,
-        metadata: { ...(parsed.data.metadata ?? {}), inactive: false },
+        metadata: relationshipMetadata,
         updatedAt: new Date(),
       },
     }).returning();
@@ -441,6 +459,11 @@ router.post("/crm/deals/:dealId/companies", async (req, res) => {
     )).limit(1);
     if (!tenantCompany) return res.status(422).json({ error: "Empresa não está vinculada a este tenant." });
 
+    const [previousCompanyLink] = await db.select({ metadata: crmDealCompaniesTable.metadata })
+      .from(crmDealCompaniesTable).where(and(eq(crmDealCompaniesTable.tenantId, tenantId),
+        eq(crmDealCompaniesTable.dealId, req.params.dealId),
+        eq(crmDealCompaniesTable.companyId, parsed.data.companyId))).limit(1);
+    const companyMetadata = appendRelationshipEvent(previousCompanyLink?.metadata, "linked", req.user?.id);
     const [link] = await db.insert(crmDealCompaniesTable).values({
       tenantId,
       dealId: req.params.dealId,
@@ -448,11 +471,11 @@ router.post("/crm/deals/:dealId/companies", async (req, res) => {
       role: parsed.data.role,
       isPrimary: parsed.data.isPrimary,
       notes: parsed.data.notes ?? null,
-      metadata: { inactive: false },
+      metadata: companyMetadata,
       updatedAt: new Date(),
     }).onConflictDoUpdate({
       target: [crmDealCompaniesTable.dealId, crmDealCompaniesTable.companyId],
-      set: { role: parsed.data.role, isPrimary: parsed.data.isPrimary, notes: parsed.data.notes ?? null, metadata: { inactive: false }, updatedAt: new Date() },
+      set: { role: parsed.data.role, isPrimary: parsed.data.isPrimary, notes: parsed.data.notes ?? null, metadata: companyMetadata, updatedAt: new Date() },
     }).returning();
     return res.status(201).json(link);
   } catch (error: any) {
@@ -473,7 +496,7 @@ router.delete("/crm/deals/:dealId/people/:relationId", async (req, res) => {
     if (!relation) return res.status(404).json({ error: "Vínculo não encontrado." });
     await db.update(crmDealPeopleTable).set({
       isPrimary: false,
-      metadata: { ...(relation.metadata ?? {}), inactive: true, unlinkedAt: new Date().toISOString(), unlinkedBy: req.user?.id ?? null },
+      metadata: appendRelationshipEvent(relation.metadata, "unlinked", req.user?.id),
       updatedAt: new Date(),
     }).where(eq(crmDealPeopleTable.id, relation.id));
     return res.status(204).end();
@@ -492,7 +515,7 @@ router.delete("/crm/deals/:dealId/companies/:relationId", async (req, res) => {
     if (!relation) return res.status(404).json({ error: "Vínculo não encontrado." });
     await db.update(crmDealCompaniesTable).set({
       isPrimary: false,
-      metadata: { ...(relation.metadata ?? {}), inactive: true, unlinkedAt: new Date().toISOString(), unlinkedBy: req.user?.id ?? null },
+      metadata: appendRelationshipEvent(relation.metadata, "unlinked", req.user?.id),
       updatedAt: new Date(),
     }).where(eq(crmDealCompaniesTable.id, relation.id));
     return res.status(204).end();
