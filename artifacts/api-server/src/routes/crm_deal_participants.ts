@@ -458,15 +458,22 @@ router.post("/crm/deals/:dealId/companies", async (req, res) => {
   }
 });
 
+// Soft-unlink: keep the relationship row and its history for audit and future reactivation.
 router.delete("/crm/deals/:dealId/people/:relationId", async (req, res) => {
   try {
     const tenantId = tenantIdFromRequest(req);
     await assertDeal(req, tenantId, req.params.dealId);
-    await db.delete(crmDealPeopleTable).where(and(
+    const [relation] = await db.select().from(crmDealPeopleTable).where(and(
       eq(crmDealPeopleTable.id, req.params.relationId),
       eq(crmDealPeopleTable.tenantId, tenantId),
       eq(crmDealPeopleTable.dealId, req.params.dealId),
-    ));
+    )).limit(1);
+    if (!relation) return res.status(404).json({ error: "Vínculo não encontrado." });
+    await db.update(crmDealPeopleTable).set({
+      isPrimary: false,
+      metadata: { ...(relation.metadata ?? {}), inactive: true, unlinkedAt: new Date().toISOString(), unlinkedBy: req.user?.id ?? null },
+      updatedAt: new Date(),
+    }).where(eq(crmDealPeopleTable.id, relation.id));
     return res.status(204).end();
   } catch (error: any) { return res.status(error.status ?? 500).json({ error: error.message }); }
 });
@@ -475,11 +482,17 @@ router.delete("/crm/deals/:dealId/companies/:relationId", async (req, res) => {
   try {
     const tenantId = tenantIdFromRequest(req);
     await assertDeal(req, tenantId, req.params.dealId);
-    await db.delete(crmDealCompaniesTable).where(and(
+    const [relation] = await db.select().from(crmDealCompaniesTable).where(and(
       eq(crmDealCompaniesTable.id, req.params.relationId),
       eq(crmDealCompaniesTable.tenantId, tenantId),
       eq(crmDealCompaniesTable.dealId, req.params.dealId),
-    ));
+    )).limit(1);
+    if (!relation) return res.status(404).json({ error: "Vínculo não encontrado." });
+    await db.update(crmDealCompaniesTable).set({
+      isPrimary: false,
+      metadata: { ...(relation.metadata ?? {}), inactive: true, unlinkedAt: new Date().toISOString(), unlinkedBy: req.user?.id ?? null },
+      updatedAt: new Date(),
+    }).where(eq(crmDealCompaniesTable.id, relation.id));
     return res.status(204).end();
   } catch (error: any) { return res.status(error.status ?? 500).json({ error: error.message }); }
 });
