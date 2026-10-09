@@ -170,7 +170,7 @@ export default function RenderStudioModels({ projectId, onClose }: { projectId: 
             <RenderStudioOpeningReview key={selected.id} sourceSha256={selected.sha256} url={url} modelId={selected.id} onLocate={name => { setFocusName(null); queueMicrotask(() => setFocusName(name)); }} />
           </Suspense>
           <Suspense fallback={<p role="status">Carregando editor paramétrico…</p>}>
-            <RenderStudioParametricEditor />
+            <RenderStudioParametricEditor key={selected.id} url={url} modelId={selected.id} modelSha256={selected.sha256} />
           </Suspense>
           <section className="rounded-md border p-4 space-y-2"><h3 className="font-semibold">5. Câmera, iluminação e render</h3>
             <p className="text-sm text-slate-600">O render 3D está em desenvolvimento e ainda não pode ser gerado por esta tela. O Render IA por imagem continua disponível no Studio.</p>
