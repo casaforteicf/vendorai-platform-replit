@@ -825,13 +825,32 @@ router.post("/propostas", async (req, res) => {
       return;
     }
     const reviewed = await db.execute(sql`
-      SELECT id FROM public.budget_imports
+      SELECT id, review_json FROM public.budget_imports
       WHERE id = ${budgetImportId} AND tenant_id = ${parsed.data.tenantId}
         AND review_status = 'approved'
       LIMIT 1
     `);
     if (!reviewed.rows.length || !parsed.data.arquivoImportadoUrl) {
       res.status(409).json({ code: "BUDGET_IMPORT_REVIEW_REQUIRED", error: "Importação não aprovada ou sem arquivo anexado." });
+      return;
+    }
+    const approvedData = reviewed.rows[0].review_json as { itens?: Array<{ descricao?: string; quantidade?: number; valorUnitario?: number }> } | null;
+    const approvedItems = approvedData?.itens ?? [];
+    const submittedItems = parsed.data.itens ?? [];
+    const sameItems = approvedItems.length > 0 && approvedItems.length === submittedItems.length &&
+      approvedItems.every((approved, index) => {
+        const submitted = submittedItems[index] as PropostaItem;
+        const submittedName = String(submitted?.nome ?? "").trim();
+        const approvedName = String(approved.descricao ?? "").trim();
+        return submittedName === approvedName &&
+          Math.abs(Number(submitted.quantidade) - Number(approved.quantidade)) <= 0.0001 &&
+          Math.abs(Number(submitted.valorUnitario) - Number(approved.valorUnitario)) <= 0.011;
+      });
+    if (!sameItems) {
+      res.status(409).json({
+        code: "BUDGET_IMPORT_CONTENT_MISMATCH",
+        error: "Os itens enviados diferem da revisão aprovada. Importe novamente para alterar os itens.",
+      });
       return;
     }
   } else if (parsed.data.arquivoImportadoUrl) {
