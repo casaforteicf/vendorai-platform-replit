@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { createHash } from "node:crypto";
 import { z } from "zod/v4";
 import { pool, inspectMepWallImpact } from "@workspace/db";
 
@@ -248,6 +249,15 @@ const hostPreviewSchema=z.object({
  after:z.array(wallShape).max(5000),
  expectedProjectUpdatedAt:z.string().datetime({offset:true}),
 }).strict();
+const hostReviewRequestSchema=hostPreviewSchema.extend({
+ operationId:z.string().uuid(),
+});
+/** Wall order is not meaningful; normalize by ID before calculating proposal identity. */
+function mepProposalHash(walls:z.infer<typeof wallShape>[]):string{
+ const ordered=[...walls].sort((a,b)=>a.id.localeCompare(b.id));
+ return createHash("sha256").update(JSON.stringify(ordered)).digest("hex");
+}
+
 arqdorMepRouter.post("/arch/concept-projects/:conceptId/mep/host-impact-preview",async(req,res,next)=>{
  try{
   const tid=tenant(req,res);if(!tid)return;
@@ -303,7 +313,7 @@ arqdorMepRouter.post("/arch/concept-projects/:conceptId/mep/host-reviews",async(
  try{
   const tid=tenant(req,res);if(!tid)return;
   const concept=id.safeParse(req.params.conceptId);
-  const body=hostPreviewSchema.safeParse(req.body);
+  const body=hostReviewRequestSchema.safeParse(req.body);
   if(!concept.success||!body.success){res.status(422).json({error:"Geometria ou versão inválida"});return;}
   const client=await pool.connect();
   try{
@@ -325,17 +335,20 @@ arqdorMepRouter.post("/arch/concept-projects/:conceptId/mep/host-reviews",async(
     "SELECT id,host_element_id,floor_id FROM arqdor_mep_nodes WHERE tenant_id=$1 AND project_id=$2 AND host_element_id IS NOT NULL",
     [tid,record.workspace_project_id]);
    const impact=inspectMepWallImpact(stored.data,body.data.after,nodes.rows.map(p=>({id:p.id,hostElementId:p.host_element_id,floorId:p.floor_id})));
+   const proposalHash=mepProposalHash(body.data.after);
+   let inserted=0;
    for(const item of impact){
-    await client.query(
+    const write=await client.query(
      `INSERT INTO arqdor_mep_host_reviews
-      (id,tenant_id,project_id,node_id,host_element_id,reason,concept_project_id,architecture_updated_at)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8)
-      ON CONFLICT (tenant_id,project_id,node_id,host_element_id,reason,architecture_updated_at)
-      WHERE status='requires_review' DO NOTHING`,
-     [crypto.randomUUID(),tid,record.workspace_project_id,item.nodeId,item.hostElementId,item.reason,concept.data,record.updated_at]);
+      (id,tenant_id,project_id,node_id,host_element_id,reason,concept_project_id,architecture_updated_at,proposal_hash,operation_id)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      ON CONFLICT (tenant_id,project_id,node_id,host_element_id,reason,architecture_updated_at,proposal_hash)
+      WHERE status='requires_review' DO NOTHING RETURNING id`,
+     [crypto.randomUUID(),tid,record.workspace_project_id,item.nodeId,item.hostElementId,item.reason,concept.data,record.updated_at,proposalHash,body.data.operationId]);
+    inserted+=write.rowCount??0;
    }
    await client.query("COMMIT");
-   res.status(201).json({recorded:impact.length,requiresReview:impact.length>0,applied:false,
+   res.status(201).json({recorded:inserted,matchedImpacts:impact.length,operationId:body.data.operationId,proposalHash,requiresReview:impact.length>0,applied:false,
     warning:"Revisões registradas. Nenhuma parede ou instalação foi movida."});
   }catch(err){await client.query("ROLLBACK").catch(()=>{});throw err;}finally{client.release();}
  }catch(err){next(err);}
