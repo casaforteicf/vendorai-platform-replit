@@ -154,6 +154,10 @@ export function StageQuestionsPanel({
               Esta configuração é o padrão desta etapa para o tenant. Somente administradores podem alterá-la.
               Respostas já registradas nos negócios são preservadas quando o modelo é atualizado.
             </div>
+            <div className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
+              Esta configuração é o padrão desta etapa para o tenant. Somente administradores podem alterá-la.
+              Respostas já registradas nos negócios são preservadas quando o modelo é atualizado.
+            </div>
             {editList.map((p, i) => (
               <div key={p.id} className="flex items-center gap-2">
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-semibold text-muted-foreground">{i + 1}</span>
