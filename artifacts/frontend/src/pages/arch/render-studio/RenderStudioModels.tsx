@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 const RenderStudioGlbViewer = lazy(() => import("./RenderStudioGlbViewer"));
 const RenderStudioOpeningReview = lazy(() => import("./RenderStudioOpeningReview"));
+const RenderStudioParametricEditor = lazy(() => import("./RenderStudioParametricEditor"));
 import type { FormEvent } from "react";
 import { renderAuthHeader } from "./renderStudioApi";
 
@@ -167,6 +168,9 @@ export default function RenderStudioModels({ projectId, onClose }: { projectId: 
           </section>
           <Suspense fallback={<p role="status">Preparando revisão de esquadrias…</p>}>
             <RenderStudioOpeningReview key={selected.id} sourceSha256={selected.sha256} url={url} modelId={selected.id} onLocate={name => { setFocusName(null); queueMicrotask(() => setFocusName(name)); }} />
+          </Suspense>
+          <Suspense fallback={<p role="status">Carregando editor paramétrico…</p>}>
+            <RenderStudioParametricEditor />
           </Suspense>
           <section className="rounded-md border p-4 space-y-2"><h3 className="font-semibold">5. Câmera, iluminação e render</h3>
             <p className="text-sm text-slate-600">O render 3D está em desenvolvimento e ainda não pode ser gerado por esta tela. O Render IA por imagem continua disponível no Studio.</p>
