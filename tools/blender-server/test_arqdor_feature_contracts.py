@@ -488,6 +488,21 @@ class FeatureContractsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             draft_parametric_floor_plan([{"wall": wall, "openings": [{**opening, "offset": 4}]}])
 
+    def test_parametric_3d_solids_share_2d_wall_and_void_descriptors(self):
+        wall = {"start": [0, 0, 0], "end": [4, 0, 0],
+                "thickness": 0.2, "height": 3}
+        window = {"kind": "window", "offset": 1, "width": 1,
+                  "sill": 1, "height": 1.2}
+        solids = draft_parametric_wall_solids([{"wall": wall, "openings": [window]}])
+        solid = solids["wallSolids"][0]
+        self.assertEqual(solid["base"][0], [0.0, 0.1, 0.0])
+        self.assertEqual(solid["top"][0], [0.0, 0.1, 3.0])
+        self.assertEqual(solid["openingVoidDescriptors"][0]["start"], [1.0, 0.0, 1.0])
+        self.assertEqual(solid["openingVoidDescriptors"][0]["end"], [2.0, 0.0, 2.2])
+        self.assertFalse(solid["openingVoidDescriptors"][0]["subtracted"])
+        self.assertFalse(solids["geometryApproved"])
+        self.assertFalse(solids["quantitiesEnabled"])
+
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
         self.assertFalse(data["quantitiesEnabled"])
