@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { buildUserFunctionFilter } from "../middlewares/auth.js";
+import { fingerprintRegistrationPayload, parseRegistrationRequestId } from "../lib/crm-lead-idempotency.js";
 import {
   db,
   dealsTable,
@@ -449,6 +450,7 @@ const coupleSchema = z.object({
   tenantId: z.string().optional(),
   people: z.tuple([personSchema.omit({ tenantId: true }), personSchema.omit({ tenantId: true })]),
   contextualCompanyId: z.string().nullable().optional(),
+  registrationRequestId: z.string().optional(),
 });
 router.post("/crm/deals/:dealId/couple", async (req, res) => {
   const parsed = coupleSchema.safeParse(req.body);
@@ -456,6 +458,10 @@ router.post("/crm/deals/:dealId/couple", async (req, res) => {
   try {
     const tenantId = tenantIdFromRequest(req, parsed.data.tenantId);
     await assertDeal(req, tenantId, req.params.dealId);
+    const registrationRequestId = parseRegistrationRequestId(parsed.data.registrationRequestId);
+    const registrationPayloadHash = registrationRequestId
+      ? fingerprintRegistrationPayload({ people: parsed.data.people,
+          contextualCompanyId: parsed.data.contextualCompanyId ?? null }) : null;
     const [first, second] = parsed.data.people;
     const firstDoc = digits(first.documento);
     const secondDoc = digits(second.documento);
@@ -463,6 +469,23 @@ router.post("/crm/deals/:dealId/couple", async (req, res) => {
       return res.status(422).json({ error: "Os dois clientes devem possuir documentos distintos." });
     const result = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${tenantId}), hashtext(${req.params.dealId}))`);
+      if (registrationRequestId) {
+        const previous = await tx.select().from(crmDealPeopleTable).where(and(
+          eq(crmDealPeopleTable.tenantId, tenantId),
+          eq(crmDealPeopleTable.dealId, req.params.dealId),
+          sql`${crmDealPeopleTable.metadata}->>'registrationRequestId' = ${registrationRequestId}`,
+        ));
+        if (previous.length) {
+          if (previous.length !== 2 || previous.some(link =>
+            link.metadata?.registrationPayloadHash !== registrationPayloadHash ||
+            link.metadata?.inactive === true)) {
+            throw Object.assign(new Error("Solicitação de casal já usada com dados divergentes."), { status: 409 });
+          }
+          return previous.sort((a, b) =>
+            Number(a.metadata?.ordemClientePrincipal ?? 0) - Number(b.metadata?.ordemClientePrincipal ?? 0))
+            .map(link => ({ personId: link.personId, link }));
+        }
+      }
       if (parsed.data.contextualCompanyId) {
         const [company] = await tx.select({ id: crmTenantCompaniesTable.id }).from(crmTenantCompaniesTable)
           .where(and(eq(crmTenantCompaniesTable.tenantId, tenantId),
@@ -498,7 +521,8 @@ router.post("/crm/deals/:dealId/couple", async (req, res) => {
           tenantId, dealId: req.params.dealId, personId: created.id, role: "consumidor_final",
           isPrimary: index === 0, contextualCompanyId: parsed.data.contextualCompanyId ?? null,
           relationshipScope: "deal_only",
-          metadata: appendRelationshipEvent({ clientePrincipal: true, ordemClientePrincipal: index + 1, grupoCliente: "multiplo" },
+          metadata: appendRelationshipEvent({ clientePrincipal: true, ordemClientePrincipal: index + 1, grupoCliente: "multiplo",
+            ...(registrationRequestId ? { registrationRequestId, registrationPayloadHash } : {}) },
             "linked", req.user?.id),
           updatedAt: new Date(),
         }).returning();
