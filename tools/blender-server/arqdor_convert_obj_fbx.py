@@ -52,7 +52,7 @@ def convert(src: Path, dst: Path, sha256: str):
     if any(not math.isfinite(value) or value > 100000 for value in dimensions):
         raise ValueError("Dimensões incompatíveis com limites do conversor")
     classification_hints = []
-    for obj in meshes[:2000]:
+    for mesh_index, obj in enumerate(meshes[:2000]):
         world_corners = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
         local_bounds = [max(point[axis] for point in world_corners)
                         - min(point[axis] for point in world_corners)
@@ -91,6 +91,7 @@ def convert(src: Path, dst: Path, sha256: str):
                 bm.free()
         classification_hints.append({
             "name": obj.name,
+            "objectId": f"mesh-{mesh_index:06d}",
             "topologyReview": topology or None,
             "boundsDimensions": local_bounds,
             "bounds": {"min": [min(p[a] for p in world_corners) for a in range(3)],
