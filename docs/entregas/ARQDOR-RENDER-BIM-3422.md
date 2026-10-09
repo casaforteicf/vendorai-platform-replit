@@ -182,3 +182,14 @@ conversores, build TypeScript e UI isolada antes de integrar.
 - **Evidências:** código e testes novos registrados na branch do PR #3422. **Testes não executados** nesta revisão; validação completa permanece pendente.
 - **Situação:** implementado sem validação técnica, não homologado, não aprovado, não publicado. Homologação Contabo/Vendi e publicação continuam adiadas a pedido do usuário.
 - **Próxima etapa independente:** estruturação de fila de revisão por conflitos e auditoria de identidades, sem liberação automática para fabricação.
+
+
+## Revisão concorrente e isolamento por arquivo de origem — 09/10/2026
+- Lote: ARQDOR-RENDER-BIM-3422; versão: desenvolvimento sem release.
+- Durante esta execução, a branch avançou por outro executor e já continha a identidade por SHA-256 (`sourceSha256`, `sourceObjectKey`) e testes correlatos. Essas mudanças foram preservadas, sem duplicação nem sobrescrita.
+- Correção complementar `7f221ea`: ao resolver linhas do quadro, verificar também `sourceObjectKey` quando fornecido, impedindo confusão entre duas importações distintas com o mesmo índice local `mesh-000001`.
+- Teste de regressão `392a2fc`: dois modelos de origem diferentes com mesmo nome e índice de janela; registros continuam distintos e `fabricationReady=false`.
+- Arquivos alterados por esta continuação: `tools/blender-server/arqdor_feature_contracts.py`, `tools/blender-server/test_arqdor_feature_contracts.py` e este registro.
+- Validação: commits e testes escritos no GitHub; **testes não executados nem homologados** neste marco. Revisão BIM e bloqueio de quantitativos permanecem obrigatórios.
+- Homologação Contabo/Vendi e publicação seguem **adiadas por determinação do usuário**. Produção sem alterações; PR #3422 Draft.
+- Próximo passo independente: vincular objetos importados a sessões e versões explícitas do projeto, preparando UI de revisão de conflitos, sem inferir correspondência estável entre versões diferentes do modelo.
