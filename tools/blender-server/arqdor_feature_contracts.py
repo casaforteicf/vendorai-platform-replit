@@ -883,3 +883,41 @@ def draft_parametric_wall_solids(walls):
     return {"wallSolids": solids, "openingVoidsApplied": False,
             "wallJoinsResolved": False, "geometryApproved": False,
             "quantitiesEnabled": False, "requiresManualReview": True}
+
+
+def draft_wall_centerline_intersections(walls, tolerance=1e-8):
+    """Flag crossings and T-junctions in 2D without changing any wall geometry."""
+    if type(tolerance) not in (int, float) or not math.isfinite(tolerance) or not 0 < tolerance <= 0.01:
+        raise ValueError("Tolerância inválida")
+    if not isinstance(walls, list) or len(walls) > 500:
+        raise ValueError("Paredes inválidas ou acima do limite")
+    lines = []
+    for entry in walls:
+        if not isinstance(entry, dict):
+            raise ValueError("Parede inválida")
+        inspect_parametric_wall(entry.get("wall"), entry.get("openings", []))
+        start, end = entry["wall"]["start"], entry["wall"]["end"]
+        lines.append(((start[0], start[1]), (end[0], end[1])))
+    def cross(a, b):
+        return a[0] * b[1] - a[1] * b[0]
+    intersections = []
+    for i, (a, b) in enumerate(lines):
+        r = (b[0] - a[0], b[1] - a[1])
+        for j in range(i + 1, len(lines)):
+            c, d = lines[j]
+            vec = (d[0] - c[0], d[1] - c[1])
+            den = cross(r, vec)
+            relative = (c[0] - a[0], c[1] - a[1])
+            if abs(den) <= tolerance:
+                # Collinear overlaps need dedicated join-resolution review.
+                if abs(cross(relative, r)) <= tolerance:
+                    intersections.append({"walls": [i, j], "type": "parallel_or_collinear_review"})
+                continue
+            t, u = cross(relative, vec) / den, cross(relative, r) / den
+            if -tolerance <= t <= 1 + tolerance and -tolerance <= u <= 1 + tolerance:
+                kind = "crossing" if tolerance < t < 1 - tolerance and tolerance < u < 1 - tolerance else "junction"
+                intersections.append({"walls": [i, j], "type": kind,
+                                      "point": [round(a[0] + r[0] * t, 6),
+                                                round(a[1] + r[1] * t, 6)]})
+    return {"intersections": intersections[:10000],
+            "joinsResolved": False, "geometryApproved": False}
