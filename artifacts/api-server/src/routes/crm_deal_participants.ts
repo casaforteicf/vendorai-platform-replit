@@ -266,16 +266,18 @@ router.patch("/crm/deals/:dealId/people/:personId/profile", async (req, res) => 
     const [current] = await db.select().from(crmPeopleMasterTable)
       .where(eq(crmPeopleMasterTable.id, req.params.personId)).limit(1);
     if (!current) return res.status(404).json({ error: "Cadastro da pessoa não encontrado." });
+    const newPhone = parsed.data.telefone?.trim();
+    const newEmail = parsed.data.email?.trim().toLowerCase();
     const [updated] = await db.update(crmPeopleMasterTable).set({
       nome: parsed.data.nome,
       documento: parsed.data.documento === undefined ? current.documento : documento || null,
       telefones: parsed.data.telefone === undefined ? current.telefones :
-        parsed.data.telefone.trim() ? [parsed.data.telefone.trim(), ...(current.telefones ?? []).filter(
-          (phone) => digits(phone) !== digits(parsed.data.telefone)
+        newPhone ? [newPhone, ...(current.telefones ?? []).filter(
+          (phone) => digits(phone) !== digits(newPhone)
         )] : current.telefones,
       emails: parsed.data.email === undefined ? current.emails :
-        parsed.data.email.trim() ? [parsed.data.email.trim().toLowerCase(), ...(current.emails ?? []).filter(
-          (email) => email.toLowerCase() !== parsed.data.email?.trim().toLowerCase()
+        newEmail ? [newEmail, ...(current.emails ?? []).filter(
+          (email) => email.toLowerCase() !== newEmail
         )] : current.emails,
       dataNascimento: parsed.data.dataNascimento === undefined ? current.dataNascimento : parsed.data.dataNascimento || null,
       updatedAt: new Date(),
