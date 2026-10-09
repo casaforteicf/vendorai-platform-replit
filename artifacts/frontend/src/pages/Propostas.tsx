@@ -3529,6 +3529,9 @@ function newFreeItem(): FreeItem {
     const [importAnalyzing, setImportAnalyzing] = useState(false);
     const [importConfidence, setImportConfidence] = useState<number | null>(null);
     const [importError, setImportError] = useState("");
+    const [importAuditId, setImportAuditId] = useState<string | null>(null);
+    const [importReviewStatus, setImportReviewStatus] = useState<"pending_review" | "approved" | "rejected" | null>(null);
+    const [importReviewSaving, setImportReviewSaving] = useState(false);
     const importFileInputRef = useRef<HTMLInputElement>(null);
 
     async function uploadImportFile(file: File) {
@@ -3537,6 +3540,8 @@ function newFreeItem(): FreeItem {
       setImportError("");
       setImportItens([]);
       setImportConfidence(null);
+      setImportAuditId(null);
+      setImportReviewStatus(null);
       try {
         const [metaRes, extractRes] = await Promise.all([
           fetch("/api/storage/uploads/request-url", {
@@ -3583,6 +3588,7 @@ function newFreeItem(): FreeItem {
           );
         }
         const extracted = await extractRes.json() as {
+          importId?: string;
           titulo?: string | null;
           numeroDocumento?: string | null;
           dataEmissao?: string | null;
@@ -3620,6 +3626,9 @@ function newFreeItem(): FreeItem {
           confianca?: number | null;
         };
 
+        if (!extracted.importId) throw new Error("A extração não gerou registro de auditoria.");
+        setImportAuditId(extracted.importId);
+        setImportReviewStatus("pending_review");
         const normalizedItems = (extracted.itens ?? [])
           .filter((item) => item.descricao?.trim())
           .map((item) => {
@@ -3717,6 +3726,46 @@ function newFreeItem(): FreeItem {
       }
     }
 
+    async function approveImportedBudget() {
+      if (!importAuditId || importReviewStatus !== "pending_review") return;
+      if (!importItens.length || importItens.some(item => !item.nome.trim()
+        || !(item.quantidade > 0) || !Number.isFinite(item.quantidade)
+        || !Number.isFinite(item.valorUnitario) || item.valorUnitario < 0
+        || !item.unidade?.trim() || item.requiresReview)) {
+        setImportError("Revise todos os itens, unidades, quantidades e preços antes de aprovar.");
+        return;
+      }
+      setImportReviewSaving(true);
+      try {
+        const response = await fetch(`/api/tenants/${encodeURIComponent(tenantId)}/deals/budget-imports/${encodeURIComponent(importAuditId)}/review`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+          body: JSON.stringify({
+            action: "approve",
+            reviewedData: {
+              itens: importItens.map(item => ({
+                descricao: item.nome, quantidade: item.quantidade,
+                valorUnitario: item.valorUnitario,
+                valorTotal: Math.round(item.quantidade * item.valorUnitario * 100) / 100,
+                unidade: item.unidade, codigo: item.codigo,
+              })),
+            },
+          }),
+        });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.error || "Erro ao aprovar a importação.");
+        }
+        setImportReviewStatus("approved");
+        setImportError("");
+        toast({ title: "Itens revisados e aprovados", description: "Agora é possível salvar o orçamento." });
+      } catch (error) {
+        setImportError(error instanceof Error ? error.message : "Falha ao aprovar importação.");
+      } finally {
+        setImportReviewSaving(false);
+      }
+    }
+
     function updateImportedItem(index: number, patch: Partial<(typeof importItens)[number]>) {
       setImportItens((current) =>
         current.map((item, itemIndex) => {
@@ -3805,6 +3854,8 @@ function newFreeItem(): FreeItem {
       setImportAnalyzing(false);
       setImportConfidence(null);
       setImportError("");
+      setImportAuditId(null);
+      setImportReviewStatus(null);
       setContextoIA("");
       setShowIAPanel(false);
       onClose();
@@ -4645,6 +4696,10 @@ function newFreeItem(): FreeItem {
       : { recorrente: false, valorMensal: undefined, prazoContratoMeses: undefined };
 
     if (mode === "importar") {
+      if (!importAuditId || importReviewStatus !== "approved") {
+        setImportError("Aprove os itens revisados antes de salvar o orçamento.");
+        return;
+      }
       if (!importValorTotal || importValorTotal <= 0) { setImportError("Informe o valor total do orçamento."); return; }
       const unresolvedImportedItem = importItens.find((item) =>
         item.requiresReview || item.quantidade <= 0 || item.valorUnitario < 0 || !item.unidade?.trim()
@@ -4698,6 +4753,7 @@ function newFreeItem(): FreeItem {
                   comprovanteUrl: pc.comprovanteUrl,
                 }))
               : undefined,
+            budgetImportId: importAuditId,
             arquivoImportadoUrl: importArquivo?.url || undefined,
             arquivoImportadoNome: importArquivo?.nome || undefined,
           } as any,
@@ -6725,6 +6781,15 @@ function newFreeItem(): FreeItem {
               </div>
             )}
 
+            {mode === "importar" && importAuditId && (
+              <div className="flex items-center gap-3 rounded-lg border p-3">
+                <span className="text-sm">{importReviewStatus === "approved" ? "Itens aprovados e auditados" : "Revise os itens antes de gravar a proposta"}</span>
+                {importReviewStatus === "pending_review" && (
+                  <Button type="button" size="sm" disabled={importReviewSaving || importUploading || importAnalyzing}
+                    onClick={() => void approveImportedBudget()}>Aprovar importação</Button>
+                )}
+              </div>
+            )}
             <div className="flex flex-col gap-2 sm:flex-row">
               <Button type="button" variant="outline" className="sm:flex-1" onClick={handleClose}>Fechar</Button>
               <Button type="button" variant="secondary" className="sm:flex-1" onClick={saveDraftAndContinue} disabled={isPending}>
