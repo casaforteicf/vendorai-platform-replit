@@ -1,6 +1,6 @@
 import unittest
 from arqdor_feature_contracts import (
-    inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request, suggest_architectural_classification,
+    inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request, suggest_architectural_classification, suggest_geometry_role,
 )
 
 
@@ -84,6 +84,18 @@ class FeatureContractsTests(unittest.TestCase):
             hint = suggest_architectural_classification(name)
             self.assertIsNone(hint["suggestedClass"])
             self.assertEqual(hint["classificationStatus"], "manual_review_required")
+
+    def test_geometry_hints_are_only_candidates(self):
+        panel = suggest_geometry_role([4.0, 0.15, 2.8])
+        self.assertEqual(panel["shapeHint"], "thin_panel_candidate")
+        self.assertFalse(panel["geometryVerified"])
+        self.assertFalse(panel["quantitiesEnabled"])
+        member = suggest_geometry_role([0.15, 0.15, 3.0])
+        self.assertEqual(member["shapeHint"], "linear_member_candidate")
+        self.assertIsNone(suggest_geometry_role([2.0, 2.0, 2.0])["shapeHint"])
+        for invalid in ([1, -1, 2], [1, float("nan"), 3], [1, 2]):
+            with self.assertRaises(ValueError):
+                suggest_geometry_role(invalid)
 
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
