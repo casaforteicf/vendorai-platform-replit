@@ -2862,7 +2862,8 @@ export default function Deals() {
           probabilidade: values.probabilidade,
           tipoFechamento: values.tipoFechamento as TipoFechamento | undefined,
           quoteFileUrl: createExtractedInfo?.quoteFileUrl ?? undefined,
-        },
+          ...(createBudgetImportId ? { budgetImportId: createBudgetImportId } : {}),
+        } as Parameters<typeof createDeal.mutate>[0]["data"] & { budgetImportId?: string },
       },
       {
         onSuccess: () => {
