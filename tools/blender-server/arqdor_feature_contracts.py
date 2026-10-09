@@ -689,3 +689,39 @@ def opening_review_dashboard(review_summary):
     return {"totalCandidates": len(review_summary["rows"]),
             "conflicts": conflicts, "statuses": counts,
             "fabricationReady": False, "quantitiesEnabled": False}
+
+
+def prepare_opening_review_workspace(queue, events=None, search="", status="all",
+                                     conflicts_only=False, limit=100):
+    """Read-only UI view model; no persistence, authorization or BIM approval."""
+    if not isinstance(search, str) or len(search) > 200:
+        raise ValueError("Busca inválida")
+    allowed = {"all", "needs_manual_review", "awaiting_detailed_review",
+               "rejected_candidate", "waiting_for_information"}
+    if status not in allowed or type(conflicts_only) is not bool:
+        raise ValueError("Filtro inválido")
+    if type(limit) is not int or not 1 <= limit <= 200:
+        raise ValueError("Limite inválido")
+    summary = summarize_opening_review_history(queue, [] if events is None else events)
+    counters = opening_review_dashboard(summary)
+    needle = search.casefold().strip()
+    records = []
+    for row in summary["rows"]:
+        if status != "all" and row["reviewStatus"] != status:
+            continue
+        if conflicts_only and not row.get("conflict"):
+            continue
+        if needle and not any(needle in str(row.get(field) or "").casefold()
+                              for field in ("name", "objectId", "sourceObjectKey")):
+            continue
+        records.append(row)
+    records.sort(key=lambda row: (
+        0 if row.get("conflict") else 1,
+        0 if row["reviewStatus"] == "needs_manual_review" else 1,
+        str(row.get("name") or "").casefold(), row["reviewKey"]))
+    return {"projectVersion": queue.get("projectVersion"),
+            "sourceSha256": queue.get("sourceSha256"),
+            "dashboard": counters, "filteredCount": len(records),
+            "rows": records[:limit], "truncated": len(records) > limit,
+            "readOnly": True, "requiresManualReview": True,
+            "fabricationReady": False, "quantitiesEnabled": False}
