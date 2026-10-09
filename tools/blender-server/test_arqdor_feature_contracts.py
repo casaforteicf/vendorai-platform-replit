@@ -1,6 +1,6 @@
 import unittest
 from arqdor_feature_contracts import (
-    inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts,
+    inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, preview_scale_calibration,
 )
 
 
@@ -110,6 +110,16 @@ class FeatureContractsTests(unittest.TestCase):
         self.assertEqual(result[1]["candidateWalls"], [])
         with self.assertRaises(ValueError):
             propose_opening_hosts([{"name": "bad", "bounds": {"min": [2, 0, 0], "max": [1, 1, 1]}}])
+
+    def test_scale_reference_remains_unapproved(self):
+        preview = preview_scale_calibration(2, 4, [5, 3, 2])
+        self.assertEqual(preview["dimensionsMeters"], [10, 6, 4])
+        self.assertFalse(preview["appliedToModel"])
+        self.assertFalse(preview["quantitiesEnabled"])
+        with self.assertRaises(ValueError):
+            preview_scale_calibration(0, 1, [1, 2, 3])
+        with self.assertRaises(ValueError):
+            preview_scale_calibration(1, 2, [1, float("inf"), 3])
 
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
