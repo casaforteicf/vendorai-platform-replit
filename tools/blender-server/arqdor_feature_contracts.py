@@ -438,9 +438,20 @@ def associate_boundary_candidates(opening_hosts, classifications, tolerance=0.15
                             or len(wall_min) != 3 or len(wall_max) != 3):
                         continue
                     review = wall_items[0].get("topologyReview") or {}
-                    loops = (review.get("boundaryLoopReview") or {}).get("closedBoundaryCandidates", [])
+                    if not isinstance(review, dict):
+                        continue
+                    boundary_review = review.get("boundaryLoopReview") or {}
+                    if not isinstance(boundary_review, dict):
+                        continue
+                    loops = boundary_review.get("closedBoundaryCandidates", [])
+                    if not isinstance(loops, list):
+                        continue
                     for loop in loops[:100]:
+                        if not isinstance(loop, dict):
+                            continue
                         box = loop.get("bounds", {})
+                        if not isinstance(box, dict):
+                            continue
                         bmin, bmax = box.get("min"), box.get("max")
                         if not isinstance(bmin, list) or not isinstance(bmax, list) or len(bmin) != 3 or len(bmax) != 3:
                             continue
