@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod/v4";
-import { pool } from "@workspace/db";
+import { pool, inspectMepWallImpact } from "@workspace/db";
 
 /**
  * MEP-01 API slice. Must be mounted behind the authenticated API router.
@@ -240,4 +240,27 @@ arqdorMepRouter.post("/arch/concept-projects/:conceptId/mep-binding", async(req,
     res.json({conceptProjectId:concept.data,workspaceProjectId:body.data.workspaceProjectId,verified:true});
   }catch(err){await client.query("ROLLBACK").catch(()=>{});next(err);}
   finally{client.release();}
+});
+
+/** Preview wall impacts. Does not mutate BIM geometry or installation points. */
+const wallShape=z.object({id, floor:z.number().int(),x1:z.number().finite(),y1:z.number().finite(),x2:z.number().finite(),y2:z.number().finite(),thickness:z.number().finite().optional()}).strict();
+const hostPreviewSchema=z.object({before:z.array(wallShape).max(5000),after:z.array(wallShape).max(5000)}).strict();
+arqdorMepRouter.post("/arch/concept-projects/:conceptId/mep/host-impact-preview",async(req,res,next)=>{
+ try{
+  const tid=tenant(req,res);if(!tid)return;
+  const concept=id.safeParse(req.params.conceptId);
+  const body=hostPreviewSchema.safeParse(req.body);
+  if(!concept.success||!body.success){res.status(422).json({error:"Geometria inválida"});return;}
+  const binding=await pool.query(
+   `SELECT b.workspace_project_id FROM arqdor_mep_project_bindings b
+    JOIN arch_concept_projects c ON c.id=b.concept_project_id AND c.tenant_id=b.tenant_id
+    WHERE b.tenant_id=$1 AND b.concept_project_id=$2 LIMIT 1`,[tid,concept.data]);
+  if(!binding.rowCount){res.status(409).json({code:"MEP_BINDING_REQUIRED"});return;}
+  const workspaceId=binding.rows[0].workspace_project_id;
+  const points=await pool.query(
+   "SELECT id,host_element_id,floor_id FROM arqdor_mep_nodes WHERE tenant_id=$1 AND project_id=$2 AND host_element_id IS NOT NULL",
+   [tid,workspaceId]);
+  const impacts=inspectMepWallImpact(body.data.before,body.data.after,points.rows.map(p=>({id:p.id,hostElementId:p.host_element_id,floorId:p.floor_id})));
+  res.json({workspaceProjectId:workspaceId,impacts,requiresReview:impacts.length>0,applied:false,warning:"Prévia baseada nas versões de parede enviadas pelo editor; nenhuma instalação foi movida."});
+ }catch(err){next(err);}
 });
