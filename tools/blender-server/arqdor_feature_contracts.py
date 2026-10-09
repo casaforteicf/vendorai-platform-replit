@@ -671,3 +671,21 @@ def summarize_opening_review_history(queue, events):
             "fabricationReady": False, "quantitiesEnabled": False})
     return {"rows": result, "auditEventCount": len(events),
             "persisted": False, "reviewRequired": True}
+
+
+def opening_review_dashboard(review_summary):
+    """Aggregate review counters for a future UI, with no fabrication approvals."""
+    if not isinstance(review_summary, dict) or not isinstance(review_summary.get("rows"), list):
+        raise ValueError("Resumo inválido")
+    allowed = ("needs_manual_review", "awaiting_detailed_review",
+               "rejected_candidate", "waiting_for_information")
+    counts = {status: 0 for status in allowed}
+    conflicts = 0
+    for row in review_summary["rows"]:
+        if not isinstance(row, dict) or row.get("reviewStatus") not in counts:
+            raise ValueError("Situação de revisão desconhecida")
+        counts[row["reviewStatus"]] += 1
+        conflicts += int(row.get("conflict") is True)
+    return {"totalCandidates": len(review_summary["rows"]),
+            "conflicts": conflicts, "statuses": counts,
+            "fabricationReady": False, "quantitiesEnabled": False}
