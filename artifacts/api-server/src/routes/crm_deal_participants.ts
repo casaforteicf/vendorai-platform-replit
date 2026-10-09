@@ -240,7 +240,7 @@ router.get("/crm/deals/:dealId/participants", async (req, res) => {
       .innerJoin(crmCompaniesMasterTable, eq(crmCompaniesMasterTable.id, crmDealCompaniesTable.companyId))
       .where(and(eq(crmDealCompaniesTable.tenantId, tenantId), eq(crmDealCompaniesTable.dealId, req.params.dealId)));
 
-    return res.json({ people, companies });
+    return res.json({ people: people.filter((item) => item.metadata?.inactive !== true), companies: companies.filter((item) => item.metadata?.inactive !== true) });
   } catch (error: any) {
     return res.status(error.status ?? 500).json({ error: error.message });
   }
@@ -387,7 +387,7 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
         contextualCompanyId: parsed.data.contextualCompanyId ?? null,
         relationshipScope: parsed.data.relationshipScope,
         notes: parsed.data.notes ?? null,
-        metadata: parsed.data.metadata ?? {},
+        metadata: { ...(parsed.data.metadata ?? {}), inactive: false },
         updatedAt: new Date(),
       },
     }).returning();
