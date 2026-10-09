@@ -120,7 +120,27 @@ router.post("/crm/people", async (req, res) => {
     )).limit(20);
 
     const exact = existing.find((p) => documento && digits(p.documento) === documento);
-    if (exact) return res.status(200).json({ item: exact, reused: true });
+    if (exact) {
+      // A master record can be shared across tenants; do not return its personal data
+      // to a tenant without an existing authorized relationship.
+      const tenantId = tenantIdFromRequest(req, parsed.data.tenantId);
+      const linkedDeal = await db.select({ id: crmDealPeopleTable.id })
+        .from(crmDealPeopleTable).where(and(
+          eq(crmDealPeopleTable.tenantId, tenantId),
+          eq(crmDealPeopleTable.personId, exact.id),
+        )).limit(1);
+      const linkedContact = await db.select({ id: crmTenantCompanyContactsTable.id })
+        .from(crmTenantCompanyContactsTable).where(and(
+          eq(crmTenantCompanyContactsTable.tenantId, tenantId),
+          eq(crmTenantCompanyContactsTable.personId, exact.id),
+        )).limit(1);
+      if (!linkedDeal.length && !linkedContact.length) {
+        return res.status(409).json({
+          error: "Documento já cadastrado. Solicite a vinculação autorizada antes de reutilizá-lo.",
+        });
+      }
+      return res.status(200).json({ item: exact, reused: true });
+    }
 
     // Telephone and e-mail are shared between relatives and company contacts.
     // Never merge two distinct people based solely on these contact channels.
