@@ -60,12 +60,13 @@ class OrthogonalUnionTests(unittest.TestCase):
         second = wall((2.1, 0), (4.1, 0))
         result = union_orthogonal_walls([first, second])
         self.assertFalse(result["geometryApproved"])
-        self.assertTrue(result["meshClosedByEdgeIncidence"] or
-                        result["integrityStatus"] == "requires_geometric_repair")
+        self.assertEqual(result["connectedSolidComponents"], 2)
+        self.assertEqual(result["integrityStatus"], "requires_geometric_repair")
 
     def test_single_wall(self):
         mesh = union_orthogonal_walls([wall((0, 0), (4, 0))])
         self.assertEqual(len(mesh["faces"]), 6)
+        self.assertEqual(mesh["connectedSolidComponents"], 1)
         self.assert_closed(mesh)
 
     def test_L_T_and_cross_junctions(self):
