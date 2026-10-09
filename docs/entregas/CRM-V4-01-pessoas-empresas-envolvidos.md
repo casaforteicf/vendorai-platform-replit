@@ -92,3 +92,9 @@ Reutilizar o cadastro mestre existente e permitir casal (dois consumidores com q
 - Compatibilidade: pessoas legadas sem titularidade de origem ainda podem ser usadas através de vínculo local preexistente; quando não há nenhum vínculo, a associação direta por ID permanece bloqueada até autorização apropriada.
 - Atenção: isso é um controle de origem no modelo atual, não comprova consentimento do titular e não substitui futura política explícita de compartilhamento intertenant.
 - Estado: implementado sem validação. Gates tsc/esbuild e homologação na Contabo sem execução comprovada; acesso Vendi à homologação rejeitado por 401.
+
+## Revisão de visibilidade de pessoas — 09/10/2026
+- `5615697`: ao vincular por `personId`, uma relação em negócio local somente serve como autorização quando o negócio é visível ao usuário e o vínculo está ativo.
+- `6790b28`: busca `GET /crm/people` deixa de incluir pessoa por vínculo de negócio inativo; demais caminhos de visibilidade permanecem sujeitos a revisão.
+- Pendente: revisão de permissões por usuário na associação de contatos corporativos e validação funcional de cadastros legados; segurança do fluxo global não pode ser considerada homologada.
+- Estado de entrega: **implementado, sem validação técnica**. Nenhum comando do build na Contabo executado nesta sessão; Vendi homologação 401 `upstream_token_rejected` na última tentativa; sem merge ou publicação.
