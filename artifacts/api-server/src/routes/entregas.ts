@@ -1598,7 +1598,19 @@ router.get("/tenants/:tenantId/work-cards", async (req, res) => {
   const storedCards = await db.select().from(workCardsTable)
     .where(and(...conditions))
     .orderBy(workCardsTable.updatedAt, workCardsTable.createdAt);
-  const cards = includeClosed === "1" ? storedCards : storedCards.filter((card) => !TERMINAL_WORK_STAGES.has(card.etapa));
+  const candidateCards = includeClosed === "1"
+    ? storedCards
+    : storedCards.filter((card) => !TERMINAL_WORK_STAGES.has(card.etapa));
+
+  // Lead excluído sai das pipelines ativas, mas seu histórico de execução/suporte permanece preservado.
+  const candidateLeadIds = [...new Set(candidateCards.map((card) => card.leadId).filter((id): id is string => Boolean(id)))];
+  const leadRows = candidateLeadIds.length
+    ? await db.select({ id: leadsTable.id, nome: leadsTable.nome, empresa: leadsTable.empresa, excluidoEm: leadsTable.excluidoEm })
+        .from(leadsTable)
+        .where(inArray(leadsTable.id, candidateLeadIds))
+    : [];
+  const activeLeadIds = new Set(leadRows.filter((lead) => !lead.excluidoEm).map((lead) => lead.id));
+  const cards = candidateCards.filter((card) => !card.leadId || activeLeadIds.has(card.leadId));
 
   const leadIds = [...new Set(cards.map((card) => card.leadId).filter((id): id is string => Boolean(id)))];
   const userIds = [...new Set(cards.map((card) => card.responsavelId).filter((id): id is string => Boolean(id)))];
