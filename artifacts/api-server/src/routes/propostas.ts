@@ -816,6 +816,37 @@ router.post("/propostas", async (req, res) => {
     return;
   }
 
+  // The proposal's own upload URL may differ from the private extraction URL.
+  // Validate approved import by tenant and id rather than comparing two stores.
+  const budgetImportId = (req.body as Record<string, unknown>).budgetImportId;
+  if (budgetImportId !== undefined) {
+    if (typeof budgetImportId !== "string" || !/^[0-9a-f-]{36}$/i.test(budgetImportId)) {
+      res.status(422).json({ error: "Identificador de importação inválido." });
+      return;
+    }
+    const reviewed = await db.execute(sql`
+      SELECT id FROM public.budget_imports
+      WHERE id = ${budgetImportId} AND tenant_id = ${parsed.data.tenantId}
+        AND review_status = 'approved'
+      LIMIT 1
+    `);
+    if (!reviewed.rows.length || !parsed.data.arquivoImportadoUrl) {
+      res.status(409).json({ code: "BUDGET_IMPORT_REVIEW_REQUIRED", error: "Importação não aprovada ou sem arquivo anexado." });
+      return;
+    }
+  } else if (parsed.data.arquivoImportadoUrl) {
+    const known = await db.execute(sql`
+      SELECT id FROM public.budget_imports
+      WHERE tenant_id = ${parsed.data.tenantId}
+        AND file_url = ${parsed.data.arquivoImportadoUrl}
+      LIMIT 1
+    `);
+    if (known.rows.length) {
+      res.status(409).json({ code: "BUDGET_IMPORT_REVIEW_REQUIRED", error: "Revise a importação antes de gravar a proposta." });
+      return;
+    }
+  }
+
   const numero = await generateNumero(parsed.data.tenantId);
 
   const itensNormalizadosBase = normalizarItensExecucao((parsed.data.itens ?? []) as PropostaItem[]);
