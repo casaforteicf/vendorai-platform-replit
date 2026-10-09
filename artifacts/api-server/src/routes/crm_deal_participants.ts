@@ -460,9 +460,11 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
         .where(and(eq(crmDealPeopleTable.tenantId, tenantId), eq(crmDealPeopleTable.dealId, req.params.dealId)));
     }
 
-      const [previousLink] = await tx.select({ metadata: crmDealPeopleTable.metadata })
+      const [previousLink] = await tx.select({ metadata: crmDealPeopleTable.metadata, isPrimary: crmDealPeopleTable.isPrimary })
         .from(crmDealPeopleTable).where(and(eq(crmDealPeopleTable.tenantId, tenantId),
           eq(crmDealPeopleTable.dealId, req.params.dealId), eq(crmDealPeopleTable.personId, personId))).limit(1);
+      // Reativação nunca recupera automaticamente o contato principal antigo.
+      const primaryContact = parsed.data.isPrimary;
       const relationshipMetadata = appendRelationshipEvent(
         { ...(previousLink?.metadata ?? {}), ...Object.fromEntries(Object.entries(parsed.data.metadata ?? {}).filter(([key]) => !["relationshipHistory", "inactive", "unlinkedAt", "unlinkedBy", "createdTenantId"].includes(key))), relationshipHistory: previousLink?.metadata?.relationshipHistory, legacyRelationship: Boolean(previousLink) && !Array.isArray(previousLink?.metadata?.relationshipHistory) }, previousLink ? (previousLink.metadata?.inactive === true ? "linked" : "updated") : "linked", req.user?.id,
       );
@@ -471,7 +473,7 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
       dealId: req.params.dealId,
       personId,
       role: parsed.data.role,
-      isPrimary: parsed.data.isPrimary,
+      isPrimary: primaryContact,
       contextualCompanyId: parsed.data.contextualCompanyId ?? null,
       relationshipScope: parsed.data.relationshipScope,
       notes: parsed.data.notes ?? null,
@@ -481,7 +483,7 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
       target: [crmDealPeopleTable.dealId, crmDealPeopleTable.personId],
       set: {
         role: parsed.data.role,
-        isPrimary: parsed.data.isPrimary,
+        isPrimary: primaryContact,
         contextualCompanyId: parsed.data.contextualCompanyId ?? null,
         relationshipScope: parsed.data.relationshipScope,
         notes: parsed.data.notes ?? null,
