@@ -291,3 +291,22 @@ conversores, build TypeScript e UI isolada antes de integrar.
 - **Validação:** commits gravados no PR #3422, sem teste/build/visualização real executados nesta atualização. Não homologado; não aprovado; produção inalterada.
 - **Decisão vigente:** homologação Contabo, acesso Vendi e publicação adiados. PR #3422 continua Draft, sem merge ou deploy.
 - **Próximo avanço independente:** identidade de nós GLB gravada no relatório durante conversão, evitando dependência de nomes, e cobertura de testes do fluxo frontend/API.
+
+
+## Programa aprovado A–E — execução agrupada (09/10/2026)
+
+Autorização: seguir nos cinco lotes A (esquadrias/revisão), B (reconhecimento geométrico), C (BIM paramétrico), D (render/UX), E (documentação e integrações), mantendo Contabo/Vendi e publicação adiados.
+
+| Lote | Marco vigente | Estado real |
+| --- | --- | --- |
+| A | Identidade da malha, quadro preliminar, painel de revisão, câmera por nome único, API privada | Parcialmente implementado; persistência autorizada e correspondência GLB definitiva pendentes |
+| B | Limites de malha, topologia e candidatos de vãos | Parcial; detecção confiável por geometria e classificação de pavimentos pendentes |
+| C | Novo contrato `inspect_parametric_wall` valida parede paramétrica proposta em planta, espessura/altura e candidatos de abertura sem sobreposição | Prévia geométrica pura; editor 2D/3D sincronizado e malha editável ainda não implementados |
+| D | Novo contrato `validate_professional_render_job` valida preset 4K e parâmetros de vídeo | Admissão de job sem execução; UX profissional, Blender real e GPU pendentes |
+| E | Novo contrato `draft_architectural_deliverables` prepara contagem preliminar de elementos e estados bloqueados de documentos | Prévia; geração IFC/PDF/cortes/quantitativos confiáveis e integração a orçamento/execução pendentes |
+
+Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e `8a557f7` (regressões). Arquivos: `tools/blender-server/arqdor_feature_contracts.py`, `tools/blender-server/test_arqdor_feature_contracts.py` e este Registro Mestre.
+
+**Validação:** commits confirmados na branch; testes escritos, não executados; sem Blender/build/Contabo. **Homologação:** adiada. **Aprovação/produção:** não. **Merge:** não. Não declarar os lotes A–E completos.
+
+**Próximas entregas dentro da autorização:** correlacionar geometria e IDs GLB, revisar a segurança e persistência do histórico de esquadrias; avançar modelo paramétrico para 2D/3D e formatos IFC/SKP; integrar job de render ao worker e quadro técnico aos módulos de orçamento/biblioteca, mantendo flags desabilitadas até validação.
