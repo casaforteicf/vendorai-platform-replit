@@ -133,7 +133,7 @@ router.post("/crm/people", async (req, res) => {
     if (candidates.length) {
       return res.status(409).json({
         error: "Possível pessoa já cadastrada. Selecione o cadastro existente para evitar duplicação.",
-        candidateIds: candidates.map((p) => p.id),
+        // Do not disclose global master IDs in duplicate-candidate errors.
       });
     }
 
@@ -338,7 +338,7 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
         if (existing) {
           return res.status(409).json({
             error: "Documento já cadastrado. Selecione a pessoa existente para vinculá-la ao negócio.",
-            candidateIds: [existing.id],
+        // Do not disclose global master IDs in duplicate-candidate errors.
           });
         }
       }
@@ -357,7 +357,7 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
       if (possible.length) {
         return res.status(409).json({
           error: "Possível pessoa já cadastrada. Selecione o cadastro existente antes de vincular.",
-          candidateIds: possible.map((person) => person.id),
+        // Do not disclose global master IDs in duplicate-candidate errors.
         });
       }
       const [person] = await db.insert(crmPeopleMasterTable).values({
