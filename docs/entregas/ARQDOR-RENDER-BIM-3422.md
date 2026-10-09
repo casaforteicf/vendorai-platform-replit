@@ -49,3 +49,11 @@ Principais arquivos afetados pelo lote:
 5. Prosseguir com reconhecimento geométrico de aberturas e conversores SKP/IFC em lotes correlatos, sem interferir em agentes CRM/infra.
 
 **Controle de publicação:** nenhuma alteração em produção ou main foi autorizada implicitamente por este registro. GitHub Actions não é bloqueio.
+
+
+## Atualização complementar — Vendi e homologação (09/10/2026)
+
+- Consulta de conexões com `tenantKey=vendorai`: **bem-sucedida**; tenant `1d4ea673-58d0-413a-a554-c9aca72a3121` e conexão de homologação `homolog.appvendorai.com` encontrados. O erro `tenant_not_found` anterior se referia à chave `casaforteicf`, não à indisponibilidade geral do Vendi.
+- Tentativa **somente leitura** pelo Vendi na conexão salva da homologação: **falhou**, código `VENDI_HOMOLOG_AUTH_EXCHANGE_FAILED` com HTTP 401 / `upstream_token_rejected` (runId `4191a2a3-e088-4382-b228-a343e2cdb3a7`). Não houve ação de escrita.
+- Acesso de terminal à Contabo, builds, testes de Blender/FFmpeg e homologação deste HEAD: **não executados, sem evidência**. A conexão de navegador não equivale a SSH nem a execução de comandos no host.
+- Impedimento atualizado: autenticação do Vendi na homologação (token upstream rejeitado); precisa de diagnóstico do mecanismo de troca de credenciais, sem modificar produção. Continuar tarefas independentes e preparar validação isolada quando conexão funcional estiver disponível.
