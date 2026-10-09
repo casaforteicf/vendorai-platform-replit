@@ -70,6 +70,33 @@ export function validateCalibration(input: unknown): ModelCalibration {
   } };
 }
 
+
+export type ModelSceneSettings = {
+  sunlight: number;
+  materials: Record<string, string>;
+  cameras: Array<{ name: string; position: [number, number, number]; target: [number, number, number] }>;
+};
+export function validateSceneSettings(value: unknown): ModelSceneSettings {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Configuração de cena inválida");
+  const input = value as Record<string, unknown>;
+  if (typeof input.sunlight !== "number" || !Number.isFinite(input.sunlight) || input.sunlight < 0 || input.sunlight > 4)
+    throw new Error("Intensidade solar fora do intervalo");
+  if (!input.materials || typeof input.materials !== "object" || Array.isArray(input.materials)) throw new Error("Materiais inválidos");
+  const entries = Object.entries(input.materials);
+  if (entries.length > 2000 || entries.some(([key, color]) => key.length > 128 || !/^[a-f0-9-]{36}$/.test(key) || typeof color !== "string" || !/^#[a-fA-F0-9]{6}$/.test(color)))
+    throw new Error("Cores de superfície inválidas");
+  if (!Array.isArray(input.cameras) || input.cameras.length > 100) throw new Error("Câmeras inválidas");
+  const tuple = (value: unknown): value is [number, number, number] =>
+    Array.isArray(value) && value.length === 3 && value.every(item => typeof item === "number" && Number.isFinite(item) && Math.abs(item) <= 1e8);
+  const cameras = input.cameras.map((candidate: unknown) => {
+    if (!candidate || typeof candidate !== "object") throw new Error("Câmera inválida");
+    const item = candidate as Record<string, unknown>;
+    if (typeof item.name !== "string" || !item.name.trim() || item.name.length > 80 || !tuple(item.position) || !tuple(item.target)) throw new Error("Dados de câmera inválidos");
+    return { name: item.name, position: item.position, target: item.target };
+  });
+  return { sunlight: input.sunlight, materials: Object.fromEntries(entries) as Record<string, string>, cameras };
+}
+
 export class ModelFileStore {
   root: string;
   constructor(root: string) { this.root = path.resolve(root); }
@@ -134,6 +161,33 @@ export class ModelFileStore {
     const buffer = await this.privateRead(await this.directory(tenantId, projectId, modelId), "model.glb");
     if (createHash("sha256").update(buffer).digest("hex") !== record.sha256) throw new Error("Integridade do modelo inválida");
     return { record, buffer };
+  }
+
+  async sceneSettings(tenantId: string, projectId: string, modelId: string) {
+    const record = await this.get(tenantId, projectId, modelId);
+    const directory = await this.directory(tenantId, projectId, modelId);
+    try {
+      const saved = JSON.parse((await this.privateRead(directory, "scene-settings.json")).toString("utf8"));
+      if (saved.modelSha256 !== record.sha256) throw new Error("Configuração de outra versão do modelo");
+      return saved;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT")
+        return { modelSha256: record.sha256, settings: { sunlight: 1.2, materials: {}, cameras: [] } };
+      throw error;
+    }
+  }
+
+  async saveSceneSettings(tenantId: string, projectId: string, modelId: string, userId: string, input: unknown) {
+    const record = await this.get(tenantId, projectId, modelId);
+    const settings = validateSceneSettings(input);
+    const directory = await this.directory(tenantId, projectId, modelId);
+    const draft = { modelSha256: record.sha256, settings, updatedBy: userId, updatedAt: new Date().toISOString() };
+    const temp = path.join(directory, `scene-settings-${randomUUID()}.tmp`);
+    try {
+      await writeFile(temp, JSON.stringify(draft), { flag: "wx", mode: 0o600 });
+      await rename(temp, path.join(directory, "scene-settings.json"));
+    } finally { await rm(temp, { force: true }); }
+    return draft;
   }
 
   async saveCalibration(tenantId: string, projectId: string, modelId: string, userId: string, input: unknown) {
