@@ -1,7 +1,7 @@
 import type { ParametricWall } from "./RenderStudioParametricWebgl";
 
 type Box = [number, number, number, number, number, number];
-export type UnionResult = { vertices: number[][]; faces: number[][]; occupiedCells: number; openingCount: number };
+export type UnionResult = { vertices: number[][]; faces: number[][]; occupiedCells: number; openingCount: number; topology: { boundaryEdges: number; nonmanifoldEdges: number; orientationErrors: number; closedByEdgeIncidence: boolean } };
 
 export function unionOrthogonalWalls(walls: ParametricWall[]): UnionResult {
   if (!walls.length || walls.length > 80) throw new Error("União ortogonal suporta 1 a 80 paredes");
@@ -65,5 +65,25 @@ export function unionOrthogonalWalls(walls: ParametricWall[]): UnionResult {
     if(!has(i,j,k-1))face([[x0,y0,z0],[x0,y1,z0],[x1,y1,z0],[x1,y0,z0]]);
     if(!has(i,j,k+1))face([[x0,y1,z1],[x0,y0,z1],[x1,y0,z1],[x1,y1,z1]]);
   }
-  return {vertices,faces,occupiedCells:filled.size,openingCount:voids.reduce((n,v)=>n+v.length,0)};
+  const edges = new Map<string, { count: number; balance: number }>();
+  for (const polygon of faces) for (let index = 0; index < polygon.length; index++) {
+    const a = polygon[index], b = polygon[(index + 1) % polygon.length];
+    const key = a < b ? `${a},${b}` : `${b},${a}`;
+    const state = edges.get(key) ?? { count: 0, balance: 0 };
+    state.count++;
+    state.balance += a < b ? 1 : -1;
+    edges.set(key, state);
+  }
+  let boundaryEdges = 0, nonmanifoldEdges = 0, orientationErrors = 0;
+  for (const edge of edges.values()) {
+    if (edge.count === 1) boundaryEdges++;
+    else if (edge.count > 2) nonmanifoldEdges++;
+    else if (edge.balance !== 0) orientationErrors++;
+  }
+  return { vertices, faces, occupiedCells: filled.size,
+    openingCount: voids.reduce((n,v) => n + v.length, 0),
+    topology: { boundaryEdges, nonmanifoldEdges, orientationErrors,
+      closedByEdgeIncidence: faces.length > 0 &&
+        boundaryEdges === 0 && nonmanifoldEdges === 0 && orientationErrors === 0 } };
+
 }
