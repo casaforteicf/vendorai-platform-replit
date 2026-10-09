@@ -144,6 +144,32 @@ router.get(`${prefix}/:modelId/conversion-report`, async (req, res, next) => {
   }
 });
 
+router.get(`${prefix}/:modelId/parametric-draft`, async (req, res, next) => {
+  const storage = store();
+  if (!storage) return res.status(503).json({ error: "Armazenamento indisponível" });
+  try {
+    const { tenantId, projectId } = res.locals.modelScope;
+    res.set("Cache-Control", "private, no-store");
+    return res.json(await storage.parametricDrafts(tenantId, projectId, safeSegment(String(req.params.modelId))));
+  } catch (error) { next(error); }
+});
+
+router.put(`${prefix}/:modelId/parametric-draft`, async (req, res, next) => {
+  const storage = store();
+  if (!storage) return res.status(503).json({ error: "Armazenamento indisponível" });
+  try {
+    const { tenantId, projectId, userId } = res.locals.modelScope;
+    return res.json(await storage.saveParametricDraft(tenantId, projectId,
+      safeSegment(String(req.params.modelId)), userId, req.body));
+  } catch (error) {
+    if (error instanceof Error && /Conflito de versão/.test(error.message))
+      return res.status(409).json({ error: error.message });
+    if (error instanceof Error && /inválid|curta/.test(error.message))
+      return res.status(422).json({ error: error.message });
+    next(error);
+  }
+});
+
 router.get(`${prefix}/:modelId/calibrations`, async (req, res, next) => {
   const storage = store();
   if (!storage) return res.status(503).json({ error: "Armazenamento privado indisponível" });
