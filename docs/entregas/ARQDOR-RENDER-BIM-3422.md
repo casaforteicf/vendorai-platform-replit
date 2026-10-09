@@ -57,3 +57,26 @@ Principais arquivos afetados pelo lote:
 - Tentativa **somente leitura** pelo Vendi na conexão salva da homologação: **falhou**, código `VENDI_HOMOLOG_AUTH_EXCHANGE_FAILED` com HTTP 401 / `upstream_token_rejected` (runId `4191a2a3-e088-4382-b228-a343e2cdb3a7`). Não houve ação de escrita.
 - Acesso de terminal à Contabo, builds, testes de Blender/FFmpeg e homologação deste HEAD: **não executados, sem evidência**. A conexão de navegador não equivale a SSH nem a execução de comandos no host.
 - Impedimento atualizado: autenticação do Vendi na homologação (token upstream rejeitado); precisa de diagnóstico do mecanismo de troca de credenciais, sem modificar produção. Continuar tarefas independentes e preparar validação isolada quando conexão funcional estiver disponível.
+
+
+## Marco de desenvolvimento — associação de bordas e esquadrias (09/10/2026)
+
+Objetivo: cruzar contornos fechados candidatos de paredes com objetos classificados
+provisoriamente como portas/janelas. **Não certifica vãos de malha.**
+
+- Implementação: `associate_boundary_candidates` compara caixas espaciais de
+anéis de bordas com caixas de portas/janelas no mesmo referencial, sem alterar
+malhas, dimensões ou quantitativos; gera `boundaryOpeningReview` no relatório
+OBJ/FBX, com `openingConfirmed=false`, `fabricationReady=false`.
+- Arquivos: `tools/blender-server/arqdor_feature_contracts.py`,
+`tools/blender-server/arqdor_convert_obj_fbx.py`,
+`tools/blender-server/test_arqdor_feature_contracts.py`.
+- Commits: `914b795`, `be8de0a`, `56899cc`.
+- Teste adicionado: sobreposição de contorno/esquadria e caso de objeto distante;
+**não executado no ambiente Contabo**; sem evidência de Blender real ou build do HEAD.
+- Dependência: acesso à homologação via Vendi segue bloqueado pelo HTTP 401
+`VENDI_HOMOLOG_AUTH_EXCHANGE_FAILED/upstream_token_rejected` constatado antes.
+- Estados: **implementado sem validação técnica**, não homologado, não aprovado,
+não publicado. O PR #3422 permanece Draft. Próximas ações: recuperar autenticação
+Vendi, executar testes/build e conversão no ambiente isolado Contabo, inspecionar
+topologia em projeto real, revisar falsos positivos e não liberar quadro de fabricação.
