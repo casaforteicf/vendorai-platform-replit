@@ -14,11 +14,91 @@ type RealBudgetEngineStudioProps = {
   onNavigate?: (module: string) => void;
 };
 
+type GeometryQuantity = {
+  key: string;
+  item: string;
+  description: string;
+  quantity: number;
+  unit: string;
+  type: "material" | "product" | "service" | "other";
+};
+
+function activeArchProject(arqState: any) {
+  return arqState?.currentProject ?? arqState?.selectedProject ?? arqState?.project ?? arqState ?? null;
+}
+
+function dimensionInMeters(value: unknown): number {
+  if (value == null) return 0;
+  const raw = String(value).trim().toLowerCase().replace(",", ".");
+  const number = Number.parseFloat(raw.replace(/[^0-9.-]/g, ""));
+  if (!Number.isFinite(number) || number <= 0) return 0;
+  if (/mm\b/.test(raw)) return number / 1000;
+  if (/cm\b/.test(raw)) return number / 100;
+  return number;
+}
+
+function geometryQuantities(arqState: any): GeometryQuantity[] {
+  const project = activeArchProject(arqState);
+  const objects = Array.isArray(project?.objetos)
+    ? project.objetos
+    : Array.isArray(project?.objects)
+      ? project.objects
+      : [];
+
+  const result: GeometryQuantity[] = [];
+  for (const object of objects) {
+    const category = String(object?.categoria || object?.category || "").toUpperCase();
+    const name = String(object?.nome || object?.name || object?.tipo || category || "Elemento");
+    const dims = object?.dimensoes || object?.dimensions || {};
+    const width = dimensionInMeters(dims?.largura ?? dims?.width);
+    const height = dimensionInMeters(dims?.altura ?? dims?.height);
+    const depth = dimensionInMeters(dims?.profundidade ?? dims?.depth);
+    const key = String(object?.id || `${category}:${name}`);
+
+    let quantity = 0;
+    let unit = "un";
+    if (["PAREDE", "ESQUADRIA", "PORTA", "VIDRO"].includes(category) && width > 0 && height > 0) {
+      quantity = width * height;
+      unit = "m²";
+    } else if (["PISO", "FORRO", "AMBIENTE", "BANCADA", "PEDRA"].includes(category) && width > 0 && depth > 0) {
+      quantity = width * depth;
+      unit = "m²";
+    } else if (category === "ESTRUTURA" && width > 0 && height > 0 && depth > 0) {
+      quantity = width * height * depth;
+      unit = "m³";
+    } else if (width > 0 && height > 0 && depth > 0) {
+      quantity = width * height * depth;
+      unit = "m³";
+    } else if (width > 0 && height > 0) {
+      quantity = width * height;
+      unit = "m²";
+    } else if (width > 0) {
+      quantity = width;
+      unit = "m";
+    } else {
+      quantity = 1;
+      unit = "un";
+    }
+
+    result.push({
+      key,
+      item: `[GEOMETRIA] ${category ? `${category} — ` : ""}${name}`,
+      description: `Quantitativo preliminar gerado da geometria do Pré-Projeto. Elemento: ${key}. Pode ser especificado tecnicamente depois.`,
+      quantity: Number(quantity.toFixed(4)),
+      unit,
+      type: category === "PORTA" || category === "ESQUADRIA" ? "product" : "other",
+    });
+  }
+  return result;
+}
+
 export default function RealBudgetEngineStudio({ arqState, onNavigate }: RealBudgetEngineStudioProps) {
   const projectId = useMemo(() => getProjectId(arqState), [arqState]);
   const projectTitle = useMemo(() => getProjectTitle(arqState), [arqState]);
   const clientName = useMemo(() => getClientName(arqState), [arqState]);
   const [viewMode, setViewMode] = useState<BudgetViewMode>("internal");
+  const [generatingGeometry, setGeneratingGeometry] = useState(false);
+  const [geometryMessage, setGeometryMessage] = useState<string | null>(null);
 
   const {
     budget,
@@ -43,6 +123,47 @@ export default function RealBudgetEngineStudio({ arqState, onNavigate }: RealBud
     approveCurrentBudget,
   } = useRealBudgetEngine(projectId, projectTitle, clientName);
 
+  const geometry = useMemo(() => geometryQuantities(arqState), [arqState]);
+
+  const generateFromGeometry = async () => {
+    if (!projectId || !geometry.length || generatingGeometry) return;
+    setGeneratingGeometry(true);
+    setGeometryMessage(null);
+    try {
+      await ensureBudget();
+      const existingGeometry = new Set(
+        items
+          .filter((item) => item.item.startsWith("[GEOMETRIA]"))
+          .map((item) => item.item),
+      );
+      let created = 0;
+      for (let index = 0; index < geometry.length; index += 1) {
+        const quantity = geometry[index];
+        if (existingGeometry.has(quantity.item)) continue;
+        const result = await addItem({
+          item: quantity.item,
+          description: quantity.description,
+          type: quantity.type,
+          quantity: quantity.quantity,
+          unit: quantity.unit,
+          materialValue: 0,
+          laborValue: 0,
+          visibleToClient: true,
+          sortOrder: index,
+        });
+        if (result) created += 1;
+      }
+      setGeometryMessage(
+        created > 0
+          ? `${created} quantitativo(s) geométrico(s) adicionados. Custos continuam em aberto até orçamento/especificação.`
+          : "Os quantitativos geométricos deste projeto já estão no orçamento.",
+      );
+      await reload();
+    } finally {
+      setGeneratingGeometry(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[var(--arq-background)] text-[var(--arq-foreground)]">
       <div className="mx-auto flex w-full max-w-[1760px] flex-col gap-5 px-6 py-6">
@@ -50,9 +171,9 @@ export default function RealBudgetEngineStudio({ arqState, onNavigate }: RealBud
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Orçamento do projeto</p>
-              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[var(--arq-foreground)]">Orçamento sincronizado com a especificação</h1>
+              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[var(--arq-foreground)]">Quantificar primeiro. Especificar quando precisar.</h1>
               <p className="mt-1 text-sm text-[var(--arq-muted)]">
-                {projectTitle} • quantitativos, produtos, materiais, mão de obra e versão cliente/interna na mesma revisão do projeto.
+                {projectTitle} • gere quantitativos pela geometria do Pré-Projeto sem exigir especificação; depois aprofunde sistemas, composições, materiais e mão de obra.
               </p>
             </div>
 
@@ -89,11 +210,20 @@ export default function RealBudgetEngineStudio({ arqState, onNavigate }: RealBud
 
               <button
                 type="button"
+                onClick={() => void generateFromGeometry()}
+                disabled={generatingGeometry || !geometry.length}
+                className="rounded-2xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                {generatingGeometry ? "Quantificando..." : `Gerar quantitativos (${geometry.length})`}
+              </button>
+
+              <button
+                type="button"
                 onClick={() => void generateFromSpecObjects()}
                 disabled={generating}
                 className="rounded-2xl bg-[var(--arq-accent)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
               >
-                {generating ? "Gerando..." : "Sincronizar da especificação"}
+                {generating ? "Gerando..." : "Aprofundar pela especificação"}
               </button>
             </div>
           </div>
@@ -112,6 +242,18 @@ export default function RealBudgetEngineStudio({ arqState, onNavigate }: RealBud
           specificationReady={items.length > 0}
           budgetReady={Boolean(budget)}
         />
+
+        {geometryMessage ? (
+          <div className="rounded-[28px] border border-emerald-100 bg-emerald-50 p-4 text-sm font-medium text-emerald-800 print:hidden">
+            {geometryMessage}
+          </div>
+        ) : null}
+
+        {!geometry.length ? (
+          <div className="rounded-[28px] border border-amber-100 bg-amber-50 p-4 text-sm text-amber-900 print:hidden">
+            Ainda não encontrei elementos geométricos quantificáveis neste projeto. Você pode criar o orçamento manualmente ou voltar ao Pré-Projeto e concluir/importar a geometria.
+          </div>
+        ) : null}
 
         {error ? (
           <div className="rounded-[28px] border border-rose-100 bg-rose-50 p-4 text-sm font-medium text-rose-700 print:hidden">
