@@ -1,9 +1,9 @@
 /**
- * render.ts — Renderização rápida de imagens via IA (gpt-image-1 images.edit)
+ * render.ts — Renderização rápida de imagens via IA (gpt-image-2 images.edit)
  *
  * POST /api/render/quick
  *   Recebe uma imagem de referência + configurações (estilo, ambiente, notas),
- *   transforma com gpt-image-1, salva no object storage e retorna a URL.
+ *   transforma com gpt-image-2, salva no object storage e retorna a URL.
  */
 
 import { Router } from "express";
@@ -201,7 +201,7 @@ router.post("/render/quick", uploadFields, async (req, res) => {
       : imageFile;
 
     const result = await (openai.images.edit as Function)({
-      model:   "gpt-image-1",
+      model:   "gpt-image-2",
       image:   imageInput,
       prompt,
       n:       1,
@@ -210,7 +210,7 @@ router.post("/render/quick", uploadFields, async (req, res) => {
     });
 
     const b64 = (result.data?.[0] as Record<string, unknown>)?.["b64_json"] as string | undefined;
-    if (!b64) throw new Error("gpt-image-1 não retornou b64_json");
+    if (!b64) throw new Error("gpt-image-2 não retornou b64_json");
 
     const ts = Date.now();
     const buf = Buffer.from(b64, "base64");
@@ -245,7 +245,7 @@ router.post("/render/quick", uploadFields, async (req, res) => {
       billable: true,
       billingStatus: "overage",
       provider: "openai",
-      model: "gpt-image-1",
+      model: "gpt-image-2",
       source: "render_quick",
       sourceEventId: `commercial:${commercialRequestId}`,
       requestId: commercialRequestId,
@@ -265,7 +265,7 @@ router.post("/render/quick", uploadFields, async (req, res) => {
       billable: true,
       billingStatus: "non_billable",
       provider: "openai",
-      model: "gpt-image-1",
+      model: "gpt-image-2",
       source: "render_quick",
       sourceEventId: `commercial:${commercialRequestId}`,
       requestId: commercialRequestId,
