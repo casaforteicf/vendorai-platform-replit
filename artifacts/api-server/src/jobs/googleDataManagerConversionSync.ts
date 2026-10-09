@@ -128,9 +128,6 @@ async function patchEventMetadata(
 export async function runGoogleDataManagerConversionSync(log: Logger): Promise<void> {
   if (!enabled()) return;
 
-    return;
-  }
-
   const allowlist = allowedTenantIds();
   if (allowlist.size === 0) {
     log.warn("server-conversions/google-data-manager: feature flag ativa, mas nenhum tenant está na allowlist; nenhum evento será validado/enviado");
@@ -165,7 +162,6 @@ export async function runGoogleDataManagerConversionSync(log: Logger): Promise<v
 
   for (const event of events) {
     const metadata = asRecord(event.metadata);
-    }
     if (!allowlist.has(event.tenantId)) {
       skipped++;
       continue;

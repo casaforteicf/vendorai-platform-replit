@@ -12,12 +12,6 @@ export const quoteExtractionResultSchema = z.object({
   valorTotal: z.number().nullable().optional(),
   cliente: z.string().nullable().optional(),
   clienteDocumento: z.string().nullable().optional(),
-  clienteCep: z.string().nullable().optional(),
-  clienteTelefone: z.string().nullable().optional(),
-  clienteEmail: z.string().nullable().optional(),
-  clienteCidade: z.string().nullable().optional(),
-  clienteEstado: z.string().nullable().optional(),
-  clienteCep: z.string().nullable().optional(),
   clienteEndereco: z.string().nullable().optional(),
   clienteTelefone: z.string().nullable().optional(),
   clienteEmail: z.string().nullable().optional(),
@@ -57,178 +51,6 @@ export const quoteExtractionResultSchema = z.object({
 });
 
 export type QuoteExtractionResult = z.infer<typeof quoteExtractionResultSchema>;
-
-function parseLooseNumber(value: unknown): number | null | undefined {
-  if (value === null || value === undefined || value === "") return value as null | undefined;
-  if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  if (typeof value !== "string") return null;
-  const raw = value.trim().replace(/R\$\s?/gi, "").replace(/\s/g, "");
-  if (!raw) return null;
-  const normalized = raw.includes(",")
-    ? raw.replace(/\./g, "").replace(",", ".")
-    : raw;
-  const parsed = Number(normalized.replace(/[^0-9.-]/g, ""));
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function parseLooseString(value: unknown): string | null | undefined {
-  if (value === null || value === undefined) return value as null | undefined;
-  if (typeof value === "string") return value.trim() || null;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  return null;
-}
-
-function normalizeQuoteExtractionPayload(value: unknown): unknown {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
-  const input = value as Record<string, unknown>;
-  const output: Record<string, unknown> = { ...input };
-
-  const stringFields = [
-    "titulo", "numeroDocumento", "dataEmissao", "cliente", "clienteDocumento",
-    "clienteTelefone", "clienteEmail", "clienteCidade", "clienteEstado", "clienteCep",
-    "clienteEndereco", "fornecedor", "fornecedorDocumento", "fornecedorEndereco",
-    "validade", "formaPagamento", "condPagamento", "prazoEntrega", "observacoes",
-  ];
-  for (const key of stringFields) output[key] = parseLooseString(input[key]);
-
-  const numericFields = ["valorTotal", "desconto", "acrescimos", "frete", "impostos", "confianca"];
-  for (const key of numericFields) output[key] = parseLooseNumber(input[key]);
-  if (Array.isArray(input.itens)) {
-    output.itens = input.itens
-      .filter((item) => item && typeof item === "object" && !Array.isArray(item))
-      .map((item) => {
-        const row = item as Record<string, unknown>;
-        return {
-          ...row,
-          codigo: parseLooseString(row.codigo),
-          descricao: parseLooseString(row.descricao),
-          unidade: parseLooseString(row.unidade),
-          quantidade: parseLooseNumber(row.quantidade),
-          valorUnitario: parseLooseNumber(row.valorUnitario),
-          valorTotal: parseLooseNumber(row.valorTotal),
-          grupo: parseLooseString(row.grupo),
-          etapa: parseLooseString(row.etapa),
-          observacoes: parseLooseString(row.observacoes),
-        };
-      })
-      .filter((item) => typeof item.descricao === "string" && item.descricao.length > 0);
-  }
-
-  for (const key of ["inclusoes", "exclusoes", "clausulas", "informacoesAdicionais"]) {
-    if (Array.isArray(input[key])) {
-      output[key] = (input[key] as unknown[])
-        .map(parseLooseString)
-        .filter((item): item is string => typeof item === "string" && item.length > 0);
-    }
-  }
-
-  return output;
-}
-function parseQuoteExtraction(raw: string): QuoteExtractionResult {
-  const parsed = JSON.parse(raw || "{}");
-  const normalized = normalizeQuoteExtractionPayload(parsed);
-  const result = quoteExtractionResultSchema.safeParse(normalized);
-  if (result.success) return validateQuoteExtraction(result.data);
-  return {
-    confianca: 0,
-    informacoesAdicionais: ["A leitura retornou dados parcialmente inválidos. Revise o orçamento importado antes de salvar."],
-  };
-}
-
-function normalizeComparable(value?: string | null): string {
-  return (value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9]/g, "")
-    .toLowerCase();
-}
-
-function validateQuoteExtraction(data: QuoteExtractionResult): QuoteExtractionResult {
-  const warnings = [...(data.informacoesAdicionais ?? [])];
-  let confidence = Math.max(0, Math.min(1, data.confianca ?? 0.75));
-
-  const phoneDigits = (data.clienteTelefone ?? "").replace(/\D/g, "");
-  if (data.clienteTelefone && (phoneDigits.length < 10 || phoneDigits.length > 13)) {
-    warnings.push("Telefone do cliente com formato incomum; conferir no documento original.");
-    confidence -= 0.08;
-  }
-
-  const cepDigits = (data.clienteCep ?? "").replace(/\D/g, "");
-  if (data.clienteCep && cepDigits.length !== 8) {
-    warnings.push("CEP do cliente não possui 8 dígitos; conferir.");
-    confidence -= 0.06;
-  }
-
-  const documentDigits = (data.clienteDocumento ?? "").replace(/\D/g, "");
-  if (data.clienteDocumento && ![11, 14].includes(documentDigits.length)) {
-    warnings.push("CPF/CNPJ do cliente com quantidade de dígitos incomum; conferir.");
-    confidence -= 0.08;
-  }
-
-  if (data.clienteEstado && !/^[A-Za-z]{2}$/.test(data.clienteEstado.trim())) {
-    warnings.push("UF/estado do cliente não está no formato esperado; conferir.");
-    confidence -= 0.04;
-  }
-
-  const clientKey = normalizeComparable(data.cliente);
-  const supplierKey = normalizeComparable(data.fornecedor);
-  if (clientKey && supplierKey && clientKey === supplierKey) {
-    warnings.push("Cliente e fornecedor foram identificados com o mesmo nome; risco de inversão entre destinatário e emitente.");
-    confidence -= 0.15;
-  }
-
-  if (!data.cliente && (data.clienteTelefone || data.clienteDocumento || data.clienteEndereco)) {
-    warnings.push("Há dados cadastrais de cliente, mas o nome/razão social não foi identificado com segurança.");
-    confidence -= 0.08;
-  }
-
-  const lineTotals = (data.itens ?? [])
-    .map((item) => item.valorTotal)
-    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
-  if (lineTotals.length > 0 && typeof data.valorTotal === "number" && Number.isFinite(data.valorTotal)) {
-    const itemSum = lineTotals.reduce((sum, value) => sum + value, 0);
-    const expectedFinal = itemSum
-      + (data.frete ?? 0)
-      + (data.impostos ?? 0)
-      + (data.acrescimos ?? 0)
-      - (data.desconto ?? 0);
-    const tolerance = Math.max(1, Math.abs(data.valorTotal) * 0.015);
-    if (Math.abs(expectedFinal - data.valorTotal) > tolerance) {
-      warnings.push(
-        `Conferir total: soma estruturada dos itens/ajustes (${expectedFinal.toFixed(2)}) difere do total informado no documento (${data.valorTotal.toFixed(2)}).`
-      );
-      confidence -= 0.10;
-    }
-  }
-
-  return {
-    ...data,
-    confianca: Math.max(0, Math.min(1, confidence)),
-    informacoesAdicionais: warnings.length > 0 ? Array.from(new Set(warnings)) : data.informacoesAdicionais,
-  };
-}
-
-async function structureQuoteFromTranscript(
-  tenantId: string,
-  transcript: string,
-): Promise<QuoteExtractionResult> {
-  const aiResult = await gatewayCallOpenAI(
-    tenantId,
-    "document_extraction",
-    [
-      { role: "system", content: QUOTE_EXTRACTION_SYSTEM_PROMPT },
-      {
-        role: "user",
-        content:
-          "A seguir está uma TRANSCRIÇÃO fiel do documento. Estruture somente o que estiver explicitamente presente. " +
-          "Não complete lacunas e não troque emitente/fornecedor por cliente/destinatário.\n\n" +
-          transcript,
-      },
-    ],
-    { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, maxTokens: 4500, temperature: 0 },
-  );
-  return parseQuoteExtraction(aiResult.content || "{}");
-}
 
 // ─── Financial entry (lançamento) extraction — nota fiscal, recibo, boleto ───
 // D-004: novo lançamento no ERP por foto/upload -- IA identifica o tipo de
@@ -284,36 +106,11 @@ export async function extractLancamentoData(
 
   for (const file of files) {
     try {
-      const visual = await callOpenAIFileExtraction(
-        tenantId,
-        "document_extraction",
-        { buffer: file.buffer, mimeType: file.mimeType || "application/pdf", filename: file.originalName },
-        QUOTE_EXTRACTION_SYSTEM_PROMPT + "\n\nAnalise o PDF visualmente página por página. Não presuma dados ausentes. Preserve a ordem original dos itens e retorne somente o JSON.",
-        { model: "gpt-4.1-mini", maxTokens: 5000 },
-      );
-      const cleaned = visual.content.replace(/^\`\`\`(?:json)?\s*/i, "").replace(/\s*\`\`\`$/, "").trim();
-      try {
-        return quoteExtractionResultSchema.parse(JSON.parse(cleaned || "{}"));
-      } catch {
-        return {
-          confianca: 0,
-          informacoesAdicionais: ["PDF visual processado, mas a estrutura retornada precisa de conferência manual."],
-        };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const invalidFile = /invalid_file|badly formatted|corrupted|arquivo.*corromp/i.test(message);
-      return {
-        confianca: 0,
-        informacoesAdicionais: [
-          invalidFile
-            ? "O PDF não pôde ser lido automaticamente porque o arquivo está malformado ou corrompido. O upload foi preservado para conferência manual."
-            : "A leitura visual do PDF ficou indisponível. O upload foi preservado para conferência manual.",
-        ],
-      };
       const text = await extractTextFromBuffer(file.buffer, file.mimeType, file.originalName, tenantId);
       if (text.trim().length > 20) {
         texts.push(`=== ${file.originalName} ===\n${text.trim()}`);
       }
+    } catch {
       // skip unreadable files
     }
   }
@@ -356,10 +153,8 @@ Regras obrigatórias:
 - Extraia TODAS as linhas comerciais identificáveis do documento.
 - Se o documento tiver grupos, capítulos, etapas ou seções, preserve essa hierarquia em "grupo" e/ou "etapa".
 - Quando houver valor total da linha, preserve-o. Quando houver quantidade e valor unitário, preserve ambos.
-- Extraia também as informações comerciais, contratuais e cadastrais do CLIENTE, com atenção especial a nome/razão social, CPF/CNPJ, telefone/WhatsApp, e-mail, cidade, UF, CEP e endereço.
+- Extraia também as informações comerciais e contratuais disponíveis.
 - Quando houver telefone/WhatsApp ou e-mail do cliente no documento, preserve exatamente esses dados em clienteTelefone e clienteEmail.
-- Não confunda dados do fornecedor/emitente com os dados do cliente/destinatário. Use o rótulo, posição e contexto do documento para decidir.
-- Se cidade/UF aparecerem dentro do endereço do cliente, extraia também nos campos clienteCidade e clienteEstado quando houver segurança.
 - Campos não encontrados devem ser omitidos ou null.
 - Datas devem usar YYYY-MM-DD quando for possível determinar a data com segurança.
 - Retorne SOMENTE JSON válido, sem texto fora dele.
@@ -372,15 +167,9 @@ Formato:
   "valorTotal": 0,
   "cliente": "nome/razão social do cliente",
   "clienteDocumento": "CPF/CNPJ/documento",
-  "clienteEmail": "e-mail do cliente",
-  "clienteCep": "CEP do cliente",
-  "clienteEndereco": "endereço completo do cliente",
+  "clienteEndereco": "endereço do cliente",
   "clienteTelefone": "telefone/WhatsApp do cliente exatamente como aparece no documento",
   "clienteEmail": "e-mail do cliente exatamente como aparece no documento",
-  "clienteCidade": "cidade do cliente",
-  "clienteEstado": "UF/estado do cliente",
-  "clienteCep": "CEP do cliente",
-  "clienteEndereco": "endereço completo do cliente",
   "fornecedor": "nome/razão social do fornecedor",
   "fornecedorDocumento": "CPF/CNPJ/documento",
   "fornecedorEndereco": "endereço do fornecedor",
@@ -448,9 +237,8 @@ export async function extractQuoteData(
     }
   }
 
-  // PDF escaneado/sem camada de texto: leitura em duas fases.
-  // 1) transcreve fielmente; 2) estrutura/valida. Isso reduz inversões entre
-  // cliente/destinatário e fornecedor/emitente e evita completar dados ausentes.
+  // PDF escaneado/sem camada de texto: enviar o arquivo original ao modelo com
+  // suporte nativo a PDF. Nunca preencher lacunas por suposição.
   if (texts.length === 0 && scannedPdfs.length === 1) {
     const file = scannedPdfs[0];
     try {
@@ -458,18 +246,29 @@ export async function extractQuoteData(
         tenantId,
         "document_extraction",
         { buffer: file.buffer, mimeType: file.mimeType || "application/pdf", filename: file.originalName },
-        "Transcreva fielmente o PDF página por página, preservando rótulos, tabelas, dados cadastrais, itens, quantidades, unidades, preços, totais, condições e observações. Não resuma, não interprete e não invente.",
-        "Transcreva fielmente o PDF página por página. Preserve títulos, rótulos, tabelas, linhas, nomes, CPF/CNPJ, telefones, e-mails, endereços, cidade/UF/CEP, códigos, descrições, quantidades, unidades, preços, totais, condições e observações. Não resuma, não interprete, não reordene e não invente. Retorne somente a transcrição.",
-        { model: "gpt-4.1-mini", maxTokens: 7000 },
+        QUOTE_EXTRACTION_SYSTEM_PROMPT + "\n\nAnalise o PDF visualmente página por página. Não presuma dados ausentes. Preserve a ordem original dos itens e retorne somente o JSON.",
+        { model: "gpt-4.1-mini", maxTokens: 5000 },
       );
-      if (visual.content.trim()) texts.push(`=== ${file.originalName} (transcrição visual) ===\n${visual.content.trim()}`);
-      const transcript = visual.content.trim();
-      if (!transcript) {
-        return { confianca: 0, informacoesAdicionais: ["PDF visual sem texto legível suficiente para importação automática."] };
+      const cleaned = visual.content.replace(/^\`\`\`(?:json)?\s*/i, "").replace(/\s*\`\`\`$/, "").trim();
+      try {
+        return quoteExtractionResultSchema.parse(JSON.parse(cleaned || "{}"));
+      } catch {
+        return {
+          confianca: 0,
+          informacoesAdicionais: ["PDF visual processado, mas a estrutura retornada precisa de conferência manual."],
+        };
       }
-      return await structureQuoteFromTranscript(tenantId, `=== ${file.originalName} ===\n${transcript}`);
-    } catch {
-      return { confianca: 0, informacoesAdicionais: ["PDF visual não pôde ser lido com segurança; conferir manualmente."] };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const invalidFile = /invalid_file|badly formatted|corrupted|arquivo.*corromp/i.test(message);
+      return {
+        confianca: 0,
+        informacoesAdicionais: [
+          invalidFile
+            ? "O PDF não pôde ser lido automaticamente porque o arquivo está malformado ou corrompido. O upload foi preservado para conferência manual."
+            : "A leitura visual do PDF ficou indisponível. O upload foi preservado para conferência manual.",
+        ],
+      };
     }
   }
 
@@ -481,7 +280,10 @@ export async function extractQuoteData(
         tenantId,
         "document_extraction",
         { buffer: file.buffer, mimeType: file.mimeType || "application/pdf", filename: file.originalName },
+        QUOTE_EXTRACTION_SYSTEM_PROMPT + "\n\nAnalise o PDF visualmente página por página. Preserve todos os itens e informações sem inventar campos.",
+        { model: "gpt-4.1-mini", maxTokens: 5000 },
       );
+      if (visual.content.trim()) texts.push(`=== ${file.originalName} (extração visual estruturada) ===\n${visual.content.trim()}`);
     } catch {
       texts.push(`=== ${file.originalName} ===\n[PDF sem camada de texto; leitura visual indisponível. Exigir conferência manual.]`);
     }
@@ -494,10 +296,22 @@ export async function extractQuoteData(
     combinedText = combinedText.slice(0, MAX_TEXT_LENGTH) + "\n[texto truncado]";
   }
 
+  const aiResult = await gatewayCallOpenAI(
+    tenantId,
+    "document_extraction",
+    [
+      { role: "system", content: QUOTE_EXTRACTION_SYSTEM_PROMPT },
+      { role: "user", content: combinedText },
+    ],
+    { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, maxTokens: 3500, temperature: 0.1 },
+  );
+
+  const raw = aiResult.content || "{}";
   try {
-    return await structureQuoteFromTranscript(tenantId, combinedText);
+    const parsed = JSON.parse(raw);
+    return quoteExtractionResultSchema.parse(parsed);
   } catch {
-    return { confianca: 0, informacoesAdicionais: ["Não foi possível interpretar a resposta da leitura automática."] };
+    return { confianca: 0 };
   }
 }
 
@@ -570,8 +384,7 @@ export async function extractTextFromBuffer(
     const imageContent: import("openai").OpenAI.Chat.ChatCompletionContentPart[] = [
       {
         type: "text",
-        text: "Transcreva fielmente TODO o texto visível desta imagem. Preserve a ordem visual, quebras de linha, títulos, rótulos e tabelas; mantenha nomes, telefones, e-mails, CPF/CNPJ, endereços, cidades/UF/CEP, números de documento, códigos, itens, quantidades, unidades, preços, totais, condições de pagamento e observações. Não resuma, não interprete, não corrija e não descarte dados cadastrais.",
-        text: "Transcreva fielmente TODO o texto visível desta imagem, preservando nomes, telefones, e-mails, CPF/CNPJ, endereços, cidades/UF, números de documento, itens, quantidades, unidades, preços, totais, condições de pagamento e observações. Não resuma, não interprete e não descarte dados cadastrais.",
+        text: "Extraia todo o texto e informações relevantes desta imagem sobre o negócio: nome, produtos, serviços, missão, valores, diferenciais, público-alvo.",
       },
       {
         type: "image_url",
@@ -582,7 +395,7 @@ export async function extractTextFromBuffer(
       tenantId,
       "document_extraction",
       [{ role: "user", content: imageContent } as any],
-      { model: "gpt-4o-mini", maxTokens: 4000, temperature: 0 },
+      { model: "gpt-4o-mini", maxTokens: 1000 },
     );
     return aiResult.content;
   }
@@ -665,4 +478,3 @@ export async function extractBusinessDataFromDocuments(
     return { confianca: 0 };
   }
 }
-

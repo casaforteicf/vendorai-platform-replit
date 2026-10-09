@@ -101,7 +101,7 @@ import { arqdorPublicLinkRouter, arqdorPublicLinkAdminRouter } from "./arqdor_pu
 import { archAiRenderRouter } from "./arch_ai_render";
 import archSpecObjectsRouter from "./arch_spec_objects";
 import archBudgetEngineRouter from "./arch_budget_engine";
-import archClientPortalApprovalRouter, { archClientPortalApprovalPublicRouter } from "./arch_client_portal_approval";
+import archClientPortalApprovalRouter from "./arch_client_portal_approval";
 import archProductionProcurementRouter from "./arch_production_procurement";
 import archConstructionDiaryRouter from "./arch_construction_diary";
 import obraFieldRouter, { obraFieldPublicRouter } from "./obra_field_access";
@@ -258,7 +258,6 @@ router.use(internalRemoteControlRouter);
 router.use(browserAgentMcpRouter);
 // Public handoff is authorized by the short-lived handoff token, not tenant JWT.
 router.use(browserAgentHandoffRouter);
-router.use(archClientPortalApprovalPublicRouter);
 router.use(pracaPerguntasPublicRouter);
 router.use(pracaAvaliacoesPublicRouter);
 router.use(pracaPaymentsPublicRouter);
