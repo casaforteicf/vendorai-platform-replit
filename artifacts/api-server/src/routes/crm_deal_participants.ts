@@ -20,10 +20,14 @@ const router: IRouter = Router();
 function appendRelationshipEvent(metadata: Record<string, unknown> | null | undefined, action: "linked" | "updated" | "unlinked", actorId?: string | null) {
   const previous = metadata ?? {};
   const history = Array.isArray(previous.relationshipHistory) ? previous.relationshipHistory : [];
+  // Legacy relationships have no event log: preserve that fact without inventing an event date.
+  const legacyBaseline = history.length === 0 && previous.legacyRelationship === true
+    ? [{ action: "legacy_existing", at: null, actorId: null }]
+    : [];
   return {
     ...previous,
     inactive: action === "unlinked",
-    relationshipHistory: [...history, { action, at: new Date().toISOString(), actorId: actorId ?? null }],
+    relationshipHistory: [...legacyBaseline, ...history, { action, at: new Date().toISOString(), actorId: actorId ?? null }],
   };
 }
 
@@ -460,7 +464,7 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
         .from(crmDealPeopleTable).where(and(eq(crmDealPeopleTable.tenantId, tenantId),
           eq(crmDealPeopleTable.dealId, req.params.dealId), eq(crmDealPeopleTable.personId, personId))).limit(1);
       const relationshipMetadata = appendRelationshipEvent(
-        { ...(previousLink?.metadata ?? {}), ...Object.fromEntries(Object.entries(parsed.data.metadata ?? {}).filter(([key]) => !["relationshipHistory", "inactive", "unlinkedAt", "unlinkedBy", "createdTenantId"].includes(key))), relationshipHistory: previousLink?.metadata?.relationshipHistory }, previousLink ? (previousLink.metadata?.inactive === true ? "linked" : "updated") : "linked", req.user?.id,
+        { ...(previousLink?.metadata ?? {}), ...Object.fromEntries(Object.entries(parsed.data.metadata ?? {}).filter(([key]) => !["relationshipHistory", "inactive", "unlinkedAt", "unlinkedBy", "createdTenantId"].includes(key))), relationshipHistory: previousLink?.metadata?.relationshipHistory, legacyRelationship: Boolean(previousLink) && !Array.isArray(previousLink?.metadata?.relationshipHistory) }, previousLink ? (previousLink.metadata?.inactive === true ? "linked" : "updated") : "linked", req.user?.id,
       );
       const [link] = await tx.insert(crmDealPeopleTable).values({
       tenantId,
@@ -538,7 +542,7 @@ router.post("/crm/deals/:dealId/companies", async (req, res) => {
       .from(crmDealCompaniesTable).where(and(eq(crmDealCompaniesTable.tenantId, tenantId),
         eq(crmDealCompaniesTable.dealId, req.params.dealId),
         eq(crmDealCompaniesTable.companyId, parsed.data.companyId))).limit(1);
-    const companyMetadata = appendRelationshipEvent(previousCompanyLink?.metadata,
+    const companyMetadata = appendRelationshipEvent({ ...(previousCompanyLink?.metadata ?? {}), legacyRelationship: Boolean(previousCompanyLink) && !Array.isArray(previousCompanyLink?.metadata?.relationshipHistory) },
       previousCompanyLink ? (previousCompanyLink.metadata?.inactive === true ? "linked" : "updated") : "linked", req.user?.id);
     const [link] = await db.insert(crmDealCompaniesTable).values({
       tenantId,
