@@ -279,3 +279,22 @@ na Biblioteca do tenant via R2, sem inserir MP4 nos campos exclusivos de imagem.
 vídeo no Arqdor, sem timeline visual, progresso por quadro, cancelamento ou
 retomada confiável. Não habilitar vídeos em produção. SKP/IFC/FBX/OBJ, geração
 de documentações BIM e IA avançada também não foram implementados integralmente.
+
+
+## Correção de integração 4K/vídeo — 09/10/2026
+
+O mapeamento de `sceneData` foi corrigido para preservar `qualityPreset`,
+`postproduction` e `video` nos três percursos do `buildSceneConfig`,
+sem preencher antecipadamente `resolution=1920x1080`. Assim, o motor
+Blender pode efetivamente escolher o preset `4k` (3840 × 2160)
+ou `print` (5760 × 3240) quando o editor não fornece resolução explícita.
+Valores explicitamente informados continuam prevalecendo.
+
+Quando `sceneData.model` ou `sceneData.video` estiver presente, a falta de
+`BLENDER_SERVER_URL` não pode acionar o fallback de imagem IA: o serviço
+registra erro e informa que o render 3D/vídeo depende do worker real.
+Isso evita anunciar uma imagem inferida como produto de um modelo 3D.
+
+**Validação pendente:** build TypeScript, teste com modelo importado, teste
+de presets 4K, vídeo H.264 real, sincronização com R2, autorização de tenant
+e inspeção visual. Não houve homologação ou publicação nesta alteração.
