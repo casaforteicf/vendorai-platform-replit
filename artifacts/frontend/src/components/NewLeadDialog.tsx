@@ -280,6 +280,7 @@ export function NewLeadDialog({
   const [open, setOpen] = useState(false);
   // Synchronous lock: prevents double-click submitting two lead creations before React rerenders.
   const submissionInFlight = useRef(false);
+  const registrationRequestIdRef = useRef<string | null>(null);
   const [showMore, setShowMore] = useState(false);
   const [showCommercial, setShowCommercial] = useState(false);
   const [extraContacts, setExtraContacts] = useState<ExtraCompanyContact[]>([]);
@@ -897,7 +898,9 @@ export function NewLeadDialog({
         assignedTo: selectedRepresentativeFunctionId ? values.assignedTo : resolvedAssignee!,
       };
 
-      // ui-integrity: error-propagates-to-caller — o catch deste submit exibe toast ao usuário.
+      const registrationRequestId = registrationRequestIdRef.current ??
+        (registrationRequestIdRef.current = crypto.randomUUID());
+      // The same key is reused when an interrupted HTTP request is retried.
       const newLead = await createLead.mutateAsync({
         data: {
           tenantId,
@@ -916,16 +919,17 @@ export function NewLeadDialog({
           documento: submissionValues.documento || null,
           tipoPessoa: "fisica",
           mercadoSegmento: submissionValues.mercadoSegmento || null,
-          metadata: coupon
-            ? {
-                cupomCodigo: coupon.code,
-                descontoCupomPercentual: coupon.discountPercent,
-                cupomAplicacao: coupon.application,
-                parceiroIndicador: coupon.partnerName,
-                tipoParceiro: coupon.partnerType,
-                atribuicao: "cupom_parceiro",
-              }
-            : undefined,
+          metadata: {
+            registrationRequestId,
+            ...(coupon ? {
+              cupomCodigo: coupon.code,
+              descontoCupomPercentual: coupon.discountPercent,
+              cupomAplicacao: coupon.application,
+              parceiroIndicador: coupon.partnerName,
+              tipoParceiro: coupon.partnerType,
+              atribuicao: "cupom_parceiro",
+            } : {}),
+          },
         },
       });
 
@@ -987,6 +991,7 @@ export function NewLeadDialog({
             : "O contato foi salvo sem abrir um negócio agora.",
       });
 
+      registrationRequestIdRef.current = null;
       closeAndReset();
       if (dealId) onNavigate(`/trabalho/${leadId}?dealId=${encodeURIComponent(dealId)}`);
     } catch (error: any) {
@@ -998,10 +1003,12 @@ export function NewLeadDialog({
         });
         queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
         queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
+        registrationRequestIdRef.current = null;
         closeAndReset();
         onNavigate(`/trabalho/${createdLeadId}${createdDealId ? `?dealId=${encodeURIComponent(createdDealId)}` : ""}`);
         return;
       }
+      if (error?.data?.code === "IDEMPOTENCY_KEY_REUSED") registrationRequestIdRef.current = null;
       if (error?.status === 409 && error?.data?.isDuplicate && error?.data?.lead) {
         setServerDuplicate({ lead: error.data.lead as Lead, matchBy: error.data.matchBy ?? "dado" });
         return;
