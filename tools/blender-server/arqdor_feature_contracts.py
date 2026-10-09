@@ -245,6 +245,7 @@ def propose_opening_hosts(objects, tolerance=0.15):
         # Repeated names cannot safely identify a unique BIM host.
         unique = len(matches) == 1 and isinstance(matches[0], str) and bool(matches[0].strip())
         proposals.append({"opening": opening.get("name"), "objectId": opening.get("objectId"),
+                          "sourceObjectKey": opening.get("sourceObjectKey"),
                           "type": opening["suggestedClass"],
                           "candidateWalls": matches[:20],
                           "hostRelationStatus": "single_spatial_candidate" if unique else
@@ -317,6 +318,7 @@ def draft_opening_schedule(objects, calibrated_scale=None):
             "approxSillElevation": round(lo[2] * calibrated_scale, 4),
         }
         output.append({**relation, "objectId": elements[0].get("objectId"),
+                       "sourceObjectKey": elements[0].get("sourceObjectKey"),
                        "measurementStatus": "aabb_estimate_requires_review",
                        "dimensionsMeters": dimensions,
                        "scaleCalibrated": calibrated_scale is not None,
@@ -484,7 +486,9 @@ def associate_boundary_candidates(opening_hosts, classifications, tolerance=0.15
                         if all(low[i] <= bmax[i] + tolerance and high[i] >= bmin[i] - tolerance for i in range(3)):
                             verified_candidates.append({"wall": wall_name, "boundaryBounds": box})
         findings.append({
-            "opening": name, "candidateBoundaryMatches": verified_candidates[:20],
+            "opening": name, "objectId": relation.get("objectId"),
+            "sourceObjectKey": relation.get("sourceObjectKey"),
+            "candidateBoundaryMatches": verified_candidates[:20],
             "reviewPriority": "boundary_and_object_overlap" if verified_candidates else "spatial_only",
             "openingConfirmed": False, "fabricationReady": False,
             "requiresManualReview": True, "quantitiesEnabled": False,
