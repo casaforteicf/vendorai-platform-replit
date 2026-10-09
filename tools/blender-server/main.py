@@ -16,6 +16,7 @@ from datetime import datetime
 
 from flask import Flask, request, jsonify, send_file
 from dotenv import load_dotenv
+from arqdor_feature_contracts import validate_camera_path, resolve_render_preset, validate_postproduction
 
 load_dotenv()
 
@@ -256,6 +257,17 @@ def post_render():
         return jsonify({"error": "Identificador inválido"}), 422
     if not isinstance(scene_config, dict):
         return jsonify({"error": "sceneConfig deve ser um objeto"}), 422
+    try:
+        resolve_render_preset(scene_config)
+        validate_postproduction(scene_config.get("postproduction"))
+        if scene_config.get("video") is not None:
+            video = scene_config["video"]
+            if not isinstance(video, dict):
+                raise ValueError("Configuração de vídeo inválida")
+            validate_camera_path(video.get("keyframes"), video.get("fps", 24),
+                                 video.get("maxSeconds", 120))
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 422
 
     now = datetime.utcnow().isoformat() + "Z"
     job = {
