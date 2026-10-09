@@ -453,3 +453,11 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Commits:** `aebcc75` (reparo sintático e winding), `7e67fea` (teste de volume assinado).
 - **Validação real:** os testes **não foram executados**. O contêiner continua sem resolução DNS do github.com. Build frontend/backend também não foi executado. Não homologado, sem merge/deploy, PR #3422 Draft e produção inalterada.
 - **A seguir:** executar testes em ambiente com checkout autorizado; verificar eventuais faces T-junction, gerador TypeScript e orientação no WebGL, e então corrigir falhas antes de homologar.
+
+
+## 3422-A — revisão das normais e regressão explícita (09/10/2026)
+- **Diagnóstico:** a alteração anterior em `arqdor_orthogonal_union.py` havia invertido erroneamente as superfícies ±Y. Inspeção geométrica da orientação de produtos vetoriais identificou essa regressão.
+- **Correção:** `c632c7b` restaura as faces ±Y com normais apontando para fora do sólido, coerentes com ±X e ±Z.
+- **Regressão:** `3850d1e` acrescenta `test_y_normals_point_outward` para verificar separadamente as duas faces laterais além do teste de volume assinado.
+- **Verificação:** código obtido e analisado pela conexão GitHub; tentativa de obter checkout no contêiner via raw.githubusercontent.com retornou `curl: (6) Could not resolve host`. Portanto a suíte real **não foi executada**; nenhum build ou homologação ocorreu.
+- **Segurança:** permanece não aprovado para fabricação/quantitativos; PR #3422 Draft, sem merge/deploy, produção inalterada.
