@@ -20,6 +20,23 @@ export type StandardCatalogBootstrapResult = {
 export async function ensureStandardConstructionCatalog(
   tenantId: string,
 ): Promise<StandardCatalogBootstrapResult> {
+  const [tenant] = await db
+    .select({ vertical: tenantsTable.vertical })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId))
+    .limit(1);
+
+  const isConstructionVertical = /constru/i.test(String(tenant?.vertical ?? ""));
+  if (!isConstructionVertical) {
+    return {
+      catalogVersion: "2026-10-07-universal-v1",
+      totalCatalogo: 0,
+      insumosCriados: 0,
+      composicoesCriadas: 0,
+      composicoesExistentes: 0,
+    };
+  }
+
   const existingInsumos = await db
     .select()
     .from(insumosTable)
