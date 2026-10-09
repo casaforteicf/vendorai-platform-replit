@@ -4,7 +4,7 @@ set -Eeuo pipefail
 ACTION="${1:-}"
 LOT="${2:-}"
 [[ "$#" -eq 2 && "$LOT" =~ ^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$ ]] || { echo "INVALID_ARGUMENTS"; exit 64; }
-case "$ACTION" in build|homologate|rollback|releaseStatus|preflight) ;; *) echo "UNSUPPORTED_ACTION"; exit 64;; esac
+case "$ACTION" in build|homologate|rollback|releaseStatus|preflight|publish) ;; *) echo "UNSUPPORTED_ACTION"; exit 64;; esac
 LOCK=/run/lock/vendi-operator.lock
 exec 9>"$LOCK"
 flock -n 9 || { echo "OPERATION_BUSY"; exit 75; }
@@ -15,7 +15,7 @@ trap 'audit "FAIL_rc$?"' ERR
 # Stage definitions are fixed, immutable in operator source.
 case "$LOT" in
   VENDI-02) ;;
-  *) if [[ "$ACTION" == "build" || "$ACTION" == "releaseStatus" ]]; then
+  *) if [[ "$ACTION" == "build" || "$ACTION" == "releaseStatus" || "$ACTION" == "publish" || "$ACTION" == "rollback" ]]; then
        test -f "/var/lib/vendi-release/manifests/$LOT.env" || { echo "LOT_NOT_REGISTERED"; exit 65; }
      else
        echo "HOMOLOGATE_OR_ROLLBACK_REQUIRES_PROVISIONED_DEPLOYMENT"; exit 65
@@ -29,6 +29,10 @@ case "$ACTION" in
   preflight)
     /usr/local/sbin/vendi04-release-preflight "$LOT"
     audit "PREFLIGHT_OK"
+    ;;
+  publish)
+    /usr/local/sbin/vendi04-controlled-release publish "$LOT"
+    audit "PUBLISH_COMPLETED"
     ;;
   releaseStatus)
     if [[ "$LOT" != "VENDI-02" ]]; then /usr/local/sbin/vendi04-release-runner status "$LOT"; exit $?; fi
@@ -66,6 +70,7 @@ JS
     audit "OK"
     ;;
   rollback)
+    if [[ "$LOT" != "VENDI-02" ]]; then /usr/local/sbin/vendi04-controlled-release rollback "$LOT"; audit "ROLLBACK_COMPLETED"; exit 0; fi
     [[ -n "${VENDI_ALLOW_ROLLBACK:-}" ]] || { echo "ROLLBACK_REQUIRES_EXPLICIT_INCIDENT_TRIGGER_OR_HOST_POLICY"; audit "DENIED_GUARD"; exit 65; }
     docker inspect "$BACK" >/dev/null 2>&1 || { echo "BACKUP_MISSING"; exit 70; }
     docker stop "$API" >/dev/null
