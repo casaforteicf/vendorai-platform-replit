@@ -48,3 +48,14 @@ Reutilizar o cadastro mestre existente e permitir casal (dois consumidores com q
 | Responsável infraestrutura/deploy | Outro agente; fora do escopo deste lote |
 
 > Atenção: implementação registrada não equivale a funcionalidade homologada. Não realizar merge/deploy sem os gates operacionais previstos.
+
+## Aplicação do fluxo oficial — 09/10/2026
+- Regras conferidas em `AGENTS.md` do commit `c9467d2`, PR [#3429](https://github.com/casaforteicf/vendorai-platform-replit/pull/3429), ainda não integrado à main na consulta.
+- **Versão de trabalho:** CRM V4-01, candidato pré-homologação, sem versão publicada nova.
+- **Responsabilidade:** este agente — CRM (código, registro e revisão); outro agente — infraestrutura Contabo e promoção controlada.
+- **Estado atual:** implementado sem validação técnica; não homologado, não aprovado para produção e não publicado.
+- **GitHub:** PR [#3428](https://github.com/casaforteicf/vendorai-platform-replit/pull/3428) aberto em Draft; consulta do PR indicou mergeable, mas isso **não substitui** tsc/build/homologação.
+- **Vendi:** `browser_agent_status` retornou `ok:true`, `configured:true`, `vendiAutonomyEnabled:true`. A consulta de conexões por `tenantKey=casaforteicf` retornou `tenant_not_found`; não foi obtida sessão de homologação nem executados comandos na Contabo.
+- **Build e validação:** nenhum log de `tsc`, `node ./build.mjs` ou homologação do commit atual foi obtido nesta sessão; continuam pendentes. Não usar GitHub Actions como condição obrigatória.
+- **Próxima ação executável:** concluir revisão de código e usar acesso autenticado do Vendi/Contabo quando houver sessão de tenant válida, sem tocar produção; registrar o SHA e os logs de build e homologação antes de promover.
+- **Segurança:** não usar Replit, TinyFish nem Desktop Commander; não intervir no trabalho de infraestrutura e não publicar sem procedimento aprovado.
