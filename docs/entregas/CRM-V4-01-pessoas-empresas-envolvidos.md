@@ -130,3 +130,9 @@ Reutilizar o cadastro mestre existente e permitir casal (dois consumidores com q
 - Commit `7dbb85a`: a leitura do histórico e a gravação do vínculo empresarial no negócio passaram a ocorrer dentro de uma transação com bloqueio consultivo por tenant, negócio e empresa, reduzindo risco de perda de eventos em alterações simultâneas.
 - O tratamento de legados mantém a regra conservadora: cadastro sem `createdTenantId` só pode ser reutilizado por relacionamento local autorizado já existente; não foi aplicada migração retroativa nem inventada uma origem.
 - **Pendente:** confirmar comportamento de acessos legados e eventuais concorrências entre vincular e desvincular, além de executar build e testes. Homologação Contabo e produção seguem adiadas por decisão do usuário.
+
+## Correção de concorrência ao desvincular — 09/10/2026
+- `8709ef1`: as rotas DELETE de pessoas e empresas passam a executar leitura e soft-unlink na mesma transação, evitando sobrescrever eventos simultâneos a partir de leitura desatualizada.
+- `b033e67`: criação/edição e desvinculação de envolvidos utilizam bloqueio transacional comum por tenant e negócio, inclusive para vínculos empresariais.
+- **Validação:** revisão estática pontual no GitHub; build e testes de simultaneidade não executados. Homologação Contabo e publicação permanecem adiadas por decisão do usuário; produção não alterada.
+- **Próxima frente:** revisar o comportamento de exclusão do contato principal, reativação e interfaces que dependem dos eventos de vínculo.
