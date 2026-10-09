@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { renderAuthHeader } from "./renderStudioApi";
 
 type Point = [number, number];
 type Aperture = { id: string; kind: "door" | "window"; offset: number; width: number; sill: number; height: number };
@@ -45,16 +46,50 @@ function iso(x: number, y: number, z = 0): Point {
   return [190 + (x - y) * 28, 265 - (x + y) * 12 - z * 34];
 }
 
-export default function RenderStudioParametricEditor() {
+export default function RenderStudioParametricEditor({ url, modelId, modelSha256 }: { url: string; modelId: string; modelSha256: string }) {
   const [walls, setWalls] = useState<Wall[]>(initial);
+  const [storedRevision, setStoredRevision] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [dirty, setDirty] = useState(false);
   const [active, setActive] = useState(initial[0].id);
   const [drag, setDrag] = useState<{ id: string; endpoint: "start" | "end" } | null>(null);
   const [revision, setRevision] = useState(0);
   const [snap, setSnap] = useState(true);
   const chosen = walls.find(wall => wall.id === active) ?? walls[0];
   const errors = useMemo(() => walls.flatMap(wall => validation(wall).map(message => `${wall.id}: ${message}`)), [walls]);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`${url}/${encodeURIComponent(modelId)}/parametric-draft`,
+      { headers: renderAuthHeader(), signal: controller.signal }).then(async response => {
+      if (!response.ok) throw new Error("Não foi possível recuperar o rascunho paramétrico");
+      const data = await response.json();
+      if (data.modelSha256 !== modelSha256) throw new Error("Versão da geometria divergente");
+      if (Array.isArray(data.walls) && data.walls.length) setWalls(data.walls);
+      setStoredRevision(data.revision);
+      setDirty(false);
+    }).catch(reason => { if (!controller.signal.aborted) setNotice(String(reason)); });
+    return () => controller.abort();
+  }, [url, modelId, modelSha256]);
+
+  async function save() {
+    if (errors.length) { setNotice("Corrija as inconsistências antes de salvar."); return; }
+    setSaving(true); setNotice("");
+    try {
+      const response = await fetch(`${url}/${encodeURIComponent(modelId)}/parametric-draft`, {
+        method: "PUT", headers: { ...renderAuthHeader(), "Content-Type": "application/json" },
+        body: JSON.stringify({ modelSha256, revision: storedRevision, walls }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Falha ao salvar rascunho");
+      setStoredRevision(data.revision); setDirty(false);
+      setNotice(`Rascunho da revisão ${data.revision} salvo.`);
+    } catch (reason) { setNotice(reason instanceof Error ? reason.message : "Falha ao salvar"); }
+    finally { setSaving(false); }
+  }
   const change = (id: string, action: (wall: Wall) => Wall) => {
-    setWalls(previous => previous.map(wall => wall.id === id ? action(wall) : wall)); setRevision(old => old + 1);
+    setWalls(previous => previous.map(wall => wall.id === id ? action(wall) : wall));
+    setDirty(true); setRevision(old => old + 1);
   };
   function move(event: React.PointerEvent<SVGSVGElement>) {
     if (!drag) return;
@@ -80,7 +115,7 @@ export default function RenderStudioParametricEditor() {
   const valid = errors.length === 0;
   return <section className="space-y-3 rounded-lg border p-4" aria-label="Editor paramétrico preliminar 2D e 3D">
     <div><h3 className="font-semibold">Modelo paramétrico — edição conjunta 2D/3D</h3>
-      <p className="text-xs text-slate-600">Protótipo local independente do GLB importado: a planta e a projeção espacial utilizam os mesmos dados. Alterações não são salvas no projeto.</p></div>
+      <p className="text-xs text-slate-600">Protótipo local independente do GLB importado: a planta e a projeção espacial utilizam os mesmos dados. Alterações podem ser salvas como rascunho privado vinculado à versão do modelo.</p></div>
     <div className="flex flex-wrap items-center gap-2">
       {walls.map(wall => <button key={wall.id} type="button" aria-pressed={active === wall.id}
         className={`rounded border px-3 py-1 text-sm ${active === wall.id ? "bg-emerald-100 border-emerald-700" : ""}`}
@@ -88,7 +123,7 @@ export default function RenderStudioParametricEditor() {
       <button type="button" className="rounded border px-2 py-1 text-sm" onClick={() => {
         const number = walls.length + 1;
         setWalls(current => [...current, { id: `parede-${number}`, start: [0, number], end: [3, number], thickness: .2, height: 2.8, openings: [] }]);
-        setActive(`parede-${number}`); setRevision(n => n + 1);
+        setActive(`parede-${number}`); setDirty(true); setRevision(n => n + 1);
       }}>+ Parede</button>
       <label className="text-xs"><input type="checkbox" checked={snap} onChange={event => setSnap(event.target.checked)} /> Snap 25 cm</label>
     </div>
@@ -145,6 +180,8 @@ export default function RenderStudioParametricEditor() {
             item.id === o.id ? { ...item, [key]: n } : item) })))}</div>)}
       </div>)}
     </div>
+    <div className="flex items-center gap-3"><button type="button" disabled={saving || !valid} onClick={() => void save()} className="rounded bg-emerald-700 px-3 py-2 text-sm text-white disabled:opacity-50">Salvar rascunho da versão</button><span className="text-xs">{dirty ? "Alterações não salvas" : `Revisão persistida: ${storedRevision}`}</span></div>
+    {notice && <p role="status" className="text-sm">{notice}</p>}
     <p role="status" className={valid ? "text-sm text-emerald-800" : "text-sm text-red-700"}>
       {valid ? `Revisão local ${revision}: dados preliminares consistentes.` : errors.join(" · ")}
     </p>
