@@ -1,7 +1,7 @@
 import type { ParametricWall } from "./RenderStudioParametricWebgl";
 
 type Box = [number, number, number, number, number, number];
-export type UnionResult = { vertices: number[][]; faces: number[][]; occupiedCells: number; openingCount: number; topology: { boundaryEdges: number; nonmanifoldEdges: number; orientationErrors: number; closedByEdgeIncidence: boolean } };
+export type UnionResult = { vertices: number[][]; faces: number[][]; occupiedCells: number; openingCount: number; topology: { boundaryEdges: number; nonmanifoldEdges: number; orientationErrors: number; connectedSolidComponents: number; signedVolumeMatchesOccupancy: boolean; closedByEdgeIncidence: boolean } };
 
 export function unionOrthogonalWalls(walls: ParametricWall[]): UnionResult {
   if (!walls.length || walls.length > 80) throw new Error("União ortogonal suporta 1 a 80 paredes");
@@ -47,6 +47,27 @@ export function unionOrthogonalWalls(walls: ParametricWall[]): UnionResult {
     const x=(xs[i]+xs[i+1])/2,y=(ys[j]+ys[j+1])/2,z=(zs[k]+zs[k+1])/2;
     if(solids.some((b,n)=>inside(b,x,y,z)&&!voids[n].some(v=>inside(v,x,y,z))))filled.add(`${i},${j},${k}`);
   }
+  const remaining = new Set(filled);
+  let connectedSolidComponents = 0;
+  while (remaining.size) {
+    connectedSolidComponents++;
+    const first = remaining.values().next().value as string;
+    remaining.delete(first);
+    const queue = [first];
+    while (queue.length) {
+      const [i,j,k] = queue.pop()!.split(",").map(Number);
+      for (const next of [`${i-1},${j},${k}`,`${i+1},${j},${k}`,
+                          `${i},${j-1},${k}`,`${i},${j+1},${k}`,
+                          `${i},${j},${k-1}`,`${i},${j},${k+1}`]) {
+        if (remaining.delete(next)) queue.push(next);
+      }
+    }
+  }
+  let volumeByOccupancy = 0;
+  for (const key of filled) {
+    const [i,j,k] = key.split(",").map(Number);
+    volumeByOccupancy += (xs[i+1]-xs[i]) * (ys[j+1]-ys[j]) * (zs[k+1]-zs[k]);
+  }
   const vertices:number[][]=[],faces:number[][]=[],indexes=new Map<string,number>();
   const vertex=(x:number,y:number,z:number)=>{
     const key=[x,y,z].map(v=>v.toFixed(9)).join(",");
@@ -80,10 +101,22 @@ export function unionOrthogonalWalls(walls: ParametricWall[]): UnionResult {
     else if (edge.count > 2) nonmanifoldEdges++;
     else if (edge.balance !== 0) orientationErrors++;
   }
+  let signedVolume = 0;
+  for (const polygon of faces) {
+    const origin = vertices[polygon[0]];
+    for (let i = 1; i < polygon.length - 1; i++) {
+      const p = vertices[polygon[i]], q = vertices[polygon[i+1]];
+      signedVolume += (origin[0]*(p[1]*q[2]-p[2]*q[1]) +
+        origin[1]*(p[2]*q[0]-p[0]*q[2]) +
+        origin[2]*(p[0]*q[1]-p[1]*q[0])) / 6;
+    }
+  }
+  const signedVolumeMatchesOccupancy = volumeByOccupancy > 0 && signedVolume > 0 &&
+    Math.abs(signedVolume-volumeByOccupancy) <= Math.max(1e-7, volumeByOccupancy*1e-7);
   return { vertices, faces, occupiedCells: filled.size,
     openingCount: voids.reduce((n,v) => n + v.length, 0),
-    topology: { boundaryEdges, nonmanifoldEdges, orientationErrors,
+    topology: { boundaryEdges, nonmanifoldEdges, orientationErrors, connectedSolidComponents, signedVolumeMatchesOccupancy,
       closedByEdgeIncidence: faces.length > 0 &&
-        boundaryEdges === 0 && nonmanifoldEdges === 0 && orientationErrors === 0 } };
+        boundaryEdges === 0 && nonmanifoldEdges === 0 && orientationErrors === 0 &&\n        connectedSolidComponents === 1 && signedVolumeMatchesOccupancy } };
 
 }
