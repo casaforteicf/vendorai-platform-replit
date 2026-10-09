@@ -166,7 +166,7 @@ function buildSceneConfig(
   if (sceneData.model) {
     return {
       model: sceneData.model,
-      resolution: sceneData.resolution ?? [1920, 1080],
+      resolution: sceneData.resolution,
       samples: sceneData.samples,
       qualityPreset: sceneData.qualityPreset,
       postproduction: sceneData.postproduction,
@@ -179,7 +179,7 @@ function buildSceneConfig(
   // Se o sceneData já traz um sceneConfig completo (editor futuro), usa direto
   if (sceneData.objects && sceneData.objects.length > 0 && sceneData.hdri) {
     return {
-      resolution:   sceneData.resolution  ?? [1920, 1080],
+      resolution:   sceneData.resolution,
       samples:      sceneData.samples,
       qualityPreset: sceneData.qualityPreset,
       postproduction: sceneData.postproduction,
@@ -212,8 +212,11 @@ function buildSceneConfig(
   });
 
   return {
-    resolution:   [1920, 1080],
-    samples:      64,
+    resolution: sceneData.resolution,
+    samples: sceneData.samples,
+    qualityPreset: sceneData.qualityPreset,
+    postproduction: sceneData.postproduction,
+    video: sceneData.video,
     hdri,
     hdriStrength: 1.0,
     room: {
@@ -438,6 +441,14 @@ export async function iniciarRender(
 
   // 5. Verificar se o servidor Blender está configurado; se não, usar fallback gpt-image-1
   if (!process.env.BLENDER_SERVER_URL?.trim()) {
+    if (sceneData.model || sceneData.video) {
+      await db.update(archRendersTable).set({
+        status: "erro", erroMsg: "Render 3D/vídeo requer worker Blender configurado",
+      }).where(eq(archRendersTable.id, render.id));
+      await db.update(archCenasTable).set({ status: "erro", updatedAt: new Date() })
+        .where(eq(archCenasTable.id, cenaId));
+      throw new Error("Render 3D/vídeo requer worker Blender configurado; não será substituído por imagem IA");
+    }
     logger.info(
       { cenaId, renderId: render.id },
       "blenderService: BLENDER_SERVER_URL ausente — usando fallback gpt-image-1",
