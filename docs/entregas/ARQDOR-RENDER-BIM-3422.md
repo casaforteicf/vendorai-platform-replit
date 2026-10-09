@@ -80,3 +80,26 @@ OBJ/FBX, com `openingConfirmed=false`, `fabricationReady=false`.
 não publicado. O PR #3422 permanece Draft. Próximas ações: recuperar autenticação
 Vendi, executar testes/build e conversão no ambiente isolado Contabo, inspecionar
 topologia em projeto real, revisar falsos positivos e não liberar quadro de fabricação.
+
+
+## Marco de segurança — correlação geométrica (09/10/2026)
+
+**Versão:** desenvolvimento, sem release. **Escopo:** robustez da identificação
+preliminar dos contornos e esquadrias, sem alterar produção nem aprovar BIM.
+
+- `342662c`: limite de 2000 relações/objetos, validação dos registros
+de relações espaciais e rejeição de limites com NaN, infinito ou min > max.
+- `0d86e18`: cenários de teste para dados topológicos inválidos, itens nulos,
+carga acima do limite e manutenção de `openingConfirmed=false`.
+- Arquivos: `tools/blender-server/arqdor_feature_contracts.py` e
+`tools/blender-server/test_arqdor_feature_contracts.py`.
+- **Evidência:** commits gravados no PR #3422. **Não houve execução de
+`unittest` na Contabo nem no checkout exato desta revisão**; o ambiente local
+não dispõe de checkout GitHub obtido por rede. Testes escritos ≠ testes passados.
+- Dependência operacional: autenticação do Vendi para homologação ainda teve
+401 `upstream_token_rejected` na última tentativa; não foi executado deploy.
+- **Estados:** implementado sem validação técnica integral; homologado NÃO;
+aprovado NÃO; publicado NÃO.
+- **Próxima ação:** executar `python -m unittest -v test_arqdor_feature_contracts.py`
+no checkout exato na Contabo de homologação e anexar saída e SHA; validar Blender,
+conversores, build TypeScript e UI isolada antes de integrar.
