@@ -6,6 +6,8 @@ Conversion is not architectural validation or BIM reconstruction.
 """
 import argparse
 import json
+import math
+from mathutils import Vector
 from pathlib import Path
 
 import bpy
@@ -27,12 +29,38 @@ def convert(src: Path, dst: Path, sha256: str):
     meshes = [item for item in bpy.data.objects if item.type == "MESH"]
     if not meshes:
         raise ValueError("Arquivo sem malha renderizável")
+    world_points = []
+    material_names = set()
+    vertex_count = 0
+    polygon_count = 0
+    for obj in meshes:
+        vertex_count += len(obj.data.vertices)
+        polygon_count += len(obj.data.polygons)
+        for corner in obj.bound_box:
+            point = obj.matrix_world @ Vector(corner)
+            if not all(math.isfinite(value) for value in point):
+                raise ValueError("Geometria contém coordenadas não finitas")
+            world_points.append(point)
+        for slot in obj.material_slots:
+            if slot.material:
+                material_names.add(slot.material.name)
+    if not world_points:
+        raise ValueError("Modelo sem limites geométricos")
+    minimum = [min(v[axis] for v in world_points) for axis in range(3)]
+    maximum = [max(v[axis] for v in world_points) for axis in range(3)]
+    dimensions = [maximum[axis] - minimum[axis] for axis in range(3)]
+    if any(not math.isfinite(value) or value > 100000 for value in dimensions):
+        raise ValueError("Dimensões incompatíveis com limites do conversor")
     bpy.ops.export_scene.gltf(filepath=str(dst.resolve()), export_format="GLB",
                               use_selection=False, export_apply=False)
     if not dst.is_file() or dst.stat().st_size == 0:
         raise RuntimeError("Exportação GLB vazia")
     return {"status": "converted_pending_geometry_review", "sourceFormat": request["format"],
-            "meshCount": len(meshes), "outputBytes": dst.stat().st_size,
+            "meshCount": len(meshes), "vertexCount": vertex_count,
+            "polygonCount": polygon_count,
+            "materialNames": sorted(material_names)[:1000],
+            "bounds": {"min": minimum, "max": maximum, "dimensions": dimensions},
+            "units": "unverified", "outputBytes": dst.stat().st_size,
             "geometryApproved": False, "materialsApproved": False}
 
 
