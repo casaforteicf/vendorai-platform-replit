@@ -147,3 +147,15 @@ conversores, build TypeScript e UI isolada antes de integrar.
 - **Evidência de implementação:** commits registrados no GitHub na branch do PR. Testes desta revisão **não executados**; não há log de Blender ou de build correspondente. Não reivindicar validação técnica.
 - **Estado:** implementado sem validação técnica completa; homologado NÃO; aprovado NÃO; publicado NÃO. Nenhum merge/deploy.
 - **Próxima atividade executável:** continuar as melhorias BIM e de UX independentes, preservar revisão humana e quantitativos bloqueados. Retomar testes, homologação Contabo e publicação no momento definido pelo usuário.
+
+
+## Marco de quadro de esquadrias — nomes duplicados (09/10/2026)
+- **Lote/versão:** ARQDOR-RENDER-BIM-3422 / desenvolvimento sem release.
+- **Objetivo:** evitar quantitativos e medições indevidas quando duas malhas de portas/janelas importadas têm o mesmo nome.
+- **Implementado:** `5a99207` torna explícitos `objectCountWithName`, `dimensionsMeters=null`, `scaleCalibrated=false`, `approved=false` e `fabricationReady=false` para nomes ambíguos. O relatório mantém os dois registros separados.
+- **Teste acrescentado:** `1b10f4f` cobre duas janelas com nome igual sem produzir medidas de fabricação.
+- **Arquivos:** `tools/blender-server/arqdor_feature_contracts.py` e `tools/blender-server/test_arqdor_feature_contracts.py`.
+- **Validação:** código gravado no GitHub; testes desta alteração não executados, sem logs Contabo ou Blender real. Revisão humana obrigatória.
+- **Decisão vigente:** homologação Contabo, correção da autenticação Vendi e publicação deixadas para etapa posterior a pedido do usuário. Não insistir nessas etapas agora.
+- **Estados:** implementado sem validação técnica; homologação não realizada; aprovação não realizada; produção inalterada. PR #3422 permanece Draft.
+- **Próxima ação independente:** implementar identificadores estáveis de objeto no relatório para diferenciar malhas importadas sem depender exclusivamente de nomes, preservando o bloqueio de fabricação.
