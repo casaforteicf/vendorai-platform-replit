@@ -9513,20 +9513,20 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       <>
                         <label className="text-[10px] font-semibold text-slate-500">
                           Largura (m)
-                          <ConceptMetricInput min={0.5} max={4} value={selectedCustomOpening.width ?? (selectedOpening.type === "door" ? 0.9 : 1.2)} onCommit={(value) => updateCustomOpeningParams(selectedOpening.id, { width: value })}
+                          <ConceptMetricInput selectionId={selectedOpening.id} min={0.5} max={4} value={selectedCustomOpening.width ?? (selectedOpening.type === "door" ? 0.9 : 1.2)} onCommit={(value) => updateCustomOpeningParams(selectedOpening.id, { width: value })}
                             className="mt-1 h-9 w-[90px] rounded-lg border px-2 text-xs font-semibold"
                           />
                         </label>
                         <label className="text-[10px] font-semibold text-slate-500">
                           Altura (m)
-                          <ConceptMetricInput min={0.5} max={2.8} value={selectedCustomOpening.height ?? (selectedOpening.type === "door" ? 2.1 : 1.2)} onCommit={(value) => updateCustomOpeningParams(selectedOpening.id, { height: value })}
+                          <ConceptMetricInput selectionId={selectedOpening.id} min={0.5} max={2.8} value={selectedCustomOpening.height ?? (selectedOpening.type === "door" ? 2.1 : 1.2)} onCommit={(value) => updateCustomOpeningParams(selectedOpening.id, { height: value })}
                             className="mt-1 h-9 w-[90px] rounded-lg border px-2 text-xs font-semibold"
                           />
                         </label>
                         {selectedOpening.type === "window" && (
                           <label className="text-[10px] font-semibold text-slate-500">
                             Peitoril (m)
-                            <ConceptMetricInput min={0} max={2.2} value={selectedCustomOpening.sillHeight ?? 0.9} onCommit={(value) => updateCustomOpeningParams(selectedOpening.id, { sillHeight: value })}
+                            <ConceptMetricInput selectionId={selectedOpening.id} min={0} max={2.2} value={selectedCustomOpening.sillHeight ?? 0.9} onCommit={(value) => updateCustomOpeningParams(selectedOpening.id, { sillHeight: value })}
                               className="mt-1 h-9 w-[90px] rounded-lg border px-2 text-xs font-semibold"
                             />
                           </label>
@@ -9547,7 +9547,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           <>
                             <label className="text-[10px] font-semibold text-slate-500">
                               Centro desde o início da parede (m)
-                              <ConceptMetricInput
+                              <ConceptMetricInput selectionId={selectedOpening.id}
                                 min={Math.min(selectedOpeningWallLength / 2, Math.max(0.25, (selectedCustomOpening.width ?? (selectedOpening.type === "door" ? 0.9 : 1.2)) / 2))}
                                 max={selectedOpeningWallLength - Math.min(selectedOpeningWallLength / 2, Math.max(0.25, (selectedCustomOpening.width ?? (selectedOpening.type === "door" ? 0.9 : 1.2)) / 2))}
                                 value={(selectedCustomOpening.offset ?? 0.5) * selectedOpeningWallLength}
