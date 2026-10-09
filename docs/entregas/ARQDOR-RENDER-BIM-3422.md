@@ -205,3 +205,16 @@ conversores, build TypeScript e UI isolada antes de integrar.
 - **Evidência:** commits gravados no PR #3422. Testes foram adicionados, porém **não foram executados** nesta etapa.
 - **Estados:** implementado sem validação técnica; homologação Contabo e publicação adiadas pelo solicitante; produção inalterada.
 - **Próxima ação executável:** preparar contrato de decisão manual e histórico auditável isolado, evitando qualquer aprovação baseada só na importação.
+
+
+## Marco — fila de revisão de esquadrias (09/10/2026)
+
+- **Lote:** ARQDOR-RENDER-BIM-3422; **versão:** desenvolvimento sem release; **responsável:** agente da frente Arqdor.
+- **Escopo:** priorizar revisão humana de registros provisórios por identidade ambígua, ausência de parede candidata única, medidas não conferidas e falta de evidência de contorno correspondente.
+- **Implementação:** função pura `build_opening_review_queue`, integrada à resposta de importação como `openingReviewQueue`. Ordena alta/média prioridade sem certificar abertura ou permitir fabricação/quantitativos.
+- **Commits:** `abb28e7`, `98de96b`, `96fff84`.
+- **Arquivos alterados:** `tools/blender-server/arqdor_feature_contracts.py`, `tools/blender-server/arqdor_convert_obj_fbx.py`, `tools/blender-server/test_arqdor_feature_contracts.py`, este registro.
+- **Evidência:** commits confirmados pela API do GitHub; novos testes escritos mas **não executados**. Não houve build, homologação ou deploy. A fila é dado de relatório, ainda não interface visual de revisão.
+- **Coordenação:** antes deste lote, o PR #3422 apontava para `9bd158a15ef996d29786ea8aa03356dc4d68e629`, HEAD diferente do último registrado na conversa; as alterações foram feitas sobre a branch atual, preservando intervenções existentes.
+- **Estado:** implementado sem validação técnica, não homologado, não aprovado e não publicado. Homologação Contabo/Vendi e publicação continuam adiadas por orientação do usuário. PR permanece Draft.
+- **Próximo desenvolvimento independente:** UI de revisão filtrável, vínculo de achados a objeto/versão e mecanismos explícitos de conferência manual, sem liberar produção.
