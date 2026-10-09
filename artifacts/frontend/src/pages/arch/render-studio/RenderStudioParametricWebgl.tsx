@@ -82,7 +82,7 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
       const orthogonal = walls.every(w => Math.abs(w.start[0] - w.end[0]) < 1e-8 || Math.abs(w.start[1] - w.end[1]) < 1e-8);
       const union = orthogonal && walls.length ? unionOrthogonalWalls(walls) : null;
       if (union && !union.topology.closedByEdgeIncidence) {
-        setError(`A união 3D exige revisão: ${union.topology.boundaryEdges} arestas abertas, ${union.topology.nonmanifoldEdges} não-manifold e ${union.topology.orientationErrors} com orientação inconsistente.`);
+        setError(`A união 3D exige revisão: ${union.topology.boundaryEdges} arestas abertas, ${union.topology.nonmanifoldEdges} não-manifold e ${union.topology.orientationErrors} com orientação inconsistente; ${union.topology.connectedSolidComponents} componentes sólidos; volume ${union.topology.signedVolumeMatchesOccupancy ? "coerente" : "divergente"}.`);
         return;
       }
       const THREE = (window as any).THREE;
