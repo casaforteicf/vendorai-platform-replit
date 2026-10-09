@@ -115,11 +115,11 @@ arqdorMepRouter.post("/arch/projects/:projectId/mep/nodes",async(req,res,next)=>
   }catch(err){next(err);}
 });
 arqdorMepRouter.post("/arch/projects/:projectId/mep/segments",async(req,res,next)=>{
-  try {
-    const tid=tenant(req,res),pid=routeId(req,res);if(!tid||!pid)return;
-    const body=validation(segmentInput,req,res);if(!body)return;
-    if(!await projectExists(tid,pid)){res.status(404).json({error:"Projeto não encontrado"});return;}
-    const r=await pool.query(`INSERT INTO arqdor_mep_segments
+ try {
+  const tid=tenant(req,res),pid=routeId(req,res);if(!tid||!pid)return;
+  const body=validation(segmentInput,req,res);if(!body)return;
+  const result=await withLockedMepConcept(tid,pid,async(client)=>{
+   const r=await client.query(`INSERT INTO arqdor_mep_segments
       (id,tenant_id,project_id,network_id,from_node_id,to_node_id,material,nominal_size_mm)
       SELECT $1,n.tenant_id,n.project_id,n.id,a.id,b.id,$7,$8
       FROM arqdor_mep_networks n
@@ -127,11 +127,12 @@ arqdorMepRouter.post("/arch/projects/:projectId/mep/segments",async(req,res,next
       JOIN arqdor_mep_nodes b ON b.tenant_id=n.tenant_id AND b.project_id=n.project_id AND b.network_id=n.id AND b.id=$6
       WHERE n.tenant_id=$2 AND n.project_id=$3 AND n.id=$4 RETURNING *`,
       [crypto.randomUUID(),tid,pid,body.networkId,body.fromNodeId,body.toNodeId,body.material??null,body.nominalSizeMm??null]);
-    if(!r.rowCount){res.status(422).json({error:"Trecho exige dois nós da mesma rede/projeto"});return;}
-    res.status(201).json({segment:r.rows[0]});
-  }catch(err){next(err);}
+   return r.rowCount?{segment:r.rows[0]}:null;
+  });
+  if(result===null){res.status(409).json({code:"MEP_BINDING_OR_ENDPOINT_INVALID"});return;}
+  res.status(201).json(result);
+ }catch(err){next(err);}
 });
-
 
 const nodePatch = z.object({
   xMm: z.number().int().safe().optional(), yMm: z.number().int().safe().optional(), zMm: z.number().int().safe().optional(),
@@ -199,30 +200,37 @@ arqdorMepRouter.delete("/arch/projects/:projectId/mep/nodes/:nodeId",async(req,r
  }catch(err){next(err);}
 });
 arqdorMepRouter.patch("/arch/projects/:projectId/mep/segments/:segmentId",async(req,res,next)=>{
-  try{
-    const tid=tenant(req,res),pid=routeId(req,res),segmentId=id.safeParse(req.params.segmentId);
-    if(!tid||!pid)return;if(!segmentId.success){res.status(400).json({error:"Trecho inválido"});return;}
-    const body=validation(segmentPatch,req,res);if(!body)return;
-    const fields:{column:string;value:unknown}[]=[];
-    if("material" in body)fields.push({column:"material",value:body.material??null});
-    if("nominalSizeMm" in body)fields.push({column:"nominal_size_mm",value:body.nominalSizeMm??null});
-    const values:unknown[]=[tid,pid,segmentId.data];
-    const sets=fields.map(x=>{values.push(x.value);return x.column+"=$"+values.length;});
-    const r=await pool.query("UPDATE arqdor_mep_segments SET "+sets.join(",")+" WHERE tenant_id=$1 AND project_id=$2 AND id=$3 RETURNING *",values);
-    if(!r.rowCount){res.status(404).json({error:"Trecho não encontrado"});return;}
-    res.json({segment:r.rows[0]});
-  }catch(err){next(err);}
+ try {
+  const tid=tenant(req,res),pid=routeId(req,res),segmentId=id.safeParse(req.params.segmentId);
+  if(!tid||!pid)return;if(!segmentId.success){res.status(400).json({error:"Trecho inválido"});return;}
+  const body=validation(segmentPatch,req,res);if(!body)return;
+  const result=await withLockedMepConcept(tid,pid,async(client)=>{
+   const fields:{column:string;value:unknown}[]=[];
+   if("material" in body)fields.push({column:"material",value:body.material??null});
+   if("nominalSizeMm" in body)fields.push({column:"nominal_size_mm",value:body.nominalSizeMm??null});
+   const values:unknown[]=[tid,pid,segmentId.data];
+   const sets=fields.map(x=>{values.push(x.value);return x.column+"=$"+values.length;});
+   const r=await client.query("UPDATE arqdor_mep_segments SET "+sets.join(",")+" WHERE tenant_id=$1 AND project_id=$2 AND id=$3 RETURNING *",values);
+   return r.rowCount?{segment:r.rows[0]}:undefined;
+  });
+  if(result===null){res.status(409).json({code:"MEP_BINDING_REQUIRED"});return;}
+  if(!result){res.status(404).json({error:"Trecho não encontrado"});return;}
+  res.json(result);
+ }catch(err){next(err);}
 });
 arqdorMepRouter.delete("/arch/projects/:projectId/mep/segments/:segmentId",async(req,res,next)=>{
-  try{
-    const tid=tenant(req,res),pid=routeId(req,res),segmentId=id.safeParse(req.params.segmentId);
-    if(!tid||!pid)return;if(!segmentId.success){res.status(400).json({error:"Trecho inválido"});return;}
-    const r=await pool.query("DELETE FROM arqdor_mep_segments WHERE tenant_id=$1 AND project_id=$2 AND id=$3 RETURNING id",[tid,pid,segmentId.data]);
-    if(!r.rowCount){res.status(404).json({error:"Trecho não encontrado"});return;}
-    res.json({deleted:true,id:segmentId.data});
-  }catch(err){next(err);}
+ try {
+  const tid=tenant(req,res),pid=routeId(req,res),segmentId=id.safeParse(req.params.segmentId);
+  if(!tid||!pid)return;if(!segmentId.success){res.status(400).json({error:"Trecho inválido"});return;}
+  const result=await withLockedMepConcept(tid,pid,async(client)=>{
+   const r=await client.query("DELETE FROM arqdor_mep_segments WHERE tenant_id=$1 AND project_id=$2 AND id=$3 RETURNING id",[tid,pid,segmentId.data]);
+   return r.rowCount===1;
+  });
+  if(result===null){res.status(409).json({code:"MEP_BINDING_REQUIRED"});return;}
+  if(!result){res.status(404).json({error:"Trecho não encontrado"});return;}
+  res.json({deleted:true,id:segmentId.data});
+ }catch(err){next(err);}
 });
-
 
 /**
  * Resolve the concept-to-workspace mapping without guessing that the two
