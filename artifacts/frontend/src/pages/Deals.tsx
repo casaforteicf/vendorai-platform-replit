@@ -1749,6 +1749,9 @@ function EditDealSheet({
     setExtractedInfo(null);
     try {
       const data = await extractQuoteWithRetry(tenantId, file);
+      if (!data.importId) throw new Error("A extração não retornou um registro de auditoria.");
+      setCreateBudgetImportId(data.importId);
+      setCreateBudgetReviewStatus("pending_review");
       if (data.valorTotal != null) form.setValue("valor", data.valorTotal);
       if (data.titulo) {
         const current = form.getValues("titulo");
@@ -1772,6 +1775,44 @@ function EditDealSheet({
       });
     } finally {
       setExtracting(false);
+    }
+  }
+
+  async function reviewImportedBudget(action: "approve" | "reject") {
+    if (!createBudgetImportId || !createExtractedInfo) return;
+    const items = createExtractedInfo.itens ?? [];
+    if (action === "approve" && (!items.length || items.some(item =>
+      !item.descricao?.trim() || !(Number(item.quantidade) > 0) ||
+      !Number.isFinite(Number(item.valorUnitario)) || Number(item.valorUnitario) < 0
+    ))) {
+      toast({ title: "Revise descrição, quantidade e valor unitário de todos os itens.", variant: "destructive" });
+      return;
+    }
+    setSavingBudgetReview(true);
+    try {
+      const response = await fetch(`/api/tenants/${encodeURIComponent(tenantId)}/deals/budget-imports/${encodeURIComponent(createBudgetImportId)}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(action === "approve"
+          ? { action, reviewedData: { ...createExtractedInfo, itens: items.map(item => ({
+            ...item, valorTotal: Number(item.quantidade) * Number(item.valorUnitario),
+          })) } }
+          : { action, note: "Importação rejeitada pelo usuário." }),
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.error || "Não foi possível registrar a revisão.");
+      }
+      setCreateBudgetReviewStatus(action === "approve" ? "approved" : "rejected");
+      if (action === "approve") {
+        createForm.setValue("valor", items.reduce((sum, item) =>
+          sum + Number(item.quantidade) * Number(item.valorUnitario), 0), { shouldDirty: true });
+      }
+      toast({ title: action === "approve" ? "Importação revisada e aprovada." : "Importação rejeitada." });
+    } catch (error) {
+      toast({ title: "Falha na revisão", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
+    } finally {
+      setSavingBudgetReview(false);
     }
   }
 
@@ -2475,6 +2516,9 @@ export default function Deals() {
     quoteFileUrl?: string | null;
     originalName?: string | null;
   } | null>(null);
+  const [createBudgetImportId, setCreateBudgetImportId] = useState<string | null>(null);
+  const [createBudgetReviewStatus, setCreateBudgetReviewStatus] = useState<"pending_review" | "approved" | "rejected" | null>(null);
+  const [savingBudgetReview, setSavingBudgetReview] = useState(false);
   const createQuoteFileRef = useRef<HTMLInputElement>(null);
 
   const { data: allDeals = [], isLoading } = useListDeals(tenantId, undefined, {
@@ -2708,7 +2752,11 @@ export default function Deals() {
       || createQuoteFile.size !== file.size
       || createQuoteFile.lastModified !== file.lastModified;
     setCreateQuoteFile(file);
-    if (isNewFile) setCreateExtractedInfo(null);
+    if (isNewFile) {
+      setCreateExtractedInfo(null);
+      setCreateBudgetImportId(null);
+      setCreateBudgetReviewStatus(null);
+    }
     setCreateQuoteStatus("processing");
     setCreateExtracting(true);
     try {
@@ -2799,6 +2847,10 @@ export default function Deals() {
   });
 
   function onCreateSubmit(values: z.infer<typeof createSchema>) {
+    if (createQuoteFile && createBudgetReviewStatus !== "approved") {
+      toast({ title: "Revise e aprove o orçamento importado antes de salvar.", variant: "destructive" });
+      return;
+    }
     createDeal.mutate(
       {
         data: {
@@ -2819,6 +2871,8 @@ export default function Deals() {
           setIsCreateOpen(false);
           createForm.reset();
           setCreateExtractedInfo(null);
+          setCreateBudgetImportId(null);
+          setCreateBudgetReviewStatus(null);
           setCreateQuoteFile(null);
           setCreateQuoteStatus("idle");
         },
@@ -3434,6 +3488,38 @@ export default function Deals() {
                         {createExtractedInfo.itens.length > 4 && (
                           <p className="text-[10px] text-violet-500 text-center">+{createExtractedInfo.itens.length - 4} itens</p>
                         )}
+                      </div>
+                    )}
+                    {createBudgetImportId && (
+                      <div className="space-y-2 rounded border border-violet-200 bg-white p-2">
+                        <p className="text-xs font-semibold">Revisão obrigatória de itens ({createExtractedInfo.itens?.length ?? 0})</p>
+                        {createExtractedInfo.itens?.map((item, index) => (
+                          <div key={index} className="grid grid-cols-6 gap-1.5">
+                            <Input className="col-span-3 h-8 text-xs" aria-label={`Descrição do item ${index + 1}`}
+                              value={item.descricao ?? ""} disabled={createBudgetReviewStatus !== "pending_review"}
+                              onChange={event => setCreateExtractedInfo(current => current && ({
+                                ...current, itens: current.itens?.map((entry, i) => i === index ? { ...entry, descricao: event.target.value } : entry),
+                              }))} />
+                            <Input className="col-span-1 h-8 text-xs" type="number" min="0.001" step="any"
+                              aria-label={`Quantidade do item ${index + 1}`} value={item.quantidade ?? ""}
+                              disabled={createBudgetReviewStatus !== "pending_review"}
+                              onChange={event => setCreateExtractedInfo(current => current && ({
+                                ...current, itens: current.itens?.map((entry, i) => i === index ? { ...entry, quantidade: Number(event.target.value) } : entry),
+                              }))} />
+                            <Input className="col-span-2 h-8 text-xs" type="number" min="0" step="any"
+                              aria-label={`Valor unitário do item ${index + 1}`} value={item.valorUnitario ?? ""}
+                              disabled={createBudgetReviewStatus !== "pending_review"}
+                              onChange={event => setCreateExtractedInfo(current => current && ({
+                                ...current, itens: current.itens?.map((entry, i) => i === index ? { ...entry, valorUnitario: Number(event.target.value) } : entry),
+                              }))} />
+                          </div>
+                        ))}
+                        {createBudgetReviewStatus === "pending_review" ? (
+                          <div className="flex gap-2">
+                            <Button type="button" size="sm" disabled={savingBudgetReview} onClick={() => void reviewImportedBudget("approve")}>Aprovar dados revisados</Button>
+                            <Button type="button" size="sm" variant="outline" disabled={savingBudgetReview} onClick={() => void reviewImportedBudget("reject")}>Rejeitar</Button>
+                          </div>
+                        ) : <p className="text-xs font-medium">{createBudgetReviewStatus === "approved" ? "Revisão aprovada. Pode salvar o negócio." : "Importação rejeitada. Envie outro arquivo."}</p>}
                       </div>
                     )}
                     {createExtractedInfo.observacoes && (
