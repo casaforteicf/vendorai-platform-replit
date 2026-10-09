@@ -1,5 +1,11 @@
 # Arqdor — registro de entrega do editor
 
+## Bloco de paredes e nós com aberturas
+
+Atualização de parede e movimentação de junções validam previamente o conjunto de aberturas. Quando apenas um extremo muda, preservam distância ao extremo fixo; quando ambos mudam, preservam posição relativa. Larguras permanecem intactas; parede curta ou colisão após reposicionamento rejeitam a operação antes de aplicar paredes/aberturas. Nó atualiza os dois conjuntos na mesma operação React. Reconciliação antiga removida do planner para usar auxiliar testável único.
+
+Arquivos ConceptPlanner.tsx, conceptWallOpeningReconciliation.ts e conceptWallOpeningReconciliation.test.ts. Dez testes de reconciliação/posicionamento passaram; sintaxe TSX passou. Não representa validação de importação ou teste integrado do planner completo. Homologação e publicação adiadas.
+
 ## Bloco de arraste, modelos e catálogo
 
 Arraste e movimentação de aberturas livres verificam encaixe físico e colisões na parede; edição de largura na planta verifica colisões antes de aplicar; modelos de aberturas buscam intervalo livre; aplicação de produto do catálogo rejeita dimensões que não cabem na posição atual ou sobrepõem outra abertura. Validador de encaixe rejeita coordenadas/larguras não finitas. Avisos explicam falhas sem modificar a geometria nessas operações.

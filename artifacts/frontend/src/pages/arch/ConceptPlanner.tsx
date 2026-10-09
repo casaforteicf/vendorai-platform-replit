@@ -8,6 +8,7 @@ import { ConceptMetricInput } from "./ConceptMetricInput";
 import { wallLengthLimit } from "./conceptWallLengthLimits";
 import { duplicateWallPlacement, openingCrossesWallMidpoint } from "./conceptWallOperations";
 import { freeOpeningOffset, openingsOverlap, openingFitsWall } from "./conceptOpeningPlacement";
+import { reconcileWallOpenings } from "./conceptWallOpeningReconciliation";
 import {
   ArrowLeft,
   ArrowRight,
@@ -3627,25 +3628,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     };
   };
 
-  const reconcileOpeningsForWall = (
-    wallId: string,
-    previousWall: CustomWall,
-    nextWall: CustomWall,
-  ) => {
-    const previousLength = Math.hypot(previousWall.x2 - previousWall.x1, previousWall.y2 - previousWall.y1);
-    const nextLength = Math.hypot(nextWall.x2 - nextWall.x1, nextWall.y2 - nextWall.y1);
-    const startChanged = Math.hypot(nextWall.x1 - previousWall.x1, nextWall.y1 - previousWall.y1) > 0.001;
-    const endChanged = Math.hypot(nextWall.x2 - previousWall.x2, nextWall.y2 - previousWall.y2) > 0.001;
-    const preserveFrom: "start" | "end" | "ratio" =
-      startChanged && !endChanged ? "end" : endChanged && !startChanged ? "start" : "ratio";
-
-    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) =>
-      opening.wallId === wallId
-        ? constrainOpeningToWall(opening, nextLength, preserveFrom, previousLength)
-        : opening
-    ));
-  };
-
   const updateCustomWall = (
     wallId: string,
     patch: Partial<{ x1: number; y1: number; x2: number; y2: number; thickness: number }>,
@@ -3659,11 +3641,15 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       .filter((opening) => opening.wallId === wallId)
       .reduce((max, opening) => Math.max(max, opening.width ?? (opening.type === "door" ? 0.9 : 1.2)), 0);
     const minimumWallLength = widestOpening > 0 ? Math.max(0.5, widestOpening + 0.1) : 0.5;
-    if (nextLength < minimumWallLength) return;
+    if (nextLength < minimumWallLength) { setOpeningEditError("A parede ficaria curta demais para suas aberturas."); return; }
+
+    const reconciled = reconcileWallOpenings([wall], [nextWall], safeCustomOpenings);
+    if ("error" in reconciled) { setOpeningEditError(reconciled.error); return; }
+    setOpeningEditError(null);
 
     const before = recordHistory ? snapshotEditor() : null;
     setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).map((item) => item.id === wallId ? nextWall : item));
-    reconcileOpeningsForWall(wallId, wall, nextWall);
+    setCustomOpenings(reconciled.openings);
     if (before) pushRoomHistory(before);
   };
 
@@ -3939,7 +3925,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     );
     if (invalid) return;
 
+    const reconciled = reconcileWallOpenings(original, next, safeCustomOpenings);
+    if ("error" in reconciled) { setOpeningEditError(reconciled.error); return; }
+    setOpeningEditError(null);
+
     setCustomWalls(next);
+    setCustomOpenings(reconciled.openings);
     if (!editStartRef.current) pushRoomHistory(before);
   };
 
