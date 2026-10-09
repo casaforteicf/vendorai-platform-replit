@@ -294,12 +294,13 @@ router.patch("/crm/deals/:dealId/people/:personId/profile", async (req, res) => 
   try {
     const tenantId = tenantIdFromRequest(req, parsed.data.tenantId);
     await assertDeal(req, tenantId, req.params.dealId);
-    const [linked] = await db.select({ id: crmDealPeopleTable.id })
+    const [linked] = await db.select({ id: crmDealPeopleTable.id, metadata: crmDealPeopleTable.metadata })
       .from(crmDealPeopleTable)
       .where(and(eq(crmDealPeopleTable.tenantId, tenantId),
         eq(crmDealPeopleTable.dealId, req.params.dealId),
         eq(crmDealPeopleTable.personId, req.params.personId))).limit(1);
     if (!linked) return res.status(404).json({ error: "Pessoa não vinculada a este negócio." });
+    if (linked.metadata?.inactive === true) return res.status(409).json({ error: "Vínculo inativo. Reative antes de editar o perfil." });
     // A master person's profile is global. Editing it from one tenant would change
     // personal data visible to another tenant, so require a separate ownership workflow.
     const foreignDeal = await db.select({ id: crmDealPeopleTable.id }).from(crmDealPeopleTable)
