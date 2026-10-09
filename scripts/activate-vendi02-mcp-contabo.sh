@@ -48,13 +48,26 @@ docker cp "$C":$WORK/dist/index.js "$TMP/index.new.js" >/dev/null
 docker cp "$TMP/index.new.js" "$C":/app/dist/index.js >/dev/null
 swapped=1
 docker restart "$C" >/dev/null
-echo "=== VALIDANDO MCP ==="
-docker exec "$C" node -e '
-const port=Number(process.env.PORT||8788);
-fetch("http://127.0.0.1:"+port+"/health",{signal:AbortSignal.timeout(10000)})
-.then(async r=>{console.log("MCP_HEALTH_HTTP="+r.status);if(r.status!==200)process.exitCode=1})
-.catch(e=>{console.log("MCP_HEALTH_ERROR="+e.message);process.exitCode=1});
-'
+echo "=== AGUARDANDO MCP REINICIAR ==="
+health=0
+for i in $(seq 1 30); do
+  if docker exec "$C" node -e '
+    const port=Number(process.env.PORT||8788);
+    fetch("http://127.0.0.1:"+port+"/health",{signal:AbortSignal.timeout(2500)})
+      .then(r=>{if(r.status!==200)process.exitCode=1})
+      .catch(()=>{process.exitCode=1});
+  ' >/dev/null 2>&1; then
+    health=1
+    echo "MCP_HEALTH_HTTP_200"
+    break
+  fi
+  sleep 2
+done
+if [[ "$health" != 1 ]]; then
+  echo "MCP_HEALTH_FALHOU_APOS_60S"
+  docker logs --tail 20 "$C" 2>&1 | cut -c 1-250 || true
+  exit 1
+fi
 echo "=== VALIDANDO CRM HOMOLOG VIA MCP ==="
 docker exec "$C" node -e '
 const url="http://vendorai-homolog-api:5000/api/internal/browser-mcp/crm-summary";
