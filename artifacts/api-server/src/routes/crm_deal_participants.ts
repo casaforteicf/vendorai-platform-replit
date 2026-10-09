@@ -17,7 +17,7 @@ import {
 
 const router: IRouter = Router();
 
-function appendRelationshipEvent(metadata: Record<string, unknown> | null | undefined, action: "linked" | "unlinked", actorId?: string | null) {
+function appendRelationshipEvent(metadata: Record<string, unknown> | null | undefined, action: "linked" | "updated" | "unlinked", actorId?: string | null) {
   const previous = metadata ?? {};
   const history = Array.isArray(previous.relationshipHistory) ? previous.relationshipHistory : [];
   return {
@@ -385,7 +385,7 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
         .from(crmDealPeopleTable).where(and(eq(crmDealPeopleTable.tenantId, tenantId),
           eq(crmDealPeopleTable.dealId, req.params.dealId), eq(crmDealPeopleTable.personId, personId))).limit(1);
       const relationshipMetadata = appendRelationshipEvent(
-        { ...(previousLink?.metadata ?? {}), ...(parsed.data.metadata ?? {}), relationshipHistory: previousLink?.metadata?.relationshipHistory }, "linked", req.user?.id,
+        { ...(previousLink?.metadata ?? {}), ...(parsed.data.metadata ?? {}), relationshipHistory: previousLink?.metadata?.relationshipHistory }, previousLink ? (previousLink.metadata?.inactive === true ? "linked" : "updated") : "linked", req.user?.id,
       );
       const [link] = await tx.insert(crmDealPeopleTable).values({
       tenantId,
@@ -463,7 +463,8 @@ router.post("/crm/deals/:dealId/companies", async (req, res) => {
       .from(crmDealCompaniesTable).where(and(eq(crmDealCompaniesTable.tenantId, tenantId),
         eq(crmDealCompaniesTable.dealId, req.params.dealId),
         eq(crmDealCompaniesTable.companyId, parsed.data.companyId))).limit(1);
-    const companyMetadata = appendRelationshipEvent(previousCompanyLink?.metadata, "linked", req.user?.id);
+    const companyMetadata = appendRelationshipEvent(previousCompanyLink?.metadata,
+      previousCompanyLink ? (previousCompanyLink.metadata?.inactive === true ? "linked" : "updated") : "linked", req.user?.id);
     const [link] = await db.insert(crmDealCompaniesTable).values({
       tenantId,
       dealId: req.params.dealId,
