@@ -430,6 +430,19 @@ class FeatureContractsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             prepare_opening_review_workspace(queue, limit=True)
 
+    def test_review_conflict_explains_missing_calibration(self):
+        digest = "ab" * 32
+        row = {"sourceObjectKey": f"{digest}:mesh-000001",
+               "objectId": "mesh-000001", "opening": "Janela",
+               "measurementStatus": "aabb_estimate_requires_review",
+               "hostRelationStatus": "single_spatial_candidate",
+               "dimensionsMeters": None}
+        queue = create_opening_review_queue([row], digest, "R3")
+        item = queue["rows"][0]
+        self.assertTrue(item["conflict"])
+        self.assertEqual(item["conflictReasons"], ["uncalibrated_or_missing_dimensions"])
+        self.assertFalse(item["fabricationReady"])
+
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
         self.assertFalse(data["quantitiesEnabled"])
