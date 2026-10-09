@@ -360,3 +360,11 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Validação:** não foram executados build frontend, testes Python ou Blender real; integração e integridade topológica seguem sem homologação.
 - **Estado:** lote parcialmente implementado, **não concluído**. Homologação Contabo adiada, nenhum merge ou deploy, produção inalterada, PR #3422 Draft.
 - **Próximo trabalho obrigatório para conclusão do pedido:** núcleo sólido com junções robustas, aplicação de malhas no visualizador, persistência versionada e testes funcionais de ida/volta entre vistas.
+
+
+## Lote de continuidade — rascunho paramétrico persistente por modelo (09/10/2026)
+- **Implementação:** `ModelFileStore.parametricDrafts` e `saveParametricDraft` gravam rascunhos de paredes/aberturas isolados por tenant/projeto/modelo e SHA-256 de GLB, com revisão de gravação e autor/data. Rotas autenticadas GET/PUT `/:modelId/parametric-draft` utilizam o escopo já validado de tenant, usuário e projeto. O editor 2D/3D lê a revisão existente e permite salvar alterações locais.
+- **Commits:** `d3d567e` (storage), `d9de287` (API), `86f736d` (editor), `7d10a88` (integração).
+- **Estado:** integração no código; execução de testes, verificação TypeScript e homologação **não efetuadas** nesta atualização. A API retorna conflito para versão divergente, mas a verificação revisão→rename não é transacional em gravações concorrentes; não tratar controle de concorrência como totalmente resolvido.
+- **Pendências críticas para considerar lote concluído:** uniões físicas robustas L/T/cruz e malha global estanque, geometria paramétrica efetivamente renderizada no 3D (prévia atual SVG), versionamento transacional com autorização granular, validação completa de interseções/aberturas e testes reais ponta a ponta.
+- **Homologação Contabo e publicação:** adiadas. PR #3422 Draft, sem merge/deploy, produção inalterada.
