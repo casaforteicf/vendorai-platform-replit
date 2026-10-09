@@ -404,3 +404,11 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Commits:** `0370722` (implementação), `4752443` (cenários de união, manutenção de aberturas, rejeição de junções incompatíveis).
 - **Validação:** testes escritos, não executados; nenhuma homologação ou deploy. PR #3422 Draft, produção inalterada.
 - **Pendente para lote completo:** kernel boolean robusto para L/T/cruz; testes de topologia em geometria real, integração da fusão à UX/WebGL e comprovação de sincronismo ponta a ponta.
+
+
+## Lote agrupado — consolidação no editor e revisão de encontros (09/10/2026)
+- **Entregue na interface:** `RenderStudioParametricEditor.tsx` inclui ação explícita "Consolidar paredes alinhadas". Funde segmentos com extremidades coincidentes, direção e espessura/altura compatíveis, sem alterar paredes incompatíveis. Recalcula offsets de aberturas, preserva os dados da revisão e marca o rascunho como não salvo até confirmação. Relaciona avisos de encontros L/T/cruz e colineares não consolidados sem marcar uniões sólidas como resolvidas.
+- **Vínculo funcional existente:** editor compartilhado 2D/3D e prévia WebGL continuam consumindo o mesmo estado `walls`; as paredes consolidadas aparecem em ambos ao atualizar o estado local.
+- **Commit:** `2e42dcb`; arquivo alterado `artifacts/frontend/src/pages/arch/render-studio/RenderStudioParametricEditor.tsx`.
+- **Limites:** união colinear paramétrica **não é** operação boolean robusta. Encontros em L/T/cruz continuam apenas identificados para revisão; sobreposições tridimensionais e topologia global não certificadas. Ausência de validação funcional do botão, build TypeScript e execução de testes.
+- **Estados:** parcial, não homologado, não publicado, sem merge/deploy. Contabo e acesso Vendi adiados conforme orientação.
