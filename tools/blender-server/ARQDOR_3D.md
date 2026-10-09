@@ -245,3 +245,18 @@ reconciliar o adaptador R2 atualizado e a autorização específica de mídia po
 tenant/projeto. O artefato local pode desaparecer caso o volume não seja
 persistente e ainda não há limpeza por retenção, comprovação de gravação ou
 retentativa do upload. Render 3D permanece desabilitado e sem homologação.
+
+
+## Registro de render na Biblioteca (lote de integração)
+
+O serviço da API recupera o PNG da rota autenticada do worker, verifica
+assinatura e limite do arquivo, salva usando o adaptador R2-first de `main`,
+e registra `media_projects`, `media_assets` e `media_versions` vinculados
+ao tenant e aos identificadores da cena/render nos metadados.
+
+**Ainda não liberar:** o fluxo requer testes reais de build, acesso ao R2,
+consulta de mídia pelo tenant, rota de visualização autorizada, reconciliação
+de falha após upload e antes de registrar ativo, prevenção de duplicação por
+`archRenderId`, geração da imagem no worker e verificação visual. O código
+não comprova que GPU, fila, Biblioteca ou preview estejam operacionais.
+O worker e a API precisam estar homologados juntos.
