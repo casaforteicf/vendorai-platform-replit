@@ -55,7 +55,7 @@ class OrthogonalUnionTests(unittest.TestCase):
             self.assertEqual(result["integrityStatus"], "requires_geometric_repair")
         self.assertFalse(result["geometryApproved"])
 
-    def test_shared_edge_contacts_not_automatically_approved(self):
+    def test_disconnected_walls_not_automatically_approved(self):
         first = wall((0, 0), (2, 0))
         second = wall((2.1, 0), (4.1, 0))
         result = union_orthogonal_walls([first, second])
