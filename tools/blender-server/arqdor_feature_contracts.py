@@ -292,8 +292,11 @@ def draft_opening_schedule(objects, calibrated_scale=None):
     output = []
     for relation in relations:
         elements = by_name.get(relation["opening"], [])
-        # A name-only schedule must never merge distinct mesh instances.
-        # Duplicates are explicitly withheld from measurements until reviewed.
+        # Deterministic source-local identity distinguishes duplicated names.
+        # Never infer correspondence from name alone when duplicates exist.
+        object_id = relation.get("objectId")
+        if object_id is not None:
+            elements = [item for item in elements if item.get("objectId") == object_id]
         if len(elements) != 1:
             output.append({**relation, "measurementStatus": "ambiguous_object_name",
                            "objectCountWithName": len(elements),
@@ -312,7 +315,8 @@ def draft_opening_schedule(objects, calibrated_scale=None):
             "approxHeight": round(height * calibrated_scale, 4),
             "approxSillElevation": round(lo[2] * calibrated_scale, 4),
         }
-        output.append({**relation, "measurementStatus": "aabb_estimate_requires_review",
+        output.append({**relation, "objectId": elements[0].get("objectId"),
+                       "measurementStatus": "aabb_estimate_requires_review",
                        "dimensionsMeters": dimensions,
                        "scaleCalibrated": calibrated_scale is not None,
                        "approved": False, "fabricationReady": False})
