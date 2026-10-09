@@ -19,7 +19,7 @@ type Report = {
 
 type ReviewItem = OpeningRow & { reasons: string[]; key: string };
 
-export default function RenderStudioOpeningReview({ sourceSha256, url, modelId }: { sourceSha256: string; url: string; modelId: string }) {
+export default function RenderStudioOpeningReview({ sourceSha256, url, modelId, onLocate }: { sourceSha256: string; url: string; modelId: string; onLocate: (name: string) => void }) {
   const [rows, setRows] = useState<ReviewItem[]>([]);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -96,6 +96,7 @@ export default function RenderStudioOpeningReview({ sourceSha256, url, modelId }
           <strong className="break-words">{item.opening || item.objectId}</strong>
           <span className="ml-2 text-slate-600">{item.type === "window" ? "Janela" : "Porta"}</span>
           <p className="break-all text-xs text-slate-500">{item.objectId}</p>
+          {item.opening && <button type="button" className="mt-1 rounded border px-2 py-1 text-xs hover:bg-slate-50" onClick={() => onLocate(item.opening!)}>Localizar no 3D por nome</button>}
           <p>{item.reasons.length ? item.reasons.join(" · ") : "Sem conflito preliminar identificado; revisão técnica necessária"}</p>
           {item.dimensionsMeters && <p className="text-slate-600">Medidas aproximadas: {item.dimensionsMeters.approxWidth ?? "—"} × {item.dimensionsMeters.approxHeight ?? "—"} m</p>}
         </li>)}
