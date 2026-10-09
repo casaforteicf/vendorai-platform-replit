@@ -400,6 +400,47 @@ export async function clientFinalDecision(portalToken: string, payload: ClientDe
 // ─── Router ───────────────────────────────────────────────────────────────────
 const archClientPortalApprovalRouter = Router();
 
+// ─── Portal público do cliente (acesso por token, sem autenticação) ──────────
+// Religado em 2026-10-09: as rotas foram destruídas pelo embaralhamento do
+// commit 13be9570; a LÓGICA (getPublicProposal / clientFinalDecision /
+// clientItemDecision) sempre existiu neste arquivo — aqui apenas reconectamos
+// os handlers HTTP a ela, conforme o contrato do frontend (portalApi.ts).
+export const archClientPortalApprovalPublicRouter = Router();
+
+archClientPortalApprovalPublicRouter.get("/arch/portal/proposta/:token", async (req, res, next) => {
+  try {
+    const data = await getPublicProposal(String(req.params["token"] ?? ""));
+    res.json(data);
+  } catch (err) {
+    logger.error({ err }, "arch/portal/proposta/:token GET error");
+    next(err);
+  }
+});
+
+archClientPortalApprovalPublicRouter.post("/arch/portal/proposta/:token/decision", async (req, res, next) => {
+  try {
+    const data = await clientFinalDecision(String(req.params["token"] ?? ""), req.body as ClientDecisionPayload);
+    res.json(data);
+  } catch (err) {
+    logger.error({ err }, "arch/portal/proposta/:token/decision error");
+    next(err);
+  }
+});
+
+archClientPortalApprovalPublicRouter.post("/arch/portal/proposta/:token/items/:itemId/decision", async (req, res, next) => {
+  try {
+    const data = await clientItemDecision(
+      String(req.params["token"] ?? ""),
+      String(req.params["itemId"] ?? ""),
+      req.body as ClientItemDecisionPayload,
+    );
+    res.json(data);
+  } catch (err) {
+    logger.error({ err }, "arch/portal/proposta/:token/items/:itemId/decision error");
+    next(err);
+  }
+});
+
 archClientPortalApprovalRouter.get("/arch/documentacao/:projectId", async (req, res, next) => {
   try {
     const tid = tenantId(req);
