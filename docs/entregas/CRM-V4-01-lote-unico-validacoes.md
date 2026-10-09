@@ -73,3 +73,9 @@ Este relatório corresponde a inspeção estática de código remoto e planejame
 - Em caso de falha em qualquer etapa transacional, a operação inteira deve reverter, evitando cadastro mestre órfão ou vínculo sem contato permanente.
 - Limites: verificações prévias de vínculo de pessoa existente ocorrem antes da transação; outros endpoints, como `POST /crm/people` usado em criação de lead/casal, não foram convertidos nesta alteração.
 - Evidência: revisão do arquivo remoto após commit; sem TypeScript/build, testes concorrentes ou homologação executados. Homologação Contabo e publicação seguem adiadas e produção inalterada.
+
+## Lote casal — criação conjunta em transação (09/10/2026)
+- `a4b977f`: nova rota `POST /crm/deals/:dealId/couple` cria Cliente 1 e Cliente 2 com seus vínculos na mesma transação. Verifica autorização do negócio, documentos distintos, colisões de CPF/contato e empresa contextual; identifica ambos como consumidores finais e somente Cliente 1 como contato principal.
+- `92218be`: a tela `NewLeadDialog` chama essa operação quando existe negócio inicial e o cadastro é do tipo casal. Evita duas criações de pessoa em chamadas separadas nesse caso.
+- **Escopo e limites:** criação do lead e do negócio ainda ocorre antes; vínculo separado da empresa com o negócio continua sendo chamada posterior, podendo falhar após o casal já ter sido salvo. O caminho excepcional de cadastro sem negócio permanece usando solicitações separadas.
+- **Validação pendente:** TypeScript, build backend, testes reais de falha na segunda criação/concorrência/CPF/empresa contextual, homologação. Nada publicado e homologação Contabo permanece adiada.
