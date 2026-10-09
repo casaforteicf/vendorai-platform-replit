@@ -602,7 +602,7 @@ export function NewLeadDialog({
 
     let personId: string | undefined;
 
-    if (companyId) {
+    if (companyId && values.cadastroTipo !== "casal") {
       const primaryContactData = await crmPostJson(`/api/crm/companies/${companyId}/contacts`, {
         tenantId,
         nome: values.nome.trim(),
@@ -680,7 +680,7 @@ export function NewLeadDialog({
         role: values.cadastroTipo === "casal" ? "consumidor_final" : companyId ? "contato_comercial" : "consumidor_final",
         isPrimary: true,
         contextualCompanyId: companyId,
-        relationshipScope: companyId ? "persistent" : "deal_only",
+        relationshipScope: companyId && values.cadastroTipo !== "casal" ? "persistent" : "deal_only",
         metadata: values.cadastroTipo === "casal"
           ? { clientePrincipal: true, ordemClientePrincipal: 1, grupoCliente: "multiplo" }
           : undefined,
