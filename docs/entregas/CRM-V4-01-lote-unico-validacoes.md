@@ -55,3 +55,8 @@ Este relatório corresponde a inspeção estática de código remoto e planejame
 - Commit `5b988b0`: na edição de participante, a interface grava primeiro o vínculo do negócio e somente depois altera o perfil mestre. Erro de vínculo já não deixa edição pessoal isolada; erro de perfil após vínculo exibe aviso explícito de sucesso parcial e atualiza cache dos participantes.
 - **Não é operação atômica:** continuam duas requisições HTTP. Uma implementação transacional de API permanece como melhoria futura, sujeita a desenho de autorização de perfil global e testes.
 - **Status da verificação:** inspeção estática do diff, sem build ou testes de integração. Homologação e publicação adiadas por determinação do usuário.
+
+## Continuação da revisão de persistência — 09/10/2026
+- Commit `c73d54b`: a edição do perfil passa a validar vínculo ativo, ausência de relacionamentos de outros tenants, CPF e atualização do cadastro mestre dentro de transação com o mesmo bloqueio consultivo por tenant e negócio empregado nas alterações dos envolvidos.
+- **Limite importante:** esta mudança torna atômica a validação/gravação dentro da rota de perfil, mas NÃO torna atômicas as duas requisições da interface (`POST` do vínculo seguido de `PATCH` do perfil). A operação combinada permanece pendente de um endpoint único e testes de integração.
+- Revisão textual do código concluída; sem execução de TypeScript, build ou homologação Contabo. Produção sem publicação neste lote.
