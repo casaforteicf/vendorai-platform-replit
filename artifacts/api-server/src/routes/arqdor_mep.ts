@@ -141,30 +141,62 @@ const segmentPatch = z.object({
   material: z.string().max(120).nullable().optional(), nominalSizeMm: z.number().int().positive().nullable().optional(),
 }).strict().refine(value => Object.keys(value).length > 0);
 
+
+/** Serialize node writes with architectural PATCH and validate hosted walls on reattachment. */
+async function withLockedMepConcept<T>(tid:string,pid:string,work:(client:Awaited<ReturnType<typeof pool.connect>>,config:Record<string,unknown>)=>Promise<T>):Promise<T|null>{
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  const owner=await client.query(
+   `SELECT c.configuration FROM arqdor_mep_project_bindings b
+    JOIN arch_concept_projects c ON c.id=b.concept_project_id AND c.tenant_id=b.tenant_id
+    WHERE b.tenant_id=$1 AND b.workspace_project_id=$2 FOR UPDATE OF c`,[tid,pid]);
+  if(owner.rowCount!==1){await client.query("ROLLBACK");return null;}
+  const result=await work(client,(owner.rows[0].configuration??{}) as Record<string,unknown>);
+  await client.query("COMMIT");
+  return result;
+ }catch(error){await client.query("ROLLBACK").catch(()=>{});throw error;}
+ finally{client.release();}
+}
 arqdorMepRouter.patch("/arch/projects/:projectId/mep/nodes/:nodeId",async(req,res,next)=>{
-  try{
-    const tid=tenant(req,res),pid=routeId(req,res),nodeId=id.safeParse(req.params.nodeId);
-    if(!tid||!pid)return;if(!nodeId.success){res.status(400).json({error:"Ponto inválido"});return;}
-    const body=validation(nodePatch,req,res);if(!body)return;
-    const changes:{column:string;value:unknown}[]=[];
-    for(const [key,column] of Object.entries({xMm:"x_mm",yMm:"y_mm",zMm:"z_mm",kind:"kind",roomId:"room_id",hostElementId:"host_element_id"})){
-      if(Object.prototype.hasOwnProperty.call(body,key))changes.push({column,value:(body as Record<string,unknown>)[key]});
-    }
-    const values:unknown[]=[tid,pid,nodeId.data];
-    const sets=changes.map(({column,value})=>{values.push(value);return column+"=$"+values.length;});
-    const r=await pool.query("UPDATE arqdor_mep_nodes SET "+sets.join(",")+" WHERE tenant_id=$1 AND project_id=$2 AND id=$3 RETURNING *",values);
-    if(!r.rowCount){res.status(404).json({error:"Ponto não encontrado"});return;}
-    res.json({node:r.rows[0]});
-  }catch(err){next(err);}
+ try{
+  const tid=tenant(req,res),pid=routeId(req,res),nodeId=id.safeParse(req.params.nodeId);
+  if(!tid||!pid)return;if(!nodeId.success){res.status(400).json({error:"Ponto inválido"});return;}
+  const body=validation(nodePatch,req,res);if(!body)return;
+  const result=await withLockedMepConcept(tid,pid,async(client,config)=>{
+   if(body.hostElementId){
+    const walls=config.customWalls;
+    if(!Array.isArray(walls)||!walls.some((w:unknown)=>w!==null&&typeof w==="object"&&(w as {id?:unknown}).id===body.hostElementId))
+     return {status:409,error:"MEP_HOST_NOT_FOUND"} as const;
+   }
+   const changes:{column:string;value:unknown}[]=[];
+   for(const [key,column] of Object.entries({xMm:"x_mm",yMm:"y_mm",zMm:"z_mm",kind:"kind",roomId:"room_id",hostElementId:"host_element_id"})){
+    if(Object.prototype.hasOwnProperty.call(body,key))changes.push({column,value:(body as Record<string,unknown>)[key]});
+   }
+   const values:unknown[]=[tid,pid,nodeId.data];
+   const sets=changes.map(({column,value})=>{values.push(value);return column+"=$"+values.length;});
+   const r=await client.query("UPDATE arqdor_mep_nodes SET "+sets.join(",")+" WHERE tenant_id=$1 AND project_id=$2 AND id=$3 RETURNING *",values);
+   return r.rowCount?{status:200,node:r.rows[0]}:{status:404,error:"MEP_NODE_NOT_FOUND"};
+  });
+  if(!result){res.status(409).json({code:"MEP_BINDING_REQUIRED"});return;}
+  if("error" in result){res.status(result.status).json({code:result.error});return;}
+  res.json({node:result.node});
+ }catch(err){next(err);}
 });
 arqdorMepRouter.delete("/arch/projects/:projectId/mep/nodes/:nodeId",async(req,res,next)=>{
-  try{
-    const tid=tenant(req,res),pid=routeId(req,res),nodeId=id.safeParse(req.params.nodeId);
-    if(!tid||!pid)return;if(!nodeId.success){res.status(400).json({error:"Ponto inválido"});return;}
-    const r=await pool.query("DELETE FROM arqdor_mep_nodes WHERE tenant_id=$1 AND project_id=$2 AND id=$3 RETURNING id",[tid,pid,nodeId.data]);
-    if(!r.rowCount){res.status(404).json({error:"Ponto não encontrado"});return;}
-    res.json({deleted:true,id:nodeId.data,warning:"Trechos vinculados foram excluídos por cascata"});
-  }catch(err){next(err);}
+ try{
+  const tid=tenant(req,res),pid=routeId(req,res),nodeId=id.safeParse(req.params.nodeId);
+  if(!tid||!pid)return;if(!nodeId.success){res.status(400).json({error:"Ponto inválido"});return;}
+  const result=await withLockedMepConcept(tid,pid,async(client)=>{
+   const links=await client.query("SELECT COUNT(*)::int AS count FROM arqdor_mep_segments WHERE tenant_id=$1 AND project_id=$2 AND (from_node_id=$3 OR to_node_id=$3)",[tid,pid,nodeId.data]);
+   if(Number(links.rows[0]?.count??0)>0)return {status:409,error:"MEP_NODE_HAS_SEGMENTS",linkedSegments:Number(links.rows[0].count)};
+   const r=await client.query("DELETE FROM arqdor_mep_nodes WHERE tenant_id=$1 AND project_id=$2 AND id=$3 RETURNING id",[tid,pid,nodeId.data]);
+   return r.rowCount?{status:200,deleted:true}:{status:404,error:"MEP_NODE_NOT_FOUND"};
+  });
+  if(!result){res.status(409).json({code:"MEP_BINDING_REQUIRED"});return;}
+  if("error" in result){res.status(result.status).json({code:result.error,...("linkedSegments" in result?{linkedSegments:result.linkedSegments}:{})});return;}
+  res.json({deleted:true,id:nodeId.data});
+ }catch(err){next(err);}
 });
 arqdorMepRouter.patch("/arch/projects/:projectId/mep/segments/:segmentId",async(req,res,next)=>{
   try{
