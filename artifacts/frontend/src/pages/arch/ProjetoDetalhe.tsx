@@ -346,6 +346,8 @@ export default function ProjetoDetalhe() {
   const [dealOptions, setDealOptions] = useState<DealResumo[]>([]);
   const [dealDialogOpen, setDealDialogOpen] = useState(false);
   const [dealBusy, setDealBusy] = useState(false);
+  const [propostasContexto, setPropostasContexto] = useState<Array<{ id: string; titulo: string; numero: string | null; status: string; valorTotal: string | null; createdAt: string }>>([]);
+  const [propostasLoading, setPropostasLoading] = useState(false);
 
   // ── Ambiente dialog state
   const [addAmbienteOpen, setAddAmbienteOpen]     = useState(false);
@@ -427,6 +429,24 @@ export default function ProjetoDetalhe() {
     }
   }, [projetoId, toast]);
 
+  const loadPropostasContexto = useCallback(async (project?: Projeto | null) => {
+    if (!tenantId || !project) { setPropostasContexto([]); return; }
+    const query = project.leadId
+      ? `leadId=${encodeURIComponent(project.leadId)}`
+      : project.dealId
+        ? `dealId=${encodeURIComponent(project.dealId)}`
+        : "";
+    if (!query) { setPropostasContexto([]); return; }
+    setPropostasLoading(true);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/propostas?${query}`, { headers: { Authorization: `Bearer ${getToken()}` } });
+      const body = await response.json().catch(() => []);
+      const proposals = Array.isArray(body) ? body : [];
+      proposals.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setPropostasContexto(proposals);
+    } finally { setPropostasLoading(false); }
+  }, [tenantId]);
+
   const loadProjeto = useCallback(async () => {
     if (!projetoId) return;
     const res = await fetch(`/api/arch/projetos/${projetoId}`, {
@@ -442,6 +462,7 @@ export default function ProjetoDetalhe() {
     setAmbientes(nextAmbientes);
     setRenders(nextRenders);
     void loadDealContext(data.projeto ?? null, true);
+    void loadPropostasContexto(data.projeto ?? null);
 
     // Render e Ambiente representam o mesmo cômodo do projeto. Se um render antigo
     // possui o ambiente preenchido, mas o cadastro de Ambientes ainda não existe,
@@ -495,7 +516,7 @@ export default function ProjetoDetalhe() {
         }
       }
     }
-  }, [projetoId, loadDealContext]);
+  }, [projetoId, loadDealContext, loadPropostasContexto]);
 
   const loadOrcamento = useCallback(async () => {
     if (!projetoId) return;
@@ -1413,17 +1434,16 @@ export default function ProjetoDetalhe() {
           </div>
 
           <div className="rounded-lg border p-3">
-            <p className="text-xs font-medium text-muted-foreground">Proposta</p>
-            <p className="mt-1 text-sm font-semibold">{projeto.propostaId ? "Proposta vinculada" : "Sem proposta"}</p>
-            {projeto.propostaId ? (
-              <Link href="/propostas">
-                <Button variant="outline" size="sm" className="mt-3 w-full">
-                  <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Abrir propostas
-                </Button>
-              </Link>
-            ) : (
-              <p className="mt-3 text-xs text-muted-foreground">A proposta pode ser vinculada sem duplicar o orçamento.</p>
-            )}
+            <p className="text-xs font-medium text-muted-foreground">Propostas</p>
+            {propostasLoading ? <p className="mt-1 text-sm text-muted-foreground">Carregando propostas...</p> : propostasContexto.length ? (
+              <>
+                <p className="mt-1 text-sm font-semibold">{propostasContexto.length} {propostasContexto.length === 1 ? "proposta disponível" : "propostas disponíveis"}</p>
+                <div className="mt-2 max-h-28 space-y-1 overflow-y-auto">
+                  {propostasContexto.map((p) => <button key={p.id} type="button" onClick={() => navigate(`/propostas?edit=${encodeURIComponent(p.id)}`)} className="w-full rounded-md border bg-background px-2 py-1.5 text-left hover:bg-muted/40"><p className="truncate text-xs font-medium">{p.numero ? `#${p.numero} · ` : ""}{p.titulo}</p><p className="mt-0.5 text-[11px] text-muted-foreground">{p.status}{p.valorTotal ? ` · R$ ${Number(p.valorTotal).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : ""}</p></button>)}
+                </div>
+                <Button variant="outline" size="sm" className="mt-3 w-full" onClick={() => navigate(`/propostas?${project.leadId ? `leadId=${encodeURIComponent(project.leadId)}` : `dealId=${encodeURIComponent(project.dealId ?? "")}`)}`)}>Ver todas</Button>
+              </>
+            ) : <p className="mt-1 text-xs text-muted-foreground">Nenhuma proposta encontrada para este cliente/negócio.</p>}
           </div>
 
           <div className="rounded-lg border p-3">
