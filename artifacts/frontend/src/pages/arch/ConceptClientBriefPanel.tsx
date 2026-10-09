@@ -37,6 +37,7 @@ type Props = {
   lotWidth: number;
   lotDepth: number;
   initialProjectBrief?: ProjectBriefSnapshot | null;
+  initialIdea?: string;
   onGenerate: (alternative: ClientBriefAlternative) => void;
   onImproveCurrent?: (projectBrief: ProjectBriefSnapshot) => Promise<void>;
   /** Frente e recuos da implantação, para as opções já nascerem dentro do terreno. */
@@ -273,6 +274,7 @@ export default function ConceptClientBriefPanel({
   lotWidth,
   lotDepth,
   initialProjectBrief,
+  initialIdea,
   onGenerate,
   onImproveCurrent,
   placement,
@@ -289,6 +291,7 @@ export default function ConceptClientBriefPanel({
   });
   const [vision, setVision] = useState<ClientVision>(() => ({
     ...DEFAULT_VISION,
+    mustHave: initialIdea?.trim() ?? "",
     ...(initialProjectBrief?.vision ?? {}),
     household: {
       ...DEFAULT_VISION.household,
@@ -1646,3 +1649,4 @@ export default function ConceptClientBriefPanel({
     </div>
   );
 }
+

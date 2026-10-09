@@ -1,0 +1,72 @@
+/* Direct design workspace. Inherit the application's approved typography. */
+.arqdor-reference-ui.arq-direct-editor {
+  --arq-accent: #0f9f6e;
+  --arq-accent-strong: #087a54;
+  --arq-accent-soft: #eefaf4;
+  --arq-chrome-height: 112px;
+  font-family: var(--app-font-sans, inherit);
+}
+.arq-direct-editor .arq-app-bar {
+  height: auto;
+  min-height: 56px;
+}
+.arq-direct-editor .arq-workspace-stage { min-height: 0; }
+.arq-direct-editor .arq-editor-navigation { position: relative; z-index: 40; }
+.arq-direct-editor button:focus-visible,
+.arq-direct-editor input:focus-visible,
+.arq-direct-editor select:focus-visible,
+.arq-direct-editor textarea:focus-visible {
+  outline: 2px solid var(--arq-accent);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+.arq-direct-editor .bg-orange-500,
+.arq-direct-editor .bg-emerald-700 { background-color: var(--arq-accent-strong); }
+.arq-direct-editor .bg-orange-50 { background-color: var(--arq-accent-soft); }
+.arq-direct-editor .text-orange-500,
+.arq-direct-editor .text-orange-600,
+.arq-direct-editor .text-orange-700 { color: var(--arq-accent-strong); }
+.arq-direct-editor .border-orange-400,
+.arq-direct-editor .border-orange-500 { border-color: var(--arq-accent); }
+.arq-direct-editor .arq-tool-rail button { min-height: 44px; }
+
+/* Keep desktop properties and the library beside the drawing, not over it. */
+@media (min-width: 1280px) {
+  .arq-direct-editor .arq-workspace-shell {
+    display: flex;
+    align-items: stretch;
+    height: calc(100dvh - var(--arq-chrome-height));
+    min-height: 560px;
+  }
+  .arq-direct-editor .arq-workspace-sidebar {
+    position: relative;
+    inset: auto;
+    flex: 0 0 64px;
+    min-height: 0;
+    height: 100%;
+  }
+  .arq-direct-editor .arq-workspace-shell[data-library-open="true"] .arq-workspace-sidebar { flex-basis: 324px; }
+  .arq-direct-editor .arq-workspace-shell[data-library-open="true"][data-wide-library="true"] .arq-workspace-sidebar { flex-basis: 404px; }
+  .arq-direct-editor .arq-workspace-center {
+    flex: 1 1 0%;
+    min-width: 0;
+    width: auto;
+    min-height: 0;
+    height: 100%;
+  }
+  .arq-direct-editor .arq-workspace-inspector {
+    position: relative;
+    inset: auto;
+    flex: 0 0 300px;
+    width: 300px;
+    min-height: 0;
+    height: 100%;
+    max-height: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+@media (max-width: 767px) {
+  .arq-direct-editor .arq-editor-navigation { gap: 8px; }
+  .arq-direct-editor .arq-workspace-center { padding-bottom: 80px; }
+}

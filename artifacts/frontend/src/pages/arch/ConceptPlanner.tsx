@@ -2,6 +2,8 @@ import { flushSync } from "react-dom";
 import { conceptReferenceSize } from "./conceptReferenceImage";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import "./planner5d-reference.css";
+import "./concept-editor-workspace.css";
+import { ConceptIdeaEntry } from "./ConceptIdeaEntry";
 import {
   ArrowLeft,
   ArrowRight,
@@ -49,7 +51,7 @@ import type { ConceptPlanObject } from "./ConceptPlan2D";
 
 import type { AIDevelopmentResponse } from "./ConceptFacadeEditor";
 
-import { buildConceptJourney, conceptJourneyContinueLabel, conceptJourneyIndex } from "./conceptJourney";
+import { buildConceptJourney } from "./conceptJourney";
 
 import { DEFAULT_SITE_PLACEMENT, getBuildingBounds, getSiteBoundaryPoints, migrateLegacySitePlacement, normalizeSitePlacement, resolveSiteSetbacks, type SitePlacement } from "./conceptSitePlacement";
 import { type ClientBriefAlternative, type ProjectBriefSnapshot } from "./conceptClientBrief";
@@ -1225,7 +1227,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [startWithTerrain, setStartWithTerrain] = useState<boolean | null>(null);
   const [terrainDefined, setTerrainDefined] = useState(false);
   const [startSourceChosen, setStartSourceChosen] = useState(false);
-  const [startWizardStage, setStartWizardStage] = useState<ConceptStartWizardStage>("kind");
+  const [, setStartWizardStage] = useState<ConceptStartWizardStage>("kind");
   const [intakeStage, setIntakeStage] = useState<ConceptIntakeStage>("kind");
   const [startChooserDismissed, setStartChooserDismissed] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -1266,7 +1268,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [polyHavenLoading, setPolyHavenLoading] = useState(false);
   const [polyHavenInsertSlug, setPolyHavenInsertSlug] = useState<string | null>(null);
   const [autoModelPreviews, setAutoModelPreviews] = useState<Record<string, AutoModelPreview>>({});
-  const [editorLibraryTab, setEditorLibraryTab] = useState<EditorLibraryTab>("site");
+  const [editorLibraryTab, setEditorLibraryTab] = useState<EditorLibraryTab>("build");
   const [libraryOpen, setLibraryOpen] = useState(() => typeof window === "undefined" ? true : window.innerWidth >= 768);
   const [mobileValidationOpen, setMobileValidationOpen] = useState(false);
 
@@ -1588,8 +1590,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           if (!cancelled) {
             setConceptId(null);
             conceptIdRef.current = null;
-            // PKG-07 / ARQ-UI: novo pré-projeto entra direto na escolha da origem.
-            // Casa é o padrão, terreno é opcional e pode ser informado antes ou depois.
+            // One optional idea entry, followed directly by the design workspace.
             setProjectScope("house");
             setStartWithTerrain(false);
             setTerrainDefined(false);
@@ -1707,9 +1708,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               ? "source"
               : "kind",
         );
-        setStartChooserDismissed(
-          migratedIntakeStage === "terrain_editor" || migratedIntakeStage === "complete",
-        );
+        setStartChooserDismissed(true);
         setRooms(loadedRooms);
         setOpeningOverrides(draft.openingOverrides && typeof draft.openingOverrides === "object" ? draft.openingOverrides : {});
         setCustomerProfile(draft.customerProfile ?? {});
@@ -1908,14 +1907,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     () => buildConceptJourney({ scope: projectScope, terrainDefined }),
     [projectScope, terrainDefined],
   );
-  const journeyIndex = conceptJourneyIndex({
-    step,
-    editorView,
-    libraryTab: editorLibraryTab,
-    scope: projectScope,
-    terrainDefined,
-  });
-
   const goToJourneyStage = (index: number) => {
     const isWide = typeof window !== "undefined" && window.innerWidth >= 768;
     const stage = journeyStages[Math.max(0, Math.min(index, journeyStages.length - 1))];
@@ -6216,7 +6207,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   ]);
 
   return (
-    <div className="arqdor-reference-ui min-h-screen bg-muted/30">
+    <div className="arqdor-reference-ui arq-direct-editor min-h-screen bg-muted/30">
       {projectMaster && step !== RESULT_STEP && (
         <div className="fixed inset-0 z-[250] grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-3xl border border-emerald-200 bg-white p-6 shadow-2xl">
@@ -7009,195 +7000,28 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
         {step === 4 && (
           <section className="min-h-screen overflow-hidden bg-[#eef1f4] arq-workspace-stage">
-            <div className="arq-app-bar sticky top-0 z-50 flex min-h-14 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white/95 px-3 py-1.5 text-slate-900 shadow-sm backdrop-blur sm:px-4 lg:flex-nowrap">
+            <header className="arq-app-bar sticky top-0 z-50 flex flex-wrap items-center justify-between gap-2 border-b bg-white px-3 py-2 text-slate-900">
               <div className="flex min-w-0 items-center gap-2">
-                {!guestMode && <a
-                  href="/arch"
-                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-950"
-                  title="Voltar ao Arqdor"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </a>}
-
-                <div className="hidden min-w-0 sm:block">
-                  <div className="truncate text-sm font-semibold text-slate-950">{customerProfile.name?.trim() ? `Pré-projeto — ${customerProfile.name.trim()}` : "Pré-projeto"}</div>
-                  <div className="text-[11px] text-slate-400">{guestMode ? `${guestBrand ?? "Pré-projeto"} · projete sua casa` : "Arqdor Pro · editor arquitetônico"}</div>
-                </div>
-
-                {!guestMode && <button
-                  type="button"
-                  onClick={openProjectList}
-                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-950"
-                  title="Meus pré-projetos"
-                  aria-label="Meus pré-projetos"
-                >
-                  <FolderOpen className="h-4 w-4" />
-                </button>}
-                {!guestMode && <button
-                  type="button"
-                  onClick={() => { setPublicLinkOpen(true); void loadPublicLink(); }}
-                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-950"
-                  title="Link para clientes"
-                  aria-label="Link para clientes"
-                >
-                  <Share2 className="h-4 w-4" />
-                </button>}
-
-                <button
-                  type="button"
-                  onClick={() => void saveConcept(4)}
-                  disabled={saveState === "saving" || saveState === "loading"}
-                  className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-                  title="Salvar a planta e todas as edições atuais"
-                >
-                  <Check className="h-4 w-4" />
-                  <span>{saveState === "saving" ? "Salvando planta..." : "Salvar planta"}</span>
-                </button>
-                {saveStatusLabel && (
-                  <span
-                    className={saveState === "error"
-                      ? "shrink-0 text-[11px] font-semibold text-red-600"
-                      : hasUnsavedChanges
-                        ? "shrink-0 text-[11px] text-amber-600"
-                        : "shrink-0 text-[11px] text-slate-500"}
-                    aria-live="polite"
-                  >
-                    {saveStatusLabel}
-                  </span>
-                )}
-
-                {projectBrief && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditorExperienceMode("guided");
-                      setEditorView("plan");
-                      setEditorLibraryTab("brief");
-                      setLibraryOpen(true);
-                    }}
-                    className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
-                    title="Abrir o briefing mestre que orienta este projeto"
-                  >
-                    <Heart className="h-4 w-4" />
-                    <span className="hidden lg:inline">DNA do projeto</span>
-                  </button>
-                )}
-
-                {!terrainOnly && (
-                <button
-                  type="button"
-                  onClick={() => void runAiDevelopment()}
-                  disabled={aiDevelopmentState === "running" || saveState === "loading"}
-                  className={aiDevelopmentState === "error"
-                    ? "inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 text-xs font-bold text-red-700 disabled:opacity-50"
-                    : "inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 text-xs font-bold text-orange-700 transition hover:bg-orange-100 disabled:opacity-50"}
-                  title="Desenvolver layout, paredes, aberturas e fachada com IA"
-                >
-                  <Sparkles className={aiDevelopmentState === "running" ? "h-4 w-4 animate-pulse" : "h-4 w-4"} />
-                  <span className="hidden md:inline">{aiDevelopmentState === "running" ? "IA analisando..." : aiDevelopmentState === "error" ? "Tentar IA novamente" : "Desenvolver com IA"}</span>
-                </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => setActiveFloor((current) => floors <= 1 ? 0 : (current + 1) % floors)}
-                  className="ml-1 hidden h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 sm:inline-flex"
-                  title="Alternar pavimento"
-                >
-                  <Layers3 className="h-4 w-4 text-slate-500" />
-                  <span>{activeFloor === 0 ? "Térreo" : activeFloor === 1 ? "Superior" : `Pav. ${activeFloor + 1}`}</span>
-                  <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
-                </button>
-                <div className="ml-1 flex items-center rounded-xl border border-slate-200 bg-slate-50 p-1">
-                  <button
-                    type="button"
-                    onClick={() => setEditorExperienceMode("guided")}
-                    className={editorExperienceMode === "guided"
-                      ? "rounded-lg bg-white px-3 py-2 text-[11px] font-bold text-slate-950 shadow-sm"
-                      : "rounded-lg px-3 py-2 text-[11px] font-semibold text-slate-600 hover:bg-white"}
-                  >
-                    Guiado
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setEditorExperienceMode("professional"); if (editorLibraryTab === "brief" || editorLibraryTab === "placement") setEditorLibraryTab("build"); }}
-                    className={editorExperienceMode === "professional"
-                      ? "rounded-lg bg-white px-3 py-2 text-[11px] font-bold text-slate-950 shadow-sm"
-                      : "rounded-lg px-3 py-2 text-[11px] font-semibold text-slate-600 hover:bg-white"}
-                  >
-                    <span className="sm:hidden">Pro</span><span className="hidden sm:inline">Profissional</span>
-                  </button>
+                {!guestMode && <a href="/arch" aria-label="Voltar ao Arqdor" className="grid h-10 w-10 place-items-center rounded-lg border"><ArrowLeft className="h-4 w-4" /></a>}
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold">{customerProfile.name?.trim() ? `Pré-projeto — ${customerProfile.name.trim()}` : "Pré-projeto"}</div>
+                  <div className="text-[11px] text-slate-500">{guestMode ? guestBrand ?? "Arqdor" : "Arqdor"}</div>
                 </div>
               </div>
-
-
-              <div className="flex shrink-0 items-center gap-1">
-                {editorView === "plan" && editorExperienceMode === "professional" && (
-                <button
-                  type="button"
-                  onClick={() => setShowDimensions((value) => !value)}
-                  title="Cotas"
-                  className={showDimensions
-                    ? "hidden h-10 w-10 place-items-center rounded-xl bg-orange-500/15 text-orange-300 sm:grid"
-                    : "hidden h-10 w-10 place-items-center rounded-xl text-slate-600 hover:bg-slate-100 sm:grid"}
-                >
-                  <Ruler className="h-4 w-4" />
-                </button>
-                )}
-                {editorView === "plan" && editorExperienceMode === "professional" && (
-                  <button
-                    type="button"
-                    onClick={() => setModelGalleryOpen(true)}
-                    title="Abrir galeria de modelos"
-                    className="hidden h-10 items-center gap-2 rounded-xl text-slate-600 hover:bg-slate-100 sm:inline-flex sm:px-3"
-                  >
-                    <LayoutGrid className="h-4 w-4" />
-                    Modelos
-                  </button>
-                )}
-                {(editorView === "plan" || editorView === "model3d") && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditorLibraryTab("furniture");
-                      setLibraryOpen((open) => !(open && editorLibraryTab === "furniture"));
-                    }}
-                    title="Abrir biblioteca de móveis e objetos"
-                    className={libraryOpen && editorLibraryTab === "furniture"
-                      ? "hidden h-10 items-center gap-2 rounded-xl bg-white px-3 text-xs font-bold text-slate-950 shadow-sm sm:inline-flex"
-                      : "hidden h-10 items-center gap-2 rounded-xl text-slate-600 hover:bg-slate-100 sm:inline-flex"}
-                  >
-                    <Box className="h-4 w-4" />
-                    Móveis
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setFloors((value) => Math.min(3, value + 1))}
-                  title="Adicionar pavimento"
-                  className="hidden h-10 w-10 place-items-center rounded-xl text-slate-600 hover:bg-slate-100 sm:grid"
-                >
-                  <Plus className="h-5 w-5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void sharePublicTour()}
-                  disabled={tourShareState === "sharing"}
-                  title={tourShareState === "copied"
-                    ? "Link público do Tour copiado"
-                    : tourShareState === "error"
-                      ? "Não foi possível gerar o link"
-                      : "Compartilhar Tour 3D com cliente"}
-                  className={tourShareState === "error"
-                    ? "hidden h-10 w-10 place-items-center rounded-xl bg-red-500 text-white shadow-sm hover:bg-red-600 disabled:opacity-60 sm:grid"
-                    : tourShareState === "copied"
-                      ? "hidden h-10 w-10 place-items-center rounded-xl bg-emerald-500 text-white shadow-sm hover:bg-emerald-600 disabled:opacity-60 sm:grid"
-                      : "hidden h-10 w-10 place-items-center rounded-xl bg-orange-500 text-white shadow-sm hover:bg-orange-600 disabled:opacity-60 sm:grid"}
-                >
-                  <Share2 className="h-4 w-4" />
-                </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-2 text-xs font-semibold">
+                  <Layers3 className="h-4 w-4" />
+                  <select aria-label="Pavimento ativo" value={activeFloor} onChange={(event) => setActiveFloor(Number(event.target.value))} className="h-10 rounded-lg border px-2">
+                    {Array.from({ length: floors }, (_, floor) => <option key={floor} value={floor}>{floor === 0 ? "Térreo" : `Pavimento ${floor + 1}`}</option>)}
+                  </select>
+                </label>
+                <button type="button" aria-label="Adicionar pavimento" title="Adicionar pavimento" disabled={floors >= 3} onClick={() => { const next = Math.min(3, floors + 1); setFloors(next); setActiveFloor(next - 1); }} className="grid h-10 w-10 place-items-center rounded-lg border disabled:opacity-40"><Plus className="h-4 w-4" /></button>
+                {!guestMode && <button type="button" onClick={openProjectList} aria-label="Meus pré-projetos" title="Meus pré-projetos" className="grid h-10 w-10 place-items-center rounded-lg border"><FolderOpen className="h-4 w-4" /></button>}
+                {!guestMode && <button type="button" onClick={() => { setPublicLinkOpen(true); void loadPublicLink(); }} aria-label="Compartilhar com cliente" title="Compartilhar com cliente" className="grid h-10 w-10 place-items-center rounded-lg border"><Share2 className="h-4 w-4" /></button>}
+                <button type="button" onClick={() => void saveConcept(4)} disabled={saveState === "saving" || saveState === "loading"} className="min-h-10 rounded-lg border px-3 text-xs font-semibold disabled:opacity-50">{saveState === "saving" ? "Salvando…" : "Salvar"}</button>
+                <span aria-live="polite" className={saveState === "error" ? "text-xs text-red-600" : "text-xs text-slate-500"}>{saveStatusLabel}</span>
               </div>
-            </div>
+            </header>
 
             {(layoutIssues.length > 0 || explainableFindings.length > 0) && (
               <>
@@ -7307,115 +7131,24 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               </>
             )}
 
-            {saveState !== "loading" && !modelGalleryOpen && !projectMaster &&
+            {saveState !== "loading" && !projectMaster && !startChooserDismissed &&
               (intakeStage === "kind" || intakeStage === "terrain_choice" || intakeStage === "source") && (
-              <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/55 sm:items-center sm:p-6">
-                <div className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7" role="dialog" aria-label="Iniciar pré-projeto">
-                  {startWizardStage === "kind" && (
-                    <>
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">Novo pré-projeto</div>
-                      <h2 className="mt-1 text-2xl font-bold text-slate-950">O que você quer projetar?</h2>
-                      <p className="mt-1 text-sm leading-6 text-slate-500">Isso define a jornada correta antes de pedir terreno, planta ou referências.</p>
-                      <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                        <button type="button" onClick={() => { setProjectScope("house"); setStartWithTerrain(null); setTerrainDefined(false); setIntakeStage("terrain_choice"); setStartWizardStage("terrain"); setStartChooserDismissed(false); }}
-                          className="group min-h-36 rounded-2xl border-2 border-orange-400 bg-orange-50 p-5 text-left transition hover:border-orange-500 hover:bg-orange-100/70">
-                          <div className="flex items-start gap-4">
-                            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-orange-500 text-white"><Home className="h-5 w-5" /></span>
-                            <span><span className="block text-base font-bold text-slate-950">Casa completa</span>
-                            <span className="mt-1 block text-xs leading-5 text-slate-600">Terreno opcional, planta, ambientes, fachada, 3D e render.</span></span>
-                          </div>
-                        </button>
-                        <button type="button" onClick={() => {
-                          setProjectScope("room");
-                          setStartWithTerrain(false);
-                          setTerrainDefined(false);
-                          setIntakeStage("source");
-                          setLotWidth(8); setLotDepth(8); setDesiredArea(25); setFloors(1);
-                          setStartWizardStage("source");
-                          setStartChooserDismissed(false);
-                          setEditorView("plan"); setEditorLibraryTab("brief");
-                        }}
-                          className="group min-h-36 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm">
-                          <div className="flex items-start gap-4">
-                            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-950 text-white"><Sofa className="h-5 w-5" /></span>
-                            <span><span className="block text-base font-bold text-slate-950">Um ambiente</span>
-                            <span className="mt-1 block text-xs leading-5 text-slate-600">Sala, cozinha, suíte, banheiro, gourmet ou outro espaço isolado. Não exige terreno.</span></span>
-                          </div>
-                        </button>
-                      </div>
-                    </>
-                  )}
-
-                  {startWizardStage === "terrain" && (
-                    <>
-                      <button type="button" onClick={() => { setProjectScope(null); setStartWithTerrain(null); setTerrainDefined(false); setIntakeStage("kind"); setStartWizardStage("kind"); setStartChooserDismissed(false); }} className="mb-3 text-xs font-semibold text-slate-500 hover:text-slate-900">← Voltar</button>
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">Casa completa</div>
-                      <h2 className="mt-1 text-2xl font-bold text-slate-950">Quer começar pelo terreno?</h2>
-                      <p className="mt-1 text-sm leading-6 text-slate-500">Se você já conhece o lote, o Arqdor usa medidas, frente e recuos desde a primeira proposta. Se não conhece, pode começar pela casa e informar o terreno depois.</p>
-                      <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                        <button type="button" onClick={() => {
-                          setStartWithTerrain(true);
-                          setTerrainDefined(true);
-                          setIntakeStage("terrain_editor");
-                          setStartChooserDismissed(true);
-                          setEditorView("plan"); setEditorLibraryTab("site"); setLibraryOpen(true);
-                        }} className="min-h-32 rounded-2xl border-2 border-orange-400 bg-orange-50 p-5 text-left hover:bg-orange-100/70">
-                          <MapPin className="mb-3 h-6 w-6 text-orange-600" />
-                          <span className="block text-base font-bold text-slate-950">Sim, começar pelo terreno</span>
-                          <span className="mt-1 block text-xs leading-5 text-slate-600">Informar largura, profundidade, frente e implantação antes da planta.</span>
-                        </button>
-                        <button type="button" onClick={() => {
-                          setStartWithTerrain(false);
-                          setTerrainDefined(false);
-                          setIntakeStage("source");
-                          setStartWizardStage("source");
-                          setStartChooserDismissed(false);
-                          setEditorView("plan"); setEditorLibraryTab("brief");
-                        }} className="min-h-32 rounded-2xl border bg-white p-5 text-left hover:border-slate-400 hover:shadow-sm">
-                          <ArrowRight className="mb-3 h-6 w-6 text-slate-700" />
-                          <span className="block text-base font-bold text-slate-950">Não, começar pela casa</span>
-                          <span className="mt-1 block text-xs leading-5 text-slate-600">Criar a proposta agora e definir ou ajustar o terreno mais tarde.</span>
-                        </button>
-                      </div>
-                    </>
-                  )}
-
-                  {startWizardStage === "source" && (
-                    <>
-                      <div className="mb-5 flex flex-col gap-4 border-b border-slate-100 pb-5 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">Novo pré-projeto</div>
-                          <h2 className="mt-1 text-2xl font-bold text-slate-950">Como você quer começar?</h2>
-                          <p className="mt-1 text-sm text-slate-500">Escolha o escopo e a origem. Nada aqui bloqueia ajustes posteriores.</p>
-                        </div>
-                        <div className="flex shrink-0 rounded-xl border bg-slate-50 p-1">
-                          <button
-                            type="button"
-                            onClick={() => { setProjectScope("house"); setStartWithTerrain(false); setTerrainDefined(false); }}
-                            className={projectScope === "house"
-                              ? "rounded-lg bg-slate-950 px-3 py-2 text-xs font-bold text-white shadow-sm"
-                              : "rounded-lg px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-white"}
-                          >
-                            Casa completa
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => { setProjectScope("room"); setStartWithTerrain(false); setTerrainDefined(false); setLotWidth(8); setLotDepth(8); setDesiredArea(25); setFloors(1); }}
-                            className={projectScope === "room"
-                              ? "rounded-lg bg-slate-950 px-3 py-2 text-xs font-bold text-white shadow-sm"
-                              : "rounded-lg px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-white"}
-                          >
-                            Um ambiente
-                          </button>
-                        </div>
-                      </div>
-                      <p className="mt-1 text-sm leading-6 text-slate-500">
-                        {projectScope === "room"
-                          ? "Você pode descrever o ambiente, enviar uma foto/croqui, desenhar ou importar uma base."
-                          : startWithTerrain
-                            ? <>Terreno definido em <strong className="font-semibold text-slate-700">{lotWidth.toFixed(1)} × {lotDepth.toFixed(1)} m</strong>. Agora escolha a origem da planta.</>
-                            : "O terreno fica opcional por enquanto. Você pode criar a casa primeiro e posicioná-la no lote depois."}
-                      </p>
+                <ConceptIdeaEntry
+                  initialIdea={customerProfile.notes ?? ""}
+                  initialScope={projectScope}
+                  onStart={(idea, scope) => {
+                    setProjectScope(scope);
+                    setCustomerProfile((current) => ({ ...current, notes: idea || current.notes }));
+                    setStartSourceChosen(true);
+                    setIntakeStage("complete");
+                    setStartChooserDismissed(true);
+                    setEditorView("plan");
+                    setInteractionMode("navigate");
+                    setEditorLibraryTab("build");
+                    closeLibraryOnMobile();
+                  }}
+                />
+            )}
 
                       <input ref={projectStartImportInputRef} type="file" accept=".dxf,.ifc,.dwg,.rvt,.skp,application/dxf" className="hidden"
                         onChange={(event) => {
@@ -7437,186 +7170,27 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           void uploadReferencePlan(file);
                         }} />
 
-                      <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                        <button type="button" onClick={() => {
-                          setStartSourceChosen(true); setIntakeStage("complete"); setStartChooserDismissed(true); setEditorExperienceMode("guided");
-                          setEditorView("plan"); setEditorLibraryTab("brief"); setLibraryOpen(true);
-                        }} className="group min-h-32 rounded-2xl border-2 border-orange-400 bg-orange-50 p-5 text-left transition hover:border-orange-500 hover:bg-orange-100/70">
-                          <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-orange-500 text-white"><Sparkles className="h-5 w-5" /></span>
-                            <span><span className="block text-base font-bold text-slate-950">Desenvolver com IA</span>
-                            <span className="mt-1 block text-xs leading-5 text-slate-600">{projectScope === "room" ? "Descreva uso, medidas, estilo, móveis e necessidades. A IA monta a primeira proposta do ambiente." : "Informe ambientes, metragens, estilo e prioridades. A IA arquiteta desenvolve a planta inicial para revisão."}</span>
-                            <span className="mt-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-orange-700">Recomendado</span></span></div>
-                        </button>
 
-                        <button type="button" onClick={() => {
-                          if ((safeRooms.length > 0 || safeCustomWalls.length > 0) && !window.confirm("Iniciar do zero substitui a geometria atual deste rascunho. Continuar?")) return;
-                          setStartSourceChosen(true); setIntakeStage("complete"); setStartChooserDismissed(true); startBlankPlan(); setLibraryOpen(true);
-                        }} className="group min-h-32 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm">
-                          <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-950 text-white"><Plus className="h-5 w-5" /></span>
-                            <span><span className="block text-base font-bold text-slate-950">Desenhar do zero</span>
-                            <span className="mt-1 block text-xs leading-5 text-slate-600">{projectScope === "room" ? "Desenhe o perímetro do ambiente, aberturas, mobiliário e materiais." : "Desenhe paredes, ambientes, portas, janelas e escadas manualmente."}</span></span></div>
-                        </button>
-
-                        <button type="button" onClick={() => projectStartImportInputRef.current?.click()}
-                          className="group min-h-32 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm">
-                          <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-800"><FolderOpen className="h-5 w-5" /></span>
-                            <span><span className="block text-base font-bold text-slate-950">Importar projeto</span>
-                            <span className="mt-1 block text-xs leading-5 text-slate-600">DXF, IFC, DWG e SKP passam primeiro por prévia de escala/geometria antes de substituir a planta. RVT fica preservado como fonte vinculada.</span></span></div>
-                        </button>
-
-                        <button type="button" onClick={() => chooseProjectStartReferenceMode("real_environment")}
-                          className="group min-h-32 rounded-2xl border-2 border-sky-200 bg-sky-50/60 p-5 text-left transition hover:border-sky-400 hover:bg-sky-50">
-                          <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-sky-600 text-white"><Camera className="h-5 w-5" /></span>
-                            <span><span className="block text-base font-bold text-slate-950">Foto / ambiente real</span>
-                            <span className="mt-1 block text-xs leading-5 text-slate-600">Terreno, fachada ou ambiente real, preservando o que existe até você confirmar intervenções.</span></span></div>
-                        </button>
-                      </div>
-
-                      <div className="mt-5 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
-                        Foto real preserva o ambiente. Planta/croqui é calibrada antes de virar geometria editável.
-                      </div>
-
-                      <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => chooseProjectStartReferenceMode("floorplan")}
-                            className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
-                          >
-                            <Ruler className="h-4 w-4" />
-                            Planta / croqui / PDF
-                          </button>
-                          {projectScope === "house" && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setStartWithTerrain(true);
-                                setTerrainDefined(true);
-                                setIntakeStage("terrain_editor");
-                                setStartChooserDismissed(true);
-                                setEditorView("plan");
-                                setEditorLibraryTab("site");
-                                setLibraryOpen(true);
-                              }}
-                              className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold text-slate-700 hover:border-orange-300 hover:bg-orange-50"
-                            >
-                              <MapPin className="h-4 w-4 text-orange-600" />
-                              Definir terreno antes
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setStartSourceChosen(true);
-                              setIntakeStage("complete");
-                              setStartChooserDismissed(true);
-                              setEditorExperienceMode("guided");
-                              setEditorView("plan");
-                              setEditorLibraryTab("models");
-                              setLibraryOpen(true);
-                              setModelGalleryOpen(true);
-                            }}
-                            className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold text-slate-700 hover:border-slate-400 hover:bg-slate-50"
-                          >
-                            <LayoutGrid className="h-4 w-4" />
-                            Usar modelo / inspiração
-                          </button>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setStartSourceChosen(true);
-                            setIntakeStage("complete");
-                            setStartChooserDismissed(true);
-                            setEditorView("plan");
-                            setEditorLibraryTab("build");
-                            setLibraryOpen(true);
-                          }}
-                          className="inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100"
-                        >
-                          Entrar direto no editor <ArrowRight className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div className="arq-journey-row flex min-h-11 flex-wrap items-center gap-2 border-b bg-white px-3 py-1.5 sm:px-3">
-              <div className="min-w-0 flex-1">
-                <div className="text-xs font-bold text-slate-950">
-                  <span className="text-slate-400">Área atual · </span>{journeyStages[journeyIndex].label}
-                </div>
-                <div className={journeyIndex === 2 || journeyIndex === 3 ? "hidden truncate text-xs text-slate-500 sm:block" : "truncate text-xs text-slate-500"}>
-                  {journeyStages[journeyIndex].helper}
-                </div>
-              </div>
-              <div className="hidden shrink-0 rounded-xl border bg-slate-50 p-1 sm:flex">
-                {journeyStages.map((stage, index) => (
-                  <button
-                    key={stage.id}
-                    type="button"
-                    onClick={() => goToJourneyStage(index)}
-                    className={journeyIndex === index
-                      ? "min-h-9 rounded-lg bg-slate-950 px-3 text-xs font-bold text-white"
-                      : index < journeyIndex
-                        ? "min-h-9 rounded-lg px-3 text-xs font-semibold text-emerald-700 hover:bg-white"
-                        : "min-h-9 rounded-lg px-3 text-xs font-semibold text-slate-500 hover:bg-white"}
-                  >
-                    {stage.label}
-                  </button>
-                ))}
-              </div>
-              {(journeyIndex === 2 || journeyIndex === 3) && (
-                <div className="flex shrink-0 rounded-xl border bg-slate-50 p-1">
-                  {(journeyIndex === 2
-                    ? ([["plan", "Planta 2D"], ["model3d", "3D"]] as const)
-                    : projectScope === "room"
-                      ? ([["model3d", "3D"], ["render", "Imagem"]] as const)
-                      : ([["facade", "Fachada"], ["render", "Imagem"]] as const)
-                  ).map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => {
-                        setEditorView(value);
-                        if (value !== "plan") setLibraryOpen(false);
-                      }}
-                      className={editorView === value
-                        ? "min-h-9 rounded-lg bg-white px-3 text-xs font-bold text-slate-950 shadow-sm"
-                        : "min-h-9 rounded-lg px-3 text-xs font-semibold text-slate-500"}
-                    >
+            <div className="arq-editor-navigation flex min-h-12 flex-wrap items-center justify-between gap-2 border-b bg-white px-3 py-2">
+              <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Visualização do projeto">
+                {([["plan", "Planta 2D"], ["model3d", "3D"], ["facade", "Fachadas"], ["render", "Render"]] as const)
+                  .filter(([view]) => projectScope !== "room" || view !== "facade")
+                  .map(([view, label]) => (
+                    <button key={view} type="button" aria-pressed={editorView === view}
+                      onClick={() => { setEditorView(view); if (view !== "plan") setLibraryOpen(false); }}
+                      className={editorView === view ? "min-h-10 rounded-lg bg-emerald-700 px-3 text-xs font-bold text-white" : "min-h-10 rounded-lg px-3 text-xs font-semibold text-slate-600 hover:bg-slate-100"}>
                       {label}
                     </button>
                   ))}
-                </div>
-              )}
-              {layoutIssues.length > 0 && (
-                <button type="button" onClick={() => setMobileValidationOpen(true)}
-                  className={`min-h-10 shrink-0 rounded-xl border px-3 text-xs font-bold ${blockingLayoutIssues.length ? "border-red-200 bg-red-50 text-red-700" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
-                  {blockingLayoutIssues.length > 0 ? `${blockingLayoutIssues.length} erro(s)` : `${layoutIssues.length} aviso(s)`}
-                </button>
-              )}
-              {blockingLayoutIssues.length > 0 && (
-                <button
-                  type="button"
-                  onClick={repairArchitecturalLayout}
-                  className="arq-auto-fix inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl border border-orange-200 bg-orange-50 px-3 text-xs font-bold text-orange-700 hover:bg-orange-100"
-                >
-                  <Sparkles className="h-4 w-4" /> Corrigir planta
-                </button>
-              )}
-              {conceptJourneyContinueLabel(journeyIndex, journeyStages) && (
-                <button
-                  type="button"
-                  onClick={() => goToJourneyStage(journeyIndex + 1)}
-                  title="Atalho sugerido; você pode abrir qualquer área do projeto diretamente."
-                  className="arq-journey-continue inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl bg-orange-500 px-4 text-sm font-semibold text-white shadow-sm hover:bg-orange-600"
-                >
-                  Próxima sugestão: {journeyStages[Math.min(journeyIndex + 1, journeyStages.length - 1)]?.label} <ArrowRight className="h-4 w-4" />
-                </button>
-              )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" onClick={undoRooms} disabled={!roomHistory.length} aria-label="Desfazer" title="Desfazer (Ctrl+Z)" className="grid h-10 w-10 place-items-center rounded-lg border disabled:opacity-40"><RotateCcw className="h-4 w-4" /></button>
+                <button type="button" onClick={redoRooms} disabled={!roomFuture.length} aria-label="Refazer" title="Refazer (Ctrl+Shift+Z)" className="grid h-10 w-10 place-items-center rounded-lg border disabled:opacity-40"><RotateCw className="h-4 w-4" /></button>
+                <button type="button" onClick={() => { setEditorLibraryTab("brief"); setEditorView("plan"); setLibraryOpen(true); }} className="min-h-10 rounded-lg border px-3 text-xs font-semibold">Sua ideia / IA</button>
+                {projectScope !== "room" && <button type="button" onClick={() => { setEditorLibraryTab("site"); setEditorView("plan"); setLibraryOpen(true); }} className="min-h-10 rounded-lg border px-3 text-xs font-semibold">{terrainDefined ? "Terreno" : "Adicionar terreno"}</button>}
+                {layoutIssues.length > 0 && <button type="button" onClick={() => setMobileValidationOpen(true)} className="min-h-10 rounded-lg border px-3 text-xs font-semibold">Revisar ({layoutIssues.length})</button>}
+                <button type="button" onClick={() => goToJourneyStage(journeyStages.length - 1)} className="min-h-10 rounded-lg bg-emerald-700 px-3 text-xs font-bold text-white">Apresentar</button>
+              </div>
             </div>
 
             <div
@@ -7749,7 +7323,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             {/* ARQ-UI: a barra horizontal duplicada foi removida.
                 Ferramentas de desenho permanecem no rail/painel contextual, liberando área do canvas. */}
 
-            <div className="arq-workspace-shell relative min-h-[calc(100dvh-112px)] overflow-hidden bg-[#f6f7f8]">
+            <div data-view={editorView} data-library-open={libraryOpen} data-inspector-open={hasEditorSelection && (editorView === "plan" || editorView === "model3d")} data-wide-library={editorLibraryTab === "furniture" || editorLibraryTab === "materials"} className="arq-workspace-shell relative min-h-[calc(100dvh-112px)] overflow-hidden bg-[#f6f7f8]">
               <aside className={editorView !== "plan"
                   ? "arq-workspace-sidebar hidden"
                   : (selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall)
@@ -7759,11 +7333,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   <div className="arq-tool-rail w-14 shrink-0 border-r bg-white py-3 sm:w-16">
                     <div className="flex flex-col items-center gap-2">
                       {([
-                        ["site", Ruler, "Terreno"],
-                        ["brief", FileText, "Necessidades"],
-                        ["models", LayoutGrid, "Modelos"],
+                        ["build", Layers3, "Desenhar"],
                         ["rooms", DoorOpen, "Ambientes"],
-                        ["build", Layers3, "Construir"],
+                        ["models", LayoutGrid, "Modelos"],
+                        ["brief", FileText, "Sua ideia / IA"],
+                        ["site", Ruler, "Terreno"],
                         ["furniture", Sofa, editorExperienceMode === "guided" ? "Mobiliar" : "Produtos"],
                         ["materials", Paintbrush, editorExperienceMode === "guided" ? "Acabamentos" : "Materiais"],
                         ["outdoor", Trees, "Externo"],
@@ -7771,7 +7345,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         .filter(([value]) => {
                           if (terrainOnly) return value === "site";
                           if (projectScope === "room" && (value === "site" || value === "outdoor")) return false;
-                          if (editorExperienceMode === "professional") return value !== "brief";
+                          if (editorExperienceMode === "professional") return true;
                           return true;
                         })
                         .map(([value, Icon, label]) => (
@@ -8026,6 +7600,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       lotWidth={lotWidth}
                       lotDepth={lotDepth}
                       initialProjectBrief={projectBrief}
+                      initialIdea={customerProfile.notes}
                       placement={{
                         frontSide: normalizeSitePlacement(sitePlacement).frontSide,
                         setbacks: resolveSiteSetbacks(normalizeSitePlacement(sitePlacement)),
@@ -9709,19 +9284,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                 </div>
               </div>
 
-              <div className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 flex items-center justify-between rounded-2xl border bg-white/95 p-1.5 shadow-xl backdrop-blur md:hidden">
-                {journeyStages.map((stage, index) => (
-                  <button
-                    key={stage.id}
-                    type="button"
-                    onClick={() => goToJourneyStage(index)}
-                    className={journeyIndex === index
-                      ? "flex min-h-11 flex-1 flex-col items-center justify-center rounded-xl bg-slate-950 px-1 py-1.5 text-[11px] font-bold text-white"
-                      : "flex min-h-11 flex-1 flex-col items-center justify-center rounded-xl px-1 py-1.5 text-[11px] font-semibold text-slate-500"}
-                  >
-                    <span className={index < journeyIndex && journeyIndex !== index ? "text-emerald-600" : ""}>{index < journeyIndex ? "✓" : index + 1}</span>
-                    {stage.label}
-                  </button>
+              <div className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 flex rounded-2xl border bg-white/95 p-1.5 shadow-xl backdrop-blur md:hidden">
+                {([["build", "Desenhar"], ["rooms", "Ambientes"], ["models", "Modelos"], ["brief", "IA"]] as const).map(([tab, label]) => (
+                  <button key={tab} type="button" onClick={() => { setEditorLibraryTab(tab); setEditorView("plan"); setLibraryOpen(true); }} className="min-h-11 flex-1 rounded-xl text-xs font-semibold text-slate-700">{label}</button>
                 ))}
               </div>
 
@@ -11636,6 +11201,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     </div>
   );
 }
+
 
 
 
