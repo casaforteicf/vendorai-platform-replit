@@ -5,6 +5,7 @@ import "./planner5d-reference.css";
 import "./concept-editor-workspace.css";
 import { ConceptIdeaEntry } from "./ConceptIdeaEntry";
 import { ConceptMetricInput } from "./ConceptMetricInput";
+import { wallLengthLimit } from "./conceptWallLengthLimits";
 import {
   ArrowLeft,
   ArrowRight,
@@ -2841,14 +2842,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   useEffect(() => {
     if (!selectedObjectId || (editorView !== "plan" && editorView !== "model3d")) return;
     const handleObjectShortcut = (event: KeyboardEvent) => {
+      if (interactionMode === "draw-wall" || event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
       if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.tagName === "SELECT" || target?.isContentEditable) return;
 
-      if (event.key === "Delete" || event.key === "Backspace") {
-        event.preventDefault();
-        deleteObject(selectedObjectId);
-        return;
-      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
         event.preventDefault();
         duplicateObject(selectedObjectId);
@@ -2861,7 +2858,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     };
     window.addEventListener("keydown", handleObjectShortcut);
     return () => window.removeEventListener("keydown", handleObjectShortcut);
-  }, [editorView, selectedObjectId]);
+  }, [editorView, selectedObjectId, interactionMode]);
 
   const armPaintTool = (
     target: "object" | "wall" | "floor",
@@ -3663,7 +3660,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const openingMinimum = safeCustomOpenings
       .filter((opening) => opening.wallId === wallId)
       .reduce((max, opening) => Math.max(max, (opening.width ?? (opening.type === "door" ? 0.9 : 1.2)) + 0.1), 0.5);
-    const length = Math.max(openingMinimum, Math.min(Math.hypot(lotWidth, lotDepth), rawLength));
+    if (rawLength < openingMinimum || rawLength > wallLengthLimit(wall, lotWidth, lotDepth)) return;
+    const length = rawLength;
     const dx = wall.x2 - wall.x1;
     const dy = wall.y2 - wall.y1;
     const currentLength = Math.hypot(dx, dy);
@@ -3805,14 +3803,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   useEffect(() => {
     if (!selectedCustomWallId || editorView !== "plan") return;
     const handleWallShortcut = (event: KeyboardEvent) => {
+      if (interactionMode === "draw-wall" || event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
       if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.tagName === "SELECT" || target?.isContentEditable) return;
 
-      if (event.key === "Delete" || event.key === "Backspace") {
-        event.preventDefault();
-        deleteCustomWall(selectedCustomWallId);
-        return;
-      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
         event.preventDefault();
         duplicateCustomWall(selectedCustomWallId);
@@ -3820,7 +3814,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     };
     window.addEventListener("keydown", handleWallShortcut);
     return () => window.removeEventListener("keydown", handleWallShortcut);
-  }, [editorView, selectedCustomWallId]);
+  }, [editorView, selectedCustomWallId, interactionMode]);
 
   const visibleLibraryMaterials = useMemo(() => {
     const query = furnitureSearch.trim().toLocaleLowerCase("pt-BR");
@@ -4686,13 +4680,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   useEffect(() => {
     if (!selectedCustomOpening || editorView !== "plan") return;
     const handleOpeningShortcut = (event: KeyboardEvent) => {
+      if (interactionMode === "draw-wall" || event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
       if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.tagName === "SELECT" || target?.isContentEditable) return;
-      if (event.key === "Delete" || event.key === "Backspace") {
-        event.preventDefault();
-        deleteCustomOpening(selectedCustomOpening.id);
-        return;
-      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
         event.preventDefault();
         duplicateCustomOpening(selectedCustomOpening.id);
@@ -4700,7 +4690,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     };
     window.addEventListener("keydown", handleOpeningShortcut);
     return () => window.removeEventListener("keydown", handleOpeningShortcut);
-  }, [editorView, selectedCustomOpening?.id]);
+  }, [editorView, selectedCustomOpening?.id, interactionMode]);
 
   const setSelectedWallMaterial = (materialId: string) => {
     const wallId = selectedCustomWall?.id ?? selectedWall?.id;
@@ -6147,7 +6137,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     if (step !== WORKSPACE_STEP) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (projectMaster) return;
+      if (projectMaster || event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
       const tag = target?.tagName?.toLowerCase();
       const editingText =
@@ -6180,7 +6170,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         return;
       }
 
-      if ((event.key === "Delete" || event.key === "Backspace") && !editingText) {
+      if ((event.key === "Delete" || event.key === "Backspace") && !editingText && interactionMode !== "draw-wall") {
         if (selectedObject) {
           event.preventDefault();
           deleteObject(selectedObject.id);
@@ -6209,6 +6199,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     roomHistory.length,
     roomFuture.length,
     projectMaster,
+    interactionMode,
   ]);
 
   return (
@@ -9454,16 +9445,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     </div>
                     <label className="text-[10px] font-semibold text-slate-500">
                       Comprimento (m)
-                      <input
-                        key={`${selectedCustomWall.id}-${selectedCustomWall.x1}-${selectedCustomWall.y1}-${selectedCustomWall.x2}-${selectedCustomWall.y2}`}
-                        type="number"
-                        min="0.5"
-                        step="0.01"
-                        defaultValue={Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1).toFixed(2)}
-                        onBlur={(event) => setCustomWallLength(selectedCustomWall.id, Number(event.currentTarget.value))}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") event.currentTarget.blur();
-                        }}
+                      <ConceptMetricInput
+                        selectionId={selectedCustomWall.id}
+                        min={safeCustomOpenings.filter((opening) => opening.wallId === selectedCustomWall.id).reduce((min, opening) => Math.max(min, (opening.width ?? (opening.type === "door" ? 0.9 : 1.2)) + 0.1), 0.5)}
+                        max={wallLengthLimit(selectedCustomWall, lotWidth, lotDepth)}
+                        value={Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1)}
+                        onCommit={(value) => setCustomWallLength(selectedCustomWall.id, value)}
                         className="mt-1 h-9 w-[105px] rounded-lg border px-2 text-xs font-semibold"
                       />
                     </label>
