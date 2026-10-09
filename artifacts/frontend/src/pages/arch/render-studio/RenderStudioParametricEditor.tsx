@@ -46,6 +46,30 @@ function iso(x: number, y: number, z = 0): Point {
   return [190 + (x - y) * 28, 265 - (x + y) * 12 - z * 34];
 }
 
+type WallPreview = { faces: Point[][]; voids: Point[][] };
+function wallPreview(wall: Wall): WallPreview {
+  const size = length(wall);
+  const valid = size > .1 && validation(wall).length === 0;
+  if (!valid) return { faces: [], voids: [] };
+  const xs = [...new Set([0, size, ...wall.openings.flatMap(o => [o.offset, o.offset + o.width])])].sort((a, b) => a - b);
+  const zs = [...new Set([0, wall.height, ...wall.openings.flatMap(o => [o.sill, o.sill + o.height])])].sort((a, b) => a - b);
+  const cell = (x: number, z: number) => wall.openings.some(o =>
+    x > o.offset && x < o.offset + o.width && z > o.sill && z < o.sill + o.height);
+  const world = (offset: number, z: number): Point => {
+    const p = segment(wall, offset); return iso(p[0], p[1], z);
+  };
+  const faces: Point[][] = [];
+  for (let i = 0; i < xs.length - 1; i++) for (let j = 0; j < zs.length - 1; j++) {
+    if (cell((xs[i] + xs[i + 1]) / 2, (zs[j] + zs[j + 1]) / 2)) continue;
+    faces.push([world(xs[i], zs[j]), world(xs[i + 1], zs[j]),
+      world(xs[i + 1], zs[j + 1]), world(xs[i], zs[j + 1])]);
+  }
+  return { faces, voids: wall.openings.map(o => [
+    world(o.offset, o.sill), world(o.offset + o.width, o.sill),
+    world(o.offset + o.width, o.sill + o.height), world(o.offset, o.sill + o.height),
+  ]) };
+}
+
 export default function RenderStudioParametricEditor({ url, modelId, modelSha256 }: { url: string; modelId: string; modelSha256: string }) {
   const [walls, setWalls] = useState<Wall[]>(initial);
   const [storedRevision, setStoredRevision] = useState(0);
@@ -149,17 +173,14 @@ export default function RenderStudioParametricEditor({ url, modelId, modelSha256
       </div>
       <div className="rounded border p-2"><p className="text-sm font-medium">Prévia 3D — mesma geometria</p>
         <svg viewBox="0 0 430 330" role="img" aria-label="Projeção 3D sincronizada" className="w-full">
-          {walls.filter(w => length(w) >= .1).map(wall => {
-            const a = wall.start, b = wall.end, h = wall.height, points = [iso(...a), iso(...b), iso(b[0], b[1], h), iso(a[0], a[1], h)];
-            return <g key={wall.id}><polygon points={points.map(p => p.join(",")).join(" ")}
-              fill={active === wall.id ? "#86efac" : "#cbd5e1"} fillOpacity=".6" stroke="#334155" />
-              {wall.openings.map(o => {
-                const p = segment(wall, o.offset), q = segment(wall, o.offset + o.width);
-                const window = [iso(p[0], p[1], o.sill), iso(q[0], q[1], o.sill),
-                  iso(q[0], q[1], o.sill + o.height), iso(p[0], p[1], o.sill + o.height)];
-                return <polygon key={o.id} points={window.map(v => v.join(",")).join(" ")}
-                  fill="white" stroke={o.kind === "door" ? "#2563eb" : "#d97706"} strokeWidth="2" />;
-              })}</g>;
+          {walls.map(wall => {
+            const preview = wallPreview(wall);
+            return <g key={wall.id}>
+              {preview.faces.map((face, index) => <polygon key={index} points={face.map(p => p.join(",")).join(" ")}
+                fill={active === wall.id ? "#86efac" : "#cbd5e1"} fillOpacity=".7" stroke="#334155" strokeWidth=".6" />)}
+              {preview.voids.map((quad, index) => <polygon key={index} points={quad.map(p => p.join(",")).join(" ")}
+                fill="none" stroke="#f59e0b" strokeWidth="2" strokeDasharray="3 2" />)}
+            </g>;
           })}
         </svg>
       </div>
