@@ -49,21 +49,16 @@ type LifecycleItem = {
 };
 
 const LIFECYCLE: LifecycleItem[] = [
-  { id: "project", icon: "🏗️", label: "Projeto", description: "Briefing, programa, dados do cliente e organização do projeto.", module: "projeto", group: "projeto" },
-  { id: "render", icon: "✨", label: "Arquitetura & Render", description: "Ambientes, renderização, versões e melhoria visual.", module: "renders", group: "projeto" },
-  { id: "gallery", icon: "🖼️", label: "Histórico de Renders", description: "Galeria real, versões, comparação e rastreabilidade.", module: "real-render-gallery", group: "projeto" },
-  { id: "materials", icon: "🧱", label: "Materiais & Memorial", description: "Materiais, objetos, especificações e catálogo do projeto.", module: "real-specification", group: "projeto" },
-  { id: "documents", icon: "📄", label: "Documentação", description: "Especificações, memoriais e documentação técnica do projeto.", module: "especificacao", group: "projeto" },
-  { id: "library", icon: "📚", label: "Biblioteca da Empresa", description: "Materiais, produtos, componentes e conhecimento reutilizável.", module: "biblioteca", group: "projeto" },
+  { id: "project", icon: "🏗️", label: "Projeto", description: "Crie ou importe o pré-projeto. A especificação técnica não é obrigatória para concluir esta etapa.", module: "projeto", group: "projeto" },
+  { id: "render", icon: "✨", label: "Visualizar & Renderizar", description: "Gere fachadas, ambientes e renders sem bloquear a conclusão do projeto.", module: "renders", group: "projeto" },
+  { id: "specify", icon: "📋", label: "Especificar", description: "Opcional. Defina sistemas, materiais, tecnologias e acabamentos quando quiser aprofundar o projeto.", module: "real-specification", group: "projeto", badge: "OPCIONAL" },
+  { id: "quantity", icon: "📐", label: "Quantificar", description: "Gere quantitativos geométricos imediatamente e aprofunde-os quando houver especificações técnicas.", module: "real-budget", group: "projeto" },
+  { id: "budget", icon: "💰", label: "Orçar", description: "Crie orçamento preliminar pela geometria ou orçamento detalhado usando sistemas e composições.", module: "real-budget", group: "obra", badge: "REAL" },
+  { id: "marketplace", icon: "🤝", label: "Contratar / Cotar", description: "Envie o projeto ou pacotes para arquitetos, engenheiros, construtoras, empreiteiros e fornecedores dentro do sistema.", module: "compras", group: "obra", badge: "REDE" },
+  { id: "purchases", icon: "🛒", label: "Compras & Cotações", description: "Compare retornos de materiais, serviços, esquadrias, móveis e demais fornecedores.", module: "compras", group: "obra" },
+  { id: "execution", icon: "⚙️", label: "Enviar para Execução", description: "Transforme o que foi contratado em atividades, medições, consumo, custo e produtividade.", module: "execution", group: "obra" },
 
-  { id: "budget", icon: "💰", label: "Orçamento", description: "Orçamento real, quantitativos, custos e composição do projeto.", module: "real-budget", group: "obra", badge: "REAL" },
-  { id: "planning", icon: "📅", label: "Planejamento", description: "Cronograma físico, financeiro, etapas e acompanhamento da execução.", module: "construction", group: "obra" },
-  { id: "site", icon: "🦺", label: "Obra", description: "Diário, equipes, medições, checklists, fotos e não conformidades.", module: "construction", group: "obra", badge: "HUB" },
-  { id: "execution", icon: "⚙️", label: "Produção & Execução", description: "Ordens de trabalho, instalação, qualidade e timeline.", module: "execution", group: "obra" },
-  { id: "purchases", icon: "🛒", label: "Compras", description: "Pedidos, fornecedores, cotações e abastecimento da obra.", module: "compras", group: "obra" },
-  { id: "finance", icon: "📊", label: "Financeiro da Obra", description: "Previsto x realizado, fluxo financeiro e consumo do orçamento.", module: "construction", group: "obra" },
-
-  { id: "approval", icon: "✅", label: "Aprovações do Cliente", description: "Proposta, materiais, versões e decisões com rastreabilidade.", module: "client-portal-approval", group: "cliente" },
+  { id: "approval", icon: "✅", label: "Aprovações do Cliente", description: "Compartilhe proposta, materiais, versões e decisões com rastreabilidade.", module: "client-portal-approval", group: "cliente" },
   { id: "post-sale", icon: "🔑", label: "Entrega & Pós-obra", description: "Entrega, documentação final, satisfação, garantias e pós-venda.", module: "post-sale", group: "cliente" },
 ];
 
@@ -217,8 +212,8 @@ export default function ProjectHomeV2({ arqState, onNavigate }: ProjectHomeV2Pro
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-violet-600">ARQDOR.ai</p>
-              <h1 className="mt-1 text-3xl font-semibold tracking-tight">Projeto + Construção</h1>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">Um único projeto conecta arquitetura, renders, materiais, orçamento, planejamento, obra, compras, financeiro, aprovações, entrega e pós-obra.</p>
+              <h1 className="mt-1 text-3xl font-semibold tracking-tight">Pré-Projeto simples. Evolução técnica quando você quiser.</h1>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">Primeiro conclua o projeto. Depois, opcionalmente, especifique, gere quantitativos, orce, envie para cotação e siga para execução sem recriar informações.</p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
               <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar projeto ou cliente..." className="h-11 min-w-[280px] rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-violet-300 focus:ring-4 focus:ring-violet-100" />
@@ -245,10 +240,15 @@ export default function ProjectHomeV2({ arqState, onNavigate }: ProjectHomeV2Pro
                 <div className="rounded-2xl bg-white/10 p-4"><p className="text-xs text-slate-400">Renders</p><p className="mt-1 text-lg font-semibold">{activeProject?.totalRenders || activeProject?.renders?.length || 0}</p></div>
               </div>
 
-              <div className="mt-7 flex flex-wrap gap-3">
-                <button type="button" onClick={() => onNavigate?.(activeProject ? "renders" : "projeto")} className="rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-violet-100">{activeProject ? "Continuar projeto" : "Criar projeto"}</button>
-                <button type="button" onClick={() => onNavigate?.("construction")} className="rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-white hover:bg-white/15">Abrir obra</button>
-                <button type="button" onClick={() => onNavigate?.("real-budget")} className="rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-white hover:bg-white/15">Ver orçamento</button>
+              <div className="mt-7">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Depois que o projeto estiver pronto</p>
+                <div className="flex flex-wrap gap-3">
+                  <button type="button" onClick={() => onNavigate?.(activeProject ? "projeto" : "projeto")} className="rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-violet-100">{activeProject ? "Continuar projeto" : "Criar projeto"}</button>
+                  <button type="button" onClick={() => onNavigate?.("real-specification")} className="rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-white hover:bg-white/15">Especificar</button>
+                  <button type="button" onClick={() => onNavigate?.("real-budget")} className="rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-white hover:bg-white/15">Quantificar</button>
+                  <button type="button" onClick={() => onNavigate?.("real-budget")} className="rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-white hover:bg-white/15">Orçar</button>
+                  <button type="button" onClick={() => onNavigate?.("compras")} className="rounded-2xl border border-violet-300/30 bg-violet-500/20 px-5 py-3 text-sm font-semibold text-violet-100 hover:bg-violet-500/30">Contratar / Cotar</button>
+                </div>
               </div>
             </div>
             <div className="min-h-[300px] bg-slate-900">
@@ -259,9 +259,9 @@ export default function ProjectHomeV2({ arqState, onNavigate }: ProjectHomeV2Pro
 
         <div className="grid gap-6 2xl:grid-cols-[1fr_350px]">
           <main className="space-y-6">
-            <Group title="1. Projeto & Arquitetura" subtitle="Do briefing ao projeto especificado, sem perder materiais, versões e decisões." items={projectModules} onNavigate={onNavigate} />
-            <Group title="2. Planejamento & Construção" subtitle="Orçamento vira planejamento, compras, ordens, execução, medições e controle financeiro." items={siteModules} onNavigate={onNavigate} />
-            <Group title="3. Cliente, Entrega & Pós-obra" subtitle="Aprovações e decisões ficam registradas até a entrega, garantias e pós-venda." items={clientModules} onNavigate={onNavigate} />
+            <Group title="1. Pré-Projeto" subtitle="Conclua a arquitetura primeiro. Especificação é opcional e pode ser feita depois, sem travar o projeto." items={projectModules} onNavigate={onNavigate} />
+            <Group title="2. Quantificar, Orçar e Contratar" subtitle="Use a geometria para quantificar, aprofunde quando houver especificação e envie pacotes para cotação dentro da rede Vendor.ai." items={siteModules} onNavigate={onNavigate} />
+            <Group title="3. Cliente, Execução e Pós-obra" subtitle="Aprovações, contratação, execução e entrega continuam vinculadas ao mesmo projeto e aos mesmos elementos." items={clientModules} onNavigate={onNavigate} />
 
             <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -275,9 +275,9 @@ export default function ProjectHomeV2({ arqState, onNavigate }: ProjectHomeV2Pro
           <aside className="space-y-5">
             <section className="rounded-[30px] border border-violet-100 bg-white p-5 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Fluxo integrado</p>
-              <h3 className="mt-1 text-lg font-semibold">Projeto → Obra → Entrega</h3>
+              <h3 className="mt-1 text-lg font-semibold">Projeto → Decisão → Execução</h3>
               <div className="mt-5 space-y-4">
-                {["Projeto e ambientes", "Renders e materiais", "Orçamento", "Planejamento", "Obra e medições", "Compras e financeiro", "Aprovações", "Entrega e pós-obra"].map((label, index) => (
+                {["Projeto concluído", "Especificar (opcional)", "Quantificar", "Orçar", "Contratar / Cotar", "Comparar propostas", "Executar", "Entrega e pós-obra"].map((label, index) => (
                   <div key={label} className="flex items-center gap-3"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-50 text-xs font-bold text-violet-700">{index + 1}</span><span className="text-sm font-medium text-slate-700">{label}</span></div>
                 ))}
               </div>
