@@ -473,6 +473,21 @@ class FeatureContractsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_professional_render_job({"mode": "video", "keyframes": []})
 
+    def test_parametric_floor_plan_tracks_wall_and_opening_in_2d(self):
+        wall = {"start": [0, 0, 0], "end": [4, 0, 0],
+                "thickness": 0.2, "height": 3}
+        opening = {"kind": "window", "offset": 1, "width": 1,
+                   "sill": 1, "height": 1.2}
+        plan = draft_parametric_floor_plan([{"wall": wall, "openings": [opening]}])
+        self.assertEqual(plan["walls"][0]["outline"],
+                         [[0, 0.1], [4, 0.1], [4, -0.1], [0, -0.1]])
+        self.assertEqual(plan["walls"][0]["openingGuides"][0]["segment"],
+                         [[1.0, 0.0], [2.0, 0.0]])
+        self.assertFalse(plan["openingVoidsApplied"])
+        self.assertFalse(plan["geometryApproved"])
+        with self.assertRaises(ValueError):
+            draft_parametric_floor_plan([{"wall": wall, "openings": [{**opening, "offset": 4}]}])
+
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
         self.assertFalse(data["quantitiesEnabled"])
