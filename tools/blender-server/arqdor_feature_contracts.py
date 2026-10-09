@@ -292,9 +292,13 @@ def draft_opening_schedule(objects, calibrated_scale=None):
     output = []
     for relation in relations:
         elements = by_name.get(relation["opening"], [])
+        # A name-only schedule must never merge distinct mesh instances.
+        # Duplicates are explicitly withheld from measurements until reviewed.
         if len(elements) != 1:
             output.append({**relation, "measurementStatus": "ambiguous_object_name",
-                           "dimensionsMeters": None, "approved": False})
+                           "objectCountWithName": len(elements),
+                           "dimensionsMeters": None, "scaleCalibrated": False,
+                           "approved": False, "fabricationReady": False})
             continue
         box = elements[0]["bounds"]
         lo, hi = box["min"], box["max"]
