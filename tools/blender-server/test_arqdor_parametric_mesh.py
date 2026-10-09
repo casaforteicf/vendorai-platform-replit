@@ -1,5 +1,5 @@
 import unittest
-from arqdor_parametric_mesh import mesh_parametric_wall, mesh_parametric_project, inspect_mesh_edges
+from arqdor_parametric_mesh import mesh_parametric_wall, mesh_parametric_project, inspect_mesh_edges, merge_collinear_end_to_end_walls
 
 
 class ParametricMeshTests(unittest.TestCase):
@@ -15,6 +15,28 @@ class ParametricMeshTests(unittest.TestCase):
         self.assertFalse(report["watertightByEdgeIncidence"])
         with self.assertRaises(ValueError):
             inspect_mesh_edges({"vertices": triangle["vertices"], "faces": [[0, 1, 5]]})
+
+    def test_collinear_join_preserves_shifted_openings(self):
+        a = {"wall": {"start": [0, 0, 0], "end": [3, 0, 0],
+                      "thickness": .15, "height": 3},
+             "openings": [{"kind": "door", "offset": .5, "width": 1, "sill": 0, "height": 2.1}]}
+        b = {"wall": {"start": [3, 0, 0], "end": [6, 0, 0],
+                      "thickness": .15, "height": 3},
+             "openings": [{"kind": "window", "offset": 1, "width": 1, "sill": 1, "height": 1}]}
+        joined = merge_collinear_end_to_end_walls([a, b])
+        self.assertEqual(len(joined["walls"]), 1)
+        self.assertEqual(joined["walls"][0]["wall"]["end"], [6, 0, 0])
+        self.assertEqual(joined["walls"][0]["openings"][1]["offset"], 4)
+        self.assertFalse(joined["geometryApproved"])
+
+    def test_noncollinear_and_incompatible_walls_are_not_merged(self):
+        a = {"wall": self.wall}
+        perpendicular = {"wall": {"start": [4, 0, 0], "end": [4, 3, 0],
+                                  "thickness": .2, "height": 3}}
+        different_thickness = {"wall": {"start": [4, 0, 0], "end": [6, 0, 0],
+                                       "thickness": .3, "height": 3}}
+        self.assertEqual(len(merge_collinear_end_to_end_walls([a, perpendicular])["walls"]), 2)
+        self.assertEqual(len(merge_collinear_end_to_end_walls([a, different_thickness])["walls"]), 2)
 
     def test_single_wall_has_faces_and_no_automatic_approval(self):
         mesh = mesh_parametric_wall(self.wall)
