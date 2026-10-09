@@ -566,8 +566,14 @@ def create_opening_review_queue(schedule, source_sha256, project_version):
             raise ValueError("Identidade de objeto ausente, divergente ou duplicada")
         seen.add(key)
         status = entry.get("measurementStatus")
-        conflict = (status != "aabb_estimate_requires_review"
-                    or entry.get("hostRelationStatus") != "single_spatial_candidate")
+        reasons = []
+        if status != "aabb_estimate_requires_review":
+            reasons.append("ambiguous_or_missing_measurement")
+        if entry.get("hostRelationStatus") != "single_spatial_candidate":
+            reasons.append("unresolved_wall_host")
+        if entry.get("dimensionsMeters") is None:
+            reasons.append("uncalibrated_or_missing_dimensions")
+        conflict = bool(reasons)
         rows.append({
             "reviewKey": f"{project_version}:{key}",
             "projectVersion": project_version,
@@ -577,6 +583,7 @@ def create_opening_review_queue(schedule, source_sha256, project_version):
             "name": entry.get("opening"),
             "kind": entry.get("type"),
             "conflict": conflict,
+            "conflictReasons": reasons,
             "reviewStatus": "needs_manual_review",
             "estimatedDimensionsMeters": entry.get("dimensionsMeters"),
             "geometryApproved": False,
