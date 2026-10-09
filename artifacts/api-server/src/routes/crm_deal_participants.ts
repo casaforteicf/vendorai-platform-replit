@@ -495,6 +495,7 @@ router.delete("/crm/deals/:dealId/people/:relationId", async (req, res) => {
       eq(crmDealPeopleTable.dealId, req.params.dealId),
     )).limit(1);
     if (!relation) return res.status(404).json({ error: "Vínculo não encontrado." });
+    if (relation.metadata?.inactive === true) return res.status(204).end();
     await db.update(crmDealPeopleTable).set({
       isPrimary: false,
       metadata: appendRelationshipEvent(relation.metadata, "unlinked", req.user?.id),
@@ -514,6 +515,7 @@ router.delete("/crm/deals/:dealId/companies/:relationId", async (req, res) => {
       eq(crmDealCompaniesTable.dealId, req.params.dealId),
     )).limit(1);
     if (!relation) return res.status(404).json({ error: "Vínculo não encontrado." });
+    if (relation.metadata?.inactive === true) return res.status(204).end();
     await db.update(crmDealCompaniesTable).set({
       isPrimary: false,
       metadata: appendRelationshipEvent(relation.metadata, "unlinked", req.user?.id),
