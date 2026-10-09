@@ -280,3 +280,14 @@ conversores, build TypeScript e UI isolada antes de integrar.
 - **Proteções:** o relatório é leitura privada e não permite aprovar fabricação, geometria nem quantitativos; GLB nativo sem relatório de conversão retorna 404, comunicado na tela. Conversão OBJ/FBX permanece desabilitada por padrão.
 - **Limites:** a ligação SHA original→GLB foi escrita, mas não verificada em execução real; criação/persistência autorizada de decisões, destaque no visualizador 3D, calibração técnica e controle granular por usuário ainda pendentes.
 - **Validação:** sem execução de testes, build ou Blender nesta sessão; não afirmar aprovação técnica. Homologação Contabo e publicação adiadas por decisão do usuário; nenhum merge/deploy em produção.
+
+
+## Integração da revisão com câmera 3D — 09/10/2026
+- **Lote / versão:** ARQDOR-RENDER-BIM-3422 / desenvolvimento sem release.
+- **Melhoria implementada:** ação `Localizar no 3D por nome` nas linhas do relatório de esquadrias. O diálogo de modelos propaga o nome selecionado ao GLB Viewer, que enquadra a câmera quando encontrar **exatamente uma** malha com esse nome no GLB. Sem malha ou com nomes repetidos: não adivinha a correspondência nem modifica a geometria; informa a necessidade de conferência manual.
+- **Commits:** `8dd22e2`, `bcb7cc9`, `c204198`.
+- **Arquivos:** `artifacts/frontend/src/pages/arch/render-studio/RenderStudioGlbViewer.tsx`, `RenderStudioOpeningReview.tsx`, `RenderStudioModels.tsx` e Registro Mestre.
+- **Limites explícitos:** nomes da malha convertida podem variar do nome no OBJ/FBX; não se equiparam IDs locais Blender e IDs GLB. A ação faz foco por nome único, não destaque certificado da esquadria e não libera fabricação/quantitativos. Se a câmera do viewer ainda não estiver carregada, o foco não é garantido nesta versão.
+- **Validação:** commits gravados no PR #3422, sem teste/build/visualização real executados nesta atualização. Não homologado; não aprovado; produção inalterada.
+- **Decisão vigente:** homologação Contabo, acesso Vendi e publicação adiados. PR #3422 continua Draft, sem merge ou deploy.
+- **Próximo avanço independente:** identidade de nós GLB gravada no relatório durante conversão, evitando dependência de nomes, e cobertura de testes do fluxo frontend/API.
