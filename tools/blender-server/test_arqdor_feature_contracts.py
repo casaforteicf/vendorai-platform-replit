@@ -292,6 +292,22 @@ class FeatureContractsTests(unittest.TestCase):
         self.assertEqual(review[0]["sourceObjectKey"], window["sourceObjectKey"])
         self.assertFalse(review[0]["openingConfirmed"])
 
+    def test_identical_mesh_ids_from_two_sources_do_not_merge(self):
+        a, b = "ab" * 32, "cd" * 32
+        wall = {"name": "Parede", "objectId": "mesh-000000", "suggestedClass": "wall",
+                "bounds": {"min": [0, 0, 0], "max": [5, .2, 3]}}
+        first = {"name": "Janela", "objectId": "mesh-000001",
+                 "sourceObjectKey": f"{a}:mesh-000001", "suggestedClass": "window",
+                 "bounds": {"min": [1, 0, 1], "max": [2, .2, 2]}}
+        second = {"name": "Janela", "objectId": "mesh-000001",
+                  "sourceObjectKey": f"{b}:mesh-000001", "suggestedClass": "window",
+                  "bounds": {"min": [2, 0, 1], "max": [4, .2, 2]}}
+        rows = draft_opening_schedule([wall, first, second], calibrated_scale=1)
+        self.assertEqual([r["sourceObjectKey"] for r in rows],
+                         [first["sourceObjectKey"], second["sourceObjectKey"]])
+        self.assertEqual([r["dimensionsMeters"]["approxWidth"] for r in rows], [1, 2])
+        self.assertTrue(all(not r["fabricationReady"] for r in rows))
+
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
         self.assertFalse(data["quantitiesEnabled"])
