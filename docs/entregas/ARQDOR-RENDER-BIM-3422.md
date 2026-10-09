@@ -218,3 +218,16 @@ conversores, build TypeScript e UI isolada antes de integrar.
 - **Coordenação:** antes deste lote, o PR #3422 apontava para `9bd158a15ef996d29786ea8aa03356dc4d68e629`, HEAD diferente do último registrado na conversa; as alterações foram feitas sobre a branch atual, preservando intervenções existentes.
 - **Estado:** implementado sem validação técnica, não homologado, não aprovado e não publicado. Homologação Contabo/Vendi e publicação continuam adiadas por orientação do usuário. PR permanece Draft.
 - **Próximo desenvolvimento independente:** UI de revisão filtrável, vínculo de achados a objeto/versão e mecanismos explícitos de conferência manual, sem liberar produção.
+
+
+## Marco — contrato de decisões manuais auditáveis (09/10/2026)
+- **Lote/versão:** ARQDOR-RENDER-BIM-3422 / desenvolvimento sem release.
+- **Objetivo:** preparar eventos de decisão sobre candidatos de esquadrias, vinculados à versão, origem, objeto, responsável, justificativa e horário UTC.
+- **Implementado:** `record_opening_review_decision` produz evento imutável proposto em memória; exige chave de revisão única, responsável, motivo e timestamp. Decisões permitidas: encaminhar à revisão detalhada, rejeitar candidato ou pedir informações. Não existe comando para aprovar fabricação nessa função.
+- **Escopo não concluído:** autenticação/autorização do revisor, gravação persistente e interface da fila. `persisted=false` e `requiresAuthorizedAuditStore=true` identificam a limitação.
+- **Commits:** `65edeaa` (contrato), `84cb109` (testes para decisão válida e recusas).
+- **Arquivos alterados:** `tools/blender-server/arqdor_feature_contracts.py`, `tools/blender-server/test_arqdor_feature_contracts.py` e este registro.
+- **Validação:** testes adicionados, não executados nesta atualização; sem build/homologação Contabo.
+- **Estados:** implementado sem validação técnica integral, não homologado, não aprovado, não publicado. PR #3422 permanece Draft; produção inalterada.
+- **Decisão vigente:** homologação Contabo, acesso Vendi e publicação permanecem adiados a pedido do usuário.
+- **Próxima tarefa independente:** avançar no contrato de histórico ordenado e na preparação do componente visual de revisão, com controles de autorização antes de permitir persistência de decisões.
