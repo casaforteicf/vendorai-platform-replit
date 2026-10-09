@@ -469,3 +469,11 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Commits:** `55fd063` (diagnóstico no resultado) e `d26a87b` (assertivas).
 - **Critério de aceite:** **não satisfeito ainda**. Testes escritos mas não executados nesta sessão; build TypeScript, testes visuais e verificação com projetos reais continuam pendentes. `meshClosedByEdgeIncidence` é um diagnóstico limitado, não aprovação BIM nem garantia de volume manifold global.
 - **Estado:** PR #3422 Draft; homologação Contabo adiada, sem merge/deploy; produção inalterada.
+
+
+## Lote 3422-A — classificação de integridade e verificações de volume (09/10/2026)
+- **Implementação:** `union_orthogonal_walls` retorna `integrityStatus` a partir do resultado de `inspect_mesh_edges`: `requires_geometric_repair` quando a superfície tem bordas/arestas/orientação problemáticas, ou `closed_by_edge_incidence_unreviewed` para fechamento preliminar, sem aprovação de fabricação.
+- **Regressões:** estados de integridade/fechamento e componentes desconectados checados na suíte `test_arqdor_orthogonal_union.py`. Não afirmar que objetos desconectados formem um volume único conexo só por todas as arestas serem incididas.
+- **Commits:** `3d0932e` (classificação), `ee94dc2` (testes), `8e0a61d` (nomenclatura correta da regressão).
+- **Execução:** conexão local a raw.githubusercontent.com permanece indisponível por DNS. O conector GitHub possibilitou leitura e commits, mas não forneceu checkout ao runtime local para executar o código; testes/build não executados neste lote. Não há homologação nem validação topológica real.
+- **Estado:** lote 3422-A ainda em estabilização e parcial; PR #3422 Draft; produção, Contabo e release inalterados.
