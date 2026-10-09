@@ -38,7 +38,7 @@ docker exec "$MCP" chmod 600 "$CFG/id_ed25519"
 GW=$(docker exec "$MCP" node -e 'const fs=require("fs");const lines=fs.readFileSync("/proc/net/route","utf8").trim().split("\n").slice(1);const row=lines.map(x=>x.trim().split(/\s+/)).find(x=>x[1]==="00000000");if(!row)process.exit(1);const h=row[2];console.log([6,4,2,0].map(i=>parseInt(h.slice(i,i+2),16)).join("."))')
 [[ "$GW" =~ ^[0-9.]+$ ]] || exit 1
 printf '%s\n' "$GW" > "$BACK/host"
-printf '[%s]:22 ' "$GW" > "$BACK/known_hosts"
+printf '%s ' "$GW" > "$BACK/known_hosts"
 cat /etc/ssh/ssh_host_ed25519_key.pub >> "$BACK/known_hosts"
 docker cp "$BACK/host" "$MCP":$CFG/host >/dev/null
 docker cp "$BACK/known_hosts" "$MCP":$CFG/known_hosts >/dev/null
