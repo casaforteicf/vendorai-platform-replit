@@ -129,6 +129,21 @@ router.get(`${prefix}/:modelId/file`, async (req, res, next) => {
   }
 });
 
+router.get(`${prefix}/:modelId/conversion-report`, async (req, res, next) => {
+  const storage = store();
+  if (!storage) return res.status(503).json({ error: "Armazenamento privado indisponível" });
+  try {
+    const { tenantId, projectId } = res.locals.modelScope;
+    const report = await storage.conversionReport(tenantId, projectId, safeSegment(String(req.params.modelId)));
+    res.set({ "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" });
+    return res.json(report);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT")
+      return res.status(404).json({ error: "Não há relatório de conversão para este modelo" });
+    next(error);
+  }
+});
+
 router.get(`${prefix}/:modelId/calibrations`, async (req, res, next) => {
   const storage = store();
   if (!storage) return res.status(503).json({ error: "Armazenamento privado indisponível" });
