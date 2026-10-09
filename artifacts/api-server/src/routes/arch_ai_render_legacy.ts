@@ -1274,7 +1274,6 @@ export async function processRenderJob(params: RenderJobParams): Promise<void> {
       resultB64 = generated.base64;
 
       const generatedBuf  = Buffer.from(resultB64, "base64");
-      source !== "scene_photo" &&
       const compositedBuf = await compositeWithOriginal(generatedBuf, originalBuf, maskBuf);
       resultB64 = compositedBuf.toString("base64");
       compositedFlag = true;

@@ -1615,12 +1615,12 @@ router.get("/tenants/:tenantId/work-cards", async (req, res) => {
   const leadIds = [...new Set(cards.map((card) => card.leadId).filter((id): id is string => Boolean(id)))];
   const userIds = [...new Set(cards.map((card) => card.responsavelId).filter((id): id is string => Boolean(id)))];
   const dealIds = [...new Set(cards.map((card) => card.dealId).filter((id): id is string => Boolean(id)))];
-  const [leadRows, userRows, dealRows] = await Promise.all([
+  const [labelLeadRows, userRows, dealRows] = await Promise.all([
     leadIds.length ? db.select({ id: leadsTable.id, nome: leadsTable.nome, empresa: leadsTable.empresa }).from(leadsTable).where(inArray(leadsTable.id, leadIds)) : Promise.resolve([]),
     userIds.length ? db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email }).from(usersTable).where(inArray(usersTable.id, userIds)) : Promise.resolve([]),
     dealIds.length ? db.select({ id: dealsTable.id, titulo: dealsTable.titulo }).from(dealsTable).where(inArray(dealsTable.id, dealIds)) : Promise.resolve([]),
   ]);
-  const leadLabels = new Map(leadRows.map((lead) => [lead.id, lead.nome || lead.empresa || "Cliente"]));
+  const leadLabels = new Map(labelLeadRows.map((lead) => [lead.id, lead.nome || lead.empresa || "Cliente"]));
   const userLabels = new Map(userRows.map((user) => [user.id, user.name || user.email || "Responsável"]));
   const dealLabels = new Map(dealRows.map((deal) => [deal.id, deal.titulo]));
 

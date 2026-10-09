@@ -30,12 +30,6 @@ function validateOnly(): boolean {
   return process.env["GOOGLE_DATA_MANAGER_VALIDATE_ONLY"] !== "false";
 }
 
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean),
-  );
-}
-
 function allowedTenantIds(): Set<string> {
   return new Set(
     (process.env["GOOGLE_DATA_MANAGER_TENANT_IDS"] ?? "")
@@ -134,9 +128,6 @@ async function patchEventMetadata(
 export async function runGoogleDataManagerConversionSync(log: Logger): Promise<void> {
   if (!enabled()) return;
 
-    return;
-  }
-
   const allowlist = allowedTenantIds();
   if (allowlist.size === 0) {
     log.warn("server-conversions/google-data-manager: feature flag ativa, mas nenhum tenant está na allowlist; nenhum evento será validado/enviado");
@@ -171,7 +162,6 @@ export async function runGoogleDataManagerConversionSync(log: Logger): Promise<v
 
   for (const event of events) {
     const metadata = asRecord(event.metadata);
-    }
     if (!allowlist.has(event.tenantId)) {
       skipped++;
       continue;
