@@ -1,6 +1,6 @@
 import unittest
 from arqdor_feature_contracts import (
-    inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request,
+    inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request, suggest_architectural_classification,
 )
 
 
@@ -71,6 +71,19 @@ class FeatureContractsTests(unittest.TestCase):
             validate_conversion_request("house.fbx", 0, digest)
         with self.assertRaises(ValueError):
             validate_conversion_request("house.obj", 4096, "../not-a-sha")
+
+    def test_architectural_hints_require_review(self):
+        for name, expected in (("Parede Externa", "wall"), ("Laje Superior", "slab"),
+                               ("Porta Principal", "door"), ("Janela Cozinha", "window"),
+                               ("Cobertura", "roof"), ("Pilar 01", "column")):
+            hint = suggest_architectural_classification(name)
+            self.assertEqual(hint["suggestedClass"], expected)
+            self.assertFalse(hint["quantitiesEnabled"])
+            self.assertEqual(hint["classificationStatus"], "unverified_name_hint")
+        for name in ("Mesh 001", "Parede Janela"):
+            hint = suggest_architectural_classification(name)
+            self.assertIsNone(hint["suggestedClass"])
+            self.assertEqual(hint["classificationStatus"], "manual_review_required")
 
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
