@@ -300,6 +300,11 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
     }
     if (!personId) return res.status(422).json({ error: "Selecione ou cadastre uma pessoa." });
 
+    if (parsed.data.isPrimary) {
+      await db.update(crmDealPeopleTable).set({ isPrimary: false, updatedAt: new Date() })
+        .where(and(eq(crmDealPeopleTable.tenantId, tenantId), eq(crmDealPeopleTable.dealId, req.params.dealId)));
+    }
+
     const [link] = await db.insert(crmDealPeopleTable).values({
       tenantId,
       dealId: req.params.dealId,
