@@ -324,6 +324,8 @@ export default function ConceptWebGLScene({
   onObjectEditEnd,
 }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
+  const interactionRef = useRef({ paintTool, onPaintObject, onPaintWall, onPaintFloor, onSelectObject, onSelectWall, onSelectCustomWall, onSelectClosedSpace, onSelectOpening });
+  interactionRef.current = { paintTool, onPaintObject, onPaintWall, onPaintFloor, onSelectObject, onSelectWall, onSelectCustomWall, onSelectClosedSpace, onSelectOpening };
   const runtimeRef = useRef<Runtime | null>(null);
   const [engineState, setEngineState] = useState<"loading" | "ready" | "fallback">("loading");
   const [dragOverScene, setDragOverScene] = useState(false);
@@ -587,6 +589,7 @@ export default function ConceptWebGLScene({
         window.addEventListener("pointerup", gestureUp, true);
         window.addEventListener("pointercancel", gestureCancel, true);
         const handlePointer = (event: MouseEvent) => {
+          const { paintTool, onPaintObject, onPaintWall, onPaintFloor, onSelectObject, onSelectWall, onSelectCustomWall, onSelectClosedSpace, onSelectOpening } = interactionRef.current;
           if (event.button !== 0 || !gesture.canClick() || runtime.navigationMode !== "orbit") return;
           if (!runtimeRef.current || runtime.transform?.dragging || runtime.navigationMode === "walk") return;
           const rect = renderer.domElement.getBoundingClientRect();
@@ -2156,7 +2159,7 @@ export default function ConceptWebGLScene({
     });
 
     runtime.transform?.detach?.();
-    if (navigationMode === "orbit" && selectedObjectId) {
+    if (navigationMode === "orbit" && !paintTool && selectedObjectId) {
       const selected = runtime.objectGroups.get(selectedObjectId);
       if (selected) runtime.transform?.attach?.(selected);
     }
@@ -2169,6 +2172,7 @@ export default function ConceptWebGLScene({
     selectedWallId,
     navigationMode,
     objects,
+    paintTool,
   ]);
 
   return (

@@ -1752,6 +1752,7 @@ export default function ConceptModel3D({
         onWheel={handleWheel}
         onContextMenu={(event) => event.preventDefault()}
         onClick={() => {
+          if (paintTool) return;
           onSelectObject?.(null);
           onSelectWall?.(null);
           onSelectCustomWall?.(null);
@@ -1905,8 +1906,8 @@ export default function ConceptModel3D({
                       onClick={(event) => {
                         if (level.floor !== activeFloor) return;
                         event.stopPropagation();
-                        if (paintTool?.target === "floor" && onPaintFloor) {
-                          onPaintFloor(space.id, paintTool.materialId);
+                        if (paintTool) {
+                          if (paintTool.target === "floor") onPaintFloor?.(space.id, paintTool.materialId);
                           return;
                         }
                         onSelectClosedSpace?.(space.id);
@@ -1952,8 +1953,8 @@ export default function ConceptModel3D({
                         onClick={(event) => {
                           if (level.floor !== activeFloor) return;
                           event.stopPropagation();
-                          if (paintTool?.target === "wall" && onPaintWall) {
-                            onPaintWall(wall.id, paintTool.materialId);
+                          if (paintTool) {
+                            if (paintTool.target === "wall") onPaintWall?.(wall.id, paintTool.materialId);
                             return;
                           }
                           if (wall.custom) onSelectCustomWall?.(wall.id);
@@ -2068,7 +2069,7 @@ export default function ConceptModel3D({
                     onClick={(event) => {
                       if (level.floor !== activeFloor) return;
                       event.stopPropagation();
-                      onSelectOpening?.(opening.id);
+                      if (!paintTool) onSelectOpening?.(opening.id);
                     }}
                   >
                     <polygon
@@ -2251,9 +2252,7 @@ export default function ConceptModel3D({
                 onPointerDown={(event) => {
                   if (event.button !== 0) return;
                   event.stopPropagation();
-                  if (paintTool?.target === "object" && onPaintObject) {
-                    return;
-                  }
+                  if (paintTool) return;
                   onSelectObject?.(object.id);
                   if (!onObjectChange) return;
                   onObjectEditStart?.();
@@ -2270,8 +2269,8 @@ export default function ConceptModel3D({
                 }}
                 onClick={(event) => {
                   event.stopPropagation();
-                  if (paintTool?.target === "object" && onPaintObject) {
-                    onPaintObject(object.id, paintTool.materialId);
+                  if (paintTool) {
+                    if (paintTool.target === "object") onPaintObject?.(object.id, paintTool.materialId);
                     return;
                   }
                   onSelectObject?.(object.id);

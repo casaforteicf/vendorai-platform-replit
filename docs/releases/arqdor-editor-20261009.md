@@ -184,3 +184,10 @@ Validação: 102 testes em 21 arquivos passaram; transformação TSX da cena pas
 Vista compatível reutiliza o rastreamento de gestos para bloquear clique após arraste, multitoque ou cancelamento, antes dos handlers de paredes, ambientes, aberturas e objetos. Pintura de objetos passa a ocorrer no clique validado, evitando dupla aplicação no pressionamento e na liberação. Arraste de objetos continua com seleção inicial para edição.
 
 Validação: 102 testes em 21 arquivos passaram; transformação TSX do componente passou. Verificação integrada de SVG/WebGL, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Ferramenta de pintura atual e edição de objetos
+
+Clique WebGL consulta ferramenta e callbacks atuais por referência, corrigindo captura dos valores iniciais na inicialização da cena. Gizmo de objeto desacoplado enquanto pintura está ativa. Vista SVG impede arraste de objetos em qualquer ferramenta de pintura e ignora seleção de alvos incompatíveis; clique no fundo preserva seleção durante pintura.
+
+Validação: 102 testes existentes em 21 arquivos passaram; transformação TSX das duas cenas passou. Este conjunto não possui teste integrado de pintura/WebGL; conferência visual, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
