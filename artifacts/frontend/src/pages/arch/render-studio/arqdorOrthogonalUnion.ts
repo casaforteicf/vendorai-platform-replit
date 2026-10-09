@@ -117,6 +117,7 @@ export function unionOrthogonalWalls(walls: ParametricWall[]): UnionResult {
     openingCount: voids.reduce((n,v) => n + v.length, 0),
     topology: { boundaryEdges, nonmanifoldEdges, orientationErrors, connectedSolidComponents, signedVolumeMatchesOccupancy,
       closedByEdgeIncidence: faces.length > 0 &&
-        boundaryEdges === 0 && nonmanifoldEdges === 0 && orientationErrors === 0 &&\n        connectedSolidComponents === 1 && signedVolumeMatchesOccupancy } };
+        boundaryEdges === 0 && nonmanifoldEdges === 0 && orientationErrors === 0 &&
+        connectedSolidComponents === 1 && signedVolumeMatchesOccupancy } };
 
 }
