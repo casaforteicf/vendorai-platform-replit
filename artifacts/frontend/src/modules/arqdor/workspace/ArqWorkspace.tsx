@@ -5,7 +5,7 @@
 // Princípios aplicados:
 // • Esconder complexidade — usuário pensa em objetivos, não em módulos
 // • Espaço em branco — menos elementos, mais impacto
-// • Roxo como destaque único — nunca como fundo dominante
+// • Verde tecnológico como destaque único — premium, comercial e arquitetônico
 // • Fluxo linear — Criar → Inspirar → Renderizar → Melhorar → Especificar → Apresentar → Entregar
 // • ✨ Gerar Render sempre visível — CTA principal nunca some
 // • Linguagem humana — sem termos técnicos no UI
@@ -134,12 +134,14 @@ interface FlowStep {
 }
 
 const FLOW_STEPS: FlowStep[] = [
-  { id:'projeto',     icon:'✦',  label:'Projeto',          sublabel:'Criar, importar e concluir', primary:'home',               extras:['projeto','biblioteca','renders','prompt','real-render-gallery','correcoes','ai-review','render-gallery','post-render'], color: PHX.purple },
-  { id:'especificar', icon:'📋', label:'Especificar',     sublabel:'Opcional após o projeto',    primary:'real-specification', extras:['especificacao','specification','especificacao-produto','spec-catalog','spec-objects'], color: '#16a34a' },
-  { id:'quantificar', icon:'📐', label:'Quantificar',      sublabel:'Geometria e quantitativos',  primary:'real-budget',        extras:['orcamento-real','budget-engine'], color: PHX.blue },
-  { id:'orcar',       icon:'💰', label:'Orçar',            sublabel:'Preliminar ou detalhado',    primary:'orcamento',           extras:['budget','orcamento-pro'], color: '#0369a1' },
-  { id:'cotar',       icon:'🤝', label:'Contratar / Cotar',sublabel:'Profissionais e fornecedores',primary:'compras',              extras:['procurement','marketplace','arq-marketplace'], color: PHX.cyan },
-  { id:'executar',    icon:'⚙️', label:'Execução',         sublabel:'Atividades, medições e obra', primary:'execution',            extras:['production-procurement','construction','construction-hub','production','producao','production-studio'], color: '#0d9488' },
+  { id:'criar',       icon:'✦',  label:'Projeto',      sublabel:'Cliente e projeto', primary:'home',          extras:['projeto'],                          color: PHX.purple },
+  { id:'inspirar',    icon:'🖼️', label:'Inspirar',    sublabel:'Biblioteca',        primary:'biblioteca',    extras:[],                                   color: PHX.blue   },
+  { id:'renderizar',  icon:'✨', label:'Renderizar',   sublabel:'Criar e editar render', primary:'renders', extras:['prompt'], color: PHX.purple },
+  { id:'melhorar',    icon:'🔄', label:'Melhorar',    sublabel:'Galeria, versões e aprovação', primary:'real-render-gallery', extras:['correcoes','ai-review','render-gallery','post-render'], color: PHX.amber  },
+  { id:'especificar', icon:'📋', label:'Especificar', sublabel:'Memorial técnico',  primary:'especificacao', extras:[],                                   color: '#16a34a'  },
+  { id:'orcamento',   icon:'💰', label:'Orçamento',   sublabel:'Budget executivo',  primary:'orcamento',     extras:['orcamento-pro'],                    color: '#0369a1'  },
+  { id:'apresentar',  icon:'👤', label:'Proposta',    sublabel:'Apresentar ao cliente',primary:'cliente',     extras:[],                                   color: PHX.cyan   },
+  { id:'entregar',    icon:'📦', label:'Entregar',    sublabel:'Obra e entrega',    primary:'office',        extras:[],                                   color: '#0d9488'  },
 ]
 
 // Legado — mantido para keyboard shortcuts e command palette
@@ -936,12 +938,12 @@ function WorkspaceInner() {
               display:'flex', alignItems:'center', justifyContent:'center',
               fontSize:14, color:'#fff', flexShrink:0,
               boxShadow:'0 2px 8px rgba(124,58,237,0.3)',
-            }}>🏛️</div>
+            }}><span style={{ fontSize:17, fontWeight:900, letterSpacing:'-0.08em' }}>A</span></div>
             <div>
               <p style={{ margin:0, fontSize:13, fontWeight:900, color:PHX.text, letterSpacing:'-0.02em', lineHeight:1 }}>
-                arqdor<span style={{ color:PHX.purple }}>.ai</span>
+                ARQDOR<span style={{ color:PHX.purple }}>.ai</span>
               </p>
-              <p style={{ margin:0, fontSize:8, color:PHX.dim, letterSpacing:'0.08em', fontWeight:600 }}>STUDIO</p>
+              <p style={{ margin:0, fontSize:8, color:PHX.dim, letterSpacing:'0.08em', fontWeight:600 }}>ARQUITETURA + IA</p>
             </div>
           </div>
 

@@ -18,7 +18,7 @@ export function ArqdorThemedShell({
         <header className="arq-card arq-card-lg">
           <div className="arq-section-header">
             <div>
-              <p className="arq-eyebrow">ARQDOR.ai</p>
+              <p className="arq-eyebrow">ARQDOR · arquitetura, inteligência e negócios</p>
               <h1 className="arq-hero-title">{title}</h1>
               {subtitle ? <p className="arq-subtitle">{subtitle}</p> : null}
             </div>

@@ -1,15 +1,15 @@
 :root {
   color-scheme: light;
 
-  --arq-background: #F7F7F8;
+  --arq-background: #F6F8F7;
   --arq-foreground: #0F172A;
   --arq-muted: #64748B;
   --arq-card: #FFFFFF;
-  --arq-card-soft: #F8FAFC;
+  --arq-card-soft: #F3F8F5;
   --arq-border: #E5E7EB;
 
-  --arq-accent: #7C3AED;
-  --arq-accent-dark: #A78BFA;
+  --arq-accent: #0F9F6E;
+  --arq-accent-dark: #35D399;
   --arq-accent-contrast: #FFFFFF;
 
   --arq-success: #059669;
@@ -17,9 +17,9 @@
   --arq-danger: #E11D48;
   --arq-info: #2563EB;
 
-  --arq-render-bg: #0B0D12;
-  --arq-render-card: #111827;
-  --arq-render-border: #1F2937;
+  --arq-render-bg: #07100D;
+  --arq-render-card: #0B1712;
+  --arq-render-border: #18382B;
   --arq-render-text: #F8FAFC;
 
   --arq-radius-lg: 28px;
@@ -30,21 +30,21 @@
 :root[data-arqdor-theme="dark"] {
   color-scheme: dark;
 
-  --arq-background: #050607;
+  --arq-background: #040806;
   --arq-foreground: #F8FAFC;
   --arq-muted: #94A3B8;
-  --arq-card: #111318;
-  --arq-card-soft: #181B22;
-  --arq-border: #252A34;
+  --arq-card: #0B120F;
+  --arq-card-soft: #101C17;
+  --arq-border: #20372D;
 
   --arq-success: #34D399;
   --arq-warning: #FBBF24;
   --arq-danger: #FB7185;
   --arq-info: #60A5FA;
 
-  --arq-render-bg: #030405;
-  --arq-render-card: #0B0D12;
-  --arq-render-border: #1E293B;
+  --arq-render-bg: #020604;
+  --arq-render-card: #07100D;
+  --arq-render-border: #17372A;
   --arq-render-text: #F8FAFC;
 
   --arq-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
