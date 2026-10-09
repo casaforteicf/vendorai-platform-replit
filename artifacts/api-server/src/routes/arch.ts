@@ -1946,28 +1946,46 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
     (safeUpdates as Record<string, unknown>).configuration = incoming;
   }
 
-  // MEP safeguard: do not silently persist host wall edits while installations are
-  // attached. This is an interim fail-closed gate, NOT an atomic BIM commit.
-  // A later revision must move the check and update into one locked transaction.
+  // Only block wall modifications that directly affect hosted MEP nodes.
+  // This is not yet a serializable geometry/MEP save transaction.
   if (safeUpdates.configuration && typeof safeUpdates.configuration === "object") {
     const proposed = safeUpdates.configuration as Record<string, unknown>;
     const baseline = currentConcept.configuration as Record<string, unknown> | null;
-    const beforeWalls = baseline?.customWalls;
-    const afterWalls = proposed.customWalls;
-    if (JSON.stringify(beforeWalls ?? []) !== JSON.stringify(afterWalls ?? [])) {
+    const oldWalls = Array.isArray(baseline?.customWalls) ? baseline.customWalls : [];
+    const newWalls = Array.isArray(proposed.customWalls) ? proposed.customWalls : [];
+    const before = new Map<string, string>();
+    const after = new Map<string, string>();
+    for (const raw of oldWalls) {
+      if (!raw || typeof raw !== "object" || typeof (raw as { id?: unknown }).id !== "string") {
+        return res.status(409).json({ code: "MEP_INVALID_BASELINE", allowSave: false });
+      }
+      const wall = raw as Record<string, unknown>;
+      before.set(wall.id as string, JSON.stringify([wall.floor,wall.x1,wall.y1,wall.x2,wall.y2,wall.thickness]));
+    }
+    for (const raw of newWalls) {
+      if (!raw || typeof raw !== "object" || typeof (raw as { id?: unknown }).id !== "string") {
+        return res.status(422).json({ code: "MEP_INVALID_CANDIDATE", allowSave: false });
+      }
+      const wall = raw as Record<string, unknown>;
+      after.set(wall.id as string, JSON.stringify([wall.floor,wall.x1,wall.y1,wall.x2,wall.y2,wall.thickness]));
+    }
+    const changedHostIds = [...before].filter(([wallId,shape]) => after.get(wallId) !== shape).map(([wallId]) => wallId);
+    if (changedHostIds.length) {
       const hosted = await pool.query(
-        `SELECT 1 FROM arqdor_mep_project_bindings b
-          JOIN arqdor_mep_nodes n ON n.tenant_id=b.tenant_id
-           AND n.project_id=b.workspace_project_id
+        `SELECT DISTINCT n.host_element_id
+           FROM arqdor_mep_project_bindings b
+           JOIN arqdor_mep_nodes n ON n.tenant_id=b.tenant_id
+             AND n.project_id=b.workspace_project_id
           WHERE b.tenant_id=$1 AND b.concept_project_id=$2
-            AND n.host_element_id IS NOT NULL LIMIT 1`,
-        [tid, id],
+            AND n.host_element_id=ANY($3::text[])`,
+        [tid,id,changedHostIds],
       );
       if ((hosted.rowCount ?? 0) > 0) {
         return res.status(409).json({
-          code: "MEP_HOST_REVIEW_REQUIRED",
-          error: "O projeto possui instalações ancoradas. Alterações de paredes exigem revisão BIM/MEP antes de salvar.",
-          allowSave: false,
+          code:"MEP_HOST_REVIEW_REQUIRED",
+          error:"A alteração afeta paredes com instalações ancoradas; revisão BIM/MEP obrigatória.",
+          affectedWallIds:hosted.rows.map((row:{host_element_id:string})=>row.host_element_id),
+          allowSave:false,
         });
       }
     }
