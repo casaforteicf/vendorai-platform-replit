@@ -263,12 +263,21 @@ router.patch("/crm/deals/:dealId/people/:personId/profile", async (req, res) => 
       if (matches.length && matches[0].id !== req.params.personId)
         return res.status(409).json({ error: "Documento já pertence a outra pessoa." });
     }
+    const [current] = await db.select().from(crmPeopleMasterTable)
+      .where(eq(crmPeopleMasterTable.id, req.params.personId)).limit(1);
+    if (!current) return res.status(404).json({ error: "Cadastro da pessoa não encontrado." });
     const [updated] = await db.update(crmPeopleMasterTable).set({
       nome: parsed.data.nome,
-      documento: documento || null,
-      telefones: parsed.data.telefone?.trim() ? [parsed.data.telefone.trim()] : [],
-      emails: parsed.data.email?.trim() ? [parsed.data.email.trim().toLowerCase()] : [],
-      dataNascimento: parsed.data.dataNascimento || null,
+      documento: parsed.data.documento === undefined ? current.documento : documento || null,
+      telefones: parsed.data.telefone === undefined ? current.telefones :
+        parsed.data.telefone.trim() ? [parsed.data.telefone.trim(), ...(current.telefones ?? []).filter(
+          (phone) => digits(phone) !== digits(parsed.data.telefone)
+        )] : current.telefones,
+      emails: parsed.data.email === undefined ? current.emails :
+        parsed.data.email.trim() ? [parsed.data.email.trim().toLowerCase(), ...(current.emails ?? []).filter(
+          (email) => email.toLowerCase() !== parsed.data.email?.trim().toLowerCase()
+        )] : current.emails,
+      dataNascimento: parsed.data.dataNascimento === undefined ? current.dataNascimento : parsed.data.dataNascimento || null,
       updatedAt: new Date(),
     }).where(eq(crmPeopleMasterTable.id, req.params.personId)).returning();
     return res.json({ item: updated });
