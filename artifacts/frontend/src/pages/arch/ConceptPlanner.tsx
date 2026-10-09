@@ -4,6 +4,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import "./planner5d-reference.css";
 import "./concept-editor-workspace.css";
 import { ConceptIdeaEntry } from "./ConceptIdeaEntry";
+import { ConceptMetricInput } from "./ConceptMetricInput";
 import {
   ArrowLeft,
   ArrowRight,
@@ -9508,38 +9509,20 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       <>
                         <label className="text-[10px] font-semibold text-slate-500">
                           Largura (m)
-                          <input
-                            type="number"
-                            min="0.5"
-                            max="4"
-                            step="0.05"
-                            value={(selectedCustomOpening.width ?? (selectedOpening.type === "door" ? 0.9 : 1.2)).toFixed(2)}
-                            onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { width: Number(event.target.value) })}
+                          <ConceptMetricInput min={0.5} max={4} value={selectedCustomOpening.width ?? (selectedOpening.type === "door" ? 0.9 : 1.2)} onCommit={(value) => updateCustomOpeningParams(selectedOpening.id, { width: value })}
                             className="mt-1 h-9 w-[90px] rounded-lg border px-2 text-xs font-semibold"
                           />
                         </label>
                         <label className="text-[10px] font-semibold text-slate-500">
                           Altura (m)
-                          <input
-                            type="number"
-                            min="0.5"
-                            max="2.8"
-                            step="0.05"
-                            value={(selectedCustomOpening.height ?? (selectedOpening.type === "door" ? 2.1 : 1.2)).toFixed(2)}
-                            onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { height: Number(event.target.value) })}
+                          <ConceptMetricInput min={0.5} max={2.8} value={selectedCustomOpening.height ?? (selectedOpening.type === "door" ? 2.1 : 1.2)} onCommit={(value) => updateCustomOpeningParams(selectedOpening.id, { height: value })}
                             className="mt-1 h-9 w-[90px] rounded-lg border px-2 text-xs font-semibold"
                           />
                         </label>
                         {selectedOpening.type === "window" && (
                           <label className="text-[10px] font-semibold text-slate-500">
                             Peitoril (m)
-                            <input
-                              type="number"
-                              min="0"
-                              max="2.2"
-                              step="0.05"
-                              value={(selectedCustomOpening.sillHeight ?? 0.9).toFixed(2)}
-                              onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { sillHeight: Number(event.target.value) })}
+                            <ConceptMetricInput min={0} max={2.2} value={selectedCustomOpening.sillHeight ?? 0.9} onCommit={(value) => updateCustomOpeningParams(selectedOpening.id, { sillHeight: value })}
                               className="mt-1 h-9 w-[90px] rounded-lg border px-2 text-xs font-semibold"
                             />
                           </label>
