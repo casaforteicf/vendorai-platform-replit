@@ -6,7 +6,7 @@ import "./concept-editor-workspace.css";
 import { ConceptIdeaEntry } from "./ConceptIdeaEntry";
 import { ConceptMetricInput } from "./ConceptMetricInput";
 import { wallLengthLimit } from "./conceptWallLengthLimits";
-import { duplicateWallPlacement, openingCrossesWallMidpoint } from "./conceptWallOperations";
+import { duplicateWallPlacement, openingCrossesWallMidpoint, splitWallWithOpenings } from "./conceptWallOperations";
 import { freeOpeningOffset, openingsOverlap, openingFitsWall, convertedOpening, openingPlacementError, openingDimensionError, exactOpeningEdit } from "./conceptOpeningPlacement";
 import { reconcileWallOpenings } from "./conceptWallOpeningReconciliation";
 import {
@@ -2565,6 +2565,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     setSelectedCustomWallId(null);
     setSelectedOpeningId(null);
     setSelectedObjectId(null);
+    setOpeningEditError(null);
+    editStartRef.current = null;
   };
 
   const pushRoomHistory = (before: EditorSnapshot) => {
@@ -2585,23 +2587,21 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   };
 
   const undoRooms = () => {
-    setRoomHistory((history) => {
-      const previous = history[history.length - 1];
-      if (!previous) return history;
-      setRoomFuture((future) => [snapshotEditor(), ...future].slice(0, 40));
-      restoreSnapshot(previous);
-      return history.slice(0, -1);
-    });
+    const previous = roomHistory[roomHistory.length - 1];
+    if (!previous) return;
+    const current = snapshotEditor();
+    setRoomFuture((future) => [current, ...future].slice(0, 40));
+    setRoomHistory(roomHistory.slice(0, -1));
+    restoreSnapshot(previous);
   };
 
   const redoRooms = () => {
-    setRoomFuture((future) => {
-      const next = future[0];
-      if (!next) return future;
-      setRoomHistory((history) => [...history.slice(-39), snapshotEditor()]);
-      restoreSnapshot(next);
-      return future.slice(1);
-    });
+    const next = roomFuture[0];
+    if (!next) return;
+    const current = snapshotEditor();
+    setRoomHistory((history) => [...history.slice(-39), current]);
+    setRoomFuture(roomFuture.slice(1));
+    restoreSnapshot(next);
   };
 
   const addRoom = (kind: RoomKind) => {
@@ -3671,9 +3671,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   };
 
   const deleteCustomWall = (wallId: string) => {
+    if (!safeCustomWalls.some(wall => wall.id === wallId)) return;
     const before = snapshotEditor();
     setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).filter((wall) => wall.id !== wallId));
     setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).filter((opening) => opening.wallId !== wallId));
+    setWallMaterials(prev => { const next = { ...prev }; delete next[wallId]; return next; });
+    setSelectedOpeningId(current => safeCustomOpenings.some(opening => opening.wallId === wallId && opening.id === current) ? null : current);
+    setOpeningEditError(null);
     pushRoomHistory(before);
     setSelectedCustomWallId((current) => current === wallId ? null : current);
   };
@@ -3686,10 +3690,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const wall = safeCustomWalls.find((item) => item.id === wallId);
     if (!wall) return;
     const placement = duplicateWallPlacement(wall, lotWidth, lotDepth);
-    if (!placement) return;
+    if (!placement) { setOpeningEditError("Não há espaço no terreno para duplicar essa parede."); return; }
+    setOpeningEditError(null);
     const before = snapshotEditor();
     const copy: CustomWall = { ...wall, ...placement, id: `custom-wall-${uid()}` };
     setCustomWalls((prev) => [...(Array.isArray(prev) ? prev : []), copy]);
+    if (wallMaterials[wallId]) setWallMaterials(prev => ({ ...prev, [copy.id]: wallMaterials[wallId] }));
     setSelectedCustomWallId(copy.id);
     setSelectedWallId(null);
     pushRoomHistory(before);
@@ -3698,42 +3704,14 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const splitCustomWall = (wallId: string) => {
     const wall = safeCustomWalls.find((item) => item.id === wallId);
     if (!wall) return;
-    const length = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
-    if (length < 1 || openingCrossesWallMidpoint(length, safeCustomOpenings.filter((opening) => opening.wallId === wallId))) return;
-
-    const before = snapshotEditor();
-    const midpoint = {
-      x: (wall.x1 + wall.x2) / 2,
-      y: (wall.y1 + wall.y2) / 2,
-    };
     const secondWallId = `custom-wall-${uid()}`;
-    const secondWall: CustomWall = {
-      ...wall,
-      id: secondWallId,
-      x1: midpoint.x,
-      y1: midpoint.y,
-    };
-
-    setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).flatMap((item) => {
-      if (item.id !== wallId) return [item];
-      return [
-        { ...item, x2: midpoint.x, y2: midpoint.y },
-        secondWall,
-      ];
-    }));
-
-    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) => {
-      if (opening.wallId !== wallId) return opening;
-      if (opening.offset < 0.5) {
-        return { ...opening, offset: opening.offset * 2 };
-      }
-      return {
-        ...opening,
-        wallId: secondWallId,
-        offset: (opening.offset - 0.5) * 2,
-      };
-    }));
-
+    const result = splitWallWithOpenings(wall, safeCustomOpenings, secondWallId);
+    if (!result) { setOpeningEditError("Não é possível dividir: cada trecho precisa ter pelo menos 0,50 m e a divisão não pode atravessar uma abertura."); return; }
+    const before = snapshotEditor();
+    setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).flatMap(item => item.id === wallId ? result.walls : [item]));
+    setCustomOpenings(result.openings);
+    if (wallMaterials[wallId]) setWallMaterials(prev => ({ ...prev, [secondWallId]: wallMaterials[wallId] }));
+    setOpeningEditError(null);
     setSelectedCustomWallId(secondWallId);
     setSelectedWallId(null);
     pushRoomHistory(before);

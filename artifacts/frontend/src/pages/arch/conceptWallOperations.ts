@@ -1,4 +1,16 @@
 type Wall = { x1: number; y1: number; x2: number; y2: number };
+type LinkedOpening = { wallId: string; offset: number; width?: number; type: "door" | "window" };
+export function splitWallWithOpenings<W extends Wall & { id: string }, O extends LinkedOpening>(wall: W, openings: O[], secondWallId: string): { walls: W[]; openings: O[] } | null {
+  const length = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+  if (!Number.isFinite(length) || length < 1 || openingCrossesWallMidpoint(length, openings.filter(o => o.wallId === wall.id))) return null;
+  const midpoint = { x: (wall.x1 + wall.x2) / 2, y: (wall.y1 + wall.y2) / 2 };
+  return {
+    walls: [{ ...wall, x2: midpoint.x, y2: midpoint.y }, { ...wall, id: secondWallId, x1: midpoint.x, y1: midpoint.y }],
+    openings: openings.map(opening => opening.wallId !== wall.id ? opening : opening.offset < 0.5
+      ? { ...opening, offset: opening.offset * 2 }
+      : { ...opening, wallId: secondWallId, offset: (opening.offset - 0.5) * 2 }),
+  };
+}
 export function duplicateWallPlacement(wall: Wall, width: number, depth: number) {
   const dx = wall.x2 - wall.x1, dy = wall.y2 - wall.y1;
   const length = Math.hypot(dx, dy);

@@ -89,3 +89,10 @@ Arquivos: ConceptPlanner.tsx, conceptOpeningPlacement.ts e conceptOpeningExactEd
 ConceptMetricInput aceita retorno booleano do commit. Se o modelo rejeitar a alteração, restaura o valor real e informa que a medida foi mantida. Handlers de largura/altura/peitoril/posição e comprimento de parede retornam resultado; comprimento rejeitado por reconciliação não adiciona entrada vazia de histórico. Alterações efetivas de largura/altura via edição exata removem catalogProductId; reposicionamento ou medida idêntica preservam vínculo.
 
 Arquivos: ConceptPlanner.tsx, ConceptMetricInput.tsx, ConceptMetricInput.test.tsx, conceptOpeningPlacement.ts, conceptOpeningExactEdit.test.ts. Verificação consolidada: 56 testes passaram em 13 arquivos; sintaxe TSX de Planner e MetricInput verificada isoladamente. Lote ARQ-EDITOR-20261009, versão em desenvolvimento. Build completo, inspeção integrada, homologação Contabo e publicação pendentes.
+
+
+## Operações de paredes e restauração de histórico
+
+Divisão e duplicação preservam o material da parede. Divisão extraída para operação pura preserva posição física, dimensões e metadados das aberturas, inclusive em diagonais; impede corte através de vão e trechos menores que 0,50 m. Exclusão remove acabamento e seleção da abertura excluída, sem criar histórico para ID inexistente. Restaurar snapshot limpa aviso de erro e interação pendente. Undo/redo agora executam restauração fora dos callbacks atualizadores de estado, evitando efeitos laterais dentro desses callbacks.
+
+Arquivos: ConceptPlanner.tsx, conceptWallOperations.ts e conceptWallSplit.test.ts. Validação: 59 testes passaram em 14 arquivos; sintaxe de ConceptPlanner verificada com esbuild. Fluxo integrado de undo/redo ainda requer inspeção em homologação. Lote ARQ-EDITOR-20261009, versão em desenvolvimento; homologação Contabo e publicação adiadas.
