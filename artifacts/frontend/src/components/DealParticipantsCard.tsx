@@ -101,6 +101,7 @@ export function DealParticipantsCard({
   const [personMode, setPersonMode] = useState<"existing" | "new">("existing");
   const [personId, setPersonId] = useState("");
   const [personRole, setPersonRole] = useState("consumidor_final");
+  const [contactPrimary, setContactPrimary] = useState(false);
   const [personName, setPersonName] = useState("");
   const [personPhone, setPersonPhone] = useState("");
   const [personEmail, setPersonEmail] = useState("");
@@ -162,6 +163,7 @@ export function DealParticipantsCard({
     setEditingPerson(null);
     setPersonId("");
     setPersonRole("consumidor_final");
+    setContactPrimary(false);
     setPersonName("");
     setPersonPhone("");
     setPersonEmail("");
@@ -190,6 +192,7 @@ export function DealParticipantsCard({
     setPersonDocument(person.documento ?? "");
     setPersonBirthDate(person.dataNascimento ?? "");
     setPersonRole(person.role);
+    setContactPrimary(person.isPrimary);
     setContextCompanyId(person.contextualCompanyId ?? "__none__");
     setRelationshipScope(person.relationshipScope);
     const commission = person.metadata?.commission as { enabled?: boolean; kind?: string; value?: string | number | null } | undefined;
@@ -232,7 +235,7 @@ export function DealParticipantsCard({
             documento: personDocument.trim() || undefined,
           } : undefined,
           role: personRole,
-          isPrimary: editingPerson?.isPrimary ?? false,
+          isPrimary: contactPrimary,
           contextualCompanyId: contextCompanyId === "__none__" ? null : contextCompanyId,
           relationshipScope,
           metadata: {
@@ -367,7 +370,7 @@ export function DealParticipantsCard({
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">{person.nome}</p>
                         <p className="text-xs text-muted-foreground">
-                          {roleLabel(person.role)}
+                          {roleLabel(person.role)}{person.isPrimary ? " · contato principal" : ""}
                           {contextualCompany ? ` · ${contextualCompany.nomeFantasia || contextualCompany.razaoSocial}` : ""}
                           {person.relationshipScope === "deal_only" ? " · somente neste negócio" : " · vínculo permanente"}
                           {(() => {
@@ -435,6 +438,11 @@ export function DealParticipantsCard({
                   <p className="text-xs text-muted-foreground sm:col-span-2">Esses dados pertencem à pessoa e também serão atualizados nos outros negócios vinculados.</p>
                 </div>
               )}
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={contactPrimary} onChange={(event) => setContactPrimary(event.target.checked)} />
+                Contato principal deste negócio
+              </label>
+              <p className="text-xs text-muted-foreground">Somente um contato é principal para comunicação. Ambos os integrantes do casal continuam sendo clientes principais.</p>
               <div className="space-y-1.5">
                 <Label>Papel neste negócio</Label>
                 <Select value={personRole} onValueChange={setPersonRole}>
