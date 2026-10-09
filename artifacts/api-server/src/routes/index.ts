@@ -112,6 +112,7 @@ import { createSystemConsolidationRouter } from "./arch_system_consolidation";
 import archThemePreferencesRouter from "./arch_theme_preferences";
 import arqdorMarketV21Router from "./arqdor_market_v21";
 import arqdorSketchupImportRouter from "./arqdor_sketchup_import";
+import arqdorModelFilesRouter from "./arqdor_model_files.js";
 import financeiroObraRouter from "./financeiro_obra";
 import obraGovernancaRouter from "./obra_governanca";
 import portalRouter from "./portal";
@@ -563,6 +564,7 @@ router.use(createSystemConsolidationRouter());
 router.use(archThemePreferencesRouter);
 router.use(arqdorMarketV21Router);
 router.use(arqdorSketchupImportRouter);
+router.use(arqdorModelFilesRouter);
 
 // Beauty (Salão de Beleza) Hub
 router.use(sdrTemplatesRouter);
@@ -643,3 +645,4 @@ router.use(contentTrackingRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;
+

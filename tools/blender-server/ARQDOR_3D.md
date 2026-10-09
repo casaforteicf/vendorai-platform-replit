@@ -61,12 +61,43 @@ Os testes cobrem calibração, referências, bloqueio de quantitativos, integrid
 isolamento de arquivos, traversal e recursos externos. Não substituem um teste
 real com Blender 3.6 e GLB representativo em GPU.
 
-## Próximas integrações obrigatórias antes de habilitar para usuários
+## Upload privado e preparação no Render Studio
 
-- Interface guiada: importar → conferir modelo → materiais → câmera/luz → gerar
-  → resultados; manter Render IA atual e uso mobile.
-- Upload autenticado e versões no disco persistente do Contabo, com download
-  privado e captura na Biblioteca de Mídia. O worker atual ainda usa o upload
+O Render Studio agora possui a entrada **Modelos 3D**, disponível no desktop e
+mobile quando existe um projeto selecionado. A tela permite importar e listar
+GLBs, recuperar referências de escala, consultar nomes dos materiais e baixar
+o original com autenticação. O botão de render 3D continua desabilitado.
+
+Defina `ARQDOR_MODEL_ROOT` na API como caminho de um volume persistente privado
+no Contabo. Não exponha esse diretório em Nginx, servidor estático ou bucket
+público. Sem a configuração, a API informa indisponibilidade e bloqueia uploads.
+A estrutura é `<root>/<tenantId>/<projectId>/<modelId>/model.glb`, compatível com
+o `key` do worker relativo ao tenant. GPU remota ainda exige transferência.
+
+Rotas autenticadas, sujeitas aos gates existentes de licença/módulo e ao tenant
+do projeto:
+
+- `GET/POST /api/arch/projetos/:projectId/model-files`
+- `GET /api/arch/projetos/:projectId/model-files/:modelId/file`
+- `GET/POST /api/arch/projetos/:projectId/model-files/:modelId/calibrations`
+
+Uploads estão limitados a 45 MB e têm versão independente, SHA-256 e permissões
+privadas. Referências são registros imutáveis, com autor, data e hash do modelo.
+Não aprovam escala automaticamente: mantêm status `pending_worker_validation`.
+As listas recuperam versões do disco após reiniciar a API. Não há mudança de
+schema no banco. O projeto é autorizado no banco antes de qualquer acesso ao disco.
+
+Teste do storage e das regras do upload:
+
+```bash
+node --experimental-strip-types --test tools/arqdor-tests/model-files.test.mjs
+```
+
+## Próximas integrações obrigatórias antes de habilitar render para usuários
+
+- Completar visualização 3D, atribuição/especificação de materiais, câmera/luz,
+  conferência real no worker e resultados na interface guiada existente.
+- Captura das mídias geradas na Biblioteca de Mídia. O worker atual ainda usa o upload
   legado em Supabase; esse fluxo precisa ser substituído antes da ativação 3D.
 - Transporte de staging Contabo → GPU e retorno de arquivos, com URLs temporárias
   restritas ao objeto autorizado. Não montar armazenamento público.
