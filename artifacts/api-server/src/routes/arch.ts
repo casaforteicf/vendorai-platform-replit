@@ -4,6 +4,7 @@ import multer from "multer";
 import sharp from "sharp";
 import {
   db,
+  pool,
   archProjetosTable,
   archAmbientesTable,
   archOrcamentoItensTable,
@@ -1943,6 +1944,33 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
     }
 
     (safeUpdates as Record<string, unknown>).configuration = incoming;
+  }
+
+  // MEP safeguard: do not silently persist host wall edits while installations are
+  // attached. This is an interim fail-closed gate, NOT an atomic BIM commit.
+  // A later revision must move the check and update into one locked transaction.
+  if (safeUpdates.configuration && typeof safeUpdates.configuration === "object") {
+    const proposed = safeUpdates.configuration as Record<string, unknown>;
+    const baseline = currentConcept.configuration as Record<string, unknown> | null;
+    const beforeWalls = baseline?.customWalls;
+    const afterWalls = proposed.customWalls;
+    if (JSON.stringify(beforeWalls ?? []) !== JSON.stringify(afterWalls ?? [])) {
+      const hosted = await pool.query(
+        `SELECT 1 FROM arqdor_mep_project_bindings b
+          JOIN arqdor_mep_nodes n ON n.tenant_id=b.tenant_id
+           AND n.project_id=b.workspace_project_id
+          WHERE b.tenant_id=$1 AND b.concept_project_id=$2
+            AND n.host_element_id IS NOT NULL LIMIT 1`,
+        [tid, id],
+      );
+      if ((hosted.rowCount ?? 0) > 0) {
+        return res.status(409).json({
+          code: "MEP_HOST_REVIEW_REQUIRED",
+          error: "O projeto possui instalações ancoradas. Alterações de paredes exigem revisão BIM/MEP antes de salvar.",
+          allowSave: false,
+        });
+      }
+    }
   }
 
   const [updated] = await db
