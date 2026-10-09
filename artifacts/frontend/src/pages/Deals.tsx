@@ -6,7 +6,6 @@ import {
   useListDeals,
   getListDealsQueryKey,
   useCreateDeal,
-  useCreateLead,
   useUpdateDeal,
   useListTenantLeads,
   getListTenantLeadsQueryKey,
@@ -28,12 +27,10 @@ import {
 } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { LEAD_SOURCE_OPTIONS } from "@/lib/leadRegistration";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PhoneInput } from "@/components/ui/phone-input";
 import {
   Dialog,
   DialogContent,
@@ -261,62 +258,20 @@ async function extractQuoteWithRetry(tenantId: string, file: File): Promise<any>
   throw new Error(lastError);
 }
 
-
 type StageResponsibleUser = {
   id: string;
   active?: boolean | null;
-  platformRole?: string | null;
   userFunction?: string | null;
   customFunctionId?: string | null;
-  leadAssignmentEnabled?: boolean | null;
 };
-
-type DealResponsiblePartnership = {
-  id: string;
-  ownerTenantId: string;
-  partnerTenantId: string;
-  partnerName?: string | null;
-  partnerTenantCode?: string | null;
-  status: string;
-};
-
-type DealRepresentativeFunction = {
-  id: string;
-  name: string;
-  kind?: "internal" | "external_company";
-  linkedTenantCode?: string | null;
-  permissions?: string[];
-};
-
-const DEAL_REPRESENTATIVE_PREFIX = "__representative__:";
-
-function dealRepresentativePartnershipId(value?: string | null) {
-  return value?.startsWith(DEAL_REPRESENTATIVE_PREFIX)
-    ? value.slice(DEAL_REPRESENTATIVE_PREFIX.length)
-    : null;
-}
-
-function canReceiveCommercialAssignment(user: StageResponsibleUser): boolean {
-  if (user.active === false) return false;
-  if (user.platformRole === "super_admin" || user.platformRole === "tenant_admin" || user.userFunction === "administrador") return true;
-  if (user.leadAssignmentEnabled === false) return false;
-  if (user.leadAssignmentEnabled === true) return true;
-  return user.platformRole === "tenant_seller"
-    || user.userFunction === "vendedor"
-    || user.userFunction === "representante_comercial";
-}
 
 function isUserResponsibleForStage(
   user: StageResponsibleUser,
   stage?: Pick<PipelineStage, "responsaveisFuncoes"> | null,
 ): boolean {
-  if (!canReceiveCommercialAssignment(user)) return false;
-  if (user.platformRole === "super_admin" || user.platformRole === "tenant_admin" || user.userFunction === "administrador") return true;
+  if (user.active !== true) return false;
   const responsibleFunctions = stage?.responsaveisFuncoes ?? [];
-
-  // Etapas sem função responsável configurada não devem esvaziar o seletor.
-  // Nelas, qualquer usuário comercial elegível permanece disponível.
-  if (responsibleFunctions.length === 0) return true;
+  if (responsibleFunctions.length === 0) return false;
 
   const refs = new Set<string>();
   if (user.userFunction) refs.add(`builtin:${user.userFunction}`);
@@ -572,9 +527,7 @@ function DealCard({
       {/* Valor */}
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground pl-6">
         <DollarSign className="h-3 w-3 shrink-0" />
-        <span className="font-semibold text-foreground">{formatCurrency(
-          proposta?.valorTotal ?? deal.valor,
-        )}</span>
+        <span className="font-semibold text-foreground">{formatCurrency(deal.valor)}</span>
       </div>
 
       {/* Prazo */}
@@ -1653,19 +1606,6 @@ const createSchema = z.object({
   titulo: z.string().min(2, "Título obrigatório"),
   valor: z.coerce.number().min(0).optional(),
   leadId: z.string().optional().or(z.literal("")),
-  leadMode: z.enum(["existing", "new"]).default("existing"),
-  leadNome: z.string().optional().or(z.literal("")),
-  leadTelefone: z.string().optional().or(z.literal("")),
-  leadEmail: z.string().email("Email inválido").optional().or(z.literal("")),
-  leadEmpresa: z.string().optional().or(z.literal("")),
-  leadDocumento: z.string().optional().or(z.literal("")),
-  leadEndereco: z.string().optional().or(z.literal("")),
-  leadSegmento: z.string().optional().or(z.literal("")),
-  leadInstagram: z.string().optional().or(z.literal("")),
-  leadProfissao: z.string().optional().or(z.literal("")),
-  leadObjetivo: z.string().optional().or(z.literal("")),
-  leadSource: z.string().default("manual"),
-  assignedTo: z.string().optional().or(z.literal("")),
   etapa: z.string().min(1, "Etapa obrigatória"),
   probabilidade: z.coerce.number().min(0).max(100).optional(),
   tipoFechamento: z.enum(["pedido", "contrato", "pedido_e_contrato"]).optional(),
@@ -1822,14 +1762,9 @@ function EditDealSheet({
         setQuoteFileName(data.originalName ?? null);
       }
       const confianca = data.confianca ?? 0;
-      const leituraAviso = Array.isArray(data.informacoesAdicionais)
-        ? data.informacoesAdicionais.filter(Boolean).join(" ")
-        : undefined;
-      toast({
-        title: confianca >= 0.5 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)",
-        description: confianca < 0.5 ? leituraAviso : undefined,
-      });
+      toast({ title: confianca >= 0.5 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)" });
     } catch (error) {
+      setCreateQuoteStatus("error");
       toast({
         title: "Erro ao ler o orçamento",
         description: error instanceof Error ? error.message : "Não foi possível processar o arquivo.",
@@ -2529,17 +2464,17 @@ export default function Deals() {
     fornecedor?: string | null;
     cliente?: string | null;
     clienteDocumento?: string | null;
-    clienteEndereco?: string | null;
     clienteTelefone?: string | null;
     clienteEmail?: string | null;
     clienteCidade?: string | null;
     clienteEstado?: string | null;
     clienteCep?: string | null;
+    clienteEndereco?: string | null;
     observacoes?: string | null;
     confianca?: number | null;
+    quoteFileUrl?: string | null;
+    originalName?: string | null;
   } | null>(null);
-  const [createQuoteFileUrl, setCreateQuoteFileUrl] = useState<string | null>(null);
-  const [createQuoteFileName, setCreateQuoteFileName] = useState<string | null>(null);
   const createQuoteFileRef = useRef<HTMLInputElement>(null);
 
   const { data: allDeals = [], isLoading } = useListDeals(tenantId, undefined, {
@@ -2682,47 +2617,6 @@ export default function Deals() {
     query: { enabled: !!tenantId, queryKey: getListTenantUsersQueryKey(tenantId), staleTime: 60_000, refetchOnWindowFocus: false },
   });
 
-  const { data: responsiblePartnerships = [] } = useQuery<DealResponsiblePartnership[]>({
-    queryKey: ["commercial-partnerships", tenantId, "deal-responsible-picker"],
-    enabled: Boolean(tenantId && token && isCreateOpen),
-    staleTime: 60_000,
-    refetchOnWindowFocus: false,
-    queryFn: async () => {
-      const response = await fetch(`/api/tenants/${tenantId}/commercial-partnerships`, {
-        headers: { Authorization: "Bearer " + (token ?? "") },
-      });
-      if (!response.ok) throw new Error("Não foi possível carregar as empresas representantes.");
-      const rows = await response.json() as DealResponsiblePartnership[];
-      return rows.filter((item) => item.ownerTenantId === tenantId && item.status === "active");
-    },
-  });
-
-  const { data: dealRepresentativeFunctions = [] } = useQuery<DealRepresentativeFunction[]>({
-    queryKey: ["tenant-user-functions", tenantId, "deal-responsible-picker"],
-    enabled: Boolean(tenantId && token && isCreateOpen),
-    staleTime: 60_000,
-    refetchOnWindowFocus: false,
-    queryFn: async () => {
-      const response = await fetch(`/api/tenants/${tenantId}/user-functions`, {
-        headers: { Authorization: "Bearer " + (token ?? "") },
-      });
-      if (!response.ok) throw new Error("Não foi possível carregar as funções de representação.");
-      const rows = await response.json() as DealRepresentativeFunction[];
-      return rows.filter((item) => item.kind === "external_company");
-    },
-  });
-
-  const availableResponsiblePartnerships = useMemo(
-    () => responsiblePartnerships.filter((partnership) =>
-      Boolean(partnership.partnerTenantCode) &&
-      dealRepresentativeFunctions.some((item) =>
-        item.kind === "external_company" &&
-        item.linkedTenantCode === partnership.partnerTenantCode
-      )
-    ),
-    [responsiblePartnerships, dealRepresentativeFunctions],
-  );
-
   // Novas tarefas/passagens só podem ser atribuídas a usuários ativos cuja
   // função esteja configurada como responsável pela etapa de destino.
   // tenantUsers completo permanece no mapa para preservar responsáveis históricos.
@@ -2800,7 +2694,6 @@ export default function Deals() {
   const updateDeal = useUpdateDeal();
 
   const createDeal = useCreateDeal();
-  const createLead = useCreateLead();
 
   async function handleCreateQuoteUpload(file: File) {
     const validationError = validateQuoteImportFile(file);
@@ -2820,79 +2713,75 @@ export default function Deals() {
     setCreateExtracting(true);
     try {
       const data = await extractQuoteWithRetry(tenantId, file);
+
       if (data.valorTotal != null) createForm.setValue("valor", data.valorTotal);
       if (data.titulo) {
         const current = createForm.getValues("titulo");
         if (!current || current.trim() === "") createForm.setValue("titulo", data.titulo);
       }
 
+      const extractedCustomer = {
+        cliente: data.cliente ?? null,
+        clienteDocumento: data.clienteDocumento ?? null,
+        clienteTelefone: data.clienteTelefone ?? null,
+        clienteEmail: data.clienteEmail ?? null,
+        clienteCidade: data.clienteCidade ?? null,
+        clienteEstado: data.clienteEstado ?? null,
+        clienteCep: data.clienteCep ?? null,
+        clienteEndereco: data.clienteEndereco ?? null,
+      };
+
       if (
-        data.itens?.length || data.fornecedor || data.cliente || data.observacoes ||
-        data.clienteDocumento || data.clienteEndereco || data.clienteTelefone ||
-        data.clienteEmail || data.clienteCidade || data.clienteEstado || data.clienteCep
+        data.itens?.length ||
+        data.fornecedor ||
+        data.observacoes ||
+        Object.values(extractedCustomer).some(Boolean)
       ) {
         setCreateExtractedInfo({
           itens: data.itens,
           fornecedor: data.fornecedor,
-          cliente: data.cliente,
-          clienteDocumento: data.clienteDocumento,
-          clienteEndereco: data.clienteEndereco,
-          clienteTelefone: data.clienteTelefone,
-          clienteEmail: data.clienteEmail,
-          clienteCidade: data.clienteCidade,
-          clienteEstado: data.clienteEstado,
-          clienteCep: data.clienteCep,
           observacoes: data.observacoes,
           confianca: data.confianca ?? 0,
+          quoteFileUrl: data.quoteFileUrl ?? null,
+          originalName: data.originalName ?? file.name,
+          ...extractedCustomer,
         });
       }
-      if (data.quoteFileUrl) {
-        setCreateQuoteFileUrl(data.quoteFileUrl);
-        setCreateQuoteFileName(data.originalName ?? file.name);
-      }
 
-      const normalize = (value: unknown) => String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
-      const digitsOnly = (value: unknown) => String(value ?? "").replace(/\D/g, "");
-      const extractedDocument = digitsOnly(data.clienteDocumento);
-      const extractedPhone = digitsOnly(data.clienteTelefone);
-      const extractedEmail = normalize(data.clienteEmail);
-      const extractedName = normalize(data.cliente);
-      const existingLead = leads.find((lead) => {
-        const sameDocument = extractedDocument.length >= 8 && digitsOnly((lead as any).documento) === extractedDocument;
-        const samePhone = extractedPhone.length >= 8 && digitsOnly(lead.telefone) === extractedPhone;
-        const sameEmail = Boolean(extractedEmail) && normalize(lead.email) === extractedEmail;
-        const sameName = extractedName.length >= 3 && [lead.nome, (lead as any).empresa].some((value) => normalize(value) === extractedName);
-        return sameDocument || samePhone || sameEmail || sameName;
+      const digits = (value?: string | null) => (value ?? "").replace(/\D/g, "");
+      const textKey = (value?: string | null) => (value ?? "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim()
+        .toLowerCase();
+
+      const importedPhone = digits(data.clienteTelefone);
+      const importedDocument = digits(data.clienteDocumento);
+      const importedEmail = textKey(data.clienteEmail);
+      const importedName = textKey(data.cliente);
+
+      const matchedLead = leads.find((lead) => {
+        if (importedDocument.length >= 8 && digits((lead as any).documento) === importedDocument) return true;
+        if (importedPhone.length >= 8 && digits(lead.telefone) === importedPhone) return true;
+        if (importedEmail && textKey(lead.email) === importedEmail) return true;
+        return importedName.length >= 3 && textKey(lead.nome) === importedName;
       });
 
-      if (existingLead) {
-        createForm.setValue("leadMode", "existing");
-        createForm.setValue("leadId", existingLead.id);
-      } else if (data.cliente || data.clienteDocumento || data.clienteEndereco || data.clienteTelefone || data.clienteEmail) {
-        createForm.setValue("leadMode", "new");
-        createForm.setValue("leadId", "");
-        if (data.cliente) createForm.setValue("leadNome", data.cliente);
-        if (data.clienteDocumento) createForm.setValue("leadDocumento", data.clienteDocumento);
-        if (data.clienteEndereco) createForm.setValue("leadEndereco", data.clienteEndereco);
-        if (data.clienteTelefone) createForm.setValue("leadTelefone", data.clienteTelefone);
-        if (data.clienteEmail) createForm.setValue("leadEmail", data.clienteEmail);
+      if (matchedLead) {
+        createForm.setValue("leadId", matchedLead.id, { shouldDirty: true, shouldValidate: true });
       }
 
       const confianca = data.confianca ?? 0;
       setCreateQuoteStatus(confianca >= 0.7 ? "review" : "partial");
-      const leituraAviso = Array.isArray(data.informacoesAdicionais)
-        ? data.informacoesAdicionais.filter(Boolean).join(" ")
-        : undefined;
       toast({
         title: confianca >= 0.7 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)",
-        description: existingLead
-          ? `Cliente identificado e vinculado: ${existingLead.nome}`
+        description: matchedLead
+          ? `Cliente identificado e vinculado: ${matchedLead.nome}`
           : data.cliente
             ? "Dados do cliente foram extraídos. Confira nome, telefone e cidade antes de criar o negócio."
-            : leituraAviso,
+            : undefined,
       });
     } catch (error) {
-      setCreateQuoteStatus("error");
       toast({
         title: "Erro ao ler o orçamento",
         description: error instanceof Error ? error.message : "Não foi possível processar o arquivo.",
@@ -2906,187 +2795,38 @@ export default function Deals() {
   type DealFormValues = z.infer<typeof createSchema>;
   const createForm = useForm<DealFormValues, any, DealFormValues>({
     resolver: zodResolver(createSchema),
-    defaultValues: {
-      titulo: "",
-      valor: undefined,
-      leadId: "",
-      leadMode: "existing",
-      leadNome: "",
-      leadTelefone: "",
-      leadEmail: "",
-      leadEmpresa: "",
-      leadDocumento: "",
-      leadEndereco: "",
-      leadSegmento: "",
-      leadInstagram: "",
-      leadProfissao: "",
-      leadObjetivo: "",
-      leadSource: "manual",
-      assignedTo: "",
-      etapa: "novo",
-      probabilidade: undefined,
-      tipoFechamento: tenantDefault ?? "pedido",
-    },
+    defaultValues: { titulo: "", valor: undefined, leadId: "", etapa: "novo", probabilidade: undefined, tipoFechamento: tenantDefault ?? "pedido" },
   });
 
-  async function onCreateSubmit(values: z.infer<typeof createSchema>) {
-    let leadId = values.leadId || undefined;
-    const stage = stagesByKey[values.etapa];
-    const eligibleUsers = tenantUsers.filter((candidate) =>
-      isUserResponsibleForStage(candidate as StageResponsibleUser, stage)
-    );
-    const representativePartnershipId = dealRepresentativePartnershipId(values.assignedTo);
-    const selectedPartnership = representativePartnershipId
-      ? availableResponsiblePartnerships.find((item) => item.id === representativePartnershipId)
-      : undefined;
-    const selectedInternalUser = !representativePartnershipId
-      ? eligibleUsers.find((candidate) => candidate.id === values.assignedTo)
-      : undefined;
-
-    if (!values.assignedTo || (!selectedInternalUser && !selectedPartnership)) {
-      createForm.setError("assignedTo", { message: "Selecione uma pessoa da equipe ou uma empresa representante." });
-      toast({
-        title: "Responsável obrigatório",
-        description: "Escolha uma pessoa habilitada para a etapa inicial ou uma empresa representante ativa.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const representativeFunction = selectedPartnership?.partnerTenantCode
-      ? dealRepresentativeFunctions.find((item) =>
-          item.kind === "external_company" &&
-          item.linkedTenantCode === selectedPartnership.partnerTenantCode
-        )
-      : undefined;
-
-    if (values.leadMode === "new") {
-      if (!values.leadNome?.trim() || values.leadNome.trim().length < 2) {
-        createForm.setError("leadNome", { message: "Nome do cliente é obrigatório." });
-        return;
-      }
-
-      const normalize = (value: unknown) => String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
-      const digitsOnly = (value: unknown) => String(value ?? "").replace(/\D/g, "");
-      const document = digitsOnly(values.leadDocumento);
-      const phone = digitsOnly(values.leadTelefone);
-      const email = normalize(values.leadEmail);
-      const duplicate = leads.find((lead) =>
-        (document.length >= 8 && digitsOnly((lead as any).documento) === document) ||
-        (phone.length >= 8 && digitsOnly((lead as any).telefone) === phone) ||
-        (email && normalize((lead as any).email) === email)
-      );
-
-      if (duplicate) {
-        leadId = duplicate.id;
-        createForm.setValue("leadMode", "existing");
-        createForm.setValue("leadId", duplicate.id);
-        toast({
-          title: "Cliente já cadastrado",
-          description: `${duplicate.nome || (duplicate as any).empresa || "Cliente"} foi reutilizado para evitar duplicação.`,
-        });
-      } else {
-        try {
-          const createdLead = await createLead.mutateAsync({
-            data: {
-              tenantId,
-              nome: values.leadNome.trim(),
-              telefone: values.leadTelefone?.trim() || null,
-              email: values.leadEmail?.trim() || null,
-              empresa: values.leadEmpresa?.trim() || null,
-              documento: values.leadDocumento?.trim() || null,
-              endereco: values.leadEndereco?.trim() || null,
-              mercadoSegmento: values.leadSegmento?.trim() || null,
-              instagramHandle: values.leadInstagram?.trim() || null,
-              profissao: values.leadProfissao?.trim() || null,
-              objetivo: values.leadObjetivo?.trim() || null,
-              tipoPessoa: "fisica",
-              source: createQuoteFileUrl ? "pedido_importado" : (values.leadSource || "manual"),
-              assignedTo: selectedInternalUser?.id,
-              representativeFunctionId: representativeFunction?.id,
-            },
-          });
-          leadId = (createdLead as { id?: string }).id;
-          if (!leadId) throw new Error("Cliente criado sem identificador válido.");
-          await queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
-        } catch (error) {
-          toast({
-            title: "Não foi possível cadastrar o cliente",
-            description: error instanceof Error ? error.message : "Revise os dados do cliente e tente novamente.",
-            variant: "destructive",
-          });
-          return;
-        }
-      }
-    }
-
-    if (!leadId) {
-      createForm.setError("leadId", { message: "Selecione um cliente existente ou cadastre um novo." });
-      toast({ title: "Cliente obrigatório", description: "Todo novo negócio deve ficar vinculado a um cliente.", variant: "destructive" });
-      return;
-    }
-
-    try {
-      const createdDeal = await createDeal.mutateAsync({
+  function onCreateSubmit(values: z.infer<typeof createSchema>) {
+    createDeal.mutate(
+      {
         data: {
           tenantId,
           titulo: values.titulo,
           valor: values.valor,
           etapa: values.etapa as DealEtapa,
-          leadId,
-          assignedTo: selectedInternalUser?.id,
+          leadId: values.leadId || undefined,
           probabilidade: values.probabilidade,
           tipoFechamento: values.tipoFechamento as TipoFechamento | undefined,
-          quoteFileUrl: createQuoteFileUrl ?? undefined,
+          quoteFileUrl: createExtractedInfo?.quoteFileUrl ?? undefined,
         },
-      });
-
-      const createdDealId = (createdDeal as { id?: string }).id;
-      if (selectedPartnership) {
-        if (!createdDealId) throw new Error("O negócio foi criado sem identificador para vincular a representante.");
-        const response = await fetch(`/api/deals/${createdDealId}/share-with-partner`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: "Bearer " + (token ?? ""),
-          },
-          body: JSON.stringify({
-            partnershipId: selectedPartnership.id,
-            role: "responsible",
-          }),
-        });
-        const body = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(body.error || body.message || "Não foi possível definir a empresa representante como responsável.");
-        }
+      },
+      {
+        onSuccess: () => {
+          toast({ title: "Negócio criado." });
+          queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
+          setIsCreateOpen(false);
+          createForm.reset();
+          setCreateExtractedInfo(null);
+          setCreateQuoteFile(null);
+          setCreateQuoteStatus("idle");
+        },
+        onError: () => {
+          toast({ title: "Erro ao criar negócio", variant: "destructive" });
+        },
       }
-
-      toast({
-        title: "Negócio criado.",
-        description: selectedPartnership
-          ? `Responsável: ${selectedPartnership.partnerName || selectedPartnership.partnerTenantCode || "empresa representante"}.`
-          : createQuoteFileName
-            ? `Pedido/orçamento ${createQuoteFileName} preservado e vinculado ao negócio.`
-            : undefined,
-      });
-      await Promise.allSettled([
-        queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
-        queryClient.invalidateQueries({ queryKey: ["deal-participations", tenantId] }),
-      ]);
-      setIsCreateOpen(false);
-      setCreateExtractedInfo(null);
-      setCreateQuoteFile(null);
-      setCreateQuoteStatus("idle");
-      setCreateQuoteFileUrl(null);
-      setCreateQuoteFileName(null);
-      createForm.reset();
-    } catch (error) {
-      toast({
-        title: "Erro ao criar negócio",
-        description: error instanceof Error ? error.message : "Tente novamente.",
-        variant: "destructive",
-      });
-    }
+    );
   }
 
   function getForwardMoveOptions(deal: Deal) {
@@ -3551,28 +3291,19 @@ export default function Deals() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-        <Dialog open={isCreateOpen} onOpenChange={(open) => {
-          setIsCreateOpen(open);
-          if (!open) {
-            setCreateExtractedInfo(null);
-            setCreateQuoteFileUrl(null);
-            setCreateQuoteFileName(null);
-            createForm.reset();
-          }
-        }}>
+        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger asChild>
             <Button data-testid="button-novo-negocio">
               <Plus className="h-4 w-4 mr-2" />
               Novo Negócio
             </Button>
           </DialogTrigger>
-          <DialogContent className="w-[calc(100vw-2rem)] max-h-[90vh] max-w-3xl overflow-y-auto overflow-x-hidden p-0">
-            <DialogHeader className="sticky top-0 z-20 border-b bg-background/95 px-6 py-4 backdrop-blur">
+          <DialogContent>
+            <DialogHeader>
               <DialogTitle>Criar Novo Negócio</DialogTitle>
-              <p className="text-sm text-muted-foreground">Cadastre o cliente, defina o responsável e crie a oportunidade sem perder o contexto comercial.</p>
             </DialogHeader>
             <Form {...createForm}>
-              <form onSubmit={createForm.handleSubmit(onCreateSubmit)} className="min-w-0 space-y-5 px-6 pb-6 pt-5">
+              <form onSubmit={createForm.handleSubmit(onCreateSubmit)} className="space-y-4">
 
                 {/* ── Import Quote ────────────────────────────────────── */}
                 <div className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20 p-3 space-y-2">
@@ -3596,7 +3327,7 @@ export default function Deals() {
                     onClick={() => createQuoteFileRef.current?.click()}
                   >
                     {createExtracting ? (
-                      <><Loader2 className="h-4 w-4 animate-spin" />Lendo orçamento...</>
+                      <><Loader2 className="h-4 w-4 animate-spin" />Enviando e lendo orçamento...</>
                     ) : (
                       <><FileUp className="h-4 w-4" />Importar Orçamento</>
                     )}
@@ -3604,11 +3335,14 @@ export default function Deals() {
                   <p className="text-[11px] text-muted-foreground text-center">
                     PDF, imagem ou Word — o sistema valida, lê e traz os dados para conferência antes de salvar
                   </p>
+
                   {createQuoteFile && (
                     <div className="rounded-md bg-background/80 border px-2.5 py-2 text-[11px] space-y-1">
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-medium truncate">{createQuoteFile.name}</span>
-                        <span className="text-muted-foreground whitespace-nowrap">{(createQuoteFile.size / 1024 / 1024).toFixed(2)} MB</span>
+                        <span className="text-muted-foreground whitespace-nowrap">
+                          {(createQuoteFile.size / 1024 / 1024).toFixed(2)} MB
+                        </span>
                       </div>
                       <div className="text-muted-foreground">
                         {createQuoteStatus === "processing" && "1/3 Arquivo validado • 2/3 Lendo cliente, itens e valores…"}
@@ -3616,8 +3350,14 @@ export default function Deals() {
                         {createQuoteStatus === "partial" && "3/3 Leitura parcial • confira os campos destacados antes de criar"}
                         {createQuoteStatus === "error" && "A leitura falhou, mas o arquivo foi mantido para tentar novamente"}
                       </div>
-                      {!createExtracting && (
-                        <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => handleCreateQuoteUpload(createQuoteFile)}>
+                      {!createExtracting && createQuoteFile && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => handleCreateQuoteUpload(createQuoteFile)}
+                        >
                           Reler orçamento
                         </Button>
                       )}
@@ -3663,8 +3403,18 @@ export default function Deals() {
                     {createExtractedInfo.clienteTelefone && (
                       <p className="text-xs text-violet-700">Telefone: <span className="font-medium">{createExtractedInfo.clienteTelefone}</span></p>
                     )}
+                    {(createExtractedInfo.clienteCidade || createExtractedInfo.clienteEstado) && (
+                      <p className="text-xs text-violet-700">
+                        Cidade: <span className="font-medium">
+                          {[createExtractedInfo.clienteCidade, createExtractedInfo.clienteEstado].filter(Boolean).join(" / ")}
+                        </span>
+                      </p>
+                    )}
                     {createExtractedInfo.clienteEmail && (
                       <p className="text-xs text-violet-700">E-mail: <span className="font-medium">{createExtractedInfo.clienteEmail}</span></p>
+                    )}
+                    {createExtractedInfo.clienteCep && (
+                      <p className="text-xs text-violet-700">CEP: <span className="font-medium">{createExtractedInfo.clienteCep}</span></p>
                     )}
                     {createExtractedInfo.clienteEndereco && (
                       <p className="text-xs text-violet-700">Endereço: <span className="font-medium">{createExtractedInfo.clienteEndereco}</span></p>
@@ -3756,205 +3506,67 @@ export default function Deals() {
                     </FormItem>
                   )}
                 />
-                <section className="space-y-3 rounded-lg border bg-muted/20 p-4">
-                  <div>
-                    <p className="text-sm font-semibold">Cliente do negócio *</p>
-                    <p className="text-xs text-muted-foreground">Use um cadastro existente ou complete o cadastro do cliente sem sair deste fluxo.</p>
-                  </div>
-
-                  <FormField
-                    control={createForm.control}
-                    name="leadMode"
-                    render={({ field }) => (
-                      <FormItem>
-                        <div className="grid grid-cols-2 gap-2">
-                          <Button type="button" variant={field.value === "existing" ? "default" : "outline"} onClick={() => field.onChange("existing")}>
-                            Cliente existente
-                          </Button>
-                          <Button type="button" variant={field.value === "new" ? "default" : "outline"} onClick={() => { field.onChange("new"); createForm.setValue("leadId", ""); }}>
-                            Cadastrar cliente
-                          </Button>
-                        </div>
-                      </FormItem>
-                    )}
-                  />
-
-                  {createForm.watch("leadMode") === "existing" ? (
-                    <FormField
-                      control={createForm.control}
-                      name="leadId"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Cliente cadastrado</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value || ""}>
-                            <FormControl><SelectTrigger data-testid="select-lead"><SelectValue placeholder="Selecionar cliente..." /></SelectTrigger></FormControl>
-                            <SelectContent>
-                              {leads.map((lead) => (
-                                <SelectItem key={lead.id} value={lead.id}>
-                                  {lead.nome}{(lead as any).empresa && (lead as any).empresa !== lead.nome ? ` • ${(lead as any).empresa}` : ""}{(lead as any).telefone ? ` • ${(lead as any).telefone}` : ""}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  ) : (
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <FormField control={createForm.control} name="leadNome" render={({ field }) => (
-                        <FormItem className="sm:col-span-2">
-                          <FormLabel>Nome / Razão social *</FormLabel>
-                          <FormControl><Input placeholder="Nome completo ou razão social" {...field} /></FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )} />
-                      <FormField control={createForm.control} name="leadTelefone" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>WhatsApp / Telefone</FormLabel>
-                          <FormControl><PhoneInput {...field} /></FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )} />
-                      <FormField control={createForm.control} name="leadEmail" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>E-mail</FormLabel>
-                          <FormControl><Input type="email" placeholder="email@cliente.com" {...field} /></FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )} />
-                      <FormField control={createForm.control} name="leadEmpresa" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Empresa / Nome fantasia</FormLabel>
-                          <FormControl><Input placeholder="Empresa" {...field} /></FormControl>
-                        </FormItem>
-                      )} />
-                      <FormField control={createForm.control} name="leadDocumento" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>CPF / CNPJ</FormLabel>
-                          <FormControl><Input placeholder="Documento" {...field} /></FormControl>
-                        </FormItem>
-                      )} />
-                      <FormField control={createForm.control} name="leadEndereco" render={({ field }) => (
-                        <FormItem className="sm:col-span-2">
-                          <FormLabel>Endereço</FormLabel>
-                          <FormControl><Input placeholder="Rua, número, bairro, cidade/UF, CEP" {...field} /></FormControl>
-                        </FormItem>
-                      )} />
-                      <FormField control={createForm.control} name="leadSegmento" render={({ field }) => (
-                        <FormItem className="sm:col-span-2">
-                          <FormLabel>Segmento</FormLabel>
-                          <FormControl><Input placeholder="Ex.: Serralheria, construção, varejo" {...field} /></FormControl>
-                        </FormItem>
-                      )} />
-                      <FormField control={createForm.control} name="leadInstagram" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Instagram</FormLabel>
-                          <FormControl><Input placeholder="@usuario" {...field} /></FormControl>
-                        </FormItem>
-                      )} />
-                      <FormField control={createForm.control} name="leadProfissao" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Cargo / função</FormLabel>
-                          <FormControl><Input placeholder="Ex.: Comprador, Diretor, Arquiteto" {...field} /></FormControl>
-                        </FormItem>
-                      )} />
-                      <FormField control={createForm.control} name="leadSource" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Origem do lead</FormLabel>
-                          <Select value={field.value} onValueChange={field.onChange}>
-                            <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                            <SelectContent>
-                              {LEAD_SOURCE_OPTIONS.map((option) => (
-                                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </FormItem>
-                      )} />
-                      <FormField control={createForm.control} name="leadObjetivo" render={({ field }) => (
-                        <FormItem className="sm:col-span-2">
-                          <FormLabel>Objetivo / necessidade</FormLabel>
-                          <FormControl><Input placeholder="O que este lead precisa?" {...field} /></FormControl>
-                        </FormItem>
-                      )} />
-                      <div className="sm:col-span-2 rounded-md border border-dashed bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                        Este cadastro segue o mesmo padrão do Novo Lead. Dados importados de pedido/orçamento preenchem os mesmos campos e o sistema reutiliza cadastros existentes quando encontra documento, telefone ou e-mail iguais.
-                      </div>
-                    </div>
-                  )}
-                </section>
-
-                <section className="grid min-w-0 gap-4 rounded-xl border bg-muted/15 p-4 sm:grid-cols-2">
-                  <FormField
-                    control={createForm.control}
-                    name="assignedTo"
-                    render={({ field }) => {
-                      const selectedStage = stagesByKey[createForm.watch("etapa")];
-                      const eligible = tenantUsers.filter((candidate) => isUserResponsibleForStage(candidate as StageResponsibleUser, selectedStage));
-                      return (
-                        <FormItem className="min-w-0">
-                          <FormLabel>Responsável *</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value || ""}>
-                            <FormControl>
-                              <SelectTrigger className="w-full min-w-0">
-                                <SelectValue placeholder="Equipe ou empresa representante..." />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent className="max-h-72">
-                              {eligible.map((candidate) => (
-                                <SelectItem key={candidate.id} value={candidate.id}>
-                                  Equipe · {candidate.name || candidate.email || candidate.id}
-                                </SelectItem>
-                              ))}
-                              {availableResponsiblePartnerships.map((partnership) => (
-                                <SelectItem key={partnership.id} value={`${DEAL_REPRESENTATIVE_PREFIX}${partnership.id}`}>
-                                  Representante · {partnership.partnerName || partnership.partnerTenantCode || partnership.partnerTenantId}
-                                </SelectItem>
-                              ))}
-                              {eligible.length === 0 && availableResponsiblePartnerships.length === 0 && (
-                                <SelectItem value="__none_available__" disabled>
-                                  Nenhum responsável disponível
-                                </SelectItem>
-                              )}
-                            </SelectContent>
-                          </Select>
-                          <p className="text-[11px] leading-relaxed text-muted-foreground">
-                            Você pode atribuir o negócio a uma pessoa da equipe habilitada para a etapa ou a uma empresa representante ativa.
-                          </p>
-                          <FormMessage />
-                        </FormItem>
-                      );
-                    }}
-                  />
-                  <FormField
-                    control={createForm.control}
-                    name="tipoFechamento"
-                    render={({ field }) => (
-                      <FormItem className="min-w-0">
-                        <FormLabel>Tipo de fechamento</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
+                <FormField
+                  control={createForm.control}
+                  name="leadId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Lead associado</FormLabel>
+                      {leads.length > 0 ? (
+                        <Select
+                          onValueChange={(v) => field.onChange(v === "__none__" ? "" : v)}
+                          value={field.value || "__none__"}
+                        >
                           <FormControl>
-                            <SelectTrigger className="w-full min-w-0" data-testid="select-tipo-fechamento">
-                              <SelectValue />
+                            <SelectTrigger data-testid="select-lead">
+                              <SelectValue placeholder="Selecionar lead..." />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {TIPOS_FECHAMENTO.map((t) => (
-                              <SelectItem key={t.value} value={t.value}>
-                                {t.label}
+                            <SelectItem value="__none__">Nenhum</SelectItem>
+                            {leads.map((l) => (
+                              <SelectItem key={l.id} value={l.id}>
+                                {l.nome}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
-                        <p className="text-[11px] leading-relaxed text-muted-foreground">
-                          {TIPOS_FECHAMENTO.find((t) => t.value === field.value)?.description}
-                        </p>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </section>
+                      ) : (
+                        <FormControl>
+                          <Input data-testid="input-leadId" placeholder="ID do lead" {...field} />
+                        </FormControl>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={createForm.control}
+                  name="tipoFechamento"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tipo de fechamento</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-tipo-fechamento">
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {TIPOS_FECHAMENTO.map((t) => (
+                            <SelectItem key={t.value} value={t.value}>
+                              {t.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        {TIPOS_FECHAMENTO.find((t) => t.value === field.value)?.description}
+                      </p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                 <Button
                   type="submit"
                   className="w-full"
