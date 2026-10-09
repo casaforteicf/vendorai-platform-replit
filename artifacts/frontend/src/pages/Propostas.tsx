@@ -3767,6 +3767,7 @@ function newFreeItem(): FreeItem {
     }
 
     function updateImportedItem(index: number, patch: Partial<(typeof importItens)[number]>) {
+      if (importReviewStatus === "approved") return;
       setImportItens((current) =>
         current.map((item, itemIndex) => {
           if (itemIndex !== index) return item;
@@ -3784,6 +3785,7 @@ function newFreeItem(): FreeItem {
     }
 
     function removeImportedItem(index: number) {
+      if (importReviewStatus === "approved") return;
       setImportItens((current) => current.filter((_, itemIndex) => itemIndex !== index));
       // Preservar o total original do documento; remover uma linha da prévia
       // não altera automaticamente o valor total importado.
