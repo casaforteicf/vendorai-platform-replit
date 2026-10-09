@@ -245,3 +245,17 @@ conversores, build TypeScript e UI isolada antes de integrar.
 - **Estados:** implementado sem validação técnica integral; homologado NÃO; aprovado NÃO; produção NÃO publicada; PR #3422 Draft.
 - **Decisão vigente do usuário:** homologação Contabo, acesso Vendi e publicação adiados; continuar lotes independentes de maior alcance sem cobrar novas autorizações.
 - **Próximas frentes:** conectar estes contratos à interface de revisão visual e ao armazenamento de histórico com autorização, sem ativar produção.
+
+
+## Lote ampliado — workspace de revisão e causas de conflito (09/10/2026)
+- **Lote/versão:** ARQDOR-RENDER-BIM-3422 / desenvolvimento, sem release.
+- **Melhorias agrupadas:**
+  1. Contrato de dados `prepare_opening_review_workspace` com busca por nome/identificadores, filtro por status, modo somente conflitos, limite de resultados e ordenação para priorizar inconsistências, preservando contadores globais.
+  2. Causas estruturadas de conflito na fila: `ambiguous_or_missing_measurement`, `unresolved_wall_host`, `uncalibrated_or_missing_dimensions`. Ausência de calibração impede tratar a medição como livre de conflitos.
+  3. Regressões para ordenação, filtros, limite inválido, calibração ausente e nenhuma aprovação automática de fabricação.
+- **Commits:** `841933e`, `29028a9`, `11438e3`, `7ada783`.
+- **Arquivos:** `tools/blender-server/arqdor_feature_contracts.py`, `tools/blender-server/test_arqdor_feature_contracts.py` e este Registro Mestre.
+- **Escopo não concluído:** componente React, rotas de API, persistência dos eventos, política de acesso por tenant e homologação. Os novos contratos são funções puras preparatórias, não uma tela utilizável em produção.
+- **Validação:** testes escritos mas não executados neste marco; sem resultados de build/Blender real. Estados: implementado sem validação técnica, homologado NÃO, aprovado NÃO, publicado NÃO.
+- **Decisão do usuário:** deixar homologação Contabo, desbloqueio de acesso do Vendi e publicação para depois. Não executar merge/deploy; PR #3422 segue Draft.
+- **Próximo conjunto independente:** alinhar payload da futura UI ao contexto de projeto/tenant e validar autorização antes de integrar quaisquer ações persistentes.
