@@ -87,6 +87,7 @@ const personSchema = z.object({
   tenantId: z.string().optional(),
   nome: z.string().trim().min(2),
   documento: z.string().optional(),
+  dataNascimento: z.iso.date().optional(),
   telefone: z.string().optional(),
   email: z.string().email().optional(),
   source: z.string().optional().default("manual"),
@@ -116,6 +117,7 @@ router.post("/crm/people", async (req, res) => {
     const [person] = await db.insert(crmPeopleMasterTable).values({
       nome: parsed.data.nome.trim(),
       documento: documento || null,
+      dataNascimento: parsed.data.dataNascimento ?? null,
       telefones: parsed.data.telefone ? [parsed.data.telefone.trim()] : [],
       emails: email ? [email] : [],
       source: parsed.data.source,
