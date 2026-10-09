@@ -420,3 +420,12 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Commits:** `8c07d40` (candidatos sólidos), `5d5ae50` (testes), `f325aad` (conferência do arquivo de testes).
 - **Limite:** classificação geométrica não é união de sólidos; o núcleo boolean real com remoção de faces internas e reconstituição topológica **permanece pendente**, assim como validação em Blender e editor WebGL para situações L/T/cruz.
 - **Controles:** PR #3422 Draft; não houve merge, homologação, deploy ou mudança em produção.
+
+
+## Lote C — primeiro núcleo real de união volumétrica ortogonal (09/10/2026)
+- **Implementação:** `tools/blender-server/arqdor_orthogonal_union.py` introduz `union_orthogonal_walls`: para paredes horizontais/verticais de eixo alinhado, constrói ocupação espacial por partição global XYZ, preserva vazios retangulares de portas/janelas e extrai somente as faces de fronteira do volume unido. Isso **remove superfícies internas de encontros L/T/cruz em seu subconjunto suportado**, diferentemente dos diagnósticos anteriores.
+- **Segurança geométrica:** recusa explicitamente paredes diagonais, inclinadas no plano vertical, listas enormes e projetos acima do limite de células; retorna `geometryApproved=false`, `quantitiesEnabled=false` e `requiresManualReview=true`. Não substitui kernel generalista CSG/BIM ou classificação IFC.
+- **Testes adicionados:** `tools/blender-server/test_arqdor_orthogonal_union.py` cobre parede individual, união L/T/cruz, porta e janela simultâneas e erro explícito em diagonal; usa `inspect_mesh_edges` para avaliar fechamento por incidência.
+- **Commits:** `e22d5c5` (algoritmo de união) e `62337a8` (testes).
+- **Validação:** código e testes registrados, **testes ainda não executados neste ambiente**. A verificação topológica descrita na suíte é uma expectativa, não evidência de aprovação. Necessário testar casos degenerados, desempenho e integrar a malha unida ao fluxo WebGL/API.
+- **Estado:** núcleo de união ortogonal implementado isoladamente, não integrado ao editor; lote original ainda parcial. PR #3422 Draft, sem homologação, merge ou deploy, produção intacta.
