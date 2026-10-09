@@ -1,3 +1,4 @@
+import { furnitureLayoutCollisionError } from "./conceptFurnitureCollision";
 import { furnitureFitsRoom } from "./conceptFurnitureRoomFit";
 import { boundedObjectGeometry, duplicateObjectGeometry, insertedObjectGeometry, objectBatchPlacementError } from "./conceptObjectTransform";
 import { openingCoordinates } from "./conceptOpeningCoordinates";
@@ -4351,6 +4352,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       setObjectPlacementError("O layout não cabe mais no ambiente escolhido. Gere uma nova opção com a planta atual.");
       return;
     }
+    const collisionError = furnitureLayoutCollisionError(option.objects, safeObjects);
+    if (collisionError) { setObjectPlacementError(collisionError); return; }
     setObjectPlacementError(null);
     const before = snapshotEditor();
     const created = option.objects.map((object) => ({

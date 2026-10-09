@@ -247,3 +247,11 @@ Validação: 118 testes em 22 arquivos passaram; transformação TSX do planner 
 Antes de aplicar layout, compara área do polígono rotacionado de cada móvel com a área coberta pelas células disjuntas do ambiente selecionado. Aceita cruzar fronteiras internas das células; rejeita partes fora do ambiente, recortes em L e lacunas, mesmo com cantos dentro. Falha mantém opções/preview e impede inserção/histórico. Baseado nas células ortogonais de detectClosedSpaces; não considera espessura/acabamentos internos, folgas de uso ou colisões com móveis existentes.
 
 Validação: 122 testes em 23 arquivos passaram; tipagem isolada do helper e transformação TSX do planner passaram. Integração visual, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Sobreposição ao aplicar mobiliário
+
+- Validação de contornos retangulares rotacionados entre os móveis propostos e os existentes no mesmo pavimento, antes de alterar o modelo ou o histórico.
+- Contato de bordas permitido; tapetes, luminárias, TV, plantas e pontos de instalações mantêm sobreposição decorativa.
+- Erro identifica os móveis envolvidos e preserva a opção para revisão. A validação usa a projeção retangular, não a malha 3D dos objetos.
+- Verificação: 127 testes passaram em 24 arquivos (118 geométricos/unitários e 9 de interface); tipagem do helper e transformação sintática do editor passaram. Validação visual integrada e homologação/publicação na Contabo permanecem pendentes.
