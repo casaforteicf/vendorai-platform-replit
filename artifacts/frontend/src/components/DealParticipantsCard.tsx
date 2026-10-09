@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Link2, Loader2, Plus, Trash2, UserRound } from "lucide-react";
+import { Building2, Link2, Loader2, Pencil, Plus, Trash2, UserRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -96,6 +96,7 @@ export function DealParticipantsCard({
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<"person" | "company">("person");
   const [saving, setSaving] = useState(false);
+  const [editingPerson, setEditingPerson] = useState<PersonParticipant | null>(null);
   const [personMode, setPersonMode] = useState<"existing" | "new">("existing");
   const [personId, setPersonId] = useState("");
   const [personRole, setPersonRole] = useState("consumidor_final");
@@ -156,6 +157,7 @@ export function DealParticipantsCard({
 
   function resetForm() {
     setPersonMode("existing");
+    setEditingPerson(null);
     setPersonId("");
     setPersonRole("consumidor_final");
     setPersonName("");
@@ -172,6 +174,21 @@ export function DealParticipantsCard({
     setCompanyRole("contratante");
     setNewCompanyName("");
     setNewCompanyCnpj("");
+  }
+
+  function editPerson(person: PersonParticipant) {
+    resetForm();
+    setKind("person");
+    setEditingPerson(person);
+    setPersonId(person.personId);
+    setPersonRole(person.role);
+    setContextCompanyId(person.contextualCompanyId ?? "__none__");
+    setRelationshipScope(person.relationshipScope);
+    const commission = person.metadata?.commission as { enabled?: boolean; kind?: string; value?: string | number | null } | undefined;
+    setHasCommission(commission?.enabled === true);
+    setCommissionKind(commission?.kind === "fixed" ? "fixed" : "percent");
+    setCommissionValue(commission?.value == null ? "" : String(commission.value));
+    setOpen(true);
   }
 
   async function savePerson() {
@@ -198,9 +215,11 @@ export function DealParticipantsCard({
             documento: personDocument.trim() || undefined,
           } : undefined,
           role: personRole,
+          isPrimary: editingPerson?.isPrimary ?? false,
           contextualCompanyId: contextCompanyId === "__none__" ? null : contextCompanyId,
           relationshipScope,
           metadata: {
+            ...(editingPerson?.metadata ?? {}),
             commission: hasCommission
               ? { enabled: true, kind: commissionKind, value: commissionValue.trim() || null, status: "prevista" }
               : { enabled: false },
@@ -212,7 +231,7 @@ export function DealParticipantsCard({
       await qc.invalidateQueries({ queryKey: ["crm-deal-participants", tenantId, dealId] });
       setOpen(false);
       resetForm();
-      toast({ title: "Pessoa vinculada ao negócio." });
+      toast({ title: editingPerson ? "Vínculo atualizado." : "Pessoa vinculada ao negócio." });
     } catch (error) {
       toast({ title: "Erro ao adicionar envolvido", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
     } finally {
@@ -343,7 +362,10 @@ export function DealParticipantsCard({
                         </p>
                       </div>
                     </div>
-                    <Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={() => void remove("people", person.relationId)}><Trash2 className="h-4 w-4" /></Button>
+                    <div className="flex items-center gap-1">
+                      <Button type="button" size="icon" variant="ghost" className="h-8 w-8" title="Editar vínculo" onClick={() => editPerson(person)}><Pencil className="h-4 w-4" /></Button>
+                      <Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={() => void remove("people", person.relationId)}><Trash2 className="h-4 w-4" /></Button>
+                    </div>
                   </div>
                 );
               })}
@@ -356,7 +378,7 @@ export function DealParticipantsCard({
       <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) resetForm(); }}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>Vincular cliente/contato ao lead</DialogTitle>
+            <DialogTitle>{editingPerson ? "Editar vínculo da pessoa" : "Vincular cliente/contato ao negócio"}</DialogTitle>
           </DialogHeader>
           <Tabs value={kind} onValueChange={(value) => setKind(value as "person" | "company")}>
             <p className="text-sm text-muted-foreground">Selecione um cadastro existente para anexar este atendimento ao cliente correto ou cadastre um novo sem duplicar o lead.</p>
@@ -368,12 +390,12 @@ export function DealParticipantsCard({
             <TabsContent value="person" className="space-y-4 pt-3">
               <div className="grid grid-cols-2 gap-2">
                 <Button type="button" variant={personMode === "existing" ? "default" : "outline"} onClick={() => setPersonMode("existing")}>Pessoa existente</Button>
-                <Button type="button" variant={personMode === "new" ? "default" : "outline"} onClick={() => setPersonMode("new")}>Nova pessoa</Button>
+                <Button type="button" disabled={Boolean(editingPerson)} variant={personMode === "new" ? "default" : "outline"} onClick={() => setPersonMode("new")}>Nova pessoa</Button>
               </div>
               {personMode === "existing" ? (
                 <div className="space-y-1.5">
                   <Label>Pessoa</Label>
-                  <Select value={personId} onValueChange={setPersonId}>
+                  <Select value={personId} onValueChange={setPersonId} disabled={Boolean(editingPerson)}>
                     <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                     <SelectContent>{peopleOptions.map((person) => <SelectItem key={person.id} value={person.id}>{person.nome}</SelectItem>)}</SelectContent>
                   </Select>
@@ -435,7 +457,7 @@ export function DealParticipantsCard({
                   </Select>
                 </div>
               )}
-              <Button className="w-full" onClick={() => void savePerson()} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Adicionar pessoa</Button>
+              <Button className="w-full" onClick={() => void savePerson()} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editingPerson ? "Salvar alterações" : "Adicionar pessoa"}</Button>
             </TabsContent>
 
             <TabsContent value="company" className="space-y-4 pt-3">
