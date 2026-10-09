@@ -31,9 +31,10 @@ export function unionOrthogonalWalls(walls: ParametricWall[]): UnionResult {
       const axis = horizontal ? 0 : 1;
       const sign = wall.end[axis] >= wall.start[axis] ? 1 : -1;
       const a = wall.start[axis] + sign * o.offset, b = a + sign * o.width;
-      return horizontal
+      const voidBox: Box = horizontal
         ? [Math.min(a, b), Math.max(a, b), box[2], box[3], o.sill, o.sill + o.height]
         : [box[0], box[1], Math.min(a, b), Math.max(a, b), o.sill, o.sill + o.height];
+      return voidBox;
     }));
   }
   const xs = [...new Set([...solids, ...voids.flat()].flatMap(b => [b[0], b[1]]) )].sort((a,b)=>a-b);
