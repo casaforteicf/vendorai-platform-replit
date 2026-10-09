@@ -1,11 +1,20 @@
 import unittest
-from arqdor_parametric_mesh import mesh_parametric_wall, mesh_parametric_project
+from arqdor_parametric_mesh import mesh_parametric_wall, mesh_parametric_project, inspect_mesh_edges
 
 
 class ParametricMeshTests(unittest.TestCase):
     def setUp(self):
         self.wall = {"start": [0, 0, 0], "end": [4, 0, 0],
                      "thickness": .2, "height": 3}
+
+    def test_topology_checker_rejects_open_and_invalid_mesh(self):
+        triangle = {"vertices": [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
+                    "faces": [[0, 1, 2]]}
+        report = inspect_mesh_edges(triangle)
+        self.assertEqual(report["boundaryEdges"], 3)
+        self.assertFalse(report["watertightByEdgeIncidence"])
+        with self.assertRaises(ValueError):
+            inspect_mesh_edges({"vertices": triangle["vertices"], "faces": [[0, 1, 5]]})
 
     def test_single_wall_has_faces_and_no_automatic_approval(self):
         mesh = mesh_parametric_wall(self.wall)
