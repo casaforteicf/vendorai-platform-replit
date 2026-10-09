@@ -175,6 +175,17 @@ class FeatureContractsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             inspect_boundary_loops(vertices, [[0, 9]])
 
+    def test_boundary_rejects_duplicates_and_invalid_limits(self):
+        points = [[0, 0, 0], [1, 0, 0], [0, 0, 1]]
+        with self.assertRaises(ValueError):
+            inspect_boundary_loops(points, [[0, 1], [1, 0], [1, 2], [2, 0]])
+        with self.assertRaises(ValueError):
+            inspect_boundary_loops(points, [[0, 1]], max_edges=0)
+        with self.assertRaises(ValueError):
+            inspect_boundary_loops(points, [[0, 1]], max_edges=True)
+        with self.assertRaises(ValueError):
+            inspect_boundary_loops([[0, 0, 0]] * 200001, [])
+
     def test_boundary_frame_correspondence_is_never_approved(self):
         ring = {"bounds": {"min": [1, 0, 1], "max": [2, 0.2, 2]}}
         wall = {"name": "Parede", "suggestedClass": "wall",
