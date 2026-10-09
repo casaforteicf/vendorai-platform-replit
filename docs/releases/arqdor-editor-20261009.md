@@ -1,5 +1,11 @@
 # Arqdor — registro de entrega do editor
 
+## Bloco de espaço livre para aberturas
+
+Inserção e duplicação buscam um intervalo livre na parede, rejeitando quando não cabe. Alteração de offset pelo painel e alteração de dimensões verificam colisões com outras aberturas na mesma parede. Comparação considera altura e peitoril, permitindo aberturas separadas verticalmente. Falha informa o motivo em aviso dispensável. Não é uma validação global: importações, catálogo, arraste e reconciliação de paredes precisam de revisão posterior.
+
+Arquivos ConceptPlanner.tsx, conceptOpeningPlacement.ts e conceptOpeningPlacement.test.ts. Sete testes do bloco de posicionamento/operações passaram; sintaxe TSX passou. Homologação e publicação seguem adiadas.
+
 ## Bloco de duplicação e divisão
 
 Edição de comprimento diretamente na planta delega ao mesmo fluxo do painel, sem cortar coordenadas para fazer a medida caber. Duplicação desloca ambos os extremos igualmente, tenta o lado oposto junto à borda e rejeita quando nenhum lado cabe, preservando diagonais. Divisão bloqueada quando o ponto atravessa uma porta/janela; offsets são redistribuídos exatamente sem clamps que deslocavam aberturas. Botão de divisão informa a restrição.

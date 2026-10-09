@@ -7,6 +7,7 @@ import { ConceptIdeaEntry } from "./ConceptIdeaEntry";
 import { ConceptMetricInput } from "./ConceptMetricInput";
 import { wallLengthLimit } from "./conceptWallLengthLimits";
 import { duplicateWallPlacement, openingCrossesWallMidpoint } from "./conceptWallOperations";
+import { freeOpeningOffset, openingsOverlap } from "./conceptOpeningPlacement";
 import {
   ArrowLeft,
   ArrowRight,
@@ -1088,6 +1089,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [layoutVariant, setLayoutVariant] = useState(0);
   const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
+  const [openingEditError, setOpeningEditError] = useState<string | null>(null);
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   const [selectedCustomWallId, setSelectedCustomWallId] = useState<string | null>(null);
   const [selectedClosedSpaceId, setSelectedClosedSpaceId] = useState<string | null>(null);
@@ -3954,6 +3956,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       frameProfile: "",
       glassType: type === "door" ? "" : "Incolor",
     };
+    const offset = freeOpeningOffset(opening, safeCustomOpenings.filter((item) => item.wallId === wallId), wallLength);
+    if (offset == null) { setOpeningEditError("Não há espaço livre nessa parede para inserir a abertura."); return; }
+    opening.offset = offset;
+    setOpeningEditError(null);
     setCustomOpenings((prev) => [...(Array.isArray(prev) ? prev : []), opening]);
     pushRoomHistory(before);
     setInteractionMode("opening");
@@ -4449,6 +4455,18 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     openingId: string,
     patch: Partial<Pick<CustomOpening, "width" | "height" | "sillHeight" | "openingStyle" | "swing" | "swingSide" | "leafCount" | "frameProfile" | "glassType" | "manufacturer" | "catalogProductId">>,
   ) => {
+    const current = safeCustomOpenings.find((item) => item.id === openingId);
+    const currentWall = current ? safeCustomWalls.find((item) => item.id === current.wallId) : null;
+    if (current && currentWall) {
+      const wallLength = Math.hypot(currentWall.x2 - currentWall.x1, currentWall.y2 - currentWall.y1);
+      const requested = { ...current, ...patch };
+      const candidate = constrainOpeningToWall({ ...requested, ...normalizeOpeningDimensions(requested) }, wallLength);
+      if (safeCustomOpenings.some((item) => item.wallId === current.wallId && item.id !== openingId && openingsOverlap(candidate, item, wallLength))) {
+        setOpeningEditError("Essa medida sobrepõe outra abertura. Ajuste a medida ou a posição.");
+        return;
+      }
+    }
+    setOpeningEditError(null);
     const before = snapshotEditor();
     setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) => {
       if (opening.id !== openingId) return opening;
@@ -4475,6 +4493,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const minOffset = halfOpening / wallLength;
     const maxOffset = 1 - minOffset;
     const nextOffset = Math.max(minOffset, Math.min(maxOffset, rawPercent / 100));
+    if (safeCustomOpenings.some((item) => item.wallId === wall.id && item.id !== openingId && openingsOverlap({ ...opening, offset: nextOffset }, item, wallLength))) {
+      setOpeningEditError("Essa posição sobrepõe outra abertura. Escolha uma posição livre.");
+      return;
+    }
+    setOpeningEditError(null);
     const before = snapshotEditor();
     setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((item) =>
       item.id === openingId ? { ...item, offset: nextOffset } : item
@@ -4501,12 +4524,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
     if (wallLength < 0.001) return;
     const before = snapshotEditor();
-    const shift = Math.max((opening.width ?? (opening.type === "door" ? 0.9 : 1.2)) / wallLength + 0.04, 0.08);
-    const candidate = opening.offset + shift <= 0.92 ? opening.offset + shift : opening.offset - shift;
+    const candidate = freeOpeningOffset(opening, safeCustomOpenings.filter((item) => item.wallId === wall.id), wallLength);
+    if (candidate == null) { setOpeningEditError("Não há espaço livre nessa parede para duplicar a abertura."); return; }
+    setOpeningEditError(null);
     const copy: CustomOpening = {
       ...opening,
       id: `custom-opening-${uid()}`,
-      offset: Math.max(0.08, Math.min(0.92, candidate)),
+      offset: candidate,
     };
     setCustomOpenings((prev) => [...(Array.isArray(prev) ? prev : []), copy]);
     setSelectedOpeningId(copy.id);
@@ -6181,6 +6205,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
   return (
     <div className="arqdor-reference-ui arq-direct-editor min-h-screen bg-muted/30">
+      {openingEditError && <div role="alert" className="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">{openingEditError}<button type="button" onClick={() => setOpeningEditError(null)} className="font-semibold">Fechar aviso</button></div>}
       {projectMaster && step !== RESULT_STEP && (
         <div className="fixed inset-0 z-[250] grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-3xl border border-emerald-200 bg-white p-6 shadow-2xl">
