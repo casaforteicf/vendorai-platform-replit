@@ -35,7 +35,7 @@ export default function RenderStudioGlbViewer({ url, modelId, onSelect }: Props)
   const [saveMessage, setSaveMessage] = useState("");
   const meshKeys = useRef(new WeakMap<object, string>());
   const [savedViews, setSavedViews] = useState<Array<{ name: string; position: number[]; target: number[] }>>([]);
-  const runtime = useRef<{ selection: any; camera: any; controls: any; sun: any } | null>(null);
+  const runtime = useRef<{ root: any; camera: any; controls: any; sun: any } | null>(null);
   const selectedObject = useRef<any>(null);
   useEffect(() => { selectRef.current = onSelect; }, [onSelect]);
 
@@ -155,7 +155,7 @@ export default function RenderStudioGlbViewer({ url, modelId, onSelect }: Props)
       };
       observer = new ResizeObserver(resize); observer.observe(holder); resize();
       const animate = () => { if (cancelled) return; frame = requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); };
-      runtime.current = { selection: null, camera, controls, sun };
+      runtime.current = { root, camera, controls, sun };
       animate(); setStatus("");
     })().catch((reason: unknown) => {
       if (!cancelled) { cleanup(); setStatus(""); setError(reason instanceof Error ? reason.message : "Falha ao visualizar GLB"); }
@@ -167,12 +167,16 @@ export default function RenderStudioGlbViewer({ url, modelId, onSelect }: Props)
     setColor(next);
     const mesh = selectedObject.current;
     if (!mesh?.isMesh) return;
-    // Clone per mesh: never modify shared imported material across unrelated surfaces.
+    // Apply to all meshes referencing this unique source material, without touching the original GLB.
     const apply = (material: any) => { const copy = material.clone(); if (copy.color) copy.color.set(next); return copy; };
     const meshKey = meshKeys.current.get(mesh);
     if (!meshKey) { setSaveMessage("Material sem identidade única no GLB; não é possível salvar esta cor."); return; }
-    mesh.material = Array.isArray(mesh.material) ? mesh.material.map(apply) : apply(mesh.material);
-    if (meshKey) setMaterialColors(previous => ({ ...previous, [meshKey]: next }));
+    runtime.current?.root?.traverse((node: any) => {
+      if (node.isMesh && meshKeys.current.get(node) === meshKey) {
+        node.material = Array.isArray(node.material) ? node.material.map(apply) : apply(node.material);
+      }
+    });
+    setMaterialColors(previous => ({ ...previous, [meshKey]: next }));
     setSaveMessage("Alterações ainda não salvas");
   }
   function saveView() {
