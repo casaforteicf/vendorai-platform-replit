@@ -392,8 +392,9 @@ def associate_boundary_candidates(opening_hosts, classifications, tolerance=0.15
     A ring can be an outside mesh boundary; matching it with an object only
     raises a review priority. Neither an opening nor its size is certified.
     """
-    if not isinstance(opening_hosts, list) or not isinstance(classifications, list):
-        raise ValueError("Dados espaciais inválidos")
+    if (not isinstance(opening_hosts, list) or not isinstance(classifications, list)
+            or len(opening_hosts) > 2000 or len(classifications) > 2000):
+        raise ValueError("Dados espaciais inválidos ou acima do limite")
     if type(tolerance) not in (int, float) or not math.isfinite(tolerance) or not 0 <= tolerance <= 1:
         raise ValueError("Tolerância inválida")
     walls = {}
@@ -408,6 +409,8 @@ def associate_boundary_candidates(opening_hosts, classifications, tolerance=0.15
             openings.setdefault(item.get("name"), []).append(item)
     findings = []
     for relation in opening_hosts:
+        if not isinstance(relation, dict):
+            raise ValueError("Relação espacial inválida")
         name = relation.get("opening")
         matches = openings.get(name, [])
         candidates = relation.get("candidateWalls", [])
@@ -426,6 +429,11 @@ def associate_boundary_candidates(opening_hosts, classifications, tolerance=0.15
                         box = loop.get("bounds", {})
                         bmin, bmax = box.get("min"), box.get("max")
                         if not isinstance(bmin, list) or not isinstance(bmax, list) or len(bmin) != 3 or len(bmax) != 3:
+                            continue
+                        if (any(type(value) not in (int, float) or not math.isfinite(value)
+                                for value in (*low, *high, *bmin, *bmax))):
+                            continue
+                        if (any(low[i] > high[i] or bmin[i] > bmax[i] for i in range(3))):
                             continue
                         if all(low[i] <= bmax[i] + tolerance and high[i] >= bmin[i] - tolerance for i in range(3)):
                             verified_candidates.append({"wall": wall_name, "boundaryBounds": box})
