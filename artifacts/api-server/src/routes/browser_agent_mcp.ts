@@ -9,7 +9,7 @@ import {
   leadsTable,
   notificationsTable,
 } from "@workspace/db";
-import { and, eq, or, sql } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { decrypt, encrypt } from "../lib/crypto.js";
 import { runBrowserAgent, type BrowserAgentInput } from "../services/browser-agent.js";
 import { mergeBrowserProfiles, type BrowserProfileState } from "../services/browser-profile.js";
@@ -224,12 +224,12 @@ router.post("/internal/browser-mcp/crm-summary", async (req, res) => {
     const [summary] = await db
       .select({ totalLeads: sql<number>`cast(count(*) as integer)` })
       .from(leadsTable)
-      .where(eq(leadsTable.tenantId, tenantId));
+      .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm)));
 
     res.json({
       ok: true,
       tenantId,
-      crm: { totalLeads: Number(summary?.totalLeads ?? 0) },
+      crm: { activeLeads: Number(summary?.totalLeads ?? 0) },
       readOnly: true,
       source: "vendorai-api",
     });
