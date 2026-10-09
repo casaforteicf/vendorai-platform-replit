@@ -159,6 +159,24 @@ export class ModelFileStore {
     return audit;
   }
 
+  async conversionReport(tenantId: string, projectId: string, modelId: string) {
+    const record = await this.get(tenantId, projectId, modelId);
+    const directory = await this.directory(tenantId, projectId, modelId);
+    const audit = JSON.parse((await this.privateRead(directory, "conversion-report.json")).toString("utf8")) as Record<string, unknown>;
+    const source = audit.sourceSha256;
+    const details = audit.geometryReport as Record<string, unknown> | null;
+    if (typeof source !== "string" || !/^[a-f0-9]{64}$/.test(source) ||
+        audit.convertedSha256 !== record.sha256 || !details ||
+        details.sourceSha256 !== source || !Array.isArray(details.openingScheduleDraft)) {
+      throw new Error("Relatório de conversão divergente do modelo");
+    }
+    return { modelId: record.id, modelSha256: record.sha256, sourceSha256: source,
+      status: "converted_pending_geometry_review" as const,
+      openingScheduleDraft: details.openingScheduleDraft,
+      geometryApproved: false as const, fabricationReady: false as const,
+      quantitiesEnabled: false as const };
+  }
+
   async list(tenantId: string, projectId: string): Promise<ModelRecord[]> {
     const directory = await this.directory(tenantId, projectId);
     const entries = await readdir(directory, { withFileTypes: true });
