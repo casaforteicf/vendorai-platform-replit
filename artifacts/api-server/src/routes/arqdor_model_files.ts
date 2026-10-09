@@ -91,15 +91,19 @@ router.post(`${prefix}/convert`, (req, res, next) => {
     const output = path.join(workDir, "converted.glb");
     await writeFile(input, req.file.buffer, { flag: "wx", mode: 0o600 });
     const run = promisify(execFile);
-    await run(blender, ["--background", "--python", converter, "--",
+    const conversionProcess = await run(blender, ["--background", "--python", converter, "--",
       "--input", input, "--output", output, "--sha256", sha256], {
       timeout: 180_000, maxBuffer: 1024 * 1024, cwd: workDir,
     });
     const converted = await readFile(output);
     // ModelFileStore.save validates GLB structure, embedded resources and limit.
     const model = await storage.save(tenantId, projectId, req.file.originalname + ".glb", converted);
+    const reportLine = conversionProcess.stdout.split(/\\r?\\n/).reverse()
+      .find(line => line.trim().startsWith('{"status": "converted_pending_geometry_review"'));
+    if (!reportLine) throw new Error("Conversor não retornou relatório de geometria");
+    const geometryReport = JSON.parse(reportLine) as Record<string, unknown>;
     const audit = await storage.attachConvertedSource(
-      tenantId, projectId, model.id, req.file.originalname, req.file.buffer, sha256);
+      tenantId, projectId, model.id, req.file.originalname, req.file.buffer, sha256, geometryReport);
     return res.status(201).json({ model, conversion: audit });
   } catch (error) {
     if (error instanceof Error && /GLB|glTF|malhas|recursos|Modelo excede/.test(error.message))
