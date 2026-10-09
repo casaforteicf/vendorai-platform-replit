@@ -83,14 +83,35 @@ arqdorMepRouter.post("/arch/projects/:projectId/mep/nodes",async(req,res,next)=>
   try {
     const tid=tenant(req,res),pid=routeId(req,res);if(!tid||!pid)return;
     const body=validation(nodeInput,req,res);if(!body)return;
-    if(!await projectExists(tid,pid)){res.status(404).json({error:"Projeto não encontrado"});return;}
-    const r=await pool.query(`INSERT INTO arqdor_mep_nodes
-      (id,tenant_id,project_id,network_id,floor_id,room_id,host_element_id,kind,x_mm,y_mm,z_mm)
-      SELECT $1,n.tenant_id,n.project_id,n.id,$5,$6,$7,$8,$9,$10,$11
-      FROM arqdor_mep_networks n WHERE n.tenant_id=$2 AND n.project_id=$3 AND n.id=$4 RETURNING *`,
-      [crypto.randomUUID(),tid,pid,body.networkId,body.floorId,body.roomId??null,body.hostElementId??null,body.kind,body.xMm,body.yMm,body.zMm]);
-    if(!r.rowCount){res.status(404).json({error:"Rede não encontrada no projeto"});return;}
-    res.status(201).json({node:r.rows[0]});
+    const client=await pool.connect();
+    try {
+      await client.query("BEGIN");
+      // Lock the same Concept row as PATCH /arch/concept-projects/:id.
+      const owner=await client.query(
+        `SELECT c.id,c.configuration FROM arqdor_mep_project_bindings b
+         JOIN arch_concept_projects c ON c.id=b.concept_project_id AND c.tenant_id=b.tenant_id
+         WHERE b.tenant_id=$1 AND b.workspace_project_id=$2 FOR UPDATE OF c`,[tid,pid]);
+      if(owner.rowCount!==1){
+        await client.query("ROLLBACK");
+        res.status(409).json({code:"MEP_BINDING_REQUIRED",error:"Workspace sem pré-projeto BIM vinculado"});return;
+      }
+      if(body.hostElementId){
+        const wallList=owner.rows[0].configuration?.customWalls;
+        if(!Array.isArray(wallList)||!wallList.some((w:unknown)=>w!==null&&typeof w==="object"&&(w as {id?:unknown}).id===body.hostElementId)){
+          await client.query("ROLLBACK");
+          res.status(409).json({code:"MEP_HOST_NOT_FOUND",error:"Parede de referência não existe na geometria salva"});return;
+        }
+      }
+      const r=await client.query(`INSERT INTO arqdor_mep_nodes
+        (id,tenant_id,project_id,network_id,floor_id,room_id,host_element_id,kind,x_mm,y_mm,z_mm)
+        SELECT $1,n.tenant_id,n.project_id,n.id,$5,$6,$7,$8,$9,$10,$11
+        FROM arqdor_mep_networks n WHERE n.tenant_id=$2 AND n.project_id=$3 AND n.id=$4 RETURNING *`,
+        [crypto.randomUUID(),tid,pid,body.networkId,body.floorId,body.roomId??null,body.hostElementId??null,body.kind,body.xMm,body.yMm,body.zMm]);
+      if(!r.rowCount){await client.query("ROLLBACK");res.status(404).json({error:"Rede não encontrada no projeto"});return;}
+      await client.query("COMMIT");
+      res.status(201).json({node:r.rows[0]});
+    }catch(error){await client.query("ROLLBACK").catch(()=>{});throw error;}
+    finally{client.release();}
   }catch(err){next(err);}
 });
 arqdorMepRouter.post("/arch/projects/:projectId/mep/segments",async(req,res,next)=>{
