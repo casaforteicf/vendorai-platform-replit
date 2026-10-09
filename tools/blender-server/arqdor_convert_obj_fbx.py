@@ -11,7 +11,7 @@ from mathutils import Vector
 from pathlib import Path
 
 import bpy
-from arqdor_feature_contracts import validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts
+from arqdor_feature_contracts import validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, draft_opening_schedule
 
 
 def convert(src: Path, dst: Path, sha256: str):
@@ -66,6 +66,7 @@ def convert(src: Path, dst: Path, sha256: str):
             **suggest_geometry_role(local_bounds),
         })
     opening_hosts = propose_opening_hosts(classification_hints)
+    opening_schedule = draft_opening_schedule(classification_hints)
     bpy.ops.export_scene.gltf(filepath=str(dst.resolve()), export_format="GLB",
                               use_selection=False, export_apply=False)
     if not dst.is_file() or dst.stat().st_size == 0:
@@ -77,6 +78,7 @@ def convert(src: Path, dst: Path, sha256: str):
             "bounds": {"min": minimum, "max": maximum, "dimensions": dimensions},
             "units": "unverified", "classifications": classification_hints,
             "openingHostCandidates": opening_hosts,
+            "openingScheduleDraft": opening_schedule,
             "outputBytes": dst.stat().st_size,
             "geometryApproved": False, "materialsApproved": False}
 
