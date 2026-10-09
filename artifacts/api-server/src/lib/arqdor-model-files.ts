@@ -177,6 +177,63 @@ export class ModelFileStore {
       quantitiesEnabled: false as const };
   }
 
+  async parametricDrafts(tenantId: string, projectId: string, modelId: string) {
+    const record = await this.get(tenantId, projectId, modelId);
+    const directory = await this.directory(tenantId, projectId, modelId);
+    try {
+      const draft = JSON.parse((await this.privateRead(directory, "parametric-draft.json")).toString("utf8"));
+      if (draft.modelSha256 !== record.sha256) throw new Error("Versão do modelo divergente");
+      return draft;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT")
+        return { revision: 0, modelSha256: record.sha256, walls: [], updatedAt: null };
+      throw error;
+    }
+  }
+
+  async saveParametricDraft(tenantId: string, projectId: string, modelId: string,
+    userId: string, input: unknown) {
+    const current = await this.parametricDrafts(tenantId, projectId, modelId);
+    const record = await this.get(tenantId, projectId, modelId);
+    if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Projeto paramétrico inválido");
+    const data = input as Record<string, unknown>;
+    if (data.modelSha256 !== record.sha256 || !Number.isInteger(data.revision) ||
+        data.revision !== current.revision) throw new Error("Conflito de versão do modelo");
+    const walls = data.walls;
+    if (!Array.isArray(walls) || walls.length > 500) throw new Error("Paredes inválidas");
+    for (const item of walls) {
+      if (!item || typeof item !== "object") throw new Error("Parede inválida");
+      const wall = item as Record<string, unknown>;
+      const validPoint = (p: unknown): p is number[] => Array.isArray(p) && p.length === 2 &&
+        p.every(n => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= 10000);
+      if (typeof wall.id !== "string" || !/^[a-zA-Z0-9_-]{1,80}$/.test(wall.id) ||
+          !validPoint(wall.start) || !validPoint(wall.end) ||
+          ![wall.thickness, wall.height].every(n => typeof n === "number" && Number.isFinite(n) && n > 0 && n <= 20) ||
+          !Array.isArray(wall.openings) || wall.openings.length > 100)
+        throw new Error("Geometria paramétrica inválida");
+      const distance = Math.hypot(wall.end[0] - wall.start[0], wall.end[1] - wall.start[1]);
+      if (distance < .1) throw new Error("Parede muito curta");
+      for (const opening of wall.openings) {
+        const o = opening as Record<string, unknown>;
+        if (!o || !["door", "window"].includes(String(o.kind)) ||
+            ![o.offset, o.width, o.sill, o.height].every(n => typeof n === "number" && Number.isFinite(n)) ||
+            o.offset < 0 || o.width <= 0 || o.sill < 0 || o.height <= 0 ||
+            o.offset + o.width > distance || o.sill + o.height > wall.height)
+          throw new Error("Abertura paramétrica inválida");
+      }
+    }
+    const directory = await this.directory(tenantId, projectId, modelId);
+    const next = { revision: current.revision + 1, modelSha256: record.sha256,
+      walls, updatedBy: userId, updatedAt: new Date().toISOString(),
+      geometryApproved: false, quantitiesEnabled: false };
+    const draftPath = path.join(directory, `parametric-${randomUUID()}.tmp`);
+    try {
+      await writeFile(draftPath, JSON.stringify(next), { flag: "wx", mode: 0o600 });
+      await rename(draftPath, path.join(directory, "parametric-draft.json"));
+    } finally { await rm(draftPath, { force: true }); }
+    return next;
+  }
+
   async list(tenantId: string, projectId: string): Promise<ModelRecord[]> {
     const directory = await this.directory(tenantId, projectId);
     const entries = await readdir(directory, { withFileTypes: true });
