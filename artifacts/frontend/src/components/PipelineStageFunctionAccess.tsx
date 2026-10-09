@@ -170,6 +170,10 @@ export function PipelineStageFunctionAccess({
     const previous = savedSelected;
     setSaving(true);
     try {
+      const selectedOption = next ? agents.find((agent) => agent.agentKey === next) : null;
+      if (selectedOption && !selectedOption.ativo) {
+        await customFetch(`/api/agent-configs/${selectedOption.agentKey}/activate`, { method: "POST", responseType: "json" });
+      }
       await customFetch(`/api/tenants/${tenantId}/pipeline-stages/${stageId}`, {
         method: "PATCH",
         body: JSON.stringify({ responsaveisFuncoes: selected }),
