@@ -2493,6 +2493,82 @@ router.post(
   }
 );
 
+
+const budgetImportReviewSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("approve"),
+    reviewedData: z.object({ itens: z.array(z.record(z.string(), z.unknown())).min(1).max(500) }).passthrough(),
+    note: z.string().trim().max(2000).optional(),
+  }),
+  z.object({
+    action: z.literal("reject"),
+    note: z.string().trim().min(3).max(2000),
+  }),
+]);
+
+// A extração original permanece imutável: nenhum item vira orçamento sem revisão.
+router.get("/tenants/:tenantId/deals/budget-imports/:importId", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+  try {
+    const result = await db.execute(sql`
+      SELECT id, tenant_id, source_type, original_name, mime_type, file_url,
+             extraction_json, confidence, review_status, review_json, review_note,
+             created_by, created_at, reviewed_by, reviewed_at
+      FROM public.budget_imports
+      WHERE id = ${String(req.params.importId)} AND tenant_id = ${tenantId}
+      LIMIT 1
+    `);
+    const record = result.rows[0];
+    if (!record) { res.status(404).json({ error: "Importação não encontrada" }); return; }
+    res.json(record);
+  } catch (err) {
+    req.log.error({ err }, "budget-import: failed to fetch review");
+    res.status(500).json({ error: "Não foi possível consultar a importação" });
+  }
+});
+
+router.post("/tenants/:tenantId/deals/budget-imports/:importId/review", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+  const parsed = budgetImportReviewSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.message }); return; }
+  const payload = parsed.data;
+  try {
+    const updated = await db.execute(sql`
+      UPDATE public.budget_imports
+      SET review_status = ${payload.action === "approve" ? "approved" : "rejected"},
+          review_json = ${payload.action === "approve" ? JSON.stringify(payload.reviewedData) : null}::jsonb,
+          review_note = ${payload.note ?? null},
+          reviewed_at = NOW(),
+          reviewed_by = ${req.user?.sub ?? null}
+      WHERE id = ${String(req.params.importId)} AND tenant_id = ${tenantId}
+        AND review_status = 'pending_review'
+      RETURNING id, review_status, reviewed_at, reviewed_by
+    `);
+    if (!updated.rows.length) {
+      const found = await db.execute(sql`
+        SELECT review_status FROM public.budget_imports
+        WHERE id = ${String(req.params.importId)} AND tenant_id = ${tenantId}
+      `);
+      res.status(found.rows.length ? 409 : 404).json({
+        error: found.rows.length ? "Importação já revisada; uma segunda aprovação exige nova importação." : "Importação não encontrada",
+      });
+      return;
+    }
+    res.json({ ...updated.rows[0], requiresManualSave: true });
+  } catch (err) {
+    req.log.error({ err }, "budget-import: failed to review");
+    res.status(500).json({ error: "Não foi possível revisar a importação" });
+  }
+});
+
 router.delete("/deals/:id", async (req, res) => {
   const [existing] = await db
     .select({ id: dealsTable.id, tenantId: dealsTable.tenantId, assignedTo: dealsTable.assignedTo })
