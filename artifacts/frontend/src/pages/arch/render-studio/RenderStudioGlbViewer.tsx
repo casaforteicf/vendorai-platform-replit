@@ -34,7 +34,7 @@ export default function RenderStudioGlbViewer({ url, modelId, onSelect }: Props)
   const [savingSettings, setSavingSettings] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const meshKeys = useRef(new WeakMap<object, string>());
-  const [savedViews] = useState<Array<{ name: string; position: number[]; target: number[] }>>([]);
+  const [savedViews, setSavedViews] = useState<Array<{ name: string; position: number[]; target: number[] }>>([]);
   const runtime = useRef<{ selection: any; camera: any; controls: any; sun: any } | null>(null);
   const selectedObject = useRef<any>(null);
   useEffect(() => { selectRef.current = onSelect; }, [onSelect]);
