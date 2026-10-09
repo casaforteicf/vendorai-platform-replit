@@ -8,6 +8,8 @@ import { ensureStandardConstructionCatalog } from "../lib/ensure-standard-constr
 import { gerarRelatorioDiarioPdf } from "../lib/pdf-diario";
 import { gerarOrcamentoPdf } from "../lib/pdf-orcamento";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { calcularQuantidadeCompra } from "../lib/construction-unit-conversion.js";
+import { extractQuoteData } from "../lib/document-extraction.js";
 import {
   db,
   obrasTable,
@@ -27,6 +29,136 @@ import {
   obraOrcamentosTable,
   obraOrcamentoEtapasTable,
   obraOrcamentoItensTable,
+  obraOrcamentoItemQuantitativosHistoricoTable,
+  maoObraRecursosTable,
+  maoObraEquipesTable,
+  maoObraEquipeMembrosTable,
+  maoObraCoberturasTable,
+  insertMaoObraRecursoSchema,
+  updateMaoObraRecursoSchema,
+  insertMaoObraEquipeSchema,
+  insertMaoObraEquipeMembroSchema,
+  insertMaoObraCoberturaSchema,
+  equipamentosRecursosTable,
+  equipamentosCoberturasTable,
+  insertEquipamentoRecursoSchema,
+  updateEquipamentoRecursoSchema,
+  insertEquipamentoCoberturaSchema,
+  servicosFornecedoresTable,
+  servicosContratosTable,
+  servicosCoberturasTable,
+  servicosMedicoesTable,
+  servicosAditivosTable,
+  insertServicoFornecedorSchema,
+  updateServicoFornecedorSchema,
+  insertServicoContratoSchema,
+  updateServicoContratoSchema,
+  insertServicoCoberturaSchema,
+  insertServicoMedicaoSchema,
+  insertServicoAditivoSchema,
+  sistemasConstrutivosTable,
+  sistemaVariantesTable,
+  sistemaComposicaoRegrasTable,
+  sistemaInterfacesTable,
+  insertSistemaConstrutivoSchema,
+  updateSistemaConstrutivoSchema,
+  insertSistemaVarianteSchema,
+  insertSistemaComposicaoRegraSchema,
+  insertSistemaInterfaceSchema,
+  obraPavimentosTable,
+  obraAmbientesTable,
+  obraElementosTable,
+  obraSuperficiesTable,
+  obraSuperficieZonasTable,
+  obraAcabamentoPadroesTable,
+  insertObraPavimentoSchema,
+  insertObraAmbienteSchema,
+  insertObraElementoSchema,
+  insertObraSuperficieSchema,
+  insertObraSuperficieZonaSchema,
+  insertObraAcabamentoPadraoSchema,
+  obraEletricaPontosTable,
+  obraEletricaCircuitosTable,
+  obraEletricaQuadrosTable,
+  obraEletricaRedesEspeciaisTable,
+  insertObraEletricaPontoSchema,
+  insertObraEletricaCircuitoSchema,
+  insertObraEletricaQuadroSchema,
+  insertObraEletricaRedeEspecialSchema,
+  obraEnergiaSistemasTable,
+  obraEnergiaComponentesTable,
+  insertObraEnergiaSistemaSchema,
+  insertObraEnergiaComponenteSchema,
+  obraHidraulicaRedesTable,
+  obraHidraulicaPontosTable,
+  obraHidraulicaSegmentosTable,
+  obraHidraulicaEquipamentosTable,
+  insertObraHidraulicaRedeSchema,
+  insertObraHidraulicaPontoSchema,
+  insertObraHidraulicaSegmentoSchema,
+  insertObraHidraulicaEquipamentoSchema,
+  obraHidraulicaAreasTecnicasTable,
+  obraHidraulicaManifoldsTable,
+  obraHidraulicaAquecimentoTable,
+  obraHidraulicaPressurizacaoTable,
+  obraHidraulicaReservatoriosTable,
+  insertObraHidraulicaAreaTecnicaSchema,
+  insertObraHidraulicaManifoldSchema,
+  insertObraHidraulicaAquecimentoSchema,
+  insertObraHidraulicaPressurizacaoSchema,
+  insertObraHidraulicaReservatorioSchema,
+  obraPiscinasTable,
+  obraPiscinaCasasMaquinasTable,
+  obraPiscinaCircuitosTable,
+  obraPiscinaEquipamentosTable,
+  obraPiscinaTratamentoTable,
+  obraPiscinaAquecimentoTable,
+  obraPiscinaOverflowTable,
+  insertObraPiscinaSchema,
+  insertObraPiscinaCasaMaquinasSchema,
+  insertObraPiscinaCircuitoSchema,
+  insertObraPiscinaEquipamentoSchema,
+  insertObraPiscinaTratamentoSchema,
+  insertObraPiscinaAquecimentoSchema,
+  insertObraPiscinaOverflowSchema,
+  orcamentoFormacaoVendaTable,
+  orcamentoFormacaoComponentesTable,
+  orcamentoFormacaoSnapshotsTable,
+  insertOrcamentoFormacaoVendaSchema,
+  updateOrcamentoFormacaoVendaSchema,
+  insertOrcamentoFormacaoComponenteSchema,
+  obraCotacoesTable,
+  obraCotacaoItensTable,
+  obraCotacaoPropostasTable,
+  obraCotacaoPropostaItensTable,
+  obraCotacaoSelecoesTable,
+  insertObraCotacaoSchema,
+  insertObraCotacaoItemSchema,
+  insertObraCotacaoPropostaSchema,
+  insertObraCotacaoPropostaItemSchema,
+  insertObraCotacaoSelecaoSchema,
+  fornecedoresTable,
+  obraPedidosCompraTable,
+  obraPedidoCompraItensTable,
+  obraPedidoRecebimentosTable,
+  obraPedidoRecebimentoItensTable,
+  obraPedidoDevolucoesTable,
+  insertObraPedidoCompraSchema,
+  insertObraPedidoCompraItemSchema,
+  insertObraPedidoRecebimentoSchema,
+  insertObraPedidoRecebimentoItemSchema,
+  insertObraPedidoDevolucaoSchema,
+  obraExecucaoAtividadesTable,
+  obraExecucaoMedicoesTable,
+  obraExecucaoConsumosTable,
+  obraExecucaoMaoObraTable,
+  obraExecucaoEquipamentosTable,
+  obraExecucaoSnapshotsTable,
+  insertObraExecucaoAtividadeSchema,
+  insertObraExecucaoMedicaoSchema,
+  insertObraExecucaoConsumoSchema,
+  insertObraExecucaoMaoObraSchema,
+  insertObraExecucaoEquipamentoSchema,
   insertObraSchema,
   updateObraSchema,
   insertObraEtapaSchema,
@@ -62,6 +194,24 @@ const uploadFotos = multer({
   fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith("image/")) return cb(null, true);
     cb(new Error("Apenas imagens são permitidas."));
+  },
+});
+
+const uploadCotacao = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    const name = file.originalname.toLowerCase();
+    const allowed =
+      file.mimetype === "application/pdf" ||
+      file.mimetype === "application/msword" ||
+      file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      file.mimetype === "text/csv" ||
+      file.mimetype.startsWith("text/") ||
+      file.mimetype.startsWith("image/") ||
+      /\.(pdf|doc|docx|csv|txt|xls|xlsx|png|jpe?g|webp)$/i.test(name);
+    if (allowed) return cb(null, true);
+    cb(new Error("Formato não suportado para cotação."));
   },
 });
 
@@ -853,6 +1003,3478 @@ router.put("/tenants/:tenantId/compras-obras/:compraId", async (req, res) => {
   return res.json(compra);
 });
 
+// ─── Mão de obra do orçamento ─────────────────────────────────────────────────
+
+function custoHoraRecurso(recurso: typeof maoObraRecursosTable.$inferSelect): number {
+  const custoHoraInformado = numberOrZero(recurso.custoHoraCalculado);
+  if (custoHoraInformado > 0) return custoHoraInformado;
+
+  if (recurso.modalidade === "funcionario_hora" || recurso.modalidade === "funcionario_producao" || recurso.modalidade === "equipe_propria") {
+    const salario = numberOrZero(recurso.salarioMensal);
+    const encargos = numberOrZero(recurso.encargosPercentual);
+    const beneficios = numberOrZero(recurso.beneficiosMensais);
+    const outros = numberOrZero(recurso.outrosCustosMensais);
+    const horas = numberOrZero(recurso.horasMensais);
+    if (horas > 0) {
+      return (salario * (1 + encargos / 100) + beneficios + outros) / horas;
+    }
+  }
+
+  return numberOrZero(recurso.custoBase);
+}
+
+async function custoUnitarioEquipe(tenantId: string, equipeId: string, unidade: string): Promise<number> {
+  const [equipe] = await db
+    .select()
+    .from(maoObraEquipesTable)
+    .where(and(eq(maoObraEquipesTable.id, equipeId), eq(maoObraEquipesTable.tenantId, tenantId)));
+  if (!equipe) throw new Error("Equipe não encontrada");
+
+  const membros = await db
+    .select({
+      quantidade: maoObraEquipeMembrosTable.quantidade,
+      recurso: maoObraRecursosTable,
+    })
+    .from(maoObraEquipeMembrosTable)
+    .innerJoin(maoObraRecursosTable, eq(maoObraEquipeMembrosTable.recursoId, maoObraRecursosTable.id))
+    .where(and(
+      eq(maoObraEquipeMembrosTable.equipeId, equipeId),
+      eq(maoObraRecursosTable.tenantId, tenantId),
+      eq(maoObraRecursosTable.ativo, true),
+    ));
+
+  const custoHoraEquipe = membros.reduce((sum, membro) =>
+    sum + custoHoraRecurso(membro.recurso) * numberOrZero(membro.quantidade), 0);
+
+  if (unidade === "dia") return custoHoraEquipe * numberOrZero(equipe.horasDia || "8");
+  return custoHoraEquipe;
+}
+
+router.get("/tenants/:tenantId/mao-obra/recursos", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const rows = await db
+    .select()
+    .from(maoObraRecursosTable)
+    .where(eq(maoObraRecursosTable.tenantId, tid))
+    .orderBy(asc(maoObraRecursosTable.nome));
+
+  return res.json(rows.map((row) => ({
+    ...row,
+    custoHoraEfetivo: custoHoraRecurso(row).toFixed(4),
+  })));
+});
+
+router.post("/tenants/:tenantId/mao-obra/recursos", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertMaoObraRecursoSchema.safeParse({ ...req.body, tenantId: tid });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [created] = await db.insert(maoObraRecursosTable).values(parsed.data).returning();
+  return res.status(201).json({ ...created, custoHoraEfetivo: custoHoraRecurso(created).toFixed(4) });
+});
+
+router.put("/tenants/:tenantId/mao-obra/recursos/:recursoId", async (req, res) => {
+  const { tenantId: tid, recursoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = updateMaoObraRecursoSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [updated] = await db.update(maoObraRecursosTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(and(eq(maoObraRecursosTable.id, recursoId), eq(maoObraRecursosTable.tenantId, tid)))
+    .returning();
+  if (!updated) return res.status(404).json({ error: "Recurso não encontrado" });
+
+  return res.json({ ...updated, custoHoraEfetivo: custoHoraRecurso(updated).toFixed(4) });
+});
+
+router.get("/tenants/:tenantId/mao-obra/equipes", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const equipes = await db.select().from(maoObraEquipesTable)
+    .where(eq(maoObraEquipesTable.tenantId, tid))
+    .orderBy(asc(maoObraEquipesTable.nome));
+
+  const result = [];
+  for (const equipe of equipes) {
+    const membros = await db.select({
+      id: maoObraEquipeMembrosTable.id,
+      quantidade: maoObraEquipeMembrosTable.quantidade,
+      recurso: maoObraRecursosTable,
+    })
+      .from(maoObraEquipeMembrosTable)
+      .innerJoin(maoObraRecursosTable, eq(maoObraEquipeMembrosTable.recursoId, maoObraRecursosTable.id))
+      .where(eq(maoObraEquipeMembrosTable.equipeId, equipe.id));
+
+    const custoHora = membros.reduce((sum, membro) =>
+      sum + custoHoraRecurso(membro.recurso) * numberOrZero(membro.quantidade), 0);
+
+    result.push({
+      ...equipe,
+      membros,
+      custoHora: custoHora.toFixed(4),
+      custoDia: (custoHora * numberOrZero(equipe.horasDia || "8")).toFixed(4),
+    });
+  }
+
+  return res.json(result);
+});
+
+router.post("/tenants/:tenantId/mao-obra/equipes", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const { membros: rawMembros, ...rest } = req.body as { membros?: unknown; [key: string]: unknown };
+  const parsedEquipe = insertMaoObraEquipeSchema.safeParse({ ...rest, tenantId: tid });
+  if (!parsedEquipe.success) return res.status(422).json({ error: parsedEquipe.error.message });
+
+  const parsedMembros = z.array(insertMaoObraEquipeMembroSchema.omit({ equipeId: true })).safeParse(rawMembros ?? []);
+  if (!parsedMembros.success) return res.status(422).json({ error: parsedMembros.error.message });
+
+  const recursoIds = [...new Set(parsedMembros.data.map((m) => m.recursoId))];
+  if (recursoIds.length) {
+    const recursos = await db.select({ id: maoObraRecursosTable.id })
+      .from(maoObraRecursosTable)
+      .where(and(eq(maoObraRecursosTable.tenantId, tid), inArray(maoObraRecursosTable.id, recursoIds)));
+    if (recursos.length !== recursoIds.length) {
+      return res.status(422).json({ error: "Um ou mais recursos de mão de obra não pertencem ao tenant." });
+    }
+  }
+
+  const equipe = await db.transaction(async (tx) => {
+    const [created] = await tx.insert(maoObraEquipesTable).values(parsedEquipe.data).returning();
+    if (parsedMembros.data.length) {
+      await tx.insert(maoObraEquipeMembrosTable).values(parsedMembros.data.map((m) => ({
+        ...m,
+        equipeId: created.id,
+      })));
+    }
+    return created;
+  });
+
+  return res.status(201).json(equipe);
+});
+
+router.post("/tenants/:tenantId/mao-obra/coberturas", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const raw = { ...req.body, tenantId: tid, criadoPorId: (req as any).user?.sub ?? null };
+  const parsed = insertMaoObraCoberturaSchema.safeParse(raw);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const data = parsed.data;
+  const idsPresentes = [
+    data.composicaoId ? "composicao" : null,
+    data.orcamentoEtapaId ? "etapa_orcamento" : null,
+    data.orcamentoItemId ? "item_orcamento" : null,
+  ].filter(Boolean);
+
+  if (idsPresentes.length !== 1 || idsPresentes[0] !== data.escopoTipo) {
+    return res.status(422).json({
+      error: "A cobertura deve possuir exatamente um alvo e ele deve corresponder ao escopoTipo.",
+    });
+  }
+
+  let custoUnitario = numberOrZero(data.custoUnitario);
+  if (data.equipeId) {
+    custoUnitario = await custoUnitarioEquipe(tid, data.equipeId, data.unidade);
+  } else if (data.recursoId) {
+    const [recurso] = await db.select().from(maoObraRecursosTable)
+      .where(and(eq(maoObraRecursosTable.id, data.recursoId), eq(maoObraRecursosTable.tenantId, tid)));
+    if (!recurso) return res.status(422).json({ error: "Recurso de mão de obra inválido." });
+    const hora = custoHoraRecurso(recurso);
+    custoUnitario = data.unidade === "dia" ? hora * 8 : (numberOrZero(recurso.custoBase) || hora);
+  }
+
+  const custoTotal = numberOrZero(data.quantidade) * custoUnitario;
+
+  const targetCondition =
+    data.escopoTipo === "composicao"
+      ? eq(maoObraCoberturasTable.composicaoId, data.composicaoId!)
+      : data.escopoTipo === "etapa_orcamento"
+        ? eq(maoObraCoberturasTable.orcamentoEtapaId, data.orcamentoEtapaId!)
+        : eq(maoObraCoberturasTable.orcamentoItemId, data.orcamentoItemId!);
+
+  const created = await db.transaction(async (tx) => {
+    // Uma única fonte ativa por escopo/alvo. A anterior permanece para auditoria,
+    // porém fica inativa e deixa de entrar no custo.
+    await tx.update(maoObraCoberturasTable)
+      .set({ ativo: false, updatedAt: new Date() })
+      .where(and(
+        eq(maoObraCoberturasTable.tenantId, tid),
+        eq(maoObraCoberturasTable.escopoTipo, data.escopoTipo),
+        eq(maoObraCoberturasTable.ativo, true),
+        targetCondition,
+      ));
+
+    const [row] = await tx.insert(maoObraCoberturasTable).values({
+      ...data,
+      custoUnitario: custoUnitario.toFixed(4),
+      custoTotal: custoTotal.toFixed(4),
+      ativo: true,
+    }).returning();
+    return row;
+  });
+
+  return res.status(201).json(created);
+});
+
+router.get("/tenants/:tenantId/mao-obra/resolver", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const composicaoId = typeof req.query.composicaoId === "string" ? req.query.composicaoId : null;
+  const orcamentoEtapaId = typeof req.query.orcamentoEtapaId === "string" ? req.query.orcamentoEtapaId : null;
+  const orcamentoItemId = typeof req.query.orcamentoItemId === "string" ? req.query.orcamentoItemId : null;
+
+  const filtros = [eq(maoObraCoberturasTable.tenantId, tid), eq(maoObraCoberturasTable.ativo, true)];
+  const alvos = [];
+  if (composicaoId) alvos.push(eq(maoObraCoberturasTable.composicaoId, composicaoId));
+  if (orcamentoEtapaId) alvos.push(eq(maoObraCoberturasTable.orcamentoEtapaId, orcamentoEtapaId));
+  if (orcamentoItemId) alvos.push(eq(maoObraCoberturasTable.orcamentoItemId, orcamentoItemId));
+
+  if (!alvos.length) return res.status(422).json({ error: "Informe composicaoId, orcamentoEtapaId ou orcamentoItemId." });
+
+  const rows = await db.select().from(maoObraCoberturasTable)
+    .where(and(...filtros, or(...alvos)));
+
+  const prioridade = { item_orcamento: 3, etapa_orcamento: 2, composicao: 1 } as const;
+  const ordered = rows.sort((a, b) =>
+    (prioridade[b.escopoTipo as keyof typeof prioridade] ?? 0) -
+    (prioridade[a.escopoTipo as keyof typeof prioridade] ?? 0));
+
+  const efetiva = ordered[0] ?? null;
+  const suprimidas = efetiva
+    ? ordered.slice(1).map((row) => ({
+        ...row,
+        motivoSupressao: efetiva.escopoTipo === "etapa_orcamento" && efetiva.incluiMaoObraComposicoesFilhas
+          ? "incluida_na_mao_de_obra_da_etapa"
+          : "fonte_de_mao_de_obra_de_maior_prioridade_ativa",
+      }))
+    : [];
+
+  return res.json({
+    efetiva,
+    custoConsiderado: efetiva ? efetiva.custoTotal : "0",
+    suprimidas,
+    conflito: rows.length > 1,
+    regra: "item_orcamento > etapa_orcamento > composicao; somente a fonte efetiva soma no custo",
+  });
+});
+
+// ─── Equipamentos do orçamento ───────────────────────────────────────────────
+
+function custoUnitarioEquipamento(recurso: typeof equipamentosRecursosTable.$inferSelect): number {
+  if (recurso.origem === "proprio") {
+    const operacionalHora =
+      numberOrZero(recurso.depreciacaoHora) +
+      numberOrZero(recurso.custoManutencaoHora) +
+      (recurso.combustivelIncluso ? 0 : numberOrZero(recurso.custoCombustivelHora)) +
+      (recurso.operadorIncluso ? 0 : numberOrZero(recurso.custoOperadorHora));
+
+    if (recurso.unidadeCobranca === "h") return operacionalHora;
+    if (recurso.unidadeCobranca === "dia") return operacionalHora * 8;
+  }
+
+  return numberOrZero(recurso.valorUnitario);
+}
+
+router.get("/tenants/:tenantId/equipamentos-orcamento/recursos", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const rows = await db.select().from(equipamentosRecursosTable)
+    .where(eq(equipamentosRecursosTable.tenantId, tid))
+    .orderBy(asc(equipamentosRecursosTable.nome));
+
+  return res.json(rows.map((row) => ({
+    ...row,
+    custoUnitarioEfetivo: custoUnitarioEquipamento(row).toFixed(4),
+  })));
+});
+
+router.post("/tenants/:tenantId/equipamentos-orcamento/recursos", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertEquipamentoRecursoSchema.safeParse({ ...req.body, tenantId: tid });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [created] = await db.insert(equipamentosRecursosTable).values(parsed.data).returning();
+  return res.status(201).json({ ...created, custoUnitarioEfetivo: custoUnitarioEquipamento(created).toFixed(4) });
+});
+
+router.put("/tenants/:tenantId/equipamentos-orcamento/recursos/:equipamentoId", async (req, res) => {
+  const { tenantId: tid, equipamentoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = updateEquipamentoRecursoSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [updated] = await db.update(equipamentosRecursosTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(and(eq(equipamentosRecursosTable.id, equipamentoId), eq(equipamentosRecursosTable.tenantId, tid)))
+    .returning();
+  if (!updated) return res.status(404).json({ error: "Equipamento não encontrado" });
+
+  return res.json({ ...updated, custoUnitarioEfetivo: custoUnitarioEquipamento(updated).toFixed(4) });
+});
+
+router.post("/tenants/:tenantId/equipamentos-orcamento/coberturas", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertEquipamentoCoberturaSchema.safeParse({
+    ...req.body,
+    tenantId: tid,
+    criadoPorId: (req as any).user?.sub ?? null,
+  });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const data = parsed.data;
+  const idsPresentes = [
+    data.composicaoId ? "composicao" : null,
+    data.orcamentoEtapaId ? "etapa_orcamento" : null,
+    data.orcamentoItemId ? "item_orcamento" : null,
+  ].filter(Boolean);
+  if (idsPresentes.length !== 1 || idsPresentes[0] !== data.escopoTipo) {
+    return res.status(422).json({ error: "Informe exatamente um alvo compatível com escopoTipo." });
+  }
+
+  const [equipamento] = await db.select().from(equipamentosRecursosTable)
+    .where(and(eq(equipamentosRecursosTable.id, data.equipamentoId), eq(equipamentosRecursosTable.tenantId, tid)));
+  if (!equipamento) return res.status(422).json({ error: "Equipamento inválido para este tenant." });
+
+  const valorUnitario = numberOrZero(data.valorUnitario) || custoUnitarioEquipamento(equipamento);
+  const mobilizacao = data.mobilizacao != null ? numberOrZero(data.mobilizacao) : numberOrZero(equipamento.mobilizacao);
+  const desmobilizacao = data.desmobilizacao != null ? numberOrZero(data.desmobilizacao) : numberOrZero(equipamento.desmobilizacao);
+  const transporte = data.transporte != null ? numberOrZero(data.transporte) : numberOrZero(equipamento.transporte);
+  const quantidade = numberOrZero(data.quantidade);
+  const custoOperacionalExtra =
+    equipamento.origem === "proprio" && data.horasOperacao != null
+      ? numberOrZero(data.horasOperacao) * (
+          (equipamento.combustivelIncluso ? 0 : numberOrZero(equipamento.custoCombustivelHora)) +
+          (equipamento.operadorIncluso ? 0 : numberOrZero(equipamento.custoOperadorHora)) +
+          numberOrZero(equipamento.custoManutencaoHora) +
+          numberOrZero(equipamento.depreciacaoHora)
+        )
+      : 0;
+  const custoTotal = quantidade * valorUnitario + mobilizacao + desmobilizacao + transporte + custoOperacionalExtra;
+
+  const targetCondition =
+    data.escopoTipo === "composicao"
+      ? eq(equipamentosCoberturasTable.composicaoId, data.composicaoId!)
+      : data.escopoTipo === "etapa_orcamento"
+        ? eq(equipamentosCoberturasTable.orcamentoEtapaId, data.orcamentoEtapaId!)
+        : eq(equipamentosCoberturasTable.orcamentoItemId, data.orcamentoItemId!);
+
+  const created = await db.transaction(async (tx) => {
+    // O mesmo slot técnico não pode ser cobrado duas vezes no mesmo alvo.
+    await tx.update(equipamentosCoberturasTable)
+      .set({ ativo: false, updatedAt: new Date() })
+      .where(and(
+        eq(equipamentosCoberturasTable.tenantId, tid),
+        eq(equipamentosCoberturasTable.escopoTipo, data.escopoTipo),
+        eq(equipamentosCoberturasTable.slotKey, data.slotKey),
+        eq(equipamentosCoberturasTable.ativo, true),
+        targetCondition,
+      ));
+
+    const [row] = await tx.insert(equipamentosCoberturasTable).values({
+      ...data,
+      unidadeCobranca: data.unidadeCobranca || equipamento.unidadeCobranca,
+      valorUnitario: valorUnitario.toFixed(4),
+      mobilizacao: mobilizacao.toFixed(4),
+      desmobilizacao: desmobilizacao.toFixed(4),
+      transporte: transporte.toFixed(4),
+      custoTotal: custoTotal.toFixed(4),
+      ativo: true,
+    }).returning();
+    return row;
+  });
+
+  return res.status(201).json(created);
+});
+
+router.get("/tenants/:tenantId/equipamentos-orcamento/resolver", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const composicaoId = typeof req.query.composicaoId === "string" ? req.query.composicaoId : null;
+  const orcamentoEtapaId = typeof req.query.orcamentoEtapaId === "string" ? req.query.orcamentoEtapaId : null;
+  const orcamentoItemId = typeof req.query.orcamentoItemId === "string" ? req.query.orcamentoItemId : null;
+
+  const alvos = [];
+  if (composicaoId) alvos.push(eq(equipamentosCoberturasTable.composicaoId, composicaoId));
+  if (orcamentoEtapaId) alvos.push(eq(equipamentosCoberturasTable.orcamentoEtapaId, orcamentoEtapaId));
+  if (orcamentoItemId) alvos.push(eq(equipamentosCoberturasTable.orcamentoItemId, orcamentoItemId));
+  if (!alvos.length) return res.status(422).json({ error: "Informe ao menos um alvo." });
+
+  const rows = await db.select().from(equipamentosCoberturasTable)
+    .where(and(
+      eq(equipamentosCoberturasTable.tenantId, tid),
+      eq(equipamentosCoberturasTable.ativo, true),
+      or(...alvos),
+    ));
+
+  const prioridade = { item_orcamento: 3, etapa_orcamento: 2, composicao: 1 } as const;
+  const porSlot = new Map<string, typeof rows>();
+  for (const row of rows) {
+    if (!porSlot.has(row.slotKey)) porSlot.set(row.slotKey, []);
+    porSlot.get(row.slotKey)!.push(row);
+  }
+
+  const efetivas = [];
+  const suprimidas = [];
+  for (const [slotKey, slotRows] of porSlot) {
+    const ordered = slotRows.sort((a, b) =>
+      (prioridade[b.escopoTipo as keyof typeof prioridade] ?? 0) -
+      (prioridade[a.escopoTipo as keyof typeof prioridade] ?? 0));
+    efetivas.push(ordered[0]);
+    for (const row of ordered.slice(1)) {
+      suprimidas.push({ ...row, slotKey, motivoSupressao: "equipamento_equivalente_coberto_em_escopo_mais_especifico" });
+    }
+  }
+
+  const custoTotal = efetivas.reduce((sum, row) => sum + numberOrZero(row.custoTotal), 0);
+  return res.json({
+    efetivas,
+    suprimidas,
+    custoTotal: custoTotal.toFixed(4),
+    regra: "cada slot técnico soma uma vez; prioridade item_orcamento > etapa_orcamento > composicao",
+  });
+});
+
+// ─── Serviços e subempreitadas ────────────────────────────────────────────────
+
+router.get("/tenants/:tenantId/servicos-fornecedores", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+  const rows = await db.select().from(servicosFornecedoresTable)
+    .where(eq(servicosFornecedoresTable.tenantId, tid))
+    .orderBy(asc(servicosFornecedoresTable.nome));
+  return res.json(rows);
+});
+
+router.post("/tenants/:tenantId/servicos-fornecedores", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = insertServicoFornecedorSchema.safeParse({ ...req.body, tenantId: tid });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const [row] = await db.insert(servicosFornecedoresTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.put("/tenants/:tenantId/servicos-fornecedores/:fornecedorId", async (req, res) => {
+  const { tenantId: tid, fornecedorId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = updateServicoFornecedorSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const [row] = await db.update(servicosFornecedoresTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(and(eq(servicosFornecedoresTable.id, fornecedorId), eq(servicosFornecedoresTable.tenantId, tid)))
+    .returning();
+  if (!row) return res.status(404).json({ error: "Fornecedor não encontrado" });
+  return res.json(row);
+});
+
+router.get("/tenants/:tenantId/servicos-contratos", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+  const rows = await db.select().from(servicosContratosTable)
+    .where(eq(servicosContratosTable.tenantId, tid))
+    .orderBy(desc(servicosContratosTable.createdAt));
+  return res.json(rows);
+});
+
+router.post("/tenants/:tenantId/servicos-contratos", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertServicoContratoSchema.safeParse({
+    ...req.body,
+    tenantId: tid,
+    criadoPorId: (req as any).user?.sub ?? null,
+  });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  if (parsed.data.fornecedorId) {
+    const [fornecedor] = await db.select({ id: servicosFornecedoresTable.id })
+      .from(servicosFornecedoresTable)
+      .where(and(
+        eq(servicosFornecedoresTable.id, parsed.data.fornecedorId),
+        eq(servicosFornecedoresTable.tenantId, tid),
+      ));
+    if (!fornecedor) return res.status(422).json({ error: "Fornecedor inválido para este tenant." });
+  }
+
+  const valorGlobal = numberOrZero(parsed.data.valorGlobal) ||
+    numberOrZero(parsed.data.quantidadeContratada) * numberOrZero(parsed.data.valorUnitario);
+  const saldoContratual = Math.max(0, valorGlobal - numberOrZero(parsed.data.adiantamentoValor));
+
+  const [row] = await db.insert(servicosContratosTable).values({
+    ...parsed.data,
+    valorGlobal: valorGlobal.toFixed(4),
+    saldoContratual: saldoContratual.toFixed(4),
+  }).returning();
+
+  return res.status(201).json(row);
+});
+
+router.put("/tenants/:tenantId/servicos-contratos/:contratoId", async (req, res) => {
+  const { tenantId: tid, contratoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = updateServicoContratoSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const [row] = await db.update(servicosContratosTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(and(eq(servicosContratosTable.id, contratoId), eq(servicosContratosTable.tenantId, tid)))
+    .returning();
+  if (!row) return res.status(404).json({ error: "Contrato não encontrado" });
+  return res.json(row);
+});
+
+router.post("/tenants/:tenantId/servicos-coberturas", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = insertServicoCoberturaSchema.safeParse({ ...req.body, tenantId: tid });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const data = parsed.data;
+
+  const idsPresentes = [
+    data.composicaoId ? "composicao" : null,
+    data.orcamentoEtapaId ? "etapa_orcamento" : null,
+    data.orcamentoItemId ? "item_orcamento" : null,
+  ].filter(Boolean);
+  if (idsPresentes.length !== 1 || idsPresentes[0] !== data.escopoTipo) {
+    return res.status(422).json({ error: "Informe exatamente um alvo compatível com escopoTipo." });
+  }
+
+  let custoUnitario = numberOrZero(data.custoUnitario);
+  if (data.contratoId) {
+    const [contrato] = await db.select().from(servicosContratosTable)
+      .where(and(eq(servicosContratosTable.id, data.contratoId), eq(servicosContratosTable.tenantId, tid)));
+    if (!contrato) return res.status(422).json({ error: "Contrato inválido para este tenant." });
+    custoUnitario = custoUnitario || numberOrZero(contrato.valorUnitario) || numberOrZero(contrato.valorGlobal);
+  }
+
+  const custoTotal = numberOrZero(data.quantidade) * custoUnitario;
+  const targetCondition =
+    data.escopoTipo === "composicao"
+      ? eq(servicosCoberturasTable.composicaoId, data.composicaoId!)
+      : data.escopoTipo === "etapa_orcamento"
+        ? eq(servicosCoberturasTable.orcamentoEtapaId, data.orcamentoEtapaId!)
+        : eq(servicosCoberturasTable.orcamentoItemId, data.orcamentoItemId!);
+
+  const row = await db.transaction(async (tx) => {
+    await tx.update(servicosCoberturasTable)
+      .set({ ativo: false, updatedAt: new Date() })
+      .where(and(
+        eq(servicosCoberturasTable.tenantId, tid),
+        eq(servicosCoberturasTable.escopoTipo, data.escopoTipo),
+        eq(servicosCoberturasTable.slotKey, data.slotKey),
+        eq(servicosCoberturasTable.ativo, true),
+        targetCondition,
+      ));
+
+    const [created] = await tx.insert(servicosCoberturasTable).values({
+      ...data,
+      custoUnitario: custoUnitario.toFixed(4),
+      custoTotal: custoTotal.toFixed(4),
+      ativo: true,
+    }).returning();
+    return created;
+  });
+
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/servicos-contratos/:contratoId/medicoes", async (req, res) => {
+  const { tenantId: tid, contratoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [contrato] = await db.select().from(servicosContratosTable)
+    .where(and(eq(servicosContratosTable.id, contratoId), eq(servicosContratosTable.tenantId, tid)));
+  if (!contrato) return res.status(404).json({ error: "Contrato não encontrado" });
+
+  const parsed = insertServicoMedicaoSchema.safeParse({ ...req.body, tenantId: tid, contratoId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const valorBruto = numberOrZero(parsed.data.valorBruto) ||
+    (numberOrZero(parsed.data.quantidadeMedida) * numberOrZero(contrato.valorUnitario)) ||
+    (numberOrZero(parsed.data.percentualMedido) / 100) * numberOrZero(contrato.valorGlobal);
+  const retencaoValor = numberOrZero(parsed.data.retencaoValor) ||
+    valorBruto * numberOrZero(contrato.retencaoPercentual) / 100;
+  const valorLiquido = valorBruto - retencaoValor - numberOrZero(parsed.data.descontosValor) + numberOrZero(parsed.data.acrescimosValor);
+
+  const [row] = await db.insert(servicosMedicoesTable).values({
+    ...parsed.data,
+    valorBruto: valorBruto.toFixed(4),
+    retencaoValor: retencaoValor.toFixed(4),
+    valorLiquido: valorLiquido.toFixed(4),
+  }).returning();
+
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/servicos-contratos/:contratoId/aditivos", async (req, res) => {
+  const { tenantId: tid, contratoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [contrato] = await db.select().from(servicosContratosTable)
+    .where(and(eq(servicosContratosTable.id, contratoId), eq(servicosContratosTable.tenantId, tid)));
+  if (!contrato) return res.status(404).json({ error: "Contrato não encontrado" });
+
+  const parsed = insertServicoAditivoSchema.safeParse({ ...req.body, tenantId: tid, contratoId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(servicosAditivosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.get("/tenants/:tenantId/servicos-contratos/:contratoId/resumo", async (req, res) => {
+  const { tenantId: tid, contratoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [contrato] = await db.select().from(servicosContratosTable)
+    .where(and(eq(servicosContratosTable.id, contratoId), eq(servicosContratosTable.tenantId, tid)));
+  if (!contrato) return res.status(404).json({ error: "Contrato não encontrado" });
+
+  const medicoes = await db.select().from(servicosMedicoesTable)
+    .where(and(eq(servicosMedicoesTable.tenantId, tid), eq(servicosMedicoesTable.contratoId, contratoId)));
+  const aditivos = await db.select().from(servicosAditivosTable)
+    .where(and(eq(servicosAditivosTable.tenantId, tid), eq(servicosAditivosTable.contratoId, contratoId)));
+
+  const aditivosAprovados = aditivos.filter((a) => a.aprovado).reduce((s, a) => s + numberOrZero(a.valor), 0);
+  const valorContratoAtual = numberOrZero(contrato.valorGlobal) + aditivosAprovados;
+  const valorMedido = medicoes.reduce((s, m) => s + numberOrZero(m.valorBruto), 0);
+  const valorLiquido = medicoes.reduce((s, m) => s + numberOrZero(m.valorLiquido), 0);
+  const retencoes = medicoes.reduce((s, m) => s + numberOrZero(m.retencaoValor), 0);
+
+  return res.json({
+    contrato,
+    valorContratoAtual: valorContratoAtual.toFixed(4),
+    valorMedido: valorMedido.toFixed(4),
+    valorLiquidoMedido: valorLiquido.toFixed(4),
+    retencoes: retencoes.toFixed(4),
+    saldoMedir: Math.max(0, valorContratoAtual - valorMedido).toFixed(4),
+    medicoes,
+    aditivos,
+  });
+});
+
+// ─── Sistemas construtivos parametrizados ────────────────────────────────────
+
+const SISTEMAS_PADRAO = [
+  { chave: "icf", nome: "ICF", escoposAplicacao: ["parede_externa", "parede_interna"] },
+  { chave: "alvenaria_convencional", nome: "Alvenaria convencional", escoposAplicacao: ["parede_externa", "parede_interna"] },
+  { chave: "alvenaria_estrutural", nome: "Alvenaria estrutural", escoposAplicacao: ["parede_externa", "parede_interna", "estrutura"] },
+  { chave: "concreto_armado_vedacao", nome: "Concreto armado + vedação", escoposAplicacao: ["estrutura", "parede_externa", "parede_interna"] },
+  { chave: "parede_concreto", nome: "Parede de concreto", escoposAplicacao: ["parede_externa", "parede_interna", "estrutura"] },
+  { chave: "steel_frame", nome: "Light Steel Frame", escoposAplicacao: ["parede_externa", "parede_interna", "estrutura"] },
+  { chave: "wood_frame", nome: "Wood Frame", escoposAplicacao: ["parede_externa", "parede_interna", "estrutura"] },
+  { chave: "pre_moldado_concreto", nome: "Pré-moldado de concreto", escoposAplicacao: ["estrutura", "parede_externa"] },
+  { chave: "estrutura_metalica_fechamento", nome: "Estrutura metálica + fechamento", escoposAplicacao: ["estrutura", "parede_externa", "cobertura"] },
+  { chave: "sip_paineis", nome: "SIP / painéis industrializados", escoposAplicacao: ["parede_externa", "parede_interna", "cobertura"] },
+  { chave: "hibrido", nome: "Sistema híbrido", escoposAplicacao: ["outro"] },
+] as const;
+
+router.post("/tenants/:tenantId/sistemas-construtivos/catalogo-padrao", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const existentes = await db.select().from(sistemasConstrutivosTable)
+    .where(eq(sistemasConstrutivosTable.tenantId, tid));
+  const porChave = new Map(existentes.map((s) => [s.chave, s]));
+  const criados = [];
+
+  for (let i = 0; i < SISTEMAS_PADRAO.length; i++) {
+    const sistema = SISTEMAS_PADRAO[i];
+    if (porChave.has(sistema.chave)) continue;
+    const [created] = await db.insert(sistemasConstrutivosTable).values({
+      tenantId: tid,
+      chave: sistema.chave,
+      nome: sistema.nome,
+      escoposAplicacao: [...sistema.escoposAplicacao],
+      ativo: true,
+      ordem: i,
+    }).returning();
+    criados.push(created);
+  }
+
+  return res.json({ existentes: existentes.length, criados: criados.length, itens: criados });
+});
+
+router.get("/tenants/:tenantId/sistemas-construtivos", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+  const rows = await db.select().from(sistemasConstrutivosTable)
+    .where(eq(sistemasConstrutivosTable.tenantId, tid))
+    .orderBy(asc(sistemasConstrutivosTable.ordem), asc(sistemasConstrutivosTable.nome));
+  return res.json(rows);
+});
+
+router.post("/tenants/:tenantId/sistemas-construtivos", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = insertSistemaConstrutivoSchema.safeParse({ ...req.body, tenantId: tid });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const [row] = await db.insert(sistemasConstrutivosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.put("/tenants/:tenantId/sistemas-construtivos/:sistemaId", async (req, res) => {
+  const { tenantId: tid, sistemaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = updateSistemaConstrutivoSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const [row] = await db.update(sistemasConstrutivosTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(and(eq(sistemasConstrutivosTable.id, sistemaId), eq(sistemasConstrutivosTable.tenantId, tid)))
+    .returning();
+  if (!row) return res.status(404).json({ error: "Sistema não encontrado" });
+  return res.json(row);
+});
+
+router.post("/tenants/:tenantId/sistemas-construtivos/:sistemaId/variantes", async (req, res) => {
+  const { tenantId: tid, sistemaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [sistema] = await db.select({ id: sistemasConstrutivosTable.id })
+    .from(sistemasConstrutivosTable)
+    .where(and(eq(sistemasConstrutivosTable.id, sistemaId), eq(sistemasConstrutivosTable.tenantId, tid)));
+  if (!sistema) return res.status(404).json({ error: "Sistema não encontrado" });
+
+  const parsed = insertSistemaVarianteSchema.safeParse({ ...req.body, sistemaId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const [row] = await db.insert(sistemaVariantesTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/sistemas-construtivos/:sistemaId/regras", async (req, res) => {
+  const { tenantId: tid, sistemaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [sistema] = await db.select({ id: sistemasConstrutivosTable.id })
+    .from(sistemasConstrutivosTable)
+    .where(and(eq(sistemasConstrutivosTable.id, sistemaId), eq(sistemasConstrutivosTable.tenantId, tid)));
+  if (!sistema) return res.status(404).json({ error: "Sistema não encontrado" });
+
+  const parsed = insertSistemaComposicaoRegraSchema.safeParse({ ...req.body, sistemaId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  if (parsed.data.varianteId) {
+    const [variante] = await db.select({ id: sistemaVariantesTable.id })
+      .from(sistemaVariantesTable)
+      .where(and(eq(sistemaVariantesTable.id, parsed.data.varianteId), eq(sistemaVariantesTable.sistemaId, sistemaId)));
+    if (!variante) return res.status(422).json({ error: "Variante não pertence ao sistema." });
+  }
+
+  const [row] = await db.insert(sistemaComposicaoRegrasTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/sistemas-interfaces", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = insertSistemaInterfaceSchema.safeParse({ ...req.body, tenantId: tid });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const [row] = await db.insert(sistemaInterfacesTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.get("/tenants/:tenantId/sistemas-construtivos/:sistemaId/resolver", async (req, res) => {
+  const { tenantId: tid, sistemaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [sistema] = await db.select().from(sistemasConstrutivosTable)
+    .where(and(eq(sistemasConstrutivosTable.id, sistemaId), eq(sistemasConstrutivosTable.tenantId, tid)));
+  if (!sistema) return res.status(404).json({ error: "Sistema não encontrado" });
+
+  const varianteId = typeof req.query.varianteId === "string" ? req.query.varianteId : null;
+  const etapaKey = typeof req.query.etapaKey === "string" ? req.query.etapaKey : null;
+
+  const filtros = [eq(sistemaComposicaoRegrasTable.sistemaId, sistemaId)];
+  if (varianteId) filtros.push(eq(sistemaComposicaoRegrasTable.varianteId, varianteId));
+  if (etapaKey) filtros.push(eq(sistemaComposicaoRegrasTable.etapaKey, etapaKey));
+
+  const regras = await db.select().from(sistemaComposicaoRegrasTable)
+    .where(and(...filtros))
+    .orderBy(asc(sistemaComposicaoRegrasTable.ordem));
+
+  const interfaces = await db.select().from(sistemaInterfacesTable)
+    .where(and(
+      eq(sistemaInterfacesTable.tenantId, tid),
+      eq(sistemaInterfacesTable.ativo, true),
+      or(
+        eq(sistemaInterfacesTable.sistemaOrigem, sistema.chave),
+        eq(sistemaInterfacesTable.sistemaOrigem, "todos"),
+      ),
+    ));
+
+  const porSlot = new Map<string, typeof regras>();
+  for (const regra of regras) {
+    if (!porSlot.has(regra.slotKey)) porSlot.set(regra.slotKey, []);
+    porSlot.get(regra.slotKey)!.push(regra);
+  }
+
+  return res.json({
+    sistema,
+    varianteId,
+    etapaKey,
+    slots: [...porSlot.entries()].map(([slotKey, slotRegras]) => ({
+      slotKey,
+      regras: slotRegras,
+    })),
+    interfaces,
+    acoesSuportadas: ["manter", "substituir", "adicionar", "remover", "dimensionar_pelo_projeto"],
+  });
+});
+
+// ─── Ambientes, elementos, superfícies, faces e zonas ─────────────────────────
+
+router.post("/tenants/:tenantId/obras/:obraId/pavimentos", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  const parsed = insertObraPavimentoSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraPavimentosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/ambientes", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  const parsed = insertObraAmbienteSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  if (parsed.data.pavimentoId) {
+    const [pav] = await db.select({ id: obraPavimentosTable.id }).from(obraPavimentosTable)
+      .where(and(eq(obraPavimentosTable.id, parsed.data.pavimentoId), eq(obraPavimentosTable.obraId, obraId)));
+    if (!pav) return res.status(422).json({ error: "Pavimento inválido para esta obra." });
+  }
+
+  const [row] = await db.insert(obraAmbientesTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/elementos", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  const parsed = insertObraElementoSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const areaBruta = numberOrZero(parsed.data.areaBruta);
+  const areaAberturas = numberOrZero(parsed.data.areaAberturas);
+  const areaLiquida = parsed.data.areaLiquida != null
+    ? numberOrZero(parsed.data.areaLiquida)
+    : Math.max(0, areaBruta - areaAberturas);
+
+  const [row] = await db.insert(obraElementosTable).values({
+    ...parsed.data,
+    areaLiquida: areaLiquida.toFixed(4),
+  }).returning();
+
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/superficies", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraSuperficieSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const areaBruta = numberOrZero(parsed.data.areaBruta);
+  const areaAberturas = numberOrZero(parsed.data.areaAberturas);
+  const areaLiquida = parsed.data.areaLiquida != null
+    ? numberOrZero(parsed.data.areaLiquida)
+    : Math.max(0, areaBruta - areaAberturas);
+
+  const [row] = await db.insert(obraSuperficiesTable).values({
+    ...parsed.data,
+    areaLiquida: areaLiquida.toFixed(4),
+  }).returning();
+
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/superficies/:superficieId/zonas", async (req, res) => {
+  const { tenantId: tid, obraId, superficieId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [superficie] = await db.select().from(obraSuperficiesTable)
+    .where(and(eq(obraSuperficiesTable.id, superficieId), eq(obraSuperficiesTable.obraId, obraId)));
+  if (!superficie) return res.status(404).json({ error: "Superfície não encontrada" });
+
+  const parsed = insertObraSuperficieZonaSchema.safeParse({ ...req.body, superficieId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const zonasAtivas = await db.select().from(obraSuperficieZonasTable)
+    .where(and(eq(obraSuperficieZonasTable.superficieId, superficieId), eq(obraSuperficieZonasTable.ativo, true)));
+
+  const areaLiquida = numberOrZero(superficie.areaLiquida);
+  const areaNova = numberOrZero(parsed.data.area);
+  const areaJaAtribuida = zonasAtivas.reduce((sum, z) => sum + numberOrZero(z.area), 0);
+
+  if (areaLiquida > 0 && areaJaAtribuida + areaNova > areaLiquida + 0.0001) {
+    return res.status(422).json({
+      error: "As zonas ultrapassam a área líquida da superfície.",
+      areaLiquida: areaLiquida.toFixed(4),
+      areaJaAtribuida: areaJaAtribuida.toFixed(4),
+      areaTentada: areaNova.toFixed(4),
+    });
+  }
+
+  const [row] = await db.insert(obraSuperficieZonasTable).values(parsed.data).returning();
+
+  const areaAtribuida = areaJaAtribuida + areaNova;
+  return res.status(201).json({
+    zona: row,
+    resumo: {
+      areaLiquida: areaLiquida.toFixed(4),
+      areaAtribuida: areaAtribuida.toFixed(4),
+      areaNaoAtribuida: Math.max(0, areaLiquida - areaAtribuida).toFixed(4),
+      completo: areaLiquida === 0 ? true : Math.abs(areaLiquida - areaAtribuida) < 0.0001,
+    },
+  });
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/superficies/:superficieId/resumo-zonas", async (req, res) => {
+  const { tenantId: tid, obraId, superficieId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [superficie] = await db.select().from(obraSuperficiesTable)
+    .where(and(eq(obraSuperficiesTable.id, superficieId), eq(obraSuperficiesTable.obraId, obraId)));
+  if (!superficie) return res.status(404).json({ error: "Superfície não encontrada" });
+
+  const zonas = await db.select().from(obraSuperficieZonasTable)
+    .where(and(eq(obraSuperficieZonasTable.superficieId, superficieId), eq(obraSuperficieZonasTable.ativo, true)))
+    .orderBy(desc(obraSuperficieZonasTable.prioridade), asc(obraSuperficieZonasTable.createdAt));
+
+  const areaLiquida = numberOrZero(superficie.areaLiquida);
+  const areaAtribuida = zonas.reduce((sum, z) => sum + numberOrZero(z.area), 0);
+
+  return res.json({
+    superficie,
+    zonas,
+    areaLiquida: areaLiquida.toFixed(4),
+    areaAtribuida: areaAtribuida.toFixed(4),
+    areaNaoAtribuida: Math.max(0, areaLiquida - areaAtribuida).toFixed(4),
+    alertaAreaNaoAtribuida: areaLiquida > 0 && areaAtribuida < areaLiquida - 0.0001,
+    alertaSobreposicao: areaLiquida > 0 && areaAtribuida > areaLiquida + 0.0001,
+  });
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/acabamentos-padroes", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraAcabamentoPadraoSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraAcabamentoPadroesTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/superficies/:superficieId/resolver-acabamento", async (req, res) => {
+  const { tenantId: tid, obraId, superficieId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [superficie] = await db.select().from(obraSuperficiesTable)
+    .where(and(eq(obraSuperficiesTable.id, superficieId), eq(obraSuperficiesTable.obraId, obraId)));
+  if (!superficie) return res.status(404).json({ error: "Superfície não encontrada" });
+
+  const ambiente = superficie.ambienteId
+    ? (await db.select().from(obraAmbientesTable).where(eq(obraAmbientesTable.id, superficie.ambienteId)))[0] ?? null
+    : null;
+
+  const padroes = await db.select().from(obraAcabamentoPadroesTable)
+    .where(and(
+      eq(obraAcabamentoPadroesTable.obraId, obraId),
+      eq(obraAcabamentoPadroesTable.ativo, true),
+    ))
+    .orderBy(asc(obraAcabamentoPadroesTable.ordem));
+
+  const prioridade = {
+    padrao_empresa: 1,
+    padrao_tipo_ambiente: 2,
+    padrao_obra: 3,
+    ambiente: 4,
+    superficie: 5,
+    zona: 6,
+  } as const;
+
+  const candidatos = padroes.filter((p) => {
+    if (p.tipoAmbiente && p.tipoAmbiente !== ambiente?.tipo) return false;
+    if (p.tipoSuperficie && p.tipoSuperficie !== superficie.tipo) return false;
+    return true;
+  }).sort((a, b) =>
+    (prioridade[b.escopo as keyof typeof prioridade] ?? 0) -
+    (prioridade[a.escopo as keyof typeof prioridade] ?? 0));
+
+  return res.json({
+    superficie,
+    ambiente,
+    acabamentoEfetivo: candidatos[0] ?? null,
+    candidatos,
+    regraHeranca: "empresa > tipo_ambiente > obra > ambiente > superficie > zona; o mais específico vence",
+  });
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/estrutura-espacial", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  const [pavimentos, ambientes, elementos, superficies] = await Promise.all([
+    db.select().from(obraPavimentosTable).where(eq(obraPavimentosTable.obraId, obraId)).orderBy(asc(obraPavimentosTable.ordem)),
+    db.select().from(obraAmbientesTable).where(eq(obraAmbientesTable.obraId, obraId)),
+    db.select().from(obraElementosTable).where(and(eq(obraElementosTable.obraId, obraId), eq(obraElementosTable.ativo, true))),
+    db.select().from(obraSuperficiesTable).where(eq(obraSuperficiesTable.obraId, obraId)),
+  ]);
+
+  const superficieIds = superficies.map((s) => s.id);
+  const zonas = superficieIds.length
+    ? await db.select().from(obraSuperficieZonasTable).where(and(
+        inArray(obraSuperficieZonasTable.superficieId, superficieIds),
+        eq(obraSuperficieZonasTable.ativo, true),
+      ))
+    : [];
+
+  return res.json({ pavimentos, ambientes, elementos, superficies, zonas });
+});
+
+// ─── Elétrica: pontos/dispositivos separados de circuitos/redes ───────────────
+
+router.post("/tenants/:tenantId/obras/:obraId/eletrica/pontos", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  const parsed = insertObraEletricaPontoSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  if (parsed.data.ambienteId) {
+    const [amb] = await db.select({ id: obraAmbientesTable.id }).from(obraAmbientesTable)
+      .where(and(eq(obraAmbientesTable.id, parsed.data.ambienteId), eq(obraAmbientesTable.obraId, obraId)));
+    if (!amb) return res.status(422).json({ error: "Ambiente inválido para esta obra." });
+  }
+
+  const [row] = await db.insert(obraEletricaPontosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/eletrica/circuitos", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraEletricaCircuitoSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraEletricaCircuitosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/eletrica/quadros", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraEletricaQuadroSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraEletricaQuadrosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/eletrica/redes-especiais", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraEletricaRedeEspecialSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraEletricaRedesEspeciaisTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/eletrica/resumo", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  const [pontos, circuitos, quadros, redes] = await Promise.all([
+    db.select().from(obraEletricaPontosTable).where(and(eq(obraEletricaPontosTable.obraId, obraId), eq(obraEletricaPontosTable.ativo, true))),
+    db.select().from(obraEletricaCircuitosTable).where(and(eq(obraEletricaCircuitosTable.obraId, obraId), eq(obraEletricaCircuitosTable.ativo, true))),
+    db.select().from(obraEletricaQuadrosTable).where(and(eq(obraEletricaQuadrosTable.obraId, obraId), eq(obraEletricaQuadrosTable.ativo, true))),
+    db.select().from(obraEletricaRedesEspeciaisTable).where(and(eq(obraEletricaRedesEspeciaisTable.obraId, obraId), eq(obraEletricaRedesEspeciaisTable.ativo, true))),
+  ]);
+
+  const circuitosPorCodigo = new Map(circuitos.map((c) => [c.id, c]));
+  const alertas = [];
+
+  for (const ponto of pontos) {
+    if (ponto.circuitoId && !circuitosPorCodigo.has(ponto.circuitoId)) {
+      alertas.push({
+        tipo: "ponto_sem_circuito_valido",
+        pontoId: ponto.id,
+        circuitoId: ponto.circuitoId,
+      });
+    }
+  }
+
+  const potenciaPontosW = pontos.reduce((sum, p) => sum + numberOrZero(p.potenciaW) * numberOrZero(p.quantidade), 0);
+  const potenciaCircuitosW = circuitos.reduce((sum, circuito) => sum + numberOrZero(circuito.potenciaInstaladaW), 0);
+
+  return res.json({
+    pontos,
+    circuitos,
+    quadros,
+    redes,
+    totais: {
+      pontos: pontos.reduce((sum, p) => sum + numberOrZero(p.quantidade), 0),
+      circuitos: circuitos.length,
+      quadros: quadros.length,
+      redesEspeciais: redes.length,
+      potenciaPontosW: potenciaPontosW.toFixed(4),
+      potenciaCircuitosW: potenciaCircuitosW.toFixed(4),
+    },
+    alertas,
+    regraAntiduplicidade: {
+      pontos: "caixa/dispositivo/ponto",
+      circuitos: "cabos/eletrodutos/proteções e infraestrutura de rede",
+      principio: "o mesmo material/serviço não deve constar simultaneamente na composição do ponto e do circuito",
+    },
+  });
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/eletrica/verificar-duplicidade", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const pontos = await db.select().from(obraEletricaPontosTable)
+    .where(and(eq(obraEletricaPontosTable.obraId, obraId), eq(obraEletricaPontosTable.ativo, true)));
+  const circuitos = await db.select().from(obraEletricaCircuitosTable)
+    .where(and(eq(obraEletricaCircuitosTable.obraId, obraId), eq(obraEletricaCircuitosTable.ativo, true)));
+
+  const conflitos = [];
+  for (const ponto of pontos) {
+    if (!ponto.circuitoId) continue;
+    const circuito = circuitos.find((circuito) => circuito.id === ponto.circuitoId);
+    if (!circuito) continue;
+
+    if (ponto.incluiInfraestruturaAteCaixa && circuito.composicaoId) {
+      conflitos.push({
+        pontoId: ponto.id,
+        circuitoId: circuito.id,
+        tipo: "infraestrutura_potencialmente_duplicada",
+        mensagem: "O ponto inclui infraestrutura até a caixa e o circuito possui composição própria. Revisar escopo das composições.",
+      });
+    }
+  }
+
+  return res.json({
+    conflitos,
+    possuiConflito: conflitos.length > 0,
+  });
+});
+
+// ─── Energia e sistemas especiais ─────────────────────────────────────────────
+
+router.post("/tenants/:tenantId/obras/:obraId/energia/sistemas", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  const parsed = insertObraEnergiaSistemaSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraEnergiaSistemasTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/energia/sistemas/:sistemaId/componentes", async (req, res) => {
+  const { tenantId: tid, obraId, sistemaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [sistema] = await db.select().from(obraEnergiaSistemasTable)
+    .where(and(eq(obraEnergiaSistemasTable.id, sistemaId), eq(obraEnergiaSistemasTable.obraId, obraId)));
+  if (!sistema) return res.status(404).json({ error: "Sistema de energia não encontrado" });
+
+  const parsed = insertObraEnergiaComponenteSchema.safeParse({ ...req.body, sistemaId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  if (parsed.data.circuitoId) {
+    const [circuito] = await db.select().from(obraEletricaCircuitosTable)
+      .where(and(eq(obraEletricaCircuitosTable.id, parsed.data.circuitoId), eq(obraEletricaCircuitosTable.obraId, obraId)));
+    if (!circuito) return res.status(422).json({ error: "Circuito elétrico inválido para esta obra." });
+  }
+
+  const [row] = await db.insert(obraEnergiaComponentesTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/energia/resumo", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  const sistemas = await db.select().from(obraEnergiaSistemasTable)
+    .where(and(eq(obraEnergiaSistemasTable.obraId, obraId), eq(obraEnergiaSistemasTable.ativo, true)));
+  const ids = sistemas.map((s) => s.id);
+  const componentes = ids.length
+    ? await db.select().from(obraEnergiaComponentesTable)
+        .where(and(inArray(obraEnergiaComponentesTable.sistemaId, ids), eq(obraEnergiaComponentesTable.ativo, true)))
+    : [];
+
+  const alertas = [];
+  for (const sistema of sistemas) {
+    const comps = componentes.filter((c) => c.sistemaId === sistema.id);
+    const slots = new Map<string, number>();
+    for (const comp of comps) slots.set(comp.slotKey, (slots.get(comp.slotKey) ?? 0) + 1);
+
+    for (const [slotKey, total] of slots) {
+      if (total > 1) {
+        alertas.push({
+          tipo: "slot_duplicado",
+          sistemaId: sistema.id,
+          slotKey,
+          quantidade: total,
+          mensagem: "Há mais de um componente ativo no mesmo slot técnico. Revisar duplicidade.",
+        });
+      }
+    }
+
+    if (sistema.somenteInfraestrutura) {
+      const equipamentosFinais = comps.filter((c) => c.tipo === "equipamento" || c.tipo === "geracao" || c.tipo === "armazenamento");
+      if (equipamentosFinais.length) {
+        alertas.push({
+          tipo: "infraestrutura_com_equipamento_final",
+          sistemaId: sistema.id,
+          mensagem: "O sistema está marcado como somente infraestrutura, mas possui equipamento final ativo.",
+        });
+      }
+    }
+  }
+
+  return res.json({
+    sistemas,
+    componentes,
+    totais: {
+      potenciaKw: sistemas.reduce((sum, s) => sum + numberOrZero(s.potenciaKw), 0).toFixed(4),
+      energiaKwh: sistemas.reduce((sum, s) => sum + numberOrZero(s.energiaKwh), 0).toFixed(4),
+    },
+    alertas,
+    regraAntiduplicidade: "infraestrutura, circuito e equipamento final devem ocupar slots distintos; o mesmo escopo não deve ser cobrado em mais de um componente",
+  });
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/energia/preconfigurar", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const tipo = typeof req.body?.tipo === "string" ? req.body.tipo : null;
+  const permitidos = ["fotovoltaico_on_grid","fotovoltaico_hibrido","off_grid","banco_baterias","carregador_ve","gerador","nobreak_ups","quadro_cargas_essenciais","chave_transferencia","gestao_energia"];
+  if (!tipo || !permitidos.includes(tipo)) return res.status(422).json({ error: "Tipo de sistema especial inválido." });
+
+  const somenteInfraestrutura = Boolean(req.body?.somenteInfraestrutura);
+  const parametros = req.body?.parametros && typeof req.body.parametros === "object" ? req.body.parametros : {};
+
+  const defaults: Record<string, Array<{ tipo: string; slotKey: string; nome: string }>> = {
+    fotovoltaico_on_grid: [
+      { tipo: "geracao", slotKey: "modulos", nome: "Módulos fotovoltaicos" },
+      { tipo: "conversao", slotKey: "inversor", nome: "Inversor fotovoltaico" },
+      { tipo: "infraestrutura", slotKey: "cabos_cc_ca", nome: "Cabos e infraestrutura CC/CA" },
+      { tipo: "protecao", slotKey: "protecoes_cc_ca", nome: "Proteções CC/CA" },
+      { tipo: "estrutura_fixacao", slotKey: "estrutura_fixacao", nome: "Estrutura de fixação" },
+      { tipo: "aterramento", slotKey: "aterramento", nome: "Aterramento/equipotencialização" },
+      { tipo: "medicao", slotKey: "medicao", nome: "Medição/monitoramento" },
+    ],
+    carregador_ve: [
+      { tipo: "infraestrutura", slotKey: "circuito_dedicado", nome: "Circuito dedicado para recarga VE" },
+      { tipo: "protecao", slotKey: "protecao_ve", nome: "Proteções do circuito de recarga" },
+      { tipo: "aterramento", slotKey: "aterramento_ve", nome: "Aterramento do ponto de recarga" },
+      { tipo: "equipamento", slotKey: "wallbox", nome: "Carregador veicular / wallbox" },
+      { tipo: "controle", slotKey: "gestao_carga", nome: "Gerenciamento/balanceamento de carga" },
+    ],
+    off_grid: [
+      { tipo: "geracao", slotKey: "geracao", nome: "Geração principal" },
+      { tipo: "armazenamento", slotKey: "baterias", nome: "Banco de baterias" },
+      { tipo: "conversao", slotKey: "inversor_hibrido", nome: "Inversor híbrido/off-grid" },
+      { tipo: "controle", slotKey: "controle_carga", nome: "Controle de carga/energia" },
+      { tipo: "infraestrutura", slotKey: "quadro_cargas_essenciais", nome: "Quadro de cargas essenciais" },
+      { tipo: "protecao", slotKey: "protecoes", nome: "Proteções elétricas" },
+      { tipo: "aterramento", slotKey: "aterramento", nome: "Aterramento/equipotencialização" },
+    ],
+  };
+
+  const [sistema] = await db.insert(obraEnergiaSistemasTable).values({
+    obraId,
+    tipo,
+    nome: req.body?.nome ?? tipo,
+    somenteInfraestrutura,
+    parametros,
+    origem: "preconfiguracao",
+    ativo: true,
+  }).returning();
+
+  const componentesBase = defaults[tipo] ?? [];
+  const componentesCriados = [];
+  for (const item of componentesBase) {
+    if (somenteInfraestrutura && ["equipamento","geracao","armazenamento","conversao"].includes(item.tipo)) continue;
+    const [created] = await db.insert(obraEnergiaComponentesTable).values({
+      sistemaId: sistema.id,
+      tipo: item.tipo,
+      slotKey: item.slotKey,
+      nome: item.nome,
+      quantidade: "1",
+      unidade: "un",
+      ativo: true,
+    }).returning();
+    componentesCriados.push(created);
+  }
+
+  return res.status(201).json({ sistema, componentes: componentesCriados });
+});
+
+// ─── Hidráulica: pontos, redes, tecnologias e segmentos ───────────────────────
+
+router.post("/tenants/:tenantId/obras/:obraId/hidraulica/redes", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  const parsed = insertObraHidraulicaRedeSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraHidraulicaRedesTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/hidraulica/pontos", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraHidraulicaPontoSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  if (parsed.data.redeId) {
+    const [rede] = await db.select().from(obraHidraulicaRedesTable)
+      .where(and(eq(obraHidraulicaRedesTable.id, parsed.data.redeId), eq(obraHidraulicaRedesTable.obraId, obraId)));
+    if (!rede) return res.status(422).json({ error: "Rede hidráulica inválida para esta obra." });
+  }
+
+  const [row] = await db.insert(obraHidraulicaPontosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/hidraulica/redes/:redeId/segmentos", async (req, res) => {
+  const { tenantId: tid, obraId, redeId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [rede] = await db.select().from(obraHidraulicaRedesTable)
+    .where(and(eq(obraHidraulicaRedesTable.id, redeId), eq(obraHidraulicaRedesTable.obraId, obraId)));
+  if (!rede) return res.status(404).json({ error: "Rede hidráulica não encontrada" });
+
+  const parsed = insertObraHidraulicaSegmentoSchema.safeParse({ ...req.body, redeId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraHidraulicaSegmentosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/hidraulica/equipamentos", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraHidraulicaEquipamentoSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraHidraulicaEquipamentosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/hidraulica/resumo", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  const [redes, pontos, equipamentos] = await Promise.all([
+    db.select().from(obraHidraulicaRedesTable).where(and(eq(obraHidraulicaRedesTable.obraId, obraId), eq(obraHidraulicaRedesTable.ativo, true))),
+    db.select().from(obraHidraulicaPontosTable).where(and(eq(obraHidraulicaPontosTable.obraId, obraId), eq(obraHidraulicaPontosTable.ativo, true))),
+    db.select().from(obraHidraulicaEquipamentosTable).where(and(eq(obraHidraulicaEquipamentosTable.obraId, obraId), eq(obraHidraulicaEquipamentosTable.ativo, true))),
+  ]);
+
+  const redeIds = redes.map((r) => r.id);
+  const segmentos = redeIds.length
+    ? await db.select().from(obraHidraulicaSegmentosTable)
+        .where(and(inArray(obraHidraulicaSegmentosTable.redeId, redeIds), eq(obraHidraulicaSegmentosTable.ativo, true)))
+    : [];
+
+  const alertas = [];
+
+  for (const ponto of pontos) {
+    if (ponto.redeId) {
+      const rede = redes.find((r) => r.id === ponto.redeId);
+      if (!rede) {
+        alertas.push({ tipo: "ponto_sem_rede_valida", pontoId: ponto.id, redeId: ponto.redeId });
+        continue;
+      }
+      if (ponto.incluiLigacaoAteRede && rede.composicaoId) {
+        alertas.push({
+          tipo: "ligacao_potencialmente_duplicada",
+          pontoId: ponto.id,
+          redeId: rede.id,
+          mensagem: "O ponto inclui ligação até a rede e a rede possui composição própria. Revisar escopo para evitar dupla contagem.",
+        });
+      }
+    }
+  }
+
+  for (const rede of redes) {
+    const segs = segmentos.filter((s) => s.redeId === rede.id);
+    const tecnologias = new Set(segs.map((s) => s.tecnologia).filter(Boolean));
+    if (tecnologias.size > 1 && !rede.configuracao?.includes("mista")) {
+      alertas.push({
+        tipo: "rede_com_tecnologias_mistas",
+        redeId: rede.id,
+        mensagem: "A rede possui segmentos com tecnologias diferentes. Marcar configuração mista ou revisar os trechos.",
+      });
+    }
+  }
+
+  const totalComprimento = segmentos.reduce((sum, s) => sum + numberOrZero(s.comprimentoM), 0);
+
+  return res.json({
+    redes,
+    pontos,
+    segmentos,
+    equipamentos,
+    totais: {
+      redes: redes.length,
+      pontos: pontos.reduce((sum, p) => sum + numberOrZero(p.quantidade), 0),
+      segmentos: segmentos.length,
+      comprimentoM: totalComprimento.toFixed(4),
+    },
+    alertas,
+    regraAntiduplicidade: {
+      pontos: "terminal/ligação final",
+      redes: "tubulação principal, conexões, suportes, isolamento e infraestrutura",
+      principio: "o mesmo trecho/material não deve existir simultaneamente na composição do ponto e da rede",
+    },
+  });
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/hidraulica/preconfigurar", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const funcao = typeof req.body?.funcao === "string" ? req.body.funcao : null;
+  const tecnologia = typeof req.body?.tecnologia === "string" ? req.body.tecnologia : null;
+  const permitidasFuncoes = ["agua_fria","agua_quente","esgoto","ventilacao","pluvial","drenagem","reuso","irrigacao","piscina","hidromassagem","outro"];
+  const permitidasTecnologias = ["pex","ppr","pvc","cpvc","aquatherm","cobre","multicamada","pead","ferro_fundido","pp","outro"];
+
+  if (!funcao || !permitidasFuncoes.includes(funcao)) return res.status(422).json({ error: "Função hidráulica inválida." });
+  if (!tecnologia || !permitidasTecnologias.includes(tecnologia)) return res.status(422).json({ error: "Tecnologia hidráulica inválida." });
+
+  const configuracao = typeof req.body?.configuracao === "string" ? req.body.configuracao : null;
+  const codigo = typeof req.body?.codigo === "string" && req.body.codigo.trim()
+    ? req.body.codigo.trim()
+    : `${funcao.toUpperCase()}-01`;
+
+  const [rede] = await db.insert(obraHidraulicaRedesTable).values({
+    obraId,
+    codigo,
+    funcao,
+    tipoRede: req.body?.tipoRede ?? "ramal",
+    tecnologia,
+    configuracao,
+    diametroMm: req.body?.diametroMm != null ? String(req.body.diametroMm) : null,
+    classePressao: req.body?.classePressao ?? null,
+    origem: "preconfiguracao",
+    metadata: req.body?.metadata ?? null,
+    ativo: true,
+  }).returning();
+
+  return res.status(201).json({ rede });
+});
+
+// ─── Área técnica, água quente, pressurização e reservação ───────────────────
+
+router.post("/tenants/:tenantId/obras/:obraId/hidraulica/areas-tecnicas", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  const parsed = insertObraHidraulicaAreaTecnicaSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraHidraulicaAreasTecnicasTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/hidraulica/manifolds", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraHidraulicaManifoldSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  if (parsed.data.areaTecnicaId) {
+    const [area] = await db.select({ id: obraHidraulicaAreasTecnicasTable.id })
+      .from(obraHidraulicaAreasTecnicasTable)
+      .where(and(eq(obraHidraulicaAreasTecnicasTable.id, parsed.data.areaTecnicaId), eq(obraHidraulicaAreasTecnicasTable.obraId, obraId)));
+    if (!area) return res.status(422).json({ error: "Área técnica inválida para esta obra." });
+  }
+
+  const [row] = await db.insert(obraHidraulicaManifoldsTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/hidraulica/aquecimento", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraHidraulicaAquecimentoSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraHidraulicaAquecimentoTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/hidraulica/pressurizacao", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraHidraulicaPressurizacaoSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraHidraulicaPressurizacaoTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/hidraulica/reservatorios", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraHidraulicaReservatorioSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraHidraulicaReservatoriosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/hidraulica/area-tecnica-resumo", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [areas, manifolds, aquecimento, pressurizacao, reservatorios] = await Promise.all([
+    db.select().from(obraHidraulicaAreasTecnicasTable)
+      .where(and(eq(obraHidraulicaAreasTecnicasTable.obraId, obraId), eq(obraHidraulicaAreasTecnicasTable.ativo, true))),
+    db.select().from(obraHidraulicaManifoldsTable)
+      .where(and(eq(obraHidraulicaManifoldsTable.obraId, obraId), eq(obraHidraulicaManifoldsTable.ativo, true))),
+    db.select().from(obraHidraulicaAquecimentoTable)
+      .where(and(eq(obraHidraulicaAquecimentoTable.obraId, obraId), eq(obraHidraulicaAquecimentoTable.ativo, true))),
+    db.select().from(obraHidraulicaPressurizacaoTable)
+      .where(and(eq(obraHidraulicaPressurizacaoTable.obraId, obraId), eq(obraHidraulicaPressurizacaoTable.ativo, true))),
+    db.select().from(obraHidraulicaReservatoriosTable)
+      .where(and(eq(obraHidraulicaReservatoriosTable.obraId, obraId), eq(obraHidraulicaReservatoriosTable.ativo, true))),
+  ]);
+
+  const alertas = [];
+
+  for (const aq of aquecimento) {
+    if (aq.tipoGeracao === "solar_termico" && !aq.apoioEletrico && !aq.apoioGas) {
+      alertas.push({
+        tipo: "solar_termico_sem_apoio",
+        aquecimentoId: aq.id,
+        mensagem: "Sistema solar térmico sem apoio configurado. Revisar estratégia de contingência.",
+      });
+    }
+    if (aq.recirculacao && !aq.areaTecnicaId) {
+      alertas.push({
+        tipo: "recirculacao_sem_area_tecnica",
+        aquecimentoId: aq.id,
+        mensagem: "Sistema com recirculação sem área técnica associada.",
+      });
+    }
+  }
+
+  for (const p of pressurizacao) {
+    if (!p.areaTecnicaId && !p.somenteInfraestrutura) {
+      alertas.push({
+        tipo: "pressurizador_sem_area_tecnica",
+        pressurizacaoId: p.id,
+        mensagem: "Pressurização sem área técnica associada.",
+      });
+    }
+  }
+
+  for (const m of manifolds) {
+    if (!m.areaTecnicaId) {
+      alertas.push({
+        tipo: "manifold_sem_area_tecnica",
+        manifoldId: m.id,
+        mensagem: "Manifold sem área técnica/shaft associado.",
+      });
+    }
+  }
+
+  const volumeReservacaoL = reservatorios.reduce((sum, r) => sum + numberOrZero(r.volumeL), 0);
+  const volumeQuenteL = aquecimento.reduce((sum, a) => sum + numberOrZero(a.volumeAcumulacaoL), 0);
+  const potenciaAquecimentoKw = aquecimento.reduce((sum, a) => sum + numberOrZero(a.potenciaKw), 0);
+  const potenciaPressurizacaoKw = pressurizacao.reduce((sum, p) => sum + numberOrZero(p.potenciaKw), 0);
+
+  return res.json({
+    areas,
+    manifolds,
+    aquecimento,
+    pressurizacao,
+    reservatorios,
+    totais: {
+      volumeReservacaoL: volumeReservacaoL.toFixed(2),
+      volumeAguaQuenteL: volumeQuenteL.toFixed(2),
+      potenciaAquecimentoKw: potenciaAquecimentoKw.toFixed(4),
+      potenciaPressurizacaoKw: potenciaPressurizacaoKw.toFixed(4),
+    },
+    alertas,
+  });
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/hidraulica/preconfigurar-area-tecnica", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const nome = typeof req.body?.nome === "string" && req.body.nome.trim()
+    ? req.body.nome.trim()
+    : "Central hidráulica";
+  const tipo = typeof req.body?.tipo === "string" ? req.body.tipo : "central_hidraulica";
+
+  const [area] = await db.insert(obraHidraulicaAreasTecnicasTable).values({
+    obraId,
+    nome,
+    tipo,
+    ventilacaoObrigatoria: Boolean(req.body?.ventilacaoObrigatoria),
+    drenoObrigatorio: req.body?.drenoObrigatorio !== false,
+    pontoEletricoObrigatorio: Boolean(req.body?.pontoEletricoObrigatorio),
+    pontoGasObrigatorio: Boolean(req.body?.pontoGasObrigatorio),
+    acessoManutencao: true,
+    parametros: req.body?.parametros ?? null,
+    ativo: true,
+  }).returning();
+
+  return res.status(201).json({ areaTecnica: area });
+});
+
+// ─── Piscinas, casa de máquinas, circuitos e tratamento ───────────────────────
+
+router.post("/tenants/:tenantId/obras/:obraId/piscinas", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  const parsed = insertObraPiscinaSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const comprimento = numberOrZero(parsed.data.comprimentoM);
+  const largura = numberOrZero(parsed.data.larguraM);
+  const profMin = numberOrZero(parsed.data.profundidadeMinM);
+  const profMax = numberOrZero(parsed.data.profundidadeMaxM);
+  const profundidadeMedia = (profMin + profMax) / 2;
+  const areaEspelho = parsed.data.areaEspelhoM2 != null ? numberOrZero(parsed.data.areaEspelhoM2) : comprimento * largura;
+  const volume = parsed.data.volumeM3 != null ? numberOrZero(parsed.data.volumeM3) : areaEspelho * profundidadeMedia;
+  const perimetro = parsed.data.perimetroM != null ? numberOrZero(parsed.data.perimetroM) : (comprimento + largura) * 2;
+
+  const [row] = await db.insert(obraPiscinasTable).values({
+    ...parsed.data,
+    areaEspelhoM2: areaEspelho ? areaEspelho.toFixed(4) : parsed.data.areaEspelhoM2,
+    volumeM3: volume ? volume.toFixed(4) : parsed.data.volumeM3,
+    perimetroM: perimetro ? perimetro.toFixed(4) : parsed.data.perimetroM,
+  }).returning();
+
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/piscinas/:piscinaId/casa-maquinas", async (req, res) => {
+  const { tenantId: tid, obraId, piscinaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [piscina] = await db.select({ id: obraPiscinasTable.id }).from(obraPiscinasTable)
+    .where(and(eq(obraPiscinasTable.id, piscinaId), eq(obraPiscinasTable.obraId, obraId)));
+  if (!piscina) return res.status(404).json({ error: "Piscina não encontrada" });
+
+  const parsed = insertObraPiscinaCasaMaquinasSchema.safeParse({ ...req.body, piscinaId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const [row] = await db.insert(obraPiscinaCasasMaquinasTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/piscinas/:piscinaId/circuitos", async (req, res) => {
+  const { tenantId: tid, obraId, piscinaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [piscina] = await db.select({ id: obraPiscinasTable.id }).from(obraPiscinasTable)
+    .where(and(eq(obraPiscinasTable.id, piscinaId), eq(obraPiscinasTable.obraId, obraId)));
+  if (!piscina) return res.status(404).json({ error: "Piscina não encontrada" });
+
+  const parsed = insertObraPiscinaCircuitoSchema.safeParse({ ...req.body, piscinaId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  if (parsed.data.casaMaquinasId) {
+    const [cm] = await db.select({ id: obraPiscinaCasasMaquinasTable.id }).from(obraPiscinaCasasMaquinasTable)
+      .where(and(eq(obraPiscinaCasasMaquinasTable.id, parsed.data.casaMaquinasId), eq(obraPiscinaCasasMaquinasTable.piscinaId, piscinaId)));
+    if (!cm) return res.status(422).json({ error: "Casa de máquinas inválida para esta piscina." });
+  }
+
+  const [row] = await db.insert(obraPiscinaCircuitosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/piscinas/:piscinaId/equipamentos", async (req, res) => {
+  const { tenantId: tid, obraId, piscinaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [piscina] = await db.select({ id: obraPiscinasTable.id }).from(obraPiscinasTable)
+    .where(and(eq(obraPiscinasTable.id, piscinaId), eq(obraPiscinasTable.obraId, obraId)));
+  if (!piscina) return res.status(404).json({ error: "Piscina não encontrada" });
+
+  const parsed = insertObraPiscinaEquipamentoSchema.safeParse({ ...req.body, piscinaId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const [row] = await db.insert(obraPiscinaEquipamentosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/piscinas/:piscinaId/tratamento", async (req, res) => {
+  const { tenantId: tid, obraId, piscinaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraPiscinaTratamentoSchema.safeParse({ ...req.body, piscinaId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const [row] = await db.insert(obraPiscinaTratamentoTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/piscinas/:piscinaId/aquecimento", async (req, res) => {
+  const { tenantId: tid, obraId, piscinaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraPiscinaAquecimentoSchema.safeParse({ ...req.body, piscinaId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const [row] = await db.insert(obraPiscinaAquecimentoTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/piscinas/:piscinaId/overflow", async (req, res) => {
+  const { tenantId: tid, obraId, piscinaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraPiscinaOverflowSchema.safeParse({ ...req.body, piscinaId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const [row] = await db.insert(obraPiscinaOverflowTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/piscinas/resumo", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const piscinas = await db.select().from(obraPiscinasTable)
+    .where(and(eq(obraPiscinasTable.obraId, obraId), eq(obraPiscinasTable.ativo, true)));
+  const ids = piscinas.map((p) => p.id);
+
+  const [casasMaquinas, circuitos, equipamentos, tratamentos, aquecimentos, overflows] = ids.length
+    ? await Promise.all([
+        db.select().from(obraPiscinaCasasMaquinasTable).where(and(inArray(obraPiscinaCasasMaquinasTable.piscinaId, ids), eq(obraPiscinaCasasMaquinasTable.ativo, true))),
+        db.select().from(obraPiscinaCircuitosTable).where(and(inArray(obraPiscinaCircuitosTable.piscinaId, ids), eq(obraPiscinaCircuitosTable.ativo, true))),
+        db.select().from(obraPiscinaEquipamentosTable).where(and(inArray(obraPiscinaEquipamentosTable.piscinaId, ids), eq(obraPiscinaEquipamentosTable.ativo, true))),
+        db.select().from(obraPiscinaTratamentoTable).where(and(inArray(obraPiscinaTratamentoTable.piscinaId, ids), eq(obraPiscinaTratamentoTable.ativo, true))),
+        db.select().from(obraPiscinaAquecimentoTable).where(and(inArray(obraPiscinaAquecimentoTable.piscinaId, ids), eq(obraPiscinaAquecimentoTable.ativo, true))),
+        db.select().from(obraPiscinaOverflowTable).where(and(inArray(obraPiscinaOverflowTable.piscinaId, ids), eq(obraPiscinaOverflowTable.ativo, true))),
+      ])
+    : [[], [], [], [], [], []];
+
+  const alertas = [];
+  for (const piscina of piscinas) {
+    const circuitosPiscina = circuitos.filter((c) => c.piscinaId === piscina.id);
+    const casa = casasMaquinas.find((cm) => cm.piscinaId === piscina.id);
+
+    if (!casa && circuitosPiscina.length > 0) {
+      alertas.push({
+        tipo: "circuitos_sem_casa_maquinas",
+        piscinaId: piscina.id,
+        mensagem: "Piscina possui circuitos hidráulicos, mas não possui casa de máquinas configurada.",
+      });
+    }
+
+    if ((piscina.tipo === "borda_infinita" || piscina.tipo === "overflow") && !overflows.some((o) => o.piscinaId === piscina.id)) {
+      alertas.push({
+        tipo: "overflow_sem_configuracao",
+        piscinaId: piscina.id,
+        mensagem: "Piscina com borda infinita/overflow sem calha ou reservatório de compensação configurado.",
+      });
+    }
+
+    const hasFiltracao = circuitosPiscina.some((c) => c.tipo === "filtracao");
+    if (!hasFiltracao) {
+      alertas.push({
+        tipo: "sem_circuito_filtracao",
+        piscinaId: piscina.id,
+        mensagem: "Piscina sem circuito de filtração configurado.",
+      });
+    }
+  }
+
+  return res.json({
+    piscinas,
+    casasMaquinas,
+    circuitos,
+    equipamentos,
+    tratamentos,
+    aquecimentos,
+    overflows,
+    totais: {
+      piscinas: piscinas.length,
+      volumeM3: piscinas.reduce((s, p) => s + numberOrZero(p.volumeM3), 0).toFixed(4),
+      areaEspelhoM2: piscinas.reduce((s, p) => s + numberOrZero(p.areaEspelhoM2), 0).toFixed(4),
+      potenciaEquipamentosKw: equipamentos.reduce((s, e) => s + numberOrZero(e.potenciaKw) * numberOrZero(e.quantidade), 0).toFixed(4),
+      potenciaAquecimentoKw: aquecimentos.reduce((s, a) => s + numberOrZero(a.potenciaKw), 0).toFixed(4),
+    },
+    alertas,
+  });
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/piscinas/:piscinaId/preconfigurar", async (req, res) => {
+  const { tenantId: tid, obraId, piscinaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [piscina] = await db.select().from(obraPiscinasTable)
+    .where(and(eq(obraPiscinasTable.id, piscinaId), eq(obraPiscinasTable.obraId, obraId)));
+  if (!piscina) return res.status(404).json({ error: "Piscina não encontrada" });
+
+  const [casa] = await db.insert(obraPiscinaCasasMaquinasTable).values({
+    piscinaId,
+    nome: "Casa de máquinas",
+    ventilacaoObrigatoria: true,
+    drenoObrigatorio: true,
+    pontoEletricoObrigatorio: true,
+    acessoManutencao: true,
+    ativo: true,
+  }).returning();
+
+  const circuitosBase = ["filtracao", "aspiracao", "retorno", "dreno_fundo"] as const;
+  if (piscina.tipo === "borda_infinita" || piscina.tipo === "overflow") circuitosBase.push("overflow" as any);
+  if (Boolean(req.body?.aquecimento)) circuitosBase.push("aquecimento" as any);
+
+  const criados = [];
+  for (const tipo of circuitosBase) {
+    const [row] = await db.insert(obraPiscinaCircuitosTable).values({
+      piscinaId,
+      casaMaquinasId: casa.id,
+      tipo,
+      ativo: true,
+    }).returning();
+    criados.push(row);
+  }
+
+  return res.status(201).json({ casaMaquinas: casa, circuitos: criados });
+});
+
+// ─── Formação de custo e preço de venda ──────────────────────────────────────
+
+async function calcularFormacaoVenda(tid: string, orcamentoId: string, formacaoId: string) {
+  const [orcamento] = await db.select().from(obraOrcamentosTable)
+    .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid)));
+  if (!orcamento) throw new Error("Orçamento não encontrado");
+
+  const [formacao] = await db.select().from(orcamentoFormacaoVendaTable)
+    .where(and(
+      eq(orcamentoFormacaoVendaTable.id, formacaoId),
+      eq(orcamentoFormacaoVendaTable.orcamentoId, orcamentoId),
+      eq(orcamentoFormacaoVendaTable.tenantId, tid),
+    ));
+  if (!formacao) throw new Error("Formação de venda não encontrada");
+
+  const etapas = await db.select().from(obraOrcamentoEtapasTable)
+    .where(eq(obraOrcamentoEtapasTable.orcamentoId, orcamentoId));
+  const etapaIds = etapas.map((e) => e.id);
+  const itens = etapaIds.length
+    ? await db.select().from(obraOrcamentoItensTable).where(inArray(obraOrcamentoItensTable.etapaId, etapaIds))
+    : [];
+
+  const custoItem = (item: typeof obraOrcamentoItensTable.$inferSelect) =>
+    numberOrZero(item.quantidade) * numberOrZero(item.custoUnitario);
+  const custoDireto = itens.reduce((sum, item) => sum + custoItem(item), 0);
+
+  const componentes = await db.select().from(orcamentoFormacaoComponentesTable)
+    .where(and(
+      eq(orcamentoFormacaoComponentesTable.formacaoId, formacaoId),
+      eq(orcamentoFormacaoComponentesTable.ativo, true),
+    ))
+    .orderBy(asc(orcamentoFormacaoComponentesTable.ordem));
+
+  const custoDiretoEtapa = new Map<string, number>();
+  for (const etapa of etapas) {
+    custoDiretoEtapa.set(etapa.id, itens.filter((i) => i.etapaId === etapa.id).reduce((s, i) => s + custoItem(i), 0));
+  }
+  const custoDiretoItem = new Map(itens.map((i) => [i.id, custoItem(i)]));
+
+  let custosIndiretos = 0;
+  let impostos = 0;
+  let comissao = 0;
+  let risco = 0;
+  let componentesSobreVendaPct = 0;
+  const memoriaComponentes = [];
+
+  for (const comp of componentes) {
+    let baseDireta = custoDireto;
+    if (comp.escopo === "etapa" && comp.etapaId) baseDireta = custoDiretoEtapa.get(comp.etapaId) ?? 0;
+    if (comp.escopo === "item" && comp.itemId) baseDireta = custoDiretoItem.get(comp.itemId) ?? 0;
+
+    const pct = numberOrZero(comp.percentual);
+    const fixo = numberOrZero(comp.valorFixo);
+
+    if (comp.modo === "percentual" && comp.baseCalculo === "preco_venda") {
+      componentesSobreVendaPct += pct;
+      memoriaComponentes.push({ id: comp.id, tipo: comp.tipo, nome: comp.nome, valor: null, percentual: pct, base: "preco_venda" });
+      continue;
+    }
+
+    const base = comp.baseCalculo === "custo_total" ? custoDireto + custosIndiretos : baseDireta;
+    const valor = comp.modo === "valor_fixo" ? fixo : base * pct / 100;
+
+    if (comp.tipo === "impostos") impostos += valor;
+    else if (comp.tipo === "comissao") comissao += valor;
+    else if (comp.tipo === "risco") risco += valor;
+    else if (comp.tipo !== "margem") custosIndiretos += valor;
+
+    memoriaComponentes.push({ id: comp.id, tipo: comp.tipo, nome: comp.nome, valor, percentual: pct, base: comp.baseCalculo });
+  }
+
+  const custoAntesVenda = custoDireto + custosIndiretos + impostos + comissao + risco;
+  const margemPct = numberOrZero(formacao.margemPercentual);
+  let precoVenda = custoAntesVenda;
+  let margemValor = 0;
+
+  const pctVendaTotal = componentesSobreVendaPct + (formacao.metodoMargem === "margem_sobre_venda" ? margemPct : 0);
+  if (pctVendaTotal >= 100) throw new Error("Percentuais sobre preço de venda somados devem ser menores que 100%.");
+
+  if (formacao.precoVendaManual != null && numberOrZero(formacao.precoVendaManual) > 0) {
+    precoVenda = numberOrZero(formacao.precoVendaManual);
+  } else if (formacao.metodoMargem === "margem_sobre_venda") {
+    precoVenda = custoAntesVenda / (1 - pctVendaTotal / 100);
+  } else {
+    precoVenda = custoAntesVenda * (1 + margemPct / 100);
+    if (componentesSobreVendaPct > 0) precoVenda = precoVenda / (1 - componentesSobreVendaPct / 100);
+  }
+
+  const componentesVenda = precoVenda * componentesSobreVendaPct / 100;
+  for (const comp of componentes.filter((x) => x.modo === "percentual" && x.baseCalculo === "preco_venda")) {
+    const valor = precoVenda * numberOrZero(comp.percentual) / 100;
+    if (comp.tipo === "impostos") impostos += valor;
+    else if (comp.tipo === "comissao") comissao += valor;
+    else if (comp.tipo === "risco") risco += valor;
+    else if (comp.tipo !== "margem") custosIndiretos += valor;
+    const mem = memoriaComponentes.find((m) => m.id === comp.id);
+    if (mem) mem.valor = valor;
+  }
+
+  margemValor = precoVenda - custoDireto - custosIndiretos - impostos - comissao - risco;
+
+  if (formacao.arredondamento != null && numberOrZero(formacao.arredondamento) > 0 && formacao.precoVendaManual == null) {
+    const passo = numberOrZero(formacao.arredondamento);
+    precoVenda = Math.ceil(precoVenda / passo) * passo;
+    margemValor = precoVenda - custoDireto - custosIndiretos - impostos - comissao - risco;
+  }
+
+  const markupEfetivo = custoDireto > 0 ? precoVenda / custoDireto : 0;
+  const margemEfetivaPercentual = precoVenda > 0 ? margemValor / precoVenda * 100 : 0;
+
+  return {
+    orcamento,
+    formacao,
+    componentes,
+    custoDireto,
+    custosIndiretos,
+    impostos,
+    comissao,
+    risco,
+    margemValor,
+    precoVenda,
+    markupEfetivo,
+    margemEfetivaPercentual,
+    memoriaCalculo: {
+      itens: itens.length,
+      etapas: etapas.length,
+      metodoMargem: formacao.metodoMargem,
+      margemPercentual: margemPct,
+      componentesSobreVendaPercentual: componentesSobreVendaPct,
+      componentesSobreVendaValor: componentesVenda,
+      componentes: memoriaComponentes,
+    },
+  };
+}
+
+router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/formacao-venda", async (req, res) => {
+  const { tenantId: tid, obraId, orcamentoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [orcamento] = await db.select({ id: obraOrcamentosTable.id }).from(obraOrcamentosTable)
+    .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
+  if (!orcamento) return res.status(404).json({ error: "Orçamento não encontrado" });
+
+  const parsed = insertOrcamentoFormacaoVendaSchema.safeParse({
+    ...req.body,
+    tenantId: tid,
+    orcamentoId,
+    criadoPorId: (req as any).user?.sub ?? null,
+  });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  await db.update(orcamentoFormacaoVendaTable)
+    .set({ ativo: false, updatedAt: new Date() })
+    .where(and(eq(orcamentoFormacaoVendaTable.orcamentoId, orcamentoId), eq(orcamentoFormacaoVendaTable.ativo, true)));
+
+  const [row] = await db.insert(orcamentoFormacaoVendaTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.put("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/formacao-venda/:formacaoId", async (req, res) => {
+  const { tenantId: tid, orcamentoId, formacaoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = updateOrcamentoFormacaoVendaSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.update(orcamentoFormacaoVendaTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(and(
+      eq(orcamentoFormacaoVendaTable.id, formacaoId),
+      eq(orcamentoFormacaoVendaTable.orcamentoId, orcamentoId),
+      eq(orcamentoFormacaoVendaTable.tenantId, tid),
+    ))
+    .returning();
+  if (!row) return res.status(404).json({ error: "Formação de venda não encontrada" });
+
+  return res.json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/formacao-venda/:formacaoId/componentes", async (req, res) => {
+  const { tenantId: tid, orcamentoId, formacaoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [formacao] = await db.select({ id: orcamentoFormacaoVendaTable.id }).from(orcamentoFormacaoVendaTable)
+    .where(and(
+      eq(orcamentoFormacaoVendaTable.id, formacaoId),
+      eq(orcamentoFormacaoVendaTable.orcamentoId, orcamentoId),
+      eq(orcamentoFormacaoVendaTable.tenantId, tid),
+    ));
+  if (!formacao) return res.status(404).json({ error: "Formação de venda não encontrada" });
+
+  const parsed = insertOrcamentoFormacaoComponenteSchema.safeParse({ ...req.body, formacaoId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const data = parsed.data;
+  const escopoValido =
+    (data.escopo === "orcamento" && !data.etapaId && !data.itemId) ||
+    (data.escopo === "etapa" && !!data.etapaId && !data.itemId) ||
+    (data.escopo === "item" && !!data.itemId);
+  if (!escopoValido) return res.status(422).json({ error: "Escopo incompatível com etapaId/itemId." });
+
+  if (data.modo === "percentual" && data.percentual == null) return res.status(422).json({ error: "Percentual obrigatório." });
+  if (data.modo === "valor_fixo" && data.valorFixo == null) return res.status(422).json({ error: "Valor fixo obrigatório." });
+
+  const [row] = await db.insert(orcamentoFormacaoComponentesTable).values(data).returning();
+  return res.status(201).json(row);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/formacao-venda/:formacaoId/calcular", async (req, res) => {
+  const { tenantId: tid, orcamentoId, formacaoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  try {
+    const r = await calcularFormacaoVenda(tid, orcamentoId, formacaoId);
+    return res.json({
+      custoDireto: r.custoDireto.toFixed(4),
+      custosIndiretos: r.custosIndiretos.toFixed(4),
+      impostos: r.impostos.toFixed(4),
+      comissao: r.comissao.toFixed(4),
+      risco: r.risco.toFixed(4),
+      margemValor: r.margemValor.toFixed(4),
+      precoVenda: r.precoVenda.toFixed(4),
+      markupEfetivo: r.markupEfetivo.toFixed(6),
+      margemEfetivaPercentual: r.margemEfetivaPercentual.toFixed(4),
+      memoriaCalculo: r.memoriaCalculo,
+    });
+  } catch (error) {
+    return res.status(422).json({ error: error instanceof Error ? error.message : "Falha ao calcular formação de venda" });
+  }
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/formacao-venda/:formacaoId/snapshot", async (req, res) => {
+  const { tenantId: tid, orcamentoId, formacaoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  try {
+    const r = await calcularFormacaoVenda(tid, orcamentoId, formacaoId);
+    const [snapshot] = await db.insert(orcamentoFormacaoSnapshotsTable).values({
+      formacaoId,
+      custoDireto: r.custoDireto.toFixed(4),
+      custosIndiretos: r.custosIndiretos.toFixed(4),
+      impostos: r.impostos.toFixed(4),
+      comissao: r.comissao.toFixed(4),
+      risco: r.risco.toFixed(4),
+      margemValor: r.margemValor.toFixed(4),
+      precoVenda: r.precoVenda.toFixed(4),
+      markupEfetivo: r.markupEfetivo.toFixed(6),
+      margemEfetivaPercentual: r.margemEfetivaPercentual.toFixed(4),
+      memoriaCalculo: r.memoriaCalculo,
+      criadoPorId: (req as any).user?.sub ?? null,
+    }).returning();
+
+    return res.status(201).json(snapshot);
+  } catch (error) {
+    return res.status(422).json({ error: error instanceof Error ? error.message : "Falha ao gerar snapshot" });
+  }
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/formacao-venda", async (req, res) => {
+  const { tenantId: tid, orcamentoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const formacoes = await db.select().from(orcamentoFormacaoVendaTable)
+    .where(and(eq(orcamentoFormacaoVendaTable.tenantId, tid), eq(orcamentoFormacaoVendaTable.orcamentoId, orcamentoId)))
+    .orderBy(desc(orcamentoFormacaoVendaTable.versao), desc(orcamentoFormacaoVendaTable.createdAt));
+
+  const ids = formacoes.map((f) => f.id);
+  const componentes = ids.length
+    ? await db.select().from(orcamentoFormacaoComponentesTable)
+        .where(inArray(orcamentoFormacaoComponentesTable.formacaoId, ids))
+        .orderBy(asc(orcamentoFormacaoComponentesTable.ordem))
+    : [];
+
+  return res.json({ formacoes, componentes });
+});
+
+// ─── Cotações, fornecedores, propostas e cobertura ───────────────────────────
+
+function normalizarTextoCotacao(v: string | null | undefined): string {
+  return (v ?? "").toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function similaridadeCotacao(a: string, b: string): number {
+  const A = new Set(normalizarTextoCotacao(a).split(" ").filter(Boolean));
+  const B = new Set(normalizarTextoCotacao(b).split(" ").filter(Boolean));
+  if (!A.size || !B.size) return 0;
+  let inter = 0;
+  for (const x of A) if (B.has(x)) inter++;
+  return inter / Math.max(A.size, B.size);
+}
+
+router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/cotacoes", async (req, res) => {
+  const { tenantId: tid, obraId, orcamentoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [orcamento] = await db.select().from(obraOrcamentosTable)
+    .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
+  if (!orcamento) return res.status(404).json({ error: "Orçamento não encontrado" });
+
+  const parsed = insertObraCotacaoSchema.safeParse({
+    ...req.body,
+    tenantId: tid,
+    orcamentoId,
+    criadoPorId: (req as any).user?.sub ?? null,
+  });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [cotacao] = await db.insert(obraCotacoesTable).values(parsed.data).returning();
+
+  if (req.body?.gerarItensDoOrcamento !== false) {
+    const etapas = await db.select().from(obraOrcamentoEtapasTable)
+      .where(eq(obraOrcamentoEtapasTable.orcamentoId, orcamentoId));
+    const etapaIds = etapas.map((e) => e.id);
+    const itens = etapaIds.length
+      ? await db.select().from(obraOrcamentoItensTable).where(inArray(obraOrcamentoItensTable.etapaId, etapaIds))
+      : [];
+
+    for (const item of itens) {
+      let insumo = null;
+      if (item.insumoId) {
+        [insumo] = await db.select().from(insumosTable)
+          .where(and(eq(insumosTable.id, item.insumoId), eq(insumosTable.tenantId, tid)));
+      }
+      const qtdTecnica = numberOrZero(item.quantidadeTecnica ?? item.quantidade);
+      const fator = numberOrZero(insumo?.fatorCompraParaConsumo) || 1;
+      let qtdCompra = item.quantidadeCompra != null ? numberOrZero(item.quantidadeCompra) : qtdTecnica / fator;
+      const minimo = numberOrZero(insumo?.quantidadeMinimaCompra);
+      const multiplo = numberOrZero(insumo?.multiploCompra);
+      const fraciona = Boolean(insumo?.permiteFracionarCompra);
+      if (!fraciona) {
+        if (minimo > 0) qtdCompra = Math.max(qtdCompra, minimo);
+        if (multiplo > 0) qtdCompra = Math.ceil(qtdCompra / multiplo) * multiplo;
+      }
+
+      await db.insert(obraCotacaoItensTable).values({
+        cotacaoId: cotacao.id,
+        orcamentoItemId: item.id,
+        orcamentoEtapaId: item.etapaId,
+        insumoId: item.insumoId ?? null,
+        nome: item.nome,
+        codigo: insumo?.codigo ?? null,
+        especificacao: insumo?.descricao ?? null,
+        marcaPreferencial: insumo?.marca ?? null,
+        modeloPreferencial: insumo?.modelo ?? null,
+        quantidadeTecnica: qtdTecnica.toFixed(4),
+        unidadeTecnica: item.unidade,
+        quantidadeCompra: qtdCompra.toFixed(4),
+        unidadeCompra: item.unidadeCompra ?? insumo?.unidadeCompra ?? item.unidade,
+        quantidadeMinimaCompra: insumo?.quantidadeMinimaCompra ?? null,
+        multiploCompra: insumo?.multiploCompra ?? null,
+        fatorCompraParaConsumo: insumo?.fatorCompraParaConsumo ?? null,
+        permiteEquivalente: false,
+        coberturaStatus: "nao_cotado",
+      });
+    }
+  }
+
+  return res.status(201).json(cotacao);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/cotacoes", async (req, res) => {
+  const { tenantId: tid, orcamentoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const cotacoes = await db.select().from(obraCotacoesTable)
+    .where(and(eq(obraCotacoesTable.tenantId, tid), eq(obraCotacoesTable.orcamentoId, orcamentoId)))
+    .orderBy(desc(obraCotacoesTable.createdAt));
+  return res.json(cotacoes);
+});
+
+router.get("/tenants/:tenantId/cotacoes/:cotacaoId/resumo", async (req, res) => {
+  const { tenantId: tid, cotacaoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [cotacao] = await db.select().from(obraCotacoesTable)
+    .where(and(eq(obraCotacoesTable.id, cotacaoId), eq(obraCotacoesTable.tenantId, tid)));
+  if (!cotacao) return res.status(404).json({ error: "Cotação não encontrada" });
+
+  const [itens, propostas] = await Promise.all([
+    db.select().from(obraCotacaoItensTable).where(eq(obraCotacaoItensTable.cotacaoId, cotacaoId)),
+    db.select().from(obraCotacaoPropostasTable).where(eq(obraCotacaoPropostasTable.cotacaoId, cotacaoId)),
+  ]);
+  const propostaIds = propostas.map((p) => p.id);
+  const propostaItens = propostaIds.length
+    ? await db.select().from(obraCotacaoPropostaItensTable).where(inArray(obraCotacaoPropostaItensTable.propostaId, propostaIds))
+    : [];
+  const selecoes = itens.length
+    ? await db.select().from(obraCotacaoSelecoesTable).where(inArray(obraCotacaoSelecoesTable.cotacaoItemId, itens.map((i) => i.id)))
+    : [];
+
+  const cobertura = itens.map((item) => {
+    const candidatos = propostaItens.filter((pi) => pi.cotacaoItemId === item.id && pi.coberturaStatus !== "incompativel");
+    const selecionadas = selecoes.filter((s) => s.cotacaoItemId === item.id);
+    const qtdNecessaria = numberOrZero(item.quantidadeCompra ?? item.quantidadeTecnica);
+    const qtdSelecionada = selecionadas.reduce((s, x) => s + numberOrZero(x.quantidadeSelecionada), 0);
+    return {
+      item,
+      candidatos: candidatos.length,
+      qtdNecessaria,
+      qtdSelecionada,
+      status: qtdSelecionada >= qtdNecessaria - 0.0001 ? "coberto" : qtdSelecionada > 0 ? "parcial" : candidatos.length ? "cotado" : "nao_cotado",
+    };
+  });
+
+  return res.json({
+    cotacao,
+    itens,
+    propostas,
+    propostaItens,
+    selecoes,
+    cobertura,
+    totais: {
+      itens: itens.length,
+      cobertos: cobertura.filter((x) => x.status === "coberto").length,
+      parciais: cobertura.filter((x) => x.status === "parcial").length,
+      naoCotados: cobertura.filter((x) => x.status === "nao_cotado").length,
+      propostas: propostas.length,
+    },
+  });
+});
+
+router.post(
+  "/tenants/:tenantId/cotacoes/:cotacaoId/propostas/importar-arquivo",
+  uploadCotacao.single("file"),
+  async (req, res) => {
+    const { tenantId: tid, cotacaoId } = req.params;
+    if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+    if (!req.file) return res.status(422).json({ error: "Nenhum arquivo enviado." });
+
+    const [cotacao] = await db.select().from(obraCotacoesTable)
+      .where(and(eq(obraCotacoesTable.id, cotacaoId), eq(obraCotacoesTable.tenantId, tid)));
+    if (!cotacao) return res.status(404).json({ error: "Cotação não encontrada" });
+
+    let extraido;
+    try {
+      extraido = await extractQuoteData([{
+        buffer: req.file.buffer,
+        mimeType: req.file.mimetype,
+        originalName: req.file.originalname,
+      }], tid);
+    } catch (error) {
+      req.log?.error?.({ error, cotacaoId, fileName: req.file.originalname }, "cotacao: falha na extração");
+      return res.status(422).json({ error: "Não foi possível extrair a proposta automaticamente." });
+    }
+
+    const itensExtraidos = Array.isArray(extraido.itens) ? extraido.itens : [];
+    if (!itensExtraidos.length) {
+      return res.status(422).json({
+        error: "Nenhum item comercial foi identificado no arquivo.",
+        extracao: extraido,
+      });
+    }
+
+    const ext = req.file.originalname.toLowerCase().split(".").pop() ?? "manual";
+    const formatos = new Set(["pdf","xls","xlsx","csv","imagem","doc","manual","api","email"]);
+    const origemFormato = req.file.mimetype.startsWith("image/")
+      ? "imagem"
+      : formatos.has(ext)
+        ? ext
+        : ext === "docx" ? "doc" : "manual";
+
+    let fornecedorId: string | null = null;
+    let fornecedorNomeSnapshot = String(extraido.fornecedor ?? req.body?.fornecedorNome ?? "").trim();
+    const fornecedorDocumento = String(extraido.fornecedorDocumento ?? "").replace(/\D/g, "");
+
+    if (fornecedorDocumento) {
+      const fornecedores = await db.select().from(fornecedoresTable)
+        .where(eq(fornecedoresTable.tenantId, tid));
+      const found = fornecedores.find((f: any) => String((f as any).documento ?? "").replace(/\D/g, "") === fornecedorDocumento);
+      if (found) {
+        fornecedorId = found.id;
+        fornecedorNomeSnapshot = found.nome;
+      }
+    }
+
+    if (!fornecedorId && fornecedorNomeSnapshot) {
+      const fornecedores = await db.select().from(fornecedoresTable)
+        .where(eq(fornecedoresTable.tenantId, tid));
+      const normalized = normalizarTextoCotacao(fornecedorNomeSnapshot);
+      const found = fornecedores.find((f) => normalizarTextoCotacao(f.nome) === normalized);
+      if (found) {
+        fornecedorId = found.id;
+        fornecedorNomeSnapshot = found.nome;
+      }
+    }
+
+    if (!fornecedorNomeSnapshot) fornecedorNomeSnapshot = "Fornecedor não identificado";
+
+    const [proposta] = await db.insert(obraCotacaoPropostasTable).values({
+      cotacaoId,
+      fornecedorId,
+      fornecedorNomeSnapshot,
+      numeroProposta: extraido.numeroDocumento ?? null,
+      dataProposta: extraido.dataEmissao ?? null,
+      validadeAte: extraido.validade ?? null,
+      condicaoPagamento: extraido.condPagamento ?? extraido.formaPagamento ?? null,
+      freteValor: String(numberOrZero(extraido.frete)),
+      impostosValor: String(numberOrZero(extraido.impostos)),
+      descontoValor: String(numberOrZero(extraido.desconto)),
+      valorTotalInformado: extraido.valorTotal == null ? null : String(extraido.valorTotal),
+      origemFormato,
+      arquivoNome: req.file.originalname,
+      extracaoConfianca: extraido.confianca == null ? null : String(extraido.confianca * 100),
+      status: "extraida",
+      observacoes: extraido.observacoes ?? null,
+      metadata: {
+        informacoesAdicionais: extraido.informacoesAdicionais ?? [],
+        inclusoes: extraido.inclusoes ?? [],
+        exclusoes: extraido.exclusoes ?? [],
+        clausulas: extraido.clausulas ?? [],
+      },
+    }).returning();
+
+    const itensCotacao = await db.select().from(obraCotacaoItensTable)
+      .where(eq(obraCotacaoItensTable.cotacaoId, cotacaoId));
+
+    const criados = [];
+    for (let i = 0; i < itensExtraidos.length; i++) {
+      const raw = itensExtraidos[i];
+      let match = null as typeof itensCotacao[number] | null;
+      let confianca = 0;
+
+      for (const item of itensCotacao) {
+        const byCodigo = raw.codigo && item.codigo &&
+          normalizarTextoCotacao(raw.codigo) === normalizarTextoCotacao(item.codigo);
+        const sim = Math.max(
+          byCodigo ? 1 : 0,
+          similaridadeCotacao(raw.descricao ?? "", item.nome),
+          similaridadeCotacao(raw.descricao ?? "", item.especificacao ?? ""),
+        );
+        if (sim > confianca / 100) {
+          match = item;
+          confianca = Math.round(sim * 100);
+        }
+      }
+      if (confianca < 55) match = null;
+
+      const quantidadeOfertada = numberOrZero(raw.quantidade);
+      const precoFornecedor = numberOrZero(raw.valorUnitario);
+      const valorTotalLinha = raw.valorTotal != null
+        ? numberOrZero(raw.valorTotal)
+        : quantidadeOfertada * precoFornecedor;
+
+      let precoNormalizado: number | null = null;
+      let qtdCompraNormalizada: number | null = null;
+      let status: "coberto" | "parcial" | "ambigua" | "incompativel" = match ? "coberto" : "ambigua";
+
+      if (match) {
+        const fator = numberOrZero(match.fatorCompraParaConsumo) || 1;
+        const unFornecedor = normalizarTextoCotacao(raw.unidade ?? "");
+        const unCompra = normalizarTextoCotacao(match.unidadeCompra ?? match.unidadeTecnica);
+        const unTecnica = normalizarTextoCotacao(match.unidadeTecnica);
+
+        if (unFornecedor && unFornecedor === unCompra) {
+          precoNormalizado = precoFornecedor / fator;
+          qtdCompraNormalizada = quantidadeOfertada;
+        } else if (unFornecedor && unFornecedor === unTecnica) {
+          precoNormalizado = precoFornecedor;
+          qtdCompraNormalizada = quantidadeOfertada / fator;
+        } else {
+          status = "ambigua";
+        }
+
+        const necessario = numberOrZero(match.quantidadeCompra ?? match.quantidadeTecnica);
+        if (qtdCompraNormalizada != null && qtdCompraNormalizada + 0.0001 < necessario) status = "parcial";
+      }
+
+      const [row] = await db.insert(obraCotacaoPropostaItensTable).values({
+        propostaId: proposta.id,
+        cotacaoItemId: match?.id ?? null,
+        linhaOrigem: i + 1,
+        codigoFornecedor: raw.codigo ?? null,
+        descricaoFornecedor: raw.descricao,
+        especificacao: raw.observacoes ?? null,
+        quantidadeOfertada: String(quantidadeOfertada),
+        unidadeFornecedor: raw.unidade ?? "",
+        precoUnitarioFornecedor: String(precoFornecedor),
+        precoUnitarioNormalizado: precoNormalizado == null ? null : String(precoNormalizado),
+        quantidadeCompraNormalizada: qtdCompraNormalizada == null ? null : String(qtdCompraNormalizada),
+        valorTotalLinha: String(valorTotalLinha),
+        coberturaStatus: status,
+        reconciliacaoConfianca: String(confianca),
+        metadata: {
+          grupo: raw.grupo ?? null,
+          etapa: raw.etapa ?? null,
+        },
+      }).returning();
+      criados.push(row);
+    }
+
+    await db.update(obraCotacaoPropostasTable)
+      .set({ status: "revisao", updatedAt: new Date() })
+      .where(eq(obraCotacaoPropostasTable.id, proposta.id));
+
+    await db.update(obraCotacoesTable)
+      .set({ status: "recebendo_propostas", updatedAt: new Date() })
+      .where(eq(obraCotacoesTable.id, cotacaoId));
+
+    return res.status(201).json({
+      proposta: { ...proposta, status: "revisao" },
+      extracao: extraido,
+      itens: criados,
+      reconciliados: criados.filter((x) => !!x.cotacaoItemId).length,
+      ambiguos: criados.filter((x) => !x.cotacaoItemId || x.coberturaStatus === "ambigua").length,
+    });
+  }
+);
+
+router.post("/tenants/:tenantId/cotacoes/:cotacaoId/propostas", async (req, res) => {
+  const { tenantId: tid, cotacaoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [cotacao] = await db.select().from(obraCotacoesTable)
+    .where(and(eq(obraCotacoesTable.id, cotacaoId), eq(obraCotacoesTable.tenantId, tid)));
+  if (!cotacao) return res.status(404).json({ error: "Cotação não encontrada" });
+
+  const fornecedorId = req.body?.fornecedorId ?? null;
+  let fornecedorNomeSnapshot = String(req.body?.fornecedorNomeSnapshot ?? "").trim();
+  if (fornecedorId) {
+    const [fornecedor] = await db.select().from(fornecedoresTable)
+      .where(and(eq(fornecedoresTable.id, fornecedorId), eq(fornecedoresTable.tenantId, tid)));
+    if (!fornecedor) return res.status(422).json({ error: "Fornecedor inválido." });
+    fornecedorNomeSnapshot = fornecedor.nome;
+  }
+  if (!fornecedorNomeSnapshot) return res.status(422).json({ error: "Fornecedor obrigatório." });
+
+  const parsed = insertObraCotacaoPropostaSchema.safeParse({
+    ...req.body,
+    cotacaoId,
+    fornecedorId,
+    fornecedorNomeSnapshot,
+  });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [proposta] = await db.insert(obraCotacaoPropostasTable).values(parsed.data).returning();
+  return res.status(201).json(proposta);
+});
+
+router.post("/tenants/:tenantId/cotacoes/:cotacaoId/propostas/:propostaId/itens/importar", async (req, res) => {
+  const { tenantId: tid, cotacaoId, propostaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [proposta] = await db.select({ id: obraCotacaoPropostasTable.id })
+    .from(obraCotacaoPropostasTable)
+    .innerJoin(obraCotacoesTable, eq(obraCotacaoPropostasTable.cotacaoId, obraCotacoesTable.id))
+    .where(and(
+      eq(obraCotacaoPropostasTable.id, propostaId),
+      eq(obraCotacaoPropostasTable.cotacaoId, cotacaoId),
+      eq(obraCotacoesTable.tenantId, tid),
+    ));
+  if (!proposta) return res.status(404).json({ error: "Proposta não encontrada" });
+
+  const itensEntrada = Array.isArray(req.body?.itens) ? req.body.itens : [];
+  if (!itensEntrada.length) return res.status(422).json({ error: "Informe itens extraídos/importados." });
+
+  const itensCotacao = await db.select().from(obraCotacaoItensTable)
+    .where(eq(obraCotacaoItensTable.cotacaoId, cotacaoId));
+
+  const criados = [];
+  for (let i = 0; i < itensEntrada.length; i++) {
+    const raw = itensEntrada[i];
+    let match = null as typeof itensCotacao[number] | null;
+    let confianca = 0;
+
+    if (raw.cotacaoItemId) {
+      match = itensCotacao.find((x) => x.id === raw.cotacaoItemId) ?? null;
+      confianca = match ? 100 : 0;
+    } else {
+      for (const item of itensCotacao) {
+        const byCodigo = raw.codigoFornecedor && item.codigo && normalizarTextoCotacao(raw.codigoFornecedor) === normalizarTextoCotacao(item.codigo);
+        const sim = Math.max(
+          byCodigo ? 1 : 0,
+          similaridadeCotacao(raw.descricaoFornecedor ?? "", item.nome),
+          similaridadeCotacao(raw.descricaoFornecedor ?? "", item.especificacao ?? ""),
+        );
+        if (sim > confianca / 100) {
+          match = item;
+          confianca = Math.round(sim * 100);
+        }
+      }
+      if (confianca < 55) match = null;
+    }
+
+    const quantidadeOfertada = numberOrZero(raw.quantidadeOfertada);
+    const precoFornecedor = numberOrZero(raw.precoUnitarioFornecedor);
+    const valorTotalLinha = raw.valorTotalLinha != null ? numberOrZero(raw.valorTotalLinha) : quantidadeOfertada * precoFornecedor;
+
+    let precoNormalizado: number | null = null;
+    let qtdCompraNormalizada: number | null = null;
+    let status: "coberto" | "parcial" | "ambigua" | "incompativel" = match ? "coberto" : "ambigua";
+
+    if (match) {
+      const fator = numberOrZero(match.fatorCompraParaConsumo) || 1;
+      const unFornecedor = normalizarTextoCotacao(raw.unidadeFornecedor ?? "");
+      const unCompra = normalizarTextoCotacao(match.unidadeCompra ?? match.unidadeTecnica);
+      const unTecnica = normalizarTextoCotacao(match.unidadeTecnica);
+
+      if (unFornecedor === unCompra) {
+        precoNormalizado = precoFornecedor / fator;
+        qtdCompraNormalizada = quantidadeOfertada;
+      } else if (unFornecedor === unTecnica) {
+        precoNormalizado = precoFornecedor;
+        qtdCompraNormalizada = quantidadeOfertada / fator;
+      } else {
+        status = "ambigua";
+      }
+
+      const necessario = numberOrZero(match.quantidadeCompra ?? match.quantidadeTecnica);
+      if (qtdCompraNormalizada != null && qtdCompraNormalizada + 0.0001 < necessario) status = "parcial";
+    }
+
+    const parsed = insertObraCotacaoPropostaItemSchema.safeParse({
+      propostaId,
+      cotacaoItemId: match?.id ?? null,
+      linhaOrigem: raw.linhaOrigem ?? i + 1,
+      codigoFornecedor: raw.codigoFornecedor ?? null,
+      descricaoFornecedor: raw.descricaoFornecedor,
+      marca: raw.marca ?? null,
+      modelo: raw.modelo ?? null,
+      especificacao: raw.especificacao ?? null,
+      quantidadeOfertada: String(quantidadeOfertada),
+      unidadeFornecedor: raw.unidadeFornecedor,
+      embalagemQuantidade: raw.embalagemQuantidade,
+      quantidadeMinimaCompra: raw.quantidadeMinimaCompra,
+      multiploCompra: raw.multiploCompra,
+      permiteFracionar: Boolean(raw.permiteFracionar),
+      precoUnitarioFornecedor: String(precoFornecedor),
+      precoUnitarioNormalizado: precoNormalizado == null ? undefined : String(precoNormalizado),
+      quantidadeCompraNormalizada: qtdCompraNormalizada == null ? undefined : String(qtdCompraNormalizada),
+      valorTotalLinha: String(valorTotalLinha),
+      impostoLinha: raw.impostoLinha ?? "0",
+      freteRateado: raw.freteRateado ?? "0",
+      prazoEntregaDias: raw.prazoEntregaDias ?? null,
+      coberturaStatus: status,
+      reconciliacaoConfianca: String(confianca),
+      metadata: raw.metadata ?? null,
+    });
+    if (!parsed.success) return res.status(422).json({ error: parsed.error.message, linha: i + 1 });
+
+    const [row] = await db.insert(obraCotacaoPropostaItensTable).values(parsed.data).returning();
+    criados.push(row);
+  }
+
+  await db.update(obraCotacaoPropostasTable)
+    .set({ status: "revisao", updatedAt: new Date() })
+    .where(eq(obraCotacaoPropostasTable.id, propostaId));
+
+  return res.status(201).json({
+    itens: criados,
+    reconciliados: criados.filter((x) => !!x.cotacaoItemId).length,
+    ambiguos: criados.filter((x) => !x.cotacaoItemId || x.coberturaStatus === "ambigua").length,
+  });
+});
+
+router.post("/tenants/:tenantId/cotacoes/:cotacaoId/selecionar", async (req, res) => {
+  const { tenantId: tid, cotacaoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraCotacaoSelecaoSchema.safeParse({
+    ...req.body,
+    criadoPorId: (req as any).user?.sub ?? null,
+  });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [item] = await db.select({
+    id: obraCotacaoItensTable.id,
+    quantidadeCompra: obraCotacaoItensTable.quantidadeCompra,
+    quantidadeTecnica: obraCotacaoItensTable.quantidadeTecnica,
+  })
+    .from(obraCotacaoItensTable)
+    .innerJoin(obraCotacoesTable, eq(obraCotacaoItensTable.cotacaoId, obraCotacoesTable.id))
+    .where(and(
+      eq(obraCotacaoItensTable.id, parsed.data.cotacaoItemId),
+      eq(obraCotacaoItensTable.cotacaoId, cotacaoId),
+      eq(obraCotacoesTable.tenantId, tid),
+    ));
+  if (!item) return res.status(404).json({ error: "Item de cotação não encontrado" });
+
+  const [propostaItem] = await db.select({ id: obraCotacaoPropostaItensTable.id })
+    .from(obraCotacaoPropostaItensTable)
+    .innerJoin(obraCotacaoPropostasTable, eq(obraCotacaoPropostaItensTable.propostaId, obraCotacaoPropostasTable.id))
+    .where(and(
+      eq(obraCotacaoPropostaItensTable.id, parsed.data.propostaItemId),
+      eq(obraCotacaoPropostasTable.cotacaoId, cotacaoId),
+    ));
+  if (!propostaItem) return res.status(422).json({ error: "Item de proposta não pertence à cotação." });
+
+  const [row] = await db.insert(obraCotacaoSelecoesTable).values(parsed.data).returning();
+  await db.update(obraCotacaoPropostaItensTable)
+    .set({ selecionado: true, updatedAt: new Date() })
+    .where(eq(obraCotacaoPropostaItensTable.id, parsed.data.propostaItemId));
+
+  const qtdNecessaria = numberOrZero(item.quantidadeCompra ?? item.quantidadeTecnica);
+  const selecoes = await db.select().from(obraCotacaoSelecoesTable)
+    .where(eq(obraCotacaoSelecoesTable.cotacaoItemId, parsed.data.cotacaoItemId));
+  const qtdSelecionada = selecoes.reduce((s, x) => s + numberOrZero(x.quantidadeSelecionada), 0);
+  const coberturaStatus = qtdSelecionada >= qtdNecessaria - 0.0001 ? "coberto" : "parcial";
+
+  await db.update(obraCotacaoItensTable)
+    .set({ coberturaStatus, updatedAt: new Date() })
+    .where(eq(obraCotacaoItensTable.id, parsed.data.cotacaoItemId));
+
+  return res.status(201).json({ selecao: row, coberturaStatus, qtdSelecionada, qtdNecessaria });
+});
+
+// ─── Compras, pedidos, recebimentos e devoluções ──────────────────────────────
+
+function dataLimiteCompra(dataNecessidade: string | null | undefined, prazoFornecedorDias: number, bufferLogisticoDias: number) {
+  if (!dataNecessidade) return null;
+  const d = new Date(`${dataNecessidade}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setUTCDate(d.getUTCDate() - Math.max(0, prazoFornecedorDias) - Math.max(0, bufferLogisticoDias));
+  return d.toISOString().slice(0, 10);
+}
+
+router.post("/tenants/:tenantId/obras/:obraId/cotacoes/:cotacaoId/gerar-pedidos", async (req, res) => {
+  const { tenantId: tid, obraId, cotacaoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [cotacao] = await db.select().from(obraCotacoesTable)
+    .innerJoin(obraOrcamentosTable, eq(obraCotacoesTable.orcamentoId, obraOrcamentosTable.id))
+    .where(and(
+      eq(obraCotacoesTable.id, cotacaoId),
+      eq(obraCotacoesTable.tenantId, tid),
+      eq(obraOrcamentosTable.obraId, obraId),
+    ));
+  if (!cotacao) return res.status(404).json({ error: "Cotação não encontrada para esta obra." });
+
+  const itensCotacao = await db.select().from(obraCotacaoItensTable)
+    .where(eq(obraCotacaoItensTable.cotacaoId, cotacaoId));
+  const itemIds = itensCotacao.map((i) => i.id);
+  if (!itemIds.length) return res.status(422).json({ error: "Cotação sem itens." });
+
+  const selecoes = await db.select().from(obraCotacaoSelecoesTable)
+    .where(inArray(obraCotacaoSelecoesTable.cotacaoItemId, itemIds));
+  if (!selecoes.length) return res.status(422).json({ error: "Nenhum item selecionado na cotação." });
+
+  const propostaItens = await db.select().from(obraCotacaoPropostaItensTable)
+    .where(inArray(obraCotacaoPropostaItensTable.id, selecoes.map((s) => s.propostaItemId)));
+  const propostas = await db.select().from(obraCotacaoPropostasTable)
+    .where(eq(obraCotacaoPropostasTable.cotacaoId, cotacaoId));
+
+  const existentes = await db.select().from(obraPedidosCompraTable)
+    .where(and(eq(obraPedidosCompraTable.tenantId, tid), eq(obraPedidosCompraTable.cotacaoId, cotacaoId)));
+  if (existentes.some((p) => p.status !== "cancelado")) {
+    return res.status(409).json({ error: "Já existem pedidos ativos gerados para esta cotação.", pedidos: existentes });
+  }
+
+  const porProposta = new Map<string, typeof selecoes>();
+  for (const selecao of selecoes) {
+    const pItem = propostaItens.find((p) => p.id === selecao.propostaItemId);
+    if (!pItem) continue;
+    if (!porProposta.has(pItem.propostaId)) porProposta.set(pItem.propostaId, []);
+    porProposta.get(pItem.propostaId)!.push(selecao);
+  }
+
+  const pedidosCriados = [];
+
+  for (const [propostaId, selecoesProposta] of porProposta.entries()) {
+    const proposta = propostas.find((p) => p.id === propostaId);
+    if (!proposta) continue;
+
+    const prazoFornecedorDias = Math.max(0, Number(proposta.prazoEntregaDias ?? 0));
+    const bufferLogisticoDias = Math.max(0, Number(req.body?.bufferLogisticoDias ?? 0));
+    const necessidade = typeof req.body?.dataNecessidade === "string" ? req.body.dataNecessidade : null;
+    const limiteCompra = dataLimiteCompra(necessidade, prazoFornecedorDias, bufferLogisticoDias);
+
+    const linhas = [];
+    let valorItens = 0;
+
+    for (const selecao of selecoesProposta) {
+      const pItem = propostaItens.find((p) => p.id === selecao.propostaItemId);
+      const cItem = itensCotacao.find((i) => i.id === selecao.cotacaoItemId);
+      if (!pItem || !cItem) continue;
+
+      const quantidade = numberOrZero(selecao.quantidadeSelecionada);
+      const precoUnitario = numberOrZero(pItem.precoUnitarioFornecedor);
+      const valorTotal = quantidade * precoUnitario;
+      valorItens += valorTotal;
+
+      linhas.push({
+        propostaItemId: pItem.id,
+        selecaoId: selecao.id,
+        insumoId: cItem.insumoId ?? null,
+        descricao: pItem.descricaoFornecedor,
+        codigoFornecedor: pItem.codigoFornecedor ?? null,
+        marca: pItem.marca ?? null,
+        modelo: pItem.modelo ?? null,
+        quantidadePedida: quantidade.toFixed(4),
+        unidadeCompra: pItem.unidadeFornecedor || cItem.unidadeCompra || cItem.unidadeTecnica,
+        precoUnitario: precoUnitario.toFixed(6),
+        valorTotal: valorTotal.toFixed(4),
+        quantidadeRecebida: "0",
+        quantidadeAprovada: "0",
+        quantidadeRejeitada: "0",
+        saldoReceber: quantidade.toFixed(4),
+      });
+    }
+
+    if (!linhas.length) continue;
+
+    const proporcao = selecoes.length > 0 ? selecoesProposta.length / selecoes.length : 1;
+    const frete = numberOrZero(proposta.freteValor) * proporcao;
+    const impostos = numberOrZero(proposta.impostosValor) * proporcao;
+    const desconto = numberOrZero(proposta.descontoValor) * proporcao;
+    const valorTotalPedido = valorItens + frete + impostos - desconto;
+
+    const [pedido] = await db.insert(obraPedidosCompraTable).values({
+      tenantId: tid,
+      obraId,
+      cotacaoId,
+      propostaId,
+      fornecedorId: proposta.fornecedorId ?? null,
+      fornecedorNomeSnapshot: proposta.fornecedorNomeSnapshot,
+      status: "rascunho",
+      dataPedido: new Date().toISOString().slice(0, 10),
+      dataNecessidade: necessidade,
+      prazoFornecedorDias,
+      bufferLogisticoDias,
+      dataLimiteCompra: limiteCompra,
+      condicaoPagamento: proposta.condicaoPagamento ?? null,
+      freteValor: frete.toFixed(4),
+      impostosValor: impostos.toFixed(4),
+      descontoValor: desconto.toFixed(4),
+      valorItens: valorItens.toFixed(4),
+      valorTotal: valorTotalPedido.toFixed(4),
+      criadoPorId: (req as any).user?.sub ?? null,
+      metadata: { origem: "cotacao_selecionada" },
+    }).returning();
+
+    for (const linha of linhas) {
+      await db.insert(obraPedidoCompraItensTable).values({ ...linha, pedidoId: pedido.id });
+    }
+
+    pedidosCriados.push(pedido);
+  }
+
+  if (!pedidosCriados.length) return res.status(422).json({ error: "Não foi possível gerar pedidos a partir das seleções." });
+
+  return res.status(201).json({ pedidos: pedidosCriados });
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/pedidos-compra", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const pedidos = await db.select().from(obraPedidosCompraTable)
+    .where(and(eq(obraPedidosCompraTable.tenantId, tid), eq(obraPedidosCompraTable.obraId, obraId)))
+    .orderBy(desc(obraPedidosCompraTable.createdAt));
+
+  const ids = pedidos.map((p) => p.id);
+  const itens = ids.length
+    ? await db.select().from(obraPedidoCompraItensTable).where(inArray(obraPedidoCompraItensTable.pedidoId, ids))
+    : [];
+
+  return res.json({ pedidos, itens });
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/pedidos-compra/:pedidoId/aprovar", async (req, res) => {
+  const { tenantId: tid, obraId, pedidoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [pedido] = await db.select().from(obraPedidosCompraTable)
+    .where(and(
+      eq(obraPedidosCompraTable.id, pedidoId),
+      eq(obraPedidosCompraTable.tenantId, tid),
+      eq(obraPedidosCompraTable.obraId, obraId),
+    ));
+  if (!pedido) return res.status(404).json({ error: "Pedido não encontrado" });
+  if (pedido.status !== "rascunho") return res.status(409).json({ error: "Somente pedido em rascunho pode ser aprovado." });
+
+  const [updated] = await db.update(obraPedidosCompraTable)
+    .set({
+      status: "aprovado",
+      aprovadoPorId: (req as any).user?.sub ?? null,
+      aprovadoEm: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(obraPedidosCompraTable.id, pedidoId))
+    .returning();
+
+  return res.json(updated);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/pedidos-compra/:pedidoId/enviar", async (req, res) => {
+  const { tenantId: tid, obraId, pedidoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [pedido] = await db.select().from(obraPedidosCompraTable)
+    .where(and(
+      eq(obraPedidosCompraTable.id, pedidoId),
+      eq(obraPedidosCompraTable.tenantId, tid),
+      eq(obraPedidosCompraTable.obraId, obraId),
+    ));
+  if (!pedido) return res.status(404).json({ error: "Pedido não encontrado" });
+  if (pedido.status !== "aprovado") return res.status(409).json({ error: "Pedido precisa estar aprovado antes do envio." });
+
+  const [updated] = await db.update(obraPedidosCompraTable)
+    .set({ status: "enviado", enviadoEm: new Date(), updatedAt: new Date() })
+    .where(eq(obraPedidosCompraTable.id, pedidoId))
+    .returning();
+
+  return res.json(updated);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/pedidos-compra/:pedidoId/recebimentos", async (req, res) => {
+  const { tenantId: tid, obraId, pedidoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [pedido] = await db.select().from(obraPedidosCompraTable)
+    .where(and(
+      eq(obraPedidosCompraTable.id, pedidoId),
+      eq(obraPedidosCompraTable.tenantId, tid),
+      eq(obraPedidosCompraTable.obraId, obraId),
+    ));
+  if (!pedido) return res.status(404).json({ error: "Pedido não encontrado" });
+  if (!["aprovado", "enviado", "parcialmente_recebido"].includes(pedido.status)) {
+    return res.status(409).json({ error: "Pedido não está apto para recebimento." });
+  }
+
+  const itensEntrada = Array.isArray(req.body?.itens) ? req.body.itens : [];
+  if (!itensEntrada.length) return res.status(422).json({ error: "Informe os itens recebidos." });
+
+  const itensPedido = await db.select().from(obraPedidoCompraItensTable)
+    .where(eq(obraPedidoCompraItensTable.pedidoId, pedidoId));
+
+  const recebimento = await db.transaction(async (tx) => {
+    const [rec] = await tx.insert(obraPedidoRecebimentosTable).values({
+      pedidoId,
+      status: "inspecao",
+      documentoNumero: req.body?.documentoNumero ?? null,
+      documentoUrl: req.body?.documentoUrl ?? null,
+      transportadora: req.body?.transportadora ?? null,
+      responsavelId: (req as any).user?.sub ?? null,
+      observacoes: req.body?.observacoes ?? null,
+      fotos: Array.isArray(req.body?.fotos) ? req.body.fotos : [],
+    }).returning();
+
+    for (const raw of itensEntrada) {
+      const item = itensPedido.find((i) => i.id === raw.pedidoItemId);
+      if (!item) throw new Error(`Item de pedido inválido: ${raw.pedidoItemId}`);
+
+      const qtdRecebida = numberOrZero(raw.quantidadeRecebida);
+      const qtdAprovada = raw.quantidadeAprovada == null ? qtdRecebida : numberOrZero(raw.quantidadeAprovada);
+      const qtdRejeitada = raw.quantidadeRejeitada == null ? Math.max(0, qtdRecebida - qtdAprovada) : numberOrZero(raw.quantidadeRejeitada);
+
+      if (qtdRecebida <= 0 || qtdAprovada < 0 || qtdRejeitada < 0 || qtdAprovada + qtdRejeitada > qtdRecebida + 0.0001) {
+        throw new Error("Quantidades de recebimento inválidas.");
+      }
+      const saldoAtual = numberOrZero(item.saldoReceber);
+      if (qtdRecebida > saldoAtual + 0.0001) throw new Error(`Recebimento excede saldo do item ${item.descricao}.`);
+
+      const [recItem] = await tx.insert(obraPedidoRecebimentoItensTable).values({
+        recebimentoId: rec.id,
+        pedidoItemId: item.id,
+        quantidadeRecebida: qtdRecebida.toFixed(4),
+        quantidadeAprovada: qtdAprovada.toFixed(4),
+        quantidadeRejeitada: qtdRejeitada.toFixed(4),
+        motivoRejeicao: raw.motivoRejeicao ?? null,
+        lote: raw.lote ?? null,
+        validade: raw.validade ?? null,
+      }).returning();
+
+      const novaRecebida = numberOrZero(item.quantidadeRecebida) + qtdRecebida;
+      const novaAprovada = numberOrZero(item.quantidadeAprovada) + qtdAprovada;
+      const novaRejeitada = numberOrZero(item.quantidadeRejeitada) + qtdRejeitada;
+      const novoSaldo = Math.max(0, numberOrZero(item.quantidadePedida) - novaRecebida);
+
+      await tx.update(obraPedidoCompraItensTable)
+        .set({
+          quantidadeRecebida: novaRecebida.toFixed(4),
+          quantidadeAprovada: novaAprovada.toFixed(4),
+          quantidadeRejeitada: novaRejeitada.toFixed(4),
+          saldoReceber: novoSaldo.toFixed(4),
+          updatedAt: new Date(),
+        })
+        .where(eq(obraPedidoCompraItensTable.id, item.id));
+
+      if (item.insumoId && qtdAprovada > 0) {
+        const [saldo] = await tx.select().from(estoqueObrasTable)
+          .where(and(eq(estoqueObrasTable.obraId, obraId), eq(estoqueObrasTable.insumoId, item.insumoId)));
+        if (saldo) {
+          await tx.update(estoqueObrasTable)
+            .set({ quantidadeAtual: (numberOrZero(saldo.quantidadeAtual) + qtdAprovada).toFixed(4), updatedAt: new Date() })
+            .where(eq(estoqueObrasTable.id, saldo.id));
+        } else {
+          await tx.insert(estoqueObrasTable).values({
+            obraId,
+            insumoId: item.insumoId,
+            quantidadeAtual: qtdAprovada.toFixed(4),
+            quantidadeMinima: "0",
+          });
+        }
+
+        await tx.insert(movimentacoesEstoqueObrasTable).values({
+          tenantId: tid,
+          insumoId: item.insumoId,
+          tipo: "entrada",
+          quantia: qtdAprovada.toFixed(4),
+          origemTipo: "pedido_compra",
+          destinoTipo: "obra",
+          destinoObraId: obraId,
+          responsavelId: (req as any).user?.sub ?? null,
+          observacao: `Recebimento ${rec.id} / pedido ${pedidoId}`,
+        });
+      }
+
+      void recItem;
+    }
+
+    const itensAtualizados = await tx.select().from(obraPedidoCompraItensTable)
+      .where(eq(obraPedidoCompraItensTable.pedidoId, pedidoId));
+    const saldoTotal = itensAtualizados.reduce((s, i) => s + numberOrZero(i.saldoReceber), 0);
+    const rejeitados = itensAtualizados.reduce((s, i) => s + numberOrZero(i.quantidadeRejeitada), 0);
+    const statusPedido = saldoTotal <= 0.0001 ? "recebido" : "parcialmente_recebido";
+    const statusRecebimento = rejeitados > 0 ? "parcial" : "aprovado";
+
+    await tx.update(obraPedidoRecebimentosTable)
+      .set({ status: statusRecebimento })
+      .where(eq(obraPedidoRecebimentosTable.id, rec.id));
+    await tx.update(obraPedidosCompraTable)
+      .set({ status: statusPedido, updatedAt: new Date() })
+      .where(eq(obraPedidosCompraTable.id, pedidoId));
+
+    return { ...rec, status: statusRecebimento, pedidoStatus: statusPedido };
+  });
+
+  return res.status(201).json(recebimento);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/pedidos-compra/:pedidoId/devolucoes", async (req, res) => {
+  const { tenantId: tid, obraId, pedidoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = insertObraPedidoDevolucaoSchema.safeParse({
+    ...req.body,
+    pedidoId,
+    responsavelId: (req as any).user?.sub ?? null,
+  });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [pedido] = await db.select().from(obraPedidosCompraTable)
+    .where(and(
+      eq(obraPedidosCompraTable.id, pedidoId),
+      eq(obraPedidosCompraTable.tenantId, tid),
+      eq(obraPedidosCompraTable.obraId, obraId),
+    ));
+  if (!pedido) return res.status(404).json({ error: "Pedido não encontrado" });
+
+  const [item] = await db.select().from(obraPedidoCompraItensTable)
+    .where(and(eq(obraPedidoCompraItensTable.id, parsed.data.pedidoItemId), eq(obraPedidoCompraItensTable.pedidoId, pedidoId)));
+  if (!item) return res.status(422).json({ error: "Item não pertence ao pedido." });
+
+  const qtd = numberOrZero(parsed.data.quantidade);
+  if (qtd <= 0 || qtd > numberOrZero(item.quantidadeAprovada) + 0.0001) {
+    return res.status(422).json({ error: "Quantidade de devolução inválida." });
+  }
+
+  const devolucao = await db.transaction(async (tx) => {
+    const [row] = await tx.insert(obraPedidoDevolucoesTable).values(parsed.data).returning();
+
+    if (item.insumoId) {
+      const [saldo] = await tx.select().from(estoqueObrasTable)
+        .where(and(eq(estoqueObrasTable.obraId, obraId), eq(estoqueObrasTable.insumoId, item.insumoId)));
+      const atual = numberOrZero(saldo?.quantidadeAtual);
+      if (atual < qtd - 0.0001) throw new Error("Estoque insuficiente para registrar devolução.");
+
+      if (saldo) {
+        await tx.update(estoqueObrasTable)
+          .set({ quantidadeAtual: (atual - qtd).toFixed(4), updatedAt: new Date() })
+          .where(eq(estoqueObrasTable.id, saldo.id));
+      }
+
+      await tx.insert(movimentacoesEstoqueObrasTable).values({
+        tenantId: tid,
+        insumoId: item.insumoId,
+        tipo: "devolucao",
+        quantia: qtd.toFixed(4),
+        origemTipo: "obra",
+        origemObraId: obraId,
+        destinoTipo: "fornecedor",
+        responsavelId: (req as any).user?.sub ?? null,
+        observacao: `Devolução do pedido ${pedidoId}: ${parsed.data.motivo}`,
+      });
+    }
+
+    await tx.update(obraPedidoCompraItensTable)
+      .set({
+        quantidadeAprovada: Math.max(0, numberOrZero(item.quantidadeAprovada) - qtd).toFixed(4),
+        updatedAt: new Date(),
+      })
+      .where(eq(obraPedidoCompraItensTable.id, item.id));
+
+    return row;
+  });
+
+  return res.status(201).json(devolucao);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/pedidos-compra/:pedidoId/resumo", async (req, res) => {
+  const { tenantId: tid, obraId, pedidoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [pedido] = await db.select().from(obraPedidosCompraTable)
+    .where(and(
+      eq(obraPedidosCompraTable.id, pedidoId),
+      eq(obraPedidosCompraTable.tenantId, tid),
+      eq(obraPedidosCompraTable.obraId, obraId),
+    ));
+  if (!pedido) return res.status(404).json({ error: "Pedido não encontrado" });
+
+  const itens = await db.select().from(obraPedidoCompraItensTable)
+    .where(eq(obraPedidoCompraItensTable.pedidoId, pedidoId));
+  const recebimentos = await db.select().from(obraPedidoRecebimentosTable)
+    .where(eq(obraPedidoRecebimentosTable.pedidoId, pedidoId));
+  const devolucoes = await db.select().from(obraPedidoDevolucoesTable)
+    .where(eq(obraPedidoDevolucoesTable.pedidoId, pedidoId));
+
+  return res.json({
+    pedido,
+    itens,
+    recebimentos,
+    devolucoes,
+    totais: {
+      pedido: itens.reduce((s, i) => s + numberOrZero(i.quantidadePedida), 0),
+      recebido: itens.reduce((s, i) => s + numberOrZero(i.quantidadeRecebida), 0),
+      aprovado: itens.reduce((s, i) => s + numberOrZero(i.quantidadeAprovada), 0),
+      rejeitado: itens.reduce((s, i) => s + numberOrZero(i.quantidadeRejeitada), 0),
+      saldoReceber: itens.reduce((s, i) => s + numberOrZero(i.saldoReceber), 0),
+      valorTotal: numberOrZero(pedido.valorTotal),
+    },
+  });
+});
+
+// ─── Execução, medição, consumo e produtividade ───────────────────────────────
+
+router.post("/tenants/:tenantId/obras/:obraId/execucao/atividades", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db.select({ id: obrasTable.id }).from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada" });
+
+  let payload = { ...req.body, tenantId: tid, obraId };
+
+  if (req.body?.orcamentoItemId) {
+    const [item] = await db.select().from(obraOrcamentoItensTable)
+      .where(eq(obraOrcamentoItensTable.id, req.body.orcamentoItemId));
+    if (!item) return res.status(422).json({ error: "Item de orçamento inválido." });
+
+    payload = {
+      ...payload,
+      nome: payload.nome ?? item.nome,
+      unidade: payload.unidade ?? item.unidade,
+      quantidadePlanejada: payload.quantidadePlanejada ?? item.quantidade,
+      custoPlanejado: payload.custoPlanejado ??
+        (numberOrZero(item.quantidade) * numberOrZero(item.custoUnitario)).toFixed(4),
+      composicaoId: payload.composicaoId ?? item.composicaoId ?? null,
+    };
+  }
+
+  const parsed = insertObraExecucaoAtividadeSchema.safeParse(payload);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraExecucaoAtividadesTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/execucao/atividades", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const rows = await db.select().from(obraExecucaoAtividadesTable)
+    .where(and(
+      eq(obraExecucaoAtividadesTable.tenantId, tid),
+      eq(obraExecucaoAtividadesTable.obraId, obraId),
+      eq(obraExecucaoAtividadesTable.ativo, true),
+    ))
+    .orderBy(asc(obraExecucaoAtividadesTable.createdAt));
+
+  return res.json(rows);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/execucao/atividades/:atividadeId/medicoes", async (req, res) => {
+  const { tenantId: tid, obraId, atividadeId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [atividade] = await db.select().from(obraExecucaoAtividadesTable)
+    .where(and(
+      eq(obraExecucaoAtividadesTable.id, atividadeId),
+      eq(obraExecucaoAtividadesTable.tenantId, tid),
+      eq(obraExecucaoAtividadesTable.obraId, obraId),
+    ));
+  if (!atividade) return res.status(404).json({ error: "Atividade não encontrada" });
+
+  const parsed = insertObraExecucaoMedicaoSchema.safeParse({
+    ...req.body,
+    atividadeId,
+    criadoPorId: (req as any).user?.sub ?? null,
+  });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const qtd = numberOrZero(parsed.data.quantidadeExecutada);
+  if (qtd <= 0) return res.status(422).json({ error: "Quantidade medida deve ser maior que zero." });
+
+  const medicao = await db.transaction(async (tx) => {
+    const [row] = await tx.insert(obraExecucaoMedicoesTable).values(parsed.data).returning();
+
+    const medicoes = await tx.select().from(obraExecucaoMedicoesTable)
+      .where(eq(obraExecucaoMedicoesTable.atividadeId, atividadeId));
+    const total = medicoes.reduce((s, m) => s + numberOrZero(m.quantidadeExecutada), 0);
+    const planejada = numberOrZero(atividade.quantidadePlanejada);
+    const percentual = planejada > 0 ? Math.min(100, total / planejada * 100) : 0;
+    const concluida = planejada > 0 && total >= planejada - 0.0001;
+
+    await tx.update(obraExecucaoAtividadesTable)
+      .set({
+        quantidadeExecutada: total.toFixed(4),
+        percentualExecutado: percentual.toFixed(4),
+        status: concluida ? "concluida" : atividade.status === "planejada" ? "em_execucao" : atividade.status,
+        inicioReal: atividade.inicioReal ?? new Date(),
+        fimReal: concluida ? new Date() : atividade.fimReal,
+        updatedAt: new Date(),
+      })
+      .where(eq(obraExecucaoAtividadesTable.id, atividadeId));
+
+    return row;
+  });
+
+  return res.status(201).json(medicao);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/execucao/atividades/:atividadeId/consumos", async (req, res) => {
+  const { tenantId: tid, obraId, atividadeId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [atividade] = await db.select({ id: obraExecucaoAtividadesTable.id }).from(obraExecucaoAtividadesTable)
+    .where(and(
+      eq(obraExecucaoAtividadesTable.id, atividadeId),
+      eq(obraExecucaoAtividadesTable.tenantId, tid),
+      eq(obraExecucaoAtividadesTable.obraId, obraId),
+    ));
+  if (!atividade) return res.status(404).json({ error: "Atividade não encontrada" });
+
+  let payload = { ...req.body, atividadeId };
+  if (req.body?.insumoId) {
+    const [insumo] = await db.select().from(insumosTable)
+      .where(and(eq(insumosTable.id, req.body.insumoId), eq(insumosTable.tenantId, tid)));
+    if (!insumo) return res.status(422).json({ error: "Insumo inválido." });
+    const qtd = numberOrZero(req.body.quantidade);
+    const custo = req.body.custoUnitario == null ? numberOrZero(insumo.precoUnitario) : numberOrZero(req.body.custoUnitario);
+    payload = {
+      ...payload,
+      descricao: payload.descricao ?? insumo.nome,
+      unidade: payload.unidade ?? insumo.unidade,
+      custoUnitario: String(custo),
+      custoTotal: String(qtd * custo),
+    };
+  }
+
+  const parsed = insertObraExecucaoConsumoSchema.safeParse(payload);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const qtd = numberOrZero(parsed.data.quantidade);
+  if (qtd <= 0) return res.status(422).json({ error: "Quantidade consumida deve ser maior que zero." });
+
+  const consumo = await db.transaction(async (tx) => {
+    if (parsed.data.origemEstoque && parsed.data.insumoId) {
+      const [saldo] = await tx.select().from(estoqueObrasTable)
+        .where(and(eq(estoqueObrasTable.obraId, obraId), eq(estoqueObrasTable.insumoId, parsed.data.insumoId)));
+      const atual = numberOrZero(saldo?.quantidadeAtual);
+      if (!saldo || atual < qtd - 0.0001) throw new Error("Estoque insuficiente para o consumo informado.");
+
+      await tx.update(estoqueObrasTable)
+        .set({ quantidadeAtual: (atual - qtd).toFixed(4), updatedAt: new Date() })
+        .where(eq(estoqueObrasTable.id, saldo.id));
+
+      await tx.insert(movimentacoesEstoqueObrasTable).values({
+        tenantId: tid,
+        insumoId: parsed.data.insumoId,
+        tipo: "saida",
+        quantia: qtd.toFixed(4),
+        origemTipo: "obra",
+        origemObraId: obraId,
+        destinoTipo: "execucao_atividade",
+        responsavelId: (req as any).user?.sub ?? null,
+        observacao: `Consumo na atividade ${atividadeId}`,
+      });
+    }
+
+    const [row] = await tx.insert(obraExecucaoConsumosTable).values(parsed.data).returning();
+    return row;
+  });
+
+  return res.status(201).json(consumo);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/execucao/atividades/:atividadeId/mao-obra", async (req, res) => {
+  const { tenantId: tid, obraId, atividadeId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [atividade] = await db.select({ id: obraExecucaoAtividadesTable.id }).from(obraExecucaoAtividadesTable)
+    .where(and(eq(obraExecucaoAtividadesTable.id, atividadeId), eq(obraExecucaoAtividadesTable.tenantId, tid), eq(obraExecucaoAtividadesTable.obraId, obraId)));
+  if (!atividade) return res.status(404).json({ error: "Atividade não encontrada" });
+
+  const pessoas = numberOrZero(req.body?.quantidadePessoas) || 1;
+  const horas = numberOrZero(req.body?.horas);
+  const custoHora = numberOrZero(req.body?.custoHora);
+  const parsed = insertObraExecucaoMaoObraSchema.safeParse({
+    ...req.body,
+    atividadeId,
+    quantidadePessoas: String(pessoas),
+    horas: String(horas),
+    custoHora: String(custoHora),
+    custoTotal: String(pessoas * horas * custoHora),
+  });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraExecucaoMaoObraTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/execucao/atividades/:atividadeId/equipamentos", async (req, res) => {
+  const { tenantId: tid, obraId, atividadeId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [atividade] = await db.select({ id: obraExecucaoAtividadesTable.id }).from(obraExecucaoAtividadesTable)
+    .where(and(eq(obraExecucaoAtividadesTable.id, atividadeId), eq(obraExecucaoAtividadesTable.tenantId, tid), eq(obraExecucaoAtividadesTable.obraId, obraId)));
+  if (!atividade) return res.status(404).json({ error: "Atividade não encontrada" });
+
+  const horas = numberOrZero(req.body?.horas);
+  const custoHora = numberOrZero(req.body?.custoHora);
+  const parsed = insertObraExecucaoEquipamentoSchema.safeParse({
+    ...req.body,
+    atividadeId,
+    horas: String(horas),
+    custoHora: String(custoHora),
+    custoTotal: String(horas * custoHora),
+  });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraExecucaoEquipamentosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/execucao/atividades/:atividadeId/snapshot", async (req, res) => {
+  const { tenantId: tid, obraId, atividadeId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [atividade] = await db.select().from(obraExecucaoAtividadesTable)
+    .where(and(eq(obraExecucaoAtividadesTable.id, atividadeId), eq(obraExecucaoAtividadesTable.tenantId, tid), eq(obraExecucaoAtividadesTable.obraId, obraId)));
+  if (!atividade) return res.status(404).json({ error: "Atividade não encontrada" });
+
+  const [medicoes, consumos, maoObra, equipamentos] = await Promise.all([
+    db.select().from(obraExecucaoMedicoesTable).where(eq(obraExecucaoMedicoesTable.atividadeId, atividadeId)),
+    db.select().from(obraExecucaoConsumosTable).where(eq(obraExecucaoConsumosTable.atividadeId, atividadeId)),
+    db.select().from(obraExecucaoMaoObraTable).where(eq(obraExecucaoMaoObraTable.atividadeId, atividadeId)),
+    db.select().from(obraExecucaoEquipamentosTable).where(eq(obraExecucaoEquipamentosTable.atividadeId, atividadeId)),
+  ]);
+
+  const quantidadeExecutada = medicoes.reduce((s, m) => s + numberOrZero(m.quantidadeExecutada), 0);
+  const planejada = numberOrZero(atividade.quantidadePlanejada);
+  const percentual = planejada > 0 ? Math.min(100, quantidadeExecutada / planejada * 100) : 0;
+  const horasHomem = maoObra.reduce((s, x) => s + numberOrZero(x.horas) * numberOrZero(x.quantidadePessoas), 0);
+  const horasEquip = equipamentos.reduce((s, x) => s + numberOrZero(x.horas), 0);
+  const custoMO = maoObra.reduce((s, x) => s + numberOrZero(x.custoTotal), 0);
+  const custoEq = equipamentos.reduce((s, x) => s + numberOrZero(x.custoTotal), 0);
+  const custoMat = consumos.reduce((s, x) => s + numberOrZero(x.custoTotal), 0);
+  const custoTotal = custoMO + custoEq + custoMat;
+  const produtividade = horasHomem > 0 ? quantidadeExecutada / horasHomem : null;
+  const custoPlanejado = numberOrZero(atividade.custoPlanejado);
+  const desvioCusto = custoPlanejado > 0 ? (custoTotal - custoPlanejado) / custoPlanejado * 100 : null;
+  const prodPlan = numberOrZero(atividade.produtividadePlanejada);
+  const desvioProd = produtividade != null && prodPlan > 0 ? (produtividade - prodPlan) / prodPlan * 100 : null;
+
+  const [snapshot] = await db.insert(obraExecucaoSnapshotsTable).values({
+    atividadeId,
+    dataReferencia: typeof req.body?.dataReferencia === "string" ? req.body.dataReferencia : new Date().toISOString().slice(0, 10),
+    quantidadeExecutada: quantidadeExecutada.toFixed(4),
+    percentualExecutado: percentual.toFixed(4),
+    horasHomem: horasHomem.toFixed(4),
+    horasEquipamento: horasEquip.toFixed(4),
+    custoMaoObra: custoMO.toFixed(4),
+    custoEquipamentos: custoEq.toFixed(4),
+    custoMateriais: custoMat.toFixed(4),
+    custoTotalRealizado: custoTotal.toFixed(4),
+    produtividadeReal: produtividade == null ? null : produtividade.toFixed(6),
+    desvioCustoPercentual: desvioCusto == null ? null : desvioCusto.toFixed(4),
+    desvioProdutividadePercentual: desvioProd == null ? null : desvioProd.toFixed(4),
+    memoriaCalculo: { medicoes: medicoes.length, consumos: consumos.length, registrosMaoObra: maoObra.length, registrosEquipamentos: equipamentos.length },
+    criadoPorId: (req as any).user?.sub ?? null,
+  }).returning();
+
+  await db.update(obraExecucaoAtividadesTable)
+    .set({
+      quantidadeExecutada: quantidadeExecutada.toFixed(4),
+      percentualExecutado: percentual.toFixed(4),
+      custoRealizado: custoTotal.toFixed(4),
+      produtividadeReal: produtividade == null ? null : produtividade.toFixed(6),
+      updatedAt: new Date(),
+    })
+    .where(eq(obraExecucaoAtividadesTable.id, atividadeId));
+
+  return res.status(201).json(snapshot);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/execucao/resumo", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const atividades = await db.select().from(obraExecucaoAtividadesTable)
+    .where(and(eq(obraExecucaoAtividadesTable.tenantId, tid), eq(obraExecucaoAtividadesTable.obraId, obraId), eq(obraExecucaoAtividadesTable.ativo, true)));
+
+  const ids = atividades.map((a) => a.id);
+  const snapshots = ids.length
+    ? await db.select().from(obraExecucaoSnapshotsTable).where(inArray(obraExecucaoSnapshotsTable.atividadeId, ids))
+    : [];
+
+  const latestByAtividade = new Map<string, typeof snapshots[number]>();
+  for (const snap of snapshots) {
+    const prev = latestByAtividade.get(snap.atividadeId);
+    if (!prev || new Date(snap.createdAt).getTime() > new Date(prev.createdAt).getTime()) latestByAtividade.set(snap.atividadeId, snap);
+  }
+
+  const qtdPlanejada = atividades.reduce((s, a) => s + numberOrZero(a.quantidadePlanejada), 0);
+  const qtdExecutada = atividades.reduce((s, a) => s + numberOrZero(a.quantidadeExecutada), 0);
+  const custoPlanejado = atividades.reduce((s, a) => s + numberOrZero(a.custoPlanejado), 0);
+  const custoRealizado = atividades.reduce((s, a) => s + numberOrZero(a.custoRealizado), 0);
+
+  return res.json({
+    atividades,
+    ultimosSnapshots: [...latestByAtividade.values()],
+    totais: {
+      atividades: atividades.length,
+      concluidas: atividades.filter((a) => a.status === "concluida").length,
+      emExecucao: atividades.filter((a) => a.status === "em_execucao").length,
+      quantidadePlanejada: qtdPlanejada.toFixed(4),
+      quantidadeExecutada: qtdExecutada.toFixed(4),
+      custoPlanejado: custoPlanejado.toFixed(4),
+      custoRealizado: custoRealizado.toFixed(4),
+      desvioCustoPercentual: custoPlanejado > 0 ? ((custoRealizado - custoPlanejado) / custoPlanejado * 100).toFixed(4) : null,
+    },
+  });
+});
+
 // ─── Base Mestre de Preços: propagação segura ─────────────────────────────────
 
 function numberOrZero(value: string | number | null | undefined): number {
@@ -864,7 +4486,9 @@ async function recalcularCustoComposicao(composicaoId: string): Promise<number> 
   const itens = await db
     .select({
       quantidade: composicaoInsumosTable.quantidade,
+      perdaPercentualOverride: composicaoInsumosTable.perdaPercentualOverride,
       precoMestre: insumosTable.precoUnitario,
+      perdaPadraoPercentual: insumosTable.perdaPadraoPercentual,
     })
     .from(composicaoInsumosTable)
     .leftJoin(insumosTable, eq(composicaoInsumosTable.insumoId, insumosTable.id))
@@ -873,7 +4497,10 @@ async function recalcularCustoComposicao(composicaoId: string): Promise<number> 
   const total = itens.reduce((sum, item) => {
     const quantidade = numberOrZero(item.quantidade);
     const preco = numberOrZero(item.precoMestre);
-    return sum + quantidade * preco;
+    const perda = item.perdaPercentualOverride != null
+      ? numberOrZero(item.perdaPercentualOverride)
+      : numberOrZero(item.perdaPadraoPercentual);
+    return sum + quantidade * (1 + perda / 100) * preco;
   }, 0);
 
   await db
@@ -1146,8 +4773,23 @@ const importInsumosEmLoteSchema = z.object({
     nome: z.string().trim().min(1).max(500),
     descricao: z.string().trim().max(2000).optional().nullable(),
     unidade: z.string().trim().min(1).max(50),
-    tipo: z.enum(["material", "mao_de_obra", "equipamento", "servico"]).optional().nullable(),
+    unidadeCompra: z.string().trim().max(50).optional().nullable(),
+    fatorCompraParaConsumo: z.union([z.string(), z.number()]).optional().nullable(),
+    embalagemQuantidade: z.union([z.string(), z.number()]).optional().nullable(),
+    quantidadeMinimaCompra: z.union([z.string(), z.number()]).optional().nullable(),
+    multiploCompra: z.union([z.string(), z.number()]).optional().nullable(),
+    permiteFracionarCompra: z.boolean().optional().nullable(),
+    perdaPadraoPercentual: z.union([z.string(), z.number()]).optional().nullable(),
+    tipo: z.enum(["material", "mao_de_obra", "equipamento", "servico", "subempreitada", "consumivel", "frete", "outro_custo_direto"]).optional().nullable(),
     precoUnitario: z.union([z.string(), z.number()]).optional().nullable(),
+    origemPreco: z.string().trim().max(100).optional().nullable(),
+    precoValidade: z.string().trim().max(20).optional().nullable(),
+    regiaoPreco: z.string().trim().max(255).optional().nullable(),
+    fornecedorPreferencial: z.string().trim().max(255).optional().nullable(),
+    marca: z.string().trim().max(255).optional().nullable(),
+    modelo: z.string().trim().max(255).optional().nullable(),
+    fabricante: z.string().trim().max(255).optional().nullable(),
+    especificacaoTecnica: z.record(z.string(), z.unknown()).optional().nullable(),
     categoria: z.string().trim().max(255).optional().nullable(),
   })).min(1).max(5000),
 });
@@ -1169,7 +4811,7 @@ router.post("/tenants/:tenantId/insumos/importar", async (req, res) => {
     nome: string;
     descricao?: string;
     unidade: string;
-    tipo?: "material" | "mao_de_obra" | "equipamento" | "servico";
+    tipo?: "material" | "mao_de_obra" | "equipamento" | "servico" | "subempreitada" | "consumivel" | "frete" | "outro_custo_direto";
     precoUnitario?: string;
     categoria?: string;
   }> = [];
@@ -1190,13 +4832,28 @@ router.post("/tenants/:tenantId/insumos/importar", async (req, res) => {
       tenantId: tid,
       nome: raw.nome.trim(),
       unidade: raw.unidade.trim(),
+      ...(raw.unidadeCompra?.trim() ? { unidadeCompra: raw.unidadeCompra.trim() } : {}),
+      ...(raw.fatorCompraParaConsumo != null && String(raw.fatorCompraParaConsumo).trim() !== "" ? { fatorCompraParaConsumo: String(raw.fatorCompraParaConsumo).trim() } : {}),
+      ...(raw.embalagemQuantidade != null && String(raw.embalagemQuantidade).trim() !== "" ? { embalagemQuantidade: String(raw.embalagemQuantidade).trim() } : {}),
+      ...(raw.quantidadeMinimaCompra != null && String(raw.quantidadeMinimaCompra).trim() !== "" ? { quantidadeMinimaCompra: String(raw.quantidadeMinimaCompra).trim() } : {}),
+      ...(raw.multiploCompra != null && String(raw.multiploCompra).trim() !== "" ? { multiploCompra: String(raw.multiploCompra).trim() } : {}),
+      ...(raw.permiteFracionarCompra != null ? { permiteFracionarCompra: raw.permiteFracionarCompra } : {}),
+      ...(raw.perdaPadraoPercentual != null && String(raw.perdaPadraoPercentual).trim() !== "" ? { perdaPadraoPercentual: String(raw.perdaPadraoPercentual).trim() } : {}),
       ...(raw.tipo ? { tipo: raw.tipo } : {}),
       ...(raw.codigo?.trim() ? { codigo: raw.codigo.trim() } : {}),
       ...(raw.descricao?.trim() ? { descricao: raw.descricao.trim() } : {}),
       ...(raw.categoria?.trim() ? { categoria: raw.categoria.trim() } : {}),
       ...(raw.precoUnitario !== undefined && raw.precoUnitario !== null && String(raw.precoUnitario).trim() !== ""
-        ? { precoUnitario: String(raw.precoUnitario).trim() }
+        ? { precoUnitario: String(raw.precoUnitario).trim(), precoAtualizadoEm: new Date() }
         : {}),
+      ...(raw.origemPreco?.trim() ? { origemPreco: raw.origemPreco.trim() } : {}),
+      ...(raw.precoValidade?.trim() ? { precoValidade: raw.precoValidade.trim() } : {}),
+      ...(raw.regiaoPreco?.trim() ? { regiaoPreco: raw.regiaoPreco.trim() } : {}),
+      ...(raw.fornecedorPreferencial?.trim() ? { fornecedorPreferencial: raw.fornecedorPreferencial.trim() } : {}),
+      ...(raw.marca?.trim() ? { marca: raw.marca.trim() } : {}),
+      ...(raw.modelo?.trim() ? { modelo: raw.modelo.trim() } : {}),
+      ...(raw.fabricante?.trim() ? { fabricante: raw.fabricante.trim() } : {}),
+      ...(raw.especificacaoTecnica ? { especificacaoTecnica: raw.especificacaoTecnica } : {}),
     };
 
     const parsed = insertInsumoSchema.safeParse(payload);
@@ -1310,6 +4967,92 @@ router.post("/tenants/:tenantId/insumos/importar", async (req, res) => {
     orcamentosRecalculados,
     orcamentosComAviso,
   });
+});
+
+router.post("/tenants/:tenantId/insumos/:insumoId/calcular-compra", async (req, res) => {
+  const { tenantId: tid, insumoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const bodySchema = z.object({
+    quantidadeTecnica: z.union([z.string(), z.number()]).transform(Number).pipe(z.number().nonnegative()),
+    perdaPercentualOverride: z.union([z.string(), z.number()]).transform(Number).pipe(z.number().nonnegative()).optional().nullable(),
+  });
+  const parsed = bodySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [insumo] = await db
+    .select()
+    .from(insumosTable)
+    .where(and(eq(insumosTable.id, insumoId), eq(insumosTable.tenantId, tid)));
+  if (!insumo) return res.status(404).json({ error: "Insumo não encontrado" });
+
+  const calculo = calcularQuantidadeCompra({
+    quantidadeTecnica: parsed.data.quantidadeTecnica,
+    fatorCompraParaConsumo: numberOrZero(insumo.fatorCompraParaConsumo) || 1,
+    perdaPadraoPercentual: numberOrZero(insumo.perdaPadraoPercentual),
+    perdaPercentualOverride: parsed.data.perdaPercentualOverride ?? null,
+    quantidadeMinimaCompra: numberOrZero(insumo.quantidadeMinimaCompra),
+    multiploCompra: numberOrZero(insumo.multiploCompra),
+    permiteFracionarCompra: insumo.permiteFracionarCompra,
+  });
+
+  return res.json({
+    insumoId: insumo.id,
+    unidadeConsumo: insumo.unidade,
+    unidadeCompra: insumo.unidadeCompra ?? insumo.unidade,
+    fatorCompraParaConsumo: numberOrZero(insumo.fatorCompraParaConsumo) || 1,
+    embalagemQuantidade: numberOrZero(insumo.embalagemQuantidade),
+    ...calculo,
+  });
+});
+
+router.post("/tenants/:tenantId/insumos/:insumoId/duplicar", async (req, res) => {
+  const { tenantId: tid, insumoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [original] = await db
+    .select()
+    .from(insumosTable)
+    .where(and(eq(insumosTable.id, insumoId), eq(insumosTable.tenantId, tid)));
+  if (!original) return res.status(404).json({ error: "Insumo não encontrado" });
+
+  const nome = typeof req.body?.nome === "string" && req.body.nome.trim()
+    ? req.body.nome.trim()
+    : `${original.nome} — cópia`;
+  const codigo = typeof req.body?.codigo === "string" && req.body.codigo.trim()
+    ? req.body.codigo.trim()
+    : original.codigo
+      ? `${original.codigo}-COPIA`
+      : null;
+
+  const [created] = await db.insert(insumosTable).values({
+    tenantId: tid,
+    nome,
+    descricao: original.descricao,
+    unidade: original.unidade,
+    unidadeCompra: original.unidadeCompra,
+    fatorCompraParaConsumo: original.fatorCompraParaConsumo,
+    embalagemQuantidade: original.embalagemQuantidade,
+    quantidadeMinimaCompra: original.quantidadeMinimaCompra,
+    multiploCompra: original.multiploCompra,
+    permiteFracionarCompra: original.permiteFracionarCompra,
+    perdaPadraoPercentual: original.perdaPadraoPercentual,
+    tipo: original.tipo,
+    precoUnitario: original.precoUnitario,
+    origemPreco: original.origemPreco,
+    precoValidade: original.precoValidade,
+    precoAtualizadoEm: original.precoAtualizadoEm,
+    regiaoPreco: original.regiaoPreco,
+    fornecedorPreferencial: original.fornecedorPreferencial,
+    marca: original.marca,
+    modelo: original.modelo,
+    fabricante: original.fabricante,
+    especificacaoTecnica: original.especificacaoTecnica,
+    categoria: original.categoria,
+    codigo,
+  }).returning();
+
+  return res.status(201).json(created);
 });
 
 router.post("/tenants/:tenantId/insumos", async (req, res) => {
@@ -1765,7 +5508,7 @@ router.post("/tenants/:tenantId/composicoes", async (req, res) => {
   const insumoIds = [...new Set(parsedItens.data.map((item) => item.insumoId))];
   const insumos = insumoIds.length
     ? await db
-        .select({ id: insumosTable.id, precoUnitario: insumosTable.precoUnitario })
+        .select({ id: insumosTable.id, precoUnitario: insumosTable.precoUnitario, perdaPadraoPercentual: insumosTable.perdaPadraoPercentual })
         .from(insumosTable)
         .where(and(eq(insumosTable.tenantId, tid), inArray(insumosTable.id, insumoIds)))
     : [];
@@ -1774,10 +5517,17 @@ router.post("/tenants/:tenantId/composicoes", async (req, res) => {
     return res.status(422).json({ error: "Um ou mais insumos não pertencem a este tenant." });
   }
 
-  const precoPorInsumo = new Map(insumos.map((item) => [item.id, Number(item.precoUnitario ?? 0)]));
+  const dadosPorInsumo = new Map(insumos.map((item) => [item.id, {
+    preco: Number(item.precoUnitario ?? 0),
+    perdaPadrao: Number(item.perdaPadraoPercentual ?? 0),
+  }]));
   const custoTotal = parsedItens.data.reduce((sum, item) => {
-    const preco = Number(precoPorInsumo.get(item.insumoId) ?? 0);
-    return sum + Number(item.quantidade ?? 0) * preco;
+    const dados = dadosPorInsumo.get(item.insumoId) ?? { preco: 0, perdaPadrao: 0 };
+    const perda = item.perdaPercentualOverride != null
+      ? Number(item.perdaPercentualOverride)
+      : dados.perdaPadrao;
+    const quantidadeEfetiva = Number(item.quantidade ?? 0) * (1 + perda / 100);
+    return sum + quantidadeEfetiva * dados.preco;
   }, 0);
 
   const composicao = await db.transaction(async (tx) => {
@@ -1792,6 +5542,10 @@ router.post("/tenants/:tenantId/composicoes", async (req, res) => {
           composicaoId: created.id,
           insumoId: item.insumoId,
           quantidade: item.quantidade,
+          perdaPercentualOverride: item.perdaPercentualOverride ?? null,
+          formulaQuantidade: item.formulaQuantidade ?? null,
+          condicaoAplicabilidade: item.condicaoAplicabilidade ?? null,
+          observacaoTecnica: item.observacaoTecnica ?? null,
         }))
       );
     }
@@ -1817,6 +5571,162 @@ router.post("/tenants/:tenantId/composicoes/catalogo-padrao/aplicar", async (req
   }
 });
 
+router.post("/tenants/:tenantId/composicoes/:composicaoId/duplicar", async (req, res) => {
+  const { tenantId: tid, composicaoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [original] = await db
+    .select()
+    .from(composicoesTable)
+    .where(and(eq(composicoesTable.id, composicaoId), eq(composicoesTable.tenantId, tid)));
+  if (!original) return res.status(404).json({ error: "Composição não encontrada" });
+
+  const itens = await db
+    .select()
+    .from(composicaoInsumosTable)
+    .where(eq(composicaoInsumosTable.composicaoId, composicaoId));
+
+  const nome = typeof req.body?.nome === "string" && req.body.nome.trim()
+    ? req.body.nome.trim()
+    : `${original.nome} — variante`;
+  const codigo = typeof req.body?.codigo === "string" && req.body.codigo.trim()
+    ? req.body.codigo.trim()
+    : original.codigo
+      ? `${original.codigo}-VAR`
+      : null;
+
+  const duplicada = await db.transaction(async (tx) => {
+    const [created] = await tx.insert(composicoesTable).values({
+      tenantId: tid,
+      nome,
+      descricao: original.descricao,
+      unidade: original.unidade,
+      tipoComposicao: original.tipoComposicao,
+      aplicacao: original.aplicacao,
+      inclui: original.inclui,
+      naoInclui: original.naoInclui,
+      criterioMedicao: original.criterioMedicao,
+      observacoesTecnicas: original.observacoesTecnicas,
+      formulaCalculo: original.formulaCalculo,
+      parametrosPadrao: original.parametrosPadrao,
+      composicaoOrigemId: original.composicaoOrigemId ?? original.id,
+      varianteDeId: original.id,
+      versao: 1,
+      statusVersao: "rascunho",
+      versaoAtual: true,
+      custoTotal: original.custoTotal,
+      produtividadeDia: original.produtividadeDia,
+      equipePadrao: original.equipePadrao,
+      horasDiaPadrao: original.horasDiaPadrao,
+      codigo,
+      etapaKey: original.etapaKey,
+      sistemasConstrutivos: original.sistemasConstrutivos,
+      comumTodosSistemas: original.comumTodosSistemas,
+      ativo: true,
+      ordem: original.ordem,
+    }).returning();
+
+    if (itens.length) {
+      await tx.insert(composicaoInsumosTable).values(itens.map((item) => ({
+        composicaoId: created.id,
+        insumoId: item.insumoId,
+        quantidade: item.quantidade,
+        perdaPercentualOverride: item.perdaPercentualOverride,
+        formulaQuantidade: item.formulaQuantidade,
+        condicaoAplicabilidade: item.condicaoAplicabilidade,
+        observacaoTecnica: item.observacaoTecnica,
+        precoUnitario: item.precoUnitario,
+      })));
+    }
+
+    return created;
+  });
+
+  return res.status(201).json(duplicada);
+});
+
+router.post("/tenants/:tenantId/composicoes/:composicaoId/nova-versao", async (req, res) => {
+  const { tenantId: tid, composicaoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [original] = await db
+    .select()
+    .from(composicoesTable)
+    .where(and(eq(composicoesTable.id, composicaoId), eq(composicoesTable.tenantId, tid)));
+  if (!original) return res.status(404).json({ error: "Composição não encontrada" });
+
+  const raizId = original.composicaoOrigemId ?? original.id;
+  const versoes = await db
+    .select({ versao: composicoesTable.versao })
+    .from(composicoesTable)
+    .where(and(
+      eq(composicoesTable.tenantId, tid),
+      or(eq(composicoesTable.id, raizId), eq(composicoesTable.composicaoOrigemId, raizId)),
+    ));
+  const nextVersao = Math.max(original.versao, ...versoes.map((v) => v.versao ?? 1)) + 1;
+
+  const itens = await db
+    .select()
+    .from(composicaoInsumosTable)
+    .where(eq(composicaoInsumosTable.composicaoId, composicaoId));
+
+  const nova = await db.transaction(async (tx) => {
+    await tx.update(composicoesTable)
+      .set({ versaoAtual: false, updatedAt: new Date() })
+      .where(and(
+        eq(composicoesTable.tenantId, tid),
+        or(eq(composicoesTable.id, raizId), eq(composicoesTable.composicaoOrigemId, raizId)),
+      ));
+
+    const [created] = await tx.insert(composicoesTable).values({
+      tenantId: tid,
+      nome: original.nome,
+      descricao: original.descricao,
+      unidade: original.unidade,
+      tipoComposicao: original.tipoComposicao,
+      aplicacao: original.aplicacao,
+      inclui: original.inclui,
+      naoInclui: original.naoInclui,
+      criterioMedicao: original.criterioMedicao,
+      observacoesTecnicas: original.observacoesTecnicas,
+      formulaCalculo: original.formulaCalculo,
+      parametrosPadrao: original.parametrosPadrao,
+      composicaoOrigemId: raizId,
+      varianteDeId: original.varianteDeId,
+      versao: nextVersao,
+      statusVersao: "rascunho",
+      versaoAtual: true,
+      custoTotal: original.custoTotal,
+      produtividadeDia: original.produtividadeDia,
+      equipePadrao: original.equipePadrao,
+      horasDiaPadrao: original.horasDiaPadrao,
+      codigo: original.codigo,
+      etapaKey: original.etapaKey,
+      sistemasConstrutivos: original.sistemasConstrutivos,
+      comumTodosSistemas: original.comumTodosSistemas,
+      ativo: original.ativo,
+      ordem: original.ordem,
+    }).returning();
+
+    if (itens.length) {
+      await tx.insert(composicaoInsumosTable).values(itens.map((item) => ({
+        composicaoId: created.id,
+        insumoId: item.insumoId,
+        quantidade: item.quantidade,
+        perdaPercentualOverride: item.perdaPercentualOverride,
+        formulaQuantidade: item.formulaQuantidade,
+        condicaoAplicabilidade: item.condicaoAplicabilidade,
+        observacaoTecnica: item.observacaoTecnica,
+        precoUnitario: item.precoUnitario,
+      })));
+    }
+
+    return created;
+  });
+
+  return res.status(201).json(nova);
+});
+
 router.get("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
   const { tenantId: tid, composicaoId } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
@@ -1832,6 +5742,10 @@ router.get("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
       id: composicaoInsumosTable.id,
       insumoId: composicaoInsumosTable.insumoId,
       quantidade: composicaoInsumosTable.quantidade,
+      perdaPercentualOverride: composicaoInsumosTable.perdaPercentualOverride,
+      formulaQuantidade: composicaoInsumosTable.formulaQuantidade,
+      condicaoAplicabilidade: composicaoInsumosTable.condicaoAplicabilidade,
+      observacaoTecnica: composicaoInsumosTable.observacaoTecnica,
       precoUnitario: composicaoInsumosTable.precoUnitario,
       insumo: insumosTable,
     })
@@ -1842,7 +5756,10 @@ router.get("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
   const custoTotal = itens.reduce((sum, item) => {
     const quantidade = Number(item.quantidade ?? 0);
     const preco = Number(item.insumo?.precoUnitario ?? 0);
-    return sum + quantidade * preco;
+    const perda = item.perdaPercentualOverride != null
+      ? Number(item.perdaPercentualOverride)
+      : Number(item.insumo?.perdaPadraoPercentual ?? 0);
+    return sum + quantidade * (1 + perda / 100) * preco;
   }, 0);
 
   return res.json({ ...composicao, custoTotal: custoTotal.toFixed(4), itens });
@@ -1879,7 +5796,7 @@ router.put("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
     const insumoIds = [...new Set(parsedItens.map((item) => item.insumoId))];
     const insumos = insumoIds.length
       ? await db
-          .select({ id: insumosTable.id, precoUnitario: insumosTable.precoUnitario })
+          .select({ id: insumosTable.id, precoUnitario: insumosTable.precoUnitario, perdaPadraoPercentual: insumosTable.perdaPadraoPercentual })
           .from(insumosTable)
           .where(and(eq(insumosTable.tenantId, tid), inArray(insumosTable.id, insumoIds)))
       : [];
@@ -1888,10 +5805,17 @@ router.put("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
       return res.status(422).json({ error: "Um ou mais insumos não pertencem a este tenant." });
     }
 
-    const precoPorInsumo = new Map(insumos.map((item) => [item.id, Number(item.precoUnitario ?? 0)]));
+    const dadosPorInsumo = new Map(insumos.map((item) => [item.id, {
+      preco: Number(item.precoUnitario ?? 0),
+      perdaPadrao: Number(item.perdaPadraoPercentual ?? 0),
+    }]));
     custoTotal = parsedItens.reduce((sum, item) => {
-      const preco = Number(precoPorInsumo.get(item.insumoId) ?? 0);
-      return sum + Number(item.quantidade ?? 0) * preco;
+      const dados = dadosPorInsumo.get(item.insumoId) ?? { preco: 0, perdaPadrao: 0 };
+      const perda = item.perdaPercentualOverride != null
+        ? Number(item.perdaPercentualOverride)
+        : dados.perdaPadrao;
+      const quantidadeEfetiva = Number(item.quantidade ?? 0) * (1 + perda / 100);
+      return sum + quantidadeEfetiva * dados.preco;
     }, 0);
   }
 
@@ -1916,6 +5840,10 @@ router.put("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
             composicaoId: item.composicaoId,
             insumoId: item.insumoId,
             quantidade: item.quantidade,
+            perdaPercentualOverride: item.perdaPercentualOverride ?? null,
+            formulaQuantidade: item.formulaQuantidade ?? null,
+            condicaoAplicabilidade: item.condicaoAplicabilidade ?? null,
+            observacaoTecnica: item.observacaoTecnica ?? null,
           }))
         );
       }
@@ -2294,6 +6222,16 @@ router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas/:et
 
   const data: Record<string, unknown> = { ...source, etapaId };
 
+  // Quantitativos sempre nascem rastreáveis. Quando o importador (PDF, Arqdor,
+  // IFC/BIM etc.) enviar metadados, eles são preservados; no cadastro manual,
+  // quantidadeOriginal/quantidadeTecnica partem da quantidade informada.
+  const quantidadeBase = source.quantidade ?? "1";
+  if (data.quantidadeOriginal == null) data.quantidadeOriginal = quantidadeBase;
+  if (data.quantidadeTecnica == null) data.quantidadeTecnica = quantidadeBase;
+  if (data.origemQuantidade == null) data.origemQuantidade = "manual";
+  if (data.nivelPrecisaoQuantidade == null) data.nivelPrecisaoQuantidade = "estimativo";
+  data.quantidadeAtualizadaEm = new Date();
+
   if (typeof source.insumoId === "string" && source.insumoId) {
     const [insumo] = await db
       .select({
@@ -2353,13 +6291,93 @@ router.put("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas/:eta
   const parsed = updateObraOrcamentoItemSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
 
-  const [row] = await db
-    .update(obraOrcamentoItensTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
-    .where(and(eq(obraOrcamentoItensTable.id, itemId), eq(obraOrcamentoItensTable.etapaId, etapaId)))
-    .returning();
-  if (!row) return res.status(404).json({ error: "Item not found" });
+  const [anterior] = await db
+    .select()
+    .from(obraOrcamentoItensTable)
+    .where(and(eq(obraOrcamentoItensTable.id, itemId), eq(obraOrcamentoItensTable.etapaId, etapaId)));
+  if (!anterior) return res.status(404).json({ error: "Item not found" });
+
+  const camposQuantitativo = [
+    "quantidade",
+    "unidade",
+    "quantidadeOriginal",
+    "quantidadeTecnica",
+    "quantidadeComPerda",
+    "quantidadeCompra",
+    "unidadeCompra",
+    "origemQuantidade",
+    "nivelPrecisaoQuantidade",
+    "memoriaCalculo",
+    "projetoReferencia",
+    "projetoVersao",
+    "confiancaExtracao",
+    "revisadoManual",
+    "motivoAjusteQuantidade",
+  ] as const;
+
+  const mudouQuantitativo = camposQuantitativo.some((campo) =>
+    Object.prototype.hasOwnProperty.call(parsed.data, campo) &&
+    JSON.stringify((parsed.data as any)[campo]) !== JSON.stringify((anterior as any)[campo])
+  );
+
+  const updateData: Record<string, unknown> = { ...parsed.data, updatedAt: new Date() };
+  if (mudouQuantitativo) updateData.quantidadeAtualizadaEm = new Date();
+
+  const row = await db.transaction(async (tx) => {
+    if (mudouQuantitativo) {
+      await tx.insert(obraOrcamentoItemQuantitativosHistoricoTable).values({
+        itemId,
+        quantidadeAnterior: anterior.quantidade,
+        quantidadeNova: (parsed.data as any).quantidade ?? anterior.quantidade,
+        unidade: (parsed.data as any).unidade ?? anterior.unidade,
+        origemQuantidade: (parsed.data as any).origemQuantidade ?? anterior.origemQuantidade,
+        nivelPrecisaoQuantidade: (parsed.data as any).nivelPrecisaoQuantidade ?? anterior.nivelPrecisaoQuantidade,
+        memoriaCalculo: (parsed.data as any).memoriaCalculo ?? anterior.memoriaCalculo,
+        projetoReferencia: (parsed.data as any).projetoReferencia ?? anterior.projetoReferencia,
+        projetoVersao: (parsed.data as any).projetoVersao ?? anterior.projetoVersao,
+        confiancaExtracao: (parsed.data as any).confiancaExtracao ?? anterior.confiancaExtracao,
+        motivo: (parsed.data as any).motivoAjusteQuantidade ?? anterior.motivoAjusteQuantidade,
+        responsavelId: (req as any).user?.id ?? null,
+      });
+    }
+
+    const [updated] = await tx
+      .update(obraOrcamentoItensTable)
+      .set(updateData as any)
+      .where(and(eq(obraOrcamentoItensTable.id, itemId), eq(obraOrcamentoItensTable.etapaId, etapaId)))
+      .returning();
+
+    return updated;
+  });
+
   return res.json(row);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas/:etapaId/itens/:itemId/quantitativos-historico", async (req, res) => {
+  const { tenantId: tid, obraId, orcamentoId, etapaId, itemId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [owned] = await db
+    .select({ id: obraOrcamentoItensTable.id })
+    .from(obraOrcamentoItensTable)
+    .innerJoin(obraOrcamentoEtapasTable, eq(obraOrcamentoEtapasTable.id, obraOrcamentoItensTable.etapaId))
+    .innerJoin(obraOrcamentosTable, eq(obraOrcamentosTable.id, obraOrcamentoEtapasTable.orcamentoId))
+    .where(and(
+      eq(obraOrcamentoItensTable.id, itemId),
+      eq(obraOrcamentoItensTable.etapaId, etapaId),
+      eq(obraOrcamentoEtapasTable.orcamentoId, orcamentoId),
+      eq(obraOrcamentosTable.obraId, obraId),
+      eq(obraOrcamentosTable.tenantId, tid),
+    ));
+  if (!owned) return res.status(404).json({ error: "Item not found" });
+
+  const rows = await db
+    .select()
+    .from(obraOrcamentoItemQuantitativosHistoricoTable)
+    .where(eq(obraOrcamentoItemQuantitativosHistoricoTable.itemId, itemId))
+    .orderBy(desc(obraOrcamentoItemQuantitativosHistoricoTable.createdAt));
+
+  return res.json(rows);
 });
 
 router.delete("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas/:etapaId/itens/:itemId", async (req, res) => {
