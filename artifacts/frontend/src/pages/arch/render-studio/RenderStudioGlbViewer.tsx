@@ -32,6 +32,8 @@ export default function RenderStudioGlbViewer({ url, modelId, onSelect }: Props)
   const [lightPower, setLightPower] = useState(1.2);
   const [materialColors, setMaterialColors] = useState<Record<string, string>>({});
   const [savingSettings, setSavingSettings] = useState(false);
+  const [walkthroughDuration, setWalkthroughDuration] = useState(12);
+  const [walkthroughFps, setWalkthroughFps] = useState(24);
   const [saveMessage, setSaveMessage] = useState("");
   const meshKeys = useRef(new WeakMap<object, string>());
   const [savedViews, setSavedViews] = useState<Array<{ name: string; position: number[]; target: number[] }>>([]);
@@ -190,6 +192,26 @@ export default function RenderStudioGlbViewer({ url, modelId, onSelect }: Props)
     if (!current) return;
     current.camera.position.fromArray(view.position); current.controls.target.fromArray(view.target); current.controls.update();
   }
+  function exportWalkthrough() {
+    if (savedViews.length < 2) {
+      setSaveMessage("Salve pelo menos duas câmeras para criar o passeio virtual.");
+      return;
+    }
+    const step = walkthroughDuration / (savedViews.length - 1);
+    const keyframes = savedViews.map((view, index) => ({
+      second: Number((step * index).toFixed(3)),
+      position: view.position, target: view.target,
+    }));
+    const config = { fps: walkthroughFps, maxSeconds: 120, keyframes };
+    const blob = new Blob([JSON.stringify({ video: config }, null, 2)], { type: "application/json" });
+    const link = document.createElement("a");
+    const objectUrl = URL.createObjectURL(blob);
+    link.href = objectUrl;
+    link.download = `arqdor-passeio-${modelId}.json`;
+    link.click();
+    URL.revokeObjectURL(objectUrl);
+    setSaveMessage("Roteiro JSON exportado. A renderização MP4 ainda depende da homologação do worker.");
+  }
   useEffect(() => { if (runtime.current) runtime.current.sun.intensity = lightPower; }, [lightPower]);
   async function persistSettings() {
     if (!runtime.current) return;
@@ -226,10 +248,35 @@ export default function RenderStudioGlbViewer({ url, modelId, onSelect }: Props)
         <div className="flex flex-wrap gap-2">{savedViews.map((view, index) =>
           <button key={index} type="button" onClick={() => restoreView(view)}
             className="rounded-md bg-emerald-50 px-3 py-1 text-sm text-emerald-800">{view.name}</button>)}</div>
+        <div className="rounded-md border border-slate-200 bg-slate-50 p-3 space-y-2">
+          <p className="text-sm font-medium text-slate-800">Passeio virtual — roteiro de câmeras</p>
+          <p className="text-xs text-slate-600">Salve pelo menos 2 enquadramentos. O trajeto será interpolado entre eles pelo Blender quando o módulo estiver homologado.</p>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-xs text-slate-700">Duração (segundos)
+              <input type="number" min={1} max={120} step={1} value={walkthroughDuration}
+                onChange={event => setWalkthroughDuration(Math.max(1, Math.min(120, Number(event.target.value) || 1)))}
+                className="mt-1 w-full rounded border px-2 py-1" />
+            </label>
+            <label className="text-xs text-slate-700">Quadros por segundo
+              <select value={walkthroughFps} onChange={event => setWalkthroughFps(Number(event.target.value))}
+                className="mt-1 w-full rounded border px-2 py-1">
+                <option value={24}>24 FPS</option><option value={30}>30 FPS</option>
+              </select>
+            </label>
+          </div>
+          <div className="flex flex-wrap gap-1">{savedViews.map((view, index) =>
+            <span key={index} className="rounded bg-white border px-2 py-1 text-xs text-slate-600">
+              {view.name} — {savedViews.length > 1 ? (walkthroughDuration * index / (savedViews.length - 1)).toFixed(1) : "0"}s
+            </span>)}</div>
+          <button type="button" disabled={savedViews.length < 2} onClick={exportWalkthrough}
+            className="rounded-md border border-emerald-700 px-3 py-2 text-sm text-emerald-800 disabled:opacity-50">
+            Exportar roteiro do passeio (JSON)
+          </button>
+        </div>
         <button type="button" onClick={() => void persistSettings()} disabled={savingSettings || !!status || !!error}
           className="rounded-md bg-emerald-700 px-3 py-2 text-sm text-white disabled:opacity-50">{savingSettings ? "Salvando…" : "Salvar configurações da cena"}</button>
         {saveMessage ? <p role="status" className="text-xs text-emerald-800">{saveMessage}</p> : null}
-        <p className="text-xs text-amber-800">Configurações armazenadas separadamente por versão. O GLB original não é modificado; integração com Blender ainda pendente.</p>
+        <p className="text-xs text-amber-800">Configurações armazenadas separadamente por versão. O GLB original não é modificado; a execução e homologação do Blender continuam pendentes.</p>
       </div>
     </div>
     <p className="text-xs text-slate-600">Arraste para orbitar, use a roda do mouse para aproximar e clique em uma superfície para identificá-la. Prévia visual, sem aprovação técnica de geometria ou escala.</p>
