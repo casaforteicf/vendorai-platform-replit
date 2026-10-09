@@ -226,3 +226,10 @@ Validação: 111 testes em 22 arquivos passaram; transformação TSX do planner 
 Duplicação pelo objeto selecionado e por ID compartilham o cálculo de posição considerando o envelope rotacionado. Mantém deslocamento usual de 50 cm por eixo quando possível; tenta diagonais alternativas quando a borda limita esse deslocamento. Preserva dimensões, ângulo e demais metadados. Não verifica colisões entre móveis e pode sobrepor quando não há espaço suficiente; aviso de objeto maior que terreno segue pendente.
 
 Validação: 113 testes em 22 arquivos passaram; transformação TSX do planner passou. Conferência integrada, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Inserção de objetos com medidas válidas
+
+addObjectAt compartilhado por biblioteca e drops 2D/3D valida dimensões e posição antes de criar objeto ou histórico. Itens maiores que o lote são rejeitados com aviso específico, preservando dimensões de catálogo. Posição por centro limitada à borda pelo helper compartilhado. Outros caminhos de inserção em lote/importação seguem independentes.
+
+Validação: 115 testes em 22 arquivos passaram; transformação TSX do planner passou. Interação integrada de catálogo/drop, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.

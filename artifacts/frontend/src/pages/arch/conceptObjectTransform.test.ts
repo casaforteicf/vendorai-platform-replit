@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boundedObjectGeometry, duplicateObjectGeometry, objectTransformPatch } from "./conceptObjectTransform";
+import { boundedObjectGeometry, duplicateObjectGeometry, insertedObjectGeometry, objectTransformPatch } from "./conceptObjectTransform";
 describe("object transform commit", () => {
   it("snaps position and yaw", () => {
     expect(objectTransformPatch({ x: 0, z: 0 }, -Math.PI / 2, 1, 2, 10, 10)).toEqual({ x: 4.5, y: 4, rotation: 90 });
@@ -57,4 +57,13 @@ it("duplicates toward the opposite side at the lot corner", () => {
 });
 it("preserves the normal duplicate offset and angle", () => {
   expect(duplicateObjectGeometry({ x: 3, y: 3, width: 1, depth: 1, rotation: 13 }, 10, 10)).toEqual({ x: 3.5, y: 3.5, rotation: 13 });
+});
+
+it("rejects oversized catalog items without changing their dimensions", () => {
+  expect(insertedObjectGeometry(12, 2, 10, 10)).toHaveProperty("error");
+  expect(insertedObjectGeometry(NaN, 2, 10, 10)).toHaveProperty("error");
+});
+it("places catalog items by their center and bounds drops near the edge", () => {
+  expect(insertedObjectGeometry(2, 4, 10, 10, { x: 9.9, y: 0.1 })).toEqual({ x: 8, y: 0, rotation: 0 });
+  expect(insertedObjectGeometry(2, 4, 10, 10)).toEqual({ x: 4, y: 3, rotation: 0 });
 });

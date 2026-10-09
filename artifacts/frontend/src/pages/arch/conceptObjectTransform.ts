@@ -35,3 +35,11 @@ export function duplicateObjectGeometry(object: Parameters<typeof boundedObjectG
   if (candidates[0] && distance(candidates[0]) >= 0.5) return candidates[0];
   return candidates.sort((a, b) => distance(b) - distance(a))[0] ?? null;
 }
+
+export function insertedObjectGeometry(width: number, depth: number, lotWidth: number, lotDepth: number, point?: { x: number; y: number }) {
+  if (![width, depth, lotWidth, lotDepth].every(Number.isFinite) || width <= 0 || depth <= 0 || lotWidth <= 0 || lotDepth <= 0)
+    return { error: "Informe medidas válidas para o objeto e o terreno." };
+  if (width > lotWidth || depth > lotDepth) return { error: "O objeto não cabe no terreno com essas medidas. Escolha outro item ou ajuste as medidas antes de inserir." };
+  const geometry = boundedObjectGeometry({ x: (point?.x ?? lotWidth / 2) - width / 2, y: (point?.y ?? lotDepth / 2) - depth / 2, width, depth, rotation: 0 }, lotWidth, lotDepth);
+  return geometry ?? { error: "A posição escolhida para o objeto é inválida." };
+}

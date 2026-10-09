@@ -1,4 +1,4 @@
-import { boundedObjectGeometry, duplicateObjectGeometry } from "./conceptObjectTransform";
+import { boundedObjectGeometry, duplicateObjectGeometry, insertedObjectGeometry } from "./conceptObjectTransform";
 import { openingCoordinates } from "./conceptOpeningCoordinates";
 import { flushSync } from "react-dom";
 import { conceptReferenceSize } from "./conceptReferenceImage";
@@ -1092,6 +1092,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [layoutVariant, setLayoutVariant] = useState(0);
   const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
+  const [objectPlacementError, setObjectPlacementError] = useState<string | null>(null);
   const [openingEditError, setOpeningEditError] = useState<string | null>(null);
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   const [selectedCustomWallId, setSelectedCustomWallId] = useState<string | null>(null);
@@ -2743,13 +2744,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     point?: { x: number; y: number },
     metadata?: Partial<Pick<ConceptPlanObject, "catalogProductId" | "imageUrl" | "supplier" | "price" | "model3dUrl" | "textureUrl">>,
   ) => {
+    const geometry = insertedObjectGeometry(width, depth, lotWidth, lotDepth, point);
+    if ("error" in geometry) { setObjectPlacementError(geometry.error); return; }
+    setObjectPlacementError(null);
     const before = snapshotEditor();
-    const x = point
-      ? Math.max(0, Math.min(lotWidth - width, point.x - width / 2))
-      : Math.max(0, Math.min(lotWidth - width, lotWidth / 2 - width / 2));
-    const y = point
-      ? Math.max(0, Math.min(lotDepth - depth, point.y - depth / 2))
-      : Math.max(0, Math.min(lotDepth - depth, lotDepth / 2 - depth / 2));
     const next: ConceptPlanObject = {
       id: `concept-object-${uid()}`,
       kind,
@@ -2757,9 +2755,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       floor: activeFloor,
       width,
       depth,
-      x,
-      y,
-      rotation: 0,
+      ...geometry,
       ...(metadata ?? {}),
     };
     setObjects((prev) => [...(Array.isArray(prev) ? prev : []), next]);
@@ -6142,6 +6138,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
   return (
     <div className="arqdor-reference-ui arq-direct-editor min-h-screen bg-muted/30">
+      {objectPlacementError && <div role="alert" className="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">{objectPlacementError}<button type="button" onClick={() => setObjectPlacementError(null)} className="font-semibold">Fechar aviso</button></div>}
       {openingEditError && <div role="alert" className="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">{openingEditError}<button type="button" onClick={() => setOpeningEditError(null)} className="font-semibold">Fechar aviso</button></div>}
       {projectMaster && step !== RESULT_STEP && (
         <div className="fixed inset-0 z-[250] grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm">
