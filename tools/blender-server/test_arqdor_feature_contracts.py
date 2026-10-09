@@ -1,6 +1,6 @@
 import unittest
 from arqdor_feature_contracts import (
-    inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, preview_scale_calibration, draft_opening_schedule, evaluate_wall_mesh_topology,
+    inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, preview_scale_calibration, draft_opening_schedule, evaluate_wall_mesh_topology, inspect_boundary_loops,
 )
 
 
@@ -164,6 +164,16 @@ class FeatureContractsTests(unittest.TestCase):
         self.assertEqual(broken["topologyStatus"], "nonmanifold_requires_review")
         with self.assertRaises(ValueError):
             evaluate_wall_mesh_topology(8, 4, 2, 5, 0)
+
+    def test_boundary_loops_are_candidates_only(self):
+        vertices = [[0, 0, 0], [2, 0, 0], [2, 0, 1], [0, 0, 1]]
+        result = inspect_boundary_loops(vertices, [[0, 1], [1, 2], [2, 3], [3, 0]])
+        self.assertEqual(len(result["closedBoundaryCandidates"]), 1)
+        self.assertFalse(result["closedBoundaryCandidates"][0]["openingConfirmed"])
+        self.assertEqual(result["closedBoundaryCandidates"][0]["bounds"]["max"], [2, 0, 1])
+        self.assertEqual(inspect_boundary_loops(vertices, [[0, 1], [1, 2]])["closedBoundaryCandidates"], [])
+        with self.assertRaises(ValueError):
+            inspect_boundary_loops(vertices, [[0, 9]])
 
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
