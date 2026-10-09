@@ -14,7 +14,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -189,11 +189,15 @@ def execute_render(job_id: str, cena_id: str, tenant_id: str, scene_config: dict
                 f"STDOUT:\n{result.stdout[-1000:]}"
             )
 
-        # 3. Upload para Supabase
-        storage_key = f"{tenant_id}/{cena_id}/{job_id}.png"
-        image_url   = upload_to_supabase(output_path, storage_key)
-
-        set_status("concluido", image_url=image_url)
+        # Result remains private on the worker until the authenticated API
+        # transfers it into the tenant media library.
+        with open(output_path, "rb") as source:
+            signature = source.read(8)
+        if signature != bytes.fromhex("89504e470d0a1a0a"):
+            raise RuntimeError("Resultado Blender não é PNG válido")
+        private_result = os.path.join(OUTPUT_DIR, f"{job_id}.result.png")
+        os.replace(output_path, private_result)
+        set_status("concluido")
 
     except subprocess.TimeoutExpired:
         set_status("erro", erro="Timeout: render excedeu 10 minutos.")
@@ -291,6 +295,26 @@ def get_render(job_id):
         "erro":      job.get("erro"),
         "updatedAt": job.get("updatedAt"),
     })
+
+
+@app.route("/render/<job_id>/artifact", methods=["GET"])
+@require_auth
+def get_render_artifact(job_id):
+    if not ID_PATTERN.fullmatch(job_id):
+        return jsonify({"error": "Identificador inválido"}), 422
+    with jobs_lock:
+        job = jobs_status.get(job_id)
+        if not job:
+            return jsonify({"error": "Job não encontrado"}), 404
+        if job["status"] != "concluido":
+            return jsonify({"error": "Resultado ainda indisponível"}), 409
+    artifact = os.path.join(OUTPUT_DIR, f"{job_id}.result.png")
+    if not os.path.isfile(artifact):
+        return jsonify({"error": "PNG não encontrado no worker"}), 404
+    response = send_file(artifact, mimetype="image/png", as_attachment=True, download_name=f"{job_id}.png")
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @app.route("/render", methods=["GET"])
