@@ -458,7 +458,7 @@ def setup_hdri(hdri_key: str, strength: float = 1.0):
 
 
 
-def apply_imported_scene_settings(settings):
+def apply_imported_scene_settings(settings, material_mapping=None):
     """Apply explicitly supplied preview settings; never change geometry."""
     if not isinstance(settings, dict):
         return
@@ -481,8 +481,29 @@ def apply_imported_scene_settings(settings):
                         for v in position + target)):
             convert = lambda p: [p[0], -p[2], p[1]]
             setup_camera({"location": convert(position), "target": convert(target), "fov": 50})
-    # Material overrides intentionally withheld until mesh-key equivalence
-    # between Three.js GLTFLoader and Blender import is independently verified.
+    overrides = settings.get("materials", {})
+    if overrides:
+        mapping = material_mapping or {}
+        if not isinstance(overrides, dict):
+            raise ValueError("Substituições de materiais inválidas")
+        for key, color in overrides.items():
+            name = mapping.get(key)
+            if not name:
+                raise ValueError(f"Material sem correspondência inequívoca: {key}")
+            if not isinstance(color, str) or len(color) != 7 or color[0] != "#":
+                raise ValueError("Cor de material inválida")
+            try:
+                rgb = [int(color[i:i + 2], 16) / 255.0 for i in (1, 3, 5)]
+            except ValueError as error:
+                raise ValueError("Cor hexadecimal inválida") from error
+            material = bpy.data.materials.get(name)
+            if not material or not material.use_nodes:
+                raise ValueError(f"Material não encontrado no Blender: {name}")
+            principled = next((node for node in material.node_tree.nodes if node.type == "BSDF_PRINCIPLED"), None)
+            if principled is None:
+                raise ValueError(f"Material sem shader compatível: {name}")
+            principled.inputs["Base Color"].default_value = (*rgb, 1.0)
+            material.diffuse_color = (*rgb, 1.0)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Render settings
@@ -563,11 +584,11 @@ def main():
             print(f"[AVISO] Erro ao adicionar objeto '{obj_spec.get('name', '?')}': {e}")
 
     if config.get("model") and config.get("sceneSettings", {}).get("cameras"):
-        apply_imported_scene_settings(config["sceneSettings"])
+        apply_imported_scene_settings(config["sceneSettings"], report.get("materialMapping", {}))
     else:
         setup_camera(config.get("camera", {}))
         if config.get("model"):
-            apply_imported_scene_settings({**config.get("sceneSettings", {}), "cameras": []})
+            apply_imported_scene_settings({**config.get("sceneSettings", {}), "cameras": []}, report.get("materialMapping", {}))
 
     print("Iniciando render...")
     bpy.ops.render.render(write_still=True)
