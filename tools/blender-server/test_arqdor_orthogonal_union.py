@@ -63,6 +63,15 @@ class OrthogonalUnionTests(unittest.TestCase):
         self.assertEqual(result["connectedSolidComponents"], 2)
         self.assertEqual(result["integrityStatus"], "requires_geometric_repair")
 
+    def test_surface_connectivity_is_reported(self):
+        single = union_orthogonal_walls([wall((0, 0), (4, 0))])
+        self.assertEqual(single["connectedBoundaryComponents"], 1)
+        separated = union_orthogonal_walls([
+            wall((0, 0), (2, 0)), wall((3, 0), (5, 0))
+        ])
+        self.assertEqual(separated["connectedBoundaryComponents"], 2)
+        self.assertEqual(separated["integrityStatus"], "requires_geometric_repair")
+
     def test_single_wall(self):
         mesh = union_orthogonal_walls([wall((0, 0), (4, 0))])
         self.assertEqual(len(mesh["faces"]), 6)
