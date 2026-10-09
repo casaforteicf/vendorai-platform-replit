@@ -59,3 +59,10 @@ Reutilizar o cadastro mestre existente e permitir casal (dois consumidores com q
 - **Build e validação:** nenhum log de `tsc`, `node ./build.mjs` ou homologação do commit atual foi obtido nesta sessão; continuam pendentes. Não usar GitHub Actions como condição obrigatória.
 - **Próxima ação executável:** concluir revisão de código e usar acesso autenticado do Vendi/Contabo quando houver sessão de tenant válida, sem tocar produção; registrar o SHA e os logs de build e homologação antes de promover.
 - **Segurança:** não usar Replit, TinyFish nem Desktop Commander; não intervir no trabalho de infraestrutura e não publicar sem procedimento aprovado.
+
+## Diagnóstico de acesso Vendi — 09/10/2026 (complemento)
+- Identificação correta de tenant encontrada: `vendorai` (a tentativa anterior com `casaforteicf` retornava `tenant_not_found`).
+- Conexão salva `https://homolog.appvendorai.com/` localizada com sessão persistente; nenhuma publicação, login novo ou escrita solicitada.
+- Tentativa read-only de inspeção da homologação resultou em `VENDI_HOMOLOG_AUTH_EXCHANGE_FAILED:401:upstream_token_rejected`; `runId=4fb493af-a000-451f-aaf9-c9505d8544e3`.
+- **Evidência insuficiente para validar:** sem execução de `tsc`, `build.mjs` ou teste funcional no commit atual. Estado permanece `implementado sem validação`.
+- **Próxima ação:** restabelecer troca de token da conexão Vendi de homologação através do fluxo operacional próprio; em seguida validar na Contabo com logs e hash do candidato sem impactar produção. Trabalho de infraestrutura/autenticação cabe ao agente responsável.
