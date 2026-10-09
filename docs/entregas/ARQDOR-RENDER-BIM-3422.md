@@ -231,3 +231,17 @@ conversores, build TypeScript e UI isolada antes de integrar.
 - **Estados:** implementado sem validação técnica integral, não homologado, não aprovado, não publicado. PR #3422 permanece Draft; produção inalterada.
 - **Decisão vigente:** homologação Contabo, acesso Vendi e publicação permanecem adiados a pedido do usuário.
 - **Próxima tarefa independente:** avançar no contrato de histórico ordenado e na preparação do componente visual de revisão, com controles de autorização antes de permitir persistência de decisões.
+
+
+## Lote ampliado — histórico e indicadores de revisão (09/10/2026)
+- **Lote / versão:** ARQDOR-RENDER-BIM-3422 / desenvolvimento, sem release.
+- **Entregas agrupadas (2 melhorias):**
+  1. `summarize_opening_review_history` reconstrói a situação mais recente de cada esquadria a partir de eventos por versão e origem; ordena por horário UTC, contabiliza eventos e bloqueia informações de outra versão/origem.
+  2. `opening_review_dashboard` fornece contadores de conflitos, candidatos e situações de revisão para apoiar a futura UX do quadro de esquadrias.
+- **Segurança BIM:** nenhum status aprova geometria, fabricação ou quantitativos. A revisão detalhada por profissional continua obrigatória.
+- **Commits de código/testes:** `f935a30`, `d173bcd`, `96f11e8`, `2d37714`.
+- **Arquivos:** `tools/blender-server/arqdor_feature_contracts.py`, `tools/blender-server/test_arqdor_feature_contracts.py` e este Registro Mestre.
+- **Validação:** testes de regressão adicionados para replay cronológico, rejeição de eventos de outra origem e contadores de conflito; **não executados no ambiente Contabo** e nenhuma afirmação de testes aprovados.
+- **Estados:** implementado sem validação técnica integral; homologado NÃO; aprovado NÃO; produção NÃO publicada; PR #3422 Draft.
+- **Decisão vigente do usuário:** homologação Contabo, acesso Vendi e publicação adiados; continuar lotes independentes de maior alcance sem cobrar novas autorizações.
+- **Próximas frentes:** conectar estes contratos à interface de revisão visual e ao armazenamento de histórico com autorização, sem ativar produção.
