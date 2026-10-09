@@ -109,9 +109,18 @@ export default function RenderStudioGlbViewer({ url, modelId, onSelect }: Props)
       });
       if (cancelled) { cleanup(); return; }
       root = gltf.scene;
-      // Stable mesh paths are generated from traversal order, not runtime UUIDs.
-      let meshIndex = 0;
-      root.traverse((node: any) => { if (node.isMesh) meshKeys.current.set(node, String(meshIndex++).padStart(36, "0")); });
+      // Stable material index from the GLB declaration; never infer Blender mesh ordering.
+      const dataView = new DataView(bytes);
+      const jsonLength = dataView.getUint32(12, true);
+      const glbJson = JSON.parse(new TextDecoder().decode(new Uint8Array(bytes, 20, jsonLength)));
+      const sourceNames: string[] = (glbJson.materials ?? []).map((material: { name?: string }) => material.name ?? "");
+      const uniqueNames = new Map<string, number>();
+      sourceNames.forEach((name, i) => { if (name && sourceNames.indexOf(name) === sourceNames.lastIndexOf(name)) uniqueNames.set(name, i); });
+      root.traverse((node: any) => {
+        if (!node.isMesh || Array.isArray(node.material)) return;
+        const index = uniqueNames.get(node.material?.name);
+        if (index !== undefined) meshKeys.current.set(node, `mat-${index}`);
+      });
       scene.add(root);
       const sceneResponse = await fetch(`${url}/${encodeURIComponent(modelId)}/scene-settings`, { headers: renderAuthHeader(), signal: controller.signal });
       if (!sceneResponse.ok) throw new Error(`Falha ao recuperar configurações (${sceneResponse.status})`);
@@ -160,8 +169,9 @@ export default function RenderStudioGlbViewer({ url, modelId, onSelect }: Props)
     if (!mesh?.isMesh) return;
     // Clone per mesh: never modify shared imported material across unrelated surfaces.
     const apply = (material: any) => { const copy = material.clone(); if (copy.color) copy.color.set(next); return copy; };
-    mesh.material = Array.isArray(mesh.material) ? mesh.material.map(apply) : apply(mesh.material);
     const meshKey = meshKeys.current.get(mesh);
+    if (!meshKey) { setSaveMessage("Material sem identidade única no GLB; não é possível salvar esta cor."); return; }
+    mesh.material = Array.isArray(mesh.material) ? mesh.material.map(apply) : apply(mesh.material);
     if (meshKey) setMaterialColors(previous => ({ ...previous, [meshKey]: next }));
     setSaveMessage("Alterações ainda não salvas");
   }
@@ -197,7 +207,7 @@ export default function RenderStudioGlbViewer({ url, modelId, onSelect }: Props)
     {status ? <p role="status" className="text-sm text-slate-600">{status}</p> : null}
     {error ? <p role="alert" className="text-sm text-red-700">{error}</p> : null}
     <div className="grid gap-3 rounded-lg border p-3 sm:grid-cols-2">
-      <label className="space-y-1 text-sm"><span className="block">Cor da superfície — prévia temporária</span>
+      <label className="space-y-1 text-sm"><span className="block">Cor do material identificado no GLB</span>
         <input aria-label="Cor da superfície selecionada" type="color" value={color} disabled={!surface}
           onChange={event => applyColor(event.target.value)} className="h-10 w-20 cursor-pointer" />
         <span className="block text-xs text-slate-500">{surface || "Clique primeiro em uma superfície"}</span>
