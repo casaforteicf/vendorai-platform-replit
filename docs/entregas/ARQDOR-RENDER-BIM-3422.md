@@ -538,3 +538,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Registro de regressão:** commit `a304240` adiciona testes com volumes esperados para L/T, conectividade e paridade de volume assinado na suíte original.
 - **Limite de evidência:** esses resultados **não** equivalem a testes do checkout do PR, build TypeScript nem homologação. Ainda é necessário obter checkout executável e rodar a suíte completa no ambiente autorizado.
 - **Governança:** PR #3422 permanece Draft, sem merge/deploy, Contabo adiada, produção intacta.
+
+
+## 3422-A — correção bloqueante de compilação TypeScript (09/10/2026)
+- **Achado confirmado por leitura do código:** `artifacts/frontend/src/pages/arch/render-studio/arqdorOrthogonalUnion.ts` continha um token textual literal `\\n` na expressão de `closedByEdgeIncidence`, tornando-a sintaticamente inválida. A quebra foi introduzida na atualização de componentes e volume.
+- **Correção:** `f1621b9` substitui o token textual por uma quebra de linha real, sem mudar a regra de integridade.
+- **Execução:** a correção é verificável por inspeção do arquivo; não equivale ao build completo. O checkout do repositório continua inacessível ao executor local por DNS GitHub, portanto compilação da aplicação e suíte original ainda não executadas.
+- **Estado oficial:** PR #3422 Draft; nenhum merge/deploy; Contabo e produção inalteradas.
