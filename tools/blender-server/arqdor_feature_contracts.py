@@ -61,6 +61,8 @@ def validate_camera_path(keyframes, fps=24, max_seconds=120):
     frames = math.ceil(last_second * fps) + 1
     if frames > fps * max_seconds + 1:
         raise ValueError("Vídeo excede duração máxima")
+    if frames > 720:
+        raise ValueError("Passeio virtual excede 720 quadros por job")
     return {"fps": fps, "frames": frames, "keyframes": validated,
             "status": "validated_not_rendered"}
 
@@ -97,7 +99,7 @@ def resolve_render_preset(config):
     if not isinstance(config, dict):
         raise ValueError("Configuração de render inválida")
     preset = config.get("qualityPreset")
-    if preset is not None and preset not in RENDER_PRESETS:
+    if preset is not None and (not isinstance(preset, str) or preset not in RENDER_PRESETS):
         raise ValueError("Preset de render desconhecido")
     defaults = RENDER_PRESETS.get(preset, ([1920, 1080], 64))
     resolution = config.get("resolution")
