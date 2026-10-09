@@ -105,3 +105,13 @@ test('scene settings validate numeric sunlight and RGB colors', () => {
   assert.throws(()=>validateSceneSettings({...v,sunlight:10}));
   assert.throws(()=>validateSceneSettings({...v,materials:{['0'.repeat(36)]:'invalid'}}));
 });
+
+test('scene settings persist across store instances', async () => withStore(async (store, root) => {
+  const m = await store.save('tenant-a','project-a','house.glb',glb());
+  const v = {sunlight:2,materials:{},cameras:[]};
+  await store.saveSceneSettings('tenant-a','project-a',m.id,'author',v);
+  const read = await new ModelFileStore(root).sceneSettings('tenant-a','project-a',m.id);
+  assert.deepEqual(read.settings,v);
+  assert.equal(read.modelSha256,m.sha256);
+  await assert.rejects(store.sceneSettings('tenant-b','project-a',m.id), {code:'ENOENT'});
+}));
