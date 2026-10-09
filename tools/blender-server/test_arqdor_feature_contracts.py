@@ -1,6 +1,6 @@
 import unittest
 from arqdor_feature_contracts import (
-    create_opening_review_queue, inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, preview_scale_calibration, draft_opening_schedule, evaluate_wall_mesh_topology, inspect_boundary_loops, associate_boundary_candidates,
+    create_opening_review_queue, inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, preview_scale_calibration, draft_opening_schedule, evaluate_wall_mesh_topology, inspect_boundary_loops, associate_boundary_candidates, build_opening_review_queue,
 )
 
 
@@ -325,6 +325,23 @@ class FeatureContractsTests(unittest.TestCase):
             create_opening_review_queue([row, row], digest, "R2")
         with self.assertRaises(ValueError):
             create_opening_review_queue([row], digest, "")
+
+    def test_opening_review_queue_prioritizes_conflicts(self):
+        rows = [
+            {"opening": "J1", "objectId": "m1", "hostRelationStatus": "single_spatial_candidate",
+             "measurementStatus": "aabb_estimate_requires_review", "dimensionsMeters": None},
+            {"opening": "J2", "objectId": "m2", "hostRelationStatus": "no_spatial_candidate",
+             "measurementStatus": "ambiguous_object_name", "dimensionsMeters": None},
+        ]
+        review = [{"objectId": "m1", "candidateBoundaryMatches": [{"wall": "P1"}]}]
+        queue = build_opening_review_queue(rows, review)
+        self.assertEqual([item["objectId"] for item in queue], ["m2", "m1"])
+        self.assertEqual(queue[0]["priority"], "high")
+        self.assertEqual(queue[1]["priority"], "medium")
+        self.assertFalse(queue[0]["approved"])
+        self.assertFalse(queue[0]["fabricationReady"])
+        with self.assertRaises(ValueError):
+            build_opening_review_queue([None], [])
 
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
