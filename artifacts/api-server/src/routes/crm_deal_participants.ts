@@ -64,7 +64,9 @@ router.get("/crm/people", async (req, res) => {
     const like = `%${q}%`;
     const dealPersonIds = await db.select({ personId: crmDealPeopleTable.personId }).from(crmDealPeopleTable)
       .innerJoin(dealsTable, eq(dealsTable.id, crmDealPeopleTable.dealId))
-      .where(and(eq(crmDealPeopleTable.tenantId, tenantId), eq(dealsTable.tenantId, tenantId), ...buildUserFunctionFilter(req, dealsTable)));
+      .where(and(eq(crmDealPeopleTable.tenantId, tenantId), eq(dealsTable.tenantId, tenantId),
+        sql`COALESCE(${crmDealPeopleTable.metadata}->>'inactive', 'false') <> 'true'`,
+        ...buildUserFunctionFilter(req, dealsTable)));
     const visibleLeads = await db.select({ id: leadsTable.id }).from(leadsTable)
       .where(and(eq(leadsTable.tenantId, tenantId), ...buildUserFunctionFilter(req, leadsTable)));
     const visibleLeadIds = visibleLeads.map((lead) => lead.id);
