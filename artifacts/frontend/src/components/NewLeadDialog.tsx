@@ -858,6 +858,8 @@ export function NewLeadDialog({
     }
 
     setServerDuplicate(null);
+    let createdLeadId: string | undefined;
+    let createdDealId: string | undefined;
     try {
       const couponCode = normalizeCoupon(values.cupomCodigo);
       let coupon = couponValidation;
@@ -925,6 +927,7 @@ export function NewLeadDialog({
 
       const leadId = (newLead as { id?: string }).id;
       if (!leadId) throw new Error("O contato foi criado sem identificador válido.");
+      createdLeadId = leadId;
 
       // O contato já existe neste ponto. Atualiza a lista imediatamente para
       // evitar a tela ficar em "0 contatos" caso uma etapa secundária falhe.
@@ -933,6 +936,7 @@ export function NewLeadDialog({
 
       const deal = await syncInitialDeal(leadId, submissionValues);
       const dealId = (deal as { id?: string } | null | undefined)?.id;
+      createdDealId = dealId;
       await syncStructuredCrm(dealId, submissionValues);
       const syncedPartners = await syncCommercialPartners(leadId, dealId);
 
@@ -982,6 +986,18 @@ export function NewLeadDialog({
       closeAndReset();
       if (dealId) onNavigate(`/trabalho/${leadId}?dealId=${encodeURIComponent(dealId)}`);
     } catch (error: any) {
+      if (createdLeadId) {
+        toast({
+          title: "Lead criado; complementação pendente",
+          description: `${error instanceof Error ? error.message : "Uma etapa complementar falhou."} Abra o lead criado para revisar os vínculos; não cadastre novamente.`,
+          variant: "destructive",
+        });
+        queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
+        queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
+        closeAndReset();
+        onNavigate(`/trabalho/${createdLeadId}${createdDealId ? `?dealId=${encodeURIComponent(createdDealId)}` : ""}`);
+        return;
+      }
       if (error?.status === 409 && error?.data?.isDuplicate && error?.data?.lead) {
         setServerDuplicate({ lead: error.data.lead as Lead, matchBy: error.data.matchBy ?? "dado" });
         return;
