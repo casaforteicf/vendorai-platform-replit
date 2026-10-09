@@ -1,3 +1,4 @@
+import { sceneGesture } from "./conceptSceneGesture";
 import { isWalkEditingTarget, walkDirection } from "./conceptWalkInput";
 import { moveWalkPosition, walkStep, walkWall } from "./conceptWalkCollision";
 import { exposedWallFaces } from "./conceptWallSurfaces";
@@ -576,7 +577,17 @@ export default function ConceptWebGLScene({
         controls.target.set(0, Math.max(1.5, levels.length * 1.15), 0);
         controls.update();
 
-        const handlePointer = (event: PointerEvent) => {
+        const gesture = sceneGesture();
+        const gestureDown = (event: PointerEvent) => gesture.down(event.pointerId, event.clientX, event.clientY);
+        const gestureMove = (event: PointerEvent) => gesture.move(event.pointerId, event.clientX, event.clientY);
+        const gestureUp = (event: PointerEvent) => gesture.up(event.pointerId, event.clientX, event.clientY);
+        const gestureCancel = (event: PointerEvent) => gesture.cancel(event.pointerId);
+        renderer.domElement.addEventListener("pointerdown", gestureDown, true);
+        renderer.domElement.addEventListener("pointermove", gestureMove, true);
+        window.addEventListener("pointerup", gestureUp, true);
+        window.addEventListener("pointercancel", gestureCancel, true);
+        const handlePointer = (event: MouseEvent) => {
+          if (event.button !== 0 || !gesture.canClick() || runtime.navigationMode !== "orbit") return;
           if (!runtimeRef.current || runtime.transform?.dragging || runtime.navigationMode === "walk") return;
           const rect = renderer.domElement.getBoundingClientRect();
           pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -776,6 +787,7 @@ export default function ConceptWebGLScene({
         loop();
 
         (runtime as any).observer = observer;
+        (runtime as any).sceneGestureHandlers = { gestureDown, gestureMove, gestureUp, gestureCancel };
         (runtime as any).handlePointer = handlePointer;
         (runtime as any).handleWalkVisibility = handleWalkVisibility;
         (runtime as any).handleWalkFocus = handleWalkFocus;
@@ -805,6 +817,13 @@ export default function ConceptWebGLScene({
       const runtime = runtimeRef.current;
       if (!runtime) return;
       cancelAnimationFrame(runtime.animationFrame);
+      const gestureHandlers = (runtime as any).sceneGestureHandlers;
+      if (gestureHandlers) {
+        runtime.renderer.domElement.removeEventListener("pointerdown", gestureHandlers.gestureDown, true);
+        runtime.renderer.domElement.removeEventListener("pointermove", gestureHandlers.gestureMove, true);
+        window.removeEventListener("pointerup", gestureHandlers.gestureUp, true);
+        window.removeEventListener("pointercancel", gestureHandlers.gestureCancel, true);
+      }
       document.removeEventListener("visibilitychange", (runtime as any).handleWalkVisibility);
       document.removeEventListener("focusin", (runtime as any).handleWalkFocus);
       window.removeEventListener("blur", (runtime as any).handleWalkBlur);

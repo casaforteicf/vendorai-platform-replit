@@ -170,3 +170,10 @@ Validação: 95 testes em 19 arquivos passaram; sintaxe TSX verificada. Verifica
 Teclado e botões de toque usam fontes independentes; cada ponteiro tem seu comando, evitando que a liberação de um toque cancele uma tecla física ou outro toque. Direções opostas se cancelam. Ocultar a aba, focar um campo editável, perder foco, trocar modo e reiniciar a câmera limpam os comandos de toque junto com o teclado.
 
 Validação: 98 testes em 20 arquivos passaram; transformação TSX da cena passou. Teste integrado de teclado/toque em dispositivo real e build completo pendentes. Homologação/publicação permanecem adiadas. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Seleção protegida após gestos de câmera
+
+Seleção/pintura WebGL restritas ao modo órbita e botão principal. Arrastes acima de 5 pixels, múltiplos ponteiros e gestos cancelados bloqueiam o clique subsequente, incluindo arraste que retorna à posição inicial. Eventos de liberação fora do canvas acompanhados; listeners removidos no encerramento da cena.
+
+Validação: 102 testes em 21 arquivos passaram; transformação TSX da cena passou. Teste integrado dos gestos, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
