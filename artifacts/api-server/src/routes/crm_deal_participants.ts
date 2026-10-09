@@ -460,7 +460,7 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
         .from(crmDealPeopleTable).where(and(eq(crmDealPeopleTable.tenantId, tenantId),
           eq(crmDealPeopleTable.dealId, req.params.dealId), eq(crmDealPeopleTable.personId, personId))).limit(1);
       const relationshipMetadata = appendRelationshipEvent(
-        { ...(previousLink?.metadata ?? {}), ...(parsed.data.metadata ?? {}), relationshipHistory: previousLink?.metadata?.relationshipHistory }, previousLink ? (previousLink.metadata?.inactive === true ? "linked" : "updated") : "linked", req.user?.id,
+        { ...(previousLink?.metadata ?? {}), ...Object.fromEntries(Object.entries(parsed.data.metadata ?? {}).filter(([key]) => !["relationshipHistory", "inactive", "unlinkedAt", "unlinkedBy", "createdTenantId"].includes(key))), relationshipHistory: previousLink?.metadata?.relationshipHistory }, previousLink ? (previousLink.metadata?.inactive === true ? "linked" : "updated") : "linked", req.user?.id,
       );
       const [link] = await tx.insert(crmDealPeopleTable).values({
       tenantId,
