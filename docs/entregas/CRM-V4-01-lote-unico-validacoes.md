@@ -95,3 +95,53 @@ Este relatório corresponde a inspeção estática de código remoto e planejame
 - `412d8f3`: bloqueio síncrono por `useRef` no `NewLeadDialog` impede submissões simultâneas da mesma instância do formulário; `finally` libera o bloqueio inclusive nos fluxos de erro e de lead parcialmente criado.
 - **Limite de segurança:** não oferece idempotência entre sessões, navegadores ou requisições distintas. O backend de criação de lead deve receber um identificador de idempotência, respeitando as regras atuais, antes de classificar o fluxo ponta a ponta como seguro contra duplicidade.
 - **Validação:** revisão estática e commit na branch, sem build nem teste em execução. Homologação Contabo e publicação seguem adiadas por decisão do usuário.
+
+## Lote consolidado — 11 pendências (execução de 09/10/2026)
+
+A atualização abaixo cobre **código registrado e testes escritos**, não resultados de testes executados. Sem deploy, merge ou homologação.
+
+| Nº | Item | Mudança / evidência | Estágio real |
+|---|---|---|---|
+| 1 | Idempotência backend entre sessões | `a1bf152`, `5b60f1c`, `c59483c`, `d968220`: chave por tenant, usuário e hash do payload, com lock transacional; UI envia chave `2b3c0f6` | Implementado em branch; runtime pendente |
+| 2 | Lead + negócio + empresa | `d38f7f4` torna lead+negócio automático transacionais; `9af33ae` torna empresa mestre+tenant transacionais; integração completa em operação única **ainda não existe** | Parcial |
+| 3 | Recuperação sem duplicação | Tratamento de falha parcial `86b81f1`; replay de lead com chave; replay de casal `db9a620` e UI `52e128e` | Parcial; regressão pendente |
+| 4 | Compatibilidade de legados | Tratamento de `legacy_existing`, guarda de origem e história; utilitário testável `ec21385` | Parcial; dados reais não inspecionados |
+| 5 | Segurança multi-tenant | Filtros de vínculos ativos e negócios visíveis; controle de perfil global. Risco de cadastro mestre compartilhado exige revisão com testes autenticados | Parcial; não aprovado como seguro |
+| 6 | Testes funcionais | Foram escritos os testes unitários `f51a483` e `fb7e890` (10 cenários de utilitários); ainda faltam integrações de casal, representante, vínculos e UX | Testes escritos, **não executados** |
+| 7 | Concorrência/rollback | Locks e transações para lead, casal, vínculos e empresa; plano de teste abaixo | Testes concorrentes **não executados** |
+| 8 | TypeScript/build backend e frontend | Comandos documentados abaixo | **Não executado** |
+| 9 | UX e regressões | Avisos de falha parcial e bloqueio de duplo envio; fluxo de casal atualizado | Parcial; teste visual pendente |
+| 10 | Homologação Contabo | Aguardando liberação posterior por decisão do usuário; Vendi com autenticação 401 documentada | **Adiada** |
+| 11 | Aprovação / merge / deploy | Nenhuma promoção solicitada ou executada pelo lote | **Não iniciado** |
+
+### Validação técnica futura, sem GitHub Actions obrigatório
+
+Com checkout da branch no ambiente isolado Contabo e dependências instaladas:
+
+```bash
+pnpm install --no-frozen-lockfile
+cd artifacts/api-server
+../../node_modules/.bin/tsc -p tsconfig.launch-ci.json --noEmit
+pnpm exec vitest run src/lib/crm-lead-idempotency.test.ts src/lib/crm-relationship-history.test.ts
+node ./build.mjs
+cd ../frontend
+pnpm run typecheck
+pnpm run build
+```
+
+Registrar para cada comando: SHA testado, ambiente, horário, exit code, log e artefato. **Nenhum comando acima foi executado nesta sessão.**
+
+### Validações de integração não substituídas pelos testes unitários
+
+- Cliente 1 e Cliente 2 com CPFs distintos, contatos compartilhados e repetição de solicitação; falha injetada após primeira inserção e verificação de rollback.
+- Duas sessões simultâneas com mesma chave de lead; chave igual com payload diferente ou autor diferente; verificar retorno 200 do cadastro original e inexistência de segundo lead/negócio.
+- Lead + auto-deal: falha intencional na criação do deal deve reverter lead; conferir ausência de reserva/comissão/atividade gerada para rollback.
+- Criação de empresa já existente no master global e associação em tenants diferentes; falha na associação ao tenant deve reverter a empresa recém-criada.
+- Desvinculação e reativação concorrentes; apenas um contato principal, histórico sequencial, relações inativas não visíveis.
+- Usuários com permissões diferentes no mesmo tenant; não revelar perfil pessoal por documento, ID ou contato de empresa sem lead visível.
+- Cadastro legado sem `createdTenantId` ou `relationshipHistory` e casal com empresa; garantir que nenhum tenant seja atribuído retroativamente sem evidência.
+- Regressão visual: tela de cadastro, recuperação após falha, representação comercial, envolvidos e orçamento inicial.
+
+### Ressalva sobre atomicidade ponta a ponta
+
+Não considerar item 2 encerrado: o fluxo de criação de lead ainda invoca serviços de empresa, pessoas, envolvidos e tarefas em requisições posteriores, apesar de transações internas implantadas em vários subfluxos. É necessário consolidar serviços do backend, sem replicar regras de atribuição, campanhas, automações e deduplicação.
