@@ -322,7 +322,9 @@ router.post("/leads", async (req, res) => {
     return;
   }
 
-  const [lead] = await db.insert(leadsTable).values({
+  // Lead and its automatic pipeline deal either persist together or roll back together.
+  const lead = await db.transaction(async (tx) => {
+  const [lead] = await tx.insert(leadsTable).values({
     ...data,
     nome: normalizeLeadName(data.nome, "Lead"),
     email: normalizeLeadEmail(data.email),
@@ -355,7 +357,7 @@ router.post("/leads", async (req, res) => {
 
   // Auto-create deal in pipeline (aquecimento) unless lead is pipeline-exempt
   if (!lead.pipelineExempt) {
-    await db.insert(dealsTable).values({
+    await tx.insert(dealsTable).values({
       tenantId: lead.tenantId,
       leadId: lead.id,
       titulo: lead.nome,
@@ -363,6 +365,9 @@ router.post("/leads", async (req, res) => {
       assignedTo: resolvedAssignedTo,
     });
   }
+
+    return lead;
+  });
 
   if (resolvedAssignedTo) {
     recordResponsavelChange({
