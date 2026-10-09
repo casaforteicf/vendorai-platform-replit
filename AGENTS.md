@@ -15,6 +15,15 @@ Vigência: 2026-10-09. Escopo: **todos os lotes presentes e futuros**, em todos 
 - Testar com as validações pertinentes e documentar resultados reais; builds não executados ou falhos **não** significam aprovação.
 - Não interferir com outros agentes ou fluxos ativos. Não usar Tinyfish.
 
+## Fluxo operacional obrigatório: GitHub + Contabo
+- GitHub serve para versionamento, branches, commits, PRs, histórico e rastreabilidade; **GitHub Actions não é pré-requisito obrigatório** para avançar uma melhoria.
+- A validação técnica, compilação e homologação devem ocorrer **diretamente no ambiente isolado da Contabo**, seguindo o fluxo operacional de deploy previamente aprovado. Não usar produção como ambiente de testes.
+- Falhas ou indisponibilidade dos workflows do GitHub Actions devem ser registradas, mas **não bloqueiam automaticamente** o avanço do lote: utilizar a validação equivalente na Contabo, guardar comandos, logs, resultado e referência à versão/commit testado.
+- Validar de forma pertinente ao escopo (incluindo checagem de tipos, build e testes aplicáveis); se não houver validação equivalente e evidenciada, manter o status como não validado.
+- Homologação e promoção para produção continuam distintas; manter separação dev/homolog/produção, rollback e controle de publicação. Não fazer merge/deploy por mero push ou em consequência automática do teste.
+- O agente deve iniciar cada lote lendo este arquivo e o guia operacional vigente; qualquer conflito ou instrução desatualizada deve ser explicitado antes de ação irreversível.
+- Agentes não podem alegar que uma regra foi aplicada apenas porque ela está escrita: devem registrar a evidência de sua execução.
+
 ## Registro mestre obrigatório por lote
 Manter arquivo rastreável em `docs/entregas/`, contendo pelo menos:
 - identificador do lote, nome e versão;
