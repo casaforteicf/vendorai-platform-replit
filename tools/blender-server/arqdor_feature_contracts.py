@@ -299,6 +299,9 @@ def draft_opening_schedule(objects, calibrated_scale=None):
         object_id = relation.get("objectId")
         if object_id is not None:
             elements = [item for item in elements if item.get("objectId") == object_id]
+        source_key = relation.get("sourceObjectKey")
+        if source_key is not None:
+            elements = [item for item in elements if item.get("sourceObjectKey") == source_key]
         if len(elements) != 1:
             output.append({**relation, "measurementStatus": "ambiguous_object_name",
                            "objectCountWithName": len(elements),
