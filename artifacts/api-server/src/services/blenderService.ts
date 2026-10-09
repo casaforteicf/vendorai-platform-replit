@@ -31,6 +31,7 @@ import {
   archAmbientesTable,
   archRenderVersoesTable,
   archRenderSolicitacoesTable,
+  mediaAssetsTable,
   type ItemAdicionado,
   type TexturaAlterada,
 } from "@workspace/db";
@@ -39,6 +40,7 @@ import { logger } from "../lib/logger.js";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { ModelFileStore, safeSegment } from "../lib/arqdor-model-files.js";
+import { createProcessingMediaProject, registerGeneratedMediaOutput } from "./media-library.js";
 
 // ─── Tipos locais ──────────────────────────────────────────────────────────────
 
@@ -579,6 +581,32 @@ export async function checkRenderStatus(renderId: string): Promise<void> {
       const objectPath = await new ObjectStorageService().savePrivateBuffer(
         bytes, "image/png", `arqdor-render-${renderId}.png`, project.tenantId,
       );
+      // Link the private render to the tenant media library. A retry must
+      // not create duplicate library assets after the render has completed.
+      const [existingLibrary] = await db.select({ id: mediaAssetsTable.id })
+        .from(mediaAssetsTable)
+        .where(and(eq(mediaAssetsTable.tenantId, project.tenantId),
+          eq(mediaAssetsTable.storageUrl, objectPath))).limit(1);
+      if (!existingLibrary) {
+        const mediaProjectId = await createProcessingMediaProject({
+          tenantId: project.tenantId,
+          title: `Render Arqdor — ${render.cenaId}`,
+          operation: "arqdor_blender_render",
+          kind: "image",
+          context: { archCenaId: render.cenaId, archRenderId: renderId },
+        });
+        await registerGeneratedMediaOutput({
+          tenantId: project.tenantId,
+          projectId: mediaProjectId,
+          storageUrl: objectPath,
+          mimeType: "image/png",
+          fileSize: bytes.length,
+          type: "image",
+          originalFilename: `arqdor-render-${renderId}.png`,
+          operation: "arqdor_blender_render",
+          metadata: { archCenaId: render.cenaId, archRenderId: renderId },
+        });
+      }
       imageUrl = `/api/storage${objectPath}`;
     } catch (error) {
       logger.error({ error, renderId }, "blenderService: falha ao armazenar PNG privado");
