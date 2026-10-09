@@ -81,6 +81,10 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
       // geometry does not leave a renderer/canvas attached after rejection.
       const orthogonal = walls.every(w => Math.abs(w.start[0] - w.end[0]) < 1e-8 || Math.abs(w.start[1] - w.end[1]) < 1e-8);
       const union = orthogonal && walls.length ? unionOrthogonalWalls(walls) : null;
+      if (union && !union.topology.closedByEdgeIncidence) {
+        setError(`A união 3D exige revisão: ${union.topology.boundaryEdges} arestas abertas, ${union.topology.nonmanifoldEdges} não-manifold e ${union.topology.orientationErrors} com orientação inconsistente.`);
+        return;
+      }
       const THREE = (window as any).THREE;
       const scene = new THREE.Scene(); scene.background = new THREE.Color(0xf8fafc);
       scene.up?.set?.(0, 0, 1);
