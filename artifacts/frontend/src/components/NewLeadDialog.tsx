@@ -794,6 +794,16 @@ export function NewLeadDialog({
         });
         return;
       }
+      const primaryDocument = values.documento.replace(/\\D/g, "");
+      const secondDocument = coClient.documento.replace(/\\D/g, "");
+      if (primaryDocument && secondDocument && primaryDocument === secondDocument) {
+        toast({
+          title: "Documentos duplicados",
+          description: "Cliente 1 e Cliente 2 precisam ter documentos individuais. Revise o CPF/documento informado.",
+          variant: "destructive",
+        });
+        return;
+      }
       if (coClient.email.trim() && !z.string().email().safeParse(coClient.email.trim()).success) {
         toast({
           title: "Email inválido",
