@@ -1,6 +1,6 @@
 import unittest
 from arqdor_feature_contracts import (
-    inspect_import_request, validate_camera_path, bim_review_manifest,
+    inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction,
 )
 
 
@@ -26,6 +26,27 @@ class FeatureContractsTests(unittest.TestCase):
             validate_camera_path(path[::-1])
         with self.assertRaises(ValueError):
             validate_camera_path(path, fps=100)
+
+    def test_4k_and_print_presets(self):
+        self.assertEqual(resolve_render_preset({"qualityPreset": "4k"}), ([3840, 2160], 256))
+        self.assertEqual(resolve_render_preset({"qualityPreset": "print"}), ([5760, 3240], 512))
+        self.assertEqual(resolve_render_preset({"qualityPreset": "preview"}), ([960, 540], 16))
+        self.assertEqual(resolve_render_preset({"qualityPreset": "4k", "samples": 32}), ([3840, 2160], 32))
+        with self.assertRaises(ValueError):
+            resolve_render_preset({"qualityPreset": "imaginary"})
+        with self.assertRaises(ValueError):
+            resolve_render_preset({"resolution": [100000, 100000]})
+        with self.assertRaises(ValueError):
+            resolve_render_preset({"samples": True})
+
+    def test_optional_postproduction_and_bounds(self):
+        self.assertEqual(validate_postproduction(None), {"exposure": 0, "gamma": 1})
+        self.assertEqual(validate_postproduction({"exposure": 1.25, "gamma": 1.1}),
+                         {"exposure": 1.25, "gamma": 1.1})
+        with self.assertRaises(ValueError):
+            validate_postproduction({"gamma": 0})
+        with self.assertRaises(ValueError):
+            validate_postproduction({"exposure": float("inf")})
 
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
