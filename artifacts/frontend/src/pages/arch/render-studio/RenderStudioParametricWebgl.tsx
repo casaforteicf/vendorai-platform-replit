@@ -23,7 +23,17 @@ function loadThree(): Promise<void> {
 function buildWallGeometry(THREE: any, wall: ParametricWall) {
   const dx = wall.end[0] - wall.start[0], dy = wall.end[1] - wall.start[1];
   const length = Math.hypot(dx, dy);
-  if (!Number.isFinite(length) || length < .1) throw new Error("Parede inválida");
+  if (!Number.isFinite(length) || length < .1 || length > 1000 ||
+      !Number.isFinite(wall.height) || wall.height <= 0 || wall.height > 20 ||
+      !Number.isFinite(wall.thickness) || wall.thickness < .05 || wall.thickness > 1 ||
+      !Array.isArray(wall.openings) || wall.openings.length > 100)
+    throw new Error("Parede inválida");
+  for (const o of wall.openings) {
+    if (![o.offset, o.width, o.sill, o.height].every(Number.isFinite) ||
+        o.offset < 0 || o.width <= 0 || o.offset + o.width > length ||
+        o.sill < 0 || o.height <= 0 || o.sill + o.height > wall.height)
+      throw new Error("Vão inválido na parede");
+  }
   const ux = dx / length, uy = dy / length, nx = -uy, ny = ux;
   const xs = [...new Set([0, length, ...wall.openings.flatMap(o => [o.offset, o.offset + o.width])])].sort((a, b) => a - b);
   const zs = [...new Set([0, wall.height, ...wall.openings.flatMap(o => [o.sill, o.sill + o.height])])].sort((a, b) => a - b);
