@@ -106,10 +106,27 @@ class FeatureContractsTests(unittest.TestCase):
                   "bounds": {"min": [20, 0, 0], "max": [21, 1, 2]}}
         result = propose_opening_hosts([wall, window, remote])
         self.assertEqual(result[0]["candidateWalls"], ["Parede A"])
+        self.assertEqual(result[0]["hostRelationStatus"], "single_spatial_candidate")
+        self.assertTrue(result[0]["requiresManualReview"])
+        self.assertEqual(result[1]["hostRelationStatus"], "no_spatial_candidate")
         self.assertFalse(result[0]["openingDetected"])
         self.assertEqual(result[1]["candidateWalls"], [])
         with self.assertRaises(ValueError):
             propose_opening_hosts([{"name": "bad", "bounds": {"min": [2, 0, 0], "max": [1, 1, 1]}}])
+
+    def test_ambiguous_wall_hosts_never_approve_opening(self):
+        wall_a = {"name": "Parede A", "suggestedClass": "wall",
+                  "bounds": {"min": [0, 0, 0], "max": [4, 0.2, 3]}}
+        wall_b = {"name": "Parede B", "suggestedClass": "wall",
+                  "bounds": {"min": [0, 0.1, 0], "max": [4, 0.3, 3]}}
+        opening = {"name": "Janela", "suggestedClass": "window",
+                   "bounds": {"min": [1, 0.1, 1], "max": [2, 0.2, 2]}}
+        candidate = propose_opening_hosts([wall_a, wall_b, opening])[0]
+        self.assertEqual(candidate["hostRelationStatus"], "ambiguous_spatial_candidates")
+        self.assertEqual(candidate["candidateWalls"], ["Parede A", "Parede B"])
+        self.assertTrue(candidate["requiresManualReview"])
+        self.assertFalse(candidate["openingDetected"])
+        self.assertFalse(candidate["quantitiesEnabled"])
 
     def test_scale_reference_remains_unapproved(self):
         preview = preview_scale_calibration(2, 4, [5, 3, 2])
