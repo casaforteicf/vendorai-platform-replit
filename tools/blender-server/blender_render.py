@@ -457,6 +457,33 @@ def setup_hdri(hdri_key: str, strength: float = 1.0):
     tree.links.new(bg.outputs["Background"], out.inputs["Surface"])
 
 
+
+def apply_imported_scene_settings(settings):
+    """Apply explicitly supplied preview settings; never change geometry."""
+    if not isinstance(settings, dict):
+        return
+    sunlight = settings.get("sunlight")
+    if isinstance(sunlight, (int, float)) and math.isfinite(sunlight) and 0 <= sunlight <= 4:
+        bpy.ops.object.light_add(type="SUN", location=(0, 0, 20))
+        sun = bpy.context.object
+        sun.name = "Arqdor_Preview_Sun"
+        sun.data.energy = sunlight
+        sun.rotation_euler = (math.radians(35), math.radians(-20), math.radians(25))
+    # Saved WebGL cameras use Y-up, whereas Blender uses Z-up.
+    # Convert coordinates explicitly; never silently use the wrong axes.
+    cameras = settings.get("cameras", [])
+    if isinstance(cameras, list) and cameras:
+        camera = cameras[0]
+        position, target = camera.get("position"), camera.get("target")
+        if (isinstance(position, list) and isinstance(target, list)
+                and len(position) == len(target) == 3
+                and all(isinstance(v, (int, float)) and math.isfinite(v)
+                        for v in position + target)):
+            convert = lambda p: [p[0], -p[2], p[1]]
+            setup_camera({"location": convert(position), "target": convert(target), "fov": 50})
+    # Material overrides intentionally withheld until mesh-key equivalence
+    # between Three.js GLTFLoader and Blender import is independently verified.
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Render settings
 # ─────────────────────────────────────────────────────────────────────────────
@@ -535,7 +562,12 @@ def main():
         except Exception as e:
             print(f"[AVISO] Erro ao adicionar objeto '{obj_spec.get('name', '?')}': {e}")
 
-    setup_camera(config.get("camera", {}))
+    if config.get("model") and config.get("sceneSettings", {}).get("cameras"):
+        apply_imported_scene_settings(config["sceneSettings"])
+    else:
+        setup_camera(config.get("camera", {}))
+        if config.get("model"):
+            apply_imported_scene_settings({**config.get("sceneSettings", {}), "cameras": []})
 
     print("Iniciando render...")
     bpy.ops.render.render(write_still=True)
