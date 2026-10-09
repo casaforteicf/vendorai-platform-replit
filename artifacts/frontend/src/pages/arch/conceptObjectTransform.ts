@@ -26,3 +26,12 @@ export function boundedObjectGeometry(object: { x: number; y: number; width: num
     -object.rotation * Math.PI / 180, object.width, object.depth, lotWidth, lotDepth, false, false,
   );
 }
+
+export function duplicateObjectGeometry(object: Parameters<typeof boundedObjectGeometry>[0], lotWidth: number, lotDepth: number) {
+  const candidates = [[0.5, 0.5], [-0.5, -0.5], [0.5, -0.5], [-0.5, 0.5]]
+    .map(([dx, dy]) => boundedObjectGeometry({ ...object, x: object.x + dx, y: object.y + dy }, lotWidth, lotDepth))
+    .filter((patch): patch is NonNullable<typeof patch> => patch !== null);
+  const distance = (patch: typeof candidates[number]) => Math.hypot(patch.x - object.x, patch.y - object.y);
+  if (candidates[0] && distance(candidates[0]) >= 0.5) return candidates[0];
+  return candidates.sort((a, b) => distance(b) - distance(a))[0] ?? null;
+}

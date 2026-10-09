@@ -1,4 +1,4 @@
-import { boundedObjectGeometry } from "./conceptObjectTransform";
+import { boundedObjectGeometry, duplicateObjectGeometry } from "./conceptObjectTransform";
 import { openingCoordinates } from "./conceptOpeningCoordinates";
 import { flushSync } from "react-dom";
 import { conceptReferenceSize } from "./conceptReferenceImage";
@@ -2802,12 +2802,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
   const duplicateSelectedObject = () => {
     if (!selectedObject) return;
+    const geometry = duplicateObjectGeometry(selectedObject, lotWidth, lotDepth);
+    if (!geometry) return;
     const before = snapshotEditor();
     const copy: ConceptPlanObject = {
       ...selectedObject,
       id: `concept-object-${uid()}`,
-      x: Math.max(0, Math.min(lotWidth - selectedObject.width, selectedObject.x + 0.5)),
-      y: Math.max(0, Math.min(lotDepth - selectedObject.depth, selectedObject.y + 0.5)),
+      ...geometry,
       label: `${selectedObject.label} cópia`,
     };
     setObjects((prev) => [...(Array.isArray(prev) ? prev : []), copy]);
@@ -2828,11 +2829,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const before = snapshotEditor();
     const object = safeObjects.find((item) => item.id === objectId);
     if (!object) return;
+    const geometry = duplicateObjectGeometry(object, lotWidth, lotDepth);
+    if (!geometry) return;
     const copy: ConceptPlanObject = {
       ...object,
       id: `concept-object-${uid()}`,
-      x: Math.max(0, Math.min(lotWidth - object.width, object.x + 0.5)),
-      y: Math.max(0, Math.min(lotDepth - object.depth, object.y + 0.5)),
+      ...geometry,
       label: `${object.label} cópia`,
     };
     setObjects((prev) => [...(Array.isArray(prev) ? prev : []), copy]);

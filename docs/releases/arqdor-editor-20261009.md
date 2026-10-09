@@ -219,3 +219,10 @@ Validação: 109 testes em 22 arquivos passaram; transformação TSX da vista SV
 updateObjectById usa envelope rotacionado compartilhado nos caminhos de 2D/3D/painel que passam por esse handler. Coordenadas e ângulos preservados sem snap adicional; campos geométricos não finitos rejeitados. Alterações somente de material/produto preservam geometria sem recalcular posição/dimensões. Clamps dimensionais existentes mantidos; inserção, duplicação e outros setters diretos ainda não usam esse handler.
 
 Validação: 111 testes em 22 arquivos passaram; transformação TSX do planner passou. Integração visual, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Duplicação com limites rotacionados
+
+Duplicação pelo objeto selecionado e por ID compartilham o cálculo de posição considerando o envelope rotacionado. Mantém deslocamento usual de 50 cm por eixo quando possível; tenta diagonais alternativas quando a borda limita esse deslocamento. Preserva dimensões, ângulo e demais metadados. Não verifica colisões entre móveis e pode sobrepor quando não há espaço suficiente; aviso de objeto maior que terreno segue pendente.
+
+Validação: 113 testes em 22 arquivos passaram; transformação TSX do planner passou. Conferência integrada, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.

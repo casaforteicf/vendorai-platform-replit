@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boundedObjectGeometry, objectTransformPatch } from "./conceptObjectTransform";
+import { boundedObjectGeometry, duplicateObjectGeometry, objectTransformPatch } from "./conceptObjectTransform";
 describe("object transform commit", () => {
   it("snaps position and yaw", () => {
     expect(objectTransformPatch({ x: 0, z: 0 }, -Math.PI / 2, 1, 2, 10, 10)).toEqual({ x: 4.5, y: 4, rotation: 90 });
@@ -49,4 +49,12 @@ it("repositions a rotated rectangle away from the edge in the central model", ()
   const patch = boundedObjectGeometry({ x: 0, y: 0, width: 2, depth: 4, rotation: 45 }, 10, 10)!;
   expect(patch.x).toBeCloseTo(3 / Math.sqrt(2) - 1);
   expect(patch.y).toBeCloseTo(3 / Math.sqrt(2) - 2);
+});
+
+it("duplicates toward the opposite side at the lot corner", () => {
+  const object = { x: 9, y: 9, width: 1, depth: 1, rotation: 0 };
+  expect(duplicateObjectGeometry(object, 10, 10)).toEqual({ x: 8.5, y: 8.5, rotation: 0 });
+});
+it("preserves the normal duplicate offset and angle", () => {
+  expect(duplicateObjectGeometry({ x: 3, y: 3, width: 1, depth: 1, rotation: 13 }, 10, 10)).toEqual({ x: 3.5, y: 3.5, rotation: 13 });
 });
