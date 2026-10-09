@@ -85,3 +85,10 @@ Reutilizar o cadastro mestre existente e permitir casal (dois consumidores com q
 - `3e52b91`: o endpoint de vínculo por `personId` rejeita IDs que possuam referências em outros tenants, sem referência local, impedindo associação arbitrária entre tenants.
 - **Limitação remanescente:** cadastros globais ainda sem nenhum vínculo exigem um mecanismo de titularidade/autorização de criação para impedir associação por conhecimento de ID; este ajuste isolado não encerra toda a segurança multi-tenant.
 - Build na Contabo e homologação: não realizados. A conexão Vendi de homologação segue com troca de token recusada (401). Produção intocada.
+
+## Titularidade de pessoas sem vínculo prévio — 09/10/2026
+- `0ea4c52`: no endpoint `POST /crm/people`, novos cadastros recebem `metadata.createdTenantId`; no vínculo por `personId`, pessoas sem referência prévia só podem ser associadas pelo tenant que as criou, sem referências conflitantes de outro tenant.
+- `c62e0d1`: mesma origem de tenant registrada quando uma pessoa é criada diretamente dentro de um negócio.
+- Compatibilidade: pessoas legadas sem titularidade de origem ainda podem ser usadas através de vínculo local preexistente; quando não há nenhum vínculo, a associação direta por ID permanece bloqueada até autorização apropriada.
+- Atenção: isso é um controle de origem no modelo atual, não comprova consentimento do titular e não substitui futura política explícita de compartilhamento intertenant.
+- Estado: implementado sem validação. Gates tsc/esbuild e homologação na Contabo sem execução comprovada; acesso Vendi à homologação rejeitado por 401.
