@@ -33,6 +33,8 @@ class OrthogonalUnionTests(unittest.TestCase):
                          b[0]*c[1]-b[1]*c[0])
                 volume += sum(a[n]*cross[n] for n in range(3)) / 6
         self.assertAlmostEqual(volume, mesh["volumePreviewM3"], places=6)
+        self.assertAlmostEqual(mesh["signedVolumeM3"], mesh["volumePreviewM3"], places=6)
+        self.assertTrue(mesh["signedVolumeMatchesOccupancy"])
 
     def test_y_normals_point_outward(self):
         mesh = union_orthogonal_walls([wall((0, 0), (4, 0))])
@@ -109,6 +111,7 @@ class OrthogonalUnionTests(unittest.TestCase):
         result = union_orthogonal_walls([horizontal, vertical])
         # Each wall is 4 * .2 * 3; overlapping core is .2 * .2 * 3.
         self.assertAlmostEqual(result["volumePreviewM3"], 4.68, places=7)
+        self.assertTrue(result["signedVolumeMatchesOccupancy"])
         self.assertFalse(result["geometryApproved"])
 
     def test_openings_subtract_preview_volume(self):
