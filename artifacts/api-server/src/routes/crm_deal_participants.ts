@@ -508,6 +508,27 @@ router.post("/crm/deals/:dealId/couple", async (req, res) => {
         .where(and(eq(crmDealPeopleTable.tenantId, tenantId),
           eq(crmDealPeopleTable.dealId, req.params.dealId),
           sql`${crmDealPeopleTable.personId} <> ${people[0].personId}`));
+      if (parsed.data.contextualCompanyId) {
+        const [existingCompanyLink] = await tx.select({ metadata: crmDealCompaniesTable.metadata })
+          .from(crmDealCompaniesTable).where(and(
+            eq(crmDealCompaniesTable.tenantId, tenantId),
+            eq(crmDealCompaniesTable.dealId, req.params.dealId),
+            eq(crmDealCompaniesTable.companyId, parsed.data.contextualCompanyId),
+          )).limit(1);
+        const metadata = appendRelationshipEvent(
+          { ...(existingCompanyLink?.metadata ?? {}),
+            legacyRelationship: Boolean(existingCompanyLink) && !Array.isArray(existingCompanyLink.metadata?.relationshipHistory) },
+          existingCompanyLink ? (existingCompanyLink.metadata?.inactive === true ? "linked" : "updated") : "linked",
+          req.user?.id,
+        );
+        await tx.insert(crmDealCompaniesTable).values({
+          tenantId, dealId: req.params.dealId, companyId: parsed.data.contextualCompanyId,
+          role: "contratante", isPrimary: true, metadata, updatedAt: new Date(),
+        }).onConflictDoUpdate({
+          target: [crmDealCompaniesTable.dealId, crmDealCompaniesTable.companyId],
+          set: { role: "contratante", isPrimary: true, metadata, updatedAt: new Date() },
+        });
+      }
       return people;
     });
     return res.status(201).json({ items: result });
