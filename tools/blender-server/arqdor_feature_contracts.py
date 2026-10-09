@@ -850,3 +850,36 @@ def draft_parametric_floor_plan(walls):
     return {"walls": result, "coordinateSystem": "z_up_meters_unverified",
             "intersectionsResolved": False, "openingVoidsApplied": False,
             "geometryApproved": False, "requiresManualReview": True}
+
+
+def draft_parametric_wall_solids(walls):
+    """Create lightweight wall prisms and opening void *descriptors* from one 2D source.
+
+    Not a watertight mesh or a CSG operation. A future kernel must resolve
+    joins, boolean subtraction, topology and IFC classifications.
+    """
+    plan = draft_parametric_floor_plan(walls)
+    solids = []
+    for entry, shape in zip(walls, plan["walls"]):
+        source = entry["wall"]
+        z = float(source["start"][2])
+        height = float(shape["height"])
+        base = [[float(x), float(y), z] for x, y in shape["outline"]]
+        top = [[x, y, z + height] for x, y, _ in base]
+        voids = []
+        start, end = source["start"], source["end"]
+        dx, dy = end[0] - start[0], end[1] - start[1]
+        length = math.hypot(dx, dy)
+        for opening in entry.get("openings", []):
+            t0 = opening["offset"] / length
+            t1 = (opening["offset"] + opening["width"]) / length
+            voids.append({"kind": opening["kind"],
+                          "start": [round(start[0] + dx * t0, 6), round(start[1] + dy * t0, 6), z + opening["sill"]],
+                          "end": [round(start[0] + dx * t1, 6), round(start[1] + dy * t1, 6),
+                                  z + opening["sill"] + opening["height"]],
+                          "subtracted": False})
+        solids.append({"wallIndex": shape["wallIndex"], "base": base, "top": top,
+                       "openingVoidDescriptors": voids, "watertight": False})
+    return {"wallSolids": solids, "openingVoidsApplied": False,
+            "wallJoinsResolved": False, "geometryApproved": False,
+            "quantitiesEnabled": False, "requiresManualReview": True}
