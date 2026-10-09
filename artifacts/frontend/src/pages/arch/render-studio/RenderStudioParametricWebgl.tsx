@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { unionOrthogonalWalls } from "./arqdorOrthogonalUnion";
 
 export type ParametricWall = {
   id: string;
@@ -89,7 +90,21 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
       const sun = new THREE.DirectionalLight(0xffffff, 1.2);
       sun.position.set(8, -7, 16); scene.add(sun);
       const geometryObjects: any[] = [];
-      for (const wall of walls) {
+      const orthogonal = walls.every(w => Math.abs(w.start[0] - w.end[0]) < 1e-8 || Math.abs(w.start[1] - w.end[1]) < 1e-8);
+      if (orthogonal && walls.length) {
+        const union = unionOrthogonalWalls(walls);
+        const positions: number[] = [];
+        for (const face of union.faces) {
+          const [a, b, c, d] = face.map(index => union.vertices[index]);
+          positions.push(...a, ...b, ...c, ...a, ...c, ...d);
+        }
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        geometry.computeVertexNormals();
+        const material = new THREE.MeshStandardMaterial({ color: 0x94a3b8, side: THREE.DoubleSide, roughness: .8 });
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.name = "uniao-ortogonal"; scene.add(mesh); geometryObjects.push(mesh);
+      } else for (const wall of walls) {
         const geometry = buildWallGeometry(THREE, wall);
         const material = new THREE.MeshStandardMaterial({
           color: wall.id === active ? 0x6ee7b7 : 0x94a3b8,
@@ -124,6 +139,6 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
   return <div className="space-y-1">
     <div ref={holder} className="h-[320px] w-full overflow-hidden rounded bg-slate-50" aria-label="Malhas paramétricas WebGL em prévia" />
     {error ? <p role="alert" className="text-xs text-red-700">{error}</p> :
-      <p className="text-xs text-slate-600">WebGL: malhas individuais com vãos. Uniões entre paredes ainda não resolvidas.</p>}
+      <p className="text-xs text-slate-600">WebGL: paredes ortogonais combinadas em volume único; diagonais usam malhas individuais. Geometria ainda sujeita a revisão.</p>}
   </div>;
 }
