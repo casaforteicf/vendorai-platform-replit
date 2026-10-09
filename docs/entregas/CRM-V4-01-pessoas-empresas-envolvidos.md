@@ -98,3 +98,8 @@ Reutilizar o cadastro mestre existente e permitir casal (dois consumidores com q
 - `6790b28`: busca `GET /crm/people` deixa de incluir pessoa por vínculo de negócio inativo; demais caminhos de visibilidade permanecem sujeitos a revisão.
 - Pendente: revisão de permissões por usuário na associação de contatos corporativos e validação funcional de cadastros legados; segurança do fluxo global não pode ser considerada homologada.
 - Estado de entrega: **implementado, sem validação técnica**. Nenhum comando do build na Contabo executado nesta sessão; Vendi homologação 401 `upstream_token_rejected` na última tentativa; sem merge ou publicação.
+
+## Permissões de contatos corporativos — 09/10/2026
+- Commit `e1cb8ef`: reutilização de pessoa por contato corporativo passa a depender de empresa do tenant com lead acessível ao usuário, ou vínculo de empresa sem lead associado.
+- Revisão ainda necessária: permissões para empresa sem lead (política de acesso coletivo vs. restrito), compatibilidade de tipos da subconsulta Drizzle e testes de regressão de isolamento por usuário.
+- Estado: implementado sem validação; não há execução comprovada de TypeScript/esbuild nem homologação na Contabo; produção não modificada.
