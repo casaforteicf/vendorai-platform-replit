@@ -493,3 +493,11 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Commits:** `b4e8c58` núcleo geométrico, `fb9ff2f` testes.
 - **Limitação:** contagem de cascas é validação conservadora; volumes com cavidade fechada legítima podem necessitar regra separada para múltiplas superfícies. Não substitui verificação manifold por vértice, orientação global nem aprovação BIM.
 - **Testes e build:** ainda não executados; PR Draft; sem merge/deploy. Homologação Contabo permanece adiada; produção inalterada.
+
+
+## 3422-A — verificação de volume assinado da malha (09/10/2026)
+- **Implementação:** `arqdor_orthogonal_union.py` compara o volume assinado extraído da triangulação das faces ao volume geométrico calculado pela partição de células. A classificação `closed_by_edge_incidence_unreviewed` exige, além das verificações de arestas e conectividade, volume assinado positivo e concordante, dentro de tolerância explícita.
+- **Campos:** `signedVolumeM3` e `signedVolumeMatchesOccupancy`. Volume permanece um dado estritamente diagnóstico, sem aprovação de quantitativos.
+- **Regressões:** testes de parede isolada e encontro ortogonal em cruz ampliados para exigir concordância do volume assinado.
+- **Commits:** `f7954aa` (verificador) e `4cf77c9` (testes).
+- **Validação:** acesso GitHub via conector confirmado, mas não foi possível obter checkout na execução local devido ao bloqueio DNS. Testes Python e build TS **não executados**; sem alegação de homologação. PR #3422 Draft, Contabo adiada, sem merge/deploy e produção inalterada.
