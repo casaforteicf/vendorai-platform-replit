@@ -168,3 +168,31 @@ arqdorMepRouter.delete("/arch/projects/:projectId/mep/segments/:segmentId",async
     res.json({deleted:true,id:segmentId.data});
   }catch(err){next(err);}
 });
+
+
+/**
+ * Resolve the concept-to-workspace mapping without guessing that the two
+ * project IDs are equal. A missing binding is a blocked integration, not a
+ * reason to create a new independent model.
+ */
+arqdorMepRouter.get("/arch/concept-projects/:conceptId/mep-binding", async(req,res,next)=>{
+  try {
+    const tid=tenant(req,res);if(!tid)return;
+    const parsed=id.safeParse(req.params.conceptId);
+    if(!parsed.success){res.status(400).json({error:"Pré-projeto inválido"});return;}
+    const project=await pool.query(
+      "SELECT id FROM arch_concept_projects WHERE id=$1 AND tenant_id=$2 LIMIT 1",
+      [parsed.data,tid]);
+    if(!project.rowCount){res.status(404).json({error:"Pré-projeto não encontrado"});return;}
+    const result=await pool.query(
+      `SELECT b.workspace_project_id FROM arqdor_mep_project_bindings b
+       JOIN arqdor_workspace_projects w ON w.id=b.workspace_project_id AND w.tenant_id=b.tenant_id
+       WHERE b.concept_project_id=$1 AND b.tenant_id=$2 LIMIT 1`,
+      [parsed.data,tid]);
+    if(!result.rowCount){
+      res.status(409).json({code:"MEP_BINDING_REQUIRED",error:"O pré-projeto ainda não possui vínculo BIM validado. Instalações bloqueadas até a vinculação."});
+      return;
+    }
+    res.json({conceptProjectId:parsed.data,workspaceProjectId:result.rows[0].workspace_project_id});
+  } catch(err){next(err);}
+});
