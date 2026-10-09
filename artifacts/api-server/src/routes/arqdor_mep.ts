@@ -329,7 +329,9 @@ arqdorMepRouter.post("/arch/concept-projects/:conceptId/mep/host-reviews",async(
     await client.query(
      `INSERT INTO arqdor_mep_host_reviews
       (id,tenant_id,project_id,node_id,host_element_id,reason,concept_project_id,architecture_updated_at)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+      ON CONFLICT (tenant_id,project_id,node_id,host_element_id,reason,architecture_updated_at)
+      WHERE status='requires_review' DO NOTHING`,
      [crypto.randomUUID(),tid,record.workspace_project_id,item.nodeId,item.hostElementId,item.reason,concept.data,record.updated_at]);
    }
    await client.query("COMMIT");
