@@ -7,6 +7,7 @@ import { buildJarvisCapabilityContext, JARVIS_UNIVERSAL_PROFILE } from "../servi
 import { executeJarvisProvider } from "../services/jarvis-provider-registry.js";
 import { loadJarvisRequestContext } from "../services/jarvis-request-context.js";
 import { loadJarvisContinuityContext, saveJarvisContinuity } from "../services/jarvis-continuity-memory.js";
+import { resolveJarvisRoute } from "../services/jarvis-action-resolver.js";
 
 const router: IRouter = Router();
 
@@ -160,6 +161,7 @@ router.post("/support/chat", async (req, res, next) => {
   if (isJarvisSupportIncident(text)) return next();
 
   const startedAt = Date.now();
+  const resolution = resolveJarvisRoute(text);
 
   // Cumprimentos simples não precisam acionar provider, radar nem LLM. Isso evita
   // respostas artificiais e reduz drasticamente a latência percebida na abertura.
@@ -225,6 +227,14 @@ router.post("/support/chat", async (req, res, next) => {
     buildJarvisCapabilityContext(text),
     providerContext,
     attachmentContext(parsed.data.attachments),
+    `## Roteamento JARVIS`,
+    `- rota: ${resolution.route}`,
+    `- ação explícita: ${resolution.explicitAction ? "sim" : "não"}`,
+    `- aprovação necessária: ${resolution.requiresApproval ? "sim" : "não"}`,
+    `- motivo: ${resolution.reason}`,
+    resolution.requiresApproval
+      ? "Não execute uma ação sensível nesta camada sem a aprovação exigida; descreva a próxima ação e use o executor/fluxo de aprovação apropriado."
+      : "",
   ].filter(Boolean).join("\n");
 
   const systemPrompt = [
@@ -299,6 +309,8 @@ router.post("/support/chat", async (req, res, next) => {
     res.write(`data: ${JSON.stringify({
       done: true,
       jarvisMode: "presence",
+      route: resolution.route,
+      requiresApproval: resolution.requiresApproval,
       performance: { firstTokenMs, providerMs, totalMs },
     })}\n\n`);
     res.end();
