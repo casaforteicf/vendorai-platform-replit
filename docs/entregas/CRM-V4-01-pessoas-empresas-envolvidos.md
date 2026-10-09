@@ -136,3 +136,10 @@ Reutilizar o cadastro mestre existente e permitir casal (dois consumidores com q
 - `b033e67`: criação/edição e desvinculação de envolvidos utilizam bloqueio transacional comum por tenant e negócio, inclusive para vínculos empresariais.
 - **Validação:** revisão estática pontual no GitHub; build e testes de simultaneidade não executados. Homologação Contabo e publicação permanecem adiadas por decisão do usuário; produção não alterada.
 - **Próxima frente:** revisar o comportamento de exclusão do contato principal, reativação e interfaces que dependem dos eventos de vínculo.
+
+## Marco CRM V4-01 — Contato principal, desvinculação e reativação (09/10/2026)
+- `5ff964d`: a reativação de vínculo conserva `isPrimary=false` por padrão; o contato principal depende de marcação explícita, não de recuperação implícita de vínculo antigo.
+- `2252900`: a interface informa que é necessário selecionar novo contato principal quando o antigo é desvinculado.
+- `0969d5f`: limpeza de leitura desnecessária no backend.
+- **Evidência disponível:** commits registrados em branch/PR #3428. **Sem execução comprovada de TypeScript/esbuild ou testes concorrentes.** A homologação na Contabo permanece adiada por decisão do usuário, com bloqueio de autenticação Vendi anteriormente documentado. Produção não foi alterada.
+- **Próxima frente:** validações estáticas adicionais e regressões da integração de pessoas e empresas; regras de múltiplos consumidores principais e contato principal devem permanecer distintas.
