@@ -66,3 +66,10 @@ Reutilizar o cadastro mestre existente e permitir casal (dois consumidores com q
 - Tentativa read-only de inspeção da homologação resultou em `VENDI_HOMOLOG_AUTH_EXCHANGE_FAILED:401:upstream_token_rejected`; `runId=4fb493af-a000-451f-aaf9-c9505d8544e3`.
 - **Evidência insuficiente para validar:** sem execução de `tsc`, `build.mjs` ou teste funcional no commit atual. Estado permanece `implementado sem validação`.
 - **Próxima ação:** restabelecer troca de token da conexão Vendi de homologação através do fluxo operacional próprio; em seguida validar na Contabo com logs e hash do candidato sem impactar produção. Trabalho de infraestrutura/autenticação cabe ao agente responsável.
+
+## Revisão de integridade — 09/10/2026
+- Commit `cef2c0f`: repetir uma desvinculação já inativa passa a retornar 204 sem adicionar eventos duplicados.
+- Commit `6af2392`: respostas de conflito de deduplicação não expõem IDs de pessoas do cadastro mestre global.
+- Revisões de código registradas no PR #3428, ainda **sem execução de build/tsc e sem homologação**.
+- Autenticação da homologação via Vendi continua bloqueada por `VENDI_HOMOLOG_AUTH_EXCHANGE_FAILED:401:upstream_token_rejected`, runId `4fb493af-a000-451f-aaf9-c9505d8544e3`. Não confundir esse impedimento de acesso com falha do GitHub Actions.
+- Segurança ainda a avaliar: reaproveitamento de registros globais no endpoint `POST /crm/people` exige análise completa de visibilidade por tenant antes da homologação.
