@@ -11,7 +11,7 @@ from mathutils import Vector
 from pathlib import Path
 
 import bpy
-from arqdor_feature_contracts import validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, draft_opening_schedule
+from arqdor_feature_contracts import validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, draft_opening_schedule, evaluate_wall_mesh_topology
 
 
 def convert(src: Path, dst: Path, sha256: str):
@@ -57,8 +57,26 @@ def convert(src: Path, dst: Path, sha256: str):
         local_bounds = [max(point[axis] for point in world_corners)
                         - min(point[axis] for point in world_corners)
                         for axis in range(3)]
+        topology = {}
+        if suggest_architectural_classification(obj.name)["suggestedClass"] == "wall":
+            # Blender edge.is_manifold is only a topology diagnostic, not an
+            # aperture detector. Closed walls may still contain actual voids.
+            # MeshEdge does not consistently expose is_boundary across Blender
+            # versions; bmesh provides stable edge topology on a copied mesh.
+            import bmesh
+            bm = bmesh.new()
+            try:
+                bm.from_mesh(obj.data)
+                boundary = sum(1 for edge in bm.edges if edge.is_boundary)
+                nonmanifold = sum(1 for edge in bm.edges if not edge.is_manifold and not edge.is_boundary)
+                topology = evaluate_wall_mesh_topology(
+                    len(obj.data.vertices), len(obj.data.edges),
+                    len(obj.data.polygons), boundary, nonmanifold)
+            finally:
+                bm.free()
         classification_hints.append({
             "name": obj.name,
+            "topologyReview": topology or None,
             "boundsDimensions": local_bounds,
             "bounds": {"min": [min(p[a] for p in world_corners) for a in range(3)],
                        "max": [max(p[a] for p in world_corners) for a in range(3)]},
