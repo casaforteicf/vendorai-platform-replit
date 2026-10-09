@@ -538,13 +538,15 @@ router.post("/crm/deals/:dealId/companies", async (req, res) => {
     )).limit(1);
     if (!tenantCompany) return res.status(422).json({ error: "Empresa não está vinculada a este tenant." });
 
-    const [previousCompanyLink] = await db.select({ metadata: crmDealCompaniesTable.metadata })
+    const link = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${tenantId}), hashtext(${req.params.dealId + ":" + parsed.data.companyId}))`);
+    const [previousCompanyLink] = await tx.select({ metadata: crmDealCompaniesTable.metadata })
       .from(crmDealCompaniesTable).where(and(eq(crmDealCompaniesTable.tenantId, tenantId),
         eq(crmDealCompaniesTable.dealId, req.params.dealId),
         eq(crmDealCompaniesTable.companyId, parsed.data.companyId))).limit(1);
     const companyMetadata = appendRelationshipEvent({ ...(previousCompanyLink?.metadata ?? {}), legacyRelationship: Boolean(previousCompanyLink) && !Array.isArray(previousCompanyLink?.metadata?.relationshipHistory) },
       previousCompanyLink ? (previousCompanyLink.metadata?.inactive === true ? "linked" : "updated") : "linked", req.user?.id);
-    const [link] = await db.insert(crmDealCompaniesTable).values({
+    const [link] = await tx.insert(crmDealCompaniesTable).values({
       tenantId,
       dealId: req.params.dealId,
       companyId: parsed.data.companyId,
@@ -557,6 +559,8 @@ router.post("/crm/deals/:dealId/companies", async (req, res) => {
       target: [crmDealCompaniesTable.dealId, crmDealCompaniesTable.companyId],
       set: { role: parsed.data.role, isPrimary: parsed.data.isPrimary, notes: parsed.data.notes ?? null, metadata: companyMetadata, updatedAt: new Date() },
     }).returning();
+      return link;
+    });
     return res.status(201).json(link);
   } catch (error: any) {
     return res.status(error.status ?? 500).json({ error: error.message });
