@@ -381,10 +381,9 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
         .where(and(eq(crmTenantCompanyContactsTable.tenantId, tenantId),
           eq(crmTenantCompaniesTable.tenantId, tenantId),
           eq(crmTenantCompanyContactsTable.personId, personId),
-          or(isNull(crmTenantCompaniesTable.leadId),
-            inArray(crmTenantCompaniesTable.leadId,
-              db.select({ id: leadsTable.id }).from(leadsTable)
-                .where(and(eq(leadsTable.tenantId, tenantId), ...buildUserFunctionFilter(req, leadsTable))))),
+          inArray(crmTenantCompaniesTable.leadId,
+            db.select({ id: leadsTable.id }).from(leadsTable)
+              .where(and(eq(leadsTable.tenantId, tenantId), ...buildUserFunctionFilter(req, leadsTable)))),
         )).limit(1);
       if (!localDeal && !localContact) {
         const [foreignDeal] = await db.select({ id: crmDealPeopleTable.id })
