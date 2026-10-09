@@ -193,6 +193,14 @@ export class ModelFileStore {
 
   async saveParametricDraft(tenantId: string, projectId: string, modelId: string,
     userId: string, input: unknown) {
+    const lockDirectory = path.join(await this.directory(tenantId, projectId, modelId), "parametric-write.lock");
+    try {
+      await mkdir(lockDirectory);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new Error("Conflito de versão do modelo: gravação em andamento");
+      throw error;
+    }
+    try {
     const current = await this.parametricDrafts(tenantId, projectId, modelId);
     const record = await this.get(tenantId, projectId, modelId);
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Projeto paramétrico inválido");
@@ -232,6 +240,7 @@ export class ModelFileStore {
       await rename(draftPath, path.join(directory, "parametric-draft.json"));
     } finally { await rm(draftPath, { force: true }); }
     return next;
+    } finally { await rm(lockDirectory, { recursive: true, force: true }); }
   }
 
   async list(tenantId: string, projectId: string): Promise<ModelRecord[]> {
