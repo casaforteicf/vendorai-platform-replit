@@ -1,3 +1,4 @@
+import { splitWallVoids } from "./conceptWallVoids";
 import { buildFacadeMeshBoxes } from "./conceptFacadeMeshes";
 import { getFacadeMaterial, type FacadeDesignState } from "./conceptFacadeDesign";
 import { buildRoofPlan } from "./conceptRoofPlan";
@@ -1108,7 +1109,7 @@ export default function ConceptWebGLScene({
         .filter((edge) => edge.count === 1)
         .filter((edge) => {
           const covered = existing.some((wall) => {
-            const tolerance = Math.max(0.12, Number(wall.thickness ?? 0.14) * 1.6);
+            const tolerance = Math.max(0.12, Number(wall.thickness ?? 0.15) * 1.6);
             return pointToSegmentDistance(edge.x1, edge.y1, wall.x1, wall.y1, wall.x2, wall.y2) <= tolerance
               && pointToSegmentDistance(edge.x2, edge.y2, wall.x1, wall.y1, wall.x2, wall.y2) <= tolerance;
           });
@@ -1261,132 +1262,23 @@ export default function ConceptWebGLScene({
       materialId?: string,
       custom = false,
     ) => {
-      const dx = wall.x2 - wall.x1;
-      const dy = wall.y2 - wall.y1;
-      const length = Math.max(0.05, Math.hypot(dx, dy));
-      const thickness = Math.max(0.08, wall.thickness ?? 0.14);
       const baseY = floor * 2.96 + 0.16;
-      const horizontal = Math.abs(dy) < 0.03;
-      const vertical = Math.abs(dx) < 0.03;
+      const thickness = Math.max(0.08, wall.thickness ?? 0.15);
       const color = !materialId && wall.exterior && facadeDesign
         ? Number.parseInt(getFacadeMaterial(facadeDesign.surfaceMaterials.main).baseColor.slice(1), 16)
         : materialColor(materialId ?? "pintura-branca");
-
-      const addPiece = (
-        alongStart: number,
-        alongEnd: number,
-        yStart: number,
-        yEnd: number,
-      ) => {
-        const pieceLength = alongEnd - alongStart;
-        const pieceHeight = yEnd - yStart;
-        if (pieceLength < 0.035 || pieceHeight < 0.035) return;
-
-        let mesh: any;
-        if (horizontal) {
-          const y = (wall.y1 + wall.y2) / 2;
-          mesh = makeBox(
-            parent,
-            pieceLength,
-            pieceHeight,
-            thickness,
-            alongStart + pieceLength / 2 - lotWidth / 2,
-            baseY + yStart + pieceHeight / 2,
-            y - lotDepth / 2,
-            color,
-            { transparent: interiorMode, opacity: interiorMode ? 0.58 : 1, materialId, repeatScale: 1 },
-          );
-        } else if (vertical) {
-          const x = (wall.x1 + wall.x2) / 2;
-          mesh = makeBox(
-            parent,
-            thickness,
-            pieceHeight,
-            pieceLength,
-            x - lotWidth / 2,
-            baseY + yStart + pieceHeight / 2,
-            alongStart + pieceLength / 2 - lotDepth / 2,
-            color,
-            { transparent: interiorMode, opacity: interiorMode ? 0.58 : 1, materialId, repeatScale: 1 },
-          );
-        } else {
-          return;
-        }
-
-        mesh.userData.wallId = wall.id;
-        mesh.userData.customWall = custom;
-        runtime.pickables.push(mesh);
-      };
-
-      if (!horizontal && !vertical) {
-        const mesh = makeBox(
-          parent,
-          length,
-          2.8,
-          thickness,
-          (wall.x1 + wall.x2) / 2 - lotWidth / 2,
-          baseY + 1.4,
-          (wall.y1 + wall.y2) / 2 - lotDepth / 2,
-          color,
-          { transparent: interiorMode, opacity: interiorMode ? 0.58 : 1, materialId, repeatScale: 1 },
-        );
+      for (const piece of splitWallVoids(wall, openingsForFloor ?? [], 2.8)) {
+        const dx = piece.wall.x2 - piece.wall.x1, dy = piece.wall.y2 - piece.wall.y1;
+        const mesh = makeBox(parent, Math.hypot(dx, dy), piece.zMax - piece.zMin, thickness,
+          (piece.wall.x1 + piece.wall.x2) / 2 - lotWidth / 2,
+          baseY + (piece.zMin + piece.zMax) / 2,
+          (piece.wall.y1 + piece.wall.y2) / 2 - lotDepth / 2, color,
+          { transparent: interiorMode, opacity: interiorMode ? 0.58 : 1, materialId, repeatScale: 1 });
         mesh.rotation.y = -Math.atan2(dy, dx);
         mesh.userData.wallId = wall.id;
         mesh.userData.customWall = custom;
         runtime.pickables.push(mesh);
-        return mesh;
       }
-
-      const wallStart = horizontal ? Math.min(wall.x1, wall.x2) : Math.min(wall.y1, wall.y2);
-      const wallEnd = horizontal ? Math.max(wall.x1, wall.x2) : Math.max(wall.y1, wall.y2);
-      const wallCoord = horizontal ? wall.y1 : wall.x1;
-
-      const openingsOnWall = (openingsForFloor ?? [])
-        .filter((opening) => {
-          if (horizontal && opening.orientation !== "horizontal") return false;
-          if (vertical && opening.orientation !== "vertical") return false;
-          const coord = horizontal ? opening.y : opening.x;
-          const along = horizontal ? opening.x : opening.y;
-          return Math.abs(coord - wallCoord) <= Math.max(0.18, thickness * 1.5)
-            && along >= wallStart - 0.1
-            && along <= wallEnd + 0.1;
-        })
-        .map((opening) => {
-          const width = Math.max(0.05, opening.width ?? (opening.type === "door" ? 0.9 : 1.2));
-          const center = horizontal ? opening.x : opening.y;
-          return {
-            opening,
-            start: Math.max(wallStart, center - width / 2),
-            end: Math.min(wallEnd, center + width / 2),
-          };
-        })
-        .filter((item) => item.end - item.start > 0.05)
-        .sort((a, b) => a.start - b.start);
-
-      if (!openingsOnWall.length) {
-        addPiece(wallStart, wallEnd, 0, 2.8);
-        return;
-      }
-
-      let cursor = wallStart;
-      for (const item of openingsOnWall) {
-        if (item.start > cursor + 0.03) addPiece(cursor, item.start, 0, 2.8);
-
-        const openingHeight = Math.max(
-          0.05,
-          Math.min(2.8, item.opening.height ?? (item.opening.type === "door" ? 2.1 : 1.2)),
-        );
-        const sill = item.opening.type === "door"
-          ? 0
-          : Math.max(0, Math.min(2.8, item.opening.sillHeight ?? 0.9));
-        const top = Math.min(2.8, sill + openingHeight);
-
-        if (sill > 0.03) addPiece(item.start, item.end, 0, sill);
-        if (top < 2.77) addPiece(item.start, item.end, top, 2.8);
-
-        cursor = Math.max(cursor, item.end);
-      }
-      if (cursor < wallEnd - 0.03) addPiece(cursor, wallEnd, 0, 2.8);
     };
 
     const activeLevel = levels.find((level) => level.floor === activeFloor);
@@ -1401,7 +1293,7 @@ export default function ConceptWebGLScene({
       const ux = dx / length;
       const uy = dy / length;
       const doorGaps = (activeLevel?.openings ?? [])
-        .filter((opening: any) => opening.type === "door")
+        .filter((opening: any) => opening.type === "door" && (!opening.roomId?.startsWith("custom-wall:") || opening.roomId === `custom-wall:${wall.id}`))
         .map((opening: any) => {
           const relX = opening.x - wall.x1;
           const relY = opening.y - wall.y1;
@@ -1412,7 +1304,7 @@ export default function ConceptWebGLScene({
           const width = Math.max(0.7, opening.width ?? 0.9);
           return { center, halfWidth: width / 2, distance };
         })
-        .filter((gap: any) => gap.distance <= Math.max(0.22, (wall.thickness ?? 0.14) * 1.75)
+        .filter((gap: any) => gap.distance <= Math.max(0.22, (wall.thickness ?? 0.15) * 1.75)
           && gap.center >= -0.1
           && gap.center <= length + 0.1)
         .map(({ center, halfWidth }: any) => ({ center, halfWidth }));
@@ -1421,7 +1313,7 @@ export default function ConceptWebGLScene({
         y1: wall.y1,
         x2: wall.x2,
         y2: wall.y2,
-        thickness: Math.max(0.08, wall.thickness ?? 0.14),
+        thickness: Math.max(0.08, wall.thickness ?? 0.15),
         doorGaps,
       };
     });
@@ -1508,6 +1400,12 @@ export default function ConceptWebGLScene({
       }
 
       for (const opening of level.openings ?? []) {
+        const linkedWall = opening.roomId?.startsWith("custom-wall:")
+          ? (level.customWalls ?? []).find(wall => opening.roomId === `custom-wall:${wall.id}`) : undefined;
+        const openingRoot = new THREE.Group();
+        openingRoot.position.set(opening.x - lotWidth / 2, 0, opening.y - lotDepth / 2);
+        if (linkedWall) openingRoot.rotation.y = -(Math.atan2(linkedWall.y2 - linkedWall.y1, linkedWall.x2 - linkedWall.x1) - (opening.orientation === "vertical" ? Math.PI / 2 : 0));
+        modelRoot.add(openingRoot);
         const width = Math.max(0.05, opening.width ?? (opening.type === "door" ? 0.9 : 1.2));
         const height = Math.max(0.05, opening.height ?? (opening.type === "door" ? 2.1 : 1.2));
         const sill = opening.type === "door" ? 0 : Math.max(0, opening.sillHeight ?? 0.9);
@@ -1516,13 +1414,13 @@ export default function ConceptWebGLScene({
         const frameThickness = 0.055;
         const panelDepth = 0.035;
         const panel = makeBox(
-          modelRoot,
+          openingRoot,
           opening.orientation === "horizontal" ? Math.max(0.1, width - frameThickness * 2) : panelDepth,
           Math.max(0.1, height - frameThickness * 2),
           opening.orientation === "vertical" ? Math.max(0.1, width - frameThickness * 2) : panelDepth,
-          opening.x - lotWidth / 2,
+          0,
           floorBase + 0.16 + sill + height / 2,
-          opening.y - lotDepth / 2,
+          0,
           glass
             ? (lightingMode === "night" ? 0xffd77a : 0x8ecae6)
             : 0x9a6b45,
@@ -1532,7 +1430,7 @@ export default function ConceptWebGLScene({
         runtime.pickables.push(panel);
 
         const addFrame = (w: number, h: number, d: number, x: number, y: number, z: number) => {
-          const frame = makeBox(modelRoot, w, h, d, x, y, z, frameColor);
+          const frame = makeBox(openingRoot, w, h, d, x - (opening.x - lotWidth / 2), y, z - (opening.y - lotDepth / 2), frameColor);
           frame.userData.openingId = opening.id;
           runtime.pickables.push(frame);
         };
@@ -2328,3 +2226,4 @@ export default function ConceptWebGLScene({
     </div>
   );
 }
+

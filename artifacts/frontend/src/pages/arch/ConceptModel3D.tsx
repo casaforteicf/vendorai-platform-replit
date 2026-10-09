@@ -1,3 +1,4 @@
+import { splitWallVoids, alignOpeningSegment, alignOpeningPoint } from "./conceptWallVoids";
 import type { SiteFrontSide } from "./conceptSitePlacement";
 import { buildFacadeMeshBoxes, facadeBoxFaces } from "./conceptFacadeMeshes";
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
@@ -406,82 +407,6 @@ function wallPolygon(
   };
 }
 
-function splitWallForOpenings(
-  wall: { id: string; x1: number; y1: number; x2: number; y2: number; thickness?: number; exterior?: boolean },
-  openings: OpeningMarker[],
-) {
-  const vertical = Math.abs(wall.x1 - wall.x2) < 0.01;
-  const wallStart = vertical ? Math.min(wall.y1, wall.y2) : Math.min(wall.x1, wall.x2);
-  const wallEnd = vertical ? Math.max(wall.y1, wall.y2) : Math.max(wall.x1, wall.x2);
-  const wallCoord = vertical ? wall.x1 : wall.y1;
-
-  const matches = openings
-    .filter((opening) => {
-      if (vertical && opening.orientation !== "vertical") return false;
-      if (!vertical && opening.orientation !== "horizontal") return false;
-      const coord = vertical ? opening.x : opening.y;
-      const along = vertical ? opening.y : opening.x;
-      return Math.abs(coord - wallCoord) <= 0.08 && along >= wallStart - 0.05 && along <= wallEnd + 0.05;
-    })
-    .map((opening) => {
-      const along = vertical ? opening.y : opening.x;
-      const width = Math.max(0.05, opening.width ?? (opening.type === "door" ? 0.9 : 1.2));
-      return {
-        ...opening,
-        start: Math.max(wallStart, along - width / 2),
-        end: Math.min(wallEnd, along + width / 2),
-      };
-    })
-    .sort((a, b) => a.start - b.start);
-
-  if (!matches.length) {
-    return [{ wall, zMin: 0, zMax: WALL_HEIGHT, kind: "solid" as const }];
-  }
-
-  const pieces: Array<{
-    wall: typeof wall;
-    zMin: number;
-    zMax: number;
-    kind: "solid" | "lintel" | "sill";
-  }> = [];
-  let cursor = wallStart;
-
-  const makeSegment = (start: number, end: number) => {
-    if (end - start < 0.04) return null;
-    return vertical
-      ? { ...wall, y1: start, y2: end }
-      : { ...wall, x1: start, x2: end };
-  };
-
-  for (const opening of matches) {
-    const before = makeSegment(cursor, opening.start);
-    if (before) pieces.push({ wall: before, zMin: 0, zMax: WALL_HEIGHT, kind: "solid" });
-
-    const openingSegment = makeSegment(opening.start, opening.end);
-    if (openingSegment) {
-      const openingHeight = Math.max(
-        0.05,
-        Math.min(WALL_HEIGHT, opening.height ?? (opening.type === "door" ? 2.1 : 1.2)),
-      );
-      const sillHeight = opening.type === "door"
-        ? 0
-        : Math.max(0, Math.min(WALL_HEIGHT, opening.sillHeight ?? 0.9));
-      const headHeight = Math.min(WALL_HEIGHT, sillHeight + openingHeight);
-
-      if (sillHeight > 0.04) {
-        pieces.push({ wall: openingSegment, zMin: 0, zMax: sillHeight, kind: "sill" });
-      }
-      if (headHeight < WALL_HEIGHT - 0.04) {
-        pieces.push({ wall: openingSegment, zMin: headHeight, zMax: WALL_HEIGHT, kind: "lintel" });
-      }
-    }
-    cursor = Math.max(cursor, opening.end);
-  }
-
-  const after = makeSegment(cursor, wallEnd);
-  if (after) pieces.push({ wall: after, zMin: 0, zMax: WALL_HEIGHT, kind: "solid" });
-  return pieces;
-}
 
 const WALL_3D_MATERIALS: Record<string, { front: string; side: string; top: string }> = {
   "pintura-branca": { front: "#f8fafc", side: "#e2e8f0", top: "#ffffff" },
@@ -1986,7 +1911,7 @@ export default function ConceptModel3D({
 
               <g filter="url(#concept3d-shadow)">
                 {allWalls.flatMap((wall) =>
-                  splitWallForOpenings(wall, level.openings).map((piece, index) => {
+                  splitWallVoids(wall, level.openings, WALL_HEIGHT).map((piece, index) => {
                     const shape = wallPolygon(
                       piece.wall,
                       rotation, projectionWidth, projectionDepth, zoom,
@@ -2035,12 +1960,13 @@ export default function ConceptModel3D({
               </g>
 
               {level.openings.map((opening) => {
+                const linkedWall = opening.roomId?.startsWith("custom-wall:") ? level.customWalls.find(wall => opening.roomId === `custom-wall:${wall.id}`) : undefined;
                 const width = Math.max(0.05, opening.width ?? (opening.type === "door" ? 0.9 : 1.2));
                 const height = Math.max(0.05, Math.min(WALL_HEIGHT, opening.height ?? (opening.type === "door" ? 2.1 : 1.2)));
                 const sill = opening.type === "door"
                   ? 0
                   : Math.max(0, Math.min(WALL_HEIGHT, opening.sillHeight ?? 0.9));
-                const segment = opening.orientation === "vertical"
+                const rawSegment = opening.orientation === "vertical"
                   ? {
                       x1: opening.x,
                       y1: opening.y - width / 2,
@@ -2055,6 +1981,7 @@ export default function ConceptModel3D({
                       y2: opening.y,
                       thickness: 0.035,
                     };
+                const segment = alignOpeningSegment(rawSegment, opening, linkedWall);
                 const shape = wallPolygon(
                   segment,
                   rotation,
@@ -2123,7 +2050,7 @@ export default function ConceptModel3D({
                       <>
                         {frameSegments.map((frame, frameIndex) => {
                           const frameShape = wallPolygon(
-                            frame,
+                            alignOpeningSegment(frame, opening, linkedWall),
                             rotation,
                             projectionWidth,
                             projectionDepth,
@@ -2159,7 +2086,7 @@ export default function ConceptModel3D({
                         })}
                         {mullionSegment && (() => {
                           const mullionShape = wallPolygon(
-                            mullionSegment,
+                            alignOpeningSegment(mullionSegment, opening, linkedWall),
                             rotation,
                             projectionWidth,
                             projectionDepth,
@@ -2180,8 +2107,7 @@ export default function ConceptModel3D({
                     {isDoor && (() => {
                       const handlePoint = project(
                         {
-                          x: opening.orientation === "vertical" ? opening.x + 0.02 : opening.x + width * 0.28,
-                          y: opening.orientation === "vertical" ? opening.y + width * 0.28 : opening.y + 0.02,
+                          ...alignOpeningPoint({ x: opening.orientation === "vertical" ? opening.x + 0.02 : opening.x + width * 0.28, y: opening.orientation === "vertical" ? opening.y + width * 0.28 : opening.y + 0.02 }, opening, linkedWall),
                           z: levelBase + 1.0,
                         },
                         rotation,
@@ -2510,4 +2436,5 @@ export default function ConceptModel3D({
     </div>
   );
 }
+
 

@@ -103,3 +103,10 @@ Arquivos: ConceptPlanner.tsx, conceptWallOperations.ts e conceptWallSplit.test.t
 Removido clamp visual de offset entre 8% e 92% dos marcadores personalizados da planta e dos níveis do modelo 3D. Ambas derivações usam openingCoordinates com posição exata desde o extremo inicial, inclusive paredes no sentido inverso. Dados de lado de abertura, folhas, perfil, vidro, fabricante e vínculo de produto propagados ao nível 3D. Isso corrige coordenadas e propagação; não conclui recortes/malhas diagonais ou suporte completo a aberturas empilhadas no 3D.
 
 Arquivos: ConceptPlanner.tsx, conceptOpeningCoordinates.ts e conceptOpeningCoordinates.test.ts. Validação consolidada: 62 testes passaram em 15 arquivos; sintaxe de Planner verificada isoladamente. Build completo e inspeção integrada pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento; homologação Contabo e publicação adiadas.
+
+
+## Recorte comum de vãos no 3D — diagonais e aberturas empilhadas
+
+ConceptModel3D (SVG) e ConceptWebGLScene (WebGL) usam splitWallVoids, com coordenada ao longo do eixo da parede e subtração de intervalos verticais. Implementado recorte em paredes diagonais/invertidas, aberturas empilhadas e união de aberturas sobrepostas sem duplicação dos sólidos. WebGL materializa trechos com caixas fechadas rotacionadas; SVG usa a projeção existente dos trechos. Esquadrias, caixilhos e montantes seguem direção da parede personalizada vinculada. Vínculo custom-wall impede abertura de parede vizinha e passagem de caminhada indevida. Fallback de espessura WebGL alinhado a 15 cm.
+
+Arquivos: ConceptModel3D.tsx, ConceptWebGLScene.tsx, conceptWallVoids.ts e conceptWallVoids.test.ts. 68 testes passaram em 16 arquivos; sintaxe das duas cenas verificada com esbuild; helper tipado isoladamente com tsc. Não realizada inspeção WebGL real ou build completo. Não resolve união booleana entre paredes nem malha única contínua BIM. Lote ARQ-EDITOR-20261009, versão em desenvolvimento; homologação Contabo e publicação adiadas.
