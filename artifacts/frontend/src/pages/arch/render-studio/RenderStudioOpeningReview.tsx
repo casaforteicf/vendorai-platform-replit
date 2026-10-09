@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { renderAuthHeader } from "./renderStudioApi";
 
 type OpeningRow = {
   opening?: string;
@@ -12,30 +13,29 @@ type OpeningRow = {
 };
 type Report = {
   sourceSha256?: string;
+  modelSha256?: string;
   openingScheduleDraft?: OpeningRow[];
 };
 
 type ReviewItem = OpeningRow & { reasons: string[]; key: string };
 
-export default function RenderStudioOpeningReview({ sourceSha256 }: { sourceSha256: string }) {
+export default function RenderStudioOpeningReview({ sourceSha256, url, modelId }: { sourceSha256: string; url: string; modelId: string }) {
   const [rows, setRows] = useState<ReviewItem[]>([]);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [onlyConflicts, setOnlyConflicts] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [noReport, setNoReport] = useState(false);
   const filtered = useMemo(() => rows.filter(row =>
     (!onlyConflicts || row.reasons.length > 0) &&
     (!search || [row.opening, row.objectId, row.sourceObjectKey].some(
       value => String(value ?? "").toLocaleLowerCase("pt-BR").includes(search.toLocaleLowerCase("pt-BR"))))),
     [rows, search, onlyConflicts]);
 
-  async function readReport(file: File) {
-    setError(""); setLoaded(false); setRows([]);
-    try {
-      if (file.size > 2 * 1024 * 1024) throw new Error("Relatório excede 2 MB.");
-      const data: Report = JSON.parse(await file.text());
-      const digest = sourceSha256.toLowerCase();
-      if (!/^[a-f0-9]{64}$/.test(digest) || data.sourceSha256?.toLowerCase() !== digest) {
+  function applyReport(data: Report) {
+      const digest = data.sourceSha256?.toLowerCase() ?? "";
+      if (!/^[a-f0-9]{64}$/.test(digest) || data.modelSha256?.toLowerCase() !== sourceSha256.toLowerCase()) {
         throw new Error("O SHA-256 deste relatório não corresponde ao modelo selecionado.");
       }
       if (!Array.isArray(data.openingScheduleDraft) || data.openingScheduleDraft.length > 2000)
@@ -56,20 +56,30 @@ export default function RenderStudioOpeningReview({ sourceSha256 }: { sourceSha2
         return { ...row, key: `${identity}:${index}`, reasons };
       });
       setRows(next); setLoaded(true);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível abrir o relatório.");
-    }
   }
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true); setLoaded(false); setRows([]); setError(""); setNoReport(false);
+    fetch(`${url}/${encodeURIComponent(modelId)}/conversion-report`, {
+      headers: renderAuthHeader(), signal: controller.signal,
+    }).then(async response => {
+      if (response.status === 404) { setNoReport(true); return; }
+      if (!response.ok) throw new Error(`Falha ao consultar relatório (${response.status}).`);
+      applyReport(await response.json() as Report);
+    }).catch(cause => {
+      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Falha de leitura.");
+    }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [url, modelId, sourceSha256]);
 
   return <section className="rounded-lg border p-4 space-y-3" aria-label="Revisão preliminar de esquadrias">
     <div>
       <h3 className="font-semibold">4. Conferir portas e janelas</h3>
-      <p className="text-sm text-slate-600">Abra o JSON do relatório OBJ/FBX referente a este arquivo. A conferência é local e somente leitura; nenhuma decisão é salva.</p>
+      <p className="text-sm text-slate-600">A conferência consulta o relatório privado vinculado ao modelo convertido. É somente leitura; nenhuma decisão é salva.</p>
     </div>
-    <label className="block text-sm font-medium">Relatório de conversão (JSON)
-      <input type="file" accept=".json,application/json" className="mt-1 block w-full text-sm"
-        onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void readReport(file); }} />
-    </label>
+    {loading && <p role="status" className="text-sm">Consultando relatório da versão selecionada…</p>}
+    {noReport && <p className="text-sm text-slate-600">Sem relatório de conversão associado a este GLB.</p>}
     {error && <p role="alert" className="rounded bg-red-50 p-2 text-sm text-red-800">{error}</p>}
     {loaded && <>
       <p role="status" className="text-sm">{rows.length} candidatos · {rows.filter(item => item.reasons.length > 0).length} com pendências</p>
