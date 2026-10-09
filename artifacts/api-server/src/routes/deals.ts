@@ -364,6 +364,26 @@ router.post("/deals", async (req, res) => {
     });
     return;
   }
+  // Verificação no servidor: o importId aprovado deve pertencer ao mesmo tenant
+  // e corresponder exatamente ao arquivo enviado ao criar o negócio.
+  const rawImportId = (req.body as Record<string, unknown>).budgetImportId;
+  if (rawImportId !== undefined) {
+    if (typeof rawImportId !== "string" || !/^[0-9a-f-]{36}$/i.test(rawImportId)) {
+      res.status(422).json({ error: "Identificador de importação inválido." });
+      return;
+    }
+    const approved = await db.execute(sql`
+      SELECT id FROM public.budget_imports
+      WHERE id = ${rawImportId} AND tenant_id = ${parsed.data.tenantId}
+        AND review_status = 'approved'
+        AND file_url IS NOT DISTINCT FROM ${parsed.data.quoteFileUrl ?? null}
+      LIMIT 1
+    `);
+    if (!approved.rows.length) {
+      res.status(409).json({ error: "O orçamento anexado não corresponde a uma importação aprovada neste tenant." });
+      return;
+    }
+  }
   const assignedTo = parsed.data.assignedTo ?? (
     req.user?.platformRole !== "super_admin" && req.user?.sub ? req.user.sub : null
   );
