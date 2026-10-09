@@ -255,3 +255,12 @@ Validação: 122 testes em 23 arquivos passaram; tipagem isolada do helper e tra
 - Contato de bordas permitido; tapetes, luminárias, TV, plantas e pontos de instalações mantêm sobreposição decorativa.
 - Erro identifica os móveis envolvidos e preserva a opção para revisão. A validação usa a projeção retangular, não a malha 3D dos objetos.
 - Verificação: 127 testes passaram em 24 arquivos (118 geométricos/unitários e 9 de interface); tipagem do helper e transformação sintática do editor passaram. Validação visual integrada e homologação/publicação na Contabo permanecem pendentes.
+
+
+### Geração de mobiliário com circulação e contorno rotacionado
+
+- Busca de posições verifica a área completa no ambiente atual e os limites do terreno antes de compor as opções.
+- Móveis de todo o pavimento participam da verificação, inclusive quando apenas parte de seu contorno alcança o ambiente.
+- Folga de circulação acompanha a orientação do móvel; decoração não bloqueia mobiliário sólido.
+- Sem posições possíveis, remove prévias antigas e informa a falta de espaço livre.
+- Verificação: 130 testes passaram em 24 arquivos; tipagem do helper e transformação sintática do editor passaram. Validação visual integrada, homologação e publicação na Contabo seguem pendentes.

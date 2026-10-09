@@ -1,4 +1,4 @@
-import { furnitureLayoutCollisionError } from "./conceptFurnitureCollision";
+import { furnitureLayoutCollisionError, furnitureHasClearance } from "./conceptFurnitureCollision";
 import { furnitureFitsRoom } from "./conceptFurnitureRoomFit";
 import { boundedObjectGeometry, duplicateObjectGeometry, insertedObjectGeometry, objectBatchPlacementError } from "./conceptObjectTransform";
 import { openingCoordinates } from "./conceptOpeningCoordinates";
@@ -4195,20 +4195,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       ];
     }
 
-    const existingInSpace = safeObjects.filter((object) =>
-      object.floor === activeFloor &&
-      object.x + object.width / 2 >= bounds.x &&
-      object.x + object.width / 2 <= bounds.x + bounds.width &&
-      object.y + object.depth / 2 >= bounds.y &&
-      object.y + object.depth / 2 <= bounds.y + bounds.height
-    );
-
-    const occupiedBase: Array<{ x: number; y: number; width: number; depth: number }> = existingInSpace.map((object) => ({
-      x: object.x,
-      y: object.y,
-      width: object.width,
-      depth: object.depth,
-    }));
+    const occupiedBase = safeObjects.filter((object) => object.floor === activeFloor);
 
     const offsets = [
       [0, 0],
@@ -4265,14 +4252,16 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         for (const [ox, oy] of offsets) {
           const x = Math.max(bounds.x + 0.08, Math.min(bounds.x + bounds.width - item.width - 0.08, item.x + ox));
           const y = Math.max(bounds.y + 0.08, Math.min(bounds.y + bounds.height - item.depth - 0.08, item.y + oy));
-          const candidate = { x, y, width: item.width, depth: item.depth };
+          const candidate = { ...item, x, y, floor: activeFloor, rotation: item.rotation ?? 0 };
+          if (!furnitureFitsRoom(candidate, selectedClosedSpace.cells)) continue;
+          if (objectBatchPlacementError([candidate], lotWidth, lotDepth, activeFloor)) continue;
           const hitsDoor = doorClearances.some((clearance) => overlaps(candidate, clearance, 0.05));
           const wallMounted = item.kind === "tv" || item.kind === "cabinet" || item.kind === "bed" || item.kind === "sofa";
           const hitsWindow = wallMounted && windowClearances.some((clearance) => overlaps(candidate, clearance, 0.03));
           const minFurnitureGap =
             item.kind === "chair" || item.kind === "table" ? 0.45 :
             item.kind === "bed" || item.kind === "sofa" ? 0.35 : 0.25;
-          const hitsCirculation = occupied.some((other) => overlaps(candidate, other, minFurnitureGap));
+          const hitsCirculation = occupied.some((other) => !furnitureHasClearance(candidate, other, minFurnitureGap));
           if (hitsCirculation || hitsDoor || hitsWindow) continue;
 
           const affinityPenalty = wallAffinityDistance(item, x, y) * 8;
@@ -4301,7 +4290,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           rotation: item.rotation ?? 0,
         };
         objects.push(object);
-        occupied.push({ x: object.x, y: object.y, width: object.width, depth: object.depth });
+        occupied.push(object);
         score += best.localScore;
       }
 
@@ -4336,7 +4325,14 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         windowZones: windowClearances.map((zone) => ({ ...zone })),
       }));
 
-    if (!options.length) return;
+    if (!options.length) {
+      setFurnishLayoutOptions([]);
+      setFurnishLayoutSpaceId(null);
+      setPreviewFurnishLayoutId(null);
+      setObjectPlacementError("Não há espaço livre suficiente para estas sugestões. Ajuste o mobiliário ou escolha outro ambiente.");
+      return;
+    }
+    setObjectPlacementError(null);
     setFurnishLayoutOptions(options);
     setFurnishLayoutSpaceId(selectedClosedSpace.id);
     setPreviewFurnishLayoutId(options[0]?.id ?? null);

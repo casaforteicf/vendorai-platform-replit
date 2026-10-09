@@ -36,3 +36,9 @@ export function furnitureLayoutCollisionError(proposed: Furniture[], existing: F
   }
   return null;
 }
+
+/** Require a clear band around solid furniture, in its local orientation. */
+export function furnitureHasClearance(a: Furniture, b: Furniture, gap: number): boolean {
+  if (!Number.isFinite(gap) || gap < 0) return false;
+  return !furnitureOverlaps({ ...a, x: a.x - gap, y: a.y - gap, width: a.width + gap * 2, depth: a.depth + gap * 2 }, b);
+}

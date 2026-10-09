@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { furnitureOverlaps, furnitureLayoutCollisionError } from "./conceptFurnitureCollision";
+import { furnitureOverlaps, furnitureLayoutCollisionError, furnitureHasClearance } from "./conceptFurnitureCollision";
 const item = { kind: "sofa", label: "Sofá", floor: 0, x: 0, y: 0, width: 2, depth: 1, rotation: 0 };
 describe("layout furniture collisions", () => {
   it("rejects overlapping footprints but allows touching edges", () => {
@@ -23,5 +23,22 @@ describe("layout furniture collisions", () => {
   it("ignores malformed existing footprints", () => {
     expect(furnitureOverlaps(item, { ...item, rotation: NaN })).toBe(false);
     expect(furnitureOverlaps(item, { ...item, width: 0 })).toBe(false);
+  });
+});
+
+describe("furniture circulation clearance", () => {
+  it("requires the requested gap while allowing its boundary", () => {
+    expect(furnitureHasClearance(item, { ...item, x: 2.2 }, 0.3)).toBe(false);
+    expect(furnitureHasClearance(item, { ...item, x: 2.3 }, 0.3)).toBe(true);
+  });
+  it("keeps the clearance band aligned with rotated furniture", () => {
+    const rotated = { ...item, rotation: 90 };
+    expect(furnitureHasClearance(rotated, { ...item, x: 1.6 }, 0.2)).toBe(false);
+    expect(furnitureHasClearance(rotated, { ...item, x: 1.8 }, 0.2)).toBe(true);
+  });
+  it("permits decoration and ignores other floors", () => {
+    expect(furnitureHasClearance(item, { ...item, kind: "rug" }, 0.4)).toBe(true);
+    expect(furnitureHasClearance(item, { ...item, floor: 1 }, 0.4)).toBe(true);
+    expect(furnitureHasClearance(item, item, NaN)).toBe(false);
   });
 });
