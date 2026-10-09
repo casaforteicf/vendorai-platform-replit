@@ -238,10 +238,18 @@ def propose_opening_hosts(objects, tolerance=0.15):
             continue
         matches = []
         for wall, wlo, whi in walls:
+            # Intersection of axis-aligned boxes suggests proximity only:
+            # a closed wall surface can still intersect a window/door mesh.
             if all(lo[i] <= whi[i] + tolerance and hi[i] >= wlo[i] - tolerance for i in range(3)):
                 matches.append(wall.get("name"))
+        # Repeated names cannot safely identify a unique BIM host.
+        unique = len(matches) == 1 and isinstance(matches[0], str) and bool(matches[0].strip())
         proposals.append({"opening": opening.get("name"), "type": opening["suggestedClass"],
-                          "candidateWalls": matches[:20], "status": "unverified_spatial_overlap",
+                          "candidateWalls": matches[:20],
+                          "hostRelationStatus": "single_spatial_candidate" if unique else
+                              ("ambiguous_spatial_candidates" if matches else "no_spatial_candidate"),
+                          "requiresManualReview": True,
+                          "status": "unverified_spatial_overlap",
                           "openingDetected": False, "quantitiesEnabled": False})
     return proposals
 
