@@ -30,12 +30,6 @@ function validateOnly(): boolean {
   return process.env["GOOGLE_DATA_MANAGER_VALIDATE_ONLY"] !== "false";
 }
 
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean),
-  );
-}
-
 function allowedTenantIds(): Set<string> {
   return new Set(
     (process.env["GOOGLE_DATA_MANAGER_TENANT_IDS"] ?? "")
