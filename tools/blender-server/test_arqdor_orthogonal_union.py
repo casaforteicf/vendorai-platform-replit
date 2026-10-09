@@ -105,6 +105,21 @@ class OrthogonalUnionTests(unittest.TestCase):
         self.assert_closed(result)
         self.assertGreater(len(result["faces"]), 6)
 
+    def test_L_and_T_union_expected_volumes_and_winding(self):
+        horizontal = wall((0, 0), (4, 0))
+        cases = [
+            ("L", wall((4, 0), (4, 3)), 4.17),
+            ("T", wall((2, 0), (2, 3)), 4.14),
+        ]
+        for label, second, expected_volume in cases:
+            with self.subTest(junction=label):
+                result = union_orthogonal_walls([horizontal, second])
+                self.assertAlmostEqual(result["volumePreviewM3"], expected_volume, places=7)
+                self.assertTrue(result["signedVolumeMatchesOccupancy"])
+                self.assertEqual(result["connectedSolidComponents"], 1)
+                self.assertEqual(result["connectedBoundaryComponents"], 1)
+                self.assert_closed(result)
+
     def test_union_volume_does_not_double_count_intersection(self):
         horizontal = wall((0, 0), (4, 0))
         vertical = wall((2, -2), (2, 2))
