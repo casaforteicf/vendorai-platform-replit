@@ -120,8 +120,28 @@ def union_orthogonal_walls(entries, tolerance=1e-8):
             face([(x0, y0, z0), (x0, y1, z0), (x1, y1, z0), (x1, y0, z0)])
         if (i, j, k + 1) not in filled:
             face([(x0, y1, z1), (x0, y0, z1), (x1, y0, z1), (x1, y1, z1)])
+    # A point-only or edge-only connection may satisfy edge incidence while
+    # still being non-manifold at a vertex. Count boundary surface components
+    # using shared EDGES (not merely shared vertices).
+    face_edges = {}
+    for face_index, polygon in enumerate(faces):
+        for a, b in zip(polygon, polygon[1:] + polygon[:1]):
+            face_edges.setdefault((min(a, b), max(a, b)), []).append(face_index)
+    neighbors = [set() for _ in faces]
+    for indices in face_edges.values():
+        for face_index in indices:
+            neighbors[face_index].update(other for other in indices if other != face_index)
+    unseen_faces = set(range(len(faces)))
+    surface_components = 0
+    while unseen_faces:
+        surface_components += 1
+        pending_faces = [unseen_faces.pop()]
+        while pending_faces:
+            for next_face in neighbors[pending_faces.pop()] & unseen_faces:
+                unseen_faces.remove(next_face)
+                pending_faces.append(next_face)
     topology = inspect_mesh_edges({"vertices": vertices, "faces": faces})
-    if not topology["watertightByEdgeIncidence"] or components != 1:
+    if not topology["watertightByEdgeIncidence"] or components != 1 or surface_components != 1:
         # Non-manifold point/edge contacts and degenerate unions are previews only.
         # Never advertise a clean continuous solid when edge-incidence fails.
         integrity = "requires_geometric_repair"
@@ -131,6 +151,7 @@ def union_orthogonal_walls(entries, tolerance=1e-8):
             "integrityStatus": integrity,
             "meshClosedByEdgeIncidence": topology["watertightByEdgeIncidence"],
             "connectedSolidComponents": components,
+            "connectedBoundaryComponents": surface_components,
             "solidUnionMethod": "orthogonal_coordinate_partition",
             "internalFacesRemoved": True, "openingCount": sum(map(len, apertures)),
             "occupiedCells": len(filled), "volumePreviewM3": round(total_volume, 9),
