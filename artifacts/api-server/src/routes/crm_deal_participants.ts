@@ -107,12 +107,23 @@ router.post("/crm/people", async (req, res) => {
       ilike(crmPeopleMasterTable.nome, parsed.data.nome.trim()),
     )).limit(20);
 
-    const exact = existing.find((p) =>
-      (documento && digits(p.documento) === documento) ||
-      (email && (p.emails ?? []).some((v) => v.toLowerCase() === email)) ||
-      (telefone && (p.telefones ?? []).some((v) => digits(v) === telefone))
-    );
+    const exact = existing.find((p) => documento && digits(p.documento) === documento);
     if (exact) return res.status(200).json({ item: exact, reused: true });
+
+    // Telephone and e-mail are shared between relatives and company contacts.
+    // Never merge two distinct people based solely on these contact channels.
+    // A candidate matching by name + channel must be reviewed before linking.
+    const candidates = existing.filter((p) =>
+      p.nome.trim().toLocaleLowerCase("pt-BR") === parsed.data.nome.trim().toLocaleLowerCase("pt-BR") &&
+      ((email && (p.emails ?? []).some((v) => v.toLowerCase() === email)) ||
+       (telefone && (p.telefones ?? []).some((v) => digits(v) === telefone)))
+    );
+    if (candidates.length) {
+      return res.status(409).json({
+        error: "Possível pessoa já cadastrada. Selecione o cadastro existente para evitar duplicação.",
+        candidateIds: candidates.map((p) => p.id),
+      });
+    }
 
     const [person] = await db.insert(crmPeopleMasterTable).values({
       nome: parsed.data.nome.trim(),
