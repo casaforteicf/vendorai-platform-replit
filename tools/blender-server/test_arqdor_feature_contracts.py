@@ -503,6 +503,20 @@ class FeatureContractsTests(unittest.TestCase):
         self.assertFalse(solids["geometryApproved"])
         self.assertFalse(solids["quantitiesEnabled"])
 
+    def test_wall_centerline_crossing_and_junction_are_draft_only(self):
+        horizontal = {"wall": {"start": [0, 0, 0], "end": [4, 0, 0],
+                               "thickness": .2, "height": 3}}
+        vertical = {"wall": {"start": [2, -2, 0], "end": [2, 2, 0],
+                             "thickness": .2, "height": 3}}
+        crossing = draft_wall_centerline_intersections([horizontal, vertical])
+        self.assertEqual(crossing["intersections"][0]["type"], "crossing")
+        self.assertEqual(crossing["intersections"][0]["point"], [2.0, 0.0])
+        self.assertFalse(crossing["joinsResolved"])
+        touching = {"wall": {"start": [4, 0, 0], "end": [4, 3, 0],
+                             "thickness": .2, "height": 3}}
+        junction = draft_wall_centerline_intersections([horizontal, touching])
+        self.assertEqual(junction["intersections"][0]["type"], "junction")
+
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
         self.assertFalse(data["quantitiesEnabled"])
