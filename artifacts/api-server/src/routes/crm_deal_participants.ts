@@ -202,10 +202,15 @@ router.post("/crm/companies/manual", async (req, res) => {
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
   try {
     const tenantId = tenantIdFromRequest(req, parsed.data.tenantId);
+    const { company, tenantCompany } = await db.transaction(async (tx) => {
     const cnpj = digits(parsed.data.cnpj);
-    let company = cnpj ? (await db.select().from(crmCompaniesMasterTable).where(eq(crmCompaniesMasterTable.cnpj, cnpj)).limit(1))[0] : undefined;
+      if (cnpj) {
+        // Global master may be linked by different tenants: serialize by CNPJ.
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('crm-company-master'), hashtext(${cnpj}))`);
+      }
+    let company = cnpj ? (await tx.select().from(crmCompaniesMasterTable).where(eq(crmCompaniesMasterTable.cnpj, cnpj)).limit(1))[0] : undefined;
     if (!company) {
-      [company] = await db.insert(crmCompaniesMasterTable).values({
+      [company] = await tx.insert(crmCompaniesMasterTable).values({
         cnpj: cnpj || `SEM-CNPJ-${crypto.randomUUID()}`,
         razaoSocial: parsed.data.razaoSocial,
         nomeFantasia: parsed.data.nomeFantasia || null,
@@ -216,14 +221,16 @@ router.post("/crm/companies/manual", async (req, res) => {
         updatedAt: new Date(),
       }).returning();
     }
-    if (!company) return res.status(500).json({ error: "Falha ao salvar empresa" });
+    if (!company) throw Object.assign(new Error("Falha ao salvar empresa"), { status: 500 });
 
-    const [tenantCompany] = await db.insert(crmTenantCompaniesTable).values({
+    const [tenantCompany] = await tx.insert(crmTenantCompaniesTable).values({
       tenantId, companyId: company.id, relationshipType: "lead", updatedAt: new Date(),
     }).onConflictDoUpdate({
       target: [crmTenantCompaniesTable.tenantId, crmTenantCompaniesTable.companyId],
       set: { status: "ativo", updatedAt: new Date() },
     }).returning();
+      return { company, tenantCompany };
+    });
     return res.status(201).json({ company, tenantCompany });
   } catch (error: any) {
     return res.status(error.status ?? 500).json({ error: error.message });
