@@ -344,3 +344,19 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Pendente neste lote:** resolver junções via núcleo geométrico/booleans robusto; sincronização interativa de edição em 2D/3D com histórico de mudanças e persistência; testes visuais e topológicos; integração com export IFC e detalhamento técnico.
 - **Segurança:** `globalWatertight=false`, `geometryApproved=false`, `quantitiesEnabled=false`. Dados não servem para fabricação, compras ou quantitativos sem conferência.
 - **Estados:** código em desenvolvimento no PR #3422 Draft; sem merge; homologação Contabo e publicação adiadas.
+
+
+## Lote integrado de geometria e editor 2D/3D — 09/10/2026
+
+**Pedido original:** concluir em lote posições de portas/janelas 3D, encontros/cruzamentos, malhas fechadas, recortes, união de paredes e edição sincronizada 2D/3D.
+
+**Entregue neste conjunto:**
+- `tools/blender-server/arqdor_parametric_mesh.py`: malhas por parede com subdivisão e faces de revelo nos vãos retangulares; `mesh_parametric_project` mantém informações sobre encontros não resolvidos.
+- `tools/blender-server/test_arqdor_parametric_mesh.py`: cenários de parede simples, janela, porta e cruzamento (testes escritos, **não executados nesta sessão**).
+- `RenderStudioParametricEditor.tsx`: protótipo frontend com planta SVG editável por pontos, snap 25 cm, parâmetros de altura/espessura, criação/edição/exclusão de aberturas e projeção 3D SVG alimentada pelo mesmo estado React, com validação de aberturas e sobreposição.
+- `RenderStudioModels.tsx`: editor paramétrico carregado como componente isolado junto ao fluxo de revisão existente.
+- **Commits desta rodada:** `c3a141a` (editor 2D/3D), `509f9bb` (integração) e registro mestre deste marco; `a106247` e `ff26716` são os commits anteriores do gerador.
+- **Limitações reais:** a projeção SVG 3D é uma prévia e não renderização de malha CSG; mudanças do editor são estado local, não atualizam o GLB nem persistem no projeto; os encontros L/T/cruz apenas são diagnosticados — uniões booleanas robustas ainda não implementadas; a afirmação de malha global estanque ou pronta para quantitativos não seria correta.
+- **Validação:** não foram executados build frontend, testes Python ou Blender real; integração e integridade topológica seguem sem homologação.
+- **Estado:** lote parcialmente implementado, **não concluído**. Homologação Contabo adiada, nenhum merge ou deploy, produção inalterada, PR #3422 Draft.
+- **Próximo trabalho obrigatório para conclusão do pedido:** núcleo sólido com junções robustas, aplicação de malhas no visualizador, persistência versionada e testes funcionais de ida/volta entre vistas.
