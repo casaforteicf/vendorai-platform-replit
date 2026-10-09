@@ -399,6 +399,22 @@ function createCloudflareMcpServer() {
 
 
   server.registerTool(
+    "vendi_crm_summary",
+    {
+      description: "Consulta somente leitura à quantidade de leads ativos do CRM do tenant especificado, diretamente pela API VendorAI. Não utiliza Chromium.",
+      inputSchema: z.object({ tenantKey: z.string().min(1).max(255) }),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ tenantKey }) => {
+      const result = await vendorApi<unknown>("/internal/browser-mcp/crm-summary", {
+        method: "POST",
+        body: JSON.stringify({ tenantKey }),
+      });
+      return toolText(result);
+    },
+  );
+
+  server.registerTool(
     "browser_agent_status",
     {
       description: "Verifica se o Browser Agent próprio do VendorAI está disponível. Não usa TinyFish.",
