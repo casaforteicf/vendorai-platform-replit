@@ -16,7 +16,13 @@ O commit deste incremento consta no histórico do PR.
 
 ## Evidências e pendências
 
-17 testes passaram em 5 arquivos: entrada (3), geometria de medidas (4), interação de precisão (4), comportamento móvel existente (2) e rede de paredes existente (4). Execução: Vitest com globals e ambiente jsdom. Sintaxe TSX e CSS e tipagem do auxiliar de geometria verificadas isoladamente.
+21 testes passaram em 6 arquivos: entrada (3), geometria de medidas (4), interação de precisão (6), comportamento móvel existente (2), rede de paredes existente (4) e entrada métrica (2). Execução: Vitest com globals e ambiente jsdom. Sintaxe TSX e CSS e tipagem do auxiliar de geometria verificadas isoladamente.
+
+## Edição das aberturas
+
+Commits 88054515db39f373ca13f9403b14a20614bc5700 e bd82e0b04e9200d23a1d6c69f39f4636142f80e4: testes de correção/cancelamento e entrada métrica para largura, altura e peitoril. ConceptMetricInput.tsx e ConceptMetricInput.test.tsx adicionados; ConceptPlanner.tsx integrado. A medida aceita vírgula e confirma ao sair do campo ou pressionar Enter, sem atualizar o modelo durante cada tecla.
+
+Incremento de posicionamento: distância do centro da abertura desde o início da parede em metros, respeitando margens da largura, e ação Centralizar na parede. O controle percentual existente permanece disponível. Usa o mesmo offset central do modelo e o histórico existente. Homologação e publicação adiadas por solicitação do usuário; nenhum acesso Vendi adicional necessário para este incremento. Verificação integrada das vistas permanece pendente.
 
 Build completo, inspeção visual integrada e E2E em homologação ainda pendentes. A consulta e tentativa de operação somente leitura pelo Vendi retornaram tenant_not_found para casaforteicf. Nenhuma publicação ou alteração em produção nesta entrega. A aprovação não depende do GitHub Actions; exige validação na Contabo conforme o fluxo do projeto.
 

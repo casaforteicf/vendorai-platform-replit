@@ -3574,6 +3574,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     ? safeCustomOpenings.find((opening) => opening.id === selectedOpening.id) ?? null
     : null;
   const selectedWall = geometry.walls.find((wall) => wall.id === selectedWallId) ?? null;
+  const selectedOpeningWall = selectedCustomOpening
+    ? safeCustomWalls.find((wall) => wall.id === selectedCustomOpening.wallId) ?? null : null;
+  const selectedOpeningWallLength = selectedOpeningWall
+    ? Math.hypot(selectedOpeningWall.x2 - selectedOpeningWall.x1, selectedOpeningWall.y2 - selectedOpeningWall.y1) : 0;
 
   const addCustomWall = (wall: CustomWall) => {
     const before = snapshotEditor();
@@ -9539,6 +9543,21 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                             className="mt-1 h-9 w-[110px] rounded-lg border px-2 text-xs font-semibold"
                           />
                         </label>
+                        {selectedOpeningWallLength > 0 && (
+                          <>
+                            <label className="text-[10px] font-semibold text-slate-500">
+                              Centro desde o início da parede (m)
+                              <ConceptMetricInput
+                                min={Math.min(selectedOpeningWallLength / 2, Math.max(0.25, (selectedCustomOpening.width ?? (selectedOpening.type === "door" ? 0.9 : 1.2)) / 2))}
+                                max={selectedOpeningWallLength - Math.min(selectedOpeningWallLength / 2, Math.max(0.25, (selectedCustomOpening.width ?? (selectedOpening.type === "door" ? 0.9 : 1.2)) / 2))}
+                                value={(selectedCustomOpening.offset ?? 0.5) * selectedOpeningWallLength}
+                                onCommit={(value) => setCustomOpeningOffset(selectedOpening.id, value / selectedOpeningWallLength * 100)}
+                                className="mt-1 h-9 w-[110px] rounded-lg border px-2 text-xs font-semibold"
+                              />
+                            </label>
+                            <button type="button" onClick={() => setCustomOpeningOffset(selectedOpening.id, 50)} className="h-9 rounded-lg border px-3 text-xs font-semibold">Centralizar na parede</button>
+                          </>
+                        )}
                         <label className="text-[10px] font-semibold text-slate-500">
                           Abertura
                           <select
