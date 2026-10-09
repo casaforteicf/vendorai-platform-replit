@@ -9,6 +9,9 @@ import json
 import threading
 import subprocess
 import tempfile
+import sqlite3
+import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 from flask import Flask, request, jsonify
@@ -33,6 +36,47 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # ─── Fila em memória ─────────────────────────────────────────────────────────
 jobs_status: dict[str, dict] = {}
 jobs_lock = threading.Lock()
+MAX_WORKERS = max(1, min(int(os.getenv("ARQDOR_RENDER_WORKERS", "1")), 4))
+executor = ThreadPoolExecutor(max_workers=MAX_WORKERS, thread_name_prefix="arqdor-render")
+DB_PATH = os.getenv("ARQDOR_RENDER_QUEUE_DB", os.path.join(OUTPUT_DIR, "jobs.sqlite3"))
+ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+
+
+def db_connection():
+    connection = sqlite3.connect(DB_PATH, timeout=20)
+    connection.execute("PRAGMA busy_timeout = 20000")
+    connection.execute("""CREATE TABLE IF NOT EXISTS render_jobs (
+        job_id TEXT PRIMARY KEY, payload TEXT NOT NULL, status TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )""")
+    return connection
+
+
+def persist_job(job_id, job):
+    with db_connection() as connection:
+        connection.execute(
+            "INSERT INTO render_jobs(job_id,payload,status,updated_at) VALUES(?,?,?,?) "
+            "ON CONFLICT(job_id) DO UPDATE SET payload=excluded.payload, "
+            "status=excluded.status,updated_at=excluded.updated_at",
+            (job_id, json.dumps(job, ensure_ascii=False), job["status"], job["updatedAt"]),
+        )
+
+
+def restore_jobs():
+    with db_connection() as connection:
+        records = connection.execute("SELECT job_id,payload FROM render_jobs").fetchall()
+    for job_id, payload in records:
+        job = json.loads(payload)
+        if job["status"] in ("aguardando", "processando"):
+            # A process may have died mid-render: report the interruption explicitly.
+            job["status"] = "erro"
+            job["erro"] = "Worker reiniciado durante processamento; reenviar o mesmo job para retomar."
+            job["updatedAt"] = datetime.utcnow().isoformat() + "Z"
+            persist_job(job_id, job)
+        jobs_status[job_id] = job
+
+
+restore_jobs()
 
 
 # ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -98,6 +142,7 @@ def execute_render(job_id: str, cena_id: str, tenant_id: str, scene_config: dict
                 jobs_status[job_id]["imageUrl"]  = image_url
                 jobs_status[job_id]["erro"]      = erro
                 jobs_status[job_id]["updatedAt"] = datetime.utcnow().isoformat() + "Z"
+                persist_job(job_id, jobs_status[job_id])
 
     set_status("processando")
 
@@ -197,6 +242,10 @@ def post_render():
         return jsonify({"error": "cenaId é obrigatório"}), 400
     if not tenant_id:
         return jsonify({"error": "tenantId é obrigatório"}), 400
+    if not all(ID_PATTERN.fullmatch(value) for value in (job_id, cena_id, tenant_id)):
+        return jsonify({"error": "Identificador inválido"}), 422
+    if not isinstance(scene_config, dict):
+        return jsonify({"error": "sceneConfig deve ser um objeto"}), 422
 
     now = datetime.utcnow().isoformat() + "Z"
     job = {
@@ -211,14 +260,17 @@ def post_render():
     }
 
     with jobs_lock:
+        previous = jobs_status.get(job_id)
+        if previous:
+            if previous.get("tenantId") != tenant_id or previous.get("cenaId") != cena_id:
+                return jsonify({"error": "Job já pertence a outra cena ou tenant"}), 409
+            if previous["status"] != "erro":
+                return jsonify({"jobId": job_id, "status": previous["status"]}), 200
+            # Retry only interrupted/failed jobs, with the same tenant and scene.
         jobs_status[job_id] = job
+        persist_job(job_id, job)
 
-    thread = threading.Thread(
-        target=execute_render,
-        args=(job_id, cena_id, tenant_id, scene_config),
-        daemon=True,
-    )
-    thread.start()
+    executor.submit(execute_render, job_id, cena_id, tenant_id, scene_config)
 
     return jsonify({"jobId": job_id, "status": "aguardando"}), 202
 
