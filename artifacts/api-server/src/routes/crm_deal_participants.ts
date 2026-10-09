@@ -419,6 +419,7 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
         telefones: p.telefone ? [p.telefone.trim()] : [],
         emails: email ? [email] : [],
         source: p.source ?? "manual",
+        metadata: { createdTenantId: tenantId },
         updatedAt: new Date(),
       }).returning({ id: crmPeopleMasterTable.id });
       personId = person?.id;
