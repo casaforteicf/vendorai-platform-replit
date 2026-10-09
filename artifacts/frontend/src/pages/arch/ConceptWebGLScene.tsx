@@ -1,3 +1,4 @@
+import { objectTransformPatch } from "./conceptObjectTransform";
 import { sceneGesture } from "./conceptSceneGesture";
 import { isWalkEditingTarget, walkDirection } from "./conceptWalkInput";
 import { moveWalkPosition, walkStep, walkWall } from "./conceptWalkCollision";
@@ -324,8 +325,8 @@ export default function ConceptWebGLScene({
   onObjectEditEnd,
 }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const interactionRef = useRef({ paintTool, onPaintObject, onPaintWall, onPaintFloor, onSelectObject, onSelectWall, onSelectCustomWall, onSelectClosedSpace, onSelectOpening });
-  interactionRef.current = { paintTool, onPaintObject, onPaintWall, onPaintFloor, onSelectObject, onSelectWall, onSelectCustomWall, onSelectClosedSpace, onSelectOpening };
+  const interactionRef = useRef({ paintTool, onPaintObject, onPaintWall, onPaintFloor, onSelectObject, onSelectWall, onSelectCustomWall, onSelectClosedSpace, onSelectOpening, lotWidth, lotDepth, onObjectChange, onObjectEditStart, onObjectEditEnd });
+  interactionRef.current = { paintTool, onPaintObject, onPaintWall, onPaintFloor, onSelectObject, onSelectWall, onSelectCustomWall, onSelectClosedSpace, onSelectOpening, lotWidth, lotDepth, onObjectChange, onObjectEditStart, onObjectEditEnd };
   const runtimeRef = useRef<Runtime | null>(null);
   const [engineState, setEngineState] = useState<"loading" | "ready" | "fallback">("loading");
   const [dragOverScene, setDragOverScene] = useState(false);
@@ -483,24 +484,21 @@ export default function ConceptWebGLScene({
           transform.size = 0.8;
           transform.addEventListener("dragging-changed", (event: any) => {
             controls.enabled = !event.value;
-            if (event.value) onObjectEditStart?.();
+            if (event.value) interactionRef.current.onObjectEditStart?.();
           });
           transform.addEventListener("mouseUp", () => {
             const target = transform.object;
             const objectId = target?.userData?.objectId;
-            if (objectId && onObjectChange) {
-              const width = Number(target?.userData?.modelWidth ?? 0.6);
-              const depth = Number(target?.userData?.modelDepth ?? 0.6);
-              const x = Math.max(0, Math.min(lotWidth - width, target.position.x + lotWidth / 2 - width / 2));
-              const y = Math.max(0, Math.min(lotDepth - depth, target.position.z + lotDepth / 2 - depth / 2));
-              const rotation = ((-target.rotation.y * 180 / Math.PI) % 360 + 360) % 360;
-              onObjectChange(objectId, {
-                x: Math.round(x * 20) / 20,
-                y: Math.round(y * 20) / 20,
-                rotation: (Math.round(rotation / 5) * 5) % 360,
-              });
+            const current = interactionRef.current;
+            if (objectId && current.onObjectChange) {
+              const patch = objectTransformPatch(
+                target.position, target.rotation.y,
+                Number(target.userData.modelWidth ?? 0.6), Number(target.userData.modelDepth ?? 0.6),
+                current.lotWidth, current.lotDepth,
+              );
+              if (patch) current.onObjectChange(objectId, patch);
             }
-            onObjectEditEnd?.();
+            current.onObjectEditEnd?.();
           });
           scene.add(transform);
         }

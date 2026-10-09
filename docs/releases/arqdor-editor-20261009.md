@@ -191,3 +191,10 @@ Validação: 102 testes em 21 arquivos passaram; transformação TSX do componen
 Clique WebGL consulta ferramenta e callbacks atuais por referência, corrigindo captura dos valores iniciais na inicialização da cena. Gizmo de objeto desacoplado enquanto pintura está ativa. Vista SVG impede arraste de objetos em qualquer ferramenta de pintura e ignora seleção de alvos incompatíveis; clique no fundo preserva seleção durante pintura.
 
 Validação: 102 testes existentes em 21 arquivos passaram; transformação TSX das duas cenas passou. Este conjunto não possui teste integrado de pintura/WebGL; conferência visual, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Transformação de objetos com dados atuais
+
+Gizmo WebGL consulta dimensões atuais do lote e callbacks atuais de alteração/início/fim de edição, sem capturar valores iniciais da cena. Conversão de posição e rotação extraída para helper; snap de 5 cm limitado ao lote após arredondamento, evitando ultrapassar bordas fora da grade. Valores não finitos e dimensões não positivas rejeitados; objetos maiores que o lote mantêm origem não negativa, sem redimensionamento automático. Limites ainda usam largura/profundidade nominais, sem envelope rotacionado.
+
+Validação: 106 testes em 22 arquivos passaram; transformação TSX da cena passou. Interação integrada do gizmo/histórico, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
