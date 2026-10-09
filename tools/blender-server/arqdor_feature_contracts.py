@@ -339,3 +339,48 @@ def evaluate_wall_mesh_topology(vertex_count, edge_count, face_count,
             "nonmanifoldEdges": nonmanifold_edges,
             "openingDetected": False, "quantitiesEnabled": False,
             "requiresManualReview": True}
+
+
+def inspect_boundary_loops(vertices, edges, max_edges=50000):
+    """Trace closed boundary rings from mesh-edge coordinates, not true voids.
+
+    Only degree-2 components can form candidate loops. A closed boundary ring
+    can also be a missing exterior face: never certify it as a door/window.
+    """
+    if not isinstance(vertices, list) or not isinstance(edges, list) or len(edges) > max_edges:
+        raise ValueError("Contorno excede limite ou está inválido")
+    for point in vertices:
+        if (not isinstance(point, (list, tuple)) or len(point) != 3
+                or any(type(v) not in (int, float) or not math.isfinite(v) for v in point)):
+            raise ValueError("Vértice inválido")
+    adjacency = {}
+    for edge in edges:
+        if (not isinstance(edge, (list, tuple)) or len(edge) != 2
+                or any(type(i) is not int or not 0 <= i < len(vertices) for i in edge)
+                or edge[0] == edge[1]):
+            raise ValueError("Aresta inválida")
+        a, b = edge
+        adjacency.setdefault(a, set()).add(b)
+        adjacency.setdefault(b, set()).add(a)
+    seen = set()
+    loops = []
+    for start in adjacency:
+        if start in seen:
+            continue
+        stack, component = [start], set()
+        while stack:
+            current = stack.pop()
+            if current in component:
+                continue
+            component.add(current)
+            stack.extend(adjacency[current] - component)
+        seen.update(component)
+        if len(component) < 3 or any(len(adjacency[v]) != 2 for v in component):
+            continue
+        coords = [vertices[v] for v in component]
+        low = [min(p[i] for p in coords) for i in range(3)]
+        high = [max(p[i] for p in coords) for i in range(3)]
+        loops.append({"vertexCount": len(component), "bounds": {"min": low, "max": high},
+                      "status": "closed_boundary_candidate", "openingConfirmed": False})
+    return {"closedBoundaryCandidates": loops[:100],
+            "requiresManualReview": True, "quantitiesEnabled": False}
