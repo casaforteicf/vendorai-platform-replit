@@ -353,3 +353,48 @@ arqdorMepRouter.post("/arch/concept-projects/:conceptId/mep/host-reviews",async(
   }catch(err){await client.query("ROLLBACK").catch(()=>{});throw err;}finally{client.release();}
  }catch(err){next(err);}
 });
+
+
+/**
+ * Pre-save gate for the Concept editor. This endpoint only evaluates whether
+ * a wall change may be safely submitted: it never persists architectural data.
+ * A final save must still repeat checks atomically within its own transaction.
+ */
+arqdorMepRouter.post("/arch/concept-projects/:conceptId/mep/save-preflight",async(req,res,next)=>{
+ try {
+  const tid=tenant(req,res);if(!tid)return;
+  const concept=id.safeParse(req.params.conceptId);
+  const body=hostPreviewSchema.safeParse(req.body);
+  if(!concept.success||!body.success){res.status(422).json({error:"Versão/geometria inválida"});return;}
+  const project=await pool.query(
+   `SELECT c.configuration,c.updated_at,b.workspace_project_id
+    FROM arch_concept_projects c
+    LEFT JOIN arqdor_mep_project_bindings b ON b.tenant_id=c.tenant_id AND b.concept_project_id=c.id
+    WHERE c.tenant_id=$1 AND c.id=$2 LIMIT 1`,[tid,concept.data]);
+  if(!project.rowCount){res.status(404).json({error:"Pré-projeto não encontrado"});return;}
+  const row=project.rows[0];
+  if(new Date(row.updated_at).getTime()!==new Date(body.data.expectedProjectUpdatedAt).getTime()){
+   res.status(409).json({code:"MEP_STALE_GEOMETRY",allowSave:false});return;
+  }
+  if(!row.workspace_project_id){
+   res.status(409).json({code:"MEP_BINDING_REQUIRED",allowSave:false,
+    message:"É necessário validar o workspace BIM antes de salvar alterações com instalações."});return;
+  }
+  const stored=wallShape.array().max(5000).safeParse(row.configuration?.customWalls);
+  if(!stored.success){
+   res.status(409).json({code:"MEP_BASELINE_UNAVAILABLE",allowSave:false});return;
+  }
+  const points=await pool.query(
+   "SELECT id,host_element_id,floor_id FROM arqdor_mep_nodes WHERE tenant_id=$1 AND project_id=$2 AND host_element_id IS NOT NULL",
+   [tid,row.workspace_project_id]);
+  const impacts=inspectMepWallImpact(stored.data,body.data.after,points.rows.map(p=>({
+   id:p.id,hostElementId:p.host_element_id,floorId:p.floor_id
+  })));
+  if(impacts.length){
+   res.status(409).json({code:"MEP_HOST_REVIEW_REQUIRED",allowSave:false,impacts,
+    message:"Alteração bloqueada na pré-validação: instalações ancoradas exigem revisão."});return;
+  }
+  res.json({allowSave:true,impacts:[],architectureUpdatedAt:row.updated_at,
+   warning:"Pré-validação apenas; o endpoint de salvamento deve validar novamente em transação."});
+ }catch(err){next(err);}
+});
