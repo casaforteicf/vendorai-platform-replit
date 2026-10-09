@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import * as z from "zod/v4";
@@ -191,17 +191,17 @@ const execFileAsync = promisify(execFile);
 // Operations connect through a dedicated restricted SSH identity, when provisioned.
 // No arbitrary shell arguments are accepted from the LLM.
 const CONTABO_READ_ONLY_COMMANDS = {
-  status: "docker ps --format 'table {{.Names}}\\t{{.Status}}\\t{{.Image}}' | head -30",
+  status: "sudo -n docker ps --format 'table {{.Names}}\\t{{.Status}}\\t{{.Image}}' | head -30",
   homologHealth: "curl --fail --silent --show-error --max-time 8 http://127.0.0.1:5000/api/auth/healthz",
   prodHealth: "curl --fail --silent --show-error --max-time 8 http://127.0.0.1:5001/api/auth/healthz",
-  storage: "df -h / && docker system df",
+  storage: "df -h / && sudo -n docker system df",
 } as const;
 
 async function contaboReadOnly(action: keyof typeof CONTABO_READ_ONLY_COMMANDS) {
-  const host = process.env["VENDI_CONTABO_SSH_HOST"];
+  const host = process.env["VENDI_CONTABO_SSH_HOST"] || (existsSync("/app/.vendi-ssh/host") ? readFileSync("/app/.vendi-ssh/host", "utf8").trim() : undefined);
   const user = process.env["VENDI_CONTABO_SSH_USER"] || "vendorai";
-  const key = process.env["VENDI_CONTABO_SSH_KEY_PATH"];
-  const knownHosts = process.env["VENDI_CONTABO_KNOWN_HOSTS"];
+  const key = process.env["VENDI_CONTABO_SSH_KEY_PATH"] || "/app/.vendi-ssh/id_ed25519";
+  const knownHosts = process.env["VENDI_CONTABO_KNOWN_HOSTS"] || "/app/.vendi-ssh/known_hosts";
   if (!host || !key || !knownHosts || !existsSync(key) || !existsSync(knownHosts)) {
     throw new Error("Contabo SSH not provisioned in existing MCP: requires dedicated read-only key and pinned known_hosts");
   }
