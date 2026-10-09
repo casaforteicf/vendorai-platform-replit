@@ -300,6 +300,17 @@ router.patch("/crm/deals/:dealId/people/:personId/profile", async (req, res) => 
         eq(crmDealPeopleTable.dealId, req.params.dealId),
         eq(crmDealPeopleTable.personId, req.params.personId))).limit(1);
     if (!linked) return res.status(404).json({ error: "Pessoa não vinculada a este negócio." });
+    // A master person's profile is global. Editing it from one tenant would change
+    // personal data visible to another tenant, so require a separate ownership workflow.
+    const foreignDeal = await db.select({ id: crmDealPeopleTable.id }).from(crmDealPeopleTable)
+      .where(and(eq(crmDealPeopleTable.personId, req.params.personId),
+        sql`${crmDealPeopleTable.tenantId} <> ${tenantId}`)).limit(1);
+    const foreignContact = await db.select({ id: crmTenantCompanyContactsTable.id }).from(crmTenantCompanyContactsTable)
+      .where(and(eq(crmTenantCompanyContactsTable.personId, req.params.personId),
+        sql`${crmTenantCompanyContactsTable.tenantId} <> ${tenantId}`)).limit(1);
+    if (foreignDeal.length || foreignContact.length) {
+      return res.status(409).json({ error: "Cadastro compartilhado com outra empresa. Edição global bloqueada para proteger os dados." });
+    }
     const documento = digits(parsed.data.documento);
     if (documento) {
       const matches = await db.select({ id: crmPeopleMasterTable.id })
