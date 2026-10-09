@@ -1,6 +1,6 @@
 import unittest
 from arqdor_feature_contracts import (
-    create_opening_review_queue, inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, preview_scale_calibration, draft_opening_schedule, evaluate_wall_mesh_topology, inspect_boundary_loops, associate_boundary_candidates, build_opening_review_queue,
+    record_opening_review_decision, create_opening_review_queue, inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, preview_scale_calibration, draft_opening_schedule, evaluate_wall_mesh_topology, inspect_boundary_loops, associate_boundary_candidates, build_opening_review_queue,
 )
 
 
@@ -342,6 +342,28 @@ class FeatureContractsTests(unittest.TestCase):
         self.assertFalse(queue[0]["fabricationReady"])
         with self.assertRaises(ValueError):
             build_opening_review_queue([None], [])
+
+    def test_manual_review_decision_is_audit_proposal_only(self):
+        digest = "ab" * 32
+        row = {"sourceObjectKey": f"{digest}:mesh-000001",
+               "objectId": "mesh-000001", "opening": "Janela",
+               "measurementStatus": "aabb_estimate_requires_review",
+               "hostRelationStatus": "single_spatial_candidate"}
+        queue = create_opening_review_queue([row], digest, "R2")
+        key = queue["rows"][0]["reviewKey"]
+        result = record_opening_review_decision(
+            queue, key, "arquiteta-01", "accept_for_detailed_review",
+            "Conferir medidas em planta", "2026-10-09T19:00:00Z")
+        self.assertFalse(result["persisted"])
+        self.assertFalse(result["event"]["geometryApproved"])
+        self.assertFalse(result["event"]["fabricationReady"])
+        for decision, reason in (("approve_fabrication", "test"), ("reject_candidate", "")):
+            with self.assertRaises(ValueError):
+                record_opening_review_decision(
+                    queue, key, "arquiteta-01", decision, reason, "2026-10-09T19:00:00Z")
+        with self.assertRaises(ValueError):
+            record_opening_review_decision(
+                queue, "missing", "arquiteta-01", "reject_candidate", "test", "2026-10-09T19:00:00Z")
 
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
