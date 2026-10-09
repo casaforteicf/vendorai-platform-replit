@@ -1,3 +1,4 @@
+import { exposedWallFaces } from "./conceptWallSurfaces";
 import { partitionOrthogonalWallSolids } from "./conceptWallSolidUnion";
 import { splitWallVoids, openingVerticalBounds } from "./conceptWallVoids";
 import { buildFacadeMeshBoxes } from "./conceptFacadeMeshes";
@@ -1263,6 +1264,7 @@ export default function ConceptWebGLScene({
       materialId?: string,
       custom = false,
       prepared?: ReturnType<typeof partitionOrthogonalWallSolids>,
+      surfaces?: ReturnType<typeof exposedWallFaces>,
     ) => {
       const baseY = floor * 2.96 + 0.16;
       const thickness = Math.max(0.08, wall.thickness ?? 0.15);
@@ -1276,6 +1278,27 @@ export default function ConceptWebGLScene({
           baseY + (piece.zMin + piece.zMax) / 2,
           (piece.wall.y1 + piece.wall.y2) / 2 - lotDepth / 2, color,
           { transparent: interiorMode, opacity: interiorMode ? 0.58 : 1, materialId, repeatScale: 1 });
+        const faces = surfaces?.get(piece);
+        if (faces) {
+          const length = Math.hypot(dx, dy), ux = dx / length, uy = dy / length;
+          const cx = (piece.wall.x1 + piece.wall.x2) / 2, cy = (piece.wall.y1 + piece.wall.y2) / 2, cz = (piece.zMin + piece.zMax) / 2;
+          const positions: number[] = [], uv: number[] = [];
+          for (const face of faces) {
+            const order = face.direction > 0 ? [0, 2, 1, 0, 3, 2] : [0, 1, 2, 0, 2, 3];
+            for (const index of order) {
+              const [x, y, z] = face.vertices[index];
+              positions.push((x - cx) * ux + (y - cy) * uy, z - cz, -(x - cx) * uy + (y - cy) * ux);
+              uv.push(face.vertices[index][(face.axis + 1) % 3], face.vertices[index][(face.axis + 2) % 3]);
+            }
+          }
+          const geometry = new THREE.BufferGeometry();
+          geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+          geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+          geometry.computeVertexNormals();
+          geometry.computeBoundingSphere();
+          mesh.geometry.dispose();
+          mesh.geometry = geometry;
+        }
         mesh.rotation.y = -Math.atan2(dy, dx);
         mesh.userData.wallId = wall.id;
         mesh.userData.customWall = custom;
@@ -1392,11 +1415,12 @@ export default function ConceptWebGLScene({
         ...(level.walls ?? []).map(wall => ({ ...wall, thickness: 0.15 })),
         ...(level.customWalls ?? []),
       ], level.openings ?? [], 2.8);
+      const wallSurfaces = exposedWallFaces(joinedWalls);
       for (const wall of level.walls ?? []) {
-        addWall(modelRoot, wall, level.floor, level.openings ?? [], level.wallMaterials?.[wall.id], false, joinedWalls.filter(piece => piece.wall.id === wall.id));
+        addWall(modelRoot, wall, level.floor, level.openings ?? [], level.wallMaterials?.[wall.id], false, joinedWalls.filter(piece => piece.wall.id === wall.id), wallSurfaces);
       }
       for (const wall of level.customWalls ?? []) {
-        addWall(modelRoot, wall, level.floor, level.openings ?? [], level.wallMaterials?.[wall.id], true, joinedWalls.filter(piece => piece.wall.id === wall.id));
+        addWall(modelRoot, wall, level.floor, level.openings ?? [], level.wallMaterials?.[wall.id], true, joinedWalls.filter(piece => piece.wall.id === wall.id), wallSurfaces);
       }
 
       // Geometry guard: recover missing external envelope from the detected room grid.

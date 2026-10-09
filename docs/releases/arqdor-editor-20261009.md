@@ -126,3 +126,12 @@ partitionOrthogonalWallSolids subtrai volumes já ocupados dos trechos seguintes
 Limites: paredes diagonais permanecem no caminho anterior; não há união booleana geral de polígonos, remoção de faces internas nem malha única contínua BIM. Paredes inferidas da cena não participam da partição do conjunto explícito. Inspeção visual integrada e desempenho em projetos grandes pendentes.
 
 Arquivos: ConceptModel3D.tsx, ConceptWebGLScene.tsx, conceptWallSolidUnion.ts e conceptWallSolidUnion.test.ts. 78 testes passaram em 17 arquivos; sintaxe TSX das cenas e tipagem isolada do helper verificadas. Lote ARQ-EDITOR-20261009, versão em desenvolvimento. Homologação Contabo e publicação adiadas.
+
+
+## Superfícies externas da união ortogonal no WebGL
+
+exposedWallFaces remove áreas compartilhadas entre faces adjacentes dos sólidos ortogonais particionados. ConceptWebGLScene substitui as caixas desses trechos por BufferGeometry triangulada das superfícies expostas, com UVs/normais e IDs/material mantidos. Vãos preservam seus revelos. Geometria editável original permanece intacta.
+
+Limites: não cria malha única soldada, não resolve faces de uniões diagonais, e o SVG permanece com as projeções de caixas particionadas. Inspeção visual real, texturas, picking e desempenho em projetos grandes ainda pendentes.
+
+Arquivos: ConceptWebGLScene.tsx, conceptWallSurfaces.ts e conceptWallSurfaces.test.ts. Verificação: 83 testes passaram em 18 arquivos, incluindo área externa de parede isolada, adjacência, cruzamento e revelos; sintaxe da cena e tipagem isolada do helper verificadas. Lote ARQ-EDITOR-20261009, versão em desenvolvimento; homologação Contabo e publicação adiadas.
