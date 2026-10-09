@@ -100,10 +100,10 @@ test('symlinked original is never served', async () => withStore(async (store, r
 }));
 
 test('scene settings validate numeric sunlight and RGB colors', () => {
-  const v = {sunlight:1,materials:{['0'.repeat(36)]:'#abcdef'},cameras:[]};
+  const v = {sunlight:1,materials:{'mat-0':'#abcdef'},cameras:[]};
   assert.deepEqual(validateSceneSettings(v),v);
   assert.throws(()=>validateSceneSettings({...v,sunlight:10}));
-  assert.throws(()=>validateSceneSettings({...v,materials:{['0'.repeat(36)]:'invalid'}}));
+  assert.throws(()=>validateSceneSettings({...v,materials:{'mat-0':'invalid'}}));
 });
 
 test('scene settings persist across store instances', async () => withStore(async (store, root) => {
