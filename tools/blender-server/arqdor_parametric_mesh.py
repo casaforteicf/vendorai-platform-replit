@@ -57,11 +57,37 @@ def mesh_parametric_wall(wall, openings=None):
         if (i, j + 1) not in cells:
             faces.append([vertex(b, -1, hi), vertex(a, -1, hi),
                           vertex(a, 1, hi), vertex(b, 1, hi)])
-    return {"vertices": vertices, "faces": faces,
-            "openingCount": len(openings), "localWallClosedSurface": True,
+    topology = inspect_mesh_edges({"vertices": vertices, "faces": faces})
+    return {"vertices": vertices, "faces": faces, "topology": topology,
+            "openingCount": len(openings), "localWallClosedSurface": topology["watertightByEdgeIncidence"],
             "crossWallJoinsResolved": False, "manufacturingApproved": False,
             "quantitiesEnabled": False, "geometryApproved": False,
             "requiresManualReview": True}
+
+
+
+def inspect_mesh_edges(mesh):
+    """Check exact indexed mesh incidence and orientation, not just visual closure."""
+    vertices, faces = mesh.get("vertices"), mesh.get("faces")
+    if not isinstance(vertices, list) or not isinstance(faces, list):
+        raise ValueError("Malha inválida")
+    edges = {}
+    for face in faces:
+        if not isinstance(face, list) or len(face) < 3 or len(set(face)) != len(face):
+            raise ValueError("Face degenerada")
+        if any(type(v) is not int or v < 0 or v >= len(vertices) for v in face):
+            raise ValueError("Índice de vértice inválido")
+        for a, b in zip(face, face[1:] + face[:1]):
+            key = (min(a, b), max(a, b))
+            count, balance = edges.get(key, (0, 0))
+            edges[key] = (count + 1, balance + (1 if a < b else -1))
+    boundaries = sum(count == 1 for count, _ in edges.values())
+    nonmanifold = sum(count > 2 for count, _ in edges.values())
+    orientation_errors = sum(count == 2 and balance != 0 for count, balance in edges.values())
+    return {"boundaryEdges": boundaries, "nonmanifoldEdges": nonmanifold,
+            "orientationErrors": orientation_errors, "watertightByEdgeIncidence":
+            bool(faces) and boundaries == 0 and nonmanifold == 0 and orientation_errors == 0}
+
 
 
 def mesh_parametric_project(walls):
