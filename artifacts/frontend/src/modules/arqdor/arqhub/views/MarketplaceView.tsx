@@ -118,8 +118,8 @@ export function MarketplaceView() {
                 return (
                   <div key={item.id} onClick={()=>setSel(item)} style={{
                     cursor:'pointer', borderRadius:10,
-                    border:`1px solid ${sel?.id===item.id?'rgba(124,58,237,0.5)':T.border}`,
-                    background:sel?.id===item.id?'rgba(124,58,237,0.07)':T.surface,
+                    border:`1px solid ${sel?.id===item.id?'rgba(15,159,110,0.55)':T.border}`,
+                    background:sel?.id===item.id?'rgba(15,159,110,0.08)':T.surface,
                     padding:14, transition:'border 0.15s',
                   }}>
                     <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
@@ -133,13 +133,13 @@ export function MarketplaceView() {
                     <p style={{ margin:'0 0 4px', fontSize:12, fontWeight:700, color:'#fff', lineHeight:1.3 }}>{item.nome}</p>
                     {item.descricao && <p style={{ margin:'0 0 8px', fontSize:10, color:T.dim, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' as const }}>{item.descricao}</p>}
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                      <span style={{ fontSize:14, fontWeight:800, color:isGratis?'#4ade80':'#fff' }}>
+                      <span style={{ fontSize:14, fontWeight:800, color:isGratis?'#35d399':'#fff' }}>
                         {fmtPreco(item.preco)}
                       </span>
                       <button onClick={e=>{e.stopPropagation(); handleComprar(item)}} disabled={buying} style={{
                         padding:'4px 10px', borderRadius:6, border:'none',
-                        background:isGratis?'rgba(74,222,128,0.15)':T.purple,
-                        color:isGratis?'#4ade80':'#fff', cursor:buying?'not-allowed':'pointer', fontSize:10, fontWeight:700,
+                        background:isGratis?'rgba(53,211,153,0.15)':T.purple,
+                        color:isGratis?'#35d399':'#fff', cursor:buying?'not-allowed':'pointer', fontSize:10, fontWeight:700,
                       }}>
                         {isGratis?'↓ Grátis':'Comprar'}
                       </button>
@@ -190,13 +190,13 @@ export function MarketplaceView() {
             )}
 
             <div style={{ padding:'14px', borderRadius:8, background:'rgba(255,255,255,0.03)', border:`1px solid ${T.border}`, textAlign:'center' as const }}>
-              <p style={{ margin:'0 0 10px', fontSize:22, fontWeight:900, color:(!sel.preco||Number(sel.preco)===0)?'#4ade80':'#fff' }}>
+              <p style={{ margin:'0 0 10px', fontSize:22, fontWeight:900, color:(!sel.preco||Number(sel.preco)===0)?'#35d399':'#fff' }}>
                 {fmtPreco(sel.preco)}
               </p>
               <button
                 onClick={()=>handleComprar(sel)}
                 disabled={buying}
-                style={{ width:'100%', padding:'10px', borderRadius:8, border:'none', background:(!sel.preco||Number(sel.preco)===0)?'rgba(74,222,128,0.2)':T.purple, color:(!sel.preco||Number(sel.preco)===0)?'#4ade80':'#fff', cursor:buying?'not-allowed':'pointer', fontSize:12, fontWeight:700 }}
+                style={{ width:'100%', padding:'10px', borderRadius:8, border:'none', background:(!sel.preco||Number(sel.preco)===0)?'rgba(53,211,153,0.2)':T.purple, color:(!sel.preco||Number(sel.preco)===0)?'#35d399':'#fff', cursor:buying?'not-allowed':'pointer', fontSize:12, fontWeight:700 }}
               >
                 {buying ? '⏳ Processando…' : (!sel.preco||Number(sel.preco)===0) ? '📥 Download Gratuito' : '🛍️ Adquirir'}
               </button>
