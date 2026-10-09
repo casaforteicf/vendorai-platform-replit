@@ -1,6 +1,6 @@
 import unittest
 from arqdor_feature_contracts import (
-    inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, preview_scale_calibration, draft_opening_schedule, evaluate_wall_mesh_topology, inspect_boundary_loops,
+    inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, preview_scale_calibration, draft_opening_schedule, evaluate_wall_mesh_topology, inspect_boundary_loops, associate_boundary_candidates,
 )
 
 
@@ -174,6 +174,23 @@ class FeatureContractsTests(unittest.TestCase):
         self.assertEqual(inspect_boundary_loops(vertices, [[0, 1], [1, 2]])["closedBoundaryCandidates"], [])
         with self.assertRaises(ValueError):
             inspect_boundary_loops(vertices, [[0, 9]])
+
+    def test_boundary_frame_correspondence_is_never_approved(self):
+        ring = {"bounds": {"min": [1, 0, 1], "max": [2, 0.2, 2]}}
+        wall = {"name": "Parede", "suggestedClass": "wall",
+                "bounds": {"min": [0, 0, 0], "max": [4, 0.2, 3]},
+                "topologyReview": {"boundaryLoopReview": {"closedBoundaryCandidates": [ring]}}}
+        frame = {"name": "Janela", "suggestedClass": "window",
+                 "bounds": {"min": [1, 0.1, 1], "max": [2, 0.3, 2]}}
+        relations = propose_opening_hosts([wall, frame])
+        review = associate_boundary_candidates(relations, [wall, frame])
+        self.assertEqual(review[0]["reviewPriority"], "boundary_and_object_overlap")
+        self.assertEqual(len(review[0]["candidateBoundaryMatches"]), 1)
+        self.assertFalse(review[0]["openingConfirmed"])
+        self.assertFalse(review[0]["fabricationReady"])
+        frame["bounds"] = {"min": [8, 8, 1], "max": [9, 9, 2]}
+        far = associate_boundary_candidates(relations, [wall, frame])
+        self.assertEqual(far[0]["reviewPriority"], "spatial_only")
 
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
