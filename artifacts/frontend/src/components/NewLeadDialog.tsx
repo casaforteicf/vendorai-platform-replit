@@ -658,6 +658,10 @@ export function NewLeadDialog({
       if (!coClientPersonId) throw new Error("Não foi possível cadastrar o segundo cliente.");
     }
 
+    if (values.cadastroTipo === "casal" && personId && coClientPersonId && personId === coClientPersonId) {
+      throw new Error("Os dois clientes foram identificados como a mesma pessoa no cadastro mestre. Revise CPF, telefone ou e-mail de cada cliente antes de continuar.");
+    }
+
     if (!dealId) return { personId, coClientPersonId, companyId };
 
     if (companyId) {
@@ -673,7 +677,7 @@ export function NewLeadDialog({
       await crmPostJson(`/api/crm/deals/${dealId}/people`, {
         tenantId,
         personId,
-        role: companyId ? "contato_comercial" : "consumidor_final",
+        role: values.cadastroTipo === "casal" ? "consumidor_final" : companyId ? "contato_comercial" : "consumidor_final",
         isPrimary: true,
         contextualCompanyId: companyId,
         relationshipScope: companyId ? "persistent" : "deal_only",
