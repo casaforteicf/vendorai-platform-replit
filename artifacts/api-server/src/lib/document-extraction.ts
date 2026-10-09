@@ -12,15 +12,12 @@ export const quoteExtractionResultSchema = z.object({
   valorTotal: z.number().nullable().optional(),
   cliente: z.string().nullable().optional(),
   clienteDocumento: z.string().nullable().optional(),
-  clienteCep: z.string().nullable().optional(),
   clienteTelefone: z.string().nullable().optional(),
   clienteEmail: z.string().nullable().optional(),
   clienteCidade: z.string().nullable().optional(),
   clienteEstado: z.string().nullable().optional(),
   clienteCep: z.string().nullable().optional(),
   clienteEndereco: z.string().nullable().optional(),
-  clienteTelefone: z.string().nullable().optional(),
-  clienteEmail: z.string().nullable().optional(),
   fornecedor: z.string().nullable().optional(),
   fornecedorDocumento: z.string().nullable().optional(),
   fornecedorEndereco: z.string().nullable().optional(),
@@ -93,6 +90,7 @@ function normalizeQuoteExtractionPayload(value: unknown): unknown {
 
   const numericFields = ["valorTotal", "desconto", "acrescimos", "frete", "impostos", "confianca"];
   for (const key of numericFields) output[key] = parseLooseNumber(input[key]);
+
   if (Array.isArray(input.itens)) {
     output.itens = input.itens
       .filter((item) => item && typeof item === "object" && !Array.isArray(item))
@@ -124,6 +122,7 @@ function normalizeQuoteExtractionPayload(value: unknown): unknown {
 
   return output;
 }
+
 function parseQuoteExtraction(raw: string): QuoteExtractionResult {
   const parsed = JSON.parse(raw || "{}");
   const normalized = normalizeQuoteExtractionPayload(parsed);
@@ -284,36 +283,11 @@ export async function extractLancamentoData(
 
   for (const file of files) {
     try {
-      const visual = await callOpenAIFileExtraction(
-        tenantId,
-        "document_extraction",
-        { buffer: file.buffer, mimeType: file.mimeType || "application/pdf", filename: file.originalName },
-        QUOTE_EXTRACTION_SYSTEM_PROMPT + "\n\nAnalise o PDF visualmente página por página. Não presuma dados ausentes. Preserve a ordem original dos itens e retorne somente o JSON.",
-        { model: "gpt-4.1-mini", maxTokens: 5000 },
-      );
-      const cleaned = visual.content.replace(/^\`\`\`(?:json)?\s*/i, "").replace(/\s*\`\`\`$/, "").trim();
-      try {
-        return quoteExtractionResultSchema.parse(JSON.parse(cleaned || "{}"));
-      } catch {
-        return {
-          confianca: 0,
-          informacoesAdicionais: ["PDF visual processado, mas a estrutura retornada precisa de conferência manual."],
-        };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const invalidFile = /invalid_file|badly formatted|corrupted|arquivo.*corromp/i.test(message);
-      return {
-        confianca: 0,
-        informacoesAdicionais: [
-          invalidFile
-            ? "O PDF não pôde ser lido automaticamente porque o arquivo está malformado ou corrompido. O upload foi preservado para conferência manual."
-            : "A leitura visual do PDF ficou indisponível. O upload foi preservado para conferência manual.",
-        ],
-      };
       const text = await extractTextFromBuffer(file.buffer, file.mimeType, file.originalName, tenantId);
       if (text.trim().length > 20) {
         texts.push(`=== ${file.originalName} ===\n${text.trim()}`);
       }
+    } catch {
       // skip unreadable files
     }
   }
@@ -357,7 +331,6 @@ Regras obrigatórias:
 - Se o documento tiver grupos, capítulos, etapas ou seções, preserve essa hierarquia em "grupo" e/ou "etapa".
 - Quando houver valor total da linha, preserve-o. Quando houver quantidade e valor unitário, preserve ambos.
 - Extraia também as informações comerciais, contratuais e cadastrais do CLIENTE, com atenção especial a nome/razão social, CPF/CNPJ, telefone/WhatsApp, e-mail, cidade, UF, CEP e endereço.
-- Quando houver telefone/WhatsApp ou e-mail do cliente no documento, preserve exatamente esses dados em clienteTelefone e clienteEmail.
 - Não confunda dados do fornecedor/emitente com os dados do cliente/destinatário. Use o rótulo, posição e contexto do documento para decidir.
 - Se cidade/UF aparecerem dentro do endereço do cliente, extraia também nos campos clienteCidade e clienteEstado quando houver segurança.
 - Campos não encontrados devem ser omitidos ou null.
@@ -372,11 +345,8 @@ Formato:
   "valorTotal": 0,
   "cliente": "nome/razão social do cliente",
   "clienteDocumento": "CPF/CNPJ/documento",
-  "clienteEmail": "e-mail do cliente",
-  "clienteCep": "CEP do cliente",
-  "clienteEndereco": "endereço completo do cliente",
   "clienteTelefone": "telefone/WhatsApp do cliente exatamente como aparece no documento",
-  "clienteEmail": "e-mail do cliente exatamente como aparece no documento",
+  "clienteEmail": "e-mail do cliente",
   "clienteCidade": "cidade do cliente",
   "clienteEstado": "UF/estado do cliente",
   "clienteCep": "CEP do cliente",
@@ -458,11 +428,9 @@ export async function extractQuoteData(
         tenantId,
         "document_extraction",
         { buffer: file.buffer, mimeType: file.mimeType || "application/pdf", filename: file.originalName },
-        "Transcreva fielmente o PDF página por página, preservando rótulos, tabelas, dados cadastrais, itens, quantidades, unidades, preços, totais, condições e observações. Não resuma, não interprete e não invente.",
         "Transcreva fielmente o PDF página por página. Preserve títulos, rótulos, tabelas, linhas, nomes, CPF/CNPJ, telefones, e-mails, endereços, cidade/UF/CEP, códigos, descrições, quantidades, unidades, preços, totais, condições e observações. Não resuma, não interprete, não reordene e não invente. Retorne somente a transcrição.",
         { model: "gpt-4.1-mini", maxTokens: 7000 },
       );
-      if (visual.content.trim()) texts.push(`=== ${file.originalName} (transcrição visual) ===\n${visual.content.trim()}`);
       const transcript = visual.content.trim();
       if (!transcript) {
         return { confianca: 0, informacoesAdicionais: ["PDF visual sem texto legível suficiente para importação automática."] };
@@ -481,7 +449,10 @@ export async function extractQuoteData(
         tenantId,
         "document_extraction",
         { buffer: file.buffer, mimeType: file.mimeType || "application/pdf", filename: file.originalName },
+        "Transcreva fielmente o PDF página por página, preservando rótulos, tabelas, dados cadastrais, itens, quantidades, unidades, preços, totais, condições e observações. Não resuma, não interprete e não invente.",
+        { model: "gpt-4.1-mini", maxTokens: 7000 },
       );
+      if (visual.content.trim()) texts.push(`=== ${file.originalName} (transcrição visual) ===\n${visual.content.trim()}`);
     } catch {
       texts.push(`=== ${file.originalName} ===\n[PDF sem camada de texto; leitura visual indisponível. Exigir conferência manual.]`);
     }
@@ -571,7 +542,6 @@ export async function extractTextFromBuffer(
       {
         type: "text",
         text: "Transcreva fielmente TODO o texto visível desta imagem. Preserve a ordem visual, quebras de linha, títulos, rótulos e tabelas; mantenha nomes, telefones, e-mails, CPF/CNPJ, endereços, cidades/UF/CEP, números de documento, códigos, itens, quantidades, unidades, preços, totais, condições de pagamento e observações. Não resuma, não interprete, não corrija e não descarte dados cadastrais.",
-        text: "Transcreva fielmente TODO o texto visível desta imagem, preservando nomes, telefones, e-mails, CPF/CNPJ, endereços, cidades/UF, números de documento, itens, quantidades, unidades, preços, totais, condições de pagamento e observações. Não resuma, não interprete e não descarte dados cadastrais.",
       },
       {
         type: "image_url",
@@ -665,4 +635,3 @@ export async function extractBusinessDataFromDocuments(
     return { confianca: 0 };
   }
 }
-
