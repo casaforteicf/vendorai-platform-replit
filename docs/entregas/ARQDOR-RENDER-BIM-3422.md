@@ -377,3 +377,11 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Persistência:** `ModelFileStore.saveParametricDraft` passa a serializar leitura da revisão e escrita através de `mkdir` exclusivo `parametric-write.lock` no diretório do modelo. Escritas simultâneas retornam conflito; remoção via `finally`. Lock abandonado após crash ainda exigirá recuperação operacional, não implementada.
 - **Commits:** `0be7b0d` (validação), `bdc5532` (testes), `3af15f1` (lock), `5ad2cba` (orientação de faces).
 - **Situação:** diagnóstico e persistência melhorados mas sem execução de build, teste Python ou homologação; uniões de sólidos L/T/cruz e exibição WebGL das malhas paramétricas ainda pendentes. PR #3422 Draft, sem merge ou deploy; produção inalterada.
+
+
+## Lote BIM — prévia com vãos sem cobertura e classificação colinear (09/10/2026)
+- **Código frontend:** `RenderStudioParametricEditor.tsx` substitui a face única que ocultava portas/janelas na projeção espacial SVG por painéis subdivididos no eixo horizontal/vertical, removendo visualmente células nos intervalos das aberturas. A vista compartilha os mesmos parâmetros de paredes e vãos da planta 2D. Essa entrega é uma **prévia SVG**, não WebGL, CSG ou malha real renderizada.
+- **Reconhecimento de encontros:** `draft_wall_centerline_intersections` deixa de registrar paredes colineares mas afastadas como junção; distingue sobreposição real e encontro em extremidade, com intervalo de interseção.
+- **Teste adicionado:** caso de paredes colineares separadas, sobrepostas e encostadas em `test_arqdor_feature_contracts.py`.
+- **Commits:** `8b77faa`, `7862a24`, `63fa962`; este registro complementa o lote.
+- **Estados:** código registrado; testes e build **não executados**. Integração WebGL, união sólida L/T/cruz e verificação topológica ponta-a-ponta permanecem pendentes. Não declarar lote completo. PR #3422 Draft, homologação Contabo e publicação adiadas, sem merge/deploy.
