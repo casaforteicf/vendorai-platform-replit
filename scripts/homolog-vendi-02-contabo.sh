@@ -96,11 +96,26 @@ const main=async()=>{
  if(missing.status!==401) throw Error("AUTH_TEST_FAILED");
  const invalid=await call("vendi-02-tenant-inexistente-xxxxxxxx");
  console.log("TENANT_INEXISTENTE_HTTP="+invalid.status);
- if(invalid.status!==404) throw Error("TENANT_TEST_FAILED");
- const valid=await call("vendorai-e2e");
- console.log("TENANT_TESTE_HTTP="+valid.status);
- if(valid.status!==200 || !valid.data?.ok || !Number.isInteger(valid.data.crm?.activeLeads)) throw Error("CRM_TEST_FAILED:"+JSON.stringify(valid.data).slice(0,250));
- console.log("CRM_LEADS_ATIVOS="+valid.data.crm.activeLeads);
+ if(invalid.status!==404 || invalid.data?.error!=="tenant_not_found") throw Error("TENANT_TEST_FAILED:"+JSON.stringify(invalid.data).slice(0,180));
+
+ // Existing tenants differ between production and isolated homolog DB.
+ // Test read-only candidates without ever using a production API or changing data.
+ const candidates=[...new Set([process.env.VENDI_HOMOLOG_TENANT_KEY,"casaforteicf","windoor","shoppingdapiscina","vendorai-e2e"].filter(Boolean))];
+ let found=false;
+ for(const tenantKey of candidates){
+   const actual=await call(tenantKey);
+   console.log("TENANT_CANDIDATO="+tenantKey+" HTTP="+actual.status+" ERRO="+(actual.data?.error||"nenhum"));
+   if(actual.status===404 && actual.data?.error==="tenant_not_found") continue;
+   if(actual.status===200 && actual.data?.ok===true && Number.isInteger(actual.data.crm?.activeLeads)){
+     console.log("CRM_TENANT_VALIDADO="+tenantKey);
+     console.log("CRM_LEADS_ATIVOS="+actual.data.crm.activeLeads);
+     found=true;
+     break;
+   }
+   throw Error("CRM_QUERY_FAILED:"+JSON.stringify(actual.data).slice(0,200));
+ }
+ if(!found) throw Error("HOMOLOG_NO_KNOWN_TENANT: banco de homologacao nao contem tenant de teste conhecido");
+
 };
 main().catch(err=>{console.error(String(err));process.exitCode=1});
 JS
