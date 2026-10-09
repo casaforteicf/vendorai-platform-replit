@@ -159,3 +159,15 @@ conversores, build TypeScript e UI isolada antes de integrar.
 - **Decisão vigente:** homologação Contabo, correção da autenticação Vendi e publicação deixadas para etapa posterior a pedido do usuário. Não insistir nessas etapas agora.
 - **Estados:** implementado sem validação técnica; homologação não realizada; aprovação não realizada; produção inalterada. PR #3422 permanece Draft.
 - **Próxima ação independente:** implementar identificadores estáveis de objeto no relatório para diferenciar malhas importadas sem depender exclusivamente de nomes, preservando o bloqueio de fabricação.
+
+
+## Marco — identidade de objetos importados (09/10/2026)
+- Lote `ARQDOR-RENDER-BIM-3422`, versão em desenvolvimento (sem release).
+- Objetivo: distinguir objetos Blender com nomes iguais no quadro preliminar de esquadrias.
+- Implementado: IDs locais `mesh-000000` etc. para malhas do relatório de conversão; transporte de `objectId` até sugestões de paredes e correspondência de contornos; linha do quadro por `objectId` quando presente, sem depender apenas do nome.
+- Commits: `da648fb`, `664ed97`, `4c22bab`, `bab2d43`.
+- Arquivos: `tools/blender-server/arqdor_feature_contracts.py`, `tools/blender-server/arqdor_convert_obj_fbx.py`, `tools/blender-server/test_arqdor_feature_contracts.py`.
+- Identidade é **local ao arquivo/importação** e depende da ordem das malhas, não é ID BIM global persistente nem autoriza vinculação entre versões.
+- Testes adicionados para duas janelas com nome igual e para ID ambíguo; **não executados na Contabo**, sem homologação. Medidas continuam estimativas AABB, nunca de fabricação.
+- Status: implementado sem validação técnica completa. Homologação Contabo e publicação **adiadas por determinação do usuário**; aprovação não realizada; produção sem alteração. PR #3422 em Draft.
+- Próximo desenvolvimento independente: rastrear identidade por versão do arquivo e preparar revisão visual das esquadrias com conflitos, sem ativar quantitativos BIM automáticos.
