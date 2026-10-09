@@ -11,7 +11,7 @@ from mathutils import Vector
 from pathlib import Path
 
 import bpy
-from arqdor_feature_contracts import validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, draft_opening_schedule, evaluate_wall_mesh_topology
+from arqdor_feature_contracts import validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, draft_opening_schedule, evaluate_wall_mesh_topology, inspect_boundary_loops
 
 
 def convert(src: Path, dst: Path, sha256: str):
@@ -72,6 +72,13 @@ def convert(src: Path, dst: Path, sha256: str):
                 topology = evaluate_wall_mesh_topology(
                     len(obj.data.vertices), len(obj.data.edges),
                     len(obj.data.polygons), boundary, nonmanifold)
+                if boundary <= 50000:
+                    boundary_vertices = [[float(v) for v in (obj.matrix_world @ vertex.co)]
+                                         for vertex in obj.data.vertices]
+                    boundary_connections = [[edge.verts[0].index, edge.verts[1].index]
+                                            for edge in bm.edges if edge.is_boundary]
+                    topology["boundaryLoopReview"] = inspect_boundary_loops(
+                        boundary_vertices, boundary_connections)
             finally:
                 bm.free()
         classification_hints.append({
