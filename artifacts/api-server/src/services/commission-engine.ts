@@ -2,6 +2,8 @@ import { and, asc, eq, ne, sql } from "drizzle-orm";
 import {
   commissionEventsTable,
   commissionRulesTable,
+  arqdorOriginCommissionRulesTable,
+  arqdorOriginCommissionEventsTable,
   db,
   dealsTable,
   leadsTable,
@@ -40,6 +42,12 @@ export type CommissionEvaluationInput = {
 function clampPercent(value: number | null | undefined) {
   const n = Number(value ?? 0);
   return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0;
+}
+
+export function calculateOriginShareCents(grossCommissionCents: number, sharePercent = 25) {
+  const gross = Math.max(0, Math.round(Number(grossCommissionCents) || 0));
+  const share = clampPercent(sharePercent);
+  return Math.round(gross * (share / 100));
 }
 
 function matchesOptional(ruleValue: string | null, inputValue: string | null | undefined) {
@@ -276,6 +284,154 @@ export async function createSpecificationParticipation(input: {
   };
 }
 
+
+async function resolveLeadOrigin(input: CommissionEvaluationInput) {
+  const explicitOriginTenantId = typeof input.metadata?.originTenantId === "string" ? input.metadata.originTenantId : null;
+  const explicitCampaignId = typeof input.metadata?.originCampaignId === "string" ? input.metadata.originCampaignId : null;
+  const explicitSource = typeof input.metadata?.originSource === "string" ? input.metadata.originSource : null;
+
+  if (!input.dealId) {
+    return explicitOriginTenantId ? {
+      leadId: null,
+      originTenantId: explicitOriginTenantId,
+      originCampaignId: explicitCampaignId,
+      originSource: explicitSource,
+    } : null;
+  }
+
+  const [row] = await db
+    .select({
+      leadId: dealsTable.leadId,
+      originTenantId: leadsTable.originTenantId,
+      originCampaignId: leadsTable.originCampaignId,
+      originSource: leadsTable.originSource,
+    })
+    .from(dealsTable)
+    .leftJoin(leadsTable, eq(leadsTable.id, dealsTable.leadId))
+    .where(and(eq(dealsTable.id, input.dealId), eq(dealsTable.tenantId, input.tenantId)))
+    .limit(1);
+
+  const originTenantId = explicitOriginTenantId ?? row?.originTenantId ?? null;
+  if (!originTenantId) return null;
+
+  return {
+    leadId: row?.leadId ?? null,
+    originTenantId,
+    originCampaignId: explicitCampaignId ?? row?.originCampaignId ?? null,
+    originSource: explicitSource ?? row?.originSource ?? null,
+  };
+}
+
+async function resolveOriginSharePercent(originTenantId: string, category?: string | null, campaignId?: string | null) {
+  const rules = await db
+    .select()
+    .from(arqdorOriginCommissionRulesTable)
+    .where(and(
+      eq(arqdorOriginCommissionRulesTable.originTenantId, originTenantId),
+      eq(arqdorOriginCommissionRulesTable.active, true),
+    ))
+    .orderBy(asc(arqdorOriginCommissionRulesTable.priority));
+
+  const rule = rules.find((candidate) =>
+    (!candidate.category || candidate.category === category)
+    && (!candidate.campaignId || candidate.campaignId === campaignId)
+  ) ?? null;
+
+  return {
+    rule,
+    sharePercent: clampPercent(rule ? Number(rule.sharePercent) : 25),
+  };
+}
+
+async function createOriginTenantParticipation(
+  input: CommissionEvaluationInput,
+  parentEvent: typeof commissionEventsTable.$inferSelect | undefined,
+) {
+  if (!parentEvent || parentEvent.status !== "released" || parentEvent.commissionCents <= 0) return null;
+  if (input.trigger !== "payment_received" && input.trigger !== "payment_reconciled") return null;
+
+  const origin = await resolveLeadOrigin(input);
+  if (!origin?.originTenantId) return null;
+  if (origin.originTenantId === input.tenantId) return null;
+
+  const { rule, sharePercent } = await resolveOriginSharePercent(
+    origin.originTenantId,
+    input.category ?? null,
+    origin.originCampaignId,
+  );
+  if (sharePercent <= 0) return null;
+
+  const correlationId = `origin-share:${parentEvent.id}:${origin.originTenantId}`;
+  const [existing] = await db
+    .select()
+    .from(arqdorOriginCommissionEventsTable)
+    .where(and(
+      eq(arqdorOriginCommissionEventsTable.sellerTenantId, input.tenantId),
+      eq(arqdorOriginCommissionEventsTable.correlationId, correlationId),
+    ))
+    .limit(1);
+  if (existing) return existing;
+
+  const grossCommissionCents = Math.max(0, Number(parentEvent.commissionCents ?? 0));
+  const originShareCents = calculateOriginShareCents(grossCommissionCents, sharePercent);
+
+  const [event] = await db.insert(arqdorOriginCommissionEventsTable).values({
+    sellerTenantId: input.tenantId,
+    originTenantId: origin.originTenantId,
+    leadId: origin.leadId,
+    dealId: input.dealId ?? null,
+    parentCommissionEventId: parentEvent.id,
+    sourceType: input.sourceType ?? "commission_event",
+    sourceId: input.sourceId ?? parentEvent.id,
+    category: input.category ?? null,
+    campaignId: origin.originCampaignId,
+    grossCommissionCents,
+    sharePercent: String(sharePercent),
+    originShareCents,
+    status: "released",
+    correlationId,
+    metadata: JSON.stringify({
+      originSource: origin.originSource,
+      ruleId: rule?.id ?? null,
+      defaultShareApplied: !rule,
+      parentCommissionCorrelationId: parentEvent.correlationId,
+      productLanguage: "participacao_origem",
+    }),
+    releasedAt: new Date(),
+    updatedAt: new Date(),
+  }).returning();
+
+  return event ?? null;
+}
+
+export async function reverseOriginTenantParticipation(parentCommissionEventId: string, sellerTenantId: string, reason?: string) {
+  const rows = await db
+    .update(arqdorOriginCommissionEventsTable)
+    .set({
+      status: "reversed",
+      reversedAt: new Date(),
+      updatedAt: new Date(),
+      metadata: sql`COALESCE(${arqdorOriginCommissionEventsTable.metadata}, '{}')`,
+    } as any)
+    .where(and(
+      eq(arqdorOriginCommissionEventsTable.parentCommissionEventId, parentCommissionEventId),
+      eq(arqdorOriginCommissionEventsTable.sellerTenantId, sellerTenantId),
+      ne(arqdorOriginCommissionEventsTable.status, "reversed"),
+    ))
+    .returning();
+
+  if (reason && rows.length > 0) {
+    for (const row of rows) {
+      let metadata: Record<string, unknown> = {};
+      try { metadata = row.metadata ? JSON.parse(String(row.metadata)) : {}; } catch {}
+      await db.update(arqdorOriginCommissionEventsTable)
+        .set({ metadata: JSON.stringify({ ...metadata, reversalReason: reason }), updatedAt: new Date() })
+        .where(eq(arqdorOriginCommissionEventsTable.id, row.id));
+    }
+  }
+  return rows;
+}
+
 export async function evaluateCommission(input: CommissionEvaluationInput) {
   const [existing] = await db
     .select()
@@ -349,10 +505,12 @@ export async function evaluateCommission(input: CommissionEvaluationInput) {
   }
 
   const partnerEvent = await createReferralPartnerParticipation(input, baseAmountCents, eligiblePercent);
+  const originTenantEvent = await createOriginTenantParticipation(input, event);
   return {
     event,
     rule,
     partnerEvent,
+    originTenantEvent,
     participation: {
       type: participationType,
       percent: participationPercent,

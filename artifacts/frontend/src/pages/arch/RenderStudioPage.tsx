@@ -44,7 +44,8 @@ const SHELL_STYLES = `
     font-family: inherit !important;
   }
 
-  .arqdor-studio-v3 .arqdor-back-btn {
+  .arqdor-studio-v3 .arqdor-back-btn,
+  .arqdor-studio-v3 .arqdor-market-btn {
     position: fixed;
     top: 11px;
     left: 12px;
@@ -65,11 +66,33 @@ const SHELL_STYLES = `
     transition: .16s ease;
   }
 
-  .arqdor-studio-v3 .arqdor-back-btn:hover {
+  .arqdor-studio-v3 .arqdor-back-btn:hover,
+  .arqdor-studio-v3 .arqdor-market-btn:hover {
     border-color: #fb923c;
     background: #fff7ed;
     color: #c2410c;
     transform: translateY(-1px);
+  }
+
+  .arqdor-studio-v3 .arqdor-market-btn {
+    position: fixed;
+    top: 11px;
+    left: 98px;
+    z-index: 1200;
+    height: 36px;
+    padding: 0 13px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    border-radius: 10px;
+    border: 1px solid #fed7aa;
+    background: #fff7ed;
+    color: #c2410c;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+    box-shadow: 0 3px 10px rgba(15,23,42,.05);
+    transition: .16s ease;
   }
 
   .arqdor-studio-v3 .arqdor-legacy-root,
@@ -723,12 +746,31 @@ export default function RenderStudioPage() {
     setLocation("/arch/projetos");
   }
 
+  function openArqdorMarket() {
+    const activeVersion = findApprovedVersion(bootstrap.state) ?? bootstrap.state.versions.find((version) => version.id === bootstrap.state.latestRenderId) ?? null;
+    const params = new URLSearchParams({
+      origem: "render",
+      titulo: ambiente ? `Cotação do render — ${ambiente}` : "Cotação a partir do render",
+    });
+    if (projectId) params.set("projetoId", projectId);
+    if (activeVersion?.id) {
+      params.set("origemId", activeVersion.id);
+      params.set("renderId", activeVersion.id);
+    }
+    if (ambiente) params.set("q", ambiente);
+    setLocation(`/arch/marketplace?${params.toString()}`);
+  }
+
   return (
     <div ref={shellRef} className="arqdor-reference-ui arqdor-studio-v3">
       <style>{SHELL_STYLES}</style>
       <button className="arqdor-back-btn" onClick={handleBack} aria-label="Voltar para a tela anterior" title="Voltar para a tela anterior">
         <span aria-hidden="true">←</span>
         Voltar
+      </button>
+      <button className="arqdor-market-btn" onClick={openArqdorMarket} aria-label="Buscar produtos e fornecedores no Arqdor Market" title="Buscar no Arqdor Market">
+        <span aria-hidden="true">⌘</span>
+        Arqdor Market
       </button>
       <RenderStudioCore key={targetKey} />
     </div>
