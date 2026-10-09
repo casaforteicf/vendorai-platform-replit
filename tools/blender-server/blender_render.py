@@ -49,7 +49,7 @@ import json
 import math
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from imported_model import import_model
-from arqdor_feature_contracts import validate_camera_path
+from arqdor_feature_contracts import validate_camera_path, resolve_render_preset, validate_postproduction
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -510,39 +510,12 @@ def apply_imported_scene_settings(settings, material_mapping=None):
 # Render settings
 # ─────────────────────────────────────────────────────────────────────────────
 
-def resolve_render_preset(config):
-    """Resolve explicit quality modes while bounding render workload."""
-    profiles = {
-        "preview": ([960, 540], 16),
-        "full_hd": ([1920, 1080], 64),
-        "4k": ([3840, 2160], 256),
-        "print": ([5760, 3240], 512),
-    }
-    preset = config.get("qualityPreset")
-    if preset is None:
-        return config.get("resolution") or [1920, 1080], config.get("samples") or 64
-    if preset not in profiles:
-        raise ValueError("Preset de render desconhecido")
-    resolution, samples = profiles[preset]
-    return config.get("resolution") or resolution, config.get("samples") or samples
-
-
 def configure_postproduction(config):
-    """Non-destructive color management applied only to the render output."""
-    post = config.get("postproduction", {})
-    if not isinstance(post, dict):
-        raise ValueError("Pós-produção inválida")
-    exposure = post.get("exposure", 0)
-    gamma = post.get("gamma", 1)
-    if (not isinstance(exposure, (int, float)) or not math.isfinite(exposure)
-            or exposure < -5 or exposure > 5):
-        raise ValueError("Exposição fora do intervalo")
-    if (not isinstance(gamma, (int, float)) or not math.isfinite(gamma)
-            or gamma < 0.2 or gamma > 4):
-        raise ValueError("Gamma fora do intervalo")
+    """Adjust output color management without changing imported geometry."""
+    post = validate_postproduction(config.get("postproduction"))
     view = bpy.context.scene.view_settings
-    view.exposure = exposure
-    view.gamma = gamma
+    view.exposure = post["exposure"]
+    view.gamma = post["gamma"]
 
 
 def configure_render(config: dict, out_path: str):
