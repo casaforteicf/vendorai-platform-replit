@@ -509,10 +509,44 @@ def apply_imported_scene_settings(settings, material_mapping=None):
 # Render settings
 # ─────────────────────────────────────────────────────────────────────────────
 
+def resolve_render_preset(config):
+    """Resolve explicit quality modes while bounding render workload."""
+    profiles = {
+        "preview": ([960, 540], 16),
+        "full_hd": ([1920, 1080], 64),
+        "4k": ([3840, 2160], 256),
+        "print": ([5760, 3240], 512),
+    }
+    preset = config.get("qualityPreset")
+    if preset is None:
+        return config.get("resolution", [1920, 1080]), config.get("samples", 64)
+    if preset not in profiles:
+        raise ValueError("Preset de render desconhecido")
+    resolution, samples = profiles[preset]
+    return config.get("resolution", resolution), config.get("samples", samples)
+
+
+def configure_postproduction(config):
+    """Non-destructive color management applied only to the render output."""
+    post = config.get("postproduction", {})
+    if not isinstance(post, dict):
+        raise ValueError("Pós-produção inválida")
+    exposure = post.get("exposure", 0)
+    gamma = post.get("gamma", 1)
+    if (not isinstance(exposure, (int, float)) or not math.isfinite(exposure)
+            or exposure < -5 or exposure > 5):
+        raise ValueError("Exposição fora do intervalo")
+    if (not isinstance(gamma, (int, float)) or not math.isfinite(gamma)
+            or gamma < 0.2 or gamma > 4):
+        raise ValueError("Gamma fora do intervalo")
+    view = bpy.context.scene.view_settings
+    view.exposure = exposure
+    view.gamma = gamma
+
+
 def configure_render(config: dict, out_path: str):
     scene = bpy.context.scene
-    res = config.get("resolution", [1920, 1080])
-    samples = config.get("samples", 64)
+    res, samples = resolve_render_preset(config)
     # Reject oversized/malformed render requests before allocating GPU memory.
     if (not isinstance(res, (list, tuple)) or len(res) != 2
             or any(type(v) is not int or v < 64 or v > 8192 for v in res)
@@ -577,6 +611,7 @@ def main():
 
     clear_scene()
     configure_render(config, out_path)
+    configure_postproduction(config)
 
     if config.get("model"):
         report = import_model(config["model"])
