@@ -501,3 +501,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Regressões:** testes de parede isolada e encontro ortogonal em cruz ampliados para exigir concordância do volume assinado.
 - **Commits:** `f7954aa` (verificador) e `4cf77c9` (testes).
 - **Validação:** acesso GitHub via conector confirmado, mas não foi possível obter checkout na execução local devido ao bloqueio DNS. Testes Python e build TS **não executados**; sem alegação de homologação. PR #3422 Draft, Contabo adiada, sem merge/deploy e produção inalterada.
+
+
+## Lote 3422-A — prevenção de vazamento de contexto WebGL (09/10/2026)
+- **Problema real encontrado por inspeção:** `RenderStudioParametricWebgl.tsx` construía o renderer e anexava o canvas antes de validar `unionOrthogonalWalls(walls)`. Uma exceção de geometria deixava recursos parcialmente alocados e o canvas anexado sem limpeza registrada.
+- **Correção:** união ortogonal passa a ser validada/construída antes de instanciar o renderer; a falha de validação não aloca contexto WebGL. Commit `09478e4`.
+- **Validação:** alteração registrada no GitHub. **Build, testes automatizados e teste no navegador não executados** por indisponibilidade de checkout direto neste ambiente. A correção cobre o caminho identificado, não todas as possíveis falhas de inicialização WebGL.
+- **Estado:** PR #3422 Draft, sem merge/deploy, Contabo adiada, produção intacta.
