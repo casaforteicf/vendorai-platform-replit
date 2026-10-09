@@ -493,22 +493,22 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
         }
       }
     }
+    const link = await db.transaction(async (tx) => {
+      // One database transaction for new master person, deal link and persistent company contacts.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${tenantId}), hashtext(${req.params.dealId}))`);
     if (!personId && parsed.data.person) {
       const p = parsed.data.person;
       const documento = digits(p.documento);
       if (documento) {
-        const [existing] = await db.select({ id: crmPeopleMasterTable.id })
+        const [existing] = await tx.select({ id: crmPeopleMasterTable.id })
           .from(crmPeopleMasterTable).where(eq(crmPeopleMasterTable.documento, documento)).limit(1);
         if (existing) {
-          return res.status(409).json({
-            error: "Documento já cadastrado. Selecione a pessoa existente para vinculá-la ao negócio.",
-        // Do not disclose global master IDs in duplicate-candidate errors.
-          });
+          throw Object.assign(new Error("Documento já cadastrado. Selecione a pessoa existente para vinculá-la ao negócio."), { status: 409 });
         }
       }
       const telefone = digits(p.telefone);
       const email = p.email?.trim().toLowerCase();
-      const candidates = await db.select({
+      const candidates = await tx.select({
         id: crmPeopleMasterTable.id,
         nome: crmPeopleMasterTable.nome,
         telefones: crmPeopleMasterTable.telefones,
@@ -519,12 +519,9 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
         (email && (person.emails ?? []).some((v) => v.toLowerCase() === email))
       );
       if (possible.length) {
-        return res.status(409).json({
-          error: "Possível pessoa já cadastrada. Selecione o cadastro existente antes de vincular.",
-        // Do not disclose global master IDs in duplicate-candidate errors.
-        });
+        throw Object.assign(new Error("Possível pessoa já cadastrada. Selecione o cadastro existente antes de vincular."), { status: 409 });
       }
-      const [person] = await db.insert(crmPeopleMasterTable).values({
+      const [person] = await tx.insert(crmPeopleMasterTable).values({
         nome: p.nome.trim(),
         documento: documento || null,
         dataNascimento: p.dataNascimento ?? null,
@@ -536,11 +533,10 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
       }).returning({ id: crmPeopleMasterTable.id });
       personId = person?.id;
     }
-    if (!personId) return res.status(422).json({ error: "Selecione ou cadastre uma pessoa." });
+    if (!personId) throw Object.assign(new Error("Selecione ou cadastre uma pessoa."), { status: 422 });
 
-    const link = await db.transaction(async (tx) => {
       // Serialize primary-contact changes per tenant/deal, preventing concurrent primary flags.
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${tenantId}), hashtext(${req.params.dealId}))`);
+
       if (parsed.data.isPrimary) {
         await tx.update(crmDealPeopleTable).set({ isPrimary: false, updatedAt: new Date() })
         .where(and(eq(crmDealPeopleTable.tenantId, tenantId), eq(crmDealPeopleTable.dealId, req.params.dealId)));
@@ -577,22 +573,19 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
         updatedAt: new Date(),
       },
     }).returning();
-      return link;
-    });
-
     if (parsed.data.relationshipScope === "persistent" && parsed.data.contextualCompanyId) {
-      const [tc] = await db.select().from(crmTenantCompaniesTable).where(and(
+      const [tc] = await tx.select().from(crmTenantCompaniesTable).where(and(
         eq(crmTenantCompaniesTable.tenantId, tenantId),
         eq(crmTenantCompaniesTable.companyId, parsed.data.contextualCompanyId),
       )).limit(1);
       if (tc) {
-        await db.insert(crmCompanyPeopleTable).values({
+        await tx.insert(crmCompanyPeopleTable).values({
           companyId: parsed.data.contextualCompanyId,
           personId,
           source: "manual",
           updatedAt: new Date(),
         }).onConflictDoNothing();
-        await db.insert(crmTenantCompanyContactsTable).values({
+        await tx.insert(crmTenantCompanyContactsTable).values({
           tenantId,
           tenantCompanyId: tc.id,
           personId,
@@ -607,6 +600,9 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
         });
       }
     }
+
+      return link;
+    });
 
     return res.status(201).json(link);
   } catch (error: any) {
