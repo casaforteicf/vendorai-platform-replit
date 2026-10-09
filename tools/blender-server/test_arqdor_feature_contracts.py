@@ -232,6 +232,19 @@ class FeatureContractsTests(unittest.TestCase):
         self.assertEqual(review[0]["candidateBoundaryMatches"], [])
         self.assertFalse(review[0]["openingConfirmed"])
 
+    def test_invalid_boundary_metadata_is_non_authoritative(self):
+        opening = {"name": "Janela", "suggestedClass": "window",
+                   "bounds": {"min": [1, 0, 1], "max": [2, .2, 2]}}
+        for metadata in (None, "invalid", {"boundaryLoopReview": "broken"},
+                         {"boundaryLoopReview": {"closedBoundaryCandidates": [None, "bad", {"bounds": None}]}}):
+            wall = {"name": "Parede", "suggestedClass": "wall",
+                    "bounds": {"min": [0, 0, 0], "max": [4, .2, 3]},
+                    "topologyReview": metadata}
+            relations = propose_opening_hosts([wall, opening])
+            result = associate_boundary_candidates(relations, [wall, opening])
+            self.assertEqual(result[0]["candidateBoundaryMatches"], [])
+            self.assertFalse(result[0]["openingConfirmed"])
+
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
         self.assertFalse(data["quantitiesEnabled"])
