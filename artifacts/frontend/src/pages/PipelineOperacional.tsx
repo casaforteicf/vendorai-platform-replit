@@ -1496,6 +1496,10 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
 
   const leadDeals = deals.filter((d) => d.leadId === leadId);
   const selectedLead = leads.find((lead) => lead.id === leadId) ?? null;
+  // Etapa de abertura do chamado = primeira etapa (menor ordem) do pipeline de suporte.
+  // Usada para filtrar os responsáveis elegíveis pelas funções responsáveis da etapa.
+  const openingStage = [...stages].sort((a, b) => a.ordem - b.ordem)[0] ?? null;
+  const eligibleResponsibleUsers = eligibleUsersForStage(users, openingStage);
   const leadGroups = useMemo(() => {
     const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
     const query = normalize(leadSearch);
