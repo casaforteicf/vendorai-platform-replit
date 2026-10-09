@@ -193,3 +193,15 @@ conversores, build TypeScript e UI isolada antes de integrar.
 - Validação: commits e testes escritos no GitHub; **testes não executados nem homologados** neste marco. Revisão BIM e bloqueio de quantitativos permanecem obrigatórios.
 - Homologação Contabo/Vendi e publicação seguem **adiadas por determinação do usuário**. Produção sem alterações; PR #3422 Draft.
 - Próximo passo independente: vincular objetos importados a sessões e versões explícitas do projeto, preparando UI de revisão de conflitos, sem inferir correspondência estável entre versões diferentes do modelo.
+
+
+## Marco — fila de revisão BIM por versão (09/10/2026)
+
+- **Lote/versão:** ARQDOR-RENDER-BIM-3422 / desenvolvimento sem release.
+- **Objetivo:** preparar os dados para revisão de esquadrias por versão de projeto sem vincular automaticamente importações distintas.
+- **Implementação:** `create_opening_review_queue(schedule, source_sha256, project_version)` retorna uma fila somente leitura de candidatos, identificados pela combinação da versão, SHA-256 original e índice da malha. Rejeita identificadores inconsistentes, duplicados e hashes de outro arquivo. Todas as linhas exigem revisão humana, `fabricationReady=false`, `geometryApproved=false`, `quantitiesEnabled=false`.
+- **Escopo não implementado:** interface visual, persistência da revisão, registro de aprovador e associação BIM definitiva. A fila é um contrato de dados preparatório.
+- **Commits:** `2cd86c5` e `1b25272`; arquivos `tools/blender-server/arqdor_feature_contracts.py` e `tools/blender-server/test_arqdor_feature_contracts.py`.
+- **Evidência:** commits gravados no PR #3422. Testes foram adicionados, porém **não foram executados** nesta etapa.
+- **Estados:** implementado sem validação técnica; homologação Contabo e publicação adiadas pelo solicitante; produção inalterada.
+- **Próxima ação executável:** preparar contrato de decisão manual e histórico auditável isolado, evitando qualquer aprovação baseada só na importação.
