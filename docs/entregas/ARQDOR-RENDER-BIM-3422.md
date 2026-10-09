@@ -310,3 +310,13 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 **Validação:** commits confirmados na branch; testes escritos, não executados; sem Blender/build/Contabo. **Homologação:** adiada. **Aprovação/produção:** não. **Merge:** não. Não declarar os lotes A–E completos.
 
 **Próximas entregas dentro da autorização:** correlacionar geometria e IDs GLB, revisar a segurança e persistência do histórico de esquadrias; avançar modelo paramétrico para 2D/3D e formatos IFC/SKP; integrar job de render ao worker e quadro técnico aos módulos de orçamento/biblioteca, mantendo flags desabilitadas até validação.
+
+
+## Marco BIM paramétrico — projeção 2D de paredes e aberturas (09/10/2026)
+- **Lote/versão:** ARQDOR-RENDER-BIM-3422 / desenvolvimento sem release; avanço do lote C e base dos lotes B/E.
+- **Entregue:** função pura `draft_parametric_floor_plan` que projeta cada parede validada em um polígono 2D conforme espessura e orientação, incluindo linha central e guias de portas/janelas pelas distâncias paramétricas da mesma fonte de dados.
+- **Proteções:** rejeita paredes/aberturas inválidas, preserva estados `intersectionsResolved=false`, `openingVoidsApplied=false`, `geometryApproved=false`, ou seja, não finge que já houve operações booleanas nem interseções BIM resolvidas.
+- **Commits:** `a8446a9` (implementação), `352d64d` (teste de parede 4 m, espessura 0,2 m, janela no offset 1 m, limites de abertura).
+- **Arquivos:** `tools/blender-server/arqdor_feature_contracts.py`, `tools/blender-server/test_arqdor_feature_contracts.py`, este Registro Mestre.
+- **Estado:** código registrado, testes adicionados **não executados nesta sessão**; sem comprovação de editor 2D/3D real, edição sincronizada, IFC, quantitativos ou cortes. Homologação Contabo e publicação adiadas por determinação do usuário, PR #3422 Draft, sem merge/deploy.
+- **Próximos passos independentes:** ligar a projeção à interface de edição com histórico/versões, implementar geometria 3D derivada e detecção de interseções; integrar posteriormente documentação e orçamento mediante conferência técnica.
