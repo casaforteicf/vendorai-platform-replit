@@ -197,7 +197,8 @@ export default function RenderStudioGlbViewer({ url, modelId, onSelect }: Props)
       setSaveMessage("Salve pelo menos duas câmeras para criar o passeio virtual.");
       return;
     }
-    const step = walkthroughDuration / (savedViews.length - 1);
+    const duration = Math.min(walkthroughDuration, Math.floor(719 / walkthroughFps));
+    const step = duration / (savedViews.length - 1);
     const keyframes = savedViews.map((view, index) => ({
       second: Number((step * index).toFixed(3)),
       position: view.position, target: view.target,
@@ -253,12 +254,12 @@ export default function RenderStudioGlbViewer({ url, modelId, onSelect }: Props)
           <p className="text-xs text-slate-600">Salve pelo menos 2 enquadramentos. O trajeto será interpolado entre eles pelo Blender quando o módulo estiver homologado.</p>
           <div className="grid grid-cols-2 gap-3">
             <label className="text-xs text-slate-700">Duração (segundos)
-              <input type="number" min={1} max={120} step={1} value={walkthroughDuration}
-                onChange={event => setWalkthroughDuration(Math.max(1, Math.min(120, Number(event.target.value) || 1)))}
+              <input type="number" min={1} max={Math.floor(719 / walkthroughFps)} step={1} value={walkthroughDuration}
+                onChange={event => setWalkthroughDuration(Math.max(1, Math.min(Math.floor(719 / walkthroughFps), Number(event.target.value) || 1)))}
                 className="mt-1 w-full rounded border px-2 py-1" />
             </label>
             <label className="text-xs text-slate-700">Quadros por segundo
-              <select value={walkthroughFps} onChange={event => setWalkthroughFps(Number(event.target.value))}
+              <select value={walkthroughFps} onChange={event => { const fps = Number(event.target.value); setWalkthroughFps(fps); setWalkthroughDuration(d => Math.min(d, Math.floor(719 / fps))); }}
                 className="mt-1 w-full rounded border px-2 py-1">
                 <option value={24}>24 FPS</option><option value={30}>30 FPS</option>
               </select>
@@ -266,7 +267,7 @@ export default function RenderStudioGlbViewer({ url, modelId, onSelect }: Props)
           </div>
           <div className="flex flex-wrap gap-1">{savedViews.map((view, index) =>
             <span key={index} className="rounded bg-white border px-2 py-1 text-xs text-slate-600">
-              {view.name} — {savedViews.length > 1 ? (walkthroughDuration * index / (savedViews.length - 1)).toFixed(1) : "0"}s
+              {view.name} — {savedViews.length > 1 ? (Math.min(walkthroughDuration, Math.floor(719 / walkthroughFps)) * index / (savedViews.length - 1)).toFixed(1) : "0"}s
             </span>)}</div>
           <button type="button" disabled={savedViews.length < 2} onClick={exportWalkthrough}
             className="rounded-md border border-emerald-700 px-3 py-2 text-sm text-emerald-800 disabled:opacity-50">
