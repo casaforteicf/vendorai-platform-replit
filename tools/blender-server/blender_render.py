@@ -511,8 +511,16 @@ def apply_imported_scene_settings(settings, material_mapping=None):
 
 def configure_render(config: dict, out_path: str):
     scene = bpy.context.scene
-    res   = config.get("resolution", [1920, 1080])
-    samp  = int(config.get("samples", 64))
+    res = config.get("resolution", [1920, 1080])
+    samples = config.get("samples", 64)
+    # Reject oversized/malformed render requests before allocating GPU memory.
+    if (not isinstance(res, (list, tuple)) or len(res) != 2
+            or any(type(v) is not int or v < 64 or v > 8192 for v in res)
+            or res[0] * res[1] > 8192 * 8192):
+        raise ValueError("Resolução de render inválida (64–8192 pixels por eixo)")
+    if type(samples) is not int or samples < 1 or samples > 4096:
+        raise ValueError("Amostragem de render inválida (1–4096)")
+    samp = samples
 
     scene.render.engine               = "CYCLES"
     scene.render.resolution_x         = int(res[0])
@@ -525,20 +533,30 @@ def configure_render(config: dict, out_path: str):
     scene.cycles.use_denoising        = True
     scene.cycles.device               = "CPU"
 
-    # Tenta GPU se disponível
-    prefs = bpy.context.preferences.addons.get("cycles")
-    if prefs:
-        cprefs = prefs.preferences
-        cprefs.compute_device_type = "CUDA"
+    # GPU opt-in: CPU remains the safe fallback when a compatible device
+    # is missing or unavailable. Do not assume CUDA exists on every host.
+    requested = os.environ.get("ARQDOR_CYCLES_GPU_BACKEND", "").upper()
+    if requested in ("CUDA", "OPTIX", "HIP", "ONEAPI", "METAL"):
         try:
-            cprefs.get_devices()
-            for d in cprefs.devices:
-                d.use = True
+            addon = bpy.context.preferences.addons.get("cycles")
+            if addon is None:
+                raise RuntimeError("Cycles não disponível")
+            prefs = addon.preferences
+            prefs.compute_device_type = requested
+            prefs.get_devices()
+            devices = [device for device in prefs.devices if device.type == requested]
+            if not devices:
+                raise RuntimeError("Nenhuma GPU compatível encontrada")
+            for device in prefs.devices:
+                device.use = device in devices
             scene.cycles.device = "GPU"
-            print("Usando GPU para render.")
-        except Exception:
+            print(f"Cycles GPU habilitada: {requested} ({len(devices)} dispositivo(s))")
+        except Exception as error:
             scene.cycles.device = "CPU"
-            print("GPU não disponível — usando CPU.")
+            print(f"GPU indisponível: {error}. Usando CPU.")
+    elif requested:
+        raise ValueError("Backend de GPU não permitido")
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
