@@ -517,6 +517,19 @@ class FeatureContractsTests(unittest.TestCase):
         junction = draft_wall_centerline_intersections([horizontal, touching])
         self.assertEqual(junction["intersections"][0]["type"], "junction")
 
+    def test_collinear_walls_only_join_when_segments_touch(self):
+        base = {"wall": {"start": [0, 0, 0], "end": [4, 0, 0],
+                         "thickness": .15, "height": 3}}
+        far = {"wall": {"start": [8, 0, 0], "end": [10, 0, 0],
+                        "thickness": .15, "height": 3}}
+        overlap = {"wall": {"start": [3, 0, 0], "end": [6, 0, 0],
+                            "thickness": .15, "height": 3}}
+        touching = {"wall": {"start": [4, 0, 0], "end": [6, 0, 0],
+                             "thickness": .15, "height": 3}}
+        self.assertEqual(draft_wall_centerline_intersections([base, far])["intersections"], [])
+        self.assertEqual(draft_wall_centerline_intersections([base, overlap])["intersections"][0]["type"], "collinear_overlap")
+        self.assertEqual(draft_wall_centerline_intersections([base, touching])["intersections"][0]["type"], "collinear_endpoint")
+
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
         self.assertFalse(data["quantitiesEnabled"])
