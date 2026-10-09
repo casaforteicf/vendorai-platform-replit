@@ -79,3 +79,9 @@ Este relatório corresponde a inspeção estática de código remoto e planejame
 - `92218be`: a tela `NewLeadDialog` chama essa operação quando existe negócio inicial e o cadastro é do tipo casal. Evita duas criações de pessoa em chamadas separadas nesse caso.
 - **Escopo e limites:** criação do lead e do negócio ainda ocorre antes; vínculo separado da empresa com o negócio continua sendo chamada posterior, podendo falhar após o casal já ter sido salvo. O caminho excepcional de cadastro sem negócio permanece usando solicitações separadas.
 - **Validação pendente:** TypeScript, build backend, testes reais de falha na segunda criação/concorrência/CPF/empresa contextual, homologação. Nada publicado e homologação Contabo permanece adiada.
+
+## Casal + vínculo empresarial na mesma transação — 09/10/2026
+- `9a1d47e`: `POST /crm/deals/:dealId/couple` vincula também a empresa contextual ao negócio dentro da mesma transação que cria os dois consumidores finais. Mantém histórico do vínculo empresarial e reativa relação preexistente se for o caso.
+- `50e6043`: `NewLeadDialog` não executa mais um segundo POST independente para empresa após a operação do casal.
+- Limite residual: a criação anterior do lead, do negócio e da empresa mestre ainda ocorre por operações separadas, fora da transação do casal. Fluxo ponta a ponta **não** é integralmente atômico.
+- Estado: código alterado e registro atualizado; sem compilação, testes em execução ou homologação. Contabo/Vendi e publicação permanecem adiados.
