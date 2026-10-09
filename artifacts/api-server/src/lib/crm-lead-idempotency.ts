@@ -26,12 +26,12 @@ function stable(value: unknown): unknown {
 }
 
 export function fingerprintRegistrationPayload(value: unknown): string {
-  return createHash("sha256").update(JSON.stringify(stable(value))).digest("hex");
+  return createHash("sha256").update(JSON.stringify(stable(value)) ?? "null").digest("hex");
 }
 
 export function matchesRegistrationReplay(
   metadata: Record<string, unknown> | null | undefined,
-  actorId: string,
+  actorId: string | null,
   fingerprint: string,
 ): boolean {
   return metadata?.registrationActorId === actorId &&
