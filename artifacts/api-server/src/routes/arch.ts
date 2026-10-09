@@ -1882,7 +1882,12 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
   const id = String(req.params.id);
   if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
 
-  const [currentConcept] = await db
+  return db.transaction(async (tx) => {
+  // Serialize every PATCH of this project before reading and checking MEP hosts.
+  const locked = await tx.execute(sql`SELECT id FROM arch_concept_projects WHERE id=${id} AND tenant_id=${tid} AND owner_user_id=${userId} FOR UPDATE`);
+  if (!locked.rows.length) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+
+  const [currentConcept] = await tx
     .select({ status: archConceptProjectsTable.status, configuration: archConceptProjectsTable.configuration })
     .from(archConceptProjectsTable)
     .where(and(
@@ -1913,7 +1918,7 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
   // O editor salva a configuração inteira a cada alteração e não conhece o link público do tour.
   // Sem isto, o primeiro salvamento depois de compartilhar apagava o token e o link parava de abrir.
   if (safeUpdates.configuration && typeof safeUpdates.configuration === "object") {
-    const [current] = await db
+    const [current] = await tx
       .select({ configuration: archConceptProjectsTable.configuration })
       .from(archConceptProjectsTable)
       .where(and(
@@ -1971,15 +1976,12 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
     }
     const changedHostIds = [...before].filter(([wallId,shape]) => after.get(wallId) !== shape).map(([wallId]) => wallId);
     if (changedHostIds.length) {
-      const hosted = await pool.query(
-        `SELECT DISTINCT n.host_element_id
+      const hosted = await tx.execute(sql`SELECT DISTINCT n.host_element_id
            FROM arqdor_mep_project_bindings b
            JOIN arqdor_mep_nodes n ON n.tenant_id=b.tenant_id
              AND n.project_id=b.workspace_project_id
-          WHERE b.tenant_id=$1 AND b.concept_project_id=$2
-            AND n.host_element_id=ANY($3::text[])`,
-        [tid,id,changedHostIds],
-      );
+          WHERE b.tenant_id=${tid} AND b.concept_project_id=${id}
+            AND n.host_element_id IN (${sql.join(changedHostIds.map(hostId => sql`${hostId}`), sql`, `)})`);
       if ((hosted.rowCount ?? 0) > 0) {
         return res.status(409).json({
           code:"MEP_HOST_REVIEW_REQUIRED",
@@ -1991,7 +1993,7 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
     }
   }
 
-  const [updated] = await db
+  const [updated] = await tx
     .update(archConceptProjectsTable)
     .set({ ...safeUpdates, updatedAt: new Date() })
     .where(
@@ -2004,6 +2006,7 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
 
   if (!updated) return res.status(404).json({ error: "Pré-projeto não encontrado." });
   return res.json(updated);
+  });
 });
 
 router.post("/arch/concept-plan-specialist", authenticate, async (req, res) => {
