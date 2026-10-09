@@ -142,7 +142,7 @@ export class ModelFileStore {
   }
 
   async attachConvertedSource(tenantId: string, projectId: string, modelId: string,
-    originalName: string, source: Buffer, sourceSha256: string) {
+    originalName: string, source: Buffer, sourceSha256: string, conversionDetails?: Record<string, unknown>) {
     const record = await this.get(tenantId, projectId, modelId);
     if (!/\\.(obj|fbx)$/i.test(originalName)) throw new Error("Extensão de origem inválida");
     const sha = createHash("sha256").update(source).digest("hex");
@@ -153,7 +153,8 @@ export class ModelFileStore {
     const audit = { originalName: path.basename(originalName).slice(0, 200), sourceSha256: sha,
       sourceBytes: source.length, convertedSha256: record.sha256,
       geometryApproved: false, materialsApproved: false,
-      status: "converted_pending_geometry_review" };
+      status: "converted_pending_geometry_review",
+      geometryReport: conversionDetails ?? null };
     await writeFile(path.join(directory, "conversion-report.json"), JSON.stringify(audit), { flag: "wx", mode: 0o600 });
     return audit;
   }
