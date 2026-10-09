@@ -31,7 +31,7 @@ import {
   Search, LayoutGrid, DollarSign, Clock, Eye, ExternalLink,
   Copy, CheckCircle, XCircle, RefreshCw, Globe, Image,
   Download, AlertCircle, ClipboardList, Package, FileText, Upload,
-  FolderOpen, Ruler, Camera, Store,
+  FolderOpen, Ruler, Camera,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -154,17 +154,6 @@ type DealResumo = {
   assignedTo: string | null;
   responsavelNome: string | null;
   active: boolean;
-};
-
-type PropostaResumo = {
-  id: string;
-  titulo: string;
-  numero: string | null;
-  status: string;
-  valorTotal: string | null;
-  leadId: string;
-  dealId: string | null;
-  createdAt: string;
 };
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -357,9 +346,7 @@ export default function ProjetoDetalhe() {
   const [dealOptions, setDealOptions] = useState<DealResumo[]>([]);
   const [dealDialogOpen, setDealDialogOpen] = useState(false);
   const [dealBusy, setDealBusy] = useState(false);
-
-  // ── Propostas do cliente / negócio
-  const [propostasContexto, setPropostasContexto] = useState<PropostaResumo[]>([]);
+  const [propostasContexto, setPropostasContexto] = useState<Array<{ id: string; titulo: string; numero: string | null; status: string; valorTotal: string | null; createdAt: string }>>([]);
   const [propostasLoading, setPropostasLoading] = useState(false);
 
   // ── Ambiente dialog state
@@ -443,37 +430,21 @@ export default function ProjetoDetalhe() {
   }, [projetoId, toast]);
 
   const loadPropostasContexto = useCallback(async (project?: Projeto | null) => {
-    if (!tenantId || !project) {
-      setPropostasContexto([]);
-      return;
-    }
-
-    const queries: string[] = [];
-    if (project.leadId) queries.push(`leadId=${encodeURIComponent(project.leadId)}`);
-    else if (project.dealId) queries.push(`dealId=${encodeURIComponent(project.dealId)}`);
-
-    if (queries.length === 0) {
-      setPropostasContexto([]);
-      return;
-    }
-
+    if (!tenantId || !project) { setPropostasContexto([]); return; }
+    const query = project.leadId
+      ? `leadId=${encodeURIComponent(project.leadId)}`
+      : project.dealId
+        ? `dealId=${encodeURIComponent(project.dealId)}`
+        : "";
+    if (!query) { setPropostasContexto([]); return; }
     setPropostasLoading(true);
     try {
-      const response = await fetch(`/api/tenants/${tenantId}/propostas?${queries[0]}`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (!response.ok) {
-        setPropostasContexto([]);
-        return;
-      }
-
+      const response = await fetch(`/api/tenants/${tenantId}/propostas?${query}`, { headers: { Authorization: `Bearer ${getToken()}` } });
       const body = await response.json().catch(() => []);
-      const proposals = Array.isArray(body) ? body as PropostaResumo[] : [];
-      proposals.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      const proposals = Array.isArray(body) ? body : [];
+      proposals.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setPropostasContexto(proposals);
-    } finally {
-      setPropostasLoading(false);
-    }
+    } finally { setPropostasLoading(false); }
   }, [tenantId]);
 
   const loadProjeto = useCallback(async () => {
@@ -872,32 +843,6 @@ export default function ProjetoDetalhe() {
     } finally {
       setGerandoIA(false);
     }
-  }
-
-  function abrirArqdorMarketItem(item: OrcamentoItem) {
-    const params = new URLSearchParams({
-      origem: "orcamento_item",
-      origemId: item.id,
-      projetoId,
-      orcamentoItemId: item.id,
-      q: item.descricao,
-      quantidade: String(item.quantidade ?? ""),
-      unidade: item.unidade ?? "un",
-    });
-    if (item.categoria) params.set("categoria", item.categoria);
-    if (projeto?.obraId) params.set("obraId", projeto.obraId);
-    navigate(`/arch/marketplace?${params.toString()}`);
-  }
-
-  function abrirArqdorMarketOrcamento() {
-    const params = new URLSearchParams({
-      origem: "orcamento",
-      origemId: projetoId,
-      projetoId,
-      titulo: `Cotação — ${projeto?.titulo ?? "Projeto"}`,
-    });
-    if (projeto?.obraId) params.set("obraId", projeto.obraId);
-    navigate(`/arch/marketplace?${params.toString()}`);
   }
 
   // ── Item CRUD ──────────────────────────────────────────────────────────
@@ -1490,56 +1435,15 @@ export default function ProjetoDetalhe() {
 
           <div className="rounded-lg border p-3">
             <p className="text-xs font-medium text-muted-foreground">Propostas</p>
-            {propostasLoading ? (
-              <p className="mt-1 text-sm text-muted-foreground">Carregando propostas...</p>
-            ) : propostasContexto.length > 0 ? (
+            {propostasLoading ? <p className="mt-1 text-sm text-muted-foreground">Carregando propostas...</p> : propostasContexto.length ? (
               <>
-                <p className="mt-1 text-sm font-semibold">
-                  {propostasContexto.length} {propostasContexto.length === 1 ? "proposta disponível" : "propostas disponíveis"}
-                </p>
-                <div className="mt-2 max-h-28 space-y-1 overflow-y-auto pr-1">
-                  {propostasContexto.map((proposta) => (
-                    <button
-                      key={proposta.id}
-                      type="button"
-                      onClick={() => navigate(`/propostas?edit=${encodeURIComponent(proposta.id)}&returnTo=${encodeURIComponent(`/arch/projetos/${projetoId}`)}`)}
-                      className="w-full rounded-md border bg-background px-2 py-1.5 text-left hover:bg-muted/40"
-                    >
-                      <p className="truncate text-xs font-medium">
-                        {proposta.numero ? `#${proposta.numero} · ` : ""}{proposta.titulo}
-                      </p>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">
-                        {proposta.status}
-                        {proposta.valorTotal && Number(proposta.valorTotal) > 0 ? ` · ${fmt(Number(proposta.valorTotal))}` : ""}
-                      </p>
-                    </button>
-                  ))}
+                <p className="mt-1 text-sm font-semibold">{propostasContexto.length} {propostasContexto.length === 1 ? "proposta disponível" : "propostas disponíveis"}</p>
+                <div className="mt-2 max-h-28 space-y-1 overflow-y-auto">
+                  {propostasContexto.map((p) => <button key={p.id} type="button" onClick={() => navigate(`/propostas?edit=${encodeURIComponent(p.id)}`)} className="w-full rounded-md border bg-background px-2 py-1.5 text-left hover:bg-muted/40"><p className="truncate text-xs font-medium">{p.numero ? `#${p.numero} · ` : ""}{p.titulo}</p><p className="mt-0.5 text-[11px] text-muted-foreground">{p.status}{p.valorTotal ? ` · R$ ${Number(p.valorTotal).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : ""}</p></button>)}
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-3 w-full"
-                  onClick={() => {
-                    const params = new URLSearchParams({
-                      returnTo: `/arch/projetos/${projetoId}`,
-                      archProjectId: projetoId,
-                    });
-                    if (projeto.leadId) params.set("leadId", projeto.leadId);
-                    else if (projeto.dealId) params.set("dealId", projeto.dealId);
-                    navigate(`/propostas?${params.toString()}`);
-                  }}
-                >
-                  <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Ver todas
-                </Button>
+                <Button variant="outline" size="sm" className="mt-3 w-full" onClick={() => navigate(`/propostas?${project.leadId ? `leadId=${encodeURIComponent(project.leadId)}` : `dealId=${encodeURIComponent(project.dealId ?? "")}`)}`)}>Ver todas</Button>
               </>
-            ) : (
-              <>
-                <p className="mt-1 text-sm font-semibold">Nenhuma proposta encontrada</p>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Serão mostradas aqui todas as propostas já cadastradas para este cliente.
-                </p>
-              </>
-            )}
+            ) : <p className="mt-1 text-xs text-muted-foreground">Nenhuma proposta encontrada para este cliente/negócio.</p>}
           </div>
 
           <div className="rounded-lg border p-3">
@@ -1613,9 +1517,6 @@ export default function ProjetoDetalhe() {
             </Button>
             <Button onClick={openAddItem}>
               <Plus className="h-4 w-4 mr-2" /> Adicionar item
-            </Button>
-            <Button variant="outline" disabled={grupos.length === 0} onClick={abrirArqdorMarketOrcamento}>
-              <Store className="h-4 w-4 mr-2" /> Cotar no Arqdor Market
             </Button>
             <Button
               variant="secondary"
@@ -1713,13 +1614,6 @@ export default function ProjetoDetalhe() {
                                         onClick={() => openVincular(item)}
                                       >
                                         <Link2 className="h-3.5 w-3.5" />
-                                      </Button>
-                                      <Button
-                                        variant="ghost" size="sm" className="h-7 w-7 p-0 text-violet-600"
-                                        title="Buscar ou cotar no Arqdor Market"
-                                        onClick={() => abrirArqdorMarketItem(item)}
-                                      >
-                                        <Store className="h-3.5 w-3.5" />
                                       </Button>
                                       <AlertDialog>
                                         <AlertDialogTrigger asChild>
