@@ -23,6 +23,29 @@ function draw(onCreateCustomWall: ReturnType<typeof vi.fn>, customWalls: Array<{
 }
 
 describe("desenho de paredes com precisão", () => {
+  it("permite corrigir a medida com Backspace antes de aplicar", () => {
+    const create = vi.fn();
+    const svg = draw(create);
+    fireEvent.pointerDown(svg, { clientX: 1, clientY: 2 });
+    fireEvent.pointerMove(svg, { clientX: 4, clientY: 2 });
+    for (const key of "4,19") fireEvent.keyDown(window, { key });
+    fireEvent.keyDown(window, { key: "Backspace" });
+    fireEvent.keyDown(window, { key: "2" });
+    fireEvent.keyDown(window, { key: "Enter" });
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ x2: 5.12 }));
+  });
+
+  it("cancela a cadeia com Escape sem criar uma parede", () => {
+    const create = vi.fn();
+    const svg = draw(create);
+    fireEvent.pointerDown(svg, { clientX: 1, clientY: 2 });
+    fireEvent.pointerMove(svg, { clientX: 4, clientY: 2 });
+    fireEvent.keyDown(window, { key: "4" });
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(create).not.toHaveBeenCalled();
+    expect(screen.queryByRole("textbox", { name: "Comprimento da nova parede" })).toBeNull();
+  });
+
   it("não interpreta o zero de 10,00 como enquadramento da vista", () => {
     const create = vi.fn();
     const svg = draw(create);
