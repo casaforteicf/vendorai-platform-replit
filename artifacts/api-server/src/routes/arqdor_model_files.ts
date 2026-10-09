@@ -97,4 +97,30 @@ router.post(`${prefix}/:modelId/calibrations`, async (req, res, next) => {
   }
 });
 
+
+router.get(`${prefix}/:modelId/scene-settings`, async (req, res, next) => {
+  const storage = store();
+  if (!storage) return res.status(503).json({ error: "Armazenamento privado indisponível" });
+  try {
+    const { tenantId, projectId } = res.locals.modelScope;
+    return res.json(await storage.sceneSettings(tenantId, projectId, safeSegment(String(req.params.modelId))));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return res.status(404).json({ error: "Modelo não encontrado" });
+    next(error);
+  }
+});
+
+router.put(`${prefix}/:modelId/scene-settings`, async (req, res, next) => {
+  const storage = store();
+  if (!storage) return res.status(503).json({ error: "Armazenamento privado indisponível" });
+  try {
+    const { tenantId, projectId, userId } = res.locals.modelScope;
+    return res.json(await storage.saveSceneSettings(tenantId, projectId, safeSegment(String(req.params.modelId)), userId, req.body));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return res.status(404).json({ error: "Modelo não encontrado" });
+    if (error instanceof Error && /inválid|fora do intervalo/.test(error.message)) return res.status(422).json({ error: error.message });
+    next(error);
+  }
+});
+
 export default router;
