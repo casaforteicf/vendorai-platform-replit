@@ -600,6 +600,34 @@ export function NewLeadDialog({
       companyId = companyData.company?.id ?? null;
     }
 
+    // Commit both consumers and their deal relationships atomically when a deal exists.
+    if (values.cadastroTipo === "casal" && dealId) {
+      const coupleData = await crmPostJson<{ items: Array<{ personId: string }> }>(
+        `/api/crm/deals/${dealId}/couple`, {
+          tenantId,
+          contextualCompanyId: companyId,
+          people: [
+            { nome: values.nome.trim(), telefone: values.telefone || undefined,
+              email: values.email || undefined, documento: values.documento || undefined,
+              dataNascimento: values.dataNascimento || undefined, source: values.source },
+            { nome: coClient.nome.trim(), telefone: coClient.telefone.trim() || undefined,
+              email: coClient.email.trim() || undefined, documento: coClient.documento.trim() || undefined,
+              dataNascimento: coClient.dataNascimento || undefined, source: values.source },
+          ],
+        },
+      );
+      if (companyId) {
+        await crmPostJson(`/api/crm/deals/${dealId}/companies`, {
+          tenantId, companyId, role: "contratante", isPrimary: true,
+        });
+      }
+      return {
+        personId: coupleData.items[0]?.personId,
+        coClientPersonId: coupleData.items[1]?.personId,
+        companyId,
+      };
+    }
+
     let personId: string | undefined;
 
     if (companyId && values.cadastroTipo !== "casal") {
