@@ -106,7 +106,14 @@ def union_orthogonal_walls(entries, tolerance=1e-8):
         if (i, j, k + 1) not in filled:
             face([(x0, y1, z1), (x0, y0, z1), (x1, y0, z1), (x1, y1, z1)])
     topology = inspect_mesh_edges({"vertices": vertices, "faces": faces})
+    if not topology["watertightByEdgeIncidence"]:
+        # Non-manifold point/edge contacts and degenerate unions are previews only.
+        # Never advertise a clean continuous solid when edge-incidence fails.
+        integrity = "requires_geometric_repair"
+    else:
+        integrity = "closed_by_edge_incidence_unreviewed"
     return {"vertices": vertices, "faces": faces, "topology": topology,
+            "integrityStatus": integrity,
             "meshClosedByEdgeIncidence": topology["watertightByEdgeIncidence"],
             "solidUnionMethod": "orthogonal_coordinate_partition",
             "internalFacesRemoved": True, "openingCount": sum(map(len, apertures)),
