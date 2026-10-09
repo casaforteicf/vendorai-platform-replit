@@ -110,8 +110,10 @@ import { archProcurementRfqRouter, archProcurementRfqPublicRouter } from "./arch
 import archPostSaleRouter from "./arch_post_sale";
 import { createSystemConsolidationRouter } from "./arch_system_consolidation";
 import archThemePreferencesRouter from "./arch_theme_preferences";
+import arqdorMarketV21Router from "./arqdor_market_v21";
 import arqdorSketchupImportRouter from "./arqdor_sketchup_import";
 import financeiroObraRouter from "./financeiro_obra";
+import obraGovernancaRouter from "./obra_governanca";
 import portalRouter from "./portal";
 import varejoRouter from "./varejo";
 import supermercadoRouter, { supermercadoPublicRouter } from "./supermercado";
@@ -500,6 +502,7 @@ router.use(adminAppUsersRouter);
 // Construção Civil Hub
 router.use(construcaoRouter);
 router.use(financeiroObraRouter);
+router.use(obraGovernancaRouter);
 router.use(archAiRenderRouter);
 
 // Varejo de Roupas & Acessórios Hub
@@ -558,6 +561,7 @@ router.use(archProcurementRfqRouter);
 router.use(archPostSaleRouter);
 router.use(createSystemConsolidationRouter());
 router.use(archThemePreferencesRouter);
+router.use(arqdorMarketV21Router);
 router.use(arqdorSketchupImportRouter);
 
 // Beauty (Salão de Beleza) Hub

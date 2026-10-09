@@ -31,7 +31,7 @@ import {
   Search, LayoutGrid, DollarSign, Clock, Eye, ExternalLink,
   Copy, CheckCircle, XCircle, RefreshCw, Globe, Image,
   Download, AlertCircle, ClipboardList, Package, FileText, Upload,
-  FolderOpen, Ruler, Camera,
+  FolderOpen, Ruler, Camera, Store,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -874,6 +874,32 @@ export default function ProjetoDetalhe() {
     }
   }
 
+  function abrirArqdorMarketItem(item: OrcamentoItem) {
+    const params = new URLSearchParams({
+      origem: "orcamento_item",
+      origemId: item.id,
+      projetoId,
+      orcamentoItemId: item.id,
+      q: item.descricao,
+      quantidade: String(item.quantidade ?? ""),
+      unidade: item.unidade ?? "un",
+    });
+    if (item.categoria) params.set("categoria", item.categoria);
+    if (projeto?.obraId) params.set("obraId", projeto.obraId);
+    navigate(`/arch/marketplace?${params.toString()}`);
+  }
+
+  function abrirArqdorMarketOrcamento() {
+    const params = new URLSearchParams({
+      origem: "orcamento",
+      origemId: projetoId,
+      projetoId,
+      titulo: `Cotação — ${projeto?.titulo ?? "Projeto"}`,
+    });
+    if (projeto?.obraId) params.set("obraId", projeto.obraId);
+    navigate(`/arch/marketplace?${params.toString()}`);
+  }
+
   // ── Item CRUD ──────────────────────────────────────────────────────────
   function openAddItem() {
     setItemForm({ ...EMPTY_ITEM });
@@ -1588,6 +1614,9 @@ export default function ProjetoDetalhe() {
             <Button onClick={openAddItem}>
               <Plus className="h-4 w-4 mr-2" /> Adicionar item
             </Button>
+            <Button variant="outline" disabled={grupos.length === 0} onClick={abrirArqdorMarketOrcamento}>
+              <Store className="h-4 w-4 mr-2" /> Cotar no Arqdor Market
+            </Button>
             <Button
               variant="secondary"
               disabled={grupos.length === 0}
@@ -1684,6 +1713,13 @@ export default function ProjetoDetalhe() {
                                         onClick={() => openVincular(item)}
                                       >
                                         <Link2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                      <Button
+                                        variant="ghost" size="sm" className="h-7 w-7 p-0 text-violet-600"
+                                        title="Buscar ou cotar no Arqdor Market"
+                                        onClick={() => abrirArqdorMarketItem(item)}
+                                      >
+                                        <Store className="h-3.5 w-3.5" />
                                       </Button>
                                       <AlertDialog>
                                         <AlertDialogTrigger asChild>

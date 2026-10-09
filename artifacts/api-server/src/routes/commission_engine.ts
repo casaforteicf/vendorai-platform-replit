@@ -4,11 +4,15 @@ import { z } from "zod/v4";
 import {
   commissionEventsTable,
   commissionRulesTable,
+  arqdorOriginCommissionRulesTable,
+  arqdorOriginCommissionEventsTable,
   db,
   insertCommissionRuleSchema,
   updateCommissionRuleSchema,
+  insertArqdorOriginCommissionRuleSchema,
+  updateArqdorOriginCommissionRuleSchema,
 } from "@workspace/db";
-import { evaluateCommission } from "../services/commission-engine.js";
+import { evaluateCommission, reverseOriginTenantParticipation } from "../services/commission-engine.js";
 
 const router: IRouter = Router();
 
@@ -28,6 +32,58 @@ router.get("/tenants/:tenantId/commission-engine/rules", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!canAccess(req, tenantId)) return void res.status(403).json({ error: "FORBIDDEN" });
   const rows = await db.select().from(commissionRulesTable).where(eq(commissionRulesTable.tenantId, tenantId)).orderBy(asc(commissionRulesTable.priority), asc(commissionRulesTable.name));
+  res.json(rows);
+});
+
+router.get("/tenants/:tenantId/commission-engine/origin-share-rules", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) return void res.status(403).json({ error: "FORBIDDEN" });
+  const rows = await db.select()
+    .from(arqdorOriginCommissionRulesTable)
+    .where(eq(arqdorOriginCommissionRulesTable.originTenantId, tenantId))
+    .orderBy(asc(arqdorOriginCommissionRulesTable.priority), asc(arqdorOriginCommissionRulesTable.createdAt));
+  res.json({
+    defaultSharePercent: 25,
+    rules: rows,
+  });
+});
+
+router.post("/tenants/:tenantId/commission-engine/origin-share-rules", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId) || !isAdmin(req)) return void res.status(403).json({ error: "FORBIDDEN" });
+  const parsed = insertArqdorOriginCommissionRuleSchema.safeParse(req.body);
+  if (!parsed.success) return void res.status(422).json({ error: "INVALID_ORIGIN_SHARE_RULE", issues: parsed.error.issues });
+  const [row] = await db.insert(arqdorOriginCommissionRulesTable)
+    .values({ ...parsed.data, originTenantId: tenantId })
+    .returning();
+  res.status(201).json(row);
+});
+
+router.patch("/tenants/:tenantId/commission-engine/origin-share-rules/:id", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId) || !isAdmin(req)) return void res.status(403).json({ error: "FORBIDDEN" });
+  const parsed = updateArqdorOriginCommissionRuleSchema.safeParse(req.body);
+  if (!parsed.success) return void res.status(422).json({ error: "INVALID_ORIGIN_SHARE_RULE", issues: parsed.error.issues });
+  const [row] = await db.update(arqdorOriginCommissionRulesTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(and(
+      eq(arqdorOriginCommissionRulesTable.id, String(req.params.id)),
+      eq(arqdorOriginCommissionRulesTable.originTenantId, tenantId),
+    ))
+    .returning();
+  if (!row) return void res.status(404).json({ error: "NOT_FOUND" });
+  res.json(row);
+});
+
+router.get("/tenants/:tenantId/commission-engine/origin-share-events", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) return void res.status(403).json({ error: "FORBIDDEN" });
+  const limit = Math.max(1, Math.min(200, Number(req.query.limit) || 100));
+  const rows = await db.select()
+    .from(arqdorOriginCommissionEventsTable)
+    .where(eq(arqdorOriginCommissionEventsTable.originTenantId, tenantId))
+    .orderBy(desc(arqdorOriginCommissionEventsTable.createdAt))
+    .limit(limit);
   res.json(rows);
 });
 
@@ -155,7 +211,8 @@ router.post("/tenants/:tenantId/commission-engine/events/:id/reverse", async (re
   const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "Estorno administrativo";
   const [row] = await db.update(commissionEventsTable).set({ status: "reversed", reason, reversedAt: new Date(), updatedAt: new Date() }).where(and(eq(commissionEventsTable.id, String(req.params.id)), eq(commissionEventsTable.tenantId, tenantId))).returning();
   if (!row) return void res.status(404).json({ error: "NOT_FOUND" });
-  res.json(row);
+  const originReversals = await reverseOriginTenantParticipation(row.id, tenantId, reason);
+  res.json({ event: row, originReversals });
 });
 
 export default router;
