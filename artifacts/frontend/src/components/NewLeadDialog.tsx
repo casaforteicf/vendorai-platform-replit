@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -278,6 +278,8 @@ export function NewLeadDialog({
   onNavigate,
 }: Props) {
   const [open, setOpen] = useState(false);
+  // Synchronous lock: prevents double-click submitting two lead creations before React rerenders.
+  const submissionInFlight = useRef(false);
   const [showMore, setShowMore] = useState(false);
   const [showCommercial, setShowCommercial] = useState(false);
   const [extraContacts, setExtraContacts] = useState<ExtraCompanyContact[]>([]);
@@ -857,6 +859,8 @@ export function NewLeadDialog({
       return;
     }
 
+    if (submissionInFlight.current) return;
+    submissionInFlight.current = true;
     setServerDuplicate(null);
     let createdLeadId: string | undefined;
     let createdDealId: string | undefined;
@@ -1007,6 +1011,8 @@ export function NewLeadDialog({
         description: error instanceof Error ? error.message : error?.data?.error ?? "Tente novamente.",
         variant: "destructive",
       });
+    } finally {
+      submissionInFlight.current = false;
     }
   }
 
