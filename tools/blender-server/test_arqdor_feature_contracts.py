@@ -1,6 +1,6 @@
 import unittest
 from arqdor_feature_contracts import (
-    inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request, suggest_architectural_classification, suggest_geometry_role,
+    inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts,
 )
 
 
@@ -96,6 +96,20 @@ class FeatureContractsTests(unittest.TestCase):
         for invalid in ([1, -1, 2], [1, float("nan"), 3], [1, 2]):
             with self.assertRaises(ValueError):
                 suggest_geometry_role(invalid)
+
+    def test_wall_opening_overlap_is_unverified(self):
+        wall = {"name": "Parede A", "suggestedClass": "wall",
+                "bounds": {"min": [0, 0, 0], "max": [4, 0.2, 3]}}
+        window = {"name": "Janela A", "suggestedClass": "window",
+                  "bounds": {"min": [1, 0.1, 1], "max": [2, 0.3, 2]}}
+        remote = {"name": "Porta distante", "suggestedClass": "door",
+                  "bounds": {"min": [20, 0, 0], "max": [21, 1, 2]}}
+        result = propose_opening_hosts([wall, window, remote])
+        self.assertEqual(result[0]["candidateWalls"], ["Parede A"])
+        self.assertFalse(result[0]["openingDetected"])
+        self.assertEqual(result[1]["candidateWalls"], [])
+        with self.assertRaises(ValueError):
+            propose_opening_hosts([{"name": "bad", "bounds": {"min": [2, 0, 0], "max": [1, 1, 1]}}])
 
     def test_bim_is_never_approved_from_manifest(self):
         data = bim_review_manifest("project-1", geometry_verified=True)
