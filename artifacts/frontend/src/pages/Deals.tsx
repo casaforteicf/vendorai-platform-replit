@@ -1794,7 +1794,7 @@ function EditDealSheet({
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify(action === "approve"
-          ? { action, reviewedData: { ...createExtractedInfo, itens: items.map(item => ({
+          ? { action, reviewedData: { ...createExtractedInfo, valorTotal: items.reduce((sum, item) => sum + Number(item.quantidade) * Number(item.valorUnitario), 0), itens: items.map(item => ({
             ...item, valorTotal: Number(item.quantidade) * Number(item.valorUnitario),
           })) } }
           : { action, note: "Importação rejeitada pelo usuário." }),
