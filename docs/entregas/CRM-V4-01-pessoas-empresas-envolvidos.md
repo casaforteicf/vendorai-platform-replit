@@ -125,3 +125,8 @@ Reutilizar o cadastro mestre existente e permitir casal (dois consumidores com q
 - Commit `436d1b7`: vínculos já existentes sem `relationshipHistory` recebem, quando atualizados, um marcador `legacy_existing` com data nula, sem fabricar uma data ou um usuário de vinculação passado.
 - O evento efetivamente realizado (edição/reativação) é registrado com sua data atual. Vínculos novos mantêm somente os eventos reais.
 - **Limite:** nenhuma migração retroativa de dados foi executada. Validação TypeScript e build ainda não comprovados; homologação e produção seguem adiadas conforme solicitação.
+
+## Revisão adicional de histórico e legados — 09/10/2026
+- Commit `7dbb85a`: a leitura do histórico e a gravação do vínculo empresarial no negócio passaram a ocorrer dentro de uma transação com bloqueio consultivo por tenant, negócio e empresa, reduzindo risco de perda de eventos em alterações simultâneas.
+- O tratamento de legados mantém a regra conservadora: cadastro sem `createdTenantId` só pode ser reutilizado por relacionamento local autorizado já existente; não foi aplicada migração retroativa nem inventada uma origem.
+- **Pendente:** confirmar comportamento de acessos legados e eventuais concorrências entre vincular e desvincular, além de executar build e testes. Homologação Contabo e produção seguem adiadas por decisão do usuário.
