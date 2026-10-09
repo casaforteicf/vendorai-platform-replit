@@ -430,6 +430,13 @@ def associate_boundary_candidates(opening_hosts, classifications, tolerance=0.15
                     wall_items = walls.get(wall_name, [])
                     if len(wall_items) != 1:
                         continue
+                    # Exterior outline rings commonly overlap windows near
+                    # the facade: do not count rings touching the wall envelope.
+                    wall_bounds = wall_items[0].get("bounds") or {}
+                    wall_min, wall_max = wall_bounds.get("min"), wall_bounds.get("max")
+                    if (not isinstance(wall_min, list) or not isinstance(wall_max, list)
+                            or len(wall_min) != 3 or len(wall_max) != 3):
+                        continue
                     review = wall_items[0].get("topologyReview") or {}
                     loops = (review.get("boundaryLoopReview") or {}).get("closedBoundaryCandidates", [])
                     for loop in loops[:100]:
@@ -441,6 +448,16 @@ def associate_boundary_candidates(opening_hosts, classifications, tolerance=0.15
                                 for value in (*low, *high, *bmin, *bmax))):
                             continue
                         if (any(low[i] > high[i] or bmin[i] > bmax[i] for i in range(3))):
+                            continue
+                        # A rectangular ring must be strictly inside the
+                        # horizontal span and height of its wall to be prioritized.
+                        # This is only a filter, not proof of a physical cut-out.
+                        if (any(type(v) not in (int, float) or not math.isfinite(v)
+                                for v in (*wall_min, *wall_max))):
+                            continue
+                        axes = (0, 2) if (wall_max[0] - wall_min[0]) >= (wall_max[1] - wall_min[1]) else (1, 2)
+                        if any(bmin[i] <= wall_min[i] + tolerance
+                               or bmax[i] >= wall_max[i] - tolerance for i in axes):
                             continue
                         if all(low[i] <= bmax[i] + tolerance and high[i] >= bmin[i] - tolerance for i in range(3)):
                             verified_candidates.append({"wall": wall_name, "boundaryBounds": box})
