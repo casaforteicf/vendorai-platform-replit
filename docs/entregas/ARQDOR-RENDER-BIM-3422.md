@@ -437,3 +437,11 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Limites:** não foi executado build TypeScript nem validação visual/geométrica em navegador. O gerador browser e o Python ainda são implementações paralelas; precisam de contrato compartilhado e testes de paridade. A união só trata eixos ortogonais, não paredes inclinadas ou curvas. Aprovação BIM/IFC e quantitativos desabilitados.
 - **Impedimento para testes locais:** tentativa de acessar GitHub pelo ambiente local falhou com erro DNS; commits realizados via conector do GitHub.
 - **Estado:** código registrado no PR #3422 Draft, sem merge ou deploy, Contabo e produção intocadas.
+
+
+## Lote 3422-A — estabilização de geometria e ensaios de regressão (09/10/2026)
+- **Correção no núcleo ortogonal:** `union_orthogonal_walls` rejeita tolerância NaN/infinita e valores não finitos na partição; registra `volumePreviewM3` calculado pela ocupação de células 3D após união e aberturas. Volume estritamente diagnóstico; não autorizado para produção, compras ou orçamento.
+- **Regressões adicionadas:** duas paredes ortogonais de 4 m × 0,2 m × 3 m têm volume unido esperado 4,68 m³ (desconta interseção de 0,12 m³); parede única com janela 1 × 1 m deve apresentar 2,2 m³; tolerância NaN deve falhar. Suíte preexistente também contém L/T/cruz e topologia de arestas.
+- **Commits:** `7ac028d` (núcleo), `7b75ffb` (testes).
+- **Evidência de execução:** testes novos escritos e GitHub atualizado, porém **não executados**. O contêiner local não conseguiu resolver `raw.githubusercontent.com` (erro DNS), portanto não foi possível obter o código integral do projeto no executor local. Build frontend/backend também **não executado**. Não afirmar validação concluída.
+- **Etapas restantes do 3422-A:** executar suíte no runtime autorizado ou checkout disponível, corrigir quaisquer falhas, build TS e teste visual WebGL, validar estanqueidade e orientação de faces em modelos reais. Manter PR em Draft e produção intocada.
