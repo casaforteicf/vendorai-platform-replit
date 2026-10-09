@@ -385,7 +385,7 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
         .from(crmDealPeopleTable).where(and(eq(crmDealPeopleTable.tenantId, tenantId),
           eq(crmDealPeopleTable.dealId, req.params.dealId), eq(crmDealPeopleTable.personId, personId))).limit(1);
       const relationshipMetadata = appendRelationshipEvent(
-        { ...(previousLink?.metadata ?? {}), ...(parsed.data.metadata ?? {}) }, "linked", req.user?.id,
+        { ...(previousLink?.metadata ?? {}), ...(parsed.data.metadata ?? {}), relationshipHistory: previousLink?.metadata?.relationshipHistory }, "linked", req.user?.id,
       );
       const [link] = await tx.insert(crmDealPeopleTable).values({
       tenantId,
@@ -396,7 +396,7 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
       contextualCompanyId: parsed.data.contextualCompanyId ?? null,
       relationshipScope: parsed.data.relationshipScope,
       notes: parsed.data.notes ?? null,
-      metadata: parsed.data.metadata ?? {},
+      metadata: relationshipMetadata,
       updatedAt: new Date(),
     }).onConflictDoUpdate({
       target: [crmDealPeopleTable.dealId, crmDealPeopleTable.personId],
