@@ -2535,6 +2535,7 @@ const budgetImportReviewSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("approve"),
     reviewedData: z.object({
+      valorTotal: z.number().finite().positive(),
       itens: z.array(z.object({
         descricao: z.string().trim().min(1).max(1000),
         quantidade: z.number().finite().positive(),
