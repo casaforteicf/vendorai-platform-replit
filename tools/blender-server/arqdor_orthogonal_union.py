@@ -11,7 +11,7 @@ from arqdor_feature_contracts import inspect_parametric_wall
 def union_orthogonal_walls(entries, tolerance=1e-8):
     if not isinstance(entries, list) or not 1 <= len(entries) <= 80:
         raise ValueError("Projeto deve conter entre 1 e 80 paredes")
-    if not isinstance(tolerance, (int, float)) or not 0 < tolerance <= 1e-5:
+    if type(tolerance) not in (int, float) or not math.isfinite(tolerance) or not 0 < tolerance <= 1e-5:
         raise ValueError("Tolerância inválida")
     solids, apertures = [], []
     for i, entry in enumerate(entries):
@@ -59,6 +59,8 @@ def union_orthogonal_walls(entries, tolerance=1e-8):
                 {y for voids in apertures for box in voids for y in box[2:4]})
     zs = sorted({z for box in solids for z in box[4:]} |
                 {z for voids in apertures for box in voids for z in box[4:]})
+    if any(not math.isfinite(v) for axis in (xs, ys, zs) for v in axis):
+        raise ValueError("Coordenadas não finitas")
     if (len(xs) - 1) * (len(ys) - 1) * (len(zs) - 1) > 240000:
         raise ValueError("Geometria excede limite de células")
     def inside(box, x, y, z):
@@ -74,7 +76,7 @@ def union_orthogonal_walls(entries, tolerance=1e-8):
                        not any(inside(void, x, y, z) for void in apertures[n])
                        for n, box in enumerate(solids)):
                     filled.add((i, j, k))
-    vertices, faces, indexed = [], [], {}
+    total_volume = sum((xs[i+1]-xs[i])*(ys[j+1]-ys[j])*(zs[k+1]-zs[k])\n                       for i, j, k in filled)\n    vertices, faces, indexed = [], [], {}
     def vert(x, y, z):
         key = (round(x, 9), round(y, 9), round(z, 9))
         if key not in indexed:
@@ -103,5 +105,5 @@ def union_orthogonal_walls(entries, tolerance=1e-8):
     return {"vertices": vertices, "faces": faces,
             "solidUnionMethod": "orthogonal_coordinate_partition",
             "internalFacesRemoved": True, "openingCount": sum(map(len, apertures)),
-            "occupiedCells": len(filled), "geometryApproved": False,
+            "occupiedCells": len(filled), "volumePreviewM3": round(total_volume, 9),\n            "geometryApproved": False,
             "quantitiesEnabled": False, "requiresManualReview": True}
