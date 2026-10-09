@@ -8,6 +8,30 @@ import { useRoute } from "wouter";
 const ConceptPlanner = lazy(() => import("./ConceptPlanner"));
 
 type Session = { token: string; conceptId: string; tenantName: string };
+type BrandProfile = {
+  tenantName: string;
+  slug: string;
+  marketEnabled: boolean;
+  embedEnabled: boolean;
+  headline: string;
+  subheadline: string;
+  logoUrl: string | null;
+  primaryColor: string;
+  marketButtonLabel: string;
+};
+type PublicMarketProduct = {
+  id: string;
+  fornecedorTenantId: string;
+  fornecedorNome: string;
+  parceiroOrigem: boolean;
+  nome: string;
+  descricao: string | null;
+  categoria: string | null;
+  preco: number | null;
+  imagens: string[];
+  acaoPrincipal: "comprar" | "cotar";
+  protecaoComercial: string;
+};
 type Address = { cep: string; rua: string; numero: string; complemento: string; bairro: string; cidade: string; uf: string };
 
 const storageKey = (slug: string) => `arqdor_preprojeto:${slug}`;
@@ -25,8 +49,128 @@ function readSession(slug: string): Session | null {
   }
 }
 
-function GuestEditor({ session }: { session: Session }) {
+function PublicMarketPanel({ slug, profile, token, onClose }: { slug: string; profile: BrandProfile; token: string; onClose: () => void }) {
+  const [products, setProducts] = useState<PublicMarketProduct[]>([]);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [routingId, setRoutingId] = useState<string | null>(null);
+  const [routedIds, setRoutedIds] = useState<Set<string>>(() => new Set());
+  const [marketError, setMarketError] = useState<string | null>(null);
+
+  const load = async (query = "") => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (query.trim()) params.set("busca", query.trim());
+      const response = await fetch(`/api/public/arqdor/${encodeURIComponent(slug)}/market?${params.toString()}`);
+      const body = await response.json().catch(() => ({}));
+      setProducts(response.ok ? body.produtos ?? [] : []);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void load(); }, [slug]);
+
+  const requestSupplier = async (product: PublicMarketProduct) => {
+    if (routedIds.has(product.id)) return;
+    setRoutingId(product.id);
+    setMarketError(null);
+    try {
+      const response = await fetch(`/api/public/arqdor/${encodeURIComponent(slug)}/market/lead`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ productId: product.id }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error ?? "Não foi possível enviar seu interesse.");
+      setRoutedIds((current) => new Set([...current, product.id]));
+    } catch (error: any) {
+      setMarketError(error?.message ?? "Não foi possível enviar seu interesse.");
+    } finally {
+      setRoutingId(null);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[5000] bg-slate-950/50 p-3 sm:p-6" role="dialog" aria-modal="true">
+      <div className="mx-auto flex h-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between gap-3 border-b px-4 py-4 sm:px-6">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: profile.primaryColor }}>{profile.tenantName}</p>
+            <h2 className="text-xl font-bold text-slate-950">Produtos e soluções para o seu projeto</h2>
+            <p className="text-xs text-slate-500">O Market respeita a atividade comercial do parceiro que trouxe você.</p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-lg border px-3 py-2 text-sm font-semibold text-slate-700">Fechar</button>
+        </div>
+        <div className="flex gap-2 border-b p-4 sm:px-6">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") void load(search); }}
+            placeholder="Buscar cimento, esquadrias, piscina, móveis..."
+            className="h-11 flex-1 rounded-xl border border-slate-300 px-3 outline-none focus:border-slate-500"
+          />
+          <button type="button" onClick={() => void load(search)} className="rounded-xl px-5 text-sm font-semibold text-white" style={{ backgroundColor: profile.primaryColor }}>
+            Buscar
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+          {marketError && <div className="mb-4 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{marketError}</div>}
+          {loading ? (
+            <div className="grid min-h-48 place-items-center text-sm text-slate-500">Buscando soluções…</div>
+          ) : products.length === 0 ? (
+            <div className="grid min-h-48 place-items-center text-center text-sm text-slate-500">Nenhum produto compatível encontrado nesta busca.</div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {products.map((product) => (
+                <article key={product.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                  <div className="aspect-[16/10] bg-slate-100">
+                    {product.imagens?.[0] ? <img src={product.imagens[0]} alt={product.nome} className="h-full w-full object-cover" /> : <div className="grid h-full place-items-center text-xs text-slate-400">Sem imagem</div>}
+                  </div>
+                  <div className="space-y-2 p-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {product.parceiroOrigem && <span className="rounded-full px-2 py-1 text-[11px] font-bold text-white" style={{ backgroundColor: profile.primaryColor }}>Parceiro</span>}
+                      {product.categoria && <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] text-slate-600">{product.categoria}</span>}
+                    </div>
+                    <h3 className="font-bold text-slate-950">{product.nome}</h3>
+                    <p className="text-xs text-slate-500">{product.fornecedorNome}</p>
+                    {product.descricao && <p className="line-clamp-2 text-sm text-slate-600">{product.descricao}</p>}
+                    <div className="flex items-center justify-between gap-3 pt-1">
+                      <span className="font-bold text-slate-950">{product.preco != null ? product.preco.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "Sob consulta"}</span>
+                      <button
+                        type="button"
+                        disabled={routingId === product.id || routedIds.has(product.id)}
+                        onClick={() => void requestSupplier(product)}
+                        className="rounded-lg px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+                        style={{ backgroundColor: profile.primaryColor }}
+                      >
+                        {routedIds.has(product.id)
+                          ? "Enviado"
+                          : routingId === product.id
+                            ? "Enviando…"
+                            : product.acaoPrincipal === "comprar"
+                              ? "Tenho interesse"
+                              : "Solicitar cotação"}
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GuestEditor({ session, slug, profile }: { session: Session; slug: string; profile: BrandProfile }) {
   const [ready, setReady] = useState(false);
+  const [marketOpen, setMarketOpen] = useState(false);
   useEffect(() => {
     // Chamadas do editor (/api/arch) vão com o acesso do cliente.
     const previous = window.fetch;
@@ -55,9 +199,22 @@ function GuestEditor({ session }: { session: Session }) {
 
   if (!ready) return null;
   return (
-    <Suspense fallback={<div className="grid min-h-screen place-items-center text-sm text-slate-500">Abrindo seu projeto…</div>}>
-      <ConceptPlanner guestMode guestBrand={session.tenantName} />
-    </Suspense>
+    <>
+      <Suspense fallback={<div className="grid min-h-screen place-items-center text-sm text-slate-500">Abrindo seu projeto…</div>}>
+        <ConceptPlanner guestMode guestBrand={session.tenantName} />
+      </Suspense>
+      {profile.marketEnabled && (
+        <button
+          type="button"
+          onClick={() => setMarketOpen(true)}
+          className="fixed bottom-5 right-5 z-[4500] rounded-full px-5 py-3 text-sm font-bold text-white shadow-xl"
+          style={{ backgroundColor: profile.primaryColor }}
+        >
+          {profile.marketButtonLabel}
+        </button>
+      )}
+      {marketOpen && <PublicMarketPanel slug={slug} profile={profile} token={session.token} onClose={() => setMarketOpen(false)} />}
+    </>
   );
 }
 
@@ -67,6 +224,7 @@ export default function PublicConceptSignup() {
   const [, params] = useRoute("/projeto/:slug");
   const slug = params?.slug ?? "";
   const [brand, setBrand] = useState<string | null>(null);
+  const [profile, setProfile] = useState<BrandProfile | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "unavailable">("loading");
   const [session, setSession] = useState<Session | null>(() => (slug ? readSession(slug) : null));
   const [form, setForm] = useState({ nome: "", telefone: "", email: "", instagram: "", site: "" });
@@ -84,6 +242,17 @@ export default function PublicConceptSignup() {
         if (!response.ok) { setStatus("unavailable"); return; }
         const body = await response.json();
         setBrand(body.tenantName ?? null);
+        setProfile({
+          tenantName: body.tenantName ?? "",
+          slug: body.slug ?? slug,
+          marketEnabled: Boolean(body.marketEnabled),
+          embedEnabled: body.embedEnabled !== false,
+          headline: body.headline ?? "Projete a sua casa",
+          subheadline: body.subheadline ?? "Crie seu pré-projeto e avance para soluções compatíveis com sua necessidade.",
+          logoUrl: body.logoUrl ?? null,
+          primaryColor: /^#[0-9a-fA-F]{6}$/.test(body.primaryColor ?? "") ? body.primaryColor : "#f97316",
+          marketButtonLabel: body.marketButtonLabel ?? "Ver produtos e soluções",
+        });
         setStatus("ready");
       })
       .catch(() => { if (!cancelled) setStatus("unavailable"); });
@@ -118,7 +287,14 @@ export default function PublicConceptSignup() {
       const response = await fetch(`/api/public/arqdor/${encodeURIComponent(slug)}/cadastro`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, endereco: address, aceite }),
+        body: JSON.stringify({
+          ...form,
+          endereco: address,
+          aceite,
+          originCampaignId: new URLSearchParams(window.location.search).get("campaign")
+            ?? new URLSearchParams(window.location.search).get("utm_campaign")
+            ?? null,
+        }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) { setError(body.error ?? "Não foi possível concluir o cadastro."); return; }
@@ -132,7 +308,7 @@ export default function PublicConceptSignup() {
     }
   };
 
-  if (session) return <GuestEditor session={session} />;
+  if (session && profile) return <GuestEditor session={session} slug={slug} profile={profile} />;
 
   const input = "mt-1 h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-base outline-none focus:border-orange-400";
   const label = "block text-sm font-semibold text-slate-800";
@@ -149,13 +325,17 @@ export default function PublicConceptSignup() {
     );
   }
 
+  const embed = new URLSearchParams(window.location.search).get("embed") === "1";
+  const primaryColor = profile?.primaryColor ?? "#f97316";
+
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-8">
-      <form onSubmit={submit} className="mx-auto max-w-lg rounded-3xl bg-white p-6 shadow-xl">
-        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">{brand}</div>
-        <h1 className="mt-1 text-2xl font-bold text-slate-950">Projete a sua casa</h1>
+    <div className={embed ? "min-h-screen bg-transparent px-1 py-1" : "min-h-screen bg-slate-50 px-4 py-8"}>
+      <form onSubmit={submit} className={embed ? "mx-auto max-w-lg rounded-2xl bg-white p-5" : "mx-auto max-w-lg rounded-3xl bg-white p-6 shadow-xl"}>
+        {profile?.logoUrl && <img src={profile.logoUrl} alt={brand ?? "Parceiro"} className="mb-4 max-h-14 max-w-[180px] object-contain" />}
+        <div className="text-xs font-semibold uppercase tracking-[0.16em]" style={{ color: primaryColor }}>{brand}</div>
+        <h1 className="mt-1 text-2xl font-bold text-slate-950">{profile?.headline ?? "Projete a sua casa"}</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Faça seu cadastro para desenhar a planta, ver a fachada e enviar o pré-projeto ao profissional. Leva poucos minutos.
+          {profile?.subheadline ?? "Faça seu cadastro para desenhar a planta, ver a fachada e enviar o pré-projeto ao profissional."}
         </p>
 
         <div className="mt-5 space-y-3">
@@ -215,7 +395,7 @@ export default function PublicConceptSignup() {
 
         {error && <p className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{error}</p>}
 
-        <button type="submit" disabled={submitting} className="mt-5 h-12 w-full rounded-xl bg-orange-500 text-base font-semibold text-white disabled:opacity-60">
+        <button type="submit" disabled={submitting} className="mt-5 h-12 w-full rounded-xl text-base font-semibold text-white disabled:opacity-60" style={{ backgroundColor: primaryColor }}>
           {submitting ? "Criando seu acesso…" : "Começar meu projeto"}
         </button>
         <p className="mt-3 text-center text-xs text-slate-500">Já se cadastrou? Use o mesmo e-mail e WhatsApp para continuar de onde parou.</p>

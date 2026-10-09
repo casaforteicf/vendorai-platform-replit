@@ -93,6 +93,12 @@ export const leadsTable = pgTable("leads", {
   partnerVisible: boolean("partner_visible").notNull().default(true),
   notasNutricao: text("notas_nutricao"),
   source: text("source").notNull().default("manual"),
+  // Atribuição comercial persistente da origem do lead. Permanece mesmo
+  // quando a oportunidade é encaminhada para outro tenant pelo Arqdor Market.
+  originTenantId: text("origin_tenant_id").references(() => tenantsTable.id, { onDelete: "set null" }),
+  originSource: text("origin_source"),
+  originCampaignId: text("origin_campaign_id"),
+  originCapturedAt: timestamp("origin_captured_at", { withTimezone: true }),
   // Campanha de anúncio que gerou este lead, quando souber (captura de
   // UTM/parâmetro na origem) — separado de `source` (rótulo livre de
   // canal), usado pra métrica real de atribuição do módulo de Anúncios.
@@ -219,6 +225,7 @@ export const leadsTable = pgTable("leads", {
 }, (table) => ({
   tenantPhoneIdx: index("leads_tenant_phone_idx").on(table.tenantId, table.telefone),
   tenantDocIdx: index("leads_tenant_doc_idx").on(table.tenantId, table.documento),
+  originTenantIdx: index("leads_origin_tenant_idx").on(table.originTenantId),
 }));
 
 export const insertLeadSchema = createInsertSchema(leadsTable).omit({
