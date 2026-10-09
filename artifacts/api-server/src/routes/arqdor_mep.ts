@@ -244,23 +244,38 @@ arqdorMepRouter.post("/arch/concept-projects/:conceptId/mep-binding", async(req,
 
 /** Preview wall impacts. Does not mutate BIM geometry or installation points. */
 const wallShape=z.object({id, floor:z.number().int(),x1:z.number().finite(),y1:z.number().finite(),x2:z.number().finite(),y2:z.number().finite(),thickness:z.number().finite().optional()}).strict();
-const hostPreviewSchema=z.object({before:z.array(wallShape).max(5000),after:z.array(wallShape).max(5000)}).strict();
+const hostPreviewSchema=z.object({
+ after:z.array(wallShape).max(5000),
+ expectedProjectUpdatedAt:z.string().datetime({offset:true}),
+}).strict();
 arqdorMepRouter.post("/arch/concept-projects/:conceptId/mep/host-impact-preview",async(req,res,next)=>{
  try{
   const tid=tenant(req,res);if(!tid)return;
   const concept=id.safeParse(req.params.conceptId);
   const body=hostPreviewSchema.safeParse(req.body);
-  if(!concept.success||!body.success){res.status(422).json({error:"Geometria inválida"});return;}
-  const binding=await pool.query(
-   `SELECT b.workspace_project_id FROM arqdor_mep_project_bindings b
-    JOIN arch_concept_projects c ON c.id=b.concept_project_id AND c.tenant_id=b.tenant_id
-    WHERE b.tenant_id=$1 AND b.concept_project_id=$2 LIMIT 1`,[tid,concept.data]);
-  if(!binding.rowCount){res.status(409).json({code:"MEP_BINDING_REQUIRED"});return;}
-  const workspaceId=binding.rows[0].workspace_project_id;
+  if(!concept.success||!body.success){res.status(422).json({error:"Geometria ou versão inválida"});return;}
+  const baseline=await pool.query(
+    `SELECT c.configuration,c.updated_at,b.workspace_project_id
+       FROM arch_concept_projects c
+       JOIN arqdor_mep_project_bindings b ON b.concept_project_id=c.id AND b.tenant_id=c.tenant_id
+       JOIN arqdor_workspace_projects w ON w.id=b.workspace_project_id AND w.tenant_id=b.tenant_id
+       WHERE c.tenant_id=$1 AND c.id=$2 LIMIT 1`,[tid,concept.data]);
+  if(!baseline.rowCount){res.status(409).json({code:"MEP_BINDING_REQUIRED"});return;}
+  const record=baseline.rows[0];
+  const storedVersion=new Date(record.updated_at).getTime();
+  const expectedVersion=new Date(body.data.expectedProjectUpdatedAt).getTime();
+  if(!Number.isFinite(expectedVersion)||storedVersion!==expectedVersion){
+    res.status(409).json({code:"MEP_STALE_GEOMETRY",error:"O pré-projeto foi alterado; recarregue antes de conferir as instalações."});return;
+  }
+  const storedWalls=wallShape.array().max(5000).safeParse(record.configuration?.customWalls);
+  if(!storedWalls.success){
+    res.status(409).json({code:"MEP_BASELINE_UNAVAILABLE",error:"Não foi possível validar a geometria oficial salva no projeto."});return;
+  }
+  const workspaceId=record.workspace_project_id;
   const points=await pool.query(
-   "SELECT id,host_element_id,floor_id FROM arqdor_mep_nodes WHERE tenant_id=$1 AND project_id=$2 AND host_element_id IS NOT NULL",
-   [tid,workspaceId]);
-  const impacts=inspectMepWallImpact(body.data.before,body.data.after,points.rows.map(p=>({id:p.id,hostElementId:p.host_element_id,floorId:p.floor_id})));
-  res.json({workspaceProjectId:workspaceId,impacts,requiresReview:impacts.length>0,applied:false,warning:"Prévia baseada nas versões de parede enviadas pelo editor; nenhuma instalação foi movida."});
+    "SELECT id,host_element_id,floor_id FROM arqdor_mep_nodes WHERE tenant_id=$1 AND project_id=$2 AND host_element_id IS NOT NULL",
+    [tid,workspaceId]);
+  const impacts=inspectMepWallImpact(storedWalls.data,body.data.after,points.rows.map(p=>({id:p.id,hostElementId:p.host_element_id,floorId:p.floor_id})));
+  res.json({workspaceProjectId:workspaceId,baselineUpdatedAt:record.updated_at,impacts,requiresReview:impacts.length>0,applied:false,warning:"Comparação com paredes persistidas; nenhuma instalação foi movida ou aprovada."});
  }catch(err){next(err);}
 });
