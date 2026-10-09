@@ -115,3 +115,8 @@ Reutilizar o cadastro mestre existente e permitir casal (dois consumidores com q
 - Commit `1a58aca`: no reaproveitamento por documento, o vínculo existente só autoriza a resposta com dados da pessoa se o negócio for visível ao usuário e o vínculo estiver ativo; contatos de empresa exigem lead vinculado visível. Corrige divergência em relação aos demais caminhos de consulta.
 - **Estado:** implementado sem validação técnica. Testes locais, build na Contabo, homologação, aprovação de release e produção seguem não realizados/não comprovados. O PR #3428 continua isolado.
 - **Próxima frente de código:** revisar demais caminhos de vínculo legado e proteger preservação de metadados históricos nas alterações. 
+
+## Revisão de metadados reservados — 09/10/2026
+- Commit `7a27eac`: ao atualizar vínculo de pessoa, campos internos de auditoria (`relationshipHistory`, `inactive`, `unlinkedAt`, `unlinkedBy`, `createdTenantId`) deixam de ser sobrescritos pelo objeto `metadata` enviado pela interface; preserva histórico anterior e calcula status no servidor.
+- Cadastros legados: a alteração não requer migração de tabela; permanece pendente validar em execução vínculos sem histórico e sem `createdTenantId`.
+- **Validação:** alteração de código registrada, sem build ou testes executados nesta etapa. Homologação Contabo e publicação adiadas por determinação do usuário. Produção não alterada.
