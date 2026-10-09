@@ -313,3 +313,29 @@ def draft_opening_schedule(objects, calibrated_scale=None):
                        "scaleCalibrated": calibrated_scale is not None,
                        "approved": False, "fabricationReady": False})
     return output
+
+
+def evaluate_wall_mesh_topology(vertex_count, edge_count, face_count,
+                                boundary_edges, nonmanifold_edges):
+    """Diagnostic evidence only, not recognition of doors/windows or voids.
+
+    An open mesh can contain deliberate openings or simply be incomplete;
+    a watertight mesh may still contain real wall apertures with jambs.
+    """
+    values = (vertex_count, edge_count, face_count, boundary_edges, nonmanifold_edges)
+    if any(type(v) is not int or v < 0 or v > 100_000_000 for v in values):
+        raise ValueError("Contagens de topologia inválidas")
+    if boundary_edges > edge_count or nonmanifold_edges > edge_count:
+        raise ValueError("Topologia inconsistente")
+    if vertex_count == 0 or face_count == 0:
+        status = "no_surface"
+    elif nonmanifold_edges:
+        status = "nonmanifold_requires_review"
+    elif boundary_edges:
+        status = "open_surface_requires_review"
+    else:
+        status = "closed_surface_not_void_verified"
+    return {"topologyStatus": status, "boundaryEdges": boundary_edges,
+            "nonmanifoldEdges": nonmanifold_edges,
+            "openingDetected": False, "quantitiesEnabled": False,
+            "requiresManualReview": True}
