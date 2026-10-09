@@ -35,3 +35,8 @@ describe("rotated object bounds", () => {
     expect(patch.x + 1 + 3 / Math.sqrt(2)).toBeCloseTo(10);
   });
 });
+
+it("preserves exact angles when only translating or resizing in SVG", () => {
+  const patch = objectTransformPatch({ x: 0, z: 0 }, -13 * Math.PI / 180, 2, 4, 10, 10, false)!;
+  expect(patch.rotation).toBeCloseTo(13);
+});

@@ -205,3 +205,10 @@ Validação: 106 testes em 22 arquivos passaram; transformação TSX da cena pas
 Commit do gizmo WebGL calcula envelope horizontal com largura/profundidade e ângulo final arredondado a 5 graus. Limita posição após snap usando esse envelope. Testes verificam quatro cantos em seis ângulos e borda no ângulo arredondado. Objetos que não cabem no envelope do terreno não são reduzidos; origem centralizada quando possível. Aviso para esse caso, padronização dos demais caminhos de edição/2D e colisões com ambientes permanecem pendentes.
 
 Validação: 108 testes em 22 arquivos passaram; tipagem isolada do helper passou. Verificação visual integrada, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Limites compartilhados para objetos na vista compatível
+
+Arraste, redimensionamento por alça, botões de escala e giro de 90 graus da vista SVG usam o envelope rotacionado compartilhado. Ao mover ou redimensionar, ângulo existente preservado sem snap angular adicional. Giro local envolve callbacks de início/fim de edição. Redimensionamento continua limitado às dimensões nominais do lote; objetos cujo envelope não cabe não são reduzidos automaticamente.
+
+Validação: 109 testes em 22 arquivos passaram; transformação TSX da vista SVG passou. Interação integrada/histórico, edição 2D/painel, aviso de objeto que não cabe, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.

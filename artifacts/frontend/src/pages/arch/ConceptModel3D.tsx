@@ -1,3 +1,4 @@
+import { objectTransformPatch } from "./conceptObjectTransform";
 import { sceneGesture } from "./conceptSceneGesture";
 import { exposedWallFaces } from "./conceptWallSurfaces";
 import { partitionOrthogonalWallSolids } from "./conceptWallSolidUnion";
@@ -741,6 +742,11 @@ export default function ConceptModel3D({
   };
 
 
+  const boundedObjectPatch = (x: number, y: number, width: number, depth: number, angle: number) => objectTransformPatch(
+    { x: x + width / 2 - lotWidth / 2, z: y + depth / 2 - lotDepth / 2 },
+    -angle * Math.PI / 180, width, depth, lotWidth, lotDepth, false,
+  );
+
   const scaleObject = (objectId: string, factor: number) => {
     if (!onObjectChange) return;
     const object = objects.find((item) => item.id === objectId);
@@ -753,8 +759,7 @@ export default function ConceptModel3D({
     onObjectChange(object.id, {
       width: nextWidth,
       depth: nextDepth,
-      x: Math.max(0, Math.min(lotWidth - nextWidth, Number((centerX - nextWidth / 2).toFixed(2)))),
-      y: Math.max(0, Math.min(lotDepth - nextDepth, Number((centerY - nextDepth / 2).toFixed(2)))),
+      ...boundedObjectPatch(centerX - nextWidth / 2, centerY - nextDepth / 2, nextWidth, nextDepth, object.rotation),
     });
     onObjectEditEnd?.();
   };
@@ -821,11 +826,10 @@ export default function ConceptModel3D({
       const localY = -worldDelta.x * Math.sin(radians) + worldDelta.y * Math.cos(radians);
       const object = objects.find((item) => item.id === objectResize.objectId);
       if (!object) return;
-      const snap = (value: number) => Math.round(value * 20) / 20;
-      onObjectChange(object.id, {
-        width: snap(Math.max(0.3, Math.min(lotWidth - object.x, objectResize.startWidth + localX))),
-        depth: snap(Math.max(0.3, Math.min(lotDepth - object.y, objectResize.startDepth + localY))),
-      });
+      const width = Math.max(0.3, Math.min(lotWidth, Math.round((objectResize.startWidth + localX) * 20) / 20));
+      const depth = Math.max(0.3, Math.min(lotDepth, Math.round((objectResize.startDepth + localY) * 20) / 20));
+      const patch = boundedObjectPatch(object.x, object.y, width, depth, object.rotation);
+      if (patch) onObjectChange(object.id, { ...patch, width, depth });
       return;
     }
     if (objectDrag && objectDrag.pointerId === event.pointerId && onObjectChange) {
@@ -833,11 +837,8 @@ export default function ConceptModel3D({
       const delta = projectedDeltaToWorld(point.x - objectDrag.startSvgX, point.y - objectDrag.startSvgY);
       const object = objects.find((item) => item.id === objectDrag.objectId);
       if (!object) return;
-      const snap = (value: number) => Math.round(value * 20) / 20;
-      onObjectChange(object.id, {
-        x: snap(Math.max(0, Math.min(lotWidth - object.width, objectDrag.startObjectX + delta.x))),
-        y: snap(Math.max(0, Math.min(lotDepth - object.depth, objectDrag.startObjectY + delta.y))),
-      });
+      const patch = boundedObjectPatch(objectDrag.startObjectX + delta.x, objectDrag.startObjectY + delta.y, object.width, object.depth, object.rotation);
+      if (patch) onObjectChange(object.id, patch);
       return;
     }
     if (event.pointerType === "touch" && touchPointersRef.current.has(event.pointerId)) {
@@ -2324,7 +2325,14 @@ export default function ConceptModel3D({
                     zoom,
                   );
                   const actions = [
-                    { key: "rotate", label: "↻", title: "Girar 90°", run: () => onObjectRotate?.(object.id) },
+                    { key: "rotate", label: "↻", title: "Girar 90°", run: () => {
+                      if (!onObjectChange) { onObjectRotate?.(object.id); return; }
+                      const patch = boundedObjectPatch(object.x, object.y, object.width, object.depth, (object.rotation + 90) % 360);
+                      if (!patch) return;
+                      onObjectEditStart?.();
+                      onObjectChange(object.id, patch);
+                      onObjectEditEnd?.();
+                    } },
                     { key: "smaller", label: "−", title: "Diminuir", run: () => scaleObject(object.id, 0.9) },
                     { key: "larger", label: "+", title: "Aumentar", run: () => scaleObject(object.id, 1.1) },
                     { key: "duplicate", label: "⧉", title: "Duplicar", run: () => onObjectDuplicate?.(object.id) },

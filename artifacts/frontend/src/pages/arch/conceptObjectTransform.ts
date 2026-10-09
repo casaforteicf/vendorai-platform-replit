@@ -1,8 +1,8 @@
-export function objectTransformPatch(position: { x: number; z: number }, yaw: number, width: number, depth: number, lotWidth: number, lotDepth: number) {
+export function objectTransformPatch(position: { x: number; z: number }, yaw: number, width: number, depth: number, lotWidth: number, lotDepth: number, snapRotation = true) {
   if (![position.x, position.z, yaw, width, depth, lotWidth, lotDepth].every(Number.isFinite) || width <= 0 || depth <= 0 || lotWidth <= 0 || lotDepth <= 0) return null;
   const snap = (value: number) => Math.round(value * 20) / 20;
   const rotation = ((-yaw * 180 / Math.PI) % 360 + 360) % 360;
-  const snappedRotation = (Math.round(rotation / 5) * 5) % 360;
+  const snappedRotation = snapRotation ? (Math.round(rotation / 5) * 5) % 360 : rotation;
   const angle = snappedRotation * Math.PI / 180;
   const extentX = Math.abs(Math.cos(angle)) * width + Math.abs(Math.sin(angle)) * depth;
   const extentY = Math.abs(Math.sin(angle)) * width + Math.abs(Math.cos(angle)) * depth;
