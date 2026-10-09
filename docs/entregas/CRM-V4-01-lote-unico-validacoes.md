@@ -85,3 +85,8 @@ Este relatório corresponde a inspeção estática de código remoto e planejame
 - `50e6043`: `NewLeadDialog` não executa mais um segundo POST independente para empresa após a operação do casal.
 - Limite residual: a criação anterior do lead, do negócio e da empresa mestre ainda ocorre por operações separadas, fora da transação do casal. Fluxo ponta a ponta **não** é integralmente atômico.
 - Estado: código alterado e registro atualizado; sem compilação, testes em execução ou homologação. Contabo/Vendi e publicação permanecem adiados.
+
+## Falha parcial no cadastro inicial do lead — 09/10/2026
+- `86b81f1`: `NewLeadDialog` passa a registrar o ID do lead e negócio após sua criação; se uma etapa posterior falhar, a interface deixa de afirmar que tudo falhou, comunica que **o lead já foi criado**, atualiza listas e abre o registro existente para revisão, reduzindo risco de duplicação por novo envio.
+- Essa alteração é mitigação de UX e recuperação, **não** constitui transação única de criação de lead, negócio e empresa. Para essa atomicidade é preciso consolidar serviços de criação existentes no backend, preservando todas as regras de distribuição, cupom, origem e automações.
+- Evidência: commit em branch, sem build/teste runtime. Homologação Contabo e publicação adiadas; produção sem alterações.
