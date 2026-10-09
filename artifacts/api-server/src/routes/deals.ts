@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, isNotNull, isNull, notExists, sql } from "drizzle-orm";
 import multer from "multer";
 import {
@@ -2461,7 +2462,30 @@ router.post(
           return null;
         }),
       ]);
-      res.json({ ...result, quoteFileUrl, originalName: req.file.originalname });
+      const importId = randomUUID();
+      await db.execute(sql`INSERT INTO public.budget_imports
+        (id, tenant_id, source_type, original_name, mime_type, file_url, extraction_json, confidence, review_status, created_by)
+        VALUES (
+          ${importId},
+          ${tenantId},
+          'pdf',
+          ${req.file.originalname},
+          ${req.file.mimetype},
+          ${quoteFileUrl},
+          ${JSON.stringify(result)}::jsonb,
+          ${typeof result?.confianca === "number" ? result.confianca : null},
+          'pending_review',
+          ${req.user?.sub ?? null}
+        )`);
+      res.json({
+        ...result,
+        quoteFileUrl,
+        originalName: req.file.originalname,
+        importId,
+        reviewStatus: "pending_review",
+        reviewRequired: true,
+        extractedItemCount: Array.isArray(result?.itens) ? result.itens.length : 0,
+      });
     } catch (err) {
       req.log.error({ err }, "Failed to extract quote data");
       res.status(500).json({ error: "Erro ao processar o arquivo" });
