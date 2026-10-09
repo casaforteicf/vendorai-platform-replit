@@ -1,3 +1,4 @@
+import { exposedWallFaces } from "./conceptWallSurfaces";
 import { partitionOrthogonalWallSolids } from "./conceptWallSolidUnion";
 import { alignOpeningSegment, alignOpeningPoint, openingVerticalBounds } from "./conceptWallVoids";
 import type { SiteFrontSide } from "./conceptSitePlacement";
@@ -1856,6 +1857,16 @@ export default function ConceptModel3D({
             ...level.customWalls.map((wall) => ({ ...wall, exterior: false, custom: true })),
           ];
 
+          const wallPieces = partitionOrthogonalWallSolids(allWalls, level.openings, WALL_HEIGHT);
+          const wallSurfaces = exposedWallFaces(wallPieces);
+          wallPieces.sort((a, b) => {
+            const depth = (piece: typeof a) => {
+              const center = rotatePoint((piece.wall.x1 + piece.wall.x2) / 2, (piece.wall.y1 + piece.wall.y2) / 2, rotation, projectionWidth, projectionDepth);
+              return center.x + center.y;
+            };
+            return depth(a) - depth(b);
+          });
+
           return (
             <g key={`level-${level.floor}`} opacity={!showAllFloors && level.floor !== activeFloor ? 0.2 : 1}>
               {level.closedSpaces.map((space) => (
@@ -1911,7 +1922,7 @@ export default function ConceptModel3D({
               ))}
 
               <g filter="url(#concept3d-shadow)">
-                {partitionOrthogonalWallSolids(allWalls, level.openings, WALL_HEIGHT).map((piece, index) => {
+                {wallPieces.map((piece, index) => {
                     const wall = piece.wall;
                     const shape = wallPolygon(
                       piece.wall,
@@ -1936,6 +1947,27 @@ export default function ConceptModel3D({
                           else onSelectWall?.(wall.id);
                         }}
                       >
+                        {wallSurfaces.has(piece) ? wallSurfaces.get(piece)!.map((face, faceIndex) => {
+                          const vertices = face.direction > 0 ? face.vertices : [...face.vertices].reverse();
+                          const projected = vertices.map(([x, y, z]) => project({ x, y, z: wallBase + z }, rotation, projectionWidth, projectionDepth, zoom));
+                          const area = projected.reduce((sum, point, i) => {
+                            const next = projected[(i + 1) % projected.length];
+                            return sum + point.x * next.y - next.x * point.y;
+                          }, 0);
+                          if (area <= 1e-8) return null;
+                          const selected = (wall.custom ? selectedCustomWallId : selectedWallId) === wall.id;
+                          return <polygon
+                            key={faceIndex}
+                            points={points(projected)}
+                            fill={face.axis === 2
+                              ? selectedWallMaterial?.top ?? "url(#concept3d-wall)"
+                              : face.axis === 0
+                                ? selectedWallMaterial?.front ?? (wall.exterior ? exteriorMaterial.baseColor : "#aab5c3")
+                                : selectedWallMaterial?.side ?? "url(#concept3d-wall-side)"}
+                            stroke={selected ? "#f97316" : "#475569"}
+                            strokeWidth={selected ? "0.11" : "0.055"}
+                          />;
+                        }) : <>
                         <polygon
                           points={points(shape.sideA)}
                           fill={selectedWallMaterial?.front ?? (wall.exterior ? exteriorMaterial.baseColor : "#aab5c3")}
@@ -1954,6 +1986,7 @@ export default function ConceptModel3D({
                           stroke={(wall.custom ? selectedCustomWallId : selectedWallId) === wall.id ? "#f97316" : "#64748b"}
                           strokeWidth={(wall.custom ? selectedCustomWallId : selectedWallId) === wall.id ? "0.11" : "0.055"}
                         />
+                        </>}
                       </g>
                     );
                   })}

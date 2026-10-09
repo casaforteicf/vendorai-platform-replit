@@ -135,3 +135,10 @@ exposedWallFaces remove áreas compartilhadas entre faces adjacentes dos sólido
 Limites: não cria malha única soldada, não resolve faces de uniões diagonais, e o SVG permanece com as projeções de caixas particionadas. Inspeção visual real, texturas, picking e desempenho em projetos grandes ainda pendentes.
 
 Arquivos: ConceptWebGLScene.tsx, conceptWallSurfaces.ts e conceptWallSurfaces.test.ts. Verificação: 83 testes passaram em 18 arquivos, incluindo área externa de parede isolada, adjacência, cruzamento e revelos; sintaxe da cena e tipagem isolada do helper verificadas. Lote ARQ-EDITOR-20261009, versão em desenvolvimento; homologação Contabo e publicação adiadas.
+
+
+### Faces externas na vista SVG 3D
+
+A vista 3D alternativa reutiliza as faces expostas da união de paredes ortogonais, com descarte de faces voltadas para trás e ordenação dos trechos pela profundidade da câmera. Materiais, seleção e pintura continuam vinculados à parede original. Paredes diagonais mantêm a renderização anterior.
+
+Validação: 83 testes em 18 arquivos passaram; transformação TSX do componente por esbuild passou. A conferência visual integrada, o build completo e a homologação/publicação não foram realizados neste lote.
