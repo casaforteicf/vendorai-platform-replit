@@ -16,6 +16,7 @@ type PersonParticipant = {
   personId: string;
   nome: string;
   documento?: string | null;
+  dataNascimento?: string | null;
   telefones?: string[] | null;
   emails?: string[] | null;
   role: string;
@@ -104,6 +105,7 @@ export function DealParticipantsCard({
   const [personPhone, setPersonPhone] = useState("");
   const [personEmail, setPersonEmail] = useState("");
   const [personDocument, setPersonDocument] = useState("");
+  const [personBirthDate, setPersonBirthDate] = useState("");
   const [contextCompanyId, setContextCompanyId] = useState("__none__");
   const [relationshipScope, setRelationshipScope] = useState<"deal_only" | "persistent">("deal_only");
   const [hasCommission, setHasCommission] = useState(false);
@@ -164,6 +166,7 @@ export function DealParticipantsCard({
     setPersonPhone("");
     setPersonEmail("");
     setPersonDocument("");
+    setPersonBirthDate("");
     setContextCompanyId("__none__");
     setRelationshipScope("deal_only");
     setHasCommission(false);
@@ -181,6 +184,11 @@ export function DealParticipantsCard({
     setKind("person");
     setEditingPerson(person);
     setPersonId(person.personId);
+    setPersonName(person.nome);
+    setPersonPhone(person.telefones?.[0] ?? "");
+    setPersonEmail(person.emails?.[0] ?? "");
+    setPersonDocument(person.documento ?? "");
+    setPersonBirthDate(person.dataNascimento ?? "");
     setPersonRole(person.role);
     setContextCompanyId(person.contextualCompanyId ?? "__none__");
     setRelationshipScope(person.relationshipScope);
@@ -202,6 +210,15 @@ export function DealParticipantsCard({
     }
     setSaving(true);
     try {
+      if (editingPerson) {
+        const responseProfile = await fetch(`/api/crm/deals/${dealId}/people/${editingPerson.personId}/profile`, {
+          method: "PATCH", headers,
+          body: JSON.stringify({ tenantId, nome: personName.trim(), telefone: personPhone.trim(),
+            email: personEmail.trim(), documento: personDocument.trim(), dataNascimento: personBirthDate }),
+        });
+        const profileResult = await responseProfile.json().catch(() => ({}));
+        if (!responseProfile.ok) throw new Error(profileResult.error ?? "Falha ao editar dados pessoais.");
+      }
       const response = await fetch(`/api/crm/deals/${dealId}/people`, {
         method: "POST",
         headers,
@@ -406,6 +423,16 @@ export function DealParticipantsCard({
                   <div className="space-y-1.5"><Label>WhatsApp / telefone</Label><Input value={personPhone} onChange={(e) => setPersonPhone(e.target.value)} /></div>
                   <div className="space-y-1.5"><Label>Email</Label><Input type="email" value={personEmail} onChange={(e) => setPersonEmail(e.target.value)} /></div>
                   <div className="space-y-1.5 sm:col-span-2"><Label>CPF / documento</Label><Input value={personDocument} onChange={(e) => setPersonDocument(e.target.value)} /></div>
+                </div>
+              )}
+              {editingPerson && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5 sm:col-span-2"><Label>Nome</Label><Input value={personName} onChange={(e) => setPersonName(e.target.value)} /></div>
+                  <div className="space-y-1.5"><Label>Telefone</Label><Input value={personPhone} onChange={(e) => setPersonPhone(e.target.value)} /></div>
+                  <div className="space-y-1.5"><Label>E-mail</Label><Input type="email" value={personEmail} onChange={(e) => setPersonEmail(e.target.value)} /></div>
+                  <div className="space-y-1.5"><Label>CPF / documento</Label><Input value={personDocument} onChange={(e) => setPersonDocument(e.target.value)} /></div>
+                  <div className="space-y-1.5"><Label>Nascimento</Label><Input type="date" value={personBirthDate} onChange={(e) => setPersonBirthDate(e.target.value)} /></div>
+                  <p className="text-xs text-muted-foreground sm:col-span-2">Esses dados pertencem à pessoa e também serão atualizados nos outros negócios vinculados.</p>
                 </div>
               )}
               <div className="space-y-1.5">
