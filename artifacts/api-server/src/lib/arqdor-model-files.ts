@@ -83,7 +83,7 @@ export function validateSceneSettings(value: unknown): ModelSceneSettings {
     throw new Error("Intensidade solar fora do intervalo");
   if (!input.materials || typeof input.materials !== "object" || Array.isArray(input.materials)) throw new Error("Materiais inválidos");
   const entries = Object.entries(input.materials);
-  if (entries.length > 2000 || entries.some(([key, color]) => key.length > 128 || !/^[a-f0-9-]{36}$/.test(key) || typeof color !== "string" || !/^#[a-fA-F0-9]{6}$/.test(color)))
+  if (entries.length > 2000 || entries.some(([key, color]) => key.length > 128 || !/^mat-(0|[1-9][0-9]{0,5})$/.test(key) || typeof color !== "string" || !/^#[a-fA-F0-9]{6}$/.test(color)))
     throw new Error("Cores de superfície inválidas");
   if (!Array.isArray(input.cameras) || input.cameras.length > 100) throw new Error("Câmeras inválidas");
   const tuple = (value: unknown): value is [number, number, number] =>
