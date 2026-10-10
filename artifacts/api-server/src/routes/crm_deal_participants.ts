@@ -730,7 +730,7 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
       // Reativação nunca recupera automaticamente o contato principal antigo.
       const primaryContact = parsed.data.isPrimary;
       const relationshipMetadata = appendRelationshipEvent(
-        { ...(previousLink?.metadata ?? {}), ...Object.fromEntries(Object.entries(parsed.data.metadata ?? {}).filter(([key]) => !["relationshipHistory", "inactive", "unlinkedAt", "unlinkedBy", "createdTenantId"].includes(key))), relationshipHistory: previousLink?.metadata?.relationshipHistory, legacyRelationship: Boolean(previousLink) && !Array.isArray(previousLink?.metadata?.relationshipHistory) }, previousLink ? (previousLink.metadata?.inactive === true ? "linked" : "updated") : "linked", req.user?.id,
+        { ...(previousLink?.metadata ?? {}), ...Object.fromEntries(Object.entries(parsed.data.metadata ?? {}).filter(([key]) => !["relationshipHistory", "inactive", "unlinkedAt", "unlinkedBy", "createdTenantId", "commission", "commissionHistory"].includes(key))), relationshipHistory: previousLink?.metadata?.relationshipHistory, legacyRelationship: Boolean(previousLink) && !Array.isArray(previousLink?.metadata?.relationshipHistory) }, previousLink ? (previousLink.metadata?.inactive === true ? "linked" : "updated") : "linked", req.user?.id,
       );
       const [link] = await tx.insert(crmDealPeopleTable).values({
       tenantId,
