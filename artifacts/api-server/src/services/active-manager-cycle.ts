@@ -253,6 +253,21 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               metric: String(total),
             };
           }
+          if (domain === "omnichannel") {
+            const data = await client.query(
+              `SELECT count(*)::int AS total FROM conversations
+               WHERE tenant_id=$1 AND status='open' AND nao_lidas > 0
+                 AND ultima_mensagem_em < now() - interval '24 hours'`,
+              [tenantId],
+            );
+            const total = Number(data.rows[0]?.total ?? 0);
+            if (total > 0) secondaryObservation = {
+              signal: "active-manager:omnichannel:unread-over-24h",
+              title: "Conversas sem atendimento há mais de 24 horas",
+              detail: `Há ${total} conversas abertas não lidas há mais de 24 horas. Jarvis deve solicitar priorização aos responsáveis autorizados, respeitando a privacidade dos números.`,
+              metric: String(total),
+            };
+          }
           if (domain === "finance") {
             const data = await client.query(
               `SELECT count(*)::int AS total FROM finance_integration_connections
@@ -340,6 +355,17 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
             );
             await client.query('RELEASE SAVEPOINT manager_domain');
             continue;
+          }
+          if (domain === "omnichannel" && !secondaryObservation) {
+            const closed = await client.query(
+              `UPDATE jarvis_cases SET status='resolved', resolved_at=now(),
+                 updated_at=now(),
+                 result_summary='O sinal operacional deixou de existir na verificação automática.'
+               WHERE tenant_id=$1 AND signal_key=$2
+                 AND source='active_manager' AND status='open'`,
+              [tenantId, "active-manager:omnichannel:unread-over-24h"],
+            );
+            resolved += closed.rowCount ?? 0;
           }
           if (domain === "pipeline" && !secondaryObservation) {
             const closed = await client.query(
