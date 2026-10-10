@@ -31,6 +31,14 @@ describe("walk collision matches physical door voids", () => {
 });
 
 describe("walk movement", () => {
+  it("rejects non-finite positions and invalid visitor radii", () => {
+    expect(canWalkTo(NaN, 0, [])).toBe(false);
+    expect(canWalkTo(Infinity, 0, [])).toBe(false);
+    expect(canWalkTo(0, -Infinity, [])).toBe(false);
+    expect(canWalkTo(0, 0, [], 0)).toBe(false);
+    expect(canWalkTo(0, 0, [], NaN)).toBe(false);
+    expect(canWalkTo(0, 0, [])).toBe(true);
+  });
   it("does not jump across a thin wall in a long movement", () => {
     const end = moveWalkPosition({ x: 1, y: -1 }, { x: 1, y: 1 }, [walkWall(wall, [])]);
     expect(end.y).toBeLessThan(-0.3);
