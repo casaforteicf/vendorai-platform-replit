@@ -30,9 +30,9 @@ CREATE TABLE IF NOT EXISTS public.atr_origin_agreements (
     CHECK (commission_basis = 'platform_net_commission_received'),
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT atr_origin_agreements_valid_period CHECK (effective_until IS NULL OR effective_until > effective_from),
-  CONSTRAINT atr_origin_agreements_version_uniq UNIQUE (origin_tenant_id, version)
+  CONSTRAINT atr_origin_agreements_version_positive CHECK (version > 0)
 );
-CREATE TABLE IF NOT EXISTS public.atr_origin_agreement_categories (
+CREATE UNIQUE INDEX IF NOT EXISTS atr_origin_agreements_partner_version_uniq\n  ON public.atr_origin_agreements(origin_tenant_id, COALESCE(origin_partner_id, ''), version);\nCREATE TABLE IF NOT EXISTS public.atr_origin_agreement_categories (
   agreement_id text NOT NULL REFERENCES public.atr_origin_agreements(id) ON DELETE RESTRICT,
   category_code text NOT NULL,
   share_percent numeric(7,4) NOT NULL CHECK (share_percent >= 0 AND share_percent <= 100),
