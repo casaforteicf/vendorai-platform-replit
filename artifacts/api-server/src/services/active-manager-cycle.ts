@@ -84,6 +84,8 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
           );
           // Failed scans are retryable inside the same cadence bucket. A
           // completed or deliberately skipped scan remains idempotent.
+          // Do not retry more than once per scheduler tick: the scheduler calls
+          // this function once every 15 minutes, limiting repeated failures.
           if (alreadyDone.rows[0] && alreadyDone.rows[0].outcome !== 'failed') {
             await client.query('RELEASE SAVEPOINT manager_domain');
             continue;
