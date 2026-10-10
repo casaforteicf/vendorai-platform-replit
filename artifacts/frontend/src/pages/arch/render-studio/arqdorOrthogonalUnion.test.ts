@@ -47,6 +47,22 @@ describe("Arqdor orthogonal wall volume union", () => {
     expect(result.topology.closedByEdgeIncidence).toBe(false);
   });
 
+  it("rejects overlapping doors and windows just as the Python geometry contract does", () => {
+    expect(() => unionOrthogonalWalls([
+      wall([0, 0], [4, 0], [
+        { ...door, offset: 0.5, width: 1.5 },
+        { ...window, offset: 1.2, sill: 1, height: 1 },
+      ]),
+    ])).toThrow(/Aberturas sobrepostas/);
+    // Adjacent opening edges are not overlapping volumes.
+    expect(unionOrthogonalWalls([
+      wall([0, 0], [4, 0], [
+        { ...door, offset: 0.5, width: 1.5 },
+        { ...window, offset: 2.0 },
+      ]),
+    ]).openingCount).toBe(2);
+  });
+
   it("rejects diagonal geometry and invalid aperture positions", () => {
     expect(() => unionOrthogonalWalls([wall([0, 0], [4, 2])]))
       .toThrow(/diagonal/);
