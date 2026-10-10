@@ -567,3 +567,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Execução efetiva delimitada:** lógica TypeScript recém-obtida via GitHub, com anotações de tipos removidas, executada em isolate JS; parede 6 faces, L 26, T 26, cruz 22, separadas 12; todos os resultados atenderam às expectativas (1 casca nos primeiros quatro, 2 nas separadas), sem bordas abertas ou erros de orientação nos cinco casos. **Não foi executado Vitest nem build do frontend.**
 - **Commits:** `b0cb9b7` (gerador) e `94127c3` (regressões).
 - **Governança:** PR #3422 Draft, Contabo adiada, sem merge/deploy, produção inalterada.
+
+
+## 3422-A — limpeza segura do WebGL em exceções (10/10/2026)
+- **Falha identificada:** no renderizador `RenderStudioParametricWebgl.tsx`, o `cleanup` somente era atribuído ao final da construção de cena. Uma exceção após `new THREE.WebGLRenderer` e antes do `ResizeObserver` deixava canvas/contexto e malhas sem liberação.
+- **Correção:** commit `0f60846`. O descarte de materiais/geometrias, observer e renderer é registrado imediatamente após a criação do renderer, antes de anexar o canvas e construir a cena. O bloco `try/catch` libera recursos imediatamente em erro e propaga a exceção para a mensagem já existente na interface.
+- **Teste:** revisão estática da sequência de inicialização e proteção por `try/catch`; **não há teste WebGL no navegador nem build completo executado** nesta etapa.
+- **Governança:** PR #3422 permanece Draft; sem merge, deploy ou alterações na Contabo/produção.
