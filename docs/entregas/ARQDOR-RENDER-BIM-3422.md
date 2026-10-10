@@ -734,3 +734,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Teste persistido:** commit `38891fa` adiciona regressão Vitest que esgota 12 segundos com relógio falso, verifica a remoção da tag, refaz o carregamento, confirma `WebGLRenderer` e ausência de temporizadores pendentes.
 - **Execução independente realizada:** `loadThree` extraído da branch, com somente tipos TS removidos, foi executado em JavaScript com DOM e temporizadores simulados; o primeiro carregamento falhou por timeout, removeu o script, uma nova chamada carregou com sucesso e restaram zero timers. Cenário isolado aprovado, mas não substitui Vitest/browser.
 - **Governança:** PR #3422 Draft, sem merge/deploy, produção inalterada.
+
+
+## 3422-A — validar paredes antes de buscar Three.js (10/10/2026)
+- **Falha confirmada por inspeção:** `shouldUseOrthogonalUnion(walls)` era executada somente dentro de `loadThree().then`, permitindo tráfego externo para dados de paredes inválidos, inclusive quando o erro já podia ser determinado localmente.
+- **Correção:** commit `8b58bf9` executa a validação de coordenadas no início do efeito, antes da chamada à CDN; erros ficam visíveis em `setError`. A determinação do caminho ortogonal/diagonal é reutilizada na montagem da geometria.
+- **Evidência:** revisão do código atualizado, sem execução dos testes de componente React, Vitest ou build completo. As verificações isoladas prévias do carregador não homologam esta alteração.
+- **Governança:** PR #3422 Draft; sem merge/deploy, Contabo e produção inalteradas.
