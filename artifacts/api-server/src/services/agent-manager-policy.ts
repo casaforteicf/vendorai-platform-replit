@@ -75,11 +75,12 @@ export function managerSupportSourceRef(
   fingerprint: string,
   tenantId?: string,
 ): string {
-  if (!fingerprint.trim()) throw new Error("FINGERPRINT_REQUIRED");
+  if (typeof fingerprint !== "string" || !fingerprint.trim()) throw new Error("FINGERPRINT_REQUIRED");
   const normalizedFingerprint = fingerprint.trim();
   // Never treat unsupported runtime module/kind values as a valid review identity.
   if (!MANAGER_DOMAINS.includes(module)) throw new Error("INVALID_MANAGER_DOMAIN");
   if (!MANAGER_SUPPORT_KINDS.includes(kind)) throw new Error("MANAGER_SUPPORT_KIND_INVALID");
+  if (tenantId !== undefined && typeof tenantId !== "string") throw new Error("TENANT_REQUIRED");
   const scope = tenantId === undefined ? null : tenantId.trim();
   if (scope === "") throw new Error("TENANT_REQUIRED");
   // Namespace global and tenant scopes separately, even if a tenant slug is "global".
