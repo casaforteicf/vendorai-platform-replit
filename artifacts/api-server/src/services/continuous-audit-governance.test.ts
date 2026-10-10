@@ -21,6 +21,15 @@ describe("UX and Security manager governance", () => {
     expect(router.indexOf("router.use(uxRuntimeTelemetryRouter)")).toBeGreaterThan(router.indexOf("router.use(enforceCommercialProductAccess)"));
   });
 
+  it("instruments the actual Vendor.ai legacy routes without claiming coverage of public runtime apps", () => {
+    const app = readFileSync(new URL("../../../frontend/src/App.tsx", import.meta.url), "utf8");
+    const legacy = readFileSync(new URL("../../../frontend/src/AppLegacy.tsx", import.meta.url), "utf8");
+    expect(app).toContain('import("./AppLegacy")');
+    expect(legacy).toContain('import { RouteContentErrorBoundary }');
+    expect(legacy).toContain('<RouteContentErrorBoundary routeKey={routeKey}>');
+    expect(legacy).toContain('function RouteContentBoundary(');
+  });
+
   it("throttles UX browser reports and keeps the homologation API isolated", () => {
     const frontend = readFileSync(new URL("../../../frontend/src/components/RouteContentErrorBoundary.tsx", import.meta.url), "utf8");
     expect(frontend).toContain("sessionStorage.getItem(throttleKey)");
