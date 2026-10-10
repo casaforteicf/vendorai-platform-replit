@@ -19,7 +19,7 @@ Monorepo pnpm. Backend em `artifacts/api-server`.
   - nginx faz reverse proxy do domínio → `127.0.0.1:5001`.
 - **Banco:** Supabase (Postgres).
 - **Storage/arquivos:** **Cloudflare R2** (bucket privado). Migrado do Supabase Storage em out/2026. Os arquivos foram copiados pro R2 e **apagados do Supabase** — o código PRECISA ler do R2.
-- **Frontend:** Cloudflare Pages (auto-deploy nativo do Git — **não** usa GitHub Actions).
+- **Frontend:** build estático Vite servido pela **própria Contabo/nginx** em `/var/www/vendorai-app/current` (symlink → release atual). O domínio `app.appvendorai.com` resolve por **registro A direto → `31.220.96.205`** — **NÃO passa por Cloudflare Pages/CDN**. nginx (`server_name app.appvendorai.com`): `root /var/www/vendorai-app/current`, SPA via `try_files $uri $uri/ /index.html`, `/api/ → 127.0.0.1:5001`. ⚠️ Existe um projeto Cloudflare Pages (`vendorai`) com o domínio **Inativo** — ele **não serve nada**; ignorar.
 - **GitHub Actions:** **BLOQUEADO** (billing da conta). Não dá pra usar runner/Actions.
 - **Railway / Vercel:** legado / fora de uso.
 
@@ -38,6 +38,21 @@ push/merge na main
 - **Rollback p/ imagem específica:** `DEPLOY_IMAGE=vendorai-api:r2 bash /opt/vendorai/deploy-backend.sh`
 - **Healthcheck correto:** `/api/auth/healthz` (NÃO `/api/healthz`).
 - O usuário opera por arquivos `.cmd` no Windows (ele não cola no PowerShell).
+
+### Deploy do FRONTEND (manual — o cron só cobre o BACKEND)
+
+O frontend **não** tem auto-deploy. Pra publicar uma mudança de frontend, na VPS:
+
+```
+bash /opt/vendorai/deploy-frontend.sh
+```
+
+Builda o frontend a partir de `/opt/vendorai/deploy-src` (Vite → `dist/public`), publica em
+`/var/www/vendorai-app/releases/<sha>`, troca o symlink `current` e **mantém o release anterior**.
+Valida `index.html` antes de trocar o link (aborta sem mexer se o build falhar).
+
+- **Rollback:** `ln -sfn /var/www/vendorai-app/releases/<sha-anterior> /var/www/vendorai-app/current`
+- Depois de publicar, no navegador: **Ctrl+Shift+R** (assets ganham hash novo, mas o `index.html` pode ficar em cache).
 
 ## Validação obrigatória ANTES de qualquer push
 
@@ -69,6 +84,8 @@ com rollback à mão.
 ## Armadilhas conhecidas
 
 - O workflow `merge-release-agent` foi **desativado** (causava corrupção: funções/blocos duplicados).
+- **Frontend NÃO é Cloudflare Pages** (apesar de o projeto existir lá, com o domínio Inativo). `app.appvendorai.com` é servido pela **Contabo/nginx**. Logo: deploy verde na Pages **não** aparece no site, e **purge de cache da Cloudflare não adianta**. Se uma mudança de frontend não aparecer em produção, o motivo quase sempre é que ninguém rodou `deploy-frontend.sh` na VPS.
+- **Disco da VPS enche fácil** (imagens Docker `vendorai-api:*` ~3,7 GB cada). Se `df -h /` passar de ~90%, limpar: `docker container prune -f`; `docker rmi` nas imagens antigas/não usadas (o rmi recusa imagem em uso); e checkouts velhos em `/opt/vendorai` (`audit-*`, `validation-*`, `verify-*`). Build do frontend precisa de alguns GB livres.
 - `.cmd` no Windows: no `ssh "..."` **não usar aspas duplas internas** nem **parênteses em `echo` remoto** (quebram o shell). Comparações numéricas, aspas simples OK, redirecionar saída pra `.txt` no Desktop + abrir no notepad.
 
 ## Comandos úteis na VPS
