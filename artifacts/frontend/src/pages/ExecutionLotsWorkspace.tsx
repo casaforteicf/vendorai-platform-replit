@@ -8,7 +8,8 @@ type Item = { itemId: string; name: string; unit: string; group?: string | null;
 type Balance = { itemId: string; contracted: number; allocated: number; completed: number; available: number };
 type Allocation = { lot_id: string; source_item_id: string; quantity: string; completed_quantity: string };
 type Lot = { id: string; label?: string; status: string };
-type Payload = { contractedItems: Item[]; balances: Balance[]; allocations: Allocation[]; lots: Lot[] };
+type AuditEvent = { id: string; lot_id: string; event_type: string; actor_id?: string; created_at: string; payload: Record<string, unknown> };
+type Payload = { events?: AuditEvent[]; contractedItems: Item[]; balances: Balance[]; allocations: Allocation[]; lots: Lot[] };
 
 export default function ExecutionLotsWorkspace() {
   const { token } = useAuth();
@@ -122,6 +123,14 @@ export default function ExecutionLotsWorkspace() {
         </div>;
       })}
     </CardContent></Card>)}
+    <Card><CardContent className="space-y-3 pt-5">
+      <h2 className="font-semibold">Histórico de execução</h2>
+      {!data?.events?.length && <p className="text-sm text-muted-foreground">Nenhum evento registrado.</p>}
+      {data?.events?.map(event => <div key={event.id} className="border-b py-2 text-sm">
+        <p className="font-medium">{event.event_type === "item_progress" ? "Progresso de item" : event.event_type === "lot_reserved" ? "Lote reservado" : "Atualização de lote"}</p>
+        <p className="text-xs text-muted-foreground">{new Date(event.created_at).toLocaleString("pt-BR")} · Lote {event.lot_id.slice(0, 8)} · Responsável {event.actor_id?.slice(0, 8) ?? "Sistema"}</p>
+      </div>)}
+    </CardContent></Card>
     {!data && !error && <p className="text-sm text-muted-foreground">Carregando...</p>}
   </main>;
 }
