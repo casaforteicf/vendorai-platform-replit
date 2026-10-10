@@ -109,26 +109,43 @@ def run(pr, branch, sha, suite, lot):
         proc = subprocess.Popen(["bash", str(EXE), *args], cwd=ROOT, env=env,
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                 start_new_session=True)
-        try:
-            rc = proc.wait(timeout=1800)
-        except subprocess.TimeoutExpired:
-            os.killpg(proc.pid, signal.SIGTERM)
+        rc = None
+        reason = "completed"
+        started = time.monotonic()
+        while rc is None:
             try:
-                proc.wait(timeout=10)
+                rc = proc.wait(timeout=2)
             except subprocess.TimeoutExpired:
-                os.killpg(proc.pid, signal.SIGKILL)
-                proc.wait()
-            rc = 124
+                if time.monotonic() - started >= 1800:
+                    reason = "timeout"
+                elif evidence_bytes(EVIDENCE) >= MAX_TOTAL_BYTES:
+                    reason = "storage_quota"
+                elif shutil.disk_usage(EVIDENCE).free < MIN_FREE:
+                    reason = "disk_low"
+                if reason != "completed":
+                    try:
+                        os.killpg(proc.pid, signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass
+                    try:
+                        proc.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        try:
+                            os.killpg(proc.pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                        proc.wait()
+                    rc = 124 if reason == "timeout" else 73
         after = {p.name for p in EVIDENCE.glob("pr-*") if p.is_dir()}
-        if rc == 124:
+        if reason != "completed":
             for run_name in after - before:
                 cleanup_test_containers(EVIDENCE / run_name)
-                (EVIDENCE / run_name / "timeout.txt").write_text("exit=124; timeout cleanup attempted\\n")
+                (EVIDENCE / run_name / "timeout.txt").write_text("exit=" + str(rc) + "; reason=" + reason + "; cleanup attempted\\n")
         new = sorted(after - before)
         for run_name in new:
             (EVIDENCE / run_name / "authorized-lot.txt").write_text(lot + "\\n")
         return {"exitCode": rc, "runIds": new, "sha": args[2], "suite": suite,
-                "status": "completed" if rc != 124 else "timeout"}
+                "status": reason}
 
 def main():
     # Authentication/roles must be enforced by the private connector before invoking this tool.
