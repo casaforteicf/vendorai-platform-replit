@@ -76,3 +76,9 @@ Teste local: `node --test scripts/infra/vendi-operator-diagnostics.test.mjs`.
 - Corrigido: `autonomyPermitted = globalVendiAutonomy && autonomyEnabled`, com modo autônomo apenas se explicitamente solicitado e permitido, e escrita apenas se modo autônomo e `allowWrite=true`. Com o desligamento global, a rota permanece em `assistido`, `allowWrite=false`.
 - Essa mudança modifica **código em desenvolvimento**; não está instalada nos containers Contabo. Exige testes de autorização e regressão (global off + caller solicita escrita; tenant off + global on; ambos on) antes de homologação. Verificar também controles internos do executor Browser Agent como defesa em profundidade.
 - Segurança e isolamento entre tenants permanecem gates obrigatórios; não utilizar um principal de outro tenant para corrigir `tenant_not_found`.
+
+## INFRA-LOTE-01.6 — política testável no servidor (10/10/2026)
+- Extraída política de autonomia para `artifacts/api-server/src/lib/browser-autonomy.ts`, importada de `artifacts/api-server/src/routes/browser_agent_mcp.ts` via extensão `.js` adequada ao build TypeScript ESM.
+- `scripts/infra/vendi-browser-autonomy.test.mjs`: seis casos de segurança importam o **módulo TS real** (Node 24 com type stripping), cobrindo global off, tenant off, leitura apenas, autorização conjunta e valores malformados. Comando local: `node --test scripts/infra/vendi-browser-autonomy.test.mjs`.
+- Removida implementação `.mjs` intermediária duplicada: somente o módulo TS é fonte de verdade.
+- **Atenção:** testes foram adicionados ao GitHub, não executados no checkout/Contabo nesta operação. Integração no executor e verificação de isolamento de tenant ainda precisam de validação.
