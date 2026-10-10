@@ -521,7 +521,7 @@ function createCloudflareMcpServer() {
       const principal = operatorGrant("request_test", lot);
       if (branch.includes("..") || branch.includes("//") || branch.endsWith("/")) throw new Error("INVALID_BRANCH");
       // Agent label is audit metadata supplied by the coordinator, never authentication.
-      const result = await testHostAction("request", [String(pr), branch, sha, suite]);
+      const result = await testHostAction("request", [String(pr), branch, sha, suite, lot]);
       return toolText({ principal, requestedAgent: agent, lot, pr, sha, suite, result });
     },
   );
@@ -538,7 +538,7 @@ function createCloudflareMcpServer() {
     },
     async ({ lot, runId }) => {
       const principal = operatorGrant("get_test_result", lot);
-      const result = await testHostAction("result", [runId]);
+      const result = await testHostAction("result", [runId, lot]);
       return toolText({ principal, lot, runId, result });
     },
   );
