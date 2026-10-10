@@ -1,4 +1,8 @@
 import { Router, type IRouter } from "express";
+import { createHash } from "node:crypto";
+import multer from "multer";
+import { extractQuoteData } from "../lib/document-extraction";
+import { reviewImport, type OriginalBudget } from "../lib/commercial-import-review";
 import { and, eq, desc, inArray, like, or, sql } from "drizzle-orm";
 import {
   db,
@@ -108,6 +112,57 @@ router.post("/tenants/:tenantId/leads/:leadId/orcamento-revisoes/comparar-fornec
   try { return res.json({ offers: rankSupplierOffers(body.data.offers), persisted: false }); }
   catch (error) { return res.status(422).json({ error: error instanceof Error ? error.message : "Ofertas inválidas" }); }
 });
+
+// ─── LOTE 05: importação de PDF externa para revisão, sem persistência ──────
+const externalPdfUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) => cb(null, file.mimetype === "application/pdf" && /\.pdf$/i.test(file.originalname)),
+});
+router.post("/tenants/:tenantId/leads/:leadId/orcamento-revisoes/importar-pdf/preview",
+  externalPdfUpload.single("file"), async (req, res) => {
+    const tenantId = String(req.params.tenantId);
+    if (!hasAccess(req, tenantId)) return res.status(403).json({ error: "Acesso negado" });
+    if (!req.file || req.file.buffer.subarray(0, 5).toString("ascii") !== "%PDF-") {
+      return res.status(422).json({ error: "PDF válido é obrigatório." });
+    }
+    try {
+      const extracted = await extractQuoteData([{
+        buffer: req.file.buffer, mimeType: "application/pdf", originalName: req.file.originalname,
+      }], tenantId);
+      const brl = (n: number | null | undefined): string =>
+        typeof n === "number" && Number.isFinite(n) ? n.toFixed(2).replace(".", ",") : "";
+      const original: OriginalBudget = {
+        tenantId, sourceFileName: req.file.originalname,
+        sourceSha256: createHash("sha256").update(req.file.buffer).digest("hex"),
+        budgetNumber: extracted.numeroDocumento ?? undefined,
+        customerDocument: extracted.clienteDocumento ?? undefined,
+        issueDate: extracted.dataEmissao ?? undefined,
+        originalTotalText: brl(extracted.valorTotal),
+        lines: (extracted.itens ?? []).map(item => ({
+          description: item.descricao,
+          sku: item.codigo ?? undefined,
+          unit: item.unidade ?? "",
+          quantityText: item.quantidade == null ? "" : String(item.quantidade),
+          unitPriceText: brl(item.valorUnitario),
+          totalText: brl(item.valorTotal),
+        })),
+        unrecognizedFields: {
+          originalExtraction: extracted,
+          warnings: extracted.informacoesAdicionais ?? [],
+        },
+      };
+      return res.json({
+        previewOnly: true, requiresConfirmation: true,
+        leadId: String(req.params.leadId),
+        extracted, original, review: reviewImport(original),
+        sourceAttachmentPersisted: false,
+      });
+    } catch (error) {
+      return res.status(422).json({ error: "Falha na extração do PDF; nenhuma alteração foi gravada." });
+    }
+  },
+);
 
 // ─── List revision history for a lead ──────────────────────────────────────
 router.get("/tenants/:tenantId/leads/:leadId/orcamento-revisoes", async (req, res) => {
