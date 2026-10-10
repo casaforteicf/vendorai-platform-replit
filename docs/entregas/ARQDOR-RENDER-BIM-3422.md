@@ -714,3 +714,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Critérios registrados:** duas chamadas devolvem a mesma Promise, somente um script Three.js é injetado, ambas resolvem após carregamento válido e o temporizador é limpo. Commit `bf4b426`.
 - **Verificação do projeto:** `artifacts/frontend/vitest.config.ts` já especifica `jsdom`; os testes de CDN foram lidos na branch. **Não houve execução da suíte Vitest, build completo nem homologação**. Alteração restrita a testes, sem mudança no runtime.
 - **Governança:** PR #3422 Draft; sem merge/deploy; Contabo e produção inalteradas.
+
+
+## 3422-A — execução isolada do loader e falha ao injetar script (10/10/2026)
+- **Testes executados diretamente com código da branch:** a função `loadThree` foi obtida do GitHub, teve apenas a sintaxe TypeScript removida e foi executada em isolate JS com DOM e relógio simulados: concorrência de duas chamadas (mesma Promise, um único script), falha de rede (erro e script removido) e timeout (erro, script removido, timer liberado). Os três cenários passaram; **não** representam Vitest ou browser real.
+- **Falha adicional corrigida:** `document.head.appendChild(script)` podia lançar exceção após a criação do temporizador, sem limpá-lo. O commit `9220591` trata a falha com a rotina `fail`; `5fb57c9` registra teste Vitest específico.
+- **Execução após correção:** simulação de `appendChild` lançando erro confirmou mensagem controlada, script removido e zero timers restantes.
+- **Pendente:** suíte Vitest original, typecheck da aplicação, integração WebGL/2D-3D e homologação autorizada. Nenhum merge, deploy ou alteração na Contabo/produção; PR #3422 Draft.
