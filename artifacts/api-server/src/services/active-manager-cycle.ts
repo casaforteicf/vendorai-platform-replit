@@ -173,7 +173,6 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               observation.metric, JSON.stringify({ domain, scannedAt: now.toISOString(), total: observation.metric }),
               "Jarvis: avaliar com o tenant e solicitar aprovação para qualquer operação necessária."],
           );
-          cases += inserted.rowCount ?? 0;
           // Respect manual case closure: only notify while the corresponding
           // Jarvis case is open after the upsert (automatic closure can reopen).
           const activeCase = await client.query(
@@ -219,6 +218,7 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
             [tenantId, domain, periodKey],
           );
           await client.query('RELEASE SAVEPOINT manager_domain');
+          cases += inserted.rowCount ?? 0;
           } catch (domainError) {
             await client.query('ROLLBACK TO SAVEPOINT manager_domain');
             await client.query('RELEASE SAVEPOINT manager_domain');
