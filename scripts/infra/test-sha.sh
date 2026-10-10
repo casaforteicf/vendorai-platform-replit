@@ -71,7 +71,7 @@ if [ "${VENDORAI_PREPARE_OFFLINE:-0}" = "1" ]; then
     "$IMAGE" sh -c 'pnpm fetch --frozen-lockfile --ignore-scripts --store-dir /pnpm/store' >"$RUN/logs/cache-fetch.log" 2>&1
   fetch_code=$?
   set -e
-  printf 'cache-fetch exit=%s\\n' "$fetch_code" | tee -a "$RUN/results.txt"
+  printf 'cache-fetch exit=%s\n' "$fetch_code" | tee -a "$RUN/results.txt"
   if [ "$fetch_code" -ne 0 ]; then
     echo "Cache fill failed; no offline tests attempted" >&2
     exit "$fetch_code"
