@@ -195,6 +195,13 @@ describe("agent manager policy", () => {
       .toThrow("FINGERPRINT_REQUIRED");
   });
 
+  it("rejects malformed support dedupe identifiers before hashing", () => {
+    expect(() => managerSupportSourceRef("crm", "platform_defect", null as unknown as string))
+      .toThrow("FINGERPRINT_REQUIRED");
+    expect(() => managerSupportSourceRef("crm", "platform_defect", "signal", 123 as unknown as string))
+      .toThrow("TENANT_REQUIRED");
+  });
+
   it("does not conflate the global namespace with a tenant named global", () => {
     const globalReview = managerSupportSourceRef("crm", "platform_defect", "same");
     const tenantReview = managerSupportSourceRef("crm", "platform_defect", "same", "global");
