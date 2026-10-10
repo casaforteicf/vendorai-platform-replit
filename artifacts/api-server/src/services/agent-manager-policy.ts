@@ -71,6 +71,7 @@ export function managerExecutionBucket(
 ): string {
   if (!Number.isFinite(now.getTime())) throw new Error("INVALID_MANAGER_TIME");
   const interval = MANAGER_INTERVAL_MINUTES[domain];
+  if (!Number.isFinite(interval) || interval <= 0) throw new Error("INVALID_MANAGER_DOMAIN");
   const bucket = Math.floor(now.getTime() / (interval * 60_000));
   return `manager:${domain}:${bucket}`;
 }
@@ -85,8 +86,10 @@ export function isManagerDue(
   if (!Number.isFinite(lastSuccessfulRun.getTime())) return true;
   // A future timestamp (clock skew or corrupt data) must not indefinitely starve scans.
   if (lastSuccessfulRun.getTime() > now.getTime()) return true;
+  const interval = MANAGER_INTERVAL_MINUTES[domain];
+  if (!Number.isFinite(interval) || interval <= 0) return false;
   return now.getTime() - lastSuccessfulRun.getTime()
-    >= MANAGER_INTERVAL_MINUTES[domain] * 60_000;
+    >= interval * 60_000;
 }
 
 /**
