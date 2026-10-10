@@ -368,7 +368,7 @@ router.post("/leads", async (req, res) => {
   // CRM-05: impedir atribuição a ID arbitrário, inclusive de outro tenant.
   if (resolvedAssignedTo) {
     const [assignee] = await db.select({ id: usersTable.id }).from(usersTable)
-      .where(and(eq(usersTable.id, resolvedAssignedTo), eq(usersTable.tenantId, data.tenantId)))
+      .where(and(eq(usersTable.id, resolvedAssignedTo), eq(usersTable.tenantId, data.tenantId), eq(usersTable.active, true)))
       .limit(1);
     if (!assignee) {
       res.status(422).json({ error: "Responsável não pertence à equipe deste tenant." });
@@ -531,7 +531,7 @@ router.post("/tenants/:tenantId/leads/bulk-reassign", async (req, res) => {
   }
 
   const [destinationUser] = await db.select({ id: usersTable.id }).from(usersTable)
-    .where(and(eq(usersTable.id, toUserId), eq(usersTable.tenantId, tenantId)))
+    .where(and(eq(usersTable.id, toUserId), eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)))
     .limit(1);
   if (!destinationUser) {
     res.status(422).json({ error: "Destino da redistribuição não pertence ao tenant." });
@@ -1343,7 +1343,7 @@ router.patch("/leads/:id", async (req, res) => {
 
   if (parsed.data.assignedTo) {
     const [newAssignee] = await db.select({ id: usersTable.id }).from(usersTable)
-      .where(and(eq(usersTable.id, parsed.data.assignedTo), eq(usersTable.tenantId, existing.tenantId)))
+      .where(and(eq(usersTable.id, parsed.data.assignedTo), eq(usersTable.tenantId, existing.tenantId), eq(usersTable.active, true)))
       .limit(1);
     if (!newAssignee) {
       res.status(422).json({ error: "Responsável não pertence à equipe deste tenant." });
