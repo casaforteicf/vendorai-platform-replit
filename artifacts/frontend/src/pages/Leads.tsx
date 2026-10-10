@@ -973,6 +973,7 @@ export default function Leads() {
                         <div><EditableSegmentBadge lead={lead} /></div>
                         <div className="flex items-center gap-1.5">
                           {lead.assignedTo && userMap.get(lead.assignedTo) && <p className="text-xs text-muted-foreground truncate">👤 {userMap.get(lead.assignedTo)}</p>}
+                          {(lead as typeof lead & { representativeFunctionId?: string | null }).representativeFunctionId && <p className="text-xs text-muted-foreground truncate">🏢 Empresa representante</p>}
                           {isAdmin && (
                             <button
                               title="Atribuir responsável"
@@ -1128,7 +1129,7 @@ export default function Leads() {
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               <span className="flex items-center gap-2">
-                                <span>{lead.assignedTo ? userMap.get(lead.assignedTo) ?? "—" : "—"}</span>
+                                <span>{lead.assignedTo ? userMap.get(lead.assignedTo) ?? "—" : (lead as typeof lead & { representativeFunctionId?: string | null }).representativeFunctionId ? "Empresa representante" : "—"}</span>
                                 {isAdmin && (
                                   <button
                                     title="Atribuir responsável"
@@ -1196,7 +1197,6 @@ export default function Leads() {
             <Select value={assignSelectedUser} onValueChange={setAssignSelectedUser}>
               <SelectTrigger><SelectValue placeholder="Selecionar vendedor..." /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="__none__">Sem responsável</SelectItem>
                 {tenantUsers.map((tenantUser) => (
                   <SelectItem key={tenantUser.id} value={tenantUser.id}>{tenantUser.name || tenantUser.email || tenantUser.id}</SelectItem>
                 ))}
@@ -1206,9 +1206,9 @@ export default function Leads() {
               <Button variant="outline" size="sm" onClick={() => setAssignDialog({ open: false, leadId: "", currentAssignedTo: null })}>Cancelar</Button>
               <Button
                 size="sm"
-                disabled={updateLead.isPending}
+                disabled={updateLead.isPending || !assignSelectedUser}
                 onClick={() => {
-                  const newAssignedTo = assignSelectedUser === "__none__" ? null : assignSelectedUser || null;
+                  const newAssignedTo = assignSelectedUser;
                   updateLead.mutate(
                     { id: assignDialog.leadId, data: { assignedTo: newAssignedTo } },
                     {
