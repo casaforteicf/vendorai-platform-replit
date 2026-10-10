@@ -22,6 +22,14 @@ describe("union face selection", () => {
       kind: "ambiguous", wallIds: ["horizontal", "vertical"],
     });
   });
+  it("does not select an unrelated wall when face provenance is missing", () => {
+    const mesh = buildOrthogonalWallUnion([box("a", 0, 0, 2, 0.15)]).meshes[0];
+    expect(resolveWallUnionPick({ ...mesh, triangleWallIds: [[], ...mesh.triangleWallIds.slice(1)] }, 0))
+      .toEqual({ kind: "none", wallIds: [] });
+    expect(resolveWallUnionPick({
+      ...mesh, triangleWallIds: [["different"], ...mesh.triangleWallIds.slice(1)],
+    }, 0)).toEqual({ kind: "none", wallIds: [] });
+  });
   it("fails closed on invalid face indices or corrupt metadata", () => {
     const mesh = buildOrthogonalWallUnion([box("a", 0, 0, 2, 0.15)]).meshes[0];
     expect(resolveWallUnionPick(mesh, -1).kind).toBe("none");
