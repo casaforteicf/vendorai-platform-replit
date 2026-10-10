@@ -220,3 +220,10 @@ Não considerar item 2 encerrado: o fluxo de criação de lead ainda invoca serv
 - Atualização condicional evita arquivar novamente uma origem já excluída; os vínculos relacionados continuam realocados para o destino dentro da transação.
 - **Limites:** sem execução de TypeScript/build/testes nem homologação. Validar transações concorrentes, filtros em todas as pipelines, auditoria de merges anteriores, e dependências de exclusão lógica antes de aprovar. Dados de inteligência concorrentes ainda usam política própria para unicidade.
 - **Release:** sem merge, sem deploy, sem alteração de produção.
+
+## Proteção adicional de negócios ligados a leads excluídos — 10/10/2026
+- Commit `8c530d41d10d834ef6413d28629ad4a44762630f` no PR #3428.
+- `POST /deals/:id/commercial-review`, `POST /deals/:id/resume-commercial` e `POST /deals/:id/return-to-qualified` agora verificam lead ativo no mesmo tenant antes de aplicar alterações, criar tarefas ou registrar a ação. Para lead ausente/excluído, retornam HTTP 409.
+- O `PATCH /deals/:id` já tinha bloqueio similar; alteração evita rotas comerciais alternativas de movimentação em registros excluídos.
+- **Evidência:** arquivo atualizado remotamente na branch; TypeScript, build e testes de API não executados nesta sessão. A revisão de todas as rotas que alteram negócios permanece pendente, inclusive cenários concorrentes.
+- Sem homologação, merge, deploy nem mudança em produção.
