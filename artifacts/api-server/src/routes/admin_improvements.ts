@@ -150,6 +150,26 @@ function actor(req: any) {
 
 router.use("/admin/improvements", requireRole("super_admin"));
 
+// AGENT-01: real execution evidence per tenant/domain, read-only Superadmin view.
+router.get("/admin/improvements/agent-managers/status", async (_req, res) => {
+  try {
+    const ready = await pool.query("SELECT to_regclass('public.agent_manager_runs') AS table_name");
+    if (!ready.rows[0]?.table_name) {
+      return res.status(503).json({ enabled: process.env.ACTIVE_MANAGER_CYCLES_ENABLED === "true", ready: false, reason: "AGENT_MANAGER_MIGRATION_PENDING" });
+    }
+    const data = await pool.query(`
+      SELECT tenant_id AS "tenantId", domain, max(checked_at) AS "lastRunAt",
+             count(*)::int AS "totalRuns",
+             sum(finding_count)::int AS "findingsObserved"
+      FROM agent_manager_runs GROUP BY tenant_id, domain
+      ORDER BY "lastRunAt" DESC LIMIT 500
+    `);
+    return res.json({ enabled: process.env.ACTIVE_MANAGER_CYCLES_ENABLED === "true", ready: true, items: data.rows });
+  } catch (error) {
+    return res.status(500).json({ error: "AGENT_MANAGER_STATUS_UNAVAILABLE" });
+  }
+});
+
 router.get("/admin/improvements", async (_req, res) => {
   await ensureSchema();
   const result = await pool.query(`
