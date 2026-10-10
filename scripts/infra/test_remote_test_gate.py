@@ -62,4 +62,28 @@ class GateTests(unittest.TestCase):
   with self.assertRaisesRegex(ValueError,"INVALID_LOT"):
    mod.run(3428,"feat/crm","a"*40,"crm","LOT-99")
 
+ def test_lot_result_authorization_real_fixture(self):
+  import tempfile
+  with tempfile.TemporaryDirectory() as tmp:
+   base=Path(tmp)
+   runid="pr-3428-abcdefgh"
+   folder=base/runid
+   folder.mkdir()
+   (folder/"authorized-lot.txt").write_text("LOT-02\n")
+   (folder/"manifest.txt").write_text("sha="+"a"*40+"\n")
+   (folder/"results.txt").write_text("crm-vitest exit=0\n")
+   with patch.object(mod,"EVIDENCE",base):
+    self.assertIn("manifest.txt",mod.status(runid,"LOT-02"))
+    with self.assertRaisesRegex(ValueError,"RUN_NOT_AUTHORIZED"):
+     mod.status(runid,"LOT-03")
+ def test_quota_counts_store_and_work(self):
+  import tempfile
+  with tempfile.TemporaryDirectory() as tmp:
+   d=Path(tmp)
+   (d/"store").mkdir()
+   (d/"work").mkdir()
+   (d/"store"/"package.bin").write_bytes(b"x"*1024)
+   (d/"work"/"src.txt").write_text("abc")
+   self.assertEqual(mod.evidence_bytes(d),1027)
+
 if __name__=="__main__": unittest.main()
