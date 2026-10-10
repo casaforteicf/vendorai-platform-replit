@@ -1287,6 +1287,42 @@ router.post("/admin/releases/execution-control", async (req, res) => {
   } catch { return res.status(503).json({ error: "RELEASE_CONTROL_UNAVAILABLE" }); }
 });
 
+// Diagnóstico somente leitura da fila; útil mesmo quando o operador Contabo está indisponível.
+router.get("/admin/improvements/queue-diagnostics", async (_req, res) => {
+  try {
+    await ensureSchema();
+    const data = await pool.query(
+      `SELECT i.id, i.title, i.module, i.priority, i.agent_status AS "agentStatus",
+              i.status,
+              COALESCE((
+                SELECT jsonb_agg(jsonb_build_object('id',p.id,'title',p.title,'status',p.status))
+                FROM admin_improvement_dependencies d
+                LEFT JOIN admin_improvements p ON p.id=d.depends_on_id
+                WHERE d.improvement_id=i.id
+                  AND (p.id IS NULL OR p.status <> 'producao_validada')
+              ),'[]'::jsonb) AS blockers
+         FROM admin_improvements i
+        WHERE i.agent_status IN ('queued','idle','running','needs_attention')
+        ORDER BY CASE i.priority WHEN 'urgente' THEN 0 WHEN 'alta' THEN 1
+                                WHEN 'media' THEN 2 ELSE 3 END, i.created_at
+        LIMIT 100`
+    );
+    return res.json({
+      items: data.rows.map((item) => ({
+        ...item,
+        eligibility: item.agentStatus === "running" ? "running"
+          : item.agentStatus === "needs_attention" ? "needs_attention"
+          : item.blockers.length ? "blocked_dependency"
+          : ["solicitada", "em_desenvolvimento"].includes(item.status) ? "ready"
+          : "waiting_stage",
+      })),
+      truncated: data.rows.length === 100,
+    });
+  } catch {
+    return res.status(503).json({ error: "QUEUE_DIAGNOSTICS_UNAVAILABLE" });
+  }
+});
+
 // Dependências da fila existente; a mudança é transacional e recusa ciclos.
 const dependencySchema = z.object({ dependsOnId: z.string().uuid() });
 router.get("/admin/improvements/:id/dependencies", async (req, res) => {
