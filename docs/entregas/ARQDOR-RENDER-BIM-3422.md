@@ -748,3 +748,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Correção:** commit `2c40582` intercepta especificamente a criação do renderer e apresenta `Não foi possível iniciar WebGL neste dispositivo`. A inicialização segue condicionada à validação anterior das paredes.
 - **Validação:** inspeção do trecho alterado no GitHub, sem testes de navegador/Vitest/build completo; comportamento do dispositivo real não homologado.
 - **Governança:** PR #3422 Draft, sem merge, deploy ou alteração da Contabo/produção.
+
+
+## 3422-A — indicação da parede ativa sobre união 3D (10/10/2026)
+- **Problema funcional:** no caminho ortogonal a união CSG gera apenas um mesh, eliminando a indicação por cor da parede `active` disponível na renderização individual de paredes diagonais.
+- **Implementação:** commit `abfbb07` sobrepõe uma linha-guia verde acima da borda superior da parede selecionada, usando as coordenadas 2D, a altura da parede e `depthTest: false`. A guia não modifica a geometria resultante da união; seu material e geometria entram na lista de descarte da cena.
+- **Validação:** inspeção da implementação no GitHub; ainda não foram executados testes visuais/browser, Vitest ou build completo, e a guia não representa seleção por clique no 3D.
+- **Governança:** PR #3422 Draft, sem merge/deploy ou alteração na Contabo/produção.
