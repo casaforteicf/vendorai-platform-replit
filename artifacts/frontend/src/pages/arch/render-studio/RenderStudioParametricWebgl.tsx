@@ -16,7 +16,10 @@ function loadThree(): Promise<void> {
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
     script.onload = () => {
       if ((window as any).THREE?.WebGLRenderer) resolve();
-      else reject(new Error("Three.js carregado sem WebGLRenderer"));
+      else {
+        script.remove();
+        reject(new Error("Three.js carregado sem WebGLRenderer"));
+      }
     };
     script.onerror = () => {
       script.remove();
