@@ -179,9 +179,15 @@ router.get("/admin/improvements/agent-managers/status", async (_req, res) => {
         overdue,
       };
     });
+    const enabled = process.env.ACTIVE_MANAGER_CYCLES_ENABLED === "true";
+    const operational = enabled && items.length > 0 && items.every((item: any) => !item.overdue);
     return res.json({
-      enabled: process.env.ACTIVE_MANAGER_CYCLES_ENABLED === "true",
+      enabled,
       ready: true,
+      operational,
+      reason: !enabled ? "AGENT_MANAGER_DISABLED"
+        : items.length === 0 ? "AGENT_MANAGER_NO_COMPLETED_RUNS"
+        : !operational ? "AGENT_MANAGER_OVERDUE_RUNS" : null,
       generatedAt: new Date().toISOString(),
       items,
     });
