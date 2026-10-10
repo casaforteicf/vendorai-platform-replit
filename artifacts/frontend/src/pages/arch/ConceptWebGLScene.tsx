@@ -1,5 +1,5 @@
 import { buildFacadeMeshBoxes } from "./conceptFacadeMeshes";
-import { buildWallMeshPipeline } from "./conceptWallMeshPipeline";
+import { buildWallMeshPipeline, buildWallUnionPipeline } from "./conceptWallMeshPipeline";
 import { wallMeshToWebGL } from "./conceptWallWebGLGeometry";
 import { resolveWallUnionPick } from "./conceptWallUnionSelection";
 import type { WallUnionMesh } from "./conceptWallUnion";
@@ -647,7 +647,7 @@ export default function ConceptWebGLScene({
             onSelectOpening?.(null);
           } else if (wallId) {
             onSelectObject?.(null);
-            if (current?.userData?.customWall) {
+            if (current?.userData?.customWall || (Array.isArray(current?.userData?.customWallIds) && current.userData.customWallIds.includes(wallId))) {
               onSelectCustomWall?.(wallId);
               onSelectWall?.(null);
             } else {
@@ -1562,11 +1562,62 @@ export default function ConceptWebGLScene({
         }
       }
 
-      for (const wall of level.walls ?? []) {
-        addWall(modelRoot, wall, level.floor, level.openings ?? [], level.wallMaterials?.[wall.id], false);
+      const authoredWalls = [...(level.walls ?? []), ...(level.customWalls ?? [])];
+      // Conservative opt-in for the unified boundary. Preserve the existing
+      // per-wall renderer whenever openings, diagonals, or mixed finishes require
+      // independent meshes. A unified mesh is never rendered alongside those walls.
+      const sharedMaterialIds = new Set(authoredWalls.map(wall => level.wallMaterials?.[wall.id] ?? "pintura-branca"));
+      const unionEligible = authoredWalls.length > 1
+        && (level.openings ?? []).length === 0
+        && sharedMaterialIds.size === 1
+        && authoredWalls.every(wall =>
+          [wall.x1, wall.y1, wall.x2, wall.y2, wall.thickness ?? 0.15].every(Number.isFinite)
+          && (Math.abs(wall.y2 - wall.y1) < 1e-7 || Math.abs(wall.x2 - wall.x1) < 1e-7)
+          && Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1) >= 0.05
+        );
+      let displayedUnion = false;
+      if (unionEligible) {
+        const union = buildWallUnionPipeline(authoredWalls.map(wall => ({
+          id: wall.id, floor: level.floor,
+          x1: wall.x1, y1: wall.y1, x2: wall.x2, y2: wall.y2,
+          thickness: wall.thickness ?? 0.15, height: 2.8,
+          baseElevation: floorBase + 0.16,
+        })), []);
+        if (union.warnings.length === 0 && union.meshes.length === 1 && union.meshes[0].indices.length) {
+          const indexed = union.meshes[0];
+          const mapped = wallMeshToWebGL(indexed, lotWidth, lotDepth);
+          const geometry = new THREE.BufferGeometry();
+          geometry.setAttribute("position", new THREE.Float32BufferAttribute(mapped.positions, 3));
+          geometry.setIndex(mapped.indices);
+          geometry.computeVertexNormals();
+          const materialId = [...sharedMaterialIds][0];
+          const definition = getConceptPBRMaterial(materialId);
+          const material = definition
+            ? createConceptPBRMaterial(THREE, definition, { repeatScale: 1 })
+            : makeMat(materialColor(materialId), interiorMode, interiorMode ? 0.58 : 1);
+          if (interiorMode) {
+            material.transparent = true;
+            material.opacity = 0.58;
+            material.depthWrite = false;
+          }
+          const mesh = new THREE.Mesh(geometry, material);
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          mesh.userData.wallUnionMesh = indexed;
+          mesh.userData.wallId = indexed.wallId;
+          mesh.userData.customWallIds = (level.customWalls ?? []).map(wall => wall.id);
+          modelRoot.add(mesh);
+          runtime.pickables.push(mesh);
+          displayedUnion = true;
+        }
       }
-      for (const wall of level.customWalls ?? []) {
-        addWall(modelRoot, wall, level.floor, level.openings ?? [], level.wallMaterials?.[wall.id], true);
+      if (!displayedUnion) {
+        for (const wall of level.walls ?? []) {
+          addWall(modelRoot, wall, level.floor, level.openings ?? [], level.wallMaterials?.[wall.id], false);
+        }
+        for (const wall of level.customWalls ?? []) {
+          addWall(modelRoot, wall, level.floor, level.openings ?? [], level.wallMaterials?.[wall.id], true);
+        }
       }
 
       // Geometry guard: recover missing external envelope from the detected room grid.
