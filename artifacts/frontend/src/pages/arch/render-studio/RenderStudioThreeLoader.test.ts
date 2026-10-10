@@ -27,6 +27,22 @@ describe("Arqdor Three.js loader", () => {
     await expect(retry).resolves.toBeUndefined();
   });
 
+  it("shares one pending download between simultaneous callers", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("THREE", undefined);
+    const { loadThree } = await import("./RenderStudioParametricWebgl");
+    const first = loadThree();
+    const second = loadThree();
+    expect(first).toBe(second);
+    expect(document.head.querySelectorAll('script[src*="three.min.js"]')).toHaveLength(1);
+    const script = document.head.querySelector('script[src*="three.min.js"]') as HTMLScriptElement;
+    vi.stubGlobal("THREE", { WebGLRenderer: class {} });
+    script.onload?.(new Event("load"));
+    await expect(first).resolves.toBeUndefined();
+    await expect(second).resolves.toBeUndefined();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("rejects an incomplete successful download", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("THREE", undefined);
