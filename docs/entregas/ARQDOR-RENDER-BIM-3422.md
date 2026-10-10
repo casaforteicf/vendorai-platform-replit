@@ -594,3 +594,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Correção:** commit `a2b65f4` adiciona guarda `released` à rotina de limpeza do renderer, garantindo que um mesmo conjunto de recursos não seja descartado duas vezes em múltiplos caminhos de desmontagem/falha; remove a lista redundante de meshes, mantendo a lista de recursos descartáveis.
 - **Validação:** mudança confirmada por leitura e gravação no conector GitHub. Teste de componente React, simulação de exceções WebGL, build TypeScript e suíte integrada seguem **não executados**.
 - **Governança:** PR #3422 continua Draft; sem merge/deploy; homologação na Contabo permanece adiada e produção intacta.
+
+
+## 3422-A — proteção contra geometria inválida recebida pelo editor (10/10/2026)
+- **Falha confirmada em inspeção:** `arqdorOrthogonalUnion.ts` validava comprimento e espessura, mas não rejeitava explicitamente coordenadas não finitas de `start/end`, arrays de `openings` nulos nem valores inválidos antes da checagem de sobreposição. Isso permitia estados vazios de geometria ou exceções genéricas de acesso.
+- **Correção:** commit `f2529b9` valida pares XYZ 2D (start/end), valores finitos, formato do array de aberturas e os limites de todas as aberturas antes da comparação de sobreposição e da partição de células.
+- **Regressões:** commit `d47e33d` adiciona casos de NaN, Infinity, lista nula e abertura NaN à suíte Vitest.
+- **Evidência:** alteração e testes persistidos no GitHub; **a suíte Vitest e o build completo não foram executados nesta rodada**, assim como validação visual no navegador. PR Draft sem merge, homologação adiada e produção inalterada.
