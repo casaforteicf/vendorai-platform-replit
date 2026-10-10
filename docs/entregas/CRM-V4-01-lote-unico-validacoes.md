@@ -241,3 +241,11 @@ Não considerar item 2 encerrado: o fluxo de criação de lead ainda invoca serv
 - Esta é uma medida conservadora de proteção, **não** o fluxo final de exclusão/arquivamento. A ação de excluir negócio deixará de funcionar até que exista transição de arquivamento/retirada da pipeline com histórico, autorização administrativa e consultas filtradas. Evitar declarar essa função concluída.
 - Pendências: desenhar/implementar estado de arquivamento persistente sem exclusão física, compatibilidade de pipelines e contratos, garantir que usuários comuns não tenham ação de exclusão, testar referência a proposta/execução/atividade e tratar concorrência.
 - Evidência: commit no GitHub; sem execução de TypeScript/build/testes ou homologação, merge e publicação.
+
+## Arquivamento seguro de negócios — 10/10/2026
+- Modelo Drizzle: campos opcionais `archivedAt`, `archivedBy`, `archiveReason`; commit `bcca665`.
+- `DELETE /deals/:id` realiza **arquivamento lógico**, com motivo obrigatório (3–1000 caracteres), data e autor; só admins podem arquivar, e duplicações retornam 409. Relações e histórico são preservados no banco; commit `56bd3a8`.
+- Listagem `GET /tenants/:tenantId/deals` oculta arquivados por padrão; `includeArchived=true` somente para administradores, exige correspondência do tenant da sessão (ou Superadmin); edição `PATCH /deals/:id` bloqueada em arquivados; commit `424c887`.
+- Migração SQL **não aplicada**: `lib/db/migrations/20261010_crm_v4_deal_archival.sql` commit `8e3bee5`. Confirmação de integração ao migrador e ordem/numeração exigida antes de execução.
+- **Não homologado:** falta testar TypeScript, migração, consultas, concorrência, operações alternativas, frontend e regras de arquivamento de negócios com execução/contratos ativos. Exige revisão para impedir novas operações após arquivamento em todas as rotas. Até então código não está pronto para promoção.
+- Sem merge, sem deploy, sem alteração em produção.
