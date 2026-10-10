@@ -9,6 +9,8 @@ export function quantityUnits(value: number): number {
   }
   const units = Math.round(value * 10000);
   if (!Number.isSafeInteger(units)) throw new Error("Quantidade excede limite seguro.");
+  // A positive value must never silently round down to a zero-unit allocation.
+  if (value > 0 && units === 0) throw new Error("Quantidade positiva abaixo da precisão mínima.");
   return units;
 }
 
