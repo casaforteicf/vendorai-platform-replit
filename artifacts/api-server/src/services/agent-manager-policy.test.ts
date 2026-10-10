@@ -115,6 +115,14 @@ describe("agent manager policy", () => {
     expect(source).toContain("[sourceRef.slice(0, 24), sourceRef.slice(24)]");
   });
 
+  it("normalizes fingerprint whitespace before deduplicating support reviews", () => {
+    const a = managerSupportSourceRef("crm", "platform_defect", "signal-1", "tenant-a");
+    const b = managerSupportSourceRef("crm", "platform_defect", "  signal-1  ", "tenant-a");
+    expect(a).toBe(b);
+    expect(() => managerSupportSourceRef("crm", "platform_defect", "   ", "tenant-a"))
+      .toThrow("FINGERPRINT_REQUIRED");
+  });
+
   it("does not conflate the global namespace with a tenant named global", () => {
     const globalReview = managerSupportSourceRef("crm", "platform_defect", "same");
     const tenantReview = managerSupportSourceRef("crm", "platform_defect", "same", "global");
