@@ -20,7 +20,7 @@ export function reconcileWallOpenings<T extends Opening>(before: Wall[], after: 
       if (startChanged && !endChanged) offset = 1 - (1 - offset) * oldLength / length;
       if (endChanged && !startChanged) offset = offset * oldLength / length;
       const half = width / 2 / length;
-      offset = Math.max(half, Math.min(1 - half, offset));
+      if (!Number.isFinite(offset) || offset < half - 1e-8 || offset > 1 - half + 1e-8) return { error: "A alteração deslocaria uma abertura além dos limites da parede." };
       const candidate = { ...opening, offset };
       if (!openingFitsWall(candidate, length) || candidates.some(other => openingsOverlap(candidate, other, length))) return { error: "Essa alteração faria as aberturas se sobreporem." };
       candidates.push(candidate);
