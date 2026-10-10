@@ -37,6 +37,14 @@ describe("agent manager policy", () => {
     expect(isManagerDue("arqdor", new Date("2026-10-09T17:30:00Z"), now)).toBe(false);
   });
 
+  it("recovers from a future last-success timestamp without starving scans", () => {
+    const now = new Date("2026-10-09T18:30:00Z");
+    const erroneousFuture = new Date("2026-10-10T18:30:00Z");
+    expect(isManagerDue("crm", erroneousFuture, now)).toBe(true);
+    expect(isManagerDue("crm", new Date("invalid"), now)).toBe(true);
+    expect(isManagerDue("crm", now, new Date("invalid"))).toBe(false);
+  });
+
   it("keeps the same idempotency bucket during an interval", () => {
     expect(managerExecutionBucket("pipeline", new Date("2026-10-09T18:00:01Z")))
       .toBe(managerExecutionBucket("pipeline", new Date("2026-10-09T18:14:59Z")));
