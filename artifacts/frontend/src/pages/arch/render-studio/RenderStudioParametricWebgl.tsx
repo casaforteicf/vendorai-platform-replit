@@ -133,9 +133,11 @@ export function shouldUseOrthogonalUnion(walls: ParametricWall[]): boolean {
 export default function RenderStudioParametricWebgl({ walls, active, onSelect }: { walls: ParametricWall[]; active: string; onSelect?: (id: string) => void }) {
   const holder = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
+  const [quantities, setQuantities] = useState<{ volume: number; surface: number } | null>(null);
   useEffect(() => {
     let disposed = false;
     let cleanup = () => {};
+    setQuantities(null);
     // An empty plan does not need to fetch Three.js or create a GPU context.
     if (Array.isArray(walls) && walls.length === 0) {
       setError("");
@@ -153,6 +155,7 @@ export default function RenderStudioParametricWebgl({ walls, active, onSelect }:
       if (disposed || !holder.current) return;
       // Build union before allocating the GPU context.
       const union = orthogonal && walls.length ? unionOrthogonalWalls(walls) : null;
+      if (union) setQuantities({ volume: union.netVolumeM3, surface: union.exposedSurfaceM2 });
       if (union && !union.topology.closedByEdgeIncidence) {
         setError(`A união 3D exige revisão: ${union.topology.boundaryEdges} arestas abertas, ${union.topology.nonmanifoldEdges} não-manifold e ${union.topology.orientationErrors} com orientação inconsistente; ${union.topology.connectedSolidComponents} componentes sólidos; volume ${union.topology.signedVolumeMatchesOccupancy ? "coerente" : "divergente"}.`);
         return;
@@ -296,6 +299,7 @@ export default function RenderStudioParametricWebgl({ walls, active, onSelect }:
   }, [walls, active, onSelect]);
   return <div className="space-y-1">
     <div ref={holder} className="h-[320px] w-full overflow-hidden rounded bg-slate-50" aria-label="Malhas paramétricas WebGL em prévia" />
+    {quantities && !error ? <p className="text-xs text-slate-700">Quantitativo preliminar da união: {quantities.volume.toFixed(3)} m³ de volume líquido · {quantities.surface.toFixed(2)} m² de superfície exposta.</p> : null}
     {error ? <p role="alert" className="text-xs text-red-700">{error}</p> :
       walls.length === 0 ? <p className="text-xs text-slate-600">Adicione uma parede para visualizar o modelo 3D.</p> :
       <p className="text-xs text-slate-600">WebGL: paredes ortogonais combinadas em volume único; diagonais usam malhas individuais. Geometria ainda sujeita a revisão.</p>}
