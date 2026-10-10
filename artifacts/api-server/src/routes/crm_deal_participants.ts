@@ -585,7 +585,11 @@ router.post("/crm/deals/:dealId/couple", async (req, res) => {
           eq(crmDealPeopleTable.tenantId, tenantId),
           eq(crmDealPeopleTable.dealId, req.params.dealId),
           sql`COALESCE(${crmDealPeopleTable.metadata}->>'inactive', 'false') <> 'true'`,
-          sql`${crmDealPeopleTable.metadata}->>'clientePrincipal' = 'true'`,
+          or(
+            sql`${crmDealPeopleTable.metadata}->>'clientePrincipal' = 'true'`,
+            eq(crmDealPeopleTable.role, "consumidor_final"),
+            eq(crmDealPeopleTable.role, "contratante"),
+          ),
         )).limit(1);
       if (existingPrincipalClients.length) {
         throw Object.assign(new Error("Negócio já possui clientes principais. Vincule ou edite os cadastros existentes."), { status: 409 });
