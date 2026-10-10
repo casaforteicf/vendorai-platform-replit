@@ -39,3 +39,28 @@ bash scripts/infra/test-sha.sh 3428 feat/crm-lote-v4-relacionamentos 72e133bf381
 ```
 
 Os logs `cache-fetch.log`, `install.log`, os testes, `results.txt` e `manifest.txt` registram cada etapa. Se o SHA do CRM mudou, substituir o SHA por HEAD **exato confirmado no GitHub**; o executor rejeita divergência. A etapa com rede não é homologação, e a bateria continua sem rede.
+
+## INFRA-01.12 — evidência da primeira execução CRM (Contabo; fornecida pelo Coordenador)
+- PR CRM #3428: `cache-fetch exit=0`; `install exit=0`; `api-ts exit=2`.
+- Falhas indicadas pelo TypeScript: `src/__tests__/arqdor-client-portal-2.test.ts`, `src/__tests__/arqdor-reference-photo-analysis.test.ts`, `src/jobs/googleDataManagerConversionSync.test.ts`.
+- Os erros detalhados de diagnóstico e o SHA da execução devem ser copiados de `manifest.txt` e `logs/api-ts.log`; não presumir que o HEAD atual seja o SHA efetivamente testado.
+- Arquivos Arqdor: encaminhar à frente proprietária Arqdor (identificador numérico do agente ainda não confirmado). Google Data Manager Conversion Sync: encaminhar ao proprietário de Marketing/Integrações (referência histórica PR #3072; atribuição atual requer confirmação). Não alterar código desses módulos pelo Lote 01.
+
+### Validação direcionada, sem repetir fetch online
+Uma execução `crm` roda exclusivamente cinco testes Vitest CRM, sem executar o typecheck global. **Não define homologação aprovada**: `api-ts`, integração autenticada e gates gerais continuam obrigatórios antes da homologação integral. Para uma nova execução, use o SHA real de `git rev-parse` do PR #3428:
+
+```bash
+cd /home/vendorai/vendorai-test-executor
+git fetch origin feat/infra01-sha-test-executor-v4
+git diff --quiet && git diff --cached --quiet
+git switch --detach FETCH_HEAD
+node --test scripts/infra/test-sha.store.test.mjs
+# Confirmar SHA do CRM no GitHub; definir SHA_CRM ao commit exato, não ao branch mutável.
+VENDORAI_OFFLINE_STORE=/home/vendorai/.local/share/pnpm/store/v10 \
+  bash scripts/infra/test-sha.sh 3428 feat/crm-lote-v4-relacionamentos "$SHA_CRM" crm
+```
+
+Não definir `VENDORAI_PREPARE_OFFLINE=1` quando cache-fetch e install anteriores já tiveram exit 0 e o cache da nova execução contiver todas as dependências. Como o executor usa snapshot individual, verificar primeiro se o store original continua incompleto; se estiver, o mecanismo pode repetir a falta de tarball, exigindo um preenchimento autorizado por execução, sem alterar cache oficial.
+
+### Política de retenção sem limpeza automática
+Consulta somente leitura em 10/10/2026: 96 GB totais, 88 GB usados, 8.2 GB livres, 92% de uso. **Não executar docker prune, remoção de imagens, volumes ou backups.** Antes de testes, inspecionar `df -h`, `du -sh .test-evidence/*` e quais execuções já terminaram. Preservar sempre `manifest.txt`, `results.txt` e `logs/` de cada execução, incluindo erros; arquivar evidências fora de diretórios temporários antes de excluir qualquer snapshot. O operador só pode descartar `work/` e `store/` de uma execução identificada, concluída e sem dependências, após verificar arquivos, titulares e necessidade de reprodução. Não usar retenção automática destrutiva.
