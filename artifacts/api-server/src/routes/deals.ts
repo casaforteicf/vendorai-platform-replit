@@ -490,6 +490,22 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
     return;
   }
 
+  // Transfer cannot silently bypass the administrative reassignment rule.
+  const changingOwner = parsed.data.responsavelId !== undefined
+    && parsed.data.responsavelId !== deal.assignedTo;
+  const isTransferAdmin = req.user?.platformRole === "super_admin"
+    || req.user?.platformRole === "tenant_admin";
+  if (changingOwner && !isTransferAdmin) {
+    res.status(403).json({ error: "Apenas administradores podem reatribuir o responsável na transferência." });
+    return;
+  }
+  const userFunction = req.user?.userFunction as UserFunction | undefined;
+  if (!isTransferAdmin && (userFunction === "vendedor" || userFunction === "entrega")
+      && deal.assignedTo !== req.user?.sub) {
+    res.status(403).json({ error: "Sem permissão para transferir negócio de outro responsável." });
+    return;
+  }
+
   const responsavelId = parsed.data.responsavelId ?? deal.assignedTo ?? req.user?.sub ?? null;
   if (responsavelId) {
     const [responsavel] = await db.select({
