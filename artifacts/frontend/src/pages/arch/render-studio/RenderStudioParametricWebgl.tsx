@@ -14,26 +14,30 @@ function loadThree(): Promise<void> {
     if ((window as any).THREE?.WebGLRenderer) { resolve(); return; }
     const script = document.createElement("script");
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
+    let settled = false;
+    const timeout = setTimeout(() => fail("Tempo esgotado ao carregar Three.js"), 12000);
+    function fail(message: string) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      script.onload = null;
+      script.onerror = null;
+      script.remove();
+      reject(new Error(message));
+    }
     script.onload = () => {
-      if ((window as any).THREE?.WebGLRenderer) resolve();
-      else {
-        script.remove();
-        reject(new Error("Three.js carregado sem WebGLRenderer"));
+      if (settled) return;
+      if (!(window as any).THREE?.WebGLRenderer) {
+        fail("Three.js carregado sem WebGLRenderer");
+        return;
       }
+      settled = true;
+      clearTimeout(timeout);
+      script.onload = null;
+      script.onerror = null;
+      resolve();
     };
-    script.onerror = () => {
-      script.remove();
-      reject(new Error("Não foi possível carregar Three.js"));
-    };
-    // A CDN that never settles must not block the editor indefinitely.
-    const timeout = setTimeout(() => {
-      script.remove();
-      reject(new Error("Tempo esgotado ao carregar Three.js"));
-    }, 12000);
-    const onload = script.onload;
-    const onerror = script.onerror;
-    script.onload = event => { clearTimeout(timeout); onload?.call(script, event); };
-    script.onerror = event => { clearTimeout(timeout); onerror?.call(script, event); };
+    script.onerror = () => fail("Não foi possível carregar Three.js");
     document.head.appendChild(script);
   }).catch(error => { engine = null; throw error; });
   return engine;
