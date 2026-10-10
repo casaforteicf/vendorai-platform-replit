@@ -1,6 +1,6 @@
 import type { Logger } from "pino";
 import { pool } from "@workspace/db";
-import { classifyManagerDemand, managerExecutionBucket, type ManagerDomain } from "./agent-manager-policy.js";
+import { classifyManagerDemand, managerExecutionBucket, MANAGER_INTERVAL_MINUTES, type ManagerDomain } from "./agent-manager-policy.js";
 
 /**
  * AGENT-01: conservative periodic opportunity scan. Creates Jarvis cases only;
@@ -8,7 +8,7 @@ import { classifyManagerDemand, managerExecutionBucket, type ManagerDomain } fro
  * The Jarvis proactivity surface can consume these cases with its existing RBAC.
  */
 const DOMAINS: Array<Exclude<ManagerDomain, "security">> = [
-  "crm", "pipeline", "marketing",
+  "crm", "pipeline", "marketing", "agenda", "proposals",
 ];
 let running = false;
 
@@ -45,29 +45,26 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
         "SELECT count(*)::int AS total FROM tenants WHERE status='active'",
       );
       const totalTenants = Number(tenantCount.rows[0]?.total ?? 0);
-      const cycleBucket = Math.floor(now.getTime() / (15 * 60_000));
       if (totalTenants === 0) {
         await client.query("COMMIT");
         log.info({ scanned: 0, cases: 0, resolved: 0, tenantFailures: 0 }, "active-managers: no active tenants");
         return;
       }
       const pageCount = Math.max(1, Math.ceil(totalTenants / 500));
-      const pageOffset = (cycleBucket % pageCount) * 500;
-      const tenants = await client.query(
-        "SELECT id FROM tenants WHERE status='active' ORDER BY id LIMIT 500 OFFSET $1",
-        [pageOffset],
-      );
-      // Marketing runs hourly. Selecting its page with the 15-minute bucket
-      // could repeatedly pick the same page when pageCount divides four.
-      const marketingBucket = Math.floor(now.getTime() / (60 * 60_000));
-      const marketingOffset = (marketingBucket % pageCount) * 500;
-      const marketingTenants = await client.query(
-        "SELECT id FROM tenants WHERE status='active' ORDER BY id LIMIT 500 OFFSET $1",
-        [marketingOffset],
-      );
-      const regularIds = new Set<string>(tenants.rows.map((row: { id: string }) => row.id));
-      const marketingIds = new Set<string>(marketingTenants.rows.map((row: { id: string }) => row.id));
-      const tenantIds = new Set<string>([...regularIds, ...marketingIds]);
+      const domainIds = new Map<Exclude<ManagerDomain, "security">, Set<string>>();
+      const tenantIds = new Set<string>();
+      for (const domain of DOMAINS) {
+        const interval = MANAGER_INTERVAL_MINUTES[domain];
+        const bucket = Math.floor(now.getTime() / (interval * 60_000));
+        const offset = (bucket % pageCount) * 500;
+        const page = await client.query(
+          "SELECT id FROM tenants WHERE status='active' ORDER BY id LIMIT 500 OFFSET $1",
+          [offset],
+        );
+        const ids = new Set<string>(page.rows.map((row: { id: string }) => row.id));
+        domainIds.set(domain, ids);
+        ids.forEach((id) => tenantIds.add(id));
+      }
       let scanned = 0;
       let cases = 0;
       let resolved = 0;
@@ -76,7 +73,7 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
         await client.query('SAVEPOINT manager_tenant');
         try {
         for (const domain of DOMAINS) {
-          if (domain === "marketing" ? !marketingIds.has(tenantId) : !regularIds.has(tenantId)) continue;
+          if (!domainIds.get(domain)?.has(tenantId)) continue;
           await client.query('SAVEPOINT manager_domain');
           try {
           // The scheduler may fire seconds late. Bucket-level dedupe, not an
@@ -144,11 +141,48 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               metric: String(total),
             };
           }
+          if (domain === "agenda") {
+            const data = await client.query(
+              `SELECT count(*)::int AS total FROM agendamentos a
+               JOIN leads l ON l.id=a.lead_id AND l.tenant_id=a.tenant_id
+               WHERE a.tenant_id=$1 AND a.status IN ('agendado','confirmado')
+                 AND a.data_hora_inicio < now() - interval '2 hours'
+                 AND l.excluido_em IS NULL AND l.nao_lead_tipo IS NULL`,
+              [tenantId],
+            );
+            const total = Number(data.rows[0]?.total ?? 0);
+            if (total > 0) observation = {
+              signal: "active-manager:agenda:unclosed-past-appointments",
+              title: "Agendamentos anteriores ainda sem encerramento",
+              detail: `Há ${total} agendamentos com início há mais de duas horas ainda marcados como agendados ou confirmados. Jarvis deve orientar a equipe para registrar o resultado.`,
+              metric: String(total),
+            };
+          }
+          if (domain === "proposals") {
+            const data = await client.query(
+              `SELECT count(*)::int AS total FROM lead_proposals p
+               JOIN leads l ON l.id=p.lead_id AND l.tenant_id=p.tenant_id
+               WHERE p.tenant_id=$1 AND p.status='ready'
+                 AND p.created_at < now() - interval '7 days'
+                 AND l.excluido_em IS NULL AND l.nao_lead_tipo IS NULL
+                 AND l.status NOT IN ('cliente','perdido')`,
+              [tenantId],
+            );
+            const total = Number(data.rows[0]?.total ?? 0);
+            if (total > 0) observation = {
+              signal: "active-manager:proposals:stale-ready-proposals",
+              title: "Propostas prontas aguardando acompanhamento",
+              detail: `Há ${total} versões de propostas prontas há mais de sete dias. Jarvis deve revisar com o tenant antes de qualquer contato com clientes.`,
+              metric: String(total),
+            };
+          }
           if (!observation) {
             const signals: Record<string, string> = {
               pipeline: 'active-manager:pipeline:overdue-activities',
               crm: 'active-manager:crm:unassigned-leads',
               marketing: 'active-manager:marketing:old-drafts',
+              agenda: 'active-manager:agenda:unclosed-past-appointments',
+              proposals: 'active-manager:proposals:stale-ready-proposals',
             };
             const signal = signals[domain];
             if (signal) {
