@@ -23,8 +23,8 @@ it("rejeita encurtamento que aproxima duas aberturas até colidirem", () => {
 });
 
 it("rejeita encurtamento que exigiria deslocar silenciosamente uma abertura", () => {
-  const nearEnd = { ...door, offset: 0.9 };
+  const nearEnd = { ...door, offset: 0.85 };
   const result = reconcileWallOpenings([wall], [{ ...wall, x2: 3.5 }], [nearEnd]);
   expect(result).toHaveProperty("error");
-  expect(nearEnd.offset).toBe(0.9);
+  expect(nearEnd.offset).toBe(0.85);
 });
