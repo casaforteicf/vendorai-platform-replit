@@ -363,3 +363,8 @@ A função de vértices de colisão de mobiliário (`conceptFurnitureCollision.t
 ### Proteção de overflow nas margens de circulação — 10/10/2026
 
 `furnitureHasClearance` passa a rejeitar coordenadas e dimensões expandidas não finitas em vez de interpretar uma geometria inválida como margem livre. Teste para margem extrema e Infinity adicionado. Commits 2bcbce8, 359aaff. A execução do novo teste, build integrado e inspeção visual continuam pendentes. Sem merge, homologação ou publicação.
+
+
+### Reconciliação sem deslocamento silencioso — 10/10/2026
+
+A reconciliação de paredes e aberturas deixa de ajustar (clamp) o offset de uma porta/janela ao novo limite da parede. Quando o encurtamento exigiria alterar sua posição calculada, retorna erro e rejeita a edição. Teste de regressão usa abertura inicialmente válida próxima ao extremo. Commits 8097e0d e 9b7a27c. Testes novos e build integrado não executados nesta rodada. PR permanece draft; merge, homologação e publicação adiados.
