@@ -1501,6 +1501,24 @@ router.patch("/deals/:id", async (req, res) => {
   const nextAssignedTo = handoff?.responsavelId ?? ("assignedTo" in parsed.data ? parsed.data.assignedTo : (existing.assignedTo ?? req.user?.sub ?? null));
   const assignedToChanged = nextAssignedTo !== existing.assignedTo;
   const etapaChanged = Boolean(parsed.data.etapa && parsed.data.etapa !== existing.etapa);
+  // Reassignment is an administrative action, not an implicit side effect of
+  // moving a card. Validate the new owner even if the stage does not change.
+  if (assignedToChanged && !isAdmin2) {
+    res.status(403).json({ error: "Apenas o administrador pode reatribuir o negócio." });
+    return;
+  }
+  if (assignedToChanged && nextAssignedTo) {
+    const [newOwner] = await db.select({ id: usersTable.id, active: usersTable.active })
+      .from(usersTable).where(and(
+        eq(usersTable.id, nextAssignedTo),
+        eq(usersTable.tenantId, existing.tenantId),
+      )).limit(1);
+    if (!newOwner || newOwner.active !== true) {
+      res.status(422).json({ error: "Responsável inválido ou inativo para este tenant." });
+      return;
+    }
+  }
+
 
   const [targetStageConfig] = etapaChanged && parsed.data.etapa
     ? await db.select({
