@@ -10,7 +10,7 @@ export function inspectWorkflows(dir) {
     const lines = readFileSync(join(dir, file), 'utf8').split(/\r?\n/);
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      if (/^\s*runs-on\s*:\s*$/.test(line) && !/^\s+(?:-\s*\S+|[A-Za-z_-]+\s*:\s*\S+)/.test(lines[i+1] ?? '')) {
+      const next = lines.slice(i+1).find(s => s.trim() && !/^\s*#/.test(s)) ?? '';\n      if (/^\s*runs-on\s*:\s*$/.test(line) && !/^\s+(?:-\s*\S+|[A-Za-z_-]+\s*:\s*\S+)/.test(next)) {
         findings.push({ file, line:i+1, code:'EMPTY_RUNNER_SELECTOR', severity:'error' });
       }
       if (/^\s*runs-on\s*:\s*\$\{\{/.test(line)) findings.push({ file, line:i+1, code:'DYNAMIC_RUNNER_SELECTOR', severity:'info' });
