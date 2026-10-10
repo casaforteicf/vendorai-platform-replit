@@ -1338,6 +1338,20 @@ router.get("/admin/improvements/master-registry-links", async (_req, res) => {
     return res.json({ items: result.rows });
   } catch { return res.status(503).json({ error: "MASTER_LINK_SCHEMA_NOT_READY" }); }
 });
+router.get("/admin/improvements/master-registry-summary", async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT m.lot,count(*)::int AS linked,
+              count(*) FILTER (WHERE i.status='producao_validada')::int AS validated,
+              count(*) FILTER (WHERE i.agent_status='running')::int AS running,
+              count(*) FILTER (WHERE i.status='bloqueada')::int AS blocked
+         FROM admin_improvement_master_links m
+         JOIN admin_improvements i ON i.id=m.improvement_id
+        GROUP BY m.lot ORDER BY m.lot`
+    );
+    return res.json({ lots: result.rows, coverage: "linked_only", source: "admin_improvement_master_links" });
+  } catch { return res.status(503).json({ error: "MASTER_LINK_SCHEMA_NOT_READY" }); }
+});
 router.post("/admin/improvements/master-registry-links", async (req, res) => {
   const input = registryLinkSchema.safeParse(req.body);
   if (!input.success) return res.status(422).json({ error: "Lote, sublote e melhoria inválidos." });
