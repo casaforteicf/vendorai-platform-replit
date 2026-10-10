@@ -24,6 +24,13 @@ describe("CRM-02/03 — casal, identidade e contato principal", () => {
     expect(frontend).toContain("primaryContactIndex: values.primaryContactIndex");
     expect(frontend).toContain('isPrimary: values.primaryContactIndex === 1');
   });
+  it("bloqueia participantes de negócios com lead arquivado sem bloquear negócios independentes", () => {
+    const access = api.split("async function assertDeal")[1]?.split("function digits")[0] ?? "";
+    expect(access).toContain(".leftJoin(leadsTable");
+    expect(access).toContain("isNull(dealsTable.leadId)");
+    expect(access).toContain("isNull(leadsTable.excluidoEm)");
+    expect(access).toContain("eq(leadsTable.tenantId, tenantId)");
+  });
   it("não usa lead excluído para liberar dados pessoais na busca do CRM", () => {
     expect(api).toContain("eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm)");
   });
