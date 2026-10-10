@@ -13,7 +13,7 @@ function requireClosed(walls: ParametricWall[], faces: number) {
   expect(union.faces).toHaveLength(faces);
   expect(union.topology).toEqual({
     boundaryEdges: 0, nonmanifoldEdges: 0, orientationErrors: 0,
-    connectedSolidComponents: 1, signedVolumeMatchesOccupancy: true,
+    connectedSolidComponents: 1, connectedBoundaryComponents: 1, signedVolumeMatchesOccupancy: true,
     closedByEdgeIncidence: true,
   });
 }
@@ -44,6 +44,7 @@ describe("Arqdor orthogonal wall volume union", () => {
   it("does not represent disconnected walls as one solid", () => {
     const result = unionOrthogonalWalls([base, wall([6, 0], [8, 0])]);
     expect(result.topology.connectedSolidComponents).toBe(2);
+    expect(result.topology.connectedBoundaryComponents).toBe(2);
     expect(result.topology.closedByEdgeIncidence).toBe(false);
   });
 
