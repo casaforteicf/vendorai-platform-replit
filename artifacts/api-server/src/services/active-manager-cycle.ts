@@ -34,9 +34,9 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
       // Fail with a clear prerequisite error instead of partially scanning tenants
       // when the release migration has not been applied in homologation.
       const ready = await client.query(
-        "SELECT to_regclass('public.agent_manager_runs') AS runs, to_regclass('public.jarvis_cases') AS cases",
+        "SELECT to_regclass('public.agent_manager_runs') AS runs, to_regclass('public.jarvis_cases') AS cases, to_regclass('public.notifications') AS notifications, to_regclass('public.users') AS users",
       );
-      if (!ready.rows[0]?.runs || !ready.rows[0]?.cases) {
+      if (!ready.rows[0]?.runs || !ready.rows[0]?.cases || !ready.rows[0]?.notifications || !ready.rows[0]?.users) {
         throw new Error("AGENT_MANAGER_MIGRATION_PENDING");
       }
       // Deterministic pagination prevents permanent starvation of tenants beyond
