@@ -1543,7 +1543,9 @@ router.patch("/leads/:id/representative-operator", async (req, res) => {
   const [updated] = await db.update(leadsTable)
     .set({ metadata: nextMetadata, updatedAt: new Date() } as any)
     .where(and(eq(leadsTable.id, lead.id), eq(leadsTable.tenantId, lead.tenantId),
-      eq(leadsTable.representativeFunctionId, representative.id), isNull(leadsTable.excluidoEm)))
+      eq(leadsTable.representativeFunctionId, representative.id), isNull(leadsTable.excluidoEm),
+      // Optimistic concurrency: never overwrite a newer operator or audit entry.
+      sql`${leadsTable.metadata} IS NOT DISTINCT FROM ${JSON.stringify(lead.metadata)}::jsonb`))
     .returning({ id: leadsTable.id });
   if (!updated) { res.status(409).json({ error: "Responsabilidade alterada durante a operação." }); return; }
   res.json({ leadId: lead.id, representativeFunctionId: representative.id, operationalUserId });
