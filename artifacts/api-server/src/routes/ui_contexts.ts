@@ -9,9 +9,10 @@ const router: IRouter = Router();
 router.get("/ui/contexts", async (req, res) => {
   const identity = req.user;
   const preliminary = authorizeContextDiscovery(identity, null);
-  if (!identity?.sub || !identity.tenantId || preliminary.error === "UI_CONTEXT_SCOPE_DENIED") {
-    res.status(preliminary.error === "INVALID_SESSION_CONTEXT" ? 401 : 403)
-      .json({ error: preliminary.error });
+  if (!identity?.sub || !identity.tenantId || (!preliminary.allowed && preliminary.error === "UI_CONTEXT_SCOPE_DENIED")) {
+    const error = preliminary.allowed ? "INVALID_SESSION_CONTEXT" : preliminary.error;
+    res.status(error === "INVALID_SESSION_CONTEXT" ? 401 : 403)
+      .json({ error });
     return;
   }
 
