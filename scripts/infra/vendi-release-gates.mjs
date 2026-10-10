@@ -10,9 +10,9 @@ export function assessReleaseReadiness(input) {
  const failures=[];
  const add=(code,condition)=>{if(condition)failures.push(code)};
  if(!input || typeof input!=="object" || Array.isArray(input)) return {ready:false,failures:["INVALID_INPUT"],checkedAt:null};
- add("LOT_INVALID",!LOT.test(input.lot??""));
- add("COMMIT_INVALID",!SHA.test(input.commitSha??""));
- add("IMAGE_DIGEST_MISSING",!/^sha256:[a-f0-9]{64}$/i.test(input.imageDigest??""));
+ add("LOT_INVALID",typeof input.lot!=="string" || !LOT.test(input.lot));
+ add("COMMIT_INVALID",typeof input.commitSha!=="string" || !SHA.test(input.commitSha));
+ add("IMAGE_DIGEST_MISSING",typeof input.imageDigest!=="string" || !/^sha256:[a-f0-9]{64}$/i.test(input.imageDigest));
  add("COMMIT_IMAGE_NOT_VERIFIED",input.commitImageVerified!==true);
  add("EVIDENCE_SOURCE_MISSING",!safeString(input.evidenceSource));
  add("EVIDENCE_COMMIT_MISMATCH",input.evidenceCommitSha!==input.commitSha || !SHA.test(input.evidenceCommitSha??""));
