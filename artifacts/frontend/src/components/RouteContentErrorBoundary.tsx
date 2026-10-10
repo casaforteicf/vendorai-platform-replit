@@ -17,6 +17,18 @@ export class RouteContentErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
+    // Report only the first stable route segment; never transmit dynamic IDs,
+    // user-provided paths, stack traces, messages or component props.
+    const routeKey = "/" + (window.location.pathname.split("/").filter(Boolean)[0] ?? "root");
+    const authToken = localStorage.getItem("vendorai_token");
+    if (authToken && /^\/[a-zA-Z0-9_-]+$/.test(routeKey)) {
+      void fetch("/api/ux/runtime-error", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ routeKey, errorKind: "react_render" }),
+        keepalive: true,
+      }).catch(() => undefined);
+    }
     console.error("[VendorAI] Erro de renderização na rota", {
       route: this.props.routeKey,
       message: error.message,
