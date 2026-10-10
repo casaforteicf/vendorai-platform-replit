@@ -1432,7 +1432,8 @@ router.post("/leads/:id/restore", async (req, res) => {
   }).where(and(
     eq(leadsTable.id, existing.id),
     eq(leadsTable.tenantId, existing.tenantId),
-    isNotNull(leadsTable.excluidoEm),
+    // Não restaurar uma exclusão posterior feita entre a leitura e o UPDATE.
+    eq(leadsTable.excluidoEm, existing.excluidoEm),
   )).returning();
 
   if (!restored) return res.status(409).json({ error: "Lead já restaurado por outra operação." });
