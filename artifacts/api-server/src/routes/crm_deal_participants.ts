@@ -109,6 +109,7 @@ const personSchema = z.object({
   nome: z.string().trim().min(2),
   documento: z.string().optional(),
   dataNascimento: z.iso.date().optional(),
+  profissao: z.string().trim().max(120).optional(),
   telefone: z.string().optional(),
   email: z.string().email().optional(),
   source: z.string().optional().default("manual"),
@@ -187,7 +188,7 @@ router.post("/crm/people", async (req, res) => {
       telefones: parsed.data.telefone ? [parsed.data.telefone.trim()] : [],
       emails: email ? [email] : [],
       source: parsed.data.source,
-      metadata: { createdTenantId: tenantId },
+      metadata: { createdTenantId: tenantId, ...(parsed.data.profissao ? { profissao: parsed.data.profissao } : {}) },
       updatedAt: new Date(),
     }).returning();
     return res.status(201).json({ item: person, reused: false });
@@ -324,6 +325,7 @@ const personalDataSchema = z.object({
   telefone: z.string().optional(),
   email: z.union([z.email(), z.literal("")]).optional(),
   dataNascimento: z.union([z.iso.date(), z.literal("")]).optional(),
+  profissao: z.string().trim().max(120).optional(),
 });
 
 // Atomic editing of an EXISTING participant: the global profile and deal link commit together.
@@ -498,6 +500,7 @@ router.patch("/crm/deals/:dealId/people/:personId/profile", async (req, res) => 
     const newEmail = parsed.data.email?.trim().toLowerCase();
     const [updated] = await tx.update(crmPeopleMasterTable).set({
       nome: parsed.data.nome,
+      ...(parsed.data.profissao !== undefined ? { metadata: { ...(current.metadata ?? {}), profissao: parsed.data.profissao } } : {}),
       documento: parsed.data.documento === undefined ? current.documento : documento || null,
       telefones: parsed.data.telefone === undefined ? current.telefones :
         newPhone ? [newPhone, ...(current.telefones ?? []).filter(
@@ -609,7 +612,8 @@ router.post("/crm/deals/:dealId/couple", async (req, res) => {
           dataNascimento: person.dataNascimento ?? null,
           telefones: person.telefone ? [person.telefone.trim()] : [],
           emails: email ? [email] : [],
-          source: person.source ?? "manual", metadata: { createdTenantId: tenantId },
+          source: person.source ?? "manual", metadata: { createdTenantId: tenantId,
+            ...(person.profissao ? { profissao: person.profissao } : {}) },
           updatedAt: new Date(),
         }).returning({ id: crmPeopleMasterTable.id });
         const [link] = await tx.insert(crmDealPeopleTable).values({
