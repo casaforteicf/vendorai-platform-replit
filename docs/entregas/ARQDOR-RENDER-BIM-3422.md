@@ -707,3 +707,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Correção:** commit `e425499` carrega o módulo dinamicamente em cada teste e aplica `vi.resetModules()` após os cenários, isolando o cache sem expor interfaces administrativas ao código de produção.
 - **Configuração constatada:** `artifacts/frontend/vitest.config.ts` já utiliza `environment: "jsdom"` e inclui `src/**/*.test.ts`; não foi necessária mudança de configuração.
 - **Validação:** leitura dos arquivos e revisão do isolamento. O runner Vitest **ainda não foi executado** e nenhuma aprovação de build pode ser atribuída a esta alteração. PR #3422 Draft; sem merge, deploy ou mudança na Contabo/produção.
+
+
+## 3422-A — concorrência no carregamento Three.js (10/10/2026)
+- **Revisão:** o cache `engine` promete compartilhar uma única carga entre componentes simultâneos. Acrescentada a regressão `shares one pending download between simultaneous callers` ao `RenderStudioThreeLoader.test.ts`.
+- **Critérios registrados:** duas chamadas devolvem a mesma Promise, somente um script Three.js é injetado, ambas resolvem após carregamento válido e o temporizador é limpo. Commit `bf4b426`.
+- **Verificação do projeto:** `artifacts/frontend/vitest.config.ts` já especifica `jsdom`; os testes de CDN foram lidos na branch. **Não houve execução da suíte Vitest, build completo nem homologação**. Alteração restrita a testes, sem mudança no runtime.
+- **Governança:** PR #3422 Draft; sem merge/deploy; Contabo e produção inalteradas.
