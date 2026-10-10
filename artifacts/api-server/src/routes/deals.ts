@@ -2953,18 +2953,39 @@ router.delete("/deals/:id", async (req, res) => {
   const [linkedExecution] = await db.select({ id: workCardsTable.id }).from(workCardsTable)
     .where(and(eq(workCardsTable.tenantId, existing.tenantId), eq(workCardsTable.dealId, existing.id)))
     .limit(1);
-  if (linkedContract || linkedExecution) {
+  const [linkedBilling] = await db.select({ id: billingRecordsTable.id }).from(billingRecordsTable)
+    .where(and(eq(billingRecordsTable.tenantId, existing.tenantId), eq(billingRecordsTable.dealId, existing.id)))
+    .limit(1);
+  if (linkedContract || linkedExecution || linkedBilling) {
     return res.status(409).json({
       code: "DEAL_HAS_LINKED_OBLIGATIONS",
-      error: "Negócio com contrato ou processo de execução vinculado requer revisão antes do arquivamento.",
+      error: "Negócio com contrato, execução ou registro financeiro vinculado requer revisão antes do arquivamento.",
       hasContract: Boolean(linkedContract),
       hasExecution: Boolean(linkedExecution),
+      hasBilling: Boolean(linkedBilling),
     });
   }
+  // Recheck linked records as part of the conditional UPDATE. This avoids
+  // archiving when an obligation was inserted after the preliminary read.
+  // A concurrent INSERT after this statement starts still needs shared
+  // serialization/locking in the obligation creation paths.
   const [archived] = await db.update(dealsTable).set({
     archivedAt: new Date(), archivedBy: req.user?.sub ?? null,
     archiveReason: reason.data, updatedAt: new Date(),
-  }).where(and(eq(dealsTable.id, existing.id), eq(dealsTable.tenantId, existing.tenantId), isNull(dealsTable.archivedAt)))
+  }).where(and(
+      eq(dealsTable.id, existing.id),
+      eq(dealsTable.tenantId, existing.tenantId),
+      isNull(dealsTable.archivedAt),
+      notExists(db.select({ id: contractsTable.id }).from(contractsTable).where(and(
+        eq(contractsTable.tenantId, existing.tenantId), eq(contractsTable.dealId, existing.id),
+      ))),
+      notExists(db.select({ id: workCardsTable.id }).from(workCardsTable).where(and(
+        eq(workCardsTable.tenantId, existing.tenantId), eq(workCardsTable.dealId, existing.id),
+      ))),
+      notExists(db.select({ id: billingRecordsTable.id }).from(billingRecordsTable).where(and(
+        eq(billingRecordsTable.tenantId, existing.tenantId), eq(billingRecordsTable.dealId, existing.id),
+      ))),
+    ))
     .returning({ id: dealsTable.id, archivedAt: dealsTable.archivedAt });
   if (!archived) return res.status(409).json({ error: "Negócio já arquivado." });
   res.json({ success: true, ...archived });
