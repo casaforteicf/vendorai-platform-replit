@@ -93,11 +93,24 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
       const node = holder.current;
+      const geometryObjects: any[] = [];
+      let observer: ResizeObserver | null = null;
+      // Register cleanup before any subsequent scene-building operation can
+      // throw. The old handler was registered only after a successful render.
+      cleanup = () => {
+        observer?.disconnect();
+        for (const mesh of geometryObjects) {
+          mesh.geometry.dispose();
+          mesh.material.dispose();
+        }
+        renderer.dispose();
+        renderer.domElement.remove();
+      };
       node.appendChild(renderer.domElement);
+      try {
       scene.add(new THREE.HemisphereLight(0xffffff, 0x64748b, 1.9));
       const sun = new THREE.DirectionalLight(0xffffff, 1.2);
       sun.position.set(8, -7, 16); scene.add(sun);
-      const geometryObjects: any[] = [];
       if (union) {
         const positions: number[] = [];
         for (const face of union.faces) {
@@ -132,13 +145,13 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
         renderer.render(scene, camera);
       };
       resize();
-      const observer = new ResizeObserver(resize); observer.observe(node);
-      cleanup = () => {
-        observer.disconnect();
-        for (const mesh of geometryObjects) { mesh.geometry.dispose(); mesh.material.dispose(); }
-        renderer.dispose(); renderer.domElement.remove();
-      };
+      observer = new ResizeObserver(resize); observer.observe(node);
       setError("");
+      } catch (reason) {
+        cleanup();
+        cleanup = () => {};
+        throw reason;
+      }
     }).catch(reason => { if (!disposed) setError(reason instanceof Error ? reason.message : "Erro WebGL"); });
     return () => { disposed = true; cleanup(); };
   }, [walls, active]);
