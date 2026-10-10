@@ -20,9 +20,12 @@ describe("UX and Security manager governance", () => {
     const start = auditSource.indexOf("async function recoverStalledImprovements(");
     const end = auditSource.indexOf("async function auditImprovementFlow(", start);
     const body = auditSource.slice(start, end);
-    expect(body.indexOf('process.env.VENDI_AUTONOMY_ENABLED !== "true" || !isNightAuditWindow()'))
-      .toBeLessThan(body.indexOf("executeDevAutonomousWork({"));
-    expect(body).toContain("if (process.env.VENDI_AUTONOMY_ENABLED");
+    const guard = body.indexOf('process.env.VENDI_AUTONOMY_ENABLED !== "true" || !isNightAuditWindow()');
+    const execution = body.indexOf("executeDevAutonomousWork({");
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    expect(guard).toBeGreaterThan(-1);
+    expect(execution).toBeGreaterThan(guard);
   });
 
   it("UX audit creates reviewable findings instead of claiming frontend browser inspection", () => {
