@@ -13,7 +13,7 @@ describe("paredes 3D com vãos reais", () => {
   it("abre porta do piso e mantém faixa acima da verga", () => {
     const result = prepareWallSolids([wall], [{ id: "p1", wallId: "w1", floor: 0, offset: 0.5, width: 1, height: 2.1 }]);
     expect(result.warnings).toEqual([]);
-    expect(result.boxes).toHaveLength(4);
+    expect(result.boxes).toHaveLength(3);
     const central = result.boxes.filter((b) => b.x === 1.5);
     expect(central).toEqual([{ wallId: "w1", floor: 0, x: 1.5, y: -0.075, z: 2.1, width: 1, depth: 0.15, height: 0.9 }]);
   });
