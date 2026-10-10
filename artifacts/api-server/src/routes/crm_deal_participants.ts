@@ -528,6 +528,14 @@ router.post("/crm/deals/:dealId/couple", async (req, res) => {
     const secondDoc = digits(second.documento);
     if (firstDoc && secondDoc && firstDoc === secondDoc)
       return res.status(422).json({ error: "Os dois clientes devem possuir documentos distintos." });
+    const firstEmail = first.email?.trim().toLowerCase();
+    const secondEmail = second.email?.trim().toLowerCase();
+    const firstPhone = digits(first.telefone);
+    const secondPhone = digits(second.telefone);
+    if (firstEmail && secondEmail && firstEmail === secondEmail && first.nome.trim().toLowerCase() === second.nome.trim().toLowerCase())
+      return res.status(422).json({ error: "Os dois clientes devem ser pessoas distintas; e-mail e nome idênticos." });
+    if (firstPhone && secondPhone && firstPhone === secondPhone && first.nome.trim().toLowerCase() === second.nome.trim().toLowerCase())
+      return res.status(422).json({ error: "Os dois clientes devem ser pessoas distintas; telefone e nome idênticos." });
     const result = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${tenantId}), hashtext(${req.params.dealId}))`);
       if (registrationRequestId) {
@@ -616,7 +624,7 @@ router.post("/crm/deals/:dealId/couple", async (req, res) => {
       }
       return people;
     });
-    return res.status(201).json({ items: result.map((item) => ({ ...item, metadata: safeParticipantMetadata(item.metadata, canManageCrmCommissions(req)) })) });
+    return res.status(201).json({ items: result.map((item) => ({ ...item, link: { ...item.link, metadata: safeParticipantMetadata(item.link.metadata, canManageCrmCommissions(req)) } })) });
   } catch (error: any) {
     return res.status(error.status ?? 500).json({ error: error.message });
   }
