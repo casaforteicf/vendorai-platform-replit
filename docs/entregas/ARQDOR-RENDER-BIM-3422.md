@@ -601,3 +601,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Correção:** commit `f2529b9` valida pares XYZ 2D (start/end), valores finitos, formato do array de aberturas e os limites de todas as aberturas antes da comparação de sobreposição e da partição de células.
 - **Regressões:** commit `d47e33d` adiciona casos de NaN, Infinity, lista nula e abertura NaN à suíte Vitest.
 - **Evidência:** alteração e testes persistidos no GitHub; **a suíte Vitest e o build completo não foram executados nesta rodada**, assim como validação visual no navegador. PR Draft sem merge, homologação adiada e produção inalterada.
+
+
+## 3422-A — coerência de validação dos vãos em paredes diagonais (10/10/2026)
+- **Falha identificada:** o núcleo ortogonal `arqdorOrthogonalUnion.ts` rejeita portas/janelas sobrepostas no mesmo plano, porém o ramo de visualização de paredes diagonais em `RenderStudioParametricWebgl.tsx` validava apenas limites individuais de cada abertura e aceitava sobreposições.
+- **Correção:** `c6ca3d5` adiciona verificação cruzada dos intervalos horizontais e verticais à construção da malha diagonal; interseção simultânea gera erro explícito `Aberturas sobrepostas na parede`, enquanto contato apenas pelas bordas segue permitido.
+- **Verificação:** alteração confirmada por leitura de código; a suíte Vitest do projeto, build TypeScript e execução visual no navegador **não foram executados nesta rodada**. Não há homologação a declarar.
+- **Estado:** PR #3422 Draft; nenhuma publicação, merge ou alteração na Contabo/produção.
