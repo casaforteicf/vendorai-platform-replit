@@ -1,6 +1,6 @@
 /**
  * Read-only scene snapshot for integrating the current Three.js viewer with a physical renderer.
- * No renderer is imported here: all geometry is preserved in source coordinates.
+ * This is inspection metadata, not serialized triangle buffers. Geometry stays in the source scene.\n * A physical adapter must separately receive actual mesh buffers/textures.
  */
 export type Vec3 = readonly [number, number, number];
 export type RenderMaterial = Readonly<{
@@ -74,7 +74,7 @@ export function captureRenderScene(input: {
       worldMatrix: Array.from(matrix) as number[],
     });
   });
-  const target = input.controls?.target || input.camera.getWorldDirection?.({ x: 0, y: 0, z: -1, add(v: any) { this.x += v.x; this.y += v.y; this.z += v.z; return this; } });
+  const target = input.controls?.target || { x: input.camera.position?.x || 0, y: input.camera.position?.y || 0, z: (input.camera.position?.z || 0) - 1 };
   return {
     schemaVersion: 1,
     capturedAt: new Date().toISOString(),
