@@ -40,7 +40,9 @@ function tenantIdFromRequest(req: any, requested?: string) {
 
 async function assertDeal(req: any, tenantId: string, dealId: string) {
   const [deal] = await db.select({ id: dealsTable.id }).from(dealsTable)
-    .where(and(eq(dealsTable.id, dealId), eq(dealsTable.tenantId, tenantId), ...buildUserFunctionFilter(req, dealsTable))).limit(1);
+    .innerJoin(leadsTable, and(eq(leadsTable.id, dealsTable.leadId), eq(leadsTable.tenantId, tenantId)))
+    .where(and(eq(dealsTable.id, dealId), eq(dealsTable.tenantId, tenantId),
+      isNull(leadsTable.excluidoEm), ...buildUserFunctionFilter(req, dealsTable))).limit(1);
   if (!deal) throw Object.assign(new Error("Negócio não encontrado neste tenant"), { status: 404 });
 }
 
