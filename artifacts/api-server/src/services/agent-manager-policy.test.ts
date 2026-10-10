@@ -55,6 +55,15 @@ describe("agent manager policy", () => {
     expect(source).toContain("WHERE jarvis_cases.source='active_manager'");
   });
 
+  it("rejects unsupported support-review priorities before opening database connection", () => {
+    const source = readFileSync(new URL("./agent-manager-support.ts", import.meta.url), "utf8");
+    const guard = source.indexOf('throw new Error("MANAGER_SUPPORT_PRIORITY_INVALID")');
+    const connect = source.indexOf("const client = await pool.connect()");
+    expect(guard).toBeGreaterThan(-1);
+    expect(connect).toBeGreaterThan(guard);
+    expect(source).toContain('["baixa", "media", "alta", "urgente"]');
+  });
+
   it("uses the normalized tenant identity for support review storage and deduplication", () => {
     const source = readFileSync(new URL("./agent-manager-support.ts", import.meta.url), "utf8");
     expect(source).toContain("f.tenantId.trim()");
