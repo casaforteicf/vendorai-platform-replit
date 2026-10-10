@@ -53,7 +53,7 @@ function canManageCrmCommissions(req: any): boolean {
 function safeParticipantMetadata(metadata: any, canViewCommission: boolean) {
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return metadata;
   if (canViewCommission) return metadata;
-  const { commission: _privateCommission, ...visible } = metadata;
+  const { commission: _privateCommission, commissionHistory: _privateHistory, ...visible } = metadata;
   return visible;
 }
 
@@ -323,8 +323,8 @@ router.patch("/crm/deals/:dealId/people/:personId", async (req, res) => {
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
   try {
     const tenantId = tenantIdFromRequest(req, parsed.data.tenantId);
-    if (!canManageCrmCommissions(req) &&
-        Object.prototype.hasOwnProperty.call(parsed.data.metadata ?? {}, "commission")) {
+    if (["commission", "commissionHistory"].some((key) =>
+        Object.prototype.hasOwnProperty.call(parsed.data.metadata ?? {}, key))) {
       return res.status(403).json({ error: "Comissão restrita a administradores." });
     }
     await assertDeal(req, tenantId, req.params.dealId);
@@ -627,8 +627,8 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
   try {
     const tenantId = tenantIdFromRequest(req, parsed.data.tenantId);
-    if (!canManageCrmCommissions(req) &&
-        Object.prototype.hasOwnProperty.call(parsed.data.metadata ?? {}, "commission")) {
+    if (["commission", "commissionHistory"].some((key) =>
+        Object.prototype.hasOwnProperty.call(parsed.data.metadata ?? {}, key))) {
       return res.status(403).json({ error: "Comissão restrita a administradores." });
     }
     await assertDeal(req, tenantId, req.params.dealId);
