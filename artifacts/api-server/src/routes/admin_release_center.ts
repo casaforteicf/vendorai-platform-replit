@@ -1303,7 +1303,6 @@ async function runReleaseWorkerCycle() {
     await ensureSchema();
 
     const execution = await releaseControl();
-    if (execution.mode === "paused") return;
     if (execution.mode === "running" && fullAutonomyEnabled()) {
       await repairAutonomousBlockedImprovement().catch((error) => {
         console.error("[release-worker] autonomous repair failed:", error instanceof Error ? error.message : error);
@@ -1321,11 +1320,11 @@ async function runReleaseWorkerCycle() {
         console.error("[release-worker] autonomous validation failed:", error instanceof Error ? error.message : error);
       });
     }
-    if (execution.mode !== "running") return;
+    const allowPublishing = execution.mode === "running";
     const queueBlock = await pool.query(
       "SELECT id,status FROM admin_releases WHERE status IN ('publishing','monitoring') OR (status='blocked' AND scheduled_at IS NOT NULL) ORDER BY updated_at DESC LIMIT 1"
     );
-    const claim = queueBlock.rowCount
+    const claim = !allowPublishing || queueBlock.rowCount
       ? { rows: [] as any[] }
       : await pool.query(
           "WITH candidate AS (SELECT id FROM admin_releases WHERE status='scheduled' AND scheduled_at<=now() ORDER BY scheduled_at ASC,created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE admin_releases r SET status='publishing',started_at=now(),last_error=NULL,updated_at=now() FROM candidate c WHERE r.id=c.id RETURNING r.id"
