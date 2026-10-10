@@ -741,3 +741,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Correção:** commit `8b58bf9` executa a validação de coordenadas no início do efeito, antes da chamada à CDN; erros ficam visíveis em `setError`. A determinação do caminho ortogonal/diagonal é reutilizada na montagem da geometria.
 - **Evidência:** revisão do código atualizado, sem execução dos testes de componente React, Vitest ou build completo. As verificações isoladas prévias do carregador não homologam esta alteração.
 - **Governança:** PR #3422 Draft; sem merge/deploy, Contabo e produção inalteradas.
+
+
+## 3422-A — falha de criação do contexto WebGL (10/10/2026)
+- **Problema:** o carregador de Three.js pode funcionar, mas o construtor de `WebGLRenderer` falhar em dispositivos sem suporte WebGL, com drivers indisponíveis ou contexto bloqueado; anteriormente a interface expunha a mensagem genérica da exceção.
+- **Correção:** commit `2c40582` intercepta especificamente a criação do renderer e apresenta `Não foi possível iniciar WebGL neste dispositivo`. A inicialização segue condicionada à validação anterior das paredes.
+- **Validação:** inspeção do trecho alterado no GitHub, sem testes de navegador/Vitest/build completo; comportamento do dispositivo real não homologado.
+- **Governança:** PR #3422 Draft, sem merge, deploy ou alteração da Contabo/produção.
