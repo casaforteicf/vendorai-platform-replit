@@ -4,6 +4,7 @@ import multer from "multer";
 import sharp from "sharp";
 import {
   db,
+  pool,
   archProjetosTable,
   archAmbientesTable,
   archOrcamentoItensTable,
@@ -1881,7 +1882,12 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
   const id = String(req.params.id);
   if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
 
-  const [currentConcept] = await db
+  return db.transaction(async (tx) => {
+  // Serialize every PATCH of this project before reading and checking MEP hosts.
+  const locked = await tx.execute(sql`SELECT id FROM arch_concept_projects WHERE id=${id} AND tenant_id=${tid} AND owner_user_id=${userId} FOR UPDATE`);
+  if (!locked.rows.length) return res.status(404).json({ error: "Pré-projeto não encontrado." });
+
+  const [currentConcept] = await tx
     .select({ status: archConceptProjectsTable.status, configuration: archConceptProjectsTable.configuration })
     .from(archConceptProjectsTable)
     .where(and(
@@ -1912,7 +1918,7 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
   // O editor salva a configuração inteira a cada alteração e não conhece o link público do tour.
   // Sem isto, o primeiro salvamento depois de compartilhar apagava o token e o link parava de abrir.
   if (safeUpdates.configuration && typeof safeUpdates.configuration === "object") {
-    const [current] = await db
+    const [current] = await tx
       .select({ configuration: archConceptProjectsTable.configuration })
       .from(archConceptProjectsTable)
       .where(and(
@@ -1945,7 +1951,49 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
     (safeUpdates as Record<string, unknown>).configuration = incoming;
   }
 
-  const [updated] = await db
+  // Only block wall modifications that directly affect hosted MEP nodes.
+  // This is not yet a serializable geometry/MEP save transaction.
+  if (safeUpdates.configuration && typeof safeUpdates.configuration === "object") {
+    const proposed = safeUpdates.configuration as Record<string, unknown>;
+    const baseline = currentConcept.configuration as Record<string, unknown> | null;
+    const oldWalls = Array.isArray(baseline?.customWalls) ? baseline.customWalls : [];
+    const newWalls = Array.isArray(proposed.customWalls) ? proposed.customWalls : [];
+    const before = new Map<string, string>();
+    const after = new Map<string, string>();
+    for (const raw of oldWalls) {
+      if (!raw || typeof raw !== "object" || typeof (raw as { id?: unknown }).id !== "string") {
+        return res.status(409).json({ code: "MEP_INVALID_BASELINE", allowSave: false });
+      }
+      const wall = raw as Record<string, unknown>;
+      before.set(wall.id as string, JSON.stringify([wall.floor,wall.x1,wall.y1,wall.x2,wall.y2,wall.thickness]));
+    }
+    for (const raw of newWalls) {
+      if (!raw || typeof raw !== "object" || typeof (raw as { id?: unknown }).id !== "string") {
+        return res.status(422).json({ code: "MEP_INVALID_CANDIDATE", allowSave: false });
+      }
+      const wall = raw as Record<string, unknown>;
+      after.set(wall.id as string, JSON.stringify([wall.floor,wall.x1,wall.y1,wall.x2,wall.y2,wall.thickness]));
+    }
+    const changedHostIds = [...before].filter(([wallId,shape]) => after.get(wallId) !== shape).map(([wallId]) => wallId);
+    if (changedHostIds.length) {
+      const hosted = await tx.execute(sql`SELECT DISTINCT n.host_element_id
+           FROM arqdor_mep_project_bindings b
+           JOIN arqdor_mep_nodes n ON n.tenant_id=b.tenant_id
+             AND n.project_id=b.workspace_project_id
+          WHERE b.tenant_id=${tid} AND b.concept_project_id=${id}
+            AND n.host_element_id IN (${sql.join(changedHostIds.map(hostId => sql`${hostId}`), sql`, `)})`);
+      if ((hosted.rowCount ?? 0) > 0) {
+        return res.status(409).json({
+          code:"MEP_HOST_REVIEW_REQUIRED",
+          error:"A alteração afeta paredes com instalações ancoradas; revisão BIM/MEP obrigatória.",
+          affectedWallIds:hosted.rows.map((row:{host_element_id:string})=>row.host_element_id),
+          allowSave:false,
+        });
+      }
+    }
+  }
+
+  const [updated] = await tx
     .update(archConceptProjectsTable)
     .set({ ...safeUpdates, updatedAt: new Date() })
     .where(
@@ -1955,9 +2003,11 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
         eq(archConceptProjectsTable.ownerUserId, userId),
       ),
     )
+    .returning();
 
   if (!updated) return res.status(404).json({ error: "Pré-projeto não encontrado." });
   return res.json(updated);
+  });
 });
 
 router.post("/arch/concept-plan-specialist", authenticate, async (req, res) => {

@@ -281,3 +281,6 @@ export * from "./tenant_commercial_partnerships";
 export * from "./attachment_folder_locks";
 
 export * from "./arch_render_fidelity_reviews";
+
+// Arqdor MEP-01 — isolated, tenant-scoped infrastructure graph
+export * from "./arqdor_mep";
