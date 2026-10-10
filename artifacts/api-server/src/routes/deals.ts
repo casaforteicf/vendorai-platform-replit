@@ -344,7 +344,7 @@ router.post("/deals", async (req, res) => {
     return;
   }
   const [linkedLead] = await db
-    .select({ id: leadsTable.id, naoLeadTipo: leadsTable.naoLeadTipo })
+    .select({ id: leadsTable.id, naoLeadTipo: leadsTable.naoLeadTipo, excluidoEm: leadsTable.excluidoEm })
     .from(leadsTable)
     .where(and(
       eq(leadsTable.id, parsed.data.leadId),
@@ -355,6 +355,10 @@ router.post("/deals", async (req, res) => {
       error: "O lead informado não existe neste tenant.",
       code: "DEAL_LEAD_INVALID",
     });
+    return;
+  }
+  if (linkedLead.excluidoEm) {
+    res.status(409).json({ error: "Não é permitido criar negócios para um lead excluído.", code: "DEAL_LEAD_DELETED" });
     return;
   }
   if (linkedLead.naoLeadTipo) {
@@ -460,6 +464,13 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
   }
   if (!deal.leadId) {
     res.status(422).json({ error: "O negócio precisa estar vinculado a um lead para ser movido." });
+    return;
+  }
+
+  const [linkedLead] = await db.select({ excluidoEm: leadsTable.excluidoEm })
+    .from(leadsTable).where(and(eq(leadsTable.id, deal.leadId), eq(leadsTable.tenantId, deal.tenantId))).limit(1);
+  if (!linkedLead || linkedLead.excluidoEm) {
+    res.status(409).json({ error: "Negócio vinculado a lead inexistente ou excluído não pode mudar de pipeline." });
     return;
   }
 
@@ -1216,6 +1227,15 @@ router.patch("/deals/:id", async (req, res) => {
   if (!isAdmin2 && (userFn2 === "vendedor" || userFn2 === "entrega") && existing.assignedTo && existing.assignedTo !== req.user?.sub) {
     res.status(403).json({ error: "Access denied to this deal" });
     return;
+  }
+
+  if (existing.leadId) {
+    const [linkedLead] = await db.select({ excluidoEm: leadsTable.excluidoEm })
+      .from(leadsTable).where(and(eq(leadsTable.id, existing.leadId), eq(leadsTable.tenantId, existing.tenantId))).limit(1);
+    if (!linkedLead || linkedLead.excluidoEm) {
+      res.status(409).json({ error: "Negócio de lead inexistente ou excluído não pode ser alterado." });
+      return;
+    }
   }
 
   // ── Guardrail: bloquear fechamento direto via PATCH quando valor diverge do
