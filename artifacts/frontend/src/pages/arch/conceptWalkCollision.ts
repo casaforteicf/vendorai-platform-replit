@@ -36,6 +36,8 @@ export function canWalkTo(x: number, y: number, walls: WalkWall[], radius = 0.24
 export function moveWalkPosition(start: { x: number; y: number }, target: { x: number; y: number }, walls: WalkWall[], radius = 0.24) {
   if (![start.x, start.y, target.x, target.y, radius].every(Number.isFinite) || radius <= 0) return start;
   const distance = Math.hypot(target.x - start.x, target.y - start.y);
+  // Invalid or unbounded movement requests must not create an infinite loop.
+  if (!Number.isFinite(distance) || distance > 100) return start;
   const steps = Math.max(1, Math.ceil(distance / Math.min(0.05, radius / 2)));
   const dx = (target.x - start.x) / steps, dy = (target.y - start.y) / steps;
   let position = { ...start };
