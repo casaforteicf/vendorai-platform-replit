@@ -2942,7 +2942,7 @@ router.post("/tenants/:tenantId/deals/budget-imports/:importId/review", async (r
 
 router.delete("/deals/:id", async (req, res) => {
   const [existing] = await db
-    .select({ id: dealsTable.id, tenantId: dealsTable.tenantId, assignedTo: dealsTable.assignedTo })
+    .select({ id: dealsTable.id, tenantId: dealsTable.tenantId, assignedTo: dealsTable.assignedTo, asaasChargeId: dealsTable.asaasChargeId, zapsignDocId: dealsTable.zapsignDocId })
     .from(dealsTable)
     .where(eq(dealsTable.id, String(req.params.id)));
 
@@ -2982,13 +2982,14 @@ router.delete("/deals/:id", async (req, res) => {
   const [linkedBilling] = await db.select({ id: billingRecordsTable.id }).from(billingRecordsTable)
     .where(and(eq(billingRecordsTable.tenantId, existing.tenantId), eq(billingRecordsTable.dealId, existing.id)))
     .limit(1);
-  if (linkedContract || linkedExecution || linkedBilling) {
+  if (linkedContract || linkedExecution || linkedBilling || existing.asaasChargeId || existing.zapsignDocId) {
     return res.status(409).json({
       code: "DEAL_HAS_LINKED_OBLIGATIONS",
       error: "Negócio com contrato, execução ou registro financeiro vinculado requer revisão antes do arquivamento.",
       hasContract: Boolean(linkedContract),
       hasExecution: Boolean(linkedExecution),
-      hasBilling: Boolean(linkedBilling),
+      hasBilling: Boolean(linkedBilling || existing.asaasChargeId),
+      hasRemoteContract: Boolean(existing.zapsignDocId),
     });
   }
   // Recheck linked records as part of the conditional UPDATE. This avoids
@@ -3002,6 +3003,8 @@ router.delete("/deals/:id", async (req, res) => {
       eq(dealsTable.id, existing.id),
       eq(dealsTable.tenantId, existing.tenantId),
       isNull(dealsTable.archivedAt),
+      isNull(dealsTable.asaasChargeId),
+      isNull(dealsTable.zapsignDocId),
       notExists(db.select({ id: contractsTable.id }).from(contractsTable).where(and(
         eq(contractsTable.tenantId, existing.tenantId), eq(contractsTable.dealId, existing.id),
       ))),
