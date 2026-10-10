@@ -58,8 +58,12 @@ router.post("/internal/browser-mcp/homolog-bootstrap", async (req, res) => {
 
   let upstreamUser: any;
   try {
+    // Do not forward authentication credentials to a redirected host.
+    // Bound upstream latency so a stalled service does not occupy the route indefinitely.
     const verifyResponse = await fetch(verifyUrl, {
       headers: { authorization: `Bearer ${upstreamToken}` },
+      redirect: "manual",
+      signal: AbortSignal.timeout(8_000),
     });
     const upstreamFailure = classifyHomologUpstreamStatus(verifyResponse.status);
     if (upstreamFailure) {
