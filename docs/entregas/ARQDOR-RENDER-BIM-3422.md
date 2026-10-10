@@ -693,3 +693,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Implementação:** commits `ea5cd7d` e `c9cacac` estabelecem limite de 12 segundos, falha explícita por timeout e proteção `settled` para impedir que eventos tardios concluam novamente a mesma tentativa. As rotinas de conclusão limpam timer e handlers; em falha removem o script e o `catch` já existente permite tentativa posterior.
 - **Validação:** inspeção estática do código atualizado pelo conector GitHub; **sem execução de Vitest, browser, compilação TypeScript ou testes de temporização**. Esses testes continuam bloqueadores do fechamento do lote, que não deve ser declarado homologado.
 - **Estado:** PR #3422 Draft, sem merge/deploy; Contabo e produção inalteradas.
+
+
+## 3422-A — regressões do carregador Three.js (10/10/2026)
+- **Testabilidade:** `loadThree` exportado sem alteração de lógica em `RenderStudioParametricWebgl.tsx` (commit `4db7727`).
+- **Novo arquivo Vitest:** `RenderStudioThreeLoader.test.ts` (commit `ad55054`), com timer simulado e DOM de testes, cobrindo falha de rede e segunda tentativa bem-sucedida, carregamento incompleto sem `WebGLRenderer`, timeout de 12 segundos, descarte do script e evento tardio ignorado.
+- **Limite de evidência:** testes **adicionados ao repositório, não executados em Vitest**; build da aplicação e comportamento real do CDN ainda não foram executados em homologação. A suíte necessita ambiente DOM do Vitest.
+- **Governança:** PR #3422 Draft, sem merge/deploy, Contabo adiada e produção intacta.
