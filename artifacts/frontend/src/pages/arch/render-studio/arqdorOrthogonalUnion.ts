@@ -1,7 +1,7 @@
 import type { ParametricWall } from "./RenderStudioParametricWebgl";
 
 type Box = [number, number, number, number, number, number];
-export type UnionResult = { vertices: number[][]; faces: number[][]; occupiedCells: number; openingCount: number; topology: { boundaryEdges: number; nonmanifoldEdges: number; orientationErrors: number; connectedSolidComponents: number; connectedBoundaryComponents: number; signedVolumeMatchesOccupancy: boolean; closedByEdgeIncidence: boolean } };
+export type UnionResult = { vertices: number[][]; faces: number[][]; occupiedCells: number; openingCount: number; netVolumeM3: number; exposedSurfaceM2: number; topology: { boundaryEdges: number; nonmanifoldEdges: number; orientationErrors: number; connectedSolidComponents: number; connectedBoundaryComponents: number; signedVolumeMatchesOccupancy: boolean; closedByEdgeIncidence: boolean } };
 
 export function unionOrthogonalWalls(walls: ParametricWall[]): UnionResult {
   if (!walls.length || walls.length > 80) throw new Error("União ortogonal suporta 1 a 80 paredes");
@@ -164,10 +164,23 @@ export function unionOrthogonalWalls(walls: ParametricWall[]): UnionResult {
         origin[2]*(p[0]*q[1]-p[1]*q[0])) / 6;
     }
   }
+  // Sum actual boundary quads after CSG, excluding internal wall contacts.
+  const exposedSurfaceM2 = faces.reduce((total, polygon) => {
+    const a = vertices[polygon[0]], b = vertices[polygon[1]], c = vertices[polygon[2]];
+    const u = b.map((v, i) => v - a[i]);
+    const v = c.map((n, i) => n - a[i]);
+    const cross = [
+      u[1] * v[2] - u[2] * v[1],
+      u[2] * v[0] - u[0] * v[2],
+      u[0] * v[1] - u[1] * v[0],
+    ];
+    return total + Math.hypot(...cross);
+  }, 0);
   const signedVolumeMatchesOccupancy = volumeByOccupancy > 0 && signedVolume > 0 &&
     Math.abs(signedVolume-volumeByOccupancy) <= Math.max(1e-7, volumeByOccupancy*1e-7);
   return { vertices, faces, occupiedCells: filled.size,
     openingCount: voids.reduce((n,v) => n + v.length, 0),
+    netVolumeM3: volumeByOccupancy, exposedSurfaceM2,
     topology: { boundaryEdges, nonmanifoldEdges, orientationErrors, connectedSolidComponents, connectedBoundaryComponents, signedVolumeMatchesOccupancy,
       closedByEdgeIncidence: faces.length > 0 &&
         boundaryEdges === 0 && nonmanifoldEdges === 0 && orientationErrors === 0 &&
