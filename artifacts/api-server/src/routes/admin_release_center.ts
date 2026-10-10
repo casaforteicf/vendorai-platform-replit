@@ -1278,6 +1278,52 @@ router.post("/admin/releases/execution-control", async (req, res) => {
   } catch { return res.status(503).json({ error: "RELEASE_CONTROL_UNAVAILABLE" }); }
 });
 
+// Dependências da fila existente; a mudança é transacional e recusa ciclos.
+const dependencySchema = z.object({ dependsOnId: z.string().uuid() });
+router.get("/admin/improvements/:id/dependencies", async (req, res) => {
+  if (!z.string().uuid().safeParse(req.params.id).success) return res.status(422).json({ error: "ID inválido" });
+  try {
+    const result = await pool.query(
+      "SELECT d.depends_on_id AS \"dependsOnId\",i.title,i.status FROM admin_improvement_dependencies d JOIN admin_improvements i ON i.id=d.depends_on_id WHERE d.improvement_id=$1 ORDER BY i.created_at",
+      [req.params.id],
+    );
+    return res.json({ items: result.rows });
+  } catch { return res.status(503).json({ error: "DEPENDENCY_SCHEMA_NOT_READY" }); }
+});
+router.post("/admin/improvements/:id/dependencies", async (req, res) => {
+  const id = z.string().uuid().safeParse(req.params.id);
+  const body = dependencySchema.safeParse(req.body);
+  if (!id.success || !body.success) return res.status(422).json({ error: "IDs inválidos" });
+  if (id.data === body.data.dependsOnId) return res.status(409).json({ error: "Dependência circular" });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock($1)", [731003]);
+    const nodes = await client.query("SELECT id FROM admin_improvements WHERE id IN ($1,$2)", [id.data, body.data.dependsOnId]);
+    if (nodes.rowCount !== 2) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Melhoria não encontrada" }); }
+    const cycle = await client.query(
+      "WITH RECURSIVE ancestors(id) AS (SELECT depends_on_id FROM admin_improvement_dependencies WHERE improvement_id=$1 UNION SELECT d.depends_on_id FROM admin_improvement_dependencies d JOIN ancestors a ON a.id=d.improvement_id) SELECT 1 FROM ancestors WHERE id=$2 LIMIT 1",
+      [body.data.dependsOnId,id.data],
+    );
+    if (cycle.rowCount) { await client.query("ROLLBACK"); return res.status(409).json({ error: "Dependência circular" }); }
+    await client.query("INSERT INTO admin_improvement_dependencies (improvement_id,depends_on_id) VALUES ($1,$2) ON CONFLICT DO NOTHING", [id.data,body.data.dependsOnId]);
+    await client.query("COMMIT");
+    return res.json({ ok: true });
+  } catch {
+    await client.query("ROLLBACK").catch(() => undefined);
+    return res.status(503).json({ error: "DEPENDENCY_UPDATE_FAILED" });
+  } finally { client.release(); }
+});
+router.delete("/admin/improvements/:id/dependencies/:dependsOnId", async (req, res) => {
+  const id = z.string().uuid().safeParse(req.params.id);
+  const dep = z.string().uuid().safeParse(req.params.dependsOnId);
+  if (!id.success || !dep.success) return res.status(422).json({ error: "IDs inválidos" });
+  try {
+    await pool.query("DELETE FROM admin_improvement_dependencies WHERE improvement_id=$1 AND depends_on_id=$2", [id.data,dep.data]);
+    return res.json({ ok: true });
+  } catch { return res.status(503).json({ error: "DEPENDENCY_UPDATE_FAILED" }); }
+});
+
 const RELEASE_WORKER_LOCK = 731001;
 const GITHUB_RECONCILE_WORKER_LOCK = 731002;
 
