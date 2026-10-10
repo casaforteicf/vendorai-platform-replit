@@ -2916,9 +2916,14 @@ router.delete("/deals/:id", async (req, res) => {
     return;
   }
 
-  await db.delete(dealsTable).where(eq(dealsTable.id, existing.id));
-
-  res.status(204).send();
+  // A deal can have proposals, execution batches, activities and financial records.
+  // Physical deletion destroys traceability and must not be used as a shortcut
+  // for removing a deal from an active pipeline. Await a dedicated archival
+  // transition with a persistent audit trail and explicit authorization.
+  res.status(409).json({
+    code: "DEAL_ARCHIVAL_REQUIRED",
+    error: "Exclusão física de negócio bloqueada para preservar histórico e vínculos. Utilize o fluxo de retirada/arquivamento quando disponível.",
+  });
 });
 
 // ── GET /admin/deals/travados ───────────────────────────────────────────────
