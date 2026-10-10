@@ -1,3 +1,4 @@
+import { homologUpstreamRequest } from "../lib/homolog-upstream-request.js";
 import { classifyHomologUpstreamStatus } from "../lib/homolog-upstream-status.js";
 import { validateHomologExchange } from "../lib/homolog-token-exchange.js";
 import { decideBrowserAutonomy } from "../lib/browser-autonomy.js";
@@ -60,11 +61,7 @@ router.post("/internal/browser-mcp/homolog-bootstrap", async (req, res) => {
   try {
     // Do not forward authentication credentials to a redirected host.
     // Bound upstream latency so a stalled service does not occupy the route indefinitely.
-    const verifyResponse = await fetch(verifyUrl, {
-      headers: { authorization: `Bearer ${upstreamToken}` },
-      redirect: "manual",
-      signal: AbortSignal.timeout(8_000),
-    });
+    const verifyResponse = await fetch(verifyUrl, homologUpstreamRequest(upstreamToken));
     const upstreamFailure = classifyHomologUpstreamStatus(verifyResponse.status);
     if (upstreamFailure) {
       res.status(upstreamFailure.status).json({ error: upstreamFailure.error });
