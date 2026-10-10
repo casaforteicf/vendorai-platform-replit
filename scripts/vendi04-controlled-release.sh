@@ -15,6 +15,14 @@ log(){ printf '%s lot=%s action=%s %s\n' "$(date -u +%FT%TZ)" "$LOT" "$ACTION" "
 if [[ "$ACTION" == status ]]; then
  [[ -f "$STATE" ]] && cat "$STATE" || echo NO_PRODUCTION_RECORD
  docker inspect "$CURRENT" --format 'CONTAINER={{.State.Status}} IMAGE={{.Config.Image}}'
+ # Status is observational: expose drift without mutating any container.
+ if [[ -f "$STATE" ]]; then
+   saved=$(sed -n 's/^STATUS=//p' "$STATE" | head -1)
+   expected=$(sed -n 's/^IMAGE=//p' "$STATE" | head -1)
+   active=$(docker inspect "$CURRENT" --format '{{.Config.Image}}' 2>/dev/null || true)
+   backup=$(sed -n 's/^BACKUP=//p' "$STATE" | head -1)
+   if [[ "$saved" == INCONSISTENT* || ( "$saved" == PUBLISHED && "$expected" != "$active" ) ]] || { [[ "$saved" == PUBLISHED ]] && ! docker inspect "$backup" >/dev/null 2>&1; }; then echo RELEASE_RECONCILIATION_REQUIRED; fi
+ fi
  exit 0
 fi
 [[ -f "$MANIFEST" && "$(stat -c %u "$MANIFEST")" == 0 ]] || { echo MISSING_ROOT_MANIFEST; exit 65; }
