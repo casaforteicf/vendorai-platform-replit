@@ -8,7 +8,7 @@ import { classifyManagerDemand, managerExecutionBucket, MANAGER_INTERVAL_MINUTES
  * The Jarvis proactivity surface can consume these cases with its existing RBAC.
  */
 const DOMAINS: Array<Exclude<ManagerDomain, "security">> = [
-  "crm", "pipeline", "marketing", "agenda", "proposals",
+  "crm", "pipeline", "marketing", "agenda", "proposals", "integrations",
 ];
 let running = false;
 
@@ -176,6 +176,29 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               metric: String(total),
             };
           }
+          if (domain === "integrations") {
+            const data = await client.query(
+              `SELECT
+                (SELECT count(*)::int FROM whatsapp_connections
+                   WHERE tenant_id=$1 AND disconnected_at IS NULL
+                     AND token_expires_at IS NOT NULL
+                     AND token_expires_at < now() + interval '48 hours')
+                +
+                (SELECT count(*)::int FROM instagram_connections
+                   WHERE tenant_id=$1 AND disconnected_at IS NULL
+                     AND token_expires_at IS NOT NULL
+                     AND token_expires_at < now() + interval '48 hours')
+                AS total`,
+              [tenantId],
+            );
+            const total = Number(data.rows[0]?.total ?? 0);
+            if (total > 0) observation = {
+              signal: "active-manager:integrations:expiring-tokens",
+              title: "Conexões sociais com credenciais próximas do vencimento",
+              detail: `Há ${total} conexões WhatsApp ou Instagram com token expirado ou vencendo em até 48 horas. Jarvis deve orientar o administrador a verificar a reconexão; nunca expor credenciais.`,
+              metric: String(total),
+            };
+          }
           if (!observation) {
             const signals: Record<string, string> = {
               pipeline: 'active-manager:pipeline:overdue-activities',
@@ -183,6 +206,7 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               marketing: 'active-manager:marketing:old-drafts',
               agenda: 'active-manager:agenda:unclosed-past-appointments',
               proposals: 'active-manager:proposals:stale-ready-proposals',
+              integrations: 'active-manager:integrations:expiring-tokens',
             };
             const signal = signals[domain];
             if (signal) {
