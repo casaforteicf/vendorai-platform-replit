@@ -15,11 +15,21 @@ IMAGE="vendorai-test-node24:local"
 STORE="$(printenv VENDORAI_OFFLINE_STORE || true)"
 
 [ -n "$STORE" ] && [ -d "$STORE" ] || { echo "VENDORAI_OFFLINE_STORE required" >&2; exit 69; }
+# Accept either the pnpm store root or the existing v10 directory.
+if [ "$(basename "$STORE")" = "v10" ]; then STORE="$(dirname "$STORE")"; fi
+[ -d "$STORE/v10" ] || { echo "pnpm v10 store missing at $STORE" >&2; exit 69; }
+STORE="$(cd "$STORE" && pwd -P)"
 docker image inspect "$IMAGE" >/dev/null || { echo "Build $IMAGE first" >&2; exit 69; }
 OUT="$(pwd)/.test-evidence"
 mkdir -p "$OUT"
 RUN="$(mktemp -d "$OUT/pr-$PR-XXXXXXXX")"
-mkdir -p "$RUN/work" "$RUN/logs"
+mkdir -p "$RUN/work" "$RUN/logs" "$RUN/store"
+# A private writable store keeps pnpm metadata writes off the shared source cache.
+# Copy-on-write reflink is attempted; fallback copies the store (check host disk budget).
+if ! cp -a --reflink=auto "$STORE/." "$RUN/store/"; then
+  echo "Could not snapshot offline store safely (check free space)" >&2; exit 69
+fi
+chmod -R u+rwX "$RUN/store"
 printf 'pr=%s\nbranch=%s\nsha=%s\nsuite=%s\nstarted=%s\n' "$PR" "$BRANCH" "$SHA" "$SUITE" "$(date -u +%FT%TZ)" >"$RUN/manifest.txt"
 git fetch --no-tags origin "refs/pull/$PR/head" >"$RUN/logs/fetch-pr.log" 2>&1
 PR_SHA="$(git rev-parse FETCH_HEAD)"
@@ -33,7 +43,7 @@ chmod -R a+rwX "$RUN/work"
 run() {
   name="$1"; shift
   set +e
-  docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 --memory 4g --cpus 2     --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,size=256m     --mount "type=bind,src=$RUN/work,dst=/workspace"     --mount "type=bind,src=$STORE,dst=/pnpm/store,readonly"     -w /workspace -e CI=true -e HOME=/tmp -e PNPM_STORE_DIR=/pnpm/store "$IMAGE"     sh -c "$*" >"$RUN/logs/$name.log" 2>&1
+  docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 --memory 4g --cpus 2     --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,size=256m     --mount "type=bind,src=$RUN/work,dst=/workspace"     --mount "type=bind,src=$RUN/store,dst=/pnpm/store"     -w /workspace -e CI=true -e HOME=/tmp -e PNPM_STORE_DIR=/pnpm/store "$IMAGE"     sh -c "$*" >"$RUN/logs/$name.log" 2>&1
   code=$?
   set -e
   printf '%s exit=%s\n' "$name" "$code" | tee -a "$RUN/results.txt"
