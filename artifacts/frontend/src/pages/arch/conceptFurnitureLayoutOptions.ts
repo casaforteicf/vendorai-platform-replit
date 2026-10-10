@@ -4,10 +4,10 @@ function layoutKey(objects: readonly Footprint[]) {
   return JSON.stringify(objects.map(object => [object.kind, object.floor, rounded(object.x), rounded(object.y), rounded(object.width), rounded(object.depth), rounded(((object.rotation % 360) + 360) % 360)])
     .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));
 }
-/** Keep the best score for each distinct arrangement, independent of generated IDs. */
-export function uniqueFurnitureLayouts<T extends { objects: Footprint[]; score: number }>(variants: T[], limit = 3): T[] {
+/** Prefer fewer omitted items, then score; generated IDs do not distinguish arrangements. */
+export function uniqueFurnitureLayouts<T extends { objects: Footprint[]; score: number; missingLabels?: string[] }>(variants: T[], limit = 3): T[] {
   const seen = new Set<string>();
-  return [...variants].sort((a, b) => b.score - a.score).filter(variant => {
+  return [...variants].sort((a, b) => (a.missingLabels?.length ?? 0) - (b.missingLabels?.length ?? 0) || b.score - a.score).filter(variant => {
     if (!variant.objects.length) return false;
     const key = layoutKey(variant.objects);
     if (seen.has(key)) return false;

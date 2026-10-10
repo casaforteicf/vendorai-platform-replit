@@ -324,3 +324,10 @@ Validação: 122 testes em 23 arquivos passaram; tipagem isolada do helper e tra
 - Preserva dimensões e metadados e troca afinidade da parede correspondente. A operação representa disposição e orientação, sem refletir a malha de modelos assimétricos.
 - Verificação: 150 testes passaram em 27 arquivos; tipagem do helper e transformação sintática do editor passaram. Testes cobrem três modos, aplicação dupla e dados preservados.
 - Validação visual integrada e homologação/publicação na Contabo permanecem pendentes.
+
+
+### Prioridade para sugestões mais completas
+
+- Ordenação prioriza menor quantidade de itens omitidos, usando a pontuação para desempatar alternativas de mesma completude.
+- Opções completas deixam de perder prioridade para opções parciais apenas por bônus de proximidade/circulação.
+- Verificação direcionada: 6 testes de seleção/ordenação passaram, incluindo dois novos cenários de completude; tipagem do helper passou. Última suíte geral anterior: 150 testes em 27 arquivos. Validação visual integrada e homologação/publicação na Contabo permanecem pendentes.

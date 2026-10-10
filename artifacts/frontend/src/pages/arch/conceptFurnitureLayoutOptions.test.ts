@@ -19,3 +19,19 @@ describe("distinct furniture options", () => {
     expect(variants[0].score).toBe(1);
   });
 });
+
+describe("layout completeness ranking", () => {
+  it("prefers a complete layout over a higher-scoring partial layout", () => {
+    const complete = { score: 20, objects: [a], missingLabels: [] };
+    const partial = { score: 100, objects: [{ ...a, x: 3 }], missingLabels: ["Armário"] };
+    expect(uniqueFurnitureLayouts([partial, complete])[0]).toBe(complete);
+  });
+  it("prefers fewer omissions and uses score to break equal completeness", () => {
+    const options = [
+      { score: 100, objects: [a], missingLabels: ["Mesa", "Cadeira"] },
+      { score: 20, objects: [{ ...a, x: 2 }], missingLabels: ["Mesa"] },
+      { score: 30, objects: [{ ...a, x: 3 }], missingLabels: ["Cadeira"] },
+    ];
+    expect(uniqueFurnitureLayouts(options).map(option => option.score)).toEqual([30, 20, 100]);
+  });
+});
