@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod/v4";
 import { createExecutionLot } from "../services/execution_lots.js";
+import { saveExecutionProgress } from "../services/execution_progress_persistence.js";
 import { getExecutionLots, transitionExecutionLot } from "../services/execution_lot_lifecycle.js";
 
 const router: IRouter = Router();
@@ -79,6 +80,36 @@ router.post("/execution-lots/deals/:dealId/lots/:lotId/status", async (req: any,
     if (msg === "Negócio não localizado" || msg === "Lote não localizado") return void res.status(404).json({ error: "Lote não encontrado" });
     console.error("execution lot status", err);
     return void res.status(500).json({ error: "Falha na transição de execução" });
+  }
+});
+
+
+const progressSchema = z.object({
+  completedQuantity: z.number().nonnegative(),
+  note: z.string().max(2000).optional(),
+});
+router.post("/execution-lots/deals/:dealId/lots/:lotId/items/:itemId/progress", async (req: any, res) => {
+  if (!req.user?.tenantId || !req.user?.sub) return void res.status(403).json({ error: "Acesso negado" });
+  const parsed = progressSchema.safeParse(req.body);
+  if (!parsed.success) return void res.status(422).json({ error: "Quantidade inválida" });
+  try {
+    return void res.json(await saveExecutionProgress({
+      tenantId: req.user.tenantId,
+      actorId: req.user.sub,
+      dealId: String(req.params.dealId),
+      lotId: String(req.params.lotId),
+      itemId: String(req.params.itemId),
+      completedQuantity: parsed.data.completedQuantity,
+      note: parsed.data.note,
+    }));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("Quantidade") || message.includes("estorno") || message.includes("Lote não está")) {
+      return void res.status(409).json({ error: message });
+    }
+    if (message.includes("não localizado")) return void res.status(404).json({ error: "Registro não encontrado" });
+    console.error("execution progress failure", error);
+    return void res.status(500).json({ error: "Falha ao registrar progresso" });
   }
 });
 
