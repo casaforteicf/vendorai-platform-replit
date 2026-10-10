@@ -153,7 +153,15 @@ export interface ManagerOpportunity {
 }
 
 export function validateManagerOpportunity(input: ManagerOpportunity): void {
-  if (!input.tenantId.trim()) throw new Error("TENANT_REQUIRED");
-  if (!input.fingerprint.trim()) throw new Error("FINGERPRINT_REQUIRED");
-  if (!input.evidence.trim()) throw new Error("EVIDENCE_REQUIRED");
+  if (!input || typeof input !== "object") throw new Error("MANAGER_OPPORTUNITY_INVALID");
+  if (typeof input.tenantId !== "string" || !input.tenantId.trim()) throw new Error("TENANT_REQUIRED");
+  if (!MANAGER_DOMAINS.includes(input.domain)) throw new Error("INVALID_MANAGER_DOMAIN");
+  const allowedKinds: readonly string[] = [
+    "tenant_guidance", "tenant_configuration", "tenant_operation",
+    "platform_defect", "platform_improvement", "shared_behavior",
+    "security_incident", "unknown",
+  ];
+  if (!allowedKinds.includes(input.kind)) throw new Error("INVALID_MANAGER_DEMAND_KIND");
+  if (typeof input.fingerprint !== "string" || !input.fingerprint.trim()) throw new Error("FINGERPRINT_REQUIRED");
+  if (typeof input.evidence !== "string" || !input.evidence.trim()) throw new Error("EVIDENCE_REQUIRED");
 }
