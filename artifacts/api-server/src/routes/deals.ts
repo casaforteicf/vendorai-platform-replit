@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { randomUUID, createHash } from "node:crypto";
+import { canAllocateQuantity, remainingQuantity, quantityUnits } from "../lib/crm-partial-execution.js";
 import { and, desc, eq, inArray, isNotNull, isNull, notExists, sql } from "drizzle-orm";
 import multer from "multer";
 import {
@@ -710,7 +711,9 @@ const partialExecutionSchema = z.object({
   justificativa: z.string().trim().min(5).max(2000),
   itens: z.array(z.object({
     indice: z.number().int().nonnegative(),
-    quantidade: z.number().finite().positive(),
+    quantidade: z.number().finite().positive().refine(value => {
+      try { quantityUnits(value); return true; } catch { return false; }
+    }, "Quantidade aceita até quatro casas decimais."),
   })).min(1),
 });
 
@@ -748,7 +751,7 @@ router.get("/deals/:id/execution-batches", async (req, res) => {
     return { indice, nome: item.nome, unidade: item.unidade ?? null,
       etapaId: item.etapaId ?? null, faseId: item.faseId ?? null,
       quantidadeOriginal: item.quantidade, quantidadeEnviada: enviada,
-      quantidadeDisponivel: Math.max(0, Math.round((item.quantidade - enviada) * 10000) / 10000) };
+      quantidadeDisponivel: remainingQuantity(item.quantidade, [enviada]) };
   });
   res.json({ propostaId: proposal.id, status: proposal.status, itens: balances, lotes: batches });
 });
@@ -831,7 +834,7 @@ router.post("/deals/:id/execution-batches", async (req, res) => {
     const items = parsed.data.itens.map(i => {
       const original = proposal.itens[i.indice];
       const already = used.get(i.indice) ?? 0;
-      if (Math.round((already + i.quantidade) * 10000) > Math.round(original.quantidade * 10000)) {
+      if (!canAllocateQuantity(original.quantidade, [already], i.quantidade)) {
         throw Object.assign(new Error(`Quantidade excede saldo do item ${i.indice + 1}.`), { status: 409 });
       }
       return { indice: i.indice, nome: original.nome, quantidade: i.quantidade,
