@@ -40,8 +40,11 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
       let scanned = 0;
       let cases = 0;
       let resolved = 0;
+      let tenantFailures = 0;
       for (const row of tenants.rows) {
         const tenantId: string = row.id;
+        await client.query('SAVEPOINT manager_tenant');
+        try {
         for (const domain of DOMAINS) {
           const minutes = MANAGER_INTERVAL_MINUTES[domain];
           if (Math.floor(now.getTime() / 60000) % minutes !== 0) continue;
@@ -143,9 +146,16 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
             [tenantId, domain, periodKey],
           );
         }
+        await client.query('RELEASE SAVEPOINT manager_tenant');
+        } catch (tenantError) {
+          await client.query('ROLLBACK TO SAVEPOINT manager_tenant');
+          await client.query('RELEASE SAVEPOINT manager_tenant');
+          tenantFailures++;
+          log.warn({ err: tenantError, tenantId }, 'active-managers: tenant scan rolled back');
+        }
       }
       await client.query("COMMIT");
-      log.info({ scanned, cases, resolved, at: now.toISOString() }, "active-managers: periodic cycle committed");
+      log.info({ scanned, cases, resolved, tenantFailures, at: now.toISOString() }, "active-managers: periodic cycle committed");
     } catch (error) {
       await client.query("ROLLBACK").catch(() => undefined);
       throw error;
