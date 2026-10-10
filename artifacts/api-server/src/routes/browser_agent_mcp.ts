@@ -266,8 +266,12 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
     .limit(1);
   const autonomyEnabled = Boolean(tenantAutonomy?.autonomyEnabledAt);
   const globalVendiAutonomy = vendiAutonomyEnabled();
-  const mode = globalVendiAutonomy ? "autonomo" : (parsed.data.mode ?? (autonomyEnabled ? "autonomo" : "assistido"));
-  const allowWrite = globalVendiAutonomy ? true : (parsed.data.allowWrite ?? autonomyEnabled);
+  // Global autonomy flag is a kill switch: callers cannot override it by
+  // sending mode=autonomo or allowWrite=true, even if tenant opted in earlier.
+  // Tenant opt-in is also required when the global flag is enabled.
+  const autonomyPermitted = globalVendiAutonomy && autonomyEnabled;
+  const mode = autonomyPermitted && parsed.data.mode === "autonomo" ? "autonomo" : "assistido";
+  const allowWrite = autonomyPermitted && mode === "autonomo" && parsed.data.allowWrite === true;
 
   let connection: BrowserMcpConnection | undefined;
   if (parsed.data.connectionId) {
