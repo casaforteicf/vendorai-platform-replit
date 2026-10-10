@@ -1452,6 +1452,32 @@ router.patch("/leads/:id", async (req, res) => {
   res.json(lead);
 });
 
+// CRM-06: catálogo restrito de operadores da empresa que já responde pelo lead.
+router.get("/leads/:id/representative-operators", async (req, res) => {
+  if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") {
+    res.status(403).json({ error: "Somente administradores podem listar operadores." }); return;
+  }
+  const [lead] = await db.select({ tenantId: leadsTable.tenantId,
+    representativeFunctionId: leadsTable.representativeFunctionId,
+    metadata: leadsTable.metadata, excluidoEm: leadsTable.excluidoEm,
+  }).from(leadsTable).where(eq(leadsTable.id, req.params.id)).limit(1);
+  if (!lead || lead.excluidoEm) { res.status(404).json({ error: "Lead não encontrado." }); return; }
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== lead.tenantId) {
+    res.status(403).json({ error: "Acesso negado ao tenant." }); return;
+  }
+  const representative = await validateRepresentativeFunction(lead.tenantId, lead.representativeFunctionId);
+  if (!representative) { res.status(422).json({ error: "Representante inválida ou sem permissão." }); return; }
+  const allowed = Array.isArray(representative.representativeUserIds) ? representative.representativeUserIds : [];
+  const eligible = await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
+    .from(usersTable).where(and(eq(usersTable.tenantId, representative.linkedTenantId!), eq(usersTable.active, true)));
+  const metadata = lead.metadata && typeof lead.metadata === "object" && !Array.isArray(lead.metadata)
+    ? lead.metadata as Record<string, unknown> : {};
+  res.json({ representativeFunctionId: representative.id,
+    operationalUserId: typeof metadata.representativeOperationalUserId === "string" ? metadata.representativeOperationalUserId : null,
+    users: eligible.filter((user) => allowed.length === 0 || allowed.includes(user.id)),
+  });
+});
+
 // CRM-06: escolha administrativa do operador dentro da empresa representante.
 // O responsável comercial permanece sendo a empresa (representativeFunctionId).
 router.patch("/leads/:id/representative-operator", async (req, res) => {
