@@ -82,3 +82,10 @@ Teste local: `node --test scripts/infra/vendi-operator-diagnostics.test.mjs`.
 - `scripts/infra/vendi-browser-autonomy.test.mjs`: seis casos de segurança importam o **módulo TS real** (Node 24 com type stripping), cobrindo global off, tenant off, leitura apenas, autorização conjunta e valores malformados. Comando local: `node --test scripts/infra/vendi-browser-autonomy.test.mjs`.
 - Removida implementação `.mjs` intermediária duplicada: somente o módulo TS é fonte de verdade.
 - **Atenção:** testes foram adicionados ao GitHub, não executados no checkout/Contabo nesta operação. Integração no executor e verificação de isolamento de tenant ainda precisam de validação.
+
+## INFRA-LOTE-01.7 — troca de credenciais de homologação (10/10/2026)
+- Em `artifacts/api-server/src/routes/browser_agent_mcp.ts`, removido eco de até 200 caracteres do corpo da resposta HTTP na falha `VENDI_HOMOLOG_AUTH_EXCHANGE_FAILED`. Somente status HTTP é propagado; evita vazamento acidental de tokens/dados sensíveis.
+- A resposta de `homolog-bootstrap` agora só é aceita se `tenantId` do envelope e `userCache.tenantId` coincidirem **exatamente** com o tenant resolvido no request. Token ausente e divergência entre tenants são bloqueados antes de injeção no navegador.
+- A verificação da assinatura JWT continua responsabilidade da API destinatária; estes checks não substituem autenticação criptográfica.
+- O fluxo legado de homologação baseado em Railway foi mantido por compatibilidade, **sem ativá-lo**. Ainda é necessária análise da migração para a homologação Contabo antes de qualquer troca desse caminho.
+- Código enviado à branch, **sem testes de integração executados**, sem deploy e sem merge. HomologHealth rechecado e retornou `{"status":"ok"}`.
