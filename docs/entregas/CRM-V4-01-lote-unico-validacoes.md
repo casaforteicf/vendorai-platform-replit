@@ -189,3 +189,11 @@ Não considerar item 2 encerrado: o fluxo de criação de lead ainda invoca serv
 - `fe3e276`: botão "Enviar itens para execução" conectado no editor de negócio quando etapa for `ganho` ou `em_execucao`.
 - **Validação de commit:** arquivos salvos no GitHub. **Pendente:** inspeção TSX/build, provas de regressão, testes autenticados e UI real; nenhum merge nem deploy efetuado.
 - **Riscos conhecidos:** possíveis simultaneidades com alteração da proposta, retry sem chave idempotente e política de cancelar lote; contemplar casos de quantidade fracionária, grupos e fases e notificação de envio. Não considerar a conclusão do Lote 2 nem dar uso em produção antes da homologação.
+
+## Continuação 10/10/2026 — idempotência dos lotes
+
+- `64f89a4`: `POST /deals/:id/execution-batches` recebe `requestId` UUID obrigatório, faz busca de replay sob advisory lock e valida hash do payload mais autor antes de devolver o lote existente. Novo lote: HTTP 201; replay do mesmo payload: HTTP 200; colisão com payload/autor diferente: conflito 409.
+- `50b993e`: leitura do lote reutilizado passou a selecionar o ID na mesma consulta transacional.
+- `883bcef`: componente da interface gera UUID por submissão, reutiliza em retentativa e reinicia ao modificar campos ou após sucesso.
+- Pendências: ainda requer teste simultâneo real, teste de replay, de usuário diferente, de mudança de proposta/itens durante criação, TypeScript/build, homologação. Na base de dados, a chave está em JSON de metadata, protegida pelo lock transacional; avaliar índice dedicado em lote futuro após prova de carga.
+- Status: **implementado em código, sem runtime validado e sem publicação**.
