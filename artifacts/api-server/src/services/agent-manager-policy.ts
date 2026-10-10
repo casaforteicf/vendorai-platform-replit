@@ -84,6 +84,7 @@ export function managerSupportSourceRef(
   if (tenantId !== undefined && typeof tenantId !== "string") throw new Error("TENANT_REQUIRED");
   const scope = tenantId === undefined ? null : tenantId.trim();
   if (scope === "") throw new Error("TENANT_REQUIRED");
+  if (scope !== null && scope.length > 256) throw new Error("TENANT_TOO_LONG");
   // Namespace global and tenant scopes separately, even if a tenant slug is "global".
   const scopedIdentity = scope === null ? ["global"] : ["tenant", scope];
   return "manager:" + createHash("sha256")
@@ -157,6 +158,7 @@ export interface ManagerOpportunity {
 export function validateManagerOpportunity(input: ManagerOpportunity): void {
   if (!input || typeof input !== "object") throw new Error("MANAGER_OPPORTUNITY_INVALID");
   if (typeof input.tenantId !== "string" || !input.tenantId.trim()) throw new Error("TENANT_REQUIRED");
+  if (input.tenantId.trim().length > 256) throw new Error("TENANT_TOO_LONG");
   if (!MANAGER_DOMAINS.includes(input.domain)) throw new Error("INVALID_MANAGER_DOMAIN");
   const allowedKinds: readonly string[] = [
     "tenant_guidance", "tenant_configuration", "tenant_operation",
