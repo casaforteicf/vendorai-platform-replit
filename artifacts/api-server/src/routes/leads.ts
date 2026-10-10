@@ -645,6 +645,15 @@ router.get("/tenants/:tenantId/leads", async (req, res) => {
   // resto do app (dashboard, pipeline, campanhas etc.) automaticamente,
   // já que praticamente tudo usa esse mesmo endpoint.
   const incluirExcluidos = req.query["incluirExcluidos"];
+  // Dados excluídos e a respectiva auditoria são acessíveis apenas ao admin
+  // do tenant proprietário, nunca ao representante ou usuário comum.
+  if ((incluirExcluidos === "apenas" || incluirExcluidos === "incluir") &&
+      (!isOwnTenant || !(req.user?.platformRole === "super_admin" ||
+        req.user?.platformRole === "tenant_admin" ||
+        req.user?.userFunction === "administrador"))) {
+    res.status(403).json({ error: "Apenas administradores podem consultar leads excluídos." });
+    return;
+  }
   if (incluirExcluidos === "apenas") {
     conditions.push(isNotNull(leadsTable.excluidoEm));
   } else if (incluirExcluidos !== "incluir") {
@@ -1235,6 +1244,14 @@ router.get("/leads/:id", async (req, res) => {
 });
 
 router.patch("/leads/:id", async (req, res) => {
+  // Nunca aceitar exclusão/recuperação ou sobrescrita da auditoria
+  // através da rota genérica, independentemente do perfil do usuário.
+  const protectedFields = ["excluidoEm", "motivoExclusao", "metadata"];
+  if (req.body && typeof req.body === "object" &&
+      protectedFields.some((key) => Object.prototype.hasOwnProperty.call(req.body, key))) {
+    res.status(403).json({ error: "Campos protegidos exigem uma operação administrativa específica." });
+    return;
+  }
   const parsed = updateLeadSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.message });
@@ -1242,12 +1259,17 @@ router.patch("/leads/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo, representativeFunctionId: leadsTable.representativeFunctionId })
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo, representativeFunctionId: leadsTable.representativeFunctionId, excluidoEm: leadsTable.excluidoEm })
     .from(leadsTable)
     .where(eq(leadsTable.id, req.params.id));
 
   if (!existing) {
     res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  if (existing.excluidoEm) {
+    res.status(409).json({ error: "Lead excluído. Restaure antes de editar." });
     return;
   }
 
@@ -1359,6 +1381,55 @@ router.get("/leads/:id/responsavel-historico", async (req, res) => {
     .orderBy(desc(leadResponsavelHistoricoTable.criadoEm));
 
   res.json(historico);
+});
+
+// Recuperação administrativa separada da edição comum (CRM-23).
+router.post("/leads/:id/restore", async (req, res) => {
+  const [existing] = await db.select({
+    id: leadsTable.id,
+    tenantId: leadsTable.tenantId,
+    excluidoEm: leadsTable.excluidoEm,
+    metadata: leadsTable.metadata,
+  }).from(leadsTable).where(eq(leadsTable.id, req.params.id)).limit(1);
+
+  if (!existing) return res.status(404).json({ error: "Lead não encontrado." });
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    return res.status(403).json({ error: "Acesso negado ao tenant." });
+  }
+  if (req.user?.platformRole !== "super_admin" &&
+      req.user?.platformRole !== "tenant_admin" &&
+      req.user?.userFunction !== "administrador") {
+    return res.status(403).json({ error: "Apenas administradores podem restaurar leads." });
+  }
+  if (!existing.excluidoEm) return res.status(409).json({ error: "Lead não está excluído." });
+
+  const previousMetadata = existing.metadata && typeof existing.metadata === "object" &&
+    !Array.isArray(existing.metadata) ? existing.metadata as Record<string, unknown> : {};
+  // Leads absorvidos por mesclagem exigem reversão dos vínculos, não simples reativação.
+  if (previousMetadata.leadMerge) {
+    return res.status(409).json({ error: "Lead mesclado requer revisão administrativa dos vínculos antes da restauração." });
+  }
+
+  const [restored] = await db.update(leadsTable).set({
+    excluidoEm: null,
+    motivoExclusao: null,
+    metadata: {
+      ...previousMetadata,
+      leadRestoration: {
+        restoredBy: req.user?.sub ?? null,
+        restoredAt: new Date().toISOString(),
+        previousDeletion: previousMetadata.leadDeletion ?? null,
+      },
+    },
+    updatedAt: new Date(),
+  }).where(and(
+    eq(leadsTable.id, existing.id),
+    eq(leadsTable.tenantId, existing.tenantId),
+    isNotNull(leadsTable.excluidoEm),
+  )).returning();
+
+  if (!restored) return res.status(409).json({ error: "Lead já restaurado por outra operação." });
+  return res.json(restored);
 });
 
 router.delete("/leads/:id", async (req, res) => {
