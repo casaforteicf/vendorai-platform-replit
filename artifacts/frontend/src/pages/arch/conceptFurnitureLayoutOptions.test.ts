@@ -10,6 +10,13 @@ describe("distinct furniture options", () => {
   it("preserves genuinely different positions and orientations", () => {
     expect(uniqueFurnitureLayouts([{ score: 1, objects: [a] }, { score: 2, objects: [{ ...a, x: 2 }] }, { score: 3, objects: [{ ...a, rotation: 180 }] }])).toHaveLength(3);
   });
+  it("deduplicates rotations rounded across the 360-degree boundary", () => {
+    const options = [
+      { score: 1, objects: [{ ...a, rotation: 359.9999999 }] },
+      { score: 2, objects: [{ ...a, rotation: 0 }] },
+    ];
+    expect(uniqueFurnitureLayouts(options)).toEqual([options[1]]);
+  });
   it("ignores numerical noise and excludes empty options", () => {
     expect(uniqueFurnitureLayouts([{ score: 1, objects: [a] }, { score: 2, objects: [{ ...a, x: 1.00000001 }] }, { score: 3, objects: [] }])).toHaveLength(1);
   });
