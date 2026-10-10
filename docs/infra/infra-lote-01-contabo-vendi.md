@@ -89,3 +89,10 @@ Teste local: `node --test scripts/infra/vendi-operator-diagnostics.test.mjs`.
 - A verificação da assinatura JWT continua responsabilidade da API destinatária; estes checks não substituem autenticação criptográfica.
 - O fluxo legado de homologação baseado em Railway foi mantido por compatibilidade, **sem ativá-lo**. Ainda é necessária análise da migração para a homologação Contabo antes de qualquer troca desse caminho.
 - Código enviado à branch, **sem testes de integração executados**, sem deploy e sem merge. HomologHealth rechecado e retornou `{"status":"ok"}`.
+
+## INFRA-LOTE-01.8 — validação extraída da troca de token (10/10/2026)
+- Criado `artifacts/api-server/src/lib/homolog-token-exchange.ts`, que valida estrutura do envelope, presença de token e `userCache`, e correspondência estrita do `tenantId` em ambas as origens.
+- Rota `browser_agent_mcp.ts` utiliza o validador no retorno de `homolog-bootstrap`; qualquer erro falha fechado antes de carregar credenciais no Browser Agent.
+- Arquivo `scripts/infra/vendi-homolog-token-exchange.test.mjs`: quatro casos para sucesso, incompatibilidade entre tenants, entradas malformadas e ausência de vazamento do token em mensagens.
+- Teste destinado a Node 24 com suporte a type stripping: `node --test scripts/infra/vendi-homolog-token-exchange.test.mjs`.
+- **Limites:** testes ainda não executados na Contabo, autenticação HTTP 401 do conector não corrigida/validada, módulo não publicado, e a assinatura criptográfica do token precisa ser verificada pela API destinatária.
