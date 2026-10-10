@@ -1,3 +1,4 @@
+import { validateHomologExchange } from "../lib/homolog-token-exchange.js";
 import { decideBrowserAutonomy } from "../lib/browser-autonomy.js";
 import { Router, type IRouter } from "express";
 import { z } from "zod";
@@ -489,15 +490,7 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
         throw new Error(`VENDI_HOMOLOG_AUTH_EXCHANGE_FAILED:${exchangeResponse.status}`);
       }
 
-      const exchanged = await exchangeResponse.json() as {
-        token?: string;
-        tenantId?: string;
-        userCache?: Record<string, unknown>;
-      };
-      if (!exchanged.token || exchanged.tenantId !== tenantId || exchanged.userCache?.tenantId !== tenantId) {
-        throw new Error("VENDI_HOMOLOG_AUTH_EXCHANGE_TENANT_MISMATCH");
-      }
-
+      const exchanged = validateHomologExchange(await exchangeResponse.json(), tenantId);
       firstPartyAuthToken = exchanged.token;
       firstPartyAuthUserCache = exchanged.userCache;
     }
