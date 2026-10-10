@@ -1,0 +1,69 @@
+import { createHash, randomUUID } from "node:crypto";
+import { pool } from "@workspace/db";
+import { classifyManagerDemand, type ManagerDomain } from "./agent-manager-policy.js";
+
+/**
+ * Explicit structural findings only: never reinterpret a tenant configuration
+ * problem as a platform defect. Creates a review request, NOT a Vendi mission.
+ */
+export interface ManagerPlatformFinding {
+  module: ManagerDomain;
+  kind: "platform_defect" | "platform_improvement" | "shared_behavior" | "security_incident";
+  fingerprint: string;
+  title: string;
+  description: string;
+  evidence: string;
+  acceptanceCriteria: string;
+  tenantId?: string;
+  priority?: "baixa" | "media" | "alta" | "urgente";
+}
+export async function enqueueManagerSupportReview(f: ManagerPlatformFinding): Promise<string> {
+  if (!f.fingerprint.trim() || !f.title.trim() || !f.evidence.trim() || !f.acceptanceCriteria.trim()) {
+    throw new Error("MANAGER_SUPPORT_EVIDENCE_REQUIRED");
+  }
+  const policy = classifyManagerDemand(f.kind);
+  if (policy.route !== "superadmin_support" || policy.approval !== "superadmin_required") {
+    throw new Error("MANAGER_SUPPORT_APPROVAL_POLICY");
+  }
+  const sourceRef = "manager:" + createHash("sha256")
+    .update([f.module, f.kind, f.fingerprint].join(":")).digest("hex").slice(0, 40);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    // Transaction scoped dedupe across all application replicas.
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [sourceRef]);
+    const previous = await client.query<{ id: string }>(
+      "SELECT id FROM admin_improvements WHERE source_type='audit' AND source_ref_id=$1 AND status NOT IN ('cancelada','producao_validada') LIMIT 1",
+      [sourceRef],
+    );
+    if (previous.rows[0]) {
+      await client.query("COMMIT");
+      return previous.rows[0].id;
+    }
+    const id = randomUUID();
+    const scope = f.tenantId ? "tenant" : "global";
+    await client.query(
+      `INSERT INTO admin_improvements
+       (id,title,description,module,priority,status,source_type,source_ref_id,source_tenant_id,
+        change_scope,acceptance_criteria,risk_summary,owner_agent,agent_status,agent_summary,test_status,created_by)
+       VALUES ($1,$2,$3,$4,$5,'solicitada','audit',$6,$7,$8,$9,$10,'agent_master','awaiting_superadmin_approval',$11,'pending','agent_master')`,
+      [id, f.title, f.description, f.module, f.priority ?? "media", sourceRef, f.tenantId ?? null, scope,
+        f.acceptanceCriteria, "Exige revisão e aprovação do Superadmin antes de qualquer alteração de código.",
+        `Diagnóstico encaminhado sem execução. Evidência: ${f.evidence}`],
+    );
+    await client.query(
+      `INSERT INTO admin_improvement_events
+       (id,improvement_id,event_type,message,actor,payload)
+       VALUES ($1,$2,'manager_support_review',$3,'agent_master',$4::jsonb)`,
+      [randomUUID(), id, "Agente Gestor identificou demanda estrutural. Aguardando análise e aprovação do Superadmin.",
+        JSON.stringify({ module: f.module, kind: f.kind, fingerprint: f.fingerprint, tenantId: f.tenantId ?? null, evidence: f.evidence })],
+    );
+    await client.query("COMMIT");
+    return id;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
