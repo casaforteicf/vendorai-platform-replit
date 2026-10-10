@@ -58,6 +58,25 @@ run() {
   set -e
   printf '%s exit=%s\n' "$name" "$code" | tee -a "$RUN/results.txt"
 }
+# Optional, one-time networked cache fill, scoped to this disposable snapshot only.
+# No secrets, Docker socket, shared writable store, lifecycle scripts, or official DB.
+# The actual test phase continues with --network none.
+if [ "${VENDORAI_PREPARE_OFFLINE:-0}" = "1" ]; then
+  set +e
+  "${DOCKER_CMD[@]}" run --rm --network bridge --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 --memory 4g --cpus 2 \
+    --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,size=256m \
+    --mount "type=bind,src=$RUN/work,dst=/workspace" \
+    --mount "type=bind,src=$RUN/store,dst=/pnpm/store" \
+    -w /workspace -e CI=true -e HOME=/tmp -e PNPM_STORE_DIR=/pnpm/store \
+    "$IMAGE" sh -c 'pnpm fetch --frozen-lockfile --ignore-scripts --store-dir /pnpm/store' >"$RUN/logs/cache-fetch.log" 2>&1
+  fetch_code=$?
+  set -e
+  printf 'cache-fetch exit=%s\\n' "$fetch_code" | tee -a "$RUN/results.txt"
+  if [ "$fetch_code" -ne 0 ]; then
+    echo "Cache fill failed; no offline tests attempted" >&2
+    exit "$fetch_code"
+  fi
+fi
 run install "pnpm install --offline --frozen-lockfile --ignore-scripts --store-dir /pnpm/store"
 if ! grep -qx 'install exit=0' "$RUN/results.txt"; then echo "Install failed; downstream tests skipped"; exit 1; fi
 if [ "$SUITE" = api ] || [ "$SUITE" = full ]; then
