@@ -1,6 +1,6 @@
 import type { Logger } from "pino";
 import { pool } from "@workspace/db";
-import { classifyManagerDemand, managerExecutionBucket, MANAGER_INTERVAL_MINUTES, type ManagerDomain } from "./agent-manager-policy.js";
+import { classifyManagerDemand, managerExecutionBucket, type ManagerDomain } from "./agent-manager-policy.js";
 
 /**
  * AGENT-01: conservative periodic opportunity scan. Creates Jarvis cases only;
@@ -48,11 +48,8 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
         for (const domain of DOMAINS) {
           await client.query('SAVEPOINT manager_domain');
           try {
-          const minutes = MANAGER_INTERVAL_MINUTES[domain];
-          if (Math.floor(now.getTime() / 60000) % minutes !== 0) {
-            await client.query('RELEASE SAVEPOINT manager_domain');
-            continue;
-          }
+          // The scheduler may fire seconds late. Bucket-level dedupe, not an
+          // exact minute equality, controls whether a scan has already run.
           const periodKey = managerExecutionBucket(domain, now);
           const alreadyDone = await client.query(
             "SELECT 1 FROM agent_manager_runs WHERE tenant_id=$1 AND domain=$2 AND period_key=$3 LIMIT 1",
