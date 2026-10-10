@@ -8,6 +8,17 @@ import {
 } from "./agent-manager-policy.js";
 
 describe("agent manager policy", () => {
+  it("checks notification tables before scheduling tenant scans", () => {
+    const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
+    const prereq = source.indexOf("to_regclass('public.notifications')");
+    const users = source.indexOf("to_regclass('public.users')");
+    const scan = source.indexOf("SELECT count(*)::int AS total FROM tenants");
+    expect(prereq).toBeGreaterThan(-1);
+    expect(users).toBeGreaterThan(-1);
+    expect(scan).toBeGreaterThan(prereq);
+    expect(source).toContain("!ready.rows[0]?.notifications || !ready.rows[0]?.users");
+  });
+
   it("rejects invalid cycle timestamps before opening a database transaction", () => {
     const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
     const validation = source.indexOf("if (!Number.isFinite(now.getTime()))");
