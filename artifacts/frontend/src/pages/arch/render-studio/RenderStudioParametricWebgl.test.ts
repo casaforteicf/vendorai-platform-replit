@@ -59,6 +59,11 @@ describe("Arqdor wall mesh geometry for diagonal walls", () => {
       .toThrow(/Coordenadas/);
   });
 
+  it("reports controlled validation errors for malformed opening entries", () => {
+    const invalid = wall([0, 0], [3, 4], [null] as unknown as ParametricWall["openings"]);
+    expect(() => buildWallGeometry(THREE, invalid)).toThrow("Vão inválido na parede");
+  });
+
   it("rejects overlapping openings and accepts adjacent openings", () => {
     const overlapping = { ...window, id: "janela2", offset: 1.3 };
     expect(() => buildWallGeometry(THREE, wall([0, 0], [3, 4], [window, overlapping])))
