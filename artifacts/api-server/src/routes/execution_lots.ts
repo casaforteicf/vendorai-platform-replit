@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod/v4";
 import { createExecutionLot } from "../services/execution_lots.js";
+import { getExecutionLots, transitionExecutionLot } from "../services/execution_lot_lifecycle.js";
 
 const router: IRouter = Router();
 const requestSchema = z.object({
@@ -41,4 +42,44 @@ router.post("/execution-lots/deals/:dealId", async (req: any, res) => {
     return void res.status(500).json({ error: "Não foi possível reservar o lote" });
   }
 });
+
+router.get("/execution-lots/deals/:dealId/proposals/:proposalId", async (req: any, res) => {
+  if (!req.user?.tenantId) return void res.status(403).json({ error: "Acesso negado" });
+  try {
+    const result = await getExecutionLots(req.user.tenantId, String(req.params.dealId), String(req.params.proposalId));
+    return void res.json(result);
+  } catch (err) {
+    if (err instanceof Error && err.message === "Proposta não encontrada") return void res.status(404).json({ error: "Proposta não encontrada" });
+    console.error("execution lots listing", err);
+    return void res.status(500).json({ error: "Falha na consulta de execução" });
+  }
+});
+
+const transitionSchema = z.object({
+  nextStatus: z.enum(["in_progress", "completed", "cancelled"]),
+  reason: z.string().trim().max(1000).optional(),
+});
+router.post("/execution-lots/deals/:dealId/lots/:lotId/status", async (req: any, res) => {
+  if (!req.user?.tenantId || !req.user?.sub) return void res.status(403).json({ error: "Acesso negado" });
+  const parsed = transitionSchema.safeParse(req.body);
+  if (!parsed.success) return void res.status(422).json({ error: "Dados inválidos" });
+  try {
+    const result = await transitionExecutionLot({
+      tenantId: req.user.tenantId,
+      actorId: req.user.sub,
+      dealId: String(req.params.dealId),
+      lotId: String(req.params.lotId),
+      nextStatus: parsed.data.nextStatus,
+      reason: parsed.data.reason,
+    });
+    return void res.json(result);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "";
+    if (msg === "Transição de estado não permitida" || msg === "Cancelamento exige justificativa") return void res.status(409).json({ error: msg });
+    if (msg === "Negócio não localizado" || msg === "Lote não localizado") return void res.status(404).json({ error: "Lote não encontrado" });
+    console.error("execution lot status", err);
+    return void res.status(500).json({ error: "Falha na transição de execução" });
+  }
+});
+
 export default router;
