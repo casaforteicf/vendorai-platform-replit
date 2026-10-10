@@ -1351,9 +1351,26 @@ router.patch("/leads/:id", async (req, res) => {
     }
   }
 
+  // CRM-05/06: exatamente uma forma de responsabilidade comercial.
+  // Ao trocar de responsável interno para representante (ou vice-versa),
+  // remover o vínculo anterior explicitamente e rejeitar lead sem responsável.
+  const changingRepresentative = parsed.data.representativeFunctionId !== undefined;
+  const changingOwner = parsed.data.assignedTo !== undefined;
+  const nextRepresentative = changingRepresentative ? parsed.data.representativeFunctionId : existing.representativeFunctionId;
+  const nextOwner = changingOwner ? parsed.data.assignedTo : existing.assignedTo;
+  if ((!!nextRepresentative && !!nextOwner) || (!nextRepresentative && !nextOwner)) {
+    res.status(422).json({ error: "Informe exatamente um responsável: usuário interno ou empresa representante." });
+    return;
+  }
+  const ownershipUpdate = changingRepresentative && nextRepresentative
+    ? { assignedTo: null }
+    : changingOwner && nextOwner
+      ? { representativeFunctionId: null }
+      : {};
+
   const [lead] = await db
     .update(leadsTable)
-    .set({ ...parsed.data, updatedAt: new Date() } as any)
+    .set({ ...parsed.data, ...ownershipUpdate, updatedAt: new Date() } as any)
     .where(eq(leadsTable.id, existing.id))
     .returning();
 
