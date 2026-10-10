@@ -373,3 +373,8 @@ A reconciliação de paredes e aberturas deixa de ajustar (clamp) o offset de um
 ### Validação de entrada na busca de vão livre — 10/10/2026
 
 `freeOpeningOffset` agora rejeita largura não finita ou não positiva e offset não finito antes da busca por uma posição livre. Testes de regressão cobrindo NaN, Infinity e largura negativa adicionados. Commits eddeecb e 91817f7. Execução Vitest, build integrado e inspeção das vistas permanecem pendentes. PR em rascunho, sem merge, homologação ou publicação.
+
+
+### Robustez de altura total de abertura — 10/10/2026
+
+`openingPlacementError` agora rejeita altura + peitoril que produza extensão vertical não finita, inclusive em aberturas importadas cuja dimensão original ultrapassa as faixas de edição. Teste de regressão adicionado em `conceptOpeningExactEdit.test.ts`. Commits 6d55f07 e 652b5f8. Execução de testes, typecheck, build e revisão integrada pendentes. Nenhum merge, homologação ou publicação.
