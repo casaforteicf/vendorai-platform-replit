@@ -93,6 +93,15 @@ describe("agent manager policy", () => {
     expect(source).toContain('if (f.kind === "security_incident")');
   });
 
+  it("rejects non-structural demand kinds before support database writes", () => {
+    const source = readFileSync(new URL("./agent-manager-support.ts", import.meta.url), "utf8");
+    const rejection = source.indexOf('throw new Error("MANAGER_SUPPORT_KIND_INVALID")');
+    const connect = source.indexOf("const client = await pool.connect()");
+    expect(rejection).toBeGreaterThan(-1);
+    expect(connect).toBeGreaterThan(rejection);
+    expect(source).toContain('"platform_defect", "platform_improvement", "shared_behavior", "security_incident"');
+  });
+
   it("forces urgent priority for security incident support reviews", () => {
     const source = readFileSync(new URL("./agent-manager-support.ts", import.meta.url), "utf8");
     expect(source).toContain('f.kind === "security_incident" && f.priority !== "urgente"');
