@@ -673,3 +673,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Correção:** commit `30af573` verifica o plano vazio antes de chamar `loadThree()`, evita carregar Three.js sem necessidade e preserva a mensagem de estado vazio.
 - **Validação:** inspeção do código alterado via GitHub; **sem execução de testes React, Vitest, compilação TypeScript ou build completo**. A efetividade no navegador ainda precisa ser verificada.
 - **Governança:** PR #3422 continua Draft; sem merge/deploy e sem alterações na Contabo ou produção.
+
+
+## 3422-A — robustez do carregamento Three.js (10/10/2026)
+- **Problema confirmado:** `loadThree()` considerava o carregamento do script bem-sucedido sem confirmar a presença de `window.THREE.WebGLRenderer`. Se o CDN respondesse sem inicializar o motor, o componente prosseguia e falhava genericamente.
+- **Correção:** commit `1553edf` verifica a existência do construtor WebGLRenderer no `onload` e apresenta erro explícito se ausente. No evento `onerror`, remove a tag do script que falhou; o tratamento existente da Promise reseta `engine` e permite nova tentativa em montagem posterior.
+- **Validação:** revisão de código via conector; testes automatizados React/Vitest, build TypeScript e navegador **não executados** nesta etapa.
+- **Estado:** PR #3422 Draft, sem merge ou deploy, Contabo e produção intactas.
