@@ -9,6 +9,8 @@ import {
 } from "@workspace/db";
 import { z } from "zod/v4";
 import { buildFinancialSchedule } from "../lib/commercial-financial-schedule";
+import { calculateBudget, compositionPackages, marginReport } from "../lib/commercial-budget-core";
+import { validatePartialExecution, rankSupplierOffers } from "../lib/commercial-execution-supplier";
 
 const router: IRouter = Router();
 
@@ -38,6 +40,73 @@ router.post("/tenants/:tenantId/leads/:leadId/orcamento-revisoes/simular-cronogr
   } catch (error) {
     return res.status(422).json({ error: error instanceof Error ? error.message : "Cronograma inválido" });
   }
+});
+
+// ─── LOTE 05: simulação universal, sem alterar proposta ou catálogo ──────────
+router.post("/tenants/:tenantId/leads/:leadId/orcamento-revisoes/simular-comercial", (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!hasAccess(req, tenantId)) return res.status(403).json({ error: "Acesso negado" });
+  const lineSchema = z.object({
+    id: z.string().min(1), kind: z.enum(["product", "service", "package", "composition"]),
+    description: z.string().min(1), sku: z.string().optional(), unit: z.string().min(1),
+    quantity: z.number().int().nonnegative().safe(),
+    unitPriceCents: z.number().int().nonnegative().safe(),
+    discountCents: z.number().int().nonnegative().safe().optional(),
+    inclusion: z.enum(["included", "excluded", "optional"]).optional(),
+    environmentId: z.string().optional(), phaseId: z.string().optional(), sourceItemId: z.string().optional(),
+  });
+  const payload = z.object({
+    lines: z.array(lineSchema).max(1000),
+    costCents: z.number().int().nonnegative().safe().optional(),
+    inputs: z.array(z.object({
+      id: z.string().min(1), quantity: z.number().int().nonnegative().safe(),
+      packageQuantity: z.number().int().positive().safe(),
+      packagePriceCents: z.number().int().nonnegative().safe(),
+      lossPercent: z.number().finite().min(0).lt(100).optional(),
+    })).max(500).optional(),
+  }).safeParse(req.body);
+  if (!payload.success) return res.status(422).json({ error: "Dados comerciais inválidos", details: payload.error.flatten() });
+  try {
+    const totals = calculateBudget(payload.data.lines);
+    return res.json({
+      tenantId, leadId: String(req.params.leadId), totals,
+      compositions: (payload.data.inputs ?? []).map(compositionPackages),
+      margin: payload.data.costCents === undefined ? null : marginReport(totals.includedCents, payload.data.costCents),
+      persisted: false,
+    });
+  } catch (error) {
+    return res.status(422).json({ error: error instanceof Error ? error.message : "Orçamento inválido" });
+  }
+});
+
+// ─── LOTE 05: verificação de envio parcial, sem criar execução ───────────────
+router.post("/tenants/:tenantId/leads/:leadId/orcamento-revisoes/simular-execucao", (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!hasAccess(req, tenantId)) return res.status(403).json({ error: "Acesso negado" });
+  const body = z.object({ items: z.array(z.object({
+    itemId: z.string().min(1),
+    approvedMilliQuantity: z.number().int().nonnegative().safe(),
+    previouslyReleasedMilliQuantity: z.number().int().nonnegative().safe(),
+    requestedMilliQuantity: z.number().int().nonnegative().safe(),
+  })).min(1).max(1000) }).safeParse(req.body);
+  if (!body.success) return res.status(422).json({ error: "Itens inválidos", details: body.error.flatten() });
+  try { return res.json({ ...validatePartialExecution(body.data.items), persisted: false }); }
+  catch (error) { return res.status(422).json({ error: error instanceof Error ? error.message : "Execução inválida" }); }
+});
+
+// ─── LOTE 05: avaliação de ofertas, sem contratar fornecedor ────────────────
+router.post("/tenants/:tenantId/leads/:leadId/orcamento-revisoes/comparar-fornecedores", (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!hasAccess(req, tenantId)) return res.status(403).json({ error: "Acesso negado" });
+  const body = z.object({ offers: z.array(z.object({
+    supplierId: z.string().min(1), itemId: z.string().min(1),
+    priceCents: z.number().int().nonnegative().safe(),
+    freightCents: z.number().int().nonnegative().safe(),
+    deliveryDays: z.number().int().nonnegative().safe(),
+  })).max(1000) }).safeParse(req.body);
+  if (!body.success) return res.status(422).json({ error: "Ofertas inválidas", details: body.error.flatten() });
+  try { return res.json({ offers: rankSupplierOffers(body.data.offers), persisted: false }); }
+  catch (error) { return res.status(422).json({ error: error instanceof Error ? error.message : "Ofertas inválidas" }); }
 });
 
 // ─── List revision history for a lead ──────────────────────────────────────
