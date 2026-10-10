@@ -106,3 +106,10 @@ Teste local: `node --test scripts/infra/vendi-operator-diagnostics.test.mjs`.
 - Adicionado `artifacts/api-server/src/lib/homolog-upstream-status.ts`, utilizado pela rota `browser_agent_mcp.ts`, para separar 401 (token inválido), 403 (sem permissão) e falhas upstream/indisponibilidade (502). O retorno não expõe corpo ou segredo do upstream.
 - Três testes em `scripts/infra/vendi-homolog-upstream-status.test.mjs` executados **localmente** com `node --experimental-strip-types --test` no Node v22.16.0: **3 passaram, 0 falharam**. Node 22 exige flag experimental para imports TS; o runtime previsto de produção usa Node 24.
 - Integração remota, build monorepo e homologação da Contabo não executados. A alteração **não comprova resolução do 401 verdadeiro**; agora permite diagnosticá-lo sem conflar indisponibilidade com expiração de token.
+
+## INFRA-LOTE-01.11 — proteção da verificação upstream contra redirecionamento (10/10/2026)
+- `browser_agent_mcp.ts`: a autenticação de homologação usa a função `homologUpstreamRequest` (arquivo novo `artifacts/api-server/src/lib/homolog-upstream-request.ts`). O request aplica `redirect: "manual"` e `AbortSignal.timeout(8000)` para impedir envio de bearer em redirecionamento e limitar bloqueios prolongados.
+- `scripts/infra/vendi-homolog-upstream-request.test.mjs`: regressões adicionadas para política de redirecionamento, sinal de abort e token ausente.
+- Validação local, isolada do servidor, em Node v22.16.0 com cópia exata da função da branch: 3 testes de comportamento aprovados; os testes da branch e build integrado ainda não foram executados na Contabo.
+- A resposta HTTP 3xx passa pela classificação existente como `upstream_auth_unavailable` (502), sem seguir o redirecionamento.
+- **Sem deploy/merge/publicação.** Não se declara resolução do HTTP 401 do conector remoto.
