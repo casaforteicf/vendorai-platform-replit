@@ -41,6 +41,11 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
       );
       const totalTenants = Number(tenantCount.rows[0]?.total ?? 0);
       const cycleBucket = Math.floor(now.getTime() / (15 * 60_000));
+      if (totalTenants === 0) {
+        await client.query("COMMIT");
+        log.info({ scanned: 0, cases: 0, resolved: 0, tenantFailures: 0 }, "active-managers: no active tenants");
+        return;
+      }
       const pageCount = Math.max(1, Math.ceil(totalTenants / 500));
       const pageOffset = (cycleBucket % pageCount) * 500;
       const tenants = await client.query(
