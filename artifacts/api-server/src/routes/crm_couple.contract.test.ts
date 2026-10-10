@@ -24,6 +24,9 @@ describe("CRM-02/03 — casal, identidade e contato principal", () => {
     expect(frontend).toContain("primaryContactIndex: values.primaryContactIndex");
     expect(frontend).toContain('isPrimary: values.primaryContactIndex === 1');
   });
+  it("não usa lead excluído para liberar dados pessoais na busca do CRM", () => {
+    expect(api).toContain("eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm)");
+  });
   it("remove metadados de comissão de respostas aninhadas", () => {
     expect(api).toContain("safeParticipantMetadata(item.link.metadata, canManageCrmCommissions(req))");
   });
