@@ -470,6 +470,40 @@ function createCloudflareMcpServer() {
     async ({ action, lot }) => toolText(await contaboOperate(action, lot)),
   );
 
+  // INF-01.15: reserved private executor operations. Explicitly fail closed until
+  // MCP receives verified individual agent claims and per-lot grants.
+  // Existing vendorai:admin shared sessions MUST NOT be treated as agent identity.
+  server.registerTool(
+    "request_test",
+    {
+      description: "Restricted test request. Currently disabled until verified per-agent MCP authorization is provisioned.",
+      inputSchema: z.object({
+        agent: z.string().regex(/^AGENT-(0[1-9]|1[0-4])$/),
+        lot: z.string().regex(/^LOT-(0[1-9]|1[0-4])$/),
+        pr: z.number().int().positive(),
+        branch: z.string().min(1).max(180),
+        sha: z.string().regex(/^[a-fA-F0-9]{40}$/),
+        suite: z.enum(["crm", "api", "frontend", "full"]),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async () => {
+      throw new Error("AGENT_IDENTITY_NOT_VERIFIED: remote test execution remains disabled");
+    },
+  );
+
+  server.registerTool(
+    "get_test_result",
+    {
+      description: "Restricted test result lookup. Currently disabled until verified per-agent MCP authorization is provisioned.",
+      inputSchema: z.object({ runId: z.string().regex(/^pr-[1-9][0-9]*-[A-Za-z0-9_-]{8}$/) }),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async () => {
+      throw new Error("AGENT_IDENTITY_NOT_VERIFIED: test results remain private");
+    },
+  );
+
   server.registerTool(
     "vendi_contabo_status",
     {
