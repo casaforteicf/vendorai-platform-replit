@@ -36,6 +36,8 @@ function isNightAuditWindow() {
 }
 
 async function runEmergencyRemediation(improvementId: string, finding: AuditFinding, log: Logger) {
+  // Audit can always report incidents, but code-changing remediation needs explicit autonomous mode.
+  if (process.env.VENDI_AUTONOMY_ENABLED !== "true") return;
   if (finding.priority !== "urgente") return;
 
   const recent = await pool.query(
@@ -229,6 +231,8 @@ async function auditDatabaseSchema(): Promise<AuditFinding[]> {
 }
 
 async function recoverStalledImprovements(log: Logger) {
+  // When autonomy is off, preserve approval workflow; never initiate code changes silently.
+  if (process.env.VENDI_AUTONOMY_ENABLED !== "true") return;
   const candidates = await pool.query(
     `SELECT id,title,description,module,priority,status,test_status AS "testStatus",
             agent_status AS "agentStatus",agent_summary AS "agentSummary",updated_at AS "updatedAt"
