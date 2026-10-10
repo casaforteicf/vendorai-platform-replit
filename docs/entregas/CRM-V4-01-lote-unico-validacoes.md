@@ -263,3 +263,10 @@ Não considerar item 2 encerrado: o fluxo de criação de lead ainda invoca serv
 - Comportamento conservador: contratos históricos e execuções finalizadas também bloqueiam, até disponibilizar revisão/encerramento administrativo explícito. Não apagar ou desvincular contratos ou work cards para contornar a trava.
 - **Risco pendente:** a checagem e atualização são comandos separados e não têm garantia de serialização contra criação concorrente de contrato/card. Necessário gate transacional e testes antes da homologação. Revisar ainda os demais vínculos financeiros/OS e interface administrativa.
 - Evidência: commit no GitHub; sem execução de build, TypeScript, testes, migração, homologação, merge ou publicação.
+
+## Proteção financeira e rechecagem condicional no arquivamento — 10/10/2026
+- Commit `8117278d28006ff1d53c86cc332abf00d0c14bf7` no PR #3428.
+- O endpoint de arquivamento também verifica registros de cobrança em `billing_records` vinculados ao negócio/tenant; responde 409 `DEAL_HAS_LINKED_OBLIGATIONS` com `hasBilling`, além de `hasContract` e `hasExecution`.
+- O `UPDATE` condicional inclui subconsultas `NOT EXISTS` para contratos, cards operacionais e registros financeiros. Isso revalida a ausência desses vínculos na operação de arquivamento e evita depender apenas da leitura preliminar.
+- **Limite de concorrência:** sem bloqueio/serialização comum com as rotas que criam vínculos, inserções simultâneas ainda exigem teste e proteção adicional. Faltam outras espécies de obrigação, migração aplicada, testes e revisão da UX.
+- Commit apenas na branch; nenhum TypeScript, build, homologação, merge ou deploy comprovado.
