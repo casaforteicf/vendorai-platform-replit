@@ -574,3 +574,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Correção:** commit `0f60846`. O descarte de materiais/geometrias, observer e renderer é registrado imediatamente após a criação do renderer, antes de anexar o canvas e construir a cena. O bloco `try/catch` libera recursos imediatamente em erro e propaga a exceção para a mensagem já existente na interface.
 - **Teste:** revisão estática da sequência de inicialização e proteção por `try/catch`; **não há teste WebGL no navegador nem build completo executado** nesta etapa.
 - **Governança:** PR #3422 permanece Draft; sem merge, deploy ou alterações na Contabo/produção.
+
+
+## 3422-A — fechamento de janela de falha na inicialização WebGL (10/10/2026)
+- **Correção:** commit `b0a9b3d` move `renderer.setPixelRatio` e o anexo do canvas para dentro do `try/catch` protegido pela função de descarte, evitando uma janela de erro após o renderer ser criado mas antes de começar a proteção.
+- **Ordem de registro:** os meshes passam a entrar na lista de recursos para descarte antes de `scene.add(mesh)`, cobrindo também exceção nessa chamada.
+- **Limites:** permanece necessária prova de limpeza para falha antes da criação do mesh (por exemplo, falha ao construir material), além de testes React/WebGL e build TypeScript completo. Não foi executado teste automatizado nessa etapa; correção verificada por inspeção do diff no conector GitHub.
+- **Estado:** PR #3422 Draft, sem merge/deploy; homologação Contabo adiada, produção inalterada.
