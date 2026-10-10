@@ -575,17 +575,17 @@ router.post("/crm/deals/:dealId/couple", async (req, res) => {
             eq(crmTenantCompaniesTable.companyId, parsed.data.contextualCompanyId))).limit(1);
         if (!company) throw Object.assign(new Error("Empresa contextual não pertence ao tenant."), { status: 422 });
       }
-      // Two-person registration must not silently change an existing deal's
-      // active participants. Reuse existing relationships through normal
-      // participant actions instead of overwriting their primary status.
-      const existingActive = await tx.select({ id: crmDealPeopleTable.id })
+      // Existing auxiliary contacts are allowed; avoid creating a second
+      // independent principal couple on top of an existing one.
+      const existingPrincipalClients = await tx.select({ id: crmDealPeopleTable.id })
         .from(crmDealPeopleTable).where(and(
           eq(crmDealPeopleTable.tenantId, tenantId),
           eq(crmDealPeopleTable.dealId, req.params.dealId),
           sql`COALESCE(${crmDealPeopleTable.metadata}->>'inactive', 'false') <> 'true'`,
+          sql`${crmDealPeopleTable.metadata}->>'clientePrincipal' = 'true'`,
         )).limit(1);
-      if (existingActive.length) {
-        throw Object.assign(new Error("Negócio já possui participantes. Vincule o casal pelos cadastros existentes."), { status: 409 });
+      if (existingPrincipalClients.length) {
+        throw Object.assign(new Error("Negócio já possui clientes principais. Vincule ou edite os cadastros existentes."), { status: 409 });
       }
       const people = [];
       for (const [index, person] of parsed.data.people.entries()) {
