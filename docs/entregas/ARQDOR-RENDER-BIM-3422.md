@@ -755,3 +755,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Implementação:** commit `abfbb07` sobrepõe uma linha-guia verde acima da borda superior da parede selecionada, usando as coordenadas 2D, a altura da parede e `depthTest: false`. A guia não modifica a geometria resultante da união; seu material e geometria entram na lista de descarte da cena.
 - **Validação:** inspeção da implementação no GitHub; ainda não foram executados testes visuais/browser, Vitest ou build completo, e a guia não representa seleção por clique no 3D.
 - **Governança:** PR #3422 Draft, sem merge/deploy ou alteração na Contabo/produção.
+
+
+## 3422-B — seleção 2D/3D bidirecional (10/10/2026)
+- **Implementado:** commit `8134845` adiciona seleção por clique no WebGL. Para paredes diagonais renderizadas individualmente, usa `mesh.name`; para a união ortogonal, utiliza raycast da superfície e distância do ponto atingido à linha central da parede, descontando a espessura e a altura, sem alterar a malha CSG. Limpa o listener ao desmontar a cena.
+- **Integração:** commit `d965c80` conecta `onSelect={setActive}` ao estado principal; seleção na planta SVG, prévia isométrica SVG ou WebGL compartilha a mesma parede ativa. Mantém a marcação existente da parede selecionada.
+- **Limitação técnica:** associação por proximidade da linha central pode ser ambígua em encontros de paredes/aberturas e precisa de testes de raycast em navegador. Não permite ainda deslocar vértices diretamente por drag 3D; alterações geométricas continuam no editor 2D/propriedades.
+- **Validação e governança:** mudanças revisadas como código no GitHub; Vitest, build completo, integração React e renderização WebGL real NÃO executados. PR #3422 Draft, sem merge/deploy/produção.
