@@ -380,6 +380,8 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
             continue;
           }
           const observations = [observation, secondaryObservation].filter((value): value is NonNullable<typeof value> => Boolean(value));
+          let findingsCount = 0;
+          let hadCollision = false;
           for (const observation of observations) {
           const decision = classifyManagerDemand("tenant_operation");
           if (decision.route !== "jarvis") throw new Error("ROUTING_POLICY_MISMATCH");
@@ -404,10 +406,7 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
           if ((inserted.rowCount ?? 0) === 0) {
             log.warn({ tenantId, domain, signal: observation.signal },
               "active-managers: signal belongs to another Jarvis source; skipping");
-            await client.query(
-              "INSERT INTO agent_manager_runs (tenant_id,domain,period_key,outcome,finding_count) VALUES ($1,$2,$3,'skipped_source_collision',0) ON CONFLICT DO NOTHING",
-              [tenantId, domain, periodKey],
-            );
+            hadCollision = true;
             continue;
           }
           // Respect manual case closure: only notify while the corresponding
@@ -417,11 +416,7 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
             [tenantId, observation.signal],
           );
           if (activeCase.rows[0]?.status !== 'open') {
-            await client.query(
-              "INSERT INTO agent_manager_runs (tenant_id,domain,period_key,outcome,finding_count) VALUES ($1,$2,$3,'completed',1) ON CONFLICT DO NOTHING",
-              [tenantId, domain, periodKey],
-            );
-            await client.query('RELEASE SAVEPOINT manager_domain');
+            findingsCount++;
             // Manual closure remains authoritative; do not count it as an active finding.
             continue;
           }
@@ -451,12 +446,13 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
              ORDER BY u.id LIMIT 1`,
             [tenantId, observation.title, observation.detail],
           );
-          await client.query(
-            "INSERT INTO agent_manager_runs (tenant_id,domain,period_key,outcome,finding_count) VALUES ($1,$2,$3,'completed',1) ON CONFLICT DO NOTHING",
-            [tenantId, domain, periodKey],
-          );
+          findingsCount++;
           cases += inserted.rowCount ?? 0;
           }
+          await client.query(
+            "INSERT INTO agent_manager_runs (tenant_id,domain,period_key,outcome,finding_count) VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING",
+            [tenantId, domain, periodKey, hadCollision ? 'skipped_source_collision' : 'completed', findingsCount],
+          );
           await client.query('RELEASE SAVEPOINT manager_domain');
           } catch (domainError) {
             await client.query('ROLLBACK TO SAVEPOINT manager_domain');
