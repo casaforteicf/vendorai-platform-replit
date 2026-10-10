@@ -402,6 +402,11 @@ async function advanceAutonomousImprovement() {
     [randomUUID(), item.id, JSON.stringify({ sourceType: item.sourceType, sourceRefId: item.sourceRefId })],
   );
 
+  // Heartbeat permite distinguir execução longa de execução abandonada.
+  const heartbeat = setInterval(() => {
+    void pool.query("UPDATE admin_improvements SET updated_at=now() WHERE id=$1 AND agent_status='running'", [item.id]).catch(() => undefined);
+  }, 60_000);
+  heartbeat.unref();
   try {
     const result = await executeDevAutonomousWork({
       requestId: String(item.id),
@@ -437,6 +442,8 @@ async function advanceAutonomousImprovement() {
       [item.id, message.slice(0, 12000)],
     );
     return false;
+  } finally {
+    clearInterval(heartbeat);
   }
 }
 
