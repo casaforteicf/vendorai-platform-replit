@@ -82,12 +82,12 @@ export function isManagerDue(
   now: Date,
 ): boolean {
   if (!Number.isFinite(now.getTime())) return false;
+  const interval = MANAGER_INTERVAL_MINUTES[domain];
+  if (!Number.isFinite(interval) || interval <= 0) return false;
   if (lastSuccessfulRun === null) return true;
   if (!Number.isFinite(lastSuccessfulRun.getTime())) return true;
   // A future timestamp (clock skew or corrupt data) must not indefinitely starve scans.
   if (lastSuccessfulRun.getTime() > now.getTime()) return true;
-  const interval = MANAGER_INTERVAL_MINUTES[domain];
-  if (!Number.isFinite(interval) || interval <= 0) return false;
   return now.getTime() - lastSuccessfulRun.getTime()
     >= interval * 60_000;
 }
