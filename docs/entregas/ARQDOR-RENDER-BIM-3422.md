@@ -659,3 +659,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Cobertura persistida:** testes Vitest no arquivo `RenderStudioParametricWebgl.test.ts` verificam paredes X/Y, diagonal, projeto vazio, NaN e entrada nula (commit `68b3b0a`).
 - **Validação:** revisão estática dos arquivos e commits no GitHub. **Vitest, build TypeScript e testes de navegador ainda não executados**, portanto o roteamento não está homologado.
 - **Estado:** PR #3422 permanece Draft, sem merge/deploy; homologação Contabo adiada, produção intacta.
+
+
+## 3422-A — roteamento executado e estado vazio explícito (10/10/2026)
+- **Execução efetiva isolada:** helper `shouldUseOrthogonalUnion` obtido da branch GitHub e executado como JavaScript após remoção apenas das anotações TypeScript. Oito cenários com resultados esperados: horizontal, vertical, diagonal, misto, vazio, entrada nula, NaN e Infinity. **8/8 passaram nesta verificação isolada**.
+- **Correção funcional:** commit `8eec7ac` impede criar renderer/contexto WebGL quando `walls.length === 0` e apresenta a instrução `Adicione uma parede para visualizar o modelo 3D.` no estado vazio.
+- **Limite de evidência:** não houve execução de Vitest, compilação TypeScript, teste de componente React ou build completo. Estado vazio verificado por inspeção do diff, não por navegador.
+- **Governança:** PR #3422 Draft, sem merge/deploy e sem modificações na Contabo/produção.
