@@ -2321,7 +2321,11 @@ router.patch("/deals/:id", async (req, res) => {
         const tipoFechamento = deal.tipoFechamento ?? tenant?.tipoFechamentoDefault ?? "pedido";
         req.log.info({ dealId: deal.id, tipoFechamento, dealTipoFechamento: deal.tipoFechamento, tenantDefault: tenant?.tipoFechamentoDefault }, "deal-ganho: resolved tipoFechamento");
         if (tipoFechamento === "contrato" || tipoFechamento === "pedido_e_contrato") {
-          if (!isZapSignConfigured()) {
+          if (deal.zapsignDocId) {
+            // A remote document already exists. Never send another one on retry.
+            contractSent = true;
+            req.log.info({ dealId: deal.id }, "deal-ganho: contrato ZapSign já vinculado; reenvio ignorado");
+          } else if (!isZapSignConfigured()) {
             contractSent = false;
             contractSkipReason = "zapsign_not_configured";
             await db
