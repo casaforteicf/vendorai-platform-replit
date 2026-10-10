@@ -507,17 +507,18 @@ async function auditFrontendRoutes(): Promise<AuditFinding[]> {
 
   for (const path of routes) {
     const url = `${base}${path}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
       const startedAt = Date.now();
       const response = await fetch(url, {
         method: "GET",
         signal: controller.signal,
-        redirect: "follow",
+        redirect: "manual",
         headers: { "User-Agent": "VendorAI-Continuous-Audit/1.0" },
       });
-      clearTimeout(timeout);
+      // Auth redirects and 401/403 are normal for protected SPA routes.
+      // An unauthenticated HTTP probe cannot validate rendered UI.
       const latency = Date.now() - startedAt;
 
       if (response.status >= 500 || latency > 5000) {
@@ -535,12 +536,14 @@ async function auditFrontendRoutes(): Promise<AuditFinding[]> {
       findings.push({
         key: `ui-route:${path}:unreachable`,
         title: `Rota inacessível: ${path}`,
-        description: `A auditoria não conseguiu abrir ${url}: ${error instanceof Error ? error.message : String(error)}`,
+        description: `A auditoria HTTP da rota ${path} não respondeu: ${error instanceof Error ? error.name : "NetworkError"}. Validar em homologação sem incluir parâmetros ou dados de sessão.`,
         module: "UI / UX",
         priority: "alta",
         riskSummary: "A rota pode estar indisponível ou presa em falha de runtime.",
         acceptanceCriteria: `${path} deve responder de forma estável e ser validada pelo Browser Agent em desktop e mobile.`,
       });
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
