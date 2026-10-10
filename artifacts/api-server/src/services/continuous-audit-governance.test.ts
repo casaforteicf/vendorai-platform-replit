@@ -23,6 +23,8 @@ describe("UX and Security manager governance", () => {
   it("throttles UX browser reports and keeps the homologation API isolated", () => {
     const frontend = readFileSync(new URL("../../../frontend/src/components/RouteContentErrorBoundary.tsx", import.meta.url), "utf8");
     expect(frontend).toContain("sessionStorage.getItem(throttleKey)");
+    expect(frontend).toContain("allowedModules.has(routeKey)");
+    expect(frontend).toContain("new Set([");
     expect(frontend).toContain("window.location.hostname");
     expect(frontend).toContain("import.meta.env.VITE_API_URL");
     expect(frontend).toContain("try {");
