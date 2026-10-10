@@ -81,7 +81,7 @@ restore(){
  fi
  docker rm -f "$NEXT" >/dev/null 2>&1 || true
 }
-trap 'restore; cleanup' EXIT
+trap 'rc=$?; trap - EXIT; restore; cleanup; exit "$rc"' EXIT
 docker stop "$CURRENT" >/dev/null
 docker rename "$CURRENT" "$BACK"
 swapped=1
