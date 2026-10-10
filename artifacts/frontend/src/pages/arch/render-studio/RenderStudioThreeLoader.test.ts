@@ -1,0 +1,52 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { loadThree } from "./RenderStudioParametricWebgl";
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+  document.head.querySelectorAll('script[src*="three.min.js"]').forEach(node => node.remove());
+});
+
+describe("Arqdor Three.js loader", () => {
+  it("rejects a failed CDN request and allows retry", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("THREE", undefined);
+    const first = loadThree();
+    const firstScript = document.head.querySelector('script[src*="three.min.js"]') as HTMLScriptElement;
+    expect(firstScript).toBeTruthy();
+    firstScript.onerror?.(new Event("error"));
+    await expect(first).rejects.toThrow("Não foi possível carregar Three.js");
+    expect(firstScript.isConnected).toBe(false);
+    const retry = loadThree();
+    const secondScript = document.head.querySelector('script[src*="three.min.js"]') as HTMLScriptElement;
+    expect(secondScript).toBeTruthy();
+    vi.stubGlobal("THREE", { WebGLRenderer: class {} });
+    secondScript.onload?.(new Event("load"));
+    await expect(retry).resolves.toBeUndefined();
+  });
+
+  it("rejects an incomplete successful download", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("THREE", undefined);
+    const result = loadThree();
+    const script = document.head.querySelector('script[src*="three.min.js"]') as HTMLScriptElement;
+    script.onload?.(new Event("load"));
+    await expect(result).rejects.toThrow("Three.js carregado sem WebGLRenderer");
+    expect(script.isConnected).toBe(false);
+  });
+
+  it("times out, removes the script, and ignores late load", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("THREE", undefined);
+    const result = loadThree();
+    const script = document.head.querySelector('script[src*="three.min.js"]') as HTMLScriptElement;
+    const lateLoad = script.onload;
+    const rejection = expect(result).rejects.toThrow("Tempo esgotado ao carregar Three.js");
+    await vi.advanceTimersByTimeAsync(12000);
+    await rejection;
+    expect(script.isConnected).toBe(false);
+    vi.stubGlobal("THREE", { WebGLRenderer: class {} });
+    lateLoad?.(new Event("load"));
+    expect(script.isConnected).toBe(false);
+  });
+});
