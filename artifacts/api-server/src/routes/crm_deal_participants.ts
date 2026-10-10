@@ -510,6 +510,7 @@ router.patch("/crm/deals/:dealId/people/:personId/profile", async (req, res) => 
 const coupleSchema = z.object({
   tenantId: z.string().optional(),
   people: z.tuple([personSchema.omit({ tenantId: true }), personSchema.omit({ tenantId: true })]),
+  primaryContactIndex: z.union([z.literal(0), z.literal(1)]).optional(),
   contextualCompanyId: z.string().nullable().optional(),
   registrationRequestId: z.string().optional(),
 });
@@ -522,6 +523,7 @@ router.post("/crm/deals/:dealId/couple", async (req, res) => {
     const registrationRequestId = parseRegistrationRequestId(parsed.data.registrationRequestId);
     const registrationPayloadHash = registrationRequestId
       ? fingerprintRegistrationPayload({ people: parsed.data.people,
+          ...(parsed.data.primaryContactIndex !== undefined ? { primaryContactIndex: parsed.data.primaryContactIndex } : {}),
           contextualCompanyId: parsed.data.contextualCompanyId ?? null }) : null;
     const [first, second] = parsed.data.people;
     const firstDoc = digits(first.documento);
@@ -588,7 +590,7 @@ router.post("/crm/deals/:dealId/couple", async (req, res) => {
         }).returning({ id: crmPeopleMasterTable.id });
         const [link] = await tx.insert(crmDealPeopleTable).values({
           tenantId, dealId: req.params.dealId, personId: created.id, role: "consumidor_final",
-          isPrimary: index === 0, contextualCompanyId: parsed.data.contextualCompanyId ?? null,
+          isPrimary: index === (parsed.data.primaryContactIndex ?? 0), contextualCompanyId: parsed.data.contextualCompanyId ?? null,
           relationshipScope: "deal_only",
           metadata: appendRelationshipEvent({ clientePrincipal: true, ordemClientePrincipal: index + 1, grupoCliente: "multiplo",
             ...(registrationRequestId ? { registrationRequestId, registrationPayloadHash } : {}) },
@@ -600,7 +602,7 @@ router.post("/crm/deals/:dealId/couple", async (req, res) => {
       await tx.update(crmDealPeopleTable).set({ isPrimary: false, updatedAt: new Date() })
         .where(and(eq(crmDealPeopleTable.tenantId, tenantId),
           eq(crmDealPeopleTable.dealId, req.params.dealId),
-          sql`${crmDealPeopleTable.personId} <> ${people[0].personId}`));
+          sql`${crmDealPeopleTable.personId} <> ${people[parsed.data.primaryContactIndex ?? 0].personId}`));
       if (parsed.data.contextualCompanyId) {
         const [existingCompanyLink] = await tx.select({ metadata: crmDealCompaniesTable.metadata })
           .from(crmDealCompaniesTable).where(and(
