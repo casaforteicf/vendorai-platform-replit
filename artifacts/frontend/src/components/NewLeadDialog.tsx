@@ -616,10 +616,12 @@ export function NewLeadDialog({
           people: [
             { nome: values.nome.trim(), telefone: values.telefone || undefined,
               email: values.email || undefined, documento: values.documento || undefined,
-              dataNascimento: values.dataNascimento || undefined, source: values.source },
+              dataNascimento: values.dataNascimento || undefined,
+              profissao: values.profissao?.trim() || undefined, source: values.source },
             { nome: coClient.nome.trim(), telefone: coClient.telefone.trim() || undefined,
               email: coClient.email.trim() || undefined, documento: coClient.documento.trim() || undefined,
-              dataNascimento: coClient.dataNascimento || undefined, source: values.source },
+              dataNascimento: coClient.dataNascimento || undefined,
+              profissao: coClient.funcao.trim() || undefined, source: values.source },
           ],
         },
       );
