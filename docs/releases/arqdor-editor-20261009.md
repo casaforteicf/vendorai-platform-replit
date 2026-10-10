@@ -398,3 +398,8 @@ Adicionado `conceptArchitecturalViews.ts` com projeções puras 2D (contornos de
 ### Prévia visual independente do modelo paramétrico — 10/10/2026
 
 Adicionado `ConceptArchitecturalPreview.tsx`, componente React isolado com alternância entre planta SVG 2D e representação volumétrica preliminar, usando as mesmas projeções derivadas do snapshot arquitetônico, com filtros por pavimento e marcações de lajes, vazios, escadas e cobertura. Teste de interface em `ConceptArchitecturalPreview.test.tsx` exercita troca das vistas e preservação de snapshot. Commits 2434ee2 e 423c0b8. **Componente ainda não instanciado em ConceptPlanner ou conectado aos renderizadores oficiais; sua vista de volumes é um indicador gráfico top-down, não WebGL nem 3D definitivo.** Teste, typecheck, build e inspeção visual pendentes. Sem merge, homologação ou publicação.
+
+
+### Painel integrado à seção Construir — 10/10/2026
+
+`ConceptArchitecturalElementsPanel.tsx` oferece criação, seleção, edição de posição e dimensões e exclusão de lajes, escadas retas e coberturas, apresentando prévia 2D/volumétrica e área líquida de lajes. `ConceptPlanner.tsx` passa a montar o painel lazy na aba Construir usando snapshot arquitetônico React local. Commits 80d8994 e 325d605. **Limitações:** não persiste no projeto/backend, elementos novos não são desenhados nas vistas oficiais ConceptPlan2D/ConceptModel3D/WebGL, escadas/coberturas têm propriedades avançadas ainda fixadas em valores iniciais, interação gráfica direta com mouse/touch ausente. Sem testes executados, build ou inspeção integrada. PR draft, sem merge, homologação ou publicação.
