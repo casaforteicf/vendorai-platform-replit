@@ -74,6 +74,17 @@ describe("agent manager policy", () => {
       .toBe(managerSupportSourceRef("crm", "platform_defect", "same", "tenant-a"));
   });
 
+  it("escalates an existing deduplicated security review without duplicating it", () => {
+    const source = readFileSync(new URL("./agent-manager-support.ts", import.meta.url), "utf8");
+    const prior = source.indexOf("if (previous.rows[0])");
+    const upgrade = source.indexOf("UPDATE admin_improvements SET priority='urgente'");
+    const commit = source.indexOf('await client.query("COMMIT")', prior);
+    expect(prior).toBeGreaterThan(-1);
+    expect(upgrade).toBeGreaterThan(prior);
+    expect(commit).toBeGreaterThan(upgrade);
+    expect(source).toContain('if (f.kind === "security_incident")');
+  });
+
   it("forces urgent priority for security incident support reviews", () => {
     const source = readFileSync(new URL("./agent-manager-support.ts", import.meta.url), "utf8");
     expect(source).toContain('f.kind === "security_incident" && f.priority !== "urgente"');
