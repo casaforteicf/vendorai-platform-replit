@@ -173,7 +173,14 @@ async function validateRepresentativeFunction(tenantId: string, functionId: stri
       eq(tenantUserFunctionsTable.kind, "external_company"),
     ))
     .limit(1);
-  return representativeFunction ?? null;
+  // A representação precisa ter vínculo com tenant real, permissão comercial
+  // e não pode estar desativada. Funções com configuração de distribuição nula
+  // permanecem elegíveis para atribuição manual (legado).
+  if (!representativeFunction?.linkedTenantId ||
+      representativeFunction.leadAssignmentEnabled === false ||
+      !Array.isArray(representativeFunction.permissions) ||
+      !representativeFunction.permissions.includes("leads")) return null;
+  return representativeFunction;
 }
 
 async function findRepresentativeLeadAccess(req: any, targetTenantId: string, functionId?: string | null) {
