@@ -305,3 +305,9 @@ Não considerar item 2 encerrado: o fluxo de criação de lead ainda invoca serv
 - No fechamento comercial, quando `deals.zapsign_doc_id` já está preenchido, a emissão de um novo documento ZapSign é ignorada e o contrato existente é preservado. Evita reenvio em reprocessamentos comuns com referência externa persistida.
 - **Limites críticos:** proteção não serializa duas chamadas simultâneas iniciadas sem token, nem resolve resposta externa bem-sucedida que não tenha sido gravada. Necessários reserva transacional, chave de idempotência com fornecedor (quando disponível), reconciliação pós-falha e testes sandbox.
 - Evidência: commit aceito pelo GitHub; sem teste executado, build, homologação, merge ou publicação.
+
+## Identificador estável para conciliação Asaas — 10/10/2026
+- Commits `24cb92c` e correção de compatibilidade `aac5646` na PR #3428.
+- Em `createCharge`, integrações de entrega por SKU continuam com o identificador histórico `sku_delivery:<proposalId>`; demais cobranças recebem `vendorai:deal:<dealId>` para facilitar busca e conciliação externa em falha de gravação local.
+- **Não é idempotência garantida:** `externalReference` pode ser apenas metadado do provedor e não impedir requisições duplicadas. Precisa contrato documentado do Asaas, consulta de reconciliação por referência, bloqueio/reserva persistente e testes de concorrência para impedir cobranças em duplicidade.
+- Sem TypeScript, build, testes, homologação, migração, merge ou deploy.
