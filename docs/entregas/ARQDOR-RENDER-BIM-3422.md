@@ -608,3 +608,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Correção:** `c6ca3d5` adiciona verificação cruzada dos intervalos horizontais e verticais à construção da malha diagonal; interseção simultânea gera erro explícito `Aberturas sobrepostas na parede`, enquanto contato apenas pelas bordas segue permitido.
 - **Verificação:** alteração confirmada por leitura de código; a suíte Vitest do projeto, build TypeScript e execução visual no navegador **não foram executados nesta rodada**. Não há homologação a declarar.
 - **Estado:** PR #3422 Draft; nenhuma publicação, merge ou alteração na Contabo/produção.
+
+
+## 3422-A — validação executada do ramo diagonal (10/10/2026)
+- **Correção:** `2e9070c` valida comprimento dos vetores e finitude das coordenadas `start/end` antes de processar paredes diagonais em `buildWallGeometry`; o ramo ortogonal já possuía guarda equivalente.
+- **Execução isolada real:** código da função `buildWallGeometry` extraído do arquivo TS da branch, com remoção de anotações de tipo e mock mínimo dos objetos geométricos Three.js, executado em isolate JavaScript. Casos: parede diagonal com janela válida (64 triângulos), coordenada NaN (rejeitada), Infinity (rejeitada), aberturas sobrepostas (rejeitadas), aberturas adjacentes (80 triângulos, aceitas). **5/5 comportamentos esperados**.
+- **Limites:** execução de função transpile-like e mocks **não** equivalem a build TypeScript, renderização de GPU, suíte Vitest ou homologação. Continuam pendentes validações do componente montado e do binário na Contabo.
+- **Governança:** PR #3422 Draft, sem merge/deploy/publicação; Contabo e produção inalteradas.
