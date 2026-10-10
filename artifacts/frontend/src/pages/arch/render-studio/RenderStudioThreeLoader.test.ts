@@ -43,6 +43,20 @@ describe("Arqdor Three.js loader", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("cleans the timer if script injection fails", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("THREE", undefined);
+    const { loadThree } = await import("./RenderStudioParametricWebgl");
+    const append = vi.spyOn(document.head, "appendChild")
+      .mockImplementation(() => { throw new Error("DOM unavailable"); });
+    try {
+      await expect(loadThree()).rejects.toThrow("Não foi possível iniciar o carregamento de Three.js");
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      append.mockRestore();
+    }
+  });
+
   it("rejects an incomplete successful download", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("THREE", undefined);
