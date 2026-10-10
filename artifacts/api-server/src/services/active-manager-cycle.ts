@@ -47,15 +47,26 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
         "SELECT id FROM tenants WHERE status='active' ORDER BY id LIMIT 500 OFFSET $1",
         [pageOffset],
       );
+      // Marketing runs hourly. Selecting its page with the 15-minute bucket
+      // could repeatedly pick the same page when pageCount divides four.
+      const marketingBucket = Math.floor(now.getTime() / (60 * 60_000));
+      const marketingOffset = (marketingBucket % pageCount) * 500;
+      const marketingTenants = await client.query(
+        "SELECT id FROM tenants WHERE status='active' ORDER BY id LIMIT 500 OFFSET $1",
+        [marketingOffset],
+      );
+      const regularIds = new Set<string>(tenants.rows.map((row: { id: string }) => row.id));
+      const marketingIds = new Set<string>(marketingTenants.rows.map((row: { id: string }) => row.id));
+      const tenantIds = new Set<string>([...regularIds, ...marketingIds]);
       let scanned = 0;
       let cases = 0;
       let resolved = 0;
       let tenantFailures = 0;
-      for (const row of tenants.rows) {
-        const tenantId: string = row.id;
+      for (const tenantId of tenantIds) {
         await client.query('SAVEPOINT manager_tenant');
         try {
         for (const domain of DOMAINS) {
+          if (domain === "marketing" ? !marketingIds.has(tenantId) : !regularIds.has(tenantId)) continue;
           await client.query('SAVEPOINT manager_domain');
           try {
           // The scheduler may fire seconds late. Bucket-level dedupe, not an
