@@ -727,3 +727,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Validação executada:** carregador `loadThree` extraído da branch e executado em JavaScript com objetos DOM e timers simulados. A primeira solicitação recebeu `onerror`, retornou erro controlado e removeu o script; a segunda chamada criou um script novo e resolveu após receber `THREE.WebGLRenderer` válido, sem timers restantes. Resultado: **cenário de recuperação passou**.
 - **Manutenção:** commit `7b98fd8` apenas explicita a limpeza do cache `engine` na Promise rejeitada, sem modificação funcional pretendida.
 - **Escopo da evidência:** teste isolado, não Vitest nem browser real; testes integrados e build completo continuam pendentes. PR #3422 permanece Draft, sem merge ou deploy e sem alteração de produção.
+
+
+## 3422-A — recuperação após timeout verificada (10/10/2026)
+- **Verificação do ambiente:** Node.js e TypeScript disponíveis no ambiente de execução, mas não existe checkout do repositório nem dependências instaladas do frontend; por isso, não foram executados Vitest, typecheck integral ou build Vite. Não afirmar homologação.
+- **Teste persistido:** commit `38891fa` adiciona regressão Vitest que esgota 12 segundos com relógio falso, verifica a remoção da tag, refaz o carregamento, confirma `WebGLRenderer` e ausência de temporizadores pendentes.
+- **Execução independente realizada:** `loadThree` extraído da branch, com somente tipos TS removidos, foi executado em JavaScript com DOM e temporizadores simulados; o primeiro carregamento falhou por timeout, removeu o script, uma nova chamada carregou com sucesso e restaram zero timers. Cenário isolado aprovado, mas não substitui Vitest/browser.
+- **Governança:** PR #3422 Draft, sem merge/deploy, produção inalterada.
