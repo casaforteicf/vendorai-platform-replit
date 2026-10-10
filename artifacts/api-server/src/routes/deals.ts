@@ -867,6 +867,16 @@ router.post("/deals/:id/execution-batches", async (req, res) => {
     throw err;
   });
   if (!outcome) return res.status(409).json({ error: "Quantidade excede o saldo disponível para execução." });
+  if (!outcome.replay) {
+    await recordDealJourney({
+      tenantId: deal.tenantId,
+      leadId: deal.leadId,
+      dealId: deal.id,
+      title: "Lote de execução criado",
+      description: `Lote ${outcome.card.id} vinculado à proposta ${proposal.id}. Itens e quantidades: ${JSON.stringify(outcome.itens)}. Justificativa: ${parsed.data.justificativa}`,
+      responsavelId: req.user?.sub ?? null,
+    });
+  }
   res.status(outcome.replay ? 200 : 201).json(outcome);
 });
 
