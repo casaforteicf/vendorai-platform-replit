@@ -52,7 +52,7 @@ export async function enqueueManagerSupportReview(f: ManagerPlatformFinding): Pr
       [sourceRef.slice(0, 24), sourceRef.slice(24)],
     );
     const previous = await client.query<{ id: string }>(
-      "SELECT id FROM admin_improvements WHERE source_type='audit' AND source_ref_id=$1 AND status NOT IN ('cancelada','producao_validada') LIMIT 1",
+      "SELECT id FROM admin_improvements WHERE source_type='audit' AND source_ref_id=$1 AND status NOT IN ('cancelada','producao_validada') ORDER BY created_at DESC, id DESC LIMIT 1",
       [sourceRef],
     );
     if (previous.rows[0]) {
