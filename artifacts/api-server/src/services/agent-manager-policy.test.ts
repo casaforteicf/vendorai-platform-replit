@@ -74,6 +74,12 @@ describe("agent manager policy", () => {
       .toBe(managerSupportSourceRef("crm", "platform_defect", "same", "tenant-a"));
   });
 
+  it("does not conflate the global namespace with a tenant named global", () => {
+    const globalReview = managerSupportSourceRef("crm", "platform_defect", "same");
+    const tenantReview = managerSupportSourceRef("crm", "platform_defect", "same", "global");
+    expect(globalReview).not.toBe(tenantReview);
+  });
+
   it("keeps support review deduplication isolated by tenant", () => {
     const a = managerSupportSourceRef("crm", "platform_defect", "same-fingerprint", "tenant-a");
     const b = managerSupportSourceRef("crm", "platform_defect", "same-fingerprint", "tenant-b");
