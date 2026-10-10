@@ -69,7 +69,12 @@ router.get("/crm/people", async (req, res) => {
     const like = `%${q}%`;
     const dealPersonIds = await db.select({ personId: crmDealPeopleTable.personId }).from(crmDealPeopleTable)
       .innerJoin(dealsTable, eq(dealsTable.id, crmDealPeopleTable.dealId))
+      .leftJoin(leadsTable, eq(leadsTable.id, dealsTable.leadId))
       .where(and(eq(crmDealPeopleTable.tenantId, tenantId), eq(dealsTable.tenantId, tenantId),
+        // No participant should become searchable solely through an archived lead.
+        // Standalone deals (without leadId) remain independently addressable.
+        or(isNull(dealsTable.leadId),
+          and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm))),
         sql`COALESCE(${crmDealPeopleTable.metadata}->>'inactive', 'false') <> 'true'`,
         ...buildUserFunctionFilter(req, dealsTable)));
     const visibleLeads = await db.select({ id: leadsTable.id }).from(leadsTable)
