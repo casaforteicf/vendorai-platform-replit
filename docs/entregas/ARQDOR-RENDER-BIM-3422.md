@@ -762,3 +762,11 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Integração:** commit `d965c80` conecta `onSelect={setActive}` ao estado principal; seleção na planta SVG, prévia isométrica SVG ou WebGL compartilha a mesma parede ativa. Mantém a marcação existente da parede selecionada.
 - **Limitação técnica:** associação por proximidade da linha central pode ser ambígua em encontros de paredes/aberturas e precisa de testes de raycast em navegador. Não permite ainda deslocar vértices diretamente por drag 3D; alterações geométricas continuam no editor 2D/propriedades.
 - **Validação e governança:** mudanças revisadas como código no GitHub; Vitest, build completo, integração React e renderização WebGL real NÃO executados. PR #3422 Draft, sem merge/deploy/produção.
+
+
+## 3422-D — quantitativos geométricos da união ortogonal (10/10/2026)
+- **Implementação:** `arqdorOrthogonalUnion.ts` agora devolve `netVolumeM3` (soma volumétrica de células ocupadas, sem duplicidade nas interseções e descontando os vãos efetivamente removidos) e `exposedSurfaceM2` (área das faces externas do sólido CSG). Commit `f39e253`.
+- **UI:** a prévia WebGL informa ambos os quantitativos preliminares somente quando há união ortogonal calculada, commit `5c8f469`. Não são orçamento homologado nem quantitativo de materiais acabados.
+- **Regressões persistidas:** commit `f49cb26` adicionou cenários de parede única, porta recortada e encontro T.
+- **Execução isolada:** algoritmo TypeScript extraído do GitHub e executado em JavaScript removendo apenas anotações de tipo: parede 4x3x0,2 = **2,40 m³**, **26,8 m²**; com porta 1x2,1 = **1,98 m³**, **23,44 m²**; encontro T = **4,14 m³**, **45,36 m²**. Todos reportaram `closedByEdgeIncidence = true`. Não equivale a Vitest/build/browser.
+- **Escopo aberto:** suporte CSG conjunto para paredes não ortogonais, edição 3D manipulável, cotas BIM consolidadas, testes integrados/visuais e build completo. PR #3422 Draft, sem merge/deploy/produção.
