@@ -213,6 +213,26 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
         const mesh = new THREE.Mesh(geometry, material);
         mesh.name = wall.id; scene.add(mesh);
       }
+      // The union is a single mesh, so preserve selection context with a
+      // lightweight guide above the selected wall (without changing the CSG).
+      if (union && active) {
+        const selected = walls.find(wall => wall.id === active);
+        if (selected) {
+          const z = selected.height + 0.025;
+          const points = [
+            new THREE.Vector3(selected.start[0], selected.start[1], z),
+            new THREE.Vector3(selected.end[0], selected.end[1], z),
+          ];
+          const guideGeometry = new THREE.BufferGeometry().setFromPoints(points);
+          disposableResources.push(guideGeometry);
+          const guideMaterial = new THREE.LineBasicMaterial({ color: 0x059669, depthTest: false });
+          disposableResources.push(guideMaterial);
+          const guide = new THREE.Line(guideGeometry, guideMaterial);
+          guide.name = `parede-selecionada-${selected.id}`;
+          guide.renderOrder = 10;
+          scene.add(guide);
+        }
+      }
       const bounds = new THREE.Box3().setFromObject(scene);
       const center = bounds.getCenter(new THREE.Vector3());
       const dimensions = bounds.getSize(new THREE.Vector3());
