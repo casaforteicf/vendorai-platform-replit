@@ -92,12 +92,14 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
       camera.up.set(0, 0, 1);
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       const node = holder.current;
-      const geometryObjects: any[] = [];
       const disposableResources: Array<{ dispose: () => void }> = [];
       let observer: ResizeObserver | null = null;
       // Register cleanup before any subsequent scene-building operation can
       // throw. The old handler was registered only after a successful render.
+      let released = false;
       cleanup = () => {
+        if (released) return;
+        released = true;
         observer?.disconnect();
         for (const resource of disposableResources) resource.dispose();
         renderer.dispose();
@@ -122,7 +124,7 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
         const material = new THREE.MeshStandardMaterial({ color: 0x94a3b8, side: THREE.DoubleSide, roughness: .8 });
         disposableResources.push(material);
         const mesh = new THREE.Mesh(geometry, material);
-        mesh.name = "uniao-ortogonal"; geometryObjects.push(mesh); scene.add(mesh);
+        mesh.name = "uniao-ortogonal"; scene.add(mesh);
       } else for (const wall of walls) {
         const geometry = buildWallGeometry(THREE, wall);
         disposableResources.push(geometry);
@@ -132,7 +134,7 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
         });
         disposableResources.push(material);
         const mesh = new THREE.Mesh(geometry, material);
-        mesh.name = wall.id; geometryObjects.push(mesh); scene.add(mesh);
+        mesh.name = wall.id; scene.add(mesh);
       }
       const bounds = new THREE.Box3().setFromObject(scene);
       const center = bounds.getCenter(new THREE.Vector3());
