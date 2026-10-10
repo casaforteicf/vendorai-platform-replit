@@ -630,3 +630,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Regressão persistente:** commit `5f565d6` adiciona teste com `MockBufferGeometry` que lança falha no cálculo de normais, exigindo exatamente uma chamada de descarte.
 - **Validação:** mudança conferida no código via conector GitHub, porém **Vitest, build TypeScript e navegador não executados** nesta etapa. Os demais cenários permanecem pendentes de integração.
 - **Estado:** PR #3422 Draft; sem merge, deploy ou homologação Contabo; produção intacta.
+
+
+## 3422-A — falha injetada em montagem de geometria diagonal (10/10/2026)
+- **Novo teste no repositório:** commit `40ec4bc` acrescenta regressão Vitest de falha em `BufferGeometry.setAttribute`, exigindo descarte único da geometria e propagação do erro original.
+- **Verificação executada nesta rodada:** a função `buildWallGeometry` do commit corrente foi obtida pelo conector GitHub, removidas exclusivamente anotações de tipos, e executada em isolate JS com implementação simulada das primitivas de Three.js. Três cenários: falha `setAttribute` — erro original preservado e `dispose` chamado 1 vez; falha `computeVertexNormals` — erro original preservado e `dispose` chamado 1 vez; geometria diagonal com janela válida — 64 triângulos e nenhum descarte prematuro. Três verificações tiveram os resultados esperados.
+- **Limites:** execução isolada via mocks, **não** runner Vitest, navegador com GPU, build completo ou homologação Contabo.
+- **Governança:** PR #3422 Draft, sem merge/deploy, produção inalterada.
