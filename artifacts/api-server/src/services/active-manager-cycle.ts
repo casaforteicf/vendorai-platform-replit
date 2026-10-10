@@ -278,7 +278,7 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
                 FROM agent_manager_runs
                 WHERE tenant_id=$1 AND domain <> 'master'
                   AND checked_at > now() - interval '24 hours'
-                ORDER BY domain, checked_at DESC, id DESC
+                ORDER BY domain, checked_at DESC
               ) latest WHERE outcome='failed'`,
               [tenantId],
             );
