@@ -89,10 +89,6 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               metric: String(total),
             };
           }
-          await client.query(
-            "INSERT INTO agent_manager_runs (tenant_id,domain,period_key,outcome,finding_count) VALUES ($1,$2,$3,'completed',$4) ON CONFLICT DO NOTHING",
-            [tenantId, domain, periodKey, observation ? 1 : 0],
-          );
           if (!observation) {
             const signals: Record<string, string> = {
               pipeline: 'active-manager:pipeline:overdue-activities',
@@ -111,6 +107,10 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               );
               resolved += closed.rowCount ?? 0;
             }
+            await client.query(
+              "INSERT INTO agent_manager_runs (tenant_id,domain,period_key,outcome,finding_count) VALUES ($1,$2,$3,'completed',0) ON CONFLICT DO NOTHING",
+              [tenantId, domain, periodKey],
+            );
             continue;
           }
           const decision = classifyManagerDemand("tenant_operation");
@@ -130,6 +130,10 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               "Jarvis: avaliar com o tenant e solicitar aprovação para qualquer operação necessária."],
           );
           cases += inserted.rowCount ?? 0;
+          await client.query(
+            "INSERT INTO agent_manager_runs (tenant_id,domain,period_key,outcome,finding_count) VALUES ($1,$2,$3,'completed',1) ON CONFLICT DO NOTHING",
+            [tenantId, domain, periodKey],
+          );
         }
       }
       await client.query("COMMIT");
