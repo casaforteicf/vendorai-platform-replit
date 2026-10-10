@@ -29,7 +29,7 @@ describe("agent manager policy", () => {
     expect(body).toContain("ROLLBACK TO SAVEPOINT manager_domain");
     expect(body).toContain("'failed',0");
     expect(body).toContain("managerExecutionBucket(domain, now)");
-    expect(source).toContain("outcome <> 'completed'");
+    expect(source).toContain("outcome=\'failed\'");
   });
 
   it("requires a description before opening a Superadmin review", () => {
