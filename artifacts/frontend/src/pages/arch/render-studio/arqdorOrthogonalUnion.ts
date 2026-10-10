@@ -8,6 +8,12 @@ export function unionOrthogonalWalls(walls: ParametricWall[]): UnionResult {
   const solids: Box[] = [];
   const voids: Box[][] = [];
   for (const wall of walls) {
+    if (!Array.isArray(wall.start) || !Array.isArray(wall.end) ||
+        wall.start.length !== 2 || wall.end.length !== 2 ||
+        ![...wall.start, ...wall.end].every(Number.isFinite))
+      throw new Error("Coordenadas da parede inválidas");
+    if (!Array.isArray(wall.openings) || wall.openings.length > 100)
+      throw new Error("Aberturas inválidas");
     const dx = wall.end[0] - wall.start[0], dy = wall.end[1] - wall.start[1];
     const len = Math.hypot(dx, dy);
     if (!Number.isFinite(len) || len < .1 || (Math.abs(dx) > 1e-8 && Math.abs(dy) > 1e-8))
@@ -22,7 +28,13 @@ export function unionOrthogonalWalls(walls: ParametricWall[]): UnionResult {
       : [wall.start[0] - wall.thickness / 2, wall.start[0] + wall.thickness / 2,
         Math.min(wall.start[1], wall.end[1]), Math.max(wall.start[1], wall.end[1]), 0, wall.height];
     solids.push(box);
-    if (wall.openings.length > 100) throw new Error("Excesso de aberturas");
+
+    for (const opening of wall.openings) {
+      if (!opening || ![opening.offset, opening.width, opening.sill, opening.height].every(Number.isFinite) ||
+          opening.offset < 0 || opening.width <= 0 || opening.offset + opening.width > len ||
+          opening.sill < 0 || opening.height <= 0 || opening.sill + opening.height > wall.height)
+        throw new Error("Vão inválido");
+    }
     // Match the Python geometry contract: two apertures on the same wall
     // cannot overlap in both horizontal offset and vertical extent.
     for (let i = 0; i < wall.openings.length; i++) {
