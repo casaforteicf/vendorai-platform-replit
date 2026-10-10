@@ -336,6 +336,18 @@ export default function AdminImprovements() {
     refetchInterval: 15000,
   });
 
+  const queueDiagnostics = useQuery<{ items: Array<{ id: string; title: string; eligibility: string; blockers: Array<{ id: string; title: string; status: string }> }>; truncated: boolean }>({
+    queryKey: ["admin", "queue-diagnostics"],
+    enabled: !!token,
+    queryFn: async () => {
+      const response = await fetch("/api/admin/improvements/queue-diagnostics", { headers });
+      if (!response.ok) throw new Error("Diagnóstico da fila indisponível");
+      return response.json();
+    },
+    refetchInterval: 15000,
+    retry: false,
+  });
+
   const metricsQuery = useQuery<ReleaseMetrics>({
     queryKey: ["admin", "releases-metrics"],
     enabled: !!token,
@@ -760,6 +772,19 @@ export default function AdminImprovements() {
           <Button variant="outline" disabled={!executionControl.data || executionControl.data.mode !== "running" || !!busy} onClick={() => void post("/api/admin/releases/execution-control", { mode: "draining", reason: "Pausa segura pelo Superadmin" }, "Pausa segura solicitada").then(() => executionControl.refetch()).catch(() => undefined)}>Pausa segura</Button>
           <Button variant="outline" disabled={!executionControl.data || executionControl.data.mode === "paused" || !!busy} onClick={() => void post("/api/admin/releases/execution-control", { mode: "paused", reason: "Pausa pelo Superadmin" }, "Novos releases pausados").then(() => executionControl.refetch()).catch(() => undefined)}>Pausar</Button>
         </div>
+      </div>
+      <div className="rounded-lg border p-3 text-sm">
+        <p className="font-medium">Diagnóstico da fila de melhorias</p>
+        <p className="text-muted-foreground text-xs">Consulta independente do operador Contabo; não executa nem publica tarefas.</p>
+        {queueDiagnostics.isError ? <p className="mt-2 text-xs">Diagnóstico indisponível. Verifique a migração de dependências.</p> : (
+          <div className="mt-2 flex flex-wrap gap-3 text-xs">
+            <span>Prontas: {queueDiagnostics.data?.items.filter((i) => i.eligibility === "ready").length ?? "..."}</span>
+            <span>Bloqueadas por dependência: {queueDiagnostics.data?.items.filter((i) => i.eligibility === "blocked_dependency").length ?? "..."}</span>
+            <span>Em execução: {queueDiagnostics.data?.items.filter((i) => i.eligibility === "running").length ?? "..."}</span>
+            <span>Precisam de atenção: {queueDiagnostics.data?.items.filter((i) => i.eligibility === "needs_attention").length ?? "..."}</span>
+            {queueDiagnostics.data?.truncated && <span>Mostrando somente os primeiros 100 itens</span>}
+          </div>
+        )}
       </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         {[
