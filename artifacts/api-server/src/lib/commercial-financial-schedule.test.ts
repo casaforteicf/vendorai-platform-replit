@@ -2,6 +2,17 @@ import { describe, expect, it } from "vitest";
 import { allocateExactly, buildFinancialSchedule } from "./commercial-financial-schedule";
 
 describe("LOTE 05 — cronograma físico-financeiro", () => {
+  it("rejeita datas inexistentes ou em formato não canônico", () => {
+    for (const invalid of ["2026-02-30", "2026-2-3", "2026-13-01", "10/10/2026"]) {
+      expect(() => buildFinancialSchedule(100, 10, [
+        { id: "fase", weight: 1, startsAt: invalid },
+      ])).toThrow("Data de etapa inválida");
+    }
+    expect(buildFinancialSchedule(100, 10, [
+      { id: "fase", weight: 1, startsAt: "2026-10-10", endsAt: "2026-10-10" },
+    ]).remainingCents).toBe(90);
+  });
+
   it("normaliza o total físico para 100% sem perda de centavos", () => {
     const result = buildFinancialSchedule(100_001, 10_001, [
       { id: "fundacao", weight: 1 },
