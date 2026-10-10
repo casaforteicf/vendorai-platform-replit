@@ -52,6 +52,11 @@ describe("walk movement", () => {
     expect(end.x).toBeCloseTo(2);
     expect(end.y).toBeLessThan(-0.3);
   });
+  it("rejects unbounded movement requests without entering an excessive loop", () => {
+    const initial = { x: 0, y: 0 };
+    expect(moveWalkPosition(initial, { x: 1e308, y: 1e308 }, [])).toEqual(initial);
+    expect(moveWalkPosition(initial, { x: 1000, y: 0 }, [])).toEqual(initial);
+  });
   it("ignores invalid movement coordinates", () => {
     expect(moveWalkPosition({ x: 1, y: 1 }, { x: NaN, y: 2 }, [])).toEqual({ x: 1, y: 1 });
   });
