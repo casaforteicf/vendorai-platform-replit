@@ -52,3 +52,12 @@ test('online fetch only occurs by explicit opt-in, before networkless offline in
   assert.match(script,/--network none/);
   assert.doesNotMatch(script,/--env-file|--network host|docker\.sock/);
 });
+
+test('crm suite is explicit and keeps global API TypeScript gate separate',()=>{
+  assert.match(script,/\|crm/);
+  assert.match(script,/if \[ "\$SUITE" = crm \]; then/);
+  assert.match(script,/run crm-vitest "pnpm --filter @workspace\/api-server exec vitest run/);
+  assert.match(script,/run api-ts "pnpm --filter @workspace\/api-server typecheck"/);
+  assert.ok(script.indexOf('if [ "$SUITE" = crm ]') < script.indexOf('if [ "$SUITE" = api ]'));
+  assert.match(script,/--network none/);
+});
