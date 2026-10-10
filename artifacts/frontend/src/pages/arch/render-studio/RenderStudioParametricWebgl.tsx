@@ -91,7 +91,6 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
       const camera = new THREE.PerspectiveCamera(48, 1, .01, 3000);
       camera.up.set(0, 0, 1);
       const renderer = new THREE.WebGLRenderer({ antialias: true });
-      renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
       const node = holder.current;
       const geometryObjects: any[] = [];
       let observer: ResizeObserver | null = null;
@@ -106,8 +105,9 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
         renderer.dispose();
         renderer.domElement.remove();
       };
-      node.appendChild(renderer.domElement);
       try {
+      renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+      node.appendChild(renderer.domElement);
       scene.add(new THREE.HemisphereLight(0xffffff, 0x64748b, 1.9));
       const sun = new THREE.DirectionalLight(0xffffff, 1.2);
       sun.position.set(8, -7, 16); scene.add(sun);
@@ -122,7 +122,7 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
         geometry.computeVertexNormals();
         const material = new THREE.MeshStandardMaterial({ color: 0x94a3b8, side: THREE.DoubleSide, roughness: .8 });
         const mesh = new THREE.Mesh(geometry, material);
-        mesh.name = "uniao-ortogonal"; scene.add(mesh); geometryObjects.push(mesh);
+        mesh.name = "uniao-ortogonal"; geometryObjects.push(mesh); scene.add(mesh);
       } else for (const wall of walls) {
         const geometry = buildWallGeometry(THREE, wall);
         const material = new THREE.MeshStandardMaterial({
@@ -130,7 +130,7 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
           side: THREE.DoubleSide, metalness: 0, roughness: .8,
         });
         const mesh = new THREE.Mesh(geometry, material);
-        mesh.name = wall.id; scene.add(mesh); geometryObjects.push(mesh);
+        mesh.name = wall.id; geometryObjects.push(mesh); scene.add(mesh);
       }
       const bounds = new THREE.Box3().setFromObject(scene);
       const center = bounds.getCenter(new THREE.Vector3());
