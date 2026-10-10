@@ -393,3 +393,8 @@ Novo `conceptArchitecturalModel.ts`: modelo serializável v1 para lajes, escadas
 ### Projeções compartilhadas do modelo arquitetônico — 10/10/2026
 
 Adicionado `conceptArchitecturalViews.ts` com projeções puras 2D (contornos de laje, vazio, escada e cobertura) e 3D preliminar (partição retangular da laje preservando vazios, volumes indicativos de degraus e envelope de cobertura). `conceptArchitecturalViews.test.ts` cobre consistência entre projeções, área da laje descontando abertura e alteração imutável por edição. Commits bf69d72, c556378. **Ainda não está integrado aos componentes ConceptPlanner/ConceptPlan2D/ConceptModel3D/ConceptWebGLScene; roof-plane é envelope simplificado, não malha inclinada final; escada ainda não tem corte de laje automático.** Testes/build pendentes. Nenhum merge, homologação ou publicação.
+
+
+### Prévia visual independente do modelo paramétrico — 10/10/2026
+
+Adicionado `ConceptArchitecturalPreview.tsx`, componente React isolado com alternância entre planta SVG 2D e representação volumétrica preliminar, usando as mesmas projeções derivadas do snapshot arquitetônico, com filtros por pavimento e marcações de lajes, vazios, escadas e cobertura. Teste de interface em `ConceptArchitecturalPreview.test.tsx` exercita troca das vistas e preservação de snapshot. Commits 2434ee2 e 423c0b8. **Componente ainda não instanciado em ConceptPlanner ou conectado aos renderizadores oficiais; sua vista de volumes é um indicador gráfico top-down, não WebGL nem 3D definitivo.** Teste, typecheck, build e inspeção visual pendentes. Sem merge, homologação ou publicação.
