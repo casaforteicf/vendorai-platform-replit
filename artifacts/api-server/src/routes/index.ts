@@ -283,8 +283,6 @@ router.use(enforceAccessScope);
 // Session endpoints must be mounted immediately after JWT validation. The
 // frontend needs /auth/me before tenant, onboarding or license checks.
 router.use(authProtectedRouter);
-// Authenticated, tenant-scoped, low-volume UX error reporting.
-router.use(uxRuntimeTelemetryRouter);
 router.use(sketchfabAuthRouter);
 
 // Trial status/continuity must remain reachable even after trial suspension or
@@ -300,6 +298,8 @@ router.use(enforceAccessLicense);
 
 // Commercial entitlement gate: purchased products define which paid capabilities are reachable.
 router.use(enforceCommercialProductAccess);
+// UX telemetry obeys the same tenant, license and entitlement gates as the app.
+router.use(uxRuntimeTelemetryRouter);
 
 // Explicit module allowlist configured in Equipe. This protects the API too,
 // so typing a hidden URL directly does not bypass the permission.
