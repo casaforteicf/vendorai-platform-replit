@@ -26,6 +26,10 @@ export async function enqueueManagerSupportReview(f: ManagerPlatformFinding): Pr
   if (f.priority !== undefined && !priorities.includes(f.priority)) {
     throw new Error("MANAGER_SUPPORT_PRIORITY_INVALID");
   }
+  const structuralKinds = ["platform_defect", "platform_improvement", "shared_behavior", "security_incident"];
+  if (!structuralKinds.includes(f.kind)) {
+    throw new Error("MANAGER_SUPPORT_KIND_INVALID");
+  }
   const policy = classifyManagerDemand(f.kind);
   if (policy.route !== "superadmin_support" || policy.approval !== "superadmin_required") {
     throw new Error("MANAGER_SUPPORT_APPROVAL_POLICY");
