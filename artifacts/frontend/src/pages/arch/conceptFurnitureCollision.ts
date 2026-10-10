@@ -1,7 +1,7 @@
 type Furniture = { kind: string; label?: string; floor: number; x: number; y: number; width: number; depth: number; rotation: number };
 const solidKinds = new Set(["sofa", "bed", "table", "chair", "cabinet", "appliance", "sanitary", "outdoor"]);
 function corners(object: Furniture) {
-  const angle = object.rotation * Math.PI / 180;
+  const angle = (object.rotation % 360) * Math.PI / 180;
   const cos = Math.cos(angle), sin = Math.sin(angle);
   const cx = object.x + object.width / 2, cy = object.y + object.depth / 2;
   return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => ({
