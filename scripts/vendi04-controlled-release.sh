@@ -41,7 +41,12 @@ if [[ "$ACTION" == rollback ]]; then
    exit 1
  fi
  docker start "$CURRENT" >/dev/null
- for _ in $(seq 1 30); do if check; then echo ROLLBACK_HEALTH_200;log "ROLLBACK_OK";exit 0;fi;sleep 2;done
+ for _ in $(seq 1 30); do if check; then
+  sed -i 's/^STATUS=PUBLISHED$/STATUS=ROLLED_BACK/' "$STATE"
+  echo ROLLBACK_HEALTH_200
+  log "ROLLBACK_OK"
+  exit 0
+fi;sleep 2;done
  echo ROLLBACK_HEALTH_FAILED;log "ROLLBACK_HEALTH_FAILED";exit 1
 fi
 # Publish only an image that was actually built and recorded with the requested commit.
