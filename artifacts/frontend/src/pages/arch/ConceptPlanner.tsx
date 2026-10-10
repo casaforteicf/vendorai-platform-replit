@@ -1,3 +1,4 @@
+import { uniqueFurnitureLayouts } from "./conceptFurnitureLayoutOptions";
 import { furnitureLayoutRevision } from "./conceptFurnitureLayoutRevision";
 import { furnitureLayoutCollisionError, furnitureHasClearance, furnitureBlocksZone } from "./conceptFurnitureCollision";
 import { furnitureFitsRoom } from "./conceptFurnitureRoomFit";
@@ -1112,6 +1113,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [furnishLayoutOptions, setFurnishLayoutOptions] = useState<Array<{
     id: string;
     score: number;
+    missingLabels: string[];
     objects: ConceptPlanObject[];
     doorZones: Array<{ x: number; y: number; width: number; height: number }>;
     windowZones: Array<{ x: number; y: number; width: number; height: number }>;
@@ -4244,6 +4246,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const buildCandidate = (variantPresets: FurnishPreset[]) => {
       const occupied = occupiedBase.map((item) => ({ ...item }));
       const objects: ConceptPlanObject[] = [];
+      const missingLabels = variantPresets.filter(item => item.width < 0.3 || item.depth < 0.3).map(item => item.label);
       let score = 0;
 
       for (const item of variantPresets.filter((preset) => preset.width >= 0.3 && preset.depth >= 0.3)) {
@@ -4276,6 +4279,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         }
 
         if (!best) {
+          missingLabels.push(item.label);
           score -= 18;
           continue;
         }
@@ -4309,19 +4313,18 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       }, 0);
       score += wallUtilization;
 
-      return { objects, score };
+      return { objects, score, missingLabels };
     };
 
     const variants = (["base", "mirror-x", "mirror-y", "mirror-xy"] as const)
       .map((mode) => buildCandidate(presets.map((item) => transformPreset(item, mode))))
       .sort((a, b) => b.score - a.score);
 
-    const options = variants
-      .filter((variant) => variant.objects.length > 0)
-      .slice(0, 3)
+    const options = uniqueFurnitureLayouts(variants)
       .map((variant, index) => ({
         id: `layout-${index + 1}-${uid()}`,
         score: variant.score,
+        missingLabels: variant.missingLabels,
         objects: variant.objects,
         doorZones: doorClearances.map((zone) => ({ ...zone })),
         windowZones: windowClearances.map((zone) => ({ ...zone })),
@@ -9654,12 +9657,20 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           className={activePreview
                             ? "h-9 rounded-lg border border-orange-400 bg-orange-50 px-3 text-xs font-semibold text-orange-700"
                             : "h-9 rounded-lg border px-3 text-xs font-semibold"}
-                          title={`Pré-visualizar · pontuação ${option.score.toFixed(0)}`}
+                          title={`Pré-visualizar · pontuação ${option.score.toFixed(0)}${option.missingLabels.length ? ` · Não couberam: ${option.missingLabels.join(", ")}` : ""}`}
                         >
-                          Layout {index + 1} · {option.score.toFixed(0)}
+                          Layout {index + 1} · {option.objects.length} itens{option.missingLabels.length > 0 ? " · Parcial" : ""}
                         </button>
                       );
                     })}
+                    {furnishLayoutSpaceId === selectedClosedSpace.id && (() => {
+                      const preview = furnishLayoutOptions.find(option => option.id === previewFurnishLayoutId);
+                      return preview?.missingLabels.length ? (
+                        <p className="w-full text-xs text-amber-700" role="status">
+                          Sugestão parcial. Não couberam: {preview.missingLabels.join(", ")}. Revise antes de confirmar.
+                        </p>
+                      ) : null;
+                    })()}
                     {furnishLayoutSpaceId === selectedClosedSpace.id && previewFurnishLayoutId && (
                       <button
                         type="button"

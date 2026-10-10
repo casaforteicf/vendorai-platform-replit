@@ -281,3 +281,11 @@ Validação: 122 testes em 23 arquivos passaram; tipagem isolada do helper e tra
 - Mudanças apenas de aparência ou objetos de outro pavimento mantêm sugestões; ordenação de arrays não invalida opções.
 - Verificação: 137 testes passaram em 25 arquivos; tipagem do helper e transformação sintática do editor passaram. Testes de revisão cobrem portas, rotação, espessura, ambiente, terreno, exclusão e materiais.
 - Validação visual integrada e homologação/publicação na Contabo permanecem pendentes.
+
+
+### Opções distintas e sugestões parciais
+
+- Opções repetidas são agrupadas por disposição, tipo, dimensões e orientação, independentemente dos IDs; mantém a melhor pontuação e até três opções distintas.
+- Botões mostram quantidade de itens e indicador Parcial. A prévia lista os itens que não couberam antes da confirmação.
+- Verificação: 141 testes passaram em 26 arquivos; tipagem do helper e transformação sintática do editor passaram. Cobertura inclui IDs, ordem, rotação equivalente, ruído numérico, classificação e limite.
+- Validação visual integrada e homologação/publicação na Contabo permanecem pendentes.
