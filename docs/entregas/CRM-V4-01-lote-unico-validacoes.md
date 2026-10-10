@@ -197,3 +197,12 @@ Não considerar item 2 encerrado: o fluxo de criação de lead ainda invoca serv
 - `883bcef`: componente da interface gera UUID por submissão, reutiliza em retentativa e reinicia ao modificar campos ou após sucesso.
 - Pendências: ainda requer teste simultâneo real, teste de replay, de usuário diferente, de mudança de proposta/itens durante criação, TypeScript/build, homologação. Na base de dados, a chave está em JSON de metadata, protegida pelo lock transacional; avaliar índice dedicado em lote futuro após prova de carga.
 - Status: **implementado em código, sem runtime validado e sem publicação**.
+
+## Continuação 10/10/2026 — precisão, contrato comercial e regressão
+
+- `21f558d` implementou funções comuns `quantityUnits`, `remainingQuantity` e `canAllocateQuantity` em `src/lib/crm-partial-execution.ts` para cálculo em unidades inteiras de 1/10000, evitando erros de soma de ponto flutuante.
+- `6e37579` passou a usar os helpers na validação do POST e no GET de saldos, com no máximo quatro casas decimais por seleção.
+- `38c42d3` acrescentou cenários Vitest para saldo residual, excedente, frações, precisão inválida e histórico excedido. **Testes escritos, não executados**.
+- `707f472` exige o negócio em `ganho` ou `em_execucao` antes do envio e relê a proposta aceita dentro da transação após obter o lock para detectar alterações de status/itens.
+- Os lotes continuam contando no saldo mesmo que um card seja cancelado: **não liberar quantidades automaticamente** sem fluxo explícito de cancelamento/reversão e trilha de auditoria. Implementar reversão posteriormente.
+- Antes da homologação, executar `pnpm exec vitest run src/lib/crm-partial-execution.test.ts`, `tsc -p tsconfig.launch-ci.json --noEmit`, build e testes autenticados de perfis/tenants/replay/concorrência. Sem testes reais ou deploy nesta rodada.
