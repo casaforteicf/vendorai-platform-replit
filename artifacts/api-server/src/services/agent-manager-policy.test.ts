@@ -10,6 +10,13 @@ import {
 } from "./agent-manager-policy.js";
 
 describe("agent manager policy", () => {
+  it("tracks 24-hour Omnichannel response backlog separately", () => {
+    const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
+    expect(source).toContain("active-manager:omnichannel:unread-conversations");
+    expect(source).toContain("active-manager:omnichannel:unread-over-24h");
+    expect(source).toContain('domain === "omnichannel" && !secondaryObservation');
+  });
+
   it("tracks critical pipeline delays independently of routine overdue activity", () => {
     const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
     expect(source).toContain("active-manager:pipeline:overdue-activities");
