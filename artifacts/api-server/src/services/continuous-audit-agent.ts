@@ -208,6 +208,31 @@ async function upsertFinding(finding: AuditFinding, log: Logger) {
   await runEmergencyRemediation(id, finding, log);
 }
 
+async function auditConversationTenantIsolation(): Promise<AuditFinding[]> {
+  // Cross-tenant references are structural security incidents; never include
+  // message content, phone numbers or customer identifiers in the finding.
+  const available = await pool.query(
+    "SELECT to_regclass('public.conversations') AS conversations, to_regclass('public.whatsapp_connections') AS connections",
+  );
+  if (!available.rows[0]?.conversations || !available.rows[0]?.connections) return [];
+  const result = await pool.query(
+    `SELECT count(*)::int AS violations
+     FROM conversations c JOIN whatsapp_connections w ON w.id = c.whatsapp_connection_id
+     WHERE c.tenant_id <> w.tenant_id`,
+  );
+  const violations = Number(result.rows[0]?.violations ?? 0);
+  if (violations === 0) return [];
+  return [{
+    key: "security:cross-tenant-whatsapp-conversation-link",
+    title: "Possível vínculo de conversa entre tenants distintos",
+    description: `Foram identificados ${violations} vínculos de conversas com conexões WhatsApp de outro tenant. Dados sensíveis não foram incluídos. Exige investigação e aprovação do Superadmin antes de correções.`,
+    module: "Segurança / Isolamento multi-tenant",
+    priority: "urgente",
+    riskSummary: "Possível violação de isolamento e de permissões no Omnichannel.",
+    acceptanceCriteria: "Validar os vínculos, corrigir a causa com aprovação do Superadmin e confirmar isolamento entre tenants.",
+  }];
+}
+
 async function auditDatabaseSchema(): Promise<AuditFinding[]> {
   const criticalTables = [
     "tenants", "leads", "deals", "agent_tasks", "agent_configs",
@@ -514,6 +539,7 @@ async function runAudit(log: Logger, mode: "fast" | "deep") {
     }
     const batches = await Promise.all([
       auditDatabaseSchema(),
+      auditConversationTenantIsolation(),
       auditImprovementFlow(),
       ...(mode === "deep" ? [auditRuntimeUrls(), auditFrontendRoutes()] : []),
     ]);
