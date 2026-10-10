@@ -8,6 +8,14 @@ import {
 } from "./agent-manager-policy.js";
 
 describe("agent manager policy", () => {
+  it("rejects invalid cycle timestamps before opening a database transaction", () => {
+    const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
+    const validation = source.indexOf("if (!Number.isFinite(now.getTime()))");
+    const connection = source.indexOf("const client = await pool.connect()");
+    expect(validation).toBeGreaterThan(-1);
+    expect(connection).toBeGreaterThan(validation);
+  });
+
   it("guards Jarvis case upserts by source", () => {
     const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
     expect(source).toContain("ON CONFLICT (tenant_id,signal_key) DO UPDATE SET");
