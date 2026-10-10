@@ -91,6 +91,14 @@ describe("agent manager policy", () => {
     expect(isManagerDue("crm", now, new Date("invalid"))).toBe(false);
   });
 
+  it("rejects unknown cadence domains rather than scheduling silently", () => {
+    const now = new Date("2026-10-10T12:00:00Z");
+    const unexpected = "unknown_domain" as Parameters<typeof managerExecutionBucket>[0];
+    expect(() => managerExecutionBucket(unexpected, now)).toThrow("INVALID_MANAGER_DOMAIN");
+    expect(isManagerDue(unexpected, null, now)).toBe(false);
+    expect(isManagerDue(unexpected, new Date("2026-10-10T11:00:00Z"), now)).toBe(false);
+  });
+
   it("keeps the same idempotency bucket during an interval", () => {
     expect(managerExecutionBucket("pipeline", new Date("2026-10-09T18:00:01Z")))
       .toBe(managerExecutionBucket("pipeline", new Date("2026-10-09T18:14:59Z")));
