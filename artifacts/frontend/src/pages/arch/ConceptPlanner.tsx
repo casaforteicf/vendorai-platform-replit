@@ -9643,10 +9643,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           key={option.id}
                           type="button"
                           onClick={() => setPreviewFurnishLayoutId(option.id)}
-                          onMouseEnter={() => setPreviewFurnishLayoutId(option.id)}
+                          aria-pressed={activePreview}
                           className={activePreview
-                            ? "h-9 rounded-lg border border-orange-400 bg-orange-50 px-3 text-xs font-semibold text-orange-700"
-                            : "h-9 rounded-lg border px-3 text-xs font-semibold"}
+                            ? "h-9 rounded-lg border border-orange-400 bg-orange-50 px-3 text-xs font-semibold text-orange-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+                            : "h-9 rounded-lg border px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"}
                           title={`Pré-visualizar · pontuação ${option.score.toFixed(0)}${option.missingLabels.length ? ` · Não couberam: ${option.missingLabels.join(", ")}` : ""}`}
                         >
                           Layout {index + 1} · {option.objects.length} itens{option.missingLabels.length > 0 ? " · Parcial" : ""}
@@ -9667,7 +9667,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         onClick={() => applyFurnishLayoutOption(previewFurnishLayoutId)}
                         className="h-9 rounded-lg bg-orange-500 px-3 text-xs font-semibold text-white"
                       >
-                        Confirmar layout
+                        Confirmar layout {furnishLayoutOptions.findIndex(option => option.id === previewFurnishLayoutId) + 1}
                       </button>
                     )}
                     {furnishLayoutSpaceId === selectedClosedSpace.id && furnishLayoutOptions.length > 0 && (

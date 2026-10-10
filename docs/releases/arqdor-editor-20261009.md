@@ -307,3 +307,11 @@ Validação: 122 testes em 23 arquivos passaram; tipagem isolada do helper e tra
 - Evita favorecer posições por dimensões locais sem considerar a orientação.
 - Verificação: 147 testes passaram em 27 arquivos; tipagem do helper e transformação sintática do editor passaram. Testes conferem distâncias a 90 graus e consistência ao espelhar uma disposição diagonal.
 - Pontuação continua heurística de pré-projeto. Validação visual integrada e homologação/publicação na Contabo permanecem pendentes.
+
+
+### Seleção explícita da prévia de mobiliário
+
+- Removida troca automática da opção ao passar o mouse. A seleção exige ativação do botão, compatível com clique, toque, Enter e espaço.
+- Botões informam estado selecionado com aria-pressed e possuem foco visível para teclado.
+- Confirmação mostra o número da opção que será aplicada.
+- Verificação desta alteração de interface: transformação sintática do editor passou. Última suíte anterior: 147 testes em 27 arquivos; não repetida nesta alteração. Validação visual integrada e homologação/publicação na Contabo permanecem pendentes.
