@@ -799,7 +799,7 @@ router.post("/deals/:id/execution-batches", async (req, res) => {
   // proposal and prevents over-allocation across two simultaneous sessions.
   const outcome = await db.transaction(async tx => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${deal.tenantId}), hashtext(${proposal.id}))`);
-    const previous = await tx.select({ metadata: workCardsTable.metadata }).from(workCardsTable)
+    const previous = await tx.select({ id: workCardsTable.id, metadata: workCardsTable.metadata }).from(workCardsTable)
       .where(and(eq(workCardsTable.tenantId, deal.tenantId),
         eq(workCardsTable.dealId, deal.id), eq(workCardsTable.pipeline, "execucao")));
     const replay = previous.find(row => {
@@ -811,17 +811,11 @@ router.post("/deals/:id/execution-batches", async (req, res) => {
       if (meta?.fingerprint !== fingerprint || meta?.criadoPor !== (req.user?.sub ?? null)) {
         throw Object.assign(new Error("Chave de envio já utilizada com dados diferentes."), { status: 409 });
       }
-      const [card] = await tx.select().from(workCardsTable).where(and(
+      const [matched] = await tx.select().from(workCardsTable).where(and(
+        eq(workCardsTable.id, replay.id),
         eq(workCardsTable.tenantId, deal.tenantId),
         eq(workCardsTable.dealId, deal.id),
-        eq(workCardsTable.id, (replay as {id?: string}).id ?? ""),
       )).limit(1);
-      // A metadata-only projection lacks the card id; resolve by requestId below.
-      const cards = card ? [card] : await tx.select().from(workCardsTable).where(and(
-        eq(workCardsTable.tenantId, deal.tenantId), eq(workCardsTable.dealId, deal.id),
-        eq(workCardsTable.pipeline, "execucao"),
-      ));
-      const matched = cards.find(c => (c.metadata as Record<string, unknown> | null)?.requestId === parsed.data.requestId);
       if (!matched) throw new Error("Lote registrado não encontrado na leitura.");
       return { card: matched, itens: meta?.itensLote ?? [], replay: true };
     }
