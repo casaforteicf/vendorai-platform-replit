@@ -348,3 +348,8 @@ Validação: 122 testes em 23 arquivos passaram; tipagem isolada do helper e tra
 - 122 imports locais relativos ou pelo alias @/ conferidos contra a árvore completa desse commit; nenhum arquivo ausente. Não valida exports, pacotes externos ou imports computados.
 - Transformações personalizadas de visibilidade e plano de mídia do Vite executadas sobre SidebarLayout, SidebarLayoutLegacy, MediaPlanBatchControl e MediaPlanAutoProductionBridge: quatro verificações passaram.
 - Build completo e validação visual integrada continuam pendentes. Nenhuma alteração funcional, homologação ou publicação nesta verificação.
+
+
+### Robustez numérica da caminhada e do mobiliário — 10/10/2026
+
+A movimentação na caminhada rejeita coordenadas/raios não finitos e deslocamentos extremos (>100 m por operação), evitando iterações excessivas. O cálculo de encaixe de móveis normaliza a rotação antes da projeção geométrica; a deduplicação de opções trata a transição arredondada entre 360° e 0°. Testes de regressão foram adicionados aos respectivos arquivos. Evidência: commits 49f3bbd, 90a3821, 8efe284, 0c4379a. Testes novos ainda não executados; build completo e inspeção integrada seguem pendentes. Sem merge, homologação ou publicação.
