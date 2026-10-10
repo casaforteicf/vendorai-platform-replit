@@ -45,7 +45,7 @@ export async function getExecutionLots(tenantId: string, dealId: string, proposa
       completed: lines.rows.filter((row) => row.source_item_id === balance.itemId && row.status !== "cancelled")
         .reduce((sum, row) => sum + Number(row.completed_quantity), 0),
     }));
-    return { lots: lots.rows, allocations: lines.rows, balances };
+    return { lots: lots.rows, allocations: lines.rows, balances, contractedItems: source.map((item: any, index: number) => ({ itemId: String(index), name: item.nome, unit: item.unidade ?? "un", group: item.etapaNome ?? null, contractedQuantity: Number(item.quantidade) })) };
   } finally {
     client.release();
   }
