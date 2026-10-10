@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 
 // Source contract tests are regression guards, not authenticated API tests.
 const api = readFileSync(new URL("./crm_deal_participants.ts", import.meta.url), "utf8");
-const frontend = readFileSync(new URL("../../../../frontend/src/components/NewLeadDialog.tsx", import.meta.url), "utf8");
+const frontend = readFileSync(new URL("../../../frontend/src/components/NewLeadDialog.tsx", import.meta.url), "utf8");
 
 describe("CRM-02/03 — casal, identidade e contato principal", () => {
   it("mantém ambos como clientes principais individualizados", () => {
