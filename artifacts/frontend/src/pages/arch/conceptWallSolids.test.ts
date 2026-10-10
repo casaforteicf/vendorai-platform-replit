@@ -4,6 +4,29 @@ import { prepareWallSolids } from "./conceptWallSolids";
 const wall = { id: "w1", floor: 0, x1: 0, y1: 0, x2: 4, y2: 0, thickness: 0.15, height: 3 };
 
 describe("paredes 3D com vãos reais", () => {
+  it("identifica esquadria sem parede e IDs duplicados no mesmo pavimento", () => {
+    const result = prepareWallSolids([wall, { ...wall }], [
+      { id: "orfa", wallId: "outra", floor: 0, offset: 0.5, width: 1, height: 2 },
+    ]);
+    expect(result.warnings).toContain("OPENING_ORPHAN:orfa");
+    expect(result.warnings).toContain("WALL_DUPLICATE:w1");
+    expect(result.boxes).toHaveLength(1);
+  });
+
+  it("não gera volumes com coordenadas NaN", () => {
+    const result = prepareWallSolids([{ ...wall, x1: Number.NaN }], []);
+    expect(result.boxes).toEqual([]);
+    expect(result.warnings).toContain("WALL_INVALID:w1");
+  });
+
+  it("independe da ordem de aberturas válidas que não se sobrepõem", () => {
+    const openings = [
+      { id: "p2", wallId: "w1", floor: 0, offset: 0.75, width: 0.7, height: 2 },
+      { id: "p1", wallId: "w1", floor: 0, offset: 0.25, width: 0.7, height: 2 },
+    ];
+    expect(prepareWallSolids([wall], openings)).toEqual(prepareWallSolids([wall], [...openings].reverse()));
+  });
+
   it("representa parede sem aberturas como um volume", () => {
     const result = prepareWallSolids([wall], []);
     expect(result.warnings).toEqual([]);
