@@ -66,6 +66,15 @@ export function buildFinancialSchedule(
     if (!stage.id.trim() || ids.has(stage.id)) throw new Error("ID de etapa vazio ou duplicado");
     ids.add(stage.id);
     if (!Number.isFinite(stage.weight) || stage.weight <= 0) throw new Error("Peso da etapa deve ser positivo");
+    for (const date of [stage.startsAt, stage.endsAt]) {
+      if (date !== undefined) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+            !Number.isFinite(Date.parse(date + "T00:00:00Z")) ||
+            new Date(date + "T00:00:00Z").toISOString().slice(0, 10) !== date) {
+          throw new Error("Data de etapa inválida; utilize AAAA-MM-DD");
+        }
+      }
+    }
     if (stage.startsAt && stage.endsAt && stage.endsAt < stage.startsAt) {
       throw new Error("Data final anterior à inicial");
     }
