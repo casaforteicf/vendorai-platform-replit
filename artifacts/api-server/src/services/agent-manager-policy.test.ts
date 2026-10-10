@@ -74,6 +74,13 @@ describe("agent manager policy", () => {
       .toBe(managerSupportSourceRef("crm", "platform_defect", "same", "tenant-a"));
   });
 
+  it("forces urgent priority for security incident support reviews", () => {
+    const source = readFileSync(new URL("./agent-manager-support.ts", import.meta.url), "utf8");
+    expect(source).toContain('f.kind === "security_incident" && f.priority !== "urgente"');
+    expect(source).toContain('const priority =');
+    expect(source).toContain('priority, sourceRef,');
+  });
+
   it("uses two-key advisory locking for support deduplication", () => {
     const source = readFileSync(new URL("./agent-manager-support.ts", import.meta.url), "utf8");
     expect(source).toContain("pg_advisory_xact_lock(hashtext($1), hashtext($2))");
