@@ -33,3 +33,17 @@ test("categorizes common host failures without emitting stderr",()=>{
   assert.equal(JSON.stringify(result).includes(stderr),false);
  }
 });
+
+test("classifies the actual opaque SSH wrapper failure without pretending to know host cause",()=>{
+ const wrapper="Command failed: ssh -i /app/.vendi-ssh/id_ed25519 -o BatchMode=yes vendorai@172.17.0.1 sudo -n /usr/local/sbin/vendi-contabo-operator releaseStatus AGENT-01\\n";
+ const r=inspect({action:"releaseStatus",lot:"AGENT-01",errorMessage:wrapper});
+ assert.equal(r.category,"REMOTE_EXIT_UNOBSERVABLE");
+ assert.equal(r.exitCode,null);
+ assert.equal(JSON.stringify(r).includes("id_ed25519"),false);
+ assert.equal(r.diagnosticAvailable,true);
+});
+test("preserves the actual host error category when wrapper includes stderr",()=>{
+ const r=inspect({action:"releaseStatus",lot:"AGENT-01",stderr:"Command failed: ssh operator\\nsudo: a password is required",exitCode:1});
+ assert.equal(r.category,"SUDO_POLICY");
+ assert.equal(r.exitCode,1);
+});
