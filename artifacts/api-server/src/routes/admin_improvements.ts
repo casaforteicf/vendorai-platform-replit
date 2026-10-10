@@ -164,7 +164,7 @@ router.get("/admin/improvements/agent-managers/status", async (_req, res) => {
       FROM agent_manager_runs GROUP BY tenant_id, domain
       ORDER BY "lastRunAt" DESC LIMIT 500
     `);
-    const cadenceMinutes: Record<string, number> = { crm: 15, pipeline: 15, marketing: 60, agenda: 30, proposals: 30, integrations: 15, omnichannel: 15, finance: 60, prospecting: 60, construction: 60 };
+    const cadenceMinutes: Record<string, number> = { crm: 15, pipeline: 15, marketing: 60, agenda: 30, proposals: 30, integrations: 15, omnichannel: 15, finance: 60, prospecting: 60, construction: 60, arqdor: 1440, master: 15 };
     const nowMs = Date.now();
     const items = data.rows.map((row: any) => {
       const interval = cadenceMinutes[row.domain] ?? 0;
@@ -191,7 +191,7 @@ router.get("/admin/improvements/agent-managers/status", async (_req, res) => {
         (SELECT count(*)::int FROM tenants WHERE status='active') AS "activeTenants",
         (SELECT count(*)::int FROM (
           SELECT t.id, d.domain FROM tenants t
-          CROSS JOIN (VALUES ('crm',15), ('pipeline',15), ('marketing',60), ('agenda',30), ('proposals',30), ('integrations',15), ('omnichannel',15), ('finance',60), ('prospecting',60), ('construction',60)) AS d(domain,minutes)
+          CROSS JOIN (VALUES ('crm',15), ('pipeline',15), ('marketing',60), ('agenda',30), ('proposals',30), ('integrations',15), ('omnichannel',15), ('finance',60), ('prospecting',60), ('construction',60), ('arqdor',1440), ('master',15)) AS d(domain,minutes)
           LEFT JOIN (
             SELECT tenant_id, domain, max(checked_at) AS last_run,
                    count(DISTINCT period_key)::int AS completed_runs
