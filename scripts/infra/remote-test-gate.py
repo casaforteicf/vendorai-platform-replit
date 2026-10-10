@@ -4,6 +4,7 @@ import fcntl
 import json
 import os
 import re
+import signal
 import shutil
 import subprocess
 import sys
@@ -18,6 +19,7 @@ SHA = re.compile(r"^[0-9a-fA-F]{40}$")
 BRANCH = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,180}$")
 SUITES = {"crm", "api", "frontend", "full"}
 MIN_FREE = 8 * 1024**3
+MAX_EVIDENCE_BYTES = 3 * 1024**3
 
 def validated(pr, branch, sha, suite):
     if not isinstance(pr, int) or isinstance(pr, bool) or not 1 <= pr <= 9999999:
@@ -59,6 +61,9 @@ def run(pr, branch, sha, suite):
             raise ValueError("TEST_EXECUTOR_BUSY")
         if shutil.disk_usage(EVIDENCE).free < MIN_FREE:
             raise ValueError("INSUFFICIENT_DISK_SPACE")
+        total = sum(f.stat().st_size for f in EVIDENCE.glob("pr-*/logs/*.log") if f.is_file() and not f.is_symlink())
+        if total > MAX_EVIDENCE_BYTES:
+            raise ValueError("EVIDENCE_QUOTA_EXCEEDED")
         before = {p.name for p in EVIDENCE.glob("pr-*") if p.is_dir()}
         # Fixed executable and arguments only. No command injection, no shell or production secrets.
         env = {
@@ -68,11 +73,18 @@ def run(pr, branch, sha, suite):
             "VENDORAI_PREPARE_OFFLINE": "0",
             "CI": "true",
         }
+        proc = subprocess.Popen(["bash", str(EXE), *args], cwd=ROOT, env=env,
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                start_new_session=True)
         try:
-            proc = subprocess.run(["bash", str(EXE), *args], cwd=ROOT, env=env,
-                                  timeout=1800, capture_output=True, text=True)
-            rc = proc.returncode
+            rc = proc.wait(timeout=1800)
         except subprocess.TimeoutExpired:
+            os.killpg(proc.pid, signal.SIGTERM)
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                os.killpg(proc.pid, signal.SIGKILL)
+                proc.wait()
             rc = 124
         after = {p.name for p in EVIDENCE.glob("pr-*") if p.is_dir()}
         new = sorted(after - before)
