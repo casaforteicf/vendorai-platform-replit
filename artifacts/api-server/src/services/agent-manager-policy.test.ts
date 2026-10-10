@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   classifyManagerDemand,
   isManagerDue,
@@ -7,6 +8,12 @@ import {
 } from "./agent-manager-policy.js";
 
 describe("agent manager policy", () => {
+  it("guards Jarvis case upserts by source", () => {
+    const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
+    expect(source).toContain("ON CONFLICT (tenant_id,signal_key) DO UPDATE SET");
+    expect(source).toContain("WHERE jarvis_cases.source='active_manager'");
+  });
+
   it("routes tenant operations to Jarvis", () => {
     for (const kind of ["tenant_guidance", "tenant_configuration", "tenant_operation"] as const) {
       expect(classifyManagerDemand(kind)).toMatchObject({
