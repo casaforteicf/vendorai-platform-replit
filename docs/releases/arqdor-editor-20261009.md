@@ -289,3 +289,13 @@ Validação: 122 testes em 23 arquivos passaram; tipagem isolada do helper e tra
 - Botões mostram quantidade de itens e indicador Parcial. A prévia lista os itens que não couberam antes da confirmação.
 - Verificação: 141 testes passaram em 26 arquivos; tipagem do helper e transformação sintática do editor passaram. Cobertura inclui IDs, ordem, rotação equivalente, ruído numérico, classificação e limite.
 - Validação visual integrada e homologação/publicação na Contabo permanecem pendentes.
+
+
+### Dimensões e orientação das sugestões
+
+- Removida redução automática de largura/profundidade ao criar presets; peças fixas que não cabem são omitidas e entram no aviso de sugestão parcial.
+- Presets a 90/270 graus convertem a caixa de implantação para dimensões locais preservando centro, evitando troca dupla de orientação.
+- Busca de posição limita o contorno rotacionado com margem, sem redimensionar. Inserção mantém a posição já validada, evitando um segundo clamp sem rotação.
+- Armários/mesas com dimensões adaptativas explícitas continuam usando as medidas previstas nos respectivos presets.
+- Verificação: 145 testes passaram em 27 arquivos; tipagem do helper e transformação sintática do editor passaram. Cobertura de cama que não cabe, contorno de cama/sofá girado e limites rotacionados.
+- Validação visual integrada e homologação/publicação na Contabo permanecem pendentes.

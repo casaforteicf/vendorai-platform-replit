@@ -1,3 +1,4 @@
+import { furniturePresetFootprint, positionFurnitureInBounds } from "./conceptFurniturePreset";
 import { uniqueFurnitureLayouts } from "./conceptFurnitureLayoutOptions";
 import { furnitureLayoutRevision } from "./conceptFurnitureLayoutRevision";
 import { furnitureLayoutCollisionError, furnitureHasClearance, furnitureBlocksZone } from "./conceptFurnitureCollision";
@@ -4014,11 +4015,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     ): FurnishPreset => ({
       kind: itemKind,
       label,
-      width: Math.min(width, innerWidth),
-      depth: Math.min(depth, innerHeight),
-      x,
-      y,
-      rotation,
+      ...furniturePresetFootprint(width, depth, x, y, rotation),
       wallAffinity,
     });
 
@@ -4255,8 +4252,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           | null = null;
 
         for (const [ox, oy] of offsets) {
-          const x = Math.max(bounds.x + 0.08, Math.min(bounds.x + bounds.width - item.width - 0.08, item.x + ox));
-          const y = Math.max(bounds.y + 0.08, Math.min(bounds.y + bounds.height - item.depth - 0.08, item.y + oy));
+          const position = positionFurnitureInBounds({ ...item, x: item.x + ox, y: item.y + oy }, bounds);
+          if (!position) continue;
+          const { x, y } = position;
           const candidate = { ...item, x, y, floor: activeFloor, rotation: item.rotation ?? 0 };
           if (!furnitureFitsRoom(candidate, selectedClosedSpace.cells)) continue;
           if (objectBatchPlacementError([candidate], lotWidth, lotDepth, activeFloor)) continue;
@@ -4291,8 +4289,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           floor: activeFloor,
           width: item.width,
           depth: item.depth,
-          x: Math.max(0, Math.min(lotWidth - item.width, best.x)),
-          y: Math.max(0, Math.min(lotDepth - item.depth, best.y)),
+          x: best.x,
+          y: best.y,
           rotation: item.rotation ?? 0,
         };
         objects.push(object);
