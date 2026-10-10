@@ -34,12 +34,23 @@ OUT="$(pwd)/.test-evidence"
 mkdir -p "$OUT"
 RUN="$(mktemp -d "$OUT/pr-$PR-XXXXXXXX")"
 mkdir -p "$RUN/work" "$RUN/logs" "$RUN/store"
-# A private writable store keeps pnpm metadata writes off the shared source cache.
-# Copy-on-write reflink is attempted; fallback copies the store (check host disk budget).
-if ! cp -a --reflink=auto "$STORE/." "$RUN/store/"; then
-  echo "Could not snapshot offline store safely (check free space)" >&2; exit 69
+# Reuse only a hydrated ephemeral store for the SAME SHA, without copying or downloading.
+REUSE="$(printenv VENDORAI_REUSE_STORE || true)"
+if [ -n "$REUSE" ]; then
+  REUSE="$(realpath -e "$REUSE")"
+  case "$REUSE" in "$OUT"/pr-*/store) ;; *) echo "Refusing external store reuse" >&2; exit 65;; esac
+  [ -d "$REUSE/v10" ] || { echo "Reusable store lacks v10" >&2; exit 65; }
+  OLD_RUN="$(dirname "$REUSE")"
+  grep -qx "sha=$SHA" "$OLD_RUN/manifest.txt" || { echo "Reusable store SHA mismatch" >&2; exit 65; }
+  grep -qx "cache-fetch exit=0" "$OLD_RUN/results.txt" || { echo "Reusable store not hydrated" >&2; exit 65; }
+  rmdir "$RUN/store"
+  ln -s "$REUSE" "$RUN/store"
+else
+  if ! cp -a --reflink=auto "$STORE/." "$RUN/store/"; then
+    echo "Could not snapshot offline store safely" >&2; exit 69
+  fi
+  chmod -R u+rwX "$RUN/store"
 fi
-chmod -R u+rwX "$RUN/store"
 printf 'pr=%s\nbranch=%s\nsha=%s\nsuite=%s\nstarted=%s\n' "$PR" "$BRANCH" "$SHA" "$SUITE" "$(date -u +%FT%TZ)" >"$RUN/manifest.txt"
 git fetch --no-tags origin "refs/pull/$PR/head" >"$RUN/logs/fetch-pr.log" 2>&1
 PR_SHA="$(git rev-parse FETCH_HEAD)"
