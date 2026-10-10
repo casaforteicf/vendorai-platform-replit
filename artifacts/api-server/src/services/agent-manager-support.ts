@@ -1,6 +1,6 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { pool } from "@workspace/db";
-import { classifyManagerDemand, type ManagerDomain } from "./agent-manager-policy.js";
+import { classifyManagerDemand, managerSupportSourceRef, type ManagerDomain } from "./agent-manager-policy.js";
 
 /**
  * Explicit structural findings only: never reinterpret a tenant configuration
@@ -25,8 +25,7 @@ export async function enqueueManagerSupportReview(f: ManagerPlatformFinding): Pr
   if (policy.route !== "superadmin_support" || policy.approval !== "superadmin_required") {
     throw new Error("MANAGER_SUPPORT_APPROVAL_POLICY");
   }
-  const sourceRef = "manager:" + createHash("sha256")
-    .update([f.module, f.kind, f.fingerprint].join(":")).digest("hex").slice(0, 40);
+  const sourceRef = managerSupportSourceRef(f.module, f.kind, f.fingerprint, f.tenantId);
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
