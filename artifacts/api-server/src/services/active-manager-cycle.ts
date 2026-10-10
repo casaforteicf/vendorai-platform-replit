@@ -1,6 +1,6 @@
 import type { Logger } from "pino";
 import { pool } from "@workspace/db";
-import { classifyManagerDemand, managerExecutionBucket, MANAGER_INTERVAL_MINUTES, type ManagerDomain } from "./agent-manager-policy.js";
+import { classifyManagerDemand, managerExecutionBucket, managerTenantPageOffset, type ManagerDomain } from "./agent-manager-policy.js";
 
 /**
  * AGENT-01: conservative periodic opportunity scan. Creates Jarvis cases only;
@@ -50,13 +50,10 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
         log.info({ scanned: 0, cases: 0, resolved: 0, tenantFailures: 0 }, "active-managers: no active tenants");
         return;
       }
-      const pageCount = Math.max(1, Math.ceil(totalTenants / 500));
       const domainIds = new Map<Exclude<ManagerDomain, "security">, Set<string>>();
       const tenantIds = new Set<string>();
       for (const domain of DOMAINS) {
-        const interval = MANAGER_INTERVAL_MINUTES[domain];
-        const bucket = Math.floor(now.getTime() / (interval * 60_000));
-        const offset = (bucket % pageCount) * 500;
+        const offset = managerTenantPageOffset(domain, now, totalTenants);
         const page = await client.query(
           "SELECT id FROM tenants WHERE status='active' ORDER BY id LIMIT 500 OFFSET $1",
           [offset],
