@@ -358,3 +358,8 @@ A movimentação na caminhada rejeita coordenadas/raios não finitos e deslocame
 ### Normalização de colisões de mobiliário — 10/10/2026
 
 A função de vértices de colisão de mobiliário (`conceptFurnitureCollision.ts`) passou a normalizar ângulos finitos em módulo de 360 graus antes da trigonometria, consistente com a checagem de encaixe em ambientes. Adicionado teste de regressão com rotações grandes e equivalência à rotação normalizada em `conceptFurnitureCollision.test.ts`. Commits 51b056b e 462fbf5. Testes novos e build completo ainda não executados; homologação e publicação adiadas.
+
+
+### Proteção de overflow nas margens de circulação — 10/10/2026
+
+`furnitureHasClearance` passa a rejeitar coordenadas e dimensões expandidas não finitas em vez de interpretar uma geometria inválida como margem livre. Teste para margem extrema e Infinity adicionado. Commits 2bcbce8, 359aaff. A execução do novo teste, build integrado e inspeção visual continuam pendentes. Sem merge, homologação ou publicação.
