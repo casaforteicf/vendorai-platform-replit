@@ -473,8 +473,9 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
             [tenantId, observation.signal],
           );
           if (activeCase.rows[0]?.status !== 'open') {
-            findingsCount++;
-            // Manual closure remains authoritative; do not count it as an active finding.
+            // Keep manually closed cases closed and exclude them from active
+            // findings and outgoing notifications. The next observation is
+            // still stored in the existing Jarvis case for traceability.
             continue;
           }
           // Deliver a tenant-scoped, in-app Jarvis alert to one active admin.
