@@ -26,6 +26,14 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
         await client.query("ROLLBACK");
         return;
       }
+      // Fail with a clear prerequisite error instead of partially scanning tenants
+      // when the release migration has not been applied in homologation.
+      const ready = await client.query(
+        "SELECT to_regclass('public.agent_manager_runs') AS runs, to_regclass('public.jarvis_cases') AS cases",
+      );
+      if (!ready.rows[0]?.runs || !ready.rows[0]?.cases) {
+        throw new Error("AGENT_MANAGER_MIGRATION_PENDING");
+      }
       const tenants = await client.query(
         "SELECT id FROM tenants WHERE status='active' LIMIT 500",
       );
