@@ -383,3 +383,8 @@ A reconciliação de paredes e aberturas deixa de ajustar (clamp) o offset de um
 ### Lote paramétrico arquitetônico inicial — 10/10/2026
 
 Novo módulo puro `conceptArchitecturalElements.ts` com validação de lajes e aberturas retangulares, área líquida, escada reta com espelhos/pisos calculados, coberturas plana/uma água/duas águas e agrupamento preliminar do quadro de esquadrias por tipologia/dimensão. Suíte unitária nova em `conceptArchitecturalElements.test.ts` cobre casos aceitos e rejeitados. Commits 819b249 e 22bac13. **Escopo: núcleo de domínio isolado; ainda não ligado ao estado/UI do ConceptPlanner, WebGL, importação ou biblioteca universal.** Não representa modelagem BIM integrada. Testes novos, typecheck, build e E2E ainda não executados. Sem merge, homologação ou publicação.
+
+
+### Snapshot arquitetônico transacional — 10/10/2026
+
+Novo `conceptArchitecturalModel.ts`: modelo serializável v1 para lajes, escadas, coberturas e esquadrias; operações puras em lote com cópia profunda de aberturas de laje, validação prévia, atualização por ID, exclusão e rollback lógico (retorno de erro sem alterar o original); quantitativos derivados. Testes adicionados em `conceptArchitecturalModel.test.ts`. Commits 03d3b14 e 1f0813c. **Sem conexão ao estado React, às cenas, à biblioteca de modelos ou importador.** Não existe persistência remota nem sincronização 2D/3D efetiva deste novo núcleo; essa integração permanece como trabalho futuro. Build/testes não executados. Sem merge/deploy/homologação.
