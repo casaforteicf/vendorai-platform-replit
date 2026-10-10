@@ -62,3 +62,11 @@ Teste local: `node --test scripts/infra/vendi-operator-diagnostics.test.mjs`.
 - Códigos de saída somente são preservados se inteiros seguros no intervalo 0–255; valores arbitrários são tratados como indisponíveis.
 - Objetos arbitrários em `stderr` ou `errorMessage` são ignorados, sem serializar dados sensíveis.
 - Regressões adicionadas para esse comportamento. **Não há comprovação de execução dos testes na Contabo nem integração do classificador ao MCP/operador instalado**.
+
+## INFRA-LOTE-01.4 — integração real localizada no repositório (10/10/2026)
+- Identificado `artifacts/cloudflare-mcp/src/index.ts`, função `vendorApi`, com fallback silencioso para a URL antiga de produção Railway quando `VENDORAI_API_BASE` faltava.
+- Removido fallback; agora a configuração exige `VENDORAI_API_BASE` explícita e URL HTTPS, sem userinfo, query ou fragmento. O caminho configurado é preservado.
+- Sanitizado retorno de falhas do cliente MCP: 401/403/404 e demais erros geram códigos fixos; corpo da resposta da API não é mais ecoado em `Error`.
+- **Atenção**: este arquivo integra o MCP de Cloudflare/browser do repositório, mas não foi comprovado que ele é a mesma implementação do container `vendorai-mcp-contabo-fixed`. Alteração de branch não corrige o 401 do ambiente até configurar a variável correta, executar testes e homologar o binário correspondente.
+- Não alterados tokens, secrets, tenant tables, produção, operador SSH ou containers.
+- Validar em ambiente isolado: `pnpm --filter @workspace/cloudflare-mcp build` e chamadas autenticadas de homologação com `VENDORAI_API_BASE` apontando explicitamente para a API correta (nunca assumir produção).
