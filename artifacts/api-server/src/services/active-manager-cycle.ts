@@ -90,6 +90,7 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
           // Initial deterministic opportunities: no AI or assumptions needed.
           // Other domains record a periodic scan in logs, not fabricated cases.
           let observation: { signal: string; title: string; detail: string; metric: string } | undefined;
+          let secondaryObservation: typeof observation;
           if (domain === "pipeline") {
             const data = await client.query(
               `SELECT count(*)::int AS total FROM activities
@@ -198,6 +199,27 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               metric: String(total),
             };
           }
+          if (domain === "crm") {
+            const data = await client.query(
+              `SELECT count(*)::int AS total FROM leads
+               WHERE tenant_id=$1 AND assigned_to IS NOT NULL
+                 AND excluido_em IS NULL AND nao_lead_tipo IS NULL
+                 AND status NOT IN ('cliente','perdido')
+                 AND created_at < now() - interval '14 days'
+                 AND NOT EXISTS (
+                   SELECT 1 FROM activities a
+                   WHERE a.tenant_id=leads.tenant_id AND a.lead_id=leads.id
+                 )`,
+              [tenantId],
+            );
+            const total = Number(data.rows[0]?.total ?? 0);
+            if (total > 0) secondaryObservation = {
+              signal: "active-manager:crm:old-leads-without-activities",
+              title: "Leads antigos sem atividades registradas",
+              detail: `Há ${total} leads ativos com responsável, criados há mais de 14 dias, sem atividades vinculadas. Jarvis deve propor revisão sem contatar clientes automaticamente.`,
+              metric: String(total),
+            };
+          }
           if (domain === "omnichannel") {
             const data = await client.query(
               `SELECT count(*)::int AS total FROM conversations
@@ -301,7 +323,29 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
             await client.query('RELEASE SAVEPOINT manager_domain');
             continue;
           }
-          if (!observation) {
+          if (domain === "crm" && !secondaryObservation) {
+            const closed = await client.query(
+              `UPDATE jarvis_cases SET status='resolved', resolved_at=now(),
+                 updated_at=now(),
+                 result_summary='O sinal operacional deixou de existir na verificação automática.'
+               WHERE tenant_id=$1 AND signal_key=$2
+                 AND source='active_manager' AND status='open'`,
+              [tenantId, "active-manager:crm:old-leads-without-activities"],
+            );
+            resolved += closed.rowCount ?? 0;
+          }
+          if (domain === "crm" && !observation) {
+            const closed = await client.query(
+              `UPDATE jarvis_cases SET status='resolved', resolved_at=now(),
+                 updated_at=now(),
+                 result_summary='O sinal operacional deixou de existir na verificação automática.'
+               WHERE tenant_id=$1 AND signal_key=$2
+                 AND source='active_manager' AND status='open'`,
+              [tenantId, "active-manager:crm:unassigned-leads"],
+            );
+            resolved += closed.rowCount ?? 0;
+          }
+          if (!observation && !secondaryObservation) {
             const signals: Record<string, string> = {
               pipeline: 'active-manager:pipeline:overdue-activities',
               crm: 'active-manager:crm:unassigned-leads',
@@ -335,6 +379,8 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
             await client.query('RELEASE SAVEPOINT manager_domain');
             continue;
           }
+          const observations = [observation, secondaryObservation].filter((value): value is NonNullable<typeof value> => Boolean(value));
+          for (const observation of observations) {
           const decision = classifyManagerDemand("tenant_operation");
           if (decision.route !== "jarvis") throw new Error("ROUTING_POLICY_MISMATCH");
           const inserted = await client.query(
@@ -362,7 +408,6 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               "INSERT INTO agent_manager_runs (tenant_id,domain,period_key,outcome,finding_count) VALUES ($1,$2,$3,'skipped_source_collision',0) ON CONFLICT DO NOTHING",
               [tenantId, domain, periodKey],
             );
-            await client.query('RELEASE SAVEPOINT manager_domain');
             continue;
           }
           // Respect manual case closure: only notify while the corresponding
@@ -410,8 +455,9 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
             "INSERT INTO agent_manager_runs (tenant_id,domain,period_key,outcome,finding_count) VALUES ($1,$2,$3,'completed',1) ON CONFLICT DO NOTHING",
             [tenantId, domain, periodKey],
           );
-          await client.query('RELEASE SAVEPOINT manager_domain');
           cases += inserted.rowCount ?? 0;
+          }
+          await client.query('RELEASE SAVEPOINT manager_domain');
           } catch (domainError) {
             await client.query('ROLLBACK TO SAVEPOINT manager_domain');
             // Persist failed scans after rollback so Master can detect operational
