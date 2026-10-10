@@ -65,3 +65,12 @@ Esta versão não representa conclusão dos 30 sublotes nem aprovação para pro
 - Encerramento de lote exige que todos os itens tenham quantidade concluída igual à reservada; cancelamento é bloqueado quando houve execução, até haver estorno formal.
 - **Não implementado ainda:** endpoint de estorno auditável; UI de acompanhamento; autorização fina por atribuição de responsável; testes transacionais PostgreSQL; aplicação de migration em homologação.
 - **Não publicado:** PR permanece em rascunho, sem merge e sem deploy.
+
+## Interface de execução parcial
+
+- Tela protegida `/execution-lots?dealId=<ID>&proposalId=<ID>`, em `ExecutionLotsWorkspace.tsx`.
+- Exibe itens contratados e saldos disponíveis; permite reservar quantidade de cada item em um lote.
+- Lista lotes existentes, permite início/conclusão/cancelamento e registra progresso acumulado por item.
+- Serviço de consulta passa a fornecer itens do orçamento para identificação por nome/grupo/unidade.
+- Ainda é necessária integração de um botão de entrada no fluxo do contrato e verificação de permissões específicas de responsável.
+- Testar em homologação com migration aplicada, incluindo lote parcialmente concluído, concorrência e proibição de encerramento antecipado.
