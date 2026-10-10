@@ -394,6 +394,7 @@ export default function LeadWorkspace() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Falha ao salvar operador.");
       await Promise.all([refetchLeadOperators(), qc.invalidateQueries({ queryKey: getGetLeadQueryKey(id) }),
+        qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
         qc.invalidateQueries({ queryKey: ["leads"] })]);
       toast({ title: "Operador da representante atualizado" });
     } catch (error) {
@@ -848,6 +849,7 @@ export default function LeadWorkspace() {
         <CardContent className="p-4 space-y-3">
           <div className="flex items-center gap-2"><Building2 className="h-4 w-4" /><span className="text-sm font-semibold">Operador da empresa representante</span></div>
           <p className="text-xs text-muted-foreground">A empresa permanece responsável pelo lead. Apenas o usuário operacional é alterado.</p>
+          <p className="text-xs text-muted-foreground">Operador atual: {leadOperatorOptions?.users.find((operator) => operator.id === leadOperatorOptions.operationalUserId)?.name ?? (leadOperatorOptions?.operationalUserId ? "Operador não disponível na equipe autorizada" : "Fila da representante")}</p>
           <div className="flex flex-wrap items-end gap-2">
             <div className="min-w-[220px] flex-1 space-y-1"><Label>Usuário operacional</Label>
               <Select value={leadOperatorSelection} onValueChange={setLeadOperatorSelection}>
