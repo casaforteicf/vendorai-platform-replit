@@ -40,7 +40,10 @@ export function allocateExactly(total: number, weights: readonly number[]): numb
   }
   const sum = weights.reduce((acc, weight) => acc + weight, 0);
   if (!Number.isFinite(sum) || sum <= 0) throw new Error("Soma dos pesos deve ser positiva");
+  // Reject inputs that would lose integer-cent precision in IEEE-754 arithmetic.
+  if (!Number.isFinite(sum) || !Number.isSafeInteger(sum)) throw new Error("Soma dos pesos fora dos limites seguros");
   const raw = weights.map((weight) => total * (weight / sum));
+  if (raw.some((value) => !Number.isFinite(value))) throw new Error("Distribuição fora dos limites numéricos");
   const allocation = raw.map(Math.floor);
   let missing = total - allocation.reduce((acc, value) => acc + value, 0);
   const ordered = raw.map((value, index) => ({ index, remainder: value - allocation[index] }))
