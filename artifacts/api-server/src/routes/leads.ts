@@ -171,6 +171,7 @@ async function validateRepresentativeFunction(tenantId: string, functionId: stri
       eq(tenantUserFunctionsTable.id, functionId),
       eq(tenantUserFunctionsTable.tenantId, tenantId),
       eq(tenantUserFunctionsTable.kind, "external_company"),
+      eq(tenantUserFunctionsTable.leadAssignmentEnabled, true),
     ))
     .limit(1);
   return representativeFunction ?? null;
@@ -193,7 +194,7 @@ async function findRepresentativeLeadAccess(req: any, targetTenantId: string, fu
     .where(and(...conditions))
     .limit(1);
 
-  if (!link || !Array.isArray(link.permissions) || !link.permissions.includes("leads")) return null;
+  if (!link || link.leadAssignmentEnabled === false || !Array.isArray(link.permissions) || !link.permissions.includes("leads")) return null;
 
   const allowedUsers = Array.isArray(link.representativeUserIds) ? link.representativeUserIds : [];
   if (allowedUsers.length > 0 && req.user?.sub && !allowedUsers.includes(req.user.sub)) return null;
