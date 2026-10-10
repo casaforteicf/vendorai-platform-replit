@@ -62,3 +62,83 @@ PT.10 Aceite, privacidade, autorização de dados e auditoria.
 
 ## Status
 Documento funcional. Não implementa endpoints, página, tokens, banco ou fluxo público. Sem merge ou deploy.
+
+
+# ADENDO V1.1 — MATRIZ DE INTEGRACOES PONTA A PONTA
+
+## Premissa de entrega
+Nenhum dos pontos abaixo deve ser marcado pronto somente por haver tipos, docs ou uma tela simulada. Exigir contratos implementados, migracoes controladas, testes, observabilidade e homologacao. Priorizar servicos existentes do Vendor.ai/Arqdor, sem criar CRM/cotacao/arquivos duplicados.
+
+## Matriz obrigatoria
+| ID | Integracao | Entrada / Saida | Contrato e validacao | Falha / reconciliacao |
+|---|---|---|---|---|
+| INT-01 | Site externo do parceiro | CTA link HTTPS universal + UTM e origem; widget opcional | dominio allowlist, token opaco assinado e nonce, CORS/CSP quando embutido | URL expirou -> nova emissao; jamais expor credenciais |
+| INT-02 | Cadastro parceiro/tenant | empreendimento/quadra/lote / permissao | tenantId, partnerId, developmentId, lotId, roles | bloquear cruzamento de tenants |
+| INT-03 | Cadastro geoespacial/lote | poligono, limites, coordenadas, area e fonte | GeoJSON/PostGIS se existente; CRS, unidade, area calculada versus informada e revisao | bloquear geometria invalida, marcar medida nao conferida |
+| INT-04 | Levantamento profissional | DXF/DWG/IFC, topografia, imagens, memoriais | adaptador verificado, SHA256, storage privado, precisao e licenca | preservar original e avisar conversao parcial |
+| INT-05 | Mapas e geocodificacao | endereco / coordenadas e imagem de contexto | provedor autorizado, quotas, attribution, termos de cache; mapa nao valida divisa | fallback para selecao manual por coordenadas |
+| INT-06 | Regras urbanisticas/condominio | recuos, ocupacao, coeficiente, altura, servidao | municipio/condominio, fonte, data, validade e validacao profissional | status indefinido impede afirmacao de conformidade |
+| INT-07 | Link de entrada e sessao | site externo -> Arqdor | emissao/verificacao server-side, expiracao, revogacao, escopo minimo | rejeitar tokens invalidos sem revelar lote privado |
+| INT-08 | Wizard do Pre-Projeto | lotId + lotRevision -> project origin | dados reais/versao, unidade, orientacao, perimetro; nao sobrescrever projeto anterior | lote indisponivel -> preservar estudo e avisar |
+| INT-09 | Arqdor modelagem/implantacao | terreno + construcoes -> cena 2D/3D | geometria referencia + objects semanticos, escala e elevacao | conflito de revisao -> reconciliar explicitamente |
+| INT-10 | Usuarios e portal cliente | visitante -> usuario autorizado / projeto | login apropriado, consentimento, isolamento, acesso compartilhado granular | recuperar sessao sem abrir dados de outros |
+| INT-11 | CRM Vendor.ai | solicitacao qualificada -> lead/deal/atividade | dedup, responsavel obrigatorio, tenant correto, atribucao parceiro/campanha/lote | fila/retry idempotente, nao criar leads duplicados |
+| INT-12 | Omnichannel | agendamento/contato -> WhatsApp, email, telefone | templates aprovados, canal permitido, preferencias LGPD, historico CRM | erro de envio registrado; sem disparo nao autorizado |
+| INT-13 | Agenda | pedido de visita/reuniao -> agenda | responsavel, data/hora, fuso, local/lote | remarcacao e aviso sem duplicacao |
+| INT-14 | Orcamento e proposta | projeto -> composicoes e orcamento | revisionId + itens, regras de precificacao; proposta R1… | alteracao de projeto gera nova proposta, nao muda aprovada |
+| INT-15 | Fornecedores e cotacao | materiais/servicos -> RFQ e comparacao | por item/especialidade/fornecedor, autonomia desligada exige aprovacao | retries idempotentes, prazo e substituicao controlada |
+| INT-16 | Disponibilidade comercial | vendido/reservado/bloqueado -> site e Pre-Projeto | event sourcing ou outbox, atualizado em lote, timestamps e cache TTL | estado desconhecido nao e anunciado como disponivel |
+| INT-17 | Execucao/obras | contrato -> lote de execucao | selecionar itens/fases/quantidades; ordem rastreavel | cancelar lote nao apaga origem |
+| INT-18 | Assinatura e documentos | aceite, termo, contrato, anexos -> lead/projeto | armazenamento privado, checksum, revisao, dono, validade | link assinado revogavel e auditoria |
+| INT-19 | BI e conversao | clique -> projeto -> solicitacao -> negocio -> venda | IDs de campanha, consentimento, funil, eventos deduplicados | anonimizar eventos sem identificacao, controlar retencao |
+| INT-20 | Vendi/agente | oportunidades e gargalos -> proxima acao | autonomia tenant + aprovacao conforme politica; auditar prompts/acoes | nao publicar automaticamente dados sem autorizacao |
+| INT-21 | Segurança e observabilidade | servicos -> logs/metrica/alertas | audit event, requestId, traceId, LGPD, protecao de secrets | alarmes para falhas, backoff, DLQ ou status manual |
+| INT-22 | Webhooks e API para parceiros | mudancas controladas -> site parceiro | assinatura HMAC, idempotency-key, versao de schema, retry e rate limit | reconciliacao periodica, eventos reprocessaveis |
+
+## Contratos HTTP sugeridos (nomes propostos; nao sao rotas existentes)
+- POST /partner-developments/:id/lots (admin autorizado)
+- PATCH /partner-lots/:id (controle de revisao / If-Match)
+- POST /partner-lots/:id/project-links (expedicao autenticada)
+- GET /public/lot-entry/:opaqueToken (consulta limitada server-side)
+- POST /preprojects/from-partner-lot (idempotency key, tenant, lot revision)
+- POST /preprojects/:id/request-contact (consentimento + CRM)
+- POST /partner-webhooks (assinatura, idempotencia e versao)
+- GET /partner-lots/:id/integrations/health (sem dados pessoais)
+
+## Eventos de integracao
+- partner.lot.created/verified/revised/reserved/sold/unavailable
+- partner.entry.opened / preproject.created / preproject.revision.changed
+- preproject.contact.requested / crm.lead.linked / quote.requested / quote.received
+- proposal.approved / execution.lot.created / partner.integration.failed
+Cada evento: eventId, schemaVersion, tenantId, correlationId, aggregateId, aggregateRevision, occurredAt, initiator, idempotencyKey, payload minimo.
+
+## Seguranca e consistencia
+- Token de entrada nao substitui autenticar comprador/partner. Assinar, expirar, rotacionar segredo e revogar.
+- Nao permitir alteracao de tenantId/lotId/revision pela URL do cliente; backend resolve do token e verifica acesso.
+- Nunca confiar em metadados declarados pelo navegador para area, recuos ou topografia.
+- Dados cadastrais, de compradores e de projetos sao privados; exportacao/publicacao exige autorizacao.
+- Provedor de mapa: respeitar termos e licenca; nao extrair terreno topografico de imagem nao autorizada.
+- Outbox transacional/idempotencia para sincronizacao CRM/site/eventos se infraestrutura suportar; na ausencia, reconciliacao com log.
+- Separar estado comercial mutavel (disponibilidade e preco) de revisao tecnica imutavel do lote.
+
+## Teste E2E de homologacao obrigatorio
+1. Tenant A cria empreendimento e lote com perimetro correto (SRID/CRS, area e fonte).
+2. Publica CTA autorizado no seu site.
+3. Usuario anonimo acessa, ve lote certo, inicia projeto e posiciona volume da casa.
+4. Usuario pede contato com consentimento; lead e negocio associados ao tenant/lot e responsavel correto.
+5. Parcela de follow-up: CRM agenda visita, envia informacao somente com autorizacao.
+6. Lote muda para reservado/vendido: projeto antigo preservado, oferta e disponibilidade atualizadas, alerta ao interessado.
+7. Links falsificados, expirados, de outro tenant e acesso de operador nao autorizado sao rejeitados.
+8. Repeticao de evento ou timeout nao duplica lead/projeto/cotacao.
+9. Integracao com CRM ou parceiro fora do ar possui alerta, retry e reconciliacao.
+10. Verificar metricas, trilhas e isolamento em staging antes da promocao controlada.
+
+## Sequencia de entrega
+Fase A: auditoria de endpoints/modelos existentes + dados de lote + limites tenant.
+Fase B: link firmado + landing contextual + nova origem de Pré-Projeto.
+Fase C: salvamento e versoes + medicao/implantacao + CRM idempotente e consentimento.
+Fase D: sincronizacao comercial, portais, agenda, omnichannel e integracoes fornecedor.
+Fase E: BI, observabilidade, reconciliacao e E2E total.
+
+## Situacao
+Matriz de integracoes especificada. Nao afirmar endpoints, banco, CTA, CRM ou site parceiro ja operacionais. Producao permanece imutavel.
