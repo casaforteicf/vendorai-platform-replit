@@ -401,6 +401,7 @@ export function DealParticipantsCard({
                     </div>
                     <div className="flex items-center gap-1">
                       <Button type="button" size="icon" variant="ghost" className="h-8 w-8" title="Editar vínculo" onClick={() => editPerson(person)}><Pencil className="h-4 w-4" /></Button>
+                      {canManageCommission && <Button type="button" size="sm" variant="ghost" title="Editar comissão do envolvido" onClick={() => editPerson(person)}>Editar comissão</Button>}
                       <Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={() => void remove("people", person.relationId)}><Trash2 className="h-4 w-4" /></Button>
                     </div>
                   </div>
