@@ -393,7 +393,7 @@ router.patch("/crm/deals/:dealId/people/:personId", async (req, res) => {
       }).where(eq(crmDealPeopleTable.id, linked.id)).returning();
       return { person, link };
     });
-    return res.json(result);
+    return res.json({ ...result, link: { ...result.link, metadata: safeParticipantMetadata(result.link.metadata, canManageCrmCommissions(req)) } });
   } catch (error: any) {
     return res.status(error.status ?? 500).json({ error: error.message });
   }
