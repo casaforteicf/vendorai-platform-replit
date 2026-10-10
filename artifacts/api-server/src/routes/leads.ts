@@ -365,6 +365,17 @@ router.post("/leads", async (req, res) => {
     resolvedRepresentativeFunctionId = assignment?.kind === "external_company" ? assignment.id : null;
   }
 
+  // CRM-05: impedir atribuição a ID arbitrário, inclusive de outro tenant.
+  if (resolvedAssignedTo) {
+    const [assignee] = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(and(eq(usersTable.id, resolvedAssignedTo), eq(usersTable.tenantId, data.tenantId)))
+      .limit(1);
+    if (!assignee) {
+      res.status(422).json({ error: "Responsável não pertence à equipe deste tenant." });
+      return;
+    }
+  }
+
   if (!resolvedAssignedTo && !resolvedRepresentativeFunctionId) {
     res.status(422).json({
       error: "Responsável obrigatório. Selecione um usuário da equipe, uma empresa representante ou configure a distribuição automática com ao menos um responsável elegível.",
