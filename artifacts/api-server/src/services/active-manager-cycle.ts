@@ -46,14 +46,22 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
         await client.query('SAVEPOINT manager_tenant');
         try {
         for (const domain of DOMAINS) {
+          await client.query('SAVEPOINT manager_domain');
+          try {
           const minutes = MANAGER_INTERVAL_MINUTES[domain];
-          if (Math.floor(now.getTime() / 60000) % minutes !== 0) continue;
+          if (Math.floor(now.getTime() / 60000) % minutes !== 0) {
+            await client.query('RELEASE SAVEPOINT manager_domain');
+            continue;
+          }
           const periodKey = managerExecutionBucket(domain, now);
           const alreadyDone = await client.query(
             "SELECT 1 FROM agent_manager_runs WHERE tenant_id=$1 AND domain=$2 AND period_key=$3 LIMIT 1",
             [tenantId, domain, periodKey],
           );
-          if (alreadyDone.rowCount) continue;
+          if (alreadyDone.rowCount) {
+            await client.query('RELEASE SAVEPOINT manager_domain');
+            continue;
+          }
           scanned++;
           // Initial deterministic opportunities: no AI or assumptions needed.
           // Other domains record a periodic scan in logs, not fabricated cases.
@@ -127,6 +135,7 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               "INSERT INTO agent_manager_runs (tenant_id,domain,period_key,outcome,finding_count) VALUES ($1,$2,$3,'completed',0) ON CONFLICT DO NOTHING",
               [tenantId, domain, periodKey],
             );
+            await client.query('RELEASE SAVEPOINT manager_domain');
             continue;
           }
           const decision = classifyManagerDemand("tenant_operation");
@@ -151,6 +160,13 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
             "INSERT INTO agent_manager_runs (tenant_id,domain,period_key,outcome,finding_count) VALUES ($1,$2,$3,'completed',1) ON CONFLICT DO NOTHING",
             [tenantId, domain, periodKey],
           );
+          await client.query('RELEASE SAVEPOINT manager_domain');
+          } catch (domainError) {
+            await client.query('ROLLBACK TO SAVEPOINT manager_domain');
+            await client.query('RELEASE SAVEPOINT manager_domain');
+            tenantFailures++;
+            log.warn({ err: domainError, tenantId, domain }, 'active-managers: domain scan rolled back');
+          }
         }
         await client.query('RELEASE SAVEPOINT manager_tenant');
         } catch (tenantError) {
