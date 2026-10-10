@@ -206,3 +206,10 @@ Não considerar item 2 encerrado: o fluxo de criação de lead ainda invoca serv
 - `707f472` exige o negócio em `ganho` ou `em_execucao` antes do envio e relê a proposta aceita dentro da transação após obter o lock para detectar alterações de status/itens.
 - Os lotes continuam contando no saldo mesmo que um card seja cancelado: **não liberar quantidades automaticamente** sem fluxo explícito de cancelamento/reversão e trilha de auditoria. Implementar reversão posteriormente.
 - Antes da homologação, executar `pnpm exec vitest run src/lib/crm-partial-execution.test.ts`, `tsc -p tsconfig.launch-ci.json --noEmit`, build e testes autenticados de perfis/tenants/replay/concorrência. Sem testes reais ou deploy nesta rodada.
+
+## 10/10/2026 — histórico de lotes e ponto de controle
+
+- `6a8d481`: cria registro histórico da formação de cada lote em `activities` pelo serviço já existente `recordDealJourney`. O histórico contém ID do card, proposta, itens/quantidades e justificativa; replays idempotentes não criam histórico duplicado.
+- O registro histórico usa a política já existente de melhor esforço; a existência do card é a evidência transacional primária. Reconciliar eventuais falhas de histórico em homologação.
+- **Ponto de controle:** PR #3428 aberto e sem merge/deploy. Execução parcial backend+UI escrita, testes unitários escritos, gates de TypeScript, build e integração ainda não executados.
+- A inspeção estática não equivale a homologação. Não fazer publicação; priorizar testes reais e revisões de regressão/autorização antes de declarar lote concluído.
