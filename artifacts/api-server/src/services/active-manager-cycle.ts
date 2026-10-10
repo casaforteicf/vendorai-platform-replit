@@ -104,7 +104,7 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               `SELECT count(*)::int AS total FROM leads
                 WHERE tenant_id=$1 AND assigned_to IS NULL
                   AND representative_function_id IS NULL AND excluido_em IS NULL AND nao_lead_tipo IS NULL
-                  AND (status IS NULL OR status NOT IN ('cliente','perdido'))`,
+                  AND status NOT IN ('cliente','perdido')`,
               [tenantId],
             );
             const total = Number(data.rows[0]?.total ?? 0);
