@@ -1363,7 +1363,7 @@ router.get("/leads/:id/responsavel-historico", async (req, res) => {
 
 router.delete("/leads/:id", async (req, res) => {
   const [existing] = await db
-    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo, metadata: leadsTable.metadata })
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo, metadata: leadsTable.metadata, excluidoEm: leadsTable.excluidoEm })
     .from(leadsTable)
     .where(eq(leadsTable.id, req.params.id));
 
@@ -1382,6 +1382,11 @@ router.delete("/leads/:id", async (req, res) => {
     || req.user?.userFunction === "administrador";
   if (!isAdmin3) {
     res.status(403).json({ error: "Apenas administradores do tenant podem excluir leads." });
+    return;
+  }
+
+  if (existing.excluidoEm) {
+    res.status(409).json({ error: "Lead já excluído.", deletedAt: existing.excluidoEm });
     return;
   }
 
@@ -1410,9 +1415,13 @@ router.delete("/leads/:id", async (req, res) => {
       },
       updatedAt: new Date(),
     })
-    .where(and(eq(leadsTable.id, existing.id), eq(leadsTable.tenantId, existing.tenantId)))
+    .where(and(eq(leadsTable.id, existing.id), eq(leadsTable.tenantId, existing.tenantId), isNull(leadsTable.excluidoEm)))
     .returning();
 
+  if (!updated) {
+    res.status(409).json({ error: "Lead já excluído por outra operação." });
+    return;
+  }
   res.status(200).json(updated);
 });
 
@@ -1447,7 +1456,7 @@ router.get("/tenants/:tenantId/leads/duplicates", async (req, res) => {
       const [similar] = await db
         .select()
         .from(leadsTable)
-        .where(and(eq(leadsTable.id, lead.leadSimilarId), eq(leadsTable.tenantId, tenantId)))
+        .where(and(eq(leadsTable.id, lead.leadSimilarId), eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm)))
         .limit(1);
       return { lead, similar: similar ?? null };
     })
@@ -1491,6 +1500,11 @@ router.post("/leads/:id/merge", async (req, res) => {
 
   if (!duplicate || !target) {
     res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  if (duplicate.excluidoEm || target.excluidoEm) {
+    res.status(409).json({ error: "Leads excluídos não podem participar da mesclagem." });
     return;
   }
 
@@ -1635,7 +1649,7 @@ router.post("/leads/:id/dismiss-duplicate", async (req, res) => {
   const leadId = String(req.params.id);
 
   const [existing] = await db
-    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo })
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo, excluidoEm: leadsTable.excluidoEm })
     .from(leadsTable)
     .where(eq(leadsTable.id, leadId));
 
@@ -1649,6 +1663,11 @@ router.post("/leads/:id/dismiss-duplicate", async (req, res) => {
     return;
   }
 
+  if (existing.excluidoEm) {
+    res.status(409).json({ error: "Lead excluído não pode ser alterado na triagem de duplicatas." });
+    return;
+  }
+
   const isAdmin4 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
   const userFn4 = req.user?.userFunction as UserFunction | undefined;
   if (!isAdmin4 && userFn4 === "vendedor" && existing.assignedTo !== req.user?.sub) {
@@ -1659,9 +1678,13 @@ router.post("/leads/:id/dismiss-duplicate", async (req, res) => {
   const [lead] = await db
     .update(leadsTable)
     .set({ possivelDuplicata: false, leadSimilarId: null, updatedAt: new Date() })
-    .where(eq(leadsTable.id, leadId))
+    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, existing.tenantId), isNull(leadsTable.excluidoEm)))
     .returning();
 
+  if (!lead) {
+    res.status(409).json({ error: "Lead excluído por outra operação." });
+    return;
+  }
   res.json({ success: true, lead });
 });
 
