@@ -1,5 +1,6 @@
 import { buildFacadeMeshBoxes } from "./conceptFacadeMeshes";
 import { buildWallMeshPipeline } from "./conceptWallMeshPipeline";
+import { wallMeshToWebGL } from "./conceptWallWebGLGeometry";
 import { getFacadeMaterial, type FacadeDesignState } from "./conceptFacadeDesign";
 import { buildRoofPlan } from "./conceptRoofPlan";
 import type { SiteFrontSide } from "./conceptSitePlacement";
@@ -1351,21 +1352,9 @@ export default function ConceptWebGLScene({
         if (solid.valid && solid.meshes.length) {
           for (const indexed of solid.meshes) {
             const geometry = new THREE.BufferGeometry();
-            const vertices: number[] = [];
-            for (let i = 0; i < indexed.positions.length; i += 3) {
-              vertices.push(
-                indexed.positions[i] - lotWidth / 2,
-                indexed.positions[i + 2],
-                indexed.positions[i + 1] - lotDepth / 2,
-              );
-            }
-            // Swapping the ground Y and elevation Z reverses handedness.
-            const triangles: number[] = [];
-            for (let i = 0; i < indexed.indices.length; i += 3) {
-              triangles.push(indexed.indices[i], indexed.indices[i + 2], indexed.indices[i + 1]);
-            }
-            geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-            geometry.setIndex(triangles);
+            const webgl = wallMeshToWebGL(indexed, lotWidth, lotDepth);
+            geometry.setAttribute("position", new THREE.Float32BufferAttribute(webgl.positions, 3));
+            geometry.setIndex(webgl.indices);
             geometry.computeVertexNormals();
             const pbr = getConceptPBRMaterial(materialId);
             const material = pbr
