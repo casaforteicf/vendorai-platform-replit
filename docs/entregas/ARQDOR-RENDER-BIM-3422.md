@@ -652,3 +652,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Correção:** commit `0b5064a` verifica previamente lista de paredes, vetores de dois números e finitude das coordenadas; em caso de erro, propaga a mensagem `Coordenadas da parede inválidas` pela apresentação de erros já existente.
 - **Validação:** alteração registrada e inspecionada por conector GitHub. Não houve compilação TypeScript, Vitest ou execução visual integrada; a prevenção de erros é inferida pela ordem de execução do código, não homologada.
 - **Estado:** PR #3422 Draft, Contabo adiada, sem merge/deploy, produção intacta.
+
+
+## 3422-A — teste direto do roteamento 3D (10/10/2026)
+- **Implementação:** a escolha ortogonal/diagonal foi extraída para `shouldUseOrthogonalUnion`, que valida os vetores antes de acessá-los; o componente WebGL utiliza a função diretamente. Commit `d3f9019`.
+- **Cobertura persistida:** testes Vitest no arquivo `RenderStudioParametricWebgl.test.ts` verificam paredes X/Y, diagonal, projeto vazio, NaN e entrada nula (commit `68b3b0a`).
+- **Validação:** revisão estática dos arquivos e commits no GitHub. **Vitest, build TypeScript e testes de navegador ainda não executados**, portanto o roteamento não está homologado.
+- **Estado:** PR #3422 permanece Draft, sem merge/deploy; homologação Contabo adiada, produção intacta.
