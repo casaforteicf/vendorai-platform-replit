@@ -299,3 +299,9 @@ Não considerar item 2 encerrado: o fluxo de criação de lead ainda invoca serv
 - Tanto a pré-verificação quanto a condição do UPDATE impedem arquivamento com identificadores externos persistidos. A API indica `hasBilling` e `hasRemoteContract` no conflito.
 - **Pendente:** reconciliar operações externas sem registro persistido ou com falha antes da gravação do identificador; controle idempotente distribuído, transações concorrentes, UI e testes efetivos. Nenhum teste de build/integrado executado nesta rodada.
 - Sem merge, migração, deploy ou publicação.
+
+## Lote 02 — reenvio de contrato já registrado — 10/10/2026
+- Commit `d3ab2428d9179085efd7ea9641e5deb54b20269b` no PR #3428.
+- No fechamento comercial, quando `deals.zapsign_doc_id` já está preenchido, a emissão de um novo documento ZapSign é ignorada e o contrato existente é preservado. Evita reenvio em reprocessamentos comuns com referência externa persistida.
+- **Limites críticos:** proteção não serializa duas chamadas simultâneas iniciadas sem token, nem resolve resposta externa bem-sucedida que não tenha sido gravada. Necessários reserva transacional, chave de idempotência com fornecedor (quando disponível), reconciliação pós-falha e testes sandbox.
+- Evidência: commit aceito pelo GitHub; sem teste executado, build, homologação, merge ou publicação.
