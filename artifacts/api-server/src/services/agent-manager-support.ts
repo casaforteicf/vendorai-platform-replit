@@ -38,7 +38,11 @@ export async function enqueueManagerSupportReview(f: ManagerPlatformFinding): Pr
   try {
     await client.query("BEGIN");
     // Transaction scoped dedupe across all application replicas.
-    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [sourceRef]);
+    // Use both independent hash halves to reduce unrelated advisory-lock collisions.
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))",
+      [sourceRef.slice(0, 24), sourceRef.slice(24)],
+    );
     const previous = await client.query<{ id: string }>(
       "SELECT id FROM admin_improvements WHERE source_type='audit' AND source_ref_id=$1 AND status NOT IN ('cancelada','producao_validada') LIMIT 1",
       [sourceRef],
