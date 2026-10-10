@@ -33,3 +33,11 @@ test('snapshot is writable while original v10 remains intact',()=>{
     assert.equal(statSync(join(source,'v10')).isDirectory(),true);
   } finally { rmSync(dir,{recursive:true,force:true}); }
 });
+
+test('Git and test evidence stay unprivileged; only Docker may use sudo -n',()=>{
+  assert.match(script,/DOCKER_CMD=\(sudo -n docker\)/);
+  assert.match(script,/"\$\{DOCKER_CMD\[@\]\}" image inspect/);
+  assert.match(script,/"\$\{DOCKER_CMD\[@\]\}" run --rm/);
+  assert.match(script,/git fetch --no-tags origin/);
+  assert.doesNotMatch(script,/sudo -n git|sudo git|sudo -n bash|sudo bash/);
+});
