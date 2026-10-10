@@ -615,3 +615,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Execução isolada real:** código da função `buildWallGeometry` extraído do arquivo TS da branch, com remoção de anotações de tipo e mock mínimo dos objetos geométricos Three.js, executado em isolate JavaScript. Casos: parede diagonal com janela válida (64 triângulos), coordenada NaN (rejeitada), Infinity (rejeitada), aberturas sobrepostas (rejeitadas), aberturas adjacentes (80 triângulos, aceitas). **5/5 comportamentos esperados**.
 - **Limites:** execução de função transpile-like e mocks **não** equivalem a build TypeScript, renderização de GPU, suíte Vitest ou homologação. Continuam pendentes validações do componente montado e do binário na Contabo.
 - **Governança:** PR #3422 Draft, sem merge/deploy/publicação; Contabo e produção inalteradas.
+
+
+## 3422-A — regressões persistentes para malha de paredes diagonais (10/10/2026)
+- **Desenvolvimento:** `buildWallGeometry` tornou-se exportável para teste direto (commit `c313f20`), sem mudar o comportamento do renderizador.
+- **Suíte adicionada:** `RenderStudioParametricWebgl.test.ts` (commit `8cbf884`) testa geração de malha diagonal com janela, finitude das coordenadas, rejeição de NaN/Infinity, rejeição de aberturas sobrepostas e aceitação de aberturas adjacentes, com mocks da interface de geometria do Three.js.
+- **Base de evidências:** os 5 comportamentos já haviam sido verificados por execução isolada do núcleo JS em 10/10/2026; os testes Vitest desta entrega foram **registrados, mas não executados**. Build TypeScript e integração no navegador seguem pendentes.
+- **Governança:** PR #3422 Draft, sem merge, sem deploy e sem alteração de homologação/produção.
