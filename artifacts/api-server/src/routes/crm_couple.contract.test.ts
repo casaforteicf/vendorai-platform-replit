@@ -37,6 +37,13 @@ describe("CRM-02/03 — casal, identidade e contato principal", () => {
     expect(search).toContain("isNull(dealsTable.leadId)");
     expect(search).toContain("isNull(leadsTable.excluidoEm)");
   });
+  it("não reutiliza cadastro mestre usando vínculos de lead arquivado", () => {
+    const create = api.split('router.post("/crm/people"')[1]?.split("const companySchema")[0] ?? "";
+    expect(create).toContain(".leftJoin(leadsTable");
+    expect(create).toContain("isNull(dealsTable.leadId)");
+    expect(create).toContain("isNull(leadsTable.excluidoEm)");
+    expect(create).toContain("Documento já cadastrado. Solicite a vinculação autorizada");
+  });
   it("não usa lead excluído para liberar dados pessoais na busca do CRM", () => {
     expect(api).toContain("eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm)");
   });
