@@ -48,7 +48,8 @@ def status(run, lot):
         if f.is_file() and not f.is_symlink():
             out[name] = f.read_text(errors="replace")[:8192]
     logs = folder / "logs"
-    out["logs"] = sorted(p.name for p in logs.glob("*.log") if p.is_file() and not p.is_symlink()) if logs.is_dir() else []
+    # Never traverse a redirected logs directory outside this run evidence folder.
+    out["logs"] = sorted(p.name for p in logs.glob("*.log") if p.is_file() and not p.is_symlink()) if logs.is_dir() and not logs.is_symlink() else []
     return out
 
 def cleanup_test_containers(folder):
