@@ -141,11 +141,17 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
       setError("");
       return () => { disposed = true; };
     }
+    // Reject malformed models before downloading the engine or creating WebGL.
+    let orthogonal: boolean;
+    try {
+      orthogonal = shouldUseOrthogonalUnion(walls);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Paredes inválidas");
+      return () => { disposed = true; };
+    }
     loadThree().then(() => {
       if (disposed || !holder.current) return;
-      // Validate and build union before allocating a WebGL context, so invalid
-      // geometry does not leave a renderer/canvas attached after rejection.
-      const orthogonal = shouldUseOrthogonalUnion(walls);
+      // Build union before allocating the GPU context.
       const union = orthogonal && walls.length ? unionOrthogonalWalls(walls) : null;
       if (union && !union.topology.closedByEdgeIncidence) {
         setError(`A união 3D exige revisão: ${union.topology.boundaryEdges} arestas abertas, ${union.topology.nonmanifoldEdges} não-manifold e ${union.topology.orientationErrors} com orientação inconsistente; ${union.topology.connectedSolidComponents} componentes sólidos; volume ${union.topology.signedVolumeMatchesOccupancy ? "coerente" : "divergente"}.`);
