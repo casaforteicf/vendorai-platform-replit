@@ -6,6 +6,26 @@ const managerSource = readFileSync(new URL("./agent-manager-support.ts", import.
 const policySource = readFileSync(new URL("./agent-manager-policy.ts", import.meta.url), "utf8");
 
 describe("UX and Security manager governance", () => {
+  it("requires authenticated tenant-scoped UX telemetry and forbids user-defined tenant IDs", () => {
+    const api = readFileSync(new URL("../routes/ux_runtime_telemetry.ts", import.meta.url), "utf8");
+    const router = readFileSync(new URL("../routes/index.ts", import.meta.url), "utf8");
+    expect(api).toContain("req.user.tenantId");
+    expect(api).not.toContain("req.body.tenantId");
+    expect(api).toContain("telemetryLimiter");
+    expect(api).toContain("reportSchema.safeParse");
+    expect(router.indexOf("router.use(uxRuntimeTelemetryRouter)"))
+      .toBeGreaterThan(router.indexOf("router.use(authenticate)"));
+  });
+
+  it("throttles UX browser reports and keeps the homologation API isolated", () => {
+    const frontend = readFileSync(new URL("../../../frontend/src/components/RouteContentErrorBoundary.tsx", import.meta.url), "utf8");
+    expect(frontend).toContain("sessionStorage.getItem(throttleKey)");
+    expect(frontend).toContain("window.location.hostname");
+    expect(frontend).toContain("import.meta.env.VITE_API_URL");
+    expect(frontend).toContain("try {");
+    expect(frontend).not.toContain("body: JSON.stringify({ routeKey, error,");
+  });
+
   it("keeps emergency code remediation disabled without explicit autonomous mode and night window", () => {
     const start = auditSource.indexOf("async function runEmergencyRemediation(");
     const end = auditSource.indexOf("async function ensureAuditTablesAvailable(", start);
