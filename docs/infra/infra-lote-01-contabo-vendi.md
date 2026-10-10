@@ -96,3 +96,8 @@ Teste local: `node --test scripts/infra/vendi-operator-diagnostics.test.mjs`.
 - Arquivo `scripts/infra/vendi-homolog-token-exchange.test.mjs`: quatro casos para sucesso, incompatibilidade entre tenants, entradas malformadas e ausência de vazamento do token em mensagens.
 - Teste destinado a Node 24 com suporte a type stripping: `node --test scripts/infra/vendi-homolog-token-exchange.test.mjs`.
 - **Limites:** testes ainda não executados na Contabo, autenticação HTTP 401 do conector não corrigida/validada, módulo não publicado, e a assinatura criptográfica do token precisa ser verificada pela API destinatária.
+
+## INFRA-LOTE-01.9 — limite da credencial e escopo de homologação (10/10/2026)
+- `homolog-token-exchange.ts`: token deve ser string não vazia com no máximo 8192 caracteres; `tenantId` solicitado não pode ser vazio ou somente espaços, além da comparação obrigatória com o envelope e cache retornados.
+- `vendi-homolog-token-exchange.test.mjs`: novo teste para credencial excessivamente grande e escopo vazio.
+- Este incremento foi escrito na branch do PR #3445, não no ambiente Contabo. Não corrige sozinho o HTTP 401; execução de testes, build e integração ao operador real ainda são pendências.
