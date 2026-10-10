@@ -43,6 +43,7 @@ import { LEAD_SOURCE_OPTIONS } from "@/lib/leadRegistration";
 
 const newLeadSchema = z.object({
   cadastroTipo: z.enum(["pessoa", "casal", "empresa", "negocio"]).default("pessoa"),
+  primaryContactIndex: z.union([z.literal(0), z.literal(1)]).default(0),
   nome: z.string().trim().min(2, "Nome é obrigatório"),
   telefone: z.string().optional().or(z.literal("")),
   email: z.string().email("Email inválido").optional().or(z.literal("")),
@@ -198,6 +199,7 @@ const DEFAULT_VALUES: NewLeadValues = {
   mercadoSegmento: "",
   cupomCodigo: "",
   createInitialDeal: true,
+  primaryContactIndex: 0,
   dealTitle: "",
   dealValue: "",
   dealStage: "em_aquecimento",
@@ -610,6 +612,7 @@ export function NewLeadDialog({
           tenantId,
           contextualCompanyId: companyId,
           registrationRequestId: registrationRequestIdRef.current ?? undefined,
+          primaryContactIndex: values.primaryContactIndex,
           people: [
             { nome: values.nome.trim(), telefone: values.telefone || undefined,
               email: values.email || undefined, documento: values.documento || undefined,
@@ -705,7 +708,7 @@ export function NewLeadDialog({
         tenantId,
         personId,
         role: values.cadastroTipo === "casal" ? "consumidor_final" : companyId ? "contato_comercial" : "consumidor_final",
-        isPrimary: true,
+        isPrimary: values.cadastroTipo !== "casal" || values.primaryContactIndex === 0,
         contextualCompanyId: companyId,
         relationshipScope: companyId && values.cadastroTipo !== "casal" ? "persistent" : "deal_only",
         metadata: values.cadastroTipo === "casal"
@@ -719,7 +722,7 @@ export function NewLeadDialog({
         tenantId,
         personId: coClientPersonId,
         role: "consumidor_final",
-        isPrimary: false,
+        isPrimary: values.primaryContactIndex === 1,
         relationshipScope: "deal_only",
         metadata: { clientePrincipal: true, ordemClientePrincipal: 2, grupoCliente: "multiplo" },
       });
@@ -1279,6 +1282,17 @@ export function NewLeadDialog({
                         onChange={(event) => setCoClient((current) => ({ ...current, funcao: event.target.value }))}
                       />
                     </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Contato principal para comunicação</Label>
+                    <Select value={String(form.watch("primaryContactIndex"))} onValueChange={(value) => form.setValue("primaryContactIndex", value === "1" ? 1 : 0)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">Cliente 1 — {form.watch("nome") || "primeiro cliente"}</SelectItem>
+                        <SelectItem value="1">Cliente 2 — {coClient.nome || "segundo cliente"}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">Essa escolha define somente quem recebe a comunicação principal. Ambos continuam clientes principais, com cadastros independentes.</p>
                   </div>
                   <p className="text-[11px] text-muted-foreground">Cliente 1 e Cliente 2 ficam vinculados ao mesmo negócio como clientes principais. Documentos, contatos e assinaturas permanecem individualizados.</p>
                 </div>
