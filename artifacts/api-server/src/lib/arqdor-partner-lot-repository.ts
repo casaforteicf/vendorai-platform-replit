@@ -1,5 +1,4 @@
 import {createHash} from "node:crypto";
-import type {Pool,PoolClient} from "pg";
 import {issuePartnerLotEntry,verifyPartnerLotEntry} from "./arqdor-partner-lot-entry";
 
 type DbQuery={query:(text:string,values?:unknown[])=>Promise<{rows:any[];rowCount?:number|null}>};
