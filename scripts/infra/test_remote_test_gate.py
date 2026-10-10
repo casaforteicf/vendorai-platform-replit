@@ -76,6 +76,21 @@ class GateTests(unittest.TestCase):
     self.assertIn("manifest.txt",mod.status(runid,"LOT-02"))
     with self.assertRaisesRegex(ValueError,"RUN_NOT_AUTHORIZED"):
      mod.status(runid,"LOT-03")
+ def test_symlinked_log_directory_not_traversed(self):
+  import tempfile
+  with tempfile.TemporaryDirectory() as tmp:
+   root=Path(tmp)
+   evidence=root/"evidence"
+   folder=evidence/"pr-3428-abcdefgh"
+   folder.mkdir(parents=True)
+   (folder/"authorized-lot.txt").write_text("LOT-02\n")
+   external=root/"private"
+   external.mkdir()
+   (external/"secret.log").write_text("private data")
+   (folder/"logs").symlink_to(external, target_is_directory=True)
+   with patch.object(mod,"EVIDENCE",evidence):
+    self.assertEqual(mod.status("pr-3428-abcdefgh","LOT-02")["logs"],[])
+
  def test_quota_counts_store_and_work(self):
   import tempfile
   with tempfile.TemporaryDirectory() as tmp:
