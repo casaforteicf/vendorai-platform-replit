@@ -222,6 +222,19 @@ describe("agent manager policy", () => {
       .toThrow("MANAGER_SUPPORT_KIND_INVALID");
   });
 
+  it("rejects oversized tenant identities across support reviews and opportunities", () => {
+    const oversizedTenant = "t".repeat(257);
+    const base = { tenantId: "tenant-a", domain: "crm" as const, kind: "tenant_operation" as const, fingerprint: "signal", evidence: "observed" };
+    expect(() => validateManagerOpportunity({ ...base, tenantId: oversizedTenant }))
+      .toThrow("TENANT_TOO_LONG");
+    expect(() => managerSupportSourceRef("crm", "platform_defect", "signal", oversizedTenant))
+      .toThrow("TENANT_TOO_LONG");
+    expect(() => validateManagerOpportunity({ ...base, tenantId: "t".repeat(256) }))
+      .not.toThrow();
+    expect(() => managerSupportSourceRef("crm", "platform_defect", "signal", "t".repeat(256)))
+      .not.toThrow();
+  });
+
   it("bounds support-review fingerprints before hashing or database access", () => {
     expect(() => managerSupportSourceRef("crm", "platform_defect", "x".repeat(512), "tenant-a"))
       .not.toThrow();
