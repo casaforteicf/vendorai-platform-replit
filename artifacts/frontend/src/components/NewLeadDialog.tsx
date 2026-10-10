@@ -139,6 +139,7 @@ type EndCustomerDraft = {
 
 type CoClientDraft = {
   dataNascimento: string;
+  profissao: string;
   nome: string;
   telefone: string;
   email: string;
@@ -297,6 +298,7 @@ export function NewLeadDialog({
   });
   const [coClient, setCoClient] = useState<CoClientDraft>({
     dataNascimento: "",
+    profissao: "",
     nome: "",
     telefone: "",
     email: "",
@@ -435,7 +437,7 @@ export function NewLeadDialog({
     setExtraContacts([]);
     setCommercialPartners([]);
     setEndCustomer({ enabled: false, nome: "", telefone: "", email: "", documento: "", funcao: "" });
-    setCoClient({ dataNascimento: "", nome: "", telefone: "", email: "", documento: "", funcao: "" });
+    setCoClient({ dataNascimento: "", nome: "", telefone: "", email: "", documento: "", profissao: "", funcao: "" });
     setServerDuplicate(null);
     resetCoupon();
     form.reset(DEFAULT_VALUES);
@@ -621,7 +623,7 @@ export function NewLeadDialog({
             { nome: coClient.nome.trim(), telefone: coClient.telefone.trim() || undefined,
               email: coClient.email.trim() || undefined, documento: coClient.documento.trim() || undefined,
               dataNascimento: coClient.dataNascimento || undefined,
-              profissao: coClient.funcao.trim() || undefined, source: values.source },
+              profissao: coClient.profissao.trim() || undefined, source: values.source },
           ],
         },
       );
@@ -683,7 +685,7 @@ export function NewLeadDialog({
         email: coClient.email.trim() || undefined,
         documento: coClient.documento.trim() || undefined,
         dataNascimento: coClient.dataNascimento || undefined,
-        profissao: coClient.funcao.trim() || undefined,
+        profissao: coClient.profissao.trim() || undefined,
         source: values.source,
       });
       coClientPersonId = secondPersonData.item?.id;
@@ -1059,7 +1061,7 @@ export function NewLeadDialog({
           setShowCommercial(false);
           setExtraContacts([]);
           setCommercialPartners([]);
-          setCoClient({ nome: "", telefone: "", email: "", documento: "", funcao: "" });
+          setCoClient({ dataNascimento: "", nome: "", telefone: "", email: "", documento: "", profissao: "", funcao: "" });
           setServerDuplicate(null);
           resetCoupon();
           form.reset(DEFAULT_VALUES);
@@ -1293,6 +1295,15 @@ export function NewLeadDialog({
                         type="date"
                         value={coClient.dataNascimento}
                         onChange={(event) => setCoClient((current) => ({ ...current, dataNascimento: event.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Profissão — Cliente 2</label>
+                      <Input
+                        className="mt-2"
+                        placeholder="Profissão"
+                        value={coClient.profissao}
+                        onChange={(event) => setCoClient((current) => ({ ...current, profissao: event.target.value }))}
                       />
                     </div>
                     <div>
