@@ -74,6 +74,11 @@ describe("agent manager policy", () => {
       .toBe(managerSupportSourceRef("crm", "platform_defect", "same", "tenant-a"));
   });
 
+  it("selects the most recent existing review deterministically", () => {
+    const source = readFileSync(new URL("./agent-manager-support.ts", import.meta.url), "utf8");
+    expect(source).toContain("ORDER BY created_at DESC, id DESC LIMIT 1");
+  });
+
   it("audits security escalation only when the existing record changes", () => {
     const source = readFileSync(new URL("./agent-manager-support.ts", import.meta.url), "utf8");
     expect(source).toContain("RETURNING id");
