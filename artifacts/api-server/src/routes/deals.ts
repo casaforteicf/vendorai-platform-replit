@@ -882,6 +882,9 @@ router.post("/deals/:id/execution-batches", async (req, res) => {
 
 router.get("/tenants/:tenantId/deals", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    return res.status(403).json({ error: "Access denied to this tenant" });
+  }
   const { etapa, funilId, leadId, includeNaoLead, includeArchived } = req.query as Record<string, string | undefined>;
 
   const conditions = [eq(dealsTable.tenantId, tenantId)];
@@ -1438,6 +1441,7 @@ router.patch("/deals/:id", async (req, res) => {
       assignedTo: dealsTable.assignedTo,
       wonAt: dealsTable.wonAt,
       vehicleReservationBlocked: dealsTable.vehicleReservationBlocked,
+      archivedAt: dealsTable.archivedAt,
     })
     .from(dealsTable)
     .where(eq(dealsTable.id, String(req.params.id)));
@@ -1457,6 +1461,10 @@ router.patch("/deals/:id", async (req, res) => {
   if (!isAdmin2 && (userFn2 === "vendedor" || userFn2 === "entrega") && existing.assignedTo && existing.assignedTo !== req.user?.sub) {
     res.status(403).json({ error: "Access denied to this deal" });
     return;
+  }
+
+  if (existing.archivedAt) {
+    return res.status(409).json({ error: "Negócio arquivado não pode ser alterado." });
   }
 
   if (existing.leadId) {
