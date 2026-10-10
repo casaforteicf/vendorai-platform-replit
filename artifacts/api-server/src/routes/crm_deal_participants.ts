@@ -616,7 +616,7 @@ router.post("/crm/deals/:dealId/couple", async (req, res) => {
       }
       return people;
     });
-    return res.status(201).json({ items: result });
+    return res.status(201).json({ items: result.map((item) => ({ ...item, metadata: safeParticipantMetadata(item.metadata, canManageCrmCommissions(req)) })) });
   } catch (error: any) {
     return res.status(error.status ?? 500).json({ error: error.message });
   }
@@ -786,7 +786,7 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
       return link;
     });
 
-    return res.status(201).json(link);
+    return res.status(201).json({ ...link, metadata: safeParticipantMetadata(link.metadata, canManageCrmCommissions(req)) });
   } catch (error: any) {
     return res.status(error.status ?? 500).json({ error: error.message });
   }
