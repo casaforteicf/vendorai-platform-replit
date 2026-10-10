@@ -46,6 +46,8 @@ class GateTests(unittest.TestCase):
   s=p.read_text()
   self.assertIn('MIN_FREE = 8 * 1024**3',s)
   self.assertIn('MAX_EVIDENCE_BYTES = 3 * 1024**3',s)
+  self.assertIn('MAX_TOTAL_BYTES = 6 * 1024**3',s)
+  self.assertIn('evidence_bytes(EVIDENCE)',s)
   self.assertNotIn('docker system prune',s)
   self.assertIn('re.fullmatch(r"[0-9a-f]{64}", cid)',s)
 
