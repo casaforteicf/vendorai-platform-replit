@@ -12,6 +12,10 @@ import "./planner5d-reference.css";
 import "./concept-editor-workspace.css";
 import { ConceptIdeaEntry } from "./ConceptIdeaEntry";
 import { ConceptMetricInput } from "./ConceptMetricInput";
+import { emptyArchitecturalModel } from "./conceptArchitecturalModel";
+import type { ArchitecturalModel } from "./conceptArchitecturalModel";
+const ConceptArchitecturalElementsPanel = lazy(() => import("./ConceptArchitecturalElementsPanel"));
+
 import { wallLengthLimit } from "./conceptWallLengthLimits";
 import { duplicateWallPlacement, openingCrossesWallMidpoint, splitWallWithOpenings } from "./conceptWallOperations";
 import { freeOpeningOffset, openingsOverlap, openingFitsWall, convertedOpening, openingPlacementError, openingDimensionError, exactOpeningEdit } from "./conceptOpeningPlacement";
@@ -1066,6 +1070,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [floors, setFloors] = useState(1);
   const [desiredArea, setDesiredArea] = useState(145);
   const [activeFloor, setActiveFloor] = useState(0);
+  const [architecturalModel, setArchitecturalModel] = useState<ArchitecturalModel>(emptyArchitecturalModel);
+
   const [editorView, setEditorView] = useState<"plan" | "model3d" | "facade" | "render">("plan");
   const [editorExperienceMode, setEditorExperienceMode] = useState<EditorExperienceMode>("guided");
 
@@ -7485,6 +7491,14 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           </button>
                         ))}
                       </div>
+                    </div>
+                  )}
+
+                  {editorLibraryTab === "build" && (
+                    <div className="mb-3">
+                      <Suspense fallback={<div className="p-3 text-xs">Carregando elementos paramétricos...</div>}>
+                        <ConceptArchitecturalElementsPanel model={architecturalModel} onChange={setArchitecturalModel} floor={activeFloor} lotWidth={lotWidth} lotDepth={lotDepth} />
+                      </Suspense>
                     </div>
                   )}
 
