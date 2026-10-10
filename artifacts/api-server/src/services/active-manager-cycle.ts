@@ -8,7 +8,7 @@ import { classifyManagerDemand, managerExecutionBucket, MANAGER_INTERVAL_MINUTES
  * The Jarvis proactivity surface can consume these cases with its existing RBAC.
  */
 const DOMAINS: Array<Exclude<ManagerDomain, "security">> = [
-  "crm", "pipeline", "marketing", "agenda", "proposals", "integrations", "omnichannel", "finance",
+  "crm", "pipeline", "marketing", "agenda", "proposals", "integrations", "omnichannel", "finance", "prospecting", "construction",
 ];
 let running = false;
 
@@ -228,6 +228,37 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               metric: String(total),
             };
           }
+          if (domain === "prospecting") {
+            const data = await client.query(
+              `SELECT count(*)::int AS total FROM prospector_queue
+               WHERE tenant_id=$1 AND status='pendente'
+                 AND created_at < now() - interval '7 days'`,
+              [tenantId],
+            );
+            const total = Number(data.rows[0]?.total ?? 0);
+            if (total > 0) observation = {
+              signal: "active-manager:prospecting:stale-queue",
+              title: "Prospectos aguardando avaliação",
+              detail: `Há ${total} prospectos pendentes há mais de sete dias. Jarvis deve sugerir revisão e deduplicação, sem abordar automaticamente.`,
+              metric: String(total),
+            };
+          }
+          if (domain === "construction") {
+            const data = await client.query(
+              `SELECT count(*)::int AS total FROM obras
+               WHERE tenant_id=$1 AND data_fim_prevista < current_date
+                 AND data_fim_real IS NULL
+                 AND status NOT IN ('concluida','cancelada')`,
+              [tenantId],
+            );
+            const total = Number(data.rows[0]?.total ?? 0);
+            if (total > 0) observation = {
+              signal: "active-manager:construction:overdue-works",
+              title: "Obras com término previsto ultrapassado",
+              detail: `Há ${total} obras sem conclusão registrada após a data prevista. Jarvis deve sugerir conferência de cronograma com o responsável.`,
+              metric: String(total),
+            };
+          }
           if (!observation) {
             const signals: Record<string, string> = {
               pipeline: 'active-manager:pipeline:overdue-activities',
@@ -238,6 +269,8 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               integrations: 'active-manager:integrations:expiring-tokens',
               omnichannel: 'active-manager:omnichannel:unread-conversations',
               finance: 'active-manager:finance:integration-health',
+              prospecting: 'active-manager:prospecting:stale-queue',
+              construction: 'active-manager:construction:overdue-works',
             };
             const signal = signals[domain];
             if (signal) {
