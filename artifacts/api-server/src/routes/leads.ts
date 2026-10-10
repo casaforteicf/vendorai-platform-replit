@@ -1452,6 +1452,66 @@ router.patch("/leads/:id", async (req, res) => {
   res.json(lead);
 });
 
+// CRM-06: escolha administrativa do operador dentro da empresa representante.
+// O responsável comercial permanece sendo a empresa (representativeFunctionId).
+router.patch("/leads/:id/representative-operator", async (req, res) => {
+  const parsed = z.object({ operationalUserId: z.string().uuid().nullable() }).strict().safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: "Informe um usuário operacional válido ou null para limpar a seleção." });
+    return;
+  }
+  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  if (!isAdmin) {
+    res.status(403).json({ error: "Somente administradores podem atribuir o operador da representante." });
+    return;
+  }
+  const [lead] = await db.select({
+    id: leadsTable.id, tenantId: leadsTable.tenantId,
+    representativeFunctionId: leadsTable.representativeFunctionId,
+    metadata: leadsTable.metadata, excluidoEm: leadsTable.excluidoEm,
+  }).from(leadsTable).where(eq(leadsTable.id, req.params.id)).limit(1);
+  if (!lead) { res.status(404).json({ error: "Lead não encontrado." }); return; }
+  if (lead.excluidoEm) { res.status(409).json({ error: "Lead excluído." }); return; }
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== lead.tenantId) {
+    res.status(403).json({ error: "Acesso negado ao tenant." }); return;
+  }
+  const representative = await validateRepresentativeFunction(lead.tenantId, lead.representativeFunctionId);
+  if (!representative) {
+    res.status(422).json({ error: "Lead sem empresa representante ativa e autorizada." }); return;
+  }
+  const operationalUserId = parsed.data.operationalUserId;
+  if (operationalUserId) {
+    const allowed = Array.isArray(representative.representativeUserIds) ? representative.representativeUserIds : [];
+    const [operator] = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(and(eq(usersTable.id, operationalUserId),
+        eq(usersTable.tenantId, representative.linkedTenantId!), eq(usersTable.active, true)))
+      .limit(1);
+    if (!operator || (allowed.length > 0 && !allowed.includes(operationalUserId))) {
+      res.status(422).json({ error: "Operador não pertence à representante autorizada." }); return;
+    }
+  }
+  const metadata = lead.metadata && typeof lead.metadata === "object" && !Array.isArray(lead.metadata)
+    ? lead.metadata as Record<string, unknown> : {};
+  const previousOperationalUserId = typeof metadata.representativeOperationalUserId === "string"
+    ? metadata.representativeOperationalUserId : null;
+  const history = Array.isArray(metadata.representativeOperatorHistory) ? metadata.representativeOperatorHistory : [];
+  const nextMetadata = {
+    ...metadata, representativeOperationalUserId: operationalUserId,
+    representativeOperatorHistory: previousOperationalUserId === operationalUserId ? history : [...history, {
+      representativeFunctionId: representative.id,
+      previousOperationalUserId, nextOperationalUserId: operationalUserId,
+      actorId: req.user?.sub ?? null, changedAt: new Date().toISOString(),
+    }],
+  };
+  const [updated] = await db.update(leadsTable)
+    .set({ metadata: nextMetadata, updatedAt: new Date() } as any)
+    .where(and(eq(leadsTable.id, lead.id), eq(leadsTable.tenantId, lead.tenantId),
+      eq(leadsTable.representativeFunctionId, representative.id), isNull(leadsTable.excluidoEm)))
+    .returning({ id: leadsTable.id });
+  if (!updated) { res.status(409).json({ error: "Responsabilidade alterada durante a operação." }); return; }
+  res.json({ leadId: lead.id, representativeFunctionId: representative.id, operationalUserId });
+});
+
 router.get("/leads/:id/responsavel-historico", async (req, res) => {
   const [existing] = await db
     .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo })
