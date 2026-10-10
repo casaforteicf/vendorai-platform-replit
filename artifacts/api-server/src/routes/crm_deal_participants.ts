@@ -399,6 +399,52 @@ router.patch("/crm/deals/:dealId/people/:personId", async (req, res) => {
   }
 });
 
+// CRM-07: alteração financeira separada da edição de dados cadastrais.
+const commissionPatchSchema = z.object({
+  tenantId: z.string().optional(),
+  enabled: z.boolean(),
+  kind: z.enum(["percent", "fixed"]).default("percent"),
+  value: z.number().finite().min(0).max(100000000).nullable(),
+});
+router.patch("/crm/deals/:dealId/people/:personId/commission", async (req, res) => {
+  const parsed = commissionPatchSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  if (!canManageCrmCommissions(req)) return res.status(403).json({ error: "Comissão restrita a administradores." });
+  if (parsed.data.enabled && (parsed.data.value === null ||
+      (parsed.data.kind === "percent" && parsed.data.value > 100))) {
+    return res.status(422).json({ error: "Informe comissão válida (percentual entre 0 e 100)." });
+  }
+  try {
+    const tenantId = tenantIdFromRequest(req, parsed.data.tenantId);
+    await assertDeal(req, tenantId, req.params.dealId);
+    const link = await db.transaction(async (tx) => {
+      const [existing] = await tx.select().from(crmDealPeopleTable).where(and(
+        eq(crmDealPeopleTable.tenantId, tenantId),
+        eq(crmDealPeopleTable.dealId, req.params.dealId),
+        eq(crmDealPeopleTable.personId, req.params.personId),
+      )).for("update").limit(1);
+      if (!existing || existing.metadata?.inactive === true)
+        throw Object.assign(new Error("Vínculo ativo não encontrado."), { status: 404 });
+      const current = existing.metadata && typeof existing.metadata === "object" ? existing.metadata : {};
+      const previous = (current as Record<string, unknown>).commission ?? null;
+      const commission = parsed.data.enabled
+        ? { enabled: true, kind: parsed.data.kind, value: parsed.data.value, status: "prevista" }
+        : { enabled: false, kind: parsed.data.kind, value: null };
+      const history = Array.isArray((current as any).commissionHistory)
+        ? (current as any).commissionHistory : [];
+      const metadata = { ...current, commission,
+        commissionHistory: [...history, { from: previous, to: commission,
+          actorId: req.user?.sub ?? req.user?.id ?? null, changedAt: new Date().toISOString() }] };
+      const [updated] = await tx.update(crmDealPeopleTable).set({ metadata, updatedAt: new Date() })
+        .where(eq(crmDealPeopleTable.id, existing.id)).returning();
+      return updated;
+    });
+    return res.json({ relationId: link.id, commission: (link.metadata as any)?.commission });
+  } catch (error: any) {
+    return res.status(error.status ?? 500).json({ error: error.message });
+  }
+});
+
 router.patch("/crm/deals/:dealId/people/:personId/profile", async (req, res) => {
   const parsed = personalDataSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
