@@ -45,6 +45,18 @@ async function assertDeal(req: any, tenantId: string, dealId: string) {
 }
 
 function digits(value?: string | null) { return (value ?? "").replace(/\D/g, ""); }
+function canManageCrmCommissions(req: any): boolean {
+  return req.user?.platformRole === "super_admin" ||
+    req.user?.platformRole === "tenant_admin";
+}
+
+function safeParticipantMetadata(metadata: any, canViewCommission: boolean) {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return metadata;
+  if (canViewCommission) return metadata;
+  const { commission: _privateCommission, ...visible } = metadata;
+  return visible;
+}
+
 
 router.get("/crm/people", async (req, res) => {
   try {
@@ -280,7 +292,14 @@ router.get("/crm/deals/:dealId/participants", async (req, res) => {
       .innerJoin(crmCompaniesMasterTable, eq(crmCompaniesMasterTable.id, crmDealCompaniesTable.companyId))
       .where(and(eq(crmDealCompaniesTable.tenantId, tenantId), eq(crmDealCompaniesTable.dealId, req.params.dealId)));
 
-    return res.json({ people: people.filter((item) => item.metadata?.inactive !== true), companies: companies.filter((item) => item.metadata?.inactive !== true) });
+    return res.json({
+      people: people.filter((item) => item.metadata?.inactive !== true).map((item) => ({
+        ...item, metadata: safeParticipantMetadata(item.metadata, canManageCrmCommissions(req)),
+      })),
+      companies: companies.filter((item) => item.metadata?.inactive !== true).map((item) => ({
+        ...item, metadata: safeParticipantMetadata(item.metadata, canManageCrmCommissions(req)),
+      })),
+    });
   } catch (error: any) {
     return res.status(error.status ?? 500).json({ error: error.message });
   }
@@ -304,6 +323,10 @@ router.patch("/crm/deals/:dealId/people/:personId", async (req, res) => {
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
   try {
     const tenantId = tenantIdFromRequest(req, parsed.data.tenantId);
+    if (!canManageCrmCommissions(req) &&
+        Object.prototype.hasOwnProperty.call(parsed.data.metadata ?? {}, "commission")) {
+      return res.status(403).json({ error: "Comissão restrita a administradores." });
+    }
     await assertDeal(req, tenantId, req.params.dealId);
     const result = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${tenantId}), hashtext(${req.params.dealId}))`);
