@@ -602,7 +602,7 @@ router.post("/crm/deals/:dealId/couple", async (req, res) => {
       await tx.update(crmDealPeopleTable).set({ isPrimary: false, updatedAt: new Date() })
         .where(and(eq(crmDealPeopleTable.tenantId, tenantId),
           eq(crmDealPeopleTable.dealId, req.params.dealId),
-          sql`${crmDealPeopleTable.personId} <> ${people[parsed.data.primaryContactIndex ?? 0].personId}`));
+          sql`${crmDealPeopleTable.personId} <> ${people[parsed.data.primaryContactIndex ?? 0]!.personId}`));
       if (parsed.data.contextualCompanyId) {
         const [existingCompanyLink] = await tx.select({ metadata: crmDealCompaniesTable.metadata })
           .from(crmDealCompaniesTable).where(and(
