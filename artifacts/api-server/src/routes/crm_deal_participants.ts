@@ -70,7 +70,7 @@ router.get("/crm/people", async (req, res) => {
         sql`COALESCE(${crmDealPeopleTable.metadata}->>'inactive', 'false') <> 'true'`,
         ...buildUserFunctionFilter(req, dealsTable)));
     const visibleLeads = await db.select({ id: leadsTable.id }).from(leadsTable)
-      .where(and(eq(leadsTable.tenantId, tenantId), ...buildUserFunctionFilter(req, leadsTable)));
+      .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm), ...buildUserFunctionFilter(req, leadsTable)));
     const visibleLeadIds = visibleLeads.map((lead) => lead.id);
     const companyContactIds = await db.select({ personId: crmTenantCompanyContactsTable.personId }).from(crmTenantCompanyContactsTable)
       .innerJoin(crmTenantCompaniesTable, eq(crmTenantCompaniesTable.id, crmTenantCompanyContactsTable.tenantCompanyId))
