@@ -1361,7 +1361,7 @@ export function NewLeadDialog({
                             </SelectContent>
                           </Select>
                         </div>
-                      </div>
+                      </div>}
                     </div>
                   ))}
                 </div>
@@ -1713,7 +1713,7 @@ export function NewLeadDialog({
                         </div>
                       )}
 
-                      <div className="space-y-2 rounded-md border bg-background p-3">
+                      {isAdmin && <div className="space-y-2 rounded-md border bg-background p-3">
                         <label className="flex cursor-pointer items-center gap-2 text-sm">
                           <input
                             type="checkbox"
