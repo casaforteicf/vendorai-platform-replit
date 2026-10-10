@@ -10,6 +10,16 @@ import {
 } from "./agent-manager-policy.js";
 
 describe("agent manager policy", () => {
+  it("routes Master scanner incidents to Superadmin after transaction commit", () => {
+    const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
+    expect(source).toContain('if (domain === "master" && observation)');
+    expect(source).toContain('kind: "platform_defect"');
+    expect(source).toContain('enqueueManagerSupportReview({');
+    expect(source.indexOf('enqueueManagerSupportReview({'))
+      .toBeGreaterThan(source.indexOf('await client.query("COMMIT");', source.indexOf('for (const tenantId of tenantIds)')));
+    expect(source).toContain('priority: "alta"');
+  });
+
   it("records failed tenant domain scans for the Master Manager after rollback", () => {
     const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
     const errorHandler = source.indexOf("} catch (domainError) {");
