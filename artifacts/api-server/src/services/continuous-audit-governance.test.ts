@@ -49,6 +49,22 @@ describe("UX and Security manager governance", () => {
     expect(auditSource).toContain("auditConversationTenantIsolation(),");
   });
 
+  it("detects cross-tenant lead associations and blocks autonomous security remediation", () => {
+    const audit = auditSource.slice(
+      auditSource.indexOf("async function auditConversationTenantIsolation()"),
+      auditSource.indexOf("async function auditDatabaseSchema()"),
+    );
+    const remediation = auditSource.slice(
+      auditSource.indexOf("async function runEmergencyRemediation("),
+      auditSource.indexOf("async function ensureAuditTablesAvailable("),
+    );
+    expect(audit).toContain("c.tenant_id <> l.tenant_id");
+    expect(audit).toContain("security:cross-tenant-lead-conversation-link");
+    expect(remediation).toContain('if (finding.module.startsWith("Segurança")) return;');
+    expect(remediation.indexOf('if (finding.module.startsWith("Segurança")) return;'))
+      .toBeLessThan(remediation.indexOf("executeDevAutonomousWork({"));
+  });
+
   it("platform security findings require Superadmin review and are not executable missions", () => {
     expect(policySource).toContain('"security_incident"');
     expect(managerSource).toContain('policy.route !== "superadmin_support"');
