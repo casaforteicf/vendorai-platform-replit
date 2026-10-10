@@ -10,6 +10,15 @@ import {
 } from "./agent-manager-policy.js";
 
 describe("agent manager policy", () => {
+  it("tracks critical pipeline delays independently of routine overdue activity", () => {
+    const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
+    expect(source).toContain("active-manager:pipeline:overdue-activities");
+    expect(source).toContain("active-manager:pipeline:severely-overdue-activities");
+    expect(source).toContain("interval '7 days'");
+    expect(source).toContain('domain === "pipeline" && !secondaryObservation');
+    expect(source).toContain("for (const observation of observations)");
+  });
+
   it("records CRM ownership and follow-up signals independently in one cycle", () => {
     const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
     expect(source).toContain("active-manager:crm:unassigned-leads");
