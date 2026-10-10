@@ -284,3 +284,11 @@ Não considerar item 2 encerrado: o fluxo de criação de lead ainda invoca serv
 - Renovação histórica sem `dealId` permanece permitida sem bloqueio do negócio; requer definição de política específica.
 - Pendem revisão os outros produtores de contratos, cobranças e integrações externas; estas podem exigir coordenação de locks e idempotência/compensação para efeitos em fornecedores externos.
 - Migração não aplicada; TypeScript, build, testes, homologação, merge e deploy não realizados.
+
+## Pré-verificação de criação externa de contratos e cobranças — 10/10/2026
+- Commit `6f750c5ee5035ce8d44bd4fae1586bb1543f7787` na PR #3428.
+- Antes de `createDocument` (ZapSign), a rota de fechamento verifica que o negócio permanece ativo e pertence ao tenant.
+- Antes de `createCharge` (Asaas), verifica novamente o negócio, tenant, arquivamento e presença de cobrança já registrada.
+- **Atenção:** isto é apenas pré-verificação; chamadas externas não participam da transação do PostgreSQL. Continua possível criar duas cobranças por corridas entre sessões, ou arquivar após a verificação. Erros gerados por estas verificações percorrem os blocos catch atuais e precisam de revisão semântica para evitar estados e mensagens incorretos.
+- Pendentes: reserva transacional/idempotente de operação externa por negócio, conciliação de retorno remoto, recuperação após falha de gravação, revisão de integrações alternativas e testes em sandbox de fornecedores.
+- Sem compilação, testes, migração, homologação, merge ou publicação.
