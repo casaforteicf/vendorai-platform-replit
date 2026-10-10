@@ -34,8 +34,18 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
       if (!ready.rows[0]?.runs || !ready.rows[0]?.cases) {
         throw new Error("AGENT_MANAGER_MIGRATION_PENDING");
       }
+      // Deterministic pagination prevents permanent starvation of tenants beyond
+      // the first 500, while keeping each transaction bounded.
+      const tenantCount = await client.query(
+        "SELECT count(*)::int AS total FROM tenants WHERE status='active'",
+      );
+      const totalTenants = Number(tenantCount.rows[0]?.total ?? 0);
+      const cycleBucket = Math.floor(now.getTime() / (15 * 60_000));
+      const pageCount = Math.max(1, Math.ceil(totalTenants / 500));
+      const pageOffset = (cycleBucket % pageCount) * 500;
       const tenants = await client.query(
-        "SELECT id FROM tenants WHERE status='active' LIMIT 500",
+        "SELECT id FROM tenants WHERE status='active' ORDER BY id LIMIT 500 OFFSET $1",
+        [pageOffset],
       );
       let scanned = 0;
       let cases = 0;
