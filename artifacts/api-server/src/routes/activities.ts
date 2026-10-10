@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { requestCanAccessLockedObject, syncProtectedObjectsForLead } from "../lib/attachment-folder-access.js";
-import { and, eq, lt, isNotNull } from "drizzle-orm";
+import { and, eq, lt, isNotNull, notExists } from "drizzle-orm";
 import {
   db,
   activitiesTable,
@@ -406,6 +406,13 @@ router.get("/tenants/:tenantId/activities", async (req, res) => {
   }
 
   const conditions = [eq(activitiesTable.tenantId, tenantId)];
+  // Keep history but hide tasks attached to deleted leads in active views.
+  conditions.push(notExists(
+    db.select({ id: leadsTable.id }).from(leadsTable).where(and(
+      eq(leadsTable.id, activitiesTable.leadId),
+      isNotNull(leadsTable.excluidoEm),
+    )),
+  ));
 
   const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
   const isSeller = req.user?.platformRole === "tenant_seller";
