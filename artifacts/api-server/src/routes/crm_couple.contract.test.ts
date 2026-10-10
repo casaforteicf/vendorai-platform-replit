@@ -6,6 +6,12 @@ const api = readFileSync(new URL("./crm_deal_participants.ts", import.meta.url),
 const frontend = readFileSync(new URL("../../../frontend/src/components/NewLeadDialog.tsx", import.meta.url), "utf8");
 
 describe("CRM-02/03 — casal, identidade e contato principal", () => {
+  it("persiste qualificação profissional separadamente para cada integrante", () => {
+    const couple = api.split('router.post("/crm/deals/:dealId/couple"')[1]?.split('router.post("/crm/deals/:dealId/people"')[0] ?? "";
+    expect(couple).toContain("...(person.profissao ? { profissao: person.profissao } : {})");
+    expect(frontend).toContain("profissao: values.profissao?.trim() || undefined");
+    expect(frontend).toContain("profissao: coClient.funcao.trim() || undefined");
+  });
   it("mantém ambos como clientes principais individualizados", () => {
     const couple = api.split('router.post("/crm/deals/:dealId/couple"')[1]?.split('router.post("/crm/deals/:dealId/people"')[0] ?? "";
     expect(couple).toContain('clientePrincipal: true, ordemClientePrincipal: index + 1');
