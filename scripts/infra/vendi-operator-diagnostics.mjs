@@ -23,8 +23,8 @@ export function inspectVendiOperatorFailure(input) {
     return {category:"INVALID_ARGUMENT",action:"",lot:"",exitCode:null,diagnosticAvailable:false};
   }
   // Only reason/category escapes; source error output can contain credentials.
-  const raw = String(input.stderr ?? input.errorMessage ?? "").slice(0,16000);
-  const exitCode = Number.isSafeInteger(input.exitCode) ? input.exitCode : null;
+  const raw = [input.stderr,input.errorMessage].filter((v)=>typeof v==="string").join("\n").slice(0,16000);
+  const exitCode = Number.isSafeInteger(input.exitCode) && input.exitCode>=0 && input.exitCode<=255 ? input.exitCode : null;
   const found = patterns.find(([pattern]) => pattern.test(raw))?.[1];
   const wrapperOnly = /Command failed:\s*ssh\s/i.test(raw) && !/\n(?:sudo:|Permission denied|Host key verification|lot\s|migration\s|No space left)/i.test(raw);
   const category = found ?? (wrapperOnly ? "REMOTE_EXIT_UNOBSERVABLE" : "UNKNOWN_OPERATOR_FAILURE");
