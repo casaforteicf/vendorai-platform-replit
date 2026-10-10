@@ -448,7 +448,7 @@ export default function Leads() {
     { incluirExcluidos: "apenas" },
     {
       query: {
-        enabled: !!tenantId && viewMode === "excluidos",
+        enabled: !!tenantId && isAdmin && viewMode === "excluidos",
         queryKey: getListTenantLeadsQueryKey(tenantId, { incluirExcluidos: "apenas" }),
         staleTime: 30_000,
         refetchOnWindowFocus: false,
@@ -540,10 +540,9 @@ export default function Leads() {
 
   const restoreLead = useMutation({
     mutationFn: async (lead: Lead) => {
-      const response = await fetch(`/api/leads/${lead.id}`, {
-        method: "PATCH",
+      const response = await fetch(`/api/leads/${lead.id}/restore`, {
+        method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ excluidoEm: null, motivoExclusao: null }),
       });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
@@ -852,7 +851,7 @@ export default function Leads() {
 
       <div className="flex items-center gap-2">
         <Button variant={viewMode === "ativos" ? "default" : "outline"} size="sm" onClick={() => setViewMode("ativos")}>Ativos</Button>
-        <Button
+        {isAdmin && <Button
           variant={viewMode === "excluidos" ? "default" : "outline"}
           size="sm"
           onClick={() => setViewMode("excluidos")}
@@ -860,7 +859,7 @@ export default function Leads() {
         >
           <Trash2 className="h-3.5 w-3.5" /> Excluídos
           {excludedLeads && excludedLeads.length > 0 && <Badge variant="secondary" className="ml-0.5">{excludedLeads.length}</Badge>}
-        </Button>
+        </Button>}
       </div>
 
       {viewMode === "excluidos" ? (
