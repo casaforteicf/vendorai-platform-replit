@@ -1,6 +1,8 @@
 import { buildFacadeMeshBoxes } from "./conceptFacadeMeshes";
 import { buildWallMeshPipeline } from "./conceptWallMeshPipeline";
 import { wallMeshToWebGL } from "./conceptWallWebGLGeometry";
+import { resolveWallUnionPick } from "./conceptWallUnionSelection";
+import type { WallUnionMesh } from "./conceptWallUnion";
 import { getFacadeMaterial, type FacadeDesignState } from "./conceptFacadeDesign";
 import { buildRoofPlan } from "./conceptRoofPlan";
 import type { SiteFrontSide } from "./conceptSitePlacement";
@@ -619,7 +621,14 @@ export default function ConceptWebGLScene({
           ) current = current.parent;
 
           const objectId = current?.userData?.objectId as string | undefined;
-          const wallId = current?.userData?.wallId as string | undefined;
+          const unionMesh = current?.userData?.wallUnionMesh as WallUnionMesh | undefined;
+          const unionPick = unionMesh
+            ? resolveWallUnionPick(unionMesh, hit?.faceIndex ?? -1)
+            : null;
+          // Shared junction faces must not silently select the wrong wall.
+          const wallId = unionPick
+            ? (unionPick.kind === "wall" ? unionPick.wallId : undefined)
+            : current?.userData?.wallId as string | undefined;
           const spaceId = current?.userData?.spaceId as string | undefined;
           const openingId = current?.userData?.openingId as string | undefined;
 
