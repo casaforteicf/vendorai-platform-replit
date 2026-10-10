@@ -70,7 +70,7 @@ export function buildFinancialSchedule(
   const weights = stages.map((stage) => stage.weight);
   const percentages = allocateExactly(10000, weights);
   const gross = allocateExactly(grossCents, weights);
-  const deductions = allocateExactly(advanceCents, gross);
+  const deductions = allocateExactly(advanceCents, grossCents > 0 ? gross : weights);
   const output = stages.map((stage, index) => ({
     ...stage,
     physicalBasisPoints: percentages[index],
