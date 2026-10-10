@@ -77,6 +77,7 @@ export function managerSupportSourceRef(
 ): string {
   if (typeof fingerprint !== "string" || !fingerprint.trim()) throw new Error("FINGERPRINT_REQUIRED");
   const normalizedFingerprint = fingerprint.trim();
+  if (normalizedFingerprint.length > 512) throw new Error("FINGERPRINT_TOO_LONG");
   // Never treat unsupported runtime module/kind values as a valid review identity.
   if (!MANAGER_DOMAINS.includes(module)) throw new Error("INVALID_MANAGER_DOMAIN");
   if (!MANAGER_SUPPORT_KINDS.includes(kind)) throw new Error("MANAGER_SUPPORT_KIND_INVALID");
