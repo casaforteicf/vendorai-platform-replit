@@ -513,7 +513,7 @@ function createCloudflareMcpServer() {
         pr: z.number().int().min(1).max(9999999),
         branch: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._/-]{0,180}$/),
         sha: z.string().regex(/^[a-fA-F0-9]{40}$/),
-        suite: z.enum(["crm", "api", "frontend", "full"]),
+        suite: z.enum(["crm", "api", "frontend", "full", "mcp"]),
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
