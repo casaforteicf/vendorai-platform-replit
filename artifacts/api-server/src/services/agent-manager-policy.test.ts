@@ -10,6 +10,18 @@ import {
 } from "./agent-manager-policy.js";
 
 describe("agent manager policy", () => {
+  it("records failed tenant domain scans for the Master Manager after rollback", () => {
+    const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
+    const errorHandler = source.indexOf("} catch (domainError) {");
+    const last = source.indexOf("} catch (tenantError) {", errorHandler);
+    const body = source.slice(errorHandler, last);
+    expect(errorHandler).toBeGreaterThan(-1);
+    expect(body).toContain("ROLLBACK TO SAVEPOINT manager_domain");
+    expect(body).toContain("'failed',0");
+    expect(body).toContain("managerExecutionBucket(domain, now)");
+    expect(source).toContain("outcome <> 'completed'");
+  });
+
   it("requires a description before opening a Superadmin review", () => {
     const source = readFileSync(new URL("./agent-manager-support.ts", import.meta.url), "utf8");
     const guard = source.indexOf("!f.description.trim()");
