@@ -80,6 +80,16 @@ describe("agent manager policy", () => {
     expect(source).toContain("ORDER BY domain, checked_at DESC");
   });
 
+  it("bounds automated Superadmin support payloads before database access", () => {
+    const source = readFileSync(new URL("./agent-manager-support.ts", import.meta.url), "utf8");
+    const guard = source.indexOf('throw new Error("MANAGER_SUPPORT_PAYLOAD_TOO_LARGE")');
+    const db = source.indexOf("const client = await pool.connect()");
+    expect(guard).toBeGreaterThan(-1);
+    expect(db).toBeGreaterThan(guard);
+    expect(source).toContain("f.evidence.length > 8000");
+    expect(source).toContain("f.acceptanceCriteria.length > 4000");
+  });
+
   it("requires a description before opening a Superadmin review", () => {
     const source = readFileSync(new URL("./agent-manager-support.ts", import.meta.url), "utf8");
     const guard = source.indexOf("!f.description.trim()");
