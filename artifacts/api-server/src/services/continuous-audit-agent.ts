@@ -210,6 +210,33 @@ async function upsertFinding(finding: AuditFinding, log: Logger) {
   await runEmergencyRemediation(id, finding, log);
 }
 
+async function auditFrontendRenderFailures(): Promise<AuditFinding[]> {
+  const available = await pool.query(
+    "SELECT to_regclass('public.ux_runtime_errors') AS telemetry",
+  );
+  if (!available.rows[0]?.telemetry) return [];
+  // Only aggregated counts leave the database; do not attach route or tenant IDs
+  // to cross-tenant Superadmin improvement summaries.
+  const result = await pool.query(
+    `SELECT coalesce(sum(occurrences),0)::int AS total,
+            count(DISTINCT tenant_id)::int AS affected_tenants
+       FROM ux_runtime_errors
+       WHERE last_seen_at > now() - interval '24 hours'`,
+  );
+  const total = Number(result.rows[0]?.total ?? 0);
+  if (total < 5) return [];
+  const affected = Number(result.rows[0]?.affected_tenants ?? 0);
+  return [{
+    key: "ux:recurring-react-render-failures",
+    title: "Falhas de renderização recorrentes detectadas pelo Agente UX",
+    description: `A telemetria registrou ${total} falhas de renderização nas últimas 24h em ${affected} tenants. Investigar em homologação; não há dados de usuários, rotas ou stacks no chamado.`,
+    module: "UI / UX",
+    priority: total >= 30 ? "alta" : "media",
+    riskSummary: "Renderizações interrompidas podem tornar telas do Vendor.ai indisponíveis.",
+    acceptanceCriteria: "Reproduzir a falha em homologação, verificar origem e validar correção com evidência funcional.",
+  }];
+}
+
 async function auditConversationTenantIsolation(): Promise<AuditFinding[]> {
   // Aggregate counts only: never expose messages, phone numbers or tenant IDs.
   const available = await pool.query(
@@ -564,6 +591,7 @@ async function runAudit(log: Logger, mode: "fast" | "deep") {
     }
     const batches = await Promise.all([
       auditDatabaseSchema(),
+      auditFrontendRenderFailures(),
       auditConversationTenantIsolation(),
       auditImprovementFlow(),
       ...(mode === "deep" ? [auditRuntimeUrls(), auditFrontendRoutes()] : []),
