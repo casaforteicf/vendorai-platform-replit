@@ -24,13 +24,13 @@ export function decodeVerifiedContexts(input: unknown): VerifiedContextResponse 
     if (!isRecord(raw) || typeof raw.id !== "string" || !raw.id ||
         typeof raw.label !== "string" || !raw.label ||
         raw.kind !== "organization" || typeof raw.tenantId !== "string" || !raw.tenantId ||
-        !Array.isArray(raw.roles) || !raw.roles.every((r: unknown) => typeof r === "string") ||
+        !Array.isArray(raw.roles) || !raw.roles.every((r: unknown) => ["tenant_admin", "sales", "member"].includes(String(r))) ||
         !Array.isArray(raw.enabledExperiences) || raw.enabledExperiences.length !== 0) {
       return null;
     }
     contexts.push({
       id: raw.id, kind: "organization", label: raw.label,
-      tenantId: raw.tenantId, roles: [], enabledExperiences: [],
+      tenantId: raw.tenantId, roles: raw.roles as ExperienceContext["roles"], enabledExperiences: [],
     });
   }
   if (!contexts.some(ctx => ctx.id === input.currentContextId)) return null;
