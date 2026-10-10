@@ -1,6 +1,6 @@
 import {describe,it,expect} from "vitest";
 import {calculateBudget,compositionPackages,marginReport} from "./commercial-budget-core";
-import {parseBrazilianMoney,reviewImport,confirmImport,likelySameImport} from "./commercial-import-review";
+import {parseBrazilianMoney,reviewImport,confirmImport,likelySameImport,verifyOriginalFileHash} from "./commercial-import-review";
 import {validatePartialExecution,rankSupplierOffers,calculateCommission} from "./commercial-execution-supplier";
 describe("LOTE 05 — núcleo comercial",()=>{
  it("não mistura opcionais e não inclusos no preço base",()=>{
@@ -21,6 +21,16 @@ describe("LOTE 05 — núcleo comercial",()=>{
   expect(()=>confirmImport({original:origin,confirmedBy:"u",confirmedAt:"2026-10-10",divergenceAcknowledged:false})).toThrow();
   expect(confirmImport({original:origin,confirmedBy:"u",confirmedAt:"2026-10-10",divergenceAcknowledged:true}).preserveOriginal).toBe(true);
   expect(likelySameImport(origin,{...origin,tenantId:"B"})).toBe(false);
+ });
+ it("rejeita arquivo substituído e overflow durante conferência",()=>{
+  const sha="a".repeat(64);
+  const original={tenantId:"t",sourceFileName:"x.pdf",sourceSha256:sha,originalTotalText:"0,00",
+    lines:[{description:"item",unit:"un",quantityText:"1",unitPriceText:"0,00",totalText:"0,00"}],unrecognizedFields:{}};
+  expect(()=>verifyOriginalFileHash(original,"b".repeat(64))).toThrow();
+  expect(()=>verifyOriginalFileHash(original,sha)).not.toThrow();
+  expect(()=>confirmImport({original,confirmedBy:"u",confirmedAt:"invalida",divergenceAcknowledged:true})).toThrow();
+  const many={...original,originalTotalText:"1,00",lines:Array.from({length:2},()=>({...original.lines[0],totalText:"90071992547409,91"}))};
+  expect(()=>reviewImport(many)).toThrow();
  });
  it("bloqueia sobre-execução parcial",()=>{
   expect(()=>validatePartialExecution([{itemId:"1",approvedMilliQuantity:1000,previouslyReleasedMilliQuantity:900,requestedMilliQuantity:200}])).toThrow();
