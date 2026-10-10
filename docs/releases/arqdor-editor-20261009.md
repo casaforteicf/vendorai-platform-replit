@@ -339,3 +339,12 @@ Validação: 122 testes em 23 arquivos passaram; tipagem isolada do helper e tra
 - Evita apresentar layout parcial como 100% de qualidade. Pontuação heurística permanece independente para classificação.
 - Verificação: 153 testes passaram em 27 arquivos; tipagem do helper e transformação sintática dos dois componentes passaram. Teste adicional cobre opção completa, parcial e vazia.
 - Validação visual integrada e homologação/publicação na Contabo permanecem pendentes.
+
+
+### Verificação independente de sintaxe e imports — 09/10/2026
+
+- Revisão fixada no commit c3d0ab3635620bc160d1f0fc6708481134cebe35 do PR #3423.
+- TypeScript 5.9.3 transpileModule: 51 arquivos TS/TSX alterados verificados sem diagnósticos de erro de sintaxe. Não equivale a typecheck semântico.
+- 122 imports locais relativos ou pelo alias @/ conferidos contra a árvore completa desse commit; nenhum arquivo ausente. Não valida exports, pacotes externos ou imports computados.
+- Transformações personalizadas de visibilidade e plano de mídia do Vite executadas sobre SidebarLayout, SidebarLayoutLegacy, MediaPlanBatchControl e MediaPlanAutoProductionBridge: quatro verificações passaram.
+- Build completo e validação visual integrada continuam pendentes. Nenhuma alteração funcional, homologação ou publicação nesta verificação.
