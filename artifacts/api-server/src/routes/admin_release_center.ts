@@ -1267,6 +1267,15 @@ router.get("/admin/releases/execution-control", async (_req, res) => {
 router.post("/admin/releases/execution-control", async (req, res) => {
   const parsed = controlSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  // Fail closed: enabling a worker that can eventually merge/deploy requires
+  // a separately configured operator gate, never just a UI click.
+  if (parsed.data.mode === "running" &&
+      process.env["VENDI_RELEASE_OPERATOR_VALIDATED"] !== "true") {
+    return res.status(409).json({
+      error: "OPERADOR_CONTABO_NAO_HOMOLOGADO",
+      message: "Valide build, migrações, operador e rollback antes de habilitar a fila."
+    });
+  }
   try {
     await ensureSchema();
     const result = await pool.query(
