@@ -145,3 +145,14 @@ Registrar para cada comando: SHA testado, ambiente, horário, exit code, log e a
 ### Ressalva sobre atomicidade ponta a ponta
 
 Não considerar item 2 encerrado: o fluxo de criação de lead ainda invoca serviços de empresa, pessoas, envolvidos e tarefas em requisições posteriores, apesar de transações internas implantadas em vários subfluxos. É necessário consolidar serviços do backend, sem replicar regras de atribuição, campanhas, automações e deduplicação.
+
+## Continuação Lote 2 — 10/10/2026: exclusão e duplicidades
+
+- Commit de código: `fb33aedc2ad4d22f4acb8e8150fd17140eff80c3`.
+- Arquivo: `artifacts/api-server/src/routes/leads.ts`.
+- Exclusão administrativa retorna conflito 409 para lead já excluído; UPDATE condicional com `isNull(excluidoEm)` impede sobrescrita de auditoria por exclusões simultâneas.
+- Lista de duplicidades não oferece como similar um lead excluído.
+- Mesclagem rejeita origem/destino excluídos; dispensa de duplicidade rejeita lead excluído e atualização concorrente.
+- Evidência efetiva: commit aceito pelo GitHub. Não houve execução de teste, build, integração, homologação Contabo, merge ou publicação.
+- Pendência importante: verificar todas as consultas de pipelines e trajetórias de movimentação de deals; não declarar exclusão totalmente validada. O merge de duplicatas ainda possui deleção física do registro de origem, que precisa de revisão para preservar a política de soft delete, sem quebrar as relações existentes.
+- Próximas etapas: corrigir movimentações/responsáveis, tarefas por etapa, múltiplos negócios e execução parcial, com testes e evidências por alteração.
