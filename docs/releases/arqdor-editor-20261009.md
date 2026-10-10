@@ -378,3 +378,8 @@ A reconciliação de paredes e aberturas deixa de ajustar (clamp) o offset de um
 ### Robustez de altura total de abertura — 10/10/2026
 
 `openingPlacementError` agora rejeita altura + peitoril que produza extensão vertical não finita, inclusive em aberturas importadas cuja dimensão original ultrapassa as faixas de edição. Teste de regressão adicionado em `conceptOpeningExactEdit.test.ts`. Commits 6d55f07 e 652b5f8. Execução de testes, typecheck, build e revisão integrada pendentes. Nenhum merge, homologação ou publicação.
+
+
+### Lote paramétrico arquitetônico inicial — 10/10/2026
+
+Novo módulo puro `conceptArchitecturalElements.ts` com validação de lajes e aberturas retangulares, área líquida, escada reta com espelhos/pisos calculados, coberturas plana/uma água/duas águas e agrupamento preliminar do quadro de esquadrias por tipologia/dimensão. Suíte unitária nova em `conceptArchitecturalElements.test.ts` cobre casos aceitos e rejeitados. Commits 819b249 e 22bac13. **Escopo: núcleo de domínio isolado; ainda não ligado ao estado/UI do ConceptPlanner, WebGL, importação ou biblioteca universal.** Não representa modelagem BIM integrada. Testes novos, typecheck, build e E2E ainda não executados. Sem merge, homologação ou publicação.
