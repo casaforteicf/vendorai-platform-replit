@@ -56,3 +56,12 @@ Esta versão não representa conclusão dos 30 sublotes nem aprovação para pro
 - Função pura `validateCompletedQuantity` e seus testes foram registrados.
 - A persistência do progresso por item e sua integração com o router **não foram concluídas**, pois a operação de gravação do serviço foi bloqueada.
 - O cálculo atual de saldo ainda precisa ser reconciliado com `completed_quantity`. Não publicar nem marcar 06.04 como concluído antes de testes de concorrência, estorno, mudança de status e compatibilidade de propostas aceitas.
+
+## Incremento 06.04 — Persistência de progresso por item
+
+- Serviço `execution_progress_persistence.ts` registra progresso acumulado (sem retroceder) por item, dentro de transação serializada pelo negócio, com evento auditável.
+- Endpoint autenticado `POST /execution-lots/deals/:dealId/lots/:lotId/items/:itemId/progress` recebe `completedQuantity` como total acumulado, e `note` opcional.
+- Leitura de lotes apresenta `completed_quantity`; balanço global computa quantidade concluída a partir do progresso real.
+- Encerramento de lote exige que todos os itens tenham quantidade concluída igual à reservada; cancelamento é bloqueado quando houve execução, até haver estorno formal.
+- **Não implementado ainda:** endpoint de estorno auditável; UI de acompanhamento; autorização fina por atribuição de responsável; testes transacionais PostgreSQL; aplicação de migration em homologação.
+- **Não publicado:** PR permanece em rascunho, sem merge e sem deploy.
