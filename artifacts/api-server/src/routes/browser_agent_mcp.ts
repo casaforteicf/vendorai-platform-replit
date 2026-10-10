@@ -485,15 +485,18 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
       });
 
       if (!exchangeResponse.ok) {
-        const detail = await exchangeResponse.text().catch(() => "");
-        throw new Error(`VENDI_HOMOLOG_AUTH_EXCHANGE_FAILED:${exchangeResponse.status}:${detail.slice(0, 200)}`);
+        // Never log upstream response bodies: they can contain credentials or private data.
+        throw new Error(`VENDI_HOMOLOG_AUTH_EXCHANGE_FAILED:${exchangeResponse.status}`);
       }
 
       const exchanged = await exchangeResponse.json() as {
         token?: string;
+        tenantId?: string;
         userCache?: Record<string, unknown>;
       };
-      if (!exchanged.token) throw new Error("VENDI_HOMOLOG_AUTH_EXCHANGE_INVALID_RESPONSE");
+      if (!exchanged.token || exchanged.tenantId !== tenantId || exchanged.userCache?.tenantId !== tenantId) {
+        throw new Error("VENDI_HOMOLOG_AUTH_EXCHANGE_TENANT_MISMATCH");
+      }
 
       firstPartyAuthToken = exchanged.token;
       firstPartyAuthUserCache = exchanged.userCache;
