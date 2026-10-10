@@ -181,3 +181,11 @@ Não considerar item 2 encerrado: o fluxo de criação de lead ainda invoca serv
 - **Evidência:** commits gravados no PR, inspeção estática da arquitetura. **Não executados:** TypeScript, build, testes automatizados, integração autenticada, concorrência real e homologação Contabo.
 - **Integração pendente:** interface para seleção de itens/grupos/ambientes/fases e quantidades; consulta de saldo por proposta; política formal de cancelamento/devolução de saldo; idempotência de solicitações repetidas; evitar corrida com edição simultânea da proposta; validar compatibilidade do tipo `workCardsTable.metadata`; normalizar estrutura em migração se volume exigir.
 - **Status:** execução parcial implementada **no backend em estágio inicial**, não pronta para homologação ou produção sem testes e fechamento das pendências.
+
+## Continuação 10/10/2026 — interface e saldos de execução parcial
+
+- `32cc0f3`: adicionada API `GET /deals/:id/execution-batches?propostaId=...` retornando lotes vinculados e saldo por item; isolamento por tenant, negócio e proposta.
+- `e6045ce`: novo componente `PartialExecutionDialog.tsx`, que lista propostas aceitas do negócio, consulta etapas de execução e saldos, permite quantidades parciais e justificativa, cria lote e recarrega os saldos.
+- `fe3e276`: botão "Enviar itens para execução" conectado no editor de negócio quando etapa for `ganho` ou `em_execucao`.
+- **Validação de commit:** arquivos salvos no GitHub. **Pendente:** inspeção TSX/build, provas de regressão, testes autenticados e UI real; nenhum merge nem deploy efetuado.
+- **Riscos conhecidos:** possíveis simultaneidades com alteração da proposta, retry sem chave idempotente e política de cancelar lote; contemplar casos de quantidade fracionária, grupos e fases e notificação de envio. Não considerar a conclusão do Lote 2 nem dar uso em produção antes da homologação.
