@@ -12,5 +12,7 @@ CREATE TABLE IF NOT EXISTS public.ux_runtime_errors (
 );
 CREATE INDEX IF NOT EXISTS ux_runtime_errors_recent_idx
   ON public.ux_runtime_errors (tenant_id, last_seen_at DESC);
+CREATE INDEX IF NOT EXISTS ux_runtime_errors_retention_idx
+  ON public.ux_runtime_errors (bucket_start);
 ALTER TABLE public.ux_runtime_errors ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.ux_runtime_errors FROM PUBLIC;
