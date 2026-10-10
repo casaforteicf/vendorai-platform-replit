@@ -34,6 +34,10 @@ export function matchesRegistrationReplay(
   actorId: string | null,
   fingerprint: string,
 ): boolean {
+  // A replay must be attributed to an authenticated actor. Treating two null
+  // actor IDs as equal could authorize an unattributed request replay.
+  if (typeof actorId !== "string" || actorId.trim().length === 0) return false;
+  if (typeof fingerprint !== "string" || !/^[a-f0-9]{64}$/i.test(fingerprint)) return false;
   return metadata?.registrationActorId === actorId &&
     metadata?.registrationPayloadHash === fingerprint;
 }
