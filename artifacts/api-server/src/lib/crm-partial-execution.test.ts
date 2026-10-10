@@ -21,6 +21,7 @@ describe("CRM V4 — execução parcial por item", () => {
   });
 
   it("preserva saldo não negativo de lotes históricos", () => {
-    expect(remainingQuantity(1, [0.6, 0.6])).toBe(0);
+    expect(() => remainingQuantity(1, [0.6, 0.6])).toThrow("Alocação acumulada inválida.");
+    expect(() => quantityUnits(Number.MAX_SAFE_INTEGER)).toThrow("Quantidade excede limite seguro.");
   });
 });
