@@ -76,6 +76,29 @@ export function managerExecutionBucket(
   return `manager:${domain}:${bucket}`;
 }
 
+/**
+ * Choose one stable tenant page for each domain and cadence bucket.
+ * Rotation is independent by domain; the page cannot exceed the active
+ * tenant count, even when the population is smaller than a full page.
+ */
+export function managerTenantPageOffset(
+  domain: Exclude<ManagerDomain, "security">,
+  now: Date,
+  totalTenants: number,
+  pageSize = 500,
+): number {
+  if (!Number.isFinite(now.getTime())) throw new Error("INVALID_MANAGER_TIME");
+  const interval = MANAGER_INTERVAL_MINUTES[domain];
+  if (!Number.isFinite(interval) || interval <= 0) throw new Error("INVALID_MANAGER_DOMAIN");
+  if (!Number.isSafeInteger(totalTenants) || totalTenants < 0 ||
+      !Number.isSafeInteger(pageSize) || pageSize <= 0) {
+    throw new Error("INVALID_MANAGER_PAGINATION");
+  }
+  const pageCount = Math.max(1, Math.ceil(totalTenants / pageSize));
+  const bucket = Math.floor(now.getTime() / (interval * 60_000));
+  return (bucket % pageCount) * pageSize;
+}
+
 export function isManagerDue(
   domain: Exclude<ManagerDomain, "security">,
   lastSuccessfulRun: Date | null,
