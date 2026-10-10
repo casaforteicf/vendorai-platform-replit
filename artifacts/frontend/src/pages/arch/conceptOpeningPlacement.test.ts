@@ -26,3 +26,11 @@ it("permite aberturas separadas verticalmente e bordas coincidentes", () => {
   expect(openingsOverlap(door, window, 4)).toBe(false);
   expect(openingsOverlap(door, { ...door, offset: 0.725 }, 4)).toBe(false);
 });
+
+it("rejeita valores inválidos ao procurar espaço livre para abertura", () => {
+  const door = { type: "door" as const, width: 0.9, offset: 0.5 };
+  expect(freeOpeningOffset({ ...door, offset: NaN }, [], 4)).toBeNull();
+  expect(freeOpeningOffset({ ...door, offset: Infinity }, [], 4)).toBeNull();
+  expect(freeOpeningOffset({ ...door, width: NaN }, [], 4)).toBeNull();
+  expect(freeOpeningOffset({ ...door, width: -0.9 }, [], 4)).toBeNull();
+});
