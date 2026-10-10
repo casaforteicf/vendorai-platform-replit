@@ -33,12 +33,15 @@ def validated(pr, branch, sha, suite):
         raise ValueError("INVALID_SUITE")
     return str(pr), branch, sha.lower(), suite
 
-def status(run):
+def status(run, lot):
     if not re.fullmatch(r"pr-[1-9][0-9]*-[A-Za-z0-9_-]{8}", run):
         raise ValueError("INVALID_RUN")
     folder = EVIDENCE / run
     if not folder.is_dir() or folder.is_symlink():
         raise ValueError("RUN_NOT_FOUND")
+    lot_file = folder / "authorized-lot.txt"
+    if not lot_file.is_file() or lot_file.is_symlink() or lot_file.read_text().strip() != lot:
+        raise ValueError("RUN_NOT_AUTHORIZED")
     out = {}
     for name in ("manifest.txt", "results.txt"):
         f = folder / name
@@ -73,8 +76,10 @@ def evidence_bytes(root):
             total += file.stat().st_size
     return total
 
-def run(pr, branch, sha, suite):
+def run(pr, branch, sha, suite, lot):
     args = validated(pr, branch, sha, suite)
+    if not re.fullmatch(r"LOT-(0[1-9]|1[0-4])", lot):
+        raise ValueError("INVALID_LOT")
     if os.geteuid() == 0:
         raise ValueError("MUST_RUN_UNPRIVILEGED")
     if not EXE.is_file():
@@ -120,6 +125,8 @@ def run(pr, branch, sha, suite):
                 cleanup_test_containers(EVIDENCE / run_name)
                 (EVIDENCE / run_name / "timeout.txt").write_text("exit=124; timeout cleanup attempted\\n")
         new = sorted(after - before)
+        for run_name in new:
+            (EVIDENCE / run_name / "authorized-lot.txt").write_text(lot + "\\n")
         return {"exitCode": rc, "runIds": new, "sha": args[2], "suite": suite,
                 "status": "completed" if rc != 124 else "timeout"}
 
@@ -127,10 +134,10 @@ def main():
     # Authentication/roles must be enforced by the private connector before invoking this tool.
     try:
         action, *rest = sys.argv[1:]
-        if action == "request" and len(rest) == 4:
+        if action == "request" and len(rest) == 5:
             result = run(int(rest[0]), *rest[1:])
-        elif action == "result" and len(rest) == 1:
-            result = status(rest[0])
+        elif action == "result" and len(rest) == 2:
+            result = status(rest[0], rest[1])
         else:
             raise ValueError("INVALID_ACTION")
         print(json.dumps({"ok": True, "result": result}))
