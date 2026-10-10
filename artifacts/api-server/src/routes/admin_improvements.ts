@@ -150,6 +150,29 @@ function actor(req: any) {
 
 router.use("/admin/improvements", requireRole("super_admin"));
 
+// Read-only evidence snapshot for the Superadmin Master Plan.
+// A merged PR does not imply successful tests, homologation or production deployment.
+router.get("/admin/improvements/master-pr-status", async (_req, res) => {
+  try {
+    const github = githubConfig();
+    const requested = String(_req.query.prs ?? "").split(",").map(value => Number(value.trim()));
+    const numbers = [...new Set(requested.filter(value => Number.isSafeInteger(value) && value > 0 && value < 1_000_000))].slice(0, 50);
+    if (numbers.length === 0) return res.status(400).json({ error: "Provide one or more valid PR numbers", code: "MASTER_INVALID_PRS" });
+    const results = await Promise.all(numbers.map(async (number) => {
+      try {
+        const pr = await githubJson(`/repos/${github.owner}/${github.repo}/pulls/${number}`);
+        return { number, state: pr.merged_at ? "merged" : pr.state === "closed" ? "closed" : "open", draft: Boolean(pr.draft), updatedAt: pr.updated_at ?? null, sha: pr.head?.sha ?? null, url: pr.html_url ?? null };
+      } catch {
+        return { number, state: "unavailable", draft: null, updatedAt: null, sha: null, url: null };
+      }
+    }));
+    return res.json({ checkedAt: new Date().toISOString(), repository: github.repository, items: results, productionVerified: false });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "github_unavailable";
+    return res.status(503).json({ error: msg === "GITHUB_DEV_TOKEN_MISSING" ? "GitHub token not configured" : "GitHub unavailable", code: "MASTER_GITHUB_UNAVAILABLE" });
+  }
+});
+
 router.get("/admin/improvements", async (_req, res) => {
   await ensureSchema();
   const result = await pool.query(`
