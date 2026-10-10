@@ -44,6 +44,16 @@ describe("agent manager policy", () => {
       .not.toBe(managerExecutionBucket("pipeline", new Date("2026-10-09T18:14:59Z")));
   });
 
+  it("deduplicates hourly marketing independently of 15-minute CRM", () => {
+    const a = new Date("2026-10-09T18:00:01Z");
+    const b = new Date("2026-10-09T18:45:59Z");
+    const c = new Date("2026-10-09T19:00:01Z");
+    expect(managerExecutionBucket("marketing", a)).toBe(managerExecutionBucket("marketing", b));
+    expect(managerExecutionBucket("marketing", b)).not.toBe(managerExecutionBucket("marketing", c));
+    expect(managerExecutionBucket("crm", a)).not.toBe(managerExecutionBucket("crm", b));
+    expect(managerExecutionBucket("crm", b)).not.toBe(managerExecutionBucket("crm", c));
+  });
+
   it("rejects findings without tenant identity or evidence", () => {
     expect(() => validateManagerOpportunity({ tenantId: "", domain: "crm", kind: "tenant_operation", fingerprint: "x", evidence: "abc" })).toThrow("TENANT_REQUIRED");
     expect(() => validateManagerOpportunity({ tenantId: "t", domain: "crm", kind: "tenant_operation", fingerprint: "x", evidence: "" })).toThrow("EVIDENCE_REQUIRED");
