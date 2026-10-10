@@ -10,6 +10,14 @@ import {
 } from "./agent-manager-policy.js";
 
 describe("agent manager policy", () => {
+  it("requires a description before opening a Superadmin review", () => {
+    const source = readFileSync(new URL("./agent-manager-support.ts", import.meta.url), "utf8");
+    const guard = source.indexOf("!f.description.trim()");
+    const connect = source.indexOf("const client = await pool.connect()");
+    expect(guard).toBeGreaterThan(-1);
+    expect(connect).toBeGreaterThan(guard);
+  });
+
   it("checks notification tables before scheduling tenant scans", () => {
     const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
     const prereq = source.indexOf("to_regclass('public.notifications')");
