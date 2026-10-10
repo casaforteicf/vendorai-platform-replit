@@ -301,8 +301,13 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
     .limit(1);
   const autonomyEnabled = Boolean(tenantAutonomy?.autonomyEnabledAt);
   const globalVendiAutonomy = vendiAutonomyEnabled();
-  const mode = globalVendiAutonomy ? "autonomo" : (parsed.data.mode ?? (autonomyEnabled ? "autonomo" : "assistido"));
-  const allowWrite = globalVendiAutonomy ? true : (parsed.data.allowWrite ?? autonomyEnabled);
+  // An explicit assisted/read-only request must never be escalated by tenant or global autonomy.
+  const mode = parsed.data.mode === "assistido"
+    ? "assistido"
+    : (globalVendiAutonomy ? "autonomo" : (parsed.data.mode ?? (autonomyEnabled ? "autonomo" : "assistido")));
+  const allowWrite = parsed.data.allowWrite === false
+    ? false
+    : (globalVendiAutonomy ? true : (parsed.data.allowWrite ?? autonomyEnabled));
 
   let connection: BrowserMcpConnection | undefined;
   if (parsed.data.connectionId) {
