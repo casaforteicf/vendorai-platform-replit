@@ -1615,8 +1615,31 @@ router.post("/leads/:id/merge", async (req, res) => {
       .set({ leadId: targetLeadId, updatedAt: new Date() })
       .where(and(eq(leadBriefingsTable.tenantId, tenantId), eq(leadBriefingsTable.leadId, duplicateId)));
 
-    // Delete the duplicate
-    await tx.delete(leadsTable).where(eq(leadsTable.id, duplicateId));
+    // Preserve the source lead as a soft-deleted record for audit and recovery.
+    // Related records are reassigned above, but the original lead identity must
+    // remain available to administrators rather than being physically removed.
+    const [archivedSource] = await tx
+      .update(leadsTable)
+      .set({
+        excluidoEm: new Date(),
+        motivoExclusao: "Mesclado com outro lead",
+        metadata: {
+          ...((duplicate.metadata && typeof duplicate.metadata === "object" && !Array.isArray(duplicate.metadata))
+            ? duplicate.metadata as Record<string, unknown>
+            : {}),
+          leadMerge: {
+            targetLeadId,
+            mergedBy: req.user?.sub ?? null,
+            mergedAt: new Date().toISOString(),
+          },
+        },
+        updatedAt: new Date(),
+      })
+      .where(and(eq(leadsTable.id, duplicateId), eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm)))
+      .returning({ id: leadsTable.id });
+    if (!archivedSource) {
+      throw new Error("Source lead was already archived during merge");
+    }
 
     // Return the merged (target) lead
     return tx.select().from(leadsTable).where(eq(leadsTable.id, targetLeadId)).limit(1);
