@@ -19,15 +19,29 @@ export class RouteContentErrorBoundary extends React.Component<Props, State> {
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     // Report only the first stable route segment; never transmit dynamic IDs,
     // user-provided paths, stack traces, messages or component props.
-    const routeKey = "/" + (window.location.pathname.split("/").filter(Boolean)[0] ?? "root");
-    const authToken = localStorage.getItem("vendorai_token");
-    if (authToken && /^\/[a-zA-Z0-9_-]+$/.test(routeKey)) {
-      void fetch("/api/ux/runtime-error", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ routeKey, errorKind: "react_render" }),
-        keepalive: true,
-      }).catch(() => undefined);
+    try {
+      const routeKey = "/" + (window.location.pathname.split("/").filter(Boolean)[0] ?? "root");
+      const authToken = localStorage.getItem("vendorai_token");
+      // Client throttling is best-effort; the API also has a rate limiter.
+      const throttleKey = "vendorai_ux_report_" + routeKey;
+      const last = Number(sessionStorage.getItem(throttleKey) || 0);
+      if (authToken && /^\/[a-zA-Z0-9_-]+$/.test(routeKey) &&
+          (Date.now() - last > 60_000)) {
+        sessionStorage.setItem(throttleKey, String(Date.now()));
+        const apiBase = import.meta.env.VITE_API_URL?.replace(/\/$/, "");
+        const isHomolog = window.location.hostname === "homolog.appvendorai.com";
+        const endpoint = isHomolog && apiBase
+          ? apiBase + "/ux/runtime-error"
+          : "/api/ux/runtime-error";
+        void fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+          body: JSON.stringify({ routeKey, errorKind: "react_render" }),
+          keepalive: true,
+        }).catch(() => undefined);
+      }
+    } catch {
+      // Telemetry is best-effort and cannot break the error boundary.
     }
     console.error("[VendorAI] Erro de renderização na rota", {
       route: this.props.routeKey,
