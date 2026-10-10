@@ -18,7 +18,8 @@ export interface ManagerPlatformFinding {
   priority?: "baixa" | "media" | "alta" | "urgente";
 }
 export async function enqueueManagerSupportReview(f: ManagerPlatformFinding): Promise<string> {
-  if (!f.fingerprint.trim() || !f.title.trim() || !f.description.trim() || !f.evidence.trim() || !f.acceptanceCriteria.trim()) {
+  if (!f || typeof f !== "object" ||
+      [f.fingerprint, f.title, f.description, f.evidence, f.acceptanceCriteria].some(\n        value => typeof value !== "string" || !value.trim(),\n      )) {
     throw new Error("MANAGER_SUPPORT_EVIDENCE_REQUIRED");
   }
   // Keep invalid runtime payloads from creating ambiguous Superadmin cases.
