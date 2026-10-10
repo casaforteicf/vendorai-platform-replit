@@ -180,12 +180,33 @@ router.get("/admin/improvements/agent-managers/status", async (_req, res) => {
       };
     });
     const enabled = process.env.ACTIVE_MANAGER_CYCLES_ENABLED === "true";
-    const operational = enabled && items.length > 0 && items.every((item: any) => !item.overdue);
+    // A sampled list of historical runs is insufficient proof that all
+    // active tenants and all three enabled domains are covered.
+    const coverage = await pool.query(`
+      SELECT
+        (SELECT count(*)::int FROM tenants WHERE status='active') AS "activeTenants",
+        (SELECT count(*)::int FROM (
+          SELECT t.id, d.domain FROM tenants t
+          CROSS JOIN (VALUES ('crm',15), ('pipeline',15), ('marketing',60)) AS d(domain,minutes)
+          LEFT JOIN (
+            SELECT tenant_id, domain, max(checked_at) AS last_run
+            FROM agent_manager_runs GROUP BY tenant_id,domain
+          ) runs ON runs.tenant_id=t.id AND runs.domain=d.domain
+          WHERE t.status='active' AND
+            (runs.last_run IS NULL OR runs.last_run < now() - make_interval(mins => d.minutes * 2))
+        ) missed) AS "missingOrOverdue"
+    `);
+    const activeTenants = Number(coverage.rows[0]?.activeTenants ?? 0);
+    const missingOrOverdue = Number(coverage.rows[0]?.missingOrOverdue ?? 0);
+    const operational = enabled && activeTenants > 0 && missingOrOverdue === 0;
     return res.json({
       enabled,
       ready: true,
       operational,
+      activeTenants,
+      missingOrOverdue,
       reason: !enabled ? "AGENT_MANAGER_DISABLED"
+        : activeTenants === 0 ? "AGENT_MANAGER_NO_ACTIVE_TENANTS"
         : items.length === 0 ? "AGENT_MANAGER_NO_COMPLETED_RUNS"
         : !operational ? "AGENT_MANAGER_OVERDUE_RUNS" : null,
       generatedAt: new Date().toISOString(),
