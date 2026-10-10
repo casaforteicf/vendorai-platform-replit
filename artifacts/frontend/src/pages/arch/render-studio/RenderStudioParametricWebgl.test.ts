@@ -40,6 +40,18 @@ describe("Arqdor wall mesh geometry for diagonal walls", () => {
     expect(disposed).toBe(1);
   });
 
+  it("releases geometry if attribute assignment fails", () => {
+    let disposed = 0;
+    class FailingAttributeGeometry extends MockBufferGeometry {
+      setAttribute() { throw new Error("attribute failure"); }
+      dispose() { disposed++; }
+    }
+    const failingThree = { ...THREE, BufferGeometry: FailingAttributeGeometry };
+    expect(() => buildWallGeometry(failingThree, wall([0, 0], [3, 4], [window])))
+      .toThrow("attribute failure");
+    expect(disposed).toBe(1);
+  });
+
   it("rejects invalid coordinates before generating a mesh", () => {
     expect(() => buildWallGeometry(THREE, wall([Number.NaN, 0], [3, 4])))
       .toThrow(/Coordenadas/);
