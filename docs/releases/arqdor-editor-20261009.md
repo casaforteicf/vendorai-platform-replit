@@ -353,3 +353,8 @@ Validação: 122 testes em 23 arquivos passaram; tipagem isolada do helper e tra
 ### Robustez numérica da caminhada e do mobiliário — 10/10/2026
 
 A movimentação na caminhada rejeita coordenadas/raios não finitos e deslocamentos extremos (>100 m por operação), evitando iterações excessivas. O cálculo de encaixe de móveis normaliza a rotação antes da projeção geométrica; a deduplicação de opções trata a transição arredondada entre 360° e 0°. Testes de regressão foram adicionados aos respectivos arquivos. Evidência: commits 49f3bbd, 90a3821, 8efe284, 0c4379a. Testes novos ainda não executados; build completo e inspeção integrada seguem pendentes. Sem merge, homologação ou publicação.
+
+
+### Normalização de colisões de mobiliário — 10/10/2026
+
+A função de vértices de colisão de mobiliário (`conceptFurnitureCollision.ts`) passou a normalizar ângulos finitos em módulo de 360 graus antes da trigonometria, consistente com a checagem de encaixe em ambientes. Adicionado teste de regressão com rotações grandes e equivalência à rotação normalizada em `conceptFurnitureCollision.test.ts`. Commits 51b056b e 462fbf5. Testes novos e build completo ainda não executados; homologação e publicação adiadas.
