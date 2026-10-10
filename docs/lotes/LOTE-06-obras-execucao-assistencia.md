@@ -33,3 +33,11 @@ Versão de desenvolvimento: `v2026.10.10-lote06.1`. Branch isolada, sem merge ou
 - PRs #3105, #3145 e #3165: código existente; não duplicar funcionalidades.
 
 Esta versão não representa conclusão dos 30 sublotes nem aprovação para produção.
+
+## Entrega complementar na mesma branch — 10/10/2026
+
+- `lib/db/migrations/202610101230_execution_lots.sql`: tabelas de lotes, itens de cada lote e trilha de eventos, índice único de idempotência e restrições de quantidade.
+- `artifacts/api-server/src/services/execution_lots.ts`: transação com `SELECT ... FOR UPDATE` no negócio, proposta aceita consultada no banco oficial, reserva segura e evento de auditoria.
+- A chave do item é o índice do item na proposta aceita (`0`, `1`, ...). A proposta deve ser imutável após aceitação; verificar esse contrato funcional antes de habilitar.
+- **Ainda pendente:** acesso autenticado por API, política de mudança de status, estornos auditados, tela e testes de integração no banco. Não aplicar migration em produção.
+- **Validações:** GitHub Actions reportou `startup_failure` nos commits inspecionados; isso não equivale a teste passando. Build local e testes de integração não executados nesta conversa.
