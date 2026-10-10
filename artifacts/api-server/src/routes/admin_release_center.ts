@@ -1360,7 +1360,7 @@ router.get("/admin/improvements/master-registry-reconciliation-preview", async (
     const data = await pool.query(`
       WITH extracted AS (
         SELECT id,title,source_ref_id,
-          (regexp_match(source_ref_id, '(^|[^0-9])([0-9]{2}\\.[0-9]{2})($|[^0-9])'))[2] AS sublot
+          (regexp_match(source_ref_id, '(^|[^0-9])([0-9]{2}[.][0-9]{2})($|[^0-9])'))[2] AS sublot
         FROM admin_improvements WHERE source_ref_id IS NOT NULL
       ), counts AS (
         SELECT sublot,count(*)::int AS candidates FROM extracted
@@ -1383,11 +1383,11 @@ router.post("/admin/improvements/master-registry-reconcile", async (_req, res) =
     await client.query("SELECT pg_advisory_xact_lock($1)", [731004]);
     const result = await client.query(`
       WITH candidates AS (
-        SELECT (regexp_match(source_ref_id, '(^|[^0-9])([0-9]{2}\\.[0-9]{2})($|[^0-9])'))[2] AS sublot,
+        SELECT (regexp_match(source_ref_id, '(^|[^0-9])([0-9]{2}[.][0-9]{2})($|[^0-9])'))[2] AS sublot,
                id, updated_at,
                count(*) OVER (PARTITION BY source_ref_id) AS source_count
         FROM admin_improvements
-        WHERE source_ref_id ~ '(^|[^0-9])[0-9]{2}\\.[0-9]{2}($|[^0-9])'
+        WHERE source_ref_id ~ '(^|[^0-9])[0-9]{2}[.][0-9]{2}($|[^0-9])'
       ), unique_candidates AS (
         SELECT sublot, id FROM candidates c
         WHERE c.sublot IS NOT NULL
