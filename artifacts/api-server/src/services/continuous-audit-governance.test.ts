@@ -87,6 +87,9 @@ describe("UX and Security manager governance", () => {
     const body = auditSource.slice(start, end);
     expect(body).toContain("ux_runtime_errors");
     expect(body).toContain("sum(occurrences)");
+    expect(body).toContain("GROUP BY tenant_id, route_key");
+    expect(body).toContain("HAVING sum(occurrences) >= 5");
+    expect(body).toContain("bucket_start >= now() - interval '24 hours'");
     expect(body).toContain('module: "UI / UX"');
     expect(body).not.toContain("SELECT *");
     expect(auditSource).toContain("auditFrontendRenderFailures(),");
