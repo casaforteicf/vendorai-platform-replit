@@ -16,6 +16,8 @@ describe("CRM V4 — execução parcial por item", () => {
   it("impede valor zero e quantidades com precisão excessiva", () => {
     expect(canAllocateQuantity(1, [], 0)).toBe(false);
     expect(() => quantityUnits(0.00001)).toThrow();
+    expect(() => quantityUnits(0.00000000001)).toThrow("Quantidade positiva abaixo da precisão mínima.");
+    expect(() => canAllocateQuantity(1, [], 0.00000000001)).toThrow("Quantidade positiva abaixo da precisão mínima.");
     expect(() => quantityUnits(Number.NaN)).toThrow();
     expect(() => quantityUnits(-1)).toThrow();
   });
