@@ -272,3 +272,12 @@ Validação: 122 testes em 23 arquivos passaram; tipagem isolada do helper e tra
 - O teste também abrange itens de parede; removida a comparação antiga sem rotação.
 - Verificação: 133 testes passaram em 24 arquivos, incluindo ponta rotacionada invadindo a zona, espaço livre e margens de contato. Tipagem do helper e transformação sintática do editor passaram.
 - Zonas continuam sendo estimativas preliminares; não representam arco exato de abertura nem validação normativa. Validação visual integrada e homologação/publicação Contabo permanecem pendentes.
+
+
+### Sugestões de mobiliário vinculadas à revisão da planta
+
+- Revisão determinística de paredes, aberturas, móveis do pavimento, terreno, células e uso do ambiente.
+- Mudanças nesses parâmetros descartam opções e prévia; aplicação também verifica a revisão antes de alterar modelo/histórico.
+- Mudanças apenas de aparência ou objetos de outro pavimento mantêm sugestões; ordenação de arrays não invalida opções.
+- Verificação: 137 testes passaram em 25 arquivos; tipagem do helper e transformação sintática do editor passaram. Testes de revisão cobrem portas, rotação, espessura, ambiente, terreno, exclusão e materiais.
+- Validação visual integrada e homologação/publicação na Contabo permanecem pendentes.

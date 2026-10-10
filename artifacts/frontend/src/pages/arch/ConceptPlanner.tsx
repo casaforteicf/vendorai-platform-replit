@@ -1,3 +1,4 @@
+import { furnitureLayoutRevision } from "./conceptFurnitureLayoutRevision";
 import { furnitureLayoutCollisionError, furnitureHasClearance, furnitureBlocksZone } from "./conceptFurnitureCollision";
 import { furnitureFitsRoom } from "./conceptFurnitureRoomFit";
 import { boundedObjectGeometry, duplicateObjectGeometry, insertedObjectGeometry, objectBatchPlacementError } from "./conceptObjectTransform";
@@ -1116,6 +1117,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     windowZones: Array<{ x: number; y: number; width: number; height: number }>;
   }>>([]);
   const [furnishLayoutSpaceId, setFurnishLayoutSpaceId] = useState<string | null>(null);
+  const [furnishLayoutRevision, setFurnishLayoutRevision] = useState<string | null>(null);
   const [previewFurnishLayoutId, setPreviewFurnishLayoutId] = useState<string | null>(null);
 
   const [wallMaterials, setWallMaterials] = useState<Record<string, string>>({});
@@ -3468,6 +3470,20 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const selectedClosedSpace = closedSpaces.find((space) => space.id === selectedClosedSpaceId) ?? null;
   const selectedSpaceProfile = selectedClosedSpace ? spaceAssignments.get(selectedClosedSpace.id) ?? null : null;
 
+  const currentFurnishLayoutRevision = useMemo(() => furnitureLayoutRevision({
+    floor: activeFloor, lotWidth, lotDepth,
+    spaceId: selectedClosedSpace?.id ?? null, spaceKind: selectedSpaceProfile?.kind ?? "outro",
+    cells: selectedClosedSpace?.cells ?? [], walls: safeCustomWalls, openings: safeCustomOpenings, objects: safeObjects,
+  }), [activeFloor, lotWidth, lotDepth, selectedClosedSpace, selectedSpaceProfile?.kind, safeCustomWalls, safeCustomOpenings, safeObjects]);
+
+  useEffect(() => {
+    if (!furnishLayoutRevision || furnishLayoutRevision === currentFurnishLayoutRevision) return;
+    setFurnishLayoutOptions([]);
+    setFurnishLayoutSpaceId(null);
+    setPreviewFurnishLayoutId(null);
+    setFurnishLayoutRevision(null);
+  }, [furnishLayoutRevision, currentFurnishLayoutRevision]);
+
   const libraryInsertPoint = useMemo(() => {
     if (selectedClosedSpace) return selectedClosedSpace.centroid;
     if (selected) return {
@@ -4319,6 +4335,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       return;
     }
     setObjectPlacementError(null);
+    setFurnishLayoutRevision(currentFurnishLayoutRevision);
     setFurnishLayoutOptions(options);
     setFurnishLayoutSpaceId(selectedClosedSpace.id);
     setPreviewFurnishLayoutId(options[0]?.id ?? null);
@@ -4328,6 +4345,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const applyFurnishLayoutOption = (optionId: string) => {
     const option = furnishLayoutOptions.find((item) => item.id === optionId);
     if (!option || !selectedClosedSpace || furnishLayoutSpaceId !== selectedClosedSpace.id) return;
+    if (furnishLayoutRevision !== currentFurnishLayoutRevision) {
+      setObjectPlacementError("A planta mudou desde a sugestão. Gere novos layouts antes de aplicar.");
+      return;
+    }
     const placementError = objectBatchPlacementError(option.objects, lotWidth, lotDepth, activeFloor);
     if (placementError) { setObjectPlacementError(placementError); return; }
     if (!option.objects.every(object => furnitureFitsRoom(object, selectedClosedSpace.cells))) {
