@@ -130,7 +130,7 @@ export function shouldUseOrthogonalUnion(walls: ParametricWall[]): boolean {
     Math.abs(w.start[1] - w.end[1]) < 1e-8);
 }
 
-export default function RenderStudioParametricWebgl({ walls, active }: { walls: ParametricWall[]; active: string }) {
+export default function RenderStudioParametricWebgl({ walls, active, onSelect }: { walls: ParametricWall[]; active: string; onSelect?: (id: string) => void }) {
   const holder = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -170,6 +170,8 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
       }
       const node = holder.current;
       const disposableResources: Array<{ dispose: () => void }> = [];
+      const raycaster = new THREE.Raycaster();
+      const pointer = new THREE.Vector2();
       let observer: ResizeObserver | null = null;
       // Register cleanup before any subsequent scene-building operation can
       // throw. The old handler was registered only after a successful render.
@@ -245,6 +247,42 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
         camera.aspect = width / height; camera.updateProjectionMatrix(); renderer.setSize(width, height);
         renderer.render(scene, camera);
       };
+      // Select the closest wall centerline at the 3D hit point. The merged
+      // orthogonal mesh is not split by wall, so it has no per-wall mesh ids.
+      const onPointerDown = (event: PointerEvent) => {
+        if (!onSelect) return;
+        const rect = renderer.domElement.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+        pointer.set((event.clientX - rect.left) / rect.width * 2 - 1,
+          -((event.clientY - rect.top) / rect.height * 2 - 1));
+        raycaster.setFromCamera(pointer, camera);
+        const hits = raycaster.intersectObjects(scene.children, false)
+          .filter((hit: any) => hit.object?.isMesh);
+        if (!hits.length) return;
+        const hit = hits[0];
+        const direct = walls.find(wall => wall.id === hit.object.name);
+        if (direct) { onSelect(direct.id); return; }
+        if (!union) return;
+        const xy = hit.point;
+        const matches = walls.map(wall => {
+          const ax = wall.start[0], ay = wall.start[1];
+          const dx = wall.end[0] - ax, dy = wall.end[1] - ay;
+          const denom = dx * dx + dy * dy;
+          if (denom < 1e-12) return { wall, score: Infinity };
+          const t = Math.min(1, Math.max(0, ((xy.x - ax) * dx + (xy.y - ay) * dy) / denom));
+          const distance = Math.hypot(xy.x - ax - t * dx, xy.y - ay - t * dy);
+          const outsideZ = Math.max(0, xy.z - wall.height, -xy.z);
+          return { wall, score: Math.hypot(distance, outsideZ) };
+        }).sort((a, b) => a.score - b.score);
+        if (matches[0] && matches[0].score <= matches[0].wall.thickness / 2 + 0.1)
+          onSelect(matches[0].wall.id);
+      };
+      renderer.domElement.addEventListener("pointerdown", onPointerDown);
+      const previousCleanup = cleanup;
+      cleanup = () => {
+        renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+        previousCleanup();
+      };
       resize();
       observer = new ResizeObserver(resize); observer.observe(node);
       setError("");
@@ -255,7 +293,7 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
       }
     }).catch(reason => { if (!disposed) setError(reason instanceof Error ? reason.message : "Erro WebGL"); });
     return () => { disposed = true; cleanup(); };
-  }, [walls, active]);
+  }, [walls, active, onSelect]);
   return <div className="space-y-1">
     <div ref={holder} className="h-[320px] w-full overflow-hidden rounded bg-slate-50" aria-label="Malhas paramétricas WebGL em prévia" />
     {error ? <p role="alert" className="text-xs text-red-700">{error}</p> :
