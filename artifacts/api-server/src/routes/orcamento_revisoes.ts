@@ -8,12 +8,37 @@ import {
   propostasTable,
 } from "@workspace/db";
 import { z } from "zod/v4";
+import { buildFinancialSchedule } from "../lib/commercial-financial-schedule";
 
 const router: IRouter = Router();
 
 function hasAccess(req: any, tenantId: string): boolean {
   return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
 }
+
+// ─── LOTE 05: prévia determinística, sem gravação em banco ───────────────
+router.post("/tenants/:tenantId/leads/:leadId/orcamento-revisoes/simular-cronograma", (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!hasAccess(req, tenantId)) return res.status(403).json({ error: "Acesso negado" });
+  const input = z.object({
+    grossCents: z.number().int().nonnegative().safe(),
+    advanceCents: z.number().int().nonnegative().safe(),
+    stages: z.array(z.object({
+      id: z.string().trim().min(1),
+      weight: z.number().finite().positive(),
+      startsAt: z.string().optional(),
+      endsAt: z.string().optional(),
+    })).min(1).max(200),
+  }).safeParse(req.body);
+  if (!input.success) return res.status(422).json({ error: "Dados inválidos", details: input.error.flatten() });
+  try {
+    return res.json({ tenantId, leadId: String(req.params.leadId), preview: buildFinancialSchedule(
+      input.data.grossCents, input.data.advanceCents, input.data.stages,
+    ) });
+  } catch (error) {
+    return res.status(422).json({ error: error instanceof Error ? error.message : "Cronograma inválido" });
+  }
+});
 
 // ─── List revision history for a lead ──────────────────────────────────────
 router.get("/tenants/:tenantId/leads/:leadId/orcamento-revisoes", async (req, res) => {
