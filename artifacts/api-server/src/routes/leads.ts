@@ -1433,6 +1433,8 @@ router.get("/tenants/:tenantId/leads/duplicates", async (req, res) => {
       and(
         eq(leadsTable.tenantId, tenantId),
         eq(leadsTable.possivelDuplicata, true),
+        // Soft-deleted leads must not reappear in active CRM review queues.
+        isNull(leadsTable.excluidoEm),
         ...buildUserFunctionFilter(req, leadsTable)
       )
     )
