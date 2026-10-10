@@ -220,6 +220,24 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               metric: String(total),
             };
           }
+          if (domain === "pipeline") {
+            const data = await client.query(
+              `SELECT count(*)::int AS total FROM activities
+               WHERE tenant_id=$1 AND status IN ('pendente','planejado')
+                 AND data_vencimento < now() - interval '7 days'
+                 AND EXISTS (SELECT 1 FROM leads l WHERE l.id=activities.lead_id
+                   AND l.tenant_id=activities.tenant_id AND l.excluido_em IS NULL
+                   AND l.nao_lead_tipo IS NULL AND l.status NOT IN ('cliente','perdido'))`,
+              [tenantId],
+            );
+            const total = Number(data.rows[0]?.total ?? 0);
+            if (total > 0) secondaryObservation = {
+              signal: "active-manager:pipeline:severely-overdue-activities",
+              title: "Atividades comerciais vencidas há mais de sete dias",
+              detail: `Existem ${total} atividades comerciais vencidas há mais de sete dias. Jarvis deve recomendar priorização e revisão do responsável, sem executar ações automaticamente.`,
+              metric: String(total),
+            };
+          }
           if (domain === "omnichannel") {
             const data = await client.query(
               `SELECT count(*)::int AS total FROM conversations
@@ -322,6 +340,17 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
             );
             await client.query('RELEASE SAVEPOINT manager_domain');
             continue;
+          }
+          if (domain === "pipeline" && !secondaryObservation) {
+            const closed = await client.query(
+              `UPDATE jarvis_cases SET status='resolved', resolved_at=now(),
+                 updated_at=now(),
+                 result_summary='O sinal operacional deixou de existir na verificação automática.'
+               WHERE tenant_id=$1 AND signal_key=$2
+                 AND source='active_manager' AND status='open'`,
+              [tenantId, "active-manager:pipeline:severely-overdue-activities"],
+            );
+            resolved += closed.rowCount ?? 0;
           }
           if (domain === "crm" && !secondaryObservation) {
             const closed = await client.query(
