@@ -15,6 +15,9 @@ describe("agent manager policy", () => {
     expect(source).toContain("active-manager:crm:unassigned-leads");
     expect(source).toContain("active-manager:crm:old-leads-without-activities");
     expect(source).toContain("for (const observation of observations)");
+    expect(source).toContain("let findingsCount = 0");
+    expect(source).toContain("hadCollision ?");
+    expect(source).toContain("findingsCount],");
     expect(source).toContain("if (!observation && !secondaryObservation)");
     expect(source).toContain("domain === \"crm\" && !secondaryObservation");
   });
