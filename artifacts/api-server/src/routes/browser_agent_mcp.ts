@@ -1,4 +1,4 @@
-import { decideBrowserAutonomy } from "../../../../scripts/infra/vendi-browser-autonomy.mjs";
+import { decideBrowserAutonomy } from "../lib/browser-autonomy.js";
 import { Router, type IRouter } from "express";
 import { z } from "zod";
 import {
