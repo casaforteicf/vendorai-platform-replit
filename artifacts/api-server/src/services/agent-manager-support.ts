@@ -38,6 +38,9 @@ export async function enqueueManagerSupportReview(f: ManagerPlatformFinding): Pr
     throw new Error("MANAGER_SUPPORT_APPROVAL_POLICY");
   }
   // Preserve the same normalized tenant identity in dedupe, scope and persistence.
+  if (f.tenantId !== undefined && typeof f.tenantId !== "string") {
+    throw new Error("TENANT_REQUIRED");
+  }
   const tenantId = f.tenantId === undefined ? undefined : f.tenantId.trim();
   if (tenantId === "") throw new Error("TENANT_REQUIRED");
   // A security incident must never be silently downgraded to routine priority.
