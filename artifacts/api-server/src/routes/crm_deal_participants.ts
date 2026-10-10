@@ -581,6 +581,10 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
   try {
     const tenantId = tenantIdFromRequest(req, parsed.data.tenantId);
+    if (!canManageCrmCommissions(req) &&
+        Object.prototype.hasOwnProperty.call(parsed.data.metadata ?? {}, "commission")) {
+      return res.status(403).json({ error: "Comissão restrita a administradores." });
+    }
     await assertDeal(req, tenantId, req.params.dealId);
 
     if (parsed.data.contextualCompanyId) {
