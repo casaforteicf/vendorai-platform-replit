@@ -802,13 +802,33 @@ export function NewLeadDialog({
         : { enabled: false };
 
       if (dealId) {
+        // Commission details must never travel in the generic participant mutation.
         await crmPostJson(`/api/crm/deals/${dealId}/people`, {
           tenantId,
           personId,
           role: partner.role,
           relationshipScope: "deal_only",
-          metadata: { leadId, commission },
+          metadata: { leadId },
         });
+        if (isAdmin && partner.hasCommission) {
+          const parsedValue = Number(partner.commissionValue.trim().replace(",", "."));
+          if (!partner.commissionValue.trim() || !Number.isFinite(parsedValue) ||
+              parsedValue < 0 || (partner.commissionKind === "percent" && parsedValue > 100)) {
+            throw new Error(`Comissão inválida para ${displayName}. Informe um valor válido.`);
+          }
+          const commissionResponse = await fetch(`/api/crm/deals/${dealId}/people/${personId}/commission`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ tenantId, enabled: true, kind: partner.commissionKind, value: parsedValue }),
+          });
+          const commissionResult = await commissionResponse.json().catch(() => ({}));
+          if (!commissionResponse.ok) {
+            throw new Error(commissionResult.error ?? `Falha ao registrar comissão de ${displayName}.`);
+          }
+        }
       }
 
       synced.push({
