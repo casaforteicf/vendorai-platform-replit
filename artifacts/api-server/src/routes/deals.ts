@@ -713,6 +713,45 @@ const partialExecutionSchema = z.object({
   })).min(1),
 });
 
+router.get("/deals/:id/execution-batches", async (req, res) => {
+  const dealId = String(req.params.id);
+  const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, dealId)).limit(1);
+  if (!deal?.leadId) return res.status(404).json({ error: "Negócio não encontrado." });
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== deal.tenantId) {
+    return res.status(403).json({ error: "Acesso negado ao tenant." });
+  }
+  const admin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  if (!admin && deal.assignedTo !== req.user?.sub) return res.status(403).json({ error: "Acesso negado ao negócio." });
+  const proposalId = String(req.query.propostaId ?? "");
+  const [proposal] = await db.select().from(propostasTable).where(and(
+    eq(propostasTable.id, proposalId), eq(propostasTable.dealId, deal.id),
+    eq(propostasTable.leadId, deal.leadId), eq(propostasTable.tenantId, deal.tenantId),
+  )).limit(1);
+  if (!proposal) return res.status(404).json({ error: "Proposta não encontrada no negócio." });
+  const cards = await db.select().from(workCardsTable).where(and(
+    eq(workCardsTable.tenantId, deal.tenantId),
+    eq(workCardsTable.dealId, deal.id), eq(workCardsTable.pipeline, "execucao"),
+  )).orderBy(workCardsTable.createdAt);
+  const batches = cards.filter(card => {
+    const m = card.metadata as Record<string, unknown> | null;
+    return m?.loteParcial === true && m?.propostaId === proposal.id;
+  });
+  const balances = proposal.itens.map((item, indice) => {
+    let enviada = 0;
+    for (const batch of batches) {
+      const meta = batch.metadata as Record<string, unknown> | null;
+      for (const row of (Array.isArray(meta?.itensLote) ? meta.itensLote : []) as Array<{indice?: unknown; quantidade?: unknown}>) {
+        if (row.indice === indice && typeof row.quantidade === "number") enviada += row.quantidade;
+      }
+    }
+    return { indice, nome: item.nome, unidade: item.unidade ?? null,
+      etapaId: item.etapaId ?? null, faseId: item.faseId ?? null,
+      quantidadeOriginal: item.quantidade, quantidadeEnviada: enviada,
+      quantidadeDisponivel: Math.max(0, Math.round((item.quantidade - enviada) * 10000) / 10000) };
+  });
+  res.json({ propostaId: proposal.id, status: proposal.status, itens: balances, lotes: batches });
+});
+
 router.post("/deals/:id/execution-batches", async (req, res) => {
   const parsed = partialExecutionSchema.safeParse(req.body);
   if (!parsed.success) {
