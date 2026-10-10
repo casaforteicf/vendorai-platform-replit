@@ -13,6 +13,12 @@ describe("CRM-02/03 — casal, identidade e contato principal", () => {
     expect(couple).toContain('primaryContactIndex');
     expect(couple).toContain('isPrimary: index === (parsed.data.primaryContactIndex ?? 0)');
   });
+  it("impede registrar casal sobre participantes já ativos do negócio", () => {
+    const couple = api.split('router.post("/crm/deals/:dealId/couple"')[1]?.split('router.post("/crm/deals/:dealId/people"')[0] ?? "";
+    expect(couple).toContain("const existingActive = await tx.select");
+    expect(couple).toContain("Negócio já possui participantes.");
+    expect(couple).toContain("registrationRequestId");
+  });
   it("recusa identidade duplicada e registra requisição idempotente", () => {
     expect(api).toContain("Os dois clientes devem possuir documentos distintos.");
     expect(api).toContain("e-mail e nome idênticos");
