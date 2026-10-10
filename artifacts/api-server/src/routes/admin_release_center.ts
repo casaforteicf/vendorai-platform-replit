@@ -1361,7 +1361,7 @@ router.post("/admin/improvements/master-registry-reconcile", async (_req, res) =
     await client.query("SELECT pg_advisory_xact_lock($1)", [731004]);
     const result = await client.query(`
       WITH candidates AS (
-        SELECT substring(source_ref_id FROM '(?:^|[^0-9])([0-9]{2}\\.[0-9]{2})(?:$|[^0-9])') AS sublot,
+        SELECT (regexp_match(source_ref_id, '(^|[^0-9])([0-9]{2}\\.[0-9]{2})($|[^0-9])'))[2] AS sublot,
                id, updated_at,
                count(*) OVER (PARTITION BY source_ref_id) AS source_count
         FROM admin_improvements
@@ -1393,9 +1393,10 @@ router.post("/admin/improvements/master-registry-links", async (req, res) => {
     const found = await pool.query("SELECT id FROM admin_improvements WHERE id=$1", [input.data.improvementId]);
     if (!found.rowCount) return res.status(404).json({ error: "Melhoria não encontrada." });
     const result = await pool.query(
-      "INSERT INTO admin_improvement_master_links (lot,sublot,improvement_id) VALUES ($1,$2,$3) ON CONFLICT (lot,sublot) DO UPDATE SET improvement_id=EXCLUDED.improvement_id RETURNING lot,sublot,improvement_id AS \"improvementId\"",
+      "INSERT INTO admin_improvement_master_links (lot,sublot,improvement_id) VALUES ($1,$2,$3) ON CONFLICT (sublot) DO UPDATE SET improvement_id=EXCLUDED.improvement_id WHERE admin_improvement_master_links.improvement_id=EXCLUDED.improvement_id RETURNING lot,sublot,improvement_id AS \"improvementId\"",
       [input.data.lot,input.data.sublot,input.data.improvementId]
     );
+    if (!result.rowCount) return res.status(409).json({ error: "Sublote já vinculado a outra melhoria. Revise o vínculo existente antes de alterar." });
     return res.json({ ok: true, item: result.rows[0] });
   } catch { return res.status(503).json({ error: "MASTER_LINK_UPDATE_FAILED" }); }
 });
