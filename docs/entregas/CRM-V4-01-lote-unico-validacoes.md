@@ -213,3 +213,10 @@ Não considerar item 2 encerrado: o fluxo de criação de lead ainda invoca serv
 - O registro histórico usa a política já existente de melhor esforço; a existência do card é a evidência transacional primária. Reconciliar eventuais falhas de histórico em homologação.
 - **Ponto de controle:** PR #3428 aberto e sem merge/deploy. Execução parcial backend+UI escrita, testes unitários escritos, gates de TypeScript, build e integração ainda não executados.
 - A inspeção estática não equivale a homologação. Não fazer publicação; priorizar testes reais e revisões de regressão/autorização antes de declarar lote concluído.
+
+## Correção de mesclagem e preservação do lead de origem — 10/10/2026
+- Commit `2b3b51dc77c356358636ee6042a93d64b4e96eea` no PR #3428.
+- A mesclagem deixa de executar `DELETE` físico do lead de origem e passa a registrar `excluidoEm`, `motivoExclusao` e `metadata.leadMerge` (destino, usuário e horário) na mesma transação de transferência de relacionamentos.
+- Atualização condicional evita arquivar novamente uma origem já excluída; os vínculos relacionados continuam realocados para o destino dentro da transação.
+- **Limites:** sem execução de TypeScript/build/testes nem homologação. Validar transações concorrentes, filtros em todas as pipelines, auditoria de merges anteriores, e dependências de exclusão lógica antes de aprovar. Dados de inteligência concorrentes ainda usam política própria para unicidade.
+- **Release:** sem merge, sem deploy, sem alteração de produção.
