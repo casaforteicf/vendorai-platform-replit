@@ -388,3 +388,8 @@ Novo módulo puro `conceptArchitecturalElements.ts` com validação de lajes e a
 ### Snapshot arquitetônico transacional — 10/10/2026
 
 Novo `conceptArchitecturalModel.ts`: modelo serializável v1 para lajes, escadas, coberturas e esquadrias; operações puras em lote com cópia profunda de aberturas de laje, validação prévia, atualização por ID, exclusão e rollback lógico (retorno de erro sem alterar o original); quantitativos derivados. Testes adicionados em `conceptArchitecturalModel.test.ts`. Commits 03d3b14 e 1f0813c. **Sem conexão ao estado React, às cenas, à biblioteca de modelos ou importador.** Não existe persistência remota nem sincronização 2D/3D efetiva deste novo núcleo; essa integração permanece como trabalho futuro. Build/testes não executados. Sem merge/deploy/homologação.
+
+
+### Projeções compartilhadas do modelo arquitetônico — 10/10/2026
+
+Adicionado `conceptArchitecturalViews.ts` com projeções puras 2D (contornos de laje, vazio, escada e cobertura) e 3D preliminar (partição retangular da laje preservando vazios, volumes indicativos de degraus e envelope de cobertura). `conceptArchitecturalViews.test.ts` cobre consistência entre projeções, área da laje descontando abertura e alteração imutável por edição. Commits bf69d72, c556378. **Ainda não está integrado aos componentes ConceptPlanner/ConceptPlan2D/ConceptModel3D/ConceptWebGLScene; roof-plane é envelope simplificado, não malha inclinada final; escada ainda não tem corte de laje automático.** Testes/build pendentes. Nenhum merge, homologação ou publicação.
