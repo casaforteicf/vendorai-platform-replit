@@ -43,7 +43,8 @@ export function convertedOpening<T extends Opening>(opening: T, type: Opening["t
   };
 }
 export function freeOpeningOffset(candidate: Opening, existing: Opening[], length: number): number | null {
-  if (!Number.isFinite(length) || length < size(candidate) + 0.1) return null;
+  const width = size(candidate);
+  if (!Number.isFinite(length) || !Number.isFinite(width) || width <= 0 || !Number.isFinite(candidate.offset) || length < width + 0.1) return null;
   const half = size(candidate) / 2;
   const centers = [candidate.offset * length, length / 2, half + 0.05, length - half - 0.05];
   for (const opening of existing) {
