@@ -79,9 +79,15 @@ export function buildWallGeometry(THREE: any, wall: ParametricWall) {
       quad(point(a, 1, hi), point(b, 1, hi), point(b, -1, hi), point(a, -1, hi));
   }
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-  geometry.computeVertexNormals();
-  return geometry;
+  try {
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geometry.computeVertexNormals();
+    return geometry;
+  } catch (error) {
+    // Caller cannot register this geometry for teardown until we return it.
+    geometry.dispose();
+    throw error;
+  }
 }
 
 export default function RenderStudioParametricWebgl({ walls, active }: { walls: ParametricWall[]; active: string }) {
