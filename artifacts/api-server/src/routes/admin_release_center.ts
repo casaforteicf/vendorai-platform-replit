@@ -1354,6 +1354,28 @@ router.get("/admin/improvements/master-registry-summary", async (_req, res) => {
 });
 // Reconciliação determinística: somente vínculos por source_ref_id explícito.
 // Não inferir sublotes pelo título e não criar melhorias fictícias.
+// Prévia somente leitura: expõe referências ambíguas para revisão antes de vincular.
+router.get("/admin/improvements/master-registry-reconciliation-preview", async (_req, res) => {
+  try {
+    const data = await pool.query(`
+      WITH extracted AS (
+        SELECT id,title,source_ref_id,
+          (regexp_match(source_ref_id, '(^|[^0-9])([0-9]{2}\\.[0-9]{2})($|[^0-9])'))[2] AS sublot
+        FROM admin_improvements WHERE source_ref_id IS NOT NULL
+      ), counts AS (
+        SELECT sublot,count(*)::int AS candidates FROM extracted
+        WHERE sublot IS NOT NULL GROUP BY sublot
+      )
+      SELECT e.id,e.title,e.source_ref_id AS "sourceRefId",e.sublot,
+             c.candidates, m.improvement_id AS "linkedImprovementId"
+        FROM extracted e JOIN counts c ON c.sublot=e.sublot
+        LEFT JOIN admin_improvement_master_links m ON m.sublot=e.sublot
+       WHERE c.candidates>1 OR (m.improvement_id IS NOT NULL AND m.improvement_id<>e.id)
+       ORDER BY e.sublot,e.title LIMIT 100`);
+    return res.json({ items:data.rows, truncated:data.rows.length===100, autoResolved:false });
+  } catch { return res.status(503).json({ error:"MASTER_RECONCILIATION_PREVIEW_UNAVAILABLE" }); }
+});
+
 router.post("/admin/improvements/master-registry-reconcile", async (_req, res) => {
   const client = await pool.connect();
   try {
