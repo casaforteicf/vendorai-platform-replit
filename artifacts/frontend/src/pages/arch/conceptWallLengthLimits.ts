@@ -1,5 +1,6 @@
 /** Maximum length in the existing direction, anchored at the wall start. */
 export function wallLengthLimit(wall: { x1: number; y1: number; x2: number; y2: number }, width: number, depth: number) {
+  if (![wall.x1, wall.y1, wall.x2, wall.y2, width, depth].every(Number.isFinite) || width <= 0 || depth <= 0) return 0;
   const dx = wall.x2 - wall.x1, dy = wall.y2 - wall.y1;
   const length = Math.hypot(dx, dy);
   if (length < 0.001) return 0;
