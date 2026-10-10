@@ -1001,6 +1001,13 @@ router.post("/deals/:id/commercial-review", async (req, res) => {
     return;
   }
 
+  const [activeCommercialLead] = await db.select({ id: leadsTable.id }).from(leadsTable)
+    .where(and(eq(leadsTable.id, deal.leadId), eq(leadsTable.tenantId, deal.tenantId), isNull(leadsTable.excluidoEm))).limit(1);
+  if (!activeCommercialLead) {
+    res.status(409).json({ error: "Negócio de lead excluído ou inexistente não pode receber análise comercial." });
+    return;
+  }
+
   const originalValue = Number(deal.valor || 0);
   const discountedValue = Math.max(0, originalValue * (1 - parsed.data.discountPercent / 100));
   const canApplyDirectly = !parsed.data.requestManagement && parsed.data.discountPercent <= 10;
@@ -1088,6 +1095,13 @@ router.post("/deals/:id/resume-commercial", async (req, res) => {
       error: "DEAL_LEAD_REQUIRED",
       message: "O atendimento precisa estar vinculado a um lead para ser retomado.",
     });
+    return;
+  }
+
+  const [activeResumeLead] = await db.select({ id: leadsTable.id }).from(leadsTable)
+    .where(and(eq(leadsTable.id, existing.leadId), eq(leadsTable.tenantId, existing.tenantId), isNull(leadsTable.excluidoEm))).limit(1);
+  if (!activeResumeLead) {
+    res.status(409).json({ error: "Atendimento de lead excluído ou inexistente não pode ser retomado." });
     return;
   }
 
@@ -1258,6 +1272,13 @@ router.post("/deals/:id/return-to-qualified", async (req, res) => {
 
   if (!existing.leadId) {
     res.status(422).json({ error: "O negócio precisa estar vinculado a um lead." });
+    return;
+  }
+
+  const [activeBudgetLead] = await db.select({ id: leadsTable.id }).from(leadsTable)
+    .where(and(eq(leadsTable.id, existing.leadId), eq(leadsTable.tenantId, existing.tenantId), isNull(leadsTable.excluidoEm))).limit(1);
+  if (!activeBudgetLead) {
+    res.status(409).json({ error: "Negócio de lead excluído ou inexistente não pode retornar à qualificação." });
     return;
   }
 
