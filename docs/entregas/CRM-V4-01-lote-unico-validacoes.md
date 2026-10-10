@@ -171,3 +171,13 @@ Não considerar item 2 encerrado: o fluxo de criação de lead ainda invoca serv
 **Funcionalidades reaproveitadas:** `ensureCommercialStageTasks` e `ensureRelationshipStageTasks` já executam tarefas configuráveis por etapa; `POST /deals` já admite vários negócios por lead; `return-to-qualified` já implementa devolução de orçamento com motivo e atividade. Não criar serviços paralelos.
 
 **Pendências reais antes da conclusão do lote:** validar todas as pipelines e endpoints de exclusão (incluindo mesclagem física de duplicatas); revisar operações concorrentes em movimentações de negócio e atividades; completar UX e modelo de execução parcial por itens/quantidades com vínculos a orçamento; executar testes unitários e integração multi-tenant; build e homologação Contabo isolada; registrar evidências e regressão. Nenhum merge/deploy autorizado.
+
+## Continuação 10/10/2026 — execução parcial por negócio/proposta
+
+- `f4f1450`: autorização em transferência de pipelines; reatribuição de proprietário exige administrador e vendedor/entrega não pode transferir negócio de outro responsável.
+- `6d5790e`: API `POST /deals/:id/execution-batches` adicionada. Recebe proposta aceita, etapa de execução e lista de índices dos itens com quantidades; cria card de execução independente na pipeline com vínculo ao lead, negócio e proposta original.
+- O orçamento original é preservado (snapshot comercial); informações do lote ficam em `work_cards.metadata` (`propostaId`, `itensLote`, `loteParcial`), com quantidades e referências de etapa/fase.
+- A criação usa `pg_advisory_xact_lock` dentro de transação para serializar lotes sobre a mesma proposta, ler quantidades anteriormente enviadas e impedir o excedente. Não permite repetição de índice no mesmo lote, operação para lead excluído, proposta não aceita ou fora do tenant.
+- **Evidência:** commits gravados no PR, inspeção estática da arquitetura. **Não executados:** TypeScript, build, testes automatizados, integração autenticada, concorrência real e homologação Contabo.
+- **Integração pendente:** interface para seleção de itens/grupos/ambientes/fases e quantidades; consulta de saldo por proposta; política formal de cancelamento/devolução de saldo; idempotência de solicitações repetidas; evitar corrida com edição simultânea da proposta; validar compatibilidade do tipo `workCardsTable.metadata`; normalizar estrutura em migração se volume exigir.
+- **Status:** execução parcial implementada **no backend em estágio inicial**, não pronta para homologação ou produção sem testes e fechamento das pendências.
