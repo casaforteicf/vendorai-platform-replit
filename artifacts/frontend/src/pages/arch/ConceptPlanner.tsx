@@ -8697,6 +8697,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         `}
                       >
                       <ConceptPlan2D
+                        architecturalModel={architecturalModel}
                         rooms={terrainOnly || hideCurrentGeometryForReferenceReview ? [] : visibleRooms}
                         lotWidth={lotWidth}
                         lotDepth={lotDepth}
