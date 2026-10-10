@@ -1,3 +1,4 @@
+import { captureRenderScene, type RenderSceneSnapshot } from "../../modules/arqdor/workspace/smart-render-engine/render-scene-contract";
 import { buildFacadeMeshBoxes } from "./conceptFacadeMeshes";
 import { getFacadeMaterial, type FacadeDesignState } from "./conceptFacadeDesign";
 import { buildRoofPlan } from "./conceptRoofPlan";
@@ -55,6 +56,10 @@ type Props = {
   onPanoramaExport?: (dataUrl: string) => void;
   onPanoramaExportError?: (message: string) => void;
   paintTool?: null | { target: "object" | "wall" | "floor"; materialId: string; name: string; swatch: string };
+  /** Increment to request a read-only scene metadata capture; no pixels are rendered. */
+  renderSceneSnapshotToken?: number;
+  onRenderSceneSnapshot?: (snapshot: RenderSceneSnapshot) => void;
+  onRenderSceneSnapshotError?: (message: string) => void;
   onReady?: (ready: boolean) => void;
   onSelectObject?: (objectId: string | null) => void;
   onSelectWall?: (wallId: string | null) => void;
@@ -333,6 +338,9 @@ export default function ConceptWebGLScene({
   onPanoramaExport,
   onPanoramaExportError,
   paintTool = null,
+  renderSceneSnapshotToken,
+  onRenderSceneSnapshot,
+  onRenderSceneSnapshotError,
   onReady,
   onSelectObject,
   onSelectWall,
@@ -848,6 +856,24 @@ export default function ConceptWebGLScene({
       runtimeRef.current = null;
     };
   }, []);
+
+  const processedSnapshotTokenRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!renderSceneSnapshotToken || processedSnapshotTokenRef.current === renderSceneSnapshotToken) return;
+    const runtime = runtimeRef.current;
+    if (!runtime || engineState !== "ready" || !sceneContentReady) return;
+    processedSnapshotTokenRef.current = renderSceneSnapshotToken;
+    try {
+      onRenderSceneSnapshot?.(captureRenderScene({
+        scene: runtime.modelRoot,
+        camera: runtime.camera,
+        controls: runtime.controls,
+        sceneId: `arqdor-concept-${renderSceneSnapshotToken}`,
+      }));
+    } catch (error) {
+      onRenderSceneSnapshotError?.(error instanceof Error ? error.message : "Não foi possível inspecionar a cena 3D");
+    }
+  }, [renderSceneSnapshotToken, engineState, sceneContentReady, onRenderSceneSnapshot, onRenderSceneSnapshotError]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
