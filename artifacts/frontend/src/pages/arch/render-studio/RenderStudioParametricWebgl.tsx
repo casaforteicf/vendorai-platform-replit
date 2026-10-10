@@ -25,6 +25,15 @@ function loadThree(): Promise<void> {
       script.remove();
       reject(new Error("Não foi possível carregar Three.js"));
     };
+    // A CDN that never settles must not block the editor indefinitely.
+    const timeout = setTimeout(() => {
+      script.remove();
+      reject(new Error("Tempo esgotado ao carregar Three.js"));
+    }, 12000);
+    const onload = script.onload;
+    const onerror = script.onerror;
+    script.onload = event => { clearTimeout(timeout); onload?.call(script, event); };
+    script.onerror = event => { clearTimeout(timeout); onerror?.call(script, event); };
     document.head.appendChild(script);
   }).catch(error => { engine = null; throw error; });
   return engine;
