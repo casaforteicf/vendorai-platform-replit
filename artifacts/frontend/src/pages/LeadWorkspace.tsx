@@ -799,7 +799,7 @@ export default function LeadWorkspace() {
 
     {deal && (
       <Suspense fallback={<Card className="border-border/70 shadow-sm"><CardContent className="p-4"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando envolvidos...</div></CardContent></Card>}>
-        <DealParticipantsCard tenantId={tenantId} dealId={deal.id} token={token} />
+        <DealParticipantsCard tenantId={tenantId} dealId={deal.id} token={token} canManageCommission={user?.platformRole === "super_admin" || user?.platformRole === "tenant_admin"} />
       </Suspense>
     )}
 
