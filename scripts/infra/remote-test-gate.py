@@ -140,10 +140,10 @@ def run(pr, branch, sha, suite, lot):
         if reason != "completed":
             for run_name in after - before:
                 cleanup_test_containers(EVIDENCE / run_name)
-                (EVIDENCE / run_name / "timeout.txt").write_text("exit=" + str(rc) + "; reason=" + reason + "; cleanup attempted\\n")
+                (EVIDENCE / run_name / "timeout.txt").write_text("exit=" + str(rc) + "; reason=" + reason + "; cleanup attempted\n")
         new = sorted(after - before)
         for run_name in new:
-            (EVIDENCE / run_name / "authorized-lot.txt").write_text(lot + "\\n")
+            (EVIDENCE / run_name / "authorized-lot.txt").write_text(lot + "\n")
         return {"exitCode": rc, "runIds": new, "sha": args[2], "suite": suite,
                 "status": reason}
 
