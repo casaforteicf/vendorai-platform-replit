@@ -374,6 +374,22 @@ async function validateReleaseAutonomously(release: any) {
   return { passed: Boolean(result.ok), reason: result.ok ? "passed" : String(result.answer ?? "browser_validation_failed"), impact, result };
 }
 
+// A execução de IA pode gerar efeitos externos (branch/PR). Nunca repetir
+// automaticamente uma tarefa cujo worker morreu antes de persistir o resultado.
+// Sinalize-a para reconciliação humana/automática com GitHub antes de retomar.
+async function quarantineInterruptedImprovements() {
+  const stale = await pool.query(
+    "UPDATE admin_improvements SET agent_status='needs_attention',status='bloqueada',agent_summary='Execução interrompida ou sem heartbeat por mais de 2 horas; reconciliar GitHub antes de tentar novamente.',updated_at=now() WHERE agent_status='running' AND updated_at < now() - interval '2 hours' RETURNING id"
+  );
+  for (const item of stale.rows) {
+    await pool.query(
+      "INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,actor,payload) VALUES ($1,$2,'stale_execution_quarantined',$3,'vendi:worker',$4::jsonb)",
+      [randomUUID(), item.id, 'Execução sem heartbeat isolada; nova tentativa não autorizada automaticamente.', JSON.stringify({ reason: 'stale_running', safeToRetry: false })],
+    );
+  }
+  return stale.rowCount ?? 0;
+}
+
 async function advanceAutonomousImprovement() {
   const found = await pool.query(
     "WITH candidate AS (SELECT id FROM admin_improvements WHERE agent_status IN ('queued','idle') AND status IN ('solicitada','em_desenvolvimento') ORDER BY CASE priority WHEN 'urgente' THEN 0 WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END, created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE admin_improvements i SET status='em_desenvolvimento',owner_agent='vendi',agent_status='running',updated_at=now() FROM candidate c WHERE i.id=c.id RETURNING i.id,i.title,i.description,i.module,i.priority,i.source_type AS \"sourceType\",i.source_ref_id AS \"sourceRefId\""
@@ -1300,6 +1316,9 @@ async function runReleaseWorkerCycle() {
 
     const execution = await releaseControl();
     if (execution.mode === "running" && fullAutonomyEnabled()) {
+      await quarantineInterruptedImprovements().catch((error) => {
+        console.error("[release-worker] interrupted task quarantine failed:", error instanceof Error ? error.message : error);
+      });
       await repairAutonomousBlockedImprovement().catch((error) => {
         console.error("[release-worker] autonomous repair failed:", error instanceof Error ? error.message : error);
       });
