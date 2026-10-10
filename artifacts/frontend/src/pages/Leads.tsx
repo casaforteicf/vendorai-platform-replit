@@ -530,6 +530,7 @@ export default function Leads() {
     },
     onSuccess: (lead) => {
       queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
+      queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId, { incluirExcluidos: "apenas" }) });
       queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
       toast({ title: "Lead excluído", description: `${lead.nome} foi movido pra aba Excluídos.` });
       setDeleteDialog({ open: false, lead: null });
@@ -553,6 +554,7 @@ export default function Leads() {
     onSuccess: (lead) => {
       queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
       queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId, { incluirExcluidos: "apenas" }) });
+      queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
       toast({ title: "Lead restaurado", description: `${lead.nome} voltou pra lista ativa.` });
     },
     onError: (error: Error) => toast({ title: "Não foi possível restaurar", description: error.message, variant: "destructive" }),
