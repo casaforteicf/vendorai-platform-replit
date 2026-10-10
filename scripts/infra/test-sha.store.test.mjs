@@ -61,3 +61,11 @@ test('crm suite is explicit and keeps global API TypeScript gate separate',()=>{
   assert.ok(script.indexOf('if [ "$SUITE" = crm ]') < script.indexOf('if [ "$SUITE" = api ]'));
   assert.match(script,/--network none/);
 });
+
+test('hydrated store reuse requires matching SHA and successful previous fetch',()=>{
+  assert.match(script,/VENDORAI_REUSE_STORE/);
+  assert.match(script,/grep -qx "sha=\$SHA"/);
+  assert.match(script,/grep -qx "cache-fetch exit=0"/);
+  assert.match(script,/Refusing external store reuse/);
+  assert.match(script,/ln -s "\$REUSE" "\$RUN\/store"/);
+});
