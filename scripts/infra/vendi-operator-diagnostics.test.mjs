@@ -47,3 +47,16 @@ test("preserves the actual host error category when wrapper includes stderr",()=
  assert.equal(r.category,"SUDO_POLICY");
  assert.equal(r.exitCode,1);
 });
+
+test("wrapper message and remote stderr are both considered",()=>{
+ const r=inspect({action:"releaseStatus",lot:"AGENT-01",errorMessage:"Command failed: ssh operator",stderr:"sudo: a password is required",exitCode:1});
+ assert.equal(r.category,"SUDO_POLICY");
+ assert.equal(r.exitCode,1);
+ assert.equal(JSON.stringify(r).includes("Command failed"),false);
+});
+test("invalid exit codes and arbitrary error objects cannot leak",()=>{
+ const r=inspect({action:"releaseStatus",lot:"AGENT-01",stderr:{token:"private-secret"},exitCode:999});
+ assert.equal(r.exitCode,null);
+ assert.equal(r.diagnosticAvailable,false);
+ assert.equal(JSON.stringify(r).includes("private-secret"),false);
+});
