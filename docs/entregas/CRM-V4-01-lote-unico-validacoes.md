@@ -256,3 +256,10 @@ Não considerar item 2 encerrado: o fluxo de criação de lead ainda invoca serv
 - `return-to-qualified` e `ai/evaluate` passaram a selecionar explicitamente `archivedAt` para fazer a verificação.
 - **Riscos ainda abertos:** verificação fora da transação não impede corrida entre arquivamento e operação concorrente; operações assíncronas e rotas em outros módulos não estão totalmente cobertas. Arquivamento de negócio em execução ou com contrato ativo requer regra explícita; não declarar encerrado. Migração continua apenas escrita, não executada.
 - Evidência limitada a commit registrado no GitHub: não houve TypeScript, build, testes, homologação, merge ou deploy.
+
+## Guarda de vínculos contratuais e operacionais — 10/10/2026
+- Commit `23f359e143b55cd7ee68d4b95d4115bdc255b60d` na PR #3428.
+- O arquivamento de negócio agora consulta contratos (`contracts`) e cards de execução (`work_cards`) no mesmo tenant, rejeitando o arquivamento HTTP 409 com `DEAL_HAS_LINKED_OBLIGATIONS` quando qualquer relacionamento existir.
+- Comportamento conservador: contratos históricos e execuções finalizadas também bloqueiam, até disponibilizar revisão/encerramento administrativo explícito. Não apagar ou desvincular contratos ou work cards para contornar a trava.
+- **Risco pendente:** a checagem e atualização são comandos separados e não têm garantia de serialização contra criação concorrente de contrato/card. Necessário gate transacional e testes antes da homologação. Revisar ainda os demais vínculos financeiros/OS e interface administrativa.
+- Evidência: commit no GitHub; sem execução de build, TypeScript, testes, migração, homologação, merge ou publicação.
