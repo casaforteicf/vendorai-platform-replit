@@ -2603,7 +2603,10 @@ router.patch("/deals/:id", async (req, res) => {
               value: Number(deal.valor),
               dueDate: dueDateStr,
               description: `Proposta: ${deal.titulo}`,
-              externalReference: skuExternalRef,
+              // Stable reference helps reconcile remote charges even when local
+              // persistence fails. Do not use a proposal-only reference: multiple
+              // deals can reference the same proposal family.
+              externalReference: `vendorai:deal:${deal.id}`,
               split: partnerWalletId
                 ? [{ walletId: partnerWalletId, percentualValue: 50 }]
                 : undefined,
