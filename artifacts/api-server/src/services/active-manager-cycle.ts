@@ -13,6 +13,11 @@ const DOMAINS: Array<Exclude<ManagerDomain, "security">> = [
 let running = false;
 
 export async function runActiveManagerCycle(log: Logger, now = new Date()) {
+  // Reject an invalid scheduling clock before opening a transaction or acquiring locks.
+  if (!Number.isFinite(now.getTime())) {
+    log.warn("active-managers: invalid cycle timestamp; scan skipped");
+    return;
+  }
   if (running) return;
   running = true;
   try {
