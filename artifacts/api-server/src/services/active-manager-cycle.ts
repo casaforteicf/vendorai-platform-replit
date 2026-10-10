@@ -1,6 +1,6 @@
 import type { Logger } from "pino";
 import { pool } from "@workspace/db";
-import { classifyManagerDemand, MANAGER_INTERVAL_MINUTES, type ManagerDomain } from "./agent-manager-policy.js";
+import { classifyManagerDemand, managerExecutionBucket, MANAGER_INTERVAL_MINUTES, type ManagerDomain } from "./agent-manager-policy.js";
 
 /**
  * AGENT-01: conservative periodic opportunity scan. Creates Jarvis cases only;
@@ -8,8 +8,7 @@ import { classifyManagerDemand, MANAGER_INTERVAL_MINUTES, type ManagerDomain } f
  * The Jarvis proactivity surface can consume these cases with its existing RBAC.
  */
 const DOMAINS: Array<Exclude<ManagerDomain, "security">> = [
-  "master", "crm", "pipeline", "marketing", "omnichannel", "integrations",
-  "agenda", "proposals", "prospecting", "construction", "finance", "arqdor", "ux",
+  "crm", "pipeline", "marketing",
 ];
 let running = false;
 
@@ -39,6 +38,7 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
           const minutes = MANAGER_INTERVAL_MINUTES[domain];
           if (Math.floor(now.getTime() / 60000) % minutes !== 0) continue;
           scanned++;
+          const periodKey = managerExecutionBucket(domain, now);
           // Initial deterministic opportunities: no AI or assumptions needed.
           // Other domains record a periodic scan in logs, not fabricated cases.
           let observation: { signal: string; title: string; detail: string; metric: string } | undefined;
@@ -89,6 +89,10 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               metric: String(total),
             };
           }
+          await client.query(
+            "INSERT INTO agent_manager_runs (tenant_id,domain,period_key,outcome,finding_count) VALUES ($1,$2,$3,'completed',$4) ON CONFLICT DO NOTHING",
+            [tenantId, domain, periodKey, observation ? 1 : 0],
+          );
           if (!observation) {
             const signals: Record<string, string> = {
               pipeline: 'active-manager:pipeline:overdue-activities',
