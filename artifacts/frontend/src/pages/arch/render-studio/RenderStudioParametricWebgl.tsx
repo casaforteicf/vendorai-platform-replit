@@ -9,7 +9,7 @@ export type ParametricWall = {
 };
 
 let engine: Promise<void> | null = null;
-function loadThree(): Promise<void> {
+export function loadThree(): Promise<void> {
   if (!engine) engine = new Promise((resolve, reject) => {
     if ((window as any).THREE?.WebGLRenderer) { resolve(); return; }
     const script = document.createElement("script");
