@@ -60,7 +60,7 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
             const data = await client.query(
               `SELECT count(*)::int AS total FROM leads
                 WHERE tenant_id=$1 AND assigned_to IS NULL
-                  AND excluido_em IS NULL AND nao_lead_tipo IS NULL
+                  AND representative_function_id IS NULL AND excluido_em IS NULL AND nao_lead_tipo IS NULL
                   AND status NOT IN ('cliente','perdido')`,
               [tenantId],
             );
@@ -72,13 +72,29 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               metric: String(total),
             };
           }
+          if (domain === "marketing") {
+            // Positive opportunity: review stalled drafts without presuming an error.
+            const data = await client.query(
+              `SELECT count(*)::int AS total FROM campaigns
+                WHERE tenant_id=$1 AND status='rascunho'
+                  AND created_at < now() - interval '7 days'`,
+              [tenantId],
+            );
+            const total = Number(data.rows[0]?.total ?? 0);
+            if (total > 0) observation = {
+              signal: "active-manager:marketing:old-drafts",
+              title: "Campanhas em rascunho podem representar oportunidades",
+              detail: `Há ${total} campanhas em rascunho há mais de sete dias. Jarvis deve perguntar se o tenant deseja revisá-las; nunca publicar sem autorização.`,
+              metric: String(total),
+            };
+          }
           if (!observation) continue;
           const decision = classifyManagerDemand("tenant_operation");
           if (decision.route !== "jarvis") throw new Error("ROUTING_POLICY_MISMATCH");
           const inserted = await client.query(
             `INSERT INTO jarvis_cases
              (id,tenant_id,signal_key,source,category,severity,title,detail,metric,status,evidence,recommended_action)
-             VALUES (gen_random_uuid()::text,$1,$2,'active_manager',$3,'medium',$4,$5,$6,'open',$7::jsonb,$8)
+             VALUES (gen_random_uuid()::text,$1,$2,'active_manager',$3,'attention',$4,$5,$6,'open',$7::jsonb,$8)
              ON CONFLICT (tenant_id,signal_key) DO UPDATE SET
                last_detected_at=now(),updated_at=now(),metric=EXCLUDED.metric,
                detail=EXCLUDED.detail,evidence=EXCLUDED.evidence
