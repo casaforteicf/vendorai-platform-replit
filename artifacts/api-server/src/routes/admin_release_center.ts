@@ -376,15 +376,11 @@ async function validateReleaseAutonomously(release: any) {
 
 async function advanceAutonomousImprovement() {
   const found = await pool.query(
-    "SELECT id,title,description,module,priority,source_type AS \"sourceType\",source_ref_id AS \"sourceRefId\" FROM admin_improvements WHERE agent_status IN ('queued','idle') AND status IN ('solicitada','em_desenvolvimento') ORDER BY CASE priority WHEN 'urgente' THEN 0 WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END, created_at ASC LIMIT 1"
+    "WITH candidate AS (SELECT id FROM admin_improvements WHERE agent_status IN ('queued','idle') AND status IN ('solicitada','em_desenvolvimento') ORDER BY CASE priority WHEN 'urgente' THEN 0 WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END, created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE admin_improvements i SET status='em_desenvolvimento',owner_agent='vendi',agent_status='running',updated_at=now() FROM candidate c WHERE i.id=c.id RETURNING i.id,i.title,i.description,i.module,i.priority,i.source_type AS \"sourceType\",i.source_ref_id AS \"sourceRefId\""
   );
   const item = found.rows[0];
   if (!item) return false;
 
-  await pool.query(
-    "UPDATE admin_improvements SET status='em_desenvolvimento',owner_agent='vendi',agent_status='running',updated_at=now() WHERE id=$1",
-    [item.id],
-  );
   await pool.query(
     "INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,actor,payload) VALUES ($1,$2,'agent_started','Vendi iniciou execução autônoma com Dev IA.','vendi:auto',$3::jsonb)",
     [randomUUID(), item.id, JSON.stringify({ sourceType: item.sourceType, sourceRefId: item.sourceRefId })],
@@ -572,7 +568,7 @@ async function createAutonomousReleaseIfReady() {
         AND test_status='passed'
         AND status IN ('pronto_staging','em_homologacao','testando')
       ORDER BY CASE priority WHEN 'urgente' THEN 0 WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END,created_at ASC
-      LIMIT 10`
+      LIMIT 3`
   );
   if (!ready.rowCount) return null;
 
