@@ -772,6 +772,9 @@ router.post("/deals/:id/execution-batches", async (req, res) => {
   if (!admin && deal.assignedTo !== req.user?.sub) {
     return res.status(403).json({ error: "Apenas o responsável pode enviar esta execução." });
   }
+  if (deal.etapa !== "ganho" && deal.etapa !== "em_execucao") {
+    return res.status(409).json({ error: "Conclua o fechamento comercial antes de enviar itens à execução." });
+  }
   const [lead] = await db.select({ excluidoEm: leadsTable.excluidoEm }).from(leadsTable)
     .where(and(eq(leadsTable.id, deal.leadId), eq(leadsTable.tenantId, deal.tenantId))).limit(1);
   if (!lead || lead.excluidoEm) return res.status(409).json({ error: "Lead excluído ou inexistente." });
@@ -802,6 +805,13 @@ router.post("/deals/:id/execution-batches", async (req, res) => {
   // proposal and prevents over-allocation across two simultaneous sessions.
   const outcome = await db.transaction(async tx => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${deal.tenantId}), hashtext(${proposal.id}))`);
+    const [freshProposal] = await tx.select().from(propostasTable).where(and(
+      eq(propostasTable.id, proposal.id), eq(propostasTable.tenantId, deal.tenantId),
+      eq(propostasTable.dealId, deal.id), eq(propostasTable.leadId, deal.leadId),
+    )).limit(1);
+    if (!freshProposal || freshProposal.status !== "aceita") {
+      throw Object.assign(new Error("Proposta não está mais aceita."), { status: 409 });
+    }
     const previous = await tx.select({ id: workCardsTable.id, metadata: workCardsTable.metadata }).from(workCardsTable)
       .where(and(eq(workCardsTable.tenantId, deal.tenantId),
         eq(workCardsTable.dealId, deal.id), eq(workCardsTable.pipeline, "execucao")));
@@ -832,7 +842,8 @@ router.post("/deals/:id/execution-batches", async (req, res) => {
       }
     }
     const items = parsed.data.itens.map(i => {
-      const original = proposal.itens[i.indice];
+      const original = freshProposal.itens[i.indice];
+      if (!original) throw Object.assign(new Error("Item alterado na proposta; atualize os saldos."), { status: 409 });
       const already = used.get(i.indice) ?? 0;
       if (!canAllocateQuantity(original.quantidade, [already], i.quantidade)) {
         throw Object.assign(new Error(`Quantidade excede saldo do item ${i.indice + 1}.`), { status: 409 });
