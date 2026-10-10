@@ -15,3 +15,9 @@ export function uniqueFurnitureLayouts<T extends { objects: Footprint[]; score: 
     return true;
   }).slice(0, Math.max(0, Math.floor(limit)));
 }
+
+/** Percentage of requested items actually present; this is not architectural quality. */
+export function furnitureLayoutCompletion(option: { objects: readonly unknown[]; missingLabels: readonly string[] }): number {
+  const total = option.objects.length + option.missingLabels.length;
+  return total ? Math.round(option.objects.length / total * 100) : 0;
+}

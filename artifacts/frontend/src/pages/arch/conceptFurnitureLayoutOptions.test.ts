@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { uniqueFurnitureLayouts } from "./conceptFurnitureLayoutOptions";
+import { uniqueFurnitureLayouts, furnitureLayoutCompletion } from "./conceptFurnitureLayoutOptions";
 const a = { id: "a", kind: "bed", floor: 0, x: 1, y: 1, width: 2, depth: 1, rotation: 0 };
 describe("distinct furniture options", () => {
   it("keeps the best duplicate despite changed IDs and ordering", () => {
@@ -33,5 +33,13 @@ describe("layout completeness ranking", () => {
       { score: 30, objects: [{ ...a, x: 3 }], missingLabels: ["Cadeira"] },
     ];
     expect(uniqueFurnitureLayouts(options).map(option => option.score)).toEqual([30, 20, 100]);
+  });
+});
+
+describe("layout completion indicator", () => {
+  it("reports the proportion of placed items instead of score", () => {
+    expect(furnitureLayoutCompletion({ objects: [a], missingLabels: [] })).toBe(100);
+    expect(furnitureLayoutCompletion({ objects: [a], missingLabels: ["Mesa", "Cadeira"] })).toBe(33);
+    expect(furnitureLayoutCompletion({ objects: [], missingLabels: [] })).toBe(0);
   });
 });

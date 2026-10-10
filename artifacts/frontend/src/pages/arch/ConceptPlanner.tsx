@@ -1,5 +1,5 @@
 import { furniturePresetFootprint, positionFurnitureInBounds, furnitureWallDistances, mirrorFurniturePreset } from "./conceptFurniturePreset";
-import { uniqueFurnitureLayouts } from "./conceptFurnitureLayoutOptions";
+import { uniqueFurnitureLayouts, furnitureLayoutCompletion } from "./conceptFurnitureLayoutOptions";
 import { furnitureLayoutRevision } from "./conceptFurnitureLayoutRevision";
 import { furnitureLayoutCollisionError, furnitureHasClearance, furnitureBlocksZone } from "./conceptFurnitureCollision";
 import { furnitureFitsRoom } from "./conceptFurnitureRoomFit";
@@ -8802,12 +8802,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           furnishLayoutSpaceId === selectedClosedSpaceId
                             ? (() => {
                                 const current = furnishLayoutOptions.find((item) => item.id === previewFurnishLayoutId);
-                                const bestScore = Math.max(...furnishLayoutOptions.map((item) => item.score), 1);
                                 if (!current) return undefined;
-                                const quality = Math.max(0, Math.min(100, Math.round((current.score / bestScore) * 100)));
+                                const completion = furnitureLayoutCompletion(current);
                                 return {
                                   score: current.score,
-                                  quality,
+                                  completion,
                                   doorZones: current.doorZones,
                                   windowZones: current.windowZones,
                                 };
