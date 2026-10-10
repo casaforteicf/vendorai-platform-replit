@@ -13,8 +13,8 @@ Para atualizar exclusivamente o worktree já existente (sem checkout da main):
 ```bash
 cd /home/vendorai/vendorai-test-executor
 git fetch origin feat/infra01-sha-test-executor-v4
-git switch feat/infra01-sha-test-executor-v4
-git merge --ff-only FETCH_HEAD
+git diff --quiet && git diff --cached --quiet || { echo 'Worktree com alterações; abortando'; exit 1; }
+git switch --detach FETCH_HEAD
 node --test scripts/infra/test-sha.store.test.mjs
 ```
 
