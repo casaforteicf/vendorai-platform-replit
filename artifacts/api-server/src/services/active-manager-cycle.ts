@@ -8,7 +8,7 @@ import { classifyManagerDemand, managerExecutionBucket, managerTenantPageOffset,
  * The Jarvis proactivity surface can consume these cases with its existing RBAC.
  */
 const DOMAINS: Array<Exclude<ManagerDomain, "security">> = [
-  "crm", "pipeline", "marketing", "agenda", "proposals", "integrations", "omnichannel", "finance", "prospecting", "construction",
+  "crm", "pipeline", "marketing", "agenda", "proposals", "integrations", "omnichannel", "finance", "prospecting", "construction", "arqdor", "master",
 ];
 let running = false;
 
@@ -256,6 +256,32 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               metric: String(total),
             };
           }
+          if (domain === "arqdor") {
+            const data = await client.query(
+              "SELECT count(*)::int AS total FROM arqdor_workspace_projects WHERE tenant_id=$1 AND updated_at < now() - interval '30 days'",
+              [tenantId],
+            );
+            const total = Number(data.rows[0]?.total ?? 0);
+            if (total > 0) observation = {
+              signal: "active-manager:arqdor:inactive-projects",
+              title: "Projetos Arqdor sem atualização recente",
+              detail: `Há ${total} projetos Arqdor sem atualização há mais de 30 dias. Jarvis deve propor acompanhamento sem alterar geometria.`,
+              metric: String(total),
+            };
+          }
+          if (domain === "master") {
+            const data = await client.query(
+              "SELECT count(DISTINCT domain)::int AS total FROM agent_manager_runs WHERE tenant_id=$1 AND outcome <> 'completed' AND checked_at > now() - interval '24 hours' AND domain <> 'master'",
+              [tenantId],
+            );
+            const total = Number(data.rows[0]?.total ?? 0);
+            if (total > 0) observation = {
+              signal: "active-manager:master:incomplete-runs",
+              title: "Agentes Gestores com execuções incompletas",
+              detail: `Há ${total} módulos com registros recentes incompletos. Jarvis deve orientar a revisão e encaminhar falhas sistêmicas ao Superadmin.`,
+              metric: String(total),
+            };
+          }
           if (!observation) {
             const signals: Record<string, string> = {
               pipeline: 'active-manager:pipeline:overdue-activities',
@@ -268,6 +294,8 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               finance: 'active-manager:finance:integration-health',
               prospecting: 'active-manager:prospecting:stale-queue',
               construction: 'active-manager:construction:overdue-works',
+              arqdor: 'active-manager:arqdor:inactive-projects',
+              master: 'active-manager:master:incomplete-runs',
             };
             const signal = signals[domain];
             if (signal) {
