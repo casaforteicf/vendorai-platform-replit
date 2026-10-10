@@ -1,3 +1,4 @@
+import uxRuntimeTelemetryRouter from "./ux_runtime_telemetry.js";
 import businessPlanRouter from "./business_plan.js";
 import { diagnosticPlanningPublicRouter, diagnosticPlanningProtectedRouter } from "./diagnostic_planning.js";
 import { Router, type IRouter } from "express";
@@ -282,6 +283,8 @@ router.use(enforceAccessScope);
 // Session endpoints must be mounted immediately after JWT validation. The
 // frontend needs /auth/me before tenant, onboarding or license checks.
 router.use(authProtectedRouter);
+// Authenticated, tenant-scoped, low-volume UX error reporting.
+router.use(uxRuntimeTelemetryRouter);
 router.use(sketchfabAuthRouter);
 
 // Trial status/continuity must remain reachable even after trial suspension or
