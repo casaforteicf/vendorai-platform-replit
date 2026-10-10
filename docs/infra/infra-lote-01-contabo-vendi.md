@@ -101,3 +101,8 @@ Teste local: `node --test scripts/infra/vendi-operator-diagnostics.test.mjs`.
 - `homolog-token-exchange.ts`: token deve ser string não vazia com no máximo 8192 caracteres; `tenantId` solicitado não pode ser vazio ou somente espaços, além da comparação obrigatória com o envelope e cache retornados.
 - `vendi-homolog-token-exchange.test.mjs`: novo teste para credencial excessivamente grande e escopo vazio.
 - Este incremento foi escrito na branch do PR #3445, não no ambiente Contabo. Não corrige sozinho o HTTP 401; execução de testes, build e integração ao operador real ainda são pendências.
+
+## INFRA-LOTE-01.10 — classificação correta de erro upstream de homologação (10/10/2026)
+- Adicionado `artifacts/api-server/src/lib/homolog-upstream-status.ts`, utilizado pela rota `browser_agent_mcp.ts`, para separar 401 (token inválido), 403 (sem permissão) e falhas upstream/indisponibilidade (502). O retorno não expõe corpo ou segredo do upstream.
+- Três testes em `scripts/infra/vendi-homolog-upstream-status.test.mjs` executados **localmente** com `node --experimental-strip-types --test` no Node v22.16.0: **3 passaram, 0 falharam**. Node 22 exige flag experimental para imports TS; o runtime previsto de produção usa Node 24.
+- Integração remota, build monorepo e homologação da Contabo não executados. A alteração **não comprova resolução do 401 verdadeiro**; agora permite diagnosticá-lo sem conflar indisponibilidade com expiração de token.
