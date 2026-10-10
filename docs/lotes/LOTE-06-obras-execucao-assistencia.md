@@ -41,3 +41,11 @@ Esta versão não representa conclusão dos 30 sublotes nem aprovação para pro
 - A chave do item é o índice do item na proposta aceita (`0`, `1`, ...). A proposta deve ser imutável após aceitação; verificar esse contrato funcional antes de habilitar.
 - **Ainda pendente:** acesso autenticado por API, política de mudança de status, estornos auditados, tela e testes de integração no banco. Não aplicar migration em produção.
 - **Validações:** GitHub Actions reportou `startup_failure` nos commits inspecionados; isso não equivale a teste passando. Build local e testes de integração não executados nesta conversa.
+
+## Continuação da versão (13h26, horário de Brasília)
+
+- `GET /execution-lots/deals/:dealId/proposals/:proposalId`: consulta lotes, alocações e saldos.
+- `POST /execution-lots/deals/:dealId/lots/:lotId/status`: avança/cancela lote dentro do escopo autenticado.
+- `execution_lot_lifecycle.test.ts`: testes declarativos de transições; execução não confirmada.
+- **Bloqueadores de homologação:** conferir autorização granular de perfis e representantes; garantir imutabilidade do snapshot da proposta aceita; permitir concluir parcialmente por item e validar consistência de status; teste de concorrência/idempotência real no PostgreSQL; aplicar migration apenas em homologação.
+- **Governança:** não houve merge ou publicação neste lote.
