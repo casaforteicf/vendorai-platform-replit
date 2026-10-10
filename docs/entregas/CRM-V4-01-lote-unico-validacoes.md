@@ -270,3 +270,10 @@ Não considerar item 2 encerrado: o fluxo de criação de lead ainda invoca serv
 - O `UPDATE` condicional inclui subconsultas `NOT EXISTS` para contratos, cards operacionais e registros financeiros. Isso revalida a ausência desses vínculos na operação de arquivamento e evita depender apenas da leitura preliminar.
 - **Limite de concorrência:** sem bloqueio/serialização comum com as rotas que criam vínculos, inserções simultâneas ainda exigem teste e proteção adicional. Faltam outras espécies de obrigação, migração aplicada, testes e revisão da UX.
 - Commit apenas na branch; nenhum TypeScript, build, homologação, merge ou deploy comprovado.
+
+## Serialização inicial: arquivamento × criação de lote de execução — 10/10/2026
+- Commit `604de90941877485356bf2c864f3b045ae18aa37`.
+- Na transação `POST /deals/:id/execution-batches`, antes de inserir o card de execução, o negócio é lido com `SELECT ... FOR UPDATE` e `archived_at IS NULL`. Se já arquivado, rejeita com 409 e não cria obrigação.
+- O lock de linha é compatível com o lock do `UPDATE` de arquivamento: evita disputa entre essas duas rotas sobre o mesmo registro, além do lock por proposta já existente.
+- **Escopo restrito:** somente criação de lote por essa rota; demais criadores de contratos, cobranças e cards precisam adotar verificação transacional equivalente. Bloqueio de arquivamento também exige teste de concorrência real e verificação de migração do novo campo.
+- Sem testes executados, homologação, merge, migração ou deploy.
