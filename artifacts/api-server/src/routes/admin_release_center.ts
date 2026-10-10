@@ -1231,6 +1231,34 @@ async function executeScheduledRelease(release: any) {
   return { sha: merged.sha ?? null, prNumber, prUrl };
 }
 
+// Estado persistente; a tabela é criada exclusivamente por migration, nunca no runtime.
+const controlModes = ["running", "paused", "draining"] as const;
+const controlSchema = z.object({ mode: z.enum(controlModes), reason: z.string().max(1000).optional() });
+async function releaseControl() {
+  const result = await pool.query("SELECT mode,updated_at AS \"updatedAt\",updated_by AS \"updatedBy\",reason FROM admin_release_execution_control WHERE id=1");
+  if (!result.rowCount) throw new Error("RELEASE_CONTROL_NOT_INITIALIZED");
+  return result.rows[0] as { mode: "running" | "paused" | "draining"; updatedAt: string; updatedBy: string; reason: string | null };
+}
+
+router.get("/admin/releases/execution-control", async (_req, res) => {
+  try { await ensureSchema(); return res.json(await releaseControl()); }
+  catch (error) { return res.status(503).json({ error: "RELEASE_CONTROL_UNAVAILABLE" }); }
+});
+
+router.post("/admin/releases/execution-control", async (req, res) => {
+  const parsed = controlSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  try {
+    await ensureSchema();
+    const result = await pool.query(
+      "UPDATE admin_release_execution_control SET mode=$1,reason=$2,updated_by=$3,updated_at=now() WHERE id=1 RETURNING mode,reason,updated_by AS \"updatedBy\",updated_at AS \"updatedAt\"",
+      [parsed.data.mode, parsed.data.reason ?? null, actor(req)],
+    );
+    if (!result.rowCount) return res.status(503).json({ error: "RELEASE_CONTROL_NOT_INITIALIZED" });
+    return res.json(result.rows[0]);
+  } catch { return res.status(503).json({ error: "RELEASE_CONTROL_UNAVAILABLE" }); }
+});
+
 const RELEASE_WORKER_LOCK = 731001;
 const GITHUB_RECONCILE_WORKER_LOCK = 731002;
 
@@ -1274,7 +1302,9 @@ async function runReleaseWorkerCycle() {
   try {
     await ensureSchema();
 
-    if (fullAutonomyEnabled()) {
+    const execution = await releaseControl();
+    if (execution.mode === "paused") return;
+    if (execution.mode === "running" && fullAutonomyEnabled()) {
       await repairAutonomousBlockedImprovement().catch((error) => {
         console.error("[release-worker] autonomous repair failed:", error instanceof Error ? error.message : error);
       });
@@ -1291,6 +1321,7 @@ async function runReleaseWorkerCycle() {
         console.error("[release-worker] autonomous validation failed:", error instanceof Error ? error.message : error);
       });
     }
+    if (execution.mode !== "running") return;
     const queueBlock = await pool.query(
       "SELECT id,status FROM admin_releases WHERE status IN ('publishing','monitoring') OR (status='blocked' AND scheduled_at IS NOT NULL) ORDER BY updated_at DESC LIMIT 1"
     );
