@@ -300,6 +300,22 @@ describe("agent manager policy", () => {
     expect(managerExecutionBucket("crm", b)).not.toBe(managerExecutionBucket("crm", c));
   });
 
+  it("rejects malformed runtime manager findings before persistence or routing", () => {
+    const valid = {
+      tenantId: "tenant-a", domain: "crm", kind: "tenant_operation",
+      fingerprint: "unassigned-leads", evidence: "3 active leads",
+    } as const;
+    expect(() => validateManagerOpportunity(valid)).not.toThrow();
+    expect(() => validateManagerOpportunity({ ...valid, domain: "unknown" as "crm" }))
+      .toThrow("INVALID_MANAGER_DOMAIN");
+    expect(() => validateManagerOpportunity({ ...valid, kind: "execute_code" as "tenant_operation" }))
+      .toThrow("INVALID_MANAGER_DEMAND_KIND");
+    expect(() => validateManagerOpportunity({ ...valid, fingerprint: null as unknown as string }))
+      .toThrow("FINGERPRINT_REQUIRED");
+    expect(() => validateManagerOpportunity({ ...valid, evidence: 10 as unknown as string }))
+      .toThrow("EVIDENCE_REQUIRED");
+  });
+
   it("rejects findings without tenant identity or evidence", () => {
     expect(() => validateManagerOpportunity({ tenantId: "", domain: "crm", kind: "tenant_operation", fingerprint: "x", evidence: "abc" })).toThrow("TENANT_REQUIRED");
     expect(() => validateManagerOpportunity({ tenantId: "t", domain: "crm", kind: "tenant_operation", fingerprint: "x", evidence: "" })).toThrow("EVIDENCE_REQUIRED");
