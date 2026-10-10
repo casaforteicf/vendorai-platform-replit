@@ -68,6 +68,25 @@ describe("Arqdor Three.js loader", () => {
     expect(script.isConnected).toBe(false);
   });
 
+  it("retries successfully after a timeout", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("THREE", undefined);
+    const { loadThree } = await import("./RenderStudioParametricWebgl");
+    const first = loadThree();
+    const rejection = expect(first).rejects.toThrow("Tempo esgotado ao carregar Three.js");
+    await vi.advanceTimersByTimeAsync(12000);
+    await rejection;
+    expect(document.head.querySelectorAll('script[src*="three.min.js"]')).toHaveLength(0);
+
+    const retry = loadThree();
+    const script = document.head.querySelector('script[src*="three.min.js"]') as HTMLScriptElement;
+    expect(script).toBeTruthy();
+    vi.stubGlobal("THREE", { WebGLRenderer: class {} });
+    script.onload?.(new Event("load"));
+    await expect(retry).resolves.toBeUndefined();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("times out, removes the script, and ignores late load", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("THREE", undefined);
