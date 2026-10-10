@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod/v4";
 import { pool } from "@workspace/db";
+import rateLimit from "express-rate-limit";
 
 const router: IRouter = Router();
 const reportSchema = z.object({
@@ -10,7 +11,14 @@ const reportSchema = z.object({
 
 // Mounted after authenticate + enforceAccessScope. Never trust a tenant ID
 // from request payload; all identity derives from the verified JWT.
-router.post("/ux/runtime-error", async (req, res) => {
+const telemetryLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+router.post("/ux/runtime-error", telemetryLimiter, async (req, res) => {
   if (!req.user?.tenantId || req.user.accessScope && req.user.accessScope !== "tenant" ||
       req.user.actorType === "ai" || req.user.actorType === "system") {
     return res.status(403).json({ error: "TENANT_SESSION_REQUIRED" });
