@@ -66,3 +66,21 @@ Não definir `VENDORAI_PREPARE_OFFLINE=1` quando cache-fetch e install anteriore
 Consulta somente leitura em 10/10/2026: 96 GB totais, 88 GB usados, 8.2 GB livres, 92% de uso. **Não executar docker prune, remoção de imagens, volumes ou backups.** Antes de testes, inspecionar `df -h`, `du -sh .test-evidence/*` e quais execuções já terminaram. Preservar sempre `manifest.txt`, `results.txt` e `logs/` de cada execução, incluindo erros; arquivar evidências fora de diretórios temporários antes de excluir qualquer snapshot. O operador só pode descartar `work/` e `store/` de uma execução identificada, concluída e sem dependências, após verificar arquivos, titulares e necessidade de reprodução. Não usar retenção automática destrutiva.
 
 Para evitar novo fetch, reutilize o snapshot com `cache-fetch exit=0` e SHA idêntico: `VENDORAI_REUSE_STORE=/home/vendorai/vendorai-test-executor/.test-evidence/pr-3428-<ID>/store` com `VENDORAI_PREPARE_OFFLINE` desativado. Identifique o diretório real após conferir `manifest.txt` e `results.txt`. O diretório antigo deve ser preservado durante a execução; não use se o SHA do PR mudou. Essa opção escreve apenas no cache descartável anterior e não no cache original.
+
+
+## INFRA-01.13 — Operação remota restrita (preparada, não ativada)
+
+`scripts/infra/remote-test-gate.py` é a fachada **privada** que reutiliza `test-sha.sh` e oferece duas ações fixas:
+- `request PR BRANCH FULL_SHA SUITE`: solicita a bateria permitida, sem shell livre;
+- `result RUN_ID`: lê manifesto, códigos de saída e nomes dos logs da execução, sem permitir caminhos arbitrários.
+
+Executar exclusivamente como o usuário de testes `vendorai`, **nunca root**. O conector MCP autenticado deve impor papéis autorizados, escopo de lotes e auditoria do requisitante **antes** de chamar essa fachada. A ferramenta não implementa autenticação própria e **não deve ser exposta diretamente na rede**. Um mapeamento autorizado da ação no conector existente ainda precisa ser implementado e testado. O operador de releases, com ações distintas e sudo restrito, não deve ser substituído nem receber sudo irrestrito.
+
+O wrapper limita a uma execução simultânea com flock, exige pelo menos 8 GiB livres, fixa cache original e não habilita downloads. O executor conserva Docker --network none, limites de 2 CPUs, 4 GiB RAM e 256 processos. Duração limitada em 1800s; conferir interrupção de descendentes Docker em testes de timeout antes de habilitar acesso remoto. Os resultados por RUN_ID ficam no armazenamento de evidências do worktree. Não fornece acesso livre a arquivos de logs; a exportação de logs sanitizados precisa ser contratada com permissões no conector.
+
+Validação isolada, sem tocar a produção:
+```bash
+python3 -m unittest discover -s scripts/infra -p 'test_remote_test_gate.py'
+```
+
+**Ativação exigida por operador autorizado:** adicionar ao MCP privado Vendi duas operações com validação/autorização por principal (request/result), vinculadas ao executável `/home/vendorai/vendorai-test-executor/scripts/infra/remote-test-gate.py` sob usuário `vendorai`, sem comandos livres nem alteração da política sudo. Validar em tenant descartável e confirmar logs por SHA. Não instalar nem expor endpoint até testes de timeout, espaço, concorrência e isolamento estarem aprovados.
