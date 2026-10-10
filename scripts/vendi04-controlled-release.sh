@@ -26,6 +26,22 @@ TAG="${LOT,,}-${SHA:0:12}"
 BACK="${CURRENT}-backup-${TAG}"
 NEXT="${CURRENT}-next-${TAG}"
 check(){ curl -fsS --max-time 4 http://127.0.0.1:5001/api/auth/healthz >/dev/null; }
+# Fail closed if recorded production is not the actual live release.
+# This does not rewrite history or stop containers.
+assert_consistent(){
+ [[ -f "$STATE" ]] || return 0
+ local st recorded active backup
+ st=$(sed -n 's/^STATUS=//p' "$STATE" | head -1)
+ recorded=$(sed -n 's/^IMAGE=//p' "$STATE" | head -1)
+ backup=$(sed -n 's/^BACKUP=//p' "$STATE" | head -1)
+ active=$(docker inspect "$CURRENT" --format '{{.Config.Image}}' 2>/dev/null || true)
+ if [[ "$st" == INCONSISTENT* ]]; then echo RELEASE_STATE_INCONSISTENT; return 65; fi
+ if [[ "$st" == "PUBLISHED" ]]; then
+  if [[ -z "$recorded" || "$active" != "$recorded" ]]; then echo RELEASE_IMAGE_MISMATCH; return 65; fi
+  if [[ -z "$backup" ]] || ! docker inspect "$backup" >/dev/null 2>&1; then echo RELEASE_BACKUP_MISSING; return 65; fi
+ fi
+}
+assert_consistent || { log "DENIED_INCONSISTENT_RELEASE_STATE";exit 65; }
 if [[ "$ACTION" == rollback ]]; then
  [[ -f "$STATE" ]] || { echo NO_ROLLBACK_STATE;exit 65; }
  SAVED=$(sed -n 's/^BACKUP=//p' "$STATE")
