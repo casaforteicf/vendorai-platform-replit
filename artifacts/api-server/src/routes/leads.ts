@@ -373,6 +373,14 @@ router.post("/leads", async (req, res) => {
     resolvedRepresentativeFunctionId = assignment?.kind === "external_company" ? assignment.id : null;
   }
 
+  // Validação final vale também para distribuição automática, não apenas
+  // para escolha manual no formulário.
+  if (resolvedRepresentativeFunctionId &&
+      !(await validateRepresentativeFunction(data.tenantId, resolvedRepresentativeFunctionId))) {
+    res.status(422).json({ error: "Empresa representante sem vínculo ativo ou autorização para receber leads." });
+    return;
+  }
+
   // CRM-05: impedir atribuição a ID arbitrário, inclusive de outro tenant.
   if (resolvedAssignedTo) {
     const [assignee] = await db.select({ id: usersTable.id }).from(usersTable)
@@ -427,6 +435,15 @@ router.post("/leads", async (req, res) => {
       ...(registrationRequestId ? {
         registrationRequestId, registrationActorId, registrationPayloadHash,
       } : {}),
+      responsibilityHistory: [{
+        previousUserId: null,
+        previousRepresentativeFunctionId: null,
+        nextUserId: resolvedAssignedTo,
+        nextRepresentativeFunctionId: resolvedRepresentativeFunctionId,
+        actorId: req.user?.sub ?? null,
+        changedAt: new Date().toISOString(),
+        source: "lead_creation",
+      }],
     },
     possivelDuplicata: false,
     leadSimilarId: null,
