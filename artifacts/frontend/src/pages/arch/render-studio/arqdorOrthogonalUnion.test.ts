@@ -64,6 +64,21 @@ describe("Arqdor orthogonal wall volume union", () => {
     ]).openingCount).toBe(2);
   });
 
+  it("rejects malformed coordinates and openings before generating geometry", () => {
+    expect(() => unionOrthogonalWalls([
+      { ...wall([0, 0], [4, 0]), start: [Number.NaN, 0] },
+    ])).toThrow(/Coordenadas/);
+    expect(() => unionOrthogonalWalls([
+      { ...wall([0, 0], [4, 0]), end: [Infinity, 0] },
+    ])).toThrow(/Coordenadas/);
+    expect(() => unionOrthogonalWalls([
+      { ...wall([0, 0], [4, 0]), openings: null },
+    ] as unknown as ParametricWall[])).toThrow(/Aberturas inválidas/);
+    expect(() => unionOrthogonalWalls([
+      wall([0, 0], [4, 0], [{ ...window, width: Number.NaN }]),
+    ])).toThrow(/Vão inválido/);
+  });
+
   it("rejects diagonal geometry and invalid aperture positions", () => {
     expect(() => unionOrthogonalWalls([wall([0, 0], [4, 2])]))
       .toThrow(/diagonal/);
