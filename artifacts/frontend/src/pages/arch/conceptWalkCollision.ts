@@ -20,6 +20,7 @@ export function walkWall(wall: Wall, openings: Opening[], wallHeight = 2.8, visi
   return { ...wall, doorGaps };
 }
 export function canWalkTo(x: number, y: number, walls: WalkWall[], radius = 0.24) {
+  if (![x, y, radius].every(Number.isFinite) || radius <= 0) return false;
   for (const wall of walls) {
     const dx = wall.x2 - wall.x1, dy = wall.y2 - wall.y1, length = Math.hypot(dx, dy);
     if (length < 1e-9) continue;
