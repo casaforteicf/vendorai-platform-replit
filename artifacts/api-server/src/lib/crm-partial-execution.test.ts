@@ -20,6 +20,20 @@ describe("CRM V4 — execução parcial por item", () => {
     expect(() => quantityUnits(-1)).toThrow();
   });
 
+  it("permite execução em lotes sucessivos até esgotar exatamente o saldo", () => {
+    expect(remainingQuantity(3.3333, [1.1111, 1.1111])).toBe(1.1111);
+    expect(canAllocateQuantity(3.3333, [1.1111, 1.1111], 1.1111)).toBe(true);
+    expect(remainingQuantity(3.3333, [1.1111, 1.1111, 1.1111])).toBe(0);
+    expect(canAllocateQuantity(3.3333, [1.1111, 1.1111, 1.1111], 0.0001)).toBe(false);
+  });
+
+  it("não permite alocar quantidades não finitas nem alocações anteriores inválidas", () => {
+    expect(() => canAllocateQuantity(1, [], Number.POSITIVE_INFINITY)).toThrow();
+    expect(() => remainingQuantity(2, [Number.NaN])).toThrow();
+    expect(() => remainingQuantity(2, [-0.1])).toThrow();
+    expect(canAllocateQuantity(1, [], -0.1)).toBe(false);
+  });
+
   it("preserva saldo não negativo de lotes históricos", () => {
     expect(() => remainingQuantity(1, [0.6, 0.6])).toThrow("Alocação acumulada inválida.");
     expect(() => quantityUnits(Number.MAX_SAFE_INTEGER)).toThrow("Quantidade excede limite seguro.");
