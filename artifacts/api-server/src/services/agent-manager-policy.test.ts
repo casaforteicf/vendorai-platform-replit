@@ -29,7 +29,9 @@ describe("agent manager policy", () => {
     expect(body).toContain("ROLLBACK TO SAVEPOINT manager_domain");
     expect(body).toContain("'failed',0");
     expect(body).toContain("managerExecutionBucket(domain, now)");
-    expect(source).toContain("outcome=\'failed\'");
+    expect(source).toContain("latest WHERE outcome='failed'");
+    expect(source).toContain("SELECT DISTINCT ON (domain) domain, outcome");
+    expect(source).toContain("ORDER BY domain, checked_at DESC");
   });
 
   it("requires a description before opening a Superadmin review", () => {
