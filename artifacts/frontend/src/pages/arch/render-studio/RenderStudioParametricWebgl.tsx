@@ -22,6 +22,10 @@ function loadThree(): Promise<void> {
 }
 
 function buildWallGeometry(THREE: any, wall: ParametricWall) {
+  if (!Array.isArray(wall.start) || !Array.isArray(wall.end) ||
+      wall.start.length !== 2 || wall.end.length !== 2 ||
+      ![...wall.start, ...wall.end].every(Number.isFinite))
+    throw new Error("Coordenadas da parede inválidas");
   const dx = wall.end[0] - wall.start[0], dy = wall.end[1] - wall.start[1];
   const length = Math.hypot(dx, dy);
   if (!Number.isFinite(length) || length < .1 || length > 1000 ||
