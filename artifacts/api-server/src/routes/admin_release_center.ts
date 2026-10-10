@@ -1352,6 +1352,39 @@ router.get("/admin/improvements/master-registry-summary", async (_req, res) => {
     return res.json({ lots: result.rows, coverage: "linked_only", source: "admin_improvement_master_links" });
   } catch { return res.status(503).json({ error: "MASTER_LINK_SCHEMA_NOT_READY" }); }
 });
+// Reconciliação determinística: somente vínculos por source_ref_id explícito.
+// Não inferir sublotes pelo título e não criar melhorias fictícias.
+router.post("/admin/improvements/master-registry-reconcile", async (_req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock($1)", [731004]);
+    const result = await client.query(`
+      WITH candidates AS (
+        SELECT substring(source_ref_id FROM '(?:^|[^0-9])([0-9]{2}\\.[0-9]{2})(?:$|[^0-9])') AS sublot,
+               id, updated_at,
+               count(*) OVER (PARTITION BY source_ref_id) AS source_count
+        FROM admin_improvements
+        WHERE source_ref_id ~ '(^|[^0-9])[0-9]{2}\\.[0-9]{2}($|[^0-9])'
+      ), unique_candidates AS (
+        SELECT sublot, id FROM candidates c
+        WHERE c.sublot IS NOT NULL
+          AND c.source_count=1
+          AND NOT EXISTS (SELECT 1 FROM admin_improvement_master_links m WHERE m.sublot=c.sublot)
+          AND NOT EXISTS (SELECT 1 FROM candidates other WHERE other.sublot=c.sublot AND other.id<>c.id)
+      )
+      INSERT INTO admin_improvement_master_links(lot,sublot,improvement_id)
+      SELECT split_part(sublot,'.',1),sublot,id FROM unique_candidates
+      ON CONFLICT (sublot) DO NOTHING
+      RETURNING sublot`);
+    await client.query("COMMIT");
+    return res.json({ ok: true, linked: result.rowCount ?? 0, strategy: "unique_explicit_source_ref_only" });
+  } catch {
+    await client.query("ROLLBACK").catch(() => undefined);
+    return res.status(503).json({ error: "MASTER_RECONCILIATION_FAILED" });
+  } finally { client.release(); }
+});
+
 router.post("/admin/improvements/master-registry-links", async (req, res) => {
   const input = registryLinkSchema.safeParse(req.body);
   if (!input.success) return res.status(422).json({ error: "Lote, sublote e melhoria inválidos." });
