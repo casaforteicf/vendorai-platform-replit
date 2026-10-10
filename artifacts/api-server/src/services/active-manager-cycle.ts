@@ -32,6 +32,7 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
       );
       let scanned = 0;
       let cases = 0;
+      let resolved = 0;
       for (const row of tenants.rows) {
         const tenantId: string = row.id;
         for (const domain of DOMAINS) {
@@ -88,7 +89,26 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               metric: String(total),
             };
           }
-          if (!observation) continue;
+          if (!observation) {
+            const signals: Record<string, string> = {
+              pipeline: 'active-manager:pipeline:overdue-activities',
+              crm: 'active-manager:crm:unassigned-leads',
+              marketing: 'active-manager:marketing:old-drafts',
+            };
+            const signal = signals[domain];
+            if (signal) {
+              const closed = await client.query(
+                `UPDATE jarvis_cases SET status='resolved', resolved_at=now(),
+                    updated_at=now(),
+                    result_summary='O sinal operacional deixou de existir na verificação automática.'
+                  WHERE tenant_id=$1 AND signal_key=$2
+                    AND source='active_manager' AND status='open'`,
+                [tenantId, signal],
+              );
+              resolved += closed.rowCount ?? 0;
+            }
+            continue;
+          }
           const decision = classifyManagerDemand("tenant_operation");
           if (decision.route !== "jarvis") throw new Error("ROUTING_POLICY_MISMATCH");
           const inserted = await client.query(
@@ -97,7 +117,9 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
              VALUES (gen_random_uuid()::text,$1,$2,'active_manager',$3,'attention',$4,$5,$6,'open',$7::jsonb,$8)
              ON CONFLICT (tenant_id,signal_key) DO UPDATE SET
                last_detected_at=now(),updated_at=now(),metric=EXCLUDED.metric,
-               detail=EXCLUDED.detail,evidence=EXCLUDED.evidence
+               detail=EXCLUDED.detail,evidence=EXCLUDED.evidence,
+               status=CASE WHEN jarvis_cases.status='resolved' THEN 'open' ELSE jarvis_cases.status END,
+               resolved_at=CASE WHEN jarvis_cases.status='resolved' THEN NULL ELSE jarvis_cases.resolved_at END
              RETURNING id`,
             [tenantId, observation.signal, domain, observation.title, observation.detail,
               observation.metric, JSON.stringify({ domain, scannedAt: now.toISOString(), total: observation.metric }),
@@ -107,7 +129,7 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
         }
       }
       await client.query("COMMIT");
-      log.info({ scanned, cases, at: now.toISOString() }, "active-managers: periodic cycle committed");
+      log.info({ scanned, cases, resolved, at: now.toISOString() }, "active-managers: periodic cycle committed");
     } catch (error) {
       await client.query("ROLLBACK").catch(() => undefined);
       throw error;
