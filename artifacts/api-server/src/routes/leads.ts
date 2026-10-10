@@ -563,19 +563,38 @@ router.post("/tenants/:tenantId/leads/bulk-reassign", async (req, res) => {
     return;
   }
 
-  const leadsUpdated = await db
-    .update(leadsTable)
-    .set({ assignedTo: toUserId })
-    .where(and(eq(leadsTable.tenantId, tenantId), eq(leadsTable.assignedTo, fromUserId), isNull(leadsTable.excluidoEm)))
-    .returning({ id: leadsTable.id });
+  // Transação: lead, negócio e trilha de responsabilidade devem mudar juntos.
+  const outcome = await db.transaction(async (tx) => {
+    const candidates = await tx.select({
+      id: leadsTable.id, metadata: leadsTable.metadata,
+    }).from(leadsTable).where(and(
+      eq(leadsTable.tenantId, tenantId), eq(leadsTable.assignedTo, fromUserId),
+      isNull(leadsTable.excluidoEm),
+    )).for("update");
+    const now = new Date().toISOString();
+    for (const candidate of candidates) {
+      const previous = candidate.metadata && typeof candidate.metadata === "object" &&
+        !Array.isArray(candidate.metadata) ? candidate.metadata as Record<string, unknown> : {};
+      const history = Array.isArray(previous.responsibilityHistory) ? previous.responsibilityHistory : [];
+      await tx.update(leadsTable).set({
+        assignedTo: toUserId,
+        metadata: { ...previous, responsibilityHistory: [...history, {
+          previousUserId: fromUserId, previousRepresentativeFunctionId: null,
+          nextUserId: toUserId, nextRepresentativeFunctionId: null,
+          actorId: req.user?.sub ?? null, changedAt: now, source: "bulk_reassignment",
+        }] },
+        updatedAt: new Date(now),
+      }).where(eq(leadsTable.id, candidate.id));
+    }
+    const dealsUpdated = await tx.update(dealsTable).set({ assignedTo: toUserId })
+      .where(and(eq(dealsTable.tenantId, tenantId), eq(dealsTable.assignedTo, fromUserId),
+        inArray(dealsTable.leadId, tx.select({ id: leadsTable.id }).from(leadsTable)
+          .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm))))))
+      .returning({ id: dealsTable.id });
+    return { leadsReassigned: candidates.length, dealsReassigned: dealsUpdated.length };
+  });
 
-  const dealsUpdated = await db
-    .update(dealsTable)
-    .set({ assignedTo: toUserId })
-    .where(and(eq(dealsTable.tenantId, tenantId), eq(dealsTable.assignedTo, fromUserId)))
-    .returning({ id: dealsTable.id });
-
-  res.json({ leadsReassigned: leadsUpdated.length, dealsReassigned: dealsUpdated.length });
+  res.json(outcome);
 });
 
 router.post("/tenants/:tenantId/leads/import", async (req, res) => {
