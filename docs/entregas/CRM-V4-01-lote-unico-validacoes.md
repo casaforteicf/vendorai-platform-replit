@@ -292,3 +292,10 @@ Não considerar item 2 encerrado: o fluxo de criação de lead ainda invoca serv
 - **Atenção:** isto é apenas pré-verificação; chamadas externas não participam da transação do PostgreSQL. Continua possível criar duas cobranças por corridas entre sessões, ou arquivar após a verificação. Erros gerados por estas verificações percorrem os blocos catch atuais e precisam de revisão semântica para evitar estados e mensagens incorretos.
 - Pendentes: reserva transacional/idempotente de operação externa por negócio, conciliação de retorno remoto, recuperação após falha de gravação, revisão de integrações alternativas e testes em sandbox de fornecedores.
 - Sem compilação, testes, migração, homologação, merge ou publicação.
+
+## Lote 02 — referências externas de contrato/cobrança — 10/10/2026
+- Commit `fa3c85c0bd950172feb9cff92cc95182e124e602` na PR #3428.
+- Arquivamento passa a verificar também `deals.asaas_charge_id` e `deals.zapsign_doc_id`, pois o serviço externo pode ter confirmado a operação mesmo quando o INSERT local em `billing_records` ou `contracts` falhou.
+- Tanto a pré-verificação quanto a condição do UPDATE impedem arquivamento com identificadores externos persistidos. A API indica `hasBilling` e `hasRemoteContract` no conflito.
+- **Pendente:** reconciliar operações externas sem registro persistido ou com falha antes da gravação do identificador; controle idempotente distribuído, transações concorrentes, UI e testes efetivos. Nenhum teste de build/integrado executado nesta rodada.
+- Sem merge, migração, deploy ou publicação.
