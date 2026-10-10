@@ -5,7 +5,7 @@ export type WallJunction = {
   floor: number;
   x: number;
   y: number;
-  kind: "end" | "corner" | "tee" | "cross" | "multi";
+  kind: "end" | "two-way" | "tee" | "cross" | "multi";
   sourceWallIds: string[];
   segmentCount: number;
 };
@@ -20,7 +20,7 @@ export function identifyWallJunctions(walls: FloorWall[]): WallJunction[] {
       .map((node) => {
         const count = node.segmentIds.length;
         const kind: WallJunction["kind"] = count === 1 ? "end"
-          : count === 2 ? "corner" : count === 3 ? "tee"
+          : count === 2 ? "two-way" : count === 3 ? "tee"
           : count === 4 ? "cross" : "multi";
         return {
           floor, x: node.x, y: node.y, kind,
