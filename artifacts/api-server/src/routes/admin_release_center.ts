@@ -1323,6 +1323,36 @@ router.get("/admin/improvements/queue-diagnostics", async (_req, res) => {
   }
 });
 
+// Vincula itens já registrados na Central aos lotes oficiais sem recriá-los.
+// Registro Mestre é a fonte de planejamento; registros operacionais ficam na Central.
+const registryLinkSchema = z.object({
+  lot: z.string().trim().regex(/^[0-9]{2}$/),
+  sublot: z.string().trim().regex(/^[0-9]{2}\.[0-9]{2}$/),
+  improvementId: z.string().uuid(),
+});
+router.get("/admin/improvements/master-registry-links", async (_req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT lot,sublot,improvement_id AS \"improvementId\",created_at AS \"createdAt\" FROM admin_improvement_master_links ORDER BY lot,sublot"
+    );
+    return res.json({ items: result.rows });
+  } catch { return res.status(503).json({ error: "MASTER_LINK_SCHEMA_NOT_READY" }); }
+});
+router.post("/admin/improvements/master-registry-links", async (req, res) => {
+  const input = registryLinkSchema.safeParse(req.body);
+  if (!input.success) return res.status(422).json({ error: "Lote, sublote e melhoria inválidos." });
+  if (!input.data.sublot.startsWith(input.data.lot + ".")) return res.status(422).json({ error: "Sublote incompatível com lote." });
+  try {
+    const found = await pool.query("SELECT id FROM admin_improvements WHERE id=$1", [input.data.improvementId]);
+    if (!found.rowCount) return res.status(404).json({ error: "Melhoria não encontrada." });
+    const result = await pool.query(
+      "INSERT INTO admin_improvement_master_links (lot,sublot,improvement_id) VALUES ($1,$2,$3) ON CONFLICT (lot,sublot) DO UPDATE SET improvement_id=EXCLUDED.improvement_id RETURNING lot,sublot,improvement_id AS \"improvementId\"",
+      [input.data.lot,input.data.sublot,input.data.improvementId]
+    );
+    return res.json({ ok: true, item: result.rows[0] });
+  } catch { return res.status(503).json({ error: "MASTER_LINK_UPDATE_FAILED" }); }
+});
+
 // Dependências da fila existente; a mudança é transacional e recusa ciclos.
 const dependencySchema = z.object({ dependsOnId: z.string().uuid() });
 router.get("/admin/improvements/:id/dependencies", async (req, res) => {
