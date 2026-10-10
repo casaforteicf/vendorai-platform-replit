@@ -2390,6 +2390,12 @@ router.patch("/deals/:id", async (req, res) => {
                   req.log.warn({ dealId: deal.id, err: pdfErr }, "deal-ganho: PDF generation failed, sending empty document");
                 }
 
+                const [activeContractDeal] = await db.select({ id: dealsTable.id }).from(dealsTable)
+                  .where(and(eq(dealsTable.id, deal.id), eq(dealsTable.tenantId, tenantId), isNull(dealsTable.archivedAt))).limit(1);
+                if (!activeContractDeal) {
+                  throw new Error("DEAL_ARCHIVED_BEFORE_ZAPSIGN: envio de contrato cancelado");
+                }
+
                 const doc = await createDocument({
                   name: `Contrato ${deal.titulo} — ${partes}`,
                   lang: "pt-BR",
@@ -2577,6 +2583,15 @@ router.patch("/deals/:id", async (req, res) => {
             const skuExternalRef = hasDeliverySku && proposta?.id
               ? `sku_delivery:${proposta.id}`
               : undefined;
+
+            const [activeBillingDeal] = await db.select({ id: dealsTable.id, asaasChargeId: dealsTable.asaasChargeId }).from(dealsTable)
+              .where(and(eq(dealsTable.id, deal.id), eq(dealsTable.tenantId, tenantId), isNull(dealsTable.archivedAt))).limit(1);
+            if (!activeBillingDeal) {
+              throw new Error("DEAL_ARCHIVED_BEFORE_ASAAS: cobrança cancelada");
+            }
+            if (activeBillingDeal.asaasChargeId) {
+              throw new Error("ASAAS_CHARGE_ALREADY_REGISTERED: cobrança já vinculada ao negócio");
+            }
 
             const charge = await createCharge({
               customer: customer.id,
