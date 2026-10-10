@@ -1,5 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { measuredWallEnd, boundSnappedWallPoint } from "./conceptWallDrawing";
+import { architecturalPlanPrimitives } from "./conceptArchitecturalViews";
+import type { ArchitecturalModel } from "./conceptArchitecturalModel";
 import { Magnet, Maximize2, Move, Route, ZoomIn, ZoomOut } from "lucide-react";
 import type { ConceptGeometry, ConceptRoomShape, OpeningMarker } from "./conceptGeometry";
 import { orthogonalEnd, snapPointToWallNetwork, snapPointToWallNetworkDetailed, wallLength, wallMidpoint, type ClosedSpace, type WallSnapKind, type WallTopologyEndpointRef, type WallTopologyNode } from "./conceptWallNetwork";
@@ -42,6 +44,7 @@ type Props = {
   lotBoundaryPoints?: Array<{ x: number; y: number }> | null;
   showLotBoundary?: boolean;
   activeFloor?: number;
+  architecturalModel?: ArchitecturalModel;
   geometry: ConceptGeometry;
   closedSpaces?: ClosedSpace[];
   selectedClosedSpaceId?: string | null;
@@ -363,6 +366,7 @@ export default function ConceptPlan2D({
   lotBoundaryPoints = null,
   showLotBoundary = true,
   activeFloor = 0,
+  architecturalModel,
   geometry,
   closedSpaces = [],
   selectedClosedSpaceId = null,
@@ -3264,6 +3268,15 @@ export default function ConceptPlan2D({
           );
         })}
 
+        {architecturalModel && architecturalPlanPrimitives(architecturalModel).filter(element => element.floor === activeFloor || element.floor === null).map(element => (
+          <rect key={`arch-${element.id}`} data-architectural-id={element.id}
+            x={element.x} y={element.y} width={element.width} height={element.depth}
+            fill={element.kind === "slab-void" ? "#ffffff" : element.kind === "stair" ? "#8b5cf6" : element.kind === "roof" ? "#14b8a6" : "#64748b"}
+            fillOpacity={element.kind === "slab-void" ? 0.9 : 0.16}
+            stroke={element.kind === "slab-void" ? "#64748b" : "#0f766e"} strokeWidth="0.045"
+            strokeDasharray={element.kind === "roof" || element.kind === "slab-void" ? "0.18 0.12" : undefined}
+            pointerEvents="none" />
+        ))}
         <rect x="0" y="0" width={lotWidth} height={lotDepth} fill="none" stroke="#64748b" strokeWidth="0.065" strokeDasharray="0.22 0.14" pointerEvents="none" />
       </svg>
     </div>
