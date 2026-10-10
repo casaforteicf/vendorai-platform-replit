@@ -1354,6 +1354,10 @@ router.patch("/leads/:id", async (req, res) => {
   // CRM-05/06: exatamente uma forma de responsabilidade comercial.
   // Ao trocar de responsável interno para representante (ou vice-versa),
   // remover o vínculo anterior explicitamente e rejeitar lead sem responsável.
+  if (parsed.data.assignedTo && parsed.data.representativeFunctionId) {
+    res.status(422).json({ error: "Não atribua usuário e representante simultaneamente." });
+    return;
+  }
   const changingRepresentative = parsed.data.representativeFunctionId !== undefined;
   const changingOwner = parsed.data.assignedTo !== undefined;
   const nextRepresentative = changingOwner && parsed.data.assignedTo
