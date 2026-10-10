@@ -14,6 +14,7 @@ describe("UX and Security manager governance", () => {
     expect(api).toContain("telemetryLimiter");
     expect(api).toContain("LEAST(ux_runtime_errors.occurrences+1,100)");
     expect(api).toContain("reportSchema.safeParse");
+    expect(api).toContain("routeKey: z.enum(");
     expect(router.indexOf("router.use(uxRuntimeTelemetryRouter)"))
       .toBeGreaterThan(router.indexOf("router.use(authenticate)"));
     expect(router.indexOf("router.use(uxRuntimeTelemetryRouter)")).toBeGreaterThan(router.indexOf("router.use(blockSuspendedTenants)"));
