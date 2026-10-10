@@ -171,7 +171,6 @@ async function validateRepresentativeFunction(tenantId: string, functionId: stri
       eq(tenantUserFunctionsTable.id, functionId),
       eq(tenantUserFunctionsTable.tenantId, tenantId),
       eq(tenantUserFunctionsTable.kind, "external_company"),
-      eq(tenantUserFunctionsTable.leadAssignmentEnabled, true),
     ))
     .limit(1);
   return representativeFunction ?? null;
@@ -210,6 +209,7 @@ router.get("/leads", async (req, res) => {
     }
     conditions.push(eq(leadsTable.tenantId, req.user.tenantId));
   }
+  conditions.push(isNull(leadsTable.excluidoEm));
   conditions.push(...buildUserFunctionFilter(req, leadsTable));
 
   const leads = await db
