@@ -217,7 +217,7 @@ export default function RenderStudioParametricEditor({ url, modelId, modelSha256
         <svg viewBox="0 0 430 330" role="img" aria-label="Planta editável" className="w-full touch-none"
           onPointerMove={move} onPointerUp={() => setDrag(null)} onPointerCancel={() => setDrag(null)}>
           {walls.filter(w => length(w) >= .1).map(wall => <g key={wall.id}>
-            <polygon points={planOutline(wall).map(p => `${45 + p[0] * 35},${45 + p[1] * 35}`).join(" ")}
+            <polygon onClick={() => setActive(wall.id)} style={{ cursor: "pointer" }} points={planOutline(wall).map(p => `${45 + p[0] * 35},${45 + p[1] * 35}`).join(" ")}
               fill={active === wall.id ? "#86efac" : "#cbd5e1"} stroke="#334155" strokeWidth="1.5" />
             {wall.openings.map(opening => {
               const a = segment(wall, opening.offset), b = segment(wall, opening.offset + opening.width);
@@ -236,7 +236,7 @@ export default function RenderStudioParametricEditor({ url, modelId, modelSha256
         <svg viewBox="0 0 430 330" role="img" aria-label="Projeção 3D sincronizada" className="w-full">
           {walls.map(wall => {
             const preview = wallPreview(wall);
-            return <g key={wall.id}>
+            return <g key={wall.id} onClick={() => setActive(wall.id)} style={{ cursor: "pointer" }}>
               {preview.faces.map((face, index) => <polygon key={index} points={face.map(p => p.join(",")).join(" ")}
                 fill={active === wall.id ? "#86efac" : "#cbd5e1"} fillOpacity=".7" stroke="#334155" strokeWidth=".6" />)}
               {preview.voids.map((quad, index) => <polygon key={index} points={quad.map(p => p.join(",")).join(" ")}
@@ -249,7 +249,7 @@ export default function RenderStudioParametricEditor({ url, modelId, modelSha256
     <div className="space-y-2">
       <h4 className="text-sm font-semibold">Malhas 3D — visualização WebGL</h4>
       <Suspense fallback={<p role="status">Preparando malhas WebGL…</p>}>
-        <RenderStudioParametricWebgl walls={walls} active={active} />
+        <RenderStudioParametricWebgl walls={walls} active={active} onSelect={setActive} />
       </Suspense>
     </div>
     <div className="grid gap-2 sm:grid-cols-3">
