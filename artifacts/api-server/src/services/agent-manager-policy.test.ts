@@ -5,6 +5,7 @@ import {
   isManagerDue,
   managerExecutionBucket,
   managerTenantPageOffset,
+  managerSupportSourceRef,
   validateManagerOpportunity,
 } from "./agent-manager-policy.js";
 
@@ -52,6 +53,17 @@ describe("agent manager policy", () => {
     const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
     expect(source).toContain("ON CONFLICT (tenant_id,signal_key) DO UPDATE SET");
     expect(source).toContain("WHERE jarvis_cases.source='active_manager'");
+  });
+
+  it("keeps support review deduplication isolated by tenant", () => {
+    const a = managerSupportSourceRef("crm", "platform_defect", "same-fingerprint", "tenant-a");
+    const b = managerSupportSourceRef("crm", "platform_defect", "same-fingerprint", "tenant-b");
+    const global = managerSupportSourceRef("crm", "platform_defect", "same-fingerprint");
+    expect(a).not.toBe(b);
+    expect(a).not.toBe(global);
+    expect(b).not.toBe(global);
+    expect(a).toBe(managerSupportSourceRef("crm", "platform_defect", "same-fingerprint", "tenant-a"));
+    expect(() => managerSupportSourceRef("crm", "platform_defect", "x", " ")).toThrow("TENANT_REQUIRED");
   });
 
   it("routes tenant operations to Jarvis", () => {
