@@ -99,6 +99,8 @@ describe("UX and Security manager governance", () => {
     expect(body).toContain("interval '30 days'");
     expect(body).toContain("LIMIT 500");
     expect(migration).toContain("ux_runtime_errors_retention_idx");
+    expect(migration).toContain("ENABLE ROW LEVEL SECURITY");
+    expect(migration).toContain("REVOKE ALL ON public.ux_runtime_errors FROM PUBLIC");
   });
 
   it("sends recurring frontend failures to Superadmin without tenant or route identifiers", () => {
