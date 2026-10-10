@@ -72,6 +72,20 @@ export async function transitionExecutionLot(input: {
     if (input.nextStatus === "cancelled" && (!input.reason || input.reason.trim().length < 5)) {
       throw new Error("Cancelamento exige justificativa");
     }
+    if (input.nextStatus === "completed" || input.nextStatus === "cancelled") {
+      const progress = await client.query(
+        "SELECT quantity, completed_quantity FROM execution_lot_items WHERE lot_id=$1 AND tenant_id=$2 AND deal_id=$3 FOR UPDATE",
+        [input.lotId, input.tenantId, input.dealId],
+      );
+      if (input.nextStatus === "completed" &&
+          (!progress.rowCount || progress.rows.some((item) => Number(item.quantity) !== Number(item.completed_quantity)))) {
+        throw new Error("Existem quantidades pendentes no lote");
+      }
+      if (input.nextStatus === "cancelled" &&
+          progress.rows.some((item) => Number(item.completed_quantity) > 0)) {
+        throw new Error("Lote com execução registrada exige estorno");
+      }
+    }
     await client.query(
       "UPDATE execution_lots SET status=$1,updated_at=now() WHERE id=$2 AND tenant_id=$3 AND deal_id=$4",
       [input.nextStatus, input.lotId, input.tenantId, input.dealId],
