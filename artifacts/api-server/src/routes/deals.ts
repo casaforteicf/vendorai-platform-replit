@@ -463,6 +463,7 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
     res.status(403).json({ error: "Access denied to this tenant" });
     return;
   }
+  if (deal.archivedAt) return res.status(409).json({ code: "DEAL_ARCHIVED", error: "Negócio arquivado não permite esta operação." });
   if (!deal.leadId) {
     res.status(422).json({ error: "O negócio precisa estar vinculado a um lead para ser movido." });
     return;
@@ -772,6 +773,7 @@ router.post("/deals/:id/execution-batches", async (req, res) => {
   if (!admin && deal.assignedTo !== req.user?.sub) {
     return res.status(403).json({ error: "Apenas o responsável pode enviar esta execução." });
   }
+  if (deal.archivedAt) return res.status(409).json({ code: "DEAL_ARCHIVED", error: "Negócio arquivado não permite esta operação." });
   if (deal.etapa !== "ganho" && deal.etapa !== "em_execucao") {
     return res.status(409).json({ error: "Conclua o fechamento comercial antes de enviar itens à execução." });
   }
@@ -1003,6 +1005,7 @@ router.post("/deals/:id/commercial-review", async (req, res) => {
     res.status(403).json({ error: "Access denied to this tenant" });
     return;
   }
+  if (deal.archivedAt) return res.status(409).json({ code: "DEAL_ARCHIVED", error: "Negócio arquivado não permite esta operação." });
   if (!deal.leadId) {
     res.status(422).json({ error: "O negócio precisa estar vinculado a um lead" });
     return;
@@ -1089,6 +1092,7 @@ router.post("/deals/:id/resume-commercial", async (req, res) => {
     return;
   }
 
+  if (existing.archivedAt) return res.status(409).json({ code: "DEAL_ARCHIVED", error: "Negócio arquivado não permite esta operação." });
   if (existing.etapa !== "em_aquecimento") {
     res.status(409).json({
       error: "INVALID_RESUME_SOURCE_STAGE",
@@ -1209,13 +1213,14 @@ router.post("/deals/:id/resume-commercial", async (req, res) => {
 
 router.post("/deals/:id/ai/evaluate", async (req, res) => {
   const dealId = String(req.params.id);
-  const [deal] = await db.select({ id: dealsTable.id, tenantId: dealsTable.tenantId }).from(dealsTable)
+  const [deal] = await db.select({ id: dealsTable.id, tenantId: dealsTable.tenantId, archivedAt: dealsTable.archivedAt }).from(dealsTable)
     .where(eq(dealsTable.id, dealId)).limit(1);
   if (!deal) return res.status(404).json({ error: "Deal not found" });
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== deal.tenantId) {
     return res.status(403).json({ error: "Access denied to this tenant" });
   }
 
+  if (deal.archivedAt) return res.status(409).json({ code: "DEAL_ARCHIVED", error: "Negócio arquivado não permite esta operação." });
   const [activeEvaluationLead] = await db.select({ id: leadsTable.id })
     .from(dealsTable)
     .innerJoin(leadsTable, and(eq(leadsTable.id, dealsTable.leadId), eq(leadsTable.tenantId, dealsTable.tenantId)))
@@ -1256,6 +1261,7 @@ router.post("/deals/:id/return-to-qualified", async (req, res) => {
       titulo: dealsTable.titulo,
       etapa: dealsTable.etapa,
       assignedTo: dealsTable.assignedTo,
+      archivedAt: dealsTable.archivedAt,
     })
     .from(dealsTable)
     .where(eq(dealsTable.id, String(req.params.id)))
@@ -1278,6 +1284,7 @@ router.post("/deals/:id/return-to-qualified", async (req, res) => {
     return;
   }
 
+  if (existing.archivedAt) return res.status(409).json({ code: "DEAL_ARCHIVED", error: "Negócio arquivado não permite esta operação." });
   if (existing.etapa !== "proposta") {
     res.status(409).json({
       error: "RETURN_TO_QUALIFIED_ONLY_FROM_BUDGET",
@@ -2979,6 +2986,7 @@ router.post("/admin/deals/:id/retry", requireRole("super_admin"), async (req, re
     return;
   }
 
+  if (deal.archivedAt) return res.status(409).json({ code: "DEAL_ARCHIVED", error: "Negócio arquivado não permite esta operação." });
   if (deal.etapa !== "ganho") {
     res.status(400).json({ error: "Deal não está na etapa ganho" });
     return;
