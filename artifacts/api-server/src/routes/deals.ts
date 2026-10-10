@@ -882,9 +882,13 @@ router.post("/deals/:id/execution-batches", async (req, res) => {
 
 router.get("/tenants/:tenantId/deals", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
-  const { etapa, funilId, leadId, includeNaoLead } = req.query as Record<string, string | undefined>;
+  const { etapa, funilId, leadId, includeNaoLead, includeArchived } = req.query as Record<string, string | undefined>;
 
   const conditions = [eq(dealsTable.tenantId, tenantId)];
+  if (includeArchived === "true" && req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") {
+    return res.status(403).json({ error: "Apenas administradores podem consultar negócios arquivados." });
+  }
+  if (includeArchived !== "true") conditions.push(isNull(dealsTable.archivedAt));
   if (etapa) conditions.push(eq(dealsTable.etapa, etapa as typeof dealsTable.etapa._.data));
   if (funilId) conditions.push(eq(dealsTable.funilId, funilId));
   if (leadId) conditions.push(eq(dealsTable.leadId, leadId));
@@ -2916,14 +2920,22 @@ router.delete("/deals/:id", async (req, res) => {
     return;
   }
 
-  // A deal can have proposals, execution batches, activities and financial records.
-  // Physical deletion destroys traceability and must not be used as a shortcut
-  // for removing a deal from an active pipeline. Await a dedicated archival
-  // transition with a persistent audit trail and explicit authorization.
-  res.status(409).json({
-    code: "DEAL_ARCHIVAL_REQUIRED",
-    error: "Exclusão física de negócio bloqueada para preservar histórico e vínculos. Utilize o fluxo de retirada/arquivamento quando disponível.",
-  });
+  // Only administrators can archive deals. The original record and all
+  // related proposals, activities, execution batches and audit data remain.
+  if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") {
+    return res.status(403).json({ error: "Somente administradores podem arquivar negócios." });
+  }
+  const reason = z.string().trim().min(3).max(1000).safeParse(req.body?.motivo);
+  if (!reason.success) {
+    return res.status(422).json({ error: "Informe o motivo do arquivamento (mínimo de 3 caracteres)." });
+  }
+  const [archived] = await db.update(dealsTable).set({
+    archivedAt: new Date(), archivedBy: req.user?.sub ?? null,
+    archiveReason: reason.data, updatedAt: new Date(),
+  }).where(and(eq(dealsTable.id, existing.id), eq(dealsTable.tenantId, existing.tenantId), isNull(dealsTable.archivedAt)))
+    .returning({ id: dealsTable.id, archivedAt: dealsTable.archivedAt });
+  if (!archived) return res.status(409).json({ error: "Negócio já arquivado." });
+  res.json({ success: true, ...archived });
 });
 
 // ── GET /admin/deals/travados ───────────────────────────────────────────────
