@@ -20,6 +20,7 @@ BRANCH = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,180}$")
 SUITES = {"crm", "api", "frontend", "full"}
 MIN_FREE = 8 * 1024**3
 MAX_EVIDENCE_BYTES = 3 * 1024**3
+MAX_TOTAL_BYTES = 6 * 1024**3
 
 def validated(pr, branch, sha, suite):
     if not isinstance(pr, int) or isinstance(pr, bool) or not 1 <= pr <= 9999999:
@@ -61,6 +62,17 @@ def cleanup_test_containers(folder):
         subprocess.run([docker, "rm", "-f", cid], timeout=20,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
 
+def evidence_bytes(root):
+    total = 0
+    for base, dirs, files in os.walk(root, followlinks=False):
+        dirs[:] = [d for d in dirs if not (Path(base) / d).is_symlink()]
+        for name in files:
+            file = Path(base) / name
+            if file.is_symlink():
+                continue
+            total += file.stat().st_size
+    return total
+
 def run(pr, branch, sha, suite):
     args = validated(pr, branch, sha, suite)
     if os.geteuid() == 0:
@@ -78,6 +90,8 @@ def run(pr, branch, sha, suite):
         total = sum(f.stat().st_size for f in EVIDENCE.glob("pr-*/logs/*.log") if f.is_file() and not f.is_symlink())
         if total > MAX_EVIDENCE_BYTES:
             raise ValueError("EVIDENCE_QUOTA_EXCEEDED")
+        if evidence_bytes(EVIDENCE) >= MAX_TOTAL_BYTES:
+            raise ValueError("TOTAL_STORAGE_QUOTA_EXCEEDED")
         before = {p.name for p in EVIDENCE.glob("pr-*") if p.is_dir()}
         # Fixed executable and arguments only. No command injection, no shell or production secrets.
         env = {
