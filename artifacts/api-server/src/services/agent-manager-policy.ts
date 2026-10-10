@@ -65,6 +65,9 @@ export function classifyManagerDemand(kind: DemandKind): DemandDecision {
   };
 }
 
+const MANAGER_DOMAINS: readonly string[] = ["master", "crm", "pipeline", "marketing", "omnichannel", "integrations", "agenda", "proposals", "prospecting", "construction", "finance", "arqdor", "ux", "security"];
+const MANAGER_SUPPORT_KINDS: readonly string[] = ["platform_defect", "platform_improvement", "shared_behavior", "security_incident"];
+
 /** Scope support-review deduplication to a tenant, or explicitly to global. */
 export function managerSupportSourceRef(
   module: ManagerDomain,
@@ -74,6 +77,9 @@ export function managerSupportSourceRef(
 ): string {
   if (!fingerprint.trim()) throw new Error("FINGERPRINT_REQUIRED");
   const normalizedFingerprint = fingerprint.trim();
+  // Never treat unsupported runtime module/kind values as a valid review identity.
+  if (!MANAGER_DOMAINS.includes(module)) throw new Error("INVALID_MANAGER_DOMAIN");
+  if (!MANAGER_SUPPORT_KINDS.includes(kind)) throw new Error("MANAGER_SUPPORT_KIND_INVALID");
   const scope = tenantId === undefined ? null : tenantId.trim();
   if (scope === "") throw new Error("TENANT_REQUIRED");
   // Namespace global and tenant scopes separately, even if a tenant slug is "global".
