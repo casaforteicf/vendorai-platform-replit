@@ -34,7 +34,7 @@ export function buildWallGeometry(THREE: any, wall: ParametricWall) {
       !Array.isArray(wall.openings) || wall.openings.length > 100)
     throw new Error("Parede inválida");
   for (const o of wall.openings) {
-    if (![o.offset, o.width, o.sill, o.height].every(Number.isFinite) ||
+    if (!o || ![o.offset, o.width, o.sill, o.height].every(Number.isFinite) ||
         o.offset < 0 || o.width <= 0 || o.offset + o.width > length ||
         o.sill < 0 || o.height <= 0 || o.sill + o.height > wall.height)
       throw new Error("Vão inválido na parede");
