@@ -827,7 +827,7 @@ router.post("/crm/deals/:dealId/companies", async (req, res) => {
     }).returning();
       return link;
     });
-    return res.status(201).json(link);
+    return res.status(201).json({ ...link, metadata: safeParticipantMetadata(link.metadata, canManageCrmCommissions(req)) });
   } catch (error: any) {
     return res.status(error.status ?? 500).json({ error: error.message });
   }
