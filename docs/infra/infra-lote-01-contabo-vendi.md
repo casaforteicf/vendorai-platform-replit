@@ -50,3 +50,9 @@ Teste local: `node --test scripts/infra/vendi-operator-diagnostics.test.mjs`.
 - **Limitação crítica**: não existe ligação entre o novo verificador e o operador em produção; qualquer resultado de teste com dados simulados não é evidência de ambiente real. Sem mecanismo de autorização ativa ou rollback operacional incluído aqui.
 - Comando de teste para checkout da branch: `node --test scripts/infra/vendi-operator-diagnostics.test.mjs scripts/infra/vendi-release-gates.test.mjs`.
 - Próxima integração exige fonte do wrapper MCP existente e leitura do operador host. Não criar processos paralelos nem publicar.
+
+## INFRA-LOTE-01.2 — vínculo de evidências e aprovação (10/10/2026)
+- O gate offline agora exige `evidenceSource` não vazio com caracteres permitidos, `evidenceCommitSha` idêntico a `commitSha` e `evidenceImageDigest` idêntico à imagem informada.
+- Aprovação fica vinculada ao **mesmo** `approvedLot` e `approvedCommitSha`. Approval de outro lote/commit falha com código estável; verificador não ecoa as referências sensíveis.
+- Regressões adicionadas para cruzamento indevido de lote, commit e imagem. Testes ainda não rodados no host.
+- **Limite de confiança:** as provas são booleanos/strings informados pelo chamador; este gate sozinho não verifica criptograficamente a procedência nem consulta a Contabo. Integrá-lo ao operador existente exige coletar evidências de fontes autenticadas e confiar apenas no contexto do operador; não oferecer `approved:true` diretamente a chamadas de tenant.
