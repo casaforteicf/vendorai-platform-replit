@@ -222,6 +222,15 @@ describe("agent manager policy", () => {
       .toThrow("MANAGER_SUPPORT_KIND_INVALID");
   });
 
+  it("bounds support-review fingerprints before hashing or database access", () => {
+    expect(() => managerSupportSourceRef("crm", "platform_defect", "x".repeat(512), "tenant-a"))
+      .not.toThrow();
+    expect(() => managerSupportSourceRef("crm", "platform_defect", "x".repeat(513), "tenant-a"))
+      .toThrow("FINGERPRINT_TOO_LONG");
+    expect(() => managerSupportSourceRef("crm", "platform_defect", "  " + "x".repeat(512) + "  ", "tenant-a"))
+      .not.toThrow();
+  });
+
   it("normalizes fingerprint whitespace before deduplicating support reviews", () => {
     const a = managerSupportSourceRef("crm", "platform_defect", "signal-1", "tenant-a");
     const b = managerSupportSourceRef("crm", "platform_defect", "  signal-1  ", "tenant-a");
