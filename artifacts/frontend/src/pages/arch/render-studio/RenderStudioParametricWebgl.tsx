@@ -14,8 +14,14 @@ function loadThree(): Promise<void> {
     if ((window as any).THREE?.WebGLRenderer) { resolve(); return; }
     const script = document.createElement("script");
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Não foi possível carregar Three.js"));
+    script.onload = () => {
+      if ((window as any).THREE?.WebGLRenderer) resolve();
+      else reject(new Error("Three.js carregado sem WebGLRenderer"));
+    };
+    script.onerror = () => {
+      script.remove();
+      reject(new Error("Não foi possível carregar Three.js"));
+    };
     document.head.appendChild(script);
   }).catch(error => { engine = null; throw error; });
   return engine;
