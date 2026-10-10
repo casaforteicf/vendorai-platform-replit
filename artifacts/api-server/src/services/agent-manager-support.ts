@@ -24,6 +24,13 @@ export async function enqueueManagerSupportReview(f: ManagerPlatformFinding): Pr
       )) {
     throw new Error("MANAGER_SUPPORT_EVIDENCE_REQUIRED");
   }
+  // Bound worker-generated content before storing it in the Superadmin queue.
+  // Excessive evidence must be summarized at the source, not silently truncated.
+  if (f.fingerprint.length > 512 || f.title.length > 240 ||
+      f.description.length > 8000 || f.evidence.length > 8000 ||
+      f.acceptanceCriteria.length > 4000) {
+    throw new Error("MANAGER_SUPPORT_PAYLOAD_TOO_LARGE");
+  }
   // Keep invalid runtime payloads from creating ambiguous Superadmin cases.
   const priorities = ["baixa", "media", "alta", "urgente"];
   if (f.priority !== undefined && !priorities.includes(f.priority)) {
