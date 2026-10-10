@@ -100,6 +100,13 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
       if (disposed || !holder.current) return;
       // Validate and build union before allocating a WebGL context, so invalid
       // geometry does not leave a renderer/canvas attached after rejection.
+      // Malformed coordinates must be rejected before dereferencing start/end
+      // or choosing between orthogonal and individual-wall preview paths.
+      if (!Array.isArray(walls) || walls.some(w =>
+        !w || !Array.isArray(w.start) || !Array.isArray(w.end) ||
+        w.start.length !== 2 || w.end.length !== 2 ||
+        ![...w.start, ...w.end].every(Number.isFinite)))
+        throw new Error("Coordenadas da parede inválidas");
       const orthogonal = walls.every(w => Math.abs(w.start[0] - w.end[0]) < 1e-8 || Math.abs(w.start[1] - w.end[1]) < 1e-8);
       const union = orthogonal && walls.length ? unionOrthogonalWalls(walls) : null;
       if (union && !union.topology.closedByEdgeIncidence) {
