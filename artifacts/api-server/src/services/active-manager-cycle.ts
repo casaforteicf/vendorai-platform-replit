@@ -1,5 +1,6 @@
 import type { Logger } from "pino";
 import { pool } from "@workspace/db";
+import { enqueueManagerSupportReview } from "./agent-manager-support.js";
 import { classifyManagerDemand, managerExecutionBucket, managerTenantPageOffset, type ManagerDomain } from "./agent-manager-policy.js";
 
 /**
@@ -62,6 +63,7 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
         domainIds.set(domain, ids);
         ids.forEach((id) => tenantIds.add(id));
       }
+      const platformIncidents: Array<{ tenantId: string; count: number }> = [];
       let scanned = 0;
       let cases = 0;
       let resolved = 0;
@@ -282,6 +284,17 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               metric: String(total),
             };
           }
+          if (domain === "master" && observation) {
+            // A failed platform scanner is not a customer operation. Do not
+            // generate a tenant Jarvis case for an infrastructure defect.
+            platformIncidents.push({ tenantId, count: Number(observation.metric) });
+            await client.query(
+              "INSERT INTO agent_manager_runs (tenant_id,domain,period_key,outcome,finding_count) VALUES ($1,$2,$3,'completed',1) ON CONFLICT DO NOTHING",
+              [tenantId, domain, periodKey],
+            );
+            await client.query('RELEASE SAVEPOINT manager_domain');
+            continue;
+          }
           if (!observation) {
             const signals: Record<string, string> = {
               pipeline: 'active-manager:pipeline:overdue-activities',
@@ -415,6 +428,25 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
         }
       }
       await client.query("COMMIT");
+      // Cross-tenant platform incidents are submitted only after releasing the
+      // scan transaction; queueing a Superadmin review never changes production.
+      for (const incident of platformIncidents) {
+        try {
+          await enqueueManagerSupportReview({
+            module: "master",
+            kind: "platform_defect",
+            fingerprint: "scanner-failure",
+            tenantId: incident.tenantId,
+            title: "Falhas técnicas nos Agentes Gestores",
+            description: `Foram observados ${incident.count} módulos com verificações incompletas nas últimas 24 horas. Investigar execução e schema antes de qualquer intervenção.`,
+            evidence: `tenant-scoped count of incomplete manager runs: ${incident.count}`,
+            acceptanceCriteria: "Identificar o agente com falha, reproduzir em homologação e comprovar normalização das execuções.",
+            priority: "alta",
+          });
+        } catch (reviewError) {
+          log.warn({ err: reviewError }, "active-managers: Superadmin review enqueue failed");
+        }
+      }
       log.info({ scanned, cases, resolved, tenantFailures, at: now.toISOString() }, "active-managers: periodic cycle committed");
     } catch (error) {
       await client.query("ROLLBACK").catch(() => undefined);
