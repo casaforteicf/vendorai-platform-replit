@@ -700,6 +700,100 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
   });
 });
 
+// CRM V4: independent partial execution batches, linked to original proposal items.
+// Keep the commercial proposal immutable. Each batch is a work card with an
+// explicit snapshot of selected items and remaining quantities.
+const partialExecutionSchema = z.object({
+  propostaId: z.string().min(1),
+  etapa: z.string().trim().min(1).max(120),
+  justificativa: z.string().trim().min(5).max(2000),
+  itens: z.array(z.object({
+    indice: z.number().int().nonnegative(),
+    quantidade: z.number().finite().positive(),
+  })).min(1),
+});
+
+router.post("/deals/:id/execution-batches", async (req, res) => {
+  const parsed = partialExecutionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+  const dealId = String(req.params.id);
+  const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, dealId)).limit(1);
+  if (!deal?.leadId) return res.status(404).json({ error: "Negócio não encontrado." });
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== deal.tenantId) {
+    return res.status(403).json({ error: "Acesso negado ao tenant." });
+  }
+  const admin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  if (!admin && deal.assignedTo !== req.user?.sub) {
+    return res.status(403).json({ error: "Apenas o responsável pode enviar esta execução." });
+  }
+  const [lead] = await db.select({ excluidoEm: leadsTable.excluidoEm }).from(leadsTable)
+    .where(and(eq(leadsTable.id, deal.leadId), eq(leadsTable.tenantId, deal.tenantId))).limit(1);
+  if (!lead || lead.excluidoEm) return res.status(409).json({ error: "Lead excluído ou inexistente." });
+  const [proposal] = await db.select().from(propostasTable).where(and(
+    eq(propostasTable.id, parsed.data.propostaId),
+    eq(propostasTable.dealId, deal.id),
+    eq(propostasTable.leadId, deal.leadId),
+    eq(propostasTable.tenantId, deal.tenantId),
+  )).limit(1);
+  if (!proposal || proposal.status !== "aceita") {
+    return res.status(422).json({ error: "Selecione uma proposta aceita vinculada ao negócio." });
+  }
+  const indices = parsed.data.itens.map(i => i.indice);
+  if (new Set(indices).size !== indices.length || indices.some(i => i >= proposal.itens.length)) {
+    return res.status(422).json({ error: "Itens repetidos ou inexistentes na proposta." });
+  }
+  const [stage] = await db.select({ id: pipelineStagesTable.id }).from(pipelineStagesTable)
+    .where(and(eq(pipelineStagesTable.tenantId, deal.tenantId),
+      eq(pipelineStagesTable.pipeline, "execucao"),
+      eq(pipelineStagesTable.key, parsed.data.etapa))).limit(1);
+  if (!stage) return res.status(422).json({ error: "Etapa de execução inválida para o tenant." });
+  // A transaction-scoped advisory lock serializes requests for the same
+  // proposal and prevents over-allocation across two simultaneous sessions.
+  const outcome = await db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${deal.tenantId}), hashtext(${proposal.id}))`);
+    const previous = await tx.select({ metadata: workCardsTable.metadata }).from(workCardsTable)
+      .where(and(eq(workCardsTable.tenantId, deal.tenantId),
+        eq(workCardsTable.dealId, deal.id), eq(workCardsTable.pipeline, "execucao")));
+    const used = new Map<number, number>();
+    for (const row of previous) {
+      const m = row.metadata as Record<string, unknown> | null;
+      if (m?.propostaId !== proposal.id || !Array.isArray(m?.itensLote)) continue;
+      for (const item of m.itensLote as Array<{ indice?: unknown; quantidade?: unknown }>) {
+        if (!Number.isInteger(item.indice) || typeof item.quantidade !== "number") continue;
+        used.set(item.indice as number, (used.get(item.indice as number) ?? 0) + item.quantidade);
+      }
+    }
+    const items = parsed.data.itens.map(i => {
+      const original = proposal.itens[i.indice];
+      const already = used.get(i.indice) ?? 0;
+      if (Math.round((already + i.quantidade) * 10000) > Math.round(original.quantidade * 10000)) {
+        throw Object.assign(new Error(`Quantidade excede saldo do item ${i.indice + 1}.`), { status: 409 });
+      }
+      return { indice: i.indice, nome: original.nome, quantidade: i.quantidade,
+        quantidadeOriginal: original.quantidade, etapaId: original.etapaId ?? null,
+        faseId: original.faseId ?? null, unidade: original.unidade ?? null };
+    });
+    const [card] = await tx.insert(workCardsTable).values({
+      tenantId: deal.tenantId, leadId: deal.leadId, dealId: deal.id,
+      pipeline: "execucao", tipo: "pedido", etapa: parsed.data.etapa,
+      titulo: `Execução parcial • ${deal.titulo}`, descricao: parsed.data.justificativa,
+      prioridade: "normal", responsavelId: deal.assignedTo,
+      metadata: { ativoNaPipeline: true, propostaId: proposal.id,
+        loteParcial: true, itensLote: items, criadoPor: req.user?.sub ?? null,
+        criadoEm: new Date().toISOString() },
+    }).returning();
+    return { card, itens: items };
+  }).catch((err: unknown) => {
+    if (err && typeof err === "object" && "status" in err && err.status === 409) return null;
+    throw err;
+  });
+  if (!outcome) return res.status(409).json({ error: "Quantidade excede o saldo disponível para execução." });
+  res.status(201).json(outcome);
+});
+
 router.get("/tenants/:tenantId/deals", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
   const { etapa, funilId, leadId, includeNaoLead } = req.query as Record<string, string | undefined>;
