@@ -8,7 +8,7 @@ import { classifyManagerDemand, managerExecutionBucket, managerTenantPageOffset,
  * The Jarvis proactivity surface can consume these cases with its existing RBAC.
  */
 const DOMAINS: Array<Exclude<ManagerDomain, "security">> = [
-  "crm", "pipeline", "marketing", "agenda", "proposals", "integrations", "omnichannel", "finance", "prospecting", "construction", "arqdor", "master", "ux",
+  "crm", "pipeline", "marketing", "agenda", "proposals", "integrations", "omnichannel", "finance", "prospecting", "construction", "arqdor", "master",
 ];
 let running = false;
 
@@ -282,26 +282,6 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               metric: String(total),
             };
           }
-          if (domain === "ux") {
-            const available = await client.query(
-              "SELECT to_regclass('public.ux_runtime_errors') AS telemetry",
-            );
-            if (available.rows[0]?.telemetry) {
-              const data = await client.query(
-                `SELECT coalesce(sum(occurrences),0)::int AS total
-                 FROM ux_runtime_errors
-                 WHERE tenant_id=$1 AND last_seen_at > now() - interval '24 hours'`,
-                [tenantId],
-              );
-              const total = Number(data.rows[0]?.total ?? 0);
-              if (total >= 5) observation = {
-                signal: "active-manager:ux:react-render-failures",
-                title: "Falhas recorrentes de renderização no aplicativo",
-                detail: `Detectadas ${total} falhas de renderização nas últimas 24 horas. Encaminhar investigação técnica ao Superadmin; não atribuir a um erro do usuário.`,
-                metric: String(total),
-              };
-            }
-          }
           if (!observation) {
             const signals: Record<string, string> = {
               pipeline: 'active-manager:pipeline:overdue-activities',
@@ -316,7 +296,6 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               construction: 'active-manager:construction:overdue-works',
               arqdor: 'active-manager:arqdor:inactive-projects',
               master: 'active-manager:master:incomplete-runs',
-              ux: 'active-manager:ux:react-render-failures',
             };
             const signal = signals[domain];
             if (signal) {
