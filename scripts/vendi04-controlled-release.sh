@@ -34,7 +34,12 @@ if [[ "$ACTION" == rollback ]]; then
  REPLACED="${CURRENT}-failed-$(date -u +%s)"
  docker stop "$CURRENT" >/dev/null
  docker rename "$CURRENT" "$REPLACED"
- docker rename "$SAVED" "$CURRENT"
+ if ! docker rename "$SAVED" "$CURRENT"; then
+   docker rename "$REPLACED" "$CURRENT"
+   docker start "$CURRENT" >/dev/null
+   echo ROLLBACK_RESTORE_FAILED
+   exit 1
+ fi
  docker start "$CURRENT" >/dev/null
  for _ in $(seq 1 30); do if check; then echo ROLLBACK_HEALTH_200;log "ROLLBACK_OK";exit 0;fi;sleep 2;done
  echo ROLLBACK_HEALTH_FAILED;log "ROLLBACK_HEALTH_FAILED";exit 1
