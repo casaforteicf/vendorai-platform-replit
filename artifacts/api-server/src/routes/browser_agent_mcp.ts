@@ -1,3 +1,4 @@
+import { classifyHomologUpstreamStatus } from "../lib/homolog-upstream-status.js";
 import { validateHomologExchange } from "../lib/homolog-token-exchange.js";
 import { decideBrowserAutonomy } from "../lib/browser-autonomy.js";
 import { Router, type IRouter } from "express";
@@ -60,8 +61,9 @@ router.post("/internal/browser-mcp/homolog-bootstrap", async (req, res) => {
     const verifyResponse = await fetch(verifyUrl, {
       headers: { authorization: `Bearer ${upstreamToken}` },
     });
-    if (!verifyResponse.ok) {
-      res.status(401).json({ error: "upstream_token_rejected", status: verifyResponse.status });
+    const upstreamFailure = classifyHomologUpstreamStatus(verifyResponse.status);
+    if (upstreamFailure) {
+      res.status(upstreamFailure.status).json({ error: upstreamFailure.error });
       return;
     }
     upstreamUser = await verifyResponse.json();
