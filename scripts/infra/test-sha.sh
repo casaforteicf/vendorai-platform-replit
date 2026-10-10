@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-# Usage: test-sha.sh PR BRANCH SHA api|frontend|full|crm
-if [ "$#" -ne 4 ] || ! [[ "$1" =~ ^[1-9][0-9]*$ && "$2" =~ ^[a-zA-Z0-9][a-zA-Z0-9._/-]*$ && "$3" =~ ^[a-fA-F0-9]{40}$ && "$4" =~ ^(api|frontend|full|crm)$ ]]; then
-  echo "Usage: test-sha.sh PR BRANCH FULL_SHA api|frontend|full|crm" >&2; exit 64
+# Usage: test-sha.sh PR BRANCH SHA api|frontend|full|crm|mcp
+if [ "$#" -ne 4 ] || ! [[ "$1" =~ ^[1-9][0-9]*$ && "$2" =~ ^[a-zA-Z0-9][a-zA-Z0-9._/-]*$ && "$3" =~ ^[a-fA-F0-9]{40}$ && "$4" =~ ^(api|frontend|full|crm|mcp)$ ]]; then
+  echo "Usage: test-sha.sh PR BRANCH FULL_SHA api|frontend|full|crm|mcp" >&2; exit 64
 fi
 PR="$1"; BRANCH="$2"; SHA="$3"; SUITE="$4"
 case "$BRANCH" in *..*|/*|*/|*'//'*) echo "Invalid branch" >&2; exit 64;; esac
@@ -94,6 +94,10 @@ if ! grep -qx 'install exit=0' "$RUN/results.txt"; then echo "Install failed; do
 # Never qualifies as the global TypeScript gate or official homologation.
 if [ "$SUITE" = crm ]; then
   run crm-vitest "pnpm --filter @workspace/api-server exec vitest run src/lib/crm-lead-idempotency.test.ts src/lib/crm-lead-idempotency.nonfinite.test.ts src/lib/crm-partial-execution.test.ts src/lib/crm-relationship-history.test.ts src/routes/leads.restore.contract.test.ts"
+fi
+if [ "$SUITE" = mcp ]; then
+  run mcp-contract "node --test artifacts/cloudflare-mcp/vendi-crm-contract.test.mjs"
+  run mcp-ts "pnpm --filter @workspace/cloudflare-mcp typecheck"
 fi
 if [ "$SUITE" = api ] || [ "$SUITE" = full ]; then
   run api-ts "pnpm --filter @workspace/api-server typecheck"
