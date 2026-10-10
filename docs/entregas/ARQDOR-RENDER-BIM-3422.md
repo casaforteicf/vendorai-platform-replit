@@ -622,3 +622,11 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Suíte adicionada:** `RenderStudioParametricWebgl.test.ts` (commit `8cbf884`) testa geração de malha diagonal com janela, finitude das coordenadas, rejeição de NaN/Infinity, rejeição de aberturas sobrepostas e aceitação de aberturas adjacentes, com mocks da interface de geometria do Three.js.
 - **Base de evidências:** os 5 comportamentos já haviam sido verificados por execução isolada do núcleo JS em 10/10/2026; os testes Vitest desta entrega foram **registrados, mas não executados**. Build TypeScript e integração no navegador seguem pendentes.
 - **Governança:** PR #3422 Draft, sem merge, sem deploy e sem alteração de homologação/produção.
+
+
+## 3422-A — liberação da geometria diagonal em erro interno (10/10/2026)
+- **Falha identificada:** `buildWallGeometry` só devolvia `BufferGeometry` depois de `setAttribute` e `computeVertexNormals`. Uma exceção nestas operações impedia o chamador de registrar o recurso para `cleanup`, causando vazamento de geometria.
+- **Correção:** commit `a5e8318` envolve o preenchimento e cálculo de normais em `try/catch`; em falha, chama `geometry.dispose()` antes de propagar o erro.
+- **Regressão persistente:** commit `5f565d6` adiciona teste com `MockBufferGeometry` que lança falha no cálculo de normais, exigindo exatamente uma chamada de descarte.
+- **Validação:** mudança conferida no código via conector GitHub, porém **Vitest, build TypeScript e navegador não executados** nesta etapa. Os demais cenários permanecem pendentes de integração.
+- **Estado:** PR #3422 Draft; sem merge, deploy ou homologação Contabo; produção intacta.
