@@ -193,15 +193,20 @@ router.get("/admin/improvements/agent-managers/status", async (_req, res) => {
           SELECT t.id, d.domain FROM tenants t
           CROSS JOIN (VALUES ('crm',15), ('pipeline',15), ('marketing',60)) AS d(domain,minutes)
           LEFT JOIN (
-            SELECT tenant_id, domain, max(checked_at) AS last_run
-            FROM agent_manager_runs GROUP BY tenant_id,domain
+            SELECT tenant_id, domain, max(checked_at) AS last_run,
+                   count(DISTINCT period_key)::int AS completed_runs
+            FROM agent_manager_runs
+            WHERE outcome='completed'
+            GROUP BY tenant_id,domain
           ) runs ON runs.tenant_id=t.id AND runs.domain=d.domain
           WHERE t.status='active' AND
-            (runs.last_run IS NULL OR runs.last_run < now() - make_interval(mins => d.minutes * (SELECT page_count + 1 FROM pages)))
+            (runs.last_run IS NULL OR runs.completed_runs < 2 OR runs.last_run < now() - make_interval(mins => d.minutes * (SELECT page_count + 1 FROM pages)))
         ) missed) AS "missingOrOverdue"
     `);
     const activeTenants = Number(coverage.rows[0]?.activeTenants ?? 0);
     const missingOrOverdue = Number(coverage.rows[0]?.missingOrOverdue ?? 0);
+    // Require two distinct completed periods per tenant/domain before
+    // advertising a fully operational recurring system.
     const operational = enabled && activeTenants > 0 && missingOrOverdue === 0;
     return res.json({
       enabled,
