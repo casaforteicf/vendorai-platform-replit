@@ -16,6 +16,15 @@ describe("agent manager policy", () => {
     expect(connection).toBeGreaterThan(validation);
   });
 
+  it("records a source collision as skipped instead of generating an alert", () => {
+    const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
+    const collision = source.indexOf("if ((inserted.rowCount ?? 0) === 0)");
+    const alert = source.indexOf("INSERT INTO notifications");
+    expect(collision).toBeGreaterThan(-1);
+    expect(alert).toBeGreaterThan(collision);
+    expect(source).toContain("'skipped_source_collision',0");
+  });
+
   it("guards Jarvis case upserts by source", () => {
     const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
     expect(source).toContain("ON CONFLICT (tenant_id,signal_key) DO UPDATE SET");
