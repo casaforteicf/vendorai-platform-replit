@@ -10,6 +10,11 @@ describe("furniture footprint inside room cells", () => {
     expect(furnitureFitsRoom({ ...object, rotation: 45 }, cells)).toBe(true);
     expect(furnitureFitsRoom({ ...object, x: 0, rotation: 45 }, cells)).toBe(false);
   });
+  it("normalizes large finite rotations before computing corners", () => {
+    const cells = [{ x: 0, y: 0, width: 4, height: 4 }];
+    expect(furnitureFitsRoom({ ...object, rotation: 360000 }, cells)).toBe(true);
+    expect(furnitureFitsRoom({ ...object, rotation: 1e308 }, cells)).toBe(true);
+  });
   it("rejects furniture across the missing portion of an L shaped room", () => {
     expect(furnitureFitsRoom(object, [{ x: 0, y: 0, width: 4, height: 2 }, { x: 0, y: 2, width: 2, height: 2 }])).toBe(false);
   });
