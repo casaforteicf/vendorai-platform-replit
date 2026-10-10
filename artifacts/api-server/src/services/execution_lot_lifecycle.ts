@@ -45,7 +45,11 @@ export async function getExecutionLots(tenantId: string, dealId: string, proposa
       completed: lines.rows.filter((row) => row.source_item_id === balance.itemId && row.status !== "cancelled")
         .reduce((sum, row) => sum + Number(row.completed_quantity), 0),
     }));
-    return { lots: lots.rows, allocations: lines.rows, balances, contractedItems: source.map((item: any, index: number) => ({ itemId: String(index), name: item.nome, unit: item.unidade ?? "un", group: item.etapaNome ?? null, contractedQuantity: Number(item.quantidade) })) };
+    const events = await client.query(
+      "SELECT e.id, e.lot_id, e.event_type, e.payload, e.actor_id, e.created_at FROM execution_lot_events e JOIN execution_lots l ON l.id=e.lot_id AND l.tenant_id=e.tenant_id WHERE l.tenant_id=$1 AND l.deal_id=$2 AND l.proposal_id=$3 ORDER BY e.created_at DESC LIMIT 300",
+      [tenantId, dealId, proposalId],
+    );
+    return { events: events.rows, lots: lots.rows, allocations: lines.rows, balances, contractedItems: source.map((item: any, index: number) => ({ itemId: String(index), name: item.nome, unit: item.unidade ?? "un", group: item.etapaNome ?? null, contractedQuantity: Number(item.quantidade) })) };
   } finally {
     client.release();
   }
