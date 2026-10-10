@@ -38,6 +38,8 @@ function isNightAuditWindow() {
 async function runEmergencyRemediation(improvementId: string, finding: AuditFinding, log: Logger) {
   // Audit can always report incidents, but code-changing remediation needs explicit autonomous mode.
   if (process.env.VENDI_AUTONOMY_ENABLED !== "true" || !isNightAuditWindow()) return;
+  // Security incidents require explicit Superadmin review even in autonomous mode.
+  if (finding.module.startsWith("Segurança")) return;
   if (finding.priority !== "urgente") return;
 
   const recent = await pool.query(
@@ -209,28 +211,46 @@ async function upsertFinding(finding: AuditFinding, log: Logger) {
 }
 
 async function auditConversationTenantIsolation(): Promise<AuditFinding[]> {
-  // Cross-tenant references are structural security incidents; never include
-  // message content, phone numbers or customer identifiers in the finding.
+  // Aggregate counts only: never expose messages, phone numbers or tenant IDs.
   const available = await pool.query(
-    "SELECT to_regclass('public.conversations') AS conversations, to_regclass('public.whatsapp_connections') AS connections",
+    "SELECT to_regclass('public.conversations') AS conversations, to_regclass('public.whatsapp_connections') AS connections, to_regclass('public.leads') AS leads",
   );
-  if (!available.rows[0]?.conversations || !available.rows[0]?.connections) return [];
-  const result = await pool.query(
-    `SELECT count(*)::int AS violations
-     FROM conversations c JOIN whatsapp_connections w ON w.id = c.whatsapp_connection_id
-     WHERE c.tenant_id <> w.tenant_id`,
-  );
-  const violations = Number(result.rows[0]?.violations ?? 0);
-  if (violations === 0) return [];
-  return [{
-    key: "security:cross-tenant-whatsapp-conversation-link",
-    title: "Possível vínculo de conversa entre tenants distintos",
-    description: `Foram identificados ${violations} vínculos de conversas com conexões WhatsApp de outro tenant. Dados sensíveis não foram incluídos. Exige investigação e aprovação do Superadmin antes de correções.`,
-    module: "Segurança / Isolamento multi-tenant",
-    priority: "urgente",
-    riskSummary: "Possível violação de isolamento e de permissões no Omnichannel.",
-    acceptanceCriteria: "Validar os vínculos, corrigir a causa com aprovação do Superadmin e confirmar isolamento entre tenants.",
-  }];
+  if (!available.rows[0]?.conversations) return [];
+  const findings: AuditFinding[] = [];
+  const checks = [
+    {
+      available: Boolean(available.rows[0]?.connections),
+      key: "security:cross-tenant-whatsapp-conversation-link",
+      title: "Conversa vinculada a WhatsApp de outro tenant",
+      sql: `SELECT count(*)::int AS violations FROM conversations c
+            JOIN whatsapp_connections w ON w.id = c.whatsapp_connection_id
+            WHERE c.tenant_id <> w.tenant_id`,
+    },
+    {
+      available: Boolean(available.rows[0]?.leads),
+      key: "security:cross-tenant-lead-conversation-link",
+      title: "Conversa vinculada a lead de outro tenant",
+      sql: `SELECT count(*)::int AS violations FROM conversations c
+            JOIN leads l ON l.id = c.lead_id
+            WHERE c.tenant_id <> l.tenant_id`,
+    },
+  ];
+  for (const check of checks) {
+    if (!check.available) continue;
+    const result = await pool.query(check.sql);
+    const violations = Number(result.rows[0]?.violations ?? 0);
+    if (violations === 0) continue;
+    findings.push({
+      key: check.key,
+      title: check.title,
+      description: `Detectados ${violations} vínculos entre tenants distintos. Somente contagem agregada. Exige investigação e aprovação do Superadmin antes de qualquer correção.`,
+      module: "Segurança / Isolamento multi-tenant",
+      priority: "urgente",
+      riskSummary: "Possível violação de isolamento e permissões no Omnichannel.",
+      acceptanceCriteria: "Investigar origem, corrigir mediante aprovação e comprovar isolamento entre tenants.",
+    });
+  }
+  return findings;
 }
 
 async function auditDatabaseSchema(): Promise<AuditFinding[]> {
