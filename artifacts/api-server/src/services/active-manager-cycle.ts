@@ -174,6 +174,20 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               "Jarvis: avaliar com o tenant e solicitar aprovação para qualquer operação necessária."],
           );
           cases += inserted.rowCount ?? 0;
+          // Respect manual case closure: only notify while the corresponding
+          // Jarvis case is open after the upsert (automatic closure can reopen).
+          const activeCase = await client.query(
+            "SELECT status FROM jarvis_cases WHERE tenant_id=$1 AND signal_key=$2 AND source='active_manager'",
+            [tenantId, observation.signal],
+          );
+          if (activeCase.rows[0]?.status !== 'open') {
+            await client.query(
+              "INSERT INTO agent_manager_runs (tenant_id,domain,period_key,outcome,finding_count) VALUES ($1,$2,$3,'completed',1) ON CONFLICT DO NOTHING",
+              [tenantId, domain, periodKey],
+            );
+            await client.query('RELEASE SAVEPOINT manager_domain');
+            continue;
+          }
           // Deliver a tenant-scoped, in-app Jarvis alert to one active admin.
           // Never send WhatsApp/email or perform an external action here.
           // One notification per tenant and issue within 24h prevents alert floods,
