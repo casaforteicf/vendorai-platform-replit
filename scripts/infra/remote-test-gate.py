@@ -47,6 +47,20 @@ def status(run):
     out["logs"] = sorted(p.name for p in logs.glob("*.log") if p.is_file() and not p.is_symlink()) if logs.is_dir() else []
     return out
 
+def cleanup_test_containers(folder):
+    logs = folder / "logs"
+    docker = shutil.which("docker")
+    if not logs.is_dir() or not docker:
+        return
+    for item in logs.glob("*.cid"):
+        if not item.is_file() or item.is_symlink():
+            continue
+        cid = item.read_text(errors="replace").strip()
+        if not re.fullmatch(r"[0-9a-f]{64}", cid):
+            continue
+        subprocess.run([docker, "rm", "-f", cid], timeout=20,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+
 def run(pr, branch, sha, suite):
     args = validated(pr, branch, sha, suite)
     if os.geteuid() == 0:
@@ -87,6 +101,10 @@ def run(pr, branch, sha, suite):
                 proc.wait()
             rc = 124
         after = {p.name for p in EVIDENCE.glob("pr-*") if p.is_dir()}
+        if rc == 124:
+            for run_name in after - before:
+                cleanup_test_containers(EVIDENCE / run_name)
+                (EVIDENCE / run_name / "timeout.txt").write_text("exit=124; timeout cleanup attempted\\n")
         new = sorted(after - before)
         return {"exitCode": rc, "runIds": new, "sha": args[2], "suite": suite,
                 "status": "completed" if rc != 124 else "timeout"}
