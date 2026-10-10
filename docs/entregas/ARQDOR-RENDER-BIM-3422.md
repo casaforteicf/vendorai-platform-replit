@@ -721,3 +721,9 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Falha adicional corrigida:** `document.head.appendChild(script)` podia lançar exceção após a criação do temporizador, sem limpá-lo. O commit `9220591` trata a falha com a rotina `fail`; `5fb57c9` registra teste Vitest específico.
 - **Execução após correção:** simulação de `appendChild` lançando erro confirmou mensagem controlada, script removido e zero timers restantes.
 - **Pendente:** suíte Vitest original, typecheck da aplicação, integração WebGL/2D-3D e homologação autorizada. Nenhum merge, deploy ou alteração na Contabo/produção; PR #3422 Draft.
+
+
+## 3422-A — execução isolada da recuperação após falha (10/10/2026)
+- **Validação executada:** carregador `loadThree` extraído da branch e executado em JavaScript com objetos DOM e timers simulados. A primeira solicitação recebeu `onerror`, retornou erro controlado e removeu o script; a segunda chamada criou um script novo e resolveu após receber `THREE.WebGLRenderer` válido, sem timers restantes. Resultado: **cenário de recuperação passou**.
+- **Manutenção:** commit `7b98fd8` apenas explicita a limpeza do cache `engine` na Promise rejeitada, sem modificação funcional pretendida.
+- **Escopo da evidência:** teste isolado, não Vitest nem browser real; testes integrados e build completo continuam pendentes. PR #3422 permanece Draft, sem merge ou deploy e sem alteração de produção.
