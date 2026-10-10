@@ -76,7 +76,7 @@ router.post("/execution-lots/deals/:dealId/lots/:lotId/status", async (req: any,
     return void res.json(result);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "";
-    if (msg === "Transição de estado não permitida" || msg === "Cancelamento exige justificativa") return void res.status(409).json({ error: msg });
+    if (msg === "Transição de estado não permitida" || msg === "Cancelamento exige justificativa" || msg === "Existem quantidades pendentes no lote" || msg === "Lote com execução registrada exige estorno") return void res.status(409).json({ error: msg });
     if (msg === "Negócio não localizado" || msg === "Lote não localizado") return void res.status(404).json({ error: "Lote não encontrado" });
     console.error("execution lot status", err);
     return void res.status(500).json({ error: "Falha na transição de execução" });
