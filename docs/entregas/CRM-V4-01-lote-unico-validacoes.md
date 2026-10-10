@@ -227,3 +227,10 @@ Não considerar item 2 encerrado: o fluxo de criação de lead ainda invoca serv
 - O `PATCH /deals/:id` já tinha bloqueio similar; alteração evita rotas comerciais alternativas de movimentação em registros excluídos.
 - **Evidência:** arquivo atualizado remotamente na branch; TypeScript, build e testes de API não executados nesta sessão. A revisão de todas as rotas que alteram negócios permanece pendente, inclusive cenários concorrentes.
 - Sem homologação, merge, deploy nem mudança em produção.
+
+## Guardas de avaliação por IA e reprocessamento de fechamento — 10/10/2026
+- Commit `949dde54cdc7402e3ab6edbd52c8bb3f5e38a802` no PR #3428.
+- `POST /deals/:id/ai/evaluate` verifica que o negócio tem lead ativo no mesmo tenant antes de solicitar avaliação por IA.
+- `POST /admin/deals/:id/retry` bloqueia reprocessamento de fechamento se o lead está ausente ou excluído, preservando o estado até revisão administrativa.
+- Limite conhecido: outras rotas e funções assíncronas ainda precisam de revisão, e a checagem antes da escrita não substitui uma verificação transacional contra exclusão simultânea.
+- Sem evidência de TypeScript, build, testes de integração, homologação, merge ou deploy. Produção não alterada.
