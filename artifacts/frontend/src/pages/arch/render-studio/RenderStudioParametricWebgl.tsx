@@ -21,7 +21,7 @@ function loadThree(): Promise<void> {
   return engine;
 }
 
-function buildWallGeometry(THREE: any, wall: ParametricWall) {
+export function buildWallGeometry(THREE: any, wall: ParametricWall) {
   if (!Array.isArray(wall.start) || !Array.isArray(wall.end) ||
       wall.start.length !== 2 || wall.end.length !== 2 ||
       ![...wall.start, ...wall.end].every(Number.isFinite))
