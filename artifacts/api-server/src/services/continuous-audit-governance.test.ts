@@ -35,6 +35,20 @@ describe("UX and Security manager governance", () => {
     expect(auditSource).toContain("upsertFinding(");
   });
 
+  it("detects cross-tenant WhatsApp bindings without exposing messages or phone numbers", () => {
+    const start = auditSource.indexOf("async function auditConversationTenantIsolation()");
+    const end = auditSource.indexOf("async function auditDatabaseSchema()", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const body = auditSource.slice(start, end);
+    expect(body).toContain("c.tenant_id <> w.tenant_id");
+    expect(body).toContain('priority: "urgente"');
+    expect(body).toContain("count(*)::int AS violations");
+    expect(body).not.toContain("SELECT c.*");
+    expect(body).not.toContain("SELECT w.*");
+    expect(auditSource).toContain("auditConversationTenantIsolation(),");
+  });
+
   it("platform security findings require Superadmin review and are not executable missions", () => {
     expect(policySource).toContain('"security_incident"');
     expect(managerSource).toContain('policy.route !== "superadmin_support"');
