@@ -74,6 +74,14 @@ describe("agent manager policy", () => {
       .toBe(managerSupportSourceRef("crm", "platform_defect", "same", "tenant-a"));
   });
 
+  it("audits security escalation only when the existing record changes", () => {
+    const source = readFileSync(new URL("./agent-manager-support.ts", import.meta.url), "utf8");
+    expect(source).toContain("RETURNING id");
+    expect(source).toContain("if (escalation.rowCount)");
+    expect(source).toContain("'manager_security_escalation'");
+    expect(source).toContain("admin_improvement_events");
+  });
+
   it("escalates an existing deduplicated security review without duplicating it", () => {
     const source = readFileSync(new URL("./agent-manager-support.ts", import.meta.url), "utf8");
     const prior = source.indexOf("if (previous.rows[0])");
