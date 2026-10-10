@@ -2944,6 +2944,23 @@ router.delete("/deals/:id", async (req, res) => {
   if (!reason.success) {
     return res.status(422).json({ error: "Informe o motivo do arquivamento (mínimo de 3 caracteres)." });
   }
+  // Conservatively require explicit resolution of obligations before archiving.
+  // Even a completed work card or historical contract must be reviewed by an
+  // administrator rather than silently hidden through this generic endpoint.
+  const [linkedContract] = await db.select({ id: contractsTable.id }).from(contractsTable)
+    .where(and(eq(contractsTable.tenantId, existing.tenantId), eq(contractsTable.dealId, existing.id)))
+    .limit(1);
+  const [linkedExecution] = await db.select({ id: workCardsTable.id }).from(workCardsTable)
+    .where(and(eq(workCardsTable.tenantId, existing.tenantId), eq(workCardsTable.dealId, existing.id)))
+    .limit(1);
+  if (linkedContract || linkedExecution) {
+    return res.status(409).json({
+      code: "DEAL_HAS_LINKED_OBLIGATIONS",
+      error: "Negócio com contrato ou processo de execução vinculado requer revisão antes do arquivamento.",
+      hasContract: Boolean(linkedContract),
+      hasExecution: Boolean(linkedExecution),
+    });
+  }
   const [archived] = await db.update(dealsTable).set({
     archivedAt: new Date(), archivedBy: req.user?.sub ?? null,
     archiveReason: reason.data, updatedAt: new Date(),
