@@ -371,12 +371,7 @@ export function DealParticipantsCard({
                           {roleLabel(person.role)}{person.isPrimary ? " · contato principal" : ""}
                           {contextualCompany ? ` · ${contextualCompany.nomeFantasia || contextualCompany.razaoSocial}` : ""}
                           {person.relationshipScope === "deal_only" ? " · somente neste negócio" : " · vínculo permanente"}
-                          {(() => {
-                            const commission = person.metadata && typeof person.metadata === "object" ? (person.metadata as any).commission : null;
-                            if (!commission?.enabled) return " · sem comissão";
-                            const value = commission.value ? ` ${commission.value}` : "";
-                            return commission.kind === "fixed" ? ` · comissão fixa${value}` : ` · comissão %${value}`;
-                          })()}
+
                         </p>
                       </div>
                     </div>
