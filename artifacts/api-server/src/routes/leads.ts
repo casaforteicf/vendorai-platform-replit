@@ -555,16 +555,15 @@ router.post("/tenants/:tenantId/leads/bulk-reassign", async (req, res) => {
     return;
   }
 
-  const [destinationUser] = await db.select({ id: usersTable.id }).from(usersTable)
-    .where(and(eq(usersTable.id, toUserId), eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)))
-    .limit(1);
-  if (!destinationUser) {
-    res.status(422).json({ error: "Destino da redistribuição não pertence ao tenant." });
-    return;
-  }
-
   // Transação: lead, negócio e trilha de responsabilidade devem mudar juntos.
   const outcome = await db.transaction(async (tx) => {
+    // Bloqueia a desativação do usuário de destino durante a transferência.
+    const [destinationUser] = await tx.select({ id: usersTable.id }).from(usersTable)
+      .where(and(eq(usersTable.id, toUserId), eq(usersTable.tenantId, tenantId),
+        eq(usersTable.active, true))).for("share").limit(1);
+    if (!destinationUser) {
+      throw Object.assign(new Error("Destino da redistribuição não está ativo neste tenant."), { status: 422 });
+    }
     const candidates = await tx.select({
       id: leadsTable.id, metadata: leadsTable.metadata,
     }).from(leadsTable).where(and(
@@ -596,7 +595,14 @@ router.post("/tenants/:tenantId/leads/bulk-reassign", async (req, res) => {
           .returning({ id: dealsTable.id })
       : [];
     return { leadsReassigned: candidates.length, dealsReassigned: dealsUpdated.length };
+  }).catch((error: any) => {
+    if (error.status === 422) return null;
+    throw error;
   });
+  if (!outcome) {
+    res.status(422).json({ error: "Destino da redistribuição não está ativo neste tenant." });
+    return;
+  }
 
   res.json(outcome);
 });
