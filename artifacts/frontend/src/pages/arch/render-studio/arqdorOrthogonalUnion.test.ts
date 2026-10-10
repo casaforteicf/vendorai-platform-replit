@@ -32,6 +32,18 @@ describe("Arqdor orthogonal wall volume union", () => {
     requireClosed([base, wall([2, -2], [2, 2])], 22);
   });
 
+  it("reports net material volume and external surface from the joined solid", () => {
+    const single = unionOrthogonalWalls([base]);
+    expect(single.netVolumeM3).toBeCloseTo(2.4, 6);
+    expect(single.exposedSurfaceM2).toBeCloseTo(2 * (4 * .2 + 4 * 3 + .2 * 3), 6);
+    const opened = unionOrthogonalWalls([wall([0, 0], [4, 0], [door])]);
+    expect(opened.netVolumeM3).toBeCloseTo(2.4 - .2 * 1 * 2.1, 6);
+    expect(opened.exposedSurfaceM2).toBeGreaterThan(0);
+    const joined = unionOrthogonalWalls([base, wall([2, 0], [2, 3])]);
+    expect(joined.netVolumeM3).toBeLessThan(2.4 + 1.8);
+    expect(joined.topology.signedVolumeMatchesOccupancy).toBe(true);
+  });
+
   it("cuts a true door and window opening", () => {
     requireClosed([wall([0, 0], [4, 0], [door])], 22);
     requireClosed([wall([0, 0], [4, 0], [window])], 32);
