@@ -311,3 +311,10 @@ Não considerar item 2 encerrado: o fluxo de criação de lead ainda invoca serv
 - Em `createCharge`, integrações de entrega por SKU continuam com o identificador histórico `sku_delivery:<proposalId>`; demais cobranças recebem `vendorai:deal:<dealId>` para facilitar busca e conciliação externa em falha de gravação local.
 - **Não é idempotência garantida:** `externalReference` pode ser apenas metadado do provedor e não impedir requisições duplicadas. Precisa contrato documentado do Asaas, consulta de reconciliação por referência, bloqueio/reserva persistente e testes de concorrência para impedir cobranças em duplicidade.
 - Sem TypeScript, build, testes, homologação, migração, merge ou deploy.
+
+## Reserva atômica de fechamento inicial — 10/10/2026
+- Commit `1773f359e759b930398c3ed7f7f482d9354d42fa` na PR #3428.
+- Antes do retorno HTTP e da execução assíncrona do fechamento inicial, a API marca `closure_triggered_at` via `UPDATE ... WHERE closure_triggered_at IS NULL AND archived_at IS NULL AND tenant_id = ... RETURNING id`.
+- Segunda solicitação concorrente não reivindica o fechamento e recebe 409 `CLOSURE_ALREADY_STARTED`. Reduz disparo duplicado inicial para Asaas/ZapSign.
+- **Limitações:** o fluxo de retry contratual permanece separado e precisa exclusão mútua; se o worker falhar após reservar, conciliação/retomada exigirá política explícita. O UPDATE preliminar da etapa do deal e outras ações anteriores a esta reserva também precisam de auditoria. Não afirmar idempotência ponta a ponta até testes concorrentes reais e integração com provedores externos.
+- Sem build, testes executados, homologação, migração, merge ou publicação.
