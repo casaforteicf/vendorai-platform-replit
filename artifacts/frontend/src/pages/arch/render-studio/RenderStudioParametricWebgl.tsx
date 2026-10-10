@@ -35,6 +35,17 @@ function buildWallGeometry(THREE: any, wall: ParametricWall) {
         o.sill < 0 || o.height <= 0 || o.sill + o.height > wall.height)
       throw new Error("Vão inválido na parede");
   }
+  // Diagonal preview must enforce the same opening-overlap rule as the
+  // orthogonal union, otherwise switching wall orientation changes validity.
+  for (let i = 0; i < wall.openings.length; i++) {
+    const a = wall.openings[i];
+    for (let j = i + 1; j < wall.openings.length; j++) {
+      const b = wall.openings[j];
+      if (a.offset < b.offset + b.width && a.offset + a.width > b.offset &&
+          a.sill < b.sill + b.height && a.sill + a.height > b.sill)
+        throw new Error("Aberturas sobrepostas na parede");
+    }
+  }
   const ux = dx / length, uy = dy / length, nx = -uy, ny = ux;
   const xs = [...new Set([0, length, ...wall.openings.flatMap(o => [o.offset, o.offset + o.width])])].sort((a, b) => a - b);
   const zs = [...new Set([0, wall.height, ...wall.openings.flatMap(o => [o.sill, o.sill + o.height])])].sort((a, b) => a - b);
