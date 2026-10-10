@@ -1,4 +1,5 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
+import { DxfReferenceCanvas, isDxfReferencePayload, type StudioDxfLayer } from "./DxfReferenceCanvas";
 import { DesignHeader } from "./DesignHeader";
 import { StudioProvider, useStudio } from "./StudioContext";
 import { WorkspaceLayout } from "./WorkspaceLayout";
@@ -170,6 +171,13 @@ function BottomTimeline() {
 function DesignStudioInner({ arqState, onNavigate }: DesignStudioProps) {
   const project = useMemo(() => getProject(arqState), [arqState]);
   const { mode, setRightPanelOpen } = useStudio();
+  const [dxfLayers,setDxfLayers]=useState<StudioDxfLayer[]>([]);
+  const onLibraryApply=(payload:unknown)=>{
+    if(!isDxfReferencePayload(payload))return;
+    const reference=payload.reference;
+    if(reference.entities.length===0)return;
+    setDxfLayers(current=>[...current,{id:`dxf-${Date.now()}-${Math.random().toString(36).slice(2)}`,fileName:payload.fileName,reference,visible:true}]);
+  };
 
   return (
     <div className="min-h-screen bg-[#f7f7f8] p-6 text-slate-950">
@@ -183,10 +191,10 @@ function DesignStudioInner({ arqState, onNavigate }: DesignStudioProps) {
           />
         }
         leftPanel={<StudioTools />}
-        canvas={<CanvasPlaceholder />}
+        canvas={dxfLayers.length ? <DxfReferenceCanvas layers={dxfLayers} onRemove={id=>setDxfLayers(current=>current.filter(l=>l.id!==id))} onToggle={id=>setDxfLayers(current=>current.map(l=>l.id===id?{...l,visible:!l.visible}:l))}/> : <CanvasPlaceholder />}
         rightPanel={
           mode === "materials"
-            ? <LibraryPanel />
+            ? <LibraryPanel onApply={onLibraryApply} />
             : <AIChatPanel projectTitle={getTitle(project)} environmentName={getEnvironment(project)} onClose={() => setRightPanelOpen(false)} />
         }
         bottomPanel={<BottomTimeline />}
