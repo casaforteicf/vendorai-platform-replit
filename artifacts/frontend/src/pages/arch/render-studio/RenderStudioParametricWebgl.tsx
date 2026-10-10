@@ -111,6 +111,10 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
       if (disposed || !holder.current) return;
       // Validate and build union before allocating a WebGL context, so invalid
       // geometry does not leave a renderer/canvas attached after rejection.
+      if (walls.length === 0) {
+        setError("");
+        return;
+      }
       const orthogonal = shouldUseOrthogonalUnion(walls);
       const union = orthogonal && walls.length ? unionOrthogonalWalls(walls) : null;
       if (union && !union.topology.closedByEdgeIncidence) {
@@ -194,6 +198,7 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
   return <div className="space-y-1">
     <div ref={holder} className="h-[320px] w-full overflow-hidden rounded bg-slate-50" aria-label="Malhas paramétricas WebGL em prévia" />
     {error ? <p role="alert" className="text-xs text-red-700">{error}</p> :
+      walls.length === 0 ? <p className="text-xs text-slate-600">Adicione uma parede para visualizar o modelo 3D.</p> :
       <p className="text-xs text-slate-600">WebGL: paredes ortogonais combinadas em volume único; diagonais usam malhas individuais. Geometria ainda sujeita a revisão.</p>}
   </div>;
 }
