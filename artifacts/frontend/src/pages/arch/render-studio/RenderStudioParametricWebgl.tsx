@@ -162,7 +162,12 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
       scene.up?.set?.(0, 0, 1);
       const camera = new THREE.PerspectiveCamera(48, 1, .01, 3000);
       camera.up.set(0, 0, 1);
-      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      let renderer: InstanceType<typeof THREE.WebGLRenderer>;
+      try {
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+      } catch {
+        throw new Error("Não foi possível iniciar WebGL neste dispositivo");
+      }
       const node = holder.current;
       const disposableResources: Array<{ dispose: () => void }> = [];
       let observer: ResizeObserver | null = null;
