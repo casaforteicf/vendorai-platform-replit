@@ -115,6 +115,13 @@ describe("agent manager policy", () => {
     expect(source).toContain("[sourceRef.slice(0, 24), sourceRef.slice(24)]");
   });
 
+  it("rejects unknown modules and nonstructural kinds in support identifiers", () => {
+    expect(() => managerSupportSourceRef("invalid" as "crm", "platform_defect", "x"))
+      .toThrow("INVALID_MANAGER_DOMAIN");
+    expect(() => managerSupportSourceRef("crm", "tenant_operation", "x"))
+      .toThrow("MANAGER_SUPPORT_KIND_INVALID");
+  });
+
   it("normalizes fingerprint whitespace before deduplicating support reviews", () => {
     const a = managerSupportSourceRef("crm", "platform_defect", "signal-1", "tenant-a");
     const b = managerSupportSourceRef("crm", "platform_defect", "  signal-1  ", "tenant-a");
