@@ -15,6 +15,8 @@ describe("UX and Security manager governance", () => {
     expect(api).toContain("reportSchema.safeParse");
     expect(router.indexOf("router.use(uxRuntimeTelemetryRouter)"))
       .toBeGreaterThan(router.indexOf("router.use(authenticate)"));
+    expect(router.indexOf("router.use(uxRuntimeTelemetryRouter)")).toBeGreaterThan(router.indexOf("router.use(blockSuspendedTenants)"));
+    expect(router.indexOf("router.use(uxRuntimeTelemetryRouter)")).toBeGreaterThan(router.indexOf("router.use(enforceCommercialProductAccess)"));
   });
 
   it("throttles UX browser reports and keeps the homologation API isolated", () => {
