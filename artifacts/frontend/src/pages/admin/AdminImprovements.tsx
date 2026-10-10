@@ -706,7 +706,7 @@ export default function AdminImprovements() {
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">Melhorias & Publicações</h1>
           <p className="mt-1 max-w-4xl text-sm text-muted-foreground">
-            Você acompanha só o que importa: andamento, sua aprovação, publicação e conclusão. Testes, retries, homologação e failover ficam automáticos por trás.
+            Acompanhe andamento, homologação, aprovação, publicação e validação real. A autonomia só executa operações habilitadas e comprovadas pelos controles de release.
           </p>
         </div>
         <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap">
