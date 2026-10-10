@@ -14,3 +14,5 @@ test('self-hosted requires live check',()=>assert.equal(fixture('jobs:\n  releas
 test('inline empty selector',()=>assert.equal(fixture('jobs:\n  release:\n    runs-on: []\n').findings[0].severity,'error'));
 test('multiline empty selector',()=>assert.equal(fixture('jobs:\n  release:\n    runs-on:\n    steps:\n').findings[0].code,'EMPTY_RUNNER_SELECTOR'));
 test('dynamic selector requires review',()=>assert.equal(fixture('jobs:\n  release:\n    runs-on: ${{ inputs.runner }}\n').findings[0].code,'DYNAMIC_RUNNER_SELECTOR'));
+
+test('comments and blank lines before multiline runner list are valid',()=>assert.deepEqual(fixture('jobs:\n  build:\n    runs-on:\n      # labels below\n\n      - self-hosted\n      - linux\n').findings,[]));
