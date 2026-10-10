@@ -56,3 +56,9 @@ Teste local: `node --test scripts/infra/vendi-operator-diagnostics.test.mjs`.
 - Aprovação fica vinculada ao **mesmo** `approvedLot` e `approvedCommitSha`. Approval de outro lote/commit falha com código estável; verificador não ecoa as referências sensíveis.
 - Regressões adicionadas para cruzamento indevido de lote, commit e imagem. Testes ainda não rodados no host.
 - **Limite de confiança:** as provas são booleanos/strings informados pelo chamador; este gate sozinho não verifica criptograficamente a procedência nem consulta a Contabo. Integrá-lo ao operador existente exige coletar evidências de fontes autenticadas e confiar apenas no contexto do operador; não oferecer `approved:true` diretamente a chamadas de tenant.
+
+## INFRA-LOTE-01.3 — robustez do diagnóstico SSH (10/10/2026)
+- Diagnóstico considera **conjuntamente** campos `stderr` e `errorMessage`, quando ambos são strings; evita perder a falha do host caso o wrapper também reporte `Command failed`.
+- Códigos de saída somente são preservados se inteiros seguros no intervalo 0–255; valores arbitrários são tratados como indisponíveis.
+- Objetos arbitrários em `stderr` ou `errorMessage` são ignorados, sem serializar dados sensíveis.
+- Regressões adicionadas para esse comportamento. **Não há comprovação de execução dos testes na Contabo nem integração do classificador ao MCP/operador instalado**.
