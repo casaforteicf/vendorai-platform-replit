@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import registry from "./master-improvements-registry.json";
@@ -33,6 +35,31 @@ const phases = [
 ];
 const label: Record<string, string> = { verification_required: "Verificar implementação", code_in_pr: "Código em PR", blocked: "Bloqueado" };
 export default function AdminMasterPlan() {
+  const { token } = useAuth();
+  const prNumbers = useMemo(() => [...new Set(all.map(item => item.tracking_url?.match(/\\/pull\\/(\\d+)/)?.[1]).filter((n): n is string => Boolean(n)))], []);
+  const evidence = useQuery({
+    queryKey: ["admin", "master-plan", "pr-evidence", token],
+    queryFn: async () => {
+      const response = await fetch("/api/admin/improvements/master-pr-status?prs=" + prNumbers.join(","), {
+        headers: { Authorization: "Bearer " + token },
+      });
+      if (!response.ok) throw new Error("Consulta GitHub indisponível");
+      return response.json() as Promise<{ checkedAt: string; items: Array<{ number: number; state: string; sha: string | null }> }>;
+    },
+    enabled: Boolean(token && prNumbers.length),
+    refetchInterval: 5 * 60 * 1000,
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+  const prStates = new Map(evidence.data?.items.map(item => [String(item.number), item]) ?? []);
+  const stateFor = (item: Requirement) => {
+    const number = item.tracking_url?.match(/\\/pull\\/(\\d+)/)?.[1];
+    const result = number ? prStates.get(number) : undefined;
+    if (!result || result.state === "unavailable") return label[item.status] || item.status;
+    if (result.state === "merged") return "PR mesclado · homologação não verificada";
+    if (result.state === "closed") return "PR fechado · não publicado";
+    return result.state === "open" ? "PR aberto · homologação não verificada" : label[item.status] || item.status;
+  };
   const [search, setSearch] = useState("");
   const [module, setModule] = useState("all");
   const [status, setStatus] = useState("all");
@@ -50,7 +77,13 @@ export default function AdminMasterPlan() {
         <div className="mt-5 grid gap-3 sm:grid-cols-4">
           {[[String(all.length), "Funções inventariadas"], [String(coded), "Código em PR"], [String(all.length-coded-blocked), "A verificar"], [String(blocked), "Bloqueios registrados"]].map(([value, title]) => <div key={title} className="rounded-lg border p-3"><div className="text-2xl font-bold">{value}</div><div className="text-xs text-muted-foreground">{title}</div></div>)}
         </div>
-        <p className="mt-4 rounded-lg bg-muted p-3 text-xs text-muted-foreground">Os estados deste painel são um retrato documental de 10/10/2026. GitHub mesclado ≠ homologação ou produção verificada. Para atualizações operacionais reais, utilize a aba Melhorias, integrada ao backend da Central.</p>
+        <div className="mt-4 rounded-lg bg-muted p-3 text-xs text-muted-foreground">
+          <p>Inventário-base: 10/10/2026. Um PR mesclado não comprova homologação nem publicação.</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span>{evidence.isLoading ? "Consultando PRs..." : evidence.isError ? "GitHub indisponível · exibindo registro documental" : evidence.data ? "PRs atualizados em " + new Date(evidence.data.checkedAt).toLocaleString("pt-BR") : "Aguardando consulta autenticada"}</span>
+            <Button size="sm" variant="outline" onClick={() => void evidence.refetch()} disabled={evidence.isFetching}>Atualizar PRs</Button>
+          </div>
+        </div>
       </div>
       <div className="rounded-xl border bg-card p-5"><h3 className="mb-3 font-semibold">Prioridades e entregas</h3><div className="space-y-2">{phases.map(([priority,title,description]) => <div key={title} className="flex items-start gap-3 rounded-lg border p-3"><span className="rounded-md bg-muted px-2 py-1 text-xs font-bold">{priority}</span><div><p className="font-medium">{title}</p><p className="text-sm text-muted-foreground">{description}</p></div></div>)}</div></div>
       <div className="rounded-xl border bg-card p-5">
@@ -59,7 +92,7 @@ export default function AdminMasterPlan() {
           <select aria-label="Filtrar módulo" className="rounded-md border bg-background px-3 py-2 text-sm" value={module} onChange={event => setModule(event.target.value)}><option value="all">Todos os módulos</option>{modules.map(m => <option value={m} key={m}>{m}</option>)}</select>
           <select aria-label="Filtrar situação" className="rounded-md border bg-background px-3 py-2 text-sm" value={status} onChange={event => setStatus(event.target.value)}><option value="all">Todas as situações</option>{Object.keys(label).map(key => <option key={key} value={key}>{label[key]}</option>)}</select>
         </div>
-        <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b text-muted-foreground"><th className="p-2">ID</th><th className="p-2">Módulo</th><th className="p-2">Função</th><th className="p-2">Situação</th><th className="p-2">Evidência</th></tr></thead><tbody>{rows.map(item => <tr key={item.id} className="border-b"><td className="p-2 font-mono text-xs">{item.id}</td><td className="p-2">{item.module}</td><td className="p-2">{item.title}</td><td className="p-2">{label[item.status] || item.status}</td><td className="p-2">{item.tracking_url ? <a className="text-primary underline" href={item.tracking_url} target="_blank" rel="noreferrer">GitHub ↗</a> : <span className="text-muted-foreground">Não vinculada</span>}</td></tr>)}</tbody></table></div>
+        <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b text-muted-foreground"><th className="p-2">ID</th><th className="p-2">Módulo</th><th className="p-2">Função</th><th className="p-2">Situação</th><th className="p-2">Evidência</th></tr></thead><tbody>{rows.map(item => <tr key={item.id} className="border-b"><td className="p-2 font-mono text-xs">{item.id}</td><td className="p-2">{item.module}</td><td className="p-2">{item.title}</td><td className="p-2">{stateFor(item)}</td><td className="p-2">{item.tracking_url ? <a className="text-primary underline" href={item.tracking_url} target="_blank" rel="noreferrer">GitHub ↗</a> : <span className="text-muted-foreground">Não vinculada</span>}</td></tr>)}</tbody></table></div>
       </div>
     </section>
   );
