@@ -24,6 +24,24 @@ const lotSchema=z.object({
  surveySource:z.string().trim().min(2).max(400),surveyDate:z.string().date().optional(),
  rules:z.record(z.string(),z.unknown()).optional(),
 }).strict();
+function validSimplePolygon(points:{xM:number;yM:number}[]):boolean{
+ const cross=(a:{xM:number;yM:number},b:{xM:number;yM:number},c:{xM:number;yM:number})=>(b.xM-a.xM)*(c.yM-a.yM)-(b.yM-a.yM)*(c.xM-a.xM);
+ const onSegment=(a:{xM:number;yM:number},b:{xM:number;yM:number},c:{xM:number;yM:number})=>
+  Math.abs(cross(a,b,c))<1e-9&&c.xM>=Math.min(a.xM,b.xM)-1e-9&&c.xM<=Math.max(a.xM,b.xM)+1e-9&&c.yM>=Math.min(a.yM,b.yM)-1e-9&&c.yM<=Math.max(a.yM,b.yM)+1e-9;
+ const intersects=(a:{xM:number;yM:number},b:{xM:number;yM:number},c:{xM:number;yM:number},d:{xM:number;yM:number})=>{
+  const ab1=cross(a,b,c),ab2=cross(a,b,d),cd1=cross(c,d,a),cd2=cross(c,d,b);
+  return (ab1*ab2<0&&cd1*cd2<0)||onSegment(a,b,c)||onSegment(a,b,d)||onSegment(c,d,a)||onSegment(c,d,b);
+ };
+ for(let i=0;i<points.length;i++){
+  const a=points[i],b=points[(i+1)%points.length];
+  if(Math.hypot(b.xM-a.xM,b.yM-a.yM)<1e-9)return false;
+  for(let j=i+1;j<points.length;j++){
+   if(j===i+1||(i===0&&j===points.length-1))continue;
+   if(intersects(a,b,points[j],points[(j+1)%points.length]))return false;
+  }
+ }
+ return true;
+}
 function areaAndPerimeter(points:{xM:number;yM:number}[]){
  let a=0,p=0;
  for(let i=0;i<points.length;i++){
@@ -53,7 +71,9 @@ arqdorPartnerLotsRouter.get("/arqdor/partner-lots/developments",async(req:Reques
 arqdorPartnerLotsRouter.post("/arqdor/partner-lots",async(req:Request,res:Response)=>{
  const t=tenant(req)!,parsed=lotSchema.safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:"Dados inválidos",details:parsed.error.flatten()});
- const d=parsed.data,geom=areaAndPerimeter(d.coordinates);
+ const d=parsed.data;
+ if(!validSimplePolygon(d.coordinates))return res.status(400).json({error:"Perímetro do lote inválido ou com cruzamentos"});
+ const geom=areaAndPerimeter(d.coordinates);
  if(geom.areaM2<=.001||!Number.isFinite(geom.perimeterM))return res.status(400).json({error:"Polígono degenerado"});
  const id=randomUUID();
  const client=await pool.connect();
