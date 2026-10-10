@@ -49,3 +49,10 @@ Esta versão não representa conclusão dos 30 sublotes nem aprovação para pro
 - `execution_lot_lifecycle.test.ts`: testes declarativos de transições; execução não confirmada.
 - **Bloqueadores de homologação:** conferir autorização granular de perfis e representantes; garantir imutabilidade do snapshot da proposta aceita; permitir concluir parcialmente por item e validar consistência de status; teste de concorrência/idempotência real no PostgreSQL; aplicar migration apenas em homologação.
 - **Governança:** não houve merge ou publicação neste lote.
+
+## Incremento de progresso quantitativo — 10/10/2026
+
+- Migração `202610101330_execution_item_progress.sql` adicionada para diferenciar quantidade reservada de quantidade concluída em cada item.
+- Função pura `validateCompletedQuantity` e seus testes foram registrados.
+- A persistência do progresso por item e sua integração com o router **não foram concluídas**, pois a operação de gravação do serviço foi bloqueada.
+- O cálculo atual de saldo ainda precisa ser reconciliado com `completed_quantity`. Não publicar nem marcar 06.04 como concluído antes de testes de concorrência, estorno, mudança de status e compatibilidade de propostas aceitas.
