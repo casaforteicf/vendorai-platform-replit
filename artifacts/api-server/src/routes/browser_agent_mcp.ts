@@ -1,3 +1,4 @@
+import { decideBrowserAutonomy } from "../../../../scripts/infra/vendi-browser-autonomy.mjs";
 import { Router, type IRouter } from "express";
 import { z } from "zod";
 import {
@@ -269,9 +270,12 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
   // Global autonomy flag is a kill switch: callers cannot override it by
   // sending mode=autonomo or allowWrite=true, even if tenant opted in earlier.
   // Tenant opt-in is also required when the global flag is enabled.
-  const autonomyPermitted = globalVendiAutonomy && autonomyEnabled;
-  const mode = autonomyPermitted && parsed.data.mode === "autonomo" ? "autonomo" : "assistido";
-  const allowWrite = autonomyPermitted && mode === "autonomo" && parsed.data.allowWrite === true;
+  const { mode, allowWrite } = decideBrowserAutonomy({
+    globalEnabled: globalVendiAutonomy,
+    tenantEnabled: autonomyEnabled,
+    mode: parsed.data.mode,
+    allowWrite: parsed.data.allowWrite,
+  });
 
   let connection: BrowserMcpConnection | undefined;
   if (parsed.data.connectionId) {
