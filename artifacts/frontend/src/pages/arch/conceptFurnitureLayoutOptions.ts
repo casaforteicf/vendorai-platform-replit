@@ -1,7 +1,7 @@
 type Footprint = { kind: string; floor: number; x: number; y: number; width: number; depth: number; rotation: number };
 const rounded = (value: number) => Math.round(value * 1000) / 1000;
 function layoutKey(objects: readonly Footprint[]) {
-  return JSON.stringify(objects.map(object => [object.kind, object.floor, rounded(object.x), rounded(object.y), rounded(object.width), rounded(object.depth), rounded(((object.rotation % 360) + 360) % 360)])
+  return JSON.stringify(objects.map(object => [object.kind, object.floor, rounded(object.x), rounded(object.y), rounded(object.width), rounded(object.depth), rounded(((object.rotation % 360) + 360) % 360) % 360])
     .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));
 }
 /** Prefer fewer omitted items, then score; generated IDs do not distinguish arrangements. */
