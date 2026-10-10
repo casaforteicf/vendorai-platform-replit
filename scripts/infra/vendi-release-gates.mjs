@@ -5,7 +5,7 @@
  */
 const SHA=/^[a-f0-9]{40}$/i;
 const LOT=/^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$/;
-const safeString=(s)=>typeof s==="string" && s.length>0 && s.length<=128;
+const safeString=(s)=>typeof s==="string" && /^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,127}$/.test(s);
 export function assessReleaseReadiness(input) {
  const failures=[];
  const add=(code,condition)=>{if(condition)failures.push(code)};
@@ -14,6 +14,9 @@ export function assessReleaseReadiness(input) {
  add("COMMIT_INVALID",!SHA.test(input.commitSha??""));
  add("IMAGE_DIGEST_MISSING",!/^sha256:[a-f0-9]{64}$/i.test(input.imageDigest??""));
  add("COMMIT_IMAGE_NOT_VERIFIED",input.commitImageVerified!==true);
+ add("EVIDENCE_SOURCE_MISSING",!safeString(input.evidenceSource));
+ add("EVIDENCE_COMMIT_MISMATCH",input.evidenceCommitSha!==input.commitSha || !SHA.test(input.evidenceCommitSha??""));
+ add("EVIDENCE_IMAGE_MISMATCH",input.evidenceImageDigest!==input.imageDigest || !/^sha256:[a-f0-9]{64}$/i.test(input.evidenceImageDigest??""));
  add("LOT_MAPPING_NOT_VERIFIED",input.lotMappingVerified!==true);
  add("HOST_OPERATOR_UNVERIFIED",input.operatorVerified!==true);
  add("HOMOLOG_UNHEALTHY",input.homologHealth!=="ok");
@@ -26,6 +29,8 @@ export function assessReleaseReadiness(input) {
  add("TARGET_INVALID",input.target!=="homolog"&&input.target!=="production");
  add("APPROVAL_MISSING",input.approved!==true);
  add("APPROVAL_REFERENCE_MISSING",!safeString(input.approvalReference));
+ add("APPROVAL_SCOPE_MISMATCH",input.approvedCommitSha!==input.commitSha || !SHA.test(input.approvedCommitSha??""));
+ add("APPROVAL_LOT_MISMATCH",input.approvedLot!==input.lot || !LOT.test(input.approvedLot??""));
  return {ready:failures.length===0,failures,checkedAt:null};
 }
 export function evaluateApiAuth(error) {
