@@ -70,3 +70,9 @@ Teste local: `node --test scripts/infra/vendi-operator-diagnostics.test.mjs`.
 - **Atenção**: este arquivo integra o MCP de Cloudflare/browser do repositório, mas não foi comprovado que ele é a mesma implementação do container `vendorai-mcp-contabo-fixed`. Alteração de branch não corrige o 401 do ambiente até configurar a variável correta, executar testes e homologar o binário correspondente.
 - Não alterados tokens, secrets, tenant tables, produção, operador SSH ou containers.
 - Validar em ambiente isolado: `pnpm --filter @workspace/cloudflare-mcp build` e chamadas autenticadas de homologação com `VENDORAI_API_BASE` apontando explicitamente para a API correta (nunca assumir produção).
+
+## INFRA-LOTE-01.5 — correção do controle de autonomia do Browser Agent (10/10/2026)
+- Revisão da rota real `artifacts/api-server/src/routes/browser_agent_mcp.ts` encontrou que, com `VENDI_AUTONOMY_ENABLED=false`, os parâmetros externos `mode="autonomo"` e `allowWrite=true` podiam ser aceitos, pois o fallback anterior considerava parâmetros do cliente e opt-in do tenant. Isto contrariava a regra de autonomia desativada.
+- Corrigido: `autonomyPermitted = globalVendiAutonomy && autonomyEnabled`, com modo autônomo apenas se explicitamente solicitado e permitido, e escrita apenas se modo autônomo e `allowWrite=true`. Com o desligamento global, a rota permanece em `assistido`, `allowWrite=false`.
+- Essa mudança modifica **código em desenvolvimento**; não está instalada nos containers Contabo. Exige testes de autorização e regressão (global off + caller solicita escrita; tenant off + global on; ambos on) antes de homologação. Verificar também controles internos do executor Browser Agent como defesa em profundidade.
+- Segurança e isolamento entre tenants permanecem gates obrigatórios; não utilizar um principal de outro tenant para corrigir `tenant_not_found`.
