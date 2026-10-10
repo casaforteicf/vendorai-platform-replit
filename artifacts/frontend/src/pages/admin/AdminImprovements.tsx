@@ -348,6 +348,18 @@ export default function AdminImprovements() {
     retry: false,
   });
 
+  const masterRegistry = useQuery<{ lots: Array<{ lot: string; linked: number; validated: number; running: number; blocked: number }>; coverage: string }>({
+    queryKey: ["admin", "master-registry-summary"],
+    enabled: !!token,
+    queryFn: async () => {
+      const response = await fetch("/api/admin/improvements/master-registry-summary", { headers });
+      if (!response.ok) throw new Error("Registro Mestre ainda não disponível");
+      return response.json();
+    },
+    retry: false,
+    refetchInterval: 30000,
+  });
+
   const metricsQuery = useQuery<ReleaseMetrics>({
     queryKey: ["admin", "releases-metrics"],
     enabled: !!token,
@@ -785,6 +797,19 @@ export default function AdminImprovements() {
             {queueDiagnostics.data?.truncated && <span>Mostrando somente os primeiros 100 itens</span>}
           </div>
         )}
+      </div>
+      <div className="rounded-lg border p-3 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div><p className="font-medium">Registro Mestre — cobertura vinculada</p>
+            <p className="text-xs text-muted-foreground">Somente sublotes com vínculo comprovado, sem estimativa de cobertura total.</p></div>
+          <Button variant="outline" disabled={!!busy || masterRegistry.isError} onClick={() => void post("/api/admin/improvements/master-registry-reconcile", {}, "Vínculos explícitos reconciliados").then(() => masterRegistry.refetch()).catch(() => undefined)}>Reconciliar vínculos</Button>
+        </div>
+        {masterRegistry.isError ? <p className="text-xs mt-2">Migração do Registro Mestre não disponível.</p> :
+          <div className="mt-2 flex flex-wrap gap-3 text-xs">
+            <span>Lotes vinculados: {masterRegistry.data?.lots.length ?? "..."}</span>
+            <span>Sublotes vinculados: {masterRegistry.data?.lots.reduce((n, l) => n + l.linked, 0) ?? "..."}</span>
+            <span>Validados: {masterRegistry.data?.lots.reduce((n, l) => n + l.validated, 0) ?? "..."}</span>
+          </div>}
       </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         {[
