@@ -360,6 +360,18 @@ export default function AdminImprovements() {
     refetchInterval: 30000,
   });
 
+  const registryConflicts = useQuery<{ items: Array<{ id: string; title: string; sublot: string; candidates: number }>; truncated: boolean }>({
+    queryKey: ["admin", "registry-reconciliation-preview"],
+    enabled: !!token,
+    queryFn: async () => {
+      const response = await fetch("/api/admin/improvements/master-registry-reconciliation-preview", { headers });
+      if (!response.ok) throw new Error("Conflitos do Registro Mestre indisponíveis");
+      return response.json();
+    },
+    refetchInterval: 30000,
+    retry: false,
+  });
+
   const metricsQuery = useQuery<ReleaseMetrics>({
     queryKey: ["admin", "releases-metrics"],
     enabled: !!token,
@@ -809,6 +821,16 @@ export default function AdminImprovements() {
             <span>Lotes vinculados: {masterRegistry.data?.lots.length ?? "..."}</span>
             <span>Sublotes vinculados: {masterRegistry.data?.lots.reduce((n, l) => n + l.linked, 0) ?? "..."}</span>
             <span>Validados: {masterRegistry.data?.lots.reduce((n, l) => n + l.validated, 0) ?? "..."}</span>
+          </div>}
+      </div>
+      <div className="rounded-lg border p-3 text-sm">
+        <p className="font-medium">Revisão de vínculos ambíguos</p>
+        <p className="text-xs text-muted-foreground">Nenhum vínculo conflitante é alterado automaticamente.</p>
+        {registryConflicts.isError ? <p className="mt-2 text-xs">Prévia indisponível.</p> :
+          <div className="mt-2 space-y-1 text-xs">
+            <p>Ocorrências para revisão: {registryConflicts.data?.items.length ?? "..."}</p>
+            {registryConflicts.data?.items.slice(0, 5).map((c) => <p key={c.id}>{c.sublot} — {c.title} ({c.candidates} candidatos)</p>)}
+            {registryConflicts.data?.truncated && <p>Mais de 100 ocorrências; exibição limitada.</p>}
           </div>}
       </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
