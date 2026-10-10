@@ -48,8 +48,13 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
         for (const domain of DOMAINS) {
           const minutes = MANAGER_INTERVAL_MINUTES[domain];
           if (Math.floor(now.getTime() / 60000) % minutes !== 0) continue;
-          scanned++;
           const periodKey = managerExecutionBucket(domain, now);
+          const alreadyDone = await client.query(
+            "SELECT 1 FROM agent_manager_runs WHERE tenant_id=$1 AND domain=$2 AND period_key=$3 LIMIT 1",
+            [tenantId, domain, periodKey],
+          );
+          if (alreadyDone.rowCount) continue;
+          scanned++;
           // Initial deterministic opportunities: no AI or assumptions needed.
           // Other domains record a periodic scan in logs, not fabricated cases.
           let observation: { signal: string; title: string; detail: string; metric: string } | undefined;
