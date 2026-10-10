@@ -43,6 +43,10 @@ describe("furniture circulation clearance", () => {
     expect(furnitureHasClearance(rotated, { ...item, x: 1.6 }, 0.2)).toBe(false);
     expect(furnitureHasClearance(rotated, { ...item, x: 1.8 }, 0.2)).toBe(true);
   });
+  it("rejects an overflowed clearance band instead of treating it as free space", () => {
+    expect(furnitureHasClearance(item, { ...item, x: 4 }, 1e308)).toBe(false);
+    expect(furnitureHasClearance(item, { ...item, x: 4 }, Infinity)).toBe(false);
+  });
   it("permits decoration and ignores other floors", () => {
     expect(furnitureHasClearance(item, { ...item, kind: "rug" }, 0.4)).toBe(true);
     expect(furnitureHasClearance(item, { ...item, floor: 1 }, 0.4)).toBe(true);
