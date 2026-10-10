@@ -1408,6 +1408,17 @@ router.patch("/leads/:id", async (req, res) => {
   const historyUpdate = responsibilityChanged ? {
     metadata: {
       ...priorMetadata,
+      // Um operador de outra empresa não pode permanecer vinculado após a transferência.
+      representativeOperationalUserId: nextRepresentative !== existing.representativeFunctionId
+        ? null : priorMetadata.representativeOperationalUserId ?? null,
+      representativeOperatorHistory: nextRepresentative !== existing.representativeFunctionId
+        ? [...(Array.isArray(priorMetadata.representativeOperatorHistory) ? priorMetadata.representativeOperatorHistory : []), {
+          representativeFunctionId: existing.representativeFunctionId,
+          previousOperationalUserId: priorMetadata.representativeOperationalUserId ?? null,
+          nextOperationalUserId: null,
+          actorId: req.user?.sub ?? null, changedAt: new Date().toISOString(),
+          reason: "representative_changed",
+        }] : priorMetadata.representativeOperatorHistory ?? [],
       responsibilityHistory: [...history, {
         previousUserId: existing.assignedTo,
         previousRepresentativeFunctionId: existing.representativeFunctionId,
