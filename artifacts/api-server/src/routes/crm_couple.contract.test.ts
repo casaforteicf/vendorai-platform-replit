@@ -10,7 +10,8 @@ describe("CRM-02/03 — casal, identidade e contato principal", () => {
     const couple = api.split('router.post("/crm/deals/:dealId/couple"')[1]?.split('router.post("/crm/deals/:dealId/people"')[0] ?? "";
     expect(couple).toContain("...(person.profissao ? { profissao: person.profissao } : {})");
     expect(frontend).toContain("profissao: values.profissao?.trim() || undefined");
-    expect(frontend).toContain("profissao: coClient.funcao.trim() || undefined");
+    expect(frontend).toContain("profissao: coClient.profissao.trim() || undefined");
+    expect(frontend).toContain("Profissão — Cliente 2");
   });
   it("mantém ambos como clientes principais individualizados", () => {
     const couple = api.split('router.post("/crm/deals/:dealId/couple"')[1]?.split('router.post("/crm/deals/:dealId/people"')[0] ?? "";
