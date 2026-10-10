@@ -273,7 +273,7 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
           }
           if (domain === "master") {
             const data = await client.query(
-              "SELECT count(DISTINCT domain)::int AS total FROM agent_manager_runs WHERE tenant_id=$1 AND outcome <> 'completed' AND checked_at > now() - interval '24 hours' AND domain <> 'master'",
+              "SELECT count(DISTINCT domain)::int AS total FROM agent_manager_runs WHERE tenant_id=$1 AND outcome='failed' AND checked_at > now() - interval '24 hours' AND domain <> 'master'",
               [tenantId],
             );
             const total = Number(data.rows[0]?.total ?? 0);
