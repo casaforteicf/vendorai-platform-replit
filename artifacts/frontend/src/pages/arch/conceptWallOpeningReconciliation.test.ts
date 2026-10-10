@@ -21,3 +21,10 @@ it("rejeita parede curta sem reduzir a largura da porta", () => {
 it("rejeita encurtamento que aproxima duas aberturas até colidirem", () => {
   expect(reconcileWallOpenings([wall], [{ ...wall, x2: 1.4 }], [door, { ...door, id: "d2", offset: 0.75 }])).toHaveProperty("error");
 });
+
+it("rejeita encurtamento que exigiria deslocar silenciosamente uma abertura", () => {
+  const nearEnd = { ...door, offset: 0.9 };
+  const result = reconcileWallOpenings([wall], [{ ...wall, x2: 3.5 }], [nearEnd]);
+  expect(result).toHaveProperty("error");
+  expect(nearEnd.offset).toBe(0.9);
+});
