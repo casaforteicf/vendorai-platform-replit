@@ -586,11 +586,15 @@ router.post("/tenants/:tenantId/leads/bulk-reassign", async (req, res) => {
         updatedAt: new Date(now),
       }).where(eq(leadsTable.id, candidate.id));
     }
-    const dealsUpdated = await tx.update(dealsTable).set({ assignedTo: toUserId })
-      .where(and(eq(dealsTable.tenantId, tenantId), eq(dealsTable.assignedTo, fromUserId),
-        inArray(dealsTable.leadId, tx.select({ id: leadsTable.id }).from(leadsTable)
-          .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm))))))
-      .returning({ id: dealsTable.id });
+    // Sincronizar somente negócios dos leads efetivamente transferidos nesta transação.
+    // Não mover negócio de outro lead que permaneceu com o responsável anterior.
+    const transferredIds = candidates.map((candidate) => candidate.id);
+    const dealsUpdated = transferredIds.length > 0
+      ? await tx.update(dealsTable).set({ assignedTo: toUserId })
+          .where(and(eq(dealsTable.tenantId, tenantId), eq(dealsTable.assignedTo, fromUserId),
+            inArray(dealsTable.leadId, transferredIds)))
+          .returning({ id: dealsTable.id })
+      : [];
     return { leadsReassigned: candidates.length, dealsReassigned: dealsUpdated.length };
   });
 
