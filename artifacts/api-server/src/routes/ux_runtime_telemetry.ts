@@ -30,7 +30,7 @@ router.post("/ux/runtime-error", telemetryLimiter, async (req, res) => {
       `INSERT INTO ux_runtime_errors (tenant_id,route_key,error_kind,bucket_start)
        VALUES ($1,$2,$3,date_trunc('hour', now()))
        ON CONFLICT (tenant_id,route_key,error_kind,bucket_start)
-       DO UPDATE SET occurrences=ux_runtime_errors.occurrences+1,last_seen_at=now()`,
+       DO UPDATE SET occurrences=LEAST(ux_runtime_errors.occurrences+1,100),last_seen_at=now()`,
       [req.user.tenantId, parsed.data.routeKey, parsed.data.errorKind],
     );
     return res.status(202).json({ accepted: true });
