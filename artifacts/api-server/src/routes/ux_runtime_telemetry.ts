@@ -5,7 +5,7 @@ import rateLimit from "express-rate-limit";
 
 const router: IRouter = Router();
 const reportSchema = z.object({
-  routeKey: z.string().min(1).max(120).regex(/^\/[a-zA-Z0-9/_-]*$/),
+  routeKey: z.enum(["/dashboard", "/leads", "/negocios", "/conversas", "/agenda", "/propostas", "/app", "/configuracoes", "/admin", "/obras", "/arqdor", "/prospector"]),
   errorKind: z.literal("react_render"),
 }).strict();
 
