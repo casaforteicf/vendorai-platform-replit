@@ -48,6 +48,17 @@ describe("agent manager policy", () => {
     expect(source).toContain('priority: "alta"');
   });
 
+  it("retries failed cadence scans and replaces their durable result", () => {
+    const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
+    expect(source).toContain("SELECT outcome FROM agent_manager_runs");
+    expect(source).toContain("alreadyDone.rows[0].outcome !== 'failed'");
+    expect(source).toContain("ON CONFLICT (tenant_id,domain,period_key) DO UPDATE SET outcome=EXCLUDED.outcome");
+    expect(source).toContain("finding_count=EXCLUDED.finding_count, checked_at=now()");
+    // Failures remain inspectable, while a successful retry becomes completed.
+    expect(source).toContain("'failed',0");
+    expect(source).toContain("'completed',0");
+  });
+
   it("records failed tenant domain scans for the Master Manager after rollback", () => {
     const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
     const errorHandler = source.indexOf("} catch (domainError) {");
