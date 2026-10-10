@@ -545,3 +545,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Correção:** `f1621b9` substitui o token textual por uma quebra de linha real, sem mudar a regra de integridade.
 - **Execução:** a correção é verificável por inspeção do arquivo; não equivale ao build completo. O checkout do repositório continua inacessível ao executor local por DNS GitHub, portanto compilação da aplicação e suíte original ainda não executadas.
 - **Estado oficial:** PR #3422 Draft; nenhum merge/deploy; Contabo e produção inalteradas.
+
+
+## 3422-A — execução direta da lógica TypeScript do frontend (09/10/2026)
+- **Evidência executada:** o conteúdo integral de `arqdorOrthogonalUnion.ts` foi obtido da branch pelo conector GitHub e executado em um isolate JavaScript após remover **somente anotações estáticas TypeScript** (imports de tipo, tipos de variáveis e asserts). Não se tratou de uma reimplementação independente, mas não representa o build nem o runner Vitest do projeto.
+- **Casos executados (8):** parede única (6 faces), L (26), T (26), cruz (22), porta (22), janela (32), porta + janela (60), duas paredes desconectadas (12). Nos sete primeiros, arestas abertas = 0, não-manifold = 0, erros de orientação = 0, componentes sólidos = 1 e volume assinado consistente com ocupação; em paredes desconectadas, o fechamento global é recusado com `connectedSolidComponents=2`.
+- **Novo teste persistente:** `artifacts/frontend/src/pages/arch/render-studio/arqdorOrthogonalUnion.test.ts` (commit `f58b3ac`) registra os mesmos casos essenciais em Vitest e rejeição de geometria diagonal/vão fora dos limites. **Suíte Vitest ainda não executada**; resultado desta rodada é de execução JS isolada derivada do código TS.
+- **Bloqueios restantes:** checkout e dependências não estão montados localmente; `git ls-remote` falhou por DNS. Build TypeScript completo, testes no navegador, testes Python originais e homologação seguem pendentes. PR #3422 Draft, sem merge/deploy, produção intocada.
