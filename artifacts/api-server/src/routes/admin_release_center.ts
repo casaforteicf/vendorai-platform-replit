@@ -1327,7 +1327,7 @@ async function runReleaseWorkerCycle() {
     const claim = !allowPublishing || queueBlock.rowCount
       ? { rows: [] as any[] }
       : await pool.query(
-          "WITH candidate AS (SELECT id FROM admin_releases WHERE status='scheduled' AND scheduled_at<=now() ORDER BY scheduled_at ASC,created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE admin_releases r SET status='publishing',started_at=now(),last_error=NULL,updated_at=now() FROM candidate c WHERE r.id=c.id RETURNING r.id"
+          "WITH control AS (SELECT mode FROM admin_release_execution_control WHERE id=1 FOR SHARE), candidate AS (SELECT id FROM admin_releases WHERE status='scheduled' AND scheduled_at<=now() AND EXISTS (SELECT 1 FROM control WHERE mode='running') ORDER BY scheduled_at ASC,created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE admin_releases r SET status='publishing',started_at=now(),last_error=NULL,updated_at=now() FROM candidate c WHERE r.id=c.id RETURNING r.id"
         );
     const claimedId = claim.rows[0]?.id;
     if (claimedId) {
