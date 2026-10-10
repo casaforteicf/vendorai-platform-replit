@@ -1,0 +1,43 @@
+import { Router, type IRouter } from "express";
+import { z } from "zod/v4";
+import { pool } from "@workspace/db";
+import rateLimit from "express-rate-limit";
+
+const router: IRouter = Router();
+const reportSchema = z.object({
+  routeKey: z.enum(["/dashboard", "/leads", "/negocios", "/conversas", "/agenda", "/propostas", "/app", "/configuracoes", "/admin", "/obras", "/arqdor", "/prospector"]),
+  errorKind: z.literal("react_render"),
+}).strict();
+
+// Mounted after authenticate + enforceAccessScope. Never trust a tenant ID
+// from request payload; all identity derives from the verified JWT.
+const telemetryLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+router.post("/ux/runtime-error", telemetryLimiter, async (req, res) => {
+  if (!req.user?.tenantId || req.user.accessScope && req.user.accessScope !== "tenant" ||
+      req.user.actorType === "ai" || req.user.actorType === "system") {
+    return res.status(403).json({ error: "TENANT_SESSION_REQUIRED" });
+  }
+  const parsed = reportSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: "INVALID_UX_REPORT" });
+  try {
+    await pool.query(
+      `INSERT INTO ux_runtime_errors (tenant_id,route_key,error_kind,bucket_start)
+       VALUES ($1,$2,$3,date_trunc('hour', now()))
+       ON CONFLICT (tenant_id,route_key,error_kind,bucket_start)
+       DO UPDATE SET occurrences=LEAST(ux_runtime_errors.occurrences+1,100),last_seen_at=now()`,
+      [req.user.tenantId, parsed.data.routeKey, parsed.data.errorKind],
+    );
+    return res.status(202).json({ accepted: true });
+  } catch {
+    // Telemetry failure cannot affect normal application traffic.
+    return res.status(503).json({ error: "UX_TELEMETRY_UNAVAILABLE" });
+  }
+});
+
+export default router;

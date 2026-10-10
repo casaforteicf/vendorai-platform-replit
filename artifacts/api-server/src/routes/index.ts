@@ -1,3 +1,4 @@
+import uxRuntimeTelemetryRouter from "./ux_runtime_telemetry.js";
 import businessPlanRouter from "./business_plan.js";
 import { diagnosticPlanningPublicRouter, diagnosticPlanningProtectedRouter } from "./diagnostic_planning.js";
 import { Router, type IRouter } from "express";
@@ -297,6 +298,8 @@ router.use(enforceAccessLicense);
 
 // Commercial entitlement gate: purchased products define which paid capabilities are reachable.
 router.use(enforceCommercialProductAccess);
+// UX telemetry obeys the same tenant, license and entitlement gates as the app.
+router.use(uxRuntimeTelemetryRouter);
 
 // Explicit module allowlist configured in Equipe. This protects the API too,
 // so typing a hidden URL directly does not bypass the permission.
