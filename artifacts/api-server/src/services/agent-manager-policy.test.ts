@@ -4,6 +4,7 @@ import {
   classifyManagerDemand,
   isManagerDue,
   managerExecutionBucket,
+  managerTenantPageOffset,
   validateManagerOpportunity,
 } from "./agent-manager-policy.js";
 
@@ -97,6 +98,31 @@ describe("agent manager policy", () => {
     expect(() => managerExecutionBucket(unexpected, now)).toThrow("INVALID_MANAGER_DOMAIN");
     expect(isManagerDue(unexpected, null, now)).toBe(false);
     expect(isManagerDue(unexpected, new Date("2026-10-10T11:00:00Z"), now)).toBe(false);
+  });
+
+  it("rotates tenant pages deterministically and independently by cadence", () => {
+    const start = new Date("2026-10-10T12:00:00Z");
+    const nextQuarter = new Date("2026-10-10T12:15:00Z");
+    expect(managerTenantPageOffset("crm", start, 500)).toBe(0);
+    const first = managerTenantPageOffset("crm", start, 1200);
+    const next = managerTenantPageOffset("crm", nextQuarter, 1200);
+    expect(first).toBeGreaterThanOrEqual(0);
+    expect(next).toBeGreaterThanOrEqual(0);
+    expect(first).toBeLessThan(1200);
+    expect(next).toBeLessThan(1200);
+    expect(next).not.toBe(first);
+    expect(managerTenantPageOffset("marketing", start, 1200))
+      .toBe(managerTenantPageOffset("marketing", nextQuarter, 1200));
+  });
+
+  it("rejects invalid pagination and manager clocks", () => {
+    const now = new Date("2026-10-10T12:00:00Z");
+    expect(managerTenantPageOffset("crm", now, 0)).toBe(0);
+    expect(() => managerTenantPageOffset("crm", now, -1)).toThrow("INVALID_MANAGER_PAGINATION");
+    expect(() => managerTenantPageOffset("crm", now, 100, 0)).toThrow("INVALID_MANAGER_PAGINATION");
+    expect(() => managerTenantPageOffset("crm", new Date("invalid"), 100)).toThrow("INVALID_MANAGER_TIME");
+    expect(() => managerTenantPageOffset("not_a_domain" as "crm", now, 100))
+      .toThrow("INVALID_MANAGER_DOMAIN");
   });
 
   it("keeps the same idempotency bucket during an interval", () => {
