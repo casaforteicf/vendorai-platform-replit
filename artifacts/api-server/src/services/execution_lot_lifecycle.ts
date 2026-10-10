@@ -32,7 +32,7 @@ export async function getExecutionLots(tenantId: string, dealId: string, proposa
       [tenantId, dealId, proposalId],
     );
     const lines = await client.query(
-      `SELECT i.lot_id, i.source_item_id, i.quantity, i.status
+      `SELECT i.lot_id, i.source_item_id, i.quantity, i.completed_quantity, i.status
          FROM execution_lot_items i JOIN execution_lots l ON l.id=i.lot_id
         WHERE i.tenant_id=$1 AND i.deal_id=$2 AND l.proposal_id=$3`,
       [tenantId, dealId, proposalId],
@@ -40,7 +40,12 @@ export async function getExecutionLots(tenantId: string, dealId: string, proposa
     const allocations: ExecutionAllocation[] = lines.rows.map((row) => ({
       lotId: row.lot_id, itemId: row.source_item_id, quantity: Number(row.quantity), status: row.status,
     }));
-    return { lots: lots.rows, allocations, balances: calculateExecutionBalances(contracted, allocations) };
+    const balances = calculateExecutionBalances(contracted, allocations).map((balance) => ({
+      ...balance,
+      completed: lines.rows.filter((row) => row.source_item_id === balance.itemId && row.status !== "cancelled")
+        .reduce((sum, row) => sum + Number(row.completed_quantity), 0),
+    }));
+    return { lots: lots.rows, allocations: lines.rows, balances };
   } finally {
     client.release();
   }
