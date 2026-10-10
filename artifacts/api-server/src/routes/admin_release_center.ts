@@ -640,8 +640,8 @@ async function advanceAutonomousRelease() {
     ],
   );
   await notifySuperAdminsApprovalRequired({
-    title: "Publicação pronta para sua aprovação",
-    message: ("A versão " + String(release.version) + " — " + String(release.name) + " passou por desenvolvimento, testes e homologação automáticos. Falta somente sua aprovação para produção. Ao aprovar, a publicação começa automaticamente."),
+    title: "Publicação homologada — revisão de política pendente",
+    message: ("A versão " + String(release.version) + " — " + String(release.name) + " concluiu a validação automática. A política de aprovação e a programação de publicação devem ser verificadas na Central; a homologação não significa deploy realizado."),
   });
   return true;
 }
