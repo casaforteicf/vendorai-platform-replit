@@ -249,3 +249,10 @@ Não considerar item 2 encerrado: o fluxo de criação de lead ainda invoca serv
 - Migração SQL **não aplicada**: `lib/db/migrations/20261010_crm_v4_deal_archival.sql` commit `8e3bee5`. Confirmação de integração ao migrador e ordem/numeração exigida antes de execução.
 - **Não homologado:** falta testar TypeScript, migração, consultas, concorrência, operações alternativas, frontend e regras de arquivamento de negócios com execução/contratos ativos. Exige revisão para impedir novas operações após arquivamento em todas as rotas. Até então código não está pronto para promoção.
 - Sem merge, sem deploy, sem alteração em produção.
+
+## Proteção de operações em negócios arquivados — 10/10/2026
+- Commit `c71424eff9fbb4a7ae0ec74c1d6edf3608814e2c`.
+- Incluída verificação `archivedAt` com resposta HTTP 409 (`DEAL_ARCHIVED`) nas rotas de transferência de pipeline, criação de lote de execução, análise comercial, retomada comercial, retorno à qualificação, avaliação por IA e reprocessamento administrativo de fechamento.
+- `return-to-qualified` e `ai/evaluate` passaram a selecionar explicitamente `archivedAt` para fazer a verificação.
+- **Riscos ainda abertos:** verificação fora da transação não impede corrida entre arquivamento e operação concorrente; operações assíncronas e rotas em outros módulos não estão totalmente cobertas. Arquivamento de negócio em execução ou com contrato ativo requer regra explícita; não declarar encerrado. Migração continua apenas escrita, não executada.
+- Evidência limitada a commit registrado no GitHub: não houve TypeScript, build, testes, homologação, merge ou deploy.
