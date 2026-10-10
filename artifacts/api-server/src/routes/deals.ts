@@ -2112,6 +2112,25 @@ router.patch("/deals/:id", async (req, res) => {
     if (deal.closureTriggeredAt && !isContractRetry) {
       req.log.info({ dealId: deal.id }, "deal-ganho: already triggered and succeeded, skipping");
     } else {
+      // Claim initial closure before acknowledging or dispatching external I/O.
+      // Previously closureTriggeredAt was written only inside the background job,
+      // allowing concurrent PATCH requests to start duplicate Asaas/ZapSign calls.
+      if (!isContractRetry) {
+        const [claimed] = await db.update(dealsTable).set({
+          closureTriggeredAt: new Date(), updatedAt: new Date(),
+        }).where(and(
+          eq(dealsTable.id, deal.id),
+          eq(dealsTable.tenantId, tenantId),
+          isNull(dealsTable.archivedAt),
+          isNull(dealsTable.closureTriggeredAt),
+        )).returning({ id: dealsTable.id });
+        if (!claimed) {
+          return res.status(409).json({
+            code: "CLOSURE_ALREADY_STARTED",
+            error: "Fechamento já iniciado ou negócio arquivado; aguarde a conciliação.",
+          });
+        }
+      }
       // ── Responder imediatamente — I/O pesado roda async (fire-and-forget) ────
       const [earlyDeal] = await db.select().from(dealsTable).where(eq(dealsTable.id, deal.id));
       res.json(earlyDeal);
