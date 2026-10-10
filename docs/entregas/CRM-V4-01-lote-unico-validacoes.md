@@ -156,3 +156,18 @@ Não considerar item 2 encerrado: o fluxo de criação de lead ainda invoca serv
 - Evidência efetiva: commit aceito pelo GitHub. Não houve execução de teste, build, integração, homologação Contabo, merge ou publicação.
 - Pendência importante: verificar todas as consultas de pipelines e trajetórias de movimentação de deals; não declarar exclusão totalmente validada. O merge de duplicatas ainda possui deleção física do registro de origem, que precisa de revisão para preservar a política de soft delete, sem quebrar as relações existentes.
 - Próximas etapas: corrigir movimentações/responsáveis, tarefas por etapa, múltiplos negócios e execução parcial, com testes e evidências por alteração.
+
+## Lote 2 — Continuação de 10/10/2026: pipelines, tarefas e responsabilidades
+
+| Commit | Arquivo | Alteração real |
+|---|---|---|
+| `5d15cfb` | `routes/deals.ts` | Não criar negócio nem transferir/editar negócio de lead excluído; validação de tenant preservada |
+| `d38afe7` | `routes/activities.ts` | Excluir tarefas ligadas a leads excluídos das listas operacionais, preservando os registros |
+| `7d25032` | `routes/activities.ts` | Impedir criação manual de atividade para lead logicamente excluído |
+| `7e1aebb` | `routes/deals.ts` | Reatribuição de negócio reservada a administrador, com validação de usuário ativo no tenant |
+
+**Situação efetiva:** código salvo na branch do PR #3428. Nenhum comando de TypeScript, teste, build, homologação ou publicação foi executado nesta continuação; não classificar as correções como homologadas.
+
+**Funcionalidades reaproveitadas:** `ensureCommercialStageTasks` e `ensureRelationshipStageTasks` já executam tarefas configuráveis por etapa; `POST /deals` já admite vários negócios por lead; `return-to-qualified` já implementa devolução de orçamento com motivo e atividade. Não criar serviços paralelos.
+
+**Pendências reais antes da conclusão do lote:** validar todas as pipelines e endpoints de exclusão (incluindo mesclagem física de duplicatas); revisar operações concorrentes em movimentações de negócio e atividades; completar UX e modelo de execução parcial por itens/quantidades com vínculos a orçamento; executar testes unitários e integração multi-tenant; build e homologação Contabo isolada; registrar evidências e regressão. Nenhum merge/deploy autorizado.
