@@ -8,7 +8,7 @@ import { classifyManagerDemand, managerExecutionBucket, MANAGER_INTERVAL_MINUTES
  * The Jarvis proactivity surface can consume these cases with its existing RBAC.
  */
 const DOMAINS: Array<Exclude<ManagerDomain, "security">> = [
-  "crm", "pipeline", "marketing", "agenda", "proposals", "integrations",
+  "crm", "pipeline", "marketing", "agenda", "proposals", "integrations", "omnichannel", "finance",
 ];
 let running = false;
 
@@ -199,6 +199,35 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               metric: String(total),
             };
           }
+          if (domain === "omnichannel") {
+            const data = await client.query(
+              `SELECT count(*)::int AS total FROM conversations
+               WHERE tenant_id=$1 AND status='open' AND nao_lidas > 0
+                 AND ultima_mensagem_em < now() - interval '4 hours'`,
+              [tenantId],
+            );
+            const total = Number(data.rows[0]?.total ?? 0);
+            if (total > 0) observation = {
+              signal: "active-manager:omnichannel:unread-conversations",
+              title: "Conversas abertas aguardando atendimento",
+              detail: `Existem ${total} conversas abertas não lidas há mais de quatro horas. Jarvis deve orientar os responsáveis autorizados, respeitando o acesso por número e usuário.`,
+              metric: String(total),
+            };
+          }
+          if (domain === "finance") {
+            const data = await client.query(
+              `SELECT count(*)::int AS total FROM finance_integration_connections
+               WHERE tenant_id=$1 AND status IN ('error','expired','partial')`,
+              [tenantId],
+            );
+            const total = Number(data.rows[0]?.total ?? 0);
+            if (total > 0) observation = {
+              signal: "active-manager:finance:integration-health",
+              title: "Integrações financeiras precisam de revisão",
+              detail: `Há ${total} conexões financeiras com estado parcial, erro ou expiração. Jarvis deve orientar a revisão administrativa; não modificar pagamentos ou credenciais.`,
+              metric: String(total),
+            };
+          }
           if (!observation) {
             const signals: Record<string, string> = {
               pipeline: 'active-manager:pipeline:overdue-activities',
@@ -207,6 +236,8 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               agenda: 'active-manager:agenda:unclosed-past-appointments',
               proposals: 'active-manager:proposals:stale-ready-proposals',
               integrations: 'active-manager:integrations:expiring-tokens',
+              omnichannel: 'active-manager:omnichannel:unread-conversations',
+              finance: 'active-manager:finance:integration-health',
             };
             const signal = signals[domain];
             if (signal) {
