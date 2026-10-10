@@ -1209,6 +1209,15 @@ router.post("/deals/:id/ai/evaluate", async (req, res) => {
     return res.status(403).json({ error: "Access denied to this tenant" });
   }
 
+  const [activeEvaluationLead] = await db.select({ id: leadsTable.id })
+    .from(dealsTable)
+    .innerJoin(leadsTable, and(eq(leadsTable.id, dealsTable.leadId), eq(leadsTable.tenantId, dealsTable.tenantId)))
+    .where(and(eq(dealsTable.id, dealId), isNull(leadsTable.excluidoEm)))
+    .limit(1);
+  if (!activeEvaluationLead) {
+    return res.status(409).json({ error: "Não é possível avaliar negócio sem lead ativo." });
+  }
+
   const result = await evaluatePipelineAI({
     tenantId: deal.tenantId,
     dealId,
@@ -2948,6 +2957,16 @@ router.post("/admin/deals/:id/retry", requireRole("super_admin"), async (req, re
   if (deal.etapa !== "ganho") {
     res.status(400).json({ error: "Deal não está na etapa ganho" });
     return;
+  }
+
+  if (!deal.leadId) {
+    return res.status(409).json({ error: "Negócio sem lead vinculado não pode ser reprocessado." });
+  }
+  const [activeRetryLead] = await db.select({ id: leadsTable.id }).from(leadsTable)
+    .where(and(eq(leadsTable.id, deal.leadId), eq(leadsTable.tenantId, deal.tenantId), isNull(leadsTable.excluidoEm)))
+    .limit(1);
+  if (!activeRetryLead) {
+    return res.status(409).json({ error: "Lead excluído ou inexistente não pode ter fechamento reprocessado." });
   }
 
   // Resetar deal_closing_status para permitir reprocessamento
