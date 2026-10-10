@@ -38,7 +38,11 @@ export function loadThree(): Promise<void> {
       resolve();
     };
     script.onerror = () => fail("Não foi possível carregar Three.js");
-    document.head.appendChild(script);
+    try {
+      document.head.appendChild(script);
+    } catch {
+      fail("Não foi possível iniciar o carregamento de Three.js");
+    }
   }).catch(error => { engine = null; throw error; });
   return engine;
 }
