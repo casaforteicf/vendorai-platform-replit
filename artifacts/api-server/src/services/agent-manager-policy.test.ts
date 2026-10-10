@@ -341,6 +341,12 @@ describe("agent manager policy", () => {
       .toThrow("EVIDENCE_REQUIRED");
   });
 
+  it("bounds evidence and fingerprint size before any persistence", () => {
+    const valid = { tenantId: "tenant-a", domain: "crm", kind: "tenant_operation", fingerprint: "f", evidence: "observed" } as const;
+    expect(() => validateManagerOpportunity({ ...valid, evidence: "x".repeat(16_001) })).toThrow("MANAGER_FINDING_TOO_LARGE");
+    expect(() => validateManagerOpportunity({ ...valid, fingerprint: "f".repeat(513) })).toThrow("MANAGER_FINDING_TOO_LARGE");
+  });
+
   it("rejects findings without tenant identity or evidence", () => {
     expect(() => validateManagerOpportunity({ tenantId: "", domain: "crm", kind: "tenant_operation", fingerprint: "x", evidence: "abc" })).toThrow("TENANT_REQUIRED");
     expect(() => validateManagerOpportunity({ tenantId: "t", domain: "crm", kind: "tenant_operation", fingerprint: "x", evidence: "" })).toThrow("EVIDENCE_REQUIRED");
