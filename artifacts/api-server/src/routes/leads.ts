@@ -530,6 +530,14 @@ router.post("/tenants/:tenantId/leads/bulk-reassign", async (req, res) => {
     return;
   }
 
+  const [destinationUser] = await db.select({ id: usersTable.id }).from(usersTable)
+    .where(and(eq(usersTable.id, toUserId), eq(usersTable.tenantId, tenantId)))
+    .limit(1);
+  if (!destinationUser) {
+    res.status(422).json({ error: "Destino da redistribuição não pertence ao tenant." });
+    return;
+  }
+
   const leadsUpdated = await db
     .update(leadsTable)
     .set({ assignedTo: toUserId })
@@ -1331,6 +1339,16 @@ router.patch("/leads/:id", async (req, res) => {
   if (!isAdmin2 && "assignedTo" in parsed.data && parsed.data.assignedTo !== existing.assignedTo) {
     res.status(403).json({ error: "Só o admin do tenant pode reatribuir o responsável pelo lead" });
     return;
+  }
+
+  if (parsed.data.assignedTo) {
+    const [newAssignee] = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(and(eq(usersTable.id, parsed.data.assignedTo), eq(usersTable.tenantId, existing.tenantId)))
+      .limit(1);
+    if (!newAssignee) {
+      res.status(422).json({ error: "Responsável não pertence à equipe deste tenant." });
+      return;
+    }
   }
 
   const [lead] = await db
