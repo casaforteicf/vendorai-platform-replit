@@ -25,7 +25,8 @@ export function calculateBudget(lines: readonly BudgetLine[]) {
   if (line.inclusion === "optional") optionalCents += total;
   else includedCents += total;
  }
- if (!Number.isSafeInteger(includedCents) || !Number.isSafeInteger(optionalCents)) throw new Error("Total excede limite seguro");
+ if (!Number.isSafeInteger(includedCents) || !Number.isSafeInteger(optionalCents) ||
+     !Number.isSafeInteger(includedCents + optionalCents)) throw new Error("Total excede limite seguro");
  return { includedCents, optionalCents, totalWithOptionalCents: includedCents + optionalCents };
 }
 export function compositionPackages(input: CompositionInput) {
