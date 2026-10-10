@@ -686,3 +686,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Defeito:** a verificação de `WebGLRenderer` adicionada anteriormente lançava erro se o script carregasse sem instalar o motor, mas só removia a tag `script` no `onerror` de rede. Um carregamento HTTP bem-sucedido com global inválido deixava a tag obsoleta no documento.
 - **Correção:** commit `b358eff` remove `script` também no ramo `onload` incompleto, preservando a mensagem `Three.js carregado sem WebGLRenderer` e o reset do cache `engine` para permitir nova tentativa.
 - **Validação:** inspeção de código via GitHub. Não foi executado teste de navegador/Vitest ou build integral. Governança: PR Draft, sem merge, deploy ou alteração na Contabo/produção.
+
+
+## 3422-A — limite de espera e tratamento de corrida no carregamento Three.js (10/10/2026)
+- **Problema:** caso o CDN não disparasse `onload` nem `onerror`, a Promise global `engine` permanecia indefinidamente pendente e o editor não recuperava o carregamento.
+- **Implementação:** commits `ea5cd7d` e `c9cacac` estabelecem limite de 12 segundos, falha explícita por timeout e proteção `settled` para impedir que eventos tardios concluam novamente a mesma tentativa. As rotinas de conclusão limpam timer e handlers; em falha removem o script e o `catch` já existente permite tentativa posterior.
+- **Validação:** inspeção estática do código atualizado pelo conector GitHub; **sem execução de Vitest, browser, compilação TypeScript ou testes de temporização**. Esses testes continuam bloqueadores do fechamento do lote, que não deve ser declarado homologado.
+- **Estado:** PR #3422 Draft, sem merge/deploy; Contabo e produção inalteradas.
