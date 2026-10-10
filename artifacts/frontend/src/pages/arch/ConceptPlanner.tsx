@@ -1,4 +1,4 @@
-import { furniturePresetFootprint, positionFurnitureInBounds } from "./conceptFurniturePreset";
+import { furniturePresetFootprint, positionFurnitureInBounds, furnitureWallDistances } from "./conceptFurniturePreset";
 import { uniqueFurnitureLayouts } from "./conceptFurnitureLayoutOptions";
 import { furnitureLayoutRevision } from "./conceptFurnitureLayoutRevision";
 import { furnitureLayoutCollisionError, furnitureHasClearance, furnitureBlocksZone } from "./conceptFurnitureCollision";
@@ -4234,10 +4234,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
     const wallAffinityDistance = (item: FurnishPreset, x: number, y: number) => {
       if (!item.wallAffinity || item.wallAffinity === "center") return 0;
-      if (item.wallAffinity === "top") return Math.abs(y - bounds.y);
-      if (item.wallAffinity === "bottom") return Math.abs(bounds.y + bounds.height - (y + item.depth));
-      if (item.wallAffinity === "left") return Math.abs(x - bounds.x);
-      return Math.abs(bounds.x + bounds.width - (x + item.width));
+      return furnitureWallDistances({ ...item, x, y }, bounds)[item.wallAffinity];
     };
 
     const buildCandidate = (variantPresets: FurnishPreset[]) => {
@@ -4301,12 +4298,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       const coverage = presets.length ? objects.length / presets.length : 0;
       score += coverage * 40;
       const wallUtilization = objects.reduce((sum, object) => {
-        const nearWall = Math.min(
-          Math.abs(object.x - bounds.x),
-          Math.abs(bounds.x + bounds.width - (object.x + object.width)),
-          Math.abs(object.y - bounds.y),
-          Math.abs(bounds.y + bounds.height - (object.y + object.depth)),
-        );
+        const nearWall = Math.min(...Object.values(furnitureWallDistances(object, bounds)));
         return sum + (nearWall <= 0.45 ? 4 : 0);
       }, 0);
       score += wallUtilization;

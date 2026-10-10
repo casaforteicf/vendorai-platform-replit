@@ -26,3 +26,19 @@ export function positionFurnitureInBounds(
   if (![minX, maxX, minY, maxY, object.x, object.y].every(Number.isFinite) || maxX < minX || maxY < minY) return null;
   return { x: Math.max(minX, Math.min(maxX, object.x)), y: Math.max(minY, Math.min(maxY, object.y)) };
 }
+
+export function furnitureWallDistances(
+  object: { x: number; y: number; width: number; depth: number; rotation?: number },
+  bounds: { x: number; y: number; width: number; height: number },
+) {
+  const angle = (object.rotation ?? 0) * Math.PI / 180;
+  const extentX = Math.abs(Math.cos(angle)) * object.width + Math.abs(Math.sin(angle)) * object.depth;
+  const extentY = Math.abs(Math.sin(angle)) * object.width + Math.abs(Math.cos(angle)) * object.depth;
+  const cx = object.x + object.width / 2, cy = object.y + object.depth / 2;
+  return {
+    left: Math.abs(cx - extentX / 2 - bounds.x),
+    right: Math.abs(bounds.x + bounds.width - cx - extentX / 2),
+    top: Math.abs(cy - extentY / 2 - bounds.y),
+    bottom: Math.abs(bounds.y + bounds.height - cy - extentY / 2),
+  };
+}

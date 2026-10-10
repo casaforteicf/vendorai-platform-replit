@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { furniturePresetFootprint, positionFurnitureInBounds } from "./conceptFurniturePreset";
+import { furniturePresetFootprint, positionFurnitureInBounds, furnitureWallDistances } from "./conceptFurniturePreset";
 import { furnitureFitsRoom } from "./conceptFurnitureRoomFit";
 describe("furniture preset dimensions", () => {
   it("retains nominal dimensions rather than shrinking to a room", () => {
@@ -34,5 +34,24 @@ describe("rotated furniture position limits", () => {
     expect(position).not.toBeNull();
     expect(furnitureFitsRoom({ ...object, ...position! }, [bounds])).toBe(true);
     expect(positionFurnitureInBounds(object, { ...bounds, width: 1.9 })).toBeNull();
+  });
+});
+
+describe("wall proximity scoring", () => {
+  const bounds = { x: 0, y: 0, width: 4, height: 4 };
+  it("measures the rotated contour rather than local dimensions", () => {
+    const object = { x: 1, y: 1, width: 2, depth: 1, rotation: 90 };
+    const distances = furnitureWallDistances(object, bounds);
+    expect(distances.left).toBeCloseTo(1.5);
+    expect(distances.top).toBeCloseTo(0.5);
+    expect(distances.right).toBeCloseTo(1.5);
+    expect(distances.bottom).toBeCloseTo(1.5);
+  });
+  it("keeps proximity consistent when an arrangement is mirrored", () => {
+    const object = { x: 0.4, y: 0.7, width: 2, depth: 1, rotation: 45 };
+    const first = furnitureWallDistances(object, bounds);
+    const mirrored = furnitureWallDistances({ ...object, x: 4 - object.x - object.width, rotation: 135 }, bounds);
+    expect(mirrored.right).toBeCloseTo(first.left);
+    expect(mirrored.top).toBeCloseTo(first.top);
   });
 });
