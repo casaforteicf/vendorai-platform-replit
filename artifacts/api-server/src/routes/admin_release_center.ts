@@ -392,7 +392,7 @@ async function quarantineInterruptedImprovements() {
 
 async function advanceAutonomousImprovement() {
   const found = await pool.query(
-    "WITH candidate AS (SELECT id FROM admin_improvements WHERE agent_status IN ('queued','idle') AND status IN ('solicitada','em_desenvolvimento') ORDER BY CASE priority WHEN 'urgente' THEN 0 WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END, created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE admin_improvements i SET status='em_desenvolvimento',owner_agent='vendi',agent_status='running',updated_at=now() FROM candidate c WHERE i.id=c.id RETURNING i.id,i.title,i.description,i.module,i.priority,i.source_type AS \"sourceType\",i.source_ref_id AS \"sourceRefId\""
+    "WITH candidate AS (SELECT id FROM admin_improvements WHERE agent_status IN ('queued','idle') AND status IN ('solicitada','em_desenvolvimento') AND NOT EXISTS (SELECT 1 FROM admin_improvement_dependencies d LEFT JOIN admin_improvements predecessor ON predecessor.id=d.depends_on_id WHERE d.improvement_id=admin_improvements.id AND (predecessor.id IS NULL OR predecessor.status <> 'producao_validada')) ORDER BY CASE priority WHEN 'urgente' THEN 0 WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END, created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE admin_improvements i SET status='em_desenvolvimento',owner_agent='vendi',agent_status='running',updated_at=now() FROM candidate c WHERE i.id=c.id RETURNING i.id,i.title,i.description,i.module,i.priority,i.source_type AS \"sourceType\",i.source_ref_id AS \"sourceRefId\""
   );
   const item = found.rows[0];
   if (!item) return false;
