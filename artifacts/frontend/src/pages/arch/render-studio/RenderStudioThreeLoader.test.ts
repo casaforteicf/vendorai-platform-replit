@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadThree } from "./RenderStudioParametricWebgl";
+
 
 afterEach(() => {
+  vi.resetModules();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   document.head.querySelectorAll('script[src*="three.min.js"]').forEach(node => node.remove());
@@ -11,6 +12,7 @@ describe("Arqdor Three.js loader", () => {
   it("rejects a failed CDN request and allows retry", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("THREE", undefined);
+    const { loadThree } = await import("./RenderStudioParametricWebgl");
     const first = loadThree();
     const firstScript = document.head.querySelector('script[src*="three.min.js"]') as HTMLScriptElement;
     expect(firstScript).toBeTruthy();
@@ -28,6 +30,7 @@ describe("Arqdor Three.js loader", () => {
   it("rejects an incomplete successful download", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("THREE", undefined);
+    const { loadThree } = await import("./RenderStudioParametricWebgl");
     const result = loadThree();
     const script = document.head.querySelector('script[src*="three.min.js"]') as HTMLScriptElement;
     script.onload?.(new Event("load"));
@@ -38,6 +41,7 @@ describe("Arqdor Three.js loader", () => {
   it("times out, removes the script, and ignores late load", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("THREE", undefined);
+    const { loadThree } = await import("./RenderStudioParametricWebgl");
     const result = loadThree();
     const script = document.head.querySelector('script[src*="three.min.js"]') as HTMLScriptElement;
     const lateLoad = script.onload;
