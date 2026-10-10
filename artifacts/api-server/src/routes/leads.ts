@@ -612,13 +612,19 @@ router.post("/tenants/:tenantId/leads/import", async (req, res) => {
       if (row.responsavel?.trim()) {
         const [vendedor] = await db.select({ id: usersTable.id })
           .from(usersTable)
-          .where(and(eq(usersTable.tenantId, tenantId), ilike(usersTable.name, row.responsavel.trim())))
+          .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true), ilike(usersTable.name, row.responsavel.trim())))
           .limit(1);
         importAssignedTo = vendedor?.id ?? null;
       }
       if (!importAssignedTo) importAssignedTo = await pickNextVendedor(tenantId, { location: row.endereco });
+      if (importAssignedTo) {
+        const [eligible] = await db.select({ id: usersTable.id }).from(usersTable)
+          .where(and(eq(usersTable.id, importAssignedTo), eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)))
+          .limit(1);
+        if (!eligible) importAssignedTo = null;
+      }
       if (!importAssignedTo) {
-        throw new Error("Responsável obrigatório: nenhum usuário elegível foi encontrado para este lead.");
+        throw new Error("Responsável obrigatório: nenhum usuário ativo e autorizado foi encontrado para este lead.");
       }
 
       const [importedLead] = await db.insert(leadsTable).values({
@@ -635,10 +641,18 @@ router.post("/tenants/:tenantId/leads/import", async (req, res) => {
         possivelDuplicata: match.similar ? true : false,
         leadSimilarId: match.similar?.id ?? null,
         assignedTo: importAssignedTo,
-        metadata: leadRegistrationMetadata(row.camposExtras, {
-          entryChannel: "importacao",
-          entrySource: "importacao_planilha",
-        }),
+        metadata: {
+          ...leadRegistrationMetadata(row.camposExtras, {
+            entryChannel: "importacao",
+            entrySource: "importacao_planilha",
+          }),
+          responsibilityHistory: [{
+            previousUserId: null, previousRepresentativeFunctionId: null,
+            nextUserId: importAssignedTo, nextRepresentativeFunctionId: null,
+            actorId: req.user?.sub ?? null, changedAt: new Date().toISOString(),
+            source: "spreadsheet_import",
+          }],
+        },
       }).returning();
       if (importedLead) {
         await db.insert(dealsTable).values({ tenantId, leadId: importedLead.id, titulo: importedLead.nome, etapa: "em_aquecimento", assignedTo: importAssignedTo });
