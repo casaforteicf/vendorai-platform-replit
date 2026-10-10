@@ -20,3 +20,8 @@ test("error messages never contain tokens",()=>{
   assert.equal(String(error).includes("private-secret"),false);
  }
 });
+
+test("rejects oversized token and blank requested tenant",()=>{
+ assert.throws(()=>validate({token:"x".repeat(8193),tenantId:"a",userCache:{tenantId:"a"}},"a"),/INVALID_RESPONSE/);
+ assert.throws(()=>validate({token:"opaque-token",tenantId:"a",userCache:{tenantId:"a"}}," "),/TENANT_MISMATCH/);
+});
