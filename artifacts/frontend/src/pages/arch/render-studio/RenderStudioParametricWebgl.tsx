@@ -93,15 +93,13 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       const node = holder.current;
       const geometryObjects: any[] = [];
+      const disposableResources: Array<{ dispose: () => void }> = [];
       let observer: ResizeObserver | null = null;
       // Register cleanup before any subsequent scene-building operation can
       // throw. The old handler was registered only after a successful render.
       cleanup = () => {
         observer?.disconnect();
-        for (const mesh of geometryObjects) {
-          mesh.geometry.dispose();
-          mesh.material.dispose();
-        }
+        for (const resource of disposableResources) resource.dispose();
         renderer.dispose();
         renderer.domElement.remove();
       };
@@ -118,17 +116,21 @@ export default function RenderStudioParametricWebgl({ walls, active }: { walls: 
           positions.push(...a, ...b, ...c, ...a, ...c, ...d);
         }
         const geometry = new THREE.BufferGeometry();
+        disposableResources.push(geometry);
         geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
         geometry.computeVertexNormals();
         const material = new THREE.MeshStandardMaterial({ color: 0x94a3b8, side: THREE.DoubleSide, roughness: .8 });
+        disposableResources.push(material);
         const mesh = new THREE.Mesh(geometry, material);
         mesh.name = "uniao-ortogonal"; geometryObjects.push(mesh); scene.add(mesh);
       } else for (const wall of walls) {
         const geometry = buildWallGeometry(THREE, wall);
+        disposableResources.push(geometry);
         const material = new THREE.MeshStandardMaterial({
           color: wall.id === active ? 0x6ee7b7 : 0x94a3b8,
           side: THREE.DoubleSide, metalness: 0, roughness: .8,
         });
+        disposableResources.push(material);
         const mesh = new THREE.Mesh(geometry, material);
         mesh.name = wall.id; geometryObjects.push(mesh); scene.add(mesh);
       }
