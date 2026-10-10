@@ -639,6 +639,29 @@ async function advanceAutonomousRelease() {
       fingerprint,
     ],
   );
+  // A política automática é independente do modo de desenvolvimento.
+  // Mantê-la desativada até os testes reais do operador Contabo e do rollback.
+  const autonomousApprovalEnabled = fullAutonomyEnabled()
+    && String(process.env["VENDI_AUTO_APPROVE_RELEASES"] ?? "").toLowerCase() === "true";
+  if (autonomousApprovalEnabled) {
+    const evidence = await collectDevAgentCheckEvidence(String(validation.impact.head.sha));
+    const safeToApprove = !autonomyRisk(validation.impact).protected
+      && evidence.codeFailures.length === 0
+      && evidence.pending.length === 0
+      && evidence.successes.length > 0;
+    if (safeToApprove) {
+      // Janela fixa das 00h de São Paulo (03:00 UTC). Uma versão homologada
+      // depois desta janela é agendada para a próxima, nunca para o passado.
+      const now = new Date();
+      const scheduledAt = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 3));
+      if (scheduledAt.getTime() <= now.getTime()) scheduledAt.setUTCDate(scheduledAt.getUTCDate() + 1);
+      await pool.query(
+        "UPDATE admin_releases SET status='scheduled',approved_by='vendi:auto',approved_at=now(),scheduled_at=$2,last_error=NULL,updated_at=now() WHERE id=$1 AND status='ready' AND test_status='passed' AND approval_fingerprint=$3",
+        [release.id, scheduledAt, fingerprint],
+      );
+      return true;
+    }
+  }
   await notifySuperAdminsApprovalRequired({
     title: "Publicação homologada — revisão de política pendente",
     message: ("A versão " + String(release.version) + " — " + String(release.name) + " concluiu a validação automática. A política de aprovação e a programação de publicação devem ser verificadas na Central; a homologação não significa deploy realizado."),
