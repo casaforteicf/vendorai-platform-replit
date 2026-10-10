@@ -488,7 +488,9 @@ async function auditRuntimeUrls(): Promise<AuditFinding[]> {
 
 async function auditFrontendRoutes(): Promise<AuditFinding[]> {
   const findings: AuditFinding[] = [];
-  const base = (process.env["HOMOLOGATION_URL"] || process.env["PUBLIC_APP_URL"] || process.env["APP_URL"] || "").replace(/\/$/, "");
+  // UX route checks must target homologation only; production traffic and login
+  // redirects are not evidence of frontend regression-free operation.
+  const base = (process.env["HOMOLOGATION_URL"] || "").replace(/\/$/, "");
   if (!base) return findings;
 
   const routes = [
