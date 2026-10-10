@@ -1,4 +1,5 @@
 import { buildFacadeMeshBoxes } from "./conceptFacadeMeshes";
+import { buildWallMeshPipeline } from "./conceptWallMeshPipeline";
 import { getFacadeMaterial, type FacadeDesignState } from "./conceptFacadeDesign";
 import { buildRoofPlan } from "./conceptRoofPlan";
 import type { SiteFrontSide } from "./conceptSitePlacement";
@@ -1317,6 +1318,75 @@ export default function ConceptWebGLScene({
         mesh.userData.customWall = custom;
         runtime.pickables.push(mesh);
       };
+
+      // Single-source parametric solids: use indexed meshes when the wall and all
+      // associated openings are geometrically valid. Legacy rendering remains a
+      // fallback for diagonals, unresolved references and invalid geometry.
+      if ((Math.abs(dy) < 1e-7 || Math.abs(dx) < 1e-7) && length >= 0.05) {
+        const matchedOpenings = (openingsForFloor ?? []).filter((opening) => {
+          if (horizontal && opening.orientation !== "horizontal") return false;
+          if (vertical && opening.orientation !== "vertical") return false;
+          const along = horizontal ? opening.x : opening.y;
+          const origin = horizontal ? wall.x1 : wall.y1;
+          const wallCoord = horizontal ? wall.y1 : wall.x1;
+          const perpendicular = horizontal ? opening.y : opening.x;
+          const offset = (along - origin) / (horizontal ? dx : dy);
+          return Math.abs(perpendicular - wallCoord) <= Math.max(0.18, thickness * 1.5)
+            && offset >= -0.001 && offset <= 1.001;
+        });
+        const solid = buildWallMeshPipeline(
+          [{
+            id: wall.id, floor, x1: wall.x1, y1: wall.y1,
+            x2: wall.x2, y2: wall.y2, thickness, height: 2.8,
+            baseElevation: baseY,
+          }],
+          matchedOpenings.map((opening) => ({
+            id: opening.id, wallId: wall.id, floor,
+            offset: ((horizontal ? opening.x - wall.x1 : opening.y - wall.y1) / (horizontal ? dx : dy)),
+            width: opening.width ?? (opening.type === "door" ? 0.9 : 1.2),
+            height: opening.height ?? (opening.type === "door" ? 2.1 : 1.2),
+            sillHeight: opening.type === "door" ? 0 : (opening.sillHeight ?? 0.9),
+          })),
+        );
+        if (solid.valid && solid.meshes.length) {
+          for (const indexed of solid.meshes) {
+            const geometry = new THREE.BufferGeometry();
+            const vertices: number[] = [];
+            for (let i = 0; i < indexed.positions.length; i += 3) {
+              vertices.push(
+                indexed.positions[i] - lotWidth / 2,
+                indexed.positions[i + 2],
+                indexed.positions[i + 1] - lotDepth / 2,
+              );
+            }
+            // Swapping the ground Y and elevation Z reverses handedness.
+            const triangles: number[] = [];
+            for (let i = 0; i < indexed.indices.length; i += 3) {
+              triangles.push(indexed.indices[i], indexed.indices[i + 2], indexed.indices[i + 1]);
+            }
+            geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+            geometry.setIndex(triangles);
+            geometry.computeVertexNormals();
+            const pbr = getConceptPBRMaterial(materialId);
+            const material = pbr
+              ? createConceptPBRMaterial(THREE, pbr, { repeatScale: 1 })
+              : makeMat(color, interiorMode, interiorMode ? 0.58 : 1);
+            if (interiorMode) {
+              material.transparent = true;
+              material.opacity = 0.58;
+              material.depthWrite = false;
+            }
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.userData.wallId = wall.id;
+            mesh.userData.customWall = custom;
+            parent.add(mesh);
+            runtime.pickables.push(mesh);
+          }
+          return;
+        }
+      }
 
       if (!horizontal && !vertical) {
         const mesh = makeBox(
