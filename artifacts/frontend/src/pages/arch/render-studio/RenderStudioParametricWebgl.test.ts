@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildWallGeometry, type ParametricWall } from "./RenderStudioParametricWebgl";
+import { buildWallGeometry, shouldUseOrthogonalUnion, type ParametricWall } from "./RenderStudioParametricWebgl";
 
 function wall(start: [number, number], end: [number, number],
   openings: ParametricWall["openings"] = []): ParametricWall {
@@ -21,6 +21,18 @@ const THREE = { BufferGeometry: MockBufferGeometry, Float32BufferAttribute: Mock
 describe("Arqdor wall mesh geometry for diagonal walls", () => {
   const window = { id: "janela", kind: "window" as const,
     offset: 1, width: 1, sill: 1, height: 1 };
+
+  it("routes validated orthogonal walls and diagonal walls independently", () => {
+    expect(shouldUseOrthogonalUnion([wall([0, 0], [4, 0])])).toBe(true);
+    expect(shouldUseOrthogonalUnion([wall([0, 0], [0, 4])])).toBe(true);
+    expect(shouldUseOrthogonalUnion([wall([0, 0], [3, 4])])).toBe(false);
+    expect(shouldUseOrthogonalUnion([])).toBe(true);
+    expect(() => shouldUseOrthogonalUnion([
+      { ...wall([0, 0], [4, 0]), start: [Number.NaN, 0] },
+    ])).toThrow(/Coordenadas/);
+    expect(() => shouldUseOrthogonalUnion([null] as unknown as ParametricWall[]))
+      .toThrow(/Coordenadas/);
+  });
 
   it("generates a diagonal mesh with a real opening", () => {
     const mesh = buildWallGeometry(THREE, wall([0, 0], [3, 4], [window]));
