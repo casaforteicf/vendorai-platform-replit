@@ -234,3 +234,10 @@ Não considerar item 2 encerrado: o fluxo de criação de lead ainda invoca serv
 - `POST /admin/deals/:id/retry` bloqueia reprocessamento de fechamento se o lead está ausente ou excluído, preservando o estado até revisão administrativa.
 - Limite conhecido: outras rotas e funções assíncronas ainda precisam de revisão, e a checagem antes da escrita não substitui uma verificação transacional contra exclusão simultânea.
 - Sem evidência de TypeScript, build, testes de integração, homologação, merge ou deploy. Produção não alterada.
+
+## Proteção contra exclusão física de negócio — 10/10/2026
+- Commit `9678ab786e9323a3f09b5904690c36ecec8adabb` no PR #3428.
+- Identificado DELETE físico no endpoint `DELETE /deals/:id`. Substituído por HTTP 409 com código `DEAL_ARCHIVAL_REQUIRED`, preservando registros de negócios e vínculos já existentes.
+- Esta é uma medida conservadora de proteção, **não** o fluxo final de exclusão/arquivamento. A ação de excluir negócio deixará de funcionar até que exista transição de arquivamento/retirada da pipeline com histórico, autorização administrativa e consultas filtradas. Evitar declarar essa função concluída.
+- Pendências: desenhar/implementar estado de arquivamento persistente sem exclusão física, compatibilidade de pipelines e contratos, garantir que usuários comuns não tenham ação de exclusão, testar referência a proposta/execução/atividade e tratar concorrência.
+- Evidência: commit no GitHub; sem execução de TypeScript/build/testes ou homologação, merge e publicação.
