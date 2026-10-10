@@ -52,6 +52,14 @@ export async function enqueueManagerSupportReview(f: ManagerPlatformFinding): Pr
       [sourceRef],
     );
     if (previous.rows[0]) {
+      // A deduplicated security incident may predate the urgent-priority rule.
+      // Upgrade it in place without duplicating the review or changing its status.
+      if (f.kind === "security_incident") {
+        await client.query(
+          "UPDATE admin_improvements SET priority='urgente' WHERE id=$1 AND priority <> 'urgente'",
+          [previous.rows[0].id],
+        );
+      }
       await client.query("COMMIT");
       return previous.rows[0].id;
     }
