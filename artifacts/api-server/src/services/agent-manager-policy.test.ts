@@ -25,6 +25,17 @@ describe("agent manager policy", () => {
     expect(source).toContain("'skipped_source_collision',0");
   });
 
+  it("does not count a manually closed case as an active finding", () => {
+    const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
+    const manuallyClosed = source.indexOf("if (activeCase.rows[0]?.status !== 'open')");
+    const notifications = source.indexOf("INSERT INTO notifications");
+    const branch = source.slice(manuallyClosed, notifications);
+    expect(manuallyClosed).toBeGreaterThan(-1);
+    expect(notifications).toBeGreaterThan(manuallyClosed);
+    expect(branch).not.toContain("cases += inserted.rowCount");
+    expect(branch).toContain("continue;");
+  });
+
   it("guards Jarvis case upserts by source", () => {
     const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
     expect(source).toContain("ON CONFLICT (tenant_id,signal_key) DO UPDATE SET");
