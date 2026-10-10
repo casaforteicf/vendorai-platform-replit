@@ -395,6 +395,12 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
           cases += inserted.rowCount ?? 0;
           } catch (domainError) {
             await client.query('ROLLBACK TO SAVEPOINT manager_domain');
+            // Persist failed scans after rollback so Master can detect operational
+            // failures; previously it only inspected outcomes never written here.
+            await client.query(
+              "INSERT INTO agent_manager_runs (tenant_id,domain,period_key,outcome,finding_count) VALUES ($1,$2,$3,'failed',0) ON CONFLICT DO NOTHING",
+              [tenantId, domain, managerExecutionBucket(domain, now)],
+            );
             await client.query('RELEASE SAVEPOINT manager_domain');
             tenantFailures++;
             log.warn({ err: domainError, tenantId, domain }, 'active-managers: domain scan rolled back');
