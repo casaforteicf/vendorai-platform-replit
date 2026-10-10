@@ -33,6 +33,10 @@ export async function enqueueManagerSupportReview(f: ManagerPlatformFinding): Pr
   // Preserve the same normalized tenant identity in dedupe, scope and persistence.
   const tenantId = f.tenantId === undefined ? undefined : f.tenantId.trim();
   if (tenantId === "") throw new Error("TENANT_REQUIRED");
+  // A security incident must never be silently downgraded to routine priority.
+  const priority = f.kind === "security_incident" && f.priority !== "urgente"
+    ? "urgente"
+    : (f.priority ?? "media");
   const sourceRef = managerSupportSourceRef(f.module, f.kind, f.fingerprint, tenantId);
   const client = await pool.connect();
   try {
@@ -58,7 +62,7 @@ export async function enqueueManagerSupportReview(f: ManagerPlatformFinding): Pr
        (id,title,description,module,priority,status,source_type,source_ref_id,source_tenant_id,
         change_scope,acceptance_criteria,risk_summary,owner_agent,agent_status,agent_summary,test_status,created_by)
        VALUES ($1,$2,$3,$4,$5,'solicitada','audit',$6,$7,$8,$9,$10,'agent_master','awaiting_superadmin_approval',$11,'pending','agent_master')`,
-      [id, f.title, f.description, f.module, f.priority ?? "media", sourceRef, tenantId ?? null, scope,
+      [id, f.title, f.description, f.module, priority, sourceRef, tenantId ?? null, scope,
         f.acceptanceCriteria, "Exige revisão e aprovação do Superadmin antes de qualquer alteração de código.",
         `Diagnóstico encaminhado sem execução. Evidência: ${f.evidence}`],
     );
