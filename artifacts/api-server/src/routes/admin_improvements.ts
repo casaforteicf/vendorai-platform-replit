@@ -164,7 +164,27 @@ router.get("/admin/improvements/agent-managers/status", async (_req, res) => {
       FROM agent_manager_runs GROUP BY tenant_id, domain
       ORDER BY "lastRunAt" DESC LIMIT 500
     `);
-    return res.json({ enabled: process.env.ACTIVE_MANAGER_CYCLES_ENABLED === "true", ready: true, items: data.rows });
+    const cadenceMinutes: Record<string, number> = { crm: 15, pipeline: 15, marketing: 60 };
+    const nowMs = Date.now();
+    const items = data.rows.map((row: any) => {
+      const interval = cadenceMinutes[row.domain] ?? 0;
+      const lastMs = new Date(row.lastRunAt).getTime();
+      const overdue = !Number.isFinite(lastMs) || !interval || nowMs - lastMs > interval * 2 * 60_000;
+      return {
+        ...row,
+        intervalMinutes: interval || null,
+        nextExpectedAt: interval && Number.isFinite(lastMs)
+          ? new Date(lastMs + interval * 60_000).toISOString()
+          : null,
+        overdue,
+      };
+    });
+    return res.json({
+      enabled: process.env.ACTIVE_MANAGER_CYCLES_ENABLED === "true",
+      ready: true,
+      generatedAt: new Date().toISOString(),
+      items,
+    });
   } catch (error) {
     return res.status(500).json({ error: "AGENT_MANAGER_STATUS_UNAVAILABLE" });
   }
