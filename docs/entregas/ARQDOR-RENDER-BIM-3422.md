@@ -637,3 +637,11 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Verificação executada nesta rodada:** a função `buildWallGeometry` do commit corrente foi obtida pelo conector GitHub, removidas exclusivamente anotações de tipos, e executada em isolate JS com implementação simulada das primitivas de Three.js. Três cenários: falha `setAttribute` — erro original preservado e `dispose` chamado 1 vez; falha `computeVertexNormals` — erro original preservado e `dispose` chamado 1 vez; geometria diagonal com janela válida — 64 triângulos e nenhum descarte prematuro. Três verificações tiveram os resultados esperados.
 - **Limites:** execução isolada via mocks, **não** runner Vitest, navegador com GPU, build completo ou homologação Contabo.
 - **Governança:** PR #3422 Draft, sem merge/deploy, produção inalterada.
+
+
+## 3422-A — entrada nula em abertura diagonal e verificação executada (10/10/2026)
+- **Defeito:** `buildWallGeometry` acessava `o.offset` antes de verificar `o !== null`; um payload com `openings: [null]` lançava TypeError genérico, em vez de erro geométrico controlado.
+- **Correção:** commit `4b4e374` adiciona a guarda de entrada nula e mantém o erro `Vão inválido na parede`. Commit `5e406d9` cria caso Vitest persistente.
+- **Execução efetiva:** função `buildWallGeometry` trazida da branch GitHub e executada isoladamente em JavaScript com anotações TS removidas e mock mínimo de Three.js. `[null]` retornou erro controlado esperado; parede diagonal sem aberturas gerou 12 triângulos. **Não equivalem à execução do Vitest nem à compilação TypeScript do projeto.**
+- **Bloqueio comprovado:** `git ls-remote` continua sem acesso DNS a github.com neste executor, embora o conector GitHub permita editar os arquivos. Build completo e testes integrados não executados.
+- **Governança:** PR #3422 Draft; sem merge, deploy ou homologação; Contabo e produção inalteradas.
