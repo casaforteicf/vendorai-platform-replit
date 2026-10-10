@@ -29,7 +29,7 @@ class GateTests(unittest.TestCase):
    mod.status("../../etc/passwd")
  def test_no_shell_execution(self):
   s=p.read_text()
-  self.assertIn('subprocess.run(["bash", str(EXE), *args]',s)
+  self.assertIn('subprocess.Popen(["bash", str(EXE), *args]',s)
   self.assertNotIn('shell=True',s)
   self.assertIn('MIN_FREE = 8 * 1024**3',s)
   self.assertIn('fcntl.LOCK_NB',s)
