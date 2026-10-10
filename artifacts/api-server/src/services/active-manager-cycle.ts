@@ -79,10 +79,12 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
           // exact minute equality, controls whether a scan has already run.
           const periodKey = managerExecutionBucket(domain, now);
           const alreadyDone = await client.query(
-            "SELECT 1 FROM agent_manager_runs WHERE tenant_id=$1 AND domain=$2 AND period_key=$3 LIMIT 1",
+            "SELECT outcome FROM agent_manager_runs WHERE tenant_id=$1 AND domain=$2 AND period_key=$3 LIMIT 1",
             [tenantId, domain, periodKey],
           );
-          if (alreadyDone.rowCount) {
+          // Failed scans are retryable inside the same cadence bucket. A
+          // completed or deliberately skipped scan remains idempotent.
+          if (alreadyDone.rows[0] && alreadyDone.rows[0].outcome !== 'failed') {
             await client.query('RELEASE SAVEPOINT manager_domain');
             continue;
           }
@@ -350,7 +352,7 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
             // generate a tenant Jarvis case for an infrastructure defect.
             platformIncidents.push({ tenantId, count: Number(observation.metric) });
             await client.query(
-              "INSERT INTO agent_manager_runs (tenant_id,domain,period_key,outcome,finding_count) VALUES ($1,$2,$3,'completed',1) ON CONFLICT DO NOTHING",
+              "INSERT INTO agent_manager_runs (tenant_id,domain,period_key,outcome,finding_count) VALUES ($1,$2,$3,'completed',1) ON CONFLICT (tenant_id,domain,period_key) DO UPDATE SET outcome=EXCLUDED.outcome, finding_count=EXCLUDED.finding_count, checked_at=now()",
               [tenantId, domain, periodKey],
             );
             await client.query('RELEASE SAVEPOINT manager_domain');
@@ -428,7 +430,7 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               resolved += closed.rowCount ?? 0;
             }
             await client.query(
-              "INSERT INTO agent_manager_runs (tenant_id,domain,period_key,outcome,finding_count) VALUES ($1,$2,$3,'completed',0) ON CONFLICT DO NOTHING",
+              "INSERT INTO agent_manager_runs (tenant_id,domain,period_key,outcome,finding_count) VALUES ($1,$2,$3,'completed',0) ON CONFLICT (tenant_id,domain,period_key) DO UPDATE SET outcome=EXCLUDED.outcome, finding_count=EXCLUDED.finding_count, checked_at=now()",
               [tenantId, domain, periodKey],
             );
             await client.query('RELEASE SAVEPOINT manager_domain');
@@ -505,7 +507,7 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
           cases += inserted.rowCount ?? 0;
           }
           await client.query(
-            "INSERT INTO agent_manager_runs (tenant_id,domain,period_key,outcome,finding_count) VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING",
+            "INSERT INTO agent_manager_runs (tenant_id,domain,period_key,outcome,finding_count) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (tenant_id,domain,period_key) DO UPDATE SET outcome=EXCLUDED.outcome, finding_count=EXCLUDED.finding_count, checked_at=now()",
             [tenantId, domain, periodKey, hadCollision ? 'skipped_source_collision' : 'completed', findingsCount],
           );
           await client.query('RELEASE SAVEPOINT manager_domain');
@@ -514,7 +516,7 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
             // Persist failed scans after rollback so Master can detect operational
             // failures; previously it only inspected outcomes never written here.
             await client.query(
-              "INSERT INTO agent_manager_runs (tenant_id,domain,period_key,outcome,finding_count) VALUES ($1,$2,$3,'failed',0) ON CONFLICT DO NOTHING",
+              "INSERT INTO agent_manager_runs (tenant_id,domain,period_key,outcome,finding_count) VALUES ($1,$2,$3,'failed',0) ON CONFLICT (tenant_id,domain,period_key) DO UPDATE SET outcome=EXCLUDED.outcome, finding_count=EXCLUDED.finding_count, checked_at=now()",
               [tenantId, domain, managerExecutionBucket(domain, now)],
             );
             await client.query('RELEASE SAVEPOINT manager_domain');
