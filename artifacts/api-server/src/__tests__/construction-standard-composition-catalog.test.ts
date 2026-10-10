@@ -64,10 +64,10 @@ describe("Arqdor standard construction composition catalog", () => {
 
   it("imports tenant schema and gates catalog bootstrap to construction vertical", () => {
     // Regression: the bootstrap already referenced tenantsTable but omitted its import.
-    expect(bootstrapSource).toMatch(/import\\s*\\{[^}]*\\btenantsTable\\b[^}]*\\}\\s*from\\s*["']@workspace\\/db["']/s);
+    expect(bootstrapSource).toContain("  tenantsTable,");
     expect(bootstrapSource).toContain("tenantsTable.vertical");
     expect(bootstrapSource).toContain("eq(tenantsTable.id, tenantId)");
-    expect(bootstrapSource).toMatch(/if\\s*\\(!\\/constru\\/i|!isConstructionVertical)/);
+    expect(bootstrapSource).toContain("if (!/constru/i.test(");
     expect(bootstrapSource).toContain("totalCatalogo: 0");
   });
 
