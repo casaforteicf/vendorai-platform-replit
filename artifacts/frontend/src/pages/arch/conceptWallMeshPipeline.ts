@@ -1,5 +1,6 @@
 import { prepareWallSolids, type SolidWall, type SolidOpening, type WallBox } from "./conceptWallSolids";
 import { wallBoxesToMeshes, type IndexedWallMesh } from "./conceptWallBoxMesh";
+import { buildOrthogonalWallUnion, type WallUnionResult } from "./conceptWallUnion";
 
 export type WallMeshPipelineResult = {
   boxes: WallBox[];
@@ -43,4 +44,14 @@ export function buildWallMeshPipeline(
     warnings,
     valid: warnings.length === 0 && meshes.length === prepared.boxes.length,
   };
+}
+
+/**
+ * Optional combined boundary. Keep this separate from per-wall pickable meshes
+ * until integrated visual and editing tests verify junction selection semantics.
+ */
+export function buildWallUnionPipeline(walls: SolidWall[], openings: SolidOpening[]): WallUnionResult {
+  const prepared = prepareWallSolids(walls, openings);
+  if (prepared.warnings.length) return { meshes: [], warnings: prepared.warnings };
+  return buildOrthogonalWallUnion(prepared.boxes);
 }
