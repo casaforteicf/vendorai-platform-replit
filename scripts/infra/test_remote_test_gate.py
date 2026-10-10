@@ -35,4 +35,18 @@ class GateTests(unittest.TestCase):
   self.assertIn('fcntl.LOCK_NB',s)
   self.assertIn('"VENDORAI_PREPARE_OFFLINE": "0"',s)
 
+
+ def test_timeout_kills_process_group(self):
+  s=p.read_text()
+  self.assertIn('start_new_session=True',s)
+  self.assertIn('os.killpg(proc.pid, signal.SIGTERM)',s)
+  self.assertIn('os.killpg(proc.pid, signal.SIGKILL)',s)
+  self.assertIn('cleanup_test_containers(EVIDENCE / run_name)',s)
+ def test_disk_quota_and_no_production_cleanup(self):
+  s=p.read_text()
+  self.assertIn('MIN_FREE = 8 * 1024**3',s)
+  self.assertIn('MAX_EVIDENCE_BYTES = 3 * 1024**3',s)
+  self.assertNotIn('docker system prune',s)
+  self.assertIn('re.fullmatch(r"[0-9a-f]{64}", cid)',s)
+
 if __name__=="__main__": unittest.main()
