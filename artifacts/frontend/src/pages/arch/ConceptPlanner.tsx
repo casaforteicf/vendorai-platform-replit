@@ -1,4 +1,4 @@
-import { furniturePresetFootprint, positionFurnitureInBounds, furnitureWallDistances } from "./conceptFurniturePreset";
+import { furniturePresetFootprint, positionFurnitureInBounds, furnitureWallDistances, mirrorFurniturePreset } from "./conceptFurniturePreset";
 import { uniqueFurnitureLayouts } from "./conceptFurnitureLayoutOptions";
 import { furnitureLayoutRevision } from "./conceptFurnitureLayoutRevision";
 import { furnitureLayoutCollisionError, furnitureHasClearance, furnitureBlocksZone } from "./conceptFurnitureCollision";
@@ -4214,22 +4214,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       item: FurnishPreset,
       mode: "base" | "mirror-x" | "mirror-y" | "mirror-xy",
     ): FurnishPreset => {
-      const mirrorX = mode === "mirror-x" || mode === "mirror-xy";
-      const mirrorY = mode === "mirror-y" || mode === "mirror-xy";
-      const x = mirrorX ? bounds.x + bounds.width - (item.x - bounds.x) - item.width : item.x;
-      const y = mirrorY ? bounds.y + bounds.height - (item.y - bounds.y) - item.depth : item.y;
-      const affinity = item.wallAffinity === "left" && mirrorX ? "right"
-        : item.wallAffinity === "right" && mirrorX ? "left"
-          : item.wallAffinity === "top" && mirrorY ? "bottom"
-            : item.wallAffinity === "bottom" && mirrorY ? "top"
-              : item.wallAffinity;
-      return {
-        ...item,
-        x,
-        y,
-        wallAffinity: affinity,
-        rotation: ((item.rotation ?? 0) + (mirrorX !== mirrorY ? 180 : 0)) % 360,
-      };
+      return mirrorFurniturePreset(item, bounds, mode);
     };
 
     const wallAffinityDistance = (item: FurnishPreset, x: number, y: number) => {

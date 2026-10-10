@@ -315,3 +315,12 @@ Validação: 122 testes em 23 arquivos passaram; tipagem isolada do helper e tra
 - Botões informam estado selecionado com aria-pressed e possuem foco visível para teclado.
 - Confirmação mostra o número da opção que será aplicada.
 - Verificação desta alteração de interface: transformação sintática do editor passou. Última suíte anterior: 147 testes em 27 arquivos; não repetida nesta alteração. Validação visual integrada e homologação/publicação na Contabo permanecem pendentes.
+
+
+### Orientação das alternativas espelhadas
+
+- Espelhamento de posições e direção local X usa cada eixo do ambiente: X transforma ângulo para 180−ângulo, Y para −ângulo; ambos equivalem a giro de 180 graus.
+- Corrigida regra anterior que girava 180 graus para um eixo isolado e mantinha o ângulo no espelhamento duplo.
+- Preserva dimensões e metadados e troca afinidade da parede correspondente. A operação representa disposição e orientação, sem refletir a malha de modelos assimétricos.
+- Verificação: 150 testes passaram em 27 arquivos; tipagem do helper e transformação sintática do editor passaram. Testes cobrem três modos, aplicação dupla e dados preservados.
+- Validação visual integrada e homologação/publicação na Contabo permanecem pendentes.

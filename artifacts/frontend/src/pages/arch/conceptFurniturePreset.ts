@@ -42,3 +42,25 @@ export function furnitureWallDistances(
     bottom: Math.abs(bounds.y + bounds.height - cy - extentY / 2),
   };
 }
+
+/** Reflect the placement center and its local X direction across room axes. */
+export function mirrorFurniturePreset<T extends { x: number; y: number; width: number; depth: number; rotation?: number; wallAffinity?: "top" | "bottom" | "left" | "right" | "center" }>(
+  object: T, bounds: { x: number; y: number; width: number; height: number },
+  mode: "base" | "mirror-x" | "mirror-y" | "mirror-xy",
+): T {
+  const mirrorX = mode === "mirror-x" || mode === "mirror-xy";
+  const mirrorY = mode === "mirror-y" || mode === "mirror-xy";
+  let rotation = object.rotation ?? 0;
+  if (mirrorX) rotation = 180 - rotation;
+  if (mirrorY) rotation = -rotation;
+  const side = object.wallAffinity;
+  const wallAffinity = mirrorX && side === "left" ? "right" : mirrorX && side === "right" ? "left"
+    : mirrorY && side === "top" ? "bottom" : mirrorY && side === "bottom" ? "top" : side;
+  return {
+    ...object,
+    x: mirrorX ? 2 * bounds.x + bounds.width - object.x - object.width : object.x,
+    y: mirrorY ? 2 * bounds.y + bounds.height - object.y - object.depth : object.y,
+    rotation: ((rotation % 360) + 360) % 360,
+    wallAffinity,
+  };
+}

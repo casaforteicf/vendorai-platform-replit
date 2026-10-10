@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { furniturePresetFootprint, positionFurnitureInBounds, furnitureWallDistances } from "./conceptFurniturePreset";
+import { furniturePresetFootprint, positionFurnitureInBounds, furnitureWallDistances, mirrorFurniturePreset } from "./conceptFurniturePreset";
 import { furnitureFitsRoom } from "./conceptFurnitureRoomFit";
 describe("furniture preset dimensions", () => {
   it("retains nominal dimensions rather than shrinking to a room", () => {
@@ -53,5 +53,22 @@ describe("wall proximity scoring", () => {
     const mirrored = furnitureWallDistances({ ...object, x: 4 - object.x - object.width, rotation: 135 }, bounds);
     expect(mirrored.right).toBeCloseTo(first.left);
     expect(mirrored.top).toBeCloseTo(first.top);
+  });
+});
+
+describe("mirrored layout orientation", () => {
+  const bounds = { x: 2, y: 3, width: 8, height: 6 };
+  const object = { x: 3, y: 4, width: 2, depth: 1, rotation: 30, wallAffinity: "left" as const, label: "Sofá" };
+  it("reflects each axis and both axes with the correct direction", () => {
+    expect(mirrorFurniturePreset(object, bounds, "mirror-x")).toMatchObject({ x: 7, y: 4, rotation: 150, wallAffinity: "right" });
+    expect(mirrorFurniturePreset(object, bounds, "mirror-y")).toMatchObject({ x: 3, y: 7, rotation: 330 });
+    expect(mirrorFurniturePreset(object, bounds, "mirror-xy")).toMatchObject({ x: 7, y: 7, rotation: 210 });
+  });
+  it("returns to the original arrangement after reflecting twice", () => {
+    for (const mode of ["mirror-x", "mirror-y", "mirror-xy"] as const) expect(mirrorFurniturePreset(mirrorFurniturePreset(object, bounds, mode), bounds, mode)).toEqual(object);
+  });
+  it("preserves dimensions and metadata and switches vertical wall affinity", () => {
+    expect(mirrorFurniturePreset({ ...object, wallAffinity: "top" }, bounds, "mirror-y")).toMatchObject({ width: 2, depth: 1, label: "Sofá", wallAffinity: "bottom" });
+    expect(mirrorFurniturePreset(object, bounds, "base")).toEqual(object);
   });
 });
