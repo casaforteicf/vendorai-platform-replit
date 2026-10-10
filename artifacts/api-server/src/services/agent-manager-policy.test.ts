@@ -55,6 +55,16 @@ describe("agent manager policy", () => {
     expect(source).toContain("WHERE jarvis_cases.source='active_manager'");
   });
 
+  it("uses the normalized tenant identity for support review storage and deduplication", () => {
+    const source = readFileSync(new URL("./agent-manager-support.ts", import.meta.url), "utf8");
+    expect(source).toContain("f.tenantId.trim()");
+    expect(source).toContain('if (tenantId === "") throw new Error("TENANT_REQUIRED")');
+    expect(source).toContain("managerSupportSourceRef(f.module, f.kind, f.fingerprint, tenantId)");
+    expect(source).toContain("sourceRef, tenantId ?? null, scope");
+    expect(managerSupportSourceRef("crm", "platform_defect", "same", " tenant-a "))
+      .toBe(managerSupportSourceRef("crm", "platform_defect", "same", "tenant-a"));
+  });
+
   it("keeps support review deduplication isolated by tenant", () => {
     const a = managerSupportSourceRef("crm", "platform_defect", "same-fingerprint", "tenant-a");
     const b = managerSupportSourceRef("crm", "platform_defect", "same-fingerprint", "tenant-b");
