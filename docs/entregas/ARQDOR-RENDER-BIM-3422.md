@@ -645,3 +645,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Execução efetiva:** função `buildWallGeometry` trazida da branch GitHub e executada isoladamente em JavaScript com anotações TS removidas e mock mínimo de Three.js. `[null]` retornou erro controlado esperado; parede diagonal sem aberturas gerou 12 triângulos. **Não equivalem à execução do Vitest nem à compilação TypeScript do projeto.**
 - **Bloqueio comprovado:** `git ls-remote` continua sem acesso DNS a github.com neste executor, embora o conector GitHub permita editar os arquivos. Build completo e testes integrados não executados.
 - **Governança:** PR #3422 Draft; sem merge, deploy ou homologação; Contabo e produção inalteradas.
+
+
+## 3422-A — validação anterior ao roteamento ortogonal/diagonal (10/10/2026)
+- **Falha encontrada:** o componente `RenderStudioParametricWebgl.tsx` acessava `w.start[0]` e `w.end[0]` ao decidir o ramo 3D antes de validar os vetores. Entradas malformadas geravam exceções genéricas antes das validações presentes nos geradores de malha.
+- **Correção:** commit `0b5064a` verifica previamente lista de paredes, vetores de dois números e finitude das coordenadas; em caso de erro, propaga a mensagem `Coordenadas da parede inválidas` pela apresentação de erros já existente.
+- **Validação:** alteração registrada e inspecionada por conector GitHub. Não houve compilação TypeScript, Vitest ou execução visual integrada; a prevenção de erros é inferida pela ordem de execução do código, não homologada.
+- **Estado:** PR #3422 Draft, Contabo adiada, sem merge/deploy, produção intacta.
