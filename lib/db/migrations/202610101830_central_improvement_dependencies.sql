@@ -10,4 +10,6 @@ CREATE TABLE IF NOT EXISTS public.admin_improvement_dependencies (
 CREATE INDEX IF NOT EXISTS admin_improvement_dependencies_prerequisite_idx
   ON public.admin_improvement_dependencies(depends_on_id);
 REVOKE ALL ON public.admin_improvement_dependencies FROM PUBLIC;
--- Migration pipeline must grant access explicitly to its API database role.
+-- Grant only to the runtime role supplied by the migration operator.
+-- Execute grants separately once the exact DATABASE_URL role has been verified;
+-- never assume postgres, service_role, or another privileged identity is the API role.
