@@ -566,7 +566,7 @@ router.post("/tenants/:tenantId/leads/bulk-reassign", async (req, res) => {
   const leadsUpdated = await db
     .update(leadsTable)
     .set({ assignedTo: toUserId })
-    .where(and(eq(leadsTable.tenantId, tenantId), eq(leadsTable.assignedTo, fromUserId)))
+    .where(and(eq(leadsTable.tenantId, tenantId), eq(leadsTable.assignedTo, fromUserId), isNull(leadsTable.excluidoEm)))
     .returning({ id: leadsTable.id });
 
   const dealsUpdated = await db
@@ -580,6 +580,13 @@ router.post("/tenants/:tenantId/leads/bulk-reassign", async (req, res) => {
 
 router.post("/tenants/:tenantId/leads/import", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
+
+  const isAdmin = req.user?.platformRole === "super_admin" ||
+    req.user?.platformRole === "tenant_admin" || req.user?.userFunction === "administrador";
+  if (!isAdmin) {
+    res.status(403).json({ error: "Somente administradores podem importar leads em massa." });
+    return;
+  }
 
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
     res.status(403).json({ error: "Acesso negado" });
