@@ -176,6 +176,7 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
                status=CASE WHEN jarvis_cases.status='resolved' AND jarvis_cases.result_summary='O sinal operacional deixou de existir na verificação automática.' THEN 'open' ELSE jarvis_cases.status END,
                resolved_at=CASE WHEN jarvis_cases.status='resolved' AND jarvis_cases.result_summary='O sinal operacional deixou de existir na verificação automática.' THEN NULL ELSE jarvis_cases.resolved_at END,
                result_summary=CASE WHEN jarvis_cases.status='resolved' AND jarvis_cases.result_summary='O sinal operacional deixou de existir na verificação automática.' THEN NULL ELSE jarvis_cases.result_summary END
+             WHERE jarvis_cases.source='active_manager'
              RETURNING id`,
             [tenantId, observation.signal, domain, observation.title, observation.detail,
               observation.metric, JSON.stringify({ domain, scannedAt: now.toISOString(), total: observation.metric }),
