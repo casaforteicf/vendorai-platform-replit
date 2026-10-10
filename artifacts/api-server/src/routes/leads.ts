@@ -556,7 +556,9 @@ router.post("/tenants/:tenantId/leads/bulk-reassign", async (req, res) => {
   }
 
   // Transação: lead, negócio e trilha de responsabilidade devem mudar juntos.
-  const outcome = await db.transaction(async (tx) => {
+  // Serializa redistribuições com destino/origem compartilhados no mesmo tenant.
+    const outcome = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${tenantId}), 2405)`);
     // Bloqueia a desativação do usuário de destino durante a transferência.
     const [destinationUser] = await tx.select({ id: usersTable.id }).from(usersTable)
       .where(and(eq(usersTable.id, toUserId), eq(usersTable.tenantId, tenantId),
