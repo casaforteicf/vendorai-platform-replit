@@ -368,3 +368,8 @@ A função de vértices de colisão de mobiliário (`conceptFurnitureCollision.t
 ### Reconciliação sem deslocamento silencioso — 10/10/2026
 
 A reconciliação de paredes e aberturas deixa de ajustar (clamp) o offset de uma porta/janela ao novo limite da parede. Quando o encurtamento exigiria alterar sua posição calculada, retorna erro e rejeita a edição. Teste de regressão usa abertura inicialmente válida próxima ao extremo. Commits 8097e0d e 9b7a27c. Testes novos e build integrado não executados nesta rodada. PR permanece draft; merge, homologação e publicação adiados.
+
+
+### Validação de entrada na busca de vão livre — 10/10/2026
+
+`freeOpeningOffset` agora rejeita largura não finita ou não positiva e offset não finito antes da busca por uma posição livre. Testes de regressão cobrindo NaN, Infinity e largura negativa adicionados. Commits eddeecb e 91817f7. Execução Vitest, build integrado e inspeção das vistas permanecem pendentes. PR em rascunho, sem merge, homologação ou publicação.
