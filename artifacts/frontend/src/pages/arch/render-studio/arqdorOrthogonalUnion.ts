@@ -23,6 +23,17 @@ export function unionOrthogonalWalls(walls: ParametricWall[]): UnionResult {
         Math.min(wall.start[1], wall.end[1]), Math.max(wall.start[1], wall.end[1]), 0, wall.height];
     solids.push(box);
     if (wall.openings.length > 100) throw new Error("Excesso de aberturas");
+    // Match the Python geometry contract: two apertures on the same wall
+    // cannot overlap in both horizontal offset and vertical extent.
+    for (let i = 0; i < wall.openings.length; i++) {
+      const a = wall.openings[i];
+      for (let j = i + 1; j < wall.openings.length; j++) {
+        const c = wall.openings[j];
+        if (a.offset < c.offset + c.width && a.offset + a.width > c.offset &&
+            a.sill < c.sill + c.height && a.sill + a.height > c.sill)
+          throw new Error("Aberturas sobrepostas");
+      }
+    }
     voids.push(wall.openings.map(o => {
       if (![o.offset, o.width, o.sill, o.height].every(Number.isFinite) ||
           o.offset < 0 || o.width <= 0 || o.offset + o.width > len ||
