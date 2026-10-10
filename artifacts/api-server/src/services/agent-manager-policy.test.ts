@@ -66,6 +66,12 @@ describe("agent manager policy", () => {
     expect(source).toContain("'completed',0");
   });
 
+  it("makes failed scan retries observable", () => {
+    const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
+    expect(source).toContain("alreadyDone.rows[0]?.outcome === 'failed'");
+    expect(source).toContain("active-managers: retrying failed scan");
+  });
+
   it("records failed tenant domain scans for the Master Manager after rollback", () => {
     const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
     const errorHandler = source.indexOf("} catch (domainError) {");
