@@ -666,3 +666,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Correção funcional:** commit `8eec7ac` impede criar renderer/contexto WebGL quando `walls.length === 0` e apresenta a instrução `Adicione uma parede para visualizar o modelo 3D.` no estado vazio.
 - **Limite de evidência:** não houve execução de Vitest, compilação TypeScript, teste de componente React ou build completo. Estado vazio verificado por inspeção do diff, não por navegador.
 - **Governança:** PR #3422 Draft, sem merge/deploy e sem modificações na Contabo/produção.
+
+
+## 3422-A — estado vazio sem download do motor WebGL (10/10/2026)
+- **Defeito confirmado por inspeção do código:** o tratamento de `walls.length === 0` estava dentro de `loadThree().then(...)`; logo, o editor ainda carregava Three.js externamente mesmo sem paredes. A descrição anterior de que não iniciava WebGL era válida apenas quanto à construção do renderer, não ao carregamento do motor.
+- **Correção:** commit `30af573` verifica o plano vazio antes de chamar `loadThree()`, evita carregar Three.js sem necessidade e preserva a mensagem de estado vazio.
+- **Validação:** inspeção do código alterado via GitHub; **sem execução de testes React, Vitest, compilação TypeScript ou build completo**. A efetividade no navegador ainda precisa ser verificada.
+- **Governança:** PR #3422 continua Draft; sem merge/deploy e sem alterações na Contabo ou produção.
