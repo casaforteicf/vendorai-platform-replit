@@ -806,6 +806,17 @@ router.post("/deals/:id/execution-batches", async (req, res) => {
   // A transaction-scoped advisory lock serializes requests for the same
   // proposal and prevents over-allocation across two simultaneous sessions.
   const outcome = await db.transaction(async tx => {
+    // Lock the deal before creating operational obligations. Archival UPDATE
+    // acquires the same PostgreSQL row lock, serializing the two operations.
+    const lockedDeal = await tx.execute(sql`
+      SELECT id FROM public.deals
+      WHERE id = ${deal.id} AND tenant_id = ${deal.tenantId}
+        AND archived_at IS NULL
+      FOR UPDATE
+    `);
+    if (!lockedDeal.rows.length) {
+      throw Object.assign(new Error("Negócio arquivado não permite nova execução."), { status: 409 });
+    }
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${deal.tenantId}), hashtext(${proposal.id}))`);
     const [freshProposal] = await tx.select().from(propostasTable).where(and(
       eq(propostasTable.id, proposal.id), eq(propostasTable.tenantId, deal.tenantId),
