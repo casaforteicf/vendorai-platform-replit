@@ -53,6 +53,19 @@ describe("UX and Security manager governance", () => {
     expect(body).not.toContain("${url}: ${error");
   });
 
+  it("sends recurring frontend failures to Superadmin without tenant or route identifiers", () => {
+    const start = auditSource.indexOf("async function auditFrontendRenderFailures()");
+    const end = auditSource.indexOf("async function auditConversationTenantIsolation()", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const body = auditSource.slice(start, end);
+    expect(body).toContain("ux_runtime_errors");
+    expect(body).toContain("sum(occurrences)");
+    expect(body).toContain('module: "UI / UX"');
+    expect(body).not.toContain("SELECT *");
+    expect(auditSource).toContain("auditFrontendRenderFailures(),");
+  });
+
   it("UX audit creates reviewable findings instead of claiming frontend browser inspection", () => {
     expect(auditSource).toContain("async function auditFrontendRoutes()");
     expect(auditSource).toContain('module: "UI / UX"');
