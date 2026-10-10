@@ -18,3 +18,18 @@ test("does not erase unknown nonzero exit",()=>{
  const r=inspect({action:"build",lot:"AGENT-01",stderr:"unexpected failure",exitCode:42});
  assert.equal(r.exitCode,42); assert.equal(r.category,"UNKNOWN_OPERATOR_FAILURE");
 });
+
+test("categorizes common host failures without emitting stderr",()=>{
+ const examples=[
+  ["Permission denied (publickey).","SSH_AUTH"],
+  ["Host key verification failed","SSH_HOST_KEY"],
+  ["No space left on device","DISK_FULL"],
+  ["lot AGENT-01 not found","LOT_NOT_REGISTERED"],
+  ["migration failed","MIGRATION_FAILED"],
+ ];
+ for(const [stderr,category] of examples){
+  const result=inspect({action:"build",lot:"AGENT-01",stderr,exitCode:1});
+  assert.equal(result.category,category);
+  assert.equal(JSON.stringify(result).includes(stderr),false);
+ }
+});
