@@ -41,3 +41,14 @@ test('Git and test evidence stay unprivileged; only Docker may use sudo -n',()=>
   assert.match(script,/git fetch --no-tags origin/);
   assert.doesNotMatch(script,/sudo -n git|sudo git|sudo -n bash|sudo bash/);
 });
+
+test('online fetch only occurs by explicit opt-in, before networkless offline install',()=>{
+  assert.match(script,/VENDORAI_PREPARE_OFFLINE:-0/);
+  assert.match(script,/--network bridge/);
+  assert.match(script,/pnpm fetch --frozen-lockfile --ignore-scripts --store-dir \/pnpm\/store/);
+  assert.match(script,/cache-fetch\.log/);
+  assert.ok(script.indexOf('pnpm fetch --frozen-lockfile') < script.indexOf('run install "pnpm install --offline'));
+  assert.match(script,/run\(\)\s*\{/);
+  assert.match(script,/--network none/);
+  assert.doesNotMatch(script,/--env-file|--network host|docker\.sock/);
+});
