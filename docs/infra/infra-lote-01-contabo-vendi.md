@@ -42,3 +42,11 @@ Teste local: `node --test scripts/infra/vendi-operator-diagnostics.test.mjs`.
 5. Resolver o mapeamento do tenant e validar Browser Agent em missão real **somente leitura**, assistida, com conta/conexão previamente autorizada.
 6. Executar `node --test scripts/infra/vendi-operator-diagnostics.test.mjs` no checkout do PR e anexar saída efetiva. Homologação, rollback e build integral continuam sem evidência nova nesta rodada.
 7. Produção intocada, sem merge ou publicação. Registro Mestre: PR #3444 (branch própria, ainda não integrada).
+
+## INFRA-LOTE-01.1 — verificações de release e API (código adicionado, não ativado)
+- `scripts/infra/vendi-release-gates.mjs`: `assessReleaseReadiness` é função pura, conservadora, sem rede e sem executar releases. Confere lote, SHA completo de 40 hexadecimais, digest Docker `sha256:`, correspondência SHA/imagem, mapeamento do lote, operador, homologação saudável, testes, backup, rollback, migrações, isolamento multi-tenant e evidência de aprovação. `target=production` é sempre rejeitado por esse gate específico de homologação.
+- `evaluateApiAuth`: classifica 401 (credencial inválida/expirada), 403 (permissão), 404 (tenant/endpoint ausente); não tenta rotacionar token e não faz retry automático.
+- `scripts/infra/vendi-release-gates.test.mjs`: cobertura da negativa padrão, commit/digest imutáveis, controles de backup/rollback/aprovação, bloqueio de produção, ausência de eco de segredos e tratamento separado de 401/403/404.
+- **Limitação crítica**: não existe ligação entre o novo verificador e o operador em produção; qualquer resultado de teste com dados simulados não é evidência de ambiente real. Sem mecanismo de autorização ativa ou rollback operacional incluído aqui.
+- Comando de teste para checkout da branch: `node --test scripts/infra/vendi-operator-diagnostics.test.mjs scripts/infra/vendi-release-gates.test.mjs`.
+- Próxima integração exige fonte do wrapper MCP existente e leitura do operador host. Não criar processos paralelos nem publicar.
