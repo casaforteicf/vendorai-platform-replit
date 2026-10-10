@@ -277,3 +277,10 @@ Não considerar item 2 encerrado: o fluxo de criação de lead ainda invoca serv
 - O lock de linha é compatível com o lock do `UPDATE` de arquivamento: evita disputa entre essas duas rotas sobre o mesmo registro, além do lock por proposta já existente.
 - **Escopo restrito:** somente criação de lote por essa rota; demais criadores de contratos, cobranças e cards precisam adotar verificação transacional equivalente. Bloqueio de arquivamento também exige teste de concorrência real e verificação de migração do novo campo.
 - Sem testes executados, homologação, merge, migração ou deploy.
+
+## Serialização de renovação contratual com arquivamento — 10/10/2026
+- Commit `5b6d8242a6ffdf68fb5406685beb9e580af9d18d` na PR #3428.
+- Em `finance_contracts.ts`, a criação de renovação contratual ligada a um deal é executada em transação e adquire `SELECT ... FOR UPDATE` sobre o negócio com `archived_at IS NULL` antes do INSERT. Caso o negócio já esteja arquivado ou não exista, responde 409.
+- Renovação histórica sem `dealId` permanece permitida sem bloqueio do negócio; requer definição de política específica.
+- Pendem revisão os outros produtores de contratos, cobranças e integrações externas; estas podem exigir coordenação de locks e idempotência/compensação para efeitos em fornecedores externos.
+- Migração não aplicada; TypeScript, build, testes, homologação, merge e deploy não realizados.
