@@ -164,5 +164,7 @@ export function validateManagerOpportunity(input: ManagerOpportunity): void {
   ];
   if (!allowedKinds.includes(input.kind)) throw new Error("INVALID_MANAGER_DEMAND_KIND");
   if (typeof input.fingerprint !== "string" || !input.fingerprint.trim()) throw new Error("FINGERPRINT_REQUIRED");
+  if (input.fingerprint.length > 512) throw new Error("FINGERPRINT_TOO_LONG");
   if (typeof input.evidence !== "string" || !input.evidence.trim()) throw new Error("EVIDENCE_REQUIRED");
+  if (input.evidence.length > 8000) throw new Error("EVIDENCE_TOO_LONG");
 }
