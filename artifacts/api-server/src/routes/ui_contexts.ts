@@ -1,25 +1,17 @@
 import { Router, type IRouter } from "express";
 import { and, eq } from "drizzle-orm";
 import { db, tenantsTable, usersTable } from "@workspace/db";
+import { authorizeContextDiscovery } from "../lib/ui-context-policy.js";
 
-/**
- * UI-01.4 — Read-only session-bound contexts.
- * Mounted AFTER authenticate + enforceAccessScope in routes/index.ts.
- * No tenantId or userId is accepted from query, body or route parameters.
- * The endpoint deliberately offers zero feature entitlements until the
- * backend's commercial licenses and permissions are mapped to experiences.
- */
 const router: IRouter = Router();
 
+/** Read-only discovery. Never grants modules, switches tenants, or accepts caller-chosen IDs. */
 router.get("/ui/contexts", async (req, res) => {
   const identity = req.user;
-  if (!identity || identity.accessScope === "preprojeto" || identity.accessScope === "obra" ||
-      identity.actorType === "ai" || identity.actorType === "system") {
-    res.status(403).json({ error: "UI_CONTEXT_SCOPE_DENIED" });
-    return;
-  }
-  if (!identity.sub || !identity.tenantId) {
-    res.status(401).json({ error: "INVALID_SESSION_CONTEXT" });
+  const preliminary = authorizeContextDiscovery(identity, null);
+  if (!identity?.sub || !identity.tenantId || preliminary.error === "UI_CONTEXT_SCOPE_DENIED") {
+    res.status(preliminary.error === "INVALID_SESSION_CONTEXT" ? 401 : 403)
+      .json({ error: preliminary.error });
     return;
   }
 
@@ -27,7 +19,6 @@ router.get("/ui/contexts", async (req, res) => {
     const [member] = await db.select({
       userId: usersTable.id,
       tenantId: usersTable.tenantId,
-      role: usersTable.role,
       platformRole: usersTable.platformRole,
       userFunction: usersTable.userFunction,
       active: usersTable.active,
@@ -37,22 +28,24 @@ router.get("/ui/contexts", async (req, res) => {
       .where(and(eq(usersTable.id, identity.sub), eq(usersTable.tenantId, identity.tenantId)))
       .limit(1);
 
-    if (!member?.active) {
-      res.status(403).json({ error: "INACTIVE_OR_UNKNOWN_MEMBERSHIP" });
+    const decision = authorizeContextDiscovery(identity, member ? {
+      userId: member.userId, tenantId: member.tenantId, active: member.active,
+    } : null);
+    if (!decision.allowed) {
+      res.status(403).json({ error: decision.error });
       return;
     }
 
-    // This response is informational, not a grant. In particular a superadmin
-    // override cannot become a second organization membership through this API.
     res.setHeader("Cache-Control", "private, no-store");
     res.json({
-      currentContextId: `organization:${member.tenantId}`,
+      currentContextId: `organization:${decision.tenantId}`,
       contexts: [{
-        id: `organization:${member.tenantId}`,
+        id: `organization:${decision.tenantId}`,
         kind: "organization",
-        label: member.tenantName,
-        tenantId: member.tenantId,
-        roles: [member.platformRole === "tenant_admin" ? "tenant_admin" : member.userFunction === "vendedor" ? "sales" : "member"],
+        label: member!.tenantName,
+        tenantId: decision.tenantId,
+        roles: [member!.platformRole === "tenant_admin" ? "tenant_admin" :
+          member!.userFunction === "vendedor" ? "sales" : "member"],
         enabledExperiences: [],
       }],
       capabilitiesStatus: "pending_backend_entitlement_mapping",
