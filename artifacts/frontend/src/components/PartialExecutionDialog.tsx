@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useListPropostas } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQueryClient } from "@tanstack/react-query";
@@ -32,6 +32,7 @@ export function PartialExecutionDialog({ dealId, tenantId }: { dealId: string; t
   const [amounts, setAmounts] = useState<Record<number, string>>({});
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const requestIdRef = useRef<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -72,6 +73,7 @@ export function PartialExecutionDialog({ dealId, tenantId }: { dealId: string; t
   useEffect(() => {
     if (!open || !propostaId) { setSummary(null); return; }
     setAmounts({});
+    requestIdRef.current = null;
     void loadBalance(propostaId);
     // The balance is refreshed after every submission. Proposal changes invalidate local amounts.
   }, [open, propostaId, dealId, token]);
@@ -94,14 +96,17 @@ export function PartialExecutionDialog({ dealId, tenantId }: { dealId: string; t
     }
     setBusy(true);
     try {
+      const requestId = requestIdRef.current ?? crypto.randomUUID();
+      requestIdRef.current = requestId;
       const response = await fetch(`/api/deals/${dealId}/execution-batches`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + (token ?? "") },
-        body: JSON.stringify({ propostaId, etapa: stageKey, justificativa: reason.trim(), itens: items }),
+        body: JSON.stringify({ requestId, propostaId, etapa: stageKey, justificativa: reason.trim(), itens: items }),
       });
       const body = await response.json();
       if (!response.ok) throw Error(body.error || "Não foi possível criar o lote");
       toast({ title: "Lote de execução criado", description: "As quantidades foram vinculadas à proposta original." });
+      requestIdRef.current = null;
       setAmounts({});
       setReason("");
       await loadBalance(propostaId);
@@ -124,7 +129,7 @@ export function PartialExecutionDialog({ dealId, tenantId }: { dealId: string; t
           {accepted.map(p => <option key={p.id} value={p.id}>{p.titulo}</option>)}
         </select>
         <label className="text-sm font-medium" htmlFor="exec-stage">Etapa de execução</label>
-        <select id="exec-stage" value={stageKey} onChange={e => setStageKey(e.target.value)} className="w-full rounded-md border p-2 text-sm">
+        <select id="exec-stage" value={stageKey} onChange={e => { requestIdRef.current = null; setStageKey(e.target.value); }} className="w-full rounded-md border p-2 text-sm">
           {stages.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
         {loading && <p className="text-sm">Consultando saldos…</p>}
@@ -134,11 +139,11 @@ export function PartialExecutionDialog({ dealId, tenantId }: { dealId: string; t
               <p className="text-sm font-medium">{item.nome}</p>
               <p className="text-xs text-muted-foreground">Disponível: {item.quantidadeDisponivel} {item.unidade ?? ""} · Enviado: {item.quantidadeEnviada}/{item.quantidadeOriginal}</p>
             </div>
-            <Input type="number" min={0} max={item.quantidadeDisponivel} step="any" disabled={item.quantidadeDisponivel <= 0 || busy} className="w-28" aria-label={`Quantidade de ${item.nome}`} value={amounts[item.indice] ?? ""} onChange={e => setAmounts(v => ({...v, [item.indice]: e.target.value}))} />
+            <Input type="number" min={0} max={item.quantidadeDisponivel} step="any" disabled={item.quantidadeDisponivel <= 0 || busy} className="w-28" aria-label={`Quantidade de ${item.nome}`} value={amounts[item.indice] ?? ""} onChange={e => { requestIdRef.current = null; setAmounts(v => ({...v, [item.indice]: e.target.value})); }} />
           </div>
         ))}
         <label className="text-sm font-medium" htmlFor="exec-reason">Justificativa do envio</label>
-        <Input id="exec-reason" value={reason} onChange={e => setReason(e.target.value)} placeholder="Ex.: Primeira etapa da instalação" />
+        <Input id="exec-reason" value={reason} onChange={e => { requestIdRef.current = null; setReason(e.target.value); }} placeholder="Ex.: Primeira etapa da instalação" />
         <Button type="button" onClick={() => void sendBatch()} disabled={!summary || !stageKey || busy || loading}> {busy ? "Criando lote..." : "Criar lote de execução"} </Button>
       </DialogContent>
     </Dialog>
