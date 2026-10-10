@@ -17,3 +17,28 @@ Adicionar classificador puro e testes para **identificar o motivo quando houver 
 5. Somente construir/homologar em ambiente controlado, sem merge ou produção.
 
 Teste local: `node --test scripts/infra/vendi-operator-diagnostics.test.mjs`.
+
+## Nova checagem real, 10/10/2026 (sem deploy)
+- `vendi_contabo_status(status)`: containers `vendorai-homolog-api`, `vendorai-prod-api-candidate`, `vendorai-mcp-contabo-fixed`, `vendorai-prod-browser` ativos.
+- `homologHealth`: `{"status":"ok"}`.
+- `storage`: 96G total / 81G usados / 15G livres (85%). NÃO executar `docker prune` nem remover imagens/volumes: há material recuperável que pode sustentar rollback.
+- `vendi_contabo_operate(releaseStatus,AGENT-01)`: falha real no comando SSH restrito com mensagem `Command failed: ssh ... sudo -n /usr/local/sbin/vendi-contabo-operator releaseStatus AGENT-01`. Conector não expõe `exitCode` remoto ou `stderr` remoto. Categoria segura: `REMOTE_EXIT_UNOBSERVABLE`. **Causa no host não confirmada**.
+- `browser_agent_status`: configured=true, runtime=cdp, vendiAutonomyEnabled=false.
+- `vendi_crm_summary(krafht-homolog)`: `HTTP 401 Invalid or expired token`.
+- `browser_agent_connections(krafht-homolog)`: `HTTP 404 tenant_not_found`.
+- `AGENT-01`: PR #3435 em rascunho, head observado `c1a5c1883953aa2b85a5356bceba30dca05e2743`; **não foi demonstrado** registro deste SHA no operador host.
+
+## Implementação incremental no PR #3445
+- Classificador reconhece mensagem SSH encapsulada sem inferir indevidamente o tipo de falha interna.
+- `errorMessage` disponível como fallback quando o conector não entrega `stderr`.
+- Retornos continuam restritos a categoria, ação, lote, exitCode se observado e remediação genérica. Segredos, opções SSH e texto remoto não saem no resultado.
+- Testes específicos adicionados; execução na Contabo ainda pendente porque operador MCP não permite comandos livres e a fonte do wrapper não está exposta neste PR.
+
+## Pendências reais / próximo gate
+1. Localizar a implementação **já instalada** do wrapper `vendi_contabo_operate` no MCP atual, sem criar outro serviço. Encapsular `spawn/exec` existente para capturar `exitCode` e `stderr` com sanitização antes de qualquer resposta; preservar o contrato público e o comando restrito.
+2. No host, validar acesso da identidade SSH específica, `sudo -n -l`, arquivo `/usr/local/sbin/vendi-contabo-operator`, symlinks, propriedade/permissões, allowlist e mapeamento do lote AGENT-01. Somente inspeção inicialmente.
+3. Revalidar após o ajuste `releaseStatus AGENT-01` e comparar o SHA imutável com PR #3435, sem invocar `build`, `homologate` ou `rollback` até o status estar legível.
+4. Corrigir credencial MCP↔API de homologação somente após identificar seu mecanismo de rotação; não incluir tokens, valores de segredo ou cabeçalhos em GitHub.
+5. Resolver o mapeamento do tenant e validar Browser Agent em missão real **somente leitura**, assistida, com conta/conexão previamente autorizada.
+6. Executar `node --test scripts/infra/vendi-operator-diagnostics.test.mjs` no checkout do PR e anexar saída efetiva. Homologação, rollback e build integral continuam sem evidência nova nesta rodada.
+7. Produção intocada, sem merge ou publicação. Registro Mestre: PR #3444 (branch própria, ainda não integrada).
