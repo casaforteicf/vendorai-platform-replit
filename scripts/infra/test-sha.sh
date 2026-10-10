@@ -64,7 +64,7 @@ chmod -R a+rwX "$RUN/work"
 run() {
   name="$1"; shift
   set +e
-  "${DOCKER_CMD[@]}" run --rm --network none --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 --memory 4g --cpus 2     --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,size=256m     --mount "type=bind,src=$RUN/work,dst=/workspace"     --mount "type=bind,src=$RUN/store,dst=/pnpm/store"     -w /workspace -e CI=true -e HOME=/tmp -e PNPM_STORE_DIR=/pnpm/store "$IMAGE"     sh -c "$*" >"$RUN/logs/$name.log" 2>&1
+  "${DOCKER_CMD[@]}" run --rm --cidfile "$RUN/logs/$name.cid" --network none --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 --memory 4g --cpus 2     --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,size=256m     --mount "type=bind,src=$RUN/work,dst=/workspace"     --mount "type=bind,src=$RUN/store,dst=/pnpm/store"     -w /workspace -e CI=true -e HOME=/tmp -e PNPM_STORE_DIR=/pnpm/store "$IMAGE"     sh -c "$*" >"$RUN/logs/$name.log" 2>&1
   code=$?
   set -e
   printf '%s exit=%s\n' "$name" "$code" | tee -a "$RUN/results.txt"
