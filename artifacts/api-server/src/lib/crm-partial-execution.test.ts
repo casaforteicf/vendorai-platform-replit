@@ -36,6 +36,14 @@ describe("CRM V4 — execução parcial por item", () => {
     expect(canAllocateQuantity(1, [], -0.1)).toBe(false);
   });
 
+  it("aceita a menor fração representável e recusa frações fora da escala", () => {
+    expect(quantityUnits(0.0001)).toBe(1);
+    expect(remainingQuantity(0.0002, [0.0001])).toBe(0.0001);
+    expect(canAllocateQuantity(0.0002, [0.0001], 0.0001)).toBe(true);
+    expect(canAllocateQuantity(0.0002, [0.0001], 0.0002)).toBe(false);
+    expect(() => quantityUnits(0.00011)).toThrow();
+  });
+
   it("preserva saldo não negativo de lotes históricos", () => {
     expect(() => remainingQuantity(1, [0.6, 0.6])).toThrow("Alocação acumulada inválida.");
     expect(() => quantityUnits(Number.MAX_SAFE_INTEGER)).toThrow("Quantidade excede limite seguro.");
