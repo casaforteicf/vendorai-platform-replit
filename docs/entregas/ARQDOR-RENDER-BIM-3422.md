@@ -559,3 +559,11 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Teste persistido:** `arqdorOrthogonalUnion.test.ts` ampliado com caso de sobreposição (deve falhar) e aberturas adjacentes (devem passar). Commit `9540031`.
 - **Execução efetiva limitada:** executado em isolate JS o código do novo arquivo TS obtido no GitHub, removendo somente sintaxe de tipos para interpretação. Quatro verificações: sobreposição rejeitada, aberturas adjacentes aceitas com topologia íntegra, parede com eixo invertido aceita, cruzamento ortogonal íntegro. **Todos quatro tiveram o resultado esperado**. Não é execução via Vitest, TypeScript compiler nem build da aplicação.
 - **Pendente:** testes completos Python/TS e validação funcional WebGL na infraestrutura de homologação; PR #3422 Draft, sem merge/deploy e produção inalterada.
+
+
+## 3422-A — paridade de conectividade entre superfície e sólido (09/10/2026)
+- **Implementação:** o frontend `arqdorOrthogonalUnion.ts` agora computa `connectedBoundaryComponents` por adjacência de arestas entre faces; este critério já existia no núcleo Python e faltava na UI. Uma malha de múltiplas cascas não passa mais na condição de fechamento preliminar, mesmo com arestas incidentes e volume concordante.
+- **Teste Vitest registrado:** `arqdorOrthogonalUnion.test.ts` exige uma superfície em parede/L/T/cruz e duas em paredes desconectadas.
+- **Execução efetiva delimitada:** lógica TypeScript recém-obtida via GitHub, com anotações de tipos removidas, executada em isolate JS; parede 6 faces, L 26, T 26, cruz 22, separadas 12; todos os resultados atenderam às expectativas (1 casca nos primeiros quatro, 2 nas separadas), sem bordas abertas ou erros de orientação nos cinco casos. **Não foi executado Vitest nem build do frontend.**
+- **Commits:** `b0cb9b7` (gerador) e `94127c3` (regressões).
+- **Governança:** PR #3422 Draft, Contabo adiada, sem merge/deploy, produção inalterada.
