@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { DxfReferenceCanvas, isDxfReferencePayload, type StudioDxfLayer } from "./DxfReferenceCanvas";
+import { InteriorStartPanel } from "./InteriorStartPanel";
+import type { InteriorEnvironment } from "./interior-environment";
 import { DesignHeader } from "./DesignHeader";
 import { StudioProvider, useStudio } from "./StudioContext";
 import { WorkspaceLayout } from "./WorkspaceLayout";
@@ -172,6 +174,7 @@ function DesignStudioInner({ arqState, onNavigate }: DesignStudioProps) {
   const project = useMemo(() => getProject(arqState), [arqState]);
   const { mode, setRightPanelOpen } = useStudio();
   const [dxfLayers,setDxfLayers]=useState<StudioDxfLayer[]>([]);
+  const [interior,setInterior]=useState<InteriorEnvironment|null>(null);
   const onLibraryApply=(payload:unknown)=>{
     if(!isDxfReferencePayload(payload))return;
     const reference=payload.reference;
@@ -179,6 +182,9 @@ function DesignStudioInner({ arqState, onNavigate }: DesignStudioProps) {
     setDxfLayers(current=>[...current,{id:`dxf-${Date.now()}-${Math.random().toString(36).slice(2)}`,fileName:payload.fileName,reference,visible:true}]);
   };
 
+  const projectId=String(project?.id??project?.projectId??"");
+  const rooms=Array.isArray(project?.ambientes)?project.ambientes.filter((r:any)=>r?.id):[];
+  const [showImport,setShowImport]=useState(false);
   return (
     <div className="min-h-screen bg-[#f7f7f8] p-6 text-slate-950">
       <WorkspaceLayout
@@ -191,10 +197,10 @@ function DesignStudioInner({ arqState, onNavigate }: DesignStudioProps) {
           />
         }
         leftPanel={<StudioTools />}
-        canvas={dxfLayers.length ? <DxfReferenceCanvas layers={dxfLayers} onRemove={id=>setDxfLayers(current=>current.filter(l=>l.id!==id))} onToggle={id=>setDxfLayers(current=>current.map(l=>l.id===id?{...l,visible:!l.visible}:l))}/> : <CanvasPlaceholder />}
+        canvas={!interior&&!showImport ? <InteriorStartPanel projectId={projectId||null} rooms={rooms} onStart={setInterior} onImport={()=>{setShowImport(true);setRightPanelOpen(true);}}/> : dxfLayers.length ? <DxfReferenceCanvas layers={dxfLayers} onRemove={id=>setDxfLayers(current=>current.filter(l=>l.id!==id))} onToggle={id=>setDxfLayers(current=>current.map(l=>l.id===id?{...l,visible:!l.visible}:l))}/> : <div className="flex h-full flex-col gap-3"><div className="rounded-xl border bg-white p-3 text-sm"><strong>{interior?.name??"Importação"}</strong> · {interior?.source==="preproject"?"Vinculado ao Pré-Projeto":interior?.source==="new-room"?"Novo ambiente":"Referência"} · rascunho sem salvamento <button type="button" className="ml-3 text-violet-700 underline" onClick={()=>{setInterior(null);setShowImport(false);}}>Trocar ambiente</button></div>{interior?.walls.length ? <svg viewBox="-.5 -.5 6 5" className="min-h-64 flex-1 rounded-xl bg-white" aria-label="Paredes do ambiente"><g fill="none" stroke="#334155" strokeWidth=".06">{interior.walls.map(w=><line key={w.id} x1={w.x1} y1={w.y1} x2={w.x2} y2={w.y2}/>)}</g></svg>:<CanvasPlaceholder/>}</div>}
         rightPanel={
-          mode === "materials"
-            ? <LibraryPanel onApply={onLibraryApply} />
+          (mode === "materials" || showImport)
+            ? <LibraryPanel onApply={payload=>{onLibraryApply(payload);if(isDxfReferencePayload(payload))setShowImport(false);}} />
             : <AIChatPanel projectTitle={getTitle(project)} environmentName={getEnvironment(project)} onClose={() => setRightPanelOpen(false)} />
         }
         bottomPanel={<BottomTimeline />}
