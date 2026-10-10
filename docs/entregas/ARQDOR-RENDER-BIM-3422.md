@@ -700,3 +700,10 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Novo arquivo Vitest:** `RenderStudioThreeLoader.test.ts` (commit `ad55054`), com timer simulado e DOM de testes, cobrindo falha de rede e segunda tentativa bem-sucedida, carregamento incompleto sem `WebGLRenderer`, timeout de 12 segundos, descarte do script e evento tardio ignorado.
 - **Limite de evidência:** testes **adicionados ao repositório, não executados em Vitest**; build da aplicação e comportamento real do CDN ainda não foram executados em homologação. A suíte necessita ambiente DOM do Vitest.
 - **Governança:** PR #3422 Draft, sem merge/deploy, Contabo adiada e produção intacta.
+
+
+## 3422-A — isolamento dos testes do carregador (10/10/2026)
+- **Problema identificado na revisão:** `loadThree` usa `engine` como cache em escopo de módulo. O teste de recuperação que resolve a Promise deixava o cache carregado para os testes seguintes, os quais poderiam não criar o novo script e falhar dependendo da ordem.
+- **Correção:** commit `e425499` carrega o módulo dinamicamente em cada teste e aplica `vi.resetModules()` após os cenários, isolando o cache sem expor interfaces administrativas ao código de produção.
+- **Configuração constatada:** `artifacts/frontend/vitest.config.ts` já utiliza `environment: "jsdom"` e inclui `src/**/*.test.ts`; não foi necessária mudança de configuração.
+- **Validação:** leitura dos arquivos e revisão do isolamento. O runner Vitest **ainda não foi executado** e nenhuma aprovação de build pode ser atribuída a esta alteração. PR #3422 Draft; sem merge, deploy ou mudança na Contabo/produção.
