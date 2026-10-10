@@ -133,8 +133,9 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
              ON CONFLICT (tenant_id,signal_key) DO UPDATE SET
                last_detected_at=now(),updated_at=now(),metric=EXCLUDED.metric,
                detail=EXCLUDED.detail,evidence=EXCLUDED.evidence,
-               status=CASE WHEN jarvis_cases.status='resolved' THEN 'open' ELSE jarvis_cases.status END,
-               resolved_at=CASE WHEN jarvis_cases.status='resolved' THEN NULL ELSE jarvis_cases.resolved_at END
+               status=CASE WHEN jarvis_cases.status='resolved' AND jarvis_cases.result_summary='O sinal operacional deixou de existir na verificação automática.' THEN 'open' ELSE jarvis_cases.status END,
+               resolved_at=CASE WHEN jarvis_cases.status='resolved' AND jarvis_cases.result_summary='O sinal operacional deixou de existir na verificação automática.' THEN NULL ELSE jarvis_cases.resolved_at END,
+               result_summary=CASE WHEN jarvis_cases.status='resolved' AND jarvis_cases.result_summary='O sinal operacional deixou de existir na verificação automática.' THEN NULL ELSE jarvis_cases.result_summary END
              RETURNING id`,
             [tenantId, observation.signal, domain, observation.title, observation.detail,
               observation.metric, JSON.stringify({ domain, scannedAt: now.toISOString(), total: observation.metric }),
