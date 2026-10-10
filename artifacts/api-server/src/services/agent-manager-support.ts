@@ -21,6 +21,11 @@ export async function enqueueManagerSupportReview(f: ManagerPlatformFinding): Pr
   if (!f.fingerprint.trim() || !f.title.trim() || !f.evidence.trim() || !f.acceptanceCriteria.trim()) {
     throw new Error("MANAGER_SUPPORT_EVIDENCE_REQUIRED");
   }
+  // Keep invalid runtime payloads from creating ambiguous Superadmin cases.
+  const priorities = ["baixa", "media", "alta", "urgente"];
+  if (f.priority !== undefined && !priorities.includes(f.priority)) {
+    throw new Error("MANAGER_SUPPORT_PRIORITY_INVALID");
+  }
   const policy = classifyManagerDemand(f.kind);
   if (policy.route !== "superadmin_support" || policy.approval !== "superadmin_required") {
     throw new Error("MANAGER_SUPPORT_APPROVAL_POLICY");
