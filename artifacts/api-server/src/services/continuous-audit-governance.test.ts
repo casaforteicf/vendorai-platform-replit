@@ -88,6 +88,19 @@ describe("UX and Security manager governance", () => {
     expect(body).not.toContain("${url}: ${error");
   });
 
+  it("limits UX error retention to 30 days with bounded cleanup", () => {
+    const start = auditSource.indexOf("async function auditFrontendRenderFailures()");
+    const end = auditSource.indexOf("async function auditConversationTenantIsolation()", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const body = auditSource.slice(start, end);
+    const migration = readFileSync(new URL("../../../../lib/db/migrations/20261010_ux_runtime_errors.sql", import.meta.url), "utf8");
+    expect(body).toContain("DELETE FROM ux_runtime_errors");
+    expect(body).toContain("interval '30 days'");
+    expect(body).toContain("LIMIT 500");
+    expect(migration).toContain("ux_runtime_errors_retention_idx");
+  });
+
   it("sends recurring frontend failures to Superadmin without tenant or route identifiers", () => {
     const start = auditSource.indexOf("async function auditFrontendRenderFailures()");
     const end = auditSource.indexOf("async function auditConversationTenantIsolation()", start);
