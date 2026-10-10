@@ -83,6 +83,8 @@ export function isManagerDue(
   if (!Number.isFinite(now.getTime())) return false;
   if (lastSuccessfulRun === null) return true;
   if (!Number.isFinite(lastSuccessfulRun.getTime())) return true;
+  // A future timestamp (clock skew or corrupt data) must not indefinitely starve scans.
+  if (lastSuccessfulRun.getTime() > now.getTime()) return true;
   return now.getTime() - lastSuccessfulRun.getTime()
     >= MANAGER_INTERVAL_MINUTES[domain] * 60_000;
 }
