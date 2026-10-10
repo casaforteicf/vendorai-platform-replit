@@ -178,6 +178,12 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
           // Never send WhatsApp/email or perform an external action here.
           // One notification per tenant and issue within 24h prevents alert floods,
           // even when the active tenant administrator changes.
+          // Advisory transaction lock serializes notifications for this
+          // tenant+signal across workers, including concurrent scheduler runs.
+          await client.query(
+            "SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))",
+            [tenantId, observation.signal],
+          );
           await client.query(
             `INSERT INTO notifications
                (id, tenant_id, recipient_user_id, title, message, type, category)
