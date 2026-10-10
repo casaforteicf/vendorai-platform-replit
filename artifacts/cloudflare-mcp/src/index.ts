@@ -1,4 +1,7 @@
 import { createServer } from "node:http";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { existsSync, readFileSync } from "node:fs";
 import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import * as z from "zod/v4";
@@ -162,8 +165,8 @@ async function deleteSaasCustomHostname(hostnameId: string) {
 }
 
 
-async function vendorApi<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const base = (process.env["VENDORAI_API_BASE"] || "https://vendorai-platform-replit-production.up.railway.app").replace(/\/$/, "");
+async function vendorApi<T>(path: string, init: RequestInit = {}, baseOverride?: string): Promise<T> {
+  const base = (baseOverride || process.env["VENDORAI_API_BASE"] || "https://vendorai-platform-replit-production.up.railway.app").replace(/\/$/, "");
   const token = requiredEnv("BROWSER_MCP_ACCESS_TOKEN");
   const response = await fetch(`${base}${path}`, {
     ...init,
@@ -180,6 +183,62 @@ async function vendorApi<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new Error(`VendorAI API ${response.status}: ${detail}`);
   }
   return payload as T;
+}
+
+const execFileAsync = promisify(execFile);
+
+// The existing MCP container is a client, never a root-level Docker daemon.
+// Operations connect through a dedicated restricted SSH identity, when provisioned.
+// No arbitrary shell arguments are accepted from the LLM.
+const CONTABO_READ_ONLY_COMMANDS = {
+  status: "sudo -n docker ps --format 'table {{.Names}}\\t{{.Status}}\\t{{.Image}}' | head -30",
+  homologHealth: "curl --fail --silent --show-error --max-time 8 http://127.0.0.1:5000/api/auth/healthz",
+  prodHealth: "curl --fail --silent --show-error --max-time 8 http://127.0.0.1:5001/api/auth/healthz",
+  storage: "df -h / && sudo -n docker system df",
+} as const;
+
+async function contaboReadOnly(action: keyof typeof CONTABO_READ_ONLY_COMMANDS) {
+  const host = process.env["VENDI_CONTABO_SSH_HOST"] || (existsSync("/app/.vendi-ssh/host") ? readFileSync("/app/.vendi-ssh/host", "utf8").trim() : undefined);
+  const user = process.env["VENDI_CONTABO_SSH_USER"] || "vendorai";
+  const key = process.env["VENDI_CONTABO_SSH_KEY_PATH"] || "/app/.vendi-ssh/id_ed25519";
+  const knownHosts = process.env["VENDI_CONTABO_KNOWN_HOSTS"] || "/app/.vendi-ssh/known_hosts";
+  if (!host || !key || !knownHosts || !existsSync(key) || !existsSync(knownHosts)) {
+    throw new Error("Contabo SSH not provisioned in existing MCP: requires dedicated read-only key and pinned known_hosts");
+  }
+  if (!/^[a-zA-Z0-9.-]+$/.test(host) || !/^[a-z_][a-z0-9_-]*$/.test(user)) {
+    throw new Error("Invalid SSH endpoint configuration");
+  }
+  const command = CONTABO_READ_ONLY_COMMANDS[action];
+  const { stdout, stderr } = await execFileAsync("ssh", [
+    "-i", key,
+    "-o", "BatchMode=yes",
+    "-o", "IdentitiesOnly=yes",
+    "-o", "StrictHostKeyChecking=yes",
+    "-o", `UserKnownHostsFile=${knownHosts}`,
+    "-o", "ConnectTimeout=8",
+    `${user}@${host}`,
+    command,
+  ], { timeout: 18000, maxBuffer: 256 * 1024 });
+  return { action, readOnly: true, server: "contabo", output: stdout.slice(0, 16000), warnings: stderr.slice(0, 600) };
+}
+
+// Structured operations only: fixed script on the host, no arbitrary shell from the model.
+// Host-side operator enforces its own action allowlist and audit trail.
+async function contaboOperate(action: "build" | "homologate" | "rollback" | "releaseStatus" | "preflight" | "publish", lot: string) {
+  if (!/^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$/.test(lot)) throw new Error("Invalid lot identifier");
+  const host = process.env["VENDI_CONTABO_SSH_HOST"] || (existsSync("/app/.vendi-ssh/host") ? readFileSync("/app/.vendi-ssh/host", "utf8").trim() : undefined);
+  const key = process.env["VENDI_CONTABO_SSH_KEY_PATH"] || "/app/.vendi-ssh/id_ed25519";
+  const knownHosts = process.env["VENDI_CONTABO_KNOWN_HOSTS"] || "/app/.vendi-ssh/known_hosts";
+  if (!host || !existsSync(key) || !existsSync(knownHosts)) throw new Error("Contabo SSH is not provisioned");
+  const user = process.env["VENDI_CONTABO_SSH_USER"] || "vendorai";
+  if (!/^[a-zA-Z0-9.-]+$/.test(host) || !/^[a-z_][a-z0-9_-]*$/.test(user)) throw new Error("Invalid SSH endpoint");
+  const { stdout, stderr } = await execFileAsync("ssh", [
+    "-i", key, "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
+    "-o", "StrictHostKeyChecking=yes", "-o", `UserKnownHostsFile=${knownHosts}`,
+    "-o", "ConnectTimeout=8", `${user}@${host}`,
+    `sudo -n /usr/local/sbin/vendi-contabo-operator ${action} ${lot}`,
+  ], { timeout: 180000, maxBuffer: 256 * 1024 });
+  return { action, lot, output: stdout.slice(0, 16000), warnings: stderr.slice(0, 600) };
 }
 
 function createCloudflareMcpServer() {
@@ -397,6 +456,45 @@ function createCloudflareMcpServer() {
     )),
   );
 
+
+  server.registerTool(
+    "vendi_contabo_operate",
+    {
+      description: "Executa operações predefinidas do operador Vendi na Contabo: build de lote homologado, homologação, rollback ou consulta de estágio. Não aceita comandos livres. Produção depende dos gates implementados no host.",
+      inputSchema: z.object({
+        action: z.enum(["build", "homologate", "rollback", "releaseStatus", "preflight", "publish"]),
+        lot: z.string().regex(/^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$/),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ action, lot }) => toolText(await contaboOperate(action, lot)),
+  );
+
+  server.registerTool(
+    "vendi_contabo_status",
+    {
+      description: "Consulta a Contabo real via SSH restrito para verificar containers, saúde de homologação/produção e armazenamento. Somente leitura; não executa comandos arbitrários nem faz deploy.",
+      inputSchema: z.object({ action: z.enum(["status", "homologHealth", "prodHealth", "storage"]) }),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ action }) => toolText(await contaboReadOnly(action)),
+  );
+
+  server.registerTool(
+    "vendi_crm_summary",
+    {
+      description: "Consulta somente leitura à quantidade de leads ativos do CRM na HOMOLOGAÇÃO VendorAI. Use tenantKey de homologação (ex.: krafht-homolog). Não altera produção nem utiliza Chromium.",
+      inputSchema: z.object({ tenantKey: z.string().min(1).max(255) }),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ tenantKey }) => {
+      const result = await vendorApi<unknown>("/internal/browser-mcp/crm-summary", {
+        method: "POST",
+        body: JSON.stringify({ tenantKey }),
+      }, process.env["VENDI_HOMOLOG_API_BASE"] || "http://vendorai-homolog-api:5000/api");
+      return toolText(result);
+    },
+  );
 
   server.registerTool(
     "browser_agent_status",

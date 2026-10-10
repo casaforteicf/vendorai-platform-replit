@@ -6,9 +6,10 @@ import {
   browserAgentConnectionsTable,
   tenantsTable,
   usersTable,
+  leadsTable,
   notificationsTable,
 } from "@workspace/db";
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { decrypt, encrypt } from "../lib/crypto.js";
 import { runBrowserAgent, type BrowserAgentInput } from "../services/browser-agent.js";
 import { mergeBrowserProfiles, type BrowserProfileState } from "../services/browser-profile.js";
@@ -93,11 +94,11 @@ router.post("/internal/browser-mcp/homolog-bootstrap", async (req, res) => {
     .from(usersTable)
     .where(and(eq(usersTable.platformRole, "super_admin"), eq(usersTable.active, true)))
     .limit(1);
-  const [tenantPrincipal] = platformPrincipal ? [] : await db.select(principalSelect)
+  const [tenantPrincipal] = await db.select(principalSelect)
     .from(usersTable)
     .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)))
     .limit(1);
-  const servicePrincipal = platformPrincipal ?? tenantPrincipal;
+  const servicePrincipal = tenantPrincipal;
 
   if (!servicePrincipal) {
     res.status(409).json({ error: "vendi_auth_principal_not_found" });
@@ -202,6 +203,40 @@ function safeConnection(connection: BrowserMcpConnection) {
     updatedAt: connection.updatedAt,
   };
 }
+
+/** Read-only CRM integration for the existing Vendi MCP.
+ * Uses the established BROWSER_MCP_ACCESS_TOKEN middleware and resolves
+ * tenant on the server. No browser, JWT impersonation or cross-tenant query.
+ */
+router.post("/internal/browser-mcp/crm-summary", async (req, res) => {
+  const parsed = z.object({ tenantKey: tenantKeySchema }).strict().safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: "invalid_tenant_key" });
+    return;
+  }
+  try {
+    const tenantId = await resolveTenantId(parsed.data.tenantKey);
+    if (!tenantId) {
+      res.status(404).json({ error: "tenant_not_found" });
+      return;
+    }
+
+    const [summary] = await db
+      .select({ totalLeads: sql<number>`cast(count(*) as integer)` })
+      .from(leadsTable)
+      .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm)));
+
+    res.json({
+      ok: true,
+      tenantId,
+      crm: { activeLeads: Number(summary?.totalLeads ?? 0) },
+      readOnly: true,
+      source: "vendorai-api",
+    });
+  } catch {
+    res.status(503).json({ error: "crm_summary_unavailable" });
+  }
+});
 
 router.get("/internal/browser-mcp/status", (_req, res) => {
   res.json({
@@ -368,11 +403,11 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
         .from(usersTable)
         .where(and(eq(usersTable.platformRole, "super_admin"), eq(usersTable.active, true)))
         .limit(1);
-      const [tenantPrincipal] = platformPrincipal ? [] : await db.select(principalSelect)
+      const [tenantPrincipal] = await db.select(principalSelect)
         .from(usersTable)
         .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)))
         .limit(1);
-      const servicePrincipal = platformPrincipal ?? tenantPrincipal;
+      const servicePrincipal = tenantPrincipal;
       if (!servicePrincipal) throw new Error("VENDI_AUTH_PRINCIPAL_NOT_FOUND");
 
       firstPartyAuthToken = signToken({
@@ -411,11 +446,11 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
         .from(usersTable)
         .where(and(eq(usersTable.platformRole, "super_admin"), eq(usersTable.active, true)))
         .limit(1);
-      const [tenantPrincipal] = platformPrincipal ? [] : await db.select(principalSelect)
+      const [tenantPrincipal] = await db.select(principalSelect)
         .from(usersTable)
         .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)))
         .limit(1);
-      const servicePrincipal = platformPrincipal ?? tenantPrincipal;
+      const servicePrincipal = tenantPrincipal;
       if (!servicePrincipal) throw new Error("VENDI_AUTH_PRINCIPAL_NOT_FOUND");
 
       firstPartyAuthToken = signToken({
