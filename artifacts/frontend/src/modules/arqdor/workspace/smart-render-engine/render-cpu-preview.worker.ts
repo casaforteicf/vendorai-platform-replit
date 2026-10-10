@@ -15,10 +15,8 @@ self.onmessage = (event: MessageEvent<Request>) => {
     try{
       const height=Math.min(rows,options.height-nextRow);
       if(height<=0){active.delete(id);self.postMessage({type:"done",id});return;}
-      // Use full-frame camera projection and crop the rows from a deterministic render.
-      // This prototype re-renders the full frame for every tile, so limit to small diagnostics.
-      const frame=renderCpuPreview(options);
-      const bytes=frame.rgba.slice(nextRow*options.width*4,(nextRow+height)*options.width*4);
+      const frame=renderCpuPreview(options,nextRow,height);
+      const bytes=frame.rgba;
       self.postMessage({type:"tile",id,y:nextRow,width:options.width,height,rgba:bytes.buffer,progress:(nextRow+height)/options.height},[bytes.buffer]);
       nextRow+=height;
       setTimeout(runTile,0);
