@@ -36,4 +36,17 @@ describe("CRM V4-01 — cadastro de lead idempotente", () => {
     expect(matchesRegistrationReplay(metadata, "u2", hash)).toBe(false);
     expect(matchesRegistrationReplay(metadata, "u1", hash)).toBe(true);
   });
+  it("nunca autoriza replay sem ator autenticado ou hash válido", () => {
+    const hash = fingerprintRegistrationPayload({ nome: "Cliente" });
+    expect(matchesRegistrationReplay({ registrationActorId: null, registrationPayloadHash: hash }, null, hash)).toBe(false);
+    expect(matchesRegistrationReplay({ registrationActorId: "", registrationPayloadHash: hash }, "", hash)).toBe(false);
+    expect(matchesRegistrationReplay({ registrationActorId: "u1", registrationPayloadHash: hash }, "u1", "")).toBe(false);
+    expect(matchesRegistrationReplay({ registrationActorId: "u1", registrationPayloadHash: hash }, "u1", hash)).toBe(true);
+  });
+
+  it("distingue o tenant e o conteúdo ao calcular impressão da solicitação", () => {
+    const a = fingerprintRegistrationPayload({ tenantId: "tenant-a", nome: "Cliente" });
+    const b = fingerprintRegistrationPayload({ tenantId: "tenant-b", nome: "Cliente" });
+    expect(a).not.toBe(b);
+  });
 });
