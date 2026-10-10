@@ -28,6 +28,18 @@ describe("UX and Security manager governance", () => {
     expect(execution).toBeGreaterThan(guard);
   });
 
+  it("limits automated UX route probes to homologation and never falls back to production", () => {
+    const start = auditSource.indexOf("async function auditFrontendRoutes()");
+    const end = auditSource.indexOf("async function runAudit(", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const body = auditSource.slice(start, end);
+    expect(body).toContain('process.env["HOMOLOGATION_URL"]');
+    expect(body).not.toContain('process.env["PUBLIC_APP_URL"]');
+    expect(body).not.toContain('process.env["APP_URL"]');
+    expect(body).toContain("if (!base) return findings;");
+  });
+
   it("UX audit creates reviewable findings instead of claiming frontend browser inspection", () => {
     expect(auditSource).toContain("async function auditFrontendRoutes()");
     expect(auditSource).toContain('module: "UI / UX"');
