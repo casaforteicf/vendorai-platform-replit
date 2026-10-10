@@ -14,6 +14,7 @@ export function parseRegistrationRequestId(value: unknown): string | null {
 }
 
 function stable(value: unknown): unknown {
+  if (typeof value === "number" && !Number.isFinite(value)) throw new Error("REGISTRATION_NONFINITE_NUMBER");
   if (value instanceof Date) return value.toISOString();
   if (Array.isArray(value)) return value.map(stable);
   if (value !== null && typeof value === "object") {
