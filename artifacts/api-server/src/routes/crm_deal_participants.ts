@@ -135,7 +135,10 @@ router.post("/crm/people", async (req, res) => {
       const linkedDeal = await db.select({ id: crmDealPeopleTable.id })
         .from(crmDealPeopleTable)
         .innerJoin(dealsTable, eq(dealsTable.id, crmDealPeopleTable.dealId))
+        .leftJoin(leadsTable, eq(leadsTable.id, dealsTable.leadId))
         .where(and(
+          or(isNull(dealsTable.leadId),
+            and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm))),
           eq(crmDealPeopleTable.tenantId, tenantId),
           eq(dealsTable.tenantId, tenantId),
           eq(crmDealPeopleTable.personId, exact.id),
@@ -151,7 +154,8 @@ router.post("/crm/people", async (req, res) => {
           eq(crmTenantCompanyContactsTable.personId, exact.id),
           inArray(crmTenantCompaniesTable.leadId,
             db.select({ id: leadsTable.id }).from(leadsTable)
-              .where(and(eq(leadsTable.tenantId, tenantId), ...buildUserFunctionFilter(req, leadsTable)))),
+              .where(and(eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm),
+                ...buildUserFunctionFilter(req, leadsTable)))),
         )).limit(1);
       if (!linkedDeal.length && !linkedContact.length) {
         return res.status(409).json({
