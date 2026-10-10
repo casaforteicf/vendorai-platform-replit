@@ -84,8 +84,11 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
           );
           // Failed scans are retryable inside the same cadence bucket. A
           // completed or deliberately skipped scan remains idempotent.
-          // Do not retry more than once per scheduler tick: the scheduler calls
-          // this function once every 15 minutes, limiting repeated failures.
+          // Retries follow scheduler invocations; the bucket key prevents
+          // duplicate successful work while allowing recovery from failures.
+          if (alreadyDone.rows[0]?.outcome === 'failed') {
+            log.info({ tenantId, domain, periodKey }, "active-managers: retrying failed scan");
+          }
           if (alreadyDone.rows[0] && alreadyDone.rows[0].outcome !== 'failed') {
             await client.query('RELEASE SAVEPOINT manager_domain');
             continue;
