@@ -24,6 +24,8 @@ describe("CRM-02/03 — casal, identidade e contato principal", () => {
     const couple = api.split('router.post("/crm/deals/:dealId/couple"')[1]?.split('router.post("/crm/deals/:dealId/people"')[0] ?? "";
     expect(couple).toContain("const existingPrincipalClients = await tx.select");
     expect(couple).toContain("clientePrincipal");
+    expect(couple).toContain('eq(crmDealPeopleTable.role, "consumidor_final")');
+    expect(couple).toContain('eq(crmDealPeopleTable.role, "contratante")');
     expect(couple).toContain("Negócio já possui clientes principais.");
     expect(couple).toContain("registrationRequestId");
   });
