@@ -588,3 +588,9 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Correção:** commit `1bbba88` cria um registro `disposableResources` e adiciona geometrias e materiais à lista logo após a criação, antes das operações seguintes. O `cleanup` passa a liberar esses recursos registrados, sem depender da existência do mesh.
 - **Validação:** inspeção do código alterado; suíte React/WebGL e build completo **não executados**. Permanece a necessidade de testar exceções injetadas em WebGL e verificar possíveis falhas na carga do motor.
 - **Governança:** PR #3422 Draft, homologação Contabo adiada, sem merge/deploy; produção inalterada.
+
+
+## 3422-A — teardown WebGL idempotente (10/10/2026)
+- **Correção:** commit `a2b65f4` adiciona guarda `released` à rotina de limpeza do renderer, garantindo que um mesmo conjunto de recursos não seja descartado duas vezes em múltiplos caminhos de desmontagem/falha; remove a lista redundante de meshes, mantendo a lista de recursos descartáveis.
+- **Validação:** mudança confirmada por leitura e gravação no conector GitHub. Teste de componente React, simulação de exceções WebGL, build TypeScript e suíte integrada seguem **não executados**.
+- **Governança:** PR #3422 continua Draft; sem merge/deploy; homologação na Contabo permanece adiada e produção intacta.
