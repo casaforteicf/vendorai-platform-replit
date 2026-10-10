@@ -176,7 +176,8 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
           cases += inserted.rowCount ?? 0;
           // Deliver a tenant-scoped, in-app Jarvis alert to one active admin.
           // Never send WhatsApp/email or perform an external action here.
-          // One notification per issue/title within 24h prevents alert floods.
+          // One notification per tenant and issue within 24h prevents alert floods,
+          // even when the active tenant administrator changes.
           await client.query(
             `INSERT INTO notifications
                (id, tenant_id, recipient_user_id, title, message, type, category)
@@ -186,7 +187,7 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
                AND (u.role='admin' OR u.platform_role='tenant_admin')
                AND NOT EXISTS (
                  SELECT 1 FROM notifications n
-                 WHERE n.tenant_id=$1 AND n.recipient_user_id=u.id
+                 WHERE n.tenant_id=$1
                    AND n.category='active_manager' AND n.title=$2
                    AND n.created_at > now() - interval '24 hours'
                )
