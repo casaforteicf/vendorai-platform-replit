@@ -62,6 +62,15 @@ describe("Arqdor standard construction composition catalog", () => {
     expect(bootstrapSource).not.toContain("precoUnitario: item.");
   });
 
+  it("imports tenant schema and gates catalog bootstrap to construction vertical", () => {
+    // Regression: the bootstrap already referenced tenantsTable but omitted its import.
+    expect(bootstrapSource).toMatch(/import\\s*\\{[^}]*\\btenantsTable\\b[^}]*\\}\\s*from\\s*["']@workspace\\/db["']/s);
+    expect(bootstrapSource).toContain("tenantsTable.vertical");
+    expect(bootstrapSource).toContain("eq(tenantsTable.id, tenantId)");
+    expect(bootstrapSource).toMatch(/if\\s*\\(!\\/constru\\/i|!isConstructionVertical)/);
+    expect(bootstrapSource).toContain("totalCatalogo: 0");
+  });
+
   it("exposes the catalog action in the compositions screen", () => {
     expect(frontendSource).toContain("handleApplyStandardCatalog");
     expect(frontendSource).toContain("Catálogo padrão");
