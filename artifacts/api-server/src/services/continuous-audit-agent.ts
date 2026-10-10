@@ -215,6 +215,15 @@ async function auditFrontendRenderFailures(): Promise<AuditFinding[]> {
     "SELECT to_regclass('public.ux_runtime_errors') AS telemetry",
   );
   if (!available.rows[0]?.telemetry) return [];
+  // Data minimization: discard expired hourly aggregates in small batches.
+  // A bounded deletion avoids long locks during the frequent audit cycle.
+  await pool.query(
+    `DELETE FROM ux_runtime_errors WHERE id IN (
+      SELECT id FROM ux_runtime_errors
+      WHERE bucket_start < now() - interval '30 days'
+      ORDER BY bucket_start ASC LIMIT 500
+    )`,
+  );
   // Only aggregated counts leave the database; do not attach route or tenant IDs
   // to cross-tenant Superadmin improvement summaries.
   const result = await pool.query(
