@@ -87,10 +87,12 @@ export function DealParticipantsCard({
   tenantId,
   dealId,
   token,
+  canManageCommission = false,
 }: {
   tenantId: string;
   dealId: string;
   token?: string | null;
+  canManageCommission?: boolean;
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -232,12 +234,7 @@ export function DealParticipantsCard({
           isPrimary: contactPrimary,
           contextualCompanyId: contextCompanyId === "__none__" ? null : contextCompanyId,
           relationshipScope,
-          metadata: {
-            ...(editingPerson?.metadata ?? {}),
-            commission: hasCommission
-              ? { enabled: true, kind: commissionKind, value: commissionValue.trim() || null, status: "prevista" }
-              : { enabled: false },
-          },
+
         }),
       });
       const result = await response.json().catch(() => ({}));
@@ -249,6 +246,33 @@ export function DealParticipantsCard({
       toast({ title: editingPerson ? "Vínculo atualizado." : "Pessoa vinculada ao negócio." });
     } catch (error) {
       toast({ title: "Erro ao adicionar envolvido", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveCommission() {
+    if (!editingPerson || !canManageCommission) return;
+    const rawValue = commissionValue.trim().replace(",", ".");
+    const value = hasCommission ? Number(rawValue) : null;
+    if (hasCommission && (!rawValue || !Number.isFinite(value))) {
+      toast({ title: "Informe um valor de comissão válido.", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/crm/deals/${dealId}/people/${editingPerson.personId}/commission`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ tenantId, enabled: hasCommission, kind: commissionKind, value }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível alterar a comissão.");
+      await qc.invalidateQueries({ queryKey: ["crm-deal-participants", tenantId, dealId] });
+      toast({ title: "Comissão atualizada." });
+      setOpen(false);
+    } catch (error) {
+      toast({ title: "Erro ao atualizar comissão", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -454,7 +478,7 @@ export function DealParticipantsCard({
                 </Select>
                 <p className="text-[11px] text-muted-foreground">Ex.: consumidor final de um empreendimento. Isso não o transforma em funcionário da empresa.</p>
               </div>
-              <div className="space-y-2 rounded-lg border p-3">
+              {canManageCommission && editingPerson && <div className="space-y-2 rounded-lg border p-3">
                 <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
                   <input type="checkbox" checked={hasCommission} onChange={(e) => setHasCommission(e.target.checked)} />
                   Este envolvido possui comissão / ganho
@@ -472,7 +496,8 @@ export function DealParticipantsCard({
                     <Input value={commissionValue} onChange={(e) => setCommissionValue(e.target.value)} placeholder={commissionKind === "percent" ? "Ex.: 15" : "Ex.: 1500,00"} />
                   </div>
                 )}
-              </div>
+              <Button type="button" variant="outline" onClick={() => void saveCommission()} disabled={saving}>Salvar comissão separadamente</Button>
+              </div>}
               {contextCompanyId !== "__none__" && (
                 <div className="space-y-1.5">
                   <Label>Tipo de vínculo</Label>
