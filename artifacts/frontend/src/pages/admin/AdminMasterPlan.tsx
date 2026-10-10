@@ -36,7 +36,7 @@ const phases = [
 const label: Record<string, string> = { verification_required: "Verificar implementação", code_in_pr: "Código em PR", blocked: "Bloqueado" };
 export default function AdminMasterPlan() {
   const { token } = useAuth();
-  const prNumbers = useMemo(() => [...new Set(all.map(item => item.tracking_url?.match(/\\/pull\\/(\\d+)/)?.[1]).filter((n): n is string => Boolean(n)))], []);
+  const prNumbers = useMemo(() => [...new Set(all.map(item => item.tracking_url?.match(/\/pull\/(\d+)/)?.[1]).filter((n): n is string => Boolean(n)))], []);
   const evidence = useQuery({
     queryKey: ["admin", "master-plan", "pr-evidence", token],
     queryFn: async () => {
@@ -53,7 +53,7 @@ export default function AdminMasterPlan() {
   });
   const prStates = new Map(evidence.data?.items.map(item => [String(item.number), item]) ?? []);
   const stateFor = (item: Requirement) => {
-    const number = item.tracking_url?.match(/\\/pull\\/(\\d+)/)?.[1];
+    const number = item.tracking_url?.match(/\/pull\/(\d+)/)?.[1];
     const result = number ? prStates.get(number) : undefined;
     if (!result || result.state === "unavailable") return label[item.status] || item.status;
     if (result.state === "merged") return "PR mesclado · homologação não verificada";
