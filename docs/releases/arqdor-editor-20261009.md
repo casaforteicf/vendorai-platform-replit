@@ -408,3 +408,8 @@ Adicionado `ConceptArchitecturalPreview.tsx`, componente React isolado com alter
 ### Persistência do snapshot paramétrico — 10/10/2026
 
 `ConceptPlanner.tsx` agora acrescenta `architecturalModel` em `configuration` no payload do salvamento existente, recupera o campo ao reabrir um pré-projeto e inclui o snapshot nas dependências/assinatura do autosave. Quando o campo estiver ausente (rascunhos legados), inicializa com modelo vazio v1. Commit 1b528ead. **Persistência ponta a ponta ainda não confirmada por teste com backend: eventual filtragem de schema/API precisa ser verificada.** Vistas oficiais 2D/3D ainda não consomem os novos elementos. Sem merge, homologação ou publicação.
+
+
+### Geometria paramétrica na vista 2D oficial — 10/10/2026
+
+`ConceptPlan2D.tsx` recebe `architecturalModel` e desenha contornos de lajes, vazios, escadas e coberturas diretamente no SVG principal, filtrados por pavimento; sobreposição é somente visual (`pointerEvents=none`) para não interceptar gestos de paredes/aberturas. `ConceptPlanner.tsx` transmite o snapshot arquitetônico à vista principal. Commits afbd2ca e 7040cf6. A seleção direta, arrasto, manipulação de nós e renderização na vista 3D oficial/WebGL **continuam pendentes**. Teste visual, typecheck e build ainda não executados. Sem merge/homologação/publicação.
