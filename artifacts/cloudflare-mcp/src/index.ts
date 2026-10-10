@@ -163,7 +163,13 @@ async function deleteSaasCustomHostname(hostnameId: string) {
 
 
 async function vendorApi<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const base = (process.env["VENDORAI_API_BASE"] || "https://vendorai-platform-replit-production.up.railway.app").replace(/\/$/, "");
+  // Never silently fall back to a retired Railway or production API.
+  const configuredBase = requiredEnv("VENDORAI_API_BASE");
+  const parsedBase = new URL(configuredBase);
+  if (parsedBase.protocol !== "https:" || parsedBase.username || parsedBase.password || parsedBase.search || parsedBase.hash) {
+    throw new Error("VENDORAI_API_BASE must be a secure HTTPS origin");
+  }
+  const base = configuredBase.replace(/\/$/, "");
   const token = requiredEnv("BROWSER_MCP_ACCESS_TOKEN");
   const response = await fetch(`${base}${path}`, {
     ...init,
@@ -174,12 +180,15 @@ async function vendorApi<T>(path: string, init: RequestInit = {}): Promise<T> {
     },
   });
 
-  const payload = await response.json().catch(() => null);
   if (!response.ok) {
-    const detail = payload && typeof payload === "object" ? JSON.stringify(payload) : response.statusText;
-    throw new Error(`VendorAI API ${response.status}: ${detail}`);
+    // API payloads can include headers, tokens or personal data; return stable safe codes.
+    const code = response.status === 401 ? "INVALID_OR_EXPIRED_TOKEN"
+      : response.status === 403 ? "FORBIDDEN"
+      : response.status === 404 ? "RESOURCE_NOT_FOUND"
+      : "UPSTREAM_API_FAILURE";
+    throw new Error(`VendorAI API ${response.status}: ${code}`);
   }
-  return payload as T;
+  return await response.json() as T;
 }
 
 function createCloudflareMcpServer() {

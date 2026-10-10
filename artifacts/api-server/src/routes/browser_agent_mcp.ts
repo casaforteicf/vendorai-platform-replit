@@ -1,3 +1,7 @@
+import { homologUpstreamRequest } from "../lib/homolog-upstream-request.js";
+import { classifyHomologUpstreamStatus } from "../lib/homolog-upstream-status.js";
+import { validateHomologExchange } from "../lib/homolog-token-exchange.js";
+import { decideBrowserAutonomy } from "../lib/browser-autonomy.js";
 import { Router, type IRouter } from "express";
 import { z } from "zod";
 import {
@@ -55,11 +59,12 @@ router.post("/internal/browser-mcp/homolog-bootstrap", async (req, res) => {
 
   let upstreamUser: any;
   try {
-    const verifyResponse = await fetch(verifyUrl, {
-      headers: { authorization: `Bearer ${upstreamToken}` },
-    });
-    if (!verifyResponse.ok) {
-      res.status(401).json({ error: "upstream_token_rejected", status: verifyResponse.status });
+    // Do not forward authentication credentials to a redirected host.
+    // Bound upstream latency so a stalled service does not occupy the route indefinitely.
+    const verifyResponse = await fetch(verifyUrl, homologUpstreamRequest(upstreamToken));
+    const upstreamFailure = classifyHomologUpstreamStatus(verifyResponse.status);
+    if (upstreamFailure) {
+      res.status(upstreamFailure.status).json({ error: upstreamFailure.error });
       return;
     }
     upstreamUser = await verifyResponse.json();
@@ -266,8 +271,15 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
     .limit(1);
   const autonomyEnabled = Boolean(tenantAutonomy?.autonomyEnabledAt);
   const globalVendiAutonomy = vendiAutonomyEnabled();
-  const mode = globalVendiAutonomy ? "autonomo" : (parsed.data.mode ?? (autonomyEnabled ? "autonomo" : "assistido"));
-  const allowWrite = globalVendiAutonomy ? true : (parsed.data.allowWrite ?? autonomyEnabled);
+  // Global autonomy flag is a kill switch: callers cannot override it by
+  // sending mode=autonomo or allowWrite=true, even if tenant opted in earlier.
+  // Tenant opt-in is also required when the global flag is enabled.
+  const { mode, allowWrite } = decideBrowserAutonomy({
+    globalEnabled: globalVendiAutonomy,
+    tenantEnabled: autonomyEnabled,
+    mode: parsed.data.mode,
+    allowWrite: parsed.data.allowWrite,
+  });
 
   let connection: BrowserMcpConnection | undefined;
   if (parsed.data.connectionId) {
@@ -477,16 +489,11 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
       });
 
       if (!exchangeResponse.ok) {
-        const detail = await exchangeResponse.text().catch(() => "");
-        throw new Error(`VENDI_HOMOLOG_AUTH_EXCHANGE_FAILED:${exchangeResponse.status}:${detail.slice(0, 200)}`);
+        // Never log upstream response bodies: they can contain credentials or private data.
+        throw new Error(`VENDI_HOMOLOG_AUTH_EXCHANGE_FAILED:${exchangeResponse.status}`);
       }
 
-      const exchanged = await exchangeResponse.json() as {
-        token?: string;
-        userCache?: Record<string, unknown>;
-      };
-      if (!exchanged.token) throw new Error("VENDI_HOMOLOG_AUTH_EXCHANGE_INVALID_RESPONSE");
-
+      const exchanged = validateHomologExchange(await exchangeResponse.json(), tenantId);
       firstPartyAuthToken = exchanged.token;
       firstPartyAuthUserCache = exchanged.userCache;
     }
