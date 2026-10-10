@@ -23,10 +23,10 @@ class GateTests(unittest.TestCase):
  def test_no_root(self):
   with patch.object(mod.os,"geteuid",return_value=0):
    with self.assertRaisesRegex(ValueError,"MUST_RUN_UNPRIVILEGED"):
-    mod.run(3428,"feat/crm","a"*40,"crm")
+    mod.run(3428,"feat/crm","a"*40,"crm","LOT-02")
  def test_untrusted_result_name(self):
   with self.assertRaisesRegex(ValueError,"INVALID_RUN"):
-   mod.status("../../etc/passwd")
+   mod.status("../../etc/passwd","LOT-02")
  def test_no_shell_execution(self):
   s=p.read_text()
   self.assertIn('subprocess.Popen(["bash", str(EXE), *args]',s)
@@ -42,13 +42,24 @@ class GateTests(unittest.TestCase):
   self.assertIn('os.killpg(proc.pid, signal.SIGTERM)',s)
   self.assertIn('os.killpg(proc.pid, signal.SIGKILL)',s)
   self.assertIn('cleanup_test_containers(EVIDENCE / run_name)',s)
+  self.assertIn('time.monotonic() - started >= 1800',s)
  def test_disk_quota_and_no_production_cleanup(self):
   s=p.read_text()
   self.assertIn('MIN_FREE = 8 * 1024**3',s)
   self.assertIn('MAX_EVIDENCE_BYTES = 3 * 1024**3',s)
   self.assertIn('MAX_TOTAL_BYTES = 6 * 1024**3',s)
   self.assertIn('evidence_bytes(EVIDENCE)',s)
+  self.assertIn('elif evidence_bytes(EVIDENCE) >= MAX_TOTAL_BYTES:',s)
   self.assertNotIn('docker system prune',s)
   self.assertIn('re.fullmatch(r"[0-9a-f]{64}", cid)',s)
+
+ def test_result_bound_to_lot(self):
+  s=p.read_text()
+  self.assertIn('authorized-lot.txt',s)
+  self.assertIn('RUN_NOT_AUTHORIZED',s)
+  self.assertIn('def status(run, lot):',s)
+ def test_invalid_lot(self):
+  with self.assertRaisesRegex(ValueError,"INVALID_LOT"):
+   mod.run(3428,"feat/crm","a"*40,"crm","LOT-99")
 
 if __name__=="__main__": unittest.main()
