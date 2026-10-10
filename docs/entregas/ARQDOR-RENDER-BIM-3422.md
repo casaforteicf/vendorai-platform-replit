@@ -680,3 +680,9 @@ Commits desta execução: `d0784a7` (contratos geométricos/documentos/render) e
 - **Correção:** commit `1553edf` verifica a existência do construtor WebGLRenderer no `onload` e apresenta erro explícito se ausente. No evento `onerror`, remove a tag do script que falhou; o tratamento existente da Promise reseta `engine` e permite nova tentativa em montagem posterior.
 - **Validação:** revisão de código via conector; testes automatizados React/Vitest, build TypeScript e navegador **não executados** nesta etapa.
 - **Estado:** PR #3422 Draft, sem merge ou deploy, Contabo e produção intactas.
+
+
+## 3422-A — limpeza do script Three.js em carregamento incompleto (10/10/2026)
+- **Defeito:** a verificação de `WebGLRenderer` adicionada anteriormente lançava erro se o script carregasse sem instalar o motor, mas só removia a tag `script` no `onerror` de rede. Um carregamento HTTP bem-sucedido com global inválido deixava a tag obsoleta no documento.
+- **Correção:** commit `b358eff` remove `script` também no ramo `onload` incompleto, preservando a mensagem `Three.js carregado sem WebGLRenderer` e o reset do cache `engine` para permitir nova tentativa.
+- **Validação:** inspeção de código via GitHub. Não foi executado teste de navegador/Vitest ou build integral. Governança: PR Draft, sem merge, deploy ou alteração na Contabo/produção.
