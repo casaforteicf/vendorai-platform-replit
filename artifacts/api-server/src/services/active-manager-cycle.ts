@@ -211,7 +211,7 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               [tenantId, domain, periodKey],
             );
             await client.query('RELEASE SAVEPOINT manager_domain');
-            cases += inserted.rowCount ?? 0;
+            // Manual closure remains authoritative; do not count it as an active finding.
             continue;
           }
           // Deliver a tenant-scoped, in-app Jarvis alert to one active admin.
