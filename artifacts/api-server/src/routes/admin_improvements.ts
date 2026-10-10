@@ -183,6 +183,10 @@ router.get("/admin/improvements/agent-managers/status", async (_req, res) => {
     // A sampled list of historical runs is insufficient proof that all
     // active tenants and all three enabled domains are covered.
     const coverage = await pool.query(`
+      WITH pages AS (
+        SELECT greatest(1, ceil(count(*)::numeric / 500))::int AS page_count
+        FROM tenants WHERE status='active'
+      )
       SELECT
         (SELECT count(*)::int FROM tenants WHERE status='active') AS "activeTenants",
         (SELECT count(*)::int FROM (
@@ -193,7 +197,7 @@ router.get("/admin/improvements/agent-managers/status", async (_req, res) => {
             FROM agent_manager_runs GROUP BY tenant_id,domain
           ) runs ON runs.tenant_id=t.id AND runs.domain=d.domain
           WHERE t.status='active' AND
-            (runs.last_run IS NULL OR runs.last_run < now() - make_interval(mins => d.minutes * 2))
+            (runs.last_run IS NULL OR runs.last_run < now() - make_interval(mins => d.minutes * (SELECT page_count + 1 FROM pages)))
         ) missed) AS "missingOrOverdue"
     `);
     const activeTenants = Number(coverage.rows[0]?.activeTenants ?? 0);
