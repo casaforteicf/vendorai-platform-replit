@@ -403,3 +403,8 @@ Adicionado `ConceptArchitecturalPreview.tsx`, componente React isolado com alter
 ### Painel integrado à seção Construir — 10/10/2026
 
 `ConceptArchitecturalElementsPanel.tsx` oferece criação, seleção, edição de posição e dimensões e exclusão de lajes, escadas retas e coberturas, apresentando prévia 2D/volumétrica e área líquida de lajes. `ConceptPlanner.tsx` passa a montar o painel lazy na aba Construir usando snapshot arquitetônico React local. Commits 80d8994 e 325d605. **Limitações:** não persiste no projeto/backend, elementos novos não são desenhados nas vistas oficiais ConceptPlan2D/ConceptModel3D/WebGL, escadas/coberturas têm propriedades avançadas ainda fixadas em valores iniciais, interação gráfica direta com mouse/touch ausente. Sem testes executados, build ou inspeção integrada. PR draft, sem merge, homologação ou publicação.
+
+
+### Persistência do snapshot paramétrico — 10/10/2026
+
+`ConceptPlanner.tsx` agora acrescenta `architecturalModel` em `configuration` no payload do salvamento existente, recupera o campo ao reabrir um pré-projeto e inclui o snapshot nas dependências/assinatura do autosave. Quando o campo estiver ausente (rascunhos legados), inicializa com modelo vazio v1. Commit 1b528ead. **Persistência ponta a ponta ainda não confirmada por teste com backend: eventual filtragem de schema/API precisa ser verificada.** Vistas oficiais 2D/3D ainda não consomem os novos elementos. Sem merge, homologação ou publicação.
