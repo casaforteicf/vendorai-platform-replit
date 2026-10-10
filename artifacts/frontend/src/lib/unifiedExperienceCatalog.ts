@@ -10,7 +10,7 @@ export type ExperienceKey =
 export type ContextKind = "personal" | "organization" | "project";
 export type MembershipRole =
   | "customer" | "co_owner" | "architect" | "engineer" | "designer"
-  | "broker" | "supplier" | "sales" | "manager" | "field" | "tenant_admin";
+  | "broker" | "supplier" | "sales" | "manager" | "field" | "tenant_admin" | "member";
 
 export interface ExperienceContext {
   id: string;
