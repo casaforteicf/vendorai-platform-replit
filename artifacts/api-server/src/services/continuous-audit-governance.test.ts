@@ -40,6 +40,19 @@ describe("UX and Security manager governance", () => {
     expect(body).toContain("if (!base) return findings;");
   });
 
+  it("does not follow login redirects or leak query parameters in UX probe failures", () => {
+    const start = auditSource.indexOf("async function auditFrontendRoutes()");
+    const end = auditSource.indexOf("async function runAudit(", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const body = auditSource.slice(start, end);
+    expect(body).toContain('redirect: "manual"');
+    expect(body).toContain("finally {");
+    expect(body).toContain("clearTimeout(timeout)");
+    expect(body).not.toContain('redirect: "follow"');
+    expect(body).not.toContain("${url}: ${error");
+  });
+
   it("UX audit creates reviewable findings instead of claiming frontend browser inspection", () => {
     expect(auditSource).toContain("async function auditFrontendRoutes()");
     expect(auditSource).toContain('module: "UI / UX"');
