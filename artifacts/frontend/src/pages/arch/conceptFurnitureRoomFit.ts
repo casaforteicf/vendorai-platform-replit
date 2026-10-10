@@ -21,7 +21,7 @@ function clip(points: Point[], axis: "x" | "y", boundary: number, greater: boole
 // Closed-space cells are a disjoint partition produced by the wall network.
 export function furnitureFitsRoom(object: ObjectFootprint, cells: Cell[]) {
   if (![object.x, object.y, object.width, object.depth, object.rotation].every(Number.isFinite) || object.width <= 0 || object.depth <= 0) return false;
-  const angle = object.rotation * Math.PI / 180, cx = object.x + object.width / 2, cy = object.y + object.depth / 2;
+  const angle = (object.rotation % 360) * Math.PI / 180, cx = object.x + object.width / 2, cy = object.y + object.depth / 2;
   const polygon = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => {
     const x = sx * object.width / 2, y = sy * object.depth / 2;
     return { x: cx + x * Math.cos(angle) - y * Math.sin(angle), y: cy + x * Math.sin(angle) + y * Math.cos(angle) };
