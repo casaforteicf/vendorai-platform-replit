@@ -11,6 +11,13 @@ describe("layout furniture collisions", () => {
     expect(furnitureOverlaps(diagonal, { ...diagonal, y: 0.5 })).toBe(false);
     expect(furnitureOverlaps(diagonal, { ...diagonal, y: 0.1 })).toBe(true);
   });
+  it("normalizes large finite rotations before collision detection", () => {
+    const other = { ...item, x: 1 };
+    expect(furnitureOverlaps({ ...item, rotation: 360000 }, other)).toBe(true);
+    expect(furnitureOverlaps({ ...item, rotation: 1e308 }, other)).toBe(
+      furnitureOverlaps({ ...item, rotation: 1e308 % 360 }, other),
+    );
+  });
   it("separates floors and permits decorative layering", () => {
     expect(furnitureOverlaps(item, { ...item, floor: 1 })).toBe(false);
     for (const kind of ["rug", "lamp", "tv", "plant", "outlet"]) expect(furnitureOverlaps(item, { ...item, kind })).toBe(false);
