@@ -26,6 +26,10 @@ describe("LOTE 05 — cronograma físico-financeiro", () => {
     expect(() => buildFinancialSchedule(100, 101, [{ id: "a", weight: 1 }])).toThrow();
     expect(() => buildFinancialSchedule(100, 0, [{ id: "a", weight: 1 }, { id: "a", weight: 2 }])).toThrow();
   });
+  it("rejeita soma de pesos insegura sem perder centavos", () => {
+    expect(() => allocateExactly(100, [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER])).toThrow();
+    expect(allocateExactly(3, [0.25, 0.75])).toEqual([1, 2]);
+  });
   it("distribui restos com desempate estável", () => {
     expect(allocateExactly(2, [1, 1, 1])).toEqual([1, 1, 0]);
     expect(allocateExactly(0, [1, 2])).toEqual([0, 0]);
