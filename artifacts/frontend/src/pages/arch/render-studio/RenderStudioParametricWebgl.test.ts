@@ -28,6 +28,18 @@ describe("Arqdor wall mesh geometry for diagonal walls", () => {
     expect(mesh.positions.every(Number.isFinite)).toBe(true);
   });
 
+  it("releases geometry if normal computation fails", () => {
+    let disposed = 0;
+    class FailingGeometry extends MockBufferGeometry {
+      computeVertexNormals() { throw new Error("GPU geometry failure"); }
+      dispose() { disposed++; }
+    }
+    const failingThree = { ...THREE, BufferGeometry: FailingGeometry };
+    expect(() => buildWallGeometry(failingThree, wall([0, 0], [3, 4], [window])))
+      .toThrow("GPU geometry failure");
+    expect(disposed).toBe(1);
+  });
+
   it("rejects invalid coordinates before generating a mesh", () => {
     expect(() => buildWallGeometry(THREE, wall([Number.NaN, 0], [3, 4])))
       .toThrow(/Coordenadas/);
