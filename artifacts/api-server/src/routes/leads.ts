@@ -1197,6 +1197,13 @@ router.get("/leads/:id", async (req, res) => {
     return;
   }
 
+  if (lead.excluidoEm && req.user?.platformRole !== "super_admin" &&
+      !(lead.tenantId === req.user?.tenantId &&
+        (req.user?.platformRole === "tenant_admin" || req.user?.userFunction === "administrador"))) {
+    res.status(403).json({ error: "Lead excluído: acesso administrativo obrigatório." });
+    return;
+  }
+
   const isOwnTenant = req.user?.platformRole === "super_admin" || lead.tenantId === req.user?.tenantId;
   const representativeAccess = isOwnTenant
     ? null
