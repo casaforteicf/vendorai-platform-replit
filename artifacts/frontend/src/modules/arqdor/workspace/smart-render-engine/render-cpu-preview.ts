@@ -35,7 +35,7 @@ export function renderCpuPreview(o:CpuPreviewOptions):CpuPreviewResult {
   const bvh=createRenderBvh(o.geometry);
   const rgba=new Uint8ClampedArray(width*height*4);
   const aspect=width/height,spread=Math.tan(o.camera.verticalFovDegrees*Math.PI/360);
-  const sky=o.skyColor||[0.72,0.82,0.95],ambient=clamp(o.ambient??0.16);
+  const sky:Vec3=o.skyColor||[0.72,0.82,0.95],ambient=clamp(o.ambient??0.16);
   for(let y=0;y<height;y++)for(let x=0;x<width;x++){
     const px=(2*(x+0.5)/width-1)*aspect*spread,py=(1-2*(y+0.5)/height)*spread;
     const direction=unit(add(forward,add(scale(right,px),scale(up,py))));
@@ -48,7 +48,8 @@ export function renderCpuPreview(o:CpuPreviewOptions):CpuPreviewResult {
       let normal:Vec3=[0,0,1];
       if(ns.length>=offset+9){
         const b=hit.barycentric;
-        normal=unit([0,1,2].map(k=>ns[offset+k]*b[0]+ns[offset+3+k]*b[1]+ns[offset+6+k]*b[2]) as unknown as Vec3);
+        const interpolated=[0,1,2].map(k=>ns[offset+k]*b[0]+ns[offset+3+k]*b[1]+ns[offset+6+k]*b[2]) as unknown as Vec3;
+        if(Math.hypot(...interpolated)>1e-10)normal=unit(interpolated);
       }
       if(dot(normal,direction)>0)normal=scale(normal,-1);
       const shadowOrigin=add(hit.point,scale(normal,1e-4));
