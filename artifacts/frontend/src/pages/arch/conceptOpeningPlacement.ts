@@ -13,7 +13,7 @@ export function openingsOverlap(a: Opening, b: Opening, length: number) {
 export function openingPlacementError(candidate: Opening, existing: Opening[], length: number): string | null {
   const height = candidate.height ?? (candidate.type === "door" ? 2.1 : 1.2);
   const sill = bottom(candidate);
-  if (!Number.isFinite(height) || height <= 0 || !Number.isFinite(sill) || sill < 0) return "As medidas da abertura são inválidas.";
+  if (!Number.isFinite(height) || height <= 0 || !Number.isFinite(sill) || sill < 0 || !Number.isFinite(sill + height)) return "As medidas da abertura são inválidas.";
   if (!openingFitsWall(candidate, length)) return "A abertura não cabe nessa posição da parede.";
   if (existing.some(other => openingsOverlap(candidate, other, length))) return "A abertura sobrepõe outra abertura.";
   return null;
