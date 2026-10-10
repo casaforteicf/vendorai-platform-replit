@@ -180,7 +180,6 @@ async function vendorApi<T>(path: string, init: RequestInit = {}): Promise<T> {
     },
   });
 
-  const payload = await response.json().catch(() => null);
   if (!response.ok) {
     // API payloads can include headers, tokens or personal data; return stable safe codes.
     const code = response.status === 401 ? "INVALID_OR_EXPIRED_TOKEN"
@@ -189,7 +188,7 @@ async function vendorApi<T>(path: string, init: RequestInit = {}): Promise<T> {
       : "UPSTREAM_API_FAILURE";
     throw new Error(`VendorAI API ${response.status}: ${code}`);
   }
-  return payload as T;
+  return await response.json() as T;
 }
 
 function createCloudflareMcpServer() {
