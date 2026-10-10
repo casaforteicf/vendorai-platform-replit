@@ -169,7 +169,7 @@ async function vendorApi<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (parsedBase.protocol !== "https:" || parsedBase.username || parsedBase.password || parsedBase.search || parsedBase.hash) {
     throw new Error("VENDORAI_API_BASE must be a secure HTTPS origin");
   }
-  const base = parsedBase.origin;
+  const base = configuredBase.replace(/\/$/, "");
   const token = requiredEnv("BROWSER_MCP_ACCESS_TOKEN");
   const response = await fetch(`${base}${path}`, {
     ...init,
