@@ -1286,7 +1286,7 @@ router.patch("/leads/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo, representativeFunctionId: leadsTable.representativeFunctionId, excluidoEm: leadsTable.excluidoEm })
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo, representativeFunctionId: leadsTable.representativeFunctionId, metadata: leadsTable.metadata, excluidoEm: leadsTable.excluidoEm })
     .from(leadsTable)
     .where(eq(leadsTable.id, req.params.id));
 
@@ -1375,11 +1375,35 @@ router.patch("/leads/:id", async (req, res) => {
       ? { representativeFunctionId: null }
       : {};
 
+  const responsibilityChanged =
+    nextOwner !== existing.assignedTo || nextRepresentative !== existing.representativeFunctionId;
+  const priorMetadata = existing.metadata && typeof existing.metadata === "object" &&
+    !Array.isArray(existing.metadata) ? existing.metadata as Record<string, unknown> : {};
+  const history = Array.isArray(priorMetadata.responsibilityHistory)
+    ? priorMetadata.responsibilityHistory : [];
+  const historyUpdate = responsibilityChanged ? {
+    metadata: {
+      ...priorMetadata,
+      responsibilityHistory: [...history, {
+        previousUserId: existing.assignedTo,
+        previousRepresentativeFunctionId: existing.representativeFunctionId,
+        nextUserId: nextOwner,
+        nextRepresentativeFunctionId: nextRepresentative,
+        actorId: req.user?.sub ?? null,
+        changedAt: new Date().toISOString(),
+      }],
+    },
+  } : {};
   const [lead] = await db
     .update(leadsTable)
-    .set({ ...parsed.data, ...ownershipUpdate, updatedAt: new Date() } as any)
-    .where(eq(leadsTable.id, existing.id))
+    .set({ ...parsed.data, ...ownershipUpdate, ...historyUpdate, updatedAt: new Date() } as any)
+    .where(and(eq(leadsTable.id, existing.id), eq(leadsTable.tenantId, existing.tenantId),
+      isNull(leadsTable.excluidoEm)))
     .returning();
+  if (!lead) {
+    res.status(409).json({ error: "Lead alterado ou excluído durante a operação." });
+    return;
+  }
 
   if ("discoveryData" in parsed.data) {
     await syncProtectedObjectsForLead(existing.tenantId, existing.id);
