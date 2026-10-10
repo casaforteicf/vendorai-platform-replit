@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 /**
  * AGENT-01: deterministic policy shared by the recurring manager workers.
  * Pure module: no messages, DB writes, or deployments are performed here.
@@ -62,6 +63,21 @@ export function classifyManagerDemand(kind: DemandKind): DemandDecision {
     requiresImmediateAttention: kind === "security_incident",
     reason: "Platform changes, security findings and uncertain cases require Superadmin review.",
   };
+}
+
+/** Scope support-review deduplication to a tenant, or explicitly to global. */
+export function managerSupportSourceRef(
+  module: ManagerDomain,
+  kind: DemandKind,
+  fingerprint: string,
+  tenantId?: string,
+): string {
+  if (!fingerprint.trim()) throw new Error("FINGERPRINT_REQUIRED");
+  const scope = tenantId === undefined ? "global" : tenantId.trim();
+  if (!scope) throw new Error("TENANT_REQUIRED");
+  return "manager:" + createHash("sha256")
+    .update(JSON.stringify([scope, module, kind, fingerprint]))
+    .digest("hex").slice(0, 40);
 }
 
 /** Pure deterministic bucketing for idempotency and duplicate suppression. */
