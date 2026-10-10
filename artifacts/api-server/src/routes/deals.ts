@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { and, desc, eq, inArray, isNotNull, isNull, notExists, sql } from "drizzle-orm";
 import multer from "multer";
 import {
@@ -704,6 +704,7 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
 // Keep the commercial proposal immutable. Each batch is a work card with an
 // explicit snapshot of selected items and remaining quantities.
 const partialExecutionSchema = z.object({
+  requestId: z.string().uuid(),
   propostaId: z.string().min(1),
   etapa: z.string().trim().min(1).max(120),
   justificativa: z.string().trim().min(5).max(2000),
@@ -789,6 +790,11 @@ router.post("/deals/:id/execution-batches", async (req, res) => {
       eq(pipelineStagesTable.pipeline, "execucao"),
       eq(pipelineStagesTable.key, parsed.data.etapa))).limit(1);
   if (!stage) return res.status(422).json({ error: "Etapa de execução inválida para o tenant." });
+  const fingerprint = createHash("sha256").update(JSON.stringify({
+    propostaId: parsed.data.propostaId, etapa: parsed.data.etapa,
+    justificativa: parsed.data.justificativa,
+    itens: [...parsed.data.itens].sort((a, b) => a.indice - b.indice),
+  })).digest("hex");
   // A transaction-scoped advisory lock serializes requests for the same
   // proposal and prevents over-allocation across two simultaneous sessions.
   const outcome = await db.transaction(async tx => {
@@ -796,6 +802,29 @@ router.post("/deals/:id/execution-batches", async (req, res) => {
     const previous = await tx.select({ metadata: workCardsTable.metadata }).from(workCardsTable)
       .where(and(eq(workCardsTable.tenantId, deal.tenantId),
         eq(workCardsTable.dealId, deal.id), eq(workCardsTable.pipeline, "execucao")));
+    const replay = previous.find(row => {
+      const meta = row.metadata as Record<string, unknown> | null;
+      return meta?.propostaId === proposal.id && meta?.requestId === parsed.data.requestId;
+    });
+    if (replay) {
+      const meta = replay.metadata as Record<string, unknown> | null;
+      if (meta?.fingerprint !== fingerprint || meta?.criadoPor !== (req.user?.sub ?? null)) {
+        throw Object.assign(new Error("Chave de envio já utilizada com dados diferentes."), { status: 409 });
+      }
+      const [card] = await tx.select().from(workCardsTable).where(and(
+        eq(workCardsTable.tenantId, deal.tenantId),
+        eq(workCardsTable.dealId, deal.id),
+        eq(workCardsTable.id, (replay as {id?: string}).id ?? ""),
+      )).limit(1);
+      // A metadata-only projection lacks the card id; resolve by requestId below.
+      const cards = card ? [card] : await tx.select().from(workCardsTable).where(and(
+        eq(workCardsTable.tenantId, deal.tenantId), eq(workCardsTable.dealId, deal.id),
+        eq(workCardsTable.pipeline, "execucao"),
+      ));
+      const matched = cards.find(c => (c.metadata as Record<string, unknown> | null)?.requestId === parsed.data.requestId);
+      if (!matched) throw new Error("Lote registrado não encontrado na leitura.");
+      return { card: matched, itens: meta?.itensLote ?? [], replay: true };
+    }
     const used = new Map<number, number>();
     for (const row of previous) {
       const m = row.metadata as Record<string, unknown> | null;
@@ -821,16 +850,16 @@ router.post("/deals/:id/execution-batches", async (req, res) => {
       titulo: `Execução parcial • ${deal.titulo}`, descricao: parsed.data.justificativa,
       prioridade: "normal", responsavelId: deal.assignedTo,
       metadata: { ativoNaPipeline: true, propostaId: proposal.id,
-        loteParcial: true, itensLote: items, criadoPor: req.user?.sub ?? null,
+        loteParcial: true, requestId: parsed.data.requestId, fingerprint, itensLote: items, criadoPor: req.user?.sub ?? null,
         criadoEm: new Date().toISOString() },
     }).returning();
-    return { card, itens: items };
+    return { card, itens: items, replay: false };
   }).catch((err: unknown) => {
     if (err && typeof err === "object" && "status" in err && err.status === 409) return null;
     throw err;
   });
   if (!outcome) return res.status(409).json({ error: "Quantidade excede o saldo disponível para execução." });
-  res.status(201).json(outcome);
+  res.status(outcome.replay ? 200 : 201).json(outcome);
 });
 
 router.get("/tenants/:tenantId/deals", async (req, res) => {
