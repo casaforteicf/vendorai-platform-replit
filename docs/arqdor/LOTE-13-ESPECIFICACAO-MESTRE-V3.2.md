@@ -383,3 +383,36 @@ Onda futura: CNC/CAM e pos-processadores, somente apos homologacao dos dados ind
 
 ## Estado de implementacao ao registrar este documento
 Ja existem no PR #3450 seis arquivos do nucleo inicial de chapas, identificacao, furacao declarada, etiquetas estruturadas e caderno tecnico preliminar, incluindo testes adicionados mas nao executados. Este documento e planejamento adicional, nao entrega do editor nem dos 77 sublotes.
+
+
+## ADENDO V3.3 — IMPORTACAO UNIVERSAL — SUBLOTES 13.78 A 13.84
+Escopo proposto: 84 sublotes. O adendo amplia a especificacao, nao certifica conversores implementados.
+
+### 13.78 — Central de Importacao e Diagnostico
+Receber arquivos com verificacao de tamanho, extensao, MIME, assinatura de bytes, antivirus, controle de tenant e armazenamento privado; diagnosticar tipo, unidade, eixo, escala, camadas e confianca. Nunca marcar como fabricavel sem engenharia validada.
+
+### 13.79 — SketchUp, DWG e DXF
+SKP por SDK/plugin/export autorizado; DWG por conversor autorizado; DXF por parser verificado. Preservar componentes, layers e cotas disponiveis e vincular IDs de origem.
+
+### 13.80 — IFC, Revit e familias BIM
+IFC por adaptador BIM com propriedades e hierarquias; RVT/RFA por integracao licita, plugin ou export IFC. Nunca prometer leitura nativa sem validar licencia, versao e SDK.
+
+### 13.81 — Promob
+Descobrir formatos reais por versao e possiveis APIs/exportacoes oficiais. Quando nao houver compatibilidade nativa, guiar para intercambio suportado; registrar perda de semantica e bloquear engenharia automatica insegura.
+
+### 13.82 — Formatos 3D e CAD industrial
+GLB, glTF, OBJ, FBX, STL, 3DM, STEP, IGES; separar malha visual, B-Rep, curvas, unidade e propriedades; armazenar geometria bruta e transformacoes, sem presumir parametria.
+
+### 13.83 — Reconstrucao parametrica
+Identificar ambientes, paredes, objetos, conjuntos e possiveis pecas; mapear material original e componente; criar entidades somente com regras geometricas verificaveis e grau de confianca; revisao humana em ambiguidades.
+
+### 13.84 — Detalhamento e Biblioteca
+Gerar modelos reutilizaveis na biblioteca autorizada, preservar direitos e origem; vincular estrutura de pecas quando comprovada; detalhamento e corte apenas apos revisao tecnica e validacao de espessura, cotas, ferragens e materiais.
+
+### Contrato de implementacao e criterios de aceite
+- Registro de formatos centralizado no modulo shared/universal-import-contract.ts.
+- O diagnostico inicial reconhece extensao mas NAO extrai geometria, NAO valida MIME/bytes, NAO cria modelo e NAO declara producao pronta.
+- Pipeline futuro: preflight seguro -> adaptador sandboxed -> normalizacao/unidades -> interpretacao semantica -> reconstrução -> validacao -> versao -> biblioteca.
+- Guardar sourceFileId, sourceHash, adapterVersion, coordinateSystem, precision, confidence, warnings, licensing e allowedUsage.
+- Testes cobrem extensoes, aliases, nomes desconhecidos e sinalizacao obrigatoria de conversores proprietarios; testes de parsing ficam para adaptadores reais.
+- Importacoes privadas nao se tornam publicas por padrao.
