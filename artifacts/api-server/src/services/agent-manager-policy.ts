@@ -73,10 +73,12 @@ export function managerSupportSourceRef(
   tenantId?: string,
 ): string {
   if (!fingerprint.trim()) throw new Error("FINGERPRINT_REQUIRED");
-  const scope = tenantId === undefined ? "global" : tenantId.trim();
-  if (!scope) throw new Error("TENANT_REQUIRED");
+  const scope = tenantId === undefined ? null : tenantId.trim();
+  if (scope === "") throw new Error("TENANT_REQUIRED");
+  // Namespace global and tenant scopes separately, even if a tenant slug is "global".
+  const scopedIdentity = scope === null ? ["global"] : ["tenant", scope];
   return "manager:" + createHash("sha256")
-    .update(JSON.stringify([scope, module, kind, fingerprint]))
+    .update(JSON.stringify([scopedIdentity, module, kind, fingerprint]))
     .digest("hex").slice(0, 40);
 }
 
