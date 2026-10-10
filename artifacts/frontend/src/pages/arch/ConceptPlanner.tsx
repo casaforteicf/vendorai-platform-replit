@@ -572,6 +572,7 @@ type ConceptDraftResponse = {
     wallFirstFloors?: number[];
     showDimensions?: boolean;
     customWalls?: Array<{ id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number }>;
+    architecturalModel?: ArchitecturalModel;
     customOpenings?: CustomOpening[];
     spaceProfiles?: SpaceProfile[];
     objects?: ConceptPlanObject[];
@@ -1648,6 +1649,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         setEditorView("plan");
         const loadedFloors = Math.round(finiteNumber(draft.configuration?.floors, 1, 1, 3));
         const loadedWalls = normalizeLoadedWalls(draft.configuration?.customWalls, loadedFloors);
+        const candidateArchitecture = draft.configuration?.architecturalModel;
+        setArchitecturalModel(candidateArchitecture?.version === 1 && Array.isArray(candidateArchitecture.slabs) && Array.isArray(candidateArchitecture.stairs) && Array.isArray(candidateArchitecture.roofs) && Array.isArray(candidateArchitecture.openings) ? candidateArchitecture : emptyArchitecturalModel());
         const loadedOpenings = normalizeLoadedOpenings(draft.configuration?.customOpenings, loadedWalls);
         const loadedRooms = normalizeLoadedRooms(draft.rooms, loadedFloors);
 
@@ -1789,6 +1792,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         wallFirstFloors: nextWallFirstFloors,
         showDimensions,
         customWalls: nextCustomWalls,
+        architecturalModel,
         customOpenings: nextCustomOpenings,
         spaceProfiles: nextSpaceProfiles,
         objects: nextObjects,
@@ -1865,12 +1869,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   // Salvamento automático: antes o trabalho só era gravado ao tocar no ✓ (sem nenhum
   // retorno visual) ou em algumas ações pontuais — fechar o app no celular perdia a edição.
   const autosaveKey = useMemo(() => JSON.stringify([
-    rooms, customWalls, customOpenings, objects, openingOverrides, wallMaterials,
+    rooms, customWalls, customOpenings, objects, openingOverrides, wallMaterials, architecturalModel,
     lotWidth, lotDepth, floors, desiredArea, typology, layoutPreferences, sitePlacement, projectBrief,
     projectScope, startWithTerrain, terrainDefined, startSourceChosen, intakeStage,
     facadePreferences, spaceProfiles, customerProfile, showDimensions, wallFirstFloors,
   ]), [
-    rooms, customWalls, customOpenings, objects, openingOverrides, wallMaterials,
+    rooms, customWalls, customOpenings, objects, openingOverrides, wallMaterials, architecturalModel,
     lotWidth, lotDepth, floors, desiredArea, typology, layoutPreferences, sitePlacement, projectBrief,
     projectScope, startWithTerrain, terrainDefined, startSourceChosen, intakeStage,
     facadePreferences, spaceProfiles, customerProfile, showDimensions, wallFirstFloors,
