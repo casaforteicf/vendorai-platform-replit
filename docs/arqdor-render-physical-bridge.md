@@ -26,3 +26,27 @@ const [captureToken, requestCapture] = useState(0);
 - Checar montagem com os vários pavimentos, seleção e alteração de materiais, nenhuma captura espontânea.
 - Realizar typecheck, build, regressão visual e testes em homologação antes de habilitar o recurso no produto.
 - Não publicar, não fazer merge a partir deste lote sem o processo normal de homologação.
+
+## RENDER-01 v0.3 — transporte de triângulos no visualizador existente
+- `render-geometry-export.ts` extrai posições (XYZ em mundo), normais transformadas, UVs e ID do material.
+- `ConceptWebGLScene` expõe `renderGeometryExportToken`, `onRenderGeometryExport` e `onRenderGeometryExportError`.
+- Captura somente sob demanda, com limite conservador de 250.000 triângulos; saída com `truncated=true` **não deve ser renderizada**.
+- Malhas instanciadas, deformadas ou com múltiplos materiais são rejeitadas, sem disfarçar perda de fidelidade.
+- Não inclui texturas, luzes, cáusticas, BVH, path tracing nem dados persistidos em backend.
+- Requer testes de geometria (transformação, normais, UV, grupos, instancing, limites), typecheck e build antes de homologação.
+
+```tsx
+const [exportToken, requestExport] = useState(0);
+<ConceptWebGLScene
+  {...sceneProps}
+  renderGeometryExportToken={exportToken}
+  onRenderGeometryExport={(geometry) => {
+    if (geometry.truncated || geometry.warnings.length) {
+      // Avaliar avisos e impedir render incompleto antes de enviar ao adaptador físico.
+      return;
+    }
+    // Envio futuro ao adaptador de renderização física.
+  }}
+/>;
+<button onClick={() => requestExport(v => v + 1)}>Preparar geometria</button>
+```
