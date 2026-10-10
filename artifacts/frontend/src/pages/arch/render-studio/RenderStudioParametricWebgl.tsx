@@ -43,7 +43,10 @@ export function loadThree(): Promise<void> {
     } catch {
       fail("Não foi possível iniciar o carregamento de Three.js");
     }
-  }).catch(error => { engine = null; throw error; });
+  }).catch(error => {
+    engine = null;
+    throw error;
+  });
   return engine;
 }
 
