@@ -10,6 +10,13 @@ import {
 } from "./agent-manager-policy.js";
 
 describe("agent manager policy", () => {
+  it("rejects oversized opportunity payloads before they reach persistence", () => {
+    const base = { tenantId: "tenant-1", domain: "crm" as const, kind: "tenant_operation" as const, fingerprint: "ok", evidence: "observação" };
+    expect(() => validateManagerOpportunity({ ...base, fingerprint: "x".repeat(513) })).toThrow("FINGERPRINT_TOO_LONG");
+    expect(() => validateManagerOpportunity({ ...base, evidence: "x".repeat(8001) })).toThrow("EVIDENCE_TOO_LONG");
+    expect(() => validateManagerOpportunity(base)).not.toThrow();
+  });
+
   it("tracks 24-hour Omnichannel response backlog separately", () => {
     const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
     expect(source).toContain("active-manager:omnichannel:unread-conversations");
