@@ -324,6 +324,18 @@ export default function AdminImprovements() {
     refetchIntervalInBackground: true,
   });
 
+  const executionControl = useQuery<{ mode: "running" | "paused" | "draining"; reason: string | null }>({
+    queryKey: ["admin", "release-execution-control"],
+    enabled: !!token,
+    queryFn: async () => {
+      const response = await fetch("/api/admin/releases/execution-control", { headers });
+      if (!response.ok) throw new Error("Controle de execução indisponível; aplique a migração antes de ativar.");
+      return response.json();
+    },
+    retry: false,
+    refetchInterval: 15000,
+  });
+
   const metricsQuery = useQuery<ReleaseMetrics>({
     queryKey: ["admin", "releases-metrics"],
     enabled: !!token,
@@ -738,6 +750,17 @@ export default function AdminImprovements() {
         </div>
       </div>
 
+      <div className="rounded-lg border p-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-medium">Execução automática de releases</p>
+          <p className="text-xs text-muted-foreground">Estado: {executionControl.isError ? "indisponível" : executionControl.data?.mode === "running" ? "Em execução" : executionControl.data?.mode === "draining" ? "Pausa segura" : executionControl.data?.mode === "paused" ? "Pausada" : "Consultando..."}. Acompanhamento pós-publicação continua ativo na pausa.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" disabled={!executionControl.data || executionControl.data.mode === "running" || !!busy} onClick={() => void post("/api/admin/releases/execution-control", { mode: "running", reason: "Retomada pelo Superadmin" }, "Fila retomada").then(() => executionControl.refetch()).catch(() => undefined)}>Retomar</Button>
+          <Button variant="outline" disabled={!executionControl.data || executionControl.data.mode !== "running" || !!busy} onClick={() => void post("/api/admin/releases/execution-control", { mode: "draining", reason: "Pausa segura pelo Superadmin" }, "Pausa segura solicitada").then(() => executionControl.refetch()).catch(() => undefined)}>Pausa segura</Button>
+          <Button variant="outline" disabled={!executionControl.data || executionControl.data.mode === "paused" || !!busy} onClick={() => void post("/api/admin/releases/execution-control", { mode: "paused", reason: "Pausa pelo Superadmin" }, "Novos releases pausados").then(() => executionControl.refetch()).catch(() => undefined)}>Pausar</Button>
+        </div>
+      </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         {[
           ["Em andamento", inProgressCount],
