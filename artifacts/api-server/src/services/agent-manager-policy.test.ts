@@ -134,6 +134,7 @@ describe("agent manager policy", () => {
     expect(manuallyClosed).toBeGreaterThan(-1);
     expect(notifications).toBeGreaterThan(manuallyClosed);
     expect(branch).not.toContain("cases += inserted.rowCount");
+    expect(branch).not.toContain("findingsCount++");
     expect(branch).toContain("continue;");
   });
 
