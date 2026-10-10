@@ -174,6 +174,25 @@ export async function runActiveManagerCycle(log: Logger, now = new Date()) {
               "Jarvis: avaliar com o tenant e solicitar aprovação para qualquer operação necessária."],
           );
           cases += inserted.rowCount ?? 0;
+          // Deliver a tenant-scoped, in-app Jarvis alert to one active admin.
+          // Never send WhatsApp/email or perform an external action here.
+          // One notification per issue/title within 24h prevents alert floods.
+          await client.query(
+            `INSERT INTO notifications
+               (id, tenant_id, recipient_user_id, title, message, type, category)
+             SELECT gen_random_uuid(), $1, u.id, $2, $3, 'info', 'active_manager'
+             FROM users u
+             WHERE u.tenant_id=$1 AND u.active=true
+               AND (u.role='admin' OR u.platform_role='tenant_admin')
+               AND NOT EXISTS (
+                 SELECT 1 FROM notifications n
+                 WHERE n.tenant_id=$1 AND n.recipient_user_id=u.id
+                   AND n.category='active_manager' AND n.title=$2
+                   AND n.created_at > now() - interval '24 hours'
+               )
+             ORDER BY u.id LIMIT 1`,
+            [tenantId, observation.title, observation.detail],
+          );
           await client.query(
             "INSERT INTO agent_manager_runs (tenant_id,domain,period_key,outcome,finding_count) VALUES ($1,$2,$3,'completed',1) ON CONFLICT DO NOTHING",
             [tenantId, domain, periodKey],
