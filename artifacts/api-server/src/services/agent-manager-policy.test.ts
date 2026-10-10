@@ -10,6 +10,15 @@ import {
 } from "./agent-manager-policy.js";
 
 describe("agent manager policy", () => {
+  it("records CRM ownership and follow-up signals independently in one cycle", () => {
+    const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
+    expect(source).toContain("active-manager:crm:unassigned-leads");
+    expect(source).toContain("active-manager:crm:old-leads-without-activities");
+    expect(source).toContain("for (const observation of observations)");
+    expect(source).toContain("if (!observation && !secondaryObservation)");
+    expect(source).toContain("domain === \"crm\" && !secondaryObservation");
+  });
+
   it("routes Master scanner incidents to Superadmin after transaction commit", () => {
     const source = readFileSync(new URL("./active-manager-cycle.ts", import.meta.url), "utf8");
     expect(source).toContain('if (domain === "master" && observation)');
