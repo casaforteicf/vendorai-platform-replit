@@ -77,3 +77,10 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - API valida que a parede referenciada pertence ao mesmo item/ambiente, tem extremidades definidas e está verificada; impede ultrapassar comprimento e interseção retangular de aberturas na mesma parede.
 - Não houve alteração automática de geometria no projeto Arqdor ou liberação de fabricação.
 - **Ainda pendente:** testes de API/UI/build, concorrência do JSONB, confirmação de dimensões de altura da parede, geometria de arcos de porta, escopo de permissões por negócio e revisão do fluxo com vários itens. Testes e homologação não executados. Sem PR/merge/produção.
+
+## Lote 08 — rascunho geométrico compatível com Arqdor (11/10/2026)
+- Helper `convertSurveyToArqdor.ts` converte paredes verificadas de coordenadas em milímetros para metros, preservando IDs, piso 0 e espessura. Aberturas com parede, offset, largura, altura e peitoril conferidos são convertidas para `customOpenings`.
+- UI de inventário exibe prévia JSON somente leitura com alertas sobre paredes/aberturas incompletas.
+- O formato é baseado na estrutura de `ArchConceptConfiguration` já existente; não altera nenhum projeto, não aplica geometria no backend, não gera um projeto persistido e não libera produção.
+- **Pendências de segurança técnica:** validar topologia, portas/janelas sobrepostas após conversão, paredes contíguas, espaços fechados, vínculo por revisão e origem das medidas. A indicação `readyForReview` não significa aprovação BIM/fabricação.
+- Gates de frontend/API, testes e homologação permanecem pendentes. Não abrir PR/merge/deploy enquanto falharem ou não forem executados.
