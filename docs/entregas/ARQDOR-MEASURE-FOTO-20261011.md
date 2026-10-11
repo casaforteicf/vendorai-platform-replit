@@ -70,3 +70,10 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - Campos opcionais retrocompatíveis no JSONB existente, sem alteração de tabelas.
 - Não foi implementada criação de projeto, fechamento topológico de ambientes, associação geométrica de portas/janelas, detecção de colisões ou conversão para modelo canônico Arqdor.
 - Os gates obrigatórios de frontend/API, testes de componente, integração, permissões, concorrência e homologação permanecem pendentes. Não criar PR nem publicar sem completar essas validações.
+
+## Lote 07 — portas e janelas vinculadas às paredes (11/10/2026)
+- Adicionados ao modelo JSONB opcional `wallId`, `offsetMm` e `sillHeightMm`.
+- Editor coleta largura e altura, parede verificada do mesmo ambiente, deslocamento desde a extremidade inicial e peitoril para janela.
+- API valida que a parede referenciada pertence ao mesmo item/ambiente, tem extremidades definidas e está verificada; impede ultrapassar comprimento e interseção retangular de aberturas na mesma parede.
+- Não houve alteração automática de geometria no projeto Arqdor ou liberação de fabricação.
+- **Ainda pendente:** testes de API/UI/build, concorrência do JSONB, confirmação de dimensões de altura da parede, geometria de arcos de porta, escopo de permissões por negócio e revisão do fluxo com vários itens. Testes e homologação não executados. Sem PR/merge/produção.
