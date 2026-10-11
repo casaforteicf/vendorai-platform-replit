@@ -39,7 +39,7 @@ router.put("/arqdor/projects/:id/furniture/:roomId",async(req:Request,res:Respon
  }
  try{
   const records=await db.update(arqdorWorkspaceProjectsTable)
-   .set({contextBlob:sql`jsonb_set(COALESCE(${arqdorWorkspaceProjectsTable.contextBlob}, '{}'::jsonb), ARRAY['furnitureSnapshots', ${roomId}]::text[], ${JSON.stringify(data)}::jsonb, true)`,updatedAt:new Date()})
+   .set({contextBlob:sql`jsonb_set(jsonb_set(COALESCE(${arqdorWorkspaceProjectsTable.contextBlob}, '{}'::jsonb), '{furnitureSnapshots}', COALESCE(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots','{}'::jsonb), true), ARRAY['furnitureSnapshots', ${roomId}]::text[], ${JSON.stringify(data)}::jsonb, true)`,updatedAt:new Date()})
    .where(and(eq(arqdorWorkspaceProjectsTable.id,projectId),eq(arqdorWorkspaceProjectsTable.tenantId,tenantId))).returning({id:arqdorWorkspaceProjectsTable.id});
   if(!records.length)return res.status(404).json({error:"Projeto não encontrado; salve o projeto antes"});
   return res.json({saved:true,projectId,roomId,revision:data.revision});
