@@ -325,6 +325,54 @@ export default function AdminImprovements() {
     refetchIntervalInBackground: true,
   });
 
+  const executionControl = useQuery<{ mode: "running" | "paused" | "draining"; reason: string | null }>({
+    queryKey: ["admin", "release-execution-control"],
+    enabled: !!token,
+    queryFn: async () => {
+      const response = await fetch("/api/admin/releases/execution-control", { headers });
+      if (!response.ok) throw new Error("Controle de execução indisponível; aplique a migração antes de ativar.");
+      return response.json();
+    },
+    retry: false,
+    refetchInterval: 15000,
+  });
+
+  const queueDiagnostics = useQuery<{ items: Array<{ id: string; title: string; eligibility: string; blockers: Array<{ id: string; title: string; status: string }> }>; truncated: boolean }>({
+    queryKey: ["admin", "queue-diagnostics"],
+    enabled: !!token,
+    queryFn: async () => {
+      const response = await fetch("/api/admin/improvements/queue-diagnostics", { headers });
+      if (!response.ok) throw new Error("Diagnóstico da fila indisponível");
+      return response.json();
+    },
+    refetchInterval: 15000,
+    retry: false,
+  });
+
+  const masterRegistry = useQuery<{ lots: Array<{ lot: string; linked: number; validated: number; running: number; blocked: number }>; coverage: string }>({
+    queryKey: ["admin", "master-registry-summary"],
+    enabled: !!token,
+    queryFn: async () => {
+      const response = await fetch("/api/admin/improvements/master-registry-summary", { headers });
+      if (!response.ok) throw new Error("Registro Mestre ainda não disponível");
+      return response.json();
+    },
+    retry: false,
+    refetchInterval: 30000,
+  });
+
+  const registryConflicts = useQuery<{ items: Array<{ id: string; title: string; sublot: string; candidates: number }>; truncated: boolean }>({
+    queryKey: ["admin", "registry-reconciliation-preview"],
+    enabled: !!token,
+    queryFn: async () => {
+      const response = await fetch("/api/admin/improvements/master-registry-reconciliation-preview", { headers });
+      if (!response.ok) throw new Error("Conflitos do Registro Mestre indisponíveis");
+      return response.json();
+    },
+    refetchInterval: 30000,
+    retry: false,
+  });
+
   const metricsQuery = useQuery<ReleaseMetrics>({
     queryKey: ["admin", "releases-metrics"],
     enabled: !!token,
@@ -707,7 +755,7 @@ export default function AdminImprovements() {
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">Melhorias & Publicações</h1>
           <p className="mt-1 max-w-4xl text-sm text-muted-foreground">
-            Você acompanha só o que importa: andamento, sua aprovação, publicação e conclusão. Testes, retries, homologação e failover ficam automáticos por trás.
+            Acompanhe andamento, homologação, aprovação, publicação e validação real. A autonomia só executa operações habilitadas e comprovadas pelos controles de release.
           </p>
         </div>
         <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap">
@@ -739,6 +787,53 @@ export default function AdminImprovements() {
         </div>
       </div>
 
+      <div className="rounded-lg border p-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-medium">Execução automática de releases</p>
+          <p className="text-xs text-muted-foreground">Estado: {executionControl.isError ? "indisponível" : executionControl.data?.mode === "running" ? "Em execução" : executionControl.data?.mode === "draining" ? "Pausa segura" : executionControl.data?.mode === "paused" ? "Pausada" : "Consultando..."}. Acompanhamento pós-publicação continua ativo na pausa.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" disabled={!executionControl.data || executionControl.data.mode === "running" || !!busy} onClick={() => void post("/api/admin/releases/execution-control", { mode: "running", reason: "Retomada pelo Superadmin" }, "Fila retomada").then(() => executionControl.refetch()).catch(() => undefined)}>Retomar</Button>
+          <Button variant="outline" disabled={!executionControl.data || executionControl.data.mode !== "running" || !!busy} onClick={() => void post("/api/admin/releases/execution-control", { mode: "draining", reason: "Pausa segura pelo Superadmin" }, "Pausa segura solicitada").then(() => executionControl.refetch()).catch(() => undefined)}>Pausa segura</Button>
+          <Button variant="outline" disabled={!executionControl.data || executionControl.data.mode === "paused" || !!busy} onClick={() => void post("/api/admin/releases/execution-control", { mode: "paused", reason: "Pausa pelo Superadmin" }, "Novos releases pausados").then(() => executionControl.refetch()).catch(() => undefined)}>Pausar</Button>
+        </div>
+      </div>
+      <div className="rounded-lg border p-3 text-sm">
+        <p className="font-medium">Diagnóstico da fila de melhorias</p>
+        <p className="text-muted-foreground text-xs">Consulta independente do operador Contabo; não executa nem publica tarefas.</p>
+        {queueDiagnostics.isError ? <p className="mt-2 text-xs">Diagnóstico indisponível. Verifique a migração de dependências.</p> : (
+          <div className="mt-2 flex flex-wrap gap-3 text-xs">
+            <span>Prontas: {queueDiagnostics.data?.items.filter((i) => i.eligibility === "ready").length ?? "..."}</span>
+            <span>Bloqueadas por dependência: {queueDiagnostics.data?.items.filter((i) => i.eligibility === "blocked_dependency").length ?? "..."}</span>
+            <span>Em execução: {queueDiagnostics.data?.items.filter((i) => i.eligibility === "running").length ?? "..."}</span>
+            <span>Precisam de atenção: {queueDiagnostics.data?.items.filter((i) => i.eligibility === "needs_attention").length ?? "..."}</span>
+            {queueDiagnostics.data?.truncated && <span>Mostrando somente os primeiros 100 itens</span>}
+          </div>
+        )}
+      </div>
+      <div className="rounded-lg border p-3 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div><p className="font-medium">Registro Mestre — cobertura vinculada</p>
+            <p className="text-xs text-muted-foreground">Somente sublotes com vínculo comprovado, sem estimativa de cobertura total.</p></div>
+          <Button variant="outline" disabled={!!busy || masterRegistry.isError} onClick={() => void post("/api/admin/improvements/master-registry-reconcile", {}, "Vínculos explícitos reconciliados").then(() => masterRegistry.refetch()).catch(() => undefined)}>Reconciliar vínculos</Button>
+        </div>
+        {masterRegistry.isError ? <p className="text-xs mt-2">Migração do Registro Mestre não disponível.</p> :
+          <div className="mt-2 flex flex-wrap gap-3 text-xs">
+            <span>Lotes vinculados: {masterRegistry.data?.lots.length ?? "..."}</span>
+            <span>Sublotes vinculados: {masterRegistry.data?.lots.reduce((n, l) => n + l.linked, 0) ?? "..."}</span>
+            <span>Validados: {masterRegistry.data?.lots.reduce((n, l) => n + l.validated, 0) ?? "..."}</span>
+          </div>}
+      </div>
+      <div className="rounded-lg border p-3 text-sm">
+        <p className="font-medium">Revisão de vínculos ambíguos</p>
+        <p className="text-xs text-muted-foreground">Nenhum vínculo conflitante é alterado automaticamente.</p>
+        {registryConflicts.isError ? <p className="mt-2 text-xs">Prévia indisponível.</p> :
+          <div className="mt-2 space-y-1 text-xs">
+            <p>Ocorrências para revisão: {registryConflicts.data?.items.length ?? "..."}</p>
+            {registryConflicts.data?.items.slice(0, 5).map((c) => <p key={c.id}>{c.sublot} — {c.title} ({c.candidates} candidatos)</p>)}
+            {registryConflicts.data?.truncated && <p>Mais de 100 ocorrências; exibição limitada.</p>}
+          </div>}
+      </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         {[
           ["Em andamento", inProgressCount],
