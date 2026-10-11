@@ -11,6 +11,11 @@ describe("UI20 service visibility (presentation only)", () => {
     expect(visible.has("arqdor")).toBe(false);
   });
 
+  it("shows only universal shell while the tenant module inventory is loading", () => {
+    const visible = getUi20VisibleServices({ loading: true, isAdmin: true, arqdorEligible: true });
+    expect([...visible].sort()).toEqual(["home", "support"]);
+  });
+
   it("does not show ERP without an enabled financial entitlement", () => {
     const visible = getUi20VisibleServices({
       modules: [{ moduleKey: "financeiro", isEnabled: false, hasOverride: true }],
