@@ -6,6 +6,10 @@ describe("ARQDOR direct directional light",()=>{
   const result=evaluateDirectionalLight({...args,bvh:{intersect:()=>null}});
   expect(result[0]).toBeCloseTo(1);
  });
+ it("supports negative world positions used by real building coordinates",()=>{
+  const result=evaluateDirectionalLight({...args,point:[-25,-7,-12],bvh:{intersect:()=>null}});
+  expect(result[0]).toBeCloseTo(1);
+ });
  it("casts hard shadows for blocked rays",()=>{
   const result=evaluateDirectionalLight({...args,bvh:{intersect:()=>({})}});
   expect(result).toEqual([0,0,0]);
