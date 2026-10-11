@@ -1,6 +1,6 @@
 import React,{useState} from "react";
 import {buildRectangularRoom,fromPreProjectRoom,type InteriorEnvironment} from "./interior-environment";
-type Room={id:string;nome?:string;name?:string;titulo?:string};
+type Room={id:string;nome?:string;name?:string;titulo?:string;largura?:number;profundidade?:number;altura?:number;widthM?:number;depthM?:number;heightM?:number};
 export function InteriorStartPanel({projectId,rooms,onStart,onImport}:{
   projectId:string|null;rooms:Room[];onStart:(environment:InteriorEnvironment)=>void;onImport:()=>void;
 }){
@@ -32,7 +32,7 @@ export function InteriorStartPanel({projectId,rooms,onStart,onImport}:{
         <option value="">Selecione</option>{rooms.map(r=><option key={r.id} value={r.id}>{r.nome||r.name||r.titulo||r.id}</option>)}
       </select>
       {rooms.length===0&&<p className="text-xs text-amber-700">Nenhum ambiente disponível. Use Novo ambiente ou importe um arquivo.</p>}
-      <p className="text-xs text-slate-600">O vínculo ao ambiente é criado como rascunho. A geometria de paredes precisa ser conectada ao modelo arquitetônico do projeto.</p>
+      <p className="text-xs text-slate-600">Quando houver medidas numéricas em metros, será criada uma geometria retangular provisória. Paredes e aberturas reais ainda exigem integração ao modelo arquitetônico.</p>
     </div>}
     {tab==="new-room"&&<div className="mt-4 space-y-3">
       <label className="block text-xs">Nome do ambiente<input className="mt-1 w-full rounded-lg border p-2 text-sm" value={name} onChange={e=>setName(e.target.value)}/></label>
