@@ -314,7 +314,18 @@ router.patch("/operational-checklists/runs/:runId/items/:itemId", async (req, re
   const items = (run.items ?? []).map((item) => {
     if (item.id !== itemId) return item;
     found = true;
-    const next = { ...item, ...parsed.data };
+    const { resolutionReason, ...patch } = parsed.data;
+    const next = { ...item, ...patch };
+    if (parsed.data.status === "resolvido" && resolutionReason) {
+      next.divergenceResolution = {
+        reason: resolutionReason, approvedBy: req.user?.sub ?? "",
+        approvedAt: new Date().toISOString(),
+        widthDeltaMm: next.diferencaLargura ?? null,
+        heightDeltaMm: next.diferencaAltura ?? null,
+      };
+    } else if (parsed.data.larguraConferida !== undefined || parsed.data.alturaConferida !== undefined) {
+      next.divergenceResolution = null;
+    }
     next.diferencaLargura = next.larguraOriginal != null && next.larguraConferida != null
       ? next.larguraConferida - next.larguraOriginal : null;
     next.diferencaAltura = next.alturaOriginal != null && next.alturaConferida != null
