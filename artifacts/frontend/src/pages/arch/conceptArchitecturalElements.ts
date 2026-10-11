@@ -32,7 +32,7 @@ export function createStraightStair(input: Stair): Result<Stair & { steps: numbe
   return { value: { ...input, steps, riser, tread } };
 }
 export function createRoof(input: Roof): Result<Roof & { ridgeHeight: number; footprint: Rect }> {
-  if (!validRect(input) || !finite(input.elevation, input.pitchDegrees, input.overhang) || input.overhang < 0 || input.pitchDegrees < 0 || input.pitchDegrees > 60) return { error: "Dimensões da cobertura inválidas." };
+  if (!["flat", "mono", "gable"].includes(input.type) || !validRect(input) || !finite(input.elevation, input.pitchDegrees, input.overhang) || input.overhang < 0 || input.pitchDegrees < 0 || input.pitchDegrees > 60) return { error: "Dimensões da cobertura inválidas." };
   if (input.type === "flat" && input.pitchDegrees !== 0) return { error: "Cobertura plana requer inclinação zero." };
   const span = input.type === "gable" ? input.depth / 2 : input.type === "mono" ? input.depth : 0;
   const ridgeHeight = input.elevation + Math.tan(input.pitchDegrees * Math.PI / 180) * span;
