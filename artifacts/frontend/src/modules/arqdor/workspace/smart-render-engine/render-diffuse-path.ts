@@ -29,6 +29,7 @@ export function traceDiffusePath(input:{
   textures?: Readonly<Record<string,CpuTexture>>;
   /** Only set when all textures were validated for this render job. */
   texturesValidated?: boolean;
+  materialMapsValidated?: boolean;
   materialMaps?: Readonly<Record<string,CpuMaterialMaps>>;
   maxBounces?:number;
   seed?:number;
@@ -58,7 +59,7 @@ export function traceDiffusePath(input:{
     }
     const maps=input.materialMaps?.[hit.materialId??""];
     const mapUv=maps?.roughness||maps?.normal ? sampleMeshUv(mesh.uvs,hit.triangle,hit.barycentric) : undefined;
-    if(maps?.roughness && mapUv)mat={...mat,roughness:sampleRoughnessMap(maps.roughness,mapUv,mat.roughness)};
+    if(maps?.roughness && mapUv)mat={...mat,roughness:sampleRoughnessMap(maps.roughness,mapUv,mat.roughness,input.materialMapsValidated===true)};
     radiance=add(radiance,mul(throughput,mat.emissive));
     if(bounce===maxBounces)break;
     const start=hit.triangle*9,p=mesh.positions;
@@ -68,7 +69,7 @@ export function traceDiffusePath(input:{
     if(dot(normal,ray.direction)>0)normal=scale(normal,-1);
     if(maps?.normal && mapUv){
       normal=sampleWorldNormalMap({texture:maps.normal,uv:mapUv,strength:maps.normalStrength,
-        positions:mesh.positions,uvs:mesh.uvs,triangle:hit.triangle,faceNormal:normal});
+        positions:mesh.positions,uvs:mesh.uvs,triangle:hit.triangle,faceNormal:normal,validated:input.materialMapsValidated===true});
       if(dot(normal,ray.direction)>0)normal=scale(normal,-1);
     }
     if(input.directionalLight && mat.metalness<0.999 && mat.transmission<0.999) {
