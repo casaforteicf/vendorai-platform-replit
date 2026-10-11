@@ -32,7 +32,7 @@ const unit = (v: Vec3): Vec3 => {
  const n=Math.hypot(...v);if(n<1e-10)throw new Error("ARQDOR: normal inválida");
  return [v[0]/n,v[1]/n,v[2]/n];
 };
-/** Cosine-weighted Lambert sampling. Metallic/specular lobes are NOT implemented yet. */
+/** Cosine-weighted Lambert sampling. Microfacet specular lobes remain unimplemented. */
 export function sampleDiffuseHemisphere(normal: Vec3, u: number, v: number, material: PhysicalMaterial): BsdfSample {
   if (![u,v].every(x=>Number.isFinite(x)&&x>=0&&x<1))
     throw new Error("ARQDOR: amostra aleatória inválida");
@@ -48,4 +48,14 @@ export function sampleDiffuseHemisphere(normal: Vec3, u: number, v: number, mate
   const cosTheta=Math.max(0,dot(n,direction));
   return {direction, pdf:cosTheta/Math.PI,
     throughput:[material.baseColor[0]*(1-material.metalness),material.baseColor[1]*(1-material.metalness),material.baseColor[2]*(1-material.metalness)]};
+}
+
+/** Ideal delta specular reflection. Rough metals require a future microfacet BRDF. */
+export function samplePerfectReflection(incident: Vec3, normal: Vec3, material: PhysicalMaterial): BsdfSample {
+ const i=unit(incident),n=unit(normal), d=dot(i,n);
+ const direction=unit([i[0]-2*d*n[0],i[1]-2*d*n[1],i[2]-2*d*n[2]]);
+ const f0:Vec3=[0,1,2].map(k=>0.04*(1-material.metalness)+material.baseColor[k]*material.metalness) as unknown as Vec3;
+ const cosine=Math.min(1,Math.max(0,-d));
+ const fresnel=Math.pow(1-cosine,5);
+ return {direction,throughput:[0,1,2].map(k=>f0[k]+(1-f0[k])*fresnel) as unknown as Vec3,pdf:1};
 }
