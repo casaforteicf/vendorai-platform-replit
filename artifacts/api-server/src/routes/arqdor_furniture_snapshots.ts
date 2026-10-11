@@ -9,7 +9,7 @@ router.use("/arqdor/projects/:id/furniture",authenticate);
 const number=z.number().finite();
 const part=z.object({id:z.string().min(1),tenantId:z.string(),projectId:z.string(),furnitureId:z.string(),materialId:z.string(),widthMm:number.positive(),lengthMm:number.positive(),quantity:z.number().int().positive()}).passthrough();
 const furniture=z.object({id:z.string().min(1),tenantId:z.string(),projectId:z.string(),roomId:z.string(),
- parameters:z.object({furnitureId:z.string(),tenantId:z.string(),projectId:z.string(),roomId:z.string()}).passthrough(),
+ parameters:z.object({furnitureId:z.string(),tenantId:z.string(),projectId:z.string(),roomId:z.string(),widthMm:number.positive(),depthMm:number.positive()}).passthrough(),
  parts:z.array(part).max(2000),bounds:z.object({id:z.string(),roomId:z.string(),xMm:number,yMm:number,widthMm:number.positive(),depthMm:number.positive(),rotationDeg:z.union([z.literal(0),z.literal(90),z.literal(180),z.literal(270)])}),
  status:z.literal("local-draft")}).passthrough();
 const payload=z.object({schemaVersion:z.literal(1),tenantId:z.string().min(1),projectId:z.string().min(1),roomId:z.string().min(1),
