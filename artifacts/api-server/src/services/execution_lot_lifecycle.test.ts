@@ -1,20 +1,19 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { test, expect } from "vitest";
 import { assertLotTransition } from "./execution_lot_lifecycle.js";
 
 test("permite avanço reservado para execução", () => {
-  assert.doesNotThrow(() => assertLotTransition("reserved", "in_progress"));
+  expect(() => assertLotTransition("reserved", "in_progress")).not.toThrow();
 });
 test("permite concluir lote em andamento", () => {
-  assert.doesNotThrow(() => assertLotTransition("in_progress", "completed"));
+  expect(() => assertLotTransition("in_progress", "completed")).not.toThrow();
 });
 test("permite cancelar antes de concluir", () => {
-  assert.doesNotThrow(() => assertLotTransition("reserved", "cancelled"));
-  assert.doesNotThrow(() => assertLotTransition("in_progress", "cancelled"));
+  expect(() => assertLotTransition("reserved", "cancelled")).not.toThrow();
+  expect(() => assertLotTransition("in_progress", "cancelled")).not.toThrow();
 });
 test("não permite pular execução, voltar etapas ou reabrir estados finais", () => {
-  assert.throws(() => assertLotTransition("reserved", "completed"));
-  assert.throws(() => assertLotTransition("completed", "in_progress"));
-  assert.throws(() => assertLotTransition("cancelled", "reserved"));
-  assert.throws(() => assertLotTransition("in_progress", "reserved"));
+  expect(() => assertLotTransition("reserved", "completed")).toThrow();
+  expect(() => assertLotTransition("completed", "in_progress")).toThrow();
+  expect(() => assertLotTransition("cancelled", "reserved")).toThrow();
+  expect(() => assertLotTransition("in_progress", "reserved")).toThrow();
 });
