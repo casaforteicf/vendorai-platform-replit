@@ -379,8 +379,29 @@ router.post("/operational-checklists/runs/:runId/items/:itemId/photos", async (r
         return void res.status(409).json({error:"Identificador de foto já usado em outro item",code:"PHOTO_ID_CONFLICT"});
       if (previous.metadata?.contentHash !== contentHash)
         return void res.status(409).json({error:"Mesmo identificador enviado com arquivo diferente",code:"PHOTO_ID_CONFLICT"});
-      if (!(current.fotos ?? []).includes(previous.storageUrl))
-        return void res.status(409).json({error:"Foto requer reconciliação",code:"PHOTO_RECONCILE_REQUIRED"});
+      if (!(current.fotos ?? []).includes(previous.storageUrl)) {
+        let restored = false;
+        for (let retry = 0; retry < 5; retry++) {
+          const [latest] = await db.select().from(operationalChecklistRunsTable).where(and(
+            eq(operationalChecklistRunsTable.id, run.id), eq(operationalChecklistRunsTable.tenantId, run.tenantId)
+          )).limit(1);
+          if (!latest || latest.status === "concluido") break;
+          const target = (latest.items ?? []).find(item => item.id === itemId);
+          if (!target) break;
+          if ((target.fotos ?? []).includes(previous.storageUrl)) { restored = true; break; }
+          if ((target.fotos ?? []).length >= 20) break;
+          const updatedItems = (latest.items ?? []).map(item => item.id === itemId
+            ? {...item, fotos: [...(item.fotos ?? []), previous.storageUrl]} : item);
+          const [updated] = await db.update(operationalChecklistRunsTable).set({items: updatedItems, updatedAt: new Date()})
+            .where(and(eq(operationalChecklistRunsTable.id, latest.id),
+              eq(operationalChecklistRunsTable.tenantId, latest.tenantId),
+              eq(operationalChecklistRunsTable.status, latest.status),
+              eq(operationalChecklistRunsTable.items, latest.items ?? []))).returning();
+          if (updated) { restored = true; break; }
+        }
+        if (!restored) return void res.status(409).json({error:"Foto existente não pôde ser vinculada; revisar checklist",code:"PHOTO_RECONCILE_REQUIRED"});
+        req.log.info({runId:run.id,itemId,assetId:previous.id},"measure: existing photo reconciled");
+      }
       return void res.json({assetId:previous.id,storageUrl:previous.storageUrl,accessUrl:await measureStorage.getObjectEntitySignedUrl(previous.storageUrl,300),reused:true});
     }
   }
