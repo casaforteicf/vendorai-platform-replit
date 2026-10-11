@@ -166,3 +166,12 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - Teste estático `node artifacts/api-server/scripts/test-arqdor-members-routes.mjs` criado para verificar flag, mounting, validações e proteção de owner.
 - **Importante:** estes endpoints pressupõem que a migração SQL 024 foi aplicada em um banco isolado/homologação; não estão disponíveis no ambiente atual. A sincronização condicional ainda usa restrição administrativa (não houve substituição por ACL). Faltam audit log, verificação transacional de membros nas próprias operações de gravação, proteção contra concorrência na atribuição de funções, testes reais de migração/SQL, typecheck, homologação e publicação controlada.
 - Sem merge, sem deploy, sem migração no banco oficial; não reivindicar validação funcional.
+
+
+## MULTI-07.4 — Auditoria transacional e corrida de proprietário
+- Adicionados esquema e migração aditivos de auditoria: `arqdor_workspace_member_audit` (SQL 025), com escopo tenant/projeto, executor, colaborador, evento grant/change/revoke e papéis antes/depois. Nenhuma migração executada.
+- PUT de membership agora insere auditoria **na mesma transação** que a alteração. `setWhere` no upsert impede rebaixar owner mesmo em concorrência; resultado vazio não é relatado como sucesso.
+- DELETE registra revogação **na mesma transação** que remove o membro; exclusão permanece restrita a editor/viewer por condição SQL.
+- Teste estrutural estendido em `test-arqdor-members-routes.mjs`.
+- **Gates pendentes:** compilar/typecheck Drizzle e verificar `setWhere` e `returning` com PostgreSQL isolado; testar concessão/alteração/revogação concorrentes, RBAC real, rollback de transações, ausência de dono provisionado, migrações 024/025. Não habilitar `ARQDOR_PROJECT_ACL_ENABLED` até estes gates e homologação. Gravação condicional offline ainda não consulta esta ACL dentro da transação.
+- PR draft, sem merge/deploy e produção inalterada.
