@@ -75,7 +75,10 @@ export default function PhotoMeasureEditor({ itemId, offlineKey, imageUrl, onClo
       setMessage("Escolha uma imagem de até 15 MB.");
       return;
     }
+    if (measures.some(m => !m.photoPath) && !window.confirm("Existem cotas locais ainda não enviadas. Trocar de foto descarta essas cotas não vinculadas. Continuar?")) return;
+    setMeasures(previous => previous.filter(m => Boolean(m.photoPath)));
     setSelectedQueuedId(null);
+    setSelectedPhotoPath(null);
     setSelectedFile(file);
     setUploadedImage(null);
     setLocalImage(URL.createObjectURL(file));
@@ -158,7 +161,7 @@ export default function PhotoMeasureEditor({ itemId, offlineKey, imageUrl, onClo
       <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => selectImage(e.currentTarget.files?.[0])} />
       <Button size="sm" variant="outline" onClick={() => inputRef.current?.click()}>Fotografar / escolher imagem</Button>
       {offlineKey && selectedFile && !readOnly && <Button size="sm" variant="outline" disabled={saving} onClick={async () => {
-        try { await queuePhoto(offlineKey, selectedFile, measures.filter(m => !m.photoPath)); setQueuedCount(v=>v+1); setMessage("Foto guardada no dispositivo. Envio manual pendente."); }
+        try { const photoId = await queuePhoto(offlineKey, selectedFile, measures.filter(m => !m.photoPath)); setSelectedQueuedId(photoId); setSelectedFile(null); setQueuedCount(v=>v+1); setMessage("Foto guardada no dispositivo. Envio manual pendente."); }
         catch (error) { setMessage(error instanceof Error ? error.message : "Falha ao guardar fotografia offline."); }
       }}>Guardar foto offline</Button>}
       {offlineKey && queuedCount > 0 && !readOnly && <Button variant="outline" size="sm" onClick={() => { void recoverPhoto().catch(e => setMessage(String(e))); }}>Recuperar foto e cotas offline</Button>}
