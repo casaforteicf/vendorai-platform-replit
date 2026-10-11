@@ -1,3 +1,4 @@
+import { evaluateDirectionalLight, type DirectionalLight } from "./render-direct-light";
 import { sampleRoughnessMap, sampleWorldNormalMap, type CpuMaterialMaps } from "./render-material-maps";
 import { sampleCpuTexture, sampleMeshUv, type CpuTexture } from "./render-texture";
 import { sampleDielectric } from "./render-glass";
@@ -22,6 +23,7 @@ export function traceDiffusePath(input:{
   ray:Ray;
   materials:Readonly<Record<string,Partial<PhysicalMaterial>>>;
   sky:Vec3;
+  directionalLight?:DirectionalLight;
   textures?: Readonly<Record<string,CpuTexture>>;
   materialMaps?: Readonly<Record<string,CpuMaterialMaps>>;
   maxBounces?:number;
@@ -62,6 +64,11 @@ export function traceDiffusePath(input:{
       normal=sampleWorldNormalMap({texture:maps.normal,uv:mapUv,strength:maps.normalStrength,
         positions:mesh.positions,uvs:mesh.uvs,triangle:hit.triangle,faceNormal:normal});
       if(dot(normal,ray.direction)>0)normal=scale(normal,-1);
+    }
+    if(input.directionalLight && mat.metalness<0.999 && mat.transmission<0.999) {
+      radiance=add(radiance,mul(throughput,evaluateDirectionalLight({
+        bvh,point:hit.point,normal,albedo:mat.baseColor,light:input.directionalLight,
+      })));
     }
     if(mat.transmission>=0.999 && mat.roughness<=0.02){
       const event=sampleDielectric(ray.direction,outwardNormal,mat.ior,random());
