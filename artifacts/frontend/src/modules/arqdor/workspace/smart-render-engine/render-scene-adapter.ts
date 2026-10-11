@@ -18,8 +18,13 @@ export function buildExperimentalRenderOptions(args: {
   throw Error("ARQDOR: resolução experimental inválida");
  const meshIds=new Set(snapshot.meshes.map(x=>x.id));
  const capturedById=new Map(snapshot.meshes.map(x=>[x.id,x]));
- if(meshIds.size!==snapshot.meshes.length || geometry.meshes.length!==snapshot.meshes.length ||
-    geometry.meshes.some(x=>!meshIds.has(x.meshId) ||
+ const exportedIds=new Set(geometry.meshes.map(x=>x.meshId));
+ const materialIds=new Set(snapshot.materials.map(x=>x.id));
+ if(meshIds.size!==snapshot.meshes.length || exportedIds.size!==geometry.meshes.length ||
+    materialIds.size!==snapshot.materials.length || geometry.meshes.length!==snapshot.meshes.length ||
+    geometry.meshes.some(x=>!meshIds.has(x.meshId) || !Number.isSafeInteger(x.triangles) || x.triangles<0 ||
+      x.positions.some(v=>!Number.isFinite(v)) || x.normals.some(v=>!Number.isFinite(v)) ||
+      x.uvs.some(v=>!Number.isFinite(v)) ||
       (x.materialId!==null && !capturedById.get(x.meshId)?.materialIds.includes(x.materialId)))||
     snapshot.meshes.some(x=>!geometry.meshes.some(y=>y.meshId===x.id && y.triangles===x.triangleCount))||
     geometry.meshes.reduce((n,x)=>n+x.triangles,0)!==geometry.totalTriangles)
