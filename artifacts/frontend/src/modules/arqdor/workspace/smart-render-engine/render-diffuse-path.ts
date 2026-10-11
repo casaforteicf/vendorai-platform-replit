@@ -1,6 +1,6 @@
 import { createRenderBvh, type Ray, type Vec3 } from "./render-bvh";
 import type { GeometryTransfer } from "./render-geometry-export";
-import { normalizePhysicalMaterial, sampleDiffuseHemisphere, type PhysicalMaterial } from "./render-physical-material";
+import { normalizePhysicalMaterial, sampleDiffuseHemisphere, samplePerfectReflection, type PhysicalMaterial } from "./render-physical-material";
 
 const add=(a:Vec3,b:Vec3):Vec3=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
 const mul=(a:Vec3,b:Vec3):Vec3=>[a[0]*b[0],a[1]*b[1],a[2]*b[2]];
@@ -13,7 +13,7 @@ function rand(seed:number) {
   let state=seed>>>0;
   return ()=>{state=(Math.imul(state,1664525)+1013904223)>>>0;return state/4294967296;};
 }
-/** Early experimental diffuse path integrator. No MIS, textures, direct-light sampling, or specular BRDF. */
+/** Early diffuse path integrator with ideal mirror-metal branch. No MIS, textures, direct-light sampling, or rough specular BRDF. */
 export function traceDiffusePath(input:{
   geometry:GeometryTransfer;
   ray:Ray;
@@ -44,7 +44,9 @@ export function traceDiffusePath(input:{
     const a:Vec3=[p[start],p[start+1],p[start+2]],b:Vec3=[p[start+3],p[start+4],p[start+5]],c:Vec3=[p[start+6],p[start+7],p[start+8]];
     let normal=normalize(cross(sub(b,a),sub(c,a)));
     if(dot(normal,ray.direction)>0)normal=scale(normal,-1);
-    const sample=sampleDiffuseHemisphere(normal,random(),random(),mat);
+    const sample=mat.metalness>=0.999 && mat.roughness<=0.02
+      ? samplePerfectReflection(ray.direction,normal,mat)
+      : sampleDiffuseHemisphere(normal,random(),random(),mat);
     if(sample.pdf<=0)break;
     throughput=mul(throughput,sample.throughput);
     ray={origin:add(hit.point,scale(normal,1e-4)),direction:sample.direction};
