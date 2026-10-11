@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import SurveyPlanPreview from "./SurveyPlanPreview";
 
 export type SurveyElement = {
   id: string;
@@ -10,6 +11,11 @@ export type SurveyElement = {
   widthMm?: number | null;
   heightMm?: number | null;
   depthMm?: number | null;
+  x1Mm?: number | null;
+  y1Mm?: number | null;
+  x2Mm?: number | null;
+  y2Mm?: number | null;
+  thicknessMm?: number | null;
   sourcePhotoPath?: string | null;
   note?: string | null;
   verified: boolean;
@@ -24,12 +30,19 @@ export default function SurveyElementsEditor({ elements, photos, disabled = fals
   const [width, setWidth] = useState("");
   const [height, setHeight] = useState("");
   const [photo, setPhoto] = useState("");
+  const [points, setPoints] = useState(["", "", "", ""]);
+  const [thickness, setThickness] = useState("150");
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState("");
   function toDimension(value: string): number | null { const n = Number(value.replace(",", ".")); return value.trim() && Number.isFinite(n) && n > 0 && n <= 1000000 ? n : null; }
   function add() {
     if (!roomName.trim() || !label.trim() || (width.trim() && toDimension(width) === null) || (height.trim() && toDimension(height) === null)) { setFeedback("Preencha ambiente, identificação e medidas válidas."); return; }
-    setItems((old) => [...old, { id: crypto.randomUUID(), roomName: roomName.trim(), label: label.trim(), elementType: kind, widthMm: toDimension(width), heightMm: toDimension(height), sourcePhotoPath: photo || null, verified: false }]);
+    const coords = points.map((v) => Number(v.replace(",", ".")));
+    if (kind === "wall" && (points.some((v) => !v.trim()) || coords.some((v) => !Number.isFinite(v) || Math.abs(v) > 1000000) || Math.hypot(coords[2]-coords[0], coords[3]-coords[1]) < 10 || !toDimension(thickness) || Number(thickness) < 50 || Number(thickness) > 1000)) {
+      setFeedback("Informe X1, Y1, X2, Y2 e espessura válidos. Comprimento mínimo: 10 mm."); return;
+    }
+    const geometry = kind === "wall" ? {x1Mm:coords[0],y1Mm:coords[1],x2Mm:coords[2],y2Mm:coords[3],thicknessMm:toDimension(thickness)} : {};
+    setItems((old) => [...old, { ...geometry, id: crypto.randomUUID(), roomName: roomName.trim(), label: label.trim(), elementType: kind, widthMm: toDimension(width), heightMm: toDimension(height), sourcePhotoPath: photo || null, verified: false }]);
     setLabel(""); setWidth(""); setHeight(""); setFeedback("Elemento adicionado; salve para persistir.");
   }
   return <section className="mt-3 rounded-lg border p-3 space-y-3 print:hidden" aria-label="Elementos do levantamento">
@@ -42,9 +55,14 @@ export default function SurveyElementsEditor({ elements, photos, disabled = fals
       <Input aria-label="Altura em milímetros" value={height} onChange={(e)=>setHeight(e.target.value)} placeholder="Altura (mm)" inputMode="decimal" disabled={disabled}/>
       <select aria-label="Foto de referência" value={photo} onChange={(e)=>setPhoto(e.target.value)} disabled={disabled} className="rounded-md border bg-background px-3 py-2 text-sm"><option value="">Sem foto associada</option>{photos.map((p,i)=><option key={p} value={p}>Foto {i+1}</option>)}</select>
     </div>
+    {kind === "wall" && <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+      {["X1 (mm)","Y1 (mm)","X2 (mm)","Y2 (mm)"].map((name,i) => <Input key={name} aria-label={name} placeholder={name} value={points[i]} onChange={(e) => setPoints((old) => old.map((v,j) => i === j ? e.target.value : v))} disabled={disabled}/>)}
+      <Input aria-label="Espessura (mm)" value={thickness} onChange={(e)=>setThickness(e.target.value)} disabled={disabled}/>
+    </div>}
     <Button size="sm" variant="outline" disabled={disabled} onClick={add}>Adicionar elemento</Button>
     {items.map((entry)=><div key={entry.id} className="flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-sm"><span>{entry.roomName} · {entry.elementType} · {entry.label} · {entry.widthMm ?? "—"} × {entry.heightMm ?? "—"} mm {entry.verified ? "· Conferido" : "· Pendente"}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={disabled} onClick={()=>setItems(old=>old.map(e=>e.id===entry.id?{...e,verified:!e.verified}:e))}>{entry.verified?"Reabrir":"Marcar conferido"}</Button><Button size="sm" variant="ghost" disabled={disabled} onClick={()=>setItems(old=>old.filter(e=>e.id!==entry.id))}>Excluir</Button></div></div>)}
     <Button disabled={disabled||saving} onClick={async()=>{setSaving(true);setFeedback("");try{await onSave(items);setFeedback("Levantamento salvo no checklist.");}catch(e){setFeedback(e instanceof Error?e.message:"Erro ao salvar.");}finally{setSaving(false);}}}>{saving?"Salvando...":"Salvar levantamento"}</Button>
+    <SurveyPlanPreview elements={items} />
     <p role="status" className="text-xs text-muted-foreground">{feedback}</p>
   </section>;
 }
