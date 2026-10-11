@@ -74,6 +74,7 @@ import {
 import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { authenticate, requireRole } from "../middlewares/auth.js";
+import { canActorEditArqdorProject } from "../lib/arqdor-workspace-membership.js";
 import { vendorPool } from "../lib/vendorDb";
 import { objectStorageClient, ObjectStorageService } from "../lib/objectStorage.js";
 import { captureGeneratedMedia } from "../services/media-library.js";
@@ -8754,6 +8755,23 @@ function canUseArqdorConditionalSave(user: { sub?: string; tenantId?: string; pl
     (!user.accessScope || user.accessScope === "tenant") &&
     (!user.actorType || user.actorType === "human"));
 }
+
+// MULTI-07: read-only per-project ACL probe; disabled until migration + QA.
+router.get("/arqdor/projects/:id/edit-access", authenticate, async (req, res) => {
+  if (process.env.ARQDOR_PROJECT_ACL_ENABLED !== "true") {
+    return res.status(404).json({ error: "Recurso ainda não habilitado." });
+  }
+  const tid = tenantId(req);
+  const id = String(req.params.id || "");
+  if (!id.trim() || !req.user?.sub) return res.status(400).json({ error: "Projeto ou sessão inválida." });
+  try {
+    const canEdit = await canActorEditArqdorProject(req.user, tid, id);
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({ projectId: id, canEdit });
+  } catch {
+    return res.status(503).json({ error: "Não foi possível verificar as permissões." });
+  }
+});
 
 // MULTI-04 — explicit conditional save for future offline sync clients.
 // This does NOT change legacy PUT /arqdor/projects/:id behavior.
