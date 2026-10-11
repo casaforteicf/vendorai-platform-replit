@@ -1,6 +1,7 @@
 import React, {useEffect,useState} from "react";
 import {FurnitureAxonometricPreview} from "./FurnitureAxonometricPreview";
 import {FurnitureWebGLPreview} from "./FurnitureWebGLPreview";
+import {findFurnitureObstacleClashes} from "../../shared/furniture-obstacle-clashes";
 import {createFurnitureSnapshot,restoreFurnitureSnapshot} from "../../shared/furniture-project-snapshot";
 import type {InteriorEnvironment} from "./interior-environment";
 import type {CabinetDraft} from "../../shared/parametric-cabinet-core";
@@ -25,6 +26,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
   const [edit,setEdit]=useState({widthMm:1200,heightMm:2200,depthMm:600,materialId:"MDF-18"});
   const roomItems=items.filter(i=>i.roomId===environment.roomId);
   const selected=roomItems.find(item=>item.id===selectedId);
+  function checkObstacles(item:PlacedCabinet){const collisions=findFurnitureObstacleClashes(item.bounds,environment.obstacles??[]);if(collisions.length)throw Error("Interferência com obstáculo: "+collisions.join(", "));}
   function add(){
     if(!draft){setMessage("Gere primeiro o armário paramétrico.");return;}
     if(!ready){setMessage("Ambiente sem medidas.");return;}
@@ -35,6 +37,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
       const scopedDraft={...draft,parameters:{...draft.parameters,tenantId,projectId,roomId:environment.roomId},parts:draft.parts.map(p=>({...p,tenantId,projectId,parentItemId:environment.roomId}))};
       if(heightLimitMm!==null&&scopedDraft.parameters.heightMm>heightLimitMm)throw Error("Móvel acima da altura do ambiente");
       const next=insertCabinetDraft({tenantId,projectId,room:{id:environment.roomId,widthMm:width,depthMm:depth},draft:scopedDraft,xMm:x,yMm:y,id:crypto.randomUUID(),existing:roomItems});
+      next.forEach(checkObstacles);
       setItems(old=>[...old.filter(i=>i.roomId!==environment.roomId),...next]);setMessage("");
     }catch(e){setMessage(e instanceof Error?e.message:"Erro de geometria");}
   }
@@ -43,16 +46,18 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
     try{
       if(heightLimitMm!==null&&edit.heightMm>heightLimitMm)throw Error("Móvel acima da altura do ambiente");
       const next=revisePlacedCabinet({room:{id:environment.roomId,widthMm:width,depthMm:depth},items,id:selectedId,changes:edit});
+      next.forEach(checkObstacles);
       setItems(next);setMessage("Peças e dimensões atualizadas no rascunho; salve para persistir.");
     }catch(e){setMessage(e instanceof Error?e.message:"Alteração inválida");}
   }
-  function move(id:string){try{setItems(old=>repositionPlacedCabinet({room:{id:environment.roomId,widthMm:width,depthMm:depth},items:old,id,xMm:x,yMm:y}));setMessage("Posição alterada no rascunho. Salve para persistir.");}catch(e){setMessage(e instanceof Error?e.message:"Posicionamento inválido");}}
+  function move(id:string){try{const next=repositionPlacedCabinet({room:{id:environment.roomId,widthMm:width,depthMm:depth},items,id,xMm:x,yMm:y});next.forEach(checkObstacles);setItems(next);setMessage("Posição alterada no rascunho. Salve para persistir.");}catch(e){setMessage(e instanceof Error?e.message:"Posicionamento inválido");}}
   function remove(id:string){try{setItems(old=>removePlacedCabinet(old,id));setMessage("Móvel removido do rascunho. Salve para persistir.");}catch(e){setMessage(e instanceof Error?e.message:"Falha ao remover");}}
   function authHeaders(){const token=localStorage.getItem("vendorai_token");if(!token)throw Error("Sessão expirada. Faça login novamente.");return {Authorization:"Bearer "+token};}
   async function save(){
     if(!ready||!environment.projectId){setMessage("É necessário salvar o projeto e ter geometria do ambiente.");return;}
     setBusy(true);
     try{
+      roomItems.forEach(checkObstacles);
       const snapshot=createFurnitureSnapshot({tenantId:savedTenantId??roomItems[0]?.tenantId??draft?.parameters.tenantId??"",
       projectId:environment.projectId,room:{id:environment.roomId,widthMm:width,depthMm:depth},
       revision:crypto.randomUUID(),createdAt:new Date().toISOString(),furniture:roomItems});
