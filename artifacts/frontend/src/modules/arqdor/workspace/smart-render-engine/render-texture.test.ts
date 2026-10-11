@@ -11,6 +11,16 @@ describe("ARQDOR CPU textures",()=>{
   expect(sampleCpuTexture(texture,[0.3,0.4])).toEqual([0.2,0.5,0.8]);
   expect(sampleMeshUv([0,0,1,0,0,1],0,[0.5,0.25,0.25])).toEqual([0.25,0.25]);
  });
+ it("bilinearly blends adjacent texels in linear space",()=>{
+  const t={width:2,height:1,channels:3 as const,wrap:"clamp" as const,filter:"bilinear" as const,data:[1,0,0,0,0,1]};
+  expect(sampleCpuTexture(t,[0.5,0.5])).toEqual([0.5,0,0.5]);
+ });
+ it("converts sRGB texels into linear radiance values",()=>{
+  const t={width:1,height:1,channels:3 as const,wrap:"clamp" as const,colorSpace:"srgb" as const,data:[0.5,0.5,0.5]};
+  const sampled=sampleCpuTexture(t,[0.5,0.5]);
+  expect(sampled[0]).toBeCloseTo(0.21404114,6);
+  expect(sampled[1]).toBeCloseTo(sampled[0],8);
+ });
  it("rejects malformed pixel buffers",()=>{
   expect(()=>sampleCpuTexture({...texture,data:[0.2]},[0,0])).toThrow();
  });
