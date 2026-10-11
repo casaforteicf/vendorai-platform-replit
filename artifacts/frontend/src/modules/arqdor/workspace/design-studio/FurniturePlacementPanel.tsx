@@ -2,7 +2,7 @@ import React, {useEffect,useState} from "react";
 import {createFurnitureSnapshot,restoreFurnitureSnapshot} from "../../shared/furniture-project-snapshot";
 import type {InteriorEnvironment} from "./interior-environment";
 import type {CabinetDraft} from "../../shared/parametric-cabinet-core";
-import {insertCabinetDraft,type PlacedCabinet} from "../../shared/placed-cabinet-draft";
+import {insertCabinetDraft,repositionPlacedCabinet,removePlacedCabinet,type PlacedCabinet} from "../../shared/placed-cabinet-draft";
 
 export function FurniturePlacementPanel({environment,draft}:{environment:InteriorEnvironment;draft:CabinetDraft|null}) {
   const [items,setItems]=useState<PlacedCabinet[]>([]);
@@ -26,6 +26,8 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
       setItems(old=>[...old.filter(i=>i.roomId!==environment.roomId),...next]);setMessage("");
     }catch(e){setMessage(e instanceof Error?e.message:"Erro de geometria");}
   }
+  function move(id:string){try{setItems(old=>repositionPlacedCabinet({room:{id:environment.roomId,widthMm:width,depthMm:depth},items:old,id,xMm:x,yMm:y}));setMessage("Posição alterada no rascunho. Salve para persistir.");}catch(e){setMessage(e instanceof Error?e.message:"Posicionamento inválido");}}
+  function remove(id:string){try{setItems(old=>removePlacedCabinet(old,id));setMessage("Móvel removido do rascunho. Salve para persistir.");}catch(e){setMessage(e instanceof Error?e.message:"Falha ao remover");}}
   function authHeaders(){const token=localStorage.getItem("vendorai_token");if(!token)throw Error("Sessão expirada. Faça login novamente.");return {Authorization:"Bearer "+token};}
   async function save(){
     if(!ready||!environment.projectId){setMessage("É necessário salvar o projeto e ter geometria do ambiente.");return;}
@@ -72,7 +74,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
     <svg viewBox={"0 0 "+width+" "+depth} className="mt-3 w-full border" role="img" aria-label="Planta esquemática de móveis">
       <rect width={width} height={depth} fill="#f8fafc" stroke="#334155" strokeWidth="12"/>
       {roomItems.map(i=><rect key={i.id} x={i.bounds.xMm} y={i.bounds.yMm} width={i.bounds.widthMm} height={i.bounds.depthMm} fill="#ddd6fe" stroke="#6d28d9" strokeWidth="10"/>)}
-    </svg></>:<p className="text-sm">Geometria do ambiente ainda indisponível.</p>}
+    </svg><div className="mt-2 space-y-2">{roomItems.map(item=><div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded border p-2 text-xs"><span>{item.id} · {item.bounds.widthMm} × {item.bounds.depthMm} mm · {item.parts.length} peças</span><div className="flex gap-2"><button type="button" disabled={busy} className="rounded border px-2 py-1" onClick={()=>{setX(item.bounds.xMm);setY(item.bounds.yMm);}}>Selecionar</button><button type="button" disabled={busy} className="rounded border px-2 py-1" onClick={()=>move(item.id)}>Mover para X/Y</button><button type="button" disabled={busy} className="rounded border border-red-200 px-2 py-1 text-red-700" onClick={()=>remove(item.id)}>Remover</button></div></div>)}</div></>:<p className="text-sm">Geometria do ambiente ainda indisponível.</p>}
     <div className="mt-2 flex gap-2"><button type="button" disabled={busy||!environment.projectId} onClick={save} className="rounded border px-3 py-2 text-xs">Salvar móveis</button><button type="button" disabled={busy||!environment.projectId} onClick={load} className="rounded border px-3 py-2 text-xs">Carregar móveis</button></div>
     {message&&<p role="alert" className="text-sm text-red-700">{message}</p>}
   </section>;
