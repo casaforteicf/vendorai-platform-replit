@@ -1,0 +1,22 @@
+#!/usr/bin/env node
+/** MULTI-04 source gate: conditional endpoint should remain separate from legacy PUT. */
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { resolve, dirname } from "node:path";
+import test from "node:test";
+const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "../src/routes/arch.ts"), "utf8");
+test("legacy route remains and conditional update is separate", () => {
+  assert.match(source, /router\.put\("\/arqdor\/projects\/:id", authenticate/);
+  assert.match(source, /router\.put\("\/arqdor\/projects\/:id\/conditional", authenticate/);
+});
+test("conditional save scopes by tenant and performs atomic row revision comparison", () => {
+  const start = source.indexOf('router.put("/arqdor/projects/:id/conditional"');
+  const end = source.indexOf("// POST /arch/copilot/chat", start);
+  assert.ok(start > 0 && end > start);
+  const code = source.slice(start, end);
+  assert.match(code, /eq\(arqdorWorkspaceProjectsTable\.tenantId, tid\)/);
+  assert.match(code, /xmin::text =/);
+  assert.match(code, /status\(409\)/);
+  assert.doesNotMatch(code, /onConflictDoUpdate|\.insert\(/);
+});
