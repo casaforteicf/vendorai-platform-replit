@@ -1,3 +1,4 @@
+import { sampleRoughnessMap, sampleWorldNormalMap, type CpuMaterialMaps } from "./render-material-maps";
 import { sampleCpuTexture, sampleMeshUv, type CpuTexture } from "./render-texture";
 import { sampleDielectric } from "./render-glass";
 import { createRenderBvh, type Ray, type Vec3 } from "./render-bvh";
@@ -22,6 +23,7 @@ export function traceDiffusePath(input:{
   materials:Readonly<Record<string,Partial<PhysicalMaterial>>>;
   sky:Vec3;
   textures?: Readonly<Record<string,CpuTexture>>;
+  materialMaps?: Readonly<Record<string,CpuMaterialMaps>>;
   maxBounces?:number;
   seed?:number;
   /** Reuse one acceleration tree per render job rather than rebuilding per pixel. */
@@ -46,6 +48,9 @@ export function traceDiffusePath(input:{
       const uv=sampleMeshUv(mesh.uvs,hit.triangle,hit.barycentric);
       mat={...mat,baseColor:mul(mat.baseColor,sampleCpuTexture(texture,uv))};
     }
+    const maps=input.materialMaps?.[hit.materialId??""];
+    const mapUv=maps?.roughness||maps?.normal ? sampleMeshUv(mesh.uvs,hit.triangle,hit.barycentric) : undefined;
+    if(maps?.roughness && mapUv)mat={...mat,roughness:sampleRoughnessMap(maps.roughness,mapUv,mat.roughness)};
     radiance=add(radiance,mul(throughput,mat.emissive));
     if(bounce===maxBounces)break;
     const start=hit.triangle*9,p=mesh.positions;
@@ -53,6 +58,11 @@ export function traceDiffusePath(input:{
     const outwardNormal=normalize(cross(sub(b,a),sub(c,a)));
     let normal=outwardNormal;
     if(dot(normal,ray.direction)>0)normal=scale(normal,-1);
+    if(maps?.normal && mapUv){
+      normal=sampleWorldNormalMap({texture:maps.normal,uv:mapUv,strength:maps.normalStrength,
+        positions:mesh.positions,uvs:mesh.uvs,triangle:hit.triangle,faceNormal:normal});
+      if(dot(normal,ray.direction)>0)normal=scale(normal,-1);
+    }
     if(mat.transmission>=0.999 && mat.roughness<=0.02){
       const event=sampleDielectric(ray.direction,outwardNormal,mat.ior,random());
       const offset=event.reflected ? normal : scale(normal,-1);
