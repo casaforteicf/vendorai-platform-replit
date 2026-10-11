@@ -29,6 +29,29 @@ export function convertSurveyToArqdor(elements: SurveyElement[]) {
   }));
   if (customOpenings.length !== openings.length) warnings.push("Existem aberturas pendentes ou sem parede válida.");
   if (!customWalls.length) warnings.push("Nenhuma parede validada para conversão.");
+  for (const opening of customOpenings) {
+    const wall = customWalls.find((entry) => entry.id === opening.wallId);
+    if (!wall) continue;
+    const length = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    if (opening.offset + opening.width > length + 0.00001)
+      warnings.push("Abertura " + opening.id + " ultrapassa a parede.");
+  }
+  for (let i = 0; i < customOpenings.length; i++) {
+    for (let j = i + 1; j < customOpenings.length; j++) {
+      const a = customOpenings[i], other = customOpenings[j];
+      if (a.wallId !== other.wallId) continue;
+      if (a.offset < other.offset + other.width && other.offset < a.offset + a.width &&
+          a.sillHeight < other.sillHeight + other.height && other.sillHeight < a.sillHeight + a.height)
+        warnings.push("Aberturas sobrepostas na parede " + a.wallId + ".");
+    }
+  }
+  const endpoints = customWalls.flatMap((w) => [{wallId:w.id,x:w.x1,y:w.y1},{wallId:w.id,x:w.x2,y:w.y2}]);
+  for (const wall of customWalls) {
+    const start = endpoints.some((p) => p.wallId !== wall.id && Math.hypot(p.x-wall.x1,p.y-wall.y1) < 0.005);
+    const end = endpoints.some((p) => p.wallId !== wall.id && Math.hypot(p.x-wall.x2,p.y-wall.y2) < 0.005);
+    if (!start || !end) warnings.push("Parede " + wall.id + " possui extremidades sem conexão comprovada.");
+  }
+  if (walls.length !== new Set(walls.map((w) => w.id)).size) warnings.push("IDs duplicados no levantamento.");
   return {
     schemaVersion: 1, generatedFrom: "arqdor_measure", previewOnly: true,
     configuration: { projectScope: "room" as const, floors: 1, customWalls, customOpenings },
