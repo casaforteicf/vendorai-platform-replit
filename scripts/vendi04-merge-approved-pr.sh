@@ -14,8 +14,13 @@ LOCK=/run/lock/vendi-github-merge.lock
 exec 9>"$LOCK";flock -n 9 || { echo MERGE_BUSY;exit 75; }
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 "$SCRIPT_DIR/vendi04-merge-gate.sh" "$REPO" "$PR" "$SHA"
+# A pending, failing, or unavailable CI never passes as a tested release.
+checks=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100")
+python3 -c 'import json,sys; c=json.load(sys.stdin)["check_runs"]; sys.exit(0 if c and all(x["status"]=="completed" and x["conclusion"] in ("success","skipped") for x in c) else 1)' <<< "$checks" || { echo CHECKS_NOT_APPROVED; exit 65; }
+statuses=$(gh api "repos/$REPO/commits/$SHA/status")
+python3 -c 'import json,sys; s=json.load(sys.stdin); sys.exit(0 if s["state"]=="success" else 1)' <<< "$statuses" || { echo COMMIT_STATUS_NOT_SUCCESS; exit 65; }
 # The API rejects if SHA has changed. Squash merge has a different resulting SHA.
-result=$(gh api --method PUT "repos/$REPO/pulls/$PR/merge" -f sha="$SHA" -f merge_method=merge)
+result=$(gh api --method PUT "repos/$REPO/pulls/$PR/merge" -f sha="$SHA" -f merge_method=squash)
 merged=$(printf '%s' "$result" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("merged",False))')
 merge_sha=$(printf '%s' "$result" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("sha",""))')
 [[ "$merged" == True && "$merge_sha" =~ ^[a-f0-9]{40}$ ]] || { echo MERGE_NOT_CONFIRMED;exit 65; }
