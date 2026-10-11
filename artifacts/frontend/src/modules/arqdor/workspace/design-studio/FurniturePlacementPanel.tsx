@@ -25,6 +25,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
       setItems(old=>[...old.filter(i=>i.roomId!==environment.roomId),...next]);setMessage("");
     }catch(e){setMessage(e instanceof Error?e.message:"Erro de geometria");}
   }
+  function authHeaders(){const token=localStorage.getItem("vendorai_token");if(!token)throw Error("Sessão expirada. Faça login novamente.");return {Authorization:"Bearer "+token};}
   async function save(){
     if(!ready||!environment.projectId){setMessage("É necessário salvar o projeto e ter geometria do ambiente.");return;}
     setBusy(true);
@@ -34,7 +35,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
       revision:"R-"+Date.now().toString(36),createdAt:new Date().toISOString(),furniture:roomItems});
       const body={...snapshot,baseRevision:loadedRevision};
       const response=await fetch("/api/arqdor/projects/"+encodeURIComponent(environment.projectId)+"/furniture/"+encodeURIComponent(environment.roomId),
-       {method:"PUT",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify(body)});
+       {method:"PUT",headers:{"Content-Type":"application/json",...authHeaders()},credentials:"include",body:JSON.stringify(body)});
       if(!response.ok)throw Error("Falha no salvamento ("+response.status+")");
       setLoadedRevision(snapshot.revision);
       setMessage("Mobiliário salvo no projeto.");
@@ -45,7 +46,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
     if(!environment.projectId||!ready){setMessage("Projeto ainda não identificado.");return;}
     setBusy(true);
     try{
-      const response=await fetch("/api/arqdor/projects/"+encodeURIComponent(environment.projectId)+"/furniture",{credentials:"include"});
+      const response=await fetch("/api/arqdor/projects/"+encodeURIComponent(environment.projectId)+"/furniture",{headers:authHeaders(),credentials:"include"});
       if(!response.ok)throw Error("Falha no carregamento ("+response.status+")");
       const data=await response.json();
       const snapshot=data.furnitureSnapshots?.[environment.roomId];
