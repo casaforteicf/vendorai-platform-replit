@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react
 import { useAuth } from "@/contexts/AuthContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ExecutiveDashboardModern from "@/components/dashboard/ExecutiveDashboardModern";
+import { ServiceHome } from "@/components/dashboard/ServiceHome";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { dashboardSnapshotQueryKey, fetchDashboardSnapshot } from "@/lib/dashboardSnapshot";
 
@@ -112,7 +113,14 @@ export default function Dashboard() {
   }, [tenantId, token, refreshKey]);
 
   return (
-    <Tabs defaultValue="overview" className="w-full vendor-dashboard-v2">
+    <div className="w-full vendor-dashboard-v2">
+      {import.meta.env.VITE_UI20_SERVICE_TABS === "true" ? (
+        <ServiceHome
+          name={user?.name ?? ""}
+          isAdmin={user?.platformRole === "super_admin" || user?.userFunction === "administrador"}
+        />
+      ) : null}
+      <Tabs defaultValue="overview" className="w-full">
       <div className="vendor-product-page pb-0">
         <TabsList className="vendor-product-tabs grid max-w-[520px] grid-cols-2">
           <TabsTrigger value="overview">Visão Geral</TabsTrigger>
@@ -178,6 +186,7 @@ export default function Dashboard() {
           <JarvisNewsMarket token={token} />
         </Suspense>
       </TabsContent>
-    </Tabs>
+      </Tabs>
+    </div>
   );
 }
