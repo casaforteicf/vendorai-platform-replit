@@ -127,6 +127,23 @@ export default function PhotoMeasureEditor({ itemId, offlineKey, imageUrl, onClo
       </div>
       <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => selectImage(e.currentTarget.files?.[0])} />
       <Button size="sm" variant="outline" onClick={() => inputRef.current?.click()}>Fotografar / escolher imagem</Button>
+      {offlineKey && selectedFile && !readOnly && <Button size="sm" variant="outline" disabled={saving} onClick={async () => {
+        try { await queuePhoto(offlineKey, selectedFile); setQueued(true); setMessage("Foto guardada no dispositivo. Envio manual pendente."); }
+        catch (error) { setMessage(error instanceof Error ? error.message : "Falha ao guardar fotografia offline."); }
+      }}>Guardar foto offline</Button>}
+      {offlineKey && queued && onUpload && !readOnly && <Button size="sm" variant="outline" disabled={saving} onClick={async () => {
+        setSaving(true);
+        try {
+          const saved = await getQueuedPhoto(offlineKey);
+          if (!saved) throw new Error("Foto offline não encontrada");
+          const photo = await onUpload(new File([saved.file], saved.name, { type: saved.mime }));
+          await removeQueuedPhoto(offlineKey);
+          setQueued(false); setSelectedFile(null); setLocalImage(null);
+          setSelectedPhotoPath(photo.storageUrl); setUploadedImage(photo.accessUrl);
+          setMessage("Foto sincronizada com o checklist.");
+        } catch (error) { setMessage(error instanceof Error ? error.message : "Envio falhou. A foto permanece no dispositivo."); }
+        finally { setSaving(false); }
+      }}>Enviar foto offline</Button>}
       {selectedFile && onUpload && <Button disabled={saving || readOnly} onClick={async () => {
         setSaving(true); setMessage("");
         try {
