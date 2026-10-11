@@ -1,6 +1,7 @@
 import { useState, type ChangeEvent } from "react";
 import { importArqdorRecovery, type ArqdorRecoveryEnvelope } from "@/lib/arqdorRecoveryPackage";
 import { verifyRecoveryRoundTrip } from "@/lib/arqdorVerifiedRecoveryExport";
+import { verifySelectedRecoveryFile } from "@/lib/arqdorSavedRecoveryVerifier";
 import type { DraftScope, LocalDraft } from "@/lib/arqdorEncryptedDraft";
 import type { ProjectContinuity } from "@/lib/projectContinuity";
 import { evaluateRecoveryForReview } from "@/lib/arqdorRecoveryReview";
@@ -25,6 +26,7 @@ export function ArqdorRecoveryPanel(props: {
   const [message, setMessage] = useState("");
   const [restored, setRestored] = useState<LocalDraft | null>(null);
   const [exported, setExported] = useState(false);
+  const [fileVerified, setFileVerified] = useState(false);
   async function submitForReview(draft: LocalDraft) {
     setBusy(true); setMessage("");
     try {
@@ -44,7 +46,7 @@ export function ArqdorRecoveryPanel(props: {
     } finally { setBusy(false); }
   }
   async function exportBackup() {
-    setBusy(true); setMessage(""); setExported(false);
+    setBusy(true); setMessage(""); setExported(false); setFileVerified(false);
     try {
       const envelope = await verifyRecoveryRoundTrip(props.currentDraft, props.authorizedScope, passphrase);
       const url = URL.createObjectURL(new Blob([JSON.stringify(envelope)], { type: "application/json" }));
@@ -58,6 +60,20 @@ export function ArqdorRecoveryPanel(props: {
       setMessage("Arquivo preparado. Guarde-o em local seguro junto da senha; a senha não fica salva aqui.");
     } catch {
       setMessage("Não foi possível exportar. Verifique a senha (mínimo de 12 caracteres) e a autorização.");
+    } finally { setBusy(false); }
+  }
+  async function verifySavedFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    setFileVerified(false);
+    if (!file) return;
+    setBusy(true); setMessage("");
+    try {
+      await verifySelectedRecoveryFile(file, props.currentDraft, props.authorizedScope, passphrase);
+      setFileVerified(true);
+      setMessage("Arquivo selecionado, descriptografado e conferido com o rascunho atual. Mantenha a cópia e a senha em local seguro.");
+    } catch {
+      setMessage("A cópia escolhida não corresponde ao rascunho atual ou não pôde ser recuperada.");
     } finally { setBusy(false); }
   }
   async function importBackup(event: ChangeEvent<HTMLInputElement>) {
@@ -93,7 +109,7 @@ export function ArqdorRecoveryPanel(props: {
         Senha de recuperação (mínimo 12 caracteres)
         <input className="mt-1 w-full rounded-md border bg-background p-2" type="password"
           autoComplete="new-password" minLength={12} value={passphrase}
-          onChange={event => { setPassphrase(event.target.value); setRestored(null); }} />
+          onChange={event => { setPassphrase(event.target.value); setRestored(null); setFileVerified(false); }} />
       </label>
       <div className="flex flex-wrap gap-2">
         <button className="rounded-md border px-3 py-2 disabled:opacity-50" type="button"
@@ -106,6 +122,13 @@ export function ArqdorRecoveryPanel(props: {
             disabled={busy || passphrase.length < 12} onChange={event => void importBackup(event)} />
         </label>
       </div>
+      <label className="inline-block rounded-md border px-3 py-2 text-sm">
+        Verificar arquivo salvo (mesmo rascunho)
+        <input className="sr-only" type="file" accept=".json,application/json"
+          disabled={busy || passphrase.length < 12}
+          onChange={event => void verifySavedFile(event)} />
+      </label>
+      {fileVerified && <p role="status" className="text-sm">Cópia externa selecionada e conferida. Esta etapa não descarta alterações locais.</p>}
       {restored && <div className="space-y-2 rounded-lg border p-3">
         <p className="text-sm">Rascunho encontrado. Revisão de origem: {restored.change.baseRevision}.</p>
         <button type="button" className="rounded-md border px-3 py-2"
