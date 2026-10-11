@@ -46,7 +46,17 @@ try {
   const final = await a.query(`SELECT revision,geometry FROM "${table}" WHERE id='p'`);
   assert.equal(final.rows[0].revision, 2);
   assert.deepEqual(final.rows[0].geometry, { winner: true });
-  console.log("MULTI-04: lock contention and stale CAS passed");
+  // Assert transaction rollback restores both project row and audit insert.
+  await a.query(`CREATE TEMP TABLE multi04_audit (operation_id text PRIMARY KEY, snapshot jsonb NOT NULL)`);
+  await a.query("BEGIN");
+  await a.query(`INSERT INTO multi04_audit VALUES ('rollback-op', '{"before":true}')`);
+  await a.query(`UPDATE "${table}" SET geometry='{"intermediate":true}', revision=3 WHERE id='p' AND revision=2`);
+  await a.query("ROLLBACK");
+  const rolledBack = await a.query(`SELECT geometry,revision FROM "${table}" WHERE id='p'`);
+  assert.deepEqual(rolledBack.rows[0], { geometry: { winner: true }, revision: 2 });
+  const auditRows = await a.query("SELECT count(*)::int AS count FROM multi04_audit");
+  assert.equal(auditRows.rows[0].count, 0);
+  console.log("MULTI-04: lock contention, stale CAS and rollback passed");
 } finally {
   await a.query("ROLLBACK").catch(() => {});
   await b.query("ROLLBACK").catch(() => {});
