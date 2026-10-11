@@ -32,7 +32,9 @@ export function buildExperimentalRenderOptions(args: {
  const physical:Record<string,{baseColor:readonly [number,number,number];roughness:number;metalness:number}>={};
  for(const material of snapshot.materials){
   if(!/^#[0-9a-f]{6}$/i.test(material.baseColor)||
-     !Number.isFinite(material.roughness)||!Number.isFinite(material.metalness))throw Error("ARQDOR: material inválido");
+     !Number.isFinite(material.roughness)||material.roughness<0||material.roughness>1||
+     !Number.isFinite(material.metalness)||material.metalness<0||material.metalness>1||
+     !Number.isFinite(material.opacity)||material.opacity<0||material.opacity>1)throw Error("ARQDOR: material inválido");
   materials[material.id]=material.baseColor;
   const hex=material.baseColor;
   physical[material.id]={
@@ -48,6 +50,7 @@ export function buildExperimentalRenderOptions(args: {
   geometry,width,height,materials,physicalMaterials:physical,
   camera:{position,target,verticalFovDegrees:fov},
   light:{directionToLight:[0.35,0.8,0.45],color:[1,1,1],intensity:1},
+  directionalLight:{directionToLight:[0.35,0.8,0.45],color:[1,1,1],intensity:1},
   maxBounces:2,skyColor:[0.72,0.82,0.95],display:{toneMapping:"aces",exposure:1},
  };
 }
