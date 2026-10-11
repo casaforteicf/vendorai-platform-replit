@@ -51,3 +51,12 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - MULTI-03 ainda precisa: integração com editor, formato/versionamento de documento, cota/espaço cheio, recuperação após reinício, testes IndexedDB em navegadores, limpeza segura na revogação de acesso, testes de isolamento por tenant e salvamento sem perda.
 - MULTI-04 ainda precisa: endpoint autenticado de revisão, idempotência e reconciliação de conflito (nunca sobrescrever automaticamente a revisão remota).
 - O código foi commitado, **não compilado nem homologado** neste conector; PR continua draft.
+
+
+## MULTI-04 — Pré-validação de sincronização (sem upload)
+- `artifacts/frontend/src/lib/arqdorDraftReconciliation.ts`: gate determinístico por tenant, usuário, contexto, projeto, permissão de edição e revisão-base local vs. revisão remota.
+- Resultados possíveis: `ready` (apenas pré-validação), `conflict` (preservar rascunho, exigir comparação), `denied` (não enviar).
+- `arqdorDraftReconciliation.test.ts`: testes de revisão igual/diferente, autorização revogada, identificadores de escopo divergentes e revisão ausente.
+- **Sem endpoint de upload, sem merge, sem processamento em segundo plano.** Para proteger projetos, implementação posterior do servidor deverá validar permissão novamente e aplicar gravação condicional atômica com revisão esperada (CAS), deduplicação por operação e histórico de conflitos. O frontend não pode autorizar alterações sozinho.
+- MULTI-03 continua não integrado ao editor, e a política de criptografia/retenção dos rascunhos locais ainda precisa ser definida e implementada antes de gravar conteúdo real.
+- Testes criados, mas não executados nem homologados neste ambiente. PR ainda draft; produção inalterada.
