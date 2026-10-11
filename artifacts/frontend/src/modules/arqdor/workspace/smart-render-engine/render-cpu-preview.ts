@@ -22,8 +22,12 @@ function rgb(hex:string):Vec3 {
   if(!/^#[0-9a-f]{6}$/i.test(hex))return [0.75,0.75,0.75];
   return [1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255) as unknown as Vec3;
 }
+export type PreparedCpuPreview = ReturnType<typeof createRenderBvh>;
+export function prepareCpuPreview(geometry: GeometryTransfer): PreparedCpuPreview {
+  return createRenderBvh(geometry);
+}
 /** Small deterministic CPU raycast diagnostic, not path tracing or final-quality rendering. */
-export function renderCpuPreview(o:CpuPreviewOptions, rowStart=0, rowCount=o.height):CpuPreviewResult {
+export function renderCpuPreview(o:CpuPreviewOptions, rowStart=0, rowCount=o.height, prepared?:PreparedCpuPreview):CpuPreviewResult {
   const {width,height}=o;
   if(!Number.isInteger(rowStart)||!Number.isInteger(rowCount)||rowStart<0||rowCount<1||rowStart+rowCount>height)throw Error("ARQDOR: faixa de linhas inválida");
   if(!Number.isInteger(width)||!Number.isInteger(height)||width<1||height<1||width*height>262_144)
@@ -33,7 +37,7 @@ export function renderCpuPreview(o:CpuPreviewOptions, rowStart=0, rowCount=o.hei
   const right=unit(cross(forward,o.camera.up||[0,1,0]));
   const up=unit(cross(right,forward));
   const light=unit(o.light.directionToLight);
-  const bvh=createRenderBvh(o.geometry);
+  const bvh=prepared ?? prepareCpuPreview(o.geometry);
   const rgba=new Uint8ClampedArray(width*rowCount*4);
   const aspect=width/height,spread=Math.tan(o.camera.verticalFovDegrees*Math.PI/360);
   const sky:Vec3=o.skyColor||[0.72,0.82,0.95],ambient=clamp(o.ambient??0.16);
