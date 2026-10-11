@@ -20,3 +20,8 @@ test("conditional save scopes by tenant and performs atomic row revision compari
   assert.match(code, /status\(409\)/);
   assert.doesNotMatch(code, /onConflictDoUpdate|\.insert\(/);
 });
+
+test("conditional revision and write endpoints fail closed for non-admin roles", () => {
+  assert.match(source, /router\.get\("\/arqdor\/projects\/:id\/revision", authenticate, requireRole\("super_admin", "tenant_admin"\)/);
+  assert.match(source, /router\.put\("\/arqdor\/projects\/:id\/conditional", authenticate, requireRole\("super_admin", "tenant_admin"\)/);
+});
