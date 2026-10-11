@@ -1408,7 +1408,7 @@ export function NewLeadDialog({
                             </SelectContent>
                           </Select>
                         </div>
-                      </div>}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1790,7 +1790,7 @@ export function NewLeadDialog({
                             />
                           </div>
                         )}
-                      </div>
+                      </div>}
                     </div>
                   ))}
                 </div>
