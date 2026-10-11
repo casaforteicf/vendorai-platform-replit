@@ -46,9 +46,12 @@ function dragSetup() {
   const button = screen.getByRole("button", { name: "Laje · s" }) as unknown as SVGRectElement;
   Object.defineProperty(button, "getScreenCTM", { value: () => ({ inverse: () => ({}) }) });
   Object.defineProperty(button.ownerSVGElement, "createSVGPoint", { value: () => ({ x: 0, y: 0, matrixTransform() { return { x: this.x / 100, y: this.y / 100 }; } }) });
-  Object.defineProperty(button, "setPointerCapture", { value: vi.fn() });
-  Object.defineProperty(button, "hasPointerCapture", { value: () => false });
-  return { button, onMove, rerender };
+  let captured = false;
+  const release = vi.fn(() => { captured = false; });
+  Object.defineProperty(button, "setPointerCapture", { value: vi.fn(() => { captured = true; }) });
+  Object.defineProperty(button, "hasPointerCapture", { value: () => captured });
+  Object.defineProperty(button, "releasePointerCapture", { value: release });
+  return { button, onMove, rerender, release };
 }
 it("previews a metric drag and commits only once on release", () => {
   const { button, onMove } = dragSetup();
@@ -86,6 +89,32 @@ it("discards a drag when its source snapshot changes", () => {
   fireEvent.pointerDown(button, { button: 0, pointerId: 1, clientX: 0, clientY: 0 });
   fireEvent.pointerMove(button, { pointerId: 1, clientX: 100, clientY: 100 });
   rerender(<svg><ConceptArchitecturalPlanLayer model={model()} floor={1} selectedId="s" onSelect={vi.fn()} onMove={onMove} lotWidth={12} lotDepth={20} /></svg>);
+  fireEvent.pointerUp(button, { pointerId: 1 });
+  expect(onMove).not.toHaveBeenCalled();
+});
+
+it("keeps keyboard moves out of an active drag and releases capture on cancellation", () => {
+  const { button, onMove, release } = dragSetup();
+  fireEvent.pointerDown(button, { button: 0, pointerId: 1, clientX: 0, clientY: 0 });
+  fireEvent.pointerMove(button, { pointerId: 1, clientX: 100, clientY: 100 });
+  fireEvent.keyDown(button, { key: "ArrowRight" });
+  fireEvent.keyDown(button, { key: "Enter" });
+  expect(onMove).not.toHaveBeenCalled();
+  fireEvent.keyDown(button, { key: "Escape" });
+  expect(release).toHaveBeenCalledWith(1);
+  fireEvent.pointerUp(button, { pointerId: 1 });
+  expect(onMove).not.toHaveBeenCalled();
+  fireEvent.keyDown(button, { key: "ArrowRight" });
+  expect(onMove.mock.calls).toEqual([["s", 0.01, 0]]);
+});
+it("ignores capture loss for another pointer but cancels the active pointer", () => {
+  const { button, onMove } = dragSetup();
+  fireEvent.pointerDown(button, { button: 0, pointerId: 1, clientX: 0, clientY: 0 });
+  fireEvent.pointerMove(button, { pointerId: 1, clientX: 100, clientY: 100 });
+  fireEvent.lostPointerCapture(button, { pointerId: 2 });
+  expect(button.getAttribute("x")).toBe("1");
+  fireEvent.lostPointerCapture(button, { pointerId: 1 });
+  expect(button.getAttribute("x")).toBe("0");
   fireEvent.pointerUp(button, { pointerId: 1 });
   expect(onMove).not.toHaveBeenCalled();
 });
