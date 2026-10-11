@@ -433,6 +433,21 @@ router.post("/operational-checklists/runs/:runId/items/:itemId/photos", async (r
     res.status(201).json({ assetId: asset.id, storageUrl, accessUrl });
   } catch (error) {
     await cleanupAbandonedUpload();
+    if (parsed.data.uploadId && typeof error === "object" && error !== null && "code" in error && error.code === "23505") {
+      const [existing] = await db.select().from(mediaAssetsTable).where(and(
+        eq(mediaAssetsTable.tenantId, run.tenantId),
+        sql`${mediaAssetsTable.metadata}->>'uploadId' = ${parsed.data.uploadId}`,
+        sql`${mediaAssetsTable.metadata}->>'runId' = ${run.id}`,
+        sql`${mediaAssetsTable.metadata}->>'itemId' = ${itemId}`
+      )).limit(1);
+      const [latest] = await db.select({ items: operationalChecklistRunsTable.items }).from(operationalChecklistRunsTable)
+        .where(and(eq(operationalChecklistRunsTable.id, run.id), eq(operationalChecklistRunsTable.tenantId, run.tenantId))).limit(1);
+      if (existing && latest?.items?.some(item => item.id === itemId && (item.fotos ?? []).includes(existing.storageUrl))) {
+        const accessUrl = await measureStorage.getObjectEntitySignedUrl(existing.storageUrl, 300);
+        return void res.status(200).json({ assetId: existing.id, storageUrl: existing.storageUrl, accessUrl, reused: true });
+      }
+      return void res.status(409).json({ error: "Upload concorrente sem associação confirmada; revisar item.", code: "PHOTO_RECONCILE_REQUIRED" });
+    }
     req.log.error({ err: error, runId: run.id }, "arqdor-measure: upload failure");
     res.status(500).json({ error: "Falha ao registrar fotografia" });
   }
