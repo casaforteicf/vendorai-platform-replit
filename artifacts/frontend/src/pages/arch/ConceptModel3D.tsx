@@ -1,3 +1,4 @@
+import { useAuth } from "@/contexts/AuthContext";
 import { useExperimentalRenderCapture } from "../../modules/arqdor/workspace/smart-render-engine/use-experimental-render-capture";
 import { ExperimentalCpuRenderPanel } from "../../modules/arqdor/workspace/smart-render-engine/ExperimentalCpuRenderPanel";
 import type { RenderSceneSnapshot } from "../../modules/arqdor/workspace/smart-render-engine/render-scene-contract";
@@ -625,7 +626,22 @@ export default function ConceptModel3D({
   onSavedTourPointActivate,
   onRenderView,
 }: Props) {
-  const allowExperimentalCpu = experimentalCpuRenderEnabled && experimentalCpuRenderAuthorized;
+  const {token,user} = useAuth();
+  const [serverCpuRenderAccess,setServerCpuRenderAccess] = useState(false);
+  useEffect(()=>{
+    setServerCpuRenderAccess(false);
+    if (!experimentalCpuRenderEnabled || !experimentalCpuRenderAuthorized ||
+        !token || !user?.tenantId || user.platformRole !== "super_admin") return;
+    let cancelled=false;
+    const controller=new AbortController();
+    fetch(`/api/tenants/${encodeURIComponent(user.tenantId)}/arqdor-cpu-render-access`,{
+      headers:{Authorization:`Bearer ${token}`},signal:controller.signal,cache:"no-store",
+    }).then(response=>response.ok?response.json():{enabled:false})
+      .then(payload=>{if(!cancelled)setServerCpuRenderAccess(payload?.enabled===true);})
+      .catch(()=>{if(!cancelled)setServerCpuRenderAccess(false);});
+    return ()=>{cancelled=true;controller.abort();};
+  },[experimentalCpuRenderEnabled,experimentalCpuRenderAuthorized,token,user?.tenantId,user?.platformRole]);
+  const allowExperimentalCpu = experimentalCpuRenderEnabled && experimentalCpuRenderAuthorized && serverCpuRenderAccess;
   const experimentalCapture = useExperimentalRenderCapture();
   const [rotation, setRotation] = useState(35);
   const [zoom, setZoom] = useState(1.32);
