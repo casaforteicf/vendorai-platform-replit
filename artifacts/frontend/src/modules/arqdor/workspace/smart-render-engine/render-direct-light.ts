@@ -8,7 +8,8 @@ export function evaluateDirectionalLight(args:{
   bvh:Intersector;point:Vec3;normal:Vec3;albedo:Vec3;light:DirectionalLight;
 }):Vec3 {
  const {bvh,point,albedo,light}=args,n=unit(args.normal),l=unit(light.directionToLight);
- if([...point,...albedo,...light.color].some(x=>!Number.isFinite(x)||x<0)||
+ if(point.some(x=>!Number.isFinite(x))||
+   [...albedo,...light.color].some(x=>!Number.isFinite(x)||x<0)||
    !Number.isFinite(light.intensity)||light.intensity<0||light.intensity>10000)
    throw Error("ARQDOR: parâmetros de iluminação inválidos");
  const cosine=Math.max(0,dot(n,l));
