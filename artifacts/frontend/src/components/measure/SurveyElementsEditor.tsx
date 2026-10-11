@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import SurveyPlanPreview from "./SurveyPlanPreview";
 import { convertSurveyToArqdor } from "./convertSurveyToArqdor";
+import { queueSurvey, readPendingSurvey, clearPendingSurvey } from "./offlineSurveyQueue";
 
 export type SurveyElement = {
   id: string;
@@ -56,9 +57,51 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
   const [offset, setOffset] = useState("");
   const [sill, setSill] = useState("0");
   const [saving, setSaving] = useState(false);
+  const [offlinePending, setOfflinePending] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [showDraft, setShowDraft] = useState(false);
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void readPendingSurvey(storageKey).then((pending) => { if (active && pending) { setOfflinePending(true); setFeedback("Há um levantamento pendente no dispositivo. Recupere antes de sincronizar."); } }).catch(() => {});
+    return () => { active = false; };
+  }, [storageKey]);
+  async function recoverOffline() {
+    const pending = await readPendingSurvey(storageKey);
+    if (!pending) return;
+    setItems(pending.items);
+    setDirty(true);
+    setOfflinePending(true);
+    setFeedback("Medições recuperadas. Revise e sincronize quando conectado.");
+  }
+  async function saveWithOfflineFallback() {
+    setSaving(true);
+    setFeedback("");
+    try {
+      if (!navigator.onLine) {
+        await queueSurvey(storageKey, items);
+        setOfflinePending(true);
+        setFeedback("Sem conexão. Medições guardadas neste dispositivo; não sincronizadas.");
+        return;
+      }
+      await onSave(items);
+      await clearPendingSurvey(storageKey);
+      setOfflinePending(false);
+      setDirty(false);
+      sessionStorage.removeItem(storageKey);
+      setFeedback("Levantamento sincronizado no checklist.");
+    } catch (error) {
+      if (error instanceof TypeError || !navigator.onLine) {
+        try {
+          await queueSurvey(storageKey, items);
+          setOfflinePending(true);
+          setFeedback("Falha de rede. Levantamento guardado no dispositivo para envio manual.");
+        } catch { setFeedback("Erro de rede e armazenamento offline indisponível. Mantenha esta página aberta."); }
+      } else {
+        setFeedback(error instanceof Error ? error.message : "Não foi possível sincronizar. Os dados não foram sobrescritos.");
+      }
+    } finally { setSaving(false); }
+  }
   function toDimension(value: string): number | null { const n = Number(value.replace(",", ".")); return value.trim() && Number.isFinite(n) && n > 0 && n <= 1000000 ? n : null; }
   function add() {
     if (!roomName.trim() || !label.trim() || (width.trim() && toDimension(width) === null) || (height.trim() && toDimension(height) === null)) { setFeedback("Preencha ambiente, identificação e medidas válidas."); return; }
@@ -111,7 +154,8 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
     </div>}
     <Button size="sm" variant="outline" disabled={disabled} onClick={add}>Adicionar elemento</Button>
     {items.map((entry)=><div key={entry.id} className="flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-sm"><span>{entry.roomName} · {entry.elementType} · {entry.label} · {entry.widthMm ?? "—"} × {entry.heightMm ?? "—"} mm {entry.verified ? "· Conferido" : "· Pendente"}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={disabled} onClick={()=>{setDirty(true);setItems(old=>old.map(e=>e.id===entry.id?{...e,verified:!e.verified}:e));}}>{entry.verified?"Reabrir":"Marcar conferido"}</Button><Button size="sm" variant="ghost" disabled={disabled} onClick={()=>{setDirty(true);setItems(old=>old.filter(e=>e.id!==entry.id));}}>Excluir</Button></div></div>)}
-    <Button disabled={disabled||saving} onClick={async()=>{setSaving(true);setFeedback("");try{await onSave(items);setDirty(false);sessionStorage.removeItem(storageKey);setFeedback("Levantamento salvo no checklist.");}catch(e){setFeedback(e instanceof Error?e.message:"Erro ao salvar.");}finally{setSaving(false);}}}>{saving?"Salvando...":"Salvar levantamento"}</Button>
+    {offlinePending && <Button size="sm" variant="outline" disabled={disabled || saving} onClick={() => { void recoverOffline(); }}>Recuperar pendência offline</Button>}
+    <Button disabled={disabled||saving} onClick={() => { void saveWithOfflineFallback(); }}>{saving?"Salvando...":offlinePending?"Sincronizar levantamento":"Salvar levantamento"}</Button>
     <SurveyPlanPreview elements={items} />
     <Button size="sm" variant="outline" onClick={() => setShowDraft((v) => !v)}>Prévia para Arqdor</Button>
     {showDraft && <div className="rounded border p-3 space-y-2">
