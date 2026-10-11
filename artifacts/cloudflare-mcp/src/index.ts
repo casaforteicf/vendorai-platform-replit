@@ -190,7 +190,7 @@ const execFileAsync = promisify(execFile);
 const testOperatorSession = new AsyncLocalStorage<string | null>();
 // Central operator grants are configured by administrator as hashed OAuth client IDs.
 // No permission is inferred from the untrusted 'agent' request parameter.
-function operatorGrant(operation: "request_test" | "get_test_result", lot?: string): string {
+function operatorGrant(operation: "request_test" | "get_test_result" | "executor_probe", lot?: string): string {
   const client = testOperatorSession.getStore();
   if (!client) throw new Error("OPERATOR_IDENTITY_REQUIRED");
   const policyText = process.env["VENDI_TEST_OPERATOR_POLICY"];
@@ -272,6 +272,28 @@ async function contaboOperate(action: "build" | "homologate" | "rollback" | "rel
     `sudo -n /usr/local/sbin/vendi-contabo-operator ${action} ${lot}`,
   ], { timeout: 180000, maxBuffer: 256 * 1024 });
   return { action, lot, output: stdout.slice(0, 16000), warnings: stderr.slice(0, 600) };
+}
+
+
+// Restricted host executor: fixed actions only; never accepts shell text from clients.
+// This requires the separately reviewed /usr/local/sbin/vendi-executor-v1 on the host.
+// No fallback to root/sudo if the command is missing or access is denied.
+async function vendiExecutorProbe(action: "identity" | "homolog-health" | "production-health") {
+  const host = process.env["VENDI_CONTABO_SSH_HOST"] || (existsSync("/app/.vendi-ssh/host") ? readFileSync("/app/.vendi-ssh/host", "utf8").trim() : undefined);
+  const user = process.env["VENDI_CONTABO_SSH_USER"] || "vendorai";
+  const key = process.env["VENDI_CONTABO_SSH_KEY_PATH"] || "/app/.vendi-ssh/id_ed25519";
+  const known = process.env["VENDI_CONTABO_KNOWN_HOSTS"] || "/app/.vendi-ssh/known_hosts";
+  if (!host || !/^[a-zA-Z0-9.-]+$/.test(host) || !/^[a-z_][a-z0-9_-]*$/.test(user) || !existsSync(key) || !existsSync(known)) {
+    throw new Error("VENDI_EXECUTOR_SSH_NOT_CONFIGURED");
+  }
+  const allowed = ["identity", "homolog-health", "production-health"] as const;
+  if (!allowed.includes(action)) throw new Error("VENDI_EXECUTOR_ACTION_DENIED");
+  const command = `/usr/local/sbin/vendi-executor-v1 ${action}`;
+  const { stdout } = await execFileAsync("ssh", [
+    "-i", key, "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes",
+    "-o", `UserKnownHostsFile=${known}`, "-o", "ConnectTimeout=8", `${user}@${host}`, command,
+  ], { timeout: 15000, maxBuffer: 65536 });
+  return { action, readOnly: true, output: stdout.slice(0, 4000) };
 }
 
 function createCloudflareMcpServer() {
@@ -548,6 +570,21 @@ function createCloudflareMcpServer() {
       const result = await testHostAction("result", [runId, lot]);
       console.info(JSON.stringify({ type: "test_result_read", principal, lot, runId, timestamp: new Date().toISOString() }));
       return toolText({ principal, lot, runId, result });
+    },
+  );
+
+  server.registerTool(
+    "vendi_executor_probe",
+    {
+      description: "Verifica o executor restrito na Contabo sem modificar arquivos ou produção. Somente três operações fixas de leitura; acesso negado sem autorização específica.",
+      inputSchema: z.object({ action: z.enum(["identity", "homolog-health", "production-health"]) }),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ action }) => {
+      const principal = operatorGrant("executor_probe");
+      const result = await vendiExecutorProbe(action);
+      console.info(JSON.stringify({ type: "vendi_executor_probe", principal, action, timestamp: new Date().toISOString() }));
+      return toolText(result);
     },
   );
 
