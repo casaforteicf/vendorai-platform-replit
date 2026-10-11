@@ -1,3 +1,4 @@
+import type { RectAreaLight } from "./render-area-light";
 import type { DirectionalLight } from "./render-direct-light";
 import { encodeDisplayColor, type ToneMapping } from "./render-postprocess";
 import type { CpuMaterialMaps } from "./render-material-maps";
@@ -11,6 +12,7 @@ export type DiffusePreviewOptions = CpuPreviewOptions & Readonly<{
   physicalMaterials?: Readonly<Record<string,Partial<PhysicalMaterial>>>;
   maxBounces?: number;
   directionalLight?: DirectionalLight;
+  areaLights?: readonly RectAreaLight[];
   display?: Readonly<{toneMapping:ToneMapping;exposure?:number}>;
   textures?: Readonly<Record<string,CpuTexture>>;
   materialMaps?: Readonly<Record<string,CpuMaterialMaps>>;
@@ -49,7 +51,7 @@ export function renderDiffusePreviewStrip(o:DiffusePreviewOptions,rowStart:numbe
    const dx=(2*(x+jx)/width-1)*ratio*scale,dy=(1-2*(y+jy)/height)*scale;
    const direction=unit([forward[0]+right[0]*dx+up[0]*dy,forward[1]+right[1]*dx+up[1]*dy,forward[2]+right[2]*dx+up[2]*dy]);
    const color=traceDiffusePath({
-     geometry:o.geometry,prepared,textures:o.textures,materialMaps:o.materialMaps,directionalLight:o.directionalLight,ray:{origin:o.camera.position,direction},materials:mats,
+     geometry:o.geometry,prepared,textures:o.textures,materialMaps:o.materialMaps,directionalLight:o.directionalLight,areaLights:o.areaLights,ray:{origin:o.camera.position,direction},materials:mats,
      sky:o.skyColor||[0.72,0.82,0.95],maxBounces:o.maxBounces??2,
      seed:(Math.imul(sample+1,2654435761)^Math.imul(y+1,2246822519)^Math.imul(x+1,3266489917))>>>0,
    });
