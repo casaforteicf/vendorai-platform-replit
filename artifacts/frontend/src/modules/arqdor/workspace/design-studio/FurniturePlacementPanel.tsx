@@ -1,4 +1,5 @@
 import React, {useState} from "react";
+import {createFurnitureSnapshot} from "../../shared/furniture-project-snapshot";
 import type {InteriorEnvironment} from "./interior-environment";
 import type {CabinetDraft} from "../../shared/parametric-cabinet-core";
 import {insertCabinetDraft,type PlacedCabinet} from "../../shared/placed-cabinet-draft";
@@ -6,6 +7,7 @@ import {insertCabinetDraft,type PlacedCabinet} from "../../shared/placed-cabinet
 export function FurniturePlacementPanel({environment,draft}:{environment:InteriorEnvironment;draft:CabinetDraft|null}) {
   const [items,setItems]=useState<PlacedCabinet[]>([]);
   const [message,setMessage]=useState("");
+  const [busy,setBusy]=useState(false);
   const xs=environment.walls.flatMap(w=>[w.x1,w.x2]);
   const ys=environment.walls.flatMap(w=>[w.y1,w.y2]);
   const width=Math.round((Math.max(...xs)-Math.min(...xs))*1000);
@@ -22,6 +24,38 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
       setItems(old=>[...old.filter(i=>i.roomId!==environment.roomId),...next]);setMessage("");
     }catch(e){setMessage(e instanceof Error?e.message:"Erro de geometria");}
   }
+  async function save(){
+    if(!ready||!environment.projectId){setMessage("É necessário salvar o projeto e ter geometria do ambiente.");return;}
+    setBusy(true);
+    try{
+      const snapshot=createFurnitureSnapshot({tenantId:roomItems[0]?.tenantId??draft?.parameters.tenantId??"",
+      projectId:environment.projectId,room:{id:environment.roomId,widthMm:width,depthMm:depth},
+      revision:environment.sourceRevision??"RASCUNHO-1",createdAt:new Date().toISOString(),furniture:roomItems});
+      const response=await fetch("/api/arqdor/projects/"+encodeURIComponent(environment.projectId)+"/furniture/"+encodeURIComponent(environment.roomId),
+       {method:"PUT",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify(snapshot)});
+      if(!response.ok)throw Error("Falha no salvamento ("+response.status+")");
+      setMessage("Mobiliário salvo no projeto.");
+    }catch(e){setMessage(e instanceof Error?e.message:"Erro ao salvar");}
+    finally{setBusy(false);}
+  }
+  async function load(){
+    if(!environment.projectId||!ready){setMessage("Projeto ainda não identificado.");return;}
+    setBusy(true);
+    try{
+      const response=await fetch("/api/arqdor/projects/"+encodeURIComponent(environment.projectId)+"/furniture",{credentials:"include"});
+      if(!response.ok)throw Error("Falha no carregamento ("+response.status+")");
+      const data=await response.json();
+      const snapshot=data.furnitureSnapshots?.[environment.roomId];
+      if(!snapshot){setMessage("Nenhum mobiliário salvo para este ambiente.");return;}
+      const restored=createFurnitureSnapshot({tenantId:snapshot.tenantId,projectId:snapshot.projectId,
+        room:{id:environment.roomId,widthMm:width,depthMm:depth},revision:snapshot.revision,
+        createdAt:snapshot.createdAt,furniture:snapshot.furniture});
+      if(restored.projectId!==environment.projectId||restored.roomId!==environment.roomId)throw Error("Contexto de projeto incompatível");
+      setItems(old=>[...old.filter(i=>i.roomId!==environment.roomId),...restored.furniture]);
+      setMessage("Mobiliário recuperado.");
+    }catch(e){setMessage(e instanceof Error?e.message:"Erro ao carregar");}
+    finally{setBusy(false);}
+  }
   return <section className="rounded-xl border bg-white p-4">
     <h3 className="font-semibold">Móveis na planta</h3>
     <p className="text-xs text-amber-700">Prévia local, sem salvamento. Colisões 2D retangulares.</p>
@@ -33,6 +67,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
       <rect width={width} height={depth} fill="#f8fafc" stroke="#334155" strokeWidth="12"/>
       {roomItems.map(i=><rect key={i.id} x={i.bounds.xMm} y={i.bounds.yMm} width={i.bounds.widthMm} height={i.bounds.depthMm} fill="#ddd6fe" stroke="#6d28d9" strokeWidth="10"/>)}
     </svg></>:<p className="text-sm">Geometria do ambiente ainda indisponível.</p>}
+    <div className="mt-2 flex gap-2"><button type="button" disabled={busy||!environment.projectId} onClick={save} className="rounded border px-3 py-2 text-xs">Salvar móveis</button><button type="button" disabled={busy||!environment.projectId} onClick={load} className="rounded border px-3 py-2 text-xs">Carregar móveis</button></div>
     {message&&<p role="alert" className="text-sm text-red-700">{message}</p>}
   </section>;
 }
