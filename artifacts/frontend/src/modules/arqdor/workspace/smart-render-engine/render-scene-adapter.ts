@@ -17,8 +17,10 @@ export function buildExperimentalRenderOptions(args: {
  if(!Number.isInteger(width)||!Number.isInteger(height)||width<1||height<1||width*height>262144)
   throw Error("ARQDOR: resolução experimental inválida");
  const meshIds=new Set(snapshot.meshes.map(x=>x.id));
+ const capturedById=new Map(snapshot.meshes.map(x=>[x.id,x]));
  if(meshIds.size!==snapshot.meshes.length || geometry.meshes.length!==snapshot.meshes.length ||
-    geometry.meshes.some(x=>!meshIds.has(x.meshId))||
+    geometry.meshes.some(x=>!meshIds.has(x.meshId) ||
+      (x.materialId!==null && !capturedById.get(x.meshId)?.materialIds.includes(x.materialId)))||
     snapshot.meshes.some(x=>!geometry.meshes.some(y=>y.meshId===x.id && y.triangles===x.triangleCount))||
     geometry.meshes.reduce((n,x)=>n+x.triangles,0)!==geometry.totalTriangles)
   throw Error("ARQDOR: geometria não corresponde à cena capturada");
