@@ -134,8 +134,27 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
     finally{setBusy(false);}
   }
   function exportDraft(){const file=new Blob([JSON.stringify({projectId:environment.projectId,roomId:environment.roomId,baseRevision:loadedRevision,furniture:roomItems},null,2)],{type:"application/json"});const url=URL.createObjectURL(file);const link=document.createElement("a");link.href=url;link.download="arqdor-mobiliario-rascunho.json";link.click();URL.revokeObjectURL(url);}
+  async function importDraft(file:File|undefined){
+    if(!file)return;
+    if(!savedTenantId||!environment.projectId||!ready){setMessage("Abra primeiro um projeto autorizado.");return;}
+    try{
+      if(file.size>1500000)throw Error("Arquivo excede 1,5 MB");
+      const parsed:unknown=JSON.parse(await file.text());
+      if(!parsed||typeof parsed!=="object")throw Error("Formato JSON inválido");
+      const data=parsed as Record<string,unknown>;
+      if(data.projectId!==environment.projectId||data.roomId!==environment.roomId)throw Error("Rascunho pertence a outro projeto ou ambiente");
+      if(!Array.isArray(data.furniture))throw Error("Lista de móveis inválida");
+      if(data.baseRevision!==loadedRevision)throw Error("Revisão diferente: carregue o projeto correto e faça a reconciliação manual antes de importar");
+      const furniture=data.furniture as PlacedCabinet[];
+      const normalized=furniture.map(item=>({...item,tenantId:savedTenantId,parameters:{...item.parameters,tenantId:savedTenantId},parts:item.parts.map(part=>({...part,tenantId:savedTenantId}))}));
+      const validated=createFurnitureSnapshot({tenantId:savedTenantId,projectId:environment.projectId,room:{id:environment.roomId,widthMm:width,depthMm:depth},revision:crypto.randomUUID(),createdAt:new Date().toISOString(),furniture:normalized});
+      validated.furniture.forEach(checkObstacles);
+      if(!window.confirm("Substituir somente o rascunho local pelos "+validated.furniture.length+" móveis importados? Nenhum dado será salvo automaticamente."))return;
+      setItems(validated.furniture);setSelectedId(null);markDirty();setMessage("Rascunho importado localmente. Revise e salve para persistir.");
+    }catch(e){setMessage(e instanceof Error?e.message:"Não foi possível importar o rascunho");}
+  }
   return <section className="rounded-xl border bg-white p-4">
-    <h3 className="font-semibold">Móveis na planta</h3>{dirty&&<p role="status" className="text-xs text-amber-700">Alterações locais não salvas{conflicted?" · conflito com outra edição":""}</p>}<button type="button" onClick={exportDraft} disabled={!roomItems.length} className="mt-1 rounded border px-2 py-1 text-xs">Exportar rascunho JSON</button>
+    <h3 className="font-semibold">Móveis na planta</h3>{dirty&&<p role="status" className="text-xs text-amber-700">Alterações locais não salvas{conflicted?" · conflito com outra edição":""}</p>}<button type="button" onClick={exportDraft} disabled={!roomItems.length} className="mt-1 rounded border px-2 py-1 text-xs">Exportar rascunho JSON</button><label className="ml-2 inline-flex cursor-pointer rounded border px-2 py-1 text-xs">Importar rascunho JSON<input type="file" accept=".json,application/json" className="sr-only" disabled={busy||!savedTenantId} onChange={e=>{void importDraft(e.target.files?.[0]);e.target.value="";}}/></label>
     <p className="text-xs text-amber-700">Prévia 2D; pode salvar no projeto existente. Validação de engenharia pendente.</p>
     {draft&&<p className="text-xs">Armário {draft.parameters.widthMm} × {draft.parameters.depthMm} mm · {draft.parts.length} tipos de peças.</p>}
     {ready?<><div className="grid grid-cols-2 gap-2">
