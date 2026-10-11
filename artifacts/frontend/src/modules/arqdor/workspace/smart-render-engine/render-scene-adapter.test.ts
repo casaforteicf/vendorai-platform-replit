@@ -18,6 +18,7 @@ describe("ARQDOR real scene adapter",()=>{
   expect(result.geometry).toBe(geometry);
   expect(result.physicalMaterials?.paint?.roughness).toBe(0.8);
   expect(result.directionalLight?.intensity).toBe(1);
+  expect(result.physicalMaterials?.paint?.transmission).toBe(0);
   expect(result.physicalMaterials?.paint?.baseColor?.[0]).toBeCloseTo(0.21586,4);
  });
  it("rejects material IDs that were not captured on the corresponding mesh",()=>{
@@ -25,6 +26,11 @@ describe("ARQDOR real scene adapter",()=>{
     {id:"other",baseColor:"#ffffff",metalness:0,roughness:1,opacity:1,doubleSided:false}]};
   const mismatched={...geometry,meshes:[{...geometry.meshes[0],materialId:"other"}]};
   expect(()=>buildExperimentalRenderOptions({snapshot:extra,geometry:mismatched})).toThrow();
+ });
+ it("maps alpha to lab-only approximate transmission",()=>{
+  const translucent={...snapshot,materials:[{...snapshot.materials[0],opacity:0.25}]};
+  const result=buildExperimentalRenderOptions({snapshot:translucent,geometry});
+  expect(result.physicalMaterials?.paint?.transmission).toBeCloseTo(0.75);
  });
  it("rejects out-of-range physically based material parameters",()=>{
   const invalid={...snapshot,materials:[{...snapshot.materials[0],roughness:-0.1}]};
