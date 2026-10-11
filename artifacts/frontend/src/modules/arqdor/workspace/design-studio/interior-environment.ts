@@ -2,11 +2,12 @@
  * This is a client-side draft contract; storage and project linking must be supplied by workspace APIs.
  * All physical lengths in meters, same convention as Concept geometry.
  */
+import type {InteriorObstacle} from "../../shared/furniture-obstacle-clashes";
 export type InteriorSource="preproject"|"new-room"|"import";
 export type InteriorWall={id:string;x1:number;y1:number;x2:number;y2:number;thicknessM:number;heightM:number};
 export type InteriorEnvironment={
   source:InteriorSource;projectId:string|null;roomId:string;name:string;
-  walls:InteriorWall[];sourceRevision?:string;sourceFileName?:string;
+  walls:InteriorWall[];obstacles?:InteriorObstacle[];sourceRevision?:string;sourceFileName?:string;
   persistStatus:"draft-only";
 };
 const finitePositive=(n:number)=>Number.isFinite(n)&&n>0;
