@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ArrowLeft, Camera, CheckCircle2, Printer, RefreshCw, Ruler, TriangleAlert } from "lucide-react";
 import PhotoMeasureEditor from "@/components/measure/PhotoMeasureEditor";
+import SurveyElementsEditor, { type SurveyElement } from "@/components/measure/SurveyElementsEditor";
 
 type ItemStatus = "nao_conferido" | "conferido" | "divergente" | "nao_executado" | "resolvido";
 type ChecklistItem = {
@@ -26,6 +27,7 @@ type ChecklistItem = {
   imagemUrl?: string | null;
   fotos?: string[];
   photoMeasurements?: import("@/components/measure/PhotoMeasureEditor").PhotoMeasure[];
+  surveyElements?: SurveyElement[];
   status: ItemStatus;
 };
 type ChecklistRun = {
@@ -326,6 +328,11 @@ export default function OperationalMeasurementChecklist() {
                       }} onClose={() => setPhotoItemId(null)} />
                     )}
                   </div>
+                  {photoItemId === item.id && <SurveyElementsEditor key={item.id + "-" + (item.surveyElements?.length ?? 0)} elements={item.surveyElements ?? []} photos={item.fotos ?? []} disabled={run.status === "concluido"} onSave={async (surveyElements) => {
+                    if (!data?.run) throw new Error("Checklist indisponível.");
+                    const updated = await api(`/api/operational-checklists/runs/${data.run.id}/items/${item.id}`, { method: "PATCH", body: JSON.stringify({ surveyElements }) });
+                    setData((prev) => prev ? { ...prev, run: updated } : prev);
+                  }} />}
                   <div className="mt-3 grid gap-3 md:grid-cols-2 print:hidden">
                     <Input
                       defaultValue={item.localizacao ?? ""}
