@@ -77,6 +77,7 @@ export default function OperationalMeasurementChecklist() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [photoItemId, setPhotoItemId] = useState<string | null>(null);
+  const [createdDraft, setCreatedDraft] = useState<string | null>(null);
   const [photoAccess, setPhotoAccess] = useState<Record<string, Array<{ storageUrl: string; accessUrl: string }>>>({});
 
   async function api(path: string, init?: RequestInit) {
@@ -168,6 +169,21 @@ export default function OperationalMeasurementChecklist() {
     }
   }
 
+  async function createArqdorDraft() {
+    if (!data?.run || !window.confirm("Criar um NOVO rascunho Arqdor com as paredes e aberturas verificadas? O projeto atual não será alterado.")) return;
+    setBusy("arqdor");
+    setError(null);
+    try {
+      const result = await api(`/api/operational-checklists/runs/${data.run.id}/create-arqdor-draft`, {
+        method: "POST",
+        body: JSON.stringify({ confirmed: true, title: "Levantamento " + (data.context.deal?.titulo ?? data.run.name) + " R" + data.run.revision }),
+      });
+      setCreatedDraft(result.archProjetoId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível criar o rascunho.");
+    } finally { setBusy(null); }
+  }
+
   async function complete() {
     if (!data?.run) return;
     setBusy("complete");
@@ -202,6 +218,7 @@ export default function OperationalMeasurementChecklist() {
           </div>
         </div>
         {run && <div className="flex gap-2">
+          <Button variant="outline" disabled={busy === "arqdor"} onClick={createArqdorDraft}>Criar rascunho Arqdor</Button>
           <Button variant="outline" onClick={() => window.print()}><Printer className="mr-2 h-4 w-4" /> Gerar PDF</Button>
           <Button onClick={complete} disabled={busy === "complete" || run.status === "concluido" || pending > 0 || divergent > 0}>
             <CheckCircle2 className="mr-2 h-4 w-4" /> {run.status === "concluido" ? "Concluído" : "Concluir conferência"}
@@ -209,6 +226,7 @@ export default function OperationalMeasurementChecklist() {
         </div>}
       </div>
 
+      {createdDraft && <div role="status" className="rounded-lg border p-3 text-sm">Rascunho Arqdor criado: {createdDraft}. Revisão técnica obrigatória antes de fabricação.</div>}
       {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 flex gap-2"><TriangleAlert className="h-4 w-4 mt-0.5" />{error}</div>}
 
       {!run ? (
