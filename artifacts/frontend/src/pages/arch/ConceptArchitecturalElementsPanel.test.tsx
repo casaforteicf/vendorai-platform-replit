@@ -7,8 +7,8 @@ it("creates a valid stair with optional upper slab opening", () => {
   const onChange = vi.fn();
   render(<ConceptArchitecturalElementsPanel model={emptyArchitecturalModel()} onChange={onChange} floor={0} lotWidth={12} lotDepth={20} />);
   fireEvent.change(screen.getByLabelText("Tipo de elemento"), { target: { value: "stair" } });
-  expect(screen.getByRole("checkbox").checked).toBe(true);
-  fireEvent.click(screen.getByRole("checkbox"));
+  expect(screen.getByRole("checkbox", { name: "Abrir automaticamente a laje do pavimento superior" }).checked).toBe(true);
+  fireEvent.click(screen.getByRole("checkbox", { name: "Abrir automaticamente a laje do pavimento superior" }));
   fireEvent.click(screen.getByRole("button", { name: "Adicionar" }));
   expect(onChange).toHaveBeenCalledOnce();
   expect(onChange.mock.calls[0][0].stairs[0]).toMatchObject({ floor: 0, run: 4.2, openSlab: false });
