@@ -60,3 +60,11 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - **Sem endpoint de upload, sem merge, sem processamento em segundo plano.** Para proteger projetos, implementação posterior do servidor deverá validar permissão novamente e aplicar gravação condicional atômica com revisão esperada (CAS), deduplicação por operação e histórico de conflitos. O frontend não pode autorizar alterações sozinho.
 - MULTI-03 continua não integrado ao editor, e a política de criptografia/retenção dos rascunhos locais ainda precisa ser definida e implementada antes de gravar conteúdo real.
 - Testes criados, mas não executados nem homologados neste ambiente. PR ainda draft; produção inalterada.
+
+
+## MULTI-05 — Auditoria de release do aplicativo Expo
+- Configuração real encontrada: Expo SDK 54, React Native 0.81, Expo Router, arquivo `app.json` com identificadores Android/iOS `com.appvendorai.vendorai`, `eas.json` com development/preview/production.
+- Criado script somente leitura `node artifacts/mobile/scripts/audit-mobile-readiness.mjs`, que valida campos estruturais, assets, scripts de typecheck e perfis EAS.
+- Bloqueios identificados: `artifacts/mobile/package.json` ainda usa variáveis REPLIT_* no script de desenvolvimento; build e assinatura em dispositivos não verificados; ícone deve usar original aprovado; permissões de microfone/notificações precisam de testes; draft IndexedDB web não é uma implementação nativa de persistência Expo.
+- Não editar ou publicar pacote sem confirmação de capacidades, autenticação e isolamento entre tenants.
+- Pendente: rodar auditoria e typecheck em ambiente com dependências; executar build EAS preview e testar login, sessão, Arqdor, câmera, notificações, logout e proteção dos dados nos aparelhos. Sem publicação em lojas.
