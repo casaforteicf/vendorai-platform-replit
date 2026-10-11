@@ -12,7 +12,7 @@ import "./planner5d-reference.css";
 import "./concept-editor-workspace.css";
 import { ConceptIdeaEntry } from "./ConceptIdeaEntry";
 import { ConceptMetricInput } from "./ConceptMetricInput";
-import { emptyArchitecturalModel, cloneArchitecturalModel } from "./conceptArchitecturalModel";
+import { emptyArchitecturalModel, cloneArchitecturalModel, readArchitecturalModel } from "./conceptArchitecturalModel";
 import type { ArchitecturalModel } from "./conceptArchitecturalModel";
 const ConceptArchitecturalElementsPanel = lazy(() => import("./ConceptArchitecturalElementsPanel"));
 
@@ -1639,6 +1639,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           return;
         }
 
+        const restoredArchitecture = readArchitecturalModel(draft.configuration?.architecturalModel);
+        if ("error" in restoredArchitecture) throw new Error(restoredArchitecture.error);
+
         conceptIdRef.current = draft.id;
         setConceptId(draft.id);
         setArchProjetoId(draft.archProjetoId ?? null);
@@ -1650,8 +1653,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         setEditorView("plan");
         const loadedFloors = Math.round(finiteNumber(draft.configuration?.floors, 1, 1, 3));
         const loadedWalls = normalizeLoadedWalls(draft.configuration?.customWalls, loadedFloors);
-        const candidateArchitecture = draft.configuration?.architecturalModel;
-        setArchitecturalModel(candidateArchitecture?.version === 1 && Array.isArray(candidateArchitecture.slabs) && Array.isArray(candidateArchitecture.stairs) && Array.isArray(candidateArchitecture.roofs) && Array.isArray(candidateArchitecture.openings) ? candidateArchitecture : emptyArchitecturalModel());
+        setArchitecturalModel(restoredArchitecture.value);
         const loadedOpenings = normalizeLoadedOpenings(draft.configuration?.customOpenings, loadedWalls);
         const loadedRooms = normalizeLoadedRooms(draft.rooms, loadedFloors);
 

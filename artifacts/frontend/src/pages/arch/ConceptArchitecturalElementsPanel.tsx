@@ -1,3 +1,4 @@
+import { ConceptSlabVoidsEditor } from "./ConceptSlabVoidsEditor";
 import { useState } from "react";
 import { createStraightStair, type Roof } from "./conceptArchitecturalElements";
 import { applyArchitecturalEdits, architecturalQuantities, type ArchitecturalModel, type ArchitecturalElement } from "./conceptArchitecturalModel";
@@ -100,6 +101,7 @@ export function ConceptArchitecturalElementsPanel({ model, onChange, floor, lotW
       {selectedItem && <button type="button" onClick={() => startNew()} className="rounded border px-3 py-2 text-xs">Novo elemento</button>}
       {selectedItem && <button type="button" onClick={remove} className="rounded border px-3 py-2 text-xs">Excluir</button>}</div>
     <div className="space-y-1">{items.map((item, i) => <button key={item.value.id} type="button" onClick={() => choose(i)} className="block w-full rounded border p-2 text-left text-xs">{item.kind} · {item.value.id}</button>)}</div>
+    {selectedItem?.kind === "slab" && <ConceptSlabVoidsEditor key={selectedItem.value.id} model={model} slab={selectedItem.value} onChange={onChange} />}
     <p className="text-xs text-slate-500">Área líquida de lajes: {qty.slabNetArea.toFixed(2)} m²</p>
     <ConceptArchitecturalPreview model={model} floor={floor} width={280} height={190} />
   </section>;

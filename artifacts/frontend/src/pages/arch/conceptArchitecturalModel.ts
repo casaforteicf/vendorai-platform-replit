@@ -13,6 +13,35 @@ export type ArchitecturalElement = { kind: "slab"; value: Slab } | { kind: "stai
 export type ArchitecturalEdit = { action: "upsert"; element: ArchitecturalElement } | { action: "remove"; kind: ArchitecturalElement["kind"]; id: string };
 type Result<T> = { value: T } | { error: string };
 export const emptyArchitecturalModel = (): ArchitecturalModel => ({ version: 1, slabs: [], stairs: [], roofs: [], openings: [] });
+/** Validate persisted JSON before any renderer or history clone consumes it. */
+export function readArchitecturalModel(input: unknown): Result<ArchitecturalModel> {
+  if (input === undefined || input === null) return { value: emptyArchitecturalModel() };
+  const invalid = { error: "Dados dos elementos arquitetônicos inválidos. O projeto não foi carregado." };
+  if (typeof input !== "object") return invalid;
+  const source = input as Record<string, unknown>;
+  if (source.version !== 1) return { error: "Versão do modelo arquitetônico incompatível." };
+  const keys = ["slabs", "stairs", "roofs", "openings"] as const;
+  if (!keys.every(key => Array.isArray(source[key]))) return invalid;
+  const edits: ArchitecturalEdit[] = [];
+  const ids = new Set<string>();
+  try {
+    for (const key of keys) for (const raw of source[key] as unknown[]) {
+      if (!raw || typeof raw !== "object") return invalid;
+      const value = raw as Record<string, unknown>;
+      if (typeof value.id !== "string" || !value.id.trim() || ids.has(value.id)) return invalid;
+      ids.add(value.id);
+      if ((key === "slabs" || key === "stairs") && (!Number.isInteger(value.floor) || Number(value.floor) < 0)) return invalid;
+      if (key === "slabs" && (!Array.isArray(value.voids) || value.voids.some(v => !v || typeof v !== "object"))) return invalid;
+      if (key === "openings" && (typeof value.wallId !== "string" || !value.wallId.trim())) return invalid;
+      const kind = key === "slabs" ? "slab" : key === "stairs" ? "stair" : key === "roofs" ? "roof" : "opening";
+      edits.push({ action: "upsert", element: { kind, value: raw } as ArchitecturalElement });
+    }
+    const result = applyArchitecturalEdits(emptyArchitecturalModel(), edits);
+    return "error" in result ? { error: result.error } : result;
+  } catch {
+    return invalid;
+  }
+}
 export const cloneArchitecturalModel = (model: ArchitecturalModel): ArchitecturalModel => ({
   version: 1, slabs: model.slabs.map(s => ({ ...s, voids: s.voids.map(v => ({ ...v })) })),
   stairs: model.stairs.map(s => ({ ...s })), roofs: model.roofs.map(r => ({ ...r })), openings: model.openings.map(o => ({ ...o })),

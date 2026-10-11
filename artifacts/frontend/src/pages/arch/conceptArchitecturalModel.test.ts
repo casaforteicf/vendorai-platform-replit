@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyArchitecturalEdits, architecturalQuantities, emptyArchitecturalModel } from "./conceptArchitecturalModel";
+import { applyArchitecturalEdits, architecturalQuantities, emptyArchitecturalModel, readArchitecturalModel } from "./conceptArchitecturalModel";
 const slab = { id: "s", floor: 0, x: 0, y: 0, width: 5, depth: 4, thickness: 0.15, elevation: 2.8, voids: [{ x: 1, y: 1, width: 1, depth: 1 }] };
 const window = { id: "j1", wallId: "w1", type: "window" as const, width: 1.2, height: 1, sillHeight: 0.9, quantity: 1 };
 describe("snapshot arquitetônico transacional", () => {
@@ -37,4 +37,23 @@ describe("snapshot arquitetônico transacional", () => {
       expect(applyArchitecturalEdits(first.value, [{ action: "remove", kind: "roof", id: "missing" }])).toHaveProperty("error");
     }
   });
+});
+
+
+it("round-trips the parametric snapshot without sharing manual holes", () => {
+  const input = { ...emptyArchitecturalModel(), slabs: [slab] };
+  const parsed = readArchitecturalModel(JSON.parse(JSON.stringify(input)));
+  expect(parsed).toEqual({ value: input });
+  if ("value" in parsed) parsed.value.slabs[0].voids[0].x = 2;
+  expect(slab.voids[0].x).toBe(1);
+});
+it("supports legacy missing snapshots and rejects malformed or duplicate entries", () => {
+  expect(readArchitecturalModel(undefined)).toEqual({ value: emptyArchitecturalModel() });
+  for (const bad of [42, { version: 2 }, { version: 1 }, { ...emptyArchitecturalModel(), slabs: [null] },
+    { ...emptyArchitecturalModel(), slabs: [{ ...slab, voids: [null] }] },
+    { ...emptyArchitecturalModel(), slabs: [slab, slab] },
+    { ...emptyArchitecturalModel(), slabs: [{ ...slab, thickness: "15" }] }]) {
+    expect(() => readArchitecturalModel(bad)).not.toThrow();
+    expect(readArchitecturalModel(bad)).toHaveProperty("error");
+  }
 });
