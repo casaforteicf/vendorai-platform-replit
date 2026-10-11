@@ -1,3 +1,5 @@
+import { useExperimentalRenderCapture } from "../../modules/arqdor/workspace/smart-render-engine/use-experimental-render-capture";
+import { ExperimentalCpuRenderPanel } from "../../modules/arqdor/workspace/smart-render-engine/ExperimentalCpuRenderPanel";
 import type { RenderSceneSnapshot } from "../../modules/arqdor/workspace/smart-render-engine/render-scene-contract";
 import type { GeometryTransfer } from "../../modules/arqdor/workspace/smart-render-engine/render-geometry-export";
 import type { SiteFrontSide } from "./conceptSitePlacement";
@@ -40,6 +42,7 @@ export type ConceptModelLevel = {
 };
 
 type Props = {
+  experimentalCpuRenderEnabled?: boolean;
   renderCaptureToken?: number;
   onRenderSceneSnapshot?: (snapshot: RenderSceneSnapshot) => void;
   onRenderGeometryExport?: (geometry: GeometryTransfer) => void;
@@ -579,6 +582,7 @@ function roofBounds(level: ConceptModelLevel | undefined) {
 }
 
 export default function ConceptModel3D({
+  experimentalCpuRenderEnabled = false,
   renderCaptureToken,
   onRenderSceneSnapshot,
   onRenderGeometryExport,
@@ -618,6 +622,7 @@ export default function ConceptModel3D({
   onSavedTourPointActivate,
   onRenderView,
 }: Props) {
+  const experimentalCapture = useExperimentalRenderCapture();
   const [rotation, setRotation] = useState(35);
   const [zoom, setZoom] = useState(1.32);
   const [panX, setPanX] = useState(0);
@@ -1657,13 +1662,23 @@ export default function ConceptModel3D({
         </button>
       </div>
 
+      {experimentalCpuRenderEnabled && (
+        <div className="absolute left-4 top-4 z-30 max-w-sm space-y-2 rounded-xl bg-white/95 p-3 shadow-lg">
+          <button type="button" onClick={experimentalCapture.requestCapture}
+            className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white">
+            Capturar cena para prévia física experimental
+          </button>
+          {experimentalCapture.error && <p role="alert" className="text-xs text-red-700">{experimentalCapture.error}</p>}
+          {experimentalCapture.options && <ExperimentalCpuRenderPanel options={experimentalCapture.options} />}
+        </div>
+      )}
       <ConceptWebGLScene
-        renderSceneSnapshotToken={renderCaptureToken}
-        renderGeometryExportToken={renderCaptureToken}
-        onRenderSceneSnapshot={onRenderSceneSnapshot}
-        onRenderGeometryExport={onRenderGeometryExport}
-        onRenderSceneSnapshotError={onRenderCaptureError}
-        onRenderGeometryExportError={onRenderCaptureError}
+        renderSceneSnapshotToken={experimentalCpuRenderEnabled ? experimentalCapture.renderCaptureToken : renderCaptureToken}
+        renderGeometryExportToken={experimentalCpuRenderEnabled ? experimentalCapture.renderCaptureToken : renderCaptureToken}
+        onRenderSceneSnapshot={experimentalCpuRenderEnabled ? experimentalCapture.onRenderSceneSnapshot : onRenderSceneSnapshot}
+        onRenderGeometryExport={experimentalCpuRenderEnabled ? experimentalCapture.onRenderGeometryExport : onRenderGeometryExport}
+        onRenderSceneSnapshotError={experimentalCpuRenderEnabled ? experimentalCapture.onRenderCaptureError : onRenderCaptureError}
+        onRenderGeometryExportError={experimentalCpuRenderEnabled ? experimentalCapture.onRenderCaptureError : onRenderCaptureError}
         facadeDesign={facadeDesign}
         frontSide={frontSide}
         lotWidth={lotWidth}
