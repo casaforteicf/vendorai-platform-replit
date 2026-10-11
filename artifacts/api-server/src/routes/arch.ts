@@ -8766,7 +8766,7 @@ router.put("/arqdor/projects/:id/conditional", authenticate, async (req, res) =>
   const tid = tenantId(req);
   const id = String(req.params.id);
   const { expectedRevision, contextBlob } = req.body ?? {};
-  if (!id.trim() || !/^\\d+$/.test(expectedRevision ?? "") ||
+  if (!id.trim() || !/^\d+$/.test(expectedRevision ?? "") ||
       !contextBlob || typeof contextBlob !== "object" || Array.isArray(contextBlob) ||
       contextBlob.id !== id) {
     return res.status(400).json({ error: "Projeto ou revisão inválidos." });
