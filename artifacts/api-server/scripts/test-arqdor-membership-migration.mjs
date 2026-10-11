@@ -20,3 +20,12 @@ test("no automatic unverified owner migration", () => {
   assert.doesNotMatch(sql, /INSERT INTO arqdor_workspace_members/i);
   assert.match(schema, /arqdorWorkspaceMembersTable/);
 });
+
+test("ACL probe is read-only and disabled until migration is explicitly enabled", () => {
+  const routes = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "../src/routes/arch.ts"), "utf8");
+  const resolver = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "../src/lib/arqdor-workspace-membership.ts"), "utf8");
+  assert.match(routes, /router\.get\("\/arqdor\/projects\/:id\/edit-access", authenticate/);
+  assert.match(routes, /process\.env\.ARQDOR_PROJECT_ACL_ENABLED !== "true"/);
+  assert.match(routes, /canActorEditArqdorProject\(req\.user, tid, id\)/);
+  assert.match(resolver, /actor\?\.active/);
+});
