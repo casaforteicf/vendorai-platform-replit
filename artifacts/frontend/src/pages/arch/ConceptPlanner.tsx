@@ -542,6 +542,7 @@ type ProjectSourceFile = {
 
 type ConceptDraftResponse = {
   id: string;
+  updatedAt?: string;
   status?: string;
   archProjetoId?: string | null;
   currentStep: number;
@@ -1115,6 +1116,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
   const [conceptId, setConceptId] = useState<string | null>(null);
   const conceptIdRef = useRef<string | null>(null);
+  const revisionAutosaveEnabled = !guestMode && import.meta.env.VITE_MULTI04_REVISION_AUTOSAVE === "true";
+  const conceptRevisionRef = useRef<string | null>(null);
   const dxfImportInputRef = useRef<HTMLInputElement | null>(null);
   const geometryImportInputRef = useRef<HTMLInputElement | null>(null);
   const referencePlanInputRef = useRef<HTMLInputElement | null>(null);
@@ -1588,6 +1591,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           if (!cancelled) {
             setConceptId(null);
             conceptIdRef.current = null;
+            conceptRevisionRef.current = null;
             // PKG-07 / ARQ-UI: novo pré-projeto entra direto na escolha da origem.
             // Casa é o padrão, terreno é opcional e pode ser informado antes ou depois.
             setProjectScope("house");
@@ -1615,6 +1619,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         }
 
         conceptIdRef.current = draft.id;
+        conceptRevisionRef.current = draft.updatedAt ?? null;
         setConceptId(draft.id);
         setArchProjetoId(draft.archProjetoId ?? null);
         setProjectMaster(draft.configuration?.projectMaster ?? null);
@@ -1807,15 +1812,20 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         targetId ? `/api/arch/concept-projects/${targetId}` : "/api/arch/concept-projects",
         {
           method: targetId ? "PATCH" : "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(revisionAutosaveEnabled && targetId && conceptRevisionRef.current ? { "If-Match": conceptRevisionRef.current } : {}),
+          },
           body: JSON.stringify(payload),
         },
       );
+      if (revisionAutosaveEnabled && response.status === 409) throw new Error("Conflito de revisão. As alterações locais foram mantidas; recarregue o projeto antes de salvar novamente.");
       if (!response.ok) {
         const errorBody = await response.json().catch(() => null) as { message?: string; error?: string } | null;
         throw new Error(errorBody?.message || errorBody?.error || `Falha ao salvar pré-projeto (${response.status})`);
       }
       const saved = (await response.json()) as ConceptDraftResponse;
+      conceptRevisionRef.current = saved.updatedAt ?? null;
       conceptIdRef.current = saved.id;
       setConceptId(saved.id);
       if (!targetId && typeof window !== "undefined") {
