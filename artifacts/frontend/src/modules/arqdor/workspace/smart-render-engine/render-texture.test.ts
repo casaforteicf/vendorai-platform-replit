@@ -21,6 +21,15 @@ describe("ARQDOR CPU textures",()=>{
   expect(sampled[0]).toBeCloseTo(0.21404114,6);
   expect(sampled[1]).toBeCloseTo(sampled[0],8);
  });
+ it("rejects unsupported addressing, filtering and color space modes",()=>{
+  expect(()=>sampleCpuTexture({...texture,wrap:"mirror" as "clamp"},[0,0])).toThrow();
+  expect(()=>sampleCpuTexture({...texture,filter:"cubic" as "nearest"},[0,0])).toThrow();
+  expect(()=>sampleCpuTexture({...texture,colorSpace:"gamma" as "linear"},[0,0])).toThrow();
+ });
+ it("rejects NaN UV coordinates before they reach pixel indexing",()=>{
+  expect(()=>sampleMeshUv([0,0,Number.NaN,0,0,1],0,[1,0,0])).toThrow();
+  expect(()=>sampleMeshUv([0,0,1,0,0,1],0,[Number.NaN,0,1])).toThrow();
+ });
  it("rejects malformed pixel buffers",()=>{
   expect(()=>sampleCpuTexture({...texture,data:[0.2]},[0,0])).toThrow();
  });
