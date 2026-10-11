@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
 import { parseRegistrationRequestId, fingerprintRegistrationPayload, matchesRegistrationReplay } from "../lib/crm-lead-idempotency.js";
 import { rateLimit } from "express-rate-limit";
-import { and, eq, inArray, desc, ilike, isNull, isNotNull, sql } from "drizzle-orm";
+import { and, or, eq, inArray, desc, ilike, isNull, isNotNull, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
@@ -768,6 +768,30 @@ router.get("/tenants/:tenantId/leads", async (req, res) => {
     conditions.push(...buildUserFunctionFilter(req, leadsTable));
   }
 
+  // CRM-22: filtros opcionais, sempre combinados às restrições de tenant/acesso.
+  const status = typeof req.query["status"] === "string" ? req.query["status"].trim() : "";
+  const busca = typeof req.query["busca"] === "string" ? req.query["busca"].trim().slice(0, 120) : "";
+  if (status) {
+    conditions.push(eq(leadsTable.status, status));
+  }
+  if (busca) {
+    const escapedSearch = busca.replace(/[\\%_]/g, "\\  if (!representativeAccess) {
+    conditions.push(...buildUserFunctionFilter(req, leadsTable));
+  }
+
+  const leads = await db");
+    const pattern = `%${escapedSearch}%`;
+    conditions.push(or(
+      ilike(leadsTable.nome, pattern),
+      ilike(leadsTable.documento, pattern),
+      ilike(leadsTable.empresa, pattern),
+      ilike(leadsTable.email, pattern),
+      ilike(leadsTable.telefone, pattern),
+      ilike(leadsTable.endereco, pattern),
+      ilike(leadsTable.mercadoSegmento, pattern),
+    )!);
+  }
+
   const leads = await db
     .select()
     .from(leadsTable)
@@ -804,7 +828,14 @@ router.get("/tenants/:tenantId/leads", async (req, res) => {
       }));
 
     const ownIds = new Set(leads.map((lead) => lead.id));
-    return res.json([...leads, ...sharedLeads.filter((lead) => !ownIds.has(lead.id))]);
+    const filteredShared = sharedLeads.filter((lead) => {
+      if (ownIds.has(lead.id) || (status && lead.status !== status)) return false;
+      if (!busca) return true;
+      const term = busca.toLocaleLowerCase("pt-BR");
+      return [lead.nome, lead.documento, lead.empresa, lead.email, lead.telefone, lead.endereco, lead.mercadoSegmento]
+        .some((value) => typeof value === "string" && value.toLocaleLowerCase("pt-BR").includes(term));
+    });
+    return res.json([...leads, ...filteredShared]);
   }
 
   res.json(leads);
