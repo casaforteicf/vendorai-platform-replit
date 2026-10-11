@@ -367,14 +367,30 @@ router.post("/operational-checklists/runs/:runId/items/:itemId/photos", async (r
   const isWebp = buffer.toString("ascii",0,4) === "RIFF" && buffer.toString("ascii",8,12) === "WEBP";
   if (!((contentType === "image/jpeg" && isJpeg) || (contentType === "image/png" && isPng) || (contentType === "image/webp" && isWebp)))
     return void res.status(422).json({ error: "Formato real da imagem diferente do declarado" });
+  let abandonedPath: string | null = null;
+  let abandonedAssetId: string | null = null;
+  let linked = false;
+  async function cleanupAbandonedUpload() {
+    if (linked) return;
+    if (abandonedAssetId) {
+      try { await db.delete(mediaAssetsTable).where(and(eq(mediaAssetsTable.id, abandonedAssetId), eq(mediaAssetsTable.tenantId, run.tenantId))); }
+      catch (cleanupError) { req.log.error({ err: cleanupError }, "measure: media cleanup failed"); }
+    }
+    if (abandonedPath) {
+      try { await measureStorage.deleteTenantPrivateBuffer(abandonedPath, run.tenantId); }
+      catch (cleanupError) { req.log.error({ err: cleanupError }, "measure: object cleanup failed"); }
+    }
+  }
   try {
     const storageUrl = await measureStorage.savePrivateBuffer(buffer, contentType, name, run.tenantId);
+    abandonedPath = storageUrl;
     const [asset] = await db.insert(mediaAssetsTable).values({
       tenantId: run.tenantId, userId: req.user?.sub ?? null,
       type: "image", role: "source", source: "upload",
       storageUrl, originalFilename: name, mimeType: contentType, fileSize: buffer.length,
       metadata: { origin: "arqdor_measure", leadId: run.leadId, dealId: run.dealId, runId: run.id, itemId, revision: run.revision },
     }).returning();
+    abandonedAssetId = asset.id;
     let persisted = false;
     for (let attempt = 0; attempt < 5; attempt++) {
       const [latest] = await db.select().from(operationalChecklistRunsTable)
@@ -391,13 +407,18 @@ router.post("/operational-checklists/runs/:runId/items/:itemId/photos", async (r
           eq(operationalChecklistRunsTable.items, latest.items ?? []))).returning();
       if (saved) { persisted = true; break; }
     }
-    if (!persisted) return void res.status(409).json({
+    if (!persisted) {
+      await cleanupAbandonedUpload();
+      return void res.status(409).json({
       error: "Não foi possível vincular a foto após alterações simultâneas. Confira o checklist antes de tentar novamente.",
       code: "CHECKLIST_CONFLICT",
     });
+    }
+    linked = true;
     const accessUrl = await measureStorage.getObjectEntitySignedUrl(storageUrl, 300);
     res.status(201).json({ assetId: asset.id, storageUrl, accessUrl });
   } catch (error) {
+    await cleanupAbandonedUpload();
     req.log.error({ err: error, runId: run.id }, "arqdor-measure: upload failure");
     res.status(500).json({ error: "Falha ao registrar fotografia" });
   }
