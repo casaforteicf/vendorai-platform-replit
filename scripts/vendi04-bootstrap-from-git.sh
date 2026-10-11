@@ -14,13 +14,12 @@ for p in scripts/vendi-contabo-operator scripts/vendi04-release-runner.sh script
  mkdir -p "$STAGING/$(dirname "$p")"
  git -c safe.directory="$ROOT" -C "$ROOT" show "$SHA:$p" > "$STAGING/$p"
 done
-for p in scripts/*.sh;do :;done
 for p in scripts/vendi-contabo-operator scripts/vendi04-release-runner.sh scripts/vendi04-release-preflight.sh scripts/vendi04-controlled-release.sh scripts/install-vendi04-release-runner.sh;do bash -n "$STAGING/$p";done
 echo "SOURCE_SHA=$SHA"
 echo "VALIDATED_STAGE=$STAGING"
-echo "The installer must use validated stage, not a developer checkout."
-# Preserve tracked working-tree contents. Only copy to authorized temporary integration root.
-install -d -m 0700 /home/vendorai/.vendi04-staging
-cp -a "$STAGING/scripts" "$STAGING/artifacts" /home/vendorai/.vendi04-staging/
-echo "VENDI04_SOURCES_STAGED_NO_PRODUCTION_CHANGE"
-echo "INSTALL_BLOCKED_PENDING_REVIEW_OF_MCP_BUILD_AND_HOST_RELEASE_TOPOLOGY"
+# Operator install is enabled only when explicitly called with install.
+if [[ "${1:-audit}" == "install" ]]; then
+  VENDI04_SOURCE_ROOT="$STAGING" bash "$STAGING/scripts/install-vendi04-release-runner.sh"
+else
+  echo "VENDI04_SOURCE_AUDIT_PASSED_NO_PRODUCTION_CHANGE"
+fi
