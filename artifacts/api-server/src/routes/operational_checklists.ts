@@ -305,6 +305,11 @@ router.patch("/operational-checklists/runs/:runId/items/:itemId", async (req, re
     return void res.status(422).json({ error: "Elemento vinculado a fotografia inexistente neste item" });
   if (parsed.data.photoMeasurements?.some((m) => m.photoPath && !targetItem?.fotos?.includes(m.photoPath)))
     return void res.status(422).json({ error: "Cota vinculada a fotografia inexistente neste item" });
+  if (parsed.data.status === "resolvido" &&
+      (!targetItem || targetItem.status !== "divergente" || !parsed.data.resolutionReason || !req.user?.sub))
+    return void res.status(422).json({error:"Resolução exige item divergente, justificativa e usuário autenticado"});
+  if (parsed.data.status === "conferido")
+    return void res.status(422).json({error:"A conferência deve ser calculada pelas medidas"});
   let found = false;
   const items = (run.items ?? []).map((item) => {
     if (item.id !== itemId) return item;
