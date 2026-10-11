@@ -12,7 +12,8 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
   const [busy,setBusy]=useState(false);
   const [webglPreview,setWebglPreview]=useState(false);
   const [loadedRevision,setLoadedRevision]=useState<string|null>(null);
-  useEffect(()=>{setItems([]);setLoadedRevision(null);setMessage("");},[environment.projectId,environment.roomId]);
+  const [savedTenantId,setSavedTenantId]=useState<string|null>(null);
+  useEffect(()=>{setItems([]);setLoadedRevision(null);setSavedTenantId(null);setSelectedId(null);setMessage("");},[environment.projectId,environment.roomId]);
   const xs=environment.walls.flatMap(w=>[w.x1,w.x2]);
   const ys=environment.walls.flatMap(w=>[w.y1,w.y2]);
   const width=Math.round((Math.max(...xs)-Math.min(...xs))*1000);
@@ -28,7 +29,9 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
     if(!ready){setMessage("Ambiente sem medidas.");return;}
 
     try{
-      const next=insertCabinetDraft({tenantId:draft.parameters.tenantId,projectId:draft.parameters.projectId,room:{id:environment.roomId,widthMm:width,depthMm:depth},draft,xMm:x,yMm:y,id:"preview-"+(items.length+1),existing:roomItems});
+      const tenantId=savedTenantId??roomItems[0]?.tenantId??draft.parameters.tenantId;
+      const scopedDraft={...draft,parameters:{...draft.parameters,tenantId},parts:draft.parts.map(p=>({...p,tenantId}))};
+      const next=insertCabinetDraft({tenantId,projectId:environment.projectId??draft.parameters.projectId,room:{id:environment.roomId,widthMm:width,depthMm:depth},draft:scopedDraft,xMm:x,yMm:y,id:crypto.randomUUID(),existing:roomItems});
       setItems(old=>[...old.filter(i=>i.roomId!==environment.roomId),...next]);setMessage("");
     }catch(e){setMessage(e instanceof Error?e.message:"Erro de geometria");}
   }
@@ -46,14 +49,18 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
     if(!ready||!environment.projectId){setMessage("É necessário salvar o projeto e ter geometria do ambiente.");return;}
     setBusy(true);
     try{
-      const snapshot=createFurnitureSnapshot({tenantId:roomItems[0]?.tenantId??draft?.parameters.tenantId??"",
+      const snapshot=createFurnitureSnapshot({tenantId:savedTenantId??roomItems[0]?.tenantId??draft?.parameters.tenantId??"",
       projectId:environment.projectId,room:{id:environment.roomId,widthMm:width,depthMm:depth},
-      revision:"R-"+Date.now().toString(36),createdAt:new Date().toISOString(),furniture:roomItems});
+      revision:crypto.randomUUID(),createdAt:new Date().toISOString(),furniture:roomItems});
       const body={...snapshot,baseRevision:loadedRevision};
       const response=await fetch("/api/arqdor/projects/"+encodeURIComponent(environment.projectId)+"/furniture/"+encodeURIComponent(environment.roomId),
        {method:"PUT",headers:{"Content-Type":"application/json",...authHeaders()},credentials:"include",body:JSON.stringify(body)});
       if(response.status===409)throw Error("Conflito de revisão: carregue a versão mais recente antes de salvar.");
       if(!response.ok)throw Error("Falha no salvamento ("+response.status+")");
+      const saved=await response.json();
+      if(!saved.tenantId||saved.revision!==snapshot.revision)throw Error("Resposta de salvamento inválida");
+      setSavedTenantId(saved.tenantId);
+      setItems(old=>old.map(item=>item.roomId!==environment.roomId?item:({...item,tenantId:saved.tenantId,parameters:{...item.parameters,tenantId:saved.tenantId},parts:item.parts.map(part=>({...part,tenantId:saved.tenantId}))})));
       setLoadedRevision(snapshot.revision);
       setMessage("Mobiliário salvo no projeto.");
     }catch(e){setMessage(e instanceof Error?e.message:"Erro ao salvar");}
@@ -67,12 +74,14 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
       if(!response.ok)throw Error("Falha no carregamento ("+response.status+")");
       const data=await response.json();
       const snapshot=data.furnitureSnapshots?.[environment.roomId];
+      if(!data.tenantId)throw Error("Resposta sem identificação do tenant");
       if(!snapshot){setMessage("Nenhum mobiliário salvo para este ambiente.");return;}
-      const restored=restoreFurnitureSnapshot(snapshot,{tenantId:snapshot.tenantId,projectId:environment.projectId,
+      const restored=restoreFurnitureSnapshot(snapshot,{tenantId:data.tenantId,projectId:environment.projectId,
         room:{id:environment.roomId,widthMm:width,depthMm:depth}});
       if(restored.projectId!==environment.projectId||restored.roomId!==environment.roomId)throw Error("Contexto de projeto incompatível");
       setLoadedRevision(restored.revision);
-      setItems(old=>[...old.filter(i=>i.roomId!==environment.roomId),...restored.furniture.map(item=>({...item,tenantId:"local-preview",parameters:{...item.parameters,tenantId:"local-preview"},parts:item.parts.map(part=>({...part,tenantId:"local-preview"}))}))]);
+      setSavedTenantId(data.tenantId);
+      setItems(old=>[...old.filter(i=>i.roomId!==environment.roomId),...restored.furniture]);
       setMessage("Mobiliário recuperado.");
     }catch(e){setMessage(e instanceof Error?e.message:"Erro ao carregar");}
     finally{setBusy(false);}
