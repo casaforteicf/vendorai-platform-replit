@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
+import { ObjectStorageService } from "../lib/objectStorage";
 import {
   db,
   dealsTable,
@@ -11,10 +12,12 @@ import {
   activitiesTable,
   operationalChecklistTemplatesTable,
   operationalChecklistRunsTable,
+  mediaAssetsTable,
   type OperationalChecklistItem,
 } from "@workspace/db";
 
 const router: IRouter = Router();
+const measureStorage = new ObjectStorageService();
 
 function canAccessTenant(req: any, tenantId: string) {
   return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
@@ -274,6 +277,68 @@ router.patch("/operational-checklists/runs/:runId/items/:itemId", async (req, re
     .where(eq(operationalChecklistRunsTable.id, run.id))
     .returning();
   res.json(updated);
+});
+
+const uploadPhotoSchema = z.object({
+  name: z.string().trim().min(1).max(180),
+  contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+  dataBase64: z.string().min(8).max(11_000_000),
+});
+
+router.post("/operational-checklists/runs/:runId/items/:itemId/photos", async (req, res) => {
+  const parsed = uploadPhotoSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return void res.status(422).json({ error: "Fotografia inválida" });
+  const [run] = await db.select().from(operationalChecklistRunsTable)
+    .where(eq(operationalChecklistRunsTable.id, String(req.params.runId))).limit(1);
+  if (!run) return void res.status(404).json({ error: "Checklist não encontrado" });
+  if (!canAccessTenant(req, run.tenantId)) return void res.status(403).json({ error: "Acesso negado" });
+  if (run.status === "concluido") return void res.status(409).json({ error: "Checklist concluído" });
+  const itemId = String(req.params.itemId);
+  const current = (run.items ?? []).find((item) => item.id === itemId);
+  if (!current) return void res.status(404).json({ error: "Item não encontrado" });
+  if ((current.fotos ?? []).length >= 20) return void res.status(422).json({ error: "Limite de 20 fotografias por item" });
+  const { dataBase64, contentType, name } = parsed.data;
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(dataBase64) || dataBase64.length % 4 !== 0)
+    return void res.status(422).json({ error: "Conteúdo Base64 inválido" });
+  const buffer = Buffer.from(dataBase64, "base64");
+  if (buffer.length === 0 || buffer.length > 5 * 1024 * 1024)
+    return void res.status(413).json({ error: "Fotografia excede 5 MB" });
+  const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  const isPng = buffer.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
+  const isWebp = buffer.toString("ascii",0,4) === "RIFF" && buffer.toString("ascii",8,12) === "WEBP";
+  if (!((contentType === "image/jpeg" && isJpeg) || (contentType === "image/png" && isPng) || (contentType === "image/webp" && isWebp)))
+    return void res.status(422).json({ error: "Formato real da imagem diferente do declarado" });
+  try {
+    const storageUrl = await measureStorage.savePrivateBuffer(buffer, contentType, name, run.tenantId);
+    const [asset] = await db.insert(mediaAssetsTable).values({
+      tenantId: run.tenantId, userId: req.user?.sub ?? null,
+      type: "image", role: "source", source: "upload",
+      storageUrl, originalFilename: name, mimeType: contentType, fileSize: buffer.length,
+      metadata: { origin: "arqdor_measure", leadId: run.leadId, dealId: run.dealId, runId: run.id, itemId, revision: run.revision },
+    }).returning();
+    const items = (run.items ?? []).map((item) => item.id === itemId
+      ? { ...item, fotos: [...(item.fotos ?? []), storageUrl] } : item);
+    await db.update(operationalChecklistRunsTable).set({ items, updatedAt: new Date() })
+      .where(and(eq(operationalChecklistRunsTable.id, run.id), eq(operationalChecklistRunsTable.tenantId, run.tenantId)));
+    const accessUrl = await measureStorage.getObjectEntitySignedUrl(storageUrl, 300);
+    res.status(201).json({ assetId: asset.id, storageUrl, accessUrl });
+  } catch (error) {
+    req.log.error({ err: error, runId: run.id }, "arqdor-measure: upload failure");
+    res.status(500).json({ error: "Falha ao registrar fotografia" });
+  }
+});
+
+router.get("/operational-checklists/runs/:runId/items/:itemId/photos", async (req, res) => {
+  const [run] = await db.select().from(operationalChecklistRunsTable)
+    .where(eq(operationalChecklistRunsTable.id, String(req.params.runId))).limit(1);
+  if (!run) return void res.status(404).json({ error: "Checklist não encontrado" });
+  if (!canAccessTenant(req, run.tenantId)) return void res.status(403).json({ error: "Acesso negado" });
+  const item = (run.items ?? []).find((entry) => entry.id === String(req.params.itemId));
+  if (!item) return void res.status(404).json({ error: "Item não encontrado" });
+  const photos = await Promise.all((item.fotos ?? []).map(async (storageUrl) => ({
+    storageUrl, accessUrl: await measureStorage.getObjectEntitySignedUrl(storageUrl, 300),
+  })));
+  res.json({ photos });
 });
 
 router.post("/operational-checklists/runs/:runId/complete", async (req, res) => {
