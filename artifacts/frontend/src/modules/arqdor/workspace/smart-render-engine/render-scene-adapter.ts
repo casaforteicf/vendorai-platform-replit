@@ -36,7 +36,8 @@ export function buildExperimentalRenderOptions(args: {
   materials[material.id]=material.baseColor;
   const hex=material.baseColor;
   physical[material.id]={
-    baseColor:[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255) as unknown as readonly [number,number,number],
+    // Material color captured as display sRGB: convert to linear for physical transport.
+    baseColor:[1,3,5].map(i=>{const srgb=parseInt(hex.slice(i,i+2),16)/255;return srgb<=0.04045?srgb/12.92:Math.pow((srgb+0.055)/1.055,2.4);}) as unknown as readonly [number,number,number],
     roughness:material.roughness,metalness:material.metalness,
   };
  }
