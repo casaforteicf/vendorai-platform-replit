@@ -47,6 +47,7 @@ type Props = {
   architecturalModel?: ArchitecturalModel;
   selectedArchitecturalId?: string | null;
   onSelectArchitecturalElement?: (id: string) => void;
+  onResizeArchitecturalElement?: (id: string, width: number, depth: number) => void;
   onMoveArchitecturalElement?: (id: string, dx: number, dy: number) => void;
   geometry: ConceptGeometry;
   closedSpaces?: ClosedSpace[];
@@ -373,6 +374,7 @@ export default function ConceptPlan2D({
   selectedArchitecturalId,
   onSelectArchitecturalElement,
   onMoveArchitecturalElement,
+  onResizeArchitecturalElement,
   geometry,
   closedSpaces = [],
   selectedClosedSpaceId = null,
@@ -3275,7 +3277,7 @@ export default function ConceptPlan2D({
         })}
 
         {architecturalModel && <ConceptArchitecturalPlanLayer model={architecturalModel} floor={activeFloor} lotWidth={lotWidth} lotDepth={lotDepth}
-          selectedId={selectedArchitecturalId} onMove={interactionMode === "navigate" ? onMoveArchitecturalElement : undefined} onSelect={interactionMode === "navigate" ? onSelectArchitecturalElement : undefined} />}
+          selectedId={selectedArchitecturalId} onResize={interactionMode === "navigate" ? onResizeArchitecturalElement : undefined} onMove={interactionMode === "navigate" ? onMoveArchitecturalElement : undefined} onSelect={interactionMode === "navigate" ? onSelectArchitecturalElement : undefined} />}
 
         <rect x="0" y="0" width={lotWidth} height={lotDepth} fill="none" stroke="#64748b" strokeWidth="0.065" strokeDasharray="0.22 0.14" pointerEvents="none" />
       </svg>

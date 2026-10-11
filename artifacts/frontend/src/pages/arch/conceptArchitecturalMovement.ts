@@ -15,3 +15,19 @@ export function moveArchitecturalElement(model: ArchitecturalModel, id: string, 
   if (![value.x, value.y].every(Number.isFinite) || value.x < 0 || value.y < 0 || value.x + value.width > lotWidth + 1e-8 || value.y + depth > lotDepth + 1e-8) return { error: "O elemento deve permanecer dentro do terreno." };
   return applyArchitecturalEdits(model, [{ action: "upsert", element }]);
 }
+
+/** Resize the authored footprint without moving or scaling manual slab holes. */
+export function resizeArchitecturalElement(model: ArchitecturalModel, id: string, width: number, depth: number, lotWidth: number, lotDepth: number) {
+  if (![width, depth, lotWidth, lotDepth].every(Number.isFinite) || width <= 0 || depth <= 0 || lotWidth <= 0 || lotDepth <= 0) return { error: "Medidas inválidas." };
+  let element: Exclude<ArchitecturalElement, { kind: "opening" }> | undefined;
+  const slab = model.slabs.find(item => item.id === id);
+  const stair = model.stairs.find(item => item.id === id);
+  const roof = model.roofs.find(item => item.id === id);
+  if (slab) element = { kind: "slab", value: { ...slab, width, depth } };
+  else if (stair) element = { kind: "stair", value: { ...stair, width, run: depth } };
+  else if (roof) element = { kind: "roof", value: { ...roof, width, depth } };
+  if (!element) return { error: "Elemento não encontrado." };
+  const value = element.value;
+  if (value.x < 0 || value.y < 0 || value.x + width > lotWidth + 1e-8 || value.y + depth > lotDepth + 1e-8) return { error: "O elemento deve permanecer dentro do terreno." };
+  return applyArchitecturalEdits(model, [{ action: "upsert", element }]);
+}

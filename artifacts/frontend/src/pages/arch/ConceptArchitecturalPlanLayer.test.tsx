@@ -118,3 +118,33 @@ it("ignores capture loss for another pointer but cancels the active pointer", ()
   fireEvent.pointerUp(button, { pointerId: 1 });
   expect(onMove).not.toHaveBeenCalled();
 });
+
+it("previews corner resizing, commits once and cancels an invalid shrink", () => {
+  vi.stubGlobal("PointerEvent", class extends MouseEvent {
+    pointerId: number;
+    constructor(type: string, options: PointerEventInit) { super(type, options); this.pointerId = options.pointerId ?? 1; }
+  });
+  const onResize = vi.fn();
+  render(<svg><ConceptArchitecturalPlanLayer model={model()} floor={1} selectedId="s" onSelect={vi.fn()} onResize={onResize} lotWidth={12} lotDepth={20} /></svg>);
+  const grip = screen.getByRole("button", { name: "Redimensionar Laje · s" }) as unknown as SVGCircleElement;
+  Object.defineProperty(grip, "getScreenCTM", { value: () => ({ inverse: () => ({}) }) });
+  Object.defineProperty(grip.ownerSVGElement, "createSVGPoint", { value: () => ({ x: 0, y: 0, matrixTransform() { return { x: this.x / 100, y: this.y / 100 }; } }) });
+  Object.defineProperty(grip, "setPointerCapture", { value: vi.fn() });
+  Object.defineProperty(grip, "hasPointerCapture", { value: () => false });
+  fireEvent.pointerDown(grip, { button: 0, pointerId: 1, clientX: 400, clientY: 300 });
+  fireEvent.pointerMove(grip, { pointerId: 1, clientX: 500, clientY: 400 });
+  expect(grip.getAttribute("cx")).toBe("5");
+  expect(onResize).not.toHaveBeenCalled();
+  fireEvent.pointerUp(grip, { pointerId: 1 });
+  fireEvent.pointerUp(grip, { pointerId: 1 });
+  expect(onResize.mock.calls).toEqual([["s", 5, 4]]);
+  onResize.mockClear();
+  fireEvent.pointerDown(grip, { button: 0, pointerId: 1, clientX: 400, clientY: 300 });
+  fireEvent.pointerMove(grip, { pointerId: 1, clientX: 100, clientY: 100 });
+  expect(grip.getAttribute("cx")).toBe("4");
+  fireEvent.keyDown(grip, { key: "Escape" });
+  fireEvent.pointerUp(grip, { pointerId: 1 });
+  expect(onResize).not.toHaveBeenCalled();
+  fireEvent.keyDown(grip, { key: "ArrowRight", shiftKey: true });
+  expect(onResize.mock.calls).toEqual([["s", 4.1, 3]]);
+});

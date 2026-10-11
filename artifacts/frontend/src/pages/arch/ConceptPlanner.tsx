@@ -1,4 +1,4 @@
-import { moveArchitecturalElement } from "./conceptArchitecturalMovement";
+import { moveArchitecturalElement, resizeArchitecturalElement } from "./conceptArchitecturalMovement";
 import { furniturePresetFootprint, positionFurnitureInBounds, furnitureWallDistances, mirrorFurniturePreset } from "./conceptFurniturePreset";
 import { uniqueFurnitureLayouts, furnitureLayoutCompletion } from "./conceptFurnitureLayoutOptions";
 import { furnitureLayoutRevision } from "./conceptFurnitureLayoutRevision";
@@ -8715,6 +8715,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       <ConceptPlan2D
                         architecturalModel={architecturalModel}
                         selectedArchitecturalId={architecturalSelection?.id}
+                        onResizeArchitecturalElement={(id, width, depth) => {
+                          if (projectMaster) return;
+                          const resized = resizeArchitecturalElement(architecturalModel, id, width, depth, lotWidth, lotDepth);
+                          if ("error" in resized) { setOpeningEditError(resized.error); return; }
+                          changeArchitecturalModel(resized.value);
+                          setArchitecturalSelection(current => ({ id, revision: (current?.revision ?? 0) + 1 }));
+                        }}
                         onMoveArchitecturalElement={(id, dx, dy) => {
                           if (projectMaster) return;
                           const moved = moveArchitecturalElement(architecturalModel, id, dx, dy, lotWidth, lotDepth);
