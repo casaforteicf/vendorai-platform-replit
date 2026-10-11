@@ -775,11 +775,7 @@ router.get("/tenants/:tenantId/leads", async (req, res) => {
     conditions.push(eq(leadsTable.status, status));
   }
   if (busca) {
-    const escapedSearch = busca.replace(/[\\%_]/g, "\\  if (!representativeAccess) {
-    conditions.push(...buildUserFunctionFilter(req, leadsTable));
-  }
-
-  const leads = await db");
+    const escapedSearch = busca.replace(/[\\%_]/g, "\\$&");
     const pattern = `%${escapedSearch}%`;
     conditions.push(or(
       ilike(leadsTable.nome, pattern),
