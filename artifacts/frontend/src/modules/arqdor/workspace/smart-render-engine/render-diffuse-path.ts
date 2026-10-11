@@ -1,3 +1,4 @@
+import { sampleCpuTexture, sampleMeshUv, type CpuTexture } from "./render-texture";
 import { sampleDielectric } from "./render-glass";
 import { createRenderBvh, type Ray, type Vec3 } from "./render-bvh";
 import type { GeometryTransfer } from "./render-geometry-export";
@@ -20,6 +21,7 @@ export function traceDiffusePath(input:{
   ray:Ray;
   materials:Readonly<Record<string,Partial<PhysicalMaterial>>>;
   sky:Vec3;
+  textures?: Readonly<Record<string,CpuTexture>>;
   maxBounces?:number;
   seed?:number;
   /** Reuse one acceleration tree per render job rather than rebuilding per pixel. */
@@ -38,7 +40,12 @@ export function traceDiffusePath(input:{
     if(!hit){radiance=add(radiance,mul(throughput,input.sky));break;}
     const mesh=byMesh.get(hit.meshId);
     if(!mesh)throw Error("ARQDOR: malha da BVH não encontrada");
-    const mat=normalizePhysicalMaterial(input.materials[hit.materialId??""]??{});
+    let mat=normalizePhysicalMaterial(input.materials[hit.materialId??""]??{});
+    const texture=input.textures?.[hit.materialId??""];
+    if(texture) {
+      const uv=sampleMeshUv(mesh.uvs,hit.triangle,hit.barycentric);
+      mat={...mat,baseColor:mul(mat.baseColor,sampleCpuTexture(texture,uv))};
+    }
     radiance=add(radiance,mul(throughput,mat.emissive));
     if(bounce===maxBounces)break;
     const start=hit.triangle*9,p=mesh.positions;
