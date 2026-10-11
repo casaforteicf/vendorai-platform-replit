@@ -13,7 +13,22 @@ const round = (n: number) => Math.round(n * 1e6) / 1e6;
 export function prepareWallSolids(walls: SolidWall[], openings: SolidOpening[]): WallSolidResult {
   const boxes: WallBox[] = [];
   const warnings: string[] = [];
+  const wallKeys = new Set(walls.map((wall) => `${wall.floor}:${wall.id}`));
+  const seenKeys = new Set<string>();
+  for (const opening of openings) {
+    if (!wallKeys.has(`${opening.floor}:${opening.wallId}`)) warnings.push(`OPENING_ORPHAN:${opening.id}`);
+  }
   for (const wall of walls) {
+    const wallKey = `${wall.floor}:${wall.id}`;
+    if (seenKeys.has(wallKey)) {
+      warnings.push(`WALL_DUPLICATE:${wall.id}`);
+      continue;
+    }
+    seenKeys.add(wallKey);
+    if (![wall.x1, wall.y1, wall.x2, wall.y2].every(Number.isFinite)) {
+      warnings.push(`WALL_INVALID:${wall.id}`);
+      continue;
+    }
     const dx = wall.x2 - wall.x1;
     const dy = wall.y2 - wall.y1;
     const length = Math.hypot(dx, dy);
@@ -47,6 +62,7 @@ export function prepareWallSolids(walls: SolidWall[], openings: SolidOpening[]):
       voids.push({ id: o.id, start: Math.max(0, start), end: Math.min(length, end), low: sill, high: sill + o.height });
     }
     // Reject overlapping openings rather than silently creating incorrect wall solids.
+    voids.sort((a, b) => a.start - b.start || a.low - b.low || a.id.localeCompare(b.id));
     const accepted: Void[] = [];
     for (const opening of voids) {
       if (accepted.some((other) => opening.start < other.end - EPS && other.start < opening.end - EPS &&
