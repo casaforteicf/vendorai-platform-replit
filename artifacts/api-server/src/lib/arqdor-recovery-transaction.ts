@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { createHash } from "node:crypto";
+import { restoreRequestFingerprint } from "./arqdor-recovery-fingerprint.js";
 import { pgTable, text, timestamp, jsonb, uuid } from "drizzle-orm/pg-core";
 import { db, archConceptProjectsTable } from "@workspace/db";
 
@@ -34,12 +34,12 @@ export async function restoreConceptWithAudit(input: {
       !input.operationId || !Number.isFinite(input.expectedUpdatedAt.getTime())) {
     return { status: "conflict" };
   }
-  const requestFingerprint = createHash("sha256").update(JSON.stringify({
+  const requestFingerprint = restoreRequestFingerprint({
     actorUserId: input.actorUserId,
     expectedUpdatedAt: input.expectedUpdatedAt.toISOString(),
     rooms: input.rooms,
     openingOverrides: input.openingOverrides,
-  })).digest("hex");
+  });
   return db.transaction(async tx => {
     const [project] = await tx.select().from(archConceptProjectsTable)
       .where(and(
