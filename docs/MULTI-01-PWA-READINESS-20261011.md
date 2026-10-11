@@ -150,3 +150,10 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - Por segurança, **não atribui proprietários automaticamente** em projetos históricos. A origem de cada projeto precisa ser confirmada antes do cadastro inicial dos membros.
 - Teste estático `node artifacts/api-server/scripts/test-arqdor-membership-migration.mjs` criado; **não executado** nesta sessão. É preciso avaliar a sequência de migrações do banco atual, colisões de numeração e rodar testes em banco isolado, homologação e revisão da política de migração.
 - A nova tabela **ainda não está conectada à API**; as rotas de sincronização seguem com restrição administrativa. Sem migração executada, merge ou deploy.
+
+
+## MULTI-07.2 — Consulta real de membro, sem writes
+- Criado `artifacts/api-server/src/lib/arqdor-workspace-membership.ts`, que consulta o projeto, a conta de usuário ativa e sua linha de membership, sempre delimitados por tenant. Não usa permissão visual no frontend como autorização.
+- Adicionada rota autenticada `GET /arqdor/projects/:id/edit-access` sob flag **ARQDOR_PROJECT_ACL_ENABLED=true**, desligada por padrão. Retorna somente `projectId` e `canEdit`, nunca o contexto do projeto. Em erro de banco responde 503 e não concede acesso.
+- Ampliado teste estático `test-arqdor-membership-migration.mjs` para garantir a flag e a consulta. Não houve execução de testes ou migração real.
+- **Ainda não cria/revoga colaboradores**, e as rotas condicionais de gravação continuam restritas aos administradores. A próxima etapa deve definir provisionamento seguro de owner, revogação sem retirar último owner e validação de permissões dentro da mesma transação do UPDATE. Não habilitar a flag sem migração e testes isolados.
