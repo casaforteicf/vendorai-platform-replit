@@ -20,6 +20,12 @@ describe("ARQDOR experimental diffuse transport",()=>{
   expect(sample.pdf).toBeGreaterThan(0);
   expect(sample.throughput).toEqual([0.8,0.7,0.6]);
  });
+ it("reuses a prepared per-scene mesh index without changing transport",()=>{
+  const input={geometry:triangle,ray,materials:{white:{baseColor:[0.5,0.6,0.7] as const}},sky:[1,1,1] as const,maxBounces:1,seed:3};
+  const baseline=traceDiffusePath(input);
+  const indexed=traceDiffusePath({...input,meshIndex:new Map([["a",triangle.meshes[0]]])});
+  expect(indexed).toEqual(baseline);
+ });
  it("returns sky when no geometry is hit",()=>{
   expect(traceDiffusePath({geometry:empty,ray,materials:{},sky:[0.2,0.3,0.4]})).toEqual([0.2,0.3,0.4]);
  });
