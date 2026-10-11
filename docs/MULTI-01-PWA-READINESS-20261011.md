@@ -35,3 +35,10 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - A oferta exige teste em dispositivos e confirmação do manifesto no domínio servido. No iOS, que não oferece esse evento em versões usuais do Safari, permanece acesso web sem banner; fluxo orientado de instalação poderá ser tratado separadamente.
 - Não habilitar flag antes dos gates de manifesto/ícones, navegação, contraste, interação por teclado e regressão em sessão real.
 - **Não foi possível executar build/typecheck/testes neste ambiente de conector. PR permanece draft e sem merge.**
+
+
+## MULTI-03 — Proteção de rascunhos locais do Arqdor (contrato)
+- Novo `arqdorEncryptedDraft.ts`: serialização criptografada AES-GCM com IV aleatório e dados autenticados vinculando usuário, tenant, projeto, contexto e operação; valida versão base antes de preparar o rascunho.
+- `arqdorEncryptedDraft.test.ts`: testes declarados de roundtrip, escopo, adulteração e revisão conflitante.
+- **Limitações:** ainda não há persistência IndexedDB, geração/recuperação da chave entre sessões, UI Arqdor consumindo esse contrato, export de backup, sync online, upload, migração de schema ou homologação em dispositivo. Chave criptográfica deve ser injetada somente após autenticação e autorização do backend; sem chave, o rascunho é irrecuperável. Nunca armazenar chave em localStorage nem enviar em eventos/telemetria.
+- **Gate de produção:** confirmar WebCrypto em navegador suportado, implementar retenção/revogação, tratar quotas e armazenamento cheio, fail-closed para troca de tenant/usuário e sincronização atômica com conflito.
