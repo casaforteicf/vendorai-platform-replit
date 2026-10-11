@@ -68,15 +68,34 @@ export async function recordAtrAdjustment(input: {
  allocationId:string; type:"refund"|"chargeback"|"manual_correction";
  externalReference:string; deltaCents:number; reason:string;
 }) {
- if(!input.allocationId||!input.externalReference||!input.reason.trim()||!Number.isSafeInteger(input.deltaCents)||input.deltaCents===0)
+ if (!input.allocationId?.trim() || !input.externalReference?.trim() ||
+     !input.reason?.trim() || !Number.isSafeInteger(input.deltaCents) || input.deltaCents === 0 ||
+     !["refund", "chargeback", "manual_correction"].includes(input.type)) {
    throw new Error("Invalid ATR adjustment");
- const [allocation]=await db.select().from(atrCommissionAllocationsTable)
-   .where(eq(atrCommissionAllocationsTable.id,input.allocationId)).limit(1);
- if(!allocation) throw new Error("ATR allocation missing");
- if(input.type!=="manual_correction" && input.deltaCents>0) throw new Error("Reversal must be negative");
- const [result]=await db.insert(atrCommissionAdjustmentsTable).values({
-  allocationId:input.allocationId,adjustmentType:input.type,externalReference:input.externalReference,
-  deltaCents:input.deltaCents,reason:input.reason
- }).onConflictDoNothing().returning();
- return {adjustment:result??null,idempotent:!result};
+ }
+ if (input.type !== "manual_correction" && input.deltaCents > 0) throw new Error("Reversal must be negative");
+ // Serialize adjustments on the allocation, including retries and concurrent reversals.
+ return db.transaction(async tx => {
+   const [allocation] = await tx.select().from(atrCommissionAllocationsTable)
+     .where(eq(atrCommissionAllocationsTable.id, input.allocationId)).limit(1).for("update");
+   if (!allocation) throw new Error("ATR allocation missing");
+   const adjustments = await tx.select().from(atrCommissionAdjustmentsTable)
+     .where(eq(atrCommissionAdjustmentsTable.allocationId, input.allocationId));
+   const existing = adjustments.find(a => a.adjustmentType === input.type && a.externalReference === input.externalReference);
+   if (existing) {
+     if (existing.deltaCents !== input.deltaCents || existing.reason !== input.reason) throw new Error("ATR conflicting adjustment retry");
+     return { adjustment: existing, idempotent: true };
+   }
+   if (!Number.isSafeInteger(allocation.allocatedCents) || adjustments.some(a => !Number.isSafeInteger(a.deltaCents))) {
+     throw new Error("Invalid ATR adjustment balance");
+   }
+   const balance = adjustments.reduce((total, a) => total + BigInt(a.deltaCents), BigInt(allocation.allocatedCents));
+   if (balance + BigInt(input.deltaCents) < 0n) throw new Error("ATR adjustment exceeds available allocation");
+   const [result] = await tx.insert(atrCommissionAdjustmentsTable).values({
+     allocationId: input.allocationId, adjustmentType: input.type, externalReference: input.externalReference,
+     deltaCents: input.deltaCents, reason: input.reason,
+   }).returning();
+   if (!result) throw new Error("ATR adjustment insert missing");
+   return { adjustment: result, idempotent: false };
+ });
 }
