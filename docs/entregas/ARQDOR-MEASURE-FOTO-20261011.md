@@ -196,3 +196,9 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - Remocao de cota enquanto uma foto local esta selecionada tambem atualiza o registro IndexedDB (quando ainda nao foi enviado).
 - Consulta a checks e workflows PR do commit final anterior retornou listas vazias, sem evidencia de CI aprovado.
 - Gates de TypeScript, backend build, Vite, seguranca, PostgreSQL e testes mobile continuam pendentes; nenhum merge/deploy.
+
+## Lote 27 — integridade de cotas por fotografia offline (11/10/2026)
+- queuePhoto agora devolve UUID do novo registro IndexedDB, e o editor o seleciona imediatamente. Cotas adicionadas em seguida ficam associadas ao registro escolhido.
+- Apos guardar a foto offline, o arquivo selecionado e limpo para evitar enfileiramentos acidentais com um unico clique repetido.
+- Trocar para nova fotografia exige confirmacao quando existem cotas locais ainda nao vinculadas; remove as cotas soltas do editor antes de iniciar nova imagem.
+- Pendente: controle de concorrencia entre abas e transacoes de cotas, compilacao frontend, build backend, seguranca e homologacao. Sem merge e sem deploy.
