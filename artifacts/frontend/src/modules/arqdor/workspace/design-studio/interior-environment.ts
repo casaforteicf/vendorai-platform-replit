@@ -18,16 +18,18 @@ export function buildRectangularRoom(args:{name:string;widthM:number;depthM:numb
   return {source:"new-room",projectId:args.projectId??null,roomId:"draft-"+Date.now().toString(36),name:args.name,
     walls:p.map(([x1,y1,x2,y2],i)=>({id:"wall-"+(i+1),x1,y1,x2,y2,thicknessM:args.thicknessM,heightM:args.heightM})),persistStatus:"draft-only"};
 }
-export function fromPreProjectRoom(projectId:string,room:{id:string;nome?:string;name?:string;titulo?:string;largura?:number;profundidade?:number;altura?:number;widthM?:number;depthM?:number;heightM?:number},revision?:string):InteriorEnvironment{
+export function fromPreProjectRoom(projectId:string,room:{id:string;nome?:string;name?:string;titulo?:string;largura?:number;profundidade?:number;altura?:number;widthM?:number;depthM?:number;heightM?:number;walls?:InteriorWall[];paredes?:InteriorWall[]},revision?:string):InteriorEnvironment{
   if(!projectId||!room.id)throw Error("Referencia de projeto ou ambiente ausente");
   const width=room.widthM??room.largura,depth=room.depthM??room.profundidade,height=room.heightM??room.altura;
   const valid=[width,depth,height].every(v=>typeof v==="number"&&Number.isFinite(v)&&v>0);
-  const walls:InteriorWall[]=valid?[
+  const imported=room.walls??room.paredes;
+  const measuredWalls=Array.isArray(imported)&&imported.length>=3&&imported.every(w=>w&&typeof w.id==="string"&&w.id.length>0&&[w.x1,w.y1,w.x2,w.y2,w.thicknessM,w.heightM].every(Number.isFinite)&&w.thicknessM>0&&w.heightM>0&&Math.hypot(w.x2-w.x1,w.y2-w.y1)>0)?imported.map(w=>({...w})):null;
+  const walls:InteriorWall[]=measuredWalls??(valid?[
    {id:"preview-wall-1",x1:0,y1:0,x2:width!,y2:0,thicknessM:.14,heightM:height!},
    {id:"preview-wall-2",x1:width!,y1:0,x2:width!,y2:depth!,thicknessM:.14,heightM:height!},
    {id:"preview-wall-3",x1:width!,y1:depth!,x2:0,y2:depth!,thicknessM:.14,heightM:height!},
    {id:"preview-wall-4",x1:0,y1:depth!,x2:0,y2:0,thicknessM:.14,heightM:height!}
-  ]:[];
+  ]:[]);
   return {source:"preproject",projectId,roomId:room.id,name:room.nome||room.name||room.titulo||"Ambiente",
     walls,sourceRevision:revision,persistStatus:"draft-only"};
 }
