@@ -100,6 +100,7 @@ import construcaoRouter from "./construcao";
 import archRouter, { archPublicRouter } from "./arch";
 import { arqdorPublicLinkRouter, arqdorPublicLinkAdminRouter } from "./arqdor_public_link";
 import arqdorPartnerLotsRouter from "./arqdor_partner_lots";
+import arqdorFurnitureSnapshotsRouter from "./arqdor_furniture_snapshots";
 import { archAiRenderRouter } from "./arch_ai_render";
 import archSpecObjectsRouter from "./arch_spec_objects";
 import archBudgetEngineRouter from "./arch_budget_engine";
@@ -555,6 +556,7 @@ router.use(partnerProspectorRouter);
 // Arch Hub
 router.use(arqdorPublicLinkAdminRouter);
 router.use(arqdorPartnerLotsRouter);
+router.use(arqdorFurnitureSnapshotsRouter);
 router.use(archRouter);
 router.use(archSpecObjectsRouter);
 router.use(archBudgetEngineRouter);
