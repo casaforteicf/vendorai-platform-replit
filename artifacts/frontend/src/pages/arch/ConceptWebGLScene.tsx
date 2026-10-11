@@ -1359,6 +1359,7 @@ export default function ConceptWebGLScene({
           })),
         );
         if (solid.valid && solid.meshes.length) {
+          try {
           for (const indexed of solid.meshes) {
             const geometry = new THREE.BufferGeometry();
             const webgl = wallMeshToWebGL(indexed, lotWidth, lotDepth);
@@ -1383,6 +1384,9 @@ export default function ConceptWebGLScene({
             runtime.pickables.push(mesh);
           }
           return;
+          } catch (wallWebglError) {
+            console.warn("[ConceptWebGLScene] wallMeshToWebGL falhou (solido); renderer legado assumindo", wallWebglError);
+          }
         }
       }
 
@@ -1584,6 +1588,7 @@ export default function ConceptWebGLScene({
           baseElevation: floorBase + 0.16,
         })), []);
         if (union.warnings.length === 0 && union.meshes.length === 1 && union.meshes[0].indices.length) {
+          try {
           const indexed = union.meshes[0];
           const mapped = wallMeshToWebGL(indexed, lotWidth, lotDepth);
           const geometry = new THREE.BufferGeometry();
@@ -1609,6 +1614,9 @@ export default function ConceptWebGLScene({
           modelRoot.add(mesh);
           runtime.pickables.push(mesh);
           displayedUnion = true;
+          } catch (wallUnionWebglError) {
+            console.warn("[ConceptWebGLScene] wallMeshToWebGL falhou (uniao); renderer legado assumindo", wallUnionWebglError);
+          }
         }
       }
       if (!displayedUnion) {
