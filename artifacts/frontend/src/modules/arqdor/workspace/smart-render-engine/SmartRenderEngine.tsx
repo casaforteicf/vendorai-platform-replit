@@ -1,5 +1,4 @@
 import React, { useMemo, useState } from "react";
-import { RenderQualityPanel } from "./RenderQualityPanel";
 
 type SmartRenderEngineProps = {
   arqState: any;
@@ -424,7 +423,6 @@ export default function SmartRenderEngine({ arqState, onNavigate }: SmartRenderE
           </section>
 
           <aside className="space-y-5">
-            <RenderQualityPanel />
             <AIPanel prompt={prompt} setPrompt={setPrompt} onGenerate={() => createVersion()} />
             <ObjectPanel />
             <CostPanel />
