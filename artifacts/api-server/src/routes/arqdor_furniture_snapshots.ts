@@ -14,7 +14,7 @@ const furniture=z.object({id:z.string().min(1),tenantId:z.string(),projectId:z.s
  status:z.literal("local-draft")}).passthrough();
 const payload=z.object({schemaVersion:z.literal(1),tenantId:z.string().min(1),projectId:z.string().min(1),roomId:z.string().min(1),
  revision:z.string().min(1),baseRevision:z.string().nullable().optional(),createdAt:z.string().datetime({offset:true}),furniture:z.array(furniture).max(500)}).strict();
-const scope=(req:Request)=>req.user?.tenantId??req.tenantId;
+const scope=(req:Request)=>req.user?.tenantId;
 const footprint=(b:{widthMm:number;depthMm:number;rotationDeg:0|90|180|270})=>b.rotationDeg===90||b.rotationDeg===270?{w:b.depthMm,d:b.widthMm}:{w:b.widthMm,d:b.depthMm};
 const overlaps=(a:{xMm:number;yMm:number;widthMm:number;depthMm:number;rotationDeg:0|90|180|270},b:{xMm:number;yMm:number;widthMm:number;depthMm:number;rotationDeg:0|90|180|270})=>{
  const x=footprint(a),y=footprint(b);
@@ -36,7 +36,7 @@ router.put("/arqdor/projects/:id/furniture/:roomId",async(req:Request,res:Respon
  const parsed=payload.safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:"Snapshot inválido"});
  const data=parsed.data;
- if(![tenantId,"local-preview"].includes(data.tenantId)||data.projectId!==projectId||data.roomId!==roomId)return res.status(403).json({error:"Projeto/tenant/ambiente incompatível"});
+ if(data.tenantId!==tenantId||data.projectId!==projectId||data.roomId!==roomId)return res.status(403).json({error:"Projeto/tenant/ambiente incompatível"});
  const ids=new Set<string>(),partIds=new Set<string>();
  const footprints:typeof data.furniture[number]["bounds"][]=[];
  if(roomId.length>160||projectId.length>160||JSON.stringify(data).length>1500000||data.furniture.reduce((count,f)=>count+f.parts.length,0)>5000)return res.status(400).json({error:"Limite do projeto excedido"});
