@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { queuePhoto, listQueuedPhotos, getQueuedPhoto, removeQueuedPhoto } from "./offlinePhotoQueue";
+import { queuePhoto, listQueuedPhotos, getQueuedPhoto, removeQueuedPhoto, markPhotoUploaded } from "./offlinePhotoQueue";
 
 /** Positions are normalized to the displayed image, not inferred physical coordinates. */
 export type PhotoMeasure = {
@@ -128,7 +128,7 @@ export default function PhotoMeasureEditor({ itemId, offlineKey, imageUrl, onClo
       <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => selectImage(e.currentTarget.files?.[0])} />
       <Button size="sm" variant="outline" onClick={() => inputRef.current?.click()}>Fotografar / escolher imagem</Button>
       {offlineKey && selectedFile && !readOnly && <Button size="sm" variant="outline" disabled={saving} onClick={async () => {
-        try { await queuePhoto(offlineKey, selectedFile); setQueuedCount(v=>v+1); setMessage("Foto guardada no dispositivo. Envio manual pendente."); }
+        try { await queuePhoto(offlineKey, selectedFile, measures.filter(m => !m.photoPath)); setQueuedCount(v=>v+1); setMessage("Foto guardada no dispositivo. Envio manual pendente."); }
         catch (error) { setMessage(error instanceof Error ? error.message : "Falha ao guardar fotografia offline."); }
       }}>Guardar foto offline</Button>}
       {offlineKey && queuedCount > 0 && onUpload && !readOnly && <Button size="sm" variant="outline" disabled={saving} onClick={async () => {
@@ -136,10 +136,18 @@ export default function PhotoMeasureEditor({ itemId, offlineKey, imageUrl, onClo
         try {
           const saved = await getQueuedPhoto(offlineKey);
           if (!saved) throw new Error("Foto offline não encontrada");
-          const photo = await onUpload(new File([saved.file], saved.name, { type: saved.mime }));
+          const photo = saved.uploadedPath
+            ? { storageUrl: saved.uploadedPath, accessUrl: "" }
+            : await onUpload(new File([saved.file], saved.name, { type: saved.mime }));
+          if (!saved.uploadedPath) await markPhotoUploaded(saved, photo.storageUrl);
+          if (saved.measures?.length && onSave) {
+            const annotated = saved.measures.map(m => ({ ...m, photoPath: photo.storageUrl }));
+            await onSave([...measures.filter(m => m.photoPath !== photo.storageUrl), ...annotated]);
+            setMeasures(previous => [...previous.filter(m => m.photoPath !== photo.storageUrl), ...annotated]);
+          }
           await removeQueuedPhoto(saved.id);
           setQueuedCount(v=>Math.max(0,v-1)); setSelectedFile(null); setLocalImage(null);
-          setSelectedPhotoPath(photo.storageUrl); setUploadedImage(photo.accessUrl);
+          setSelectedPhotoPath(photo.storageUrl); if(photo.accessUrl) setUploadedImage(photo.accessUrl);
           setMessage("Foto sincronizada com o checklist.");
         } catch (error) { setMessage(error instanceof Error ? error.message : "Envio falhou. A foto permanece no dispositivo."); }
         finally { setSaving(false); }
