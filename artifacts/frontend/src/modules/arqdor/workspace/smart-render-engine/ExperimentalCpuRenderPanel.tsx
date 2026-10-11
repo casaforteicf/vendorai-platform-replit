@@ -10,6 +10,9 @@ export function ExperimentalCpuRenderPanel({options}:Props){
  const [progress,setProgress]=useState(0);
  const [samples,setSamples]=useState(8);
  const [denoise,setDenoise]=useState(false);
+ const [exposure,setExposure]=useState(1);
+ const [sunIntensity,setSunIntensity]=useState(1);
+ const [bounceCount,setBounceCount]=useState(2);
  useEffect(()=>()=>{job.current?.cancel();job.current=null;},[]);
  const stop=()=>{job.current?.cancel();job.current=null;setStatus("Cancelado");};
  const start=()=>{
@@ -20,7 +23,13 @@ export function ExperimentalCpuRenderPanel({options}:Props){
   canvas.current!.width=options.width;canvas.current!.height=options.height;
   setProgress(0);setStatus("Renderizando");
   try {
-   job.current=createCpuRenderJob(options,{
+   const renderOptions:DiffusePreviewOptions={...options,
+    display:{toneMapping:options.display?.toneMapping??"aces",exposure},
+    directionalLight:{directionToLight:options.directionalLight?.directionToLight??[0.35,0.8,0.45],
+      color:options.directionalLight?.color??[1,1,1],intensity:sunIntensity},
+    maxBounces:bounceCount,
+   };
+   job.current=createCpuRenderJob(renderOptions,{
     onTile:ev=>{
      if(ev.width!==options.width||ev.y<0||ev.y+ev.height>options.height)return;
      context.putImageData(new ImageData(new Uint8ClampedArray(ev.rgba),ev.width,ev.height),0,ev.y);
@@ -43,6 +52,9 @@ export function ExperimentalCpuRenderPanel({options}:Props){
    <label>Passagens <select value={samples} onChange={e=>setSamples(Number(e.target.value))} className="rounded border p-1">
     {[1,4,8,16,32].map(v=><option key={v} value={v}>{v}</option>)}
    </select></label>
+   <label>Exposição <input type="range" min="0.25" max="3" step="0.25" value={exposure} onChange={e=>setExposure(Number(e.target.value))}/>{exposure.toFixed(2)}×</label>
+   <label>Sol <input type="range" min="0" max="4" step="0.25" value={sunIntensity} onChange={e=>setSunIntensity(Number(e.target.value))}/>{sunIntensity.toFixed(2)}×</label>
+   <label>Rebotes <select value={bounceCount} onChange={e=>setBounceCount(Number(e.target.value))} className="rounded border p-1">{[1,2,3,4].map(v=><option key={v} value={v}>{v}</option>)}</select></label>
    <label className="flex items-center gap-2"><input type="checkbox" checked={denoise} onChange={e=>setDenoise(e.target.checked)}/>Filtro de ruído</label>
    <button type="button" onClick={start} className="rounded bg-slate-900 px-3 py-2 text-white">Renderizar prévia</button>
    <button type="button" onClick={stop} className="rounded border px-3 py-2">Cancelar</button>
