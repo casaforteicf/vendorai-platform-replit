@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS arch_concept_restore_audit (
   concept_id text NOT NULL,
   actor_user_id text NOT NULL,
   operation_id text NOT NULL,
+  request_fingerprint text NOT NULL,
   base_updated_at timestamp NOT NULL,
   restored_updated_at timestamp NOT NULL,
   previous_snapshot jsonb NOT NULL,
