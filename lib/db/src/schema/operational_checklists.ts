@@ -53,6 +53,7 @@ export type OperationalChecklistItem = {
   }>;
   photoMeasurements?: Array<{ id: string; start: { x: number; y: number }; end: { x: number; y: number }; millimeters: number; label: string; photoPath?: string; source: "manual_verified" }>;
   status: OperationalChecklistItemStatus;
+  divergenceResolution?: { reason: string; approvedBy: string; approvedAt: string; widthDeltaMm: number | null; heightDeltaMm: number | null } | null;
   conferidoPor?: string | null;
   conferidoEm?: string | null;
 };
