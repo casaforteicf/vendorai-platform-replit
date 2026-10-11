@@ -3274,7 +3274,7 @@ export default function ConceptPlan2D({
           );
         })}
 
-        {architecturalModel && <ConceptArchitecturalPlanLayer model={architecturalModel} floor={activeFloor}
+        {architecturalModel && <ConceptArchitecturalPlanLayer model={architecturalModel} floor={activeFloor} lotWidth={lotWidth} lotDepth={lotDepth}
           selectedId={selectedArchitecturalId} onMove={interactionMode === "navigate" ? onMoveArchitecturalElement : undefined} onSelect={interactionMode === "navigate" ? onSelectArchitecturalElement : undefined} />}
 
         <rect x="0" y="0" width={lotWidth} height={lotDepth} fill="none" stroke="#64748b" strokeWidth="0.065" strokeDasharray="0.22 0.14" pointerEvents="none" />

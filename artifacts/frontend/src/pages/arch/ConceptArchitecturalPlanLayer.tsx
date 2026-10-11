@@ -1,9 +1,24 @@
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { moveArchitecturalElement } from "./conceptArchitecturalMovement";
 import type { ArchitecturalModel } from "./conceptArchitecturalModel";
 import { architecturalPlanPrimitives } from "./conceptArchitecturalViews";
-type Props = { model: ArchitecturalModel; floor: number; selectedId?: string | null; onSelect?: (id: string) => void; onMove?: (id: string, dx: number, dy: number) => void };
+type Props = { lotWidth?: number; lotDepth?: number; model: ArchitecturalModel; floor: number; selectedId?: string | null; onSelect?: (id: string) => void; onMove?: (id: string, dx: number, dy: number) => void };
 /** Select outlines rather than covering wall/room interactions with slab fills. */
-export function ConceptArchitecturalPlanLayer({ model, floor, selectedId, onSelect, onMove }: Props) {
-  return <g>{architecturalPlanPrimitives(model).filter(element => element.floor === floor || element.floor === null).map(element => {
+export function ConceptArchitecturalPlanLayer({ model, floor, selectedId, onSelect, onMove, lotWidth, lotDepth }: Props) {
+  type Drag = { floor: number; id: string; pointerId: number; x: number; y: number; dx: number; dy: number; base: ArchitecturalModel };
+  const dragRef = useRef<Drag | null>(null);
+  const suppressClick = useRef(false);
+  const [preview, setPreview] = useState<ArchitecturalModel | null>(null);
+  function point(event: ReactPointerEvent<SVGRectElement>) {
+    const matrix = event.currentTarget.getScreenCTM();
+    const svg = event.currentTarget.ownerSVGElement;
+    if (!matrix || !svg) return null;
+    const p = svg.createSVGPoint(); p.x = event.clientX; p.y = event.clientY;
+    const value = p.matrixTransform(matrix.inverse());
+    return Number.isFinite(value.x) && Number.isFinite(value.y) ? value : null;
+  }
+  function cancel() { dragRef.current = null; setPreview(null); }
+  return <g>{architecturalPlanPrimitives(preview && dragRef.current?.base === model ? preview : model).filter(element => element.floor === floor || element.floor === null).map(element => {
     const selectable = Boolean(onSelect) && element.kind !== "slab-void";
     const selected = element.id === selectedId;
     const label = element.kind === "slab" ? "Laje" : element.kind === "stair" ? "Escada" : element.kind === "roof" ? "Cobertura" : "Vão de laje";
@@ -16,9 +31,40 @@ export function ConceptArchitecturalPlanLayer({ model, floor, selectedId, onSele
       pointerEvents={selectable ? "visibleStroke" : "none"}
       role={selectable ? "button" : undefined} tabIndex={selectable ? 0 : undefined}
       aria-label={selectable ? `${label} · ${element.id}` : undefined} aria-pressed={selectable ? selected : undefined}
-      onPointerDown={selectable ? event => event.stopPropagation() : undefined}
-      onClick={selectable ? event => { event.stopPropagation(); onSelect?.(element.id); } : undefined}
+      style={selectable && selected && onMove ? { touchAction: "none", cursor: "move" } : undefined}
+      onPointerDown={selectable ? event => {
+        event.stopPropagation(); suppressClick.current = false;
+        if (!selected || !onMove || !lotWidth || !lotDepth || event.button !== 0 || dragRef.current) return;
+        const p = point(event); if (!p) return;
+        event.preventDefault(); event.currentTarget.focus();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        dragRef.current = { floor, id: element.id, pointerId: event.pointerId, x: p.x, y: p.y, dx: 0, dy: 0, base: model };
+      } : undefined}
+      onPointerMove={event => {
+        const drag = dragRef.current;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+        event.stopPropagation();
+        if (drag.base !== model || drag.id !== selectedId || drag.floor !== floor || !onMove || !lotWidth || !lotDepth) { cancel(); return; }
+        const p = point(event); if (!p) return;
+        const dx = Math.round((p.x - drag.x) * 100) / 100, dy = Math.round((p.y - drag.y) * 100) / 100;
+        const moved = moveArchitecturalElement(drag.base, drag.id, dx, dy, lotWidth, lotDepth);
+        if ("error" in moved) return;
+        drag.dx = dx; drag.dy = dy; setPreview(moved.value);
+      }}
+      onPointerUp={event => {
+        const drag = dragRef.current;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+        event.stopPropagation(); cancel();
+        if (drag.base === model && drag.id === selectedId && drag.floor === floor && (drag.dx || drag.dy)) {
+          suppressClick.current = true; onMove?.(drag.id, drag.dx, drag.dy);
+        }
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+      }}
+      onPointerCancel={event => { if (dragRef.current?.pointerId === event.pointerId) { event.stopPropagation(); suppressClick.current = true; cancel(); } }}
+      onLostPointerCapture={() => { if (dragRef.current) { suppressClick.current = true; cancel(); } }}
+      onClick={selectable ? event => { event.stopPropagation(); if (suppressClick.current) { suppressClick.current = false; return; } onSelect?.(element.id); } : undefined}
       onKeyDown={selectable ? event => {
+        if (event.key === "Escape" && dragRef.current) { event.preventDefault(); event.stopPropagation(); suppressClick.current = true; cancel(); return; }
         if (selected && onMove && !event.ctrlKey && !event.metaKey && !event.altKey) {
           const step = event.shiftKey ? 0.1 : 0.01;
           const movement = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[event.key];
