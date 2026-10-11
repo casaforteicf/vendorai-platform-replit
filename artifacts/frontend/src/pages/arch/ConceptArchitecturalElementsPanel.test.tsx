@@ -102,3 +102,28 @@ it("loads requested plan selection once and supports selecting the same element 
   rerender(<ConceptArchitecturalElementsPanel model={model} requestedSelection={{ id: "s", revision: 2 }} onChange={onChange} floor={0} lotWidth={12} lotDepth={20} />);
   expect((screen.getByLabelText("Largura") as HTMLInputElement).value).toBe("3");
 });
+
+it("duplicates saved slab parameters with configured offsets in a single change", () => {
+  const onChange = vi.fn(); const model = emptyArchitecturalModel();
+  model.slabs.push({ id: "s", floor: 1, x: 0, y: 0, width: 3, depth: 3, thickness: 0.2, elevation: 3.12, voids: [{ x: 1, y: 1, width: 1, depth: 1 }] });
+  render(<ConceptArchitecturalElementsPanel model={model} onChange={onChange} floor={0} lotWidth={12} lotDepth={20} />);
+  fireEvent.click(screen.getByRole("button", { name: "slab · s" }));
+  fireEvent.change(screen.getByLabelText("Largura"), { target: { value: "4" } });
+  fireEvent.change(screen.getByLabelText("Deslocamento X da cópia (m)"), { target: { value: "4" } });
+  fireEvent.change(screen.getByLabelText("Deslocamento Y da cópia (m)"), { target: { value: "0" } });
+  fireEvent.click(screen.getByRole("button", { name: "Duplicar" }));
+  expect(onChange).toHaveBeenCalledOnce();
+  expect(onChange.mock.calls[0][0].slabs[1]).toMatchObject({ id: "s-copia-1", x: 4, y: 0, width: 3, floor: 1, voids: [{ x: 5, y: 1, width: 1, depth: 1 }] });
+  expect(model.slabs).toHaveLength(1);
+});
+it("shows a copy validation error without changing the model", () => {
+  const onChange = vi.fn(); const model = emptyArchitecturalModel();
+  model.slabs.push({ id: "s", floor: 0, x: 0, y: 0, width: 3, depth: 3, thickness: 0.15, elevation: 0.16, voids: [] });
+  render(<ConceptArchitecturalElementsPanel model={model} onChange={onChange} floor={0} lotWidth={3} lotDepth={3} />);
+  fireEvent.click(screen.getByRole("button", { name: "slab · s" }));
+  fireEvent.click(screen.getByRole("button", { name: "Duplicar" }));
+  expect(screen.getByRole("alert")).toBeTruthy();
+  fireEvent.change(screen.getByLabelText("Deslocamento X da cópia (m)"), { target: { value: "" } });
+  fireEvent.click(screen.getByRole("button", { name: "Duplicar" }));
+  expect(onChange).not.toHaveBeenCalled();
+});

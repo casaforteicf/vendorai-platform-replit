@@ -1,3 +1,4 @@
+import { duplicateArchitecturalElement } from "./conceptArchitecturalDuplication";
 import { ConceptSlabVoidsEditor } from "./ConceptSlabVoidsEditor";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createStraightStair, type Roof } from "./conceptArchitecturalElements";
@@ -16,6 +17,7 @@ export function ConceptArchitecturalElementsPanel({ model, onChange, floor, lotW
   const [roofType, setRoofType] = useState<Roof["type"]>("gable");
   const [pitch, setPitch] = useState(30), [overhang, setOverhang] = useState(0.3);
   const elevation = elevationOverride ?? floor * 2.96 + (kind === "roof" ? 2.96 : 0.16);
+  const [copyX, setCopyX] = useState(0.5), [copyY, setCopyY] = useState(0.5);
   const [error, setError] = useState<string | null>(null);
   const items = useMemo(() => [
     ...model.slabs.map(value => ({ kind: "slab" as const, value })),
@@ -69,6 +71,12 @@ export function ConceptArchitecturalElementsPanel({ model, onChange, floor, lotW
     choose(index);
   }, [requestedSelection, items, choose]);
 
+  function duplicate() {
+    if (!selectedItem) return;
+    const next = duplicateArchitecturalElement(model, selectedItem.value.id, copyX, copyY, lotWidth, lotDepth);
+    if ("error" in next) { setError(next.error); return; }
+    onChange(next.value); setError(null);
+  }
   function remove() {
     if (!selected) return;
     const edit = applyArchitecturalEdits(model, [{ action: "remove", kind, id: selected }]);
@@ -91,7 +99,7 @@ export function ConceptArchitecturalElementsPanel({ model, onChange, floor, lotW
   const stairGeometry = kind === "stair" ? createStraightStair({ id: selected || "preview", floor, x, y, width, run: depth, rise, preferredRiser: riserCm / 100 }) : null;
   return <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-3" aria-label="Elementos arquitetônicos paramétricos">
     <h3 className="font-semibold text-sm">Lajes, escadas e coberturas</h3>
-    <p className="text-xs text-slate-500">Na planta, selecione o contorno e use as setas para mover 1 cm (Shift: 10 cm). As alterações atualizam a planta e o 3D e podem ser desfeitas.</p>
+    <p className="text-xs text-slate-500">Na planta, selecione o contorno para mover ou o puxador do canto para redimensionar. As setas ajustam 1 cm (Shift: 10 cm). As alterações atualizam a planta e o 3D e podem ser desfeitas.</p>
     <select aria-label="Tipo de elemento" className="w-full rounded border p-2 text-sm" value={kind} onChange={event => startNew(event.target.value as typeof kind)}>
       <option value="slab">Laje</option><option value="stair">Escada reta</option><option value="roof">Cobertura</option>
     </select>
@@ -108,9 +116,18 @@ export function ConceptArchitecturalElementsPanel({ model, onChange, floor, lotW
     {stairGeometry && "value" in stairGeometry && <p className="text-xs text-slate-600">{stairGeometry.value.steps} espelhos · espelho {(stairGeometry.value.riser * 100).toFixed(1)} cm · piso {(stairGeometry.value.tread * 100).toFixed(1)} cm</p>}
     {kind === "stair" && <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={openSlab} onChange={event => setOpenSlab(event.target.checked)} />Abrir automaticamente a laje do pavimento superior</label>}
     {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
-    <div className="flex gap-2"><button type="button" onClick={save} className="rounded bg-emerald-700 px-3 py-2 text-xs text-white">{selectedItem ? "Atualizar" : "Adicionar"}</button>
+    <div className="flex flex-wrap gap-2"><button type="button" onClick={save} className="rounded bg-emerald-700 px-3 py-2 text-xs text-white">{selectedItem ? "Atualizar" : "Adicionar"}</button>
       {selectedItem && <button type="button" onClick={() => startNew()} className="rounded border px-3 py-2 text-xs">Novo elemento</button>}
       {selectedItem && <button type="button" onClick={remove} className="rounded border px-3 py-2 text-xs">Excluir</button>}</div>
+    {selectedItem && <fieldset className="space-y-2 rounded border p-2">
+      <legend className="text-xs">Duplicar elemento salvo</legend>
+      <p className="text-xs text-slate-500">A cópia usa os parâmetros já salvos. Salve suas alterações antes de duplicar.</p>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="text-xs">Deslocamento X da cópia (m)<input type="number" step="0.01" value={Number.isFinite(copyX) ? copyX : ""} onChange={event => setCopyX(event.target.valueAsNumber)} className="w-full rounded border p-2 text-sm" /></label>
+        <label className="text-xs">Deslocamento Y da cópia (m)<input type="number" step="0.01" value={Number.isFinite(copyY) ? copyY : ""} onChange={event => setCopyY(event.target.valueAsNumber)} className="w-full rounded border p-2 text-sm" /></label>
+      </div>
+      <button type="button" onClick={duplicate} className="rounded border px-3 py-2 text-xs">Duplicar</button>
+    </fieldset>}
     <div className="space-y-1">{items.map((item, i) => <button key={item.value.id} type="button" onClick={() => choose(i)} className="block w-full rounded border p-2 text-left text-xs">{item.kind} · {item.value.id}</button>)}</div>
     {selectedItem?.kind === "slab" && <ConceptSlabVoidsEditor key={selectedItem.value.id} model={model} slab={selectedItem.value} onChange={onChange} />}
     <p className="text-xs text-slate-500">Área líquida de lajes: {qty.slabNetArea.toFixed(2)} m²</p>
