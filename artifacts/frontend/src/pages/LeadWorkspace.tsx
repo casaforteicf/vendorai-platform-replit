@@ -335,6 +335,8 @@ export default function LeadWorkspace() {
   const [partnerCommissionPercent, setPartnerCommissionPercent] = useState("15");
   const [commissionEditorOpen, setCommissionEditorOpen] = useState(false);
   const [savingRepresentation, setSavingRepresentation] = useState(false);
+  const [leadOperatorSelection, setLeadOperatorSelection] = useState("__unassigned__");
+  const [savingLeadOperator, setSavingLeadOperator] = useState(false);
   const [savingCommission, setSavingCommission] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState("");
   const [payerAccount, setPayerAccount] = useState("");
@@ -360,6 +362,45 @@ export default function LeadWorkspace() {
       return response.json();
     },
   });
+
+  const representativeFunctionId = (lead as { representativeFunctionId?: string | null } | undefined)?.representativeFunctionId ?? null;
+  const { data: leadOperatorOptions, refetch: refetchLeadOperators } = useQuery<{
+    representativeFunctionId: string;
+    operationalUserId: string | null;
+    users: Array<{ id: string; name: string | null; email: string | null }>;
+  }>({
+    queryKey: ["lead-representative-operators", id, representativeFunctionId],
+    enabled: Boolean(canEditOwner && token && id && representativeFunctionId),
+    queryFn: async () => {
+      const response = await fetch(`/api/leads/${id}/representative-operators`, {
+        headers: { Authorization: "Bearer " + token },
+      });
+      if (!response.ok) throw new Error("Não foi possível carregar operadores da representante.");
+      return response.json();
+    },
+  });
+  useEffect(() => {
+    setLeadOperatorSelection(leadOperatorOptions?.operationalUserId ?? "__unassigned__");
+  }, [leadOperatorOptions?.operationalUserId, representativeFunctionId]);
+  async function saveLeadRepresentativeOperator() {
+    if (!representativeFunctionId || !token) return;
+    setSavingLeadOperator(true);
+    try {
+      const response = await fetch(`/api/leads/${id}/representative-operator`, {
+        method: "PATCH",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({ operationalUserId: leadOperatorSelection === "__unassigned__" ? null : leadOperatorSelection }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Falha ao salvar operador.");
+      await Promise.all([refetchLeadOperators(), qc.invalidateQueries({ queryKey: getGetLeadQueryKey(id) }),
+        qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
+        qc.invalidateQueries({ queryKey: ["leads"] })]);
+      toast({ title: "Operador da representante atualizado" });
+    } catch (error) {
+      toast({ title: "Falha na atribuição", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally { setSavingLeadOperator(false); }
+  }
 
   const targetStage = stages.find((s) => s.key === nextStage);
   const targetStageAgent = (targetStage as { responsavelAgenteKey?: string | null } | undefined)?.responsavelAgenteKey ?? null;
@@ -799,8 +840,31 @@ export default function LeadWorkspace() {
 
     {deal && (
       <Suspense fallback={<Card className="border-border/70 shadow-sm"><CardContent className="p-4"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando envolvidos...</div></CardContent></Card>}>
-        <DealParticipantsCard tenantId={tenantId} dealId={deal.id} token={token} />
+        <DealParticipantsCard tenantId={tenantId} dealId={deal.id} token={token} canManageCommission={user?.platformRole === "super_admin" || user?.platformRole === "tenant_admin"} />
       </Suspense>
+    )}
+
+    {canEditOwner && representativeFunctionId && (
+      <Card className="border-border/70 shadow-sm">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center gap-2"><Building2 className="h-4 w-4" /><span className="text-sm font-semibold">Operador da empresa representante</span></div>
+          <p className="text-xs text-muted-foreground">A empresa permanece responsável pelo lead. Apenas o usuário operacional é alterado.</p>
+          <p className="text-xs text-muted-foreground">Operador atual: {leadOperatorOptions?.users.find((operator) => operator.id === leadOperatorOptions.operationalUserId)?.name ?? (leadOperatorOptions?.operationalUserId ? "Operador não disponível na equipe autorizada" : "Fila da representante")}</p>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="min-w-[220px] flex-1 space-y-1"><Label>Usuário operacional</Label>
+              <Select value={leadOperatorSelection} onValueChange={setLeadOperatorSelection}>
+                <SelectTrigger><SelectValue placeholder="Selecione o operador" /></SelectTrigger>
+                <SelectContent><SelectItem value="__unassigned__">Fila da representante / definir depois</SelectItem>
+                  {(leadOperatorOptions?.users ?? []).map((operator) => <SelectItem key={operator.id} value={operator.id}>{operator.name || operator.email || operator.id}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button type="button" onClick={saveLeadRepresentativeOperator} disabled={savingLeadOperator || !leadOperatorOptions}>
+              {savingLeadOperator && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}Salvar operador
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     )}
 
     {deal && canEditOwner && (

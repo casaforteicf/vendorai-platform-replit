@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { requestCanAccessLockedObject, syncProtectedObjectsForLead } from "../lib/attachment-folder-access.js";
-import { and, eq, lt, isNotNull } from "drizzle-orm";
+import { and, eq, lt, isNotNull, isNull, notExists } from "drizzle-orm";
 import {
   db,
   activitiesTable,
@@ -40,7 +40,7 @@ router.post("/activities", async (req, res) => {
     eq(leadsTable.tenantId, parsed.data.tenantId),
     ...buildUserFunctionFilter(req, leadsTable),
   ];
-  const [accessibleLead] = await db.select({ id: leadsTable.id }).from(leadsTable).where(and(...leadConditions)).limit(1);
+  const [accessibleLead] = await db.select({ id: leadsTable.id }).from(leadsTable).where(and(...leadConditions, isNull(leadsTable.excluidoEm))).limit(1);
   if (!accessibleLead) {
     res.status(403).json({ error: "Access denied to this lead" });
     return;
@@ -406,6 +406,13 @@ router.get("/tenants/:tenantId/activities", async (req, res) => {
   }
 
   const conditions = [eq(activitiesTable.tenantId, tenantId)];
+  // Keep history but hide tasks attached to deleted leads in active views.
+  conditions.push(notExists(
+    db.select({ id: leadsTable.id }).from(leadsTable).where(and(
+      eq(leadsTable.id, activitiesTable.leadId),
+      isNotNull(leadsTable.excluidoEm),
+    )),
+  ));
 
   const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
   const isSeller = req.user?.platformRole === "tenant_seller";

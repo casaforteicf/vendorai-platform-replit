@@ -1,0 +1,51 @@
+import { describe, expect, it } from "vitest";
+import { canAllocateQuantity, quantityUnits, remainingQuantity } from "./crm-partial-execution.js";
+
+describe("CRM V4 — execução parcial por item", () => {
+  it("subtrai lotes parciais sem perder casas decimais", () => {
+    expect(remainingQuantity(1, [0.1, 0.2])).toBe(0.7);
+    expect(remainingQuantity(10, [2, 3.125])).toBe(4.875);
+  });
+
+  it("impede reserva acima da quantidade total", () => {
+    expect(canAllocateQuantity(4, [2, 1.5], 0.5001)).toBe(false);
+    expect(canAllocateQuantity(4, [2, 1.5], 0.5)).toBe(true);
+    expect(canAllocateQuantity(4, [4], 0.01)).toBe(false);
+  });
+
+  it("impede valor zero e quantidades com precisão excessiva", () => {
+    expect(canAllocateQuantity(1, [], 0)).toBe(false);
+    expect(() => quantityUnits(0.00001)).toThrow();
+    expect(() => quantityUnits(0.00000000001)).toThrow("Quantidade positiva abaixo da precisão mínima.");
+    expect(() => canAllocateQuantity(1, [], 0.00000000001)).toThrow("Quantidade positiva abaixo da precisão mínima.");
+    expect(() => quantityUnits(Number.NaN)).toThrow();
+    expect(() => quantityUnits(-1)).toThrow();
+  });
+
+  it("permite execução em lotes sucessivos até esgotar exatamente o saldo", () => {
+    expect(remainingQuantity(3.3333, [1.1111, 1.1111])).toBe(1.1111);
+    expect(canAllocateQuantity(3.3333, [1.1111, 1.1111], 1.1111)).toBe(true);
+    expect(remainingQuantity(3.3333, [1.1111, 1.1111, 1.1111])).toBe(0);
+    expect(canAllocateQuantity(3.3333, [1.1111, 1.1111, 1.1111], 0.0001)).toBe(false);
+  });
+
+  it("não permite alocar quantidades não finitas nem alocações anteriores inválidas", () => {
+    expect(() => canAllocateQuantity(1, [], Number.POSITIVE_INFINITY)).toThrow();
+    expect(() => remainingQuantity(2, [Number.NaN])).toThrow();
+    expect(() => remainingQuantity(2, [-0.1])).toThrow();
+    expect(canAllocateQuantity(1, [], -0.1)).toBe(false);
+  });
+
+  it("aceita a menor fração representável e recusa frações fora da escala", () => {
+    expect(quantityUnits(0.0001)).toBe(1);
+    expect(remainingQuantity(0.0002, [0.0001])).toBe(0.0001);
+    expect(canAllocateQuantity(0.0002, [0.0001], 0.0001)).toBe(true);
+    expect(canAllocateQuantity(0.0002, [0.0001], 0.0002)).toBe(false);
+    expect(() => quantityUnits(0.00011)).toThrow();
+  });
+
+  it("preserva saldo não negativo de lotes históricos", () => {
+    expect(() => remainingQuantity(1, [0.6, 0.6])).toThrow("Alocação acumulada inválida.");
+    expect(() => quantityUnits(Number.MAX_SAFE_INTEGER)).toThrow("Quantidade excede limite seguro.");
+  });
+});

@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
+import { canAllocateQuantity, remainingQuantity, quantityUnits } from "../lib/crm-partial-execution.js";
 import { and, desc, eq, inArray, isNotNull, isNull, notExists, sql } from "drizzle-orm";
 import multer from "multer";
 import {
@@ -344,7 +345,7 @@ router.post("/deals", async (req, res) => {
     return;
   }
   const [linkedLead] = await db
-    .select({ id: leadsTable.id, naoLeadTipo: leadsTable.naoLeadTipo })
+    .select({ id: leadsTable.id, naoLeadTipo: leadsTable.naoLeadTipo, excluidoEm: leadsTable.excluidoEm })
     .from(leadsTable)
     .where(and(
       eq(leadsTable.id, parsed.data.leadId),
@@ -355,6 +356,10 @@ router.post("/deals", async (req, res) => {
       error: "O lead informado não existe neste tenant.",
       code: "DEAL_LEAD_INVALID",
     });
+    return;
+  }
+  if (linkedLead.excluidoEm) {
+    res.status(409).json({ error: "Não é permitido criar negócios para um lead excluído.", code: "DEAL_LEAD_DELETED" });
     return;
   }
   if (linkedLead.naoLeadTipo) {
@@ -458,8 +463,16 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
     res.status(403).json({ error: "Access denied to this tenant" });
     return;
   }
+  if (deal.archivedAt) return res.status(409).json({ code: "DEAL_ARCHIVED", error: "Negócio arquivado não permite esta operação." });
   if (!deal.leadId) {
     res.status(422).json({ error: "O negócio precisa estar vinculado a um lead para ser movido." });
+    return;
+  }
+
+  const [linkedLead] = await db.select({ excluidoEm: leadsTable.excluidoEm })
+    .from(leadsTable).where(and(eq(leadsTable.id, deal.leadId), eq(leadsTable.tenantId, deal.tenantId))).limit(1);
+  if (!linkedLead || linkedLead.excluidoEm) {
+    res.status(409).json({ error: "Negócio vinculado a lead inexistente ou excluído não pode mudar de pipeline." });
     return;
   }
 
@@ -476,6 +489,22 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
 
   if (!targetStageConfig) {
     res.status(422).json({ error: "A etapa escolhida não existe na pipeline de destino." });
+    return;
+  }
+
+  // Transfer cannot silently bypass the administrative reassignment rule.
+  const changingOwner = parsed.data.responsavelId !== undefined
+    && parsed.data.responsavelId !== deal.assignedTo;
+  const isTransferAdmin = req.user?.platformRole === "super_admin"
+    || req.user?.platformRole === "tenant_admin";
+  if (changingOwner && !isTransferAdmin) {
+    res.status(403).json({ error: "Apenas administradores podem reatribuir o responsável na transferência." });
+    return;
+  }
+  const userFunction = req.user?.userFunction as UserFunction | undefined;
+  if (!isTransferAdmin && (userFunction === "vendedor" || userFunction === "entrega")
+      && deal.assignedTo !== req.user?.sub) {
+    res.status(403).json({ error: "Sem permissão para transferir negócio de outro responsável." });
     return;
   }
 
@@ -673,11 +702,209 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
   });
 });
 
+// CRM V4: independent partial execution batches, linked to original proposal items.
+// Keep the commercial proposal immutable. Each batch is a work card with an
+// explicit snapshot of selected items and remaining quantities.
+const partialExecutionSchema = z.object({
+  requestId: z.string().uuid(),
+  propostaId: z.string().min(1),
+  etapa: z.string().trim().min(1).max(120),
+  justificativa: z.string().trim().min(5).max(2000),
+  itens: z.array(z.object({
+    indice: z.number().int().nonnegative(),
+    quantidade: z.number().finite().positive().refine(value => {
+      try { quantityUnits(value); return true; } catch { return false; }
+    }, "Quantidade aceita até quatro casas decimais."),
+  })).min(1),
+});
+
+router.get("/deals/:id/execution-batches", async (req, res) => {
+  const dealId = String(req.params.id);
+  const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, dealId)).limit(1);
+  if (!deal?.leadId) return res.status(404).json({ error: "Negócio não encontrado." });
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== deal.tenantId) {
+    return res.status(403).json({ error: "Acesso negado ao tenant." });
+  }
+  const admin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  if (!admin && deal.assignedTo !== req.user?.sub) return res.status(403).json({ error: "Acesso negado ao negócio." });
+  const proposalId = String(req.query.propostaId ?? "");
+  const [proposal] = await db.select().from(propostasTable).where(and(
+    eq(propostasTable.id, proposalId), eq(propostasTable.dealId, deal.id),
+    eq(propostasTable.leadId, deal.leadId), eq(propostasTable.tenantId, deal.tenantId),
+  )).limit(1);
+  if (!proposal) return res.status(404).json({ error: "Proposta não encontrada no negócio." });
+  const cards = await db.select().from(workCardsTable).where(and(
+    eq(workCardsTable.tenantId, deal.tenantId),
+    eq(workCardsTable.dealId, deal.id), eq(workCardsTable.pipeline, "execucao"),
+  )).orderBy(workCardsTable.createdAt);
+  const batches = cards.filter(card => {
+    const m = card.metadata as Record<string, unknown> | null;
+    return m?.loteParcial === true && m?.propostaId === proposal.id;
+  });
+  const balances = proposal.itens.map((item, indice) => {
+    let enviada = 0;
+    for (const batch of batches) {
+      const meta = batch.metadata as Record<string, unknown> | null;
+      for (const row of (Array.isArray(meta?.itensLote) ? meta.itensLote : []) as Array<{indice?: unknown; quantidade?: unknown}>) {
+        if (row.indice === indice && typeof row.quantidade === "number") enviada += row.quantidade;
+      }
+    }
+    return { indice, nome: item.nome, unidade: item.unidade ?? null,
+      etapaId: item.etapaId ?? null, faseId: item.faseId ?? null,
+      quantidadeOriginal: item.quantidade, quantidadeEnviada: enviada,
+      quantidadeDisponivel: remainingQuantity(item.quantidade, [enviada]) };
+  });
+  res.json({ propostaId: proposal.id, status: proposal.status, itens: balances, lotes: batches });
+});
+
+router.post("/deals/:id/execution-batches", async (req, res) => {
+  const parsed = partialExecutionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+  const dealId = String(req.params.id);
+  const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, dealId)).limit(1);
+  if (!deal?.leadId) return res.status(404).json({ error: "Negócio não encontrado." });
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== deal.tenantId) {
+    return res.status(403).json({ error: "Acesso negado ao tenant." });
+  }
+  const admin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  if (!admin && deal.assignedTo !== req.user?.sub) {
+    return res.status(403).json({ error: "Apenas o responsável pode enviar esta execução." });
+  }
+  if (deal.archivedAt) return res.status(409).json({ code: "DEAL_ARCHIVED", error: "Negócio arquivado não permite esta operação." });
+  if (deal.etapa !== "ganho" && deal.etapa !== "em_execucao") {
+    return res.status(409).json({ error: "Conclua o fechamento comercial antes de enviar itens à execução." });
+  }
+  const [lead] = await db.select({ excluidoEm: leadsTable.excluidoEm }).from(leadsTable)
+    .where(and(eq(leadsTable.id, deal.leadId), eq(leadsTable.tenantId, deal.tenantId))).limit(1);
+  if (!lead || lead.excluidoEm) return res.status(409).json({ error: "Lead excluído ou inexistente." });
+  const [proposal] = await db.select().from(propostasTable).where(and(
+    eq(propostasTable.id, parsed.data.propostaId),
+    eq(propostasTable.dealId, deal.id),
+    eq(propostasTable.leadId, deal.leadId),
+    eq(propostasTable.tenantId, deal.tenantId),
+  )).limit(1);
+  if (!proposal || proposal.status !== "aceita") {
+    return res.status(422).json({ error: "Selecione uma proposta aceita vinculada ao negócio." });
+  }
+  const indices = parsed.data.itens.map(i => i.indice);
+  if (new Set(indices).size !== indices.length || indices.some(i => i >= proposal.itens.length)) {
+    return res.status(422).json({ error: "Itens repetidos ou inexistentes na proposta." });
+  }
+  const [stage] = await db.select({ id: pipelineStagesTable.id }).from(pipelineStagesTable)
+    .where(and(eq(pipelineStagesTable.tenantId, deal.tenantId),
+      eq(pipelineStagesTable.pipeline, "execucao"),
+      eq(pipelineStagesTable.key, parsed.data.etapa))).limit(1);
+  if (!stage) return res.status(422).json({ error: "Etapa de execução inválida para o tenant." });
+  const fingerprint = createHash("sha256").update(JSON.stringify({
+    propostaId: parsed.data.propostaId, etapa: parsed.data.etapa,
+    justificativa: parsed.data.justificativa,
+    itens: [...parsed.data.itens].sort((a, b) => a.indice - b.indice),
+  })).digest("hex");
+  // A transaction-scoped advisory lock serializes requests for the same
+  // proposal and prevents over-allocation across two simultaneous sessions.
+  const outcome = await db.transaction(async tx => {
+    // Lock the deal before creating operational obligations. Archival UPDATE
+    // acquires the same PostgreSQL row lock, serializing the two operations.
+    const lockedDeal = await tx.execute(sql`
+      SELECT id FROM public.deals
+      WHERE id = ${deal.id} AND tenant_id = ${deal.tenantId}
+        AND archived_at IS NULL
+      FOR UPDATE
+    `);
+    if (!lockedDeal.rows.length) {
+      throw Object.assign(new Error("Negócio arquivado não permite nova execução."), { status: 409 });
+    }
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${deal.tenantId}), hashtext(${proposal.id}))`);
+    const [freshProposal] = await tx.select().from(propostasTable).where(and(
+      eq(propostasTable.id, proposal.id), eq(propostasTable.tenantId, deal.tenantId),
+      eq(propostasTable.dealId, deal.id), eq(propostasTable.leadId, deal.leadId),
+    )).limit(1);
+    if (!freshProposal || freshProposal.status !== "aceita") {
+      throw Object.assign(new Error("Proposta não está mais aceita."), { status: 409 });
+    }
+    const previous = await tx.select({ id: workCardsTable.id, metadata: workCardsTable.metadata }).from(workCardsTable)
+      .where(and(eq(workCardsTable.tenantId, deal.tenantId),
+        eq(workCardsTable.dealId, deal.id), eq(workCardsTable.pipeline, "execucao")));
+    const replay = previous.find(row => {
+      const meta = row.metadata as Record<string, unknown> | null;
+      return meta?.propostaId === proposal.id && meta?.requestId === parsed.data.requestId;
+    });
+    if (replay) {
+      const meta = replay.metadata as Record<string, unknown> | null;
+      if (meta?.fingerprint !== fingerprint || meta?.criadoPor !== (req.user?.sub ?? null)) {
+        throw Object.assign(new Error("Chave de envio já utilizada com dados diferentes."), { status: 409 });
+      }
+      const [matched] = await tx.select().from(workCardsTable).where(and(
+        eq(workCardsTable.id, replay.id),
+        eq(workCardsTable.tenantId, deal.tenantId),
+        eq(workCardsTable.dealId, deal.id),
+      )).limit(1);
+      if (!matched) throw new Error("Lote registrado não encontrado na leitura.");
+      return { card: matched, itens: meta?.itensLote ?? [], replay: true };
+    }
+    const used = new Map<number, number>();
+    for (const row of previous) {
+      const m = row.metadata as Record<string, unknown> | null;
+      if (m?.propostaId !== proposal.id || !Array.isArray(m?.itensLote)) continue;
+      for (const item of m.itensLote as Array<{ indice?: unknown; quantidade?: unknown }>) {
+        if (!Number.isInteger(item.indice) || typeof item.quantidade !== "number") continue;
+        used.set(item.indice as number, (used.get(item.indice as number) ?? 0) + item.quantidade);
+      }
+    }
+    const items = parsed.data.itens.map(i => {
+      const original = freshProposal.itens[i.indice];
+      if (!original) throw Object.assign(new Error("Item alterado na proposta; atualize os saldos."), { status: 409 });
+      const already = used.get(i.indice) ?? 0;
+      if (!canAllocateQuantity(original.quantidade, [already], i.quantidade)) {
+        throw Object.assign(new Error(`Quantidade excede saldo do item ${i.indice + 1}.`), { status: 409 });
+      }
+      return { indice: i.indice, nome: original.nome, quantidade: i.quantidade,
+        quantidadeOriginal: original.quantidade, etapaId: original.etapaId ?? null,
+        faseId: original.faseId ?? null, unidade: original.unidade ?? null };
+    });
+    const [card] = await tx.insert(workCardsTable).values({
+      tenantId: deal.tenantId, leadId: deal.leadId, dealId: deal.id,
+      pipeline: "execucao", tipo: "pedido", etapa: parsed.data.etapa,
+      titulo: `Execução parcial • ${deal.titulo}`, descricao: parsed.data.justificativa,
+      prioridade: "normal", responsavelId: deal.assignedTo,
+      metadata: { ativoNaPipeline: true, propostaId: proposal.id,
+        loteParcial: true, requestId: parsed.data.requestId, fingerprint, itensLote: items, criadoPor: req.user?.sub ?? null,
+        criadoEm: new Date().toISOString() },
+    }).returning();
+    return { card, itens: items, replay: false };
+  }).catch((err: unknown) => {
+    if (err && typeof err === "object" && "status" in err && err.status === 409) return null;
+    throw err;
+  });
+  if (!outcome) return res.status(409).json({ error: "Quantidade excede o saldo disponível para execução." });
+  if (!outcome.replay) {
+    await recordDealJourney({
+      tenantId: deal.tenantId,
+      leadId: deal.leadId,
+      dealId: deal.id,
+      title: "Lote de execução criado",
+      description: `Lote ${outcome.card.id} vinculado à proposta ${proposal.id}. Itens e quantidades: ${JSON.stringify(outcome.itens)}. Justificativa: ${parsed.data.justificativa}`,
+      responsavelId: req.user?.sub ?? null,
+    });
+  }
+  res.status(outcome.replay ? 200 : 201).json(outcome);
+});
+
 router.get("/tenants/:tenantId/deals", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
-  const { etapa, funilId, leadId, includeNaoLead } = req.query as Record<string, string | undefined>;
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    return res.status(403).json({ error: "Access denied to this tenant" });
+  }
+  const { etapa, funilId, leadId, includeNaoLead, includeArchived } = req.query as Record<string, string | undefined>;
 
   const conditions = [eq(dealsTable.tenantId, tenantId)];
+  if (includeArchived === "true" && req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") {
+    return res.status(403).json({ error: "Apenas administradores podem consultar negócios arquivados." });
+  }
+  if (includeArchived !== "true") conditions.push(isNull(dealsTable.archivedAt));
   if (etapa) conditions.push(eq(dealsTable.etapa, etapa as typeof dealsTable.etapa._.data));
   if (funilId) conditions.push(eq(dealsTable.funilId, funilId));
   if (leadId) conditions.push(eq(dealsTable.leadId, leadId));
@@ -789,8 +1016,16 @@ router.post("/deals/:id/commercial-review", async (req, res) => {
     res.status(403).json({ error: "Access denied to this tenant" });
     return;
   }
+  if (deal.archivedAt) return res.status(409).json({ code: "DEAL_ARCHIVED", error: "Negócio arquivado não permite esta operação." });
   if (!deal.leadId) {
     res.status(422).json({ error: "O negócio precisa estar vinculado a um lead" });
+    return;
+  }
+
+  const [activeCommercialLead] = await db.select({ id: leadsTable.id }).from(leadsTable)
+    .where(and(eq(leadsTable.id, deal.leadId), eq(leadsTable.tenantId, deal.tenantId), isNull(leadsTable.excluidoEm))).limit(1);
+  if (!activeCommercialLead) {
+    res.status(409).json({ error: "Negócio de lead excluído ou inexistente não pode receber análise comercial." });
     return;
   }
 
@@ -868,6 +1103,7 @@ router.post("/deals/:id/resume-commercial", async (req, res) => {
     return;
   }
 
+  if (existing.archivedAt) return res.status(409).json({ code: "DEAL_ARCHIVED", error: "Negócio arquivado não permite esta operação." });
   if (existing.etapa !== "em_aquecimento") {
     res.status(409).json({
       error: "INVALID_RESUME_SOURCE_STAGE",
@@ -881,6 +1117,13 @@ router.post("/deals/:id/resume-commercial", async (req, res) => {
       error: "DEAL_LEAD_REQUIRED",
       message: "O atendimento precisa estar vinculado a um lead para ser retomado.",
     });
+    return;
+  }
+
+  const [activeResumeLead] = await db.select({ id: leadsTable.id }).from(leadsTable)
+    .where(and(eq(leadsTable.id, existing.leadId), eq(leadsTable.tenantId, existing.tenantId), isNull(leadsTable.excluidoEm))).limit(1);
+  if (!activeResumeLead) {
+    res.status(409).json({ error: "Atendimento de lead excluído ou inexistente não pode ser retomado." });
     return;
   }
 
@@ -981,11 +1224,21 @@ router.post("/deals/:id/resume-commercial", async (req, res) => {
 
 router.post("/deals/:id/ai/evaluate", async (req, res) => {
   const dealId = String(req.params.id);
-  const [deal] = await db.select({ id: dealsTable.id, tenantId: dealsTable.tenantId }).from(dealsTable)
+  const [deal] = await db.select({ id: dealsTable.id, tenantId: dealsTable.tenantId, archivedAt: dealsTable.archivedAt }).from(dealsTable)
     .where(eq(dealsTable.id, dealId)).limit(1);
   if (!deal) return res.status(404).json({ error: "Deal not found" });
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== deal.tenantId) {
     return res.status(403).json({ error: "Access denied to this tenant" });
+  }
+
+  if (deal.archivedAt) return res.status(409).json({ code: "DEAL_ARCHIVED", error: "Negócio arquivado não permite esta operação." });
+  const [activeEvaluationLead] = await db.select({ id: leadsTable.id })
+    .from(dealsTable)
+    .innerJoin(leadsTable, and(eq(leadsTable.id, dealsTable.leadId), eq(leadsTable.tenantId, dealsTable.tenantId)))
+    .where(and(eq(dealsTable.id, dealId), isNull(leadsTable.excluidoEm)))
+    .limit(1);
+  if (!activeEvaluationLead) {
+    return res.status(409).json({ error: "Não é possível avaliar negócio sem lead ativo." });
   }
 
   const result = await evaluatePipelineAI({
@@ -1019,6 +1272,7 @@ router.post("/deals/:id/return-to-qualified", async (req, res) => {
       titulo: dealsTable.titulo,
       etapa: dealsTable.etapa,
       assignedTo: dealsTable.assignedTo,
+      archivedAt: dealsTable.archivedAt,
     })
     .from(dealsTable)
     .where(eq(dealsTable.id, String(req.params.id)))
@@ -1041,6 +1295,7 @@ router.post("/deals/:id/return-to-qualified", async (req, res) => {
     return;
   }
 
+  if (existing.archivedAt) return res.status(409).json({ code: "DEAL_ARCHIVED", error: "Negócio arquivado não permite esta operação." });
   if (existing.etapa !== "proposta") {
     res.status(409).json({
       error: "RETURN_TO_QUALIFIED_ONLY_FROM_BUDGET",
@@ -1051,6 +1306,13 @@ router.post("/deals/:id/return-to-qualified", async (req, res) => {
 
   if (!existing.leadId) {
     res.status(422).json({ error: "O negócio precisa estar vinculado a um lead." });
+    return;
+  }
+
+  const [activeBudgetLead] = await db.select({ id: leadsTable.id }).from(leadsTable)
+    .where(and(eq(leadsTable.id, existing.leadId), eq(leadsTable.tenantId, existing.tenantId), isNull(leadsTable.excluidoEm))).limit(1);
+  if (!activeBudgetLead) {
+    res.status(409).json({ error: "Negócio de lead excluído ou inexistente não pode retornar à qualificação." });
     return;
   }
 
@@ -1197,6 +1459,7 @@ router.patch("/deals/:id", async (req, res) => {
       assignedTo: dealsTable.assignedTo,
       wonAt: dealsTable.wonAt,
       vehicleReservationBlocked: dealsTable.vehicleReservationBlocked,
+      archivedAt: dealsTable.archivedAt,
     })
     .from(dealsTable)
     .where(eq(dealsTable.id, String(req.params.id)));
@@ -1216,6 +1479,19 @@ router.patch("/deals/:id", async (req, res) => {
   if (!isAdmin2 && (userFn2 === "vendedor" || userFn2 === "entrega") && existing.assignedTo && existing.assignedTo !== req.user?.sub) {
     res.status(403).json({ error: "Access denied to this deal" });
     return;
+  }
+
+  if (existing.archivedAt) {
+    return res.status(409).json({ error: "Negócio arquivado não pode ser alterado." });
+  }
+
+  if (existing.leadId) {
+    const [linkedLead] = await db.select({ excluidoEm: leadsTable.excluidoEm })
+      .from(leadsTable).where(and(eq(leadsTable.id, existing.leadId), eq(leadsTable.tenantId, existing.tenantId))).limit(1);
+    if (!linkedLead || linkedLead.excluidoEm) {
+      res.status(409).json({ error: "Negócio de lead inexistente ou excluído não pode ser alterado." });
+      return;
+    }
   }
 
   // ── Guardrail: bloquear fechamento direto via PATCH quando valor diverge do
@@ -1481,6 +1757,24 @@ router.patch("/deals/:id", async (req, res) => {
   const nextAssignedTo = handoff?.responsavelId ?? ("assignedTo" in parsed.data ? parsed.data.assignedTo : (existing.assignedTo ?? req.user?.sub ?? null));
   const assignedToChanged = nextAssignedTo !== existing.assignedTo;
   const etapaChanged = Boolean(parsed.data.etapa && parsed.data.etapa !== existing.etapa);
+  // Reassignment is an administrative action, not an implicit side effect of
+  // moving a card. Validate the new owner even if the stage does not change.
+  if (assignedToChanged && !isAdmin2) {
+    res.status(403).json({ error: "Apenas o administrador pode reatribuir o negócio." });
+    return;
+  }
+  if (assignedToChanged && nextAssignedTo) {
+    const [newOwner] = await db.select({ id: usersTable.id, active: usersTable.active })
+      .from(usersTable).where(and(
+        eq(usersTable.id, nextAssignedTo),
+        eq(usersTable.tenantId, existing.tenantId),
+      )).limit(1);
+    if (!newOwner || newOwner.active !== true) {
+      res.status(422).json({ error: "Responsável inválido ou inativo para este tenant." });
+      return;
+    }
+  }
+
 
   const [targetStageConfig] = etapaChanged && parsed.data.etapa
     ? await db.select({
@@ -1818,6 +2112,25 @@ router.patch("/deals/:id", async (req, res) => {
     if (deal.closureTriggeredAt && !isContractRetry) {
       req.log.info({ dealId: deal.id }, "deal-ganho: already triggered and succeeded, skipping");
     } else {
+      // Claim initial closure before acknowledging or dispatching external I/O.
+      // Previously closureTriggeredAt was written only inside the background job,
+      // allowing concurrent PATCH requests to start duplicate Asaas/ZapSign calls.
+      if (!isContractRetry) {
+        const [claimed] = await db.update(dealsTable).set({
+          closureTriggeredAt: new Date(), updatedAt: new Date(),
+        }).where(and(
+          eq(dealsTable.id, deal.id),
+          eq(dealsTable.tenantId, tenantId),
+          isNull(dealsTable.archivedAt),
+          isNull(dealsTable.closureTriggeredAt),
+        )).returning({ id: dealsTable.id });
+        if (!claimed) {
+          return res.status(409).json({
+            code: "CLOSURE_ALREADY_STARTED",
+            error: "Fechamento já iniciado ou negócio arquivado; aguarde a conciliação.",
+          });
+        }
+      }
       // ── Responder imediatamente — I/O pesado roda async (fire-and-forget) ────
       const [earlyDeal] = await db.select().from(dealsTable).where(eq(dealsTable.id, deal.id));
       res.json(earlyDeal);
@@ -2027,7 +2340,11 @@ router.patch("/deals/:id", async (req, res) => {
         const tipoFechamento = deal.tipoFechamento ?? tenant?.tipoFechamentoDefault ?? "pedido";
         req.log.info({ dealId: deal.id, tipoFechamento, dealTipoFechamento: deal.tipoFechamento, tenantDefault: tenant?.tipoFechamentoDefault }, "deal-ganho: resolved tipoFechamento");
         if (tipoFechamento === "contrato" || tipoFechamento === "pedido_e_contrato") {
-          if (!isZapSignConfigured()) {
+          if (deal.zapsignDocId) {
+            // A remote document already exists. Never send another one on retry.
+            contractSent = true;
+            req.log.info({ dealId: deal.id }, "deal-ganho: contrato ZapSign já vinculado; reenvio ignorado");
+          } else if (!isZapSignConfigured()) {
             contractSent = false;
             contractSkipReason = "zapsign_not_configured";
             await db
@@ -2094,6 +2411,12 @@ router.patch("/deals/:id", async (req, res) => {
                   contentBase64 = pdfBuffer.toString("base64");
                 } catch (pdfErr) {
                   req.log.warn({ dealId: deal.id, err: pdfErr }, "deal-ganho: PDF generation failed, sending empty document");
+                }
+
+                const [activeContractDeal] = await db.select({ id: dealsTable.id }).from(dealsTable)
+                  .where(and(eq(dealsTable.id, deal.id), eq(dealsTable.tenantId, tenantId), isNull(dealsTable.archivedAt))).limit(1);
+                if (!activeContractDeal) {
+                  throw new Error("DEAL_ARCHIVED_BEFORE_ZAPSIGN: envio de contrato cancelado");
                 }
 
                 const doc = await createDocument({
@@ -2284,13 +2607,24 @@ router.patch("/deals/:id", async (req, res) => {
               ? `sku_delivery:${proposta.id}`
               : undefined;
 
+            const [activeBillingDeal] = await db.select({ id: dealsTable.id, asaasChargeId: dealsTable.asaasChargeId }).from(dealsTable)
+              .where(and(eq(dealsTable.id, deal.id), eq(dealsTable.tenantId, tenantId), isNull(dealsTable.archivedAt))).limit(1);
+            if (!activeBillingDeal) {
+              throw new Error("DEAL_ARCHIVED_BEFORE_ASAAS: cobrança cancelada");
+            }
+            if (activeBillingDeal.asaasChargeId) {
+              throw new Error("ASAAS_CHARGE_ALREADY_REGISTERED: cobrança já vinculada ao negócio");
+            }
+
             const charge = await createCharge({
               customer: customer.id,
               billingType,
               value: Number(deal.valor),
               dueDate: dueDateStr,
               description: `Proposta: ${deal.titulo}`,
-              externalReference: skuExternalRef,
+              // Preserve the SKU delivery integration's existing reference.
+              // Non-SKU payments use a stable deal-scoped reconciliation key.
+              externalReference: skuExternalRef ?? `vendorai:deal:${deal.id}`,
               split: partnerWalletId
                 ? [{ walletId: partnerWalletId, percentualValue: 50 }]
                 : undefined,
@@ -2633,7 +2967,7 @@ router.post("/tenants/:tenantId/deals/budget-imports/:importId/review", async (r
 
 router.delete("/deals/:id", async (req, res) => {
   const [existing] = await db
-    .select({ id: dealsTable.id, tenantId: dealsTable.tenantId, assignedTo: dealsTable.assignedTo })
+    .select({ id: dealsTable.id, tenantId: dealsTable.tenantId, assignedTo: dealsTable.assignedTo, asaasChargeId: dealsTable.asaasChargeId, zapsignDocId: dealsTable.zapsignDocId })
     .from(dealsTable)
     .where(eq(dealsTable.id, String(req.params.id)));
 
@@ -2652,9 +2986,63 @@ router.delete("/deals/:id", async (req, res) => {
     return;
   }
 
-  await db.delete(dealsTable).where(eq(dealsTable.id, existing.id));
-
-  res.status(204).send();
+  // Only administrators can archive deals. The original record and all
+  // related proposals, activities, execution batches and audit data remain.
+  if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") {
+    return res.status(403).json({ error: "Somente administradores podem arquivar negócios." });
+  }
+  const reason = z.string().trim().min(3).max(1000).safeParse(req.body?.motivo);
+  if (!reason.success) {
+    return res.status(422).json({ error: "Informe o motivo do arquivamento (mínimo de 3 caracteres)." });
+  }
+  // Conservatively require explicit resolution of obligations before archiving.
+  // Even a completed work card or historical contract must be reviewed by an
+  // administrator rather than silently hidden through this generic endpoint.
+  const [linkedContract] = await db.select({ id: contractsTable.id }).from(contractsTable)
+    .where(and(eq(contractsTable.tenantId, existing.tenantId), eq(contractsTable.dealId, existing.id)))
+    .limit(1);
+  const [linkedExecution] = await db.select({ id: workCardsTable.id }).from(workCardsTable)
+    .where(and(eq(workCardsTable.tenantId, existing.tenantId), eq(workCardsTable.dealId, existing.id)))
+    .limit(1);
+  const [linkedBilling] = await db.select({ id: billingRecordsTable.id }).from(billingRecordsTable)
+    .where(and(eq(billingRecordsTable.tenantId, existing.tenantId), eq(billingRecordsTable.dealId, existing.id)))
+    .limit(1);
+  if (linkedContract || linkedExecution || linkedBilling || existing.asaasChargeId || existing.zapsignDocId) {
+    return res.status(409).json({
+      code: "DEAL_HAS_LINKED_OBLIGATIONS",
+      error: "Negócio com contrato, execução ou registro financeiro vinculado requer revisão antes do arquivamento.",
+      hasContract: Boolean(linkedContract),
+      hasExecution: Boolean(linkedExecution),
+      hasBilling: Boolean(linkedBilling || existing.asaasChargeId),
+      hasRemoteContract: Boolean(existing.zapsignDocId),
+    });
+  }
+  // Recheck linked records as part of the conditional UPDATE. This avoids
+  // archiving when an obligation was inserted after the preliminary read.
+  // A concurrent INSERT after this statement starts still needs shared
+  // serialization/locking in the obligation creation paths.
+  const [archived] = await db.update(dealsTable).set({
+    archivedAt: new Date(), archivedBy: req.user?.sub ?? null,
+    archiveReason: reason.data, updatedAt: new Date(),
+  }).where(and(
+      eq(dealsTable.id, existing.id),
+      eq(dealsTable.tenantId, existing.tenantId),
+      isNull(dealsTable.archivedAt),
+      isNull(dealsTable.asaasChargeId),
+      isNull(dealsTable.zapsignDocId),
+      notExists(db.select({ id: contractsTable.id }).from(contractsTable).where(and(
+        eq(contractsTable.tenantId, existing.tenantId), eq(contractsTable.dealId, existing.id),
+      ))),
+      notExists(db.select({ id: workCardsTable.id }).from(workCardsTable).where(and(
+        eq(workCardsTable.tenantId, existing.tenantId), eq(workCardsTable.dealId, existing.id),
+      ))),
+      notExists(db.select({ id: billingRecordsTable.id }).from(billingRecordsTable).where(and(
+        eq(billingRecordsTable.tenantId, existing.tenantId), eq(billingRecordsTable.dealId, existing.id),
+      ))),
+    ))
+    .returning({ id: dealsTable.id, archivedAt: dealsTable.archivedAt });
+  if (!archived) return res.status(409).json({ error: "Negócio já arquivado." });
+  res.json({ success: true, ...archived });
 });
 
 // ── GET /admin/deals/travados ───────────────────────────────────────────────
@@ -2690,9 +3078,20 @@ router.post("/admin/deals/:id/retry", requireRole("super_admin"), async (req, re
     return;
   }
 
+  if (deal.archivedAt) return res.status(409).json({ code: "DEAL_ARCHIVED", error: "Negócio arquivado não permite esta operação." });
   if (deal.etapa !== "ganho") {
     res.status(400).json({ error: "Deal não está na etapa ganho" });
     return;
+  }
+
+  if (!deal.leadId) {
+    return res.status(409).json({ error: "Negócio sem lead vinculado não pode ser reprocessado." });
+  }
+  const [activeRetryLead] = await db.select({ id: leadsTable.id }).from(leadsTable)
+    .where(and(eq(leadsTable.id, deal.leadId), eq(leadsTable.tenantId, deal.tenantId), isNull(leadsTable.excluidoEm)))
+    .limit(1);
+  if (!activeRetryLead) {
+    return res.status(409).json({ error: "Lead excluído ou inexistente não pode ter fechamento reprocessado." });
   }
 
   // Resetar deal_closing_status para permitir reprocessamento

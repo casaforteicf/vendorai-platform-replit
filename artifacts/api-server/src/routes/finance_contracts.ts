@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { contractsTable, db, dealsTable } from "@workspace/db";
 import financeProcurementRouter from "./finance_procurement.js";
@@ -159,19 +159,33 @@ router.post("/tenants/:tenantId/finance-contracts/:contractId/renew", async (req
   const expiresAt = new Date(effectiveAt);
   expiresAt.setMonth(expiresAt.getMonth() + parsed.data.months);
 
-  const [renewal] = await db.insert(contractsTable).values({
-    tenantId,
-    dealId: existing.dealId,
-    contractType: existing.contractType,
-    status: "renewal_pending",
-    effectiveAt,
-    expiresAt,
-    renewalType: existing.renewalType,
-    renewalNoticeDays: existing.renewalNoticeDays,
-    adjustmentIndex: existing.adjustmentIndex,
-    obligations: [{ title: `Renovação originada do contrato ${existing.id}`, status: "pending", notes: `Período renovado por ${parsed.data.months} mês(es).` }],
-    riskClauses: existing.riskClauses ?? [],
-  }).returning();
+  const renewal = await db.transaction(async (tx) => {
+    if (existing.dealId) {
+      // Serialize renewal creation with the archived_at update on the deal.
+      const locked = await tx.execute(sql`
+        SELECT id FROM public.deals
+        WHERE id = ${existing.dealId} AND tenant_id = ${tenantId}
+          AND archived_at IS NULL
+        FOR UPDATE
+      `);
+      if (!locked.rows.length) return null;
+    }
+    const [created] = await tx.insert(contractsTable).values({
+      tenantId,
+      dealId: existing.dealId,
+      contractType: existing.contractType,
+      status: "renewal_pending",
+      effectiveAt,
+      expiresAt,
+      renewalType: existing.renewalType,
+      renewalNoticeDays: existing.renewalNoticeDays,
+      adjustmentIndex: existing.adjustmentIndex,
+      obligations: [{ title: `Renovação originada do contrato ${existing.id}`, status: "pending", notes: `Período renovado por ${parsed.data.months} mês(es).` }],
+      riskClauses: existing.riskClauses ?? [],
+    }).returning();
+    return created;
+  });
+  if (!renewal) return void res.status(409).json({ code: "DEAL_ARCHIVED", error: "Negócio arquivado ou inexistente impede renovação vinculada." });
 
   req.log.info({ tenantId, sourceContractId: existing.id, renewalContractId: renewal?.id, months: parsed.data.months }, "finance-contract renewal created");
   res.status(201).json({ renewal, sourceContractId: existing.id });
