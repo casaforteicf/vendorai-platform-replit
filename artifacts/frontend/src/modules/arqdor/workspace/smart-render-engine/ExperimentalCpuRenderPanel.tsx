@@ -17,16 +17,26 @@ export function ExperimentalCpuRenderPanel({options}:Props){
  const [selectedMaterial,setSelectedMaterial]=useState("");
  const [roughness,setRoughness]=useState(0.35);
  const [transmission,setTransmission]=useState(0);
+ const [completed,setCompleted]=useState(false);
+ const [history,setHistory]=useState<Array<{image:string;label:string}>>([]);
+ const [comparison,setComparison]=useState<string|null>(null);
  useEffect(()=>()=>{generation.current++;job.current?.cancel();job.current=null;},[]);
- useEffect(()=>{generation.current++;job.current?.cancel();job.current=null;setProgress(0);setStatus("Cena alterada — renderizar novamente");},[options]);
+ useEffect(()=>{generation.current++;job.current?.cancel();job.current=null;setProgress(0);setCompleted(false);setHistory([]);setComparison(null);setStatus("Cena alterada — renderizar novamente");},[options]);
  const stop=()=>{generation.current++;job.current?.cancel();job.current=null;setStatus("Cancelado");};
+ const exportPng=()=>{
+  if(!completed||!canvas.current||job.current)return;
+  const link=document.createElement("a");
+  link.download="arqdor-previa-cpu-experimental.png";
+  link.href=canvas.current.toDataURL("image/png");
+  link.click();
+ };
  const start=()=>{
   stop();
   const context=canvas.current?.getContext("2d");
   if(!context){setStatus("Canvas indisponível");return;}
   if(options.width<1||options.height<1||options.width*options.height>262144){setStatus("Resolução experimental inválida");return;}
   canvas.current!.width=options.width;canvas.current!.height=options.height;
-  setProgress(0);setStatus("Renderizando");
+  setProgress(0);setCompleted(false);setStatus("Renderizando");
   try {
    const renderOptions:DiffusePreviewOptions={...options,
     display:{toneMapping:options.display?.toneMapping??"aces",exposure},
@@ -45,7 +55,10 @@ export function ExperimentalCpuRenderPanel({options}:Props){
      setProgress(Math.round(ev.progress*100));
     },
     onFrame:ev=>{if(currentGeneration!==generation.current)return;context.putImageData(new ImageData(new Uint8ClampedArray(ev.rgba),ev.width,ev.height),0,0);},
-    onDone:()=>{if(currentGeneration!==generation.current)return;job.current=null;setProgress(100);setStatus("Concluído (experimental)");},
+    onDone:()=>{if(currentGeneration!==generation.current)return;job.current=null;setProgress(100);setCompleted(true);setStatus("Concluído (experimental)");
+      const image=canvas.current?.toDataURL("image/png");
+      if(image)setHistory(old=>[{image,label:`Prévia ${old.length+1} · ${samples} passagens`},...old].slice(0,3));
+    },
     onError:error=>{if(currentGeneration!==generation.current)return;job.current=null;setStatus("Falha: "+error);}
    },{mode:"diffuse",samples,denoise:denoise?0.5:0});
   }catch(error){setStatus(error instanceof Error?error.message:String(error));}
@@ -72,7 +85,16 @@ export function ExperimentalCpuRenderPanel({options}:Props){
    <label className="flex items-center gap-2"><input type="checkbox" checked={denoise} onChange={e=>setDenoise(e.target.checked)}/>Filtro de ruído</label>
    <button type="button" onClick={start} className="rounded bg-slate-900 px-3 py-2 text-white">Renderizar prévia</button>
    <button type="button" onClick={stop} className="rounded border px-3 py-2">Cancelar</button>
+   <button type="button" disabled={!completed||!!job.current} onClick={exportPng} className="rounded border px-3 py-2 disabled:opacity-40">Exportar PNG local</button>
   </div>
   <div role="status" className="text-xs text-slate-600">{status} · {progress}%</div>
+  {history.length>0 && <div className="space-y-2">
+   <p className="text-xs text-slate-600">Últimas três prévias desta cena (somente nesta sessão)</p>
+   <div className="flex flex-wrap gap-2">{history.map((entry,index)=><button key={index} type="button" onClick={()=>setComparison(entry.image)} className="rounded border p-1 text-xs">
+    <img src={entry.image} alt={entry.label} className="h-14 w-20 object-cover"/>{entry.label}
+   </button>)}</div>
+   {comparison && <div><button type="button" onClick={()=>setComparison(null)} className="text-xs underline">Fechar comparação</button>
+    <img src={comparison} alt="Prévia anterior para comparação" className="w-full max-w-sm rounded"/></div>}
+  </div>
  </section>;
 }
