@@ -202,3 +202,10 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - Apos guardar a foto offline, o arquivo selecionado e limpo para evitar enfileiramentos acidentais com um unico clique repetido.
 - Trocar para nova fotografia exige confirmacao quando existem cotas locais ainda nao vinculadas; remove as cotas soltas do editor antes de iniciar nova imagem.
 - Pendente: controle de concorrencia entre abas e transacoes de cotas, compilacao frontend, build backend, seguranca e homologacao. Sem merge e sem deploy.
+
+## Lote 28 — concorrência multiabas e preparação de testes (11/10/2026)
+- Adicionado `photoTabLock.ts`: usa Web Locks API com exclusão por chave de usuário/checklist/revisão/item. Quando a API de locks não existe, falha explicitamente antes de gravar/sincronizar, em vez de fingir segurança.
+- `PhotoMeasureEditor`: aplica lock para enfileirar foto, atualizar/remover cotas do IndexedDB e executar sequência de upload remoto + persistência de cotas + remoção da fila. Dados são relidos após obter o lock para evitar atualização com cópia antiga.
+- Adicionado `photoTabLock.test.ts` com casos de serialização e navegador sem suporte. **Teste foi escrito, mas NÃO executado.**
+- Verificações de CI do commit do lote 25 retornaram vazio. Não há checkout integral do monorepo/dependências nesta sessão, nem execução disponível na Contabo, portanto `pnpm run typecheck`, `pnpm exec vite build` e `pnpm test` não puderam ser comprovados.
+- Ainda faltam testes reais em duas abas, Chrome Android/iOS, os gates de API e frontend, migração de índice único em homologação e auditoria de dados offline. Sem PR/merge/deploy.
