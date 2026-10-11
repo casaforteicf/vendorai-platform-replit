@@ -42,7 +42,9 @@ export type ConceptModelLevel = {
 };
 
 type Props = {
+  /** Restricted laboratory feature; host must supply both opt-in and explicit permission. */
   experimentalCpuRenderEnabled?: boolean;
+  experimentalCpuRenderAuthorized?: boolean;
   renderCaptureToken?: number;
   onRenderSceneSnapshot?: (snapshot: RenderSceneSnapshot) => void;
   onRenderGeometryExport?: (geometry: GeometryTransfer) => void;
@@ -583,6 +585,7 @@ function roofBounds(level: ConceptModelLevel | undefined) {
 
 export default function ConceptModel3D({
   experimentalCpuRenderEnabled = false,
+  experimentalCpuRenderAuthorized = false,
   renderCaptureToken,
   onRenderSceneSnapshot,
   onRenderGeometryExport,
@@ -622,6 +625,7 @@ export default function ConceptModel3D({
   onSavedTourPointActivate,
   onRenderView,
 }: Props) {
+  const allowExperimentalCpu = experimentalCpuRenderEnabled && experimentalCpuRenderAuthorized;
   const experimentalCapture = useExperimentalRenderCapture();
   const [rotation, setRotation] = useState(35);
   const [zoom, setZoom] = useState(1.32);
@@ -1662,7 +1666,7 @@ export default function ConceptModel3D({
         </button>
       </div>
 
-      {experimentalCpuRenderEnabled && (
+      {allowExperimentalCpu && (
         <div className="absolute left-4 top-4 z-30 max-w-sm space-y-2 rounded-xl bg-white/95 p-3 shadow-lg">
           <button type="button" onClick={experimentalCapture.requestCapture}
             className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white">
@@ -1673,12 +1677,12 @@ export default function ConceptModel3D({
         </div>
       )}
       <ConceptWebGLScene
-        renderSceneSnapshotToken={experimentalCpuRenderEnabled ? experimentalCapture.renderCaptureToken : renderCaptureToken}
-        renderGeometryExportToken={experimentalCpuRenderEnabled ? experimentalCapture.renderCaptureToken : renderCaptureToken}
-        onRenderSceneSnapshot={experimentalCpuRenderEnabled ? experimentalCapture.onRenderSceneSnapshot : onRenderSceneSnapshot}
-        onRenderGeometryExport={experimentalCpuRenderEnabled ? experimentalCapture.onRenderGeometryExport : onRenderGeometryExport}
-        onRenderSceneSnapshotError={experimentalCpuRenderEnabled ? experimentalCapture.onRenderCaptureError : onRenderCaptureError}
-        onRenderGeometryExportError={experimentalCpuRenderEnabled ? experimentalCapture.onRenderCaptureError : onRenderCaptureError}
+        renderSceneSnapshotToken={allowExperimentalCpu ? experimentalCapture.renderCaptureToken : renderCaptureToken}
+        renderGeometryExportToken={allowExperimentalCpu ? experimentalCapture.renderCaptureToken : renderCaptureToken}
+        onRenderSceneSnapshot={allowExperimentalCpu ? experimentalCapture.onRenderSceneSnapshot : onRenderSceneSnapshot}
+        onRenderGeometryExport={allowExperimentalCpu ? experimentalCapture.onRenderGeometryExport : onRenderGeometryExport}
+        onRenderSceneSnapshotError={allowExperimentalCpu ? experimentalCapture.onRenderCaptureError : onRenderCaptureError}
+        onRenderGeometryExportError={allowExperimentalCpu ? experimentalCapture.onRenderCaptureError : onRenderCaptureError}
         facadeDesign={facadeDesign}
         frontSide={frontSide}
         lotWidth={lotWidth}
