@@ -81,3 +81,11 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - Cobertura: identificadores de pacote Android/iOS; perfil EAS preview interno/APK; scripts livres de variáveis Replit; entrada Expo Router; disponibilidade de auditoria/typecheck; referência ao ícone original e plugin de armazenamento seguro.
 - Acrescentado script `pnpm test:readiness` ao package mobile.
 - Este teste garante apenas consistência **estática de configuração**; não valida build nativo, permissões em execução, API, login, segurança da sessão, isolamento dos tenants ou publicação. Executar `pnpm test:readiness && pnpm audit:readiness && pnpm typecheck` no workspace mobile e então builds preview Android/iOS em homologação. **Nenhuma execução comprovada nesta sessão.**
+
+
+## MULTI-06.1 — Inspeção de recuperação e testes (não homologado)
+- Criados testes `arqdorLocalDrafts.test.ts` para validar isolamento obrigatório, revisão e falha explícita sem IndexedDB.
+- Criado coordenador **somente leitura** `arqdorDraftRecovery.ts`: recebe contexto remoto previamente autenticado, recusa permissão de edição ausente antes de acessar IndexedDB, carrega rascunho do escopo exato e classifica revisão igual/conflito. Não realiza escrita, upload, merge ou ativação do recurso.
+- Testes `arqdorDraftRecovery.test.ts` cobrem acesso revogado, ausência de escopo, rascunho ausente e conflito.
+- **Não representa conclusão de MULTI-03/04/05/06**: falta autorização fresca ligada ao editor verdadeiro; criptografia/retention e política de dados, salvamento real, endpoint de escrita atômica, monitoramento, build/typecheck e homologação de dispositivo.
+- Execução local e CI ainda não comprovadas; PR continua draft e produção inalterada.
