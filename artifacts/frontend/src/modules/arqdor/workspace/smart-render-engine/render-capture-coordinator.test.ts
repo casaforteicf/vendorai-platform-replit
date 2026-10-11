@@ -34,5 +34,7 @@ describe("ARQDOR paired capture coordinator",()=>{
   c.acceptGeometry(token,geometry);
   c.fail(token,"falha no modelo");
   expect(()=>c.consume(token)).toThrow("falha no modelo");
+  expect(c.acceptSnapshot(token,snapshot)).toBe(false);
+  expect(c.consume(token)).toBeNull();
  });
 });
