@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { ObjectStorageService } from "../lib/objectStorage";
 import {
@@ -452,9 +452,20 @@ router.post("/operational-checklists/runs/:runId/create-arqdor-draft", async (re
     return void res.status(403).json({ error: "Responsável não pertence ao tenant" });
   try {
     const created = await db.transaction(async (tx) => {
+      const sourceMarker = "Arqdor Measure checklist " + run.id + " R" + run.revision;
+      // Serialize drafts for the same checklist/revision across concurrent requests.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${sourceMarker}))`);
+      const [existing] = await tx.select({ id: archProjetosTable.id }).from(archProjetosTable)
+        .where(and(eq(archProjetosTable.tenantId, run.tenantId), eq(archProjetosTable.descricao, sourceMarker))).limit(1);
+      if (existing) {
+        const [linked] = await tx.select({ id: archConceptProjectsTable.id }).from(archConceptProjectsTable)
+          .where(and(eq(archConceptProjectsTable.tenantId, run.tenantId), eq(archConceptProjectsTable.archProjetoId, existing.id))).limit(1);
+        if (!linked) throw new Error("Rascunho Arqdor anterior não possui conceito vinculado");
+        return { project: existing, concept: linked, reused: true };
+      }
       const [project] = await tx.insert(archProjetosTable).values({
         tenantId: run.tenantId, leadId: run.leadId, dealId: run.dealId, propostaId: run.propostaId,
-        titulo: parsed.data.title, descricao: "Rascunho originado da conferência " + run.id + " R" + run.revision,
+        titulo: parsed.data.title, descricao: sourceMarker,
         status: "briefing",
         dossieProjeto: { briefing: "Levantamento técnico de origem: " + run.id + ", revisão " + run.revision },
       }).returning();
@@ -465,9 +476,9 @@ router.post("/operational-checklists/runs/:runId/create-arqdor-draft", async (re
         configuration: { projectScope:"room", floors:1, desiredArea:width*depth, customWalls, customOpenings,
           startSourceChosen:true, terrainDefined:false },
       }).returning();
-      return { project, concept };
+      return { project, concept, reused: false };
     });
-    res.status(201).json({ archProjetoId:created.project.id, conceptProjectId:created.concept.id,
+    res.status(created.reused ? 200 : 201).json({ reused: created.reused, archProjetoId:created.project.id, conceptProjectId:created.concept.id,
       status:"draft", sourceRunId:run.id, sourceRevision:run.revision, fabricationReady:false });
   } catch (error) {
     req.log.error({ err:error, runId:run.id }, "arqdor-measure: draft creation failed");
