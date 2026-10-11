@@ -63,6 +63,10 @@ if [[ "$ACTION" == publish ]]; then
 fi
 if [[ "$ACTION" == rollback ]]; then
  [[ -f "$STATE" ]] || { echo NO_ROLLBACK_STATE;exit 65; }
+ RECORDED_IMAGE=$(sed -n 's/^IMAGE=//p' "$STATE")
+ RECORDED_STATUS=$(sed -n 's/^STATUS=//p' "$STATE")
+ ACTIVE_IMAGE=$(docker inspect "$CURRENT" --format '{{.Config.Image}}' 2>/dev/null || true)
+ [[ "$RECORDED_STATUS" == PUBLISHED && -n "$RECORDED_IMAGE" && "$ACTIVE_IMAGE" == "$RECORDED_IMAGE" ]] || { echo ROLLBACK_BLOCKED_PRODUCTION_VERSION_MISMATCH;exit 65; }
  SAVED=$(sed -n 's/^BACKUP=//p' "$STATE")
  [[ "$SAVED" =~ ^vendorai-prod-api-candidate-backup-[a-z0-9-]+$ ]] || { echo INVALID_BACKUP_STATE;exit 65; }
  # Preserved from the installed Contabo operator: deny rollback of a release
@@ -140,7 +144,7 @@ restore(){
  fi
  docker rm -f "$NEXT" >/dev/null 2>&1 || true
 }
-trap 'restore; cleanup' EXIT
+trap 'rc=$?; trap - EXIT; restore; cleanup; exit "$rc"' EXIT
 docker stop "$CURRENT" >/dev/null
 docker rename "$CURRENT" "$BACK"
 swapped=1
