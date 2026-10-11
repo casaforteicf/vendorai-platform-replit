@@ -214,3 +214,9 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - PhotoMeasureEditor permite editar o valor em milímetros das cotas existentes; valores devem ser positivos e no máximo 1.000.000 mm. Cotas associadas a fotografia offline recuperada são atualizadas no IndexedDB sob Web Lock; erro de persistência mantém o valor anterior na interface.
 - SurveyElementsEditor permite revisar largura do elemento; ao fazê-lo, invalida o status conferido para exigir nova verificação técnica, sinaliza revisão da prévia e preserva o estado local até salvamento explícito.
 - Sem mudança de produção, sem PR/merge/deploy. Pendente: edição de altura, geometria/posição e identificações; validação cruzada de aberturas quando paredes são alteradas; testes mobile e pipelines de compilação ainda não executados.
+
+## Lote 30 — conferência de medidas e tolerâncias (11/10/2026)
+- Backend recalcula status de conferência quando largura/altura conferidas mudam, usando somente dimensões que possuem medida original e conferida. Se uma dimensão exigida estiver ausente, a conferência volta a `nao_conferido`; evita aprovação implícita por diferença nula.
+- Frontend exibe tolerância em mm, aviso para dimensões originais ainda não conferidas e alerta quando diferença absoluta supera a tolerância.
+- Pendentes para lote 30 completo: fluxo formal de resolução de divergências com justificativa e aprovação; cálculo por item/unidade; testes de regressão, validações reais e homologação.
+- Código registrado, sem build/testes executados, sem merge/deploy em produção.
