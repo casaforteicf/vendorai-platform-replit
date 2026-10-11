@@ -36,5 +36,6 @@ export function createRenderCaptureCoordinator() {
    return buildExperimentalRenderOptions({snapshot,geometry});
  };
  const cancel=()=>{active=null;};
- return {begin,acceptSnapshot,acceptGeometry,fail,consume,cancel};
+ const currentToken=()=>active?.token??null;
+ return {begin,acceptSnapshot,acceptGeometry,fail,consume,cancel,currentToken};
 }
