@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import {
   db,
+  tenantsTable,
   composicoesTable,
   composicaoInsumosTable,
   insumosTable,
