@@ -173,6 +173,82 @@ router.get("/admin/improvements/master-pr-status", async (_req, res) => {
   }
 });
 
+// AGENT-01: real execution evidence per tenant/domain, read-only Superadmin view.
+router.get("/admin/improvements/agent-managers/status", async (_req, res) => {
+  try {
+    const ready = await pool.query("SELECT to_regclass('public.agent_manager_runs') AS table_name");
+    if (!ready.rows[0]?.table_name) {
+      return res.status(503).json({ enabled: process.env.ACTIVE_MANAGER_CYCLES_ENABLED === "true", ready: false, reason: "AGENT_MANAGER_MIGRATION_PENDING" });
+    }
+    const data = await pool.query(`
+      SELECT tenant_id AS "tenantId", domain, max(checked_at) AS "lastRunAt",
+             count(*)::int AS "totalRuns",
+             sum(finding_count)::int AS "findingsObserved"
+      FROM agent_manager_runs GROUP BY tenant_id, domain
+      ORDER BY "lastRunAt" DESC LIMIT 500
+    `);
+    const cadenceMinutes: Record<string, number> = { crm: 15, pipeline: 15, marketing: 60, agenda: 30, proposals: 30, integrations: 15, omnichannel: 15, finance: 60, prospecting: 60, construction: 60, arqdor: 1440, master: 15 };
+    const nowMs = Date.now();
+    const items = data.rows.map((row: any) => {
+      const interval = cadenceMinutes[row.domain] ?? 0;
+      const lastMs = new Date(row.lastRunAt).getTime();
+      const overdue = !Number.isFinite(lastMs) || !interval || nowMs - lastMs > interval * 2 * 60_000;
+      return {
+        ...row,
+        intervalMinutes: interval || null,
+        nextExpectedAt: interval && Number.isFinite(lastMs)
+          ? new Date(lastMs + interval * 60_000).toISOString()
+          : null,
+        overdue,
+      };
+    });
+    const enabled = process.env.ACTIVE_MANAGER_CYCLES_ENABLED === "true";
+    // A sampled list of historical runs is insufficient proof that all
+    // active tenants and all three enabled domains are covered.
+    const coverage = await pool.query(`
+      WITH pages AS (
+        SELECT greatest(1, ceil(count(*)::numeric / 500))::int AS page_count
+        FROM tenants WHERE status='active'
+      )
+      SELECT
+        (SELECT count(*)::int FROM tenants WHERE status='active') AS "activeTenants",
+        (SELECT count(*)::int FROM (
+          SELECT t.id, d.domain FROM tenants t
+          CROSS JOIN (VALUES ('crm',15), ('pipeline',15), ('marketing',60), ('agenda',30), ('proposals',30), ('integrations',15), ('omnichannel',15), ('finance',60), ('prospecting',60), ('construction',60), ('arqdor',1440), ('master',15)) AS d(domain,minutes)
+          LEFT JOIN (
+            SELECT tenant_id, domain, max(checked_at) AS last_run,
+                   count(DISTINCT period_key)::int AS completed_runs
+            FROM agent_manager_runs
+            WHERE outcome='completed'
+            GROUP BY tenant_id,domain
+          ) runs ON runs.tenant_id=t.id AND runs.domain=d.domain
+          WHERE t.status='active' AND
+            (runs.last_run IS NULL OR runs.completed_runs < 2 OR runs.last_run < now() - make_interval(mins => d.minutes * (SELECT page_count + 1 FROM pages)))
+        ) missed) AS "missingOrOverdue"
+    `);
+    const activeTenants = Number(coverage.rows[0]?.activeTenants ?? 0);
+    const missingOrOverdue = Number(coverage.rows[0]?.missingOrOverdue ?? 0);
+    // Require two distinct completed periods per tenant/domain before
+    // advertising a fully operational recurring system.
+    const operational = enabled && activeTenants > 0 && missingOrOverdue === 0;
+    return res.json({
+      enabled,
+      ready: true,
+      operational,
+      activeTenants,
+      missingOrOverdue,
+      reason: !enabled ? "AGENT_MANAGER_DISABLED"
+        : activeTenants === 0 ? "AGENT_MANAGER_NO_ACTIVE_TENANTS"
+        : items.length === 0 ? "AGENT_MANAGER_NO_COMPLETED_RUNS"
+        : !operational ? "AGENT_MANAGER_OVERDUE_RUNS" : null,
+      generatedAt: new Date().toISOString(),
+      items,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: "AGENT_MANAGER_STATUS_UNAVAILABLE" });
+  }
+});
+
 router.get("/admin/improvements", async (_req, res) => {
   await ensureSchema();
   const result = await pool.query(`
