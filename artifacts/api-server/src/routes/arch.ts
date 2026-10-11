@@ -1881,6 +1881,12 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
   const id = String(req.params.id);
   if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
 
+  const expectedRevisionHeader = req.header("If-Match");
+  const expectedRevision = expectedRevisionHeader ? new Date(expectedRevisionHeader.replace(/^"|"$/g, "")) : null;
+  if (expectedRevisionHeader && (!expectedRevision || !Number.isFinite(expectedRevision.getTime()))) {
+    return res.status(400).json({ code: "INVALID_PROJECT_REVISION", error: "If-Match deve conter a data de revisão retornada pelo servidor." });
+  }
+
   const [currentConcept] = await db
     .select({ status: archConceptProjectsTable.status, configuration: archConceptProjectsTable.configuration })
     .from(archConceptProjectsTable)
@@ -1953,9 +1959,12 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
         eq(archConceptProjectsTable.id, id),
         eq(archConceptProjectsTable.tenantId, tid),
         eq(archConceptProjectsTable.ownerUserId, userId),
+        ...(expectedRevision ? [eq(archConceptProjectsTable.updatedAt, expectedRevision)] : []),
       ),
     )
+    .returning();
 
+  if (!updated && expectedRevision) return res.status(409).json({ code: "PROJECT_REVISION_CONFLICT", error: "Projeto modificado em outra sessão. Recarregue antes de salvar." });
   if (!updated) return res.status(404).json({ error: "Pré-projeto não encontrado." });
   return res.json(updated);
 });
