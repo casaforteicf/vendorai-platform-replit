@@ -1,6 +1,8 @@
 import { useState, type ChangeEvent } from "react";
 import { exportArqdorRecovery, importArqdorRecovery, type ArqdorRecoveryEnvelope } from "@/lib/arqdorRecoveryPackage";
 import type { DraftScope, LocalDraft } from "@/lib/arqdorEncryptedDraft";
+import type { ProjectContinuity } from "@/lib/projectContinuity";
+import { evaluateRecoveryForReview } from "@/lib/arqdorRecoveryReview";
 
 /**
  * Standalone recovery UI for a fully authenticated Arqdor project.
@@ -11,6 +13,7 @@ import type { DraftScope, LocalDraft } from "@/lib/arqdorEncryptedDraft";
 export function ArqdorRecoveryPanel(props: {
   authorizedScope: DraftScope;
   currentDraft: LocalDraft;
+  verifiedRemoteProject: ProjectContinuity;
   onReviewRestore: (draft: LocalDraft) => void;
 }) {
   const [passphrase, setPassphrase] = useState("");
@@ -47,8 +50,13 @@ export function ArqdorRecoveryPanel(props: {
     try {
       const payload = JSON.parse(await file.text()) as ArqdorRecoveryEnvelope;
       const draft = await importArqdorRecovery(payload, props.authorizedScope, passphrase);
+      const decision = evaluateRecoveryForReview(draft, props.authorizedScope, props.verifiedRemoteProject);
+      if (decision.status !== "review") {
+        setMessage(decision.status === "conflict" ? `Conflito de versão: cópia ${decision.localRevision}, servidor ${decision.remoteRevision}. Não é permitido aplicar sem reconciliação.` : "Restauração recusada: escopo não autorizado.");
+        return;
+      }
       setRestored(draft);
-      setMessage("Arquivo descriptografado. Confira o projeto antes de aplicar; nenhuma alteração foi restaurada ainda.");
+      setMessage("Arquivo descriptografado e revisão compatível. Confirme no editor; nenhuma alteração foi aplicada.");
     } catch {
       setMessage("Recuperação recusada: senha, arquivo, autorização ou projeto não correspondem.");
     } finally { setBusy(false); }
@@ -79,7 +87,11 @@ export function ArqdorRecoveryPanel(props: {
       {restored && <div className="space-y-2 rounded-lg border p-3">
         <p className="text-sm">Rascunho encontrado. Revisão de origem: {restored.change.baseRevision}.</p>
         <button type="button" className="rounded-md border px-3 py-2"
-          onClick={() => { props.onReviewRestore(restored); setRestored(null); }}>
+          onClick={() => {
+            const decision = evaluateRecoveryForReview(restored, props.authorizedScope, props.verifiedRemoteProject);
+            if (decision.status !== "review") { setRestored(null); setMessage("A revisão mudou. Carregue novamente os dados remotos antes de restaurar."); return; }
+            props.onReviewRestore(restored); setRestored(null);
+          }}>
           Enviar para revisão de conflitos
         </button>
       </div>}
