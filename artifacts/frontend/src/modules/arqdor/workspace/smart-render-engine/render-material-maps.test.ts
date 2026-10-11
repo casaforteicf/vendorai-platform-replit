@@ -19,6 +19,12 @@ describe("ARQDOR physical maps",()=>{
   expect(()=>sampleWorldNormalMap({...plane,positions:[NaN,0,0,1,0,0,0,1,0],texture})).toThrow();
   expect(()=>sampleWorldNormalMap({...plane,uvs:[0,0,NaN,0,0,1],texture})).toThrow();
  });
+ it("matches safe and prevalidated physical-map sampling",()=>{
+  expect(sampleRoughnessMap(texture,[0.2,0.3],0.8,true)).toBeCloseTo(sampleRoughnessMap(texture,[0.2,0.3],0.8));
+  const normal=sampleWorldNormalMap({...plane,texture});
+  const optimized=sampleWorldNormalMap({...plane,texture,validated:true});
+  expect(optimized).toEqual(normal);
+ });
  it("rejects missing tangents for degenerate UVs",()=>{
   expect(()=>sampleWorldNormalMap({...plane,uvs:[0,0,0,0,0,0],texture})).toThrow();
  });
