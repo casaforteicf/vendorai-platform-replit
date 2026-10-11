@@ -43,7 +43,7 @@ export default function PhotoMeasureEditor({ itemId, offlineKey, imageUrl, onClo
   const selectedPhoto = photos.find((photo) => photo.storageUrl === selectedPhotoPath);
   const activePath = selectedPhotoPath ?? photos.at(-1)?.storageUrl ?? null;
   const currentImage = localImage ?? uploadedImage ?? selectedPhoto?.accessUrl ?? photos.at(-1)?.accessUrl ?? imageUrl ?? null;
-  const visibleMeasures = measures.filter((m) => (m.photoPath ?? null) === activePath);
+  const visibleMeasures = measures.filter((m) => localImage ? !m.photoPath : (m.photoPath ?? null) === activePath);
 
   useEffect(() => {
     if (!offlineKey) return;
@@ -60,6 +60,7 @@ export default function PhotoMeasureEditor({ itemId, offlineKey, imageUrl, onClo
     const pending = (await listQueuedPhotos(offlineKey)).find(p => p.id === selectedQueuedId) ?? await getQueuedPhoto(offlineKey);
     if (!pending) return;
     setSelectedQueuedId(pending.id);
+    setSelectedPhotoPath(null);
     setLocalImage(URL.createObjectURL(pending.file));
     setSelectedFile(null);
     setUploadedImage(null);
@@ -96,6 +97,12 @@ export default function PhotoMeasureEditor({ itemId, offlineKey, imageUrl, onClo
     if (photo && !photo.uploadedPath) await saveQueuedPhotoMeasurements(photo, [...(photo.measures ?? []), measure]);
   }
 
+  async function removeOfflineMeasure(id: string) {
+    if (!offlineKey || !selectedQueuedId) return;
+    const photo = (await listQueuedPhotos(offlineKey)).find(p => p.id === selectedQueuedId);
+    if (photo && !photo.uploadedPath)
+      await saveQueuedPhotoMeasurements(photo, (photo.measures ?? []).filter(m => m.id !== id));
+  }
   function addMeasure() {
     if (readOnly) return;
     const value = Number(millimeters.replace(",", "."));
@@ -215,7 +222,10 @@ export default function PhotoMeasureEditor({ itemId, offlineKey, imageUrl, onClo
       </div>
       {measures.length > 0 && (
         <div className="space-y-2">
-          {measures.map((m) => <div key={m.id} className="flex items-center justify-between gap-2 text-sm"><span>{m.label}: {m.millimeters} mm</span><Button size="sm" variant="ghost" disabled={readOnly} onClick={() => setMeasures((list) => list.filter((entry) => entry.id !== m.id))}>Remover</Button></div>)}
+          {measures.map((m) => <div key={m.id} className="flex items-center justify-between gap-2 text-sm"><span>{m.label}: {m.millimeters} mm</span><Button size="sm" variant="ghost" disabled={readOnly} onClick={() => {
+            setMeasures(list => list.filter(entry => entry.id !== m.id));
+            void removeOfflineMeasure(m.id).catch(() => setMessage("Falha ao remover cota da cópia offline."));
+          }}>Remover</Button></div>)}
           {onSave && <Button disabled={saving || readOnly || Boolean(localImage)} onClick={async () => {
             setSaving(true); setMessage("");
             try { await onSave(measures); setMessage("Cotas persistidas no checklist."); }
