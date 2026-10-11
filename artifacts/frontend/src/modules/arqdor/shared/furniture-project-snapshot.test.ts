@@ -25,4 +25,8 @@ describe("C04 furniture snapshot contract",()=>{
   const corrupted={...furniture[0],parts:[{...furniture[0].parts[0],furnitureId:"other"}]};
   expect(()=>createFurnitureSnapshot({...base,furniture:[corrupted]})).toThrow();
  });
+ it("rejects parameter dimensions or room identities that disagree with the footprint",()=>{
+  expect(()=>createFurnitureSnapshot({...base,furniture:[{...furniture[0],parameters:{...furniture[0].parameters,widthMm:999}}]})).toThrow();
+  expect(()=>createFurnitureSnapshot({...base,furniture:[{...furniture[0],parameters:{...furniture[0].parameters,roomId:"other"}}]})).toThrow();
+ });
 });
