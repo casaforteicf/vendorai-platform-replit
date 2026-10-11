@@ -112,3 +112,11 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - Teste estrutural: `node artifacts/api-server/scripts/test-arqdor-conditional-save.mjs` verifica presença das rotas, escopo tenant e guarda CAS sem upsert.
 - **Revisão de segurança ainda necessária:** verificar autorização por papel/usuário dentro do tenant (não apenas autenticação tenant), política contra projetos do mesmo tenant sem permissão de edição, limite de payload, erros de banco e semântica de token MVCC após restaurar backups. O token `xmin` só é apropriado como revisão efêmera por linha; não serve de histórico durável. A rota não comprova integração com autosave, que permanece no PUT legado.
 - **Status:** código commitado mas sem execução comprovada de typecheck/integração em PostgreSQL e sem publicação. Não permitir offline sync automático antes de homologar esses bloqueios.
+
+
+## MULTI-04.3 — Cliente de envio condicional, sem ativação
+- Corrigida regex do backend no `PUT /arqdor/projects/:id/conditional`: o token PostgreSQL `xmin` numérico é validado por `/^\\d+$/` (a versão anterior escapava a barra indevidamente).
+- Criado `arqdorConditionalUpload.ts`: helper explícito (nenhum gatilho automático), exige token, compatibilidade de identidade/tenant/contexto/projeto/revisão, usa somente endpoint de atualização condicional e devolve estados `saved/conflict/denied/failed`. **Nunca exclui rascunho local** ao receber sucesso: a cópia precisa ser validada posteriormente.
+- Criado `arqdorConditionalUpload.test.ts` cobrindo sessão/permissão, revisão divergente, conflito no servidor, sucesso e falha de rede.
+- **Ainda bloqueado para uso final:** backend atualmente garante autenticação e escopo tenant, mas ainda não prova permissão de edição por usuário/projeto. O cliente recebe `canEdit` do chamador e isso não substitui autorização real do servidor. Exige política de acesso por projeto e testes com banco e múltiplos usuários antes de integrar ao editor ou habilitar o recurso.
+- Sem CI ou build comprovados; PR draft, sem merge/deploy.
