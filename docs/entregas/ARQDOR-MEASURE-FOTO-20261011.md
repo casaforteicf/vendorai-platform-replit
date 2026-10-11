@@ -183,3 +183,9 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - A recuperação de colisão do índice único PostgreSQL também só reutiliza o asset se o checksum corresponder e ele estiver vinculado ao mesmo item.
 - Mantida recusa `PHOTO_RECONCILE_REQUIRED` para asset conhecido que ainda não consta do checklist; a reconciliação automatizada de órfãos segue pendente.
 - Importante: o índice único criado no lote 22 ainda precisa de migração em staging; builds e testes não foram executados. Nenhum PR/merge/deploy.
+
+## Lote 25 — reconciliação de mídia já registrada (11/10/2026)
+- Na repetição de POST com uploadId conhecido, tenant/run/item e SHA-256 compatíveis, o backend tenta reanexar a mídia existente ao checklist quando o vínculo JSONB estiver ausente.
+- Atualização executada com compare-and-swap por status e snapshot de itens, até cinco tentativas; recusa checklists concluídos, itens ausentes e limites de 20 fotos. Não cria um segundo objeto R2.
+- Após sucesso, registra log de reconciliação com runId/itemId/assetId e retorna o asset existente. Caso falhe, conserva HTTP 409 PHOTO_RECONCILE_REQUIRED.
+- Pendências: revisar concorrência entre várias instâncias, testes de banco e R2, auditoria persistente, validação em homologação, confirmar migração de índice único. Sem merge ou deploy.
