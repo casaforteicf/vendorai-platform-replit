@@ -179,6 +179,7 @@ export default function OperationalMeasurementChecklist() {
         body: JSON.stringify({ confirmed: true, title: "Levantamento " + (data.context.deal?.titulo ?? data.run.name) + " R" + data.run.revision }),
       });
       setCreatedDraft(result.archProjetoId);
+      if (result.reused) setError("Já existia um rascunho para esta revisão. O projeto existente foi reutilizado, sem duplicação.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível criar o rascunho.");
     } finally { setBusy(null); }
