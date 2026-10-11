@@ -1,3 +1,4 @@
+import { encodeDisplayColor, type ToneMapping } from "./render-postprocess";
 import type { CpuMaterialMaps } from "./render-material-maps";
 import type { CpuTexture } from "./render-texture";
 import type { CpuPreviewOptions, PreparedCpuPreview } from "./render-cpu-preview";
@@ -8,6 +9,7 @@ import type { Vec3 } from "./render-bvh";
 export type DiffusePreviewOptions = CpuPreviewOptions & Readonly<{
   physicalMaterials?: Readonly<Record<string,Partial<PhysicalMaterial>>>;
   maxBounces?: number;
+  display?: Readonly<{toneMapping:ToneMapping;exposure?:number}>;
   textures?: Readonly<Record<string,CpuTexture>>;
   materialMaps?: Readonly<Record<string,CpuMaterialMaps>>;
 }>;
@@ -49,8 +51,9 @@ export function renderDiffusePreviewStrip(o:DiffusePreviewOptions,rowStart:numbe
      sky:o.skyColor||[0.72,0.82,0.95],maxBounces:o.maxBounces??2,
      seed:(Math.imul(sample+1,2654435761)^Math.imul(y+1,2246822519)^Math.imul(x+1,3266489917))>>>0,
    });
+   const display=o.display?encodeDisplayColor(color,o.display.exposure??1,o.display.toneMapping):color;
    const at=(row*width+x)*4;
-   for(let k=0;k<3;k++)rgba[at+k]=Math.round(clamp(color[k])*255);
+   for(let k=0;k<3;k++)rgba[at+k]=Math.round(clamp(display[k])*255);
    rgba[at+3]=255;
  }
  return rgba;
