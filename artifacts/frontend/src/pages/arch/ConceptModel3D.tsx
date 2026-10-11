@@ -1,11 +1,11 @@
-import { useAuth } from "@/contexts/AuthContext";
+import { AuthContext } from "@/contexts/AuthContext";
 import { useExperimentalRenderCapture } from "../../modules/arqdor/workspace/smart-render-engine/use-experimental-render-capture";
 import { ExperimentalCpuRenderPanel } from "../../modules/arqdor/workspace/smart-render-engine/ExperimentalCpuRenderPanel";
 import type { RenderSceneSnapshot } from "../../modules/arqdor/workspace/smart-render-engine/render-scene-contract";
 import type { GeometryTransfer } from "../../modules/arqdor/workspace/smart-render-engine/render-geometry-export";
 import type { SiteFrontSide } from "./conceptSitePlacement";
 import { buildFacadeMeshBoxes, facadeBoxFaces } from "./conceptFacadeMeshes";
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
+import { useContext, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { Layers3, Maximize2, RotateCcw, RotateCw, Sparkles, ZoomIn, ZoomOut } from "lucide-react";
 import type { OpeningMarker, WallSegment } from "./conceptGeometry";
 import type { ClosedSpace } from "./conceptWallNetwork";
@@ -626,7 +626,10 @@ export default function ConceptModel3D({
   onSavedTourPointActivate,
   onRenderView,
 }: Props) {
-  const {token,user} = useAuth();
+  // Public/embedded 3D viewers can render without an authentication provider.
+  const auth=useContext(AuthContext);
+  const token=auth?.token;
+  const user=auth?.user;
   const [serverCpuRenderAccess,setServerCpuRenderAccess] = useState(false);
   useEffect(()=>{
     setServerCpuRenderAccess(false);
