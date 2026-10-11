@@ -15,6 +15,14 @@ log(){ printf '%s lot=%s action=%s %s\n' "$(date -u +%FT%TZ)" "$LOT" "$ACTION" "
 if [[ "$ACTION" == status ]]; then
  [[ -f "$STATE" ]] && cat "$STATE" || echo NO_PRODUCTION_RECORD
  docker inspect "$CURRENT" --format 'CONTAINER={{.State.Status}} IMAGE={{.Config.Image}}'
+ # Status is observational: expose drift without mutating any container.
+ if [[ -f "$STATE" ]]; then
+   saved=$(sed -n 's/^STATUS=//p' "$STATE" | head -1)
+   expected=$(sed -n 's/^IMAGE=//p' "$STATE" | head -1)
+   active=$(docker inspect "$CURRENT" --format '{{.Config.Image}}' 2>/dev/null || true)
+   backup=$(sed -n 's/^BACKUP=//p' "$STATE" | head -1)
+   if [[ "$saved" == INCONSISTENT* || ( "$saved" == PUBLISHED && "$expected" != "$active" ) ]] || { [[ "$saved" == PUBLISHED ]] && ! docker inspect "$backup" >/dev/null 2>&1; }; then echo RELEASE_RECONCILIATION_REQUIRED; fi
+ fi
  exit 0
 fi
 [[ -f "$MANIFEST" && "$(stat -c %u "$MANIFEST")" == 0 ]] || { echo MISSING_ROOT_MANIFEST; exit 65; }
@@ -26,28 +34,78 @@ TAG="${LOT,,}-${SHA:0:12}"
 BACK="${CURRENT}-backup-${TAG}"
 NEXT="${CURRENT}-next-${TAG}"
 check(){ curl -fsS --max-time 4 http://127.0.0.1:5001/api/auth/healthz >/dev/null; }
+# Fail closed if recorded production is not the actual live release.
+# This does not rewrite history or stop containers.
+assert_consistent(){
+ [[ -f "$STATE" ]] || return 0
+ local st recorded active backup
+ st=$(sed -n 's/^STATUS=//p' "$STATE" | head -1)
+ recorded=$(sed -n 's/^IMAGE=//p' "$STATE" | head -1)
+ backup=$(sed -n 's/^BACKUP=//p' "$STATE" | head -1)
+ active=$(docker inspect "$CURRENT" --format '{{.Config.Image}}' 2>/dev/null || true)
+ if [[ "$st" == INCONSISTENT* ]]; then echo RELEASE_STATE_INCONSISTENT; return 65; fi
+ if [[ "$st" == "PUBLISHED" ]]; then
+  if [[ -z "$recorded" || "$active" != "$recorded" ]]; then echo RELEASE_IMAGE_MISMATCH; return 65; fi
+  if [[ -z "$backup" ]] || ! docker inspect "$backup" >/dev/null 2>&1; then echo RELEASE_BACKUP_MISSING; return 65; fi
+ fi
+}
+assert_consistent || { log "DENIED_INCONSISTENT_RELEASE_STATE";exit 65; }
+# Global release safety: no other lot may retain an unresolved publication.
+# An inconsistent historical release MUST be reconciled explicitly (not deleted).
+if [[ "$ACTION" == publish ]]; then
+ for record in "$ROOT"/state/*.prod; do
+  [[ -f "$record" && "$record" != "$STATE" ]] || continue
+  record_status=$(sed -n 's/^STATUS=//p' "$record" | head -1)
+  case "$record_status" in
+   PUBLISHED|INCONSISTENT*) echo "OTHER_RELEASE_REQUIRES_RECONCILIATION"; log "BLOCKED_OTHER_RELEASE=$record"; exit 65;;
+  esac
+ done
+fi
 if [[ "$ACTION" == rollback ]]; then
  [[ -f "$STATE" ]] || { echo NO_ROLLBACK_STATE;exit 65; }
+ RECORDED_IMAGE=$(sed -n 's/^IMAGE=//p' "$STATE")
+ RECORDED_STATUS=$(sed -n 's/^STATUS=//p' "$STATE")
+ ACTIVE_IMAGE=$(docker inspect "$CURRENT" --format '{{.Config.Image}}' 2>/dev/null || true)
+ [[ "$RECORDED_STATUS" == PUBLISHED && -n "$RECORDED_IMAGE" && "$ACTIVE_IMAGE" == "$RECORDED_IMAGE" ]] || { echo ROLLBACK_BLOCKED_PRODUCTION_VERSION_MISMATCH;exit 65; }
  SAVED=$(sed -n 's/^BACKUP=//p' "$STATE")
  [[ "$SAVED" =~ ^vendorai-prod-api-candidate-backup-[a-z0-9-]+$ ]] || { echo INVALID_BACKUP_STATE;exit 65; }
+ # Preserved from the installed Contabo operator: deny rollback of a release
+ # whose image no longer matches the live container (another agent/release).
+ RECORDED_IMAGE=$(sed -n 's/^IMAGE=//p' "$STATE" | head -1)
+ ACTIVE_IMAGE=$(docker inspect "$CURRENT" --format '{{.Config.Image}}' 2>/dev/null || true)
+ [[ -n "$RECORDED_IMAGE" && "$ACTIVE_IMAGE" == "$RECORDED_IMAGE" ]] || {
+   echo ROLLBACK_BLOCKED_PRODUCTION_VERSION_MISMATCH
+   exit 65
+ }
+
+ [[ "$(sed -n 's/^STATUS=//p' "$STATE" | head -1)" == "PUBLISHED" ]] || { echo ROLLBACK_NOT_PUBLISHED;exit 65; }
  docker inspect "$SAVED" >/dev/null || { echo BACKUP_MISSING;exit 65; }
  REPLACED="${CURRENT}-failed-$(date -u +%s)"
  docker stop "$CURRENT" >/dev/null
  docker rename "$CURRENT" "$REPLACED"
  if ! docker rename "$SAVED" "$CURRENT"; then
    docker rename "$REPLACED" "$CURRENT"
-   docker start "$CURRENT" >/dev/null
-   echo ROLLBACK_RESTORE_FAILED
-   exit 1
+   docker start "$CURRENT" >/dev/null || true
+   echo ROLLBACK_RENAME_FAILED; exit 1
  fi
- docker start "$CURRENT" >/dev/null
- for _ in $(seq 1 30); do if check; then
-  sed -i 's/^STATUS=PUBLISHED$/STATUS=ROLLED_BACK/' "$STATE"
-  echo ROLLBACK_HEALTH_200
-  log "ROLLBACK_OK"
-  exit 0
-fi;sleep 2;done
- echo ROLLBACK_HEALTH_FAILED;log "ROLLBACK_HEALTH_FAILED";exit 1
+ if ! docker start "$CURRENT" >/dev/null; then
+   docker rename "$CURRENT" "$SAVED"
+   docker rename "$REPLACED" "$CURRENT"
+   docker start "$CURRENT" >/dev/null || true
+   echo ROLLBACK_START_FAILED_ORIGINAL_RESTORED;exit 1
+ fi
+ for _ in $(seq 1 30); do
+   if check; then
+     tmpstate=$(mktemp "$ROOT/state/.rollback.XXXXXXXX")
+     sed 's/^STATUS=PUBLISHED$/STATUS=ROLLED_BACK/' "$STATE" > "$tmpstate"
+     chmod 600 "$tmpstate"; mv -f "$tmpstate" "$STATE"
+     echo ROLLBACK_HEALTH_200;log "ROLLBACK_OK";exit 0
+   fi
+   sleep 2
+ done
+ echo ROLLBACK_HEALTH_FAILED_MANUAL_RECOVERY_REQUIRED
+ log "ROLLBACK_HEALTH_FAILED"
+ exit 1
 fi
 # Publish only an image that was actually built and recorded with the requested commit.
 BUILDSTATE="$ROOT/state/$LOT"
@@ -56,7 +114,7 @@ grep -Fxq "SHA=$SHA" "$BUILDSTATE" || { echo SHA_MISMATCH;exit 65; }
 grep -Fxq "IMAGE=$IMAGE" "$BUILDSTATE" || { echo IMAGE_MISMATCH;exit 65; }
 grep -Fxq "STATUS=BUILT_NOT_DEPLOYED" "$BUILDSTATE" || { echo BUILD_NOT_APPROVED;exit 65; }
 docker image inspect "$IMAGE" >/dev/null
-[[ ! -e "$STATE" ]] || { echo RELEASE_RECORD_EXISTS;exit 65; }
+[[ ! -e "$STATE" ]] || { echo RELEASE_RECORD_EXISTS_REQUIRES_RECONCILIATION;exit 65; }
 docker inspect "$CURRENT" >/dev/null
 docker inspect "$BACK" >/dev/null 2>&1 && { echo BACKUP_NAME_EXISTS;exit 65; }
 docker inspect "$NEXT" >/dev/null 2>&1 && { echo NEXT_NAME_EXISTS;exit 65; }
