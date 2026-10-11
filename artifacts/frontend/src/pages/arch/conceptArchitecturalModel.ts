@@ -66,7 +66,10 @@ export function applyArchitecturalEdits(model: ArchitecturalModel, edits: readon
       continue;
     }
     const element = edit.element.value;
-    if (!element.id) return { error: "Elemento sem identificador." };
+    if (typeof element.id !== "string" || !element.id.trim()) return { error: "Elemento sem identificador." };
+    const otherKeys = (["slabs", "stairs", "roofs", "openings"] as const).filter(other => other !== key);
+    if (otherKeys.some(other => next[other].some(item => item.id === element.id))) return { error: "Identificador já usado por outro tipo de elemento." };
+    if ((kind === "slab" || kind === "stair") && (!Number.isInteger((element as Slab | Stair).floor) || (element as Slab | Stair).floor < 0)) return { error: "Pavimento inválido." };
     if (kind === "slab") {
       const validation = createSlab(element as Slab);
       if ("error" in validation) return validation;
