@@ -44,6 +44,9 @@ export type OperationalChecklistItem = {
     x2Mm?: number | null;
     y2Mm?: number | null;
     thicknessMm?: number | null;
+    wallId?: string | null;
+    offsetMm?: number | null;
+    sillHeightMm?: number | null;
     sourcePhotoPath?: string | null;
     note?: string | null;
     verified: boolean;
