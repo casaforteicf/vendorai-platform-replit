@@ -145,3 +145,10 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - Conflitos HTTP 409 e rejeições de validação **não** são reenviados automaticamente nem descartam alterações. A UI deve orientar a revisão manual.
 - **Limitações:** IndexedDB não é criptografado por esta mudança; o dispositivo deve ser confiável. Não há fila de uploads fotográficos, sincronização automática, serviço offline do aplicativo (PWA), testes de navegador, índices com expiração nem limpeza no logout. Nenhuma garantia de retenção quando o usuário limpa dados do navegador.
 - Nenhuma compilação ou teste integrado foi executado; sem PR, merge ou publicação.
+
+## Lote 18 — integração da fotografia offline (11/10/2026)
+- `PhotoMeasureEditor` agora importa a fila IndexedDB, detecta pendência ao abrir, exibe botão para guardar a foto selecionada offline e botão para enviar a foto guardada quando houver conexão.
+- Envio utiliza `onUpload` autenticado da página do checklist; após sucesso, registra o caminho devolvido pelo backend e solicita remoção da cópia local.
+- `OperationalMeasurementChecklist` passa `offlineKey` delimitada por ID de usuário, ID de checklist, revisão e ID do item.
+- **Limites:** fila comporta uma foto por chave; guardar outra substitui a anterior; não há recuperação de cotas desenhadas mas ainda não salvas; expurgo ao logout e criptografia de IndexedDB não implementados. Upload confirmado com falha na remoção do arquivo local pode reaparecer na fila, exigindo tratamento de idempotência.
+- Compilação, testes E2E, segurança e homologação ainda não executados. Nenhum PR/merge/deploy.
