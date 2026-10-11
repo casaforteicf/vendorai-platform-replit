@@ -97,3 +97,10 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - Interface real ArqWorkspace agora exibe `saveError` em alerta, prevenindo falsa confiança de salvamento concluído.
 - **Ainda NÃO conectado IndexedDB nem sincronização**: o PUT existente não foi alterado em formato ou condição de revisão. É indispensável conferir o endpoint e a política de revisões antes de habilitar envio offline. O novo erro exposto não garante salvamento local automático.
 - Pendências de teste: typecheck e Vitest, rede intermitente, HTTP 401/403/409/500, projeto trocado durante debounce, autorização e QA funcional. PR draft, sem deploy.
+
+
+## MULTI-06.3 — Proteção adicional no salvamento real
+- O `WorkspaceContext` agora recusa o PUT se o token ou `ctx.id` estiverem ausentes, exibindo uma mensagem; evita requisições para projetos de identificação vazia.
+- Novo teste estático executável: `node artifacts/frontend/scripts/test-arqdor-save-contract.mjs`, verificando tratamento obrigatório de HTTP != 2xx, alerta visível e ausência de upload offline implícito.
+- A pesquisa de código não identificou com confiança a implementação backend específica de `PUT /api/arqdor/projects/:id`; **não implementar CAS nem envio offline presumindo semântica de revisões**. Precisa localizar a rota efetiva e validar seus controles de autorização e versão.
+- Ainda não foram executados builds/testes neste ambiente do GitHub connector. PR permanece draft; sem merge/deploy.
