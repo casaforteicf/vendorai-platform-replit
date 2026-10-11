@@ -406,7 +406,6 @@ router.post("/operational-checklists/runs/:runId/create-arqdor-draft", async (re
   if (!canAccessTenant(req, run.tenantId)) return void res.status(403).json({ error: "Acesso negado" });
   const ownerId = req.user?.sub;
   if (!ownerId) return void res.status(401).json({ error: "Identificação do responsável obrigatória" });
-  if (run.status === "concluido") return void res.status(409).json({ error: "Inicie uma nova revisão para gerar outro rascunho a partir de um checklist concluído" });
   const elements = (run.items ?? []).flatMap((item) => item.surveyElements ?? []);
   const walls = elements.filter((element) => element.elementType === "wall");
   const openings = elements.filter((element) => element.elementType === "door" || element.elementType === "window");
