@@ -6,6 +6,7 @@ type Props={options:DiffusePreviewOptions};
 export function ExperimentalCpuRenderPanel({options}:Props){
  const canvas=useRef<HTMLCanvasElement>(null);
  const job=useRef<ReturnType<typeof createCpuRenderJob>|null>(null);
+ const generation=useRef(0);
  const [status,setStatus]=useState("Não iniciado");
  const [progress,setProgress]=useState(0);
  const [samples,setSamples]=useState(8);
@@ -16,8 +17,9 @@ export function ExperimentalCpuRenderPanel({options}:Props){
  const [selectedMaterial,setSelectedMaterial]=useState("");
  const [roughness,setRoughness]=useState(0.35);
  const [transmission,setTransmission]=useState(0);
- useEffect(()=>()=>{job.current?.cancel();job.current=null;},[]);
- const stop=()=>{job.current?.cancel();job.current=null;setStatus("Cancelado");};
+ useEffect(()=>()=>{generation.current++;job.current?.cancel();job.current=null;},[]);
+ useEffect(()=>{generation.current++;job.current?.cancel();job.current=null;setProgress(0);setStatus("Cena alterada — renderizar novamente");},[options]);
+ const stop=()=>{generation.current++;job.current?.cancel();job.current=null;setStatus("Cancelado");};
  const start=()=>{
   stop();
   const context=canvas.current?.getContext("2d");
@@ -34,15 +36,17 @@ export function ExperimentalCpuRenderPanel({options}:Props){
     physicalMaterials:selectedMaterial ? {...options.physicalMaterials,
       [selectedMaterial]:{...options.physicalMaterials?.[selectedMaterial],roughness,transmission}} : options.physicalMaterials,
    };
+   const currentGeneration=++generation.current;
    job.current=createCpuRenderJob(renderOptions,{
     onTile:ev=>{
+     if(currentGeneration!==generation.current)return;
      if(ev.width!==options.width||ev.y<0||ev.y+ev.height>options.height)return;
      context.putImageData(new ImageData(new Uint8ClampedArray(ev.rgba),ev.width,ev.height),0,ev.y);
      setProgress(Math.round(ev.progress*100));
     },
-    onFrame:ev=>context.putImageData(new ImageData(new Uint8ClampedArray(ev.rgba),ev.width,ev.height),0,0),
-    onDone:()=>{job.current=null;setProgress(100);setStatus("Concluído (experimental)");},
-    onError:error=>{job.current=null;setStatus("Falha: "+error);}
+    onFrame:ev=>{if(currentGeneration!==generation.current)return;context.putImageData(new ImageData(new Uint8ClampedArray(ev.rgba),ev.width,ev.height),0,0);},
+    onDone:()=>{if(currentGeneration!==generation.current)return;job.current=null;setProgress(100);setStatus("Concluído (experimental)");},
+    onError:error=>{if(currentGeneration!==generation.current)return;job.current=null;setStatus("Falha: "+error);}
    },{mode:"diffuse",samples,denoise:denoise?0.5:0});
   }catch(error){setStatus(error instanceof Error?error.message:String(error));}
  };
