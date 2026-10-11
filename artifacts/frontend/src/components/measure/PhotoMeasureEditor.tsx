@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { queuePhoto, getQueuedPhoto, removeQueuedPhoto } from "./offlinePhotoQueue";
 
 /** Positions are normalized to the displayed image, not inferred physical coordinates. */
 export type PhotoMeasure = {
@@ -15,6 +16,7 @@ export type PhotoMeasure = {
 
 type Props = {
   itemId: string;
+  offlineKey?: string;
   imageUrl?: string | null;
   onClose: () => void;
   initialMeasurements?: PhotoMeasure[];
@@ -24,12 +26,13 @@ type Props = {
   photos?: Array<{ storageUrl: string; accessUrl: string }>;
 };
 
-export default function PhotoMeasureEditor({ itemId, imageUrl, onClose, initialMeasurements = [], readOnly = false, onSave, onUpload, photos = [] }: Props) {
+export default function PhotoMeasureEditor({ itemId, offlineKey, imageUrl, onClose, initialMeasurements = [], readOnly = false, onSave, onUpload, photos = [] }: Props) {
   const [localImage, setLocalImage] = useState<string | null>(null);
   const [points, setPoints] = useState<Array<{ x: number; y: number }>>([]);
   const [measures, setMeasures] = useState<PhotoMeasure[]>(initialMeasurements);
   const [saving, setSaving] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [queued, setQueued] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [selectedPhotoPath, setSelectedPhotoPath] = useState<string | null>(null);
   const [millimeters, setMillimeters] = useState("");
@@ -41,6 +44,12 @@ export default function PhotoMeasureEditor({ itemId, imageUrl, onClose, initialM
   const currentImage = localImage ?? uploadedImage ?? selectedPhoto?.accessUrl ?? photos.at(-1)?.accessUrl ?? imageUrl ?? null;
   const visibleMeasures = measures.filter((m) => (m.photoPath ?? null) === activePath);
 
+  useEffect(() => {
+    if (!offlineKey) return;
+    let active = true;
+    void getQueuedPhoto(offlineKey).then(p => { if (active && p) setQueued(true); }).catch(() => {});
+    return () => { active = false; };
+  }, [offlineKey]);
   useEffect(() => {
     return () => { if (localImage) URL.revokeObjectURL(localImage); };
   }, [localImage]);
