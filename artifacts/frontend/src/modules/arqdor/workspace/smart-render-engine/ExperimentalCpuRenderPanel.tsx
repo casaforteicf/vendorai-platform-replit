@@ -20,8 +20,9 @@ export function ExperimentalCpuRenderPanel({options}:Props){
  const [completed,setCompleted]=useState(false);
  const [history,setHistory]=useState<Array<{image:string;label:string}>>([]);
  const [comparison,setComparison]=useState<string|null>(null);
+ const historySequence=useRef(0);
  useEffect(()=>()=>{generation.current++;job.current?.cancel();job.current=null;},[]);
- useEffect(()=>{generation.current++;job.current?.cancel();job.current=null;setProgress(0);setCompleted(false);setHistory([]);setComparison(null);setStatus("Cena alterada — renderizar novamente");},[options]);
+ useEffect(()=>{generation.current++;job.current?.cancel();job.current=null;setProgress(0);setCompleted(false);setHistory([]);historySequence.current=0;setComparison(null);setStatus("Cena alterada — renderizar novamente");},[options]);
  const stop=()=>{generation.current++;job.current?.cancel();job.current=null;setCompleted(false);setStatus("Cancelado");};
  const exportPng=()=>{
   if(!completed||!canvas.current||job.current)return;
@@ -32,6 +33,7 @@ export function ExperimentalCpuRenderPanel({options}:Props){
  };
  const start=()=>{
   stop();
+  setComparison(null);
   const context=canvas.current?.getContext("2d");
   if(!context){setStatus("Canvas indisponível");return;}
   if(options.width<1||options.height<1||options.width*options.height>262144){setStatus("Resolução experimental inválida");return;}
@@ -57,11 +59,11 @@ export function ExperimentalCpuRenderPanel({options}:Props){
     onFrame:ev=>{if(currentGeneration!==generation.current)return;context.putImageData(new ImageData(new Uint8ClampedArray(ev.rgba),ev.width,ev.height),0,0);},
     onDone:()=>{if(currentGeneration!==generation.current)return;job.current=null;setProgress(100);setCompleted(true);setStatus("Concluído (experimental)");
       const image=canvas.current?.toDataURL("image/png");
-      if(image)setHistory(old=>[{image,label:`Prévia ${old.length+1} · ${samples} passagens`},...old].slice(0,3));
+      if(image){const version=++historySequence.current;setHistory(old=>[{image,label:`Prévia ${version} · ${samples} passagens`},...old].slice(0,3));}
     },
     onError:error=>{if(currentGeneration!==generation.current)return;job.current=null;setStatus("Falha: "+error);}
    },{mode:"diffuse",samples,denoise:denoise?0.5:0});
-  }catch(error){setStatus(error instanceof Error?error.message:String(error));}
+  }catch(error){job.current=null;setCompleted(false);setStatus(error instanceof Error?error.message:String(error));}
  };
  return <section className="rounded-2xl border border-amber-200 bg-white p-4 space-y-3" aria-label="Prévia física experimental">
   <div className="flex items-center justify-between gap-2">
