@@ -18,6 +18,12 @@ describe("ARQDOR real scene adapter",()=>{
   expect(result.geometry).toBe(geometry);
   expect(result.physicalMaterials?.paint?.roughness).toBe(0.8);
  });
+ it("rejects material IDs that were not captured on the corresponding mesh",()=>{
+  const extra={...snapshot,materials:[...snapshot.materials,
+    {id:"other",baseColor:"#ffffff",metalness:0,roughness:1,opacity:1,doubleSided:false}]};
+  const mismatched={...geometry,meshes:[{...geometry.meshes[0],materialId:"other"}]};
+  expect(()=>buildExperimentalRenderOptions({snapshot:extra,geometry:mismatched})).toThrow();
+ });
  it("rejects incomplete or mismatched geometry rather than constructing fake surfaces",()=>{
   expect(()=>buildExperimentalRenderOptions({snapshot,geometry:{...geometry,truncated:true}})).toThrow();
   expect(()=>buildExperimentalRenderOptions({snapshot,geometry:{...geometry,meshes:[]}})).toThrow();
