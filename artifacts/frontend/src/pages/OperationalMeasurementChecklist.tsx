@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, CheckCircle2, Printer, RefreshCw, Ruler, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Camera, CheckCircle2, Printer, RefreshCw, Ruler, TriangleAlert } from "lucide-react";
+import PhotoMeasureEditor from "@/components/measure/PhotoMeasureEditor";
 
 type ItemStatus = "nao_conferido" | "conferido" | "divergente" | "nao_executado" | "resolvido";
 type ChecklistItem = {
@@ -72,6 +73,7 @@ export default function OperationalMeasurementChecklist() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [photoItemId, setPhotoItemId] = useState<string | null>(null);
 
   async function api(path: string, init?: RequestInit) {
     const response = await fetch(path, {
@@ -280,6 +282,14 @@ export default function OperationalMeasurementChecklist() {
                         {item.status === "divergente" && <Button size="sm" disabled={run.status === "concluido" || busy === item.id} onClick={() => saveItem(item, { status: "resolvido" })}>Marcar resolvido</Button>}
                       </div>
                     </div>
+                  </div>
+                  <div className="mt-3 print:hidden">
+                    <Button size="sm" variant="outline" onClick={() => setPhotoItemId((current) => current === item.id ? null : item.id)}>
+                      <Camera className="mr-2 h-4 w-4" /> {photoItemId === item.id ? "Fechar medição fotográfica" : "Medir na fotografia"}
+                    </Button>
+                    {photoItemId === item.id && (
+                      <PhotoMeasureEditor itemId={item.id} imageUrl={item.imagemUrl} onClose={() => setPhotoItemId(null)} />
+                    )}
                   </div>
                   <div className="mt-3 grid gap-3 md:grid-cols-2 print:hidden">
                     <Input
