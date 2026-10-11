@@ -1,5 +1,6 @@
 const ts=require('typescript'), fs=require('fs'), vm=require('vm'), assert=require('node:assert/strict');
-const files=['artifacts/frontend/src/pages/arch/ConceptPlanner.tsx','artifacts/frontend/src/pages/arch/ConceptModel3D.tsx','artifacts/api-server/src/routes/arch_ai_render.ts','artifacts/api-server/src/routes/arch_ai_render_legacy.ts'];
+const files=['artifacts/frontend/src/pages/arch/ConceptPlanner.tsx','artifacts/frontend/src/pages/arch/ConceptModel3D.tsx','artifacts/frontend/src/pages/arch/ConceptWebGLScene.tsx','artifacts/api-server/src/routes/arch_ai_render.ts','artifacts/api-server/src/routes/arch_ai_render_legacy.ts','artifacts/api-server/src/routes/tenantNavModules.ts',
+...['render-capture-coordinator.ts','render-scene-adapter.ts','render-diffuse-path.ts','render-diffuse-preview.ts','render-material-maps.ts','render-texture.ts','ExperimentalCpuRenderPanel.tsx','use-experimental-render-capture.ts'].map(name=>'artifacts/frontend/src/modules/arqdor/workspace/smart-render-engine/'+name)];
 for(const file of files){const s=fs.readFileSync(file,'utf8');const out=ts.transpileModule(s,{fileName:file,reportDiagnostics:true,compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}});assert.equal(out.diagnostics.length,0,JSON.stringify(out.diagnostics));}
 const source=fs.readFileSync(files[0],'utf8');const a=source.indexOf('  useEffect(() => {\n    if (!conceptId) return;');const b=source.indexOf('\n  const displayedRender',a);
 const code=ts.transpileModule(source.slice(a,b),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
@@ -11,5 +12,5 @@ r=await scenario([{id:'old',status:'concluido',result_image_url:'/old.png'},{id:
 r=await scenario([{id:'old',status:'concluido',result_image_url:'/old.png'},{id:'new',status:'erro',erro_msg:'Provider failed'}]);assert.equal(r.state.resultImageUrl,'/old.png');assert.equal(r.state.status,'error');assert.equal(r.error,'Provider failed');
 r=await scenario([],{status:'processing',resultImageUrl:'/old.png'},true);assert.equal(r.state.status,'processing');assert.equal(r.state.resultImageUrl,'/old.png');assert.equal(r.timers.length,1);
 r=await scenario([{id:'job',status:'concluido',result_image_url:'/saved.png',ambiente:'interior'}]);assert.equal(r.state.source,'model3d');r.cleanup();
-console.log('PASS: 4 TS/TSX syntax checks; recovery after refresh, completion, previous image during processing/error, network retry, interior source.');
+console.log('PASS: 13 TS/TSX syntax checks; recovery after refresh, completion, previous image during processing/error, network retry, interior source.');
 })().catch(e=>{console.error(e);process.exit(1)});
