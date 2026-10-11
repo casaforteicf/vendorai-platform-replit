@@ -39,6 +39,8 @@ export function FurnitureWebGLPreview({items,selectedId,onSelect}:{items:readonl
     }
     renderer=new T.WebGLRenderer({antialias:true});
     renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+    camera.aspect=(host.clientWidth||400)/280;
+    camera.updateProjectionMatrix();
     renderer.setSize(host.clientWidth||400,280);
     host.appendChild(renderer.domElement);
     const raycaster=new T.Raycaster(),pointer=new T.Vector2();
