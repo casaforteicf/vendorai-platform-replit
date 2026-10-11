@@ -1,5 +1,7 @@
 import unittest
 from arqdor_feature_contracts import (
+    inspect_parametric_wall, draft_architectural_deliverables, validate_professional_render_job,
+    draft_parametric_floor_plan, draft_parametric_wall_solids, draft_wall_centerline_intersections,
     prepare_opening_review_workspace, opening_review_dashboard, summarize_opening_review_history, record_opening_review_decision, create_opening_review_queue, inspect_import_request, validate_camera_path, bim_review_manifest, resolve_render_preset, validate_postproduction, validate_conversion_request, suggest_architectural_classification, suggest_geometry_role, propose_opening_hosts, preview_scale_calibration, draft_opening_schedule, evaluate_wall_mesh_topology, inspect_boundary_loops, associate_boundary_candidates, build_opening_review_queue,
 )
 
@@ -409,7 +411,8 @@ class FeatureContractsTests(unittest.TestCase):
             {"sourceObjectKey": f"{digest}:mesh-000001", "objectId": "mesh-000001",
              "opening": "Janela 1", "type": "window",
              "measurementStatus": "aabb_estimate_requires_review",
-             "hostRelationStatus": "single_spatial_candidate"},
+             "hostRelationStatus": "single_spatial_candidate",
+             "dimensionsMeters": [1.2, 1.0, 0.15]},
             {"sourceObjectKey": f"{digest}:mesh-000002", "objectId": "mesh-000002",
              "opening": "Janela 2", "type": "window",
              "measurementStatus": "ambiguous_object_name",
