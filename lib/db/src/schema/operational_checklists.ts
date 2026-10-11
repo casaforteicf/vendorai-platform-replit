@@ -31,7 +31,7 @@ export type OperationalChecklistItem = {
   atributosTecnicos?: Record<string, unknown>;
   imagemUrl?: string | null;
   fotos?: string[];
-  photoMeasurements?: Array<{ id: string; start: { x: number; y: number }; end: { x: number; y: number }; millimeters: number; label: string; source: "manual_verified" }>;
+  photoMeasurements?: Array<{ id: string; start: { x: number; y: number }; end: { x: number; y: number }; millimeters: number; label: string; photoPath?: string; source: "manual_verified" }>;
   status: OperationalChecklistItemStatus;
   conferidoPor?: string | null;
   conferidoEm?: string | null;
