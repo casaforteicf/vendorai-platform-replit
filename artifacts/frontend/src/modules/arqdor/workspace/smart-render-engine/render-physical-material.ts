@@ -5,6 +5,8 @@ export type PhysicalMaterial = Readonly<{
   roughness: number;
   metalness: number;
   emissive: Vec3;
+  transmission: number;
+  ior: number;
 }>;
 
 const clamp = (x: number) => Math.max(0, Math.min(1, x));
@@ -16,13 +18,17 @@ export function normalizePhysicalMaterial(input: Partial<PhysicalMaterial>): Phy
     return [clamp(v[0]), clamp(v[1]), clamp(v[2])];
   };
   if ((input.roughness !== undefined && !Number.isFinite(input.roughness)) ||
-      (input.metalness !== undefined && !Number.isFinite(input.metalness)))
+      (input.metalness !== undefined && !Number.isFinite(input.metalness)) ||
+      (input.transmission !== undefined && !Number.isFinite(input.transmission)) ||
+      (input.ior !== undefined && (!Number.isFinite(input.ior) || input.ior <= 1 || input.ior > 3)))
     throw new Error("ARQDOR: parâmetro físico inválido");
   return {
     baseColor: channels(input.baseColor, [0.75, 0.75, 0.75]),
     roughness: clamp(input.roughness ?? 0.8),
     metalness: clamp(input.metalness ?? 0),
     emissive: channels(input.emissive, [0, 0, 0]),
+    transmission: clamp(input.transmission ?? 0),
+    ior: input.ior ?? 1.5,
   };
 }
 export type BsdfSample = Readonly<{ direction: Vec3; throughput: Vec3; pdf: number }>;
