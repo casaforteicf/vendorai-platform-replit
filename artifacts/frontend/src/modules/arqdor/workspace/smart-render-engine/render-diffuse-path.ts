@@ -72,16 +72,17 @@ export function traceDiffusePath(input:{
         positions:mesh.positions,uvs:mesh.uvs,triangle:hit.triangle,faceNormal:normal,validated:input.materialMapsValidated===true});
       if(dot(normal,ray.direction)>0)normal=scale(normal,-1);
     }
+    const directAlbedo=scale(mat.baseColor,(1-mat.metalness)*(1-mat.transmission));
     if(input.directionalLight && mat.metalness<0.999 && mat.transmission<0.999) {
       radiance=add(radiance,mul(throughput,evaluateDirectionalLight({
-        bvh,point:hit.point,normal,albedo:mat.baseColor,light:input.directionalLight,
+        bvh,point:hit.point,normal,albedo:directAlbedo,light:input.directionalLight,
       })));
     }
     if(input.areaLights && mat.metalness<0.999 && mat.transmission<0.999) {
       if(input.areaLights.length>16)throw Error("ARQDOR: limite de luzes de área excedido");
       for(const light of input.areaLights){
         radiance=add(radiance,mul(throughput,sampleRectAreaLight({
-          bvh,point:hit.point,normal,albedo:mat.baseColor,light,u:random(),v:random(),
+          bvh,point:hit.point,normal,albedo:directAlbedo,light,u:random(),v:random(),
         })));
       }
     }
