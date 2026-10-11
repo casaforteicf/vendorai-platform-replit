@@ -174,14 +174,18 @@ type BrowserMcpConnection = Pick<
 
 
 async function resolveTenantId(tenantKey: string): Promise<string | undefined> {
+  const normalizedKey = tenantKey.trim();
+  if (!normalizedKey) return undefined;
+
   const [tenant] = await db
     .select({ id: tenantsTable.id })
     .from(tenantsTable)
     .where(
       or(
-        eq(tenantsTable.id, tenantKey),
-        eq(tenantsTable.slug, tenantKey),
-        eq(tenantsTable.subdomainSlug, tenantKey),
+        eq(tenantsTable.id, normalizedKey),
+        eq(tenantsTable.slug, normalizedKey),
+        eq(tenantsTable.subdomainSlug, normalizedKey),
+        eq(tenantsTable.tenantCode, normalizedKey),
       ),
     )
     .limit(1);
@@ -301,8 +305,13 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
     .limit(1);
   const autonomyEnabled = Boolean(tenantAutonomy?.autonomyEnabledAt);
   const globalVendiAutonomy = vendiAutonomyEnabled();
-  const mode = globalVendiAutonomy ? "autonomo" : (parsed.data.mode ?? (autonomyEnabled ? "autonomo" : "assistido"));
-  const allowWrite = globalVendiAutonomy ? true : (parsed.data.allowWrite ?? autonomyEnabled);
+  // An explicit assisted/read-only request must never be escalated by tenant or global autonomy.
+  const mode = parsed.data.mode === "assistido"
+    ? "assistido"
+    : (globalVendiAutonomy ? "autonomo" : (parsed.data.mode ?? (autonomyEnabled ? "autonomo" : "assistido")));
+  const allowWrite = parsed.data.allowWrite === false
+    ? false
+    : (globalVendiAutonomy ? true : (parsed.data.allowWrite ?? autonomyEnabled));
 
   let connection: BrowserMcpConnection | undefined;
   if (parsed.data.connectionId) {

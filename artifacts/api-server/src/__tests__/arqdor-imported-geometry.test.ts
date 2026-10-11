@@ -2,6 +2,18 @@ import { describe, expect, it } from "vitest";
 import { importedFloorPlanToEditableGeometry } from "../lib/arqdor-imported-geometry.js";
 
 describe("Arqdor imported project geometry", () => {
+  it("usa 15 cm na importação sem espessura e preserva medidas explícitas", () => {
+    const preview = importedFloorPlanToEditableGeometry({
+      page: 1, confidence: 0.9, widthMeters: 10, depthMeters: 10, requiresCalibration: false,
+      walls: [
+        { x1: 0.1, y1: 0.1, x2: 0.8, y2: 0.1, confidence: 0.9 },
+        { x1: 0.8, y1: 0.2, x2: 0.8, y2: 0.8, thickness: 0.2, confidence: 0.9 },
+      ], openings: [], rooms: [], dimensions: [], warnings: [],
+    });
+    expect(preview.walls[0]?.thickness).toBe(0.15);
+    expect(preview.walls[1]?.thickness).toBe(0.2);
+  });
+
   it("converte coordenadas normalizadas em paredes métricas e vincula abertura", () => {
     const preview = importedFloorPlanToEditableGeometry({
       page: 1,

@@ -40,6 +40,16 @@ describe("edição paramétrica segura · etapa 98", () => {
     expect(object.y + object.depth).toBeLessThanOrEqual(25);
   });
 
+  it("usa 15 cm apenas como espessura inicial e preserva medidas existentes", () => {
+    const base = { id: "parede", floor: 0, x1: 1, y1: 1, x2: 5, y2: 1 };
+    expect(clampWallToLot(base, 10, 10).thickness).toBe(0.15);
+    expect(clampWallToLot({ ...base, thickness: 0 }, 10, 10).thickness).toBe(0.15);
+    expect(clampWallToLot({ ...base, thickness: Number.NaN }, 10, 10).thickness).toBe(0.15);
+    expect(clampWallToLot({ ...base, thickness: 0.14 }, 10, 10).thickness).toBe(0.14);
+    expect(clampWallToLot({ ...base, thickness: 0.2 }, 10, 10).thickness).toBe(0.2);
+    expect(clampWallToLot({ ...base, thickness: 0.04 }, 10, 10).thickness).toBe(0.08);
+  });
+
   it("normaliza portas e janelas sem parâmetros fisicamente inválidos", () => {
     const door = normalizeOpeningDimensions({ type: "door", width: 10, height: 5, sillHeight: 1 });
     const window = normalizeOpeningDimensions({ type: "window", width: 0.1, height: 0.1, sillHeight: 5 });

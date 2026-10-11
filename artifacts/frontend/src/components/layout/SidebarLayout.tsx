@@ -2,6 +2,9 @@ import React, { lazy, Suspense, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { loadVerifiedContexts } from "@/lib/unifiedContextsApi";
+import { ContextSwitcher } from "./ContextSwitcher";
+
 import {
   getGetBusinessProfileByTenantQueryKey,
   getGetTenantQueryKey,
@@ -14,6 +17,9 @@ const SuperAdminSidebarLayout = lazy(() => import("./SuperAdminSidebarLayout").t
 const MarketingAgentDock = lazy(() => import("@/components/marketing/MarketingAgentDock").then((m) => ({ default: m.MarketingAgentDock })));
 const AdsMediaPlanContextBanner = lazy(() => import("@/components/marketing/AdsMediaPlanContextBanner").then((m) => ({ default: m.AdsMediaPlanContextBanner })));
 const MessagingMediaPlanBridge = lazy(() => import("@/components/marketing/MessagingMediaPlanBridge").then((m) => ({ default: m.MessagingMediaPlanBridge })));
+
+// UI-01 is opt-in and remains off in all existing deployments unless explicitly enabled.
+const UI01_CONTEXT_NAV_ENABLED = import.meta.env.VITE_UI01_CONTEXT_NAV === "true";
 
 const MARKETING_ROUTE_HINTS = ["marketing", "campanh", "content", "conteudo", "media", "midia", "ads", "anuncio", "analytics", "site", "landing", "video", "planej"];
 
@@ -597,12 +603,35 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     pathname === "/content-autopilot";
   const adsContext = pathname === "/ads";
 
+  const verifiedContextsQuery = useQuery({
+    queryKey: ["ui01-contexts", user?.id, effectiveTenantId],
+    enabled: UI01_CONTEXT_NAV_ENABLED && !!token && !!user?.id && !!effectiveTenantId && !isPureSuperAdmin,
+    queryFn: ({ signal }) => loadVerifiedContexts(signal),
+    staleTime: 60_000,
+    retry: false,
+  });
+  const verifiedContextData = verifiedContextsQuery.data;
+  const ui01CurrentContext = verifiedContextData?.contexts.find(
+    (ctx) => ctx.id === verifiedContextData.currentContextId && ctx.tenantId === effectiveTenantId,
+  );
+
   const shellContent = (
     <>
       <Suspense fallback={null}>
         {adsContext ? <AdsMediaPlanContextBanner pathname={location} /> : null}
         {messagingContext ? <MessagingMediaPlanBridge pathname={location} /> : null}
       </Suspense>
+      {UI01_CONTEXT_NAV_ENABLED && ui01CurrentContext ? (
+        <div className="mx-4 my-3 rounded-lg border p-3" data-ui01-context-preview="true">
+          <ContextSwitcher
+            contexts={[ui01CurrentContext]}
+            currentContextId={ui01CurrentContext.id}
+            tenantId={effectiveTenantId}
+            disabled
+            onRequestSwitch={() => { /* Switching requires a separate server-authorized flow. */ }}
+          />
+        </div>
+      ) : null}
       {children}
       {marketingContext ? (
         <Suspense fallback={null}>
