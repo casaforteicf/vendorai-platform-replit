@@ -14,7 +14,7 @@ const services = [
   { id: "ia", label: "IA", href: "/agents/config", icon: Bot, paths: ["/agents", "/vendi", "/base-conhecimento", "/brain"] },
   { id: "marketplace", label: "Marketplace", href: "/marketplace", icon: Store, paths: ["/marketplace"] },
   { id: "arqdor", label: "Arqdor", href: "/arch", icon: Ruler, paths: ["/arch"] },
-  { id: "support", label: "Suporte", href: "/suporte", icon: CircleHelp, paths: ["/suporte"] },
+  { id: "support", label: "Suporte", href: "/faq", icon: CircleHelp, paths: ["/faq", "/suporte"] },
   { id: "settings", label: "Configurações", href: "/configuracoes", icon: Settings2, paths: ["/configuracoes", "/usuarios", "/organizacao"] },
 ] as const;
 
