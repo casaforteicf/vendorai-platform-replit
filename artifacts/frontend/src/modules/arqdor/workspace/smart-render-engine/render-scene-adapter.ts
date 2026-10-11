@@ -23,6 +23,7 @@ export function buildExperimentalRenderOptions(args: {
  if(meshIds.size!==snapshot.meshes.length || exportedIds.size!==geometry.meshes.length ||
     materialIds.size!==snapshot.materials.length || geometry.meshes.length!==snapshot.meshes.length ||
     geometry.meshes.some(x=>!meshIds.has(x.meshId) || !Number.isSafeInteger(x.triangles) || x.triangles<0 ||
+      x.positions.length!==x.triangles*9 || x.normals.length!==x.triangles*9 || x.uvs.length!==x.triangles*6 ||
       x.positions.some(v=>!Number.isFinite(v)) || x.normals.some(v=>!Number.isFinite(v)) ||
       x.uvs.some(v=>!Number.isFinite(v)) ||
       (x.materialId!==null && !capturedById.get(x.meshId)?.materialIds.includes(x.materialId)))||
