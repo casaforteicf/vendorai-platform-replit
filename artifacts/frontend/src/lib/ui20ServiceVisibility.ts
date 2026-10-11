@@ -9,10 +9,13 @@ export function getUi20VisibleServices(input: {
   loading?: boolean;
 }): Set<Ui20Service> {
   const { modules = [], isAdmin = false, arqdorEligible = false, loading = false } = input;
-  const visible = new Set<Ui20Service>(["home", "crm", "marketing", "marketplace", "support"]);
-  if (isAdmin) visible.add("settings");
-  // Fail closed while module inventory is unavailable; tenant API remains authoritative.
+  // Until module inventory is confirmed, only the universal shell is shown.
+  const visible = new Set<Ui20Service>(["home", "support"]);
   if (loading) return visible;
+  visible.add("crm");
+  visible.add("marketing");
+  visible.add("marketplace");
+  if (isAdmin) visible.add("settings");
   const permitted = (key: string) => {
     const row = modules.find((module) => module.moduleKey === key);
     return Boolean(row?.isEnabled && row.commerciallyEntitled !== false);
