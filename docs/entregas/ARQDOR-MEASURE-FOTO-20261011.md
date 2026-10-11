@@ -124,3 +124,10 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - Upload de foto: após gravar o arquivo, recarrega o checklist mais recente e tenta até cinco vezes anexar a foto por compare-and-swap JSONB, mantendo alterações de outros itens e o limite de 20 fotos por item.
 - **Limitação conhecida:** em conflito persistente, a imagem e o registro da Biblioteca de Mídias podem ficar órfãos; requer rotina de reconciliação/limpeza. Transição de status e edição em paralelo, permissões por negócio e tratamento de falhas do armazenamento ainda exigem testes.
 - **Não validado:** build, teste de concorrência PostgreSQL e homologação; a VPS remota permanece inacessível pelo limite do conector. Nenhum PR, merge ou publicação.
+
+## Lote 15 — reconciliação de uploads e recuperação de conflitos (11/10/2026)
+- `ObjectStorageService.deleteTenantPrivateBuffer`: remoção restrita ao prefixo privado do tenant, para arquivo criado por `savePrivateBuffer`, recusando caminho fora do tenant ou com subpastas inesperadas.
+- No upload, caminho e ID da mídia são rastreados enquanto o objeto ainda não está vinculado. Em conflito permanente após cinco tentativas ou falha no registro da mídia, tenta-se apagar o registro `media_assets` e o objeto privado. A rotina de compensação registra separadamente falhas de limpeza sem esconder a falha principal.
+- Interface diferencia HTTP 409 com código `CHECKLIST_CONFLICT` e orienta recarregar/conferir antes de tentar novamente, sem sobrescrever silenciosamente as medições.
+- **Limites**: limpeza compensatória não é transação distribuída com R2 (falhas temporárias ainda podem deixar órfãos); não há varredura automática de órfãos antigos; editor de elementos ainda precisa preservar estado não salvo durante reload. Persistência validada apenas por inspeção de código, sem execução dos builds, testes ou homologação.
+- Nenhum PR, merge ou produção.
