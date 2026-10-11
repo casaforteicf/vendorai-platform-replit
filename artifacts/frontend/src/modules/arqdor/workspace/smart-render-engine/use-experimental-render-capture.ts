@@ -21,18 +21,18 @@ export function useExperimentalRenderCapture(){
   catch(e){setError(e instanceof Error?e.message:String(e));setOptions(null);}
  },[]);
  const onRenderSceneSnapshot=useCallback((snapshot:RenderSceneSnapshot)=>{
-  const token=coordinator.current.currentToken();
-  if(token!==null&&coordinator.current.acceptSnapshot(token,snapshot))finish(token);
- },[finish]);
+  const token=renderCaptureToken;
+  if(token!==undefined&&coordinator.current.acceptSnapshot(token,snapshot))finish(token);
+ },[finish,renderCaptureToken]);
  const onRenderGeometryExport=useCallback((geometry:GeometryTransfer)=>{
-  const token=coordinator.current.currentToken();
-  if(token!==null&&coordinator.current.acceptGeometry(token,geometry))finish(token);
- },[finish]);
+  const token=renderCaptureToken;
+  if(token!==undefined&&coordinator.current.acceptGeometry(token,geometry))finish(token);
+ },[finish,renderCaptureToken]);
  const onRenderCaptureError=useCallback((message:string)=>{
-  const token=coordinator.current.currentToken();
-  if(token!==null)coordinator.current.fail(token,message);
+  const token=renderCaptureToken;
+  if(token===undefined || !coordinator.current.fail(token,message))return;
   setError(message);setOptions(null);
- },[]);
+ },[renderCaptureToken]);
  return {renderCaptureToken,onRenderSceneSnapshot,onRenderGeometryExport,onRenderCaptureError,
   requestCapture,options,error};
 }
