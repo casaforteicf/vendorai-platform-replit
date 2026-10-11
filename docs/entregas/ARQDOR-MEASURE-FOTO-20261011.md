@@ -118,3 +118,9 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - O `PATCH` de `photoMeasurements` e `surveyElements` continua exigindo referência a foto já vinculada ao item.
 - **Riscos em aberto:** endpoints de fotos/checklist ainda precisam de teste de concorrência para evitar perda de atualizações entre upload e PATCH; autorização mais fina por negócio; verificação do limite de tamanho do body no Express; política de exposição de URLs temporárias; testes do fluxo com duas fotos simultâneas.
 - Sem testes de compilação executados: a VPS via Desktop Commander está online, mas a cota mensal do conector impede comandos. Nenhum PR, merge ou deploy.
+
+## Lote 14 — concorrência de checklist e upload (11/10/2026)
+- PATCH do checklist: atualização otimista por comparação do snapshot JSONB de `items`, com checagem do tenant e do status em andamento; retorna HTTP 409 (`CHECKLIST_CONFLICT`) caso outra gravação tenha alterado os itens antes da persistência.
+- Upload de foto: após gravar o arquivo, recarrega o checklist mais recente e tenta até cinco vezes anexar a foto por compare-and-swap JSONB, mantendo alterações de outros itens e o limite de 20 fotos por item.
+- **Limitação conhecida:** em conflito persistente, a imagem e o registro da Biblioteca de Mídias podem ficar órfãos; requer rotina de reconciliação/limpeza. Transição de status e edição em paralelo, permissões por negócio e tratamento de falhas do armazenamento ainda exigem testes.
+- **Não validado:** build, teste de concorrência PostgreSQL e homologação; a VPS remota permanece inacessível pelo limite do conector. Nenhum PR, merge ou publicação.
