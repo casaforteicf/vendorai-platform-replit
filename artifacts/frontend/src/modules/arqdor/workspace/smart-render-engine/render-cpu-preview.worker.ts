@@ -1,6 +1,7 @@
+import { renderDiffusePreviewStrip, type DiffusePreviewOptions } from "./render-diffuse-preview";
 import { prepareCpuPreview, renderCpuPreview, type CpuPreviewOptions } from "./render-cpu-preview";
 
-type Start = { type: "start"; id: string; options: CpuPreviewOptions; tileRows?: number; samples?: number };
+type Start = { type: "start"; id: string; options: DiffusePreviewOptions; tileRows?: number; samples?: number; mode?: "diagnostic" | "diffuse" };
 type Request = Start | { type: "cancel"; id: string };
 const active = new Set<string>();
 self.onmessage = (event: MessageEvent<Request>) => {
@@ -13,6 +14,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
     self.postMessage({ type: "error", id, message: "Número de amostras inválido (1–4096)" });
     return;
   }
+  if (request.mode && request.mode !== "diffuse" && request.mode !== "diagnostic") { self.postMessage({type:"error",id,message:"Modo inválido"}); return; }
   const rows = Math.max(1, Math.min(32, Math.floor(request.tileRows || 8)));
   active.add(id);
   let prepared: ReturnType<typeof prepareCpuPreview>;
@@ -38,9 +40,11 @@ self.onmessage = (event: MessageEvent<Request>) => {
       if (height <= 0) { y = 0; sample++; setTimeout(run, 0); return; }
       let sums = sumsByRow.get(y);
       if (!sums) { sums = new Float64Array(options.width * height * 3); sumsByRow.set(y, sums); }
-      const frame = renderCpuPreview(options, y, height, prepared, sample);
+      const bytes = request.mode === "diffuse"
+        ? renderDiffusePreviewStrip(options, y, height, prepared, sample)
+        : renderCpuPreview(options, y, height, prepared, sample).rgba;
       for (let i = 0; i < options.width * height; i++)
-        for (let c = 0; c < 3; c++) sums[i * 3 + c] += frame.rgba[i * 4 + c];
+        for (let c = 0; c < 3; c++) sums[i * 3 + c] += bytes[i * 4 + c];
       const rgba = new Uint8ClampedArray(options.width * height * 4);
       for (let i = 0; i < options.width * height; i++) {
         for (let c = 0; c < 3; c++) rgba[i * 4 + c] = Math.round(sums[i * 3 + c] / (sample + 1));
