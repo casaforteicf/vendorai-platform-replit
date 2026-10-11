@@ -32,12 +32,14 @@ export function traceDiffusePath(input:{
   seed?:number;
   /** Reuse one acceleration tree per render job rather than rebuilding per pixel. */
   prepared?:ReturnType<typeof createRenderBvh>;
+  /** Optional precomputed scene index, shared across pixel samples. */
+  meshIndex?:ReadonlyMap<string,GeometryTransfer["meshes"][number]>;
 }) {
   const maxBounces=input.maxBounces??2;
   if(!Number.isInteger(maxBounces)||maxBounces<0||maxBounces>8)throw Error("ARQDOR: profundidade de raios inválida");
   if(input.sky.some(x=>!Number.isFinite(x)||x<0)||!Number.isSafeInteger(input.seed??1))throw Error("ARQDOR: parâmetros de iluminação inválidos");
   const bvh=input.prepared??createRenderBvh(input.geometry);
-  const byMesh=new Map(input.geometry.meshes.map(x=>[x.meshId,x]));
+  const byMesh=input.meshIndex??new Map(input.geometry.meshes.map(x=>[x.meshId,x]));
   const random=rand(input.seed??1);
   let ray:Ray={origin:input.ray.origin,direction:normalize(input.ray.direction)};
   let throughput:Vec3=[1,1,1],radiance:Vec3=[0,0,0];
