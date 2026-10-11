@@ -37,11 +37,16 @@ export function exportRenderGeometry(root: any, options: { maxTriangles?: number
     }
     const geometry = object.geometry;
     const position = geometry?.attributes?.position;
-    if (!position || position.itemSize < 3) return;
+    if (!position || position.itemSize < 3) {
+      warnings.push(`Malha ${object.uuid || object.name || "sem-id"} sem atributo de posição válido`);
+      truncated = true;
+      return;
+    }
     const index = geometry.index;
     const cornerCount = index ? index.count : position.count;
-    if (cornerCount % 3 !== 0) {
-      warnings.push(`Malha ${object.uuid || object.name || "sem-id"} com triângulos incompletos; ignorada`);
+    if (!Number.isInteger(cornerCount) || cornerCount < 0 || cornerCount % 3 !== 0) {
+      warnings.push(`Malha ${object.uuid || object.name || "sem-id"} com triângulos incompletos; rejeitada`);
+      truncated = true;
       return;
     }
     const triangles = cornerCount / 3;
@@ -53,11 +58,23 @@ export function exportRenderGeometry(root: any, options: { maxTriangles?: number
     const matrix = object.matrixWorld;
     if (!matrix?.elements || matrix.elements.some((n: number) => !Number.isFinite(n))) {
       warnings.push("Matriz de transformação inválida");
+      truncated = true;
+      return;
+    }
+    const determinant = object.matrixWorld.determinant?.();
+    if (typeof determinant !== "number" || !Number.isFinite(determinant) || Math.abs(determinant) < 1e-12) {
+      warnings.push("Matriz não inversível, render físico bloqueado");
+      truncated = true;
       return;
     }
     const normalMatrix = object.matrixWorld.clone().invert().transpose();
     const normal = geometry.attributes.normal;
     const uv = geometry.attributes.uv;
+    if (!normal || !uv) {
+      warnings.push(`Malha ${object.uuid || object.name || "sem-id"} sem normais ou UVs completas`);
+      truncated = true;
+      return;
+    }
     const positions: number[] = [];
     const normals: number[] = [];
     const uvs: number[] = [];
@@ -65,6 +82,11 @@ export function exportRenderGeometry(root: any, options: { maxTriangles?: number
     for (let i = 0; i < cornerCount; i++) {
       const vertex = index ? index.getX(i) : i;
       const x = position.getX(vertex), y = position.getY(vertex), z = position.getZ(vertex);
+      if (![x,y,z].every(Number.isFinite)) {
+        warnings.push("Vértice inválido; geometria rejeitada");
+        truncated = true;
+        break;
+      }
       positions.push(m[0]*x+m[4]*y+m[8]*z+m[12], m[1]*x+m[5]*y+m[9]*z+m[13], m[2]*x+m[6]*y+m[10]*z+m[14]);
       if (normal) {
         const nx = normal.getX(vertex), ny = normal.getY(vertex), nz = normal.getZ(vertex);
@@ -76,6 +98,7 @@ export function exportRenderGeometry(root: any, options: { maxTriangles?: number
       } else normals.push(0,0,0);
       uvs.push(uv ? uv.getX(vertex) : 0, uv ? uv.getY(vertex) : 0);
     }
+    if (truncated) return;
     const material = Array.isArray(object.material) ? object.material[0] : object.material;
     meshes.push({ meshId: String(object.uuid || object.name || meshes.length), materialId: material?.uuid || null,
       positions, normals, uvs, triangles });
