@@ -8905,6 +8905,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
                   {editorView === "model3d" && (
                     <ConceptModel3D
+                      architecturalModel={architecturalModel}
                       lotWidth={lotWidth}
                       lotDepth={lotDepth}
                       activeFloor={activeFloor}
@@ -9425,11 +9426,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       <button
                         type="button"
                         onClick={() => splitCustomWall(selectedCustomWall.id)}
-                        disabled={openingCrossesWallMidpoint(Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1), safeCustomOpenings.filter((opening) => opening.wallId === selectedCustomWall.id))}
+                        disabled={Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1) < 1 || openingCrossesWallMidpoint(Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1), safeCustomOpenings.filter((opening) => opening.wallId === selectedCustomWall.id))}
                         title="Dividir ao meio; mova aberturas que atravessam o ponto de divisão antes de dividir"
-                        disabled={Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1) < 1}
                         className="h-9 rounded-lg border px-3 text-xs font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-                        title="Dividir a parede no ponto médio"
                       >
                         Dividir
                       </button>
@@ -11147,6 +11146,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     </div>
   );
 }
+
 
 
 

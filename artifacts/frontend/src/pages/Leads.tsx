@@ -434,12 +434,25 @@ export default function Leads() {
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; lead: Lead | null }>({ open: false, lead: null });
   const [deleteMotivo, setDeleteMotivo] = useState("");
 
-  const { data: leads, isLoading: leadsLoading } = useListTenantLeads(tenantId, undefined, {
-    query: {
-      enabled: !!tenantId && viewMode === "ativos",
-      queryKey: getListTenantLeadsQueryKey(tenantId),
-      staleTime: 30_000,
-      refetchOnWindowFocus: false,
+  // CRM-22: reaproveita o endpoint de listagem, com filtros processados no servidor.
+  // "high_risk" e "quente" são categorias calculadas na tela, não status persistidos.
+  const backendStatus = statusFilter !== "all" && statusFilter !== "high_risk" && statusFilter !== "quente"
+    ? statusFilter : "";
+  const backendSearch = search.trim();
+  const { data: leads, isLoading: leadsLoading } = useQuery<Lead[]>({
+    queryKey: [...getListTenantLeadsQueryKey(tenantId), "crm-22", backendStatus, backendSearch],
+    enabled: !!tenantId && viewMode === "ativos",
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (backendStatus) params.set("status", backendStatus);
+      if (backendSearch) params.set("busca", backendSearch);
+      const response = await fetch(`/api/tenants/${encodeURIComponent(tenantId)}/leads?${params}`, {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Não foi possível carregar os leads");
+      return response.json() as Promise<Lead[]>;
     },
   });
 
@@ -448,7 +461,7 @@ export default function Leads() {
     { incluirExcluidos: "apenas" },
     {
       query: {
-        enabled: !!tenantId && viewMode === "excluidos",
+        enabled: !!tenantId && isAdmin && viewMode === "excluidos",
         queryKey: getListTenantLeadsQueryKey(tenantId, { incluirExcluidos: "apenas" }),
         staleTime: 30_000,
         refetchOnWindowFocus: false,
@@ -530,7 +543,10 @@ export default function Leads() {
     },
     onSuccess: (lead) => {
       queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
+      queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId, { incluirExcluidos: "apenas" }) });
       queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
+      // CRM-08: o card do lead excluído também precisa sumir do pipeline operacional (work-cards).
+      queryClient.invalidateQueries({ queryKey: ["work-cards", tenantId] });
       toast({ title: "Lead excluído", description: `${lead.nome} foi movido pra aba Excluídos.` });
       setDeleteDialog({ open: false, lead: null });
       setDeleteMotivo("");
@@ -540,10 +556,9 @@ export default function Leads() {
 
   const restoreLead = useMutation({
     mutationFn: async (lead: Lead) => {
-      const response = await fetch(`/api/leads/${lead.id}`, {
-        method: "PATCH",
+      const response = await fetch(`/api/leads/${lead.id}/restore`, {
+        method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ excluidoEm: null, motivoExclusao: null }),
       });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
@@ -554,6 +569,9 @@ export default function Leads() {
     onSuccess: (lead) => {
       queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
       queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId, { incluirExcluidos: "apenas" }) });
+      queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
+      // CRM-08: lead restaurado volta a aparecer no pipeline operacional (work-cards).
+      queryClient.invalidateQueries({ queryKey: ["work-cards", tenantId] });
       toast({ title: "Lead restaurado", description: `${lead.nome} voltou pra lista ativa.` });
     },
     onError: (error: Error) => toast({ title: "Não foi possível restaurar", description: error.message, variant: "destructive" }),
@@ -638,6 +656,7 @@ export default function Leads() {
       const matchesSearch =
         !q ||
         lead.nome.toLocaleLowerCase("pt-BR").includes(q) ||
+        lead.documento?.toLocaleLowerCase("pt-BR").includes(q) ||
         lead.email?.toLocaleLowerCase("pt-BR").includes(q) ||
         lead.empresa?.toLocaleLowerCase("pt-BR").includes(q) ||
         lead.telefone?.toLocaleLowerCase("pt-BR").includes(q) ||
@@ -852,7 +871,7 @@ export default function Leads() {
 
       <div className="flex items-center gap-2">
         <Button variant={viewMode === "ativos" ? "default" : "outline"} size="sm" onClick={() => setViewMode("ativos")}>Ativos</Button>
-        <Button
+        {isAdmin && <Button
           variant={viewMode === "excluidos" ? "default" : "outline"}
           size="sm"
           onClick={() => setViewMode("excluidos")}
@@ -860,7 +879,7 @@ export default function Leads() {
         >
           <Trash2 className="h-3.5 w-3.5" /> Excluídos
           {excludedLeads && excludedLeads.length > 0 && <Badge variant="secondary" className="ml-0.5">{excludedLeads.length}</Badge>}
-        </Button>
+        </Button>}
       </div>
 
       {viewMode === "excluidos" ? (
@@ -899,7 +918,7 @@ export default function Leads() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 data-testid="input-search-leads"
-                placeholder="Buscar por nome, empresa, segmento, telefone, e-mail ou endereço..."
+                placeholder="Buscar por nome ou documento..."
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 className="pl-9"
@@ -972,6 +991,7 @@ export default function Leads() {
                         <div><EditableSegmentBadge lead={lead} /></div>
                         <div className="flex items-center gap-1.5">
                           {lead.assignedTo && userMap.get(lead.assignedTo) && <p className="text-xs text-muted-foreground truncate">👤 {userMap.get(lead.assignedTo)}</p>}
+                          {(lead as typeof lead & { representativeFunctionId?: string | null }).representativeFunctionId && <p className="text-xs text-muted-foreground truncate">🏢 Empresa representante</p>}
                           {isAdmin && (
                             <button
                               title="Atribuir responsável"
@@ -1127,7 +1147,7 @@ export default function Leads() {
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               <span className="flex items-center gap-2">
-                                <span>{lead.assignedTo ? userMap.get(lead.assignedTo) ?? "—" : "—"}</span>
+                                <span>{lead.assignedTo ? userMap.get(lead.assignedTo) ?? "—" : (lead as typeof lead & { representativeFunctionId?: string | null }).representativeFunctionId ? "Empresa representante" : "—"}</span>
                                 {isAdmin && (
                                   <button
                                     title="Atribuir responsável"
@@ -1195,7 +1215,6 @@ export default function Leads() {
             <Select value={assignSelectedUser} onValueChange={setAssignSelectedUser}>
               <SelectTrigger><SelectValue placeholder="Selecionar vendedor..." /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="__none__">Sem responsável</SelectItem>
                 {tenantUsers.map((tenantUser) => (
                   <SelectItem key={tenantUser.id} value={tenantUser.id}>{tenantUser.name || tenantUser.email || tenantUser.id}</SelectItem>
                 ))}
@@ -1205,9 +1224,9 @@ export default function Leads() {
               <Button variant="outline" size="sm" onClick={() => setAssignDialog({ open: false, leadId: "", currentAssignedTo: null })}>Cancelar</Button>
               <Button
                 size="sm"
-                disabled={updateLead.isPending}
+                disabled={updateLead.isPending || !assignSelectedUser}
                 onClick={() => {
-                  const newAssignedTo = assignSelectedUser === "__none__" ? null : assignSelectedUser || null;
+                  const newAssignedTo = assignSelectedUser;
                   updateLead.mutate(
                     { id: assignDialog.leadId, data: { assignedTo: newAssignedTo } },
                     {

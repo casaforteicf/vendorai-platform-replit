@@ -1,3 +1,5 @@
+import type { ArchitecturalModel } from "./conceptArchitecturalModel";
+import { architecturalFloorCells, architecturalSceneGeometry } from "./conceptArchitecturalViews";
 import { objectTransformPatch } from "./conceptObjectTransform";
 import { sceneGesture } from "./conceptSceneGesture";
 import { exposedWallFaces } from "./conceptWallSurfaces";
@@ -47,6 +49,7 @@ type Props = {
   lotDepth: number;
   activeFloor: number;
   levels: ConceptModelLevel[];
+  architecturalModel?: ArchitecturalModel;
   roof: "platibanda" | "aparente" | "misto";
   facadeDesign?: FacadeDesignState;
   frontSide?: SiteFrontSide;
@@ -506,6 +509,7 @@ export default function ConceptModel3D({
   lotDepth,
   activeFloor,
   levels,
+  architecturalModel,
   roof,
   facadeDesign,
   frontSide = "bottom",
@@ -941,6 +945,7 @@ export default function ConceptModel3D({
   const renderRoofFloor = (floor: number) => {
     if (!showRoof || !showAllFloors || interiorMode) return null;
     const topFloor = floor >= Math.max(0, ...levels.map((level) => level.floor));
+    if ((topFloor && architecturalModel?.roofs.length) || architecturalModel?.slabs.some(slab => slab.floor === floor + 1)) return null;
     if (topFloor && roof !== "platibanda") return null;
     const slabs = roofPlan.slabs.filter((slab) => slab.floor === floor);
     const edges = roofPlan.edges.filter((edge) => edge.floor === floor);
@@ -1585,6 +1590,7 @@ export default function ConceptModel3D({
         lotDepth={lotDepth}
         activeFloor={activeFloor}
         levels={levels}
+        architecturalModel={architecturalModel}
         objects={Array.isArray(objects) ? objects : []}
         selectedObjectId={selectedObjectId}
         selectedWallId={selectedWallId}
@@ -1886,7 +1892,7 @@ export default function ConceptModel3D({
             <g key={`level-${level.floor}`} opacity={!showAllFloors && level.floor !== activeFloor ? 0.2 : 1}>
               {level.closedSpaces.map((space) => (
                 <g key={`${level.floor}-${space.id}`}>
-                  {space.cells.map((cell, index) => (
+                  {space.cells.flatMap(cell => architecturalFloorCells(architecturalModel, level.floor, cell)).map((cell, index) => (
                     <polygon
                       key={`${space.id}-slab-${index}`}
                       points={points(quad(
@@ -2191,7 +2197,7 @@ export default function ConceptModel3D({
 
                 return level.closedSpaces.flatMap((space) =>
                   space.cells.flatMap((cell, index) =>
-                    slabPiecesForCell(cell, lowerStairs).map((piece, pieceIndex) => (
+                    architecturalFloorCells(architecturalModel, level.floor, cell).flatMap(piece => slabPiecesForCell(piece, lowerStairs)).map((piece, pieceIndex) => (
                       <polygon
                         key={`${space.id}-floor-slab-${index}-${pieceIndex}`}
                         points={points(quad(
@@ -2409,6 +2415,21 @@ export default function ConceptModel3D({
             );
           })}
 
+        {architecturalModel && (() => {
+          const geometry = architecturalSceneGeometry(architecturalModel, activeFloor, showAllFloors, showRoof && !interiorMode);
+          const faces = geometry.boxes.flatMap(box => facadeBoxFaces({
+            id: box.id, width: box.width, depth: box.depth, height: box.height,
+            x: box.x + box.width / 2, y: box.z + box.height / 2, z: box.y + box.depth / 2,
+            materialId: "paint-offwhite", opacity: 1,
+          }).map(vertices => ({ id: box.id, kind: box.kind, vertices }))).concat(geometry.roofFaces.map(face => ({ ...face, kind: "roof-plane" as const })));
+          return faces.map((face, index) => (
+            <polygon key={`architecture-${face.id}-${index}`} pointerEvents="none"
+              points={points(face.vertices.map(point => project(point, rotation, projectionWidth, projectionDepth, zoom)))}
+              fill={face.kind === "roof-plane" ? "#9a6545" : face.kind === "stair-step" ? "#94a3b8" : "#cbd5e1"}
+              stroke="#64748b" strokeWidth="0.025" />
+          ));
+        })()}
+
         {showAllFloors && !interiorMode && facadeDesign && buildFacadeMeshBoxes(
           facadeDesign,
           { minX: buildingBounds.minX, maxX: buildingBounds.maxX, minZ: buildingBounds.minY, maxZ: buildingBounds.maxY },
@@ -2429,7 +2450,7 @@ export default function ConceptModel3D({
           );
         })}
 
-        {showRoof && showAllFloors && !interiorMode && topBounds && roof === "platibanda" && roofPlan.slabs.length === 0 && (
+        {showRoof && !architecturalModel?.roofs.length && showAllFloors && !interiorMode && topBounds && roof === "platibanda" && roofPlan.slabs.length === 0 && (
           <polygon
             points={points(quad(
               topBounds.minX,
@@ -2446,7 +2467,7 @@ export default function ConceptModel3D({
         )}
         {roofPlan.slabs.length > 0 && renderRoofFloor(maxLevel)}
 
-        {showRoof && showAllFloors && !interiorMode && topBounds && (roof === "aparente" || roof === "misto") && (() => {
+        {showRoof && !architecturalModel?.roofs.length && showAllFloors && !interiorMode && topBounds && (roof === "aparente" || roof === "misto") && (() => {
           const midY = (topBounds.minY + topBounds.maxY) / 2;
           const ridgeZ = topZ + Math.min(2.2, (topBounds.maxY - topBounds.minY) * 0.22);
           const leftPlane = [
@@ -2488,5 +2509,6 @@ export default function ConceptModel3D({
     </div>
   );
 }
+
 
 

@@ -36,7 +36,7 @@ export function resolveJarvisMissionNaturalIntent(text: string): JarvisMissionNa
     if (objective.length >= 3) return { type: "create_mission", objective };
   }
 
-  if (/^(?:jarvis[, ]+)?(?:quais|liste|listar|mostre|mostrar|como est[aã]o) (?:as |minhas |nossas )?miss[oõ]es\b/i.test(raw)
+  if (/^(?:jarvis[, ]+)?(?:quais|liste|listar|mostre|mostrar|como est[aã]o) (?:s[aã]o )?(?:as |minhas |nossas )?miss[oõ]es\b/i.test(raw)
       || /^(?:jarvis[, ]+)?(?:minhas|nossas) miss[oõ]es\??$/i.test(raw)) {
     return { type: "list_missions" };
   }

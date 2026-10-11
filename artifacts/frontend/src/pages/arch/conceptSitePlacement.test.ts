@@ -69,55 +69,6 @@ describe("conceptSitePlacement · etapa 91", () => {
     expect(recommended?.score).toBeGreaterThanOrEqual(balanced?.score ?? 0);
     expect(recommended?.reasons?.some((reason) => reason.includes("norte"))).toBe(true);
   });
-      setbackFront: 0,
-      setbackRear: 0,
-      setbackLeft: 0,
-      setbackRight: 0,
-      lotBoundary: {
-        kind: "polygon",
-        points: [
-          { x: 0, y: 0 },
-          { x: 20, y: 0 },
-          { x: 16, y: 30 },
-          { x: 2, y: 30 },
-        ],
-      },
-    });
-    const boundary = getSiteBoundaryPoints(20, 30, placement);
-    const envelope = getBuildableEnvelope(20, 30, placement);
-    expect(boundary).toHaveLength(4);
-    expect(polygonArea(boundary)).toBeCloseTo(510, 4);
-    expect(envelope.area).toBeCloseTo(510, 4);
-    expect(pointInSitePolygon({ x: 10, y: 15 }, envelope.polygon)).toBe(true);
-    expect(pointInSitePolygon({ x: 19.5, y: 29 }, envelope.polygon)).toBe(false);
-  });
-  it("reposiciona a casa para dentro do polígono irregular", () => {
-      setbackFront: 0,
-      setbackRear: 0,
-      setbackLeft: 0,
-      setbackRight: 0,
-      lotBoundary: {
-        kind: "polygon",
-        points: [
-          { x: 0, y: 0 },
-          { x: 20, y: 0 },
-          { x: 14, y: 30 },
-          { x: 4, y: 30 },
-        ],
-      },
-    });
-    const bounds = { minX: 0, minY: 0, maxX: 6, maxY: 5, width: 6, depth: 5 };
-    const clamped = clampBuildingOrigin(14, 24, bounds, 20, 30, placement);
-    const envelope = getBuildableEnvelope(20, 30, placement);
-    expect(clamped.fits).toBe(true);
-    expect([
-      { x: clamped.x, y: clamped.y },
-      { x: clamped.x + bounds.width, y: clamped.y },
-      { x: clamped.x + bounds.width, y: clamped.y + bounds.depth },
-      { x: clamped.x, y: clamped.y + bounds.depth },
-    ].every((point) => pointInSitePolygon(point, envelope.polygon))).toBe(true);
-  });
-
   it("preserva um lote irregular real e calcula sua área", () => {
     const placement = normalizeSitePlacement({
       ...DEFAULT_SITE_PLACEMENT,
@@ -175,3 +126,4 @@ describe("conceptSitePlacement · etapa 91", () => {
     ].every((point) => pointInSitePolygon(point, envelope.polygon))).toBe(true);
   });
 });
+

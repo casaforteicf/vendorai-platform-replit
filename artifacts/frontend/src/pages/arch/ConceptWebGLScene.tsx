@@ -1,3 +1,5 @@
+import type { ArchitecturalModel } from "./conceptArchitecturalModel";
+import { architecturalFloorCells, architecturalSceneGeometry } from "./conceptArchitecturalViews";
 import { objectTransformPatch } from "./conceptObjectTransform";
 import { sceneGesture } from "./conceptSceneGesture";
 import { isWalkEditingTarget, walkDirection } from "./conceptWalkInput";
@@ -6,6 +8,10 @@ import { exposedWallFaces } from "./conceptWallSurfaces";
 import { partitionOrthogonalWallSolids } from "./conceptWallSolidUnion";
 import { splitWallVoids, openingVerticalBounds } from "./conceptWallVoids";
 import { buildFacadeMeshBoxes } from "./conceptFacadeMeshes";
+import { buildWallUnionPipeline } from "./conceptWallMeshPipeline";
+import { wallMeshToWebGL } from "./conceptWallWebGLGeometry";
+import { resolveWallUnionPick } from "./conceptWallUnionSelection";
+import type { WallUnionMesh } from "./conceptWallUnion";
 import { getFacadeMaterial, type FacadeDesignState } from "./conceptFacadeDesign";
 import { buildRoofPlan } from "./conceptRoofPlan";
 import type { SiteFrontSide } from "./conceptSitePlacement";
@@ -25,6 +31,7 @@ type Props = {
   lotDepth: number;
   activeFloor: number;
   levels: ConceptModelLevel[];
+  architecturalModel?: ArchitecturalModel;
   facadeDesign?: FacadeDesignState;
   frontSide?: SiteFrontSide;
   objects: ConceptPlanObject[];
@@ -119,14 +126,7 @@ type Runtime = {
   };
   contentFramed: boolean;
   contentCenter?: { x: number; y: number; z: number; span: number };
-  walkWalls: Array<{
-    x1: number;
-    y1: number;
-    x2: number;
-    y2: number;
-    thickness: number;
-    doorGaps: Array<{ center: number; halfWidth: number }>;
-  }>;
+  walkWalls: ReturnType<typeof walkWall>[];
 };
 
 // "Frente" e "Iso" devem olhar para a fachada da rua. O ângulo 0 da câmera fica do lado de baixo
@@ -280,6 +280,7 @@ export default function ConceptWebGLScene({
   lotDepth,
   activeFloor,
   levels,
+  architecturalModel,
   objects,
   selectedObjectId = null,
   selectedWallId = null,
@@ -589,7 +590,7 @@ export default function ConceptWebGLScene({
         const handlePointer = (event: MouseEvent) => {
           const { paintTool, onPaintObject, onPaintWall, onPaintFloor, onSelectObject, onSelectWall, onSelectCustomWall, onSelectClosedSpace, onSelectOpening } = interactionRef.current;
           if (event.button !== 0 || !gesture.canClick() || runtime.navigationMode !== "orbit") return;
-          if (!runtimeRef.current || runtime.transform?.dragging || runtime.navigationMode === "walk") return;
+          if (!runtimeRef.current || runtime.transform?.dragging) return;
           const rect = renderer.domElement.getBoundingClientRect();
           pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
           pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -605,7 +606,14 @@ export default function ConceptWebGLScene({
           ) current = current.parent;
 
           const objectId = current?.userData?.objectId as string | undefined;
-          const wallId = current?.userData?.wallId as string | undefined;
+          const unionMesh = current?.userData?.wallUnionMesh as WallUnionMesh | undefined;
+          const unionPick = unionMesh
+            ? resolveWallUnionPick(unionMesh, hit?.faceIndex ?? -1)
+            : null;
+          // Shared junction faces must not silently select the wrong wall.
+          const wallId = unionPick
+            ? (unionPick.kind === "wall" ? unionPick.wallId : undefined)
+            : current?.userData?.wallId as string | undefined;
           const spaceId = current?.userData?.spaceId as string | undefined;
           const openingId = current?.userData?.openingId as string | undefined;
 
@@ -624,7 +632,7 @@ export default function ConceptWebGLScene({
             onSelectOpening?.(null);
           } else if (wallId) {
             onSelectObject?.(null);
-            if (current?.userData?.customWall) {
+            if (current?.userData?.customWall || (Array.isArray(current?.userData?.customWallIds) && current.userData.customWallIds.includes(wallId))) {
               onSelectCustomWall?.(wallId);
               onSelectWall?.(null);
             } else {
@@ -1030,7 +1038,7 @@ export default function ConceptWebGLScene({
           includePoint(wall.x2, wall.y2);
         }
         for (const space of level.closedSpaces ?? []) {
-          for (const cell of space.cells ?? []) {
+          for (const cell of (space.cells ?? []).flatMap(cell => architecturalFloorCells(architecturalModel, level.floor, cell))) {
             includePoint(cell.x, cell.y);
             includePoint(cell.x + cell.width, cell.y + cell.height);
           }
@@ -1096,7 +1104,7 @@ export default function ConceptWebGLScene({
       };
 
       for (const space of level.closedSpaces ?? []) {
-        for (const cell of space.cells ?? []) {
+        for (const cell of (space.cells ?? []).flatMap(cell => architecturalFloorCells(architecturalModel, level.floor, cell))) {
           const x1 = cell.x;
           const y1 = cell.y;
           const x2 = cell.x + cell.width;
@@ -1108,7 +1116,7 @@ export default function ConceptWebGLScene({
         }
       }
 
-      const existing = [...(level.walls ?? []), ...(level.customWalls ?? [])];
+      const existing = [...(level.walls ?? []).map(wall => ({ ...wall, thickness: 0.15 })), ...(level.customWalls ?? [])];
       return [...edges.values()]
         .filter((edge) => edge.count === 1)
         .filter((edge) => {
@@ -1352,7 +1360,7 @@ export default function ConceptWebGLScene({
       for (const space of level.closedSpaces ?? []) {
         const floorMaterialId = level.floorMaterials?.[space.id];
         const floorMaterial = materialColor(floorMaterialId);
-        for (const cell of space.cells ?? []) {
+        for (const cell of (space.cells ?? []).flatMap(cell => architecturalFloorCells(architecturalModel, level.floor, cell))) {
           const floorMesh = makeBox(
             modelRoot,
             cell.width,
@@ -1369,7 +1377,7 @@ export default function ConceptWebGLScene({
 
           // Close the architectural shell in exterior/all-floor mode.
           // The top slab follows the real room footprint instead of the lot dimensions.
-          if (!interiorMode && showAllFloors) {
+          if (!interiorMode && showAllFloors && !architecturalModel?.slabs.some(slab => slab.floor === level.floor + 1)) {
             const ceilingMesh = makeBox(
               modelRoot,
               cell.width,
@@ -1386,16 +1394,71 @@ export default function ConceptWebGLScene({
         }
       }
 
-      const joinedWalls = partitionOrthogonalWallSolids([
-        ...(level.walls ?? []).map(wall => ({ ...wall, thickness: 0.15 })),
-        ...(level.customWalls ?? []),
-      ], level.openings ?? [], 2.8);
-      const wallSurfaces = exposedWallFaces(joinedWalls);
-      for (const wall of level.walls ?? []) {
-        addWall(modelRoot, wall, level.floor, level.openings ?? [], level.wallMaterials?.[wall.id], false, joinedWalls.filter(piece => piece.wall.id === wall.id), wallSurfaces);
+      const authoredWalls = [...(level.walls ?? []).map(wall => ({ ...wall, thickness: 0.15 })), ...(level.customWalls ?? [])];
+      // Conservative opt-in for the unified boundary. Preserve the existing
+      // per-wall renderer whenever openings, diagonals, or mixed finishes require
+      // independent meshes. A unified mesh is never rendered alongside those walls.
+      const sharedMaterialIds = new Set(authoredWalls.map(wall => level.wallMaterials?.[wall.id] ?? "pintura-branca"));
+      const unionEligible = authoredWalls.length > 1
+        && (level.openings ?? []).length === 0
+        && sharedMaterialIds.size === 1
+        && authoredWalls.every(wall =>
+          [wall.x1, wall.y1, wall.x2, wall.y2, wall.thickness ?? 0.15].every(Number.isFinite)
+          && (Math.abs(wall.y2 - wall.y1) < 1e-7 || Math.abs(wall.x2 - wall.x1) < 1e-7)
+          && Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1) >= 0.05
+        );
+      let displayedUnion = false;
+      if (unionEligible) {
+        const union = buildWallUnionPipeline(authoredWalls.map(wall => ({
+          id: wall.id, floor: level.floor,
+          x1: wall.x1, y1: wall.y1, x2: wall.x2, y2: wall.y2,
+          thickness: wall.thickness ?? 0.15, height: 2.8,
+          baseElevation: floorBase + 0.16,
+        })), []);
+        if (union.warnings.length === 0 && union.meshes.length === 1 && union.meshes[0].indices.length) {
+          try {
+          const indexed = union.meshes[0];
+          const mapped = wallMeshToWebGL(indexed, lotWidth, lotDepth);
+          const geometry = new THREE.BufferGeometry();
+          geometry.setAttribute("position", new THREE.Float32BufferAttribute(mapped.positions, 3));
+          geometry.setIndex(mapped.indices);
+          geometry.computeVertexNormals();
+          const materialId = [...sharedMaterialIds][0];
+          const definition = getConceptPBRMaterial(materialId);
+          const material = definition
+            ? createConceptPBRMaterial(THREE, definition, { repeatScale: 1 })
+            : makeMat(materialColor(materialId), interiorMode, interiorMode ? 0.58 : 1);
+          if (interiorMode) {
+            material.transparent = true;
+            material.opacity = 0.58;
+            material.depthWrite = false;
+          }
+          const mesh = new THREE.Mesh(geometry, material);
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          mesh.userData.wallUnionMesh = indexed;
+          mesh.userData.wallId = indexed.wallId;
+          mesh.userData.customWallIds = (level.customWalls ?? []).map(wall => wall.id);
+          modelRoot.add(mesh);
+          runtime.pickables.push(mesh);
+          displayedUnion = true;
+          } catch (wallUnionWebglError) {
+            console.warn("[ConceptWebGLScene] wallMeshToWebGL falhou (uniao); renderer legado assumindo", wallUnionWebglError);
+          }
+        }
       }
-      for (const wall of level.customWalls ?? []) {
-        addWall(modelRoot, wall, level.floor, level.openings ?? [], level.wallMaterials?.[wall.id], true, joinedWalls.filter(piece => piece.wall.id === wall.id), wallSurfaces);
+      if (!displayedUnion) {
+        const joinedWalls = partitionOrthogonalWallSolids([
+          ...(level.walls ?? []).map(wall => ({ ...wall, thickness: 0.15 })),
+          ...(level.customWalls ?? []),
+        ], level.openings ?? [], 2.8);
+        const wallSurfaces = exposedWallFaces(joinedWalls);
+        for (const wall of level.walls ?? []) {
+          addWall(modelRoot, wall, level.floor, level.openings ?? [], level.wallMaterials?.[wall.id], false, joinedWalls.filter(piece => piece.wall.id === wall.id), wallSurfaces);
+        }
+        for (const wall of level.customWalls ?? []) {
+          addWall(modelRoot, wall, level.floor, level.openings ?? [], level.wallMaterials?.[wall.id], true, joinedWalls.filter(piece => piece.wall.id === wall.id), wallSurfaces);
+        }
       }
 
       // Geometry guard: recover missing external envelope from the detected room grid.
@@ -1597,7 +1660,33 @@ export default function ConceptWebGLScene({
       loadCatalogModel(object, root);
     }
 
-    if (showRoof && !interiorMode && showAllFloors) {
+    if (architecturalModel) {
+      const geometry = architecturalSceneGeometry(architecturalModel, activeFloor, showAllFloors, showRoof && !interiorMode);
+      for (const box of geometry.boxes) {
+        const mesh = makeBox(modelRoot, box.width, box.height, box.depth,
+          box.x + box.width / 2 - lotWidth / 2, box.z + box.height / 2,
+          box.y + box.depth / 2 - lotDepth / 2, box.kind === "stair-step" ? 0x94a3b8 : 0xcbd5e1);
+        mesh.userData.architecturalElementId = box.id;
+      }
+      for (const face of geometry.roofFaces) {
+        const vertices = face.vertices;
+        const positions = [0, 1, 2, 0, 2, 3].flatMap(index => {
+          const point = vertices[index];
+          return [point.x - lotWidth / 2, point.z, point.y - lotDepth / 2];
+        });
+        const buffer = new THREE.BufferGeometry();
+        buffer.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        buffer.computeVertexNormals();
+        const material = makeMat(0x9a6545);
+        material.side = THREE.DoubleSide;
+        const mesh = new THREE.Mesh(buffer, material);
+        mesh.castShadow = true; mesh.receiveShadow = true;
+        mesh.userData.architecturalElementId = face.id;
+        modelRoot.add(mesh);
+      }
+    }
+
+    if (showRoof && !architecturalModel?.roofs.length && !interiorMode && showAllFloors) {
       const highestFloor = Math.max(0, ...levels.map((level) => level.floor));
       const roofPlan = buildRoofPlan(levels.map((level) => ({
         floor: level.floor,
@@ -1810,6 +1899,7 @@ export default function ConceptWebGLScene({
     engineState,
     interiorMode,
     levels,
+    architecturalModel,
     lightingMode,
     renderQuality,
     lotDepth,
@@ -2240,4 +2330,5 @@ export default function ConceptWebGLScene({
     </div>
   );
 }
+
 

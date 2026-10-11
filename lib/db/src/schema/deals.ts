@@ -108,6 +108,9 @@ export const dealsTable = pgTable("deals", {
   // chave de etapa: { "qualificado": { "qualif_situacao": "..." }, ... }.
   // Alimenta roteiro de reunião, geração de proposta e argumento de venda.
   respostasEtapas: jsonb("respostas_etapas").$type<Record<string, Record<string, string>>>().notNull().default({}),
+  archivedAt: timestamp("archived_at"),
+  archivedBy: text("archived_by"),
+  archiveReason: text("archive_reason"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

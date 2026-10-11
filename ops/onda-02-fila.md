@@ -1,0 +1,253 @@
+# Fila de execução — ONDA 02 (operação comercial)
+
+Backlog ordenado da ONDA 02 (ref. issue #3463). O executor (loop autônomo ou agente) pega o
+próximo `- [ ]`, **finaliza a spec no formato de `docs/PADRAO-TAREFA-VENDI.md` contra o código
+real**, implementa, roda os gates (tsc + build.mjs + vite) e abre o PR. Marca `- [x]` ao entregar.
+
+- **Total: 76 itens.** Ordem sugerida: CRM → ORC → OBR → COM → PDV (mais independentes primeiro).
+- `verification_required` = conferir no código o que já existe antes de implementar (pode já estar feito).
+- Execução parcial (CRM-21, ORC-13, OBR-02) compartilha a mesma base — fazer em sequência, não em paralelo.
+
+## CRM — Relacionamento  (24 itens)
+
+- [ ] **CRM-01 — Cadastro PF/PJ e envolvidos** · _verification_required_
+      - o que: Especificar entidades, relacionamentos e restrições do cadastro/negócio especificamente para “Cadastro PF/PJ e envolvidos”.
+      - aceite: demonstração do fluxo “Cadastro PF/PJ e envolvidos”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **CRM-02 — Casal com duas qualificações** · _code_in_pr_
+      - o que: Especificar entidades, relacionamentos e restrições do cadastro/negócio especificamente para “Casal com duas qualificações”.
+      - aceite: demonstração do fluxo “Casal com duas qualificações”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **CRM-03 — Múltiplos contatos do negócio** · _verification_required_
+      - o que: Especificar entidades, relacionamentos e restrições do cadastro/negócio especificamente para “Múltiplos contatos do negócio”.
+      - aceite: demonstração do fluxo “Múltiplos contatos do negócio”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **CRM-04 — Múltiplos negócios por cliente** · _verification_required_
+      - o que: Especificar entidades, relacionamentos e restrições do cadastro/negócio especificamente para “Múltiplos negócios por cliente”.
+      - aceite: demonstração do fluxo “Múltiplos negócios por cliente”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **CRM-05 — Responsável obrigatório** · _verification_required_
+      - o que: Especificar entidades, relacionamentos e restrições do cadastro/negócio especificamente para “Responsável obrigatório”.
+      - aceite: demonstração do fluxo “Responsável obrigatório”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **CRM-06 — Empresa representante responsável** · _verification_required_
+      - o que: Especificar entidades, relacionamentos e restrições do cadastro/negócio especificamente para “Empresa representante responsável”.
+      - aceite: demonstração do fluxo “Empresa representante responsável”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **CRM-07 — Comissão representante privada** · _verification_required_
+      - o que: Especificar entidades, relacionamentos e restrições do cadastro/negócio especificamente para “Comissão representante privada”.
+      - aceite: demonstração do fluxo “Comissão representante privada”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **CRM-08 — Exclusão administrativa soft delete** · _verification_required_
+      - o que: Especificar entidades, relacionamentos e restrições do cadastro/negócio especificamente para “Exclusão administrativa soft delete”.
+      - aceite: demonstração do fluxo “Exclusão administrativa soft delete”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **CRM-09 — Não Lead no aquecimento** · _verification_required_
+      - o que: Especificar entidades, relacionamentos e restrições do cadastro/negócio especificamente para “Não Lead no aquecimento”.
+      - aceite: demonstração do fluxo “Não Lead no aquecimento”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **CRM-10 — Classificações configuráveis** · _verification_required_
+      - o que: Especificar entidades, relacionamentos e restrições do cadastro/negócio especificamente para “Classificações configuráveis”.
+      - aceite: demonstração do fluxo “Classificações configuráveis”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **CRM-11 — Devolução orçamento qualificado** · _verification_required_
+      - o que: Especificar entidades, relacionamentos e restrições do cadastro/negócio especificamente para “Devolução orçamento qualificado”.
+      - aceite: demonstração do fluxo “Devolução orçamento qualificado”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **CRM-12 — Movimentação de etapas** · _verification_required_
+      - o que: Especificar entidades, relacionamentos e restrições do cadastro/negócio especificamente para “Movimentação de etapas”.
+      - aceite: demonstração do fluxo “Movimentação de etapas”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **CRM-13 — Tarefas automáticas por etapa** · _verification_required_
+      - o que: Especificar entidades, relacionamentos e restrições do cadastro/negócio especificamente para “Tarefas automáticas por etapa”.
+      - aceite: demonstração do fluxo “Tarefas automáticas por etapa”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **CRM-14 — Qualificação IA decisor** · _verification_required_
+      - o que: Especificar entidades, relacionamentos e restrições do cadastro/negócio especificamente para “Qualificação IA decisor”.
+      - aceite: demonstração do fluxo “Qualificação IA decisor”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **CRM-15 — Nome contato agenda WhatsApp** · _verification_required_
+      - o que: Especificar entidades, relacionamentos e restrições do cadastro/negócio especificamente para “Nome contato agenda WhatsApp”.
+      - aceite: demonstração do fluxo “Nome contato agenda WhatsApp”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **CRM-16 — Histórico unificado** · _verification_required_
+      - o que: Especificar entidades, relacionamentos e restrições do cadastro/negócio especificamente para “Histórico unificado”.
+      - aceite: demonstração do fluxo “Histórico unificado”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **CRM-17 — Pipeline só negócios ativos** · _verification_required_
+      - o que: Especificar entidades, relacionamentos e restrições do cadastro/negócio especificamente para “Pipeline só negócios ativos”.
+      - aceite: demonstração do fluxo “Pipeline só negócios ativos”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **CRM-18 — Edição rápida de responsável** · _verification_required_
+      - o que: Especificar entidades, relacionamentos e restrições do cadastro/negócio especificamente para “Edição rápida de responsável”.
+      - aceite: demonstração do fluxo “Edição rápida de responsável”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **CRM-19 — Anexos unificados** · _verification_required_
+      - o que: Especificar entidades, relacionamentos e restrições do cadastro/negócio especificamente para “Anexos unificados”.
+      - aceite: demonstração do fluxo “Anexos unificados”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **CRM-20 — Pastas protegidas por senha** · _verification_required_
+      - o que: Especificar entidades, relacionamentos e restrições do cadastro/negócio especificamente para “Pastas protegidas por senha”.
+      - aceite: demonstração do fluxo “Pastas protegidas por senha”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **CRM-21 — Relacionamento negócio orçamento execução** · _verification_required_ ⚠️ parcial — base de testes de execução parcial já corrigida (PR #3472); resto do fluxo pendente
+      - o que: Especificar entidades, relacionamentos e restrições do cadastro/negócio especificamente para “Relacionamento negócio orçamento execução”.
+      - aceite: demonstração do fluxo “Relacionamento negócio orçamento execução”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [x] **CRM-22 — Filtros e busca CRM** · _verification_required_ ✅ entregue (PR #3476)
+      - o que: Especificar entidades, relacionamentos e restrições do cadastro/negócio especificamente para “Filtros e busca CRM”.
+      - aceite: demonstração do fluxo “Filtros e busca CRM”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **CRM-23 — Recuperação de excluídos** · _verification_required_
+      - o que: Especificar entidades, relacionamentos e restrições do cadastro/negócio especificamente para “Recuperação de excluídos”.
+      - aceite: demonstração do fluxo “Recuperação de excluídos”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **CRM-24 — Privacidade conversas** · _verification_required_
+      - o que: Especificar entidades, relacionamentos e restrições do cadastro/negócio especificamente para “Privacidade conversas”.
+      - aceite: demonstração do fluxo “Privacidade conversas”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+
+## ORC — Orçamentos e Propostas  (18 itens)
+
+- [ ] **ORC-01 — Orçamento universal** · _verification_required_
+      - o que: Definir modelo de preços, itens, composições, versões e regras por vertical especificamente para “Orçamento universal”.
+      - aceite: demonstração do fluxo “Orçamento universal”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **ORC-02 — Modelo CasaForte** · _verification_required_
+      - o que: Definir modelo de preços, itens, composições, versões e regras por vertical especificamente para “Modelo CasaForte”.
+      - aceite: demonstração do fluxo “Modelo CasaForte”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **ORC-03 — Composições de produtos** · _verification_required_
+      - o que: Definir modelo de preços, itens, composições, versões e regras por vertical especificamente para “Composições de produtos”.
+      - aceite: demonstração do fluxo “Composições de produtos”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **ORC-04 — Unidades perdas rendimento** · _verification_required_
+      - o que: Definir modelo de preços, itens, composições, versões e regras por vertical especificamente para “Unidades perdas rendimento”.
+      - aceite: demonstração do fluxo “Unidades perdas rendimento”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **ORC-05 — Múltiplos e fracionamento** · _verification_required_
+      - o que: Definir modelo de preços, itens, composições, versões e regras por vertical especificamente para “Múltiplos e fracionamento”.
+      - aceite: demonstração do fluxo “Múltiplos e fracionamento”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **ORC-06 — Importar orçamento PDF** · _verification_required_
+      - o que: Definir modelo de preços, itens, composições, versões e regras por vertical especificamente para “Importar orçamento PDF”.
+      - aceite: demonstração do fluxo “Importar orçamento PDF”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **ORC-07 — Versionamento R1+** · _verification_required_
+      - o que: Definir modelo de preços, itens, composições, versões e regras por vertical especificamente para “Versionamento R1+”.
+      - aceite: demonstração do fluxo “Versionamento R1+”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **ORC-08 — Link único proposta** · _verification_required_
+      - o que: Definir modelo de preços, itens, composições, versões e regras por vertical especificamente para “Link único proposta”.
+      - aceite: demonstração do fluxo “Link único proposta”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **ORC-09 — Inclusões e opcionais** · _verification_required_
+      - o que: Definir modelo de preços, itens, composições, versões e regras por vertical especificamente para “Inclusões e opcionais”.
+      - aceite: demonstração do fluxo “Inclusões e opcionais”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **ORC-10 — Cronograma físico-financeiro** · _verification_required_
+      - o que: Definir modelo de preços, itens, composições, versões e regras por vertical especificamente para “Cronograma físico-financeiro”.
+      - aceite: demonstração do fluxo “Cronograma físico-financeiro”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **ORC-11 — Entrada distribuída** · _verification_required_
+      - o que: Definir modelo de preços, itens, composições, versões e regras por vertical especificamente para “Entrada distribuída”.
+      - aceite: demonstração do fluxo “Entrada distribuída”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **ORC-12 — Etapas simultâneas** · _verification_required_
+      - o que: Definir modelo de preços, itens, composições, versões e regras por vertical especificamente para “Etapas simultâneas”.
+      - aceite: demonstração do fluxo “Etapas simultâneas”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **ORC-13 — Execução parcial** · _verification_required_
+      - o que: Definir modelo de preços, itens, composições, versões e regras por vertical especificamente para “Execução parcial”.
+      - aceite: demonstração do fluxo “Execução parcial”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **ORC-14 — Catálogo material versus produto** · _verification_required_
+      - o que: Definir modelo de preços, itens, composições, versões e regras por vertical especificamente para “Catálogo material versus produto”.
+      - aceite: demonstração do fluxo “Catálogo material versus produto”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **ORC-15 — Isolamento por vertical** · _code_in_pr_
+      - o que: Definir modelo de preços, itens, composições, versões e regras por vertical especificamente para “Isolamento por vertical”.
+      - aceite: demonstração do fluxo “Isolamento por vertical”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **ORC-16 — Cotação fornecedores** · _verification_required_
+      - o que: Definir modelo de preços, itens, composições, versões e regras por vertical especificamente para “Cotação fornecedores”.
+      - aceite: demonstração do fluxo “Cotação fornecedores”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **ORC-17 — Comissão arquitetos** · _verification_required_
+      - o que: Definir modelo de preços, itens, composições, versões e regras por vertical especificamente para “Comissão arquitetos”.
+      - aceite: demonstração do fluxo “Comissão arquitetos”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **ORC-18 — Proposta a contrato e pedido** · _verification_required_
+      - o que: Definir modelo de preços, itens, composições, versões e regras por vertical especificamente para “Proposta a contrato e pedido”.
+      - aceite: demonstração do fluxo “Proposta a contrato e pedido”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+
+## OBR — Obras / OS  (16 itens)
+
+- [ ] **OBR-01 — Pipeline de execução** · _verification_required_
+      - o que: Definir etapas, checklist, responsáveis e vínculos com pedido e itens especificamente para “Pipeline de execução”.
+      - aceite: demonstração do fluxo “Pipeline de execução”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **OBR-02 — Execução parcial** · _verification_required_
+      - o que: Definir etapas, checklist, responsáveis e vínculos com pedido e itens especificamente para “Execução parcial”.
+      - aceite: demonstração do fluxo “Execução parcial”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **OBR-03 — Diário de obra** · _verification_required_
+      - o que: Definir etapas, checklist, responsáveis e vínculos com pedido e itens especificamente para “Diário de obra”.
+      - aceite: demonstração do fluxo “Diário de obra”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **OBR-04 — Cronograma físico** · _verification_required_
+      - o que: Definir etapas, checklist, responsáveis e vínculos com pedido e itens especificamente para “Cronograma físico”.
+      - aceite: demonstração do fluxo “Cronograma físico”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **OBR-05 — Checklist instalação** · _verification_required_
+      - o que: Definir etapas, checklist, responsáveis e vínculos com pedido e itens especificamente para “Checklist instalação”.
+      - aceite: demonstração do fluxo “Checklist instalação”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **OBR-06 — Checklist transporte** · _verification_required_
+      - o que: Definir etapas, checklist, responsáveis e vínculos com pedido e itens especificamente para “Checklist transporte”.
+      - aceite: demonstração do fluxo “Checklist transporte”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **OBR-07 — Conferência de medidas** · _verification_required_
+      - o que: Definir etapas, checklist, responsáveis e vínculos com pedido e itens especificamente para “Conferência de medidas”.
+      - aceite: demonstração do fluxo “Conferência de medidas”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **OBR-08 — Aceite assinado** · _verification_required_
+      - o que: Definir etapas, checklist, responsáveis e vínculos com pedido e itens especificamente para “Aceite assinado”.
+      - aceite: demonstração do fluxo “Aceite assinado”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **OBR-09 — Assistência com pedido** · _verification_required_
+      - o que: Definir etapas, checklist, responsáveis e vínculos com pedido e itens especificamente para “Assistência com pedido”.
+      - aceite: demonstração do fluxo “Assistência com pedido”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **OBR-10 — Importação de pedido legado** · _verification_required_
+      - o que: Definir etapas, checklist, responsáveis e vínculos com pedido e itens especificamente para “Importação de pedido legado”.
+      - aceite: demonstração do fluxo “Importação de pedido legado”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **OBR-11 — OS modular por etapa** · _verification_required_
+      - o que: Definir etapas, checklist, responsáveis e vínculos com pedido e itens especificamente para “OS modular por etapa”.
+      - aceite: demonstração do fluxo “OS modular por etapa”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **OBR-12 — Relatório vivo** · _verification_required_
+      - o que: Definir etapas, checklist, responsáveis e vínculos com pedido e itens especificamente para “Relatório vivo”.
+      - aceite: demonstração do fluxo “Relatório vivo”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **OBR-13 — Link único de acompanhamento** · _verification_required_
+      - o que: Definir etapas, checklist, responsáveis e vínculos com pedido e itens especificamente para “Link único de acompanhamento”.
+      - aceite: demonstração do fluxo “Link único de acompanhamento”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **OBR-14 — Preenchimento colaborativo** · _verification_required_
+      - o que: Definir etapas, checklist, responsáveis e vínculos com pedido e itens especificamente para “Preenchimento colaborativo”.
+      - aceite: demonstração do fluxo “Preenchimento colaborativo”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **OBR-15 — Garantia e pós-venda** · _verification_required_
+      - o que: Definir etapas, checklist, responsáveis e vínculos com pedido e itens especificamente para “Garantia e pós-venda”.
+      - aceite: demonstração do fluxo “Garantia e pós-venda”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **OBR-16 — Anexos financeiros** · _verification_required_
+      - o que: Definir etapas, checklist, responsáveis e vínculos com pedido e itens especificamente para “Anexos financeiros”.
+      - aceite: demonstração do fluxo “Anexos financeiros”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+
+## COM — Omnichannel  (17 itens)
+
+- [ ] **COM-01 — WhatsApp CRM** · _verification_required_
+      - o que: Definir identidade, canal ou contrato e permissões de acesso especificamente para “WhatsApp CRM”.
+      - aceite: demonstração do fluxo “WhatsApp CRM”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **COM-02 — QR Code WhatsApp** · _verification_required_
+      - o que: Definir identidade, canal ou contrato e permissões de acesso especificamente para “QR Code WhatsApp”.
+      - aceite: demonstração do fluxo “QR Code WhatsApp”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **COM-03 — Privacidade de conversas** · _verification_required_
+      - o que: Definir identidade, canal ou contrato e permissões de acesso especificamente para “Privacidade de conversas”.
+      - aceite: demonstração do fluxo “Privacidade de conversas”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **COM-04 — Instagram DM** · _verification_required_
+      - o que: Definir identidade, canal ou contrato e permissões de acesso especificamente para “Instagram DM”.
+      - aceite: demonstração do fluxo “Instagram DM”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **COM-05 — Email Google Microsoft** · _verification_required_
+      - o que: Definir identidade, canal ou contrato e permissões de acesso especificamente para “Email Google Microsoft”.
+      - aceite: demonstração do fluxo “Email Google Microsoft”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **COM-06 — IMAP SMTP** · _verification_required_
+      - o que: Definir identidade, canal ou contrato e permissões de acesso especificamente para “IMAP SMTP”.
+      - aceite: demonstração do fluxo “IMAP SMTP”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **COM-07 — Threads e templates** · _verification_required_
+      - o que: Definir identidade, canal ou contrato e permissões de acesso especificamente para “Threads e templates”.
+      - aceite: demonstração do fluxo “Threads e templates”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **COM-08 — Vínculo conversa lead** · _verification_required_
+      - o que: Definir identidade, canal ou contrato e permissões de acesso especificamente para “Vínculo conversa lead”.
+      - aceite: demonstração do fluxo “Vínculo conversa lead”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **COM-09 — Portal único** · _verification_required_
+      - o que: Definir identidade, canal ou contrato e permissões de acesso especificamente para “Portal único”.
+      - aceite: demonstração do fluxo “Portal único”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **COM-10 — Briefing no portal** · _verification_required_
+      - o que: Definir identidade, canal ou contrato e permissões de acesso especificamente para “Briefing no portal”.
+      - aceite: demonstração do fluxo “Briefing no portal”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **COM-11 — Acompanhamento obra** · _verification_required_
+      - o que: Definir identidade, canal ou contrato e permissões de acesso especificamente para “Acompanhamento obra”.
+      - aceite: demonstração do fluxo “Acompanhamento obra”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **COM-12 — Assistência portal** · _verification_required_
+      - o que: Definir identidade, canal ou contrato e permissões de acesso especificamente para “Assistência portal”.
+      - aceite: demonstração do fluxo “Assistência portal”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **COM-13 — Uploads cliente** · _verification_required_
+      - o que: Definir identidade, canal ou contrato e permissões de acesso especificamente para “Uploads cliente”.
+      - aceite: demonstração do fluxo “Uploads cliente”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **COM-14 — Aceite digital** · _verification_required_
+      - o que: Definir identidade, canal ou contrato e permissões de acesso especificamente para “Aceite digital”.
+      - aceite: demonstração do fluxo “Aceite digital”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **COM-15 — Notificações** · _verification_required_
+      - o que: Definir identidade, canal ou contrato e permissões de acesso especificamente para “Notificações”.
+      - aceite: demonstração do fluxo “Notificações”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **COM-16 — Histórico omnichannel** · _verification_required_
+      - o que: Definir identidade, canal ou contrato e permissões de acesso especificamente para “Histórico omnichannel”.
+      - aceite: demonstração do fluxo “Histórico omnichannel”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+- [ ] **COM-17 — Visitor Intelligence** · _approved_scope_unverified_
+      - o que: Definir identidade, canal ou contrato e permissões de acesso especificamente para “Créditos de IA, quotas e entitlements”.
+      - aceite: demonstração do fluxo “Créditos de IA, quotas e entitlements”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+
+## PDV — PDV  (1 itens)
+
+- [ ] **PDV-01 — PDV integrado a catálogo, CRM e pedidos** · _approved_scope_unverified_
+      - o que: Definir identidade, canal ou contrato e permissões de acesso especificamente para “PDV integrado a catálogo, CRM e pedidos”.
+      - aceite: demonstração do fluxo “PDV integrado a catálogo, CRM e pedidos”, com registro de PR/SHA, testes, homologação, controle de acesso e resultado verificável
+
