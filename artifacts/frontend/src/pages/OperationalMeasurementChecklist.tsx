@@ -123,7 +123,7 @@ export default function OperationalMeasurementChecklist() {
     }
   }
 
-  async function uploadPhoto(itemId: string, file: File): Promise<{ storageUrl: string; accessUrl: string }> {
+  async function uploadPhoto(itemId: string, file: File, uploadId?: string): Promise<{ storageUrl: string; accessUrl: string }> {
     if (!data?.run) throw new Error("Conferência não iniciada.");
     if (file.size > 5 * 1024 * 1024) throw new Error("Máximo de 5 MB por foto.");
     const base64 = await new Promise<string>((resolve, reject) => {
@@ -134,7 +134,7 @@ export default function OperationalMeasurementChecklist() {
     });
     const result = await api(`/api/operational-checklists/runs/${data.run.id}/items/${itemId}/photos`, {
       method: "POST",
-      body: JSON.stringify({ name: file.name, contentType: file.type, dataBase64: base64 }),
+      body: JSON.stringify({ name: file.name, contentType: file.type, dataBase64: base64, uploadId }),
     });
     setPhotoAccess((prev) => ({ ...prev, [itemId]: [...(prev[itemId] ?? []), { storageUrl: result.storageUrl, accessUrl: result.accessUrl }] }));
     return { storageUrl: result.storageUrl, accessUrl: result.accessUrl };
@@ -341,7 +341,7 @@ export default function OperationalMeasurementChecklist() {
                       <Camera className="mr-2 h-4 w-4" /> {photoItemId === item.id ? "Fechar medição fotográfica" : "Medir na fotografia"}
                     </Button>
                     {photoItemId === item.id && (
-                      <PhotoMeasureEditor itemId={item.id} offlineKey={(user?.id ?? "anonymous") + ":" + run.id + ":" + run.revision + ":" + item.id} imageUrl={item.imagemUrl} photos={photoAccess[item.id] ?? []} onUpload={(file) => uploadPhoto(item.id, file)} initialMeasurements={item.photoMeasurements ?? []} readOnly={run.status === "concluido"} onSave={async (measurements) => {
+                      <PhotoMeasureEditor itemId={item.id} offlineKey={(user?.id ?? "anonymous") + ":" + run.id + ":" + run.revision + ":" + item.id} imageUrl={item.imagemUrl} photos={photoAccess[item.id] ?? []} onUpload={(file, uploadId) => uploadPhoto(item.id, file, uploadId)} initialMeasurements={item.photoMeasurements ?? []} readOnly={run.status === "concluido"} onSave={async (measurements) => {
                         if (!data?.run) throw new Error("Conferência indisponível.");
                         const updated = await api(`/api/operational-checklists/runs/${data.run.id}/items/${item.id}`, {
                           method: "PATCH",
