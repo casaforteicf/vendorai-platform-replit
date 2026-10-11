@@ -25,7 +25,17 @@ export function exportRenderGeometry(root: any, options: { maxTriangles?: number
   let truncated = false;
   root.traverse((object: any) => {
     if (truncated || !object?.isMesh || !object.visible) return;
-    if (object.isInstancedMesh || object.isSkinnedMesh || object.morphTargetInfluences?.some((weight: number) => weight !== 0)) {\n      warnings.push(`Malha ${object.uuid || object.name} exige expansão de instâncias/deformações; não exportada`);\n      truncated = true;\n      return;\n    }\n    if (Array.isArray(object.material) && object.material.length > 1) {\n      warnings.push(`Malha ${object.uuid || object.name} exige separação de grupos de materiais; não exportada`);\n      truncated = true;\n      return;\n    }\n    const geometry = object.geometry;
+    if (object.isInstancedMesh || object.isSkinnedMesh || object.morphTargetInfluences?.some((weight: number) => weight !== 0)) {
+      warnings.push(`Malha ${object.uuid || object.name} exige expansão de instâncias/deformações; não exportada`);
+      truncated = true;
+      return;
+    }
+    if (Array.isArray(object.material) && object.material.length > 1) {
+      warnings.push(`Malha ${object.uuid || object.name} exige separação de grupos de materiais; não exportada`);
+      truncated = true;
+      return;
+    }
+    const geometry = object.geometry;
     const position = geometry?.attributes?.position;
     if (!position || position.itemSize < 3) return;
     const index = geometry.index;
@@ -67,8 +77,6 @@ export function exportRenderGeometry(root: any, options: { maxTriangles?: number
       uvs.push(uv ? uv.getX(vertex) : 0, uv ? uv.getY(vertex) : 0);
     }
     const material = Array.isArray(object.material) ? object.material[0] : object.material;
-    if (Array.isArray(object.material) && object.material.length > 1)
-      warnings.push(`Malha ${object.uuid} usa múltiplos materiais; é necessário dividir grupos antes do render físico`);
     meshes.push({ meshId: String(object.uuid || object.name || meshes.length), materialId: material?.uuid || null,
       positions, normals, uvs, triangles });
     totalTriangles += triangles;
