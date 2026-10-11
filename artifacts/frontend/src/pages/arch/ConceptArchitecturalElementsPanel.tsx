@@ -36,7 +36,7 @@ export function ConceptArchitecturalElementsPanel({ model, onChange, floor, lotW
     const id = prior?.value.id ?? `${kind}-${Date.now()}`;
     if (kind === "slab") {
       const old = prior?.kind === "slab" ? prior.value : null;
-      commit({ kind, value: { id, floor: old?.floor ?? floor, x, y, width, depth, thickness: thicknessCm / 100, elevation, voids: old?.voids ?? [] } });
+      commit({ kind, value: { id, floor: old?.floor ?? floor, x, y, width, depth, thickness: thicknessCm / 100, elevation, voids: old?.voids.map(hole => ({ ...hole, x: hole.x + x - old.x, y: hole.y + y - old.y })) ?? [] } });
     } else if (kind === "stair") {
       const old = prior?.kind === "stair" ? prior.value : null;
       commit({ kind, value: { id, floor: old?.floor ?? floor, x, y, width, openSlab, run: depth, rise, preferredRiser: riserCm / 100 } });
@@ -91,7 +91,7 @@ export function ConceptArchitecturalElementsPanel({ model, onChange, floor, lotW
   const stairGeometry = kind === "stair" ? createStraightStair({ id: selected || "preview", floor, x, y, width, run: depth, rise, preferredRiser: riserCm / 100 }) : null;
   return <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-3" aria-label="Elementos arquitetônicos paramétricos">
     <h3 className="font-semibold text-sm">Lajes, escadas e coberturas</h3>
-    <p className="text-xs text-slate-500">Edite em metros. As alterações atualizam a planta e o 3D e podem ser desfeitas.</p>
+    <p className="text-xs text-slate-500">Na planta, selecione o contorno e use as setas para mover 1 cm (Shift: 10 cm). As alterações atualizam a planta e o 3D e podem ser desfeitas.</p>
     <select aria-label="Tipo de elemento" className="w-full rounded border p-2 text-sm" value={kind} onChange={event => startNew(event.target.value as typeof kind)}>
       <option value="slab">Laje</option><option value="stair">Escada reta</option><option value="roof">Cobertura</option>
     </select>

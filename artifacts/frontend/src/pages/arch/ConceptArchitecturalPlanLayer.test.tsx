@@ -24,3 +24,13 @@ it("filters other floors and leaves the drawing inert without a callback", () =>
   expect(screen.queryByRole("button")).toBeNull();
   expect(document.querySelector('[data-architectural-id="s"]')?.getAttribute("pointer-events")).toBe("none");
 });
+
+it("moves a selected element in centimetre steps and ignores key repeats", () => {
+  const onMove = vi.fn();
+  render(<svg><ConceptArchitecturalPlanLayer model={model()} floor={1} selectedId="s" onSelect={vi.fn()} onMove={onMove} /></svg>);
+  const button = screen.getByRole("button", { name: "Laje · s" });
+  fireEvent.keyDown(button, { key: "ArrowRight" });
+  fireEvent.keyDown(button, { key: "ArrowUp", shiftKey: true });
+  fireEvent.keyDown(button, { key: "ArrowDown", repeat: true });
+  expect(onMove.mock.calls).toEqual([["s", 0.01, 0], ["s", 0, -0.1]]);
+});
