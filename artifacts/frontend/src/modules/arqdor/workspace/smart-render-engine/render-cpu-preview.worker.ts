@@ -22,10 +22,10 @@ self.onmessage = (event: MessageEvent<Request>) => {
     self.postMessage({ type: "error", id, message: e instanceof Error ? e.message : String(e) });
     return;
   }
-  // Bounded strip accumulation: independent tiles, no full-frame float buffer.
+  // Progressive strips retain accumulated sums across passes, bounded by the preview resolution limit.
   // One event-loop task per strip so a cancel message can be processed.
   let sample = 0, y = 0;
-  let sums = new Float64Array(0);
+  const sumsByRow = new Map<number, Float64Array>();
   const run = () => {
     if (!active.has(id)) return;
     try {
@@ -35,8 +35,9 @@ self.onmessage = (event: MessageEvent<Request>) => {
         return;
       }
       const height = Math.min(rows, options.height - y);
-      if (height <= 0) { y = 0; sample++; sums = new Float64Array(0); setTimeout(run, 0); return; }
-      if (!sums.length) sums = new Float64Array(options.width * height * 3);
+      if (height <= 0) { y = 0; sample++; setTimeout(run, 0); return; }
+      let sums = sumsByRow.get(y);
+      if (!sums) { sums = new Float64Array(options.width * height * 3); sumsByRow.set(y, sums); }
       const frame = renderCpuPreview(options, y, height, prepared, sample);
       for (let i = 0; i < options.width * height; i++)
         for (let c = 0; c < 3; c++) sums[i * 3 + c] += frame.rgba[i * 4 + c];
