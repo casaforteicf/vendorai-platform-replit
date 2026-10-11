@@ -1,3 +1,5 @@
+import type { RenderSceneSnapshot } from "../../modules/arqdor/workspace/smart-render-engine/render-scene-contract";
+import type { GeometryTransfer } from "../../modules/arqdor/workspace/smart-render-engine/render-geometry-export";
 import type { SiteFrontSide } from "./conceptSitePlacement";
 import { buildFacadeMeshBoxes, facadeBoxFaces } from "./conceptFacadeMeshes";
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
@@ -38,6 +40,10 @@ export type ConceptModelLevel = {
 };
 
 type Props = {
+  renderCaptureToken?: number;
+  onRenderSceneSnapshot?: (snapshot: RenderSceneSnapshot) => void;
+  onRenderGeometryExport?: (geometry: GeometryTransfer) => void;
+  onRenderCaptureError?: (message: string) => void;
   lotWidth: number;
   lotDepth: number;
   activeFloor: number;
@@ -573,6 +579,10 @@ function roofBounds(level: ConceptModelLevel | undefined) {
 }
 
 export default function ConceptModel3D({
+  renderCaptureToken,
+  onRenderSceneSnapshot,
+  onRenderGeometryExport,
+  onRenderCaptureError,
   lotWidth,
   lotDepth,
   activeFloor,
@@ -1648,6 +1658,12 @@ export default function ConceptModel3D({
       </div>
 
       <ConceptWebGLScene
+        renderSceneSnapshotToken={renderCaptureToken}
+        renderGeometryExportToken={renderCaptureToken}
+        onRenderSceneSnapshot={onRenderSceneSnapshot}
+        onRenderGeometryExport={onRenderGeometryExport}
+        onRenderSceneSnapshotError={onRenderCaptureError}
+        onRenderGeometryExportError={onRenderCaptureError}
         facadeDesign={facadeDesign}
         frontSide={frontSide}
         lotWidth={lotWidth}
