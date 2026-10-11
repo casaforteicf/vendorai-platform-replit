@@ -14,7 +14,9 @@ export function createFurnitureSnapshot(input:{
  const previous:PlacedCabinet[]=[];
  for(const item of furniture){
   if(ids.has(item.id)||item.tenantId!==tenantId||item.projectId!==projectId||item.roomId!==room.id||item.bounds.id!==item.id||
-   item.parameters.furnitureId!==item.id||item.parts.some(p=>p.furnitureId!==item.id||p.tenantId!==tenantId||p.projectId!==projectId))throw Error("Invalid furniture snapshot scope");
+   item.parameters.furnitureId!==item.id||item.parameters.tenantId!==tenantId||item.parameters.projectId!==projectId||item.parameters.roomId!==room.id||
+   item.bounds.roomId!==room.id||item.parameters.widthMm!==item.bounds.widthMm||item.parameters.depthMm!==item.bounds.depthMm||
+   item.parts.some(p=>p.furnitureId!==item.id||p.tenantId!==tenantId||p.projectId!==projectId))throw Error("Invalid furniture snapshot scope");
   if(!validateFurniturePlacement(room,item.bounds,previous.map(p=>p.bounds),20).valid)throw Error("Invalid furniture placement");
   ids.add(item.id);
   for(const p of item.parts){if(parts.has(p.id))throw Error("Duplicate part identity");parts.add(p.id);}
