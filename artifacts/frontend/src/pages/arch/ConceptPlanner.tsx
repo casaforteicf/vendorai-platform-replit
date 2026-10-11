@@ -1,5 +1,6 @@
 import { flushSync } from "react-dom";
 import { conceptReferenceSize } from "./conceptReferenceImage";
+import { compareArqdorSnapshots } from "@/lib/arqdorConflictCompare";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import "./planner5d-reference.css";
 import {
@@ -1135,6 +1136,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   );
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
+  const [revisionConflictPreview, setRevisionConflictPreview] = useState<{ remoteRevision: string; differences: string[] } | null>(null);
   const [aiDevelopmentState, setAiDevelopmentState] = useState<"idle" | "running" | "error">("idle");
   const [customerProfile, setCustomerProfile] = useState<CustomerProfile>({});
   const [facadePreferences, setFacadePreferences] = useState<ConceptFacadePreferences>(DEFAULT_FACADE);
@@ -1595,6 +1597,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             conceptIdRef.current = null;
             conceptRevisionRef.current = null;
             revisionConflictRef.current = false;
+        setRevisionConflictPreview(null);
+            setRevisionConflictPreview(null);
             // PKG-07 / ARQ-UI: novo pré-projeto entra direto na escolha da origem.
             // Casa é o padrão, terreno é opcional e pode ser informado antes ou depois.
             setProjectScope("house");
@@ -1837,6 +1841,18 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       );
       if (revisionAutosaveEnabled && response.status === 409) {
         revisionConflictRef.current = true;
+        setRevisionConflictPreview(null);
+        try {
+          const remoteResponse = await fetch(`/api/arch/concept-projects/${encodeURIComponent(targetId ?? "")}`, { cache: "no-store" });
+          if (remoteResponse.ok) {
+            const remote = (await remoteResponse.json()) as ConceptDraftResponse;
+            const differences = compareArqdorSnapshots(
+              { rooms: payload.rooms, openingOverrides: payload.openingOverrides, configuration: payload.configuration },
+              { rooms: remote.rooms, openingOverrides: remote.openingOverrides, configuration: remote.configuration },
+            );
+            setRevisionConflictPreview({ remoteRevision: remote.updatedAt ?? "desconhecida", differences: differences.map(item => item.path) });
+          }
+        } catch { /* Fail closed: local edit state stays untouched. */ }
         throw new Error("Conflito de revisão. As alterações locais foram mantidas; revise o projeto antes de salvar novamente.");
       }
       if (!response.ok) {
@@ -6279,6 +6295,19 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             {handoffError && <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{handoffError}</div>}
           </div>
         </div>
+      )}
+      {revisionAutosaveEnabled && revisionConflictRef.current && (
+        <section role="alert" aria-label="Comparação de conflito" className="mx-auto my-3 max-w-5xl rounded-xl border border-amber-500 p-4">
+          <h2 className="font-semibold">O servidor possui outra versão deste projeto</h2>
+          <p className="text-sm">Suas alterações continuam abertas no editor. O salvamento está bloqueado para impedir substituições.</p>
+          {revisionConflictPreview ? (
+            <>
+              <p className="text-sm">Revisão no servidor: {revisionConflictPreview.remoteRevision}</p>
+              <p className="text-sm">Campos diferentes (amostra): {revisionConflictPreview.differences.slice(0, 20).join(", ") || "nenhum campo identificado"}</p>
+            </>
+          ) : <p className="text-sm">Não foi possível buscar uma comparação atualizada. Nenhuma versão será substituída.</p>}
+          <p className="text-sm">Copie ou exporte suas alterações antes de abrir novamente o projeto. A resolução automática permanece desativada.</p>
+        </section>
       )}
       {false && (
         <div className="border-b bg-background">
