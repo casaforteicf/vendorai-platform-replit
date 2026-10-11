@@ -111,3 +111,10 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - Não foi possível executar os comandos oficiais de build frontend/backend, testes de regressão, inspeção do banco ou homologação.
 - A tentativa de impor novo bloqueio para checklists já concluídos foi revertida no mesmo lote, para não alterar o fluxo vigente de criação revisada. Resultado final da rota permanece com o controle anterior, sem alteração funcional consolidada.
 - Sem evidências de sucesso dos gates; não abrir PR/merge/produção.
+
+## Lote 13 — endurecimento da associação de fotografias (11/10/2026)
+- Removida a capacidade de alterar `fotos` pelo PATCH genérico de itens do checklist. Antes o schema aceitava qualquer string, permitindo injeção de referência arbitrária mesmo sem upload do arquivo pelo fluxo privado.
+- Novas fotografias passam exclusivamente pelo endpoint específico `POST /runs/:runId/items/:itemId/photos`, que valida usuário/tenant, checklist, item, formato e arquivo, e registra o ativo na Biblioteca de Mídias.
+- O `PATCH` de `photoMeasurements` e `surveyElements` continua exigindo referência a foto já vinculada ao item.
+- **Riscos em aberto:** endpoints de fotos/checklist ainda precisam de teste de concorrência para evitar perda de atualizações entre upload e PATCH; autorização mais fina por negócio; verificação do limite de tamanho do body no Express; política de exposição de URLs temporárias; testes do fluxo com duas fotos simultâneas.
+- Sem testes de compilação executados: a VPS via Desktop Commander está online, mas a cota mensal do conector impede comandos. Nenhum PR, merge ou deploy.
