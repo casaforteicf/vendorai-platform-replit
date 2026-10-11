@@ -351,7 +351,7 @@ export default function OperationalMeasurementChecklist() {
                       }} onClose={() => setPhotoItemId(null)} />
                     )}
                   </div>
-                  {photoItemId === item.id && <SurveyElementsEditor key={item.id + "-" + (item.surveyElements?.length ?? 0)} elements={item.surveyElements ?? []} photos={item.fotos ?? []} disabled={run.status === "concluido"} onSave={async (surveyElements) => {
+                  {photoItemId === item.id && <SurveyElementsEditor key={item.id + "-" + (item.surveyElements?.length ?? 0)} draftKey={run.id + ":" + run.revision + ":" + item.id} elements={item.surveyElements ?? []} photos={item.fotos ?? []} disabled={run.status === "concluido"} onSave={async (surveyElements) => {
                     if (!data?.run) throw new Error("Checklist indisponível.");
                     const updated = await api(`/api/operational-checklists/runs/${data.run.id}/items/${item.id}`, { method: "PATCH", body: JSON.stringify({ surveyElements }) });
                     setData((prev) => prev ? { ...prev, run: updated } : prev);
