@@ -19,7 +19,7 @@ trap cleanup EXIT
 # Do not stop, rename or inspect any production/homolog container.
 docker inspect "$NAME" >/dev/null 2>&1 && die NAME_IN_USE
 for existing in "$ORIGINAL" "$CANDIDATE" "$BROKEN";do docker inspect "$existing" >/dev/null 2>&1 && die NAME_IN_USE;done
-docker image inspect "$IMAGE" >/dev/null 2>&1 || { echo "DRILL_IMAGE_NOT_PRESENT=$IMAGE";exit 69; }
+docker image inspect "$IMAGE" >/dev/null 2>&1 || docker pull "$IMAGE" >/dev/null || die DRILL_IMAGE_UNAVAILABLE
 healthy(){ [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:$PORT/" || true)" == 200 ]]; }
 docker create --name "$NAME" -p "127.0.0.1:$PORT:80" "$IMAGE" >/dev/null
 docker start "$NAME" >/dev/null
