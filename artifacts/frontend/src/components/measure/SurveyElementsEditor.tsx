@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import SurveyPlanPreview from "./SurveyPlanPreview";
+import { convertSurveyToArqdor } from "./convertSurveyToArqdor";
 
 export type SurveyElement = {
   id: string;
@@ -40,6 +41,7 @@ export default function SurveyElementsEditor({ elements, photos, disabled = fals
   const [sill, setSill] = useState("0");
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const [showDraft, setShowDraft] = useState(false);
   function toDimension(value: string): number | null { const n = Number(value.replace(",", ".")); return value.trim() && Number.isFinite(n) && n > 0 && n <= 1000000 ? n : null; }
   function add() {
     if (!roomName.trim() || !label.trim() || (width.trim() && toDimension(width) === null) || (height.trim() && toDimension(height) === null)) { setFeedback("Preencha ambiente, identificação e medidas válidas."); return; }
@@ -86,6 +88,12 @@ export default function SurveyElementsEditor({ elements, photos, disabled = fals
     {items.map((entry)=><div key={entry.id} className="flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-sm"><span>{entry.roomName} · {entry.elementType} · {entry.label} · {entry.widthMm ?? "—"} × {entry.heightMm ?? "—"} mm {entry.verified ? "· Conferido" : "· Pendente"}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={disabled} onClick={()=>setItems(old=>old.map(e=>e.id===entry.id?{...e,verified:!e.verified}:e))}>{entry.verified?"Reabrir":"Marcar conferido"}</Button><Button size="sm" variant="ghost" disabled={disabled} onClick={()=>setItems(old=>old.filter(e=>e.id!==entry.id))}>Excluir</Button></div></div>)}
     <Button disabled={disabled||saving} onClick={async()=>{setSaving(true);setFeedback("");try{await onSave(items);setFeedback("Levantamento salvo no checklist.");}catch(e){setFeedback(e instanceof Error?e.message:"Erro ao salvar.");}finally{setSaving(false);}}}>{saving?"Salvando...":"Salvar levantamento"}</Button>
     <SurveyPlanPreview elements={items} />
+    <Button size="sm" variant="outline" onClick={() => setShowDraft((v) => !v)}>Prévia para Arqdor</Button>
+    {showDraft && <div className="rounded border p-3 space-y-2">
+      <p className="text-sm font-medium">Rascunho técnico — não altera projeto existente</p>
+      {convertSurveyToArqdor(items).warnings.map((warning) => <p key={warning} className="text-xs text-amber-700">{warning}</p>)}
+      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words text-xs">{JSON.stringify(convertSurveyToArqdor(items), null, 2)}</pre>
+    </div>}
     <p role="status" className="text-xs text-muted-foreground">{feedback}</p>
   </section>;
 }
