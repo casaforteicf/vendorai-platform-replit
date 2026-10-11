@@ -131,3 +131,9 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - Interface diferencia HTTP 409 com código `CHECKLIST_CONFLICT` e orienta recarregar/conferir antes de tentar novamente, sem sobrescrever silenciosamente as medições.
 - **Limites**: limpeza compensatória não é transação distribuída com R2 (falhas temporárias ainda podem deixar órfãos); não há varredura automática de órfãos antigos; editor de elementos ainda precisa preservar estado não salvo durante reload. Persistência validada apenas por inspeção de código, sem execução dos builds, testes ou homologação.
 - Nenhum PR, merge ou produção.
+
+## Lote 16 — integração da recuperação local corrigida (11/10/2026)
+- Página `OperationalMeasurementChecklist.tsx` passa `draftKey` à `SurveyElementsEditor` com escopo de checklist, revisão e item. Resolvida a propriedade obrigatória ausente do commit inicial do lote 16.
+- Leitura do rascunho em `sessionStorage` passou a verificar estrutura básica dos elementos antes de oferecer recuperação.
+- A cópia local contém apenas elementos técnicos em JSON e referências às fotografias já vinculadas ao checklist; não guarda bytes de fotos.
+- **Não comprovado:** build real de frontend, teste no navegador, funcionamento offline e recuperação entre sessões diferentes do navegador. Sem merge nem deploy.
