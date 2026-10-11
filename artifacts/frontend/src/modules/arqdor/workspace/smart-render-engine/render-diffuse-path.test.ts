@@ -26,6 +26,14 @@ describe("ARQDOR experimental diffuse transport",()=>{
   const indexed=traceDiffusePath({...input,meshIndex:new Map([["a",triangle.meshes[0]]])});
   expect(indexed).toEqual(baseline);
  });
+ it("supports full transparent tint and partial transparent sampling",()=>{
+  const glass={baseColor:[0.7,0.8,0.9] as const,transmission:1,roughness:0,ior:1.5};
+  const color=traceDiffusePath({geometry:triangle,ray,materials:{white:glass},sky:[1,1,1],maxBounces:2,seed:1});
+  expect(color.every(Number.isFinite)).toBe(true);
+  expect(color[0]).toBeGreaterThanOrEqual(0);
+  const partial=traceDiffusePath({geometry:triangle,ray,materials:{white:{...glass,transmission:0.5}},sky:[1,1,1],maxBounces:2,seed:1});
+  expect(partial.every(Number.isFinite)).toBe(true);
+ });
  it("returns sky when no geometry is hit",()=>{
   expect(traceDiffusePath({geometry:empty,ray,materials:{},sky:[0.2,0.3,0.4]})).toEqual([0.2,0.3,0.4]);
  });
