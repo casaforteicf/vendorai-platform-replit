@@ -1,3 +1,4 @@
+import { preserveArchitecturalSnapshot } from "../lib/arch-concept-configuration.js";
 import { Router, type Request, type IRouter } from "express";
 import { and, eq, ilike, sql, desc, sum, ne, gte, lte, inArray, or } from "drizzle-orm";
 import multer from "multer";
@@ -1942,7 +1943,7 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
       incoming.sourceFiles = currentSources;
     }
 
-    (safeUpdates as Record<string, unknown>).configuration = incoming;
+    (safeUpdates as Record<string, unknown>).configuration = preserveArchitecturalSnapshot(currentConfig, incoming);
   }
 
   const [updated] = await db
