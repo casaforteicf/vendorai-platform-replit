@@ -621,7 +621,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const shellContent = (
     <>
       {UI20_SERVICE_TABS_ENABLED && !isPureSuperAdmin ? (
-        <ServiceTabsBar arqdorVisible={arqdorVisible} erpVisible={erpEntitled} />
+        <ServiceTabsBar arqdorVisible={arqdorVisible} erpVisible={erpEntitled} modules={tenantNavModules} loading={tenantNavModulesLoading} isAdmin={user?.platformRole === "super_admin" || user?.userFunction === "administrador"} />
       ) : null}
       <Suspense fallback={null}>
         {adsContext ? <AdsMediaPlanContextBanner pathname={location} /> : null}
