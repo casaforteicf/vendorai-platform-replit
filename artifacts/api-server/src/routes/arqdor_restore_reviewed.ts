@@ -49,6 +49,7 @@ arqdorRestoreRouter.post("/arch/concept-projects/:id/restore-reviewed", authenti
     switch (result.status) {
       case "restored": res.status(200).json({ status: result.status, updatedAt: result.updatedAt }); return;
       case "already_applied": res.status(200).json({ status: result.status, updatedAt: result.updatedAt }); return;
+      case "idempotency_mismatch": res.status(409).json({ error: "RESTORE_OPERATION_REUSED" }); return;
       case "conflict": res.status(409).json({ error: "RESTORE_REVISION_CONFLICT" }); return;
       case "frozen": res.status(409).json({ error: "RESTORE_PROJECT_FROZEN" }); return;
       default: res.status(404).json({ error: "RESTORE_PROJECT_NOT_FOUND" }); return;
