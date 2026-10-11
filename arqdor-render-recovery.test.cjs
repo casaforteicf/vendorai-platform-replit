@@ -12,5 +12,5 @@ r=await scenario([{id:'old',status:'concluido',result_image_url:'/old.png'},{id:
 r=await scenario([{id:'old',status:'concluido',result_image_url:'/old.png'},{id:'new',status:'erro',erro_msg:'Provider failed'}]);assert.equal(r.state.resultImageUrl,'/old.png');assert.equal(r.state.status,'error');assert.equal(r.error,'Provider failed');
 r=await scenario([],{status:'processing',resultImageUrl:'/old.png'},true);assert.equal(r.state.status,'processing');assert.equal(r.state.resultImageUrl,'/old.png');assert.equal(r.timers.length,1);
 r=await scenario([{id:'job',status:'concluido',result_image_url:'/saved.png',ambiente:'interior'}]);assert.equal(r.state.source,'model3d');r.cleanup();
-console.log('PASS: 13 TS/TSX syntax checks; recovery after refresh, completion, previous image during processing/error, network retry, interior source.');
+console.log('PASS: 14 TS/TSX syntax checks; recovery after refresh, completion, previous image during processing/error, network retry, interior source.');
 })().catch(e=>{console.error(e);process.exit(1)});
