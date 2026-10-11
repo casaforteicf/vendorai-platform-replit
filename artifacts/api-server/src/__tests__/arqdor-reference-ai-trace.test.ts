@@ -2,6 +2,17 @@ import { describe, expect, it } from "vitest";
 import { normalizeReferenceTrace } from "../lib/arqdor-reference-ai-trace.js";
 
 describe("Arqdor reference AI trace normalization", () => {
+  it("aplica 15 cm quando IA omite espessura e preserva espessuras medidas", () => {
+    const result = normalizeReferenceTrace({
+      walls: [
+        { x1: 0.1, y1: 0.2, x2: 0.9, y2: 0.2, confidence: 0.9 },
+        { x1: 0.1, y1: 0.5, x2: 0.9, y2: 0.5, thickness: 0.2, confidence: 0.9 },
+      ], openings: [],
+    }, { x: 0, y: 0, width: 10, depth: 10 }, "test-model");
+    expect(result.walls[0]?.thickness).toBe(0.15);
+    expect(result.walls[1]?.thickness).toBe(0.2);
+  });
+
   it("converte coordenadas normalizadas para metros calibrados", () => {
     const result = normalizeReferenceTrace({
       summary: "ok",
