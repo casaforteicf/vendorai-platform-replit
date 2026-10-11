@@ -127,3 +127,10 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - Estendido teste de contrato para exigir explicitamente o middleware de papel em ambas as rotas.
 - **Não resolve permissões individuais de projeto** nem permite sincronização offline geral: apenas reduz a superfície de acesso durante o desenvolvimento. Antes de liberar a todos os colaboradores, implementar vínculo de projeto/ACL real, garantir autorização por projeto e tenant, limites de corpo, integridade de versão e testes funcionais.
 - Não houve compilação, execução de testes de integração, merge ou publicação nesta etapa.
+
+
+## MULTI-04.5 — Restrições de identidade do piloto de sincronização
+- Inspeção do modelo existente: `arqdor_workspace_projects` tem apenas ID, tenant, contextBlob e datas, **não possui proprietário ou tabela de membros de projeto**. O WorkspaceContext de apresentação mapeia papéis a permissões, mas esse mapeamento visual não representa autorização de projeto persistida no backend.
+- Acrescentada regra `canUseArqdorConditionalSave` para as rotas experimentais: somente identidade humana com `sub` presente, tenant compatível, papel super_admin/tenant_admin e escopo normal `tenant` (ou campo legado ausente); acessos `obra`, `preprojeto` e agentes internos são negados.
+- Expandido teste estático do endpoint. **Isto não é ACL individual por projeto.** Não liberar colaborador nem vincular o autosave antigo ao endpoint condicional sem modelagem de proprietário/membros com migração de banco, autorização por projeto e testes reais de transação.
+- As alterações seguem em PR draft, sem build, homologação ou deploy confirmado.
