@@ -594,14 +594,15 @@ function createCloudflareMcpServer() {
     "browser_agent_connections",
     {
       description: "Lista as conexões de navegador salvas de um tenant VendorAI. Use tenantKey como ID, slug ou subdomínio.",
-      inputSchema: z.object({ tenantKey: z.string().min(1) }),
+      inputSchema: z.object({ tenantKey: z.string().min(1), environment: z.enum(["default", "homolog"]).optional().default("default") }),
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
-    async ({ tenantKey }) => {
+    async ({ tenantKey, environment }) => {
+      const targetBase = environment === "homolog" ? requiredEnv("VENDI_HOMOLOG_API_BASE") : undefined;
       const result = await vendorApi<unknown>("/internal/browser-mcp/connections", {
         method: "POST",
         body: JSON.stringify({ tenantKey }),
-      });
+      }, targetBase);
       return toolText(result);
     },
   );
@@ -612,6 +613,7 @@ function createCloudflareMcpServer() {
       description: "Executa uma missão usando o Browser Agent próprio do VendorAI em Chromium remoto. Pode usar uma conexão salva ou uma URL inicial. Tenants com autonomia habilitada executam ações rotineiras automaticamente; ações de alto risco continuam protegidas.",
       inputSchema: z.object({
         tenantKey: z.string().min(1),
+        environment: z.enum(["default", "homolog"]).optional().default("default"),
         goal: z.string().min(3).max(4000),
         connectionId: z.string().min(1).optional(),
         startUrl: z.string().url().optional(),
@@ -621,11 +623,16 @@ function createCloudflareMcpServer() {
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
-    async ({ tenantKey, goal, connectionId, startUrl, mode, allowWrite, maxSteps }) => {
+    async ({ tenantKey, environment, goal, connectionId, startUrl, mode, allowWrite, maxSteps }) => {
+      // Homologation requests are explicitly routed and are read-only; never silently fall back to production.
+      if (environment === "homolog" && (mode === "autonomo" || allowWrite === true)) {
+        throw new Error("HOMOLOG_BROWSER_READ_ONLY_REQUIRED");
+      }
+      const targetBase = environment === "homolog" ? requiredEnv("VENDI_HOMOLOG_API_BASE") : undefined;
       const result = await vendorApi<unknown>("/internal/browser-mcp/run", {
         method: "POST",
-        body: JSON.stringify({ tenantKey, goal, connectionId, startUrl, mode, allowWrite, maxSteps }),
-      });
+        body: JSON.stringify({ tenantKey, goal, connectionId, startUrl, mode: environment === "homolog" ? "assistido" : mode, allowWrite: environment === "homolog" ? false : allowWrite, maxSteps }),
+      }, targetBase);
       return toolText(result);
     },
   );
