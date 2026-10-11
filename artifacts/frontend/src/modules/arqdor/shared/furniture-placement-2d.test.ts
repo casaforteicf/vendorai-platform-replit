@@ -18,7 +18,7 @@ describe("measured 2D furniture placement",()=>{
   expect(moved.items[1].xMm).toBe(1500);
  });
  it("detects rotated bounds and room limits",()=>{
-  const b={...a,id:"b",xMm:3600,yMm:0,rotationDeg:90 as const};
+  const b={...a,id:"b",xMm:3500,yMm:0,rotationDeg:90 as const};
   expect(validateFurniturePlacement(room,b,[a]).valid).toBe(true);
   expect(validateFurniturePlacement(room,{...b,xMm:3900},[a]).reason).toBe("out-of-room");
  });

@@ -36,7 +36,11 @@ export function buildFurnitureBusinessHandoff(args:{
  return {tenantId,projectId,revision,context:{...args.context},lines:[...quantities.values()].sort((a,b)=>a.materialId.localeCompare(b.materialId)),
   pieces,validation:{status:"engineering-review-required",warnings:["Areas are net only; waste, kerf, edge banding, labor, freight, taxes, pricing and stock not calculated.","Do not dispatch purchase orders, CNC output or execution lots without validated engineering and approval."]}};
 }
-const csv=(value:unknown)=>'"'+String(value??"").replace(/^[=+@\-]/,"'").replace(/"/g,'""')+'"';
+const csv=(value:unknown)=>{
+ const text=String(value??"");
+ const safe=/^\s*[=+@\-]|^[\t\r\n]/.test(text)?"'"+text:text;
+ return '"'+safe.replace(/"/g,'""')+'"';
+};
 /** Explicit preview export, not an XLSX/PDF or production-ready cutting document. */
 export function exportFurnitureBomCsv(handoff:FurnitureBusinessHandoff):string{
  const rows=[["revision","materialId","manufacturer","sku","thicknessMm","partCount","netAreaM2"],

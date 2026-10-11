@@ -8,7 +8,7 @@ describe("parametric cabinet core",()=>{
   const r=generateCabinetDraft(base);
   expect(r.parts).toHaveLength(7);
   expect(r.parts.find(x=>x.name==="Prateleira")).toMatchObject({quantity:3,lengthMm:1164,widthMm:594});
-  expect(r.parts.find(x=>x.name==="Porta")).toMatchObject({quantity:2,widthMm:597,heightMm:undefined});
+  expect(r.parts.find(x=>x.name==="Porta")).toMatchObject({quantity:2,widthMm:597,lengthMm:2396});
   expect(new Set(r.parts.map(x=>x.id)).size).toBe(r.parts.length);
   expect(r.productionReady).toBe(false);
  });

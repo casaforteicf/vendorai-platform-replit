@@ -6,7 +6,7 @@ export function calculateSpecialtyPanel(p:SpecialtyPanel,m:SpecialtyMaterial){
  const a=p.outline;
  if(a.length<3||a.length>2000||a.some(v=>!Number.isFinite(v.xMm)||!Number.isFinite(v.yMm)))throw Error("Invalid outline");
  let twice=0,perimeter=0;
- for(let i=0;i<a.length;i++){const x=a[i],y=a[(i+1)%a.length];twice+=x.xMm*y.yMm-y.xMm*y.yMm;perimeter+=Math.hypot(x.xMm-y.xMm,x.yMm-y.yMm);}
+ for(let i=0;i<a.length;i++){const x=a[i],y=a[(i+1)%a.length];twice+=x.xMm*y.yMm-y.xMm*x.yMm;perimeter+=Math.hypot(x.xMm-y.xMm,x.yMm-y.yMm);}
  const gross=Math.abs(twice)/2;
  if(gross<=0)throw Error("Degenerate outline");
  let openingsArea=0;

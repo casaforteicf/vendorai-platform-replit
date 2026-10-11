@@ -16,6 +16,6 @@ describe("finishes and mixed specialty reference assemblies",()=>{
  it("calculates reference metal profile weight",()=>{
   const result=quantifyMetalProfile({id:"tube",tenantId:"t",materialId:"steel",sku:"tube1",sectionAreaMm2:200,densityKgM3:7850,lengthMm:2000,quantity:2});
   expect(result.linearMeters).toBe(4);
-  expect(result.estimatedMassKg).toBeCloseTo(3.14);
+  expect(result.estimatedMassKg).toBeCloseTo(6.28);
  });
 });
