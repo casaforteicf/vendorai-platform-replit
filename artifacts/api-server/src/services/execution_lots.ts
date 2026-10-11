@@ -68,6 +68,26 @@ export async function createExecutionLot(input: CreateExecutionLotInput) {
       lotId: row.lot_id, itemId: row.source_item_id,
       quantity: Number(row.quantity), status: row.status,
     }));
+    // Conta também as reservas do caminho /deals/:id/execution-batches (lotes em work_cards),
+    // indexadas pela posição do item na proposta (mesma identidade usada aqui: String(index)).
+    // Sem isso, os dois caminhos alocariam o mesmo saldo em dobro.
+    const legacyCards = await client.query(
+      `SELECT metadata FROM work_cards
+        WHERE tenant_id=$1 AND deal_id=$2 AND pipeline='execucao'`,
+      [input.tenantId, input.dealId],
+    );
+    for (const row of legacyCards.rows) {
+      const meta = row.metadata as Record<string, any> | null;
+      if (!meta || meta.propostaId !== input.proposalId || meta.loteParcial !== true || !Array.isArray(meta.itensLote)) continue;
+      for (const it of meta.itensLote as Array<{ indice?: unknown; quantidade?: unknown }>) {
+        if (!Number.isInteger(it.indice) || typeof it.quantidade !== "number") continue;
+        const idx = it.indice as number;
+        // Só considera itens dentro do contrato atual e com quantidade positiva, para um
+        // work_card legado/divergente não derrubar a validação do lote.
+        if (idx < 0 || idx >= contracted.length || !(it.quantidade > 0)) continue;
+        allocations.push({ lotId: `workcard:${String(idx)}`, itemId: String(idx), quantity: it.quantidade, status: "reserved" });
+      }
+    }
     const result = validateExecutionLot(contracted, allocations, input.items);
     const lotId = randomUUID();
     await client.query(

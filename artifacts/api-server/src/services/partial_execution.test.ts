@@ -29,3 +29,23 @@ test("não muda arrays fornecidos pelo chamador", () => {
   validateExecutionLot(items, [], input);
   expect(input).toEqual([{ itemId: "janela", quantity: 2 }]);
 });
+
+// CRM-21/ORC-13/OBR-02: o saldo tem que somar as reservas dos DOIS caminhos
+// (lotes em work_cards do /deals/:id/execution-batches + execution_lot_items do /execution-lots)
+// contra o mesmo contrato, para nunca alocar em dobro.
+test("saldo combina reservas dos dois caminhos (work_card + execution_lot)", () => {
+  const contracted = [{ itemId: "0", contractedQuantity: 10 }];
+  const existing = [
+    { lotId: "lotB", itemId: "0", quantity: 4, status: "reserved" as const },        // caminho /execution-lots
+    { lotId: "workcard:0", itemId: "0", quantity: 4, status: "reserved" as const },  // caminho /deals/execution-batches
+  ];
+  expect(() => validateExecutionLot(contracted, existing, [{ itemId: "0", quantity: 3 }])).toThrow(/excede/);
+  const ok = validateExecutionLot(contracted, existing, [{ itemId: "0", quantity: 2 }]);
+  expect(ok.balancesAfter[0].available).toBe(0);
+});
+test("lote cancelado de um caminho libera saldo para o outro", () => {
+  const contracted = [{ itemId: "0", contractedQuantity: 10 }];
+  const existing = [{ lotId: "lotB", itemId: "0", quantity: 9, status: "cancelled" as const }];
+  const ok = validateExecutionLot(contracted, existing, [{ itemId: "0", quantity: 8 }]);
+  expect(ok.balancesAfter[0].available).toBe(2);
+});
