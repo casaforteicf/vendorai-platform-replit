@@ -1,3 +1,5 @@
+import { captureRenderScene, type RenderSceneSnapshot } from "../../modules/arqdor/workspace/smart-render-engine/render-scene-contract";
+import { exportRenderGeometry, type GeometryTransfer } from "../../modules/arqdor/workspace/smart-render-engine/render-geometry-export";
 import { buildFacadeMeshBoxes } from "./conceptFacadeMeshes";
 import { getFacadeMaterial, type FacadeDesignState } from "./conceptFacadeDesign";
 import { buildRoofPlan } from "./conceptRoofPlan";
@@ -55,6 +57,14 @@ type Props = {
   onPanoramaExport?: (dataUrl: string) => void;
   onPanoramaExportError?: (message: string) => void;
   paintTool?: null | { target: "object" | "wall" | "floor"; materialId: string; name: string; swatch: string };
+  /** Increment to request a read-only scene metadata capture; no pixels are rendered. */
+  /** Increment to request bounded world-space geometry export; no physical render is started. */
+  renderGeometryExportToken?: number;
+  onRenderGeometryExport?: (geometry: GeometryTransfer) => void;
+  onRenderGeometryExportError?: (message: string) => void;
+  renderSceneSnapshotToken?: number;
+  onRenderSceneSnapshot?: (snapshot: RenderSceneSnapshot) => void;
+  onRenderSceneSnapshotError?: (message: string) => void;
   onReady?: (ready: boolean) => void;
   onSelectObject?: (objectId: string | null) => void;
   onSelectWall?: (wallId: string | null) => void;
@@ -333,6 +343,12 @@ export default function ConceptWebGLScene({
   onPanoramaExport,
   onPanoramaExportError,
   paintTool = null,
+  renderGeometryExportToken,
+  onRenderGeometryExport,
+  onRenderGeometryExportError,
+  renderSceneSnapshotToken,
+  onRenderSceneSnapshot,
+  onRenderSceneSnapshotError,
   onReady,
   onSelectObject,
   onSelectWall,
@@ -848,6 +864,37 @@ export default function ConceptWebGLScene({
       runtimeRef.current = null;
     };
   }, []);
+
+  const processedGeometryTokenRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!renderGeometryExportToken || processedGeometryTokenRef.current === renderGeometryExportToken) return;
+    const runtime = runtimeRef.current;
+    if (!runtime || engineState !== "ready" || !sceneContentReady) return;
+    processedGeometryTokenRef.current = renderGeometryExportToken;
+    try {
+      onRenderGeometryExport?.(exportRenderGeometry(runtime.modelRoot, { maxTriangles: 250_000 }));
+    } catch (error) {
+      onRenderGeometryExportError?.(error instanceof Error ? error.message : "Não foi possível exportar a geometria 3D");
+    }
+  }, [renderGeometryExportToken, engineState, sceneContentReady, onRenderGeometryExport, onRenderGeometryExportError]);
+
+  const processedSnapshotTokenRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!renderSceneSnapshotToken || processedSnapshotTokenRef.current === renderSceneSnapshotToken) return;
+    const runtime = runtimeRef.current;
+    if (!runtime || engineState !== "ready" || !sceneContentReady) return;
+    processedSnapshotTokenRef.current = renderSceneSnapshotToken;
+    try {
+      onRenderSceneSnapshot?.(captureRenderScene({
+        scene: runtime.modelRoot,
+        camera: runtime.camera,
+        controls: runtime.controls,
+        sceneId: `arqdor-concept-${renderSceneSnapshotToken}`,
+      }));
+    } catch (error) {
+      onRenderSceneSnapshotError?.(error instanceof Error ? error.message : "Não foi possível inspecionar a cena 3D");
+    }
+  }, [renderSceneSnapshotToken, engineState, sceneContentReady, onRenderSceneSnapshot, onRenderSceneSnapshotError]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
