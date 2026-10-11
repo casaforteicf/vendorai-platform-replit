@@ -39,6 +39,7 @@ export interface WorkspaceContextValue {
   setProjectCtx:  (ctx: ProjectContext) => void
   saving:         boolean
   loadError:      string | null
+  saveError:      string | null
 }
 
 export const WorkspaceContext = createContext<WorkspaceContextValue | null>(null)
@@ -49,6 +50,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [isInitializing, setIsInitializing] = useState(false)
   const [saving, setSaving]   = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const initialLoadDone = useRef(false)
 
@@ -106,14 +108,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     saveTimerRef.current = setTimeout(async () => {
       setSaving(true)
       try {
-        await fetch(`${BASE}/arqdor/projects/${ctx.id}`, {
+        const response = await fetch(`${BASE}/arqdor/projects/${ctx.id}`, {
           method: 'PUT',
           headers: authHeaders(),
           body: JSON.stringify(ctx),
         })
+        if (!response.ok) throw new Error(`Save failed: HTTP ${response.status}`)
         localStorage.setItem(STORAGE_KEY, ctx.id)
+        setSaveError(null)
       } catch {
-        // silently ignore network errors — we'll retry on next change
+        // Do not pretend the server saved a draft when the network or API rejected it.
+        setSaveError('Não foi possível salvar as alterações no servidor. Copie ou exporte seu trabalho antes de sair.')
       } finally {
         setSaving(false)
       }
@@ -135,9 +140,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setIsRealProject(true)
   }, [persistCtx])
 
+  useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }, [])
+
   const value = useMemo<WorkspaceContextValue>(
-    () => ({ projectCtx, isRealProject, isInitializing, setProjectCtx, saving, loadError }),
-    [projectCtx, isRealProject, isInitializing, setProjectCtx, saving, loadError],
+    () => ({ projectCtx, isRealProject, isInitializing, setProjectCtx, saving, loadError, saveError }),
+    [projectCtx, isRealProject, isInitializing, setProjectCtx, saving, loadError, saveError],
   )
 
   return (
