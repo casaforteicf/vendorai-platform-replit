@@ -65,3 +65,39 @@ export function samplePerfectReflection(incident: Vec3, normal: Vec3, material: 
  const fresnel=Math.pow(1-cosine,5);
  return {direction,throughput:[0,1,2].map(k=>f0[k]+(1-f0[k])*fresnel) as unknown as Vec3,pdf:1};
 }
+
+/** Experimental GGX VNDF-free half-vector importance sampling for reflection only.
+ * This uses the GGX NDF distribution, not visible normals / full MIS.
+ */
+export function sampleRoughMetalReflection(
+ incident: Vec3, normal: Vec3, material: PhysicalMaterial, u: number, v: number,
+): BsdfSample {
+ if (![u,v].every(x=>Number.isFinite(x)&&x>=0&&x<1))throw Error("ARQDOR: amostra GGX inválida");
+ const n=unit(normal),i=unit(incident);
+ if(dot(i,n)>=0)throw Error("ARQDOR: incidência inválida para reflexão GGX");
+ const alpha=Math.max(0.001,material.roughness*material.roughness);
+ const a2=alpha*alpha;
+ const phi=2*Math.PI*u;
+ const cosTheta=Math.sqrt((1-v)/(1+(a2-1)*v));
+ const sinTheta=Math.sqrt(Math.max(0,1-cosTheta*cosTheta));
+ const ref:Vec3=Math.abs(n[1])<0.95?[0,1,0]:[1,0,0];
+ const tangent=unit(cross(ref,n)),bitangent=cross(n,tangent);
+ const h=unit([
+  tangent[0]*sinTheta*Math.cos(phi)+bitangent[0]*sinTheta*Math.sin(phi)+n[0]*cosTheta,
+  tangent[1]*sinTheta*Math.cos(phi)+bitangent[1]*sinTheta*Math.sin(phi)+n[1]*cosTheta,
+  tangent[2]*sinTheta*Math.cos(phi)+bitangent[2]*sinTheta*Math.sin(phi)+n[2]*cosTheta,
+ ]);
+ const ih=dot(i,h);
+ const reflected=unit([i[0]-2*ih*h[0],i[1]-2*ih*h[1],i[2]-2*ih*h[2]]);
+ const noL=dot(n,reflected),noV=-dot(n,i),noH=Math.max(0,dot(n,h)),voH=Math.abs(ih);
+ if(noL<=0 || noV<=0 || voH<1e-8)return {direction:reflected,throughput:[0,0,0],pdf:0};
+ const denom=noH*noH*(a2-1)+1;
+ const D=a2/(Math.PI*denom*denom);
+ const smith=(no:number)=>2*no/(no+Math.sqrt(a2+(1-a2)*no*no));
+ const G=smith(noL)*smith(noV);
+ const f0:[number,number,number]=[0,1,2].map(k=>0.04*(1-material.metalness)+material.baseColor[k]*material.metalness) as [number,number,number];
+ const fresnel=Math.pow(1-voH,5);
+ const pdf=D*noH/(4*voH);
+ const weight=G*voH/Math.max(1e-8,noV*noH);
+ return {direction:reflected,throughput:[0,1,2].map(k=>Math.min(1e4,(f0[k]+(1-f0[k])*fresnel)*weight)) as unknown as Vec3,pdf};
+}
