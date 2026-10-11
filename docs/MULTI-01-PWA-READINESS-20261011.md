@@ -104,3 +104,11 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - Novo teste estático executável: `node artifacts/frontend/scripts/test-arqdor-save-contract.mjs`, verificando tratamento obrigatório de HTTP != 2xx, alerta visível e ausência de upload offline implícito.
 - A pesquisa de código não identificou com confiança a implementação backend específica de `PUT /api/arqdor/projects/:id`; **não implementar CAS nem envio offline presumindo semântica de revisões**. Precisa localizar a rota efetiva e validar seus controles de autorização e versão.
 - Ainda não foram executados builds/testes neste ambiente do GitHub connector. PR permanece draft; sem merge/deploy.
+
+
+## MULTI-04.2 — Endpoint real localizado e gravação condicional opcional
+- O backend real fica em `artifacts/api-server/src/routes/arch.ts`, com `GET/PUT /arqdor/projects/:id` às linhas de origem aproximadas 8706/8728. O PUT existente faz upsert incondicional do JSON inteiro — risco de sobrescrever versões quando utilizado para sincronização offline.
+- Adicionados `GET /arqdor/projects/:id/revision` e `PUT /arqdor/projects/:id/conditional`, autenticados e limitados a `tenantId(req)`. A gravação condicional exige `expectedRevision`, `contextBlob.id === :id`, atualiza apenas registro existente, usa `xmin::text` do PostgreSQL para CAS atômico, e devolve 409 se houve edição concorrente/registro ausente. Não muda o PUT legado e não é ativado automaticamente pelo editor.
+- Teste estrutural: `node artifacts/api-server/scripts/test-arqdor-conditional-save.mjs` verifica presença das rotas, escopo tenant e guarda CAS sem upsert.
+- **Revisão de segurança ainda necessária:** verificar autorização por papel/usuário dentro do tenant (não apenas autenticação tenant), política contra projetos do mesmo tenant sem permissão de edição, limite de payload, erros de banco e semântica de token MVCC após restaurar backups. O token `xmin` só é apropriado como revisão efêmera por linha; não serve de histórico durável. A rota não comprova integração com autosave, que permanece no PUT legado.
+- **Status:** código commitado mas sem execução comprovada de typecheck/integração em PostgreSQL e sem publicação. Não permitir offline sync automático antes de homologar esses bloqueios.
