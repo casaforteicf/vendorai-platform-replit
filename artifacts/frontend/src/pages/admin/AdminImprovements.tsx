@@ -1,4 +1,5 @@
 import { type ChangeEvent, useMemo, useState } from "react";
+import AdminMasterPlan from "./AdminMasterPlan";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -254,7 +255,7 @@ export default function AdminImprovements() {
   const { token } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [view, setView] = useState<"improvements" | "releases">("improvements");
+  const [view, setView] = useState<"improvements" | "releases" | "master">("improvements");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detail, setDetail] = useState<Improvement | null>(null);
   const [releaseDetail, setReleaseDetail] = useState<Release | null>(null);
@@ -774,7 +775,15 @@ export default function AdminImprovements() {
         >
           Publicações
         </button>
+        <button
+          className={"border-b-2 px-3 py-2 text-sm font-medium " + (view === "master" ? "border-primary text-foreground" : "border-transparent text-muted-foreground")}
+          onClick={() => setView("master")}
+        >
+          Plano Mestre
+        </button>
       </div>
+      {view === "master" && <AdminMasterPlan />}
+
 
       {view === "improvements" && (
         <>
