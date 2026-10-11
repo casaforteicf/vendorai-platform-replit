@@ -36,6 +36,14 @@ describe("ARQDOR real scene adapter",()=>{
   const invalid={...snapshot,materials:[{...snapshot.materials[0],roughness:-0.1}]};
   expect(()=>buildExperimentalRenderOptions({snapshot:invalid,geometry})).toThrow();
  });
+ it("rejects malformed geometric coordinates and duplicate IDs",()=>{
+  const nanGeometry={...geometry,meshes:[{...geometry.meshes[0],positions:[Number.NaN,...geometry.meshes[0].positions.slice(1)]}]};
+  expect(()=>buildExperimentalRenderOptions({snapshot,geometry:nanGeometry})).toThrow();
+  const duplicateMaterials={...snapshot,materials:[...snapshot.materials,snapshot.materials[0]]};
+  expect(()=>buildExperimentalRenderOptions({snapshot:duplicateMaterials,geometry})).toThrow();
+  const duplicateMeshes={...geometry,meshes:[geometry.meshes[0],geometry.meshes[0]]};
+  expect(()=>buildExperimentalRenderOptions({snapshot,geometry:duplicateMeshes})).toThrow();
+ });
  it("rejects incomplete or mismatched geometry rather than constructing fake surfaces",()=>{
   expect(()=>buildExperimentalRenderOptions({snapshot,geometry:{...geometry,truncated:true}})).toThrow();
   expect(()=>buildExperimentalRenderOptions({snapshot,geometry:{...geometry,meshes:[]}})).toThrow();
