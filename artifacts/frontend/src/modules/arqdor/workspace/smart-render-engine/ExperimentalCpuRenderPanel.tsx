@@ -13,6 +13,9 @@ export function ExperimentalCpuRenderPanel({options}:Props){
  const [exposure,setExposure]=useState(1);
  const [sunIntensity,setSunIntensity]=useState(1);
  const [bounceCount,setBounceCount]=useState(2);
+ const [selectedMaterial,setSelectedMaterial]=useState("");
+ const [roughness,setRoughness]=useState(0.35);
+ const [transmission,setTransmission]=useState(0);
  useEffect(()=>()=>{job.current?.cancel();job.current=null;},[]);
  const stop=()=>{job.current?.cancel();job.current=null;setStatus("Cancelado");};
  const start=()=>{
@@ -28,6 +31,8 @@ export function ExperimentalCpuRenderPanel({options}:Props){
     directionalLight:{directionToLight:options.directionalLight?.directionToLight??[0.35,0.8,0.45],
       color:options.directionalLight?.color??[1,1,1],intensity:sunIntensity},
     maxBounces:bounceCount,
+    physicalMaterials:selectedMaterial ? {...options.physicalMaterials,
+      [selectedMaterial]:{...options.physicalMaterials?.[selectedMaterial],roughness,transmission}} : options.physicalMaterials,
    };
    job.current=createCpuRenderJob(renderOptions,{
     onTile:ev=>{
@@ -54,6 +59,11 @@ export function ExperimentalCpuRenderPanel({options}:Props){
    </select></label>
    <label>Exposição <input type="range" min="0.25" max="3" step="0.25" value={exposure} onChange={e=>setExposure(Number(e.target.value))}/>{exposure.toFixed(2)}×</label>
    <label>Sol <input type="range" min="0" max="4" step="0.25" value={sunIntensity} onChange={e=>setSunIntensity(Number(e.target.value))}/>{sunIntensity.toFixed(2)}×</label>
+   <label>Material <select value={selectedMaterial} onChange={e=>setSelectedMaterial(e.target.value)} className="rounded border p-1">
+    <option value="">Original</option>{Object.keys(options.materials).map(id=><option key={id} value={id}>{id.slice(0,20)}</option>)}
+   </select></label>
+   {selectedMaterial && <label>Rugosidade <input type="range" min="0" max="1" step="0.05" value={roughness} onChange={e=>setRoughness(Number(e.target.value))}/>{roughness.toFixed(2)}</label>}
+   {selectedMaterial && <label>Transmissão <input type="range" min="0" max="1" step="0.05" value={transmission} onChange={e=>setTransmission(Number(e.target.value))}/>{transmission.toFixed(2)}</label>}
    <label>Rebotes <select value={bounceCount} onChange={e=>setBounceCount(Number(e.target.value))} className="rounded border p-1">{[1,2,3,4].map(v=><option key={v} value={v}>{v}</option>)}</select></label>
    <label className="flex items-center gap-2"><input type="checkbox" checked={denoise} onChange={e=>setDenoise(e.target.checked)}/>Filtro de ruído</label>
    <button type="button" onClick={start} className="rounded bg-slate-900 px-3 py-2 text-white">Renderizar prévia</button>
