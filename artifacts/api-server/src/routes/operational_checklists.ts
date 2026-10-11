@@ -448,7 +448,7 @@ router.post("/operational-checklists/runs/:runId/create-arqdor-draft", async (re
     offset:o.offsetMm!/1000, width:o.widthMm!/1000, height:o.heightMm!/1000, sillHeight:(o.sillHeightMm ?? 0)/1000 }));
   const [owner] = await db.select({ id: usersTable.id }).from(usersTable)
     .where(and(eq(usersTable.id, ownerId), eq(usersTable.tenantId, run.tenantId))).limit(1);
-  if (!owner && req.user?.platformRole !== "super_admin")
+  if (!owner)
     return void res.status(403).json({ error: "Responsável não pertence ao tenant" });
   try {
     const created = await db.transaction(async (tx) => {
