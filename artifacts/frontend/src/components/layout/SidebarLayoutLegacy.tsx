@@ -823,6 +823,28 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
 
     const groupActive = (items: Array<{ href: string }>) =>
       items.some((item) => location === item.href || (item.href !== "/" && location.startsWith(item.href)));
+    if (import.meta.env.VITE_UI20_SERVICE_TABS === "true") {
+      const path = location.split("?")[0];
+      const serviceGroups = [
+        { name: "Início", match: ["/dashboard", "/trabalho", "/"], links: homeNav },
+        { name: "CRM", match: ["/leads", "/deals", "/pipeline", "/conversations", "/agenda", "/propostas", "/empresas", "/app/prospector"], links: [...crmAtendimentoNav, ...commercialNav] },
+        { name: "Marketing", match: ["/marketing", "/content", "/ads", "/analytics"], links: [...analyticsNav, ...crmNav.filter((item) => marketingHrefs.has(item.href))] },
+        { name: "ERP", match: ["/erp", "/estoque", "/obras", "/entregas", "/insumos", "/composicoes"], links: [...financeNav, ...verticalOperationNav] },
+        { name: "IA", match: ["/agents", "/vendi", "/base-conhecimento", "/brain"], links: aiKnowledgeNav },
+        { name: "Marketplace", match: ["/marketplace"], links: crmNav.filter((item) => item.href === "/marketplace") },
+        { name: "Arqdor", match: ["/arch"], links: arqdorVisible ? [...verticalNav.filter((item) => item.href.startsWith("/arch"))] : [] },
+        { name: "Configurações", match: ["/configuracoes", "/usuarios", "/organizacao"], links: administrationNav },
+      ];
+      const selected = serviceGroups.find((group) => group.match.some((prefix) => path === prefix || (prefix !== "/" && path.startsWith(prefix + "/")))) ?? serviceGroups[0];
+      const unique = selected.links.filter((item, index, all) => all.findIndex((other) => other.href === item.href) === index);
+      return (
+        <nav aria-label={`Menu interno de ${selected.name}`} className="space-y-1" data-ui20-context-menu={selected.name}>
+          <div className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{selected.name}</div>
+          {unique.map((item) => <NavItem key={item.href} item={item} onNavigate={onNavigate} />)}
+          {unique.length === 0 && <p className="px-3 text-xs text-muted-foreground">Use a aba superior para acessar este serviço.</p>}
+        </nav>
+      );
+    }
     return (
       <>
         {homeNav.map((item) => (
