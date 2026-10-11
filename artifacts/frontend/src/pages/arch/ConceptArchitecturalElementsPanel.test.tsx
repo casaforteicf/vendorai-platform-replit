@@ -90,3 +90,15 @@ it("rejects roof pitches outside the accepted range", () => {
   }
   expect(onChange).not.toHaveBeenCalled();
 });
+
+it("loads requested plan selection once and supports selecting the same element again", () => {
+  const model = emptyArchitecturalModel(); const onChange = vi.fn();
+  model.slabs.push({ id: "s", floor: 1, x: 1, y: 1, width: 3, depth: 3, thickness: 0.2, elevation: 3.12, voids: [] });
+  const { rerender } = render(<ConceptArchitecturalElementsPanel model={model} requestedSelection={{ id: "s", revision: 1 }} onChange={onChange} floor={0} lotWidth={12} lotDepth={20} />);
+  expect((screen.getByLabelText("Espessura (cm)") as HTMLInputElement).value).toBe("20");
+  fireEvent.change(screen.getByLabelText("Largura"), { target: { value: "4" } });
+  rerender(<ConceptArchitecturalElementsPanel model={{ ...model }} requestedSelection={{ id: "s", revision: 1 }} onChange={onChange} floor={0} lotWidth={12} lotDepth={20} />);
+  expect((screen.getByLabelText("Largura") as HTMLInputElement).value).toBe("4");
+  rerender(<ConceptArchitecturalElementsPanel model={model} requestedSelection={{ id: "s", revision: 2 }} onChange={onChange} floor={0} lotWidth={12} lotDepth={20} />);
+  expect((screen.getByLabelText("Largura") as HTMLInputElement).value).toBe("3");
+});

@@ -1072,6 +1072,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [floors, setFloors] = useState(1);
   const [desiredArea, setDesiredArea] = useState(145);
   const [activeFloor, setActiveFloor] = useState(0);
+  const [architecturalSelection, setArchitecturalSelection] = useState<{ id: string; revision: number }>();
   const [architecturalModel, setArchitecturalModel] = useState<ArchitecturalModel>(emptyArchitecturalModel);
 
   const [editorView, setEditorView] = useState<"plan" | "model3d" | "facade" | "render">("plan");
@@ -7515,7 +7516,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   {editorLibraryTab === "build" && (
                     <div className="mb-3">
                       <Suspense fallback={<div className="p-3 text-xs">Carregando elementos paramétricos...</div>}>
-                        <ConceptArchitecturalElementsPanel model={architecturalModel} onChange={changeArchitecturalModel} floor={activeFloor} lotWidth={lotWidth} lotDepth={lotDepth} />
+                        <ConceptArchitecturalElementsPanel model={architecturalModel} requestedSelection={architecturalSelection} onChange={changeArchitecturalModel} floor={activeFloor} lotWidth={lotWidth} lotDepth={lotDepth} />
                       </Suspense>
                     </div>
                   )}
@@ -8712,6 +8713,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       >
                       <ConceptPlan2D
                         architecturalModel={architecturalModel}
+                        selectedArchitecturalId={architecturalSelection?.id}
+                        onSelectArchitecturalElement={(id) => {
+                          if (projectMaster) return;
+                          clearEditorSelection();
+                          setArchitecturalSelection(current => ({ id, revision: (current?.revision ?? 0) + 1 }));
+                          setEditorLibraryTab("build");
+                        }}
                         rooms={terrainOnly || hideCurrentGeometryForReferenceReview ? [] : visibleRooms}
                         lotWidth={lotWidth}
                         lotDepth={lotDepth}

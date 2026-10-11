@@ -1,10 +1,10 @@
 import { ConceptSlabVoidsEditor } from "./ConceptSlabVoidsEditor";
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createStraightStair, type Roof } from "./conceptArchitecturalElements";
 import { applyArchitecturalEdits, architecturalQuantities, type ArchitecturalModel, type ArchitecturalElement } from "./conceptArchitecturalModel";
 import { ConceptArchitecturalPreview } from "./ConceptArchitecturalPreview";
-type Props = { model: ArchitecturalModel; onChange: (model: ArchitecturalModel) => void; floor: number; lotWidth: number; lotDepth: number };
-export function ConceptArchitecturalElementsPanel({ model, onChange, floor, lotWidth, lotDepth }: Props) {
+type Props = { requestedSelection?: { id: string; revision: number }; model: ArchitecturalModel; onChange: (model: ArchitecturalModel) => void; floor: number; lotWidth: number; lotDepth: number };
+export function ConceptArchitecturalElementsPanel({ model, onChange, floor, lotWidth, lotDepth, requestedSelection }: Props) {
   const [kind, setKind] = useState<"slab" | "stair" | "roof">("slab");
   const [selected, setSelected] = useState<string>("");
   const [x, setX] = useState(0), [y, setY] = useState(0);
@@ -17,11 +17,11 @@ export function ConceptArchitecturalElementsPanel({ model, onChange, floor, lotW
   const [pitch, setPitch] = useState(30), [overhang, setOverhang] = useState(0.3);
   const elevation = elevationOverride ?? floor * 2.96 + (kind === "roof" ? 2.96 : 0.16);
   const [error, setError] = useState<string | null>(null);
-  const items = [
+  const items = useMemo(() => [
     ...model.slabs.map(value => ({ kind: "slab" as const, value })),
     ...model.stairs.map(value => ({ kind: "stair" as const, value })),
     ...model.roofs.map(value => ({ kind: "roof" as const, value })),
-  ];
+  ], [model]);
   const selectedItem = items.find(item => item.value.id === selected && item.kind === kind);
   function commit(element: ArchitecturalElement) {
     const next = applyArchitecturalEdits(model, [{ action: "upsert", element }]);
@@ -44,7 +44,7 @@ export function ConceptArchitecturalElementsPanel({ model, onChange, floor, lotW
       commit({ kind, value: { id, x, y, width, depth, elevation, pitchDegrees: pitch, overhang, type: roofType } });
     }
   }
-  function choose(index: number) {
+  const choose = useCallback((index: number) => {
     const item = items[index];
     if (!item) return;
     setKind(item.kind); setSelected(item.value.id); setX(item.value.x); setY(item.value.y); setWidth(item.value.width);
@@ -57,7 +57,18 @@ export function ConceptArchitecturalElementsPanel({ model, onChange, floor, lotW
     setPitch(item.kind === "roof" ? item.value.pitchDegrees : 30);
     setOverhang(item.kind === "roof" ? item.value.overhang : 0.3);
     setOpenSlab(item.kind === "stair" ? item.value.openSlab !== false : true); setError(null);
-  }
+  }, [items]);
+  const appliedSelection = useRef<string | null>(null);
+  useEffect(() => {
+    if (!requestedSelection) return;
+    const key = JSON.stringify(requestedSelection);
+    if (appliedSelection.current === key) return;
+    const index = items.findIndex(item => item.value.id === requestedSelection.id);
+    if (index < 0) return;
+    appliedSelection.current = key;
+    choose(index);
+  }, [requestedSelection, items, choose]);
+
   function remove() {
     if (!selected) return;
     const edit = applyArchitecturalEdits(model, [{ action: "remove", kind, id: selected }]);
