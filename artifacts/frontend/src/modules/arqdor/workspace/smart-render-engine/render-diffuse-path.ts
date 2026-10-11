@@ -1,3 +1,4 @@
+import { sampleRectAreaLight, type RectAreaLight } from "./render-area-light";
 import { evaluateDirectionalLight, type DirectionalLight } from "./render-direct-light";
 import { sampleRoughnessMap, sampleWorldNormalMap, type CpuMaterialMaps } from "./render-material-maps";
 import { sampleCpuTexture, sampleMeshUv, type CpuTexture } from "./render-texture";
@@ -24,6 +25,7 @@ export function traceDiffusePath(input:{
   materials:Readonly<Record<string,Partial<PhysicalMaterial>>>;
   sky:Vec3;
   directionalLight?:DirectionalLight;
+  areaLights?:readonly RectAreaLight[];
   textures?: Readonly<Record<string,CpuTexture>>;
   materialMaps?: Readonly<Record<string,CpuMaterialMaps>>;
   maxBounces?:number;
@@ -69,6 +71,14 @@ export function traceDiffusePath(input:{
       radiance=add(radiance,mul(throughput,evaluateDirectionalLight({
         bvh,point:hit.point,normal,albedo:mat.baseColor,light:input.directionalLight,
       })));
+    }
+    if(input.areaLights && mat.metalness<0.999 && mat.transmission<0.999) {
+      if(input.areaLights.length>16)throw Error("ARQDOR: limite de luzes de área excedido");
+      for(const light of input.areaLights){
+        radiance=add(radiance,mul(throughput,sampleRectAreaLight({
+          bvh,point:hit.point,normal,albedo:mat.baseColor,light,u:random(),v:random(),
+        })));
+      }
     }
     if(mat.transmission>=0.999 && mat.roughness<=0.02){
       const event=sampleDielectric(ray.direction,outwardNormal,mat.ior,random());
