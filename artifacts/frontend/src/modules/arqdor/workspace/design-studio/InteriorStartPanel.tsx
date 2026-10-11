@@ -1,6 +1,6 @@
 import React,{useState} from "react";
-import {buildRectangularRoom,fromPreProjectRoom,type InteriorEnvironment} from "./interior-environment";
-type Room={id:string;nome?:string;name?:string;titulo?:string;largura?:number;profundidade?:number;altura?:number;widthM?:number;depthM?:number;heightM?:number};
+import {buildRectangularRoom,fromPreProjectRoom,type InteriorEnvironment,type InteriorWall} from "./interior-environment";
+type Room={id:string;nome?:string;name?:string;titulo?:string;largura?:number;profundidade?:number;altura?:number;widthM?:number;depthM?:number;heightM?:number;walls?:InteriorWall[];paredes?:InteriorWall[]};
 export function InteriorStartPanel({projectId,rooms,onStart,onImport}:{
   projectId:string|null;rooms:Room[];onStart:(environment:InteriorEnvironment)=>void;onImport:()=>void;
 }){
