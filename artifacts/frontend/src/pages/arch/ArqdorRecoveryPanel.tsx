@@ -14,6 +14,8 @@ export function ArqdorRecoveryPanel(props: {
   authorizedScope: DraftScope;
   currentDraft: LocalDraft;
   verifiedRemoteProject: ProjectContinuity;
+  /** Required server-authorized fresh read; never trust a cached page revision. */
+  fetchCurrentAuthorizedProject: () => Promise<ProjectContinuity>;
   onReviewRestore: (draft: LocalDraft) => void;
 }) {
   const [passphrase, setPassphrase] = useState("");
@@ -21,6 +23,25 @@ export function ArqdorRecoveryPanel(props: {
   const [message, setMessage] = useState("");
   const [restored, setRestored] = useState<LocalDraft | null>(null);
   const [exported, setExported] = useState(false);
+  async function submitForReview(draft: LocalDraft) {
+    setBusy(true); setMessage("");
+    try {
+      const fresh = await props.fetchCurrentAuthorizedProject();
+      const decision = evaluateRecoveryForReview(draft, props.authorizedScope, fresh);
+      if (decision.status !== "review") {
+        setRestored(null);
+        setMessage(decision.status === "conflict"
+          ? `Projeto alterado no servidor (backup ${decision.localRevision}, atual ${decision.remoteRevision}). Restauração bloqueada.`
+          : "Autorização ou escopo inválido. Restauração bloqueada.");
+        return;
+      }
+      props.onReviewRestore(draft); // review only, no server write
+      setRestored(null);
+      setMessage("Enviado à revisão; nenhuma alteração foi gravada no servidor.");
+    } catch {
+      setMessage("Não foi possível validar a revisão com o servidor. Restauração bloqueada.");
+    } finally { setBusy(false); }
+  }
   async function exportBackup() {
     setBusy(true); setMessage(""); setExported(false);
     try {
@@ -87,11 +108,8 @@ export function ArqdorRecoveryPanel(props: {
       {restored && <div className="space-y-2 rounded-lg border p-3">
         <p className="text-sm">Rascunho encontrado. Revisão de origem: {restored.change.baseRevision}.</p>
         <button type="button" className="rounded-md border px-3 py-2"
-          onClick={() => {
-            const decision = evaluateRecoveryForReview(restored, props.authorizedScope, props.verifiedRemoteProject);
-            if (decision.status !== "review") { setRestored(null); setMessage("A revisão mudou. Carregue novamente os dados remotos antes de restaurar."); return; }
-            props.onReviewRestore(restored); setRestored(null);
-          }}>
+          disabled={busy}
+          onClick={() => void submitForReview(restored)}>
           Enviar para revisão de conflitos
         </button>
       </div>}
