@@ -174,14 +174,18 @@ type BrowserMcpConnection = Pick<
 
 
 async function resolveTenantId(tenantKey: string): Promise<string | undefined> {
+  const normalizedKey = tenantKey.trim();
+  if (!normalizedKey) return undefined;
+
   const [tenant] = await db
     .select({ id: tenantsTable.id })
     .from(tenantsTable)
     .where(
       or(
-        eq(tenantsTable.id, tenantKey),
-        eq(tenantsTable.slug, tenantKey),
-        eq(tenantsTable.subdomainSlug, tenantKey),
+        eq(tenantsTable.id, normalizedKey),
+        eq(tenantsTable.slug, normalizedKey),
+        eq(tenantsTable.subdomainSlug, normalizedKey),
+        eq(tenantsTable.tenantCode, normalizedKey),
       ),
     )
     .limit(1);
