@@ -8746,12 +8746,22 @@ router.put("/arqdor/projects/:id", authenticate, async (req, res) => {
   return res.json(upserted?.contextBlob ?? contextBlob);
 });
 
+// Restricted pilot policy until project-level memberships exist in the database.
+// Never derive access solely from client-supplied canEdit or workspace UI roles.
+function canUseArqdorConditionalSave(user: { sub?: string; tenantId?: string; platformRole?: string; accessScope?: string; actorType?: string } | undefined, tenant: string): boolean {
+  return Boolean(user?.sub && user.tenantId === tenant &&
+    (user.platformRole === "super_admin" || user.platformRole === "tenant_admin") &&
+    (!user.accessScope || user.accessScope === "tenant") &&
+    (!user.actorType || user.actorType === "human"));
+}
+
 // MULTI-04 — explicit conditional save for future offline sync clients.
 // This does NOT change legacy PUT /arqdor/projects/:id behavior.
 // PostgreSQL xmin is a row MVCC token; server atomically rechecks it at UPDATE.
 router.get("/arqdor/projects/:id/revision", authenticate, requireRole("super_admin", "tenant_admin"), async (req, res) => {
   const tid = tenantId(req);
   const id = String(req.params.id);
+  if (!canUseArqdorConditionalSave(req.user, tid)) return res.status(403).json({ error: "Acesso restrito ao piloto administrativo." });
   if (!id.trim()) return res.status(400).json({ error: "Projeto inválido." });
   const [row] = await db.select({ revision: sql<string>`xmin::text` })
     .from(arqdorWorkspaceProjectsTable)
@@ -8765,6 +8775,7 @@ router.get("/arqdor/projects/:id/revision", authenticate, requireRole("super_adm
 router.put("/arqdor/projects/:id/conditional", authenticate, requireRole("super_admin", "tenant_admin"), async (req, res) => {
   const tid = tenantId(req);
   const id = String(req.params.id);
+  if (!canUseArqdorConditionalSave(req.user, tid)) return res.status(403).json({ error: "Acesso restrito ao piloto administrativo." });
   const { expectedRevision, contextBlob } = req.body ?? {};
   if (!id.trim() || !/^\d+$/.test(expectedRevision ?? "") ||
       !contextBlob || typeof contextBlob !== "object" || Array.isArray(contextBlob) ||
