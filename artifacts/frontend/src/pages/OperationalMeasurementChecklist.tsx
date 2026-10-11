@@ -289,7 +289,14 @@ export default function OperationalMeasurementChecklist() {
                       <Camera className="mr-2 h-4 w-4" /> {photoItemId === item.id ? "Fechar medição fotográfica" : "Medir na fotografia"}
                     </Button>
                     {photoItemId === item.id && (
-                      <PhotoMeasureEditor itemId={item.id} imageUrl={item.imagemUrl} initialMeasurements={item.photoMeasurements ?? []} readOnly={run.status === "concluido"} onSave={async (measurements) => { await saveItem(item, { photoMeasurements: measurements }); }} onClose={() => setPhotoItemId(null)} />
+                      <PhotoMeasureEditor itemId={item.id} imageUrl={item.imagemUrl} initialMeasurements={item.photoMeasurements ?? []} readOnly={run.status === "concluido"} onSave={async (measurements) => {
+                        if (!data?.run) throw new Error("Conferência indisponível.");
+                        const updated = await api(`/api/operational-checklists/runs/${data.run.id}/items/${item.id}`, {
+                          method: "PATCH",
+                          body: JSON.stringify({ photoMeasurements: measurements }),
+                        });
+                        setData((prev) => prev ? { ...prev, run: updated } : prev);
+                      }} onClose={() => setPhotoItemId(null)} />
                     )}
                   </div>
                   <div className="mt-3 grid gap-3 md:grid-cols-2 print:hidden">
