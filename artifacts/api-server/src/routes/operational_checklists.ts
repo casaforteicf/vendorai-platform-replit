@@ -265,6 +265,7 @@ const updateItemSchema = z.object({
     source: z.literal("manual_verified"),
   })).max(100).optional(),
   status: z.enum(["nao_conferido", "conferido", "divergente", "nao_executado", "resolvido"]).optional(),
+  resolutionReason: z.string().trim().min(15).max(2000).optional(),
 });
 
 router.patch("/operational-checklists/runs/:runId/items/:itemId", async (req, res) => {
