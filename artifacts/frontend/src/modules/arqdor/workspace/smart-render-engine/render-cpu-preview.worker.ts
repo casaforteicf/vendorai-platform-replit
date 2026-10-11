@@ -1,7 +1,8 @@
+import { denoisePreviewRgba } from "./render-postprocess";
 import { renderDiffusePreviewStrip, type DiffusePreviewOptions } from "./render-diffuse-preview";
 import { prepareCpuPreview, renderCpuPreview, type CpuPreviewOptions } from "./render-cpu-preview";
 
-type Start = { type: "start"; id: string; options: DiffusePreviewOptions; tileRows?: number; samples?: number; mode?: "diagnostic" | "diffuse" };
+type Start = { type: "start"; id: string; options: DiffusePreviewOptions; tileRows?: number; samples?: number; mode?: "diagnostic" | "diffuse"; denoise?: number };
 type Request = Start | { type: "cancel"; id: string };
 const active = new Set<string>();
 self.onmessage = (event: MessageEvent<Request>) => {
@@ -15,6 +16,8 @@ self.onmessage = (event: MessageEvent<Request>) => {
     return;
   }
   if (request.mode && request.mode !== "diffuse" && request.mode !== "diagnostic") { self.postMessage({type:"error",id,message:"Modo inválido"}); return; }
+  const strength=request.denoise??0;
+  if(!Number.isFinite(strength)||strength<0||strength>1) {self.postMessage({type:"error",id,message:"Denoise inválido"});return;}
   const rows = Math.max(1, Math.min(32, Math.floor(request.tileRows || 8)));
   active.add(id);
   let prepared: ReturnType<typeof prepareCpuPreview>;
@@ -28,10 +31,15 @@ self.onmessage = (event: MessageEvent<Request>) => {
   // One event-loop task per strip so a cancel message can be processed.
   let sample = 0, y = 0;
   const sumsByRow = new Map<number, Float64Array>();
+  const outputFrame = strength>0 ? new Uint8ClampedArray(options.width*options.height*4) : null;
   const run = () => {
     if (!active.has(id)) return;
     try {
       if (sample >= samples) {
+        if(outputFrame){
+          const filtered=denoisePreviewRgba(outputFrame,options.width,options.height,strength);
+          self.postMessage({type:"frame",id,width:options.width,height:options.height,rgba:filtered.buffer,sampleCount:samples},[filtered.buffer]);
+        }
         active.delete(id);
         self.postMessage({ type: "done", id, samples });
         return;
@@ -49,6 +57,9 @@ self.onmessage = (event: MessageEvent<Request>) => {
       for (let i = 0; i < options.width * height; i++) {
         for (let c = 0; c < 3; c++) rgba[i * 4 + c] = Math.round(sums[i * 3 + c] / (sample + 1));
         rgba[i * 4 + 3] = 255;
+      }
+      if(outputFrame){
+        outputFrame.set(rgba,y*options.width*4);
       }
       self.postMessage({
         type: "tile", id, y, width: options.width, height, rgba: rgba.buffer,
