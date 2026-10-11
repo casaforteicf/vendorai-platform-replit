@@ -543,9 +543,9 @@ router.post("/operational-checklists/runs/:runId/create-arqdor-draft", async (re
     return void res.status(409).json({ error: "Cada parede deve ter espessura conferida entre 50 e 1000 mm" });
   if (walls.some((w) => ![w.x1Mm, w.y1Mm, w.x2Mm, w.y2Mm].every(validPoint) || Math.hypot((w.x2Mm ?? 0)-(w.x1Mm ?? 0), (w.y2Mm ?? 0)-(w.y1Mm ?? 0)) < 10))
     return void res.status(409).json({ error: "Paredes com coordenadas inválidas" });
-  const endpoints = walls.flatMap((w) => [{ id:w.id, x:w.x1Mm!, y:w.y1Mm! }, { id:w.id, x:w.x2Mm!, y:w.y2Mm! }]);
+  const endpoints = walls.flatMap((w) => [{ id:w.id, floor:w.floorIndex ?? 0, x:w.x1Mm!, y:w.y1Mm! }, { id:w.id, floor:w.floorIndex ?? 0, x:w.x2Mm!, y:w.y2Mm! }]);
   for (const wall of walls) {
-    const start = endpoints.some((p) => p.id !== wall.id && Math.hypot(p.x-wall.x1Mm!,p.y-wall.y1Mm!) <= 5);
+    const start = endpoints.some((p) => p.id !== wall.id && p.floor === (wall.floorIndex ?? 0) && Math.hypot(p.x-wall.x1Mm!,p.y-wall.y1Mm!) <= 5);
     const end = endpoints.some((p) => p.id !== wall.id && Math.hypot(p.x-wall.x2Mm!,p.y-wall.y2Mm!) <= 5);
     if (!start || !end) return void res.status(409).json({ error: "Existem extremidades de paredes desconectadas" });
   }
