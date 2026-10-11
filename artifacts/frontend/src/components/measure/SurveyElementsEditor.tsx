@@ -42,6 +42,7 @@ export default function SurveyElementsEditor({ elements, photos, disabled = fals
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [showDraft, setShowDraft] = useState(false);
+  const [reviewConfirmed, setReviewConfirmed] = useState(false);
   function toDimension(value: string): number | null { const n = Number(value.replace(",", ".")); return value.trim() && Number.isFinite(n) && n > 0 && n <= 1000000 ? n : null; }
   function add() {
     if (!roomName.trim() || !label.trim() || (width.trim() && toDimension(width) === null) || (height.trim() && toDimension(height) === null)) { setFeedback("Preencha ambiente, identificação e medidas válidas."); return; }
@@ -93,6 +94,18 @@ export default function SurveyElementsEditor({ elements, photos, disabled = fals
       <p className="text-sm font-medium">Rascunho técnico — não altera projeto existente</p>
       {convertSurveyToArqdor(items).warnings.map((warning) => <p key={warning} className="text-xs text-amber-700">{warning}</p>)}
       <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words text-xs">{JSON.stringify(convertSurveyToArqdor(items), null, 2)}</pre>
+      <label className="flex gap-2 items-center text-xs">
+        <input type="checkbox" checked={reviewConfirmed} onChange={(e) => setReviewConfirmed(e.target.checked)} />
+        Revisei as medidas e entendo que este é apenas um arquivo de pré-projeto, sem aprovação para fabricação.
+      </label>
+      <Button size="sm" variant="outline" disabled={!reviewConfirmed || !convertSurveyToArqdor(items).readyForReview} onClick={() => {
+        const draft = convertSurveyToArqdor(items);
+        const payload = { ...draft, reviewedAt: new Date().toISOString(), source: "measure_manual_review", savedToArqdor: false };
+        const url = URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)], { type: "application/json" }));
+        const link = document.createElement("a");
+        link.href = url; link.download = "arqdor-measure-projeto-rascunho.json"; link.click();
+        URL.revokeObjectURL(url);
+      }}>Exportar pré-projeto revisado</Button>
     </div>}
     <p role="status" className="text-xs text-muted-foreground">{feedback}</p>
   </section>;
