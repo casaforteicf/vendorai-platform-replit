@@ -102,7 +102,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   // ── Debounced save ──────────────────────────────────────────────────────────
   const persistCtx = useCallback((ctx: ProjectContext) => {
     const tok = getToken()
-    if (!tok) return
+    if (!tok || !ctx.id?.trim()) {
+      setSaveError('Projeto ou sessão inválidos. As alterações não foram enviadas.')
+      return
+    }
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(async () => {
@@ -114,7 +117,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify(ctx),
         })
         if (!response.ok) throw new Error(`Save failed: HTTP ${response.status}`)
-        localStorage.setItem(STORAGE_KEY, ctx.id)
         setSaveError(null)
       } catch {
         // Do not pretend the server saved a draft when the network or API rejected it.
