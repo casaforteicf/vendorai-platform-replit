@@ -3,6 +3,7 @@ import { exportArqdorRecovery, importArqdorRecovery, type ArqdorRecoveryEnvelope
 import type { DraftScope, LocalDraft } from "@/lib/arqdorEncryptedDraft";
 import type { ProjectContinuity } from "@/lib/projectContinuity";
 import { evaluateRecoveryForReview } from "@/lib/arqdorRecoveryReview";
+import { checkRecoveryAtHandoff } from "@/lib/arqdorRecoveryHandoff";
 
 /**
  * Standalone recovery UI for a fully authenticated Arqdor project.
@@ -26,8 +27,7 @@ export function ArqdorRecoveryPanel(props: {
   async function submitForReview(draft: LocalDraft) {
     setBusy(true); setMessage("");
     try {
-      const fresh = await props.fetchCurrentAuthorizedProject();
-      const decision = evaluateRecoveryForReview(draft, props.authorizedScope, fresh);
+      const decision = await checkRecoveryAtHandoff(draft, props.authorizedScope, props.fetchCurrentAuthorizedProject);
       if (decision.status !== "review") {
         setRestored(null);
         setMessage(decision.status === "conflict"
