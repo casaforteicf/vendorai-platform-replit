@@ -29,17 +29,18 @@ router.put("/arqdor/projects/:id/furniture/:roomId",async(req:Request,res:Respon
  const parsed=payload.safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:"Snapshot inválido"});
  const data=parsed.data;
- if(data.tenantId!==tenantId||data.projectId!==projectId||data.roomId!==roomId)return res.status(403).json({error:"Projeto/tenant/ambiente incompatível"});
+ if(![tenantId,"local-preview"].includes(data.tenantId)||data.projectId!==projectId||data.roomId!==roomId)return res.status(403).json({error:"Projeto/tenant/ambiente incompatível"});
  const ids=new Set<string>(),partIds=new Set<string>();
  for(const f of data.furniture){
-  if(ids.has(f.id)||f.tenantId!==tenantId||f.projectId!==projectId||f.roomId!==roomId||f.bounds.id!==f.id||f.bounds.roomId!==roomId||
-   f.parameters.furnitureId!==f.id||f.parameters.tenantId!==tenantId||f.parameters.projectId!==projectId||f.parameters.roomId!==roomId)return res.status(400).json({error:"Identidade inválida"});
+  if(ids.has(f.id)||f.tenantId!==data.tenantId||f.projectId!==projectId||f.roomId!==roomId||f.bounds.id!==f.id||f.bounds.roomId!==roomId||
+   f.parameters.furnitureId!==f.id||f.parameters.tenantId!==data.tenantId||f.parameters.projectId!==projectId||f.parameters.roomId!==roomId)return res.status(400).json({error:"Identidade inválida"});
   ids.add(f.id);
-  for(const p of f.parts){if(partIds.has(p.id)||p.furnitureId!==f.id||p.tenantId!==tenantId||p.projectId!==projectId)return res.status(400).json({error:"Peças inválidas"});partIds.add(p.id);}
+  for(const p of f.parts){if(partIds.has(p.id)||p.furnitureId!==f.id||p.tenantId!==data.tenantId||p.projectId!==projectId)return res.status(400).json({error:"Peças inválidas"});partIds.add(p.id);}
  }
+ const normalized={...data,tenantId,furniture:data.furniture.map(f=>({...f,tenantId,parameters:{...f.parameters,tenantId},parts:f.parts.map(p=>({...p,tenantId}))}))};
  try{
   const records=await db.update(arqdorWorkspaceProjectsTable)
-   .set({contextBlob:sql`jsonb_set(jsonb_set(COALESCE(${arqdorWorkspaceProjectsTable.contextBlob}, '{}'::jsonb), '{furnitureSnapshots}', COALESCE(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots','{}'::jsonb), true), ARRAY['furnitureSnapshots', ${roomId}]::text[], ${JSON.stringify(data)}::jsonb, true)`,updatedAt:new Date()})
+   .set({contextBlob:sql`jsonb_set(jsonb_set(COALESCE(${arqdorWorkspaceProjectsTable.contextBlob}, '{}'::jsonb), '{furnitureSnapshots}', COALESCE(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots','{}'::jsonb), true), ARRAY['furnitureSnapshots', ${roomId}]::text[], ${JSON.stringify(normalized)}::jsonb, true)`,updatedAt:new Date()})
    .where(and(eq(arqdorWorkspaceProjectsTable.id,projectId),eq(arqdorWorkspaceProjectsTable.tenantId,tenantId))).returning({id:arqdorWorkspaceProjectsTable.id});
   if(!records.length)return res.status(404).json({error:"Projeto não encontrado; salve o projeto antes"});
   return res.json({saved:true,projectId,roomId,revision:data.revision});
