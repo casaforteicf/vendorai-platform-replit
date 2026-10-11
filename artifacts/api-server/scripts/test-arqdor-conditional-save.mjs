@@ -25,3 +25,12 @@ test("conditional revision and write endpoints fail closed for non-admin roles",
   assert.match(source, /router\.get\("\/arqdor\/projects\/:id\/revision", authenticate, requireRole\("super_admin", "tenant_admin"\)/);
   assert.match(source, /router\.put\("\/arqdor\/projects\/:id\/conditional", authenticate, requireRole\("super_admin", "tenant_admin"\)/);
 });
+
+test("experimental conditional routes reject guest and internal actors", () => {
+  assert.match(source, /function canUseArqdorConditionalSave\(/);
+  assert.match(source, /user\.tenantId === tenant/);
+  assert.match(source, /user\.accessScope === "tenant"/);
+  assert.match(source, /user\.actorType === "human"/);
+  const gate = 'if (!canUseArqdorConditionalSave(req.user, tid))';
+  assert.equal(source.split(gate).length - 1, 2);
+});
