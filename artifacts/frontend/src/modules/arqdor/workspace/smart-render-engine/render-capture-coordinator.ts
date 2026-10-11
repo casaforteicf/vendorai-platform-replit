@@ -13,7 +13,7 @@ export function createRenderCaptureCoordinator() {
    return {renderSceneSnapshotToken:token,renderGeometryExportToken:token};
  };
  const acceptSnapshot=(token:number,snapshot:RenderSceneSnapshot)=>{
-   if(!active||active.token!==token)return false;
+   if(!active||active.token!==token||active.error)return false;
    active.snapshot=snapshot;
    return true;
  };
@@ -29,7 +29,7 @@ export function createRenderCaptureCoordinator() {
  };
  const consume=(token:number):DiffusePreviewOptions|null=>{
    if(!active||active.token!==token)return null;
-   if(active.error)throw Error(active.error);
+   if(active.error){const message=active.error;active=null;throw Error(message);}
    if(!active.snapshot||!active.geometry)return null;
    const {snapshot,geometry}=active;
    active=null;
