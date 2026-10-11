@@ -233,3 +233,9 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - Aberturas sao rejeitadas caso a parede vinculada nao esteja conferida; medidas e deslocamentos devem ser finitos.
 - Previa do conversor Arqdor aplica a mesma validacao de espessura, mostrando alerta ao tecnico se faltar.
 - Pendente: testes de compilacao e integracao BIM, geometria por pavimento, identificacao de ambientes, fluxo de atualizacao controlada de projetos existentes e homologacao. Nao houve merge nem deploy.
+
+## Lote 33 — pavimentos e ambientes no BIM (11/10/2026)
+- Elementos do levantamento aceitam floorIndex opcional, com compatibilidade legado (omissao = pavimento 0). Cadastro do editor permite selecionar pavimento 0-49 e restringe selecao de parede de referencia ao mesmo ambiente e pavimento.
+- API valida floorIndex e gera customWalls/customOpenings com floor correto, floors conforme pavimento mais alto. Conferencia de conectividade das paredes na criacao de projeto somente compara extremidades no mesmo pavimento.
+- Conversor de previsualizacao acompanha pavimentos. Planta SVG pode selecionar pavimento para nao sobrepor geometrias de andares diferentes.
+- Pendencias: modelo semantico persistente de ambientes BIM, cotas altimetricas, escadas/lajes, testes de exportacao, compilacao e homologacao. Sem merge ou deploy.
