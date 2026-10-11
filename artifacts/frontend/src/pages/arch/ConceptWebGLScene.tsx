@@ -865,9 +865,35 @@ export default function ConceptWebGLScene({
     };
   }, []);
 
+  // Atomic lab capture: metadata and world-space buffers come from one runtime frame.
+  const processedPairedRenderTokenRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!renderSceneSnapshotToken || renderSceneSnapshotToken !== renderGeometryExportToken ||
+        processedPairedRenderTokenRef.current === renderSceneSnapshotToken) return;
+    const runtime=runtimeRef.current;
+    if (!runtime || engineState!=="ready" || !sceneContentReady) return;
+    processedPairedRenderTokenRef.current=renderSceneSnapshotToken;
+    try {
+      runtime.modelRoot.updateMatrixWorld?.(true);
+      runtime.camera.updateMatrixWorld?.(true);
+      const snapshot=captureRenderScene({
+        scene:runtime.modelRoot,camera:runtime.camera,controls:runtime.controls,
+        sceneId:`arqdor-concept-${renderSceneSnapshotToken}`,
+      });
+      const geometry=exportRenderGeometry(runtime.modelRoot,{maxTriangles:250_000});
+      onRenderSceneSnapshot?.(snapshot);
+      onRenderGeometryExport?.(geometry);
+    } catch(error) {
+      const message=error instanceof Error?error.message:"Falha na captura sincronizada 3D";
+      onRenderSceneSnapshotError?.(message);
+      onRenderGeometryExportError?.(message);
+    }
+  },[renderSceneSnapshotToken,renderGeometryExportToken,engineState,sceneContentReady,
+    onRenderSceneSnapshot,onRenderGeometryExport,onRenderSceneSnapshotError,onRenderGeometryExportError]);
+
   const processedGeometryTokenRef = useRef<number | null>(null);
   useEffect(() => {
-    if (!renderGeometryExportToken || processedGeometryTokenRef.current === renderGeometryExportToken) return;
+    if (!renderGeometryExportToken || renderGeometryExportToken === renderSceneSnapshotToken || processedGeometryTokenRef.current === renderGeometryExportToken) return;
     const runtime = runtimeRef.current;
     if (!runtime || engineState !== "ready" || !sceneContentReady) return;
     processedGeometryTokenRef.current = renderGeometryExportToken;
@@ -880,7 +906,7 @@ export default function ConceptWebGLScene({
 
   const processedSnapshotTokenRef = useRef<number | null>(null);
   useEffect(() => {
-    if (!renderSceneSnapshotToken || processedSnapshotTokenRef.current === renderSceneSnapshotToken) return;
+    if (!renderSceneSnapshotToken || renderSceneSnapshotToken === renderGeometryExportToken || processedSnapshotTokenRef.current === renderSceneSnapshotToken) return;
     const runtime = runtimeRef.current;
     if (!runtime || engineState !== "ready" || !sceneContentReady) return;
     processedSnapshotTokenRef.current = renderSceneSnapshotToken;
