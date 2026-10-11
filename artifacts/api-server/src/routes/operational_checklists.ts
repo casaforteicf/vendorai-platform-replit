@@ -13,6 +13,8 @@ import {
   operationalChecklistTemplatesTable,
   operationalChecklistRunsTable,
   mediaAssetsTable,
+  archProjetosTable,
+  archConceptProjectsTable,
   type OperationalChecklistItem,
 } from "@workspace/db";
 
@@ -387,6 +389,90 @@ router.get("/operational-checklists/runs/:runId/items/:itemId/photos", async (re
     storageUrl, accessUrl: await measureStorage.getObjectEntitySignedUrl(storageUrl, 300),
   })));
   res.json({ photos });
+});
+
+
+const createArqdorDraftSchema = z.object({
+  confirmed: z.literal(true),
+  title: z.string().trim().min(3).max(180),
+});
+
+router.post("/operational-checklists/runs/:runId/create-arqdor-draft", async (req, res) => {
+  const parsed = createArqdorDraftSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return void res.status(422).json({ error: "Título e confirmação explícita são obrigatórios" });
+  const [run] = await db.select().from(operationalChecklistRunsTable)
+    .where(eq(operationalChecklistRunsTable.id, String(req.params.runId))).limit(1);
+  if (!run) return void res.status(404).json({ error: "Levantamento não encontrado" });
+  if (!canAccessTenant(req, run.tenantId)) return void res.status(403).json({ error: "Acesso negado" });
+  const ownerId = req.user?.sub;
+  if (!ownerId) return void res.status(401).json({ error: "Identificação do responsável obrigatória" });
+  const elements = (run.items ?? []).flatMap((item) => item.surveyElements ?? []);
+  const walls = elements.filter((element) => element.elementType === "wall");
+  const openings = elements.filter((element) => element.elementType === "door" || element.elementType === "window");
+  if (!walls.length || [...walls, ...openings].some((element) => !element.verified))
+    return void res.status(409).json({ error: "Existem paredes ou aberturas não conferidas" });
+  const ids = elements.map((element) => element.id);
+  if (new Set(ids).size !== ids.length) return void res.status(409).json({ error: "Identificadores duplicados" });
+  const validPoint = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 1000000;
+  if (walls.some((w) => ![w.x1Mm, w.y1Mm, w.x2Mm, w.y2Mm].every(validPoint) || Math.hypot((w.x2Mm ?? 0)-(w.x1Mm ?? 0), (w.y2Mm ?? 0)-(w.y1Mm ?? 0)) < 10))
+    return void res.status(409).json({ error: "Paredes com coordenadas inválidas" });
+  const endpoints = walls.flatMap((w) => [{ id:w.id, x:w.x1Mm!, y:w.y1Mm! }, { id:w.id, x:w.x2Mm!, y:w.y2Mm! }]);
+  for (const wall of walls) {
+    const start = endpoints.some((p) => p.id !== wall.id && Math.hypot(p.x-wall.x1Mm!,p.y-wall.y1Mm!) <= 5);
+    const end = endpoints.some((p) => p.id !== wall.id && Math.hypot(p.x-wall.x2Mm!,p.y-wall.y2Mm!) <= 5);
+    if (!start || !end) return void res.status(409).json({ error: "Existem extremidades de paredes desconectadas" });
+  }
+  for (const opening of openings) {
+    const parent = walls.find((wall) => wall.id === opening.wallId && wall.roomName === opening.roomName);
+    if (!parent || opening.offsetMm == null || opening.widthMm == null || opening.heightMm == null ||
+        opening.widthMm <= 0 || opening.heightMm <= 0 || opening.offsetMm < 0 ||
+        (opening.elementType === "window" && opening.sillHeightMm == null) ||
+        opening.offsetMm + opening.widthMm > Math.hypot(parent.x2Mm!-parent.x1Mm!,parent.y2Mm!-parent.y1Mm!) + 0.01)
+      return void res.status(409).json({ error: "Abertura não posicionada ou inválida" });
+  }
+  for (let i = 0; i < openings.length; i++) for (let j = i+1; j < openings.length; j++) {
+    const a = openings[i], other = openings[j];
+    if (a.wallId !== other.wallId) continue;
+    if (a.offsetMm! < other.offsetMm! + other.widthMm! && other.offsetMm! < a.offsetMm! + a.widthMm! &&
+        (a.sillHeightMm ?? 0) < (other.sillHeightMm ?? 0) + other.heightMm! &&
+        (other.sillHeightMm ?? 0) < (a.sillHeightMm ?? 0) + a.heightMm!)
+      return void res.status(409).json({ error: "Aberturas sobrepostas" });
+  }
+  const xs = endpoints.map((p) => p.x), ys = endpoints.map((p) => p.y);
+  const minX = Math.min(...xs), minY = Math.min(...ys);
+  const width = (Math.max(...xs)-minX)/1000, depth = (Math.max(...ys)-minY)/1000;
+  if (width <= 0 || depth <= 0) return void res.status(409).json({ error: "Planta sem largura ou profundidade" });
+  const customWalls = walls.map((w) => ({ id:w.id, floor:0, x1:(w.x1Mm!-minX)/1000, y1:(w.y1Mm!-minY)/1000,
+    x2:(w.x2Mm!-minX)/1000, y2:(w.y2Mm!-minY)/1000, thickness:(w.thicknessMm ?? 150)/1000 }));
+  const customOpenings = openings.map((o) => ({ id:o.id, floor:0, wallId:o.wallId!, type:o.elementType as "door" | "window",
+    offset:o.offsetMm!/1000, width:o.widthMm!/1000, height:o.heightMm!/1000, sillHeight:(o.sillHeightMm ?? 0)/1000 }));
+  const [owner] = await db.select({ id: usersTable.id }).from(usersTable)
+    .where(and(eq(usersTable.id, ownerId), eq(usersTable.tenantId, run.tenantId))).limit(1);
+  if (!owner && req.user?.platformRole !== "super_admin")
+    return void res.status(403).json({ error: "Responsável não pertence ao tenant" });
+  try {
+    const created = await db.transaction(async (tx) => {
+      const [project] = await tx.insert(archProjetosTable).values({
+        tenantId: run.tenantId, leadId: run.leadId, dealId: run.dealId, propostaId: run.propostaId,
+        titulo: parsed.data.title, descricao: "Rascunho originado da conferência " + run.id + " R" + run.revision,
+        status: "briefing",
+        dossieProjeto: { briefing: "Levantamento técnico de origem: " + run.id + ", revisão " + run.revision },
+      }).returning();
+      const [concept] = await tx.insert(archConceptProjectsTable).values({
+        tenantId: run.tenantId, ownerUserId: ownerId, archProjetoId: project.id,
+        title: parsed.data.title, status: "draft",
+        lot: { width: Math.max(width,1), depth: Math.max(depth,1) }, rooms: [],
+        configuration: { projectScope:"room", floors:1, desiredArea:width*depth, customWalls, customOpenings,
+          startSourceChosen:true, terrainDefined:false },
+      }).returning();
+      return { project, concept };
+    });
+    res.status(201).json({ archProjetoId:created.project.id, conceptProjectId:created.concept.id,
+      status:"draft", sourceRunId:run.id, sourceRevision:run.revision, fabricationReady:false });
+  } catch (error) {
+    req.log.error({ err:error, runId:run.id }, "arqdor-measure: draft creation failed");
+    res.status(500).json({ error: "Falha ao criar rascunho Arqdor" });
+  }
 });
 
 router.post("/operational-checklists/runs/:runId/complete", async (req, res) => {
