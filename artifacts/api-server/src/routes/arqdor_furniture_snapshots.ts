@@ -11,7 +11,7 @@ const furniture=z.object({id:z.string().min(1),tenantId:z.string(),projectId:z.s
  parts:z.array(part).max(2000),bounds:z.object({id:z.string(),roomId:z.string(),xMm:number,yMm:number,widthMm:number.positive(),depthMm:number.positive(),rotationDeg:z.number()}),
  status:z.literal("local-draft")}).passthrough();
 const payload=z.object({schemaVersion:z.literal(1),tenantId:z.string().min(1),projectId:z.string().min(1),roomId:z.string().min(1),
- revision:z.string().min(1),createdAt:z.string().min(1),furniture:z.array(furniture).max(500)}).strict();
+ revision:z.string().min(1),baseRevision:z.string().min(1).optional(),createdAt:z.string().min(1),furniture:z.array(furniture).max(500)}).strict();
 const scope=(req:Request)=>req.tenantId??req.user?.tenantId;
 router.get("/arqdor/projects/:id/furniture",async(req:Request,res:Response)=>{
  const tenantId=scope(req),projectId=String(req.params.id);
@@ -37,13 +37,22 @@ router.put("/arqdor/projects/:id/furniture/:roomId",async(req:Request,res:Respon
   ids.add(f.id);
   for(const p of f.parts){if(partIds.has(p.id)||p.furnitureId!==f.id||p.tenantId!==data.tenantId||p.projectId!==projectId)return res.status(400).json({error:"Peças inválidas"});partIds.add(p.id);}
  }
- const normalized={...data,tenantId,furniture:data.furniture.map(f=>({...f,tenantId,parameters:{...f.parameters,tenantId},parts:f.parts.map(p=>({...p,tenantId}))}))};
+ const {baseRevision,...snapshot}=data;
+ const normalized={...snapshot,tenantId,furniture:snapshot.furniture.map(f=>({...f,tenantId,parameters:{...f.parameters,tenantId},parts:f.parts.map(p=>({...p,tenantId}))}))};
+ const serialized=JSON.stringify(normalized);
+ if(serialized.length>2_000_000)return res.status(413).json({error:"Snapshot excede o limite de tamanho"});
  try{
-  const records=await db.update(arqdorWorkspaceProjectsTable)
-   .set({contextBlob:sql`jsonb_set(jsonb_set(COALESCE(${arqdorWorkspaceProjectsTable.contextBlob}, '{}'::jsonb), '{furnitureSnapshots}', COALESCE(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots','{}'::jsonb), true), ARRAY['furnitureSnapshots', ${roomId}]::text[], ${JSON.stringify(normalized)}::jsonb, true)`,updatedAt:new Date()})
-   .where(and(eq(arqdorWorkspaceProjectsTable.id,projectId),eq(arqdorWorkspaceProjectsTable.tenantId,tenantId))).returning({id:arqdorWorkspaceProjectsTable.id});
-  if(!records.length)return res.status(404).json({error:"Projeto não encontrado; salve o projeto antes"});
-  return res.json({saved:true,projectId,roomId,revision:data.revision});
+  return await db.transaction(async tx=>{
+   const [record]=await tx.select({contextBlob:arqdorWorkspaceProjectsTable.contextBlob}).from(arqdorWorkspaceProjectsTable)
+    .where(and(eq(arqdorWorkspaceProjectsTable.id,projectId),eq(arqdorWorkspaceProjectsTable.tenantId,tenantId))).limit(1).for("update");
+   if(!record)return res.status(404).json({error:"Projeto não encontrado; salve o projeto antes"});
+   const current=(record.contextBlob as Record<string,any>|null)?.furnitureSnapshots?.[roomId];
+   if(current&&typeof current.revision==="string"&&baseRevision!==current.revision)return res.status(409).json({error:"Conflito de revisão",currentRevision:current.revision});
+   await tx.update(arqdorWorkspaceProjectsTable)
+    .set({contextBlob:sql`jsonb_set(jsonb_set(COALESCE(${arqdorWorkspaceProjectsTable.contextBlob}, '{}'::jsonb), '{furnitureSnapshots}', COALESCE(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots','{}'::jsonb), true), ARRAY['furnitureSnapshots', ${roomId}]::text[], ${serialized}::jsonb, true)`,updatedAt:new Date()})
+    .where(and(eq(arqdorWorkspaceProjectsTable.id,projectId),eq(arqdorWorkspaceProjectsTable.tenantId,tenantId)));
+   return res.json({saved:true,projectId,roomId,revision:data.revision});
+  });
  }catch(e){req.log?.error(e,"furniture save");return res.status(500).json({error:"Falha ao salvar mobiliário"});}
 });
 export default router;
