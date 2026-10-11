@@ -1597,7 +1597,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             conceptIdRef.current = null;
             conceptRevisionRef.current = null;
             revisionConflictRef.current = false;
-        setRevisionConflictPreview(null);
             setRevisionConflictPreview(null);
             // PKG-07 / ARQ-UI: novo pré-projeto entra direto na escolha da origem.
             // Casa é o padrão, terreno é opcional e pode ser informado antes ou depois.
@@ -1628,6 +1627,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         conceptIdRef.current = draft.id;
         conceptRevisionRef.current = draft.updatedAt ?? null;
         revisionConflictRef.current = false;
+        setRevisionConflictPreview(null);
         setConceptId(draft.id);
         setArchProjetoId(draft.archProjetoId ?? null);
         setProjectMaster(draft.configuration?.projectMaster ?? null);
