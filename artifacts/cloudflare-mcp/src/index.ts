@@ -1,11 +1,12 @@
 import { createServer } from "node:http";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync, readFileSync } from "node:fs";
 import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import * as z from "zod/v4";
-import { authorized, challenge, handleOAuth } from "./oauth.js";
+import { authorized, challenge, handleOAuth, verifiedOperatorClient } from "./oauth.js";
 
 const API_BASE = "https://api.cloudflare.com/client/v4";
 const DEFAULT_GITHUB_OWNER = "casaforteicf";
@@ -186,6 +187,38 @@ async function vendorApi<T>(path: string, init: RequestInit = {}, baseOverride?:
 }
 
 const execFileAsync = promisify(execFile);
+const testOperatorSession = new AsyncLocalStorage<string | null>();
+// Central operator grants are configured by administrator as hashed OAuth client IDs.
+// No permission is inferred from the untrusted 'agent' request parameter.
+function operatorGrant(operation: "request_test" | "get_test_result", lot?: string): string {
+  const client = testOperatorSession.getStore();
+  if (!client) throw new Error("OPERATOR_IDENTITY_REQUIRED");
+  const policyText = process.env["VENDI_TEST_OPERATOR_POLICY"];
+  if (!policyText) throw new Error("OPERATOR_POLICY_MISSING");
+  const policies = JSON.parse(policyText) as Record<string, { lots: string[]; actions: string[] }>;
+  const grant = policies[client];
+  if (!grant || !grant.actions?.includes(operation) || (lot && !grant.lots?.includes(lot))) {
+    throw new Error("OPERATOR_NOT_AUTHORIZED");
+  }
+  return client;
+}
+async function testHostAction(action: "request" | "result", args: string[]) {
+  // Only fixed action and strictly validated fields; no shell command provided by model.
+  const host = process.env["VENDI_CONTABO_SSH_HOST"] || (existsSync("/app/.vendi-ssh/host") ? readFileSync("/app/.vendi-ssh/host", "utf8").trim() : undefined);
+  const user = process.env["VENDI_CONTABO_SSH_USER"] || "vendorai";
+  const key = process.env["VENDI_CONTABO_SSH_KEY_PATH"] || "/app/.vendi-ssh/id_ed25519";
+  const known = process.env["VENDI_CONTABO_KNOWN_HOSTS"] || "/app/.vendi-ssh/known_hosts";
+  if (!host || !existsSync(key) || !existsSync(known) || !/^[a-zA-Z0-9.-]+$/.test(host) || !/^[a-z_][a-z0-9_-]*$/.test(user)) throw new Error("TEST_HOST_NOT_PROVISIONED");
+  const remote = "/usr/bin/python3 /home/vendorai/vendorai-test-executor/scripts/infra/remote-test-gate.py";
+  // Host receives only server-validated safe scalar args (no shell metacharacters).
+  const command = [remote, action, ...args].join(" ");
+  const { stdout } = await execFileAsync("ssh", [
+    "-i", key, "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes",
+    "-o", `UserKnownHostsFile=${known}`, "-o", "ConnectTimeout=8", `${user}@${host}`, command,
+  ], { timeout: 1850000, maxBuffer: 512 * 1024 });
+  return JSON.parse(stdout);
+}
+
 
 // The existing MCP container is a client, never a root-level Docker daemon.
 // Operations connect through a dedicated restricted SSH identity, when provisioned.
@@ -471,6 +504,54 @@ function createCloudflareMcpServer() {
   );
 
   server.registerTool(
+    "request_test",
+    {
+      description: "Central authenticated operator: request isolated tests of an exact PR SHA.",
+      inputSchema: z.object({
+        agent: z.string().regex(/^AGENT-(0[1-9]|1[0-4])$/),
+        lot: z.string().regex(/^LOT-(0[1-9]|1[0-4])$/),
+        pr: z.number().int().min(1).max(9999999),
+        branch: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._/-]{0,180}$/),
+        sha: z.string().regex(/^[a-fA-F0-9]{40}$/),
+        suite: z.enum(["crm", "api", "frontend", "full", "mcp"]),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ agent, lot, pr, branch, sha, suite }) => {
+      const principal = operatorGrant("request_test", lot);
+      if (branch.includes("..") || branch.includes("//") || branch.endsWith("/")) throw new Error("INVALID_BRANCH");
+      // Agent label is audit metadata supplied by the coordinator, never authentication.
+      let result: unknown;
+      try {
+        result = await testHostAction("request", [String(pr), branch, sha, suite, lot]);
+        console.info(JSON.stringify({ type: "test_request", principal, lot, requestedAgent: agent, pr, sha, suite, status: "completed", timestamp: new Date().toISOString() }));
+      } catch (error) {
+        console.error(JSON.stringify({ type: "test_request", principal, lot, requestedAgent: agent, pr, sha, suite, status: "failed", timestamp: new Date().toISOString() }));
+        throw error;
+      }
+      return toolText({ principal, requestedAgent: agent, lot, pr, sha, suite, result });
+    },
+  );
+
+  server.registerTool(
+    "get_test_result",
+    {
+      description: "Read isolated test run results as authorized central operator.",
+      inputSchema: z.object({
+        lot: z.string().regex(/^LOT-(0[1-9]|1[0-4])$/),
+        runId: z.string().regex(/^pr-[1-9][0-9]*-[A-Za-z0-9_-]{8}$/),
+      }),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ lot, runId }) => {
+      const principal = operatorGrant("get_test_result", lot);
+      const result = await testHostAction("result", [runId, lot]);
+      console.info(JSON.stringify({ type: "test_result_read", principal, lot, runId, timestamp: new Date().toISOString() }));
+      return toolText({ principal, lot, runId, result });
+    },
+  );
+
+  server.registerTool(
     "vendi_contabo_status",
     {
       description: "Consulta a Contabo real via SSH restrito para verificar containers, saúde de homologação/produção e armazenamento. Somente leitura; não executa comandos arbitrários nem faz deploy.",
@@ -630,7 +711,7 @@ const httpServer = createServer(async (req, res) => {
     return;
   }
 
-  await nodeMcpHandler(req, res);
+  await testOperatorSession.run(verifiedOperatorClient(req), () => nodeMcpHandler(req, res));
 });
 
 httpServer.listen(port, "0.0.0.0", () => {

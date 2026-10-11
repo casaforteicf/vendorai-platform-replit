@@ -97,3 +97,7 @@ Sem clone autenticado no terminal; cópias existentes parciais. Dispositivo Cont
 | TER-07 | Vínculo do interessado ao CRM | verification_required | W03-TER | #3450 @ 9d37115e5cbe | Domínio de lotes e origem testado no núcleo #3450; portal, mapas, recuos, implantação e CRM integrados não comprovados. | Não verificada | Não publicada |
 
 A matriz JSON adjacente contém arquivos candidatos e SHAs completos por requisito. Todos os estados permanecem verification_required até gates específicos; aprovação de escopo e testes de helpers não substituem produto integrado.
+
+## Conciliação concorrente
+
+A main avançou para d1219b301bf0777f0150e2f962f6e62d1b56103e durante a execução. A cobertura original permaneceu byte a byte igual; a branch incorpora essa main preservando todas as alterações concorrentes. PR desta correção: #3466. PR #3450 no commit 9d37115e5cbe7f93259a5634ab36f684f68a9d2b foi observado mergeable=true após esse avanço; isso não aprova build/homologação.
