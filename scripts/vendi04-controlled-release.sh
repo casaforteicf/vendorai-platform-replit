@@ -50,10 +50,22 @@ assert_consistent(){
  fi
 }
 assert_consistent || { log "DENIED_INCONSISTENT_RELEASE_STATE";exit 65; }
+# Global release safety: no other lot may retain an unresolved publication.
+# An inconsistent historical release MUST be reconciled explicitly (not deleted).
+if [[ "$ACTION" == publish ]]; then
+ for record in "$ROOT"/state/*.prod; do
+  [[ -f "$record" && "$record" != "$STATE" ]] || continue
+  record_status=$(sed -n 's/^STATUS=//p' "$record" | head -1)
+  case "$record_status" in
+   PUBLISHED|INCONSISTENT*) echo "OTHER_RELEASE_REQUIRES_RECONCILIATION"; log "BLOCKED_OTHER_RELEASE=$record"; exit 65;;
+  esac
+ done
+fi
 if [[ "$ACTION" == rollback ]]; then
  [[ -f "$STATE" ]] || { echo NO_ROLLBACK_STATE;exit 65; }
  SAVED=$(sed -n 's/^BACKUP=//p' "$STATE")
  [[ "$SAVED" =~ ^vendorai-prod-api-candidate-backup-[a-z0-9-]+$ ]] || { echo INVALID_BACKUP_STATE;exit 65; }
+ [[ "$(sed -n 's/^STATUS=//p' "$STATE" | head -1)" == "PUBLISHED" ]] || { echo ROLLBACK_NOT_PUBLISHED;exit 65; }
  docker inspect "$SAVED" >/dev/null || { echo BACKUP_MISSING;exit 65; }
  REPLACED="${CURRENT}-failed-$(date -u +%s)"
  docker stop "$CURRENT" >/dev/null
