@@ -158,3 +158,9 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - Editor apresenta quantidade de fotos pendentes, envia a primeira da fila através do upload autenticado existente e remove somente o registro da foto confirmada, por ID exclusivo.
 - **Pendências críticas:** associar e restaurar cotas de cada foto offline; recuperação automática de visualização da foto local quando se reabre o editor; idempotência completa quando upload remoto confirma mas exclusão local falha; validação em navegador real; limite combinado de fotos servidor + pendentes; rotina de logout/privacidade.
 - **Status:** código gravado na branch, builds/testes/homologação não executados, sem PR/merge/deploy.
+
+## Lote 20 — cotas em fotografias offline e confirmação local de upload (11/10/2026)
+- Fila de fotos IndexedDB guarda opcionalmente `measures` por foto e `uploadedPath` como reconhecimento de upload já concluído.
+- Editor armazena cotas locais sem caminho de foto junto ao arquivo offline; ao sincronizar, envia imagem pela API autenticada, registra o caminho remoto em IndexedDB, então associa cotas ao caminho persistido via PATCH.
+- Se o PATCH das cotas falhar após upload e o reconhecimento tiver sido gravado, a fila não reenviará a imagem: permite nova tentativa de associar as cotas.
+- **Limites importantes:** cotas acrescentadas depois de enfileirar a imagem não são automaticamente anexadas ao registro offline; falha entre confirmação remota e armazenamento do reconhecimento local ainda pode duplicar imagens; não há chave idempotente no backend. Recuperação de exibição da imagem e atualização de marcações offline ainda exigem interface dedicada. A edição conjunta de cotas pode causar conflito e deve ser revisada após erro 409. Sem testes/build/homologação, merge ou produção.
