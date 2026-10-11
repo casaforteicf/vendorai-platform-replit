@@ -18,6 +18,13 @@ self.onmessage = (event: MessageEvent<Request>) => {
   if (request.mode && request.mode !== "diffuse" && request.mode !== "diagnostic") { self.postMessage({type:"error",id,message:"Modo inválido"}); return; }
   const strength=request.denoise??0;
   if(!Number.isFinite(strength)||strength<0||strength>1) {self.postMessage({type:"error",id,message:"Denoise inválido"});return;}
+  if (!Number.isInteger(options.width)||!Number.isInteger(options.height)||
+      options.width<1||options.height<1||options.width*options.height>262144) {
+    self.postMessage({type:"error",id,message:"Resolução de diagnóstico inválida"});return;
+  }
+  if(request.tileRows!==undefined&&(!Number.isFinite(request.tileRows)||request.tileRows<1)) {
+    self.postMessage({type:"error",id,message:"Bloco de linhas inválido"});return;
+  }
   const rows = Math.max(1, Math.min(32, Math.floor(request.tileRows || 8)));
   active.add(id);
   let prepared: ReturnType<typeof prepareCpuPreview>;
