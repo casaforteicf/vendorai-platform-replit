@@ -30,8 +30,9 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
 
     try{
       const tenantId=savedTenantId??roomItems[0]?.tenantId??draft.parameters.tenantId;
-      const scopedDraft={...draft,parameters:{...draft.parameters,tenantId},parts:draft.parts.map(p=>({...p,tenantId}))};
-      const next=insertCabinetDraft({tenantId,projectId:environment.projectId??draft.parameters.projectId,room:{id:environment.roomId,widthMm:width,depthMm:depth},draft:scopedDraft,xMm:x,yMm:y,id:crypto.randomUUID(),existing:roomItems});
+      const projectId=environment.projectId??draft.parameters.projectId;
+      const scopedDraft={...draft,parameters:{...draft.parameters,tenantId,projectId,roomId:environment.roomId},parts:draft.parts.map(p=>({...p,tenantId,projectId,parentItemId:environment.roomId}))};
+      const next=insertCabinetDraft({tenantId,projectId,room:{id:environment.roomId,widthMm:width,depthMm:depth},draft:scopedDraft,xMm:x,yMm:y,id:crypto.randomUUID(),existing:roomItems});
       setItems(old=>[...old.filter(i=>i.roomId!==environment.roomId),...next]);setMessage("");
     }catch(e){setMessage(e instanceof Error?e.message:"Erro de geometria");}
   }
@@ -75,7 +76,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
       const data=await response.json();
       const snapshot=data.furnitureSnapshots?.[environment.roomId];
       if(!data.tenantId)throw Error("Resposta sem identificação do tenant");
-      if(!snapshot){setMessage("Nenhum mobiliário salvo para este ambiente.");return;}
+      if(!snapshot){setSavedTenantId(data.tenantId);setLoadedRevision(null);setItems(old=>old.filter(item=>item.roomId!==environment.roomId));setSelectedId(null);setMessage("Nenhum mobiliário salvo para este ambiente.");return;}
       const restored=restoreFurnitureSnapshot(snapshot,{tenantId:data.tenantId,projectId:environment.projectId,
         room:{id:environment.roomId,widthMm:width,depthMm:depth}});
       if(restored.projectId!==environment.projectId||restored.roomId!==environment.roomId)throw Error("Contexto de projeto incompatível");
