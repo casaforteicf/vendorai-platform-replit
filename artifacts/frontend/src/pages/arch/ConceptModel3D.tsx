@@ -1,3 +1,10 @@
+import type { ArchitecturalModel } from "./conceptArchitecturalModel";
+import { architecturalFloorCells, architecturalSceneGeometry } from "./conceptArchitecturalViews";
+import { objectTransformPatch } from "./conceptObjectTransform";
+import { sceneGesture } from "./conceptSceneGesture";
+import { exposedWallFaces } from "./conceptWallSurfaces";
+import { partitionOrthogonalWallSolids } from "./conceptWallSolidUnion";
+import { alignOpeningSegment, alignOpeningPoint, openingVerticalBounds } from "./conceptWallVoids";
 import type { SiteFrontSide } from "./conceptSitePlacement";
 import { buildFacadeMeshBoxes, facadeBoxFaces } from "./conceptFacadeMeshes";
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
@@ -42,6 +49,7 @@ type Props = {
   lotDepth: number;
   activeFloor: number;
   levels: ConceptModelLevel[];
+  architecturalModel?: ArchitecturalModel;
   roof: "platibanda" | "aparente" | "misto";
   facadeDesign?: FacadeDesignState;
   frontSide?: SiteFrontSide;
@@ -384,7 +392,7 @@ function wallPolygon(
   zMin: number,
   zMax: number,
 ) {
-  const thickness = Math.max(0.08, wall.thickness ?? 0.14);
+  const thickness = Math.max(0.000001, wall.thickness ?? 0.15);
   const dx = wall.x2 - wall.x1;
   const dy = wall.y2 - wall.y1;
   const length = Math.max(0.001, Math.hypot(dx, dy));
@@ -406,82 +414,6 @@ function wallPolygon(
   };
 }
 
-function splitWallForOpenings(
-  wall: { id: string; x1: number; y1: number; x2: number; y2: number; thickness?: number; exterior?: boolean },
-  openings: OpeningMarker[],
-) {
-  const vertical = Math.abs(wall.x1 - wall.x2) < 0.01;
-  const wallStart = vertical ? Math.min(wall.y1, wall.y2) : Math.min(wall.x1, wall.x2);
-  const wallEnd = vertical ? Math.max(wall.y1, wall.y2) : Math.max(wall.x1, wall.x2);
-  const wallCoord = vertical ? wall.x1 : wall.y1;
-
-  const matches = openings
-    .filter((opening) => {
-      if (vertical && opening.orientation !== "vertical") return false;
-      if (!vertical && opening.orientation !== "horizontal") return false;
-      const coord = vertical ? opening.x : opening.y;
-      const along = vertical ? opening.y : opening.x;
-      return Math.abs(coord - wallCoord) <= 0.08 && along >= wallStart - 0.05 && along <= wallEnd + 0.05;
-    })
-    .map((opening) => {
-      const along = vertical ? opening.y : opening.x;
-      const width = Math.max(0.05, opening.width ?? (opening.type === "door" ? 0.9 : 1.2));
-      return {
-        ...opening,
-        start: Math.max(wallStart, along - width / 2),
-        end: Math.min(wallEnd, along + width / 2),
-      };
-    })
-    .sort((a, b) => a.start - b.start);
-
-  if (!matches.length) {
-    return [{ wall, zMin: 0, zMax: WALL_HEIGHT, kind: "solid" as const }];
-  }
-
-  const pieces: Array<{
-    wall: typeof wall;
-    zMin: number;
-    zMax: number;
-    kind: "solid" | "lintel" | "sill";
-  }> = [];
-  let cursor = wallStart;
-
-  const makeSegment = (start: number, end: number) => {
-    if (end - start < 0.04) return null;
-    return vertical
-      ? { ...wall, y1: start, y2: end }
-      : { ...wall, x1: start, x2: end };
-  };
-
-  for (const opening of matches) {
-    const before = makeSegment(cursor, opening.start);
-    if (before) pieces.push({ wall: before, zMin: 0, zMax: WALL_HEIGHT, kind: "solid" });
-
-    const openingSegment = makeSegment(opening.start, opening.end);
-    if (openingSegment) {
-      const openingHeight = Math.max(
-        0.05,
-        Math.min(WALL_HEIGHT, opening.height ?? (opening.type === "door" ? 2.1 : 1.2)),
-      );
-      const sillHeight = opening.type === "door"
-        ? 0
-        : Math.max(0, Math.min(WALL_HEIGHT, opening.sillHeight ?? 0.9));
-      const headHeight = Math.min(WALL_HEIGHT, sillHeight + openingHeight);
-
-      if (sillHeight > 0.04) {
-        pieces.push({ wall: openingSegment, zMin: 0, zMax: sillHeight, kind: "sill" });
-      }
-      if (headHeight < WALL_HEIGHT - 0.04) {
-        pieces.push({ wall: openingSegment, zMin: headHeight, zMax: WALL_HEIGHT, kind: "lintel" });
-      }
-    }
-    cursor = Math.max(cursor, opening.end);
-  }
-
-  const after = makeSegment(cursor, wallEnd);
-  if (after) pieces.push({ wall: after, zMin: 0, zMax: WALL_HEIGHT, kind: "solid" });
-  return pieces;
-}
 
 const WALL_3D_MATERIALS: Record<string, { front: string; side: string; top: string }> = {
   "pintura-branca": { front: "#f8fafc", side: "#e2e8f0", top: "#ffffff" },
@@ -577,6 +509,7 @@ export default function ConceptModel3D({
   lotDepth,
   activeFloor,
   levels,
+  architecturalModel,
   roof,
   facadeDesign,
   frontSide = "bottom",
@@ -638,6 +571,8 @@ export default function ConceptModel3D({
   const [panoramaExportError, setPanoramaExportError] = useState<string | null>(null);
   const sceneRootRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const selectionGestureRef = useRef<ReturnType<typeof sceneGesture> | null>(null);
+  if (!selectionGestureRef.current) selectionGestureRef.current = sceneGesture();
   const [orbitGesture, setOrbitGesture] = useState<null | {
     pointerId: number;
     startX: number;
@@ -811,6 +746,11 @@ export default function ConceptModel3D({
   };
 
 
+  const boundedObjectPatch = (x: number, y: number, width: number, depth: number, angle: number) => objectTransformPatch(
+    { x: x + width / 2 - lotWidth / 2, z: y + depth / 2 - lotDepth / 2 },
+    -angle * Math.PI / 180, width, depth, lotWidth, lotDepth, false,
+  );
+
   const scaleObject = (objectId: string, factor: number) => {
     if (!onObjectChange) return;
     const object = objects.find((item) => item.id === objectId);
@@ -823,8 +763,7 @@ export default function ConceptModel3D({
     onObjectChange(object.id, {
       width: nextWidth,
       depth: nextDepth,
-      x: Math.max(0, Math.min(lotWidth - nextWidth, Number((centerX - nextWidth / 2).toFixed(2)))),
-      y: Math.max(0, Math.min(lotDepth - nextDepth, Number((centerY - nextDepth / 2).toFixed(2)))),
+      ...boundedObjectPatch(centerX - nextWidth / 2, centerY - nextDepth / 2, nextWidth, nextDepth, object.rotation),
     });
     onObjectEditEnd?.();
   };
@@ -891,11 +830,10 @@ export default function ConceptModel3D({
       const localY = -worldDelta.x * Math.sin(radians) + worldDelta.y * Math.cos(radians);
       const object = objects.find((item) => item.id === objectResize.objectId);
       if (!object) return;
-      const snap = (value: number) => Math.round(value * 20) / 20;
-      onObjectChange(object.id, {
-        width: snap(Math.max(0.3, Math.min(lotWidth - object.x, objectResize.startWidth + localX))),
-        depth: snap(Math.max(0.3, Math.min(lotDepth - object.y, objectResize.startDepth + localY))),
-      });
+      const width = Math.max(0.3, Math.min(lotWidth, Math.round((objectResize.startWidth + localX) * 20) / 20));
+      const depth = Math.max(0.3, Math.min(lotDepth, Math.round((objectResize.startDepth + localY) * 20) / 20));
+      const patch = boundedObjectPatch(object.x, object.y, width, depth, object.rotation);
+      if (patch) onObjectChange(object.id, { ...patch, width, depth });
       return;
     }
     if (objectDrag && objectDrag.pointerId === event.pointerId && onObjectChange) {
@@ -903,11 +841,8 @@ export default function ConceptModel3D({
       const delta = projectedDeltaToWorld(point.x - objectDrag.startSvgX, point.y - objectDrag.startSvgY);
       const object = objects.find((item) => item.id === objectDrag.objectId);
       if (!object) return;
-      const snap = (value: number) => Math.round(value * 20) / 20;
-      onObjectChange(object.id, {
-        x: snap(Math.max(0, Math.min(lotWidth - object.width, objectDrag.startObjectX + delta.x))),
-        y: snap(Math.max(0, Math.min(lotDepth - object.depth, objectDrag.startObjectY + delta.y))),
-      });
+      const patch = boundedObjectPatch(objectDrag.startObjectX + delta.x, objectDrag.startObjectY + delta.y, object.width, object.depth, object.rotation);
+      if (patch) onObjectChange(object.id, patch);
       return;
     }
     if (event.pointerType === "touch" && touchPointersRef.current.has(event.pointerId)) {
@@ -1010,6 +945,7 @@ export default function ConceptModel3D({
   const renderRoofFloor = (floor: number) => {
     if (!showRoof || !showAllFloors || interiorMode) return null;
     const topFloor = floor >= Math.max(0, ...levels.map((level) => level.floor));
+    if ((topFloor && architecturalModel?.roofs.length) || architecturalModel?.slabs.some(slab => slab.floor === floor + 1)) return null;
     if (topFloor && roof !== "platibanda") return null;
     const slabs = roofPlan.slabs.filter((slab) => slab.floor === floor);
     const edges = roofPlan.edges.filter((edge) => edge.floor === floor);
@@ -1654,6 +1590,7 @@ export default function ConceptModel3D({
         lotDepth={lotDepth}
         activeFloor={activeFloor}
         levels={levels}
+        architecturalModel={architecturalModel}
         objects={Array.isArray(objects) ? objects : []}
         selectedObjectId={selectedObjectId}
         selectedWallId={selectedWallId}
@@ -1805,6 +1742,16 @@ export default function ConceptModel3D({
         ref={svgRef}
         data-concept-model3d-source="true"
         viewBox={`${-sceneWidth / 2 + panX} ${-sceneHeight / 2 + panY} ${sceneWidth} ${sceneHeight}`}
+        onPointerDownCapture={(event) => selectionGestureRef.current?.down(event.pointerId, event.clientX, event.clientY)}
+        onPointerMoveCapture={(event) => selectionGestureRef.current?.move(event.pointerId, event.clientX, event.clientY)}
+        onPointerUpCapture={(event) => selectionGestureRef.current?.up(event.pointerId, event.clientX, event.clientY)}
+        onPointerCancelCapture={(event) => selectionGestureRef.current?.cancel(event.pointerId)}
+        onClickCapture={(event) => {
+          if (event.button !== 0 || !selectionGestureRef.current?.canClick()) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        }}
         onPointerDown={handleOrbitStart}
         onPointerMove={handleOrbitMove}
         onPointerUp={handleOrbitEnd}
@@ -1812,6 +1759,7 @@ export default function ConceptModel3D({
         onWheel={handleWheel}
         onContextMenu={(event) => event.preventDefault()}
         onClick={() => {
+          if (paintTool) return;
           onSelectObject?.(null);
           onSelectWall?.(null);
           onSelectCustomWall?.(null);
@@ -1923,18 +1871,28 @@ export default function ConceptModel3D({
               y1: wall.y1,
               x2: wall.x2,
               y2: wall.y2,
-              thickness: wall.exterior ? 0.18 : 0.12,
+              thickness: 0.15,
               exterior: wall.exterior,
               custom: false,
             })),
             ...level.customWalls.map((wall) => ({ ...wall, exterior: false, custom: true })),
           ];
 
+          const wallPieces = partitionOrthogonalWallSolids(allWalls, level.openings, WALL_HEIGHT);
+          const wallSurfaces = exposedWallFaces(wallPieces);
+          wallPieces.sort((a, b) => {
+            const depth = (piece: typeof a) => {
+              const center = rotatePoint((piece.wall.x1 + piece.wall.x2) / 2, (piece.wall.y1 + piece.wall.y2) / 2, rotation, projectionWidth, projectionDepth);
+              return center.x + center.y;
+            };
+            return depth(a) - depth(b);
+          });
+
           return (
             <g key={`level-${level.floor}`} opacity={!showAllFloors && level.floor !== activeFloor ? 0.2 : 1}>
               {level.closedSpaces.map((space) => (
                 <g key={`${level.floor}-${space.id}`}>
-                  {space.cells.map((cell, index) => (
+                  {space.cells.flatMap(cell => architecturalFloorCells(architecturalModel, level.floor, cell)).map((cell, index) => (
                     <polygon
                       key={`${space.id}-slab-${index}`}
                       points={points(quad(
@@ -1955,8 +1913,8 @@ export default function ConceptModel3D({
                       onClick={(event) => {
                         if (level.floor !== activeFloor) return;
                         event.stopPropagation();
-                        if (paintTool?.target === "floor" && onPaintFloor) {
-                          onPaintFloor(space.id, paintTool.materialId);
+                        if (paintTool) {
+                          if (paintTool.target === "floor") onPaintFloor?.(space.id, paintTool.materialId);
                           return;
                         }
                         onSelectClosedSpace?.(space.id);
@@ -1985,8 +1943,8 @@ export default function ConceptModel3D({
               ))}
 
               <g filter="url(#concept3d-shadow)">
-                {allWalls.flatMap((wall) =>
-                  splitWallForOpenings(wall, level.openings).map((piece, index) => {
+                {wallPieces.map((piece, index) => {
+                    const wall = piece.wall;
                     const shape = wallPolygon(
                       piece.wall,
                       rotation, projectionWidth, projectionDepth, zoom,
@@ -2002,14 +1960,35 @@ export default function ConceptModel3D({
                         onClick={(event) => {
                           if (level.floor !== activeFloor) return;
                           event.stopPropagation();
-                          if (paintTool?.target === "wall" && onPaintWall) {
-                            onPaintWall(wall.id, paintTool.materialId);
+                          if (paintTool) {
+                            if (paintTool.target === "wall") onPaintWall?.(wall.id, paintTool.materialId);
                             return;
                           }
                           if (wall.custom) onSelectCustomWall?.(wall.id);
                           else onSelectWall?.(wall.id);
                         }}
                       >
+                        {wallSurfaces.has(piece) ? wallSurfaces.get(piece)!.map((face, faceIndex) => {
+                          const vertices = face.direction > 0 ? face.vertices : [...face.vertices].reverse();
+                          const projected = vertices.map(([x, y, z]) => project({ x, y, z: wallBase + z }, rotation, projectionWidth, projectionDepth, zoom));
+                          const area = projected.reduce((sum, point, i) => {
+                            const next = projected[(i + 1) % projected.length];
+                            return sum + point.x * next.y - next.x * point.y;
+                          }, 0);
+                          if (area <= 1e-8) return null;
+                          const selected = (wall.custom ? selectedCustomWallId : selectedWallId) === wall.id;
+                          return <polygon
+                            key={faceIndex}
+                            points={points(projected)}
+                            fill={face.axis === 2
+                              ? selectedWallMaterial?.top ?? "url(#concept3d-wall)"
+                              : face.axis === 0
+                                ? selectedWallMaterial?.front ?? (wall.exterior ? exteriorMaterial.baseColor : "#aab5c3")
+                                : selectedWallMaterial?.side ?? "url(#concept3d-wall-side)"}
+                            stroke={selected ? "#f97316" : "#475569"}
+                            strokeWidth={selected ? "0.11" : "0.055"}
+                          />;
+                        }) : <>
                         <polygon
                           points={points(shape.sideA)}
                           fill={selectedWallMaterial?.front ?? (wall.exterior ? exteriorMaterial.baseColor : "#aab5c3")}
@@ -2028,19 +2007,20 @@ export default function ConceptModel3D({
                           stroke={(wall.custom ? selectedCustomWallId : selectedWallId) === wall.id ? "#f97316" : "#64748b"}
                           strokeWidth={(wall.custom ? selectedCustomWallId : selectedWallId) === wall.id ? "0.11" : "0.055"}
                         />
+                        </>}
                       </g>
                     );
-                  })
-                )}
+                  })}
               </g>
 
               {level.openings.map((opening) => {
+                const linkedWall = opening.roomId?.startsWith("custom-wall:") ? level.customWalls.find(wall => opening.roomId === `custom-wall:${wall.id}`) : undefined;
                 const width = Math.max(0.05, opening.width ?? (opening.type === "door" ? 0.9 : 1.2));
-                const height = Math.max(0.05, Math.min(WALL_HEIGHT, opening.height ?? (opening.type === "door" ? 2.1 : 1.2)));
-                const sill = opening.type === "door"
-                  ? 0
-                  : Math.max(0, Math.min(WALL_HEIGHT, opening.sillHeight ?? 0.9));
-                const segment = opening.orientation === "vertical"
+                const bounds = openingVerticalBounds(opening, WALL_HEIGHT);
+                if (!bounds) return null;
+                const height = bounds.height;
+                const sill = bounds.bottom;
+                const rawSegment = opening.orientation === "vertical"
                   ? {
                       x1: opening.x,
                       y1: opening.y - width / 2,
@@ -2055,6 +2035,7 @@ export default function ConceptModel3D({
                       y2: opening.y,
                       thickness: 0.035,
                     };
+                const segment = alignOpeningSegment(rawSegment, opening, linkedWall);
                 const shape = wallPolygon(
                   segment,
                   rotation,
@@ -2095,7 +2076,7 @@ export default function ConceptModel3D({
                     onClick={(event) => {
                       if (level.floor !== activeFloor) return;
                       event.stopPropagation();
-                      onSelectOpening?.(opening.id);
+                      if (!paintTool) onSelectOpening?.(opening.id);
                     }}
                   >
                     <polygon
@@ -2123,7 +2104,7 @@ export default function ConceptModel3D({
                       <>
                         {frameSegments.map((frame, frameIndex) => {
                           const frameShape = wallPolygon(
-                            frame,
+                            alignOpeningSegment(frame, opening, linkedWall),
                             rotation,
                             projectionWidth,
                             projectionDepth,
@@ -2159,13 +2140,13 @@ export default function ConceptModel3D({
                         })}
                         {mullionSegment && (() => {
                           const mullionShape = wallPolygon(
-                            mullionSegment,
+                            alignOpeningSegment(mullionSegment, opening, linkedWall),
                             rotation,
                             projectionWidth,
                             projectionDepth,
                             zoom,
-                            zMin + 0.06,
-                            zMax - 0.06,
+                            zMin + Math.min(0.06, height / 3),
+                            zMax - Math.min(0.06, height / 3),
                           );
                           return (
                             <g>
@@ -2180,9 +2161,8 @@ export default function ConceptModel3D({
                     {isDoor && (() => {
                       const handlePoint = project(
                         {
-                          x: opening.orientation === "vertical" ? opening.x + 0.02 : opening.x + width * 0.28,
-                          y: opening.orientation === "vertical" ? opening.y + width * 0.28 : opening.y + 0.02,
-                          z: levelBase + 1.0,
+                          ...alignOpeningPoint({ x: opening.orientation === "vertical" ? opening.x + 0.02 : opening.x + width * 0.28, y: opening.orientation === "vertical" ? opening.y + width * 0.28 : opening.y + 0.02 }, opening, linkedWall),
+                          z: wallBase + sill + height * 0.45,
                         },
                         rotation,
                         projectionWidth,
@@ -2217,7 +2197,7 @@ export default function ConceptModel3D({
 
                 return level.closedSpaces.flatMap((space) =>
                   space.cells.flatMap((cell, index) =>
-                    slabPiecesForCell(cell, lowerStairs).map((piece, pieceIndex) => (
+                    architecturalFloorCells(architecturalModel, level.floor, cell).flatMap(piece => slabPiecesForCell(piece, lowerStairs)).map((piece, pieceIndex) => (
                       <polygon
                         key={`${space.id}-floor-slab-${index}-${pieceIndex}`}
                         points={points(quad(
@@ -2279,10 +2259,7 @@ export default function ConceptModel3D({
                 onPointerDown={(event) => {
                   if (event.button !== 0) return;
                   event.stopPropagation();
-                  if (paintTool?.target === "object" && onPaintObject) {
-                    onPaintObject(object.id, paintTool.materialId);
-                    return;
-                  }
+                  if (paintTool) return;
                   onSelectObject?.(object.id);
                   if (!onObjectChange) return;
                   onObjectEditStart?.();
@@ -2299,8 +2276,8 @@ export default function ConceptModel3D({
                 }}
                 onClick={(event) => {
                   event.stopPropagation();
-                  if (paintTool?.target === "object" && onPaintObject) {
-                    onPaintObject(object.id, paintTool.materialId);
+                  if (paintTool) {
+                    if (paintTool.target === "object") onPaintObject?.(object.id, paintTool.materialId);
                     return;
                   }
                   onSelectObject?.(object.id);
@@ -2354,7 +2331,14 @@ export default function ConceptModel3D({
                     zoom,
                   );
                   const actions = [
-                    { key: "rotate", label: "↻", title: "Girar 90°", run: () => onObjectRotate?.(object.id) },
+                    { key: "rotate", label: "↻", title: "Girar 90°", run: () => {
+                      if (!onObjectChange) { onObjectRotate?.(object.id); return; }
+                      const patch = boundedObjectPatch(object.x, object.y, object.width, object.depth, (object.rotation + 90) % 360);
+                      if (!patch) return;
+                      onObjectEditStart?.();
+                      onObjectChange(object.id, patch);
+                      onObjectEditEnd?.();
+                    } },
                     { key: "smaller", label: "−", title: "Diminuir", run: () => scaleObject(object.id, 0.9) },
                     { key: "larger", label: "+", title: "Aumentar", run: () => scaleObject(object.id, 1.1) },
                     { key: "duplicate", label: "⧉", title: "Duplicar", run: () => onObjectDuplicate?.(object.id) },
@@ -2431,6 +2415,21 @@ export default function ConceptModel3D({
             );
           })}
 
+        {architecturalModel && (() => {
+          const geometry = architecturalSceneGeometry(architecturalModel, activeFloor, showAllFloors, showRoof && !interiorMode);
+          const faces = geometry.boxes.flatMap(box => facadeBoxFaces({
+            id: box.id, width: box.width, depth: box.depth, height: box.height,
+            x: box.x + box.width / 2, y: box.z + box.height / 2, z: box.y + box.depth / 2,
+            materialId: "paint-offwhite", opacity: 1,
+          }).map(vertices => ({ id: box.id, kind: box.kind, vertices }))).concat(geometry.roofFaces.map(face => ({ ...face, kind: "roof-plane" as const })));
+          return faces.map((face, index) => (
+            <polygon key={`architecture-${face.id}-${index}`} pointerEvents="none"
+              points={points(face.vertices.map(point => project(point, rotation, projectionWidth, projectionDepth, zoom)))}
+              fill={face.kind === "roof-plane" ? "#9a6545" : face.kind === "stair-step" ? "#94a3b8" : "#cbd5e1"}
+              stroke="#64748b" strokeWidth="0.025" />
+          ));
+        })()}
+
         {showAllFloors && !interiorMode && facadeDesign && buildFacadeMeshBoxes(
           facadeDesign,
           { minX: buildingBounds.minX, maxX: buildingBounds.maxX, minZ: buildingBounds.minY, maxZ: buildingBounds.maxY },
@@ -2451,7 +2450,7 @@ export default function ConceptModel3D({
           );
         })}
 
-        {showRoof && showAllFloors && !interiorMode && topBounds && roof === "platibanda" && roofPlan.slabs.length === 0 && (
+        {showRoof && !architecturalModel?.roofs.length && showAllFloors && !interiorMode && topBounds && roof === "platibanda" && roofPlan.slabs.length === 0 && (
           <polygon
             points={points(quad(
               topBounds.minX,
@@ -2468,7 +2467,7 @@ export default function ConceptModel3D({
         )}
         {roofPlan.slabs.length > 0 && renderRoofFloor(maxLevel)}
 
-        {showRoof && showAllFloors && !interiorMode && topBounds && (roof === "aparente" || roof === "misto") && (() => {
+        {showRoof && !architecturalModel?.roofs.length && showAllFloors && !interiorMode && topBounds && (roof === "aparente" || roof === "misto") && (() => {
           const midY = (topBounds.minY + topBounds.maxY) / 2;
           const ridgeZ = topZ + Math.min(2.2, (topBounds.maxY - topBounds.minY) * 0.22);
           const leftPlane = [
@@ -2510,4 +2509,6 @@ export default function ConceptModel3D({
     </div>
   );
 }
+
+
 

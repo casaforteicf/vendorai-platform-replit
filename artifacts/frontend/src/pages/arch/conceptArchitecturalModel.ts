@@ -1,0 +1,99 @@
+import { architecturalSlabVoids, rectangularSolidCells } from "./conceptArchitecturalSlabVoids";
+import { createRoof, createSlab, createStraightStair, openingSchedule, type Roof, type Slab, type Stair, type OpeningScheduleItem } from "./conceptArchitecturalElements";
+
+/** Serializable model shared by future 2D, 3D and documentation adapters. */
+export type ArchitecturalModel = {
+  version: 1;
+  slabs: Slab[];
+  stairs: Stair[];
+  roofs: Roof[];
+  openings: OpeningScheduleItem[];
+};
+export type ArchitecturalElement = { kind: "slab"; value: Slab } | { kind: "stair"; value: Stair } | { kind: "roof"; value: Roof } | { kind: "opening"; value: OpeningScheduleItem };
+export type ArchitecturalEdit = { action: "upsert"; element: ArchitecturalElement } | { action: "remove"; kind: ArchitecturalElement["kind"]; id: string };
+type Result<T> = { value: T } | { error: string };
+export const emptyArchitecturalModel = (): ArchitecturalModel => ({ version: 1, slabs: [], stairs: [], roofs: [], openings: [] });
+/** Validate persisted JSON before any renderer or history clone consumes it. */
+export function readArchitecturalModel(input: unknown): Result<ArchitecturalModel> {
+  if (input === undefined || input === null) return { value: emptyArchitecturalModel() };
+  const invalid = { error: "Dados dos elementos arquitetônicos inválidos. O projeto não foi carregado." };
+  if (typeof input !== "object") return invalid;
+  const source = input as Record<string, unknown>;
+  if (source.version !== 1) return { error: "Versão do modelo arquitetônico incompatível." };
+  const keys = ["slabs", "stairs", "roofs", "openings"] as const;
+  if (!keys.every(key => Array.isArray(source[key]))) return invalid;
+  const edits: ArchitecturalEdit[] = [];
+  const ids = new Set<string>();
+  try {
+    for (const key of keys) for (const raw of source[key] as unknown[]) {
+      if (!raw || typeof raw !== "object") return invalid;
+      const value = raw as Record<string, unknown>;
+      if (typeof value.id !== "string" || !value.id.trim() || ids.has(value.id)) return invalid;
+      ids.add(value.id);
+      if ((key === "slabs" || key === "stairs") && (!Number.isInteger(value.floor) || Number(value.floor) < 0)) return invalid;
+      if (key === "slabs" && (!Array.isArray(value.voids) || value.voids.some(v => !v || typeof v !== "object"))) return invalid;
+      if (key === "openings" && (typeof value.wallId !== "string" || !value.wallId.trim())) return invalid;
+      const kind = key === "slabs" ? "slab" : key === "stairs" ? "stair" : key === "roofs" ? "roof" : "opening";
+      edits.push({ action: "upsert", element: { kind, value: raw } as ArchitecturalElement });
+    }
+    const result = applyArchitecturalEdits(emptyArchitecturalModel(), edits);
+    return "error" in result ? { error: result.error } : result;
+  } catch {
+    return invalid;
+  }
+}
+export const cloneArchitecturalModel = (model: ArchitecturalModel): ArchitecturalModel => ({
+  version: 1, slabs: model.slabs.map(s => ({ ...s, voids: s.voids.map(v => ({ ...v })) })),
+  stairs: model.stairs.map(s => ({ ...s })), roofs: model.roofs.map(r => ({ ...r })), openings: model.openings.map(o => ({ ...o })),
+});
+function validOpening(o: OpeningScheduleItem): boolean {
+  return Boolean(o.id && o.wallId && (o.type === "door" || o.type === "window")) &&
+    [o.width, o.height, o.sillHeight, o.quantity].every(Number.isFinite) &&
+    o.width > 0 && o.height > 0 && o.sillHeight >= 0 && Number.isFinite(o.sillHeight + o.height) &&
+    Number.isInteger(o.quantity) && o.quantity > 0;
+}
+export function applyArchitecturalEdits(model: ArchitecturalModel, edits: readonly ArchitecturalEdit[]): Result<ArchitecturalModel> {
+  if (model.version !== 1) return { error: "Versão do modelo incompatível." };
+  const next = cloneArchitecturalModel(model);
+  for (const edit of edits) {
+    const kind = edit.action === "upsert" ? edit.element.kind : edit.kind;
+    const key = kind === "slab" ? "slabs" : kind === "stair" ? "stairs" : kind === "roof" ? "roofs" : "openings";
+    const entries = next[key] as Array<{ id: string }>;
+    if (edit.action === "remove") {
+      const index = entries.findIndex(entry => entry.id === edit.id);
+      if (index < 0) return { error: "Elemento não encontrado." };
+      entries.splice(index, 1);
+      continue;
+    }
+    const element = edit.element.value;
+    if (typeof element.id !== "string" || !element.id.trim()) return { error: "Elemento sem identificador." };
+    const otherKeys = (["slabs", "stairs", "roofs", "openings"] as const).filter(other => other !== key);
+    if (otherKeys.some(other => next[other].some(item => item.id === element.id))) return { error: "Identificador já usado por outro tipo de elemento." };
+    if ((kind === "slab" || kind === "stair") && (!Number.isInteger((element as Slab | Stair).floor) || (element as Slab | Stair).floor < 0)) return { error: "Pavimento inválido." };
+    if (kind === "slab") {
+      const validation = createSlab(element as Slab);
+      if ("error" in validation) return validation;
+    } else if (kind === "stair") {
+      const validation = createStraightStair(element as Stair);
+      if ("error" in validation) return validation;
+    } else if (kind === "roof") {
+      const validation = createRoof(element as Roof);
+      if ("error" in validation) return validation;
+    } else if (!validOpening(element as OpeningScheduleItem)) return { error: "Esquadria inválida." };
+    const value = kind === "slab" ? { ...(element as Slab), voids: (element as Slab).voids.map(v => ({ ...v })) } : { ...element };
+    const index = entries.findIndex(entry => entry.id === element.id);
+    if (index < 0) entries.push(value);
+    else entries[index] = value;
+  }
+  return { value: next };
+}
+/** Read-models do not mutate the central snapshot. */
+export function architecturalQuantities(model: ArchitecturalModel) {
+  return {
+    slabNetArea: model.slabs.reduce((total, slab) => total + rectangularSolidCells(slab, architecturalSlabVoids(model, slab)).reduce((area, cell) => area + cell.width * cell.depth, 0), 0),
+    roofFootprintArea: model.roofs.reduce((total, roof) => total + (roof.width + 2 * roof.overhang) * (roof.depth + 2 * roof.overhang), 0),
+    openings: openingSchedule(model.openings),
+    stairs: model.stairs.length,
+  };
+}
+

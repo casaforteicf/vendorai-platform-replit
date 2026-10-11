@@ -1,5 +1,14 @@
+import type { ArchitecturalModel } from "./conceptArchitecturalModel";
+import { architecturalFloorCells, architecturalSceneGeometry } from "./conceptArchitecturalViews";
+import { objectTransformPatch } from "./conceptObjectTransform";
+import { sceneGesture } from "./conceptSceneGesture";
+import { isWalkEditingTarget, walkDirection } from "./conceptWalkInput";
+import { moveWalkPosition, walkStep, walkWall } from "./conceptWalkCollision";
+import { exposedWallFaces } from "./conceptWallSurfaces";
+import { partitionOrthogonalWallSolids } from "./conceptWallSolidUnion";
+import { splitWallVoids, openingVerticalBounds } from "./conceptWallVoids";
 import { buildFacadeMeshBoxes } from "./conceptFacadeMeshes";
-import { buildWallMeshPipeline, buildWallUnionPipeline } from "./conceptWallMeshPipeline";
+import { buildWallUnionPipeline } from "./conceptWallMeshPipeline";
 import { wallMeshToWebGL } from "./conceptWallWebGLGeometry";
 import { resolveWallUnionPick } from "./conceptWallUnionSelection";
 import type { WallUnionMesh } from "./conceptWallUnion";
@@ -22,6 +31,7 @@ type Props = {
   lotDepth: number;
   activeFloor: number;
   levels: ConceptModelLevel[];
+  architecturalModel?: ArchitecturalModel;
   facadeDesign?: FacadeDesignState;
   frontSide?: SiteFrontSide;
   objects: ConceptPlanObject[];
@@ -97,6 +107,7 @@ type Runtime = {
   };
   navigationMode: "orbit" | "walk" | "spin" | "tour" | "panorama";
   walkKeys: Set<string>;
+  walkPointers: Map<number, string>;
   walkControl: { forward: number; strafe: number };
   walkSpeed: number;
   walkYaw: number;
@@ -115,14 +126,7 @@ type Runtime = {
   };
   contentFramed: boolean;
   contentCenter?: { x: number; y: number; z: number; span: number };
-  walkWalls: Array<{
-    x1: number;
-    y1: number;
-    x2: number;
-    y2: number;
-    thickness: number;
-    doorGaps: Array<{ center: number; halfWidth: number }>;
-  }>;
+  walkWalls: ReturnType<typeof walkWall>[];
 };
 
 // "Frente" e "Iso" devem olhar para a fachada da rua. O ângulo 0 da câmera fica do lado de baixo
@@ -271,42 +275,12 @@ function disposeTree(root: any) {
   });
 }
 
-function canWalkTo(
-  x: number,
-  y: number,
-  walls: Runtime["walkWalls"],
-  radius = 0.24,
-) {
-  for (const wall of walls) {
-    const dx = wall.x2 - wall.x1;
-    const dy = wall.y2 - wall.y1;
-    const length = Math.max(0.001, Math.hypot(dx, dy));
-    const ux = dx / length;
-    const uy = dy / length;
-    const relX = x - wall.x1;
-    const relY = y - wall.y1;
-    const along = relX * ux + relY * uy;
-    if (along < -radius || along > length + radius) continue;
-
-    const clampedAlong = Math.max(0, Math.min(length, along));
-    const closestX = wall.x1 + ux * clampedAlong;
-    const closestY = wall.y1 + uy * clampedAlong;
-    const perpendicular = Math.hypot(x - closestX, y - closestY);
-    if (perpendicular > wall.thickness / 2 + radius) continue;
-
-    const throughDoor = wall.doorGaps.some((gap) =>
-      Math.abs(along - gap.center) <= Math.max(0.18, gap.halfWidth - radius * 0.35),
-    );
-    if (!throughDoor) return false;
-  }
-  return true;
-}
-
 export default function ConceptWebGLScene({
   lotWidth,
   lotDepth,
   activeFloor,
   levels,
+  architecturalModel,
   objects,
   selectedObjectId = null,
   selectedWallId = null,
@@ -352,6 +326,8 @@ export default function ConceptWebGLScene({
   onObjectEditEnd,
 }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
+  const interactionRef = useRef({ paintTool, onPaintObject, onPaintWall, onPaintFloor, onSelectObject, onSelectWall, onSelectCustomWall, onSelectClosedSpace, onSelectOpening, lotWidth, lotDepth, onObjectChange, onObjectEditStart, onObjectEditEnd });
+  interactionRef.current = { paintTool, onPaintObject, onPaintWall, onPaintFloor, onSelectObject, onSelectWall, onSelectCustomWall, onSelectClosedSpace, onSelectOpening, lotWidth, lotDepth, onObjectChange, onObjectEditStart, onObjectEditEnd };
   const runtimeRef = useRef<Runtime | null>(null);
   const [engineState, setEngineState] = useState<"loading" | "ready" | "fallback">("loading");
   const [dragOverScene, setDragOverScene] = useState(false);
@@ -509,24 +485,21 @@ export default function ConceptWebGLScene({
           transform.size = 0.8;
           transform.addEventListener("dragging-changed", (event: any) => {
             controls.enabled = !event.value;
-            if (event.value) onObjectEditStart?.();
+            if (event.value) interactionRef.current.onObjectEditStart?.();
           });
           transform.addEventListener("mouseUp", () => {
             const target = transform.object;
             const objectId = target?.userData?.objectId;
-            if (objectId && onObjectChange) {
-              const width = Number(target?.userData?.modelWidth ?? 0.6);
-              const depth = Number(target?.userData?.modelDepth ?? 0.6);
-              const x = Math.max(0, Math.min(lotWidth - width, target.position.x + lotWidth / 2 - width / 2));
-              const y = Math.max(0, Math.min(lotDepth - depth, target.position.z + lotDepth / 2 - depth / 2));
-              const rotation = ((-target.rotation.y * 180 / Math.PI) % 360 + 360) % 360;
-              onObjectChange(objectId, {
-                x: Math.round(x * 20) / 20,
-                y: Math.round(y * 20) / 20,
-                rotation: (Math.round(rotation / 5) * 5) % 360,
-              });
+            const current = interactionRef.current;
+            if (objectId && current.onObjectChange) {
+              const patch = objectTransformPatch(
+                target.position, target.rotation.y,
+                Number(target.userData.modelWidth ?? 0.6), Number(target.userData.modelDepth ?? 0.6),
+                current.lotWidth, current.lotDepth,
+              );
+              if (patch) current.onObjectChange(objectId, patch);
             }
-            onObjectEditEnd?.();
+            current.onObjectEditEnd?.();
           });
           scene.add(transform);
         }
@@ -550,6 +523,7 @@ export default function ConceptWebGLScene({
           cameraGoal: null,
           navigationMode: "orbit",
           walkKeys: new Set(),
+          walkPointers: new Map(),
           walkControl: { forward: 0, strafe: 0 },
           walkSpeed: Math.max(0.05, Math.min(0.28, walkSpeed)),
           walkYaw: 0,
@@ -604,8 +578,19 @@ export default function ConceptWebGLScene({
         controls.target.set(0, Math.max(1.5, levels.length * 1.15), 0);
         controls.update();
 
-        const handlePointer = (event: PointerEvent) => {
-          if (!runtimeRef.current || runtime.transform?.dragging || runtime.navigationMode === "walk") return;
+        const gesture = sceneGesture();
+        const gestureDown = (event: PointerEvent) => gesture.down(event.pointerId, event.clientX, event.clientY);
+        const gestureMove = (event: PointerEvent) => gesture.move(event.pointerId, event.clientX, event.clientY);
+        const gestureUp = (event: PointerEvent) => gesture.up(event.pointerId, event.clientX, event.clientY);
+        const gestureCancel = (event: PointerEvent) => gesture.cancel(event.pointerId);
+        renderer.domElement.addEventListener("pointerdown", gestureDown, true);
+        renderer.domElement.addEventListener("pointermove", gestureMove, true);
+        window.addEventListener("pointerup", gestureUp, true);
+        window.addEventListener("pointercancel", gestureCancel, true);
+        const handlePointer = (event: MouseEvent) => {
+          const { paintTool, onPaintObject, onPaintWall, onPaintFloor, onSelectObject, onSelectWall, onSelectCustomWall, onSelectClosedSpace, onSelectOpening } = interactionRef.current;
+          if (event.button !== 0 || !gesture.canClick() || runtime.navigationMode !== "orbit") return;
+          if (!runtimeRef.current || runtime.transform?.dragging) return;
           const rect = renderer.domElement.getBoundingClientRect();
           pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
           pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -680,6 +665,7 @@ export default function ConceptWebGLScene({
 
         const handleWalkKeyDown = (event: KeyboardEvent) => {
           if (runtime.navigationMode !== "walk") return;
+          if (event.defaultPrevented || isWalkEditingTarget(event.target)) return;
           const key = event.key.toLowerCase();
           if (["w","a","s","d","arrowup","arrowdown","arrowleft","arrowright"].includes(key)) {
             event.preventDefault();
@@ -707,6 +693,17 @@ export default function ConceptWebGLScene({
           runtime.walkDragging = false;
           runtime.walkLastPointer = null;
         };
+        const handleWalkBlur = () => {
+          runtime.walkKeys.clear();
+          runtime.walkPointers.clear();
+          runtime.walkControl = { forward: 0, strafe: 0 };
+          handleWalkPointerUp();
+        };
+        const handleWalkVisibility = () => { if (document.hidden) handleWalkBlur(); };
+        const handleWalkFocus = (event: FocusEvent) => { if (isWalkEditingTarget(event.target)) handleWalkBlur(); };
+        document.addEventListener("visibilitychange", handleWalkVisibility);
+        document.addEventListener("focusin", handleWalkFocus);
+        window.addEventListener("blur", handleWalkBlur);
         window.addEventListener("keydown", handleWalkKeyDown);
         window.addEventListener("keyup", handleWalkKeyUp);
         renderer.domElement.addEventListener("pointerdown", handleWalkPointerDown);
@@ -718,7 +715,11 @@ export default function ConceptWebGLScene({
           runtime.cameraGoal = null;
         });
 
+        let previousFrameTime = performance.now();
         const loop = () => {
+          const frameTime = performance.now();
+          const elapsedMs = frameTime - previousFrameTime;
+          previousFrameTime = frameTime;
           if (runtime.navigationMode === "spin" && !runtime.cameraGoal) {
             const target = controls.target;
             const dx = camera.position.x - target.x;
@@ -740,38 +741,25 @@ export default function ConceptWebGLScene({
           }
 
           if (runtime.navigationMode === "walk") {
-            const keyboardForward = Number(runtime.walkKeys.has("w") || runtime.walkKeys.has("arrowup"))
-              - Number(runtime.walkKeys.has("s") || runtime.walkKeys.has("arrowdown"));
-            const keyboardStrafe = Number(runtime.walkKeys.has("d") || runtime.walkKeys.has("arrowright"))
-              - Number(runtime.walkKeys.has("a") || runtime.walkKeys.has("arrowleft"));
-            const forward = Math.max(-1, Math.min(1, keyboardForward + runtime.walkControl.forward));
-            const strafe = Math.max(-1, Math.min(1, keyboardStrafe + runtime.walkControl.strafe));
-            const speed = runtime.walkSpeed;
+            const direction = walkDirection(runtime.walkKeys, runtime.walkPointers.values());
+            const forward = Math.max(-1, Math.min(1, direction.forward + runtime.walkControl.forward));
+            const strafe = Math.max(-1, Math.min(1, direction.strafe + runtime.walkControl.strafe));
+            const step = walkStep(runtime.walkYaw, forward, strafe, runtime.walkSpeed, elapsedMs);
             if (forward || strafe) {
-              const stepX = (-Math.sin(runtime.walkYaw) * forward + Math.cos(runtime.walkYaw) * strafe) * speed;
-              const stepZ = (-Math.cos(runtime.walkYaw) * forward - Math.sin(runtime.walkYaw) * strafe) * speed;
+              const stepX = step.x;
+              const stepZ = step.y;
               const maxX = Math.max(1, lotWidth / 2 - 0.25);
               const maxZ = Math.max(1, lotDepth / 2 - 0.25);
               const targetX = Math.max(-maxX, Math.min(maxX, camera.position.x + stepX));
               const targetZ = Math.max(-maxZ, Math.min(maxZ, camera.position.z + stepZ));
 
-              const planX = targetX + lotWidth / 2;
-              const planY = targetZ + lotDepth / 2;
-              if (canWalkTo(planX, planY, runtime.walkWalls)) {
-                camera.position.x = targetX;
-                camera.position.z = targetZ;
-              } else {
-                const slideX = targetX + lotWidth / 2;
-                const currentPlanY = camera.position.z + lotDepth / 2;
-                if (canWalkTo(slideX, currentPlanY, runtime.walkWalls)) {
-                  camera.position.x = targetX;
-                }
-                const currentPlanX = camera.position.x + lotWidth / 2;
-                const slideY = targetZ + lotDepth / 2;
-                if (canWalkTo(currentPlanX, slideY, runtime.walkWalls)) {
-                  camera.position.z = targetZ;
-                }
-              }
+              const position = moveWalkPosition(
+                { x: camera.position.x + lotWidth / 2, y: camera.position.z + lotDepth / 2 },
+                { x: targetX + lotWidth / 2, y: targetZ + lotDepth / 2 },
+                runtime.walkWalls,
+              );
+              camera.position.x = position.x - lotWidth / 2;
+              camera.position.z = position.y - lotDepth / 2;
             }
             const lookDistance = 5;
             const cosPitch = Math.cos(runtime.walkPitch);
@@ -808,7 +796,11 @@ export default function ConceptWebGLScene({
         loop();
 
         (runtime as any).observer = observer;
+        (runtime as any).sceneGestureHandlers = { gestureDown, gestureMove, gestureUp, gestureCancel };
         (runtime as any).handlePointer = handlePointer;
+        (runtime as any).handleWalkVisibility = handleWalkVisibility;
+        (runtime as any).handleWalkFocus = handleWalkFocus;
+        (runtime as any).handleWalkBlur = handleWalkBlur;
         (runtime as any).handleWalkKeyDown = handleWalkKeyDown;
         (runtime as any).handleWalkKeyUp = handleWalkKeyUp;
         (runtime as any).handleWalkPointerDown = handleWalkPointerDown;
@@ -834,6 +826,16 @@ export default function ConceptWebGLScene({
       const runtime = runtimeRef.current;
       if (!runtime) return;
       cancelAnimationFrame(runtime.animationFrame);
+      const gestureHandlers = (runtime as any).sceneGestureHandlers;
+      if (gestureHandlers) {
+        runtime.renderer.domElement.removeEventListener("pointerdown", gestureHandlers.gestureDown, true);
+        runtime.renderer.domElement.removeEventListener("pointermove", gestureHandlers.gestureMove, true);
+        window.removeEventListener("pointerup", gestureHandlers.gestureUp, true);
+        window.removeEventListener("pointercancel", gestureHandlers.gestureCancel, true);
+      }
+      document.removeEventListener("visibilitychange", (runtime as any).handleWalkVisibility);
+      document.removeEventListener("focusin", (runtime as any).handleWalkFocus);
+      window.removeEventListener("blur", (runtime as any).handleWalkBlur);
       window.removeEventListener("keydown", (runtime as any).handleWalkKeyDown);
       window.removeEventListener("keyup", (runtime as any).handleWalkKeyUp);
       runtime.renderer.domElement.removeEventListener("pointerdown", (runtime as any).handleWalkPointerDown);
@@ -1036,7 +1038,7 @@ export default function ConceptWebGLScene({
           includePoint(wall.x2, wall.y2);
         }
         for (const space of level.closedSpaces ?? []) {
-          for (const cell of space.cells ?? []) {
+          for (const cell of (space.cells ?? []).flatMap(cell => architecturalFloorCells(architecturalModel, level.floor, cell))) {
             includePoint(cell.x, cell.y);
             includePoint(cell.x + cell.width, cell.y + cell.height);
           }
@@ -1102,7 +1104,7 @@ export default function ConceptWebGLScene({
       };
 
       for (const space of level.closedSpaces ?? []) {
-        for (const cell of space.cells ?? []) {
+        for (const cell of (space.cells ?? []).flatMap(cell => architecturalFloorCells(architecturalModel, level.floor, cell))) {
           const x1 = cell.x;
           const y1 = cell.y;
           const x2 = cell.x + cell.width;
@@ -1114,12 +1116,12 @@ export default function ConceptWebGLScene({
         }
       }
 
-      const existing = [...(level.walls ?? []), ...(level.customWalls ?? [])];
+      const existing = [...(level.walls ?? []).map(wall => ({ ...wall, thickness: 0.15 })), ...(level.customWalls ?? [])];
       return [...edges.values()]
         .filter((edge) => edge.count === 1)
         .filter((edge) => {
           const covered = existing.some((wall) => {
-            const tolerance = Math.max(0.12, Number(wall.thickness ?? 0.14) * 1.6);
+            const tolerance = Math.max(0.12, Number(wall.thickness ?? 0.15) * 1.6);
             return pointToSegmentDistance(edge.x1, edge.y1, wall.x1, wall.y1, wall.x2, wall.y2) <= tolerance
               && pointToSegmentDistance(edge.x2, edge.y2, wall.x1, wall.y1, wall.x2, wall.y2) <= tolerance;
           });
@@ -1271,232 +1273,58 @@ export default function ConceptWebGLScene({
       openingsForFloor: ConceptModelLevel["openings"],
       materialId?: string,
       custom = false,
+      prepared?: ReturnType<typeof partitionOrthogonalWallSolids>,
+      surfaces?: ReturnType<typeof exposedWallFaces>,
     ) => {
-      const dx = wall.x2 - wall.x1;
-      const dy = wall.y2 - wall.y1;
-      const length = Math.max(0.05, Math.hypot(dx, dy));
-      const thickness = Math.max(0.08, wall.thickness ?? 0.14);
       const baseY = floor * 2.96 + 0.16;
-      const horizontal = Math.abs(dy) < 0.03;
-      const vertical = Math.abs(dx) < 0.03;
+      const thickness = Math.max(0.08, wall.thickness ?? 0.15);
       const color = !materialId && wall.exterior && facadeDesign
         ? Number.parseInt(getFacadeMaterial(facadeDesign.surfaceMaterials.main).baseColor.slice(1), 16)
         : materialColor(materialId ?? "pintura-branca");
-
-      const addPiece = (
-        alongStart: number,
-        alongEnd: number,
-        yStart: number,
-        yEnd: number,
-      ) => {
-        const pieceLength = alongEnd - alongStart;
-        const pieceHeight = yEnd - yStart;
-        if (pieceLength < 0.035 || pieceHeight < 0.035) return;
-
-        let mesh: any;
-        if (horizontal) {
-          const y = (wall.y1 + wall.y2) / 2;
-          mesh = makeBox(
-            parent,
-            pieceLength,
-            pieceHeight,
-            thickness,
-            alongStart + pieceLength / 2 - lotWidth / 2,
-            baseY + yStart + pieceHeight / 2,
-            y - lotDepth / 2,
-            color,
-            { transparent: interiorMode, opacity: interiorMode ? 0.58 : 1, materialId, repeatScale: 1 },
-          );
-        } else if (vertical) {
-          const x = (wall.x1 + wall.x2) / 2;
-          mesh = makeBox(
-            parent,
-            thickness,
-            pieceHeight,
-            pieceLength,
-            x - lotWidth / 2,
-            baseY + yStart + pieceHeight / 2,
-            alongStart + pieceLength / 2 - lotDepth / 2,
-            color,
-            { transparent: interiorMode, opacity: interiorMode ? 0.58 : 1, materialId, repeatScale: 1 },
-          );
-        } else {
-          return;
-        }
-
-        mesh.userData.wallId = wall.id;
-        mesh.userData.customWall = custom;
-        runtime.pickables.push(mesh);
-      };
-
-      // Single-source parametric solids: use indexed meshes when the wall and all
-      // associated openings are geometrically valid. Legacy rendering remains a
-      // fallback for diagonals, unresolved references and invalid geometry.
-      if ((Math.abs(dy) < 1e-7 || Math.abs(dx) < 1e-7) && length >= 0.05) {
-        const matchedOpenings = (openingsForFloor ?? []).filter((opening) => {
-          if (horizontal && opening.orientation !== "horizontal") return false;
-          if (vertical && opening.orientation !== "vertical") return false;
-          const along = horizontal ? opening.x : opening.y;
-          const origin = horizontal ? wall.x1 : wall.y1;
-          const wallCoord = horizontal ? wall.y1 : wall.x1;
-          const perpendicular = horizontal ? opening.y : opening.x;
-          const offset = (along - origin) / (horizontal ? dx : dy);
-          return Math.abs(perpendicular - wallCoord) <= Math.max(0.18, thickness * 1.5)
-            && offset >= -0.001 && offset <= 1.001;
-        });
-        const solid = buildWallMeshPipeline(
-          [{
-            id: wall.id, floor, x1: wall.x1, y1: wall.y1,
-            x2: wall.x2, y2: wall.y2, thickness, height: 2.8,
-            baseElevation: baseY,
-          }],
-          matchedOpenings.map((opening) => ({
-            id: opening.id, wallId: wall.id, floor,
-            offset: ((horizontal ? opening.x - wall.x1 : opening.y - wall.y1) / (horizontal ? dx : dy)),
-            width: opening.width ?? (opening.type === "door" ? 0.9 : 1.2),
-            height: opening.height ?? (opening.type === "door" ? 2.1 : 1.2),
-            sillHeight: opening.type === "door" ? 0 : (opening.sillHeight ?? 0.9),
-          })),
-        );
-        if (solid.valid && solid.meshes.length) {
-          try {
-          for (const indexed of solid.meshes) {
-            const geometry = new THREE.BufferGeometry();
-            const webgl = wallMeshToWebGL(indexed, lotWidth, lotDepth);
-            geometry.setAttribute("position", new THREE.Float32BufferAttribute(webgl.positions, 3));
-            geometry.setIndex(webgl.indices);
-            geometry.computeVertexNormals();
-            const pbr = getConceptPBRMaterial(materialId);
-            const material = pbr
-              ? createConceptPBRMaterial(THREE, pbr, { repeatScale: 1 })
-              : makeMat(color, interiorMode, interiorMode ? 0.58 : 1);
-            if (interiorMode) {
-              material.transparent = true;
-              material.opacity = 0.58;
-              material.depthWrite = false;
+      for (const piece of prepared ?? splitWallVoids(wall, openingsForFloor ?? [], 2.8)) {
+        const dx = piece.wall.x2 - piece.wall.x1, dy = piece.wall.y2 - piece.wall.y1;
+        const mesh = makeBox(parent, Math.hypot(dx, dy), piece.zMax - piece.zMin, Math.max(0.000001, piece.wall.thickness ?? thickness),
+          (piece.wall.x1 + piece.wall.x2) / 2 - lotWidth / 2,
+          baseY + (piece.zMin + piece.zMax) / 2,
+          (piece.wall.y1 + piece.wall.y2) / 2 - lotDepth / 2, color,
+          { transparent: interiorMode, opacity: interiorMode ? 0.58 : 1, materialId, repeatScale: 1 });
+        const faces = surfaces?.get(piece);
+        if (faces) {
+          const length = Math.hypot(dx, dy), ux = dx / length, uy = dy / length;
+          const cx = (piece.wall.x1 + piece.wall.x2) / 2, cy = (piece.wall.y1 + piece.wall.y2) / 2, cz = (piece.zMin + piece.zMax) / 2;
+          const positions: number[] = [], uv: number[] = [];
+          for (const face of faces) {
+            const order = face.direction > 0 ? [0, 2, 1, 0, 3, 2] : [0, 1, 2, 0, 2, 3];
+            for (const index of order) {
+              const [x, y, z] = face.vertices[index];
+              positions.push((x - cx) * ux + (y - cy) * uy, z - cz, -(x - cx) * uy + (y - cy) * ux);
+              uv.push(face.vertices[index][(face.axis + 1) % 3], face.vertices[index][(face.axis + 2) % 3]);
             }
-            const mesh = new THREE.Mesh(geometry, material);
-            mesh.castShadow = true;
-            mesh.receiveShadow = true;
-            mesh.userData.wallId = wall.id;
-            mesh.userData.customWall = custom;
-            parent.add(mesh);
-            runtime.pickables.push(mesh);
           }
-          return;
-          } catch (wallWebglError) {
-            console.warn("[ConceptWebGLScene] wallMeshToWebGL falhou (solido); renderer legado assumindo", wallWebglError);
-          }
+          const geometry = new THREE.BufferGeometry();
+          geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+          geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+          geometry.computeVertexNormals();
+          geometry.computeBoundingSphere();
+          mesh.geometry.dispose();
+          mesh.geometry = geometry;
         }
-      }
-
-      if (!horizontal && !vertical) {
-        const mesh = makeBox(
-          parent,
-          length,
-          2.8,
-          thickness,
-          (wall.x1 + wall.x2) / 2 - lotWidth / 2,
-          baseY + 1.4,
-          (wall.y1 + wall.y2) / 2 - lotDepth / 2,
-          color,
-          { transparent: interiorMode, opacity: interiorMode ? 0.58 : 1, materialId, repeatScale: 1 },
-        );
         mesh.rotation.y = -Math.atan2(dy, dx);
         mesh.userData.wallId = wall.id;
         mesh.userData.customWall = custom;
         runtime.pickables.push(mesh);
-        return mesh;
       }
-
-      const wallStart = horizontal ? Math.min(wall.x1, wall.x2) : Math.min(wall.y1, wall.y2);
-      const wallEnd = horizontal ? Math.max(wall.x1, wall.x2) : Math.max(wall.y1, wall.y2);
-      const wallCoord = horizontal ? wall.y1 : wall.x1;
-
-      const openingsOnWall = (openingsForFloor ?? [])
-        .filter((opening) => {
-          if (horizontal && opening.orientation !== "horizontal") return false;
-          if (vertical && opening.orientation !== "vertical") return false;
-          const coord = horizontal ? opening.y : opening.x;
-          const along = horizontal ? opening.x : opening.y;
-          return Math.abs(coord - wallCoord) <= Math.max(0.18, thickness * 1.5)
-            && along >= wallStart - 0.1
-            && along <= wallEnd + 0.1;
-        })
-        .map((opening) => {
-          const width = Math.max(0.05, opening.width ?? (opening.type === "door" ? 0.9 : 1.2));
-          const center = horizontal ? opening.x : opening.y;
-          return {
-            opening,
-            start: Math.max(wallStart, center - width / 2),
-            end: Math.min(wallEnd, center + width / 2),
-          };
-        })
-        .filter((item) => item.end - item.start > 0.05)
-        .sort((a, b) => a.start - b.start);
-
-      if (!openingsOnWall.length) {
-        addPiece(wallStart, wallEnd, 0, 2.8);
-        return;
-      }
-
-      let cursor = wallStart;
-      for (const item of openingsOnWall) {
-        if (item.start > cursor + 0.03) addPiece(cursor, item.start, 0, 2.8);
-
-        const openingHeight = Math.max(
-          0.05,
-          Math.min(2.8, item.opening.height ?? (item.opening.type === "door" ? 2.1 : 1.2)),
-        );
-        const sill = item.opening.type === "door"
-          ? 0
-          : Math.max(0, Math.min(2.8, item.opening.sillHeight ?? 0.9));
-        const top = Math.min(2.8, sill + openingHeight);
-
-        if (sill > 0.03) addPiece(item.start, item.end, 0, sill);
-        if (top < 2.77) addPiece(item.start, item.end, top, 2.8);
-
-        cursor = Math.max(cursor, item.end);
-      }
-      if (cursor < wallEnd - 0.03) addPiece(cursor, wallEnd, 0, 2.8);
     };
 
     const activeLevel = levels.find((level) => level.floor === activeFloor);
     const collisionWalls = [
-      ...(activeLevel?.walls ?? []),
+      ...(activeLevel?.walls ?? []).map(wall => ({ ...wall, thickness: 0.15 })),
       ...(activeLevel?.customWalls ?? []),
     ];
-    runtime.walkWalls = collisionWalls.map((wall: any) => {
-      const dx = wall.x2 - wall.x1;
-      const dy = wall.y2 - wall.y1;
-      const length = Math.max(0.001, Math.hypot(dx, dy));
-      const ux = dx / length;
-      const uy = dy / length;
-      const doorGaps = (activeLevel?.openings ?? [])
-        .filter((opening: any) => opening.type === "door")
-        .map((opening: any) => {
-          const relX = opening.x - wall.x1;
-          const relY = opening.y - wall.y1;
-          const center = relX * ux + relY * uy;
-          const projectedX = wall.x1 + ux * center;
-          const projectedY = wall.y1 + uy * center;
-          const distance = Math.hypot(opening.x - projectedX, opening.y - projectedY);
-          const width = Math.max(0.7, opening.width ?? 0.9);
-          return { center, halfWidth: width / 2, distance };
-        })
-        .filter((gap: any) => gap.distance <= Math.max(0.22, (wall.thickness ?? 0.14) * 1.75)
-          && gap.center >= -0.1
-          && gap.center <= length + 0.1)
-        .map(({ center, halfWidth }: any) => ({ center, halfWidth }));
-      return {
-        x1: wall.x1,
-        y1: wall.y1,
-        x2: wall.x2,
-        y2: wall.y2,
-        thickness: Math.max(0.08, wall.thickness ?? 0.14),
-        doorGaps,
-      };
-    });
+    runtime.walkWalls = collisionWalls.map((wall) => walkWall(
+      { ...wall, thickness: wall.thickness ?? 0.15 },
+      activeLevel?.openings ?? [],
+    ));
 
     if (interiorMode && activeLevel) {
       const roomLights = (activeLevel.closedSpaces ?? [])
@@ -1532,7 +1360,7 @@ export default function ConceptWebGLScene({
       for (const space of level.closedSpaces ?? []) {
         const floorMaterialId = level.floorMaterials?.[space.id];
         const floorMaterial = materialColor(floorMaterialId);
-        for (const cell of space.cells ?? []) {
+        for (const cell of (space.cells ?? []).flatMap(cell => architecturalFloorCells(architecturalModel, level.floor, cell))) {
           const floorMesh = makeBox(
             modelRoot,
             cell.width,
@@ -1549,7 +1377,7 @@ export default function ConceptWebGLScene({
 
           // Close the architectural shell in exterior/all-floor mode.
           // The top slab follows the real room footprint instead of the lot dimensions.
-          if (!interiorMode && showAllFloors) {
+          if (!interiorMode && showAllFloors && !architecturalModel?.slabs.some(slab => slab.floor === level.floor + 1)) {
             const ceilingMesh = makeBox(
               modelRoot,
               cell.width,
@@ -1566,7 +1394,7 @@ export default function ConceptWebGLScene({
         }
       }
 
-      const authoredWalls = [...(level.walls ?? []), ...(level.customWalls ?? [])];
+      const authoredWalls = [...(level.walls ?? []).map(wall => ({ ...wall, thickness: 0.15 })), ...(level.customWalls ?? [])];
       // Conservative opt-in for the unified boundary. Preserve the existing
       // per-wall renderer whenever openings, diagonals, or mixed finishes require
       // independent meshes. A unified mesh is never rendered alongside those walls.
@@ -1620,11 +1448,16 @@ export default function ConceptWebGLScene({
         }
       }
       if (!displayedUnion) {
+        const joinedWalls = partitionOrthogonalWallSolids([
+          ...(level.walls ?? []).map(wall => ({ ...wall, thickness: 0.15 })),
+          ...(level.customWalls ?? []),
+        ], level.openings ?? [], 2.8);
+        const wallSurfaces = exposedWallFaces(joinedWalls);
         for (const wall of level.walls ?? []) {
-          addWall(modelRoot, wall, level.floor, level.openings ?? [], level.wallMaterials?.[wall.id], false);
+          addWall(modelRoot, wall, level.floor, level.openings ?? [], level.wallMaterials?.[wall.id], false, joinedWalls.filter(piece => piece.wall.id === wall.id), wallSurfaces);
         }
         for (const wall of level.customWalls ?? []) {
-          addWall(modelRoot, wall, level.floor, level.openings ?? [], level.wallMaterials?.[wall.id], true);
+          addWall(modelRoot, wall, level.floor, level.openings ?? [], level.wallMaterials?.[wall.id], true, joinedWalls.filter(piece => piece.wall.id === wall.id), wallSurfaces);
         }
       }
 
@@ -1635,21 +1468,29 @@ export default function ConceptWebGLScene({
       }
 
       for (const opening of level.openings ?? []) {
+        const bounds = openingVerticalBounds(opening, 2.8);
+        if (!bounds) continue;
+        const linkedWall = opening.roomId?.startsWith("custom-wall:")
+          ? (level.customWalls ?? []).find(wall => opening.roomId === `custom-wall:${wall.id}`) : undefined;
+        const openingRoot = new THREE.Group();
+        openingRoot.position.set(opening.x - lotWidth / 2, 0, opening.y - lotDepth / 2);
+        if (linkedWall) openingRoot.rotation.y = -(Math.atan2(linkedWall.y2 - linkedWall.y1, linkedWall.x2 - linkedWall.x1) - (opening.orientation === "vertical" ? Math.PI / 2 : 0));
+        modelRoot.add(openingRoot);
         const width = Math.max(0.05, opening.width ?? (opening.type === "door" ? 0.9 : 1.2));
-        const height = Math.max(0.05, opening.height ?? (opening.type === "door" ? 2.1 : 1.2));
-        const sill = opening.type === "door" ? 0 : Math.max(0, opening.sillHeight ?? 0.9);
+        const height = bounds.height;
+        const sill = bounds.bottom;
         const glass = opening.type === "window";
         const frameColor = facadeDesign ? Number.parseInt(getFacadeMaterial(facadeDesign.surfaceMaterials.frames).baseColor.slice(1), 16) : 0x334155;
-        const frameThickness = 0.055;
+        const frameThickness = Math.min(0.055, width / 3, height / 3);
         const panelDepth = 0.035;
         const panel = makeBox(
-          modelRoot,
-          opening.orientation === "horizontal" ? Math.max(0.1, width - frameThickness * 2) : panelDepth,
-          Math.max(0.1, height - frameThickness * 2),
-          opening.orientation === "vertical" ? Math.max(0.1, width - frameThickness * 2) : panelDepth,
-          opening.x - lotWidth / 2,
+          openingRoot,
+          opening.orientation === "horizontal" ? Math.max(0.001, width - frameThickness * 2) : panelDepth,
+          Math.max(0.001, height - frameThickness * 2),
+          opening.orientation === "vertical" ? Math.max(0.001, width - frameThickness * 2) : panelDepth,
+          0,
           floorBase + 0.16 + sill + height / 2,
-          opening.y - lotDepth / 2,
+          0,
           glass
             ? (lightingMode === "night" ? 0xffd77a : 0x8ecae6)
             : 0x9a6b45,
@@ -1659,7 +1500,7 @@ export default function ConceptWebGLScene({
         runtime.pickables.push(panel);
 
         const addFrame = (w: number, h: number, d: number, x: number, y: number, z: number) => {
-          const frame = makeBox(modelRoot, w, h, d, x, y, z, frameColor);
+          const frame = makeBox(openingRoot, w, h, d, x - (opening.x - lotWidth / 2), y, z - (opening.y - lotDepth / 2), frameColor);
           frame.userData.openingId = opening.id;
           runtime.pickables.push(frame);
         };
@@ -1819,7 +1660,33 @@ export default function ConceptWebGLScene({
       loadCatalogModel(object, root);
     }
 
-    if (showRoof && !interiorMode && showAllFloors) {
+    if (architecturalModel) {
+      const geometry = architecturalSceneGeometry(architecturalModel, activeFloor, showAllFloors, showRoof && !interiorMode);
+      for (const box of geometry.boxes) {
+        const mesh = makeBox(modelRoot, box.width, box.height, box.depth,
+          box.x + box.width / 2 - lotWidth / 2, box.z + box.height / 2,
+          box.y + box.depth / 2 - lotDepth / 2, box.kind === "stair-step" ? 0x94a3b8 : 0xcbd5e1);
+        mesh.userData.architecturalElementId = box.id;
+      }
+      for (const face of geometry.roofFaces) {
+        const vertices = face.vertices;
+        const positions = [0, 1, 2, 0, 2, 3].flatMap(index => {
+          const point = vertices[index];
+          return [point.x - lotWidth / 2, point.z, point.y - lotDepth / 2];
+        });
+        const buffer = new THREE.BufferGeometry();
+        buffer.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        buffer.computeVertexNormals();
+        const material = makeMat(0x9a6545);
+        material.side = THREE.DoubleSide;
+        const mesh = new THREE.Mesh(buffer, material);
+        mesh.castShadow = true; mesh.receiveShadow = true;
+        mesh.userData.architecturalElementId = face.id;
+        modelRoot.add(mesh);
+      }
+    }
+
+    if (showRoof && !architecturalModel?.roofs.length && !interiorMode && showAllFloors) {
       const highestFloor = Math.max(0, ...levels.map((level) => level.floor));
       const roofPlan = buildRoofPlan(levels.map((level) => ({
         floor: level.floor,
@@ -2032,6 +1899,7 @@ export default function ConceptWebGLScene({
     engineState,
     interiorMode,
     levels,
+    architecturalModel,
     lightingMode,
     renderQuality,
     lotDepth,
@@ -2194,6 +2062,7 @@ export default function ConceptWebGLScene({
     if (!runtime || engineState !== "ready" || !savedCameraViewpoint) return;
     runtime.navigationMode = "orbit";
     runtime.walkKeys.clear();
+    runtime.walkPointers.clear();
     runtime.controls.enabled = true;
     runtime.cameraGoal = {
       position: { ...savedCameraViewpoint.position },
@@ -2210,6 +2079,7 @@ export default function ConceptWebGLScene({
     runtime.walkYaw = Math.PI;
     runtime.walkPitch = 0;
     runtime.walkKeys.clear();
+    runtime.walkPointers.clear();
     runtime.walkControl = { forward: 0, strafe: 0 };
     const lookDistance = 5;
     runtime.controls.target.set(0, floorY, startZ + lookDistance);
@@ -2251,6 +2121,7 @@ export default function ConceptWebGLScene({
 
     runtime.navigationMode = navigationMode;
     runtime.walkKeys.clear();
+    runtime.walkPointers.clear();
     runtime.cameraGoal = null;
     runtime.controls.enabled = navigationMode === "orbit";
 
@@ -2295,10 +2166,12 @@ export default function ConceptWebGLScene({
         camera.updateProjectionMatrix();
       }
       runtime.walkKeys.clear();
+      runtime.walkPointers.clear();
       runtime.walkControl = { forward: 0, strafe: 0 };
     } else if (navigationMode === "tour") {
       runtime.walkPitch = 0;
       runtime.walkKeys.clear();
+      runtime.walkPointers.clear();
       runtime.walkControl = { forward: 0, strafe: 0 };
     } else if (navigationMode === "walk") {
       const floorY = activeFloor * 2.96 + 1.62;
@@ -2374,7 +2247,7 @@ export default function ConceptWebGLScene({
     });
 
     runtime.transform?.detach?.();
-    if (navigationMode === "orbit" && selectedObjectId) {
+    if (navigationMode === "orbit" && !paintTool && selectedObjectId) {
       const selected = runtime.objectGroups.get(selectedObjectId);
       if (selected) runtime.transform?.attach?.(selected);
     }
@@ -2387,6 +2260,7 @@ export default function ConceptWebGLScene({
     selectedWallId,
     navigationMode,
     objects,
+    paintTool,
   ]);
 
   return (
@@ -2432,14 +2306,15 @@ export default function ConceptWebGLScene({
             <button
               key={key}
               type="button"
-              className="grid h-11 w-11 place-items-center rounded-xl border border-white/10 bg-white/10 text-lg font-black text-white active:bg-orange-500"
+              className="touch-none grid h-11 w-11 place-items-center rounded-xl border border-white/10 bg-white/10 text-lg font-black text-white active:bg-orange-500"
               onPointerDown={(event) => {
                 event.preventDefault();
-                runtimeRef.current?.walkKeys.add(key);
+                event.currentTarget.setPointerCapture(event.pointerId);
+                runtimeRef.current?.walkPointers.set(event.pointerId, key);
               }}
-              onPointerUp={() => runtimeRef.current?.walkKeys.delete(key)}
-              onPointerCancel={() => runtimeRef.current?.walkKeys.delete(key)}
-              onPointerLeave={() => runtimeRef.current?.walkKeys.delete(key)}
+              onPointerUp={(event) => runtimeRef.current?.walkPointers.delete(event.pointerId)}
+              onPointerCancel={(event) => runtimeRef.current?.walkPointers.delete(event.pointerId)}
+              onLostPointerCapture={(event) => runtimeRef.current?.walkPointers.delete(event.pointerId)}
               aria-label={`Mover ${label}`}
             >
               {label}
@@ -2455,3 +2330,5 @@ export default function ConceptWebGLScene({
     </div>
   );
 }
+
+

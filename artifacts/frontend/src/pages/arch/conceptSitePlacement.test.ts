@@ -126,3 +126,4 @@ describe("conceptSitePlacement · etapa 91", () => {
     ].every((point) => pointInSitePolygon(point, envelope.polygon))).toBe(true);
   });
 });
+

@@ -1,0 +1,52 @@
+import { describe, expect, it } from "vitest";
+import { uniqueFurnitureLayouts, furnitureLayoutCompletion } from "./conceptFurnitureLayoutOptions";
+const a = { id: "a", kind: "bed", floor: 0, x: 1, y: 1, width: 2, depth: 1, rotation: 0 };
+describe("distinct furniture options", () => {
+  it("keeps the best duplicate despite changed IDs and ordering", () => {
+    const b = { ...a, id: "b", kind: "chair", x: 4 };
+    const best = { score: 20, objects: [{ ...b, id: "new-b" }, { ...a, id: "new-a", rotation: 360 }] };
+    expect(uniqueFurnitureLayouts([{ score: 10, objects: [a, b] }, best])).toEqual([best]);
+  });
+  it("preserves genuinely different positions and orientations", () => {
+    expect(uniqueFurnitureLayouts([{ score: 1, objects: [a] }, { score: 2, objects: [{ ...a, x: 2 }] }, { score: 3, objects: [{ ...a, rotation: 180 }] }])).toHaveLength(3);
+  });
+  it("deduplicates rotations rounded across the 360-degree boundary", () => {
+    const options = [
+      { score: 1, objects: [{ ...a, rotation: 359.9999999 }] },
+      { score: 2, objects: [{ ...a, rotation: 0 }] },
+    ];
+    expect(uniqueFurnitureLayouts(options)).toEqual([options[1]]);
+  });
+  it("ignores numerical noise and excludes empty options", () => {
+    expect(uniqueFurnitureLayouts([{ score: 1, objects: [a] }, { score: 2, objects: [{ ...a, x: 1.00000001 }] }, { score: 3, objects: [] }])).toHaveLength(1);
+  });
+  it("limits ranked results without mutating the input", () => {
+    const variants = [1, 2, 3, 4].map(score => ({ score, objects: [{ ...a, x: score }] }));
+    expect(uniqueFurnitureLayouts(variants).map(item => item.score)).toEqual([4, 3, 2]);
+    expect(variants[0].score).toBe(1);
+  });
+});
+
+describe("layout completeness ranking", () => {
+  it("prefers a complete layout over a higher-scoring partial layout", () => {
+    const complete = { score: 20, objects: [a], missingLabels: [] };
+    const partial = { score: 100, objects: [{ ...a, x: 3 }], missingLabels: ["Armário"] };
+    expect(uniqueFurnitureLayouts([partial, complete])[0]).toBe(complete);
+  });
+  it("prefers fewer omissions and uses score to break equal completeness", () => {
+    const options = [
+      { score: 100, objects: [a], missingLabels: ["Mesa", "Cadeira"] },
+      { score: 20, objects: [{ ...a, x: 2 }], missingLabels: ["Mesa"] },
+      { score: 30, objects: [{ ...a, x: 3 }], missingLabels: ["Cadeira"] },
+    ];
+    expect(uniqueFurnitureLayouts(options).map(option => option.score)).toEqual([30, 20, 100]);
+  });
+});
+
+describe("layout completion indicator", () => {
+  it("reports the proportion of placed items instead of score", () => {
+    expect(furnitureLayoutCompletion({ objects: [a], missingLabels: [] })).toBe(100);
+    expect(furnitureLayoutCompletion({ objects: [a], missingLabels: ["Mesa", "Cadeira"] })).toBe(33);
+    expect(furnitureLayoutCompletion({ objects: [], missingLabels: [] })).toBe(0);
+  });
+});

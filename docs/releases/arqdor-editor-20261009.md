@@ -1,0 +1,431 @@
+# Arqdor — registro de entrega do editor
+
+## Bloco de paredes e nós com aberturas
+
+Atualização de parede e movimentação de junções validam previamente o conjunto de aberturas. Quando apenas um extremo muda, preservam distância ao extremo fixo; quando ambos mudam, preservam posição relativa. Larguras permanecem intactas; parede curta ou colisão após reposicionamento rejeitam a operação antes de aplicar paredes/aberturas. Nó atualiza os dois conjuntos na mesma operação React. Reconciliação antiga removida do planner para usar auxiliar testável único.
+
+Arquivos ConceptPlanner.tsx, conceptWallOpeningReconciliation.ts e conceptWallOpeningReconciliation.test.ts. Dez testes de reconciliação/posicionamento passaram; sintaxe TSX passou. Não representa validação de importação ou teste integrado do planner completo. Homologação e publicação adiadas.
+
+## Bloco de arraste, modelos e catálogo
+
+Arraste e movimentação de aberturas livres verificam encaixe físico e colisões na parede; edição de largura na planta verifica colisões antes de aplicar; modelos de aberturas buscam intervalo livre; aplicação de produto do catálogo rejeita dimensões que não cabem na posição atual ou sobrepõem outra abertura. Validador de encaixe rejeita coordenadas/larguras não finitas. Avisos explicam falhas sem modificar a geometria nessas operações.
+
+Arquivos ConceptPlanner.tsx, conceptOpeningPlacement.ts e conceptOpeningPlacement.test.ts. Rodada consolidada: 37 testes passaram em 10 arquivos; sintaxe TSX passou. Importação, movimentação de nós de paredes e reconciliação global permanecem fora da proteção deste bloco. Homologação e publicação adiadas.
+
+## Bloco de espaço livre para aberturas
+
+Inserção e duplicação buscam um intervalo livre na parede, rejeitando quando não cabe. Alteração de offset pelo painel e alteração de dimensões verificam colisões com outras aberturas na mesma parede. Comparação considera altura e peitoril, permitindo aberturas separadas verticalmente. Falha informa o motivo em aviso dispensável. Não é uma validação global: importações, catálogo, arraste e reconciliação de paredes precisam de revisão posterior.
+
+Arquivos ConceptPlanner.tsx, conceptOpeningPlacement.ts e conceptOpeningPlacement.test.ts. Sete testes do bloco de posicionamento/operações passaram; sintaxe TSX passou. Homologação e publicação seguem adiadas.
+
+## Bloco de duplicação e divisão
+
+Edição de comprimento diretamente na planta delega ao mesmo fluxo do painel, sem cortar coordenadas para fazer a medida caber. Duplicação desloca ambos os extremos igualmente, tenta o lado oposto junto à borda e rejeita quando nenhum lado cabe, preservando diagonais. Divisão bloqueada quando o ponto atravessa uma porta/janela; offsets são redistribuídos exatamente sem clamps que deslocavam aberturas. Botão de divisão informa a restrição.
+
+Arquivos ConceptPlanner.tsx, conceptWallOperations.ts e conceptWallOperations.test.ts. Sete testes específicos de operações e limites passaram; sintaxe TSX passou. Este bloco não altera o ponto inicial da parede: a revisão identificou que esse controlador não tem chamadas no planner atual. Validação integrada e publicação permanecem adiadas.
+
+## Bloco consolidado de medidas e atalhos
+
+Comprimento da parede usa entrada decimal confirmada; mínimo considera a maior abertura vinculada mais 10 cm; máximo é calculado na direção da parede a partir do início, respeitando o primeiro limite do terreno. Medidas fora desses limites são rejeitadas sem alteração silenciosa. Exclusão por teclado centralizada em um único listener; listeners específicos mantêm duplicação/rotação e respeitam eventos já consumidos. Modo de desenho impede exclusão e duplicação por atalhos de seleção, preservando Backspace para a medida.
+
+Arquivos: ConceptPlanner.tsx, conceptWallLengthLimits.ts e conceptWallLengthLimits.test.ts. Verificação consolidada: 28 testes passaram em 8 arquivos; sintaxe de ConceptPlanner.tsx passou no esbuild. Os testes cobrem geometria e componentes isolados; o planner completo e os conflitos de listeners exigem conferência integrada posterior. Homologação e publicação permanecem adiadas.
+
+Entrada métrica: erro de limites agora visível e associado ao campo para leitores de tela; seleção diferente restaura o valor mesmo quando ambas aberturas possuem a mesma medida. Teste de troca de seleção adicionado. Arquivos ConceptMetricInput.tsx, ConceptMetricInput.test.tsx e ConceptPlanner.tsx.
+
+Correção adicional: normalização do peitoril preserva 0,00 m para janelas até o piso. Três testes específicos cobrem zero, ausência/NaN, limites e portas. Arquivos conceptParametricEditing.ts e conceptOpeningSill.test.ts. Esta evidência é unitária; visualização integrada permanece pendente.
+
+Identificador desta entrega: ARQ-EDITOR-20261009. Versão: desenvolvimento, PR #3423.
+
+## Entrada e espaço de trabalho
+
+Commit: e8e13b51e262d55f8c12c2a25db10e8763db3fd5.
+Entrada opcional por ideia, abertura direta do editor, navegação entre vistas, painéis laterais e identidade verde com a fonte existente.
+Arquivos: ConceptPlanner.tsx, ConceptClientBriefPanel.tsx, ConceptIdeaEntry.tsx, ConceptIdeaEntry.test.tsx e concept-editor-workspace.css em artifacts/frontend/src/pages/arch.
+
+## Precisão do desenho
+
+Incremento seguinte no mesmo PR: medidas decimais com ponto ou vírgula; espessura selecionável; direção definida pelo cursor; preservação das coordenadas de snap; rejeição de medidas que ultrapassam a área; concluir a cadeia de paredes; atalhos de portas e janelas na parede selecionada.
+Arquivos: ConceptPlan2D.tsx, ConceptPlanner.tsx, conceptWallDrawing.ts, conceptWallDrawing.test.ts, ConceptPlan2D.precision.test.tsx e concept-editor-workspace.css no mesmo diretório.
+O commit deste incremento consta no histórico do PR.
+
+## Evidências e pendências
+
+21 testes passaram em 6 arquivos: entrada (3), geometria de medidas (4), interação de precisão (6), comportamento móvel existente (2), rede de paredes existente (4) e entrada métrica (2). Execução: Vitest com globals e ambiente jsdom. Sintaxe TSX e CSS e tipagem do auxiliar de geometria verificadas isoladamente.
+
+## Edição das aberturas
+
+Commits 88054515db39f373ca13f9403b14a20614bc5700 e bd82e0b04e9200d23a1d6c69f39f4636142f80e4: testes de correção/cancelamento e entrada métrica para largura, altura e peitoril. ConceptMetricInput.tsx e ConceptMetricInput.test.tsx adicionados; ConceptPlanner.tsx integrado. A medida aceita vírgula e confirma ao sair do campo ou pressionar Enter, sem atualizar o modelo durante cada tecla.
+
+Incremento de posicionamento: distância do centro da abertura desde o início da parede em metros, respeitando margens da largura, e ação Centralizar na parede. O controle percentual existente permanece disponível. Usa o mesmo offset central do modelo e o histórico existente. Homologação e publicação adiadas por solicitação do usuário; nenhum acesso Vendi adicional necessário para este incremento. Verificação integrada das vistas permanece pendente.
+
+Build completo, inspeção visual integrada e E2E em homologação ainda pendentes. A consulta e tentativa de operação somente leitura pelo Vendi retornaram tenant_not_found para casaforteicf. Nenhuma publicação ou alteração em produção nesta entrega. A aprovação não depende do GitHub Actions; exige validação na Contabo conforme o fluxo do projeto.
+
+Esta entrega não implementa BIM completo, colaboração simultânea, importação DWG, renderização fotorrealista ou documentação automática. Esses itens permanecem no roteiro de evolução.
+
+
+## Espessura padrão e representação real — revisão 15 cm
+
+Padrão aprovado de 0,15 m para novas paredes e paredes derivadas de ambientes; medidas explícitas existentes preservadas. Seletores de desenho e edição oferecem 10, 12, 15, 20, 25 e 30 cm. Planta 2D representa a espessura real das paredes personalizadas e sugestões sem alterar a largura na seleção; paredes derivadas usam 15 cm, alinhadas ao 3D. Fallback paramétrico e 3D alinhados a 15 cm.
+
+Verificação: 10 testes específicos passaram em 2 arquivos, incluindo parede de 25 cm antes/depois da seleção; sintaxe de ConceptPlanner e ConceptModel3D verificada com esbuild. Validação integrada, homologação Contabo e publicação permanecem pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+## Conversão e aplicação de produtos em aberturas
+
+Conversão porta/janela usa uma única atualização após validar largura final, altura e peitoril, com bloqueio de sobreposição horizontal/vertical. Remove vínculo de produto/família ao mudar tipo para evitar associação incompatível. Movimentação bloqueada e conversão rejeitada não adicionam entrada vazia ao histórico. Produtos do catálogo fora da faixa atual de largura/altura são rejeitados com aviso antes da aplicação, evitando redução silenciosa das medidas do produto.
+
+Arquivos: ConceptPlanner.tsx, conceptOpeningPlacement.ts e conceptOpeningConversion.test.ts. Verificação consolidada: 47 testes passaram em 12 arquivos; sintaxe de ConceptPlanner verificada com esbuild. Sem build completo ou validação integrada. Lote ARQ-EDITOR-20261009, versão em desenvolvimento; homologação Contabo e publicação adiadas conforme orientação do usuário.
+
+
+## Medidas exatas e validação comum das aberturas
+
+Edição de largura pela planta e de parâmetros pelo painel agora valida a medida solicitada sem reduzir largura ou deslocar o centro silenciosamente. Posição percentual também rejeita posição inválida em vez de prender no limite. Largura, altura e peitoril usam validação comum; valores fora da faixa ou não finitos rejeitados. Dimensões existentes de importação são preservadas ao editar outro parâmetro. Helper de ajuste silencioso removido por ficar sem consumidores.
+
+Arquivos: ConceptPlanner.tsx, conceptOpeningPlacement.ts e conceptOpeningExactEdit.test.ts. Validação consolidada: 53 testes passaram em 13 arquivos; sintaxe TSX de ConceptPlanner verificada com esbuild. Sem build completo ou inspeção integrada. Lote ARQ-EDITOR-20261009, versão em desenvolvimento. Homologação Contabo e publicação permanecem adiadas.
+
+
+## Retorno da edição e vínculo com catálogo
+
+ConceptMetricInput aceita retorno booleano do commit. Se o modelo rejeitar a alteração, restaura o valor real e informa que a medida foi mantida. Handlers de largura/altura/peitoril/posição e comprimento de parede retornam resultado; comprimento rejeitado por reconciliação não adiciona entrada vazia de histórico. Alterações efetivas de largura/altura via edição exata removem catalogProductId; reposicionamento ou medida idêntica preservam vínculo.
+
+Arquivos: ConceptPlanner.tsx, ConceptMetricInput.tsx, ConceptMetricInput.test.tsx, conceptOpeningPlacement.ts, conceptOpeningExactEdit.test.ts. Verificação consolidada: 56 testes passaram em 13 arquivos; sintaxe TSX de Planner e MetricInput verificada isoladamente. Lote ARQ-EDITOR-20261009, versão em desenvolvimento. Build completo, inspeção integrada, homologação Contabo e publicação pendentes.
+
+
+## Operações de paredes e restauração de histórico
+
+Divisão e duplicação preservam o material da parede. Divisão extraída para operação pura preserva posição física, dimensões e metadados das aberturas, inclusive em diagonais; impede corte através de vão e trechos menores que 0,50 m. Exclusão remove acabamento e seleção da abertura excluída, sem criar histórico para ID inexistente. Restaurar snapshot limpa aviso de erro e interação pendente. Undo/redo agora executam restauração fora dos callbacks atualizadores de estado, evitando efeitos laterais dentro desses callbacks.
+
+Arquivos: ConceptPlanner.tsx, conceptWallOperations.ts e conceptWallSplit.test.ts. Validação: 59 testes passaram em 14 arquivos; sintaxe de ConceptPlanner verificada com esbuild. Fluxo integrado de undo/redo ainda requer inspeção em homologação. Lote ARQ-EDITOR-20261009, versão em desenvolvimento; homologação Contabo e publicação adiadas.
+
+
+## Coordenadas comuns das aberturas nas vistas
+
+Removido clamp visual de offset entre 8% e 92% dos marcadores personalizados da planta e dos níveis do modelo 3D. Ambas derivações usam openingCoordinates com posição exata desde o extremo inicial, inclusive paredes no sentido inverso. Dados de lado de abertura, folhas, perfil, vidro, fabricante e vínculo de produto propagados ao nível 3D. Isso corrige coordenadas e propagação; não conclui recortes/malhas diagonais ou suporte completo a aberturas empilhadas no 3D.
+
+Arquivos: ConceptPlanner.tsx, conceptOpeningCoordinates.ts e conceptOpeningCoordinates.test.ts. Validação consolidada: 62 testes passaram em 15 arquivos; sintaxe de Planner verificada isoladamente. Build completo e inspeção integrada pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento; homologação Contabo e publicação adiadas.
+
+
+## Recorte comum de vãos no 3D — diagonais e aberturas empilhadas
+
+ConceptModel3D (SVG) e ConceptWebGLScene (WebGL) usam splitWallVoids, com coordenada ao longo do eixo da parede e subtração de intervalos verticais. Implementado recorte em paredes diagonais/invertidas, aberturas empilhadas e união de aberturas sobrepostas sem duplicação dos sólidos. WebGL materializa trechos com caixas fechadas rotacionadas; SVG usa a projeção existente dos trechos. Esquadrias, caixilhos e montantes seguem direção da parede personalizada vinculada. Vínculo custom-wall impede abertura de parede vizinha e passagem de caminhada indevida. Fallback de espessura WebGL alinhado a 15 cm.
+
+Arquivos: ConceptModel3D.tsx, ConceptWebGLScene.tsx, conceptWallVoids.ts e conceptWallVoids.test.ts. 68 testes passaram em 16 arquivos; sintaxe das duas cenas verificada com esbuild; helper tipado isoladamente com tsc. Não realizada inspeção WebGL real ou build completo. Não resolve união booleana entre paredes nem malha única contínua BIM. Lote ARQ-EDITOR-20261009, versão em desenvolvimento; homologação Contabo e publicação adiadas.
+
+
+## Limites verticais e cruzamentos no 3D
+
+openingVerticalBounds compartilha limites entre recorte e esquadria nas cenas SVG/WebGL. Esquadrias parcialmente acima da parede são representadas somente na faixa da parede; inteiramente acima ou inválidas não geram geometria. Dados do modelo preservados. Espessura de caixilho adapta-se a esquadrias pequenas e montantes não geram altura negativa. Maçaneta acompanha altura efetivamente representada. Marcadores legados sem vínculo custom-wall só recortam paredes compatíveis com sua orientação, evitando recorte perpendicular em cruzamentos.
+
+Arquivos: ConceptModel3D.tsx, ConceptWebGLScene.tsx, conceptWallVoids.ts e conceptWallVoids.test.ts. 72 testes passaram em 16 arquivos; sintaxe TSX das cenas verificada isoladamente. Build completo, união booleana entre paredes e inspeção integrada pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento; homologação Contabo e publicação adiadas.
+
+
+## Partição da união de volumes ortogonais
+
+partitionOrthogonalWallSolids subtrai volumes já ocupados dos trechos seguintes após o recorte dos vãos. L, T, cruzamentos e paredes duplicadas ortogonais geram volumes sem sobreposição nas cenas SVG/WebGL. Materiais e IDs preservados por trecho; a primeira parede é proprietária do volume compartilhado. Fragmentos finos preservados sem engrossamento mínimo visual. Modelo editável original não modificado.
+
+Limites: paredes diagonais permanecem no caminho anterior; não há união booleana geral de polígonos, remoção de faces internas nem malha única contínua BIM. Paredes inferidas da cena não participam da partição do conjunto explícito. Inspeção visual integrada e desempenho em projetos grandes pendentes.
+
+Arquivos: ConceptModel3D.tsx, ConceptWebGLScene.tsx, conceptWallSolidUnion.ts e conceptWallSolidUnion.test.ts. 78 testes passaram em 17 arquivos; sintaxe TSX das cenas e tipagem isolada do helper verificadas. Lote ARQ-EDITOR-20261009, versão em desenvolvimento. Homologação Contabo e publicação adiadas.
+
+
+## Superfícies externas da união ortogonal no WebGL
+
+exposedWallFaces remove áreas compartilhadas entre faces adjacentes dos sólidos ortogonais particionados. ConceptWebGLScene substitui as caixas desses trechos por BufferGeometry triangulada das superfícies expostas, com UVs/normais e IDs/material mantidos. Vãos preservam seus revelos. Geometria editável original permanece intacta.
+
+Limites: não cria malha única soldada, não resolve faces de uniões diagonais, e o SVG permanece com as projeções de caixas particionadas. Inspeção visual real, texturas, picking e desempenho em projetos grandes ainda pendentes.
+
+Arquivos: ConceptWebGLScene.tsx, conceptWallSurfaces.ts e conceptWallSurfaces.test.ts. Verificação: 83 testes passaram em 18 arquivos, incluindo área externa de parede isolada, adjacência, cruzamento e revelos; sintaxe da cena e tipagem isolada do helper verificadas. Lote ARQ-EDITOR-20261009, versão em desenvolvimento; homologação Contabo e publicação adiadas.
+
+
+### Faces externas na vista SVG 3D
+
+A vista 3D alternativa reutiliza as faces expostas da união de paredes ortogonais, com descarte de faces voltadas para trás e ordenação dos trechos pela profundidade da câmera. Materiais, seleção e pintura continuam vinculados à parede original. Paredes diagonais mantêm a renderização anterior.
+
+Validação: 83 testes em 18 arquivos passaram; transformação TSX do componente por esbuild passou. A conferência visual integrada, o build completo e a homologação/publicação não foram realizados neste lote.
+
+
+### Colisão de caminhada consistente com os vãos
+
+Passagens derivadas do recorte físico compartilhado de portas, incluindo vínculo à parede, orientação, diagonais e união de vãos sobrepostos. Sem ampliação artificial de portas estreitas; visitante de raio 24 cm e altura 1,70 m deve caber no vão. Janelas e portas baixas não liberam passagem. Todas as paredes de cruzamentos continuam verificadas.
+
+Validação: 88 testes em 19 arquivos passaram; esbuild da cena e tipagem isolada do helper passaram. Navegação visual integrada e build completo pendentes. Homologação/publicação adiadas no lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Deslocamento e teclado da caminhada
+
+Movimento subdividido em passos de no máximo 5 cm, verificando colisões ao longo do trajeto e permitindo deslizamento lateral. Evita o salto através de paredes em deslocamentos grandes nos cenários cobertos. Atalhos de caminhada ignoram campos editáveis e eventos já consumidos; perda de foco da janela limpa teclas, controles e arraste.
+
+Validação: 92 testes em 19 arquivos passaram; transformação TSX da cena e tipagem isolada do helper passaram. Conferência visual integrada, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Velocidade e controles de toque
+
+Caminhada baseada no tempo transcorrido, preservando a velocidade configurada equivalente a 60 fps; movimento diagonal normalizado e intervalo limitado a 100 ms após pausas. Botões de toque capturam o ponteiro, desativam gestos nativos e encerram a tecla ao perder a captura.
+
+Validação: 95 testes em 19 arquivos passaram; sintaxe TSX verificada. Verificação em dispositivos reais, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Controles independentes e interrupção da caminhada
+
+Teclado e botões de toque usam fontes independentes; cada ponteiro tem seu comando, evitando que a liberação de um toque cancele uma tecla física ou outro toque. Direções opostas se cancelam. Ocultar a aba, focar um campo editável, perder foco, trocar modo e reiniciar a câmera limpam os comandos de toque junto com o teclado.
+
+Validação: 98 testes em 20 arquivos passaram; transformação TSX da cena passou. Teste integrado de teclado/toque em dispositivo real e build completo pendentes. Homologação/publicação permanecem adiadas. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Seleção protegida após gestos de câmera
+
+Seleção/pintura WebGL restritas ao modo órbita e botão principal. Arrastes acima de 5 pixels, múltiplos ponteiros e gestos cancelados bloqueiam o clique subsequente, incluindo arraste que retorna à posição inicial. Eventos de liberação fora do canvas acompanhados; listeners removidos no encerramento da cena.
+
+Validação: 102 testes em 21 arquivos passaram; transformação TSX da cena passou. Teste integrado dos gestos, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Proteção de gestos na vista SVG
+
+Vista compatível reutiliza o rastreamento de gestos para bloquear clique após arraste, multitoque ou cancelamento, antes dos handlers de paredes, ambientes, aberturas e objetos. Pintura de objetos passa a ocorrer no clique validado, evitando dupla aplicação no pressionamento e na liberação. Arraste de objetos continua com seleção inicial para edição.
+
+Validação: 102 testes em 21 arquivos passaram; transformação TSX do componente passou. Verificação integrada de SVG/WebGL, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Ferramenta de pintura atual e edição de objetos
+
+Clique WebGL consulta ferramenta e callbacks atuais por referência, corrigindo captura dos valores iniciais na inicialização da cena. Gizmo de objeto desacoplado enquanto pintura está ativa. Vista SVG impede arraste de objetos em qualquer ferramenta de pintura e ignora seleção de alvos incompatíveis; clique no fundo preserva seleção durante pintura.
+
+Validação: 102 testes existentes em 21 arquivos passaram; transformação TSX das duas cenas passou. Este conjunto não possui teste integrado de pintura/WebGL; conferência visual, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Transformação de objetos com dados atuais
+
+Gizmo WebGL consulta dimensões atuais do lote e callbacks atuais de alteração/início/fim de edição, sem capturar valores iniciais da cena. Conversão de posição e rotação extraída para helper; snap de 5 cm limitado ao lote após arredondamento, evitando ultrapassar bordas fora da grade. Valores não finitos e dimensões não positivas rejeitados; objetos maiores que o lote mantêm origem não negativa, sem redimensionamento automático. Limites ainda usam largura/profundidade nominais, sem envelope rotacionado.
+
+Validação: 106 testes em 22 arquivos passaram; transformação TSX da cena passou. Interação integrada do gizmo/histórico, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Limites de objetos rotacionados no gizmo
+
+Commit do gizmo WebGL calcula envelope horizontal com largura/profundidade e ângulo final arredondado a 5 graus. Limita posição após snap usando esse envelope. Testes verificam quatro cantos em seis ângulos e borda no ângulo arredondado. Objetos que não cabem no envelope do terreno não são reduzidos; origem centralizada quando possível. Aviso para esse caso, padronização dos demais caminhos de edição/2D e colisões com ambientes permanecem pendentes.
+
+Validação: 108 testes em 22 arquivos passaram; tipagem isolada do helper passou. Verificação visual integrada, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Limites compartilhados para objetos na vista compatível
+
+Arraste, redimensionamento por alça, botões de escala e giro de 90 graus da vista SVG usam o envelope rotacionado compartilhado. Ao mover ou redimensionar, ângulo existente preservado sem snap angular adicional. Giro local envolve callbacks de início/fim de edição. Redimensionamento continua limitado às dimensões nominais do lote; objetos cujo envelope não cabe não são reduzidos automaticamente.
+
+Validação: 109 testes em 22 arquivos passaram; transformação TSX da vista SVG passou. Interação integrada/histórico, edição 2D/painel, aviso de objeto que não cabe, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Limites rotacionados na atualização central de objetos
+
+updateObjectById usa envelope rotacionado compartilhado nos caminhos de 2D/3D/painel que passam por esse handler. Coordenadas e ângulos preservados sem snap adicional; campos geométricos não finitos rejeitados. Alterações somente de material/produto preservam geometria sem recalcular posição/dimensões. Clamps dimensionais existentes mantidos; inserção, duplicação e outros setters diretos ainda não usam esse handler.
+
+Validação: 111 testes em 22 arquivos passaram; transformação TSX do planner passou. Integração visual, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Duplicação com limites rotacionados
+
+Duplicação pelo objeto selecionado e por ID compartilham o cálculo de posição considerando o envelope rotacionado. Mantém deslocamento usual de 50 cm por eixo quando possível; tenta diagonais alternativas quando a borda limita esse deslocamento. Preserva dimensões, ângulo e demais metadados. Não verifica colisões entre móveis e pode sobrepor quando não há espaço suficiente; aviso de objeto maior que terreno segue pendente.
+
+Validação: 113 testes em 22 arquivos passaram; transformação TSX do planner passou. Conferência integrada, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Inserção de objetos com medidas válidas
+
+addObjectAt compartilhado por biblioteca e drops 2D/3D valida dimensões e posição antes de criar objeto ou histórico. Itens maiores que o lote são rejeitados com aviso específico, preservando dimensões de catálogo. Posição por centro limitada à borda pelo helper compartilhado. Outros caminhos de inserção em lote/importação seguem independentes.
+
+Validação: 115 testes em 22 arquivos passaram; transformação TSX do planner passou. Interação integrada de catálogo/drop, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Aplicação integral de layout de mobiliário
+
+applyFurnishLayoutOption valida todos os itens antes de snapshot, IDs ou atualização do modelo. Verifica medidas/posição finitas, dimensões positivas, pavimento atual e envelope rotacionado dentro do lote. Erro identifica item ou pavimento; mantém preview/opções para revisão e não gera histórico. Não reposiciona ou redimensiona itens para forçar encaixe. Validação de permanência no ambiente e conflitos com móveis existentes permanece pendente.
+
+Validação: 118 testes em 22 arquivos passaram; transformação TSX do planner passou. Interação integrada, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Mobiliário contido no ambiente atual
+
+Antes de aplicar layout, compara área do polígono rotacionado de cada móvel com a área coberta pelas células disjuntas do ambiente selecionado. Aceita cruzar fronteiras internas das células; rejeita partes fora do ambiente, recortes em L e lacunas, mesmo com cantos dentro. Falha mantém opções/preview e impede inserção/histórico. Baseado nas células ortogonais de detectClosedSpaces; não considera espessura/acabamentos internos, folgas de uso ou colisões com móveis existentes.
+
+Validação: 122 testes em 23 arquivos passaram; tipagem isolada do helper e transformação TSX do planner passaram. Integração visual, build completo e homologação/publicação pendentes. Lote ARQ-EDITOR-20261009, versão em desenvolvimento.
+
+
+### Sobreposição ao aplicar mobiliário
+
+- Validação de contornos retangulares rotacionados entre os móveis propostos e os existentes no mesmo pavimento, antes de alterar o modelo ou o histórico.
+- Contato de bordas permitido; tapetes, luminárias, TV, plantas e pontos de instalações mantêm sobreposição decorativa.
+- Erro identifica os móveis envolvidos e preserva a opção para revisão. A validação usa a projeção retangular, não a malha 3D dos objetos.
+- Verificação: 127 testes passaram em 24 arquivos (118 geométricos/unitários e 9 de interface); tipagem do helper e transformação sintática do editor passaram. Validação visual integrada e homologação/publicação na Contabo permanecem pendentes.
+
+
+### Geração de mobiliário com circulação e contorno rotacionado
+
+- Busca de posições verifica a área completa no ambiente atual e os limites do terreno antes de compor as opções.
+- Móveis de todo o pavimento participam da verificação, inclusive quando apenas parte de seu contorno alcança o ambiente.
+- Folga de circulação acompanha a orientação do móvel; decoração não bloqueia mobiliário sólido.
+- Sem posições possíveis, remove prévias antigas e informa a falta de espaço livre.
+- Verificação: 130 testes passaram em 24 arquivos; tipagem do helper e transformação sintática do editor passaram. Validação visual integrada, homologação e publicação na Contabo seguem pendentes.
+
+
+### Contorno rotacionado nas zonas de portas e janelas
+
+- Geração de mobiliário compara o contorno rotacionado às zonas de acesso das portas e às zonas de janelas já calculadas pelo editor, mantendo as respectivas margens.
+- O teste também abrange itens de parede; removida a comparação antiga sem rotação.
+- Verificação: 133 testes passaram em 24 arquivos, incluindo ponta rotacionada invadindo a zona, espaço livre e margens de contato. Tipagem do helper e transformação sintática do editor passaram.
+- Zonas continuam sendo estimativas preliminares; não representam arco exato de abertura nem validação normativa. Validação visual integrada e homologação/publicação Contabo permanecem pendentes.
+
+
+### Sugestões de mobiliário vinculadas à revisão da planta
+
+- Revisão determinística de paredes, aberturas, móveis do pavimento, terreno, células e uso do ambiente.
+- Mudanças nesses parâmetros descartam opções e prévia; aplicação também verifica a revisão antes de alterar modelo/histórico.
+- Mudanças apenas de aparência ou objetos de outro pavimento mantêm sugestões; ordenação de arrays não invalida opções.
+- Verificação: 137 testes passaram em 25 arquivos; tipagem do helper e transformação sintática do editor passaram. Testes de revisão cobrem portas, rotação, espessura, ambiente, terreno, exclusão e materiais.
+- Validação visual integrada e homologação/publicação na Contabo permanecem pendentes.
+
+
+### Opções distintas e sugestões parciais
+
+- Opções repetidas são agrupadas por disposição, tipo, dimensões e orientação, independentemente dos IDs; mantém a melhor pontuação e até três opções distintas.
+- Botões mostram quantidade de itens e indicador Parcial. A prévia lista os itens que não couberam antes da confirmação.
+- Verificação: 141 testes passaram em 26 arquivos; tipagem do helper e transformação sintática do editor passaram. Cobertura inclui IDs, ordem, rotação equivalente, ruído numérico, classificação e limite.
+- Validação visual integrada e homologação/publicação na Contabo permanecem pendentes.
+
+
+### Dimensões e orientação das sugestões
+
+- Removida redução automática de largura/profundidade ao criar presets; peças fixas que não cabem são omitidas e entram no aviso de sugestão parcial.
+- Presets a 90/270 graus convertem a caixa de implantação para dimensões locais preservando centro, evitando troca dupla de orientação.
+- Busca de posição limita o contorno rotacionado com margem, sem redimensionar. Inserção mantém a posição já validada, evitando um segundo clamp sem rotação.
+- Armários/mesas com dimensões adaptativas explícitas continuam usando as medidas previstas nos respectivos presets.
+- Verificação: 145 testes passaram em 27 arquivos; tipagem do helper e transformação sintática do editor passaram. Cobertura de cama que não cabe, contorno de cama/sofá girado e limites rotacionados.
+- Validação visual integrada e homologação/publicação na Contabo permanecem pendentes.
+
+
+### Pontuação de proximidade das paredes
+
+- Afinidade com a parede e aproveitamento de paredes usam o envelope rotacionado do móvel, coerente com os testes de implantação.
+- Evita favorecer posições por dimensões locais sem considerar a orientação.
+- Verificação: 147 testes passaram em 27 arquivos; tipagem do helper e transformação sintática do editor passaram. Testes conferem distâncias a 90 graus e consistência ao espelhar uma disposição diagonal.
+- Pontuação continua heurística de pré-projeto. Validação visual integrada e homologação/publicação na Contabo permanecem pendentes.
+
+
+### Seleção explícita da prévia de mobiliário
+
+- Removida troca automática da opção ao passar o mouse. A seleção exige ativação do botão, compatível com clique, toque, Enter e espaço.
+- Botões informam estado selecionado com aria-pressed e possuem foco visível para teclado.
+- Confirmação mostra o número da opção que será aplicada.
+- Verificação desta alteração de interface: transformação sintática do editor passou. Última suíte anterior: 147 testes em 27 arquivos; não repetida nesta alteração. Validação visual integrada e homologação/publicação na Contabo permanecem pendentes.
+
+
+### Orientação das alternativas espelhadas
+
+- Espelhamento de posições e direção local X usa cada eixo do ambiente: X transforma ângulo para 180−ângulo, Y para −ângulo; ambos equivalem a giro de 180 graus.
+- Corrigida regra anterior que girava 180 graus para um eixo isolado e mantinha o ângulo no espelhamento duplo.
+- Preserva dimensões e metadados e troca afinidade da parede correspondente. A operação representa disposição e orientação, sem refletir a malha de modelos assimétricos.
+- Verificação: 150 testes passaram em 27 arquivos; tipagem do helper e transformação sintática do editor passaram. Testes cobrem três modos, aplicação dupla e dados preservados.
+- Validação visual integrada e homologação/publicação na Contabo permanecem pendentes.
+
+
+### Prioridade para sugestões mais completas
+
+- Ordenação prioriza menor quantidade de itens omitidos, usando a pontuação para desempatar alternativas de mesma completude.
+- Opções completas deixam de perder prioridade para opções parciais apenas por bônus de proximidade/circulação.
+- Verificação direcionada: 6 testes de seleção/ordenação passaram, incluindo dois novos cenários de completude; tipagem do helper passou. Última suíte geral anterior: 150 testes em 27 arquivos. Validação visual integrada e homologação/publicação na Contabo permanecem pendentes.
+
+
+### Indicador objetivo de completude na prévia
+
+- Removida porcentagem de qualidade calculada por pontuação relativa; a planta agora mostra Itens que couberam, proporção de itens inseridos versus solicitados.
+- Evita apresentar layout parcial como 100% de qualidade. Pontuação heurística permanece independente para classificação.
+- Verificação: 153 testes passaram em 27 arquivos; tipagem do helper e transformação sintática dos dois componentes passaram. Teste adicional cobre opção completa, parcial e vazia.
+- Validação visual integrada e homologação/publicação na Contabo permanecem pendentes.
+
+
+### Verificação independente de sintaxe e imports — 09/10/2026
+
+- Revisão fixada no commit c3d0ab3635620bc160d1f0fc6708481134cebe35 do PR #3423.
+- TypeScript 5.9.3 transpileModule: 51 arquivos TS/TSX alterados verificados sem diagnósticos de erro de sintaxe. Não equivale a typecheck semântico.
+- 122 imports locais relativos ou pelo alias @/ conferidos contra a árvore completa desse commit; nenhum arquivo ausente. Não valida exports, pacotes externos ou imports computados.
+- Transformações personalizadas de visibilidade e plano de mídia do Vite executadas sobre SidebarLayout, SidebarLayoutLegacy, MediaPlanBatchControl e MediaPlanAutoProductionBridge: quatro verificações passaram.
+- Build completo e validação visual integrada continuam pendentes. Nenhuma alteração funcional, homologação ou publicação nesta verificação.
+
+
+### Robustez numérica da caminhada e do mobiliário — 10/10/2026
+
+A movimentação na caminhada rejeita coordenadas/raios não finitos e deslocamentos extremos (>100 m por operação), evitando iterações excessivas. O cálculo de encaixe de móveis normaliza a rotação antes da projeção geométrica; a deduplicação de opções trata a transição arredondada entre 360° e 0°. Testes de regressão foram adicionados aos respectivos arquivos. Evidência: commits 49f3bbd, 90a3821, 8efe284, 0c4379a. Testes novos ainda não executados; build completo e inspeção integrada seguem pendentes. Sem merge, homologação ou publicação.
+
+
+### Normalização de colisões de mobiliário — 10/10/2026
+
+A função de vértices de colisão de mobiliário (`conceptFurnitureCollision.ts`) passou a normalizar ângulos finitos em módulo de 360 graus antes da trigonometria, consistente com a checagem de encaixe em ambientes. Adicionado teste de regressão com rotações grandes e equivalência à rotação normalizada em `conceptFurnitureCollision.test.ts`. Commits 51b056b e 462fbf5. Testes novos e build completo ainda não executados; homologação e publicação adiadas.
+
+
+### Proteção de overflow nas margens de circulação — 10/10/2026
+
+`furnitureHasClearance` passa a rejeitar coordenadas e dimensões expandidas não finitas em vez de interpretar uma geometria inválida como margem livre. Teste para margem extrema e Infinity adicionado. Commits 2bcbce8, 359aaff. A execução do novo teste, build integrado e inspeção visual continuam pendentes. Sem merge, homologação ou publicação.
+
+
+### Reconciliação sem deslocamento silencioso — 10/10/2026
+
+A reconciliação de paredes e aberturas deixa de ajustar (clamp) o offset de uma porta/janela ao novo limite da parede. Quando o encurtamento exigiria alterar sua posição calculada, retorna erro e rejeita a edição. Teste de regressão usa abertura inicialmente válida próxima ao extremo. Commits 8097e0d e 9b7a27c. Testes novos e build integrado não executados nesta rodada. PR permanece draft; merge, homologação e publicação adiados.
+
+
+### Validação de entrada na busca de vão livre — 10/10/2026
+
+`freeOpeningOffset` agora rejeita largura não finita ou não positiva e offset não finito antes da busca por uma posição livre. Testes de regressão cobrindo NaN, Infinity e largura negativa adicionados. Commits eddeecb e 91817f7. Execução Vitest, build integrado e inspeção das vistas permanecem pendentes. PR em rascunho, sem merge, homologação ou publicação.
+
+
+### Robustez de altura total de abertura — 10/10/2026
+
+`openingPlacementError` agora rejeita altura + peitoril que produza extensão vertical não finita, inclusive em aberturas importadas cuja dimensão original ultrapassa as faixas de edição. Teste de regressão adicionado em `conceptOpeningExactEdit.test.ts`. Commits 6d55f07 e 652b5f8. Execução de testes, typecheck, build e revisão integrada pendentes. Nenhum merge, homologação ou publicação.
+
+
+### Lote paramétrico arquitetônico inicial — 10/10/2026
+
+Novo módulo puro `conceptArchitecturalElements.ts` com validação de lajes e aberturas retangulares, área líquida, escada reta com espelhos/pisos calculados, coberturas plana/uma água/duas águas e agrupamento preliminar do quadro de esquadrias por tipologia/dimensão. Suíte unitária nova em `conceptArchitecturalElements.test.ts` cobre casos aceitos e rejeitados. Commits 819b249 e 22bac13. **Escopo: núcleo de domínio isolado; ainda não ligado ao estado/UI do ConceptPlanner, WebGL, importação ou biblioteca universal.** Não representa modelagem BIM integrada. Testes novos, typecheck, build e E2E ainda não executados. Sem merge, homologação ou publicação.
+
+
+### Snapshot arquitetônico transacional — 10/10/2026
+
+Novo `conceptArchitecturalModel.ts`: modelo serializável v1 para lajes, escadas, coberturas e esquadrias; operações puras em lote com cópia profunda de aberturas de laje, validação prévia, atualização por ID, exclusão e rollback lógico (retorno de erro sem alterar o original); quantitativos derivados. Testes adicionados em `conceptArchitecturalModel.test.ts`. Commits 03d3b14 e 1f0813c. **Sem conexão ao estado React, às cenas, à biblioteca de modelos ou importador.** Não existe persistência remota nem sincronização 2D/3D efetiva deste novo núcleo; essa integração permanece como trabalho futuro. Build/testes não executados. Sem merge/deploy/homologação.
+
+
+### Projeções compartilhadas do modelo arquitetônico — 10/10/2026
+
+Adicionado `conceptArchitecturalViews.ts` com projeções puras 2D (contornos de laje, vazio, escada e cobertura) e 3D preliminar (partição retangular da laje preservando vazios, volumes indicativos de degraus e envelope de cobertura). `conceptArchitecturalViews.test.ts` cobre consistência entre projeções, área da laje descontando abertura e alteração imutável por edição. Commits bf69d72, c556378. **Ainda não está integrado aos componentes ConceptPlanner/ConceptPlan2D/ConceptModel3D/ConceptWebGLScene; roof-plane é envelope simplificado, não malha inclinada final; escada ainda não tem corte de laje automático.** Testes/build pendentes. Nenhum merge, homologação ou publicação.
+
+
+### Prévia visual independente do modelo paramétrico — 10/10/2026
+
+Adicionado `ConceptArchitecturalPreview.tsx`, componente React isolado com alternância entre planta SVG 2D e representação volumétrica preliminar, usando as mesmas projeções derivadas do snapshot arquitetônico, com filtros por pavimento e marcações de lajes, vazios, escadas e cobertura. Teste de interface em `ConceptArchitecturalPreview.test.tsx` exercita troca das vistas e preservação de snapshot. Commits 2434ee2 e 423c0b8. **Componente ainda não instanciado em ConceptPlanner ou conectado aos renderizadores oficiais; sua vista de volumes é um indicador gráfico top-down, não WebGL nem 3D definitivo.** Teste, typecheck, build e inspeção visual pendentes. Sem merge, homologação ou publicação.
+
+
+### Painel integrado à seção Construir — 10/10/2026
+
+`ConceptArchitecturalElementsPanel.tsx` oferece criação, seleção, edição de posição e dimensões e exclusão de lajes, escadas retas e coberturas, apresentando prévia 2D/volumétrica e área líquida de lajes. `ConceptPlanner.tsx` passa a montar o painel lazy na aba Construir usando snapshot arquitetônico React local. Commits 80d8994 e 325d605. **Limitações:** não persiste no projeto/backend, elementos novos não são desenhados nas vistas oficiais ConceptPlan2D/ConceptModel3D/WebGL, escadas/coberturas têm propriedades avançadas ainda fixadas em valores iniciais, interação gráfica direta com mouse/touch ausente. Sem testes executados, build ou inspeção integrada. PR draft, sem merge, homologação ou publicação.
+
+
+### Persistência do snapshot paramétrico — 10/10/2026
+
+`ConceptPlanner.tsx` agora acrescenta `architecturalModel` em `configuration` no payload do salvamento existente, recupera o campo ao reabrir um pré-projeto e inclui o snapshot nas dependências/assinatura do autosave. Quando o campo estiver ausente (rascunhos legados), inicializa com modelo vazio v1. Commit 1b528ead. **Persistência ponta a ponta ainda não confirmada por teste com backend: eventual filtragem de schema/API precisa ser verificada.** Vistas oficiais 2D/3D ainda não consomem os novos elementos. Sem merge, homologação ou publicação.
+
+
+### Geometria paramétrica na vista 2D oficial — 10/10/2026
+
+`ConceptPlan2D.tsx` recebe `architecturalModel` e desenha contornos de lajes, vazios, escadas e coberturas diretamente no SVG principal, filtrados por pavimento; sobreposição é somente visual (`pointerEvents=none`) para não interceptar gestos de paredes/aberturas. `ConceptPlanner.tsx` transmite o snapshot arquitetônico à vista principal. Commits afbd2ca e 7040cf6. A seleção direta, arrasto, manipulação de nós e renderização na vista 3D oficial/WebGL **continuam pendentes**. Teste visual, typecheck e build ainda não executados. Sem merge/homologação/publicação.
+
+
+### Integração paramétrica ao 3D e conciliação com main — 11/10/2026
+
+A branch incorpora main em 28760f336daf8d8df952920580dc00669dd9920c, preservando o caminho conservador de união de paredes sem aberturas e o renderizador por peças para paredes com aberturas/acabamentos distintos. Espessuras inválidas continuam usando o padrão de 15 cm. O snapshot architecturalModel chega a ConceptModel3D e ConceptWebGLScene: lajes com vazios, degraus por pavimento e faces inclinadas de coberturas compartilham a mesma derivação métrica. Coberturas explícitas substituem o telhado automático; acabamentos de piso preservam os vazios das lajes. Corrigida a dupla elevação dos degraus, os tipos de colisão/navegação e atributos JSX duplicados na ação Dividir (mantendo limites de comprimento e abertura no ponto médio).
+
+Validação local: 445 testes passaram em 72 arquivos (arch e render-studio); tsc dos componentes ConceptModel3D, ConceptWebGLScene e conceptArchitecturalViews passou; transformação esbuild dos três componentes principais passou sem avisos. Corrigido um bloco duplicado/incompleto no teste de implantação do terreno. As fontes arquitetônicas de main que não conflitam com a branch foram restauradas para testar a composição final. Não foi executado build completo do monorepo, teste com backend ou inspeção visual integrada. Seleção/arrasto dos novos elementos, abertura automática da laje por escada e integração ao desfazer/refazer continuam pendentes. Persistência ponta a ponta precisa ser confirmada. PR permanece draft, sem merge em main, homologação ou publicação; Contabo adiada por orientação do usuário.
+
+
+### ARQ-PARAM-02 — v2026.10.11.2 — vãos de escada e histórico
+
+O modelo deriva automaticamente um vão retangular na laje do pavimento imediatamente superior para cada escada reta; a opção openSlab=false desliga o corte. O recorte é limitado ao contorno de cada laje e não altera os vazios manuais persistidos. Mover/excluir uma escada regenera o recorte nas projeções 2D/3D e nos acabamentos de piso. Quantitativos descontam a união dos vazios sem duplicar áreas sobrepostas. A laje precisa existir no modelo arquitetônico; não são criadas lajes ou pavimentos automaticamente. Abertura geométrica não inclui verificação estrutural ou de altura livre.
+
+O snapshot EditorSnapshot passou a incluir o modelo arquitetônico com cópia profunda; criar/editar/excluir elementos no painel entra no histórico existente, limpa refazer e restaura o modelo em desfazer/refazer. Corrigidas as dependências do teclado para acompanhar o histórico completo, inclusive quando o limite de 40 entradas é atingido. O painel preserva o pavimento do elemento selecionado, usa cotas de laje coerentes com o pavimento e oferece desenvolvimento inicial válido para escada.
+
+Checks locais: 15 testes passaram em 4 arquivos, incluindo novos cenários de corte por pavimento, opção desligada, recorte no limite, sobreposição, mover/excluir, isolamento de snapshots e edição do painel. TypeScript do painel e auxiliares passou; transformação sintática do planner passou. Não representa teste integrado do histórico no planner, build completo, validação visual/backend ou homologação Contabo. Não houve merge em main ou publicação.

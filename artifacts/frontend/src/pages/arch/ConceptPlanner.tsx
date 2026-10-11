@@ -1,7 +1,26 @@
+import { moveArchitecturalElement, resizeArchitecturalElement } from "./conceptArchitecturalMovement";
+import { furniturePresetFootprint, positionFurnitureInBounds, furnitureWallDistances, mirrorFurniturePreset } from "./conceptFurniturePreset";
+import { uniqueFurnitureLayouts, furnitureLayoutCompletion } from "./conceptFurnitureLayoutOptions";
+import { furnitureLayoutRevision } from "./conceptFurnitureLayoutRevision";
+import { furnitureLayoutCollisionError, furnitureHasClearance, furnitureBlocksZone } from "./conceptFurnitureCollision";
+import { furnitureFitsRoom } from "./conceptFurnitureRoomFit";
+import { boundedObjectGeometry, duplicateObjectGeometry, insertedObjectGeometry, objectBatchPlacementError } from "./conceptObjectTransform";
+import { openingCoordinates } from "./conceptOpeningCoordinates";
 import { flushSync } from "react-dom";
 import { conceptReferenceSize } from "./conceptReferenceImage";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import "./planner5d-reference.css";
+import "./concept-editor-workspace.css";
+import { ConceptIdeaEntry } from "./ConceptIdeaEntry";
+import { ConceptMetricInput } from "./ConceptMetricInput";
+import { emptyArchitecturalModel, cloneArchitecturalModel, readArchitecturalModel } from "./conceptArchitecturalModel";
+import type { ArchitecturalModel } from "./conceptArchitecturalModel";
+const ConceptArchitecturalElementsPanel = lazy(() => import("./ConceptArchitecturalElementsPanel"));
+
+import { wallLengthLimit } from "./conceptWallLengthLimits";
+import { duplicateWallPlacement, openingCrossesWallMidpoint, splitWallWithOpenings } from "./conceptWallOperations";
+import { freeOpeningOffset, openingsOverlap, openingFitsWall, convertedOpening, openingPlacementError, openingDimensionError, exactOpeningEdit } from "./conceptOpeningPlacement";
+import { reconcileWallOpenings } from "./conceptWallOpeningReconciliation";
 import {
   ArrowLeft,
   ArrowRight,
@@ -49,7 +68,7 @@ import type { ConceptPlanObject } from "./ConceptPlan2D";
 
 import type { AIDevelopmentResponse } from "./ConceptFacadeEditor";
 
-import { buildConceptJourney, conceptJourneyContinueLabel, conceptJourneyIndex } from "./conceptJourney";
+import { buildConceptJourney } from "./conceptJourney";
 
 import { DEFAULT_SITE_PLACEMENT, getBuildingBounds, getSiteBoundaryPoints, migrateLegacySitePlacement, normalizeSitePlacement, resolveSiteSetbacks, type SitePlacement } from "./conceptSitePlacement";
 import { type ClientBriefAlternative, type ProjectBriefSnapshot } from "./conceptClientBrief";
@@ -179,6 +198,7 @@ type SpaceProfile = {
 };
 
 type EditorSnapshot = {
+  architecturalModel: ArchitecturalModel;
   rooms: Room[];
   customWalls: CustomWall[];
   customOpenings: CustomOpening[];
@@ -554,6 +574,7 @@ type ConceptDraftResponse = {
     wallFirstFloors?: number[];
     showDimensions?: boolean;
     customWalls?: Array<{ id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number }>;
+    architecturalModel?: ArchitecturalModel;
     customOpenings?: CustomOpening[];
     spaceProfiles?: SpaceProfile[];
     objects?: ConceptPlanObject[];
@@ -1052,6 +1073,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [floors, setFloors] = useState(1);
   const [desiredArea, setDesiredArea] = useState(145);
   const [activeFloor, setActiveFloor] = useState(0);
+  const [architecturalSelection, setArchitecturalSelection] = useState<{ id: string; revision: number }>();
+  const [architecturalModel, setArchitecturalModel] = useState<ArchitecturalModel>(emptyArchitecturalModel);
+
   const [editorView, setEditorView] = useState<"plan" | "model3d" | "facade" | "render">("plan");
   const [editorExperienceMode, setEditorExperienceMode] = useState<EditorExperienceMode>("guided");
 
@@ -1083,6 +1107,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [layoutVariant, setLayoutVariant] = useState(0);
   const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
+  const [objectPlacementError, setObjectPlacementError] = useState<string | null>(null);
+  const [openingEditError, setOpeningEditError] = useState<string | null>(null);
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   const [selectedCustomWallId, setSelectedCustomWallId] = useState<string | null>(null);
   const [selectedClosedSpaceId, setSelectedClosedSpaceId] = useState<string | null>(null);
@@ -1098,11 +1124,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [furnishLayoutOptions, setFurnishLayoutOptions] = useState<Array<{
     id: string;
     score: number;
+    missingLabels: string[];
     objects: ConceptPlanObject[];
     doorZones: Array<{ x: number; y: number; width: number; height: number }>;
     windowZones: Array<{ x: number; y: number; width: number; height: number }>;
   }>>([]);
   const [furnishLayoutSpaceId, setFurnishLayoutSpaceId] = useState<string | null>(null);
+  const [furnishLayoutRevision, setFurnishLayoutRevision] = useState<string | null>(null);
   const [previewFurnishLayoutId, setPreviewFurnishLayoutId] = useState<string | null>(null);
 
   const [wallMaterials, setWallMaterials] = useState<Record<string, string>>({});
@@ -1225,7 +1253,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [startWithTerrain, setStartWithTerrain] = useState<boolean | null>(null);
   const [terrainDefined, setTerrainDefined] = useState(false);
   const [startSourceChosen, setStartSourceChosen] = useState(false);
-  const [startWizardStage, setStartWizardStage] = useState<ConceptStartWizardStage>("kind");
+  const [, setStartWizardStage] = useState<ConceptStartWizardStage>("kind");
   const [intakeStage, setIntakeStage] = useState<ConceptIntakeStage>("kind");
   const [startChooserDismissed, setStartChooserDismissed] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -1266,7 +1294,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [polyHavenLoading, setPolyHavenLoading] = useState(false);
   const [polyHavenInsertSlug, setPolyHavenInsertSlug] = useState<string | null>(null);
   const [autoModelPreviews, setAutoModelPreviews] = useState<Record<string, AutoModelPreview>>({});
-  const [editorLibraryTab, setEditorLibraryTab] = useState<EditorLibraryTab>("site");
+  const [editorLibraryTab, setEditorLibraryTab] = useState<EditorLibraryTab>("build");
   const [libraryOpen, setLibraryOpen] = useState(() => typeof window === "undefined" ? true : window.innerWidth >= 768);
   const [mobileValidationOpen, setMobileValidationOpen] = useState(false);
 
@@ -1588,8 +1616,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           if (!cancelled) {
             setConceptId(null);
             conceptIdRef.current = null;
-            // PKG-07 / ARQ-UI: novo pré-projeto entra direto na escolha da origem.
-            // Casa é o padrão, terreno é opcional e pode ser informado antes ou depois.
+            // One optional idea entry, followed directly by the design workspace.
             setProjectScope("house");
             setStartWithTerrain(false);
             setTerrainDefined(false);
@@ -1614,6 +1641,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           return;
         }
 
+        const restoredArchitecture = readArchitecturalModel(draft.configuration?.architecturalModel);
+        if ("error" in restoredArchitecture) throw new Error(restoredArchitecture.error);
+
         conceptIdRef.current = draft.id;
         setConceptId(draft.id);
         setArchProjetoId(draft.archProjetoId ?? null);
@@ -1625,6 +1655,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         setEditorView("plan");
         const loadedFloors = Math.round(finiteNumber(draft.configuration?.floors, 1, 1, 3));
         const loadedWalls = normalizeLoadedWalls(draft.configuration?.customWalls, loadedFloors);
+        setArchitecturalModel(restoredArchitecture.value);
         const loadedOpenings = normalizeLoadedOpenings(draft.configuration?.customOpenings, loadedWalls);
         const loadedRooms = normalizeLoadedRooms(draft.rooms, loadedFloors);
 
@@ -1707,9 +1738,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               ? "source"
               : "kind",
         );
-        setStartChooserDismissed(
-          migratedIntakeStage === "terrain_editor" || migratedIntakeStage === "complete",
-        );
+        setStartChooserDismissed(true);
         setRooms(loadedRooms);
         setOpeningOverrides(draft.openingOverrides && typeof draft.openingOverrides === "object" ? draft.openingOverrides : {});
         setCustomerProfile(draft.customerProfile ?? {});
@@ -1768,6 +1797,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         wallFirstFloors: nextWallFirstFloors,
         showDimensions,
         customWalls: nextCustomWalls,
+        architecturalModel,
         customOpenings: nextCustomOpenings,
         spaceProfiles: nextSpaceProfiles,
         objects: nextObjects,
@@ -1844,12 +1874,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   // Salvamento automático: antes o trabalho só era gravado ao tocar no ✓ (sem nenhum
   // retorno visual) ou em algumas ações pontuais — fechar o app no celular perdia a edição.
   const autosaveKey = useMemo(() => JSON.stringify([
-    rooms, customWalls, customOpenings, objects, openingOverrides, wallMaterials,
+    rooms, customWalls, customOpenings, objects, openingOverrides, wallMaterials, architecturalModel,
     lotWidth, lotDepth, floors, desiredArea, typology, layoutPreferences, sitePlacement, projectBrief,
     projectScope, startWithTerrain, terrainDefined, startSourceChosen, intakeStage,
     facadePreferences, spaceProfiles, customerProfile, showDimensions, wallFirstFloors,
   ]), [
-    rooms, customWalls, customOpenings, objects, openingOverrides, wallMaterials,
+    rooms, customWalls, customOpenings, objects, openingOverrides, wallMaterials, architecturalModel,
     lotWidth, lotDepth, floors, desiredArea, typology, layoutPreferences, sitePlacement, projectBrief,
     projectScope, startWithTerrain, terrainDefined, startSourceChosen, intakeStage,
     facadePreferences, spaceProfiles, customerProfile, showDimensions, wallFirstFloors,
@@ -1908,14 +1938,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     () => buildConceptJourney({ scope: projectScope, terrainDefined }),
     [projectScope, terrainDefined],
   );
-  const journeyIndex = conceptJourneyIndex({
-    step,
-    editorView,
-    libraryTab: editorLibraryTab,
-    scope: projectScope,
-    terrainDefined,
-  });
-
   const goToJourneyStage = (index: number) => {
     const isWide = typeof window !== "undefined" && window.innerWidth >= 768;
     const stage = journeyStages[Math.max(0, Math.min(index, journeyStages.length - 1))];
@@ -2143,7 +2165,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         y1: Math.max(0, Math.min(lotDepth, wall.y1)),
         x2: Math.max(0, Math.min(lotWidth, wall.x2)),
         y2: Math.max(0, Math.min(lotDepth, wall.y2)),
-        thickness: Math.max(0.08, Math.min(0.35, wall.thickness ?? 0.14)),
+        thickness: Math.max(0.08, Math.min(0.35, wall.thickness ?? 0.15)),
       });
       existingWallIds.add(wall.id);
     }
@@ -2495,6 +2517,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   };
 
   const snapshotEditor = (): EditorSnapshot => ({
+    architecturalModel: cloneArchitecturalModel(architecturalModel),
     rooms: roomsRef.current.map((room) => ({ ...room })),
     customWalls: customWallsRef.current.map((wall) => ({ ...wall })),
     customOpenings: customOpeningsRef.current.map((opening) => ({ ...opening })),
@@ -2523,6 +2546,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   });
 
   const cloneSnapshot = (snapshot: EditorSnapshot): EditorSnapshot => ({
+    architecturalModel: cloneArchitecturalModel(snapshot.architecturalModel),
     rooms: snapshot.rooms.map((room) => ({ ...room })),
     customWalls: snapshot.customWalls.map((wall) => ({ ...wall })),
     customOpenings: snapshot.customOpenings.map((opening) => ({ ...opening })),
@@ -2552,6 +2576,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
   const restoreSnapshot = (snapshot: EditorSnapshot) => {
     const cloned = cloneSnapshot(snapshot);
+    setArchitecturalModel(cloned.architecturalModel);
     setRooms(cloned.rooms);
     setCustomWalls(cloned.customWalls);
     setCustomOpenings(cloned.customOpenings);
@@ -2568,11 +2593,20 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     setSelectedCustomWallId(null);
     setSelectedOpeningId(null);
     setSelectedObjectId(null);
+    setOpeningEditError(null);
+    editStartRef.current = null;
   };
 
   const pushRoomHistory = (before: EditorSnapshot) => {
     setRoomHistory((history) => [...history.slice(-39), cloneSnapshot(before)]);
     setRoomFuture([]);
+  };
+
+  const changeArchitecturalModel = (next: ArchitecturalModel) => {
+    if (projectMaster) return;
+    if (JSON.stringify(next) === JSON.stringify(architecturalModel)) return;
+    pushRoomHistory(snapshotEditor());
+    setArchitecturalModel(cloneArchitecturalModel(next));
   };
 
   const beginRoomEdit = () => {
@@ -2588,23 +2622,21 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   };
 
   const undoRooms = () => {
-    setRoomHistory((history) => {
-      const previous = history[history.length - 1];
-      if (!previous) return history;
-      setRoomFuture((future) => [snapshotEditor(), ...future].slice(0, 40));
-      restoreSnapshot(previous);
-      return history.slice(0, -1);
-    });
+    const previous = roomHistory[roomHistory.length - 1];
+    if (!previous) return;
+    const current = snapshotEditor();
+    setRoomFuture((future) => [current, ...future].slice(0, 40));
+    setRoomHistory(roomHistory.slice(0, -1));
+    restoreSnapshot(previous);
   };
 
   const redoRooms = () => {
-    setRoomFuture((future) => {
-      const next = future[0];
-      if (!next) return future;
-      setRoomHistory((history) => [...history.slice(-39), snapshotEditor()]);
-      restoreSnapshot(next);
-      return future.slice(1);
-    });
+    const next = roomFuture[0];
+    if (!next) return;
+    const current = snapshotEditor();
+    setRoomHistory((history) => [...history.slice(-39), current]);
+    setRoomFuture(roomFuture.slice(1));
+    restoreSnapshot(next);
   };
 
   const addRoom = (kind: RoomKind) => {
@@ -2701,21 +2733,27 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       const wallLength = Math.hypot(dx, dy);
       if (wallLength < 0.001) return;
       const projectedDistance = ((patch.x - wall.x1) * dx + (patch.y - wall.y1) * dy) / wallLength;
-      const halfOpening = Math.min(wallLength / 2, Math.max(0.25, (custom.width ?? (custom.type === "door" ? 0.9 : 1.2)) / 2));
+      const requested = patch.type === custom.type ? custom : { ...convertedOpening(custom, patch.type), catalogProductId: undefined, familyId: undefined, familyLabel: undefined };
+      const halfOpening = Math.min(wallLength / 2, (requested.width ?? (requested.type === "door" ? 0.9 : 1.2)) / 2);
       const minDistance = Math.min(halfOpening, wallLength / 2);
       const maxDistance = Math.max(minDistance, wallLength - halfOpening);
       const clampedDistance = Math.max(minDistance, Math.min(maxDistance, projectedDistance));
       const offset = Math.max(0, Math.min(1, clampedDistance / wallLength));
+      const candidate = { ...requested, offset };
+      const error = openingPlacementError(candidate, safeCustomOpenings.filter(item => item.wallId === wall.id && item.id !== openingId), wallLength);
+      if (error) { setOpeningEditError(error); return false; }
+      setOpeningEditError(null);
       setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) =>
-        opening.id === openingId ? { ...opening, offset, type: patch.type } : opening
+        opening.id === openingId ? candidate : opening
       ));
-      return;
+      return true;
     }
 
     setOpeningOverrides((prev) => ({
       ...prev,
       [openingId]: patch,
     }));
+    return true;
   };
 
   const updateOpeningWidth = (openingId: string, width: number) => {
@@ -2723,14 +2761,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const wall = custom ? safeCustomWalls.find((item) => item.id === custom.wallId) : null;
     if (!custom || !wall) return;
     const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
-    const maximumWidth = Math.max(0.3, wallLength - 0.1);
-    const safeWidth = Math.max(0.3, Math.min(4, maximumWidth, Number(width) || 0.5));
-    if (Math.abs((custom.width ?? (custom.type === "door" ? 0.9 : 1.2)) - safeWidth) < 0.001) return;
-    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) =>
-      opening.id === openingId
-        ? constrainOpeningToWall({ ...opening, width: safeWidth }, wallLength)
-        : opening
-    ));
+    const result = exactOpeningEdit(custom, { width }, safeCustomOpenings.filter(item => item.wallId === wall.id && item.id !== openingId), wallLength);
+    if ("error" in result) { setOpeningEditError(result.error); return; }
+    if (Math.abs((custom.width ?? (custom.type === "door" ? 0.9 : 1.2)) - width) < 0.001) return;
+    setOpeningEditError(null);
+    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map(opening => opening.id === openingId ? result.opening : opening));
   };
 
   const addObjectAt = (
@@ -2741,13 +2776,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     point?: { x: number; y: number },
     metadata?: Partial<Pick<ConceptPlanObject, "catalogProductId" | "imageUrl" | "supplier" | "price" | "model3dUrl" | "textureUrl">>,
   ) => {
+    const geometry = insertedObjectGeometry(width, depth, lotWidth, lotDepth, point);
+    if ("error" in geometry) { setObjectPlacementError(geometry.error); return; }
+    setObjectPlacementError(null);
     const before = snapshotEditor();
-    const x = point
-      ? Math.max(0, Math.min(lotWidth - width, point.x - width / 2))
-      : Math.max(0, Math.min(lotWidth - width, lotWidth / 2 - width / 2));
-    const y = point
-      ? Math.max(0, Math.min(lotDepth - depth, point.y - depth / 2))
-      : Math.max(0, Math.min(lotDepth - depth, lotDepth / 2 - depth / 2));
     const next: ConceptPlanObject = {
       id: `concept-object-${uid()}`,
       kind,
@@ -2755,9 +2787,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       floor: activeFloor,
       width,
       depth,
-      x,
-      y,
-      rotation: 0,
+      ...geometry,
       ...(metadata ?? {}),
     };
     setObjects((prev) => [...(Array.isArray(prev) ? prev : []), next]);
@@ -2777,11 +2807,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const updateObjectById = (objectId: string, patch: Partial<Pick<ConceptPlanObject, "x" | "y" | "width" | "depth" | "rotation" | "materialId" | "materialScale" | "materialRotation" | "model3dUrl" | "materialSelections" | "configuredPrice">>) => {
     setObjects((prev) => (Array.isArray(prev) ? prev : []).map((object) => {
       if (object.id !== objectId) return object;
+      const hasGeometryChange = ["x", "y", "width", "depth", "rotation"].some(key => key in patch);
+      if (!hasGeometryChange) return { ...object, ...patch };
       const width = Math.max(0.3, Math.min(lotWidth, patch.width ?? object.width));
       const depth = Math.max(0.3, Math.min(lotDepth, patch.depth ?? object.depth));
-      const x = Math.max(0, Math.min(lotWidth - width, patch.x ?? object.x));
-      const y = Math.max(0, Math.min(lotDepth - depth, patch.y ?? object.y));
-      return { ...object, ...patch, width, depth, x, y };
+      const geometry = boundedObjectGeometry({ ...object, ...patch, width, depth }, lotWidth, lotDepth);
+      if (!geometry) return object;
+      return { ...object, ...patch, width, depth, ...geometry };
     }));
   };
 
@@ -2798,12 +2830,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
   const duplicateSelectedObject = () => {
     if (!selectedObject) return;
+    const geometry = duplicateObjectGeometry(selectedObject, lotWidth, lotDepth);
+    if (!geometry) return;
     const before = snapshotEditor();
     const copy: ConceptPlanObject = {
       ...selectedObject,
       id: `concept-object-${uid()}`,
-      x: Math.max(0, Math.min(lotWidth - selectedObject.width, selectedObject.x + 0.5)),
-      y: Math.max(0, Math.min(lotDepth - selectedObject.depth, selectedObject.y + 0.5)),
+      ...geometry,
       label: `${selectedObject.label} cópia`,
     };
     setObjects((prev) => [...(Array.isArray(prev) ? prev : []), copy]);
@@ -2824,11 +2857,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const before = snapshotEditor();
     const object = safeObjects.find((item) => item.id === objectId);
     if (!object) return;
+    const geometry = duplicateObjectGeometry(object, lotWidth, lotDepth);
+    if (!geometry) return;
     const copy: ConceptPlanObject = {
       ...object,
       id: `concept-object-${uid()}`,
-      x: Math.max(0, Math.min(lotWidth - object.width, object.x + 0.5)),
-      y: Math.max(0, Math.min(lotDepth - object.depth, object.y + 0.5)),
+      ...geometry,
       label: `${object.label} cópia`,
     };
     setObjects((prev) => [...(Array.isArray(prev) ? prev : []), copy]);
@@ -2849,14 +2883,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   useEffect(() => {
     if (!selectedObjectId || (editorView !== "plan" && editorView !== "model3d")) return;
     const handleObjectShortcut = (event: KeyboardEvent) => {
+      if (interactionMode === "draw-wall" || event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
       if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.tagName === "SELECT" || target?.isContentEditable) return;
 
-      if (event.key === "Delete" || event.key === "Backspace") {
-        event.preventDefault();
-        deleteObject(selectedObjectId);
-        return;
-      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
         event.preventDefault();
         duplicateObject(selectedObjectId);
@@ -2869,7 +2899,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     };
     window.addEventListener("keydown", handleObjectShortcut);
     return () => window.removeEventListener("keydown", handleObjectShortcut);
-  }, [editorView, selectedObjectId]);
+  }, [editorView, selectedObjectId, interactionMode]);
 
   const armPaintTool = (
     target: "object" | "wall" | "floor",
@@ -3105,7 +3135,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         y1: wall.y1,
         x2: wall.x2,
         y2: wall.y2,
-        thickness: wall.exterior ? 0.18 : 0.12,
+        thickness: 0.15,
       });
     }
 
@@ -3232,9 +3262,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         .flatMap((opening) => {
           const wall = safeCustomWalls.find((item) => item.id === opening.wallId && item.floor === activeFloor);
           if (!wall) return [];
-          const offset = Math.max(0.08, Math.min(0.92, opening.offset));
-          const x = wall.x1 + (wall.x2 - wall.x1) * offset;
-          const y = wall.y1 + (wall.y2 - wall.y1) * offset;
+          const { x, y } = openingCoordinates(wall, opening.offset);
           const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
           return [{
             id: opening.id,
@@ -3365,13 +3393,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         .flatMap((opening) => {
           const wall = floorCustomWalls.find((item) => item.id === opening.wallId);
           if (!wall) return [];
-          const offset = Math.max(0.08, Math.min(0.92, opening.offset));
+          const { x, y } = openingCoordinates(wall, opening.offset);
           const horizontal = Math.abs(wall.y1 - wall.y2) < 0.01;
           return [{
             id: opening.id,
             type: opening.type,
-            x: wall.x1 + (wall.x2 - wall.x1) * offset,
-            y: wall.y1 + (wall.y2 - wall.y1) * offset,
+            x,
+            y,
             orientation: horizontal ? "horizontal" as const : "vertical" as const,
             roomId: `custom-wall:${wall.id}`,
             width: opening.width,
@@ -3379,6 +3407,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             sillHeight: opening.sillHeight,
             openingStyle: opening.openingStyle,
             swing: opening.swing,
+            swingSide: opening.swingSide,
+            leafCount: opening.leafCount,
+            frameProfile: opening.frameProfile,
+            glassType: opening.glassType,
+            manufacturer: opening.manufacturer,
+            catalogProductId: opening.catalogProductId,
           }];
         });
       const floorClosedSpaces = detectClosedSpaces(
@@ -3463,6 +3497,20 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
   const selectedClosedSpace = closedSpaces.find((space) => space.id === selectedClosedSpaceId) ?? null;
   const selectedSpaceProfile = selectedClosedSpace ? spaceAssignments.get(selectedClosedSpace.id) ?? null : null;
+
+  const currentFurnishLayoutRevision = useMemo(() => furnitureLayoutRevision({
+    floor: activeFloor, lotWidth, lotDepth,
+    spaceId: selectedClosedSpace?.id ?? null, spaceKind: selectedSpaceProfile?.kind ?? "outro",
+    cells: selectedClosedSpace?.cells ?? [], walls: safeCustomWalls, openings: safeCustomOpenings, objects: safeObjects,
+  }), [activeFloor, lotWidth, lotDepth, selectedClosedSpace, selectedSpaceProfile?.kind, safeCustomWalls, safeCustomOpenings, safeObjects]);
+
+  useEffect(() => {
+    if (!furnishLayoutRevision || furnishLayoutRevision === currentFurnishLayoutRevision) return;
+    setFurnishLayoutOptions([]);
+    setFurnishLayoutSpaceId(null);
+    setPreviewFurnishLayoutId(null);
+    setFurnishLayoutRevision(null);
+  }, [furnishLayoutRevision, currentFurnishLayoutRevision]);
 
   const libraryInsertPoint = useMemo(() => {
     if (selectedClosedSpace) return selectedClosedSpace.centroid;
@@ -3582,6 +3630,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     ? safeCustomOpenings.find((opening) => opening.id === selectedOpening.id) ?? null
     : null;
   const selectedWall = geometry.walls.find((wall) => wall.id === selectedWallId) ?? null;
+  const selectedOpeningWall = selectedCustomOpening
+    ? safeCustomWalls.find((wall) => wall.id === selectedCustomOpening.wallId) ?? null : null;
+  const selectedOpeningWallLength = selectedOpeningWall
+    ? Math.hypot(selectedOpeningWall.x2 - selectedOpeningWall.x1, selectedOpeningWall.y2 - selectedOpeningWall.y1) : 0;
 
   const addCustomWall = (wall: CustomWall) => {
     const before = snapshotEditor();
@@ -3591,54 +3643,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     setSelectedWallId(null);
   };
 
-  const constrainOpeningToWall = (
-    opening: CustomOpening,
-    wallLength: number,
-    preserveFrom: "start" | "end" | "ratio" = "ratio",
-    previousWallLength = wallLength,
-  ): CustomOpening => {
-    const requestedWidth = opening.width ?? (opening.type === "door" ? 0.9 : 1.2);
-    const maxWidth = Math.max(0.3, wallLength - 0.1);
-    const width = Math.max(0.3, Math.min(requestedWidth, maxWidth));
-    const halfRatio = wallLength > 0.001 ? Math.min(0.49, width / 2 / wallLength) : 0.49;
-    const minOffset = halfRatio;
-    const maxOffset = 1 - halfRatio;
-
-    let offset = opening.offset;
-    if (previousWallLength > 0.001 && wallLength > 0.001) {
-      if (preserveFrom === "start") {
-        offset = (opening.offset * previousWallLength) / wallLength;
-      } else if (preserveFrom === "end") {
-        const distanceFromEnd = (1 - opening.offset) * previousWallLength;
-        offset = 1 - distanceFromEnd / wallLength;
-      }
-    }
-
-    return {
-      ...opening,
-      width,
-      offset: Math.max(minOffset, Math.min(maxOffset, offset)),
-    };
-  };
-
-  const reconcileOpeningsForWall = (
-    wallId: string,
-    previousWall: CustomWall,
-    nextWall: CustomWall,
-  ) => {
-    const previousLength = Math.hypot(previousWall.x2 - previousWall.x1, previousWall.y2 - previousWall.y1);
-    const nextLength = Math.hypot(nextWall.x2 - nextWall.x1, nextWall.y2 - nextWall.y1);
-    const startChanged = Math.hypot(nextWall.x1 - previousWall.x1, nextWall.y1 - previousWall.y1) > 0.001;
-    const endChanged = Math.hypot(nextWall.x2 - previousWall.x2, nextWall.y2 - previousWall.y2) > 0.001;
-    const preserveFrom: "start" | "end" | "ratio" =
-      startChanged && !endChanged ? "end" : endChanged && !startChanged ? "start" : "ratio";
-
-    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) =>
-      opening.wallId === wallId
-        ? constrainOpeningToWall(opening, nextLength, preserveFrom, previousLength)
-        : opening
-    ));
-  };
 
   const updateCustomWall = (
     wallId: string,
@@ -3646,40 +3650,47 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     recordHistory = false,
   ) => {
     const wall = safeCustomWalls.find((item) => item.id === wallId);
-    if (!wall) return;
+    if (!wall) return false;
     const nextWall = { ...wall, ...patch };
     const nextLength = Math.hypot(nextWall.x2 - nextWall.x1, nextWall.y2 - nextWall.y1);
     const widestOpening = safeCustomOpenings
       .filter((opening) => opening.wallId === wallId)
       .reduce((max, opening) => Math.max(max, opening.width ?? (opening.type === "door" ? 0.9 : 1.2)), 0);
     const minimumWallLength = widestOpening > 0 ? Math.max(0.5, widestOpening + 0.1) : 0.5;
-    if (nextLength < minimumWallLength) return;
+    if (nextLength < minimumWallLength) { setOpeningEditError("A parede ficaria curta demais para suas aberturas."); return false; }
+
+    const reconciled = reconcileWallOpenings([wall], [nextWall], safeCustomOpenings);
+    if ("error" in reconciled) { setOpeningEditError(reconciled.error); return false; }
+    setOpeningEditError(null);
 
     const before = recordHistory ? snapshotEditor() : null;
     setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).map((item) => item.id === wallId ? nextWall : item));
-    reconcileOpeningsForWall(wallId, wall, nextWall);
+    setCustomOpenings(reconciled.openings);
     if (before) pushRoomHistory(before);
+    return true;
   };
 
   const setCustomWallLength = (wallId: string, rawLength: number) => {
     const wall = safeCustomWalls.find((item) => item.id === wallId);
-    if (!wall || !Number.isFinite(rawLength)) return;
+    if (!wall || !Number.isFinite(rawLength)) return false;
     const openingMinimum = safeCustomOpenings
       .filter((opening) => opening.wallId === wallId)
       .reduce((max, opening) => Math.max(max, (opening.width ?? (opening.type === "door" ? 0.9 : 1.2)) + 0.1), 0.5);
-    const length = Math.max(openingMinimum, Math.min(Math.hypot(lotWidth, lotDepth), rawLength));
+    if (rawLength < openingMinimum || rawLength > wallLengthLimit(wall, lotWidth, lotDepth)) return false;
+    const length = rawLength;
     const dx = wall.x2 - wall.x1;
     const dy = wall.y2 - wall.y1;
     const currentLength = Math.hypot(dx, dy);
-    if (currentLength < 0.001) return;
+    if (currentLength < 0.001) return false;
     const ux = dx / currentLength;
     const uy = dy / currentLength;
     const before = snapshotEditor();
     const target = { x: wall.x1 + ux * length, y: wall.y1 + uy * length };
-    if (target.x < 0 || target.x > lotWidth || target.y < 0 || target.y > lotDepth) return;
+    if (target.x < 0 || target.x > lotWidth || target.y < 0 || target.y > lotDepth) return false;
 
-    updateCustomWall(wallId, { x2: target.x, y2: target.y });
+    if (!updateCustomWall(wallId, { x2: target.x, y2: target.y })) return false;
     pushRoomHistory(before);
+    return true;
   };
 
   const setCustomWallStart = (wallId: string, axis: "x" | "y", value: number) => {
@@ -3712,49 +3723,31 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   };
 
   const deleteCustomWall = (wallId: string) => {
+    if (!safeCustomWalls.some(wall => wall.id === wallId)) return;
     const before = snapshotEditor();
     setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).filter((wall) => wall.id !== wallId));
     setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).filter((opening) => opening.wallId !== wallId));
+    setWallMaterials(prev => { const next = { ...prev }; delete next[wallId]; return next; });
+    setSelectedOpeningId(current => safeCustomOpenings.some(opening => opening.wallId === wallId && opening.id === current) ? null : current);
+    setOpeningEditError(null);
     pushRoomHistory(before);
     setSelectedCustomWallId((current) => current === wallId ? null : current);
   };
 
   const updateCustomWallLength = (wallId: string, requestedLength: number) => {
-    const wall = safeCustomWalls.find((item) => item.id === wallId);
-    if (!wall) return;
-    const length = Math.max(0.5, Math.min(Math.hypot(lotWidth, lotDepth), Number(requestedLength) || 0.5));
-    const dx = wall.x2 - wall.x1;
-    const dy = wall.y2 - wall.y1;
-    const currentLength = Math.hypot(dx, dy);
-    if (currentLength < 0.001) return;
-    const before = snapshotEditor();
-    const ux = dx / currentLength;
-    const uy = dy / currentLength;
-    const x2 = Math.max(0, Math.min(lotWidth, wall.x1 + ux * length));
-    const y2 = Math.max(0, Math.min(lotDepth, wall.y1 + uy * length));
-    updateCustomWall(wall.id, { x2, y2 });
-    pushRoomHistory(before);
+    setCustomWallLength(wallId, requestedLength);
   };
 
   const duplicateCustomWall = (wallId: string) => {
     const wall = safeCustomWalls.find((item) => item.id === wallId);
     if (!wall) return;
+    const placement = duplicateWallPlacement(wall, lotWidth, lotDepth);
+    if (!placement) { setOpeningEditError("Não há espaço no terreno para duplicar essa parede."); return; }
+    setOpeningEditError(null);
     const before = snapshotEditor();
-    const dx = wall.x2 - wall.x1;
-    const dy = wall.y2 - wall.y1;
-    const length = Math.max(0.001, Math.hypot(dx, dy));
-    const offset = 0.25;
-    const ox = (-dy / length) * offset;
-    const oy = (dx / length) * offset;
-    const copy: CustomWall = {
-      ...wall,
-      id: `custom-wall-${uid()}`,
-      x1: Math.max(0, Math.min(lotWidth, wall.x1 + ox)),
-      y1: Math.max(0, Math.min(lotDepth, wall.y1 + oy)),
-      x2: Math.max(0, Math.min(lotWidth, wall.x2 + ox)),
-      y2: Math.max(0, Math.min(lotDepth, wall.y2 + oy)),
-    };
+    const copy: CustomWall = { ...wall, ...placement, id: `custom-wall-${uid()}` };
     setCustomWalls((prev) => [...(Array.isArray(prev) ? prev : []), copy]);
+    if (wallMaterials[wallId]) setWallMaterials(prev => ({ ...prev, [copy.id]: wallMaterials[wallId] }));
     setSelectedCustomWallId(copy.id);
     setSelectedWallId(null);
     pushRoomHistory(before);
@@ -3763,42 +3756,14 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const splitCustomWall = (wallId: string) => {
     const wall = safeCustomWalls.find((item) => item.id === wallId);
     if (!wall) return;
-    const length = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
-    if (length < 1) return;
-
-    const before = snapshotEditor();
-    const midpoint = {
-      x: (wall.x1 + wall.x2) / 2,
-      y: (wall.y1 + wall.y2) / 2,
-    };
     const secondWallId = `custom-wall-${uid()}`;
-    const secondWall: CustomWall = {
-      ...wall,
-      id: secondWallId,
-      x1: midpoint.x,
-      y1: midpoint.y,
-    };
-
-    setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).flatMap((item) => {
-      if (item.id !== wallId) return [item];
-      return [
-        { ...item, x2: midpoint.x, y2: midpoint.y },
-        secondWall,
-      ];
-    }));
-
-    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) => {
-      if (opening.wallId !== wallId) return opening;
-      if (opening.offset < 0.5) {
-        return { ...opening, offset: Math.max(0.02, Math.min(0.98, opening.offset * 2)) };
-      }
-      return {
-        ...opening,
-        wallId: secondWallId,
-        offset: Math.max(0.02, Math.min(0.98, (opening.offset - 0.5) * 2)),
-      };
-    }));
-
+    const result = splitWallWithOpenings(wall, safeCustomOpenings, secondWallId);
+    if (!result) { setOpeningEditError("Não é possível dividir: cada trecho precisa ter pelo menos 0,50 m e a divisão não pode atravessar uma abertura."); return; }
+    const before = snapshotEditor();
+    setCustomWalls((prev) => (Array.isArray(prev) ? prev : []).flatMap(item => item.id === wallId ? result.walls : [item]));
+    setCustomOpenings(result.openings);
+    if (wallMaterials[wallId]) setWallMaterials(prev => ({ ...prev, [secondWallId]: wallMaterials[wallId] }));
+    setOpeningEditError(null);
     setSelectedCustomWallId(secondWallId);
     setSelectedWallId(null);
     pushRoomHistory(before);
@@ -3809,14 +3774,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   useEffect(() => {
     if (!selectedCustomWallId || editorView !== "plan") return;
     const handleWallShortcut = (event: KeyboardEvent) => {
+      if (interactionMode === "draw-wall" || event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
       if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.tagName === "SELECT" || target?.isContentEditable) return;
 
-      if (event.key === "Delete" || event.key === "Backspace") {
-        event.preventDefault();
-        deleteCustomWall(selectedCustomWallId);
-        return;
-      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
         event.preventDefault();
         duplicateCustomWall(selectedCustomWallId);
@@ -3824,7 +3785,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     };
     window.addEventListener("keydown", handleWallShortcut);
     return () => window.removeEventListener("keydown", handleWallShortcut);
-  }, [editorView, selectedCustomWallId]);
+  }, [editorView, selectedCustomWallId, interactionMode]);
 
   const visibleLibraryMaterials = useMemo(() => {
     const query = furnitureSearch.trim().toLocaleLowerCase("pt-BR");
@@ -3960,7 +3921,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     );
     if (invalid) return;
 
+    const reconciled = reconcileWallOpenings(original, next, safeCustomOpenings);
+    if ("error" in reconciled) { setOpeningEditError(reconciled.error); return; }
+    setOpeningEditError(null);
+
     setCustomWalls(next);
+    setCustomOpenings(reconciled.openings);
     if (!editStartRef.current) pushRoomHistory(before);
   };
 
@@ -3987,6 +3953,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       frameProfile: "",
       glassType: type === "door" ? "" : "Incolor",
     };
+    const offset = freeOpeningOffset(opening, safeCustomOpenings.filter((item) => item.wallId === wallId), wallLength);
+    if (offset == null) { setOpeningEditError("Não há espaço livre nessa parede para inserir a abertura."); return; }
+    opening.offset = offset;
+    setOpeningEditError(null);
     setCustomOpenings((prev) => [...(Array.isArray(prev) ? prev : []), opening]);
     pushRoomHistory(before);
     setInteractionMode("opening");
@@ -4070,11 +4040,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     ): FurnishPreset => ({
       kind: itemKind,
       label,
-      width: Math.min(width, innerWidth),
-      depth: Math.min(depth, innerHeight),
-      x,
-      y,
-      rotation,
+      ...furniturePresetFootprint(width, depth, x, y, rotation),
       wallAffinity,
     });
 
@@ -4179,20 +4145,6 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         .sort((a, b) => b.score - a.score)[0];
     })();
 
-    const overlaps = (
-      a: { x: number; y: number; width: number; depth: number },
-      b: { x: number; y: number; width: number; depth?: number; height?: number },
-      margin = 0.12,
-    ) => {
-      const bDepth = b.depth ?? b.height ?? 0;
-      return !(
-        a.x + a.width + margin <= b.x ||
-        a.x >= b.x + b.width + margin ||
-        a.y + a.depth + margin <= b.y ||
-        a.y >= b.y + bDepth + margin
-      );
-    };
-
     const preferredSide = bestWallSide?.score > 0.8 ? bestWallSide.side : null;
     const effectiveLandscape = preferredSide === "left" || preferredSide === "right"
       ? false
@@ -4269,20 +4221,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       ];
     }
 
-    const existingInSpace = safeObjects.filter((object) =>
-      object.floor === activeFloor &&
-      object.x + object.width / 2 >= bounds.x &&
-      object.x + object.width / 2 <= bounds.x + bounds.width &&
-      object.y + object.depth / 2 >= bounds.y &&
-      object.y + object.depth / 2 <= bounds.y + bounds.height
-    );
-
-    const occupiedBase: Array<{ x: number; y: number; width: number; depth: number }> = existingInSpace.map((object) => ({
-      x: object.x,
-      y: object.y,
-      width: object.width,
-      depth: object.depth,
-    }));
+    const occupiedBase = safeObjects.filter((object) => object.floor === activeFloor);
 
     const offsets = [
       [0, 0],
@@ -4300,35 +4239,18 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       item: FurnishPreset,
       mode: "base" | "mirror-x" | "mirror-y" | "mirror-xy",
     ): FurnishPreset => {
-      const mirrorX = mode === "mirror-x" || mode === "mirror-xy";
-      const mirrorY = mode === "mirror-y" || mode === "mirror-xy";
-      const x = mirrorX ? bounds.x + bounds.width - (item.x - bounds.x) - item.width : item.x;
-      const y = mirrorY ? bounds.y + bounds.height - (item.y - bounds.y) - item.depth : item.y;
-      const affinity = item.wallAffinity === "left" && mirrorX ? "right"
-        : item.wallAffinity === "right" && mirrorX ? "left"
-          : item.wallAffinity === "top" && mirrorY ? "bottom"
-            : item.wallAffinity === "bottom" && mirrorY ? "top"
-              : item.wallAffinity;
-      return {
-        ...item,
-        x,
-        y,
-        wallAffinity: affinity,
-        rotation: ((item.rotation ?? 0) + (mirrorX !== mirrorY ? 180 : 0)) % 360,
-      };
+      return mirrorFurniturePreset(item, bounds, mode);
     };
 
     const wallAffinityDistance = (item: FurnishPreset, x: number, y: number) => {
       if (!item.wallAffinity || item.wallAffinity === "center") return 0;
-      if (item.wallAffinity === "top") return Math.abs(y - bounds.y);
-      if (item.wallAffinity === "bottom") return Math.abs(bounds.y + bounds.height - (y + item.depth));
-      if (item.wallAffinity === "left") return Math.abs(x - bounds.x);
-      return Math.abs(bounds.x + bounds.width - (x + item.width));
+      return furnitureWallDistances({ ...item, x, y }, bounds)[item.wallAffinity];
     };
 
     const buildCandidate = (variantPresets: FurnishPreset[]) => {
       const occupied = occupiedBase.map((item) => ({ ...item }));
       const objects: ConceptPlanObject[] = [];
+      const missingLabels = variantPresets.filter(item => item.width < 0.3 || item.depth < 0.3).map(item => item.label);
       let score = 0;
 
       for (const item of variantPresets.filter((preset) => preset.width >= 0.3 && preset.depth >= 0.3)) {
@@ -4337,16 +4259,19 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           | null = null;
 
         for (const [ox, oy] of offsets) {
-          const x = Math.max(bounds.x + 0.08, Math.min(bounds.x + bounds.width - item.width - 0.08, item.x + ox));
-          const y = Math.max(bounds.y + 0.08, Math.min(bounds.y + bounds.height - item.depth - 0.08, item.y + oy));
-          const candidate = { x, y, width: item.width, depth: item.depth };
-          const hitsDoor = doorClearances.some((clearance) => overlaps(candidate, clearance, 0.05));
+          const position = positionFurnitureInBounds({ ...item, x: item.x + ox, y: item.y + oy }, bounds);
+          if (!position) continue;
+          const { x, y } = position;
+          const candidate = { ...item, x, y, floor: activeFloor, rotation: item.rotation ?? 0 };
+          if (!furnitureFitsRoom(candidate, selectedClosedSpace.cells)) continue;
+          if (objectBatchPlacementError([candidate], lotWidth, lotDepth, activeFloor)) continue;
+          const hitsDoor = doorClearances.some((clearance) => furnitureBlocksZone(candidate, clearance, 0.05));
           const wallMounted = item.kind === "tv" || item.kind === "cabinet" || item.kind === "bed" || item.kind === "sofa";
-          const hitsWindow = wallMounted && windowClearances.some((clearance) => overlaps(candidate, clearance, 0.03));
+          const hitsWindow = wallMounted && windowClearances.some((clearance) => furnitureBlocksZone(candidate, clearance, 0.03));
           const minFurnitureGap =
             item.kind === "chair" || item.kind === "table" ? 0.45 :
             item.kind === "bed" || item.kind === "sofa" ? 0.35 : 0.25;
-          const hitsCirculation = occupied.some((other) => overlaps(candidate, other, minFurnitureGap));
+          const hitsCirculation = occupied.some((other) => !furnitureHasClearance(candidate, other, minFurnitureGap));
           if (hitsCirculation || hitsDoor || hitsWindow) continue;
 
           const affinityPenalty = wallAffinityDistance(item, x, y) * 8;
@@ -4359,6 +4284,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         }
 
         if (!best) {
+          missingLabels.push(item.label);
           score -= 18;
           continue;
         }
@@ -4370,47 +4296,49 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           floor: activeFloor,
           width: item.width,
           depth: item.depth,
-          x: Math.max(0, Math.min(lotWidth - item.width, best.x)),
-          y: Math.max(0, Math.min(lotDepth - item.depth, best.y)),
+          x: best.x,
+          y: best.y,
           rotation: item.rotation ?? 0,
         };
         objects.push(object);
-        occupied.push({ x: object.x, y: object.y, width: object.width, depth: object.depth });
+        occupied.push(object);
         score += best.localScore;
       }
 
       const coverage = presets.length ? objects.length / presets.length : 0;
       score += coverage * 40;
       const wallUtilization = objects.reduce((sum, object) => {
-        const nearWall = Math.min(
-          Math.abs(object.x - bounds.x),
-          Math.abs(bounds.x + bounds.width - (object.x + object.width)),
-          Math.abs(object.y - bounds.y),
-          Math.abs(bounds.y + bounds.height - (object.y + object.depth)),
-        );
+        const nearWall = Math.min(...Object.values(furnitureWallDistances(object, bounds)));
         return sum + (nearWall <= 0.45 ? 4 : 0);
       }, 0);
       score += wallUtilization;
 
-      return { objects, score };
+      return { objects, score, missingLabels };
     };
 
     const variants = (["base", "mirror-x", "mirror-y", "mirror-xy"] as const)
       .map((mode) => buildCandidate(presets.map((item) => transformPreset(item, mode))))
       .sort((a, b) => b.score - a.score);
 
-    const options = variants
-      .filter((variant) => variant.objects.length > 0)
-      .slice(0, 3)
+    const options = uniqueFurnitureLayouts(variants)
       .map((variant, index) => ({
         id: `layout-${index + 1}-${uid()}`,
         score: variant.score,
+        missingLabels: variant.missingLabels,
         objects: variant.objects,
         doorZones: doorClearances.map((zone) => ({ ...zone })),
         windowZones: windowClearances.map((zone) => ({ ...zone })),
       }));
 
-    if (!options.length) return;
+    if (!options.length) {
+      setFurnishLayoutOptions([]);
+      setFurnishLayoutSpaceId(null);
+      setPreviewFurnishLayoutId(null);
+      setObjectPlacementError("Não há espaço livre suficiente para estas sugestões. Ajuste o mobiliário ou escolha outro ambiente.");
+      return;
+    }
+    setObjectPlacementError(null);
+    setFurnishLayoutRevision(currentFurnishLayoutRevision);
     setFurnishLayoutOptions(options);
     setFurnishLayoutSpaceId(selectedClosedSpace.id);
     setPreviewFurnishLayoutId(options[0]?.id ?? null);
@@ -4420,6 +4348,19 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const applyFurnishLayoutOption = (optionId: string) => {
     const option = furnishLayoutOptions.find((item) => item.id === optionId);
     if (!option || !selectedClosedSpace || furnishLayoutSpaceId !== selectedClosedSpace.id) return;
+    if (furnishLayoutRevision !== currentFurnishLayoutRevision) {
+      setObjectPlacementError("A planta mudou desde a sugestão. Gere novos layouts antes de aplicar.");
+      return;
+    }
+    const placementError = objectBatchPlacementError(option.objects, lotWidth, lotDepth, activeFloor);
+    if (placementError) { setObjectPlacementError(placementError); return; }
+    if (!option.objects.every(object => furnitureFitsRoom(object, selectedClosedSpace.cells))) {
+      setObjectPlacementError("O layout não cabe mais no ambiente escolhido. Gere uma nova opção com a planta atual.");
+      return;
+    }
+    const collisionError = furnitureLayoutCollisionError(option.objects, safeObjects);
+    if (collisionError) { setObjectPlacementError(collisionError); return; }
+    setObjectPlacementError(null);
     const before = snapshotEditor();
     const created = option.objects.map((object) => ({
       ...object,
@@ -4470,6 +4411,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       familyId: preset.familyId,
       familyLabel: preset.familyLabel,
     };
+    const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    const offset = freeOpeningOffset(opening, safeCustomOpenings.filter((item) => item.wallId === wallId), wallLength);
+    if (offset == null) { setOpeningEditError("Não há espaço livre nessa parede para esse modelo de abertura."); return; }
+    opening.offset = offset;
+    setOpeningEditError(null);
     setCustomOpenings((prev) => [...(Array.isArray(prev) ? prev : []), opening]);
     pushRoomHistory(before);
     setInteractionMode("opening");
@@ -4482,37 +4428,36 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     openingId: string,
     patch: Partial<Pick<CustomOpening, "width" | "height" | "sillHeight" | "openingStyle" | "swing" | "swingSide" | "leafCount" | "frameProfile" | "glassType" | "manufacturer" | "catalogProductId">>,
   ) => {
+    const current = safeCustomOpenings.find((item) => item.id === openingId);
+    const wall = current ? safeCustomWalls.find((item) => item.id === current.wallId) : null;
+    if (!current || !wall) return false;
+    const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    const result = exactOpeningEdit(current, patch, safeCustomOpenings.filter(item => item.wallId === wall.id && item.id !== openingId), wallLength);
+    if ("error" in result) { setOpeningEditError(result.error); return false; }
+    setOpeningEditError(null);
     const before = snapshotEditor();
-    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) => {
-      if (opening.id !== openingId) return opening;
-      const next = { ...opening, ...patch };
-      const normalized = {
-        ...next,
-        ...normalizeOpeningDimensions(next),
-      };
-      const wall = safeCustomWalls.find((item) => item.id === normalized.wallId);
-      if (!wall) return normalized;
-      const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
-      return constrainOpeningToWall(normalized, wallLength);
-    }));
+    setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map(opening => opening.id === openingId ? result.opening : opening));
     pushRoomHistory(before);
+    return true;
   };
 
   const setCustomOpeningOffset = (openingId: string, rawPercent: number) => {
     const opening = safeCustomOpenings.find((item) => item.id === openingId);
     const wall = opening ? safeCustomWalls.find((item) => item.id === opening.wallId) : null;
-    if (!opening || !wall || !Number.isFinite(rawPercent)) return;
+    if (!opening || !wall || !Number.isFinite(rawPercent)) return false;
     const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
-    if (wallLength < 0.001) return;
-    const halfOpening = Math.min(wallLength / 2, Math.max(0.25, (opening.width ?? (opening.type === "door" ? 0.9 : 1.2)) / 2));
-    const minOffset = halfOpening / wallLength;
-    const maxOffset = 1 - minOffset;
-    const nextOffset = Math.max(minOffset, Math.min(maxOffset, rawPercent / 100));
+    if (wallLength < 0.001) return false;
+    const nextOffset = rawPercent / 100;
+    const result = exactOpeningEdit(opening, { offset: nextOffset }, safeCustomOpenings.filter(item => item.wallId === wall.id && item.id !== openingId), wallLength);
+    if ("error" in result) { setOpeningEditError(result.error); return false; }
+    if (Math.abs(opening.offset - nextOffset) < 1e-9) return true;
+    setOpeningEditError(null);
     const before = snapshotEditor();
     setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((item) =>
       item.id === openingId ? { ...item, offset: nextOffset } : item
     ));
     pushRoomHistory(before);
+    return true;
   };
 
   const toggleCustomOpeningSwing = (openingId: string) => {
@@ -4534,12 +4479,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
     if (wallLength < 0.001) return;
     const before = snapshotEditor();
-    const shift = Math.max((opening.width ?? (opening.type === "door" ? 0.9 : 1.2)) / wallLength + 0.04, 0.08);
-    const candidate = opening.offset + shift <= 0.92 ? opening.offset + shift : opening.offset - shift;
+    const candidate = freeOpeningOffset(opening, safeCustomOpenings.filter((item) => item.wallId === wall.id), wallLength);
+    if (candidate == null) { setOpeningEditError("Não há espaço livre nessa parede para duplicar a abertura."); return; }
+    setOpeningEditError(null);
     const copy: CustomOpening = {
       ...opening,
       id: `custom-opening-${uid()}`,
-      offset: Math.max(0.08, Math.min(0.92, candidate)),
+      offset: candidate,
     };
     setCustomOpenings((prev) => [...(Array.isArray(prev) ? prev : []), copy]);
     setSelectedOpeningId(copy.id);
@@ -4565,6 +4511,16 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const kind = catalogOpeningKind(item);
     if (!kind || kind !== opening.type) return;
     const dims = catalogOpeningDimensions(item);
+    const wall = safeCustomWalls.find((candidate) => candidate.id === opening.wallId);
+    if (!wall) return;
+    const wallLength = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    const candidate = { ...opening, width: dims.width ?? opening.width, height: dims.height ?? opening.height };
+    const dimensionError = openingDimensionError({ width: dims.width, height: dims.height });
+    if (dimensionError) { setOpeningEditError(dimensionError + " O produto não foi aplicado."); return; }
+    if (!openingFitsWall(candidate, wallLength) || safeCustomOpenings.some((other) => other.wallId === wall.id && other.id !== openingId && openingsOverlap(candidate, other, wallLength))) {
+      setOpeningEditError("O produto não cabe na posição atual. Ajuste a abertura antes de aplicar."); return;
+    }
+    setOpeningEditError(null);
     const before = snapshotEditor();
     setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((candidate) => {
       if (candidate.id !== openingId) return candidate;
@@ -4656,47 +4612,28 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     if (!selectedOpening) return;
     const before = snapshotEditor();
     const next = nudgeOpening(selectedOpening, amount, lotWidth, lotDepth);
-    updateOpeningById(selectedOpening.id, { x: next.x, y: next.y, type: next.type });
-    pushRoomHistory(before);
+    if (updateOpeningById(selectedOpening.id, { x: next.x, y: next.y, type: next.type })) pushRoomHistory(before);
   };
 
   const toggleOpeningType = () => {
     if (!selectedOpening) return;
     const before = snapshotEditor();
     const nextType = selectedOpening.type === "door" ? "window" : "door";
-    updateOpeningById(selectedOpening.id, {
+    const accepted = updateOpeningById(selectedOpening.id, {
       x: selectedOpening.x,
       y: selectedOpening.y,
       type: nextType,
     });
-    const custom = safeCustomOpenings.find((opening) => opening.id === selectedOpening.id);
-    if (custom) {
-      setCustomOpenings((prev) => (Array.isArray(prev) ? prev : []).map((opening) =>
-        opening.id === selectedOpening.id
-          ? {
-              ...opening,
-              type: nextType,
-              width: nextType === "door" ? Math.min(opening.width ?? 0.9, 1.4) : Math.max(opening.width ?? 1.2, 0.8),
-              height: nextType === "door" ? 2.1 : 1.2,
-              sillHeight: nextType === "door" ? 0 : 0.9,
-              openingStyle: nextType === "door" ? "hinged" : "sliding",
-            }
-          : opening
-      ));
-    }
+    if (!accepted) return;
     pushRoomHistory(before);
   };
 
   useEffect(() => {
     if (!selectedCustomOpening || editorView !== "plan") return;
     const handleOpeningShortcut = (event: KeyboardEvent) => {
+      if (interactionMode === "draw-wall" || event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
       if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.tagName === "SELECT" || target?.isContentEditable) return;
-      if (event.key === "Delete" || event.key === "Backspace") {
-        event.preventDefault();
-        deleteCustomOpening(selectedCustomOpening.id);
-        return;
-      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
         event.preventDefault();
         duplicateCustomOpening(selectedCustomOpening.id);
@@ -4704,7 +4641,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     };
     window.addEventListener("keydown", handleOpeningShortcut);
     return () => window.removeEventListener("keydown", handleOpeningShortcut);
-  }, [editorView, selectedCustomOpening?.id]);
+  }, [editorView, selectedCustomOpening?.id, interactionMode]);
 
   const setSelectedWallMaterial = (materialId: string) => {
     const wallId = selectedCustomWall?.id ?? selectedWall?.id;
@@ -6151,7 +6088,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     if (step !== WORKSPACE_STEP) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (projectMaster) return;
+      if (projectMaster || event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
       const tag = target?.tagName?.toLowerCase();
       const editingText =
@@ -6184,7 +6121,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         return;
       }
 
-      if ((event.key === "Delete" || event.key === "Backspace") && !editingText) {
+      if ((event.key === "Delete" || event.key === "Backspace") && !editingText && interactionMode !== "draw-wall") {
         if (selectedObject) {
           event.preventDefault();
           deleteObject(selectedObject.id);
@@ -6210,13 +6147,17 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     selectedCustomWall,
     selectedOpening,
     selected,
-    roomHistory.length,
-    roomFuture.length,
+    roomHistory,
+    roomFuture,
+    architecturalModel,
     projectMaster,
+    interactionMode,
   ]);
 
   return (
-    <div className="arqdor-reference-ui min-h-screen bg-muted/30">
+    <div className="arqdor-reference-ui arq-direct-editor min-h-screen bg-muted/30">
+      {objectPlacementError && <div role="alert" className="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">{objectPlacementError}<button type="button" onClick={() => setObjectPlacementError(null)} className="font-semibold">Fechar aviso</button></div>}
+      {openingEditError && <div role="alert" className="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">{openingEditError}<button type="button" onClick={() => setOpeningEditError(null)} className="font-semibold">Fechar aviso</button></div>}
       {projectMaster && step !== RESULT_STEP && (
         <div className="fixed inset-0 z-[250] grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-3xl border border-emerald-200 bg-white p-6 shadow-2xl">
@@ -7009,195 +6950,28 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
         {step === 4 && (
           <section className="min-h-screen overflow-hidden bg-[#eef1f4] arq-workspace-stage">
-            <div className="arq-app-bar sticky top-0 z-50 flex min-h-14 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white/95 px-3 py-1.5 text-slate-900 shadow-sm backdrop-blur sm:px-4 lg:flex-nowrap">
+            <header className="arq-app-bar sticky top-0 z-50 flex flex-wrap items-center justify-between gap-2 border-b bg-white px-3 py-2 text-slate-900">
               <div className="flex min-w-0 items-center gap-2">
-                {!guestMode && <a
-                  href="/arch"
-                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-950"
-                  title="Voltar ao Arqdor"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </a>}
-
-                <div className="hidden min-w-0 sm:block">
-                  <div className="truncate text-sm font-semibold text-slate-950">{customerProfile.name?.trim() ? `Pré-projeto — ${customerProfile.name.trim()}` : "Pré-projeto"}</div>
-                  <div className="text-[11px] text-slate-400">{guestMode ? `${guestBrand ?? "Pré-projeto"} · projete sua casa` : "Arqdor Pro · editor arquitetônico"}</div>
-                </div>
-
-                {!guestMode && <button
-                  type="button"
-                  onClick={openProjectList}
-                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-950"
-                  title="Meus pré-projetos"
-                  aria-label="Meus pré-projetos"
-                >
-                  <FolderOpen className="h-4 w-4" />
-                </button>}
-                {!guestMode && <button
-                  type="button"
-                  onClick={() => { setPublicLinkOpen(true); void loadPublicLink(); }}
-                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-950"
-                  title="Link para clientes"
-                  aria-label="Link para clientes"
-                >
-                  <Share2 className="h-4 w-4" />
-                </button>}
-
-                <button
-                  type="button"
-                  onClick={() => void saveConcept(4)}
-                  disabled={saveState === "saving" || saveState === "loading"}
-                  className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-                  title="Salvar a planta e todas as edições atuais"
-                >
-                  <Check className="h-4 w-4" />
-                  <span>{saveState === "saving" ? "Salvando planta..." : "Salvar planta"}</span>
-                </button>
-                {saveStatusLabel && (
-                  <span
-                    className={saveState === "error"
-                      ? "shrink-0 text-[11px] font-semibold text-red-600"
-                      : hasUnsavedChanges
-                        ? "shrink-0 text-[11px] text-amber-600"
-                        : "shrink-0 text-[11px] text-slate-500"}
-                    aria-live="polite"
-                  >
-                    {saveStatusLabel}
-                  </span>
-                )}
-
-                {projectBrief && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditorExperienceMode("guided");
-                      setEditorView("plan");
-                      setEditorLibraryTab("brief");
-                      setLibraryOpen(true);
-                    }}
-                    className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
-                    title="Abrir o briefing mestre que orienta este projeto"
-                  >
-                    <Heart className="h-4 w-4" />
-                    <span className="hidden lg:inline">DNA do projeto</span>
-                  </button>
-                )}
-
-                {!terrainOnly && (
-                <button
-                  type="button"
-                  onClick={() => void runAiDevelopment()}
-                  disabled={aiDevelopmentState === "running" || saveState === "loading"}
-                  className={aiDevelopmentState === "error"
-                    ? "inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 text-xs font-bold text-red-700 disabled:opacity-50"
-                    : "inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 text-xs font-bold text-orange-700 transition hover:bg-orange-100 disabled:opacity-50"}
-                  title="Desenvolver layout, paredes, aberturas e fachada com IA"
-                >
-                  <Sparkles className={aiDevelopmentState === "running" ? "h-4 w-4 animate-pulse" : "h-4 w-4"} />
-                  <span className="hidden md:inline">{aiDevelopmentState === "running" ? "IA analisando..." : aiDevelopmentState === "error" ? "Tentar IA novamente" : "Desenvolver com IA"}</span>
-                </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => setActiveFloor((current) => floors <= 1 ? 0 : (current + 1) % floors)}
-                  className="ml-1 hidden h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 sm:inline-flex"
-                  title="Alternar pavimento"
-                >
-                  <Layers3 className="h-4 w-4 text-slate-500" />
-                  <span>{activeFloor === 0 ? "Térreo" : activeFloor === 1 ? "Superior" : `Pav. ${activeFloor + 1}`}</span>
-                  <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
-                </button>
-                <div className="ml-1 flex items-center rounded-xl border border-slate-200 bg-slate-50 p-1">
-                  <button
-                    type="button"
-                    onClick={() => setEditorExperienceMode("guided")}
-                    className={editorExperienceMode === "guided"
-                      ? "rounded-lg bg-white px-3 py-2 text-[11px] font-bold text-slate-950 shadow-sm"
-                      : "rounded-lg px-3 py-2 text-[11px] font-semibold text-slate-600 hover:bg-white"}
-                  >
-                    Guiado
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setEditorExperienceMode("professional"); if (editorLibraryTab === "brief" || editorLibraryTab === "placement") setEditorLibraryTab("build"); }}
-                    className={editorExperienceMode === "professional"
-                      ? "rounded-lg bg-white px-3 py-2 text-[11px] font-bold text-slate-950 shadow-sm"
-                      : "rounded-lg px-3 py-2 text-[11px] font-semibold text-slate-600 hover:bg-white"}
-                  >
-                    <span className="sm:hidden">Pro</span><span className="hidden sm:inline">Profissional</span>
-                  </button>
+                {!guestMode && <a href="/arch" aria-label="Voltar ao Arqdor" className="grid h-10 w-10 place-items-center rounded-lg border"><ArrowLeft className="h-4 w-4" /></a>}
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold">{customerProfile.name?.trim() ? `Pré-projeto — ${customerProfile.name.trim()}` : "Pré-projeto"}</div>
+                  <div className="text-[11px] text-slate-500">{guestMode ? guestBrand ?? "Arqdor" : "Arqdor"}</div>
                 </div>
               </div>
-
-
-              <div className="flex shrink-0 items-center gap-1">
-                {editorView === "plan" && editorExperienceMode === "professional" && (
-                <button
-                  type="button"
-                  onClick={() => setShowDimensions((value) => !value)}
-                  title="Cotas"
-                  className={showDimensions
-                    ? "hidden h-10 w-10 place-items-center rounded-xl bg-orange-500/15 text-orange-300 sm:grid"
-                    : "hidden h-10 w-10 place-items-center rounded-xl text-slate-600 hover:bg-slate-100 sm:grid"}
-                >
-                  <Ruler className="h-4 w-4" />
-                </button>
-                )}
-                {editorView === "plan" && editorExperienceMode === "professional" && (
-                  <button
-                    type="button"
-                    onClick={() => setModelGalleryOpen(true)}
-                    title="Abrir galeria de modelos"
-                    className="hidden h-10 items-center gap-2 rounded-xl text-slate-600 hover:bg-slate-100 sm:inline-flex sm:px-3"
-                  >
-                    <LayoutGrid className="h-4 w-4" />
-                    Modelos
-                  </button>
-                )}
-                {(editorView === "plan" || editorView === "model3d") && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditorLibraryTab("furniture");
-                      setLibraryOpen((open) => !(open && editorLibraryTab === "furniture"));
-                    }}
-                    title="Abrir biblioteca de móveis e objetos"
-                    className={libraryOpen && editorLibraryTab === "furniture"
-                      ? "hidden h-10 items-center gap-2 rounded-xl bg-white px-3 text-xs font-bold text-slate-950 shadow-sm sm:inline-flex"
-                      : "hidden h-10 items-center gap-2 rounded-xl text-slate-600 hover:bg-slate-100 sm:inline-flex"}
-                  >
-                    <Box className="h-4 w-4" />
-                    Móveis
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setFloors((value) => Math.min(3, value + 1))}
-                  title="Adicionar pavimento"
-                  className="hidden h-10 w-10 place-items-center rounded-xl text-slate-600 hover:bg-slate-100 sm:grid"
-                >
-                  <Plus className="h-5 w-5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void sharePublicTour()}
-                  disabled={tourShareState === "sharing"}
-                  title={tourShareState === "copied"
-                    ? "Link público do Tour copiado"
-                    : tourShareState === "error"
-                      ? "Não foi possível gerar o link"
-                      : "Compartilhar Tour 3D com cliente"}
-                  className={tourShareState === "error"
-                    ? "hidden h-10 w-10 place-items-center rounded-xl bg-red-500 text-white shadow-sm hover:bg-red-600 disabled:opacity-60 sm:grid"
-                    : tourShareState === "copied"
-                      ? "hidden h-10 w-10 place-items-center rounded-xl bg-emerald-500 text-white shadow-sm hover:bg-emerald-600 disabled:opacity-60 sm:grid"
-                      : "hidden h-10 w-10 place-items-center rounded-xl bg-orange-500 text-white shadow-sm hover:bg-orange-600 disabled:opacity-60 sm:grid"}
-                >
-                  <Share2 className="h-4 w-4" />
-                </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-2 text-xs font-semibold">
+                  <Layers3 className="h-4 w-4" />
+                  <select aria-label="Pavimento ativo" value={activeFloor} onChange={(event) => setActiveFloor(Number(event.target.value))} className="h-10 rounded-lg border px-2">
+                    {Array.from({ length: floors }, (_, floor) => <option key={floor} value={floor}>{floor === 0 ? "Térreo" : `Pavimento ${floor + 1}`}</option>)}
+                  </select>
+                </label>
+                <button type="button" aria-label="Adicionar pavimento" title="Adicionar pavimento" disabled={floors >= 3} onClick={() => { const next = Math.min(3, floors + 1); setFloors(next); setActiveFloor(next - 1); }} className="grid h-10 w-10 place-items-center rounded-lg border disabled:opacity-40"><Plus className="h-4 w-4" /></button>
+                {!guestMode && <button type="button" onClick={openProjectList} aria-label="Meus pré-projetos" title="Meus pré-projetos" className="grid h-10 w-10 place-items-center rounded-lg border"><FolderOpen className="h-4 w-4" /></button>}
+                {!guestMode && <button type="button" onClick={() => { setPublicLinkOpen(true); void loadPublicLink(); }} aria-label="Compartilhar com cliente" title="Compartilhar com cliente" className="grid h-10 w-10 place-items-center rounded-lg border"><Share2 className="h-4 w-4" /></button>}
+                <button type="button" onClick={() => void saveConcept(4)} disabled={saveState === "saving" || saveState === "loading"} className="min-h-10 rounded-lg border px-3 text-xs font-semibold disabled:opacity-50">{saveState === "saving" ? "Salvando…" : "Salvar"}</button>
+                <span aria-live="polite" className={saveState === "error" ? "text-xs text-red-600" : "text-xs text-slate-500"}>{saveStatusLabel}</span>
               </div>
-            </div>
+            </header>
 
             {(layoutIssues.length > 0 || explainableFindings.length > 0) && (
               <>
@@ -7307,115 +7081,24 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               </>
             )}
 
-            {saveState !== "loading" && !modelGalleryOpen && !projectMaster &&
+            {saveState !== "loading" && !projectMaster && !startChooserDismissed &&
               (intakeStage === "kind" || intakeStage === "terrain_choice" || intakeStage === "source") && (
-              <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/55 sm:items-center sm:p-6">
-                <div className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7" role="dialog" aria-label="Iniciar pré-projeto">
-                  {startWizardStage === "kind" && (
-                    <>
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">Novo pré-projeto</div>
-                      <h2 className="mt-1 text-2xl font-bold text-slate-950">O que você quer projetar?</h2>
-                      <p className="mt-1 text-sm leading-6 text-slate-500">Isso define a jornada correta antes de pedir terreno, planta ou referências.</p>
-                      <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                        <button type="button" onClick={() => { setProjectScope("house"); setStartWithTerrain(null); setTerrainDefined(false); setIntakeStage("terrain_choice"); setStartWizardStage("terrain"); setStartChooserDismissed(false); }}
-                          className="group min-h-36 rounded-2xl border-2 border-orange-400 bg-orange-50 p-5 text-left transition hover:border-orange-500 hover:bg-orange-100/70">
-                          <div className="flex items-start gap-4">
-                            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-orange-500 text-white"><Home className="h-5 w-5" /></span>
-                            <span><span className="block text-base font-bold text-slate-950">Casa completa</span>
-                            <span className="mt-1 block text-xs leading-5 text-slate-600">Terreno opcional, planta, ambientes, fachada, 3D e render.</span></span>
-                          </div>
-                        </button>
-                        <button type="button" onClick={() => {
-                          setProjectScope("room");
-                          setStartWithTerrain(false);
-                          setTerrainDefined(false);
-                          setIntakeStage("source");
-                          setLotWidth(8); setLotDepth(8); setDesiredArea(25); setFloors(1);
-                          setStartWizardStage("source");
-                          setStartChooserDismissed(false);
-                          setEditorView("plan"); setEditorLibraryTab("brief");
-                        }}
-                          className="group min-h-36 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm">
-                          <div className="flex items-start gap-4">
-                            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-950 text-white"><Sofa className="h-5 w-5" /></span>
-                            <span><span className="block text-base font-bold text-slate-950">Um ambiente</span>
-                            <span className="mt-1 block text-xs leading-5 text-slate-600">Sala, cozinha, suíte, banheiro, gourmet ou outro espaço isolado. Não exige terreno.</span></span>
-                          </div>
-                        </button>
-                      </div>
-                    </>
-                  )}
-
-                  {startWizardStage === "terrain" && (
-                    <>
-                      <button type="button" onClick={() => { setProjectScope(null); setStartWithTerrain(null); setTerrainDefined(false); setIntakeStage("kind"); setStartWizardStage("kind"); setStartChooserDismissed(false); }} className="mb-3 text-xs font-semibold text-slate-500 hover:text-slate-900">← Voltar</button>
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">Casa completa</div>
-                      <h2 className="mt-1 text-2xl font-bold text-slate-950">Quer começar pelo terreno?</h2>
-                      <p className="mt-1 text-sm leading-6 text-slate-500">Se você já conhece o lote, o Arqdor usa medidas, frente e recuos desde a primeira proposta. Se não conhece, pode começar pela casa e informar o terreno depois.</p>
-                      <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                        <button type="button" onClick={() => {
-                          setStartWithTerrain(true);
-                          setTerrainDefined(true);
-                          setIntakeStage("terrain_editor");
-                          setStartChooserDismissed(true);
-                          setEditorView("plan"); setEditorLibraryTab("site"); setLibraryOpen(true);
-                        }} className="min-h-32 rounded-2xl border-2 border-orange-400 bg-orange-50 p-5 text-left hover:bg-orange-100/70">
-                          <MapPin className="mb-3 h-6 w-6 text-orange-600" />
-                          <span className="block text-base font-bold text-slate-950">Sim, começar pelo terreno</span>
-                          <span className="mt-1 block text-xs leading-5 text-slate-600">Informar largura, profundidade, frente e implantação antes da planta.</span>
-                        </button>
-                        <button type="button" onClick={() => {
-                          setStartWithTerrain(false);
-                          setTerrainDefined(false);
-                          setIntakeStage("source");
-                          setStartWizardStage("source");
-                          setStartChooserDismissed(false);
-                          setEditorView("plan"); setEditorLibraryTab("brief");
-                        }} className="min-h-32 rounded-2xl border bg-white p-5 text-left hover:border-slate-400 hover:shadow-sm">
-                          <ArrowRight className="mb-3 h-6 w-6 text-slate-700" />
-                          <span className="block text-base font-bold text-slate-950">Não, começar pela casa</span>
-                          <span className="mt-1 block text-xs leading-5 text-slate-600">Criar a proposta agora e definir ou ajustar o terreno mais tarde.</span>
-                        </button>
-                      </div>
-                    </>
-                  )}
-
-                  {startWizardStage === "source" && (
-                    <>
-                      <div className="mb-5 flex flex-col gap-4 border-b border-slate-100 pb-5 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">Novo pré-projeto</div>
-                          <h2 className="mt-1 text-2xl font-bold text-slate-950">Como você quer começar?</h2>
-                          <p className="mt-1 text-sm text-slate-500">Escolha o escopo e a origem. Nada aqui bloqueia ajustes posteriores.</p>
-                        </div>
-                        <div className="flex shrink-0 rounded-xl border bg-slate-50 p-1">
-                          <button
-                            type="button"
-                            onClick={() => { setProjectScope("house"); setStartWithTerrain(false); setTerrainDefined(false); }}
-                            className={projectScope === "house"
-                              ? "rounded-lg bg-slate-950 px-3 py-2 text-xs font-bold text-white shadow-sm"
-                              : "rounded-lg px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-white"}
-                          >
-                            Casa completa
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => { setProjectScope("room"); setStartWithTerrain(false); setTerrainDefined(false); setLotWidth(8); setLotDepth(8); setDesiredArea(25); setFloors(1); }}
-                            className={projectScope === "room"
-                              ? "rounded-lg bg-slate-950 px-3 py-2 text-xs font-bold text-white shadow-sm"
-                              : "rounded-lg px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-white"}
-                          >
-                            Um ambiente
-                          </button>
-                        </div>
-                      </div>
-                      <p className="mt-1 text-sm leading-6 text-slate-500">
-                        {projectScope === "room"
-                          ? "Você pode descrever o ambiente, enviar uma foto/croqui, desenhar ou importar uma base."
-                          : startWithTerrain
-                            ? <>Terreno definido em <strong className="font-semibold text-slate-700">{lotWidth.toFixed(1)} × {lotDepth.toFixed(1)} m</strong>. Agora escolha a origem da planta.</>
-                            : "O terreno fica opcional por enquanto. Você pode criar a casa primeiro e posicioná-la no lote depois."}
-                      </p>
+                <ConceptIdeaEntry
+                  initialIdea={customerProfile.notes ?? ""}
+                  initialScope={projectScope}
+                  onStart={(idea, scope) => {
+                    setProjectScope(scope);
+                    setCustomerProfile((current) => ({ ...current, notes: idea || current.notes }));
+                    setStartSourceChosen(true);
+                    setIntakeStage("complete");
+                    setStartChooserDismissed(true);
+                    setEditorView("plan");
+                    setInteractionMode("navigate");
+                    setEditorLibraryTab("build");
+                    closeLibraryOnMobile();
+                  }}
+                />
+            )}
 
                       <input ref={projectStartImportInputRef} type="file" accept=".dxf,.ifc,.dwg,.rvt,.skp,application/dxf" className="hidden"
                         onChange={(event) => {
@@ -7437,186 +7120,27 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           void uploadReferencePlan(file);
                         }} />
 
-                      <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                        <button type="button" onClick={() => {
-                          setStartSourceChosen(true); setIntakeStage("complete"); setStartChooserDismissed(true); setEditorExperienceMode("guided");
-                          setEditorView("plan"); setEditorLibraryTab("brief"); setLibraryOpen(true);
-                        }} className="group min-h-32 rounded-2xl border-2 border-orange-400 bg-orange-50 p-5 text-left transition hover:border-orange-500 hover:bg-orange-100/70">
-                          <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-orange-500 text-white"><Sparkles className="h-5 w-5" /></span>
-                            <span><span className="block text-base font-bold text-slate-950">Desenvolver com IA</span>
-                            <span className="mt-1 block text-xs leading-5 text-slate-600">{projectScope === "room" ? "Descreva uso, medidas, estilo, móveis e necessidades. A IA monta a primeira proposta do ambiente." : "Informe ambientes, metragens, estilo e prioridades. A IA arquiteta desenvolve a planta inicial para revisão."}</span>
-                            <span className="mt-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-orange-700">Recomendado</span></span></div>
-                        </button>
 
-                        <button type="button" onClick={() => {
-                          if ((safeRooms.length > 0 || safeCustomWalls.length > 0) && !window.confirm("Iniciar do zero substitui a geometria atual deste rascunho. Continuar?")) return;
-                          setStartSourceChosen(true); setIntakeStage("complete"); setStartChooserDismissed(true); startBlankPlan(); setLibraryOpen(true);
-                        }} className="group min-h-32 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm">
-                          <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-950 text-white"><Plus className="h-5 w-5" /></span>
-                            <span><span className="block text-base font-bold text-slate-950">Desenhar do zero</span>
-                            <span className="mt-1 block text-xs leading-5 text-slate-600">{projectScope === "room" ? "Desenhe o perímetro do ambiente, aberturas, mobiliário e materiais." : "Desenhe paredes, ambientes, portas, janelas e escadas manualmente."}</span></span></div>
-                        </button>
-
-                        <button type="button" onClick={() => projectStartImportInputRef.current?.click()}
-                          className="group min-h-32 rounded-2xl border bg-white p-5 text-left transition hover:border-slate-400 hover:shadow-sm">
-                          <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-800"><FolderOpen className="h-5 w-5" /></span>
-                            <span><span className="block text-base font-bold text-slate-950">Importar projeto</span>
-                            <span className="mt-1 block text-xs leading-5 text-slate-600">DXF, IFC, DWG e SKP passam primeiro por prévia de escala/geometria antes de substituir a planta. RVT fica preservado como fonte vinculada.</span></span></div>
-                        </button>
-
-                        <button type="button" onClick={() => chooseProjectStartReferenceMode("real_environment")}
-                          className="group min-h-32 rounded-2xl border-2 border-sky-200 bg-sky-50/60 p-5 text-left transition hover:border-sky-400 hover:bg-sky-50">
-                          <div className="flex items-start gap-4"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-sky-600 text-white"><Camera className="h-5 w-5" /></span>
-                            <span><span className="block text-base font-bold text-slate-950">Foto / ambiente real</span>
-                            <span className="mt-1 block text-xs leading-5 text-slate-600">Terreno, fachada ou ambiente real, preservando o que existe até você confirmar intervenções.</span></span></div>
-                        </button>
-                      </div>
-
-                      <div className="mt-5 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
-                        Foto real preserva o ambiente. Planta/croqui é calibrada antes de virar geometria editável.
-                      </div>
-
-                      <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => chooseProjectStartReferenceMode("floorplan")}
-                            className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
-                          >
-                            <Ruler className="h-4 w-4" />
-                            Planta / croqui / PDF
-                          </button>
-                          {projectScope === "house" && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setStartWithTerrain(true);
-                                setTerrainDefined(true);
-                                setIntakeStage("terrain_editor");
-                                setStartChooserDismissed(true);
-                                setEditorView("plan");
-                                setEditorLibraryTab("site");
-                                setLibraryOpen(true);
-                              }}
-                              className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold text-slate-700 hover:border-orange-300 hover:bg-orange-50"
-                            >
-                              <MapPin className="h-4 w-4 text-orange-600" />
-                              Definir terreno antes
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setStartSourceChosen(true);
-                              setIntakeStage("complete");
-                              setStartChooserDismissed(true);
-                              setEditorExperienceMode("guided");
-                              setEditorView("plan");
-                              setEditorLibraryTab("models");
-                              setLibraryOpen(true);
-                              setModelGalleryOpen(true);
-                            }}
-                            className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold text-slate-700 hover:border-slate-400 hover:bg-slate-50"
-                          >
-                            <LayoutGrid className="h-4 w-4" />
-                            Usar modelo / inspiração
-                          </button>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setStartSourceChosen(true);
-                            setIntakeStage("complete");
-                            setStartChooserDismissed(true);
-                            setEditorView("plan");
-                            setEditorLibraryTab("build");
-                            setLibraryOpen(true);
-                          }}
-                          className="inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100"
-                        >
-                          Entrar direto no editor <ArrowRight className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div className="arq-journey-row flex min-h-11 flex-wrap items-center gap-2 border-b bg-white px-3 py-1.5 sm:px-3">
-              <div className="min-w-0 flex-1">
-                <div className="text-xs font-bold text-slate-950">
-                  <span className="text-slate-400">Área atual · </span>{journeyStages[journeyIndex].label}
-                </div>
-                <div className={journeyIndex === 2 || journeyIndex === 3 ? "hidden truncate text-xs text-slate-500 sm:block" : "truncate text-xs text-slate-500"}>
-                  {journeyStages[journeyIndex].helper}
-                </div>
-              </div>
-              <div className="hidden shrink-0 rounded-xl border bg-slate-50 p-1 sm:flex">
-                {journeyStages.map((stage, index) => (
-                  <button
-                    key={stage.id}
-                    type="button"
-                    onClick={() => goToJourneyStage(index)}
-                    className={journeyIndex === index
-                      ? "min-h-9 rounded-lg bg-slate-950 px-3 text-xs font-bold text-white"
-                      : index < journeyIndex
-                        ? "min-h-9 rounded-lg px-3 text-xs font-semibold text-emerald-700 hover:bg-white"
-                        : "min-h-9 rounded-lg px-3 text-xs font-semibold text-slate-500 hover:bg-white"}
-                  >
-                    {stage.label}
-                  </button>
-                ))}
-              </div>
-              {(journeyIndex === 2 || journeyIndex === 3) && (
-                <div className="flex shrink-0 rounded-xl border bg-slate-50 p-1">
-                  {(journeyIndex === 2
-                    ? ([["plan", "Planta 2D"], ["model3d", "3D"]] as const)
-                    : projectScope === "room"
-                      ? ([["model3d", "3D"], ["render", "Imagem"]] as const)
-                      : ([["facade", "Fachada"], ["render", "Imagem"]] as const)
-                  ).map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => {
-                        setEditorView(value);
-                        if (value !== "plan") setLibraryOpen(false);
-                      }}
-                      className={editorView === value
-                        ? "min-h-9 rounded-lg bg-white px-3 text-xs font-bold text-slate-950 shadow-sm"
-                        : "min-h-9 rounded-lg px-3 text-xs font-semibold text-slate-500"}
-                    >
+            <div className="arq-editor-navigation flex min-h-12 flex-wrap items-center justify-between gap-2 border-b bg-white px-3 py-2">
+              <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Visualização do projeto">
+                {([["plan", "Planta 2D"], ["model3d", "3D"], ["facade", "Fachadas"], ["render", "Render"]] as const)
+                  .filter(([view]) => projectScope !== "room" || view !== "facade")
+                  .map(([view, label]) => (
+                    <button key={view} type="button" aria-pressed={editorView === view}
+                      onClick={() => { setEditorView(view); if (view !== "plan") setLibraryOpen(false); }}
+                      className={editorView === view ? "min-h-10 rounded-lg bg-emerald-700 px-3 text-xs font-bold text-white" : "min-h-10 rounded-lg px-3 text-xs font-semibold text-slate-600 hover:bg-slate-100"}>
                       {label}
                     </button>
                   ))}
-                </div>
-              )}
-              {layoutIssues.length > 0 && (
-                <button type="button" onClick={() => setMobileValidationOpen(true)}
-                  className={`min-h-10 shrink-0 rounded-xl border px-3 text-xs font-bold ${blockingLayoutIssues.length ? "border-red-200 bg-red-50 text-red-700" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
-                  {blockingLayoutIssues.length > 0 ? `${blockingLayoutIssues.length} erro(s)` : `${layoutIssues.length} aviso(s)`}
-                </button>
-              )}
-              {blockingLayoutIssues.length > 0 && (
-                <button
-                  type="button"
-                  onClick={repairArchitecturalLayout}
-                  className="arq-auto-fix inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl border border-orange-200 bg-orange-50 px-3 text-xs font-bold text-orange-700 hover:bg-orange-100"
-                >
-                  <Sparkles className="h-4 w-4" /> Corrigir planta
-                </button>
-              )}
-              {conceptJourneyContinueLabel(journeyIndex, journeyStages) && (
-                <button
-                  type="button"
-                  onClick={() => goToJourneyStage(journeyIndex + 1)}
-                  title="Atalho sugerido; você pode abrir qualquer área do projeto diretamente."
-                  className="arq-journey-continue inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl bg-orange-500 px-4 text-sm font-semibold text-white shadow-sm hover:bg-orange-600"
-                >
-                  Próxima sugestão: {journeyStages[Math.min(journeyIndex + 1, journeyStages.length - 1)]?.label} <ArrowRight className="h-4 w-4" />
-                </button>
-              )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" onClick={undoRooms} disabled={!roomHistory.length} aria-label="Desfazer" title="Desfazer (Ctrl+Z)" className="grid h-10 w-10 place-items-center rounded-lg border disabled:opacity-40"><RotateCcw className="h-4 w-4" /></button>
+                <button type="button" onClick={redoRooms} disabled={!roomFuture.length} aria-label="Refazer" title="Refazer (Ctrl+Shift+Z)" className="grid h-10 w-10 place-items-center rounded-lg border disabled:opacity-40"><RotateCw className="h-4 w-4" /></button>
+                <button type="button" onClick={() => { setEditorLibraryTab("brief"); setEditorView("plan"); setLibraryOpen(true); }} className="min-h-10 rounded-lg border px-3 text-xs font-semibold">Sua ideia / IA</button>
+                {projectScope !== "room" && <button type="button" onClick={() => { setEditorLibraryTab("site"); setEditorView("plan"); setLibraryOpen(true); }} className="min-h-10 rounded-lg border px-3 text-xs font-semibold">{terrainDefined ? "Terreno" : "Adicionar terreno"}</button>}
+                {layoutIssues.length > 0 && <button type="button" onClick={() => setMobileValidationOpen(true)} className="min-h-10 rounded-lg border px-3 text-xs font-semibold">Revisar ({layoutIssues.length})</button>}
+                <button type="button" onClick={() => goToJourneyStage(journeyStages.length - 1)} className="min-h-10 rounded-lg bg-emerald-700 px-3 text-xs font-bold text-white">Apresentar</button>
+              </div>
             </div>
 
             <div
@@ -7749,7 +7273,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             {/* ARQ-UI: a barra horizontal duplicada foi removida.
                 Ferramentas de desenho permanecem no rail/painel contextual, liberando área do canvas. */}
 
-            <div className="arq-workspace-shell relative min-h-[calc(100dvh-112px)] overflow-hidden bg-[#f6f7f8]">
+            <div data-view={editorView} data-library-open={libraryOpen} data-inspector-open={hasEditorSelection && (editorView === "plan" || editorView === "model3d")} data-wide-library={editorLibraryTab === "furniture" || editorLibraryTab === "materials"} className="arq-workspace-shell relative min-h-[calc(100dvh-112px)] overflow-hidden bg-[#f6f7f8]">
               <aside className={editorView !== "plan"
                   ? "arq-workspace-sidebar hidden"
                   : (selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall)
@@ -7759,11 +7283,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   <div className="arq-tool-rail w-14 shrink-0 border-r bg-white py-3 sm:w-16">
                     <div className="flex flex-col items-center gap-2">
                       {([
-                        ["site", Ruler, "Terreno"],
-                        ["brief", FileText, "Necessidades"],
-                        ["models", LayoutGrid, "Modelos"],
+                        ["build", Layers3, "Desenhar"],
                         ["rooms", DoorOpen, "Ambientes"],
-                        ["build", Layers3, "Construir"],
+                        ["models", LayoutGrid, "Modelos"],
+                        ["brief", FileText, "Sua ideia / IA"],
+                        ["site", Ruler, "Terreno"],
                         ["furniture", Sofa, editorExperienceMode === "guided" ? "Mobiliar" : "Produtos"],
                         ["materials", Paintbrush, editorExperienceMode === "guided" ? "Acabamentos" : "Materiais"],
                         ["outdoor", Trees, "Externo"],
@@ -7771,7 +7295,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         .filter(([value]) => {
                           if (terrainOnly) return value === "site";
                           if (projectScope === "room" && (value === "site" || value === "outdoor")) return false;
-                          if (editorExperienceMode === "professional") return value !== "brief";
+                          if (editorExperienceMode === "professional") return true;
                           return true;
                         })
                         .map(([value, Icon, label]) => (
@@ -7991,6 +7515,14 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   )}
 
                   {editorLibraryTab === "build" && (
+                    <div className="mb-3">
+                      <Suspense fallback={<div className="p-3 text-xs">Carregando elementos paramétricos...</div>}>
+                        <ConceptArchitecturalElementsPanel model={architecturalModel} requestedSelection={architecturalSelection} onChange={changeArchitecturalModel} floor={activeFloor} lotWidth={lotWidth} lotDepth={lotDepth} />
+                      </Suspense>
+                    </div>
+                  )}
+
+                  {editorLibraryTab === "build" && (
                     <ConceptConstructionLibraryPanel
                       mode="build"
                       interactionMode={interactionMode}
@@ -8026,6 +7558,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       lotWidth={lotWidth}
                       lotDepth={lotDepth}
                       initialProjectBrief={projectBrief}
+                      initialIdea={customerProfile.notes}
                       placement={{
                         frontSide: normalizeSitePlacement(sitePlacement).frontSide,
                         setbacks: resolveSiteSetbacks(normalizeSitePlacement(sitePlacement)),
@@ -9003,20 +8536,17 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   )}
 
                   {editorView === "plan" && !terrainOnly && (
-                      <div className={`absolute top-3 z-30 flex snap-x items-center gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-white/96 p-1.5 shadow-md backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
+                      <div role="toolbar" aria-label="Ferramentas da planta" className={`arq-drawing-tools absolute top-3 z-30 flex snap-x items-center gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-white/96 p-1.5 shadow-md backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
                         left-16 right-3 md:right-auto
                         ${libraryOpen ? (editorLibraryTab === "furniture" || editorLibraryTab === "materials" ? "md:left-[460px]" : "md:left-[380px]") : "md:left-20"}
                       `}>
                         <button
                           type="button"
+                          aria-pressed={interactionMode === "navigate"}
                           title="Selecionar e editar paredes, ambientes, portas e janelas"
                           onClick={() => {
                             setInteractionMode("navigate");
-                            setSelectedId(null);
-                            setSelectedClosedSpaceId(null);
-                            setSelectedOpeningId(null);
-                            setSelectedWallId(null);
-                            setSelectedCustomWallId(null);
+                            clearEditorSelection();
                           }}
                           className={interactionMode === "navigate"
                             ? "shrink-0 rounded-xl bg-foreground px-3 py-2 text-xs font-semibold text-background"
@@ -9026,6 +8556,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         </button>
                         <button
                           type="button"
+                          aria-pressed={interactionMode === "draw-wall"}
                           onClick={() => {
                             if (!wallFirstActive) activateWallFirstFloor();
                             setInteractionMode("draw-wall");
@@ -9068,6 +8599,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         >
                           Portas / janelas
                         </button>
+                        <button type="button" disabled={!selectedCustomWall} title={selectedCustomWall ? "Inserir porta na parede selecionada" : "Selecione uma parede para inserir uma porta"} onClick={() => { if (selectedCustomWall) addOpeningToCustomWall(selectedCustomWall.id, "door"); }} className="shrink-0 rounded-xl border bg-background px-3 py-2 text-xs font-semibold disabled:opacity-40">+ Porta</button>
+                        <button type="button" disabled={!selectedCustomWall} title={selectedCustomWall ? "Inserir janela na parede selecionada" : "Selecione uma parede para inserir uma janela"} onClick={() => { if (selectedCustomWall) addOpeningToCustomWall(selectedCustomWall.id, "window"); }} className="shrink-0 rounded-xl border bg-background px-3 py-2 text-xs font-semibold disabled:opacity-40">+ Janela</button>
                         <button
                           type="button"
                           title="Abrir biblioteca de produtos e objetos"
@@ -9180,6 +8713,28 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         `}
                       >
                       <ConceptPlan2D
+                        architecturalModel={architecturalModel}
+                        selectedArchitecturalId={architecturalSelection?.id}
+                        onResizeArchitecturalElement={(id, width, depth) => {
+                          if (projectMaster) return;
+                          const resized = resizeArchitecturalElement(architecturalModel, id, width, depth, lotWidth, lotDepth);
+                          if ("error" in resized) { setOpeningEditError(resized.error); return; }
+                          changeArchitecturalModel(resized.value);
+                          setArchitecturalSelection(current => ({ id, revision: (current?.revision ?? 0) + 1 }));
+                        }}
+                        onMoveArchitecturalElement={(id, dx, dy) => {
+                          if (projectMaster) return;
+                          const moved = moveArchitecturalElement(architecturalModel, id, dx, dy, lotWidth, lotDepth);
+                          if ("error" in moved) { setOpeningEditError(moved.error); return; }
+                          changeArchitecturalModel(moved.value);
+                          setArchitecturalSelection(current => ({ id, revision: (current?.revision ?? 0) + 1 }));
+                        }}
+                        onSelectArchitecturalElement={(id) => {
+                          if (projectMaster) return;
+                          clearEditorSelection();
+                          setArchitecturalSelection(current => ({ id, revision: (current?.revision ?? 0) + 1 }));
+                          setEditorLibraryTab("build");
+                        }}
                         rooms={terrainOnly || hideCurrentGeometryForReferenceReview ? [] : visibleRooms}
                         lotWidth={lotWidth}
                         lotDepth={lotDepth}
@@ -9303,12 +8858,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           furnishLayoutSpaceId === selectedClosedSpaceId
                             ? (() => {
                                 const current = furnishLayoutOptions.find((item) => item.id === previewFurnishLayoutId);
-                                const bestScore = Math.max(...furnishLayoutOptions.map((item) => item.score), 1);
                                 if (!current) return undefined;
-                                const quality = Math.max(0, Math.min(100, Math.round((current.score / bestScore) * 100)));
+                                const completion = furnitureLayoutCompletion(current);
                                 return {
                                   score: current.score,
-                                  quality,
+                                  completion,
                                   doorZones: current.doorZones,
                                   windowZones: current.windowZones,
                                 };
@@ -9388,6 +8942,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
                   {editorView === "model3d" && (
                     <ConceptModel3D
+                      architecturalModel={architecturalModel}
                       lotWidth={lotWidth}
                       lotDepth={lotDepth}
                       activeFloor={activeFloor}
@@ -9709,19 +9264,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                 </div>
               </div>
 
-              <div className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 flex items-center justify-between rounded-2xl border bg-white/95 p-1.5 shadow-xl backdrop-blur md:hidden">
-                {journeyStages.map((stage, index) => (
-                  <button
-                    key={stage.id}
-                    type="button"
-                    onClick={() => goToJourneyStage(index)}
-                    className={journeyIndex === index
-                      ? "flex min-h-11 flex-1 flex-col items-center justify-center rounded-xl bg-slate-950 px-1 py-1.5 text-[11px] font-bold text-white"
-                      : "flex min-h-11 flex-1 flex-col items-center justify-center rounded-xl px-1 py-1.5 text-[11px] font-semibold text-slate-500"}
-                  >
-                    <span className={index < journeyIndex && journeyIndex !== index ? "text-emerald-600" : ""}>{index < journeyIndex ? "✓" : index + 1}</span>
-                    {stage.label}
-                  </button>
+              <div className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 flex rounded-2xl border bg-white/95 p-1.5 shadow-xl backdrop-blur md:hidden">
+                {([["build", "Desenhar"], ["rooms", "Ambientes"], ["models", "Modelos"], ["brief", "IA"]] as const).map(([tab, label]) => (
+                  <button key={tab} type="button" onClick={() => { setEditorLibraryTab(tab); setEditorView("plan"); setLibraryOpen(true); }} className="min-h-11 flex-1 rounded-xl text-xs font-semibold text-slate-700">{label}</button>
                 ))}
               </div>
 
@@ -9884,16 +9429,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     </div>
                     <label className="text-[10px] font-semibold text-slate-500">
                       Comprimento (m)
-                      <input
-                        key={`${selectedCustomWall.id}-${selectedCustomWall.x1}-${selectedCustomWall.y1}-${selectedCustomWall.x2}-${selectedCustomWall.y2}`}
-                        type="number"
-                        min="0.5"
-                        step="0.01"
-                        defaultValue={Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1).toFixed(2)}
-                        onBlur={(event) => setCustomWallLength(selectedCustomWall.id, Number(event.currentTarget.value))}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") event.currentTarget.blur();
-                        }}
+                      <ConceptMetricInput
+                        selectionId={selectedCustomWall.id}
+                        min={safeCustomOpenings.filter((opening) => opening.wallId === selectedCustomWall.id).reduce((min, opening) => Math.max(min, (opening.width ?? (opening.type === "door" ? 0.9 : 1.2)) + 0.1), 0.5)}
+                        max={wallLengthLimit(selectedCustomWall, lotWidth, lotDepth)}
+                        value={Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1)}
+                        onCommit={(value) => setCustomWallLength(selectedCustomWall.id, value)}
                         className="mt-1 h-9 w-[105px] rounded-lg border px-2 text-xs font-semibold"
                       />
                     </label>
@@ -9909,6 +9450,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                         <option value={0.15}>15 cm</option>
                         <option value={0.20}>20 cm</option>
                         <option value={0.25}>25 cm</option>
+                        <option value={0.30}>30 cm</option>
                       </select>
                     </label>
                     <div className="mt-2 flex w-full items-center gap-1.5 md:ml-auto md:mt-0 md:w-auto">
@@ -9921,9 +9463,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       <button
                         type="button"
                         onClick={() => splitCustomWall(selectedCustomWall.id)}
-                        disabled={Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1) < 1}
+                        disabled={Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1) < 1 || openingCrossesWallMidpoint(Math.hypot(selectedCustomWall.x2 - selectedCustomWall.x1, selectedCustomWall.y2 - selectedCustomWall.y1), safeCustomOpenings.filter((opening) => opening.wallId === selectedCustomWall.id))}
+                        title="Dividir ao meio; mova aberturas que atravessam o ponto de divisão antes de dividir"
                         className="h-9 rounded-lg border px-3 text-xs font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-                        title="Dividir a parede no ponto médio"
                       >
                         Dividir
                       </button>
@@ -9943,38 +9485,20 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       <>
                         <label className="text-[10px] font-semibold text-slate-500">
                           Largura (m)
-                          <input
-                            type="number"
-                            min="0.5"
-                            max="4"
-                            step="0.05"
-                            value={(selectedCustomOpening.width ?? (selectedOpening.type === "door" ? 0.9 : 1.2)).toFixed(2)}
-                            onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { width: Number(event.target.value) })}
+                          <ConceptMetricInput selectionId={selectedOpening.id} min={0.5} max={4} value={selectedCustomOpening.width ?? (selectedOpening.type === "door" ? 0.9 : 1.2)} onCommit={(value) => updateCustomOpeningParams(selectedOpening.id, { width: value })}
                             className="mt-1 h-9 w-[90px] rounded-lg border px-2 text-xs font-semibold"
                           />
                         </label>
                         <label className="text-[10px] font-semibold text-slate-500">
                           Altura (m)
-                          <input
-                            type="number"
-                            min="0.5"
-                            max="2.8"
-                            step="0.05"
-                            value={(selectedCustomOpening.height ?? (selectedOpening.type === "door" ? 2.1 : 1.2)).toFixed(2)}
-                            onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { height: Number(event.target.value) })}
+                          <ConceptMetricInput selectionId={selectedOpening.id} min={0.5} max={2.8} value={selectedCustomOpening.height ?? (selectedOpening.type === "door" ? 2.1 : 1.2)} onCommit={(value) => updateCustomOpeningParams(selectedOpening.id, { height: value })}
                             className="mt-1 h-9 w-[90px] rounded-lg border px-2 text-xs font-semibold"
                           />
                         </label>
                         {selectedOpening.type === "window" && (
                           <label className="text-[10px] font-semibold text-slate-500">
                             Peitoril (m)
-                            <input
-                              type="number"
-                              min="0"
-                              max="2.2"
-                              step="0.05"
-                              value={(selectedCustomOpening.sillHeight ?? 0.9).toFixed(2)}
-                              onChange={(event) => updateCustomOpeningParams(selectedOpening.id, { sillHeight: Number(event.target.value) })}
+                            <ConceptMetricInput selectionId={selectedOpening.id} min={0} max={2.2} value={selectedCustomOpening.sillHeight ?? 0.9} onCommit={(value) => updateCustomOpeningParams(selectedOpening.id, { sillHeight: value })}
                               className="mt-1 h-9 w-[90px] rounded-lg border px-2 text-xs font-semibold"
                             />
                           </label>
@@ -9991,6 +9515,21 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                             className="mt-1 h-9 w-[110px] rounded-lg border px-2 text-xs font-semibold"
                           />
                         </label>
+                        {selectedOpeningWallLength > 0 && (
+                          <>
+                            <label className="text-[10px] font-semibold text-slate-500">
+                              Centro desde o início da parede (m)
+                              <ConceptMetricInput selectionId={selectedOpening.id}
+                                min={Math.min(selectedOpeningWallLength / 2, Math.max(0.25, (selectedCustomOpening.width ?? (selectedOpening.type === "door" ? 0.9 : 1.2)) / 2))}
+                                max={selectedOpeningWallLength - Math.min(selectedOpeningWallLength / 2, Math.max(0.25, (selectedCustomOpening.width ?? (selectedOpening.type === "door" ? 0.9 : 1.2)) / 2))}
+                                value={(selectedCustomOpening.offset ?? 0.5) * selectedOpeningWallLength}
+                                onCommit={(value) => setCustomOpeningOffset(selectedOpening.id, value / selectedOpeningWallLength * 100)}
+                                className="mt-1 h-9 w-[110px] rounded-lg border px-2 text-xs font-semibold"
+                              />
+                            </label>
+                            <button type="button" onClick={() => setCustomOpeningOffset(selectedOpening.id, 50)} className="h-9 rounded-lg border px-3 text-xs font-semibold">Centralizar na parede</button>
+                          </>
+                        )}
                         <label className="text-[10px] font-semibold text-slate-500">
                           Abertura
                           <select
@@ -10143,23 +9682,31 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           key={option.id}
                           type="button"
                           onClick={() => setPreviewFurnishLayoutId(option.id)}
-                          onMouseEnter={() => setPreviewFurnishLayoutId(option.id)}
+                          aria-pressed={activePreview}
                           className={activePreview
-                            ? "h-9 rounded-lg border border-orange-400 bg-orange-50 px-3 text-xs font-semibold text-orange-700"
-                            : "h-9 rounded-lg border px-3 text-xs font-semibold"}
-                          title={`Pré-visualizar · pontuação ${option.score.toFixed(0)}`}
+                            ? "h-9 rounded-lg border border-orange-400 bg-orange-50 px-3 text-xs font-semibold text-orange-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+                            : "h-9 rounded-lg border px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"}
+                          title={`Pré-visualizar · pontuação ${option.score.toFixed(0)}${option.missingLabels.length ? ` · Não couberam: ${option.missingLabels.join(", ")}` : ""}`}
                         >
-                          Layout {index + 1} · {option.score.toFixed(0)}
+                          Layout {index + 1} · {option.objects.length} itens{option.missingLabels.length > 0 ? " · Parcial" : ""}
                         </button>
                       );
                     })}
+                    {furnishLayoutSpaceId === selectedClosedSpace.id && (() => {
+                      const preview = furnishLayoutOptions.find(option => option.id === previewFurnishLayoutId);
+                      return preview?.missingLabels.length ? (
+                        <p className="w-full text-xs text-amber-700" role="status">
+                          Sugestão parcial. Não couberam: {preview.missingLabels.join(", ")}. Revise antes de confirmar.
+                        </p>
+                      ) : null;
+                    })()}
                     {furnishLayoutSpaceId === selectedClosedSpace.id && previewFurnishLayoutId && (
                       <button
                         type="button"
                         onClick={() => applyFurnishLayoutOption(previewFurnishLayoutId)}
                         className="h-9 rounded-lg bg-orange-500 px-3 text-xs font-semibold text-white"
                       >
-                        Confirmar layout
+                        Confirmar layout {furnishLayoutOptions.findIndex(option => option.id === previewFurnishLayoutId) + 1}
                       </button>
                     )}
                     {furnishLayoutSpaceId === selectedClosedSpace.id && furnishLayoutOptions.length > 0 && (
@@ -11636,6 +11183,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     </div>
   );
 }
+
+
+
 
 
 
