@@ -2,8 +2,10 @@ import {Router,type Request,type Response} from "express";
 import {z} from "zod/v4";
 import {db,arqdorWorkspaceProjectsTable} from "@workspace/db";
 import {and,eq,sql} from "drizzle-orm";
+import {authenticate} from "../middlewares/auth.js";
 /** Only mount under the globally authenticated API router. No whole-context overwrite. */
 const router=Router();
+router.use("/arqdor/projects/:id/furniture",authenticate);
 const number=z.number().finite();
 const part=z.object({id:z.string().min(1),tenantId:z.string(),projectId:z.string(),furnitureId:z.string(),materialId:z.string(),widthMm:number.positive(),lengthMm:number.positive(),quantity:z.number().int().positive()}).passthrough();
 const furniture=z.object({id:z.string().min(1),tenantId:z.string(),projectId:z.string(),roomId:z.string(),
@@ -11,8 +13,8 @@ const furniture=z.object({id:z.string().min(1),tenantId:z.string(),projectId:z.s
  parts:z.array(part).max(2000),bounds:z.object({id:z.string(),roomId:z.string(),xMm:number,yMm:number,widthMm:number.positive(),depthMm:number.positive(),rotationDeg:z.union([z.literal(0),z.literal(90),z.literal(180),z.literal(270)])}),
  status:z.literal("local-draft")}).passthrough();
 const payload=z.object({schemaVersion:z.literal(1),tenantId:z.string().min(1),projectId:z.string().min(1),roomId:z.string().min(1),
- revision:z.string().min(1),baseRevision:z.string().nullable().optional(),createdAt:z.string().min(1),furniture:z.array(furniture).max(500)}).strict();
-const scope=(req:Request)=>req.tenantId??req.user?.tenantId;
+ revision:z.string().min(1),baseRevision:z.string().nullable().optional(),createdAt:z.string().datetime({offset:true}),furniture:z.array(furniture).max(500)}).strict();
+const scope=(req:Request)=>req.user?.tenantId??req.tenantId;
 router.get("/arqdor/projects/:id/furniture",async(req:Request,res:Response)=>{
  const tenantId=scope(req),projectId=String(req.params.id);
  if(!tenantId)return res.status(401).json({error:"Tenant obrigatório"});
@@ -31,10 +33,10 @@ router.put("/arqdor/projects/:id/furniture/:roomId",async(req:Request,res:Respon
  const data=parsed.data;
  if(![tenantId,"local-preview"].includes(data.tenantId)||data.projectId!==projectId||data.roomId!==roomId)return res.status(403).json({error:"Projeto/tenant/ambiente incompatível"});
  const ids=new Set<string>(),partIds=new Set<string>();
- if(roomId.length>160||projectId.length>160||data.furniture.reduce((count,f)=>count+f.parts.length,0)>5000)return res.status(400).json({error:"Limite do projeto excedido"});
+ if(roomId.length>160||projectId.length>160||JSON.stringify(data).length>1500000||data.furniture.reduce((count,f)=>count+f.parts.length,0)>5000)return res.status(400).json({error:"Limite do projeto excedido"});
  for(const f of data.furniture){
   if(ids.has(f.id)||f.tenantId!==data.tenantId||f.projectId!==projectId||f.roomId!==roomId||f.bounds.id!==f.id||f.bounds.roomId!==roomId||
-   f.bounds.xMm<0||f.bounds.yMm<0||f.parameters.furnitureId!==f.id||f.parameters.tenantId!==data.tenantId||f.parameters.projectId!==projectId||f.parameters.roomId!==roomId)return res.status(400).json({error:"Identidade inválida"});
+   f.bounds.xMm<0||f.bounds.yMm<0||f.bounds.xMm+f.bounds.widthMm>500000||f.bounds.yMm+f.bounds.depthMm>500000||f.parameters.furnitureId!==f.id||f.parameters.tenantId!==data.tenantId||f.parameters.projectId!==projectId||f.parameters.roomId!==roomId)return res.status(400).json({error:"Identidade inválida"});
   ids.add(f.id);
   for(const p of f.parts){if(partIds.has(p.id)||!p.materialId.trim()||p.furnitureId!==f.id||p.tenantId!==data.tenantId||p.projectId!==projectId)return res.status(400).json({error:"Peças inválidas"});partIds.add(p.id);}
  }
