@@ -23,3 +23,11 @@ test("revocation excludes owners inside SQL write condition", () => {
   assert.match(source, /arqdorWorkspaceMembersTable\.permission\} <> 'owner'/);
   assert.match(source, /router\.delete\("\/arqdor\/projects\/:id\/members\/:userId"/);
 });
+
+test("grants and revocations write audit records in the same transaction", () => {
+  assert.match(source, /tx\.insert\(arqdorWorkspaceMemberAuditTable\)/);
+  assert.match(source, /action: existing \? "change" : "grant"/);
+  assert.match(source, /action: "revoke"/);
+  assert.match(source, /const removed = await db\.transaction\(async tx =>/);
+  assert.match(source, /if \(!changed\.length\) return "owner-immutable"/);
+});
