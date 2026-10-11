@@ -1,8 +1,8 @@
 import React,{useMemo,useState} from "react";
 import type {InteriorEnvironment} from "./interior-environment";
-import {generateCabinetDraft} from "../../shared/parametric-cabinet-core";
+import {generateCabinetDraft, type CabinetDraft} from "../../shared/parametric-cabinet-core";
 /** Local proof-of-concept only. No server save, stock reservation or manufacture approval. */
-export function CabinetDraftPanel({environment}:{environment:InteriorEnvironment}){
+export function CabinetDraftPanel({environment,onDraft}:{environment:InteriorEnvironment;onDraft?:(draft:CabinetDraft)=>void}){
  const [widthMm,setWidth]=useState(1200),[heightMm,setHeight]=useState(2200),[depthMm,setDepth]=useState(600);
  const [shelfCount,setShelves]=useState(3),[doorCount,setDoors]=useState(2),[materialId,setMaterial]=useState("MDF-18"),[backMaterialId,setBackMaterial]=useState("MDF-6");
  const [enabled,setEnabled]=useState(false);
@@ -23,7 +23,7 @@ export function CabinetDraftPanel({environment}:{environment:InteriorEnvironment
    <label className="block text-xs text-slate-700">Material principal<input className="mt-1 w-full rounded-lg border p-2 text-sm" value={materialId} onChange={e=>setMaterial(e.target.value)}/></label>
    <label className="block text-xs text-slate-700">Material do fundo<input className="mt-1 w-full rounded-lg border p-2 text-sm" value={backMaterialId} onChange={e=>setBackMaterial(e.target.value)}/></label>
   </div>
-  <button type="button" onClick={()=>setEnabled(true)} className="mt-3 rounded-xl bg-violet-700 px-4 py-2 text-sm font-semibold text-white">Gerar prévia das peças</button>
+  <button type="button" onClick={()=>{setEnabled(true);if(result?.draft)onDraft?.(result.draft);else {try{onDraft?.(generateCabinetDraft({tenantId:"local-preview",projectId:environment.projectId||"unsaved-project",roomId:environment.roomId,furnitureId:"cabinet-preview",widthMm,heightMm,depthMm,panelThicknessMm:18,shelfCount,doorCount,materialId,backThicknessMm:6,backMaterialId}));}catch{}}}} className="mt-3 rounded-xl bg-violet-700 px-4 py-2 text-sm font-semibold text-white">Gerar prévia das peças</button>
   {result?.error&&<p role="alert" className="mt-3 text-sm text-red-700">{result.error}</p>}
   {result?.draft&&<div className="mt-3 space-y-2">
    <svg viewBox="0 0 360 230" role="img" aria-label="Elevação frontal esquemática do armário" className="h-48 w-full rounded-xl bg-slate-50">
