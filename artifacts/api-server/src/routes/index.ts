@@ -1,4 +1,5 @@
 import businessPlanRouter from "./business_plan.js";
+import uiContextsRouter from "./ui_contexts.js";
 import { diagnosticPlanningPublicRouter, diagnosticPlanningProtectedRouter } from "./diagnostic_planning.js";
 import { Router, type IRouter } from "express";
 // Deploy marker: Arqdor Concept production validation 2026-09-19
@@ -282,6 +283,8 @@ router.use(enforceAccessScope);
 // Session endpoints must be mounted immediately after JWT validation. The
 // frontend needs /auth/me before tenant, onboarding or license checks.
 router.use(authProtectedRouter);
+// UI-01: discovery is session-bound and read-only; no permissions are granted here.
+router.use(uiContextsRouter);
 router.use(sketchfabAuthRouter);
 
 // Trial status/continuity must remain reachable even after trial suspension or
