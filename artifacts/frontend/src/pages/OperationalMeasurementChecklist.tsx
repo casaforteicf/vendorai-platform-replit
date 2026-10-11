@@ -335,7 +335,7 @@ export default function OperationalMeasurementChecklist() {
                       </div>
                       <div className="flex flex-wrap gap-1.5 print:hidden">
                         <Button size="sm" variant="outline" disabled={run.status === "concluido" || busy === item.id} onClick={() => saveItem(item, { status: "nao_executado" })}>Não executado</Button>
-                        {item.status === "divergente" && <Button size="sm" disabled={run.status === "concluido" || busy === item.id} onClick={() => saveItem(item, { status: "resolvido" })}>Marcar resolvido</Button>}
+                        {item.status === "divergente" && <Button size="sm" disabled={run.status === "concluido" || busy === item.id} onClick={() => { const reason = window.prompt("Justifique a resolução da divergência (mínimo 15 caracteres):"); if (reason?.trim() && reason.trim().length >= 15) void saveItem(item, { status: "resolvido", resolutionReason: reason.trim() } as Partial<ChecklistItem>); else if (reason !== null) setError("Informe justificativa com no mínimo 15 caracteres."); }}>Marcar resolvido</Button>}
                       </div>
                     </div>
                   </div>
