@@ -13,6 +13,12 @@ describe("interior environment entry",()=>{
   expect(r).toMatchObject({source:"preproject",projectId:"project-1",roomId:"room-2",sourceRevision:"r2"});
   expect(r.walls).toEqual([]);
  });
+ it("derives provisional four-wall geometry only from supplied room measures",()=>{
+  const measured=fromPreProjectRoom("p1",{id:"r1",largura:4,profundidade:3,altura:2.7});
+  expect(measured.walls).toHaveLength(4);
+  expect(measured.walls[1]).toMatchObject({x1:4,y2:3,heightM:2.7});
+  expect(fromPreProjectRoom("p1",{id:"r2",largura:4}).walls).toEqual([]);
+ });
  it("rejects nonphysical dimensions",()=>{
   expect(()=>buildRectangularRoom({name:"Teste",widthM:1,depthM:1,heightM:2.7,thicknessM:.6})).toThrow();
   expect(()=>buildRectangularRoom({name:" ",widthM:4,depthM:3,heightM:2.7,thicknessM:.12})).toThrow();
