@@ -1118,6 +1118,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const conceptIdRef = useRef<string | null>(null);
   const revisionAutosaveEnabled = !guestMode && import.meta.env.VITE_MULTI04_REVISION_AUTOSAVE === "true";
   const conceptRevisionRef = useRef<string | null>(null);
+  const revisionSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const revisionConflictRef = useRef(false);
   const dxfImportInputRef = useRef<HTMLInputElement | null>(null);
   const geometryImportInputRef = useRef<HTMLInputElement | null>(null);
   const referencePlanInputRef = useRef<HTMLInputElement | null>(null);
@@ -1592,6 +1594,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             setConceptId(null);
             conceptIdRef.current = null;
             conceptRevisionRef.current = null;
+            revisionConflictRef.current = false;
             // PKG-07 / ARQ-UI: novo pré-projeto entra direto na escolha da origem.
             // Casa é o padrão, terreno é opcional e pode ser informado antes ou depois.
             setProjectScope("house");
@@ -1620,6 +1623,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
         conceptIdRef.current = draft.id;
         conceptRevisionRef.current = draft.updatedAt ?? null;
+        revisionConflictRef.current = false;
         setConceptId(draft.id);
         setArchProjetoId(draft.archProjetoId ?? null);
         setProjectMaster(draft.configuration?.projectMaster ?? null);
@@ -1806,13 +1810,18 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       await creatingConceptRef.current.catch(() => null);
     }
     const targetId = conceptIdRef.current ?? conceptId;
+    if (revisionAutosaveEnabled && revisionConflictRef.current) {
+      setSaveState("error");
+      setSaveErrorMessage("Conflito pendente: recarregue o projeto e confira suas alterações locais antes de salvar.");
+      return null;
+    }
     if (revisionAutosaveEnabled && targetId && !conceptRevisionRef.current) {
       setSaveState("error");
       setSaveErrorMessage("Revisão do projeto indisponível. Atualize a página antes de salvar.");
       return null;
     }
 
-    const request = (async () => {
+    const sendRequest = async () => {
       const response = await fetch(
         targetId ? `/api/arch/concept-projects/${targetId}` : "/api/arch/concept-projects",
         {
@@ -1824,7 +1833,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           body: JSON.stringify(payload),
         },
       );
-      if (revisionAutosaveEnabled && response.status === 409) throw new Error("Conflito de revisão. As alterações locais foram mantidas; recarregue o projeto antes de salvar novamente.");
+      if (revisionAutosaveEnabled && response.status === 409) {
+        revisionConflictRef.current = true;
+        throw new Error("Conflito de revisão. As alterações locais foram mantidas; revise o projeto antes de salvar novamente.");
+      }
       if (!response.ok) {
         const errorBody = await response.json().catch(() => null) as { message?: string; error?: string } | null;
         throw new Error(errorBody?.message || errorBody?.error || `Falha ao salvar pré-projeto (${response.status})`);
@@ -1839,7 +1851,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         window.history.replaceState(null, "", `/arch/concept?id=${encodeURIComponent(saved.id)}`);
       }
       return saved.id;
-    })();
+    };
+    // Serialize enabled saves, including network waits, to avoid concurrent If-Match writes.
+    const request = revisionAutosaveEnabled
+      ? revisionSaveQueueRef.current.then(sendRequest)
+      : sendRequest();
+    if (revisionAutosaveEnabled) revisionSaveQueueRef.current = request.then(() => undefined, () => undefined);
     if (!targetId) creatingConceptRef.current = request;
 
     try {
