@@ -46,3 +46,11 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - Dados permanecem vinculados à revisão e aos itens já existentes, sem migração de banco.
 - **Limitações:** o editor trata principalmente a última foto do item; revisão de concorrência de gravação do JSONB, vínculo 1:1 cotas/fotos, auditoria detalhada, CORS/limites de request, segurança de acesso para usuários do mesmo tenant e verificação de redirecionamentos ainda exigem testes e endurecimento. Exigir autenticação e papéis por lead/negócio quando aplicável.
 - **Validação:** nenhum build completo, teste integrado ou verificação visual foram executados neste ambiente. Sem PR, merge, homologação ou publicação.
+
+## Lote 04 — vínculo por fotografia (11/10/2026)
+- Cotagem ganha `photoPath` opcional vinculado à referência privada da fotografia, preservando compatibilidade com registros antigos.
+- API PATCH rejeita cota que referencie foto não vinculada ao item; não aceita URL aleatória como associação.
+- Frontend lista fotos recuperadas do item, permite selecionar cada foto e desenha somente suas cotas.
+- Novas cotas são vinculadas à foto ativa, sem transformar pixels em distâncias reais.
+- Ainda não foi criada geometria BIM, planta, paredes nem projeto Arqdor automaticamente. A ligação de ambientes/elementos e o motor de reconstrução são etapas futuras.
+- **Bloqueios para merge:** builds, testes de persistência, concorrência entre PATCHs, render de cotas antigas, expiração das URLs de acesso e revisão do fluxo de foto recém enviada precisam ser executados.
