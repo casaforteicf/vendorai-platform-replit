@@ -10,6 +10,13 @@ describe("ARQDOR direct directional light",()=>{
   const result=evaluateDirectionalLight({...args,point:[-25,-7,-12],bvh:{intersect:()=>null}});
   expect(result[0]).toBeCloseTo(1);
  });
+ it("offsets the shadow origin toward the light, not along the surface normal",()=>{
+  let origin:readonly number[]=[];
+  evaluateDirectionalLight({...args,normal:[0,1,1],bvh:{intersect:(ray)=>{origin=ray.origin;return null;}}});
+  expect(origin[0]).toBeCloseTo(0);
+  expect(origin[1]).toBeCloseTo(0);
+  expect(origin[2]).toBeCloseTo(1e-4);
+ });
  it("casts hard shadows for blocked rays",()=>{
   const result=evaluateDirectionalLight({...args,bvh:{intersect:()=>({})}});
   expect(result).toEqual([0,0,0]);
