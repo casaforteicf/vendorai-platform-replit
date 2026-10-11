@@ -12,9 +12,10 @@ export function evaluateDirectionalLight(args:{
    [...albedo,...light.color].some(x=>!Number.isFinite(x)||x<0)||
    !Number.isFinite(light.intensity)||light.intensity<0||light.intensity>10000)
    throw Error("ARQDOR: parâmetros de iluminação inválidos");
+ // Offset shadow rays toward the light to avoid self-intersection for back-facing surfaces.
  const cosine=Math.max(0,dot(n,l));
  if(cosine===0 || light.intensity===0)return [0,0,0];
- const origin:Vec3=[point[0]+n[0]*1e-4,point[1]+n[1]*1e-4,point[2]+n[2]*1e-4];
+ const origin:Vec3=[point[0]+l[0]*1e-4,point[1]+l[1]*1e-4,point[2]+l[2]*1e-4];
  if(bvh.intersect({origin,direction:l}))return [0,0,0];
  return [0,1,2].map(k=>albedo[k]*light.color[k]*light.intensity*cosine/Math.PI) as unknown as Vec3;
 }
