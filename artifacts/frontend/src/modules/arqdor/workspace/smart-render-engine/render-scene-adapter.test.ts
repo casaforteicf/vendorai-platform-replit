@@ -44,6 +44,13 @@ describe("ARQDOR real scene adapter",()=>{
   const duplicateMeshes={...geometry,meshes:[geometry.meshes[0],geometry.meshes[0]]};
   expect(()=>buildExperimentalRenderOptions({snapshot,geometry:duplicateMeshes})).toThrow();
  });
+ it("rejects truncated position, normal and UV buffers before ray tracing",()=>{
+  for(const field of ["positions","normals","uvs"] as const){
+    const truncated={...geometry,meshes:[{...geometry.meshes[0],
+      [field]:geometry.meshes[0][field].slice(0,-1)}]};
+    expect(()=>buildExperimentalRenderOptions({snapshot,geometry:truncated})).toThrow();
+  }
+ });
  it("rejects incomplete or mismatched geometry rather than constructing fake surfaces",()=>{
   expect(()=>buildExperimentalRenderOptions({snapshot,geometry:{...geometry,truncated:true}})).toThrow();
   expect(()=>buildExperimentalRenderOptions({snapshot,geometry:{...geometry,meshes:[]}})).toThrow();
