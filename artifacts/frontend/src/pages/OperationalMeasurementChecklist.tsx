@@ -90,7 +90,11 @@ export default function OperationalMeasurementChecklist() {
       },
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload?.error || payload?.message || "Não foi possível concluir a operação.");
+    if (!response.ok) {
+      if (response.status === 409 && payload?.code === "CHECKLIST_CONFLICT")
+        throw new Error("Outra operação atualizou esta conferência. Suas alterações locais não foram gravadas. Recarregue o checklist e confira antes de salvar novamente.");
+      throw new Error(payload?.error || payload?.message || "Não foi possível concluir a operação.");
+    }
     return payload;
   }
 
