@@ -11,7 +11,7 @@ type Props = {
   loading?: boolean;
 };
 
-const modules = [
+const serviceCards = [
   { key: "crm", title: "CRM", subtitle: "Leads e negócios", href: "/leads", Icon: Users },
   { key: "marketing", title: "Marketing", subtitle: "Campanhas e resultados", href: "/analytics", Icon: Megaphone },
   { key: "erp", title: "ERP", subtitle: "Operação e financeiro", href: "/erp", Icon: Building2 },
@@ -25,7 +25,7 @@ const modules = [
 /** Presentation only; tenant/route authorization continues on the server. */
 export function ServiceHome({ name, isAdmin, arqdorVisible = false, erpVisible = false, modules, loading }: Props) {
   const allowed = getUi20VisibleServices({ modules, isAdmin, arqdorEligible: arqdorVisible, loading });
-  const visible = modules.filter((module) =>
+  const visible = serviceCards.filter((module) =>
     allowed.has(module.key) && (module.key !== "erp" || erpVisible)
   );
   return (
