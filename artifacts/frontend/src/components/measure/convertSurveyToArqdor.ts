@@ -4,13 +4,13 @@ import type { SurveyElement } from "./SurveyElementsEditor";
 export function convertSurveyToArqdor(elements: SurveyElement[]) {
   const warnings: string[] = [];
   const walls = elements.filter((e) => e.elementType === "wall");
-  const validWalls = walls.filter((e) => e.verified && [e.x1Mm,e.y1Mm,e.x2Mm,e.y2Mm].every((n) => typeof n === "number" && Number.isFinite(n)) && Math.hypot((e.x2Mm ?? 0)-(e.x1Mm ?? 0),(e.y2Mm ?? 0)-(e.y1Mm ?? 0)) >= 10);
-  if (validWalls.length !== walls.length) warnings.push("Existem paredes sem coordenadas ou conferência.");
+  const validWalls = walls.filter((e) => e.verified && [e.x1Mm,e.y1Mm,e.x2Mm,e.y2Mm].every((n) => typeof n === "number" && Number.isFinite(n)) && Math.hypot((e.x2Mm ?? 0)-(e.x1Mm ?? 0),(e.y2Mm ?? 0)-(e.y1Mm ?? 0)) >= 10 && typeof e.thicknessMm === "number" && e.thicknessMm >= 50 && e.thicknessMm <= 1000);
+  if (validWalls.length !== walls.length) warnings.push("Existem paredes sem coordenadas, espessura válida ou conferência.");
   const customWalls = validWalls.map((w) => ({
     id: w.id, floor: 0,
     x1: w.x1Mm! / 1000, y1: w.y1Mm! / 1000,
     x2: w.x2Mm! / 1000, y2: w.y2Mm! / 1000,
-    thickness: (w.thicknessMm ?? 150) / 1000,
+    thickness: w.thicknessMm! / 1000,
   }));
   const wallIds = new Set(customWalls.map((w) => w.id));
   const openings = elements.filter((e) => e.elementType === "door" || e.elementType === "window");
