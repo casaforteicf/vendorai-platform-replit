@@ -157,3 +157,12 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - Adicionada rota autenticada `GET /arqdor/projects/:id/edit-access` sob flag **ARQDOR_PROJECT_ACL_ENABLED=true**, desligada por padrão. Retorna somente `projectId` e `canEdit`, nunca o contexto do projeto. Em erro de banco responde 503 e não concede acesso.
 - Ampliado teste estático `test-arqdor-membership-migration.mjs` para garantir a flag e a consulta. Não houve execução de testes ou migração real.
 - **Ainda não cria/revoga colaboradores**, e as rotas condicionais de gravação continuam restritas aos administradores. A próxima etapa deve definir provisionamento seguro de owner, revogação sem retirar último owner e validação de permissões dentro da mesma transação do UPDATE. Não habilitar a flag sem migração e testes isolados.
+
+
+## MULTI-07.3 — Cadastro e revogação de membros, em piloto bloqueado
+- Criado e montado `artifacts/api-server/src/routes/arqdor_workspace_members.ts` com GET `/arqdor/projects/:id/members`, PUT `/arqdor/projects/:id/members/:userId` e DELETE `/arqdor/projects/:id/members/:userId`. Flag `ARQDOR_PROJECT_ACL_ENABLED=true` obrigatória, desativada por padrão; rotas apenas para super_admin/tenant_admin humanos do tenant.
+- PUT valida projeto no tenant, usuário ativo no mesmo tenant e só aceita `editor` ou `viewer`. Não atribui `owner`; não altera automaticamente proprietários históricos.
+- DELETE não remove owners por condição SQL na própria exclusão; evita remoção por corrida da leitura. Atribuição/transferência de proprietário deverá ser um fluxo separado, auditável, com validação de proveniência.
+- Teste estático `node artifacts/api-server/scripts/test-arqdor-members-routes.mjs` criado para verificar flag, mounting, validações e proteção de owner.
+- **Importante:** estes endpoints pressupõem que a migração SQL 024 foi aplicada em um banco isolado/homologação; não estão disponíveis no ambiente atual. A sincronização condicional ainda usa restrição administrativa (não houve substituição por ACL). Faltam audit log, verificação transacional de membros nas próprias operações de gravação, proteção contra concorrência na atribuição de funções, testes reais de migração/SQL, typecheck, homologação e publicação controlada.
+- Sem merge, sem deploy, sem migração no banco oficial; não reivindicar validação funcional.
