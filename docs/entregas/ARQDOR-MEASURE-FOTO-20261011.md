@@ -209,3 +209,8 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - Adicionado `photoTabLock.test.ts` com casos de serialização e navegador sem suporte. **Teste foi escrito, mas NÃO executado.**
 - Verificações de CI do commit do lote 25 retornaram vazio. Não há checkout integral do monorepo/dependências nesta sessão, nem execução disponível na Contabo, portanto `pnpm run typecheck`, `pnpm exec vite build` e `pnpm test` não puderam ser comprovados.
 - Ainda faltam testes reais em duas abas, Chrome Android/iOS, os gates de API e frontend, migração de índice único em homologação e auditoria de dados offline. Sem PR/merge/deploy.
+
+## Lote 29 — edição de cotas e revisão técnica (11/10/2026)
+- PhotoMeasureEditor permite editar o valor em milímetros das cotas existentes; valores devem ser positivos e no máximo 1.000.000 mm. Cotas associadas a fotografia offline recuperada são atualizadas no IndexedDB sob Web Lock; erro de persistência mantém o valor anterior na interface.
+- SurveyElementsEditor permite revisar largura do elemento; ao fazê-lo, invalida o status conferido para exigir nova verificação técnica, sinaliza revisão da prévia e preserva o estado local até salvamento explícito.
+- Sem mudança de produção, sem PR/merge/deploy. Pendente: edição de altura, geometria/posição e identificações; validação cruzada de aberturas quando paredes são alteradas; testes mobile e pipelines de compilação ainda não executados.
