@@ -9,6 +9,7 @@ export type PhotoMeasure = {
   end: { x: number; y: number };
   millimeters: number;
   label: string;
+  photoPath?: string;
   source: "manual_verified";
 };
 
@@ -19,21 +20,26 @@ type Props = {
   initialMeasurements?: PhotoMeasure[];
   readOnly?: boolean;
   onSave?: (measurements: PhotoMeasure[]) => Promise<void>;
-  onUpload?: (file: File) => Promise<string>;
+  onUpload?: (file: File) => Promise<{ storageUrl: string; accessUrl: string }>;
+  photos?: Array<{ storageUrl: string; accessUrl: string }>;
 };
 
-export default function PhotoMeasureEditor({ itemId, imageUrl, onClose, initialMeasurements = [], readOnly = false, onSave, onUpload }: Props) {
+export default function PhotoMeasureEditor({ itemId, imageUrl, onClose, initialMeasurements = [], readOnly = false, onSave, onUpload, photos = [] }: Props) {
   const [localImage, setLocalImage] = useState<string | null>(null);
   const [points, setPoints] = useState<Array<{ x: number; y: number }>>([]);
   const [measures, setMeasures] = useState<PhotoMeasure[]>(initialMeasurements);
   const [saving, setSaving] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [selectedPhotoPath, setSelectedPhotoPath] = useState<string | null>(null);
   const [millimeters, setMillimeters] = useState("");
   const [label, setLabel] = useState("");
   const [message, setMessage] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const currentImage = localImage ?? uploadedImage ?? imageUrl ?? null;
+  const selectedPhoto = photos.find((photo) => photo.storageUrl === selectedPhotoPath);
+  const activePath = selectedPhotoPath ?? photos.at(-1)?.storageUrl ?? null;
+  const currentImage = localImage ?? uploadedImage ?? selectedPhoto?.accessUrl ?? photos.at(-1)?.accessUrl ?? imageUrl ?? null;
+  const visibleMeasures = measures.filter((m) => (m.photoPath ?? null) === activePath);
 
   useEffect(() => {
     return () => { if (localImage) URL.revokeObjectURL(localImage); };
@@ -49,7 +55,6 @@ export default function PhotoMeasureEditor({ itemId, imageUrl, onClose, initialM
     setUploadedImage(null);
     setLocalImage(URL.createObjectURL(file));
     setPoints([]);
-    setMeasures([]);
     setMessage("Foto local: ainda não enviada nem salva no servidor.");
   }
 
@@ -75,6 +80,7 @@ export default function PhotoMeasureEditor({ itemId, imageUrl, onClose, initialM
       millimeters: value,
       label: label.trim().slice(0, 120) || "Medida",
       source: "manual_verified",
+      ...(activePath ? { photoPath: activePath } : {}),
     }]);
     setPoints([]);
     setMillimeters("");
@@ -115,8 +121,9 @@ export default function PhotoMeasureEditor({ itemId, imageUrl, onClose, initialM
       {selectedFile && onUpload && <Button disabled={saving || readOnly} onClick={async () => {
         setSaving(true); setMessage("");
         try {
-          const url = await onUpload(selectedFile);
-          setUploadedImage(url);
+          const photo = await onUpload(selectedFile);
+          setUploadedImage(photo.accessUrl);
+          setSelectedPhotoPath(photo.storageUrl);
           setSelectedFile(null);
           setLocalImage(null);
           setMessage("Fotografia salva no armazenamento privado. Marque as cotas e salve no checklist.");
@@ -124,11 +131,14 @@ export default function PhotoMeasureEditor({ itemId, imageUrl, onClose, initialM
           setMessage(error instanceof Error ? error.message : "Falha no upload.");
         } finally { setSaving(false); }
       }}>{saving ? "Enviando..." : "Salvar fotografia no R2"}</Button>}
+      {photos.length > 0 && <div className="flex flex-wrap gap-2" aria-label="Fotografias do levantamento">
+        {photos.map((photo, index) => <Button key={photo.storageUrl} size="sm" variant={activePath === photo.storageUrl ? "default" : "outline"} onClick={() => { setSelectedPhotoPath(photo.storageUrl); setUploadedImage(null); setPoints([]); }}>Foto {index + 1}</Button>)}
+      </div>}
       {currentImage ? (
         <div className="relative mx-auto w-full max-w-3xl overflow-hidden rounded border bg-slate-950" onClick={markPoint} role="button" tabIndex={0} aria-label="Marcar pontos da medida na fotografia" onKeyDown={(e) => { if (e.key === "Escape") setPoints([]); }}>
           <img src={currentImage} alt="Fotografia de referência para medição" className="block w-full select-none" draggable={false} />
           <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-            {measures.map((m) => (
+            {visibleMeasures.map((m) => (
               <g key={m.id}>
                 <line x1={m.start.x * 100} y1={m.start.y * 100} x2={m.end.x * 100} y2={m.end.y * 100} stroke="#facc15" strokeWidth="0.55" vectorEffect="non-scaling-stroke" />
                 <circle cx={m.start.x * 100} cy={m.start.y * 100} r="0.9" fill="#facc15" />
