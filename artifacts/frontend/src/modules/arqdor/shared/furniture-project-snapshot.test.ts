@@ -17,4 +17,12 @@ describe("C04 furniture snapshot contract",()=>{
   expect(()=>restoreFurnitureSnapshot(snapshot,{tenantId:"other",projectId:"p",room})).toThrow();
   expect(()=>createFurnitureSnapshot({...base,furniture:[{...furniture[0],bounds:{...furniture[0].bounds,xMm:4999}}]})).toThrow();
  });
+ it("rejects mismatched room context even with matching tenant",()=>{
+  const snapshot=createFurnitureSnapshot(base);
+  expect(()=>restoreFurnitureSnapshot(snapshot,{tenantId:"t",projectId:"p",room:{id:"other",widthMm:5000,depthMm:4000}})).toThrow();
+ });
+ it("rejects snapshots where a part points at another cabinet",()=>{
+  const corrupted={...furniture[0],parts:[{...furniture[0].parts[0],furnitureId:"other"}]};
+  expect(()=>createFurnitureSnapshot({...base,furniture:[corrupted]})).toThrow();
+ });
 });
