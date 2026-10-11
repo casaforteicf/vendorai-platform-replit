@@ -16,12 +16,16 @@ type Props = {
   itemId: string;
   imageUrl?: string | null;
   onClose: () => void;
+  initialMeasurements?: PhotoMeasure[];
+  readOnly?: boolean;
+  onSave?: (measurements: PhotoMeasure[]) => Promise<void>;
 };
 
-export default function PhotoMeasureEditor({ itemId, imageUrl, onClose }: Props) {
+export default function PhotoMeasureEditor({ itemId, imageUrl, onClose, initialMeasurements = [], readOnly = false, onSave }: Props) {
   const [localImage, setLocalImage] = useState<string | null>(null);
   const [points, setPoints] = useState<Array<{ x: number; y: number }>>([]);
-  const [measures, setMeasures] = useState<PhotoMeasure[]>([]);
+  const [measures, setMeasures] = useState<PhotoMeasure[]>(initialMeasurements);
+  const [saving, setSaving] = useState(false);
   const [millimeters, setMillimeters] = useState("");
   const [label, setLabel] = useState("");
   const [message, setMessage] = useState("");
@@ -45,7 +49,7 @@ export default function PhotoMeasureEditor({ itemId, imageUrl, onClose }: Props)
   }
 
   function markPoint(event: React.MouseEvent<HTMLDivElement>) {
-    if (!currentImage || points.length >= 2) return;
+    if (!currentImage || readOnly || points.length >= 2) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
     const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
@@ -53,6 +57,7 @@ export default function PhotoMeasureEditor({ itemId, imageUrl, onClose }: Props)
   }
 
   function addMeasure() {
+    if (readOnly) return;
     const value = Number(millimeters.replace(",", "."));
     if (points.length !== 2 || !Number.isFinite(value) || value <= 0 || value > 1000000) {
       setMessage("Marque dois pontos e informe a medida real positiva em milímetros.");
@@ -121,11 +126,17 @@ export default function PhotoMeasureEditor({ itemId, imageUrl, onClose }: Props)
       <div className="grid gap-2 sm:grid-cols-[1fr_150px_auto]">
         <Input value={label} maxLength={120} onChange={(e) => setLabel(e.target.value)} placeholder="Identificação: vão, parede, peitoril..." aria-label="Identificação da cota" />
         <Input value={millimeters} onChange={(e) => setMillimeters(e.target.value)} inputMode="decimal" placeholder="Medida (mm)" aria-label="Medida real em milímetros" />
-        <Button disabled={!currentImage || points.length !== 2} onClick={addMeasure}>Adicionar cota ({points.length}/2)</Button>
+        <Button disabled={readOnly || !currentImage || points.length !== 2} onClick={addMeasure}>Adicionar cota ({points.length}/2)</Button>
       </div>
       {measures.length > 0 && (
         <div className="space-y-2">
-          {measures.map((m) => <div key={m.id} className="flex items-center justify-between gap-2 text-sm"><span>{m.label}: {m.millimeters} mm</span><Button size="sm" variant="ghost" onClick={() => setMeasures((list) => list.filter((entry) => entry.id !== m.id))}>Remover</Button></div>)}
+          {measures.map((m) => <div key={m.id} className="flex items-center justify-between gap-2 text-sm"><span>{m.label}: {m.millimeters} mm</span><Button size="sm" variant="ghost" disabled={readOnly} onClick={() => setMeasures((list) => list.filter((entry) => entry.id !== m.id))}>Remover</Button></div>)}
+          {onSave && <Button disabled={saving || readOnly || Boolean(localImage)} onClick={async () => {
+            setSaving(true); setMessage("");
+            try { await onSave(measures); setMessage("Cotas persistidas no checklist."); }
+            catch (error) { setMessage(error instanceof Error ? error.message : "Erro ao salvar cotas."); }
+            finally { setSaving(false); }
+          }}>{saving ? "Salvando..." : "Salvar cotas no checklist"}</Button>}
           <Button variant="outline" onClick={exportAnnotations}>Exportar anotações JSON</Button>
         </div>
       )}
