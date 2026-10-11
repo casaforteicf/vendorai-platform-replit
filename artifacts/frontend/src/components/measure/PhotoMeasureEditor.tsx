@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { queuePhoto, listQueuedPhotos, getQueuedPhoto, removeQueuedPhoto, markPhotoUploaded } from "./offlinePhotoQueue";
+import { queuePhoto, listQueuedPhotos, getQueuedPhoto, removeQueuedPhoto, markPhotoUploaded, saveQueuedPhotoMeasurements } from "./offlinePhotoQueue";
 
 /** Positions are normalized to the displayed image, not inferred physical coordinates. */
 export type PhotoMeasure = {
@@ -33,6 +33,7 @@ export default function PhotoMeasureEditor({ itemId, offlineKey, imageUrl, onClo
   const [saving, setSaving] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [queuedCount, setQueuedCount] = useState(0);
+  const [selectedQueuedId, setSelectedQueuedId] = useState<string | null>(null);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [selectedPhotoPath, setSelectedPhotoPath] = useState<string | null>(null);
   const [millimeters, setMillimeters] = useState("");
@@ -54,12 +55,26 @@ export default function PhotoMeasureEditor({ itemId, offlineKey, imageUrl, onClo
     return () => { if (localImage) URL.revokeObjectURL(localImage); };
   }, [localImage]);
 
+  async function recoverPhoto() {
+    if (!offlineKey) return;
+    const pending = (await listQueuedPhotos(offlineKey)).find(p => p.id === selectedQueuedId) ?? await getQueuedPhoto(offlineKey);
+    if (!pending) return;
+    setSelectedQueuedId(pending.id);
+    setLocalImage(URL.createObjectURL(pending.file));
+    setSelectedFile(null);
+    setUploadedImage(null);
+    setPoints([]);
+    setMeasures(previous => [...previous.filter(m => m.photoPath || !pending.measures?.some(x => x.id === m.id)), ...(pending.measures ?? [])]);
+    setMessage("Fotografia e cotas recuperadas. Revise as medidas antes do envio.");
+  }
+
   function selectImage(file?: File) {
     if (!file) return;
     if (!file.type.startsWith("image/") || file.size > 15 * 1024 * 1024) {
       setMessage("Escolha uma imagem de até 15 MB.");
       return;
     }
+    setSelectedQueuedId(null);
     setSelectedFile(file);
     setUploadedImage(null);
     setLocalImage(URL.createObjectURL(file));
@@ -75,6 +90,12 @@ export default function PhotoMeasureEditor({ itemId, offlineKey, imageUrl, onClo
     setPoints((previous) => [...previous, { x, y }]);
   }
 
+  async function addMeasureOffline(measure: PhotoMeasure) {
+    if (!offlineKey || !selectedQueuedId) return;
+    const photo = (await listQueuedPhotos(offlineKey)).find(p => p.id === selectedQueuedId);
+    if (photo && !photo.uploadedPath) await saveQueuedPhotoMeasurements(photo, [...(photo.measures ?? []), measure]);
+  }
+
   function addMeasure() {
     if (readOnly) return;
     const value = Number(millimeters.replace(",", "."));
@@ -82,15 +103,17 @@ export default function PhotoMeasureEditor({ itemId, offlineKey, imageUrl, onClo
       setMessage("Marque dois pontos e informe a medida real positiva em milímetros.");
       return;
     }
-    setMeasures((previous) => [...previous, {
+    const newMeasure: PhotoMeasure = {
       id: crypto.randomUUID(),
       start: points[0],
       end: points[1],
       millimeters: value,
       label: label.trim().slice(0, 120) || "Medida",
       source: "manual_verified",
-      ...(activePath ? { photoPath: activePath } : {}),
-    }]);
+      ...(localImage ? {} : activePath ? { photoPath: activePath } : {}),
+    };
+    setMeasures(previous => [...previous, newMeasure]);
+    void addMeasureOffline(newMeasure).catch(() => setMessage("Cota no editor; falhou o armazenamento offline. Salve manualmente."));
     setPoints([]);
     setMillimeters("");
     setLabel("");
@@ -131,10 +154,11 @@ export default function PhotoMeasureEditor({ itemId, offlineKey, imageUrl, onClo
         try { await queuePhoto(offlineKey, selectedFile, measures.filter(m => !m.photoPath)); setQueuedCount(v=>v+1); setMessage("Foto guardada no dispositivo. Envio manual pendente."); }
         catch (error) { setMessage(error instanceof Error ? error.message : "Falha ao guardar fotografia offline."); }
       }}>Guardar foto offline</Button>}
+      {offlineKey && queuedCount > 0 && !readOnly && <Button variant="outline" size="sm" onClick={() => { void recoverPhoto().catch(e => setMessage(String(e))); }}>Recuperar foto e cotas offline</Button>}
       {offlineKey && queuedCount > 0 && onUpload && !readOnly && <Button size="sm" variant="outline" disabled={saving} onClick={async () => {
         setSaving(true);
         try {
-          const saved = await getQueuedPhoto(offlineKey);
+          const saved = selectedQueuedId ? (await listQueuedPhotos(offlineKey)).find(p => p.id === selectedQueuedId) : await getQueuedPhoto(offlineKey);
           if (!saved) throw new Error("Foto offline não encontrada");
           const photo = saved.uploadedPath
             ? { storageUrl: saved.uploadedPath, accessUrl: "" }
@@ -146,7 +170,7 @@ export default function PhotoMeasureEditor({ itemId, offlineKey, imageUrl, onClo
             setMeasures(previous => [...previous.filter(m => m.photoPath !== photo.storageUrl), ...annotated]);
           }
           await removeQueuedPhoto(saved.id);
-          setQueuedCount(v=>Math.max(0,v-1)); setSelectedFile(null); setLocalImage(null);
+          setQueuedCount(v=>Math.max(0,v-1)); setSelectedQueuedId(null); setSelectedFile(null); setLocalImage(null);
           setSelectedPhotoPath(photo.storageUrl); if(photo.accessUrl) setUploadedImage(photo.accessUrl);
           setMessage("Foto sincronizada com o checklist.");
         } catch (error) { setMessage(error instanceof Error ? error.message : "Envio falhou. A foto permanece no dispositivo."); }
