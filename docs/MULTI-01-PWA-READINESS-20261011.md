@@ -26,3 +26,12 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 7. Evidências por versão e SHA, testes, aprovação, release monitorado, rollback.
 
 **Sem merge ou deploy de produção por esta auditoria.**
+
+
+## MULTI-02 — Primeira implementação da oferta de instalação
+- Criado `artifacts/frontend/src/components/layout/PwaInstallPrompt.tsx` e integrado ao `SidebarLayout.tsx` sob `VITE_MULTI02_PWA_INSTALL === "true"`. **Flag desativada por padrão**.
+- Exibe botão **Instalar** apenas quando o navegador produz evento `beforeinstallprompt`; respeita cancelamento e `appinstalled`. Não simula suporte inexistente e não requer instalação.
+- Não registra service worker, não grava dados privados e não promete funcionamento offline.
+- A oferta exige teste em dispositivos e confirmação do manifesto no domínio servido. No iOS, que não oferece esse evento em versões usuais do Safari, permanece acesso web sem banner; fluxo orientado de instalação poderá ser tratado separadamente.
+- Não habilitar flag antes dos gates de manifesto/ícones, navegação, contraste, interação por teclado e regressão em sessão real.
+- **Não foi possível executar build/typecheck/testes neste ambiente de conector. PR permanece draft e sem merge.**
