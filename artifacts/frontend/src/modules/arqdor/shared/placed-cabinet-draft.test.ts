@@ -1,6 +1,6 @@
 import {describe,it,expect} from "vitest";
 import {generateCabinetDraft} from "./parametric-cabinet-core";
-import {insertCabinetDraft,repositionPlacedCabinet,removePlacedCabinet} from "./placed-cabinet-draft";
+import {insertCabinetDraft,repositionPlacedCabinet,removePlacedCabinet,revisePlacedCabinet} from "./placed-cabinet-draft";
 const p={tenantId:"tenant",projectId:"project",roomId:"room",furnitureId:"cabinet",widthMm:1200,heightMm:2200,depthMm:600,panelThicknessMm:18,shelfCount:2,doorCount:2,materialId:"mdf",backThicknessMm:6,backMaterialId:"back"};
 const draft=generateCabinetDraft(p);
 const ctx={tenantId:"tenant",projectId:"project",room:{id:"room",widthMm:4000,depthMm:3000},draft,id:"first",xMm:100,yMm:100,existing:[]};
@@ -33,5 +33,19 @@ describe("C03 cabinet geometry and parts association",()=>{
   expect(()=>repositionPlacedCabinet({room:ctx.room,items:existing,id:"first",xMm:3900,yMm:0})).toThrow();
   const second=insertCabinetDraft({...ctx,id:"second",xMm:1800,existing});
   expect(()=>repositionPlacedCabinet({room:ctx.room,items:second,id:"first",xMm:1850,yMm:100})).toThrow();
+ });
+ it("regenerates part dimensions and preserves furniture id on edit",()=>{
+  const old=insertCabinetDraft(ctx);
+  const changed=revisePlacedCabinet({room:ctx.room,items:old,id:"first",changes:{widthMm:1500,materialId:"plywood"}});
+  expect(changed[0].bounds.widthMm).toBe(1500);
+  expect(changed[0].parts.every(p=>p.furnitureId==="first")).toBe(true);
+  expect(changed[0].parts.find(p=>p.name==="Base")?.lengthMm).toBe(1500-36);
+  expect(old[0].bounds.widthMm).toBe(1200);
+ });
+ it("refuses dimensional revisions that collide or exceed room limits",()=>{
+  const first=insertCabinetDraft(ctx);
+  const both=insertCabinetDraft({...ctx,id:"second",xMm:1800,existing:first});
+  expect(()=>revisePlacedCabinet({room:ctx.room,items:both,id:"first",changes:{widthMm:1900}})).toThrow();
+  expect(()=>revisePlacedCabinet({room:ctx.room,items:both,id:"second",changes:{widthMm:4500}})).toThrow();
  });
 });
