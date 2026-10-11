@@ -314,8 +314,14 @@ router.patch("/operational-checklists/runs/:runId/items/:itemId", async (req, re
     next.diferencaAltura = next.alturaOriginal != null && next.alturaConferida != null
       ? next.alturaConferida - next.alturaOriginal : null;
     const maxDelta = Math.max(Math.abs(next.diferencaLargura ?? 0), Math.abs(next.diferencaAltura ?? 0));
-    if (parsed.data.status === undefined && next.larguraConferida != null && next.alturaConferida != null) {
-      next.status = maxDelta > run.toleranceMm ? "divergente" : "conferido";
+    if (parsed.data.status === undefined && (parsed.data.larguraConferida !== undefined || parsed.data.alturaConferida !== undefined)) {
+      const widthReady = next.larguraOriginal == null || next.larguraConferida != null;
+      const heightReady = next.alturaOriginal == null || next.alturaConferida != null;
+      const hasComparedDimension = (next.larguraOriginal != null && next.larguraConferida != null)
+        || (next.alturaOriginal != null && next.alturaConferida != null);
+      next.status = widthReady && heightReady && hasComparedDimension
+        ? maxDelta > run.toleranceMm ? "divergente" : "conferido"
+        : "nao_conferido";
     }
     next.conferidoPor = req.user?.sub ?? null;
     next.conferidoEm = new Date().toISOString();
