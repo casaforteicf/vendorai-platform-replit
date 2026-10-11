@@ -232,6 +232,18 @@ const updateItemSchema = z.object({
   localizacao: z.string().max(500).nullable().optional(),
   observacao: z.string().max(3000).nullable().optional(),
   fotos: z.array(z.string().min(1)).max(20).optional(),
+  surveyElements: z.array(z.object({
+    id: z.string().uuid(),
+    roomName: z.string().trim().min(1).max(120),
+    elementType: z.enum(["wall", "door", "window", "column", "beam", "electrical", "plumbing", "gas", "other"]),
+    label: z.string().trim().min(1).max(160),
+    widthMm: z.number().positive().max(1000000).nullable().optional(),
+    heightMm: z.number().positive().max(1000000).nullable().optional(),
+    depthMm: z.number().positive().max(1000000).nullable().optional(),
+    sourcePhotoPath: z.string().startsWith("/objects/").max(500).nullable().optional(),
+    note: z.string().max(1000).nullable().optional(),
+    verified: z.boolean(),
+  })).max(200).optional(),
   photoMeasurements: z.array(z.object({
     id: z.string().uuid(),
     start: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }),
@@ -255,6 +267,8 @@ router.patch("/operational-checklists/runs/:runId/items/:itemId", async (req, re
 
   const itemId = String(req.params.itemId);
   const targetItem = (run.items ?? []).find((item) => item.id === itemId);
+  if (parsed.data.surveyElements?.some((element) => element.sourcePhotoPath && !targetItem?.fotos?.includes(element.sourcePhotoPath)))
+    return void res.status(422).json({ error: "Elemento vinculado a fotografia inexistente neste item" });
   if (parsed.data.photoMeasurements?.some((m) => m.photoPath && !targetItem?.fotos?.includes(m.photoPath)))
     return void res.status(422).json({ error: "Cota vinculada a fotografia inexistente neste item" });
   let found = false;
