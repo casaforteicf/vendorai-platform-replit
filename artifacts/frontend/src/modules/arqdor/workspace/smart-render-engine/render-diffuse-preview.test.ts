@@ -13,6 +13,10 @@ describe("ARQDOR experimental diffuse preview",()=>{
    expect([...upper,...lower]).toEqual(Array.from(whole));
    expect(Array.from(whole.slice(0,4))).toEqual([51,102,153,255]);
  });
+ it("rejects invalid physical material even when scene has no ray hits",()=>{
+   const invalid={...options,physicalMaterials:{broken:{roughness:Number.NaN}}};
+   expect(()=>renderDiffusePreviewStrip(invalid,0,4,prepareCpuPreview(geometry),0)).toThrow("material");
+ });
  it("rejects invalid sampling bounds",()=>{
    expect(()=>renderDiffusePreviewStrip(options,3,2,prepareCpuPreview(geometry),0)).toThrow();
  });
