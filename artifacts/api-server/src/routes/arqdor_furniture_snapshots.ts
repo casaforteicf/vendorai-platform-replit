@@ -11,7 +11,7 @@ const furniture=z.object({id:z.string().min(1),tenantId:z.string(),projectId:z.s
  parts:z.array(part).max(2000),bounds:z.object({id:z.string(),roomId:z.string(),xMm:number,yMm:number,widthMm:number.positive(),depthMm:number.positive(),rotationDeg:z.number()}),
  status:z.literal("local-draft")}).passthrough();
 const payload=z.object({schemaVersion:z.literal(1),tenantId:z.string().min(1),projectId:z.string().min(1),roomId:z.string().min(1),
- revision:z.string().min(1),createdAt:z.string().min(1),furniture:z.array(furniture).max(500)}).strict();
+ revision:z.string().min(1),baseRevision:z.string().nullable().optional(),createdAt:z.string().min(1),furniture:z.array(furniture).max(500)}).strict();
 const scope=(req:Request)=>req.tenantId??req.user?.tenantId;
 router.get("/arqdor/projects/:id/furniture",async(req:Request,res:Response)=>{
  const tenantId=scope(req),projectId=String(req.params.id);
@@ -39,10 +39,12 @@ router.put("/arqdor/projects/:id/furniture/:roomId",async(req:Request,res:Respon
  }
  const normalized={...data,tenantId,furniture:data.furniture.map(f=>({...f,tenantId,parameters:{...f.parameters,tenantId},parts:f.parts.map(p=>({...p,tenantId}))}))};
  try{
+  const expected=data.baseRevision??null;
   const records=await db.update(arqdorWorkspaceProjectsTable)
    .set({contextBlob:sql`jsonb_set(jsonb_set(COALESCE(${arqdorWorkspaceProjectsTable.contextBlob}, '{}'::jsonb), '{furnitureSnapshots}', COALESCE(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots','{}'::jsonb), true), ARRAY['furnitureSnapshots', ${roomId}]::text[], ${JSON.stringify(normalized)}::jsonb, true)`,updatedAt:new Date()})
-   .where(and(eq(arqdorWorkspaceProjectsTable.id,projectId),eq(arqdorWorkspaceProjectsTable.tenantId,tenantId))).returning({id:arqdorWorkspaceProjectsTable.id});
-  if(!records.length)return res.status(404).json({error:"Projeto não encontrado; salve o projeto antes"});
+   .where(and(eq(arqdorWorkspaceProjectsTable.id,projectId),eq(arqdorWorkspaceProjectsTable.tenantId,tenantId),
+    sql`(${arqdorWorkspaceProjectsTable.contextBlob} #>> ARRAY['furnitureSnapshots', ${roomId}, 'revision']::text[]) IS NOT DISTINCT FROM ${expected}`)).returning({id:arqdorWorkspaceProjectsTable.id});
+  if(!records.length)return res.status(409).json({error:"Projeto não encontrado ou mobiliário alterado por outro usuário; recarregue antes de salvar"});
   return res.json({saved:true,projectId,roomId,revision:data.revision});
  }catch(e){req.log?.error(e,"furniture save");return res.status(500).json({error:"Falha ao salvar mobiliário"});}
 });
