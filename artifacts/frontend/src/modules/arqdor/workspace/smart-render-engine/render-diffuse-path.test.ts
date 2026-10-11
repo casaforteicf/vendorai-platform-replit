@@ -37,6 +37,13 @@ describe("ARQDOR experimental diffuse transport",()=>{
  it("returns sky when no geometry is hit",()=>{
   expect(traceDiffusePath({geometry:empty,ray,materials:{},sky:[0.2,0.3,0.4]})).toEqual([0.2,0.3,0.4]);
  });
+ it("reduces direct diffuse illumination as transparent coverage increases",()=>{
+  const base={geometry:triangle,ray,sky:[0,0,0] as const,maxBounces:1,seed:1,
+   directionalLight:{directionToLight:[0,0,1] as const,color:[1,1,1] as const,intensity:Math.PI}};
+  const opaque=traceDiffusePath({...base,materials:{white:{baseColor:[1,1,1] as const,transmission:0}}});
+  const translucent=traceDiffusePath({...base,materials:{white:{baseColor:[1,1,1] as const,transmission:0.5,roughness:0.8}}});
+  expect(opaque[0]).toBeGreaterThan(translucent[0]);
+ });
  it("returns emission at first surface for zero bounces",()=>{
   const result=traceDiffusePath({geometry:triangle,ray,materials:{white:{emissive:[0.1,0.2,0.3]}},sky:[1,1,1],maxBounces:0});
   expect(result).toEqual([0.1,0.2,0.3]);
