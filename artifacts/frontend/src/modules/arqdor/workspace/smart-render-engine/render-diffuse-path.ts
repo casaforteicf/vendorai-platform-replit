@@ -23,6 +23,8 @@ export function traceDiffusePath(input:{
   geometry:GeometryTransfer;
   ray:Ray;
   materials:Readonly<Record<string,Partial<PhysicalMaterial>>>;
+  /** Set only for immutable, prevalidated materials prepared for this render strip. */
+  materialsNormalized?: boolean;
   sky:Vec3;
   directionalLight?:DirectionalLight;
   areaLights?:readonly RectAreaLight[];
@@ -51,7 +53,9 @@ export function traceDiffusePath(input:{
     if(!hit){radiance=add(radiance,mul(throughput,input.sky));break;}
     const mesh=byMesh.get(hit.meshId);
     if(!mesh)throw Error("ARQDOR: malha da BVH não encontrada");
-    let mat=normalizePhysicalMaterial(input.materials[hit.materialId??""]??{});
+    let mat=input.materialsNormalized && input.materials[hit.materialId??""]
+      ? input.materials[hit.materialId??""] as PhysicalMaterial
+      : normalizePhysicalMaterial(input.materials[hit.materialId??""]??{});
     const texture=input.textures?.[hit.materialId??""];
     if(texture) {
       const uv=sampleMeshUv(mesh.uvs,hit.triangle,hit.barycentric);
