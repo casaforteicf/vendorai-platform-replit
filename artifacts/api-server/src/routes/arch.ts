@@ -1,3 +1,4 @@
+import { architecturalModelError } from "../lib/arch-concept-model-validation.js";
 import { preserveArchitecturalSnapshot } from "../lib/arch-concept-configuration.js";
 import { Router, type Request, type IRouter } from "express";
 import { and, eq, ilike, sql, desc, sum, ne, gte, lte, inArray, or } from "drizzle-orm";
@@ -1834,6 +1835,9 @@ router.post("/arch/concept-projects", authenticate, async (req, res) => {
     return res.status(400).json({ error: "Dados do pré-projeto inválidos.", details: parsed.error.flatten() });
   }
 
+  const modelError = architecturalModelError((parsed.data.configuration as Record<string, unknown> | undefined)?.architecturalModel);
+  if (modelError) return res.status(400).json({ error: modelError, code: "ARCHITECTURAL_MODEL_INVALID" });
+
   const creationKey =
     typeof (parsed.data.configuration as any)?.creationKey === "string"
       ? String((parsed.data.configuration as any).creationKey).trim()
@@ -1904,6 +1908,9 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: "Dados do pré-projeto inválidos.", details: parsed.error.flatten() });
   }
+
+  const modelError = architecturalModelError((parsed.data.configuration as Record<string, unknown> | undefined)?.architecturalModel);
+  if (modelError) return res.status(400).json({ error: modelError, code: "ARCHITECTURAL_MODEL_INVALID" });
 
   const { status: _status, archProjetoId: _archProjetoId, ...safeUpdates } = parsed.data as typeof parsed.data & {
     status?: unknown;
