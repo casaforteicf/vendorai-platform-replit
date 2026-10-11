@@ -42,3 +42,12 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - `arqdorEncryptedDraft.test.ts`: testes declarados de roundtrip, escopo, adulteração e revisão conflitante.
 - **Limitações:** ainda não há persistência IndexedDB, geração/recuperação da chave entre sessões, UI Arqdor consumindo esse contrato, export de backup, sync online, upload, migração de schema ou homologação em dispositivo. Chave criptográfica deve ser injetada somente após autenticação e autorização do backend; sem chave, o rascunho é irrecuperável. Nunca armazenar chave em localStorage nem enviar em eventos/telemetria.
 - **Gate de produção:** confirmar WebCrypto em navegador suportado, implementar retenção/revogação, tratar quotas e armazenamento cheio, fail-closed para troca de tenant/usuário e sincronização atômica com conflito.
+
+
+## MULTI-03 — Cofre local de rascunhos (protótipo não integrado)
+- Adicionado `artifacts/frontend/src/lib/arqdorLocalDrafts.ts`: operações explícitas `saveArqdorDraft`, `loadArqdorDraft` e `deleteArqdorDraft` usando IndexedDB com chave composta tenantId/userId/contextId/projectId e revisão base.
+- Nenhuma chamada à API, sync automático, salvamento contínuo, cache HTTP ou alteração no fluxo atual do Arqdor. Sem habilitação em produção.
+- O controle de permissões de acesso continua responsabilidade do servidor; **não chamar sem validação recente de sessão, tenant, contexto e vínculo de projeto**. Chave composta separa registros, mas **não é criptografia**: browser local pode ser acessado por quem usar o mesmo perfil de navegador. Não armazenar tokens ou dados sensíveis antes de implementar política de criptografia, retenção/limpeza e QA de privacidade.
+- MULTI-03 ainda precisa: integração com editor, formato/versionamento de documento, cota/espaço cheio, recuperação após reinício, testes IndexedDB em navegadores, limpeza segura na revogação de acesso, testes de isolamento por tenant e salvamento sem perda.
+- MULTI-04 ainda precisa: endpoint autenticado de revisão, idempotência e reconciliação de conflito (nunca sobrescrever automaticamente a revisão remota).
+- O código foi commitado, **não compilado nem homologado** neste conector; PR continua draft.
