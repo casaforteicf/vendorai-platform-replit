@@ -27,7 +27,7 @@ router.get("/arqdor/projects/:id/furniture",async(req:Request,res:Response)=>{
   const [record]=await db.select({contextBlob:arqdorWorkspaceProjectsTable.contextBlob}).from(arqdorWorkspaceProjectsTable)
    .where(and(eq(arqdorWorkspaceProjectsTable.tenantId,tenantId),eq(arqdorWorkspaceProjectsTable.id,projectId))).limit(1);
   if(!record)return res.status(404).json({error:"Projeto não encontrado"});
-  return res.json({tenantId,furnitureSnapshots:(record.contextBlob as Record<string,unknown>).furnitureSnapshots??{}});
+  return res.json({tenantId,furnitureSnapshots:(record.contextBlob as Record<string,unknown>|null)?.furnitureSnapshots??{}});
  }catch(e){req.log?.error(e,"furniture get");return res.status(500).json({error:"Falha ao carregar mobiliário"});}
 });
 router.put("/arqdor/projects/:id/furniture/:roomId",async(req:Request,res:Response)=>{
