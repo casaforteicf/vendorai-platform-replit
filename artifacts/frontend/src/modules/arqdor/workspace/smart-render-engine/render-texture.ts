@@ -24,6 +24,10 @@ export function validateCpuTexture(texture:CpuTexture):void {
 
 export function sampleCpuTexture(texture:CpuTexture, uv:readonly [number,number]):Vec3 {
  validateCpuTexture(texture);
+ return sampleValidatedCpuTexture(texture,uv);
+}
+/** For trusted, prevalidated payloads within a single render job. */
+export function sampleValidatedCpuTexture(texture:CpuTexture, uv:readonly [number,number]):Vec3 {
  const {width,height,channels,data,wrap}=texture;
  if(!Number.isFinite(uv[0])||!Number.isFinite(uv[1]))throw Error("ARQDOR: UV inválida");
  const address=(n:number)=>wrap==="repeat"?fract(n):Math.max(0,Math.min(1,n));
