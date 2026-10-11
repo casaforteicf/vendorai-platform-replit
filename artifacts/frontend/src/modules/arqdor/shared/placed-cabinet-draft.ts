@@ -17,6 +17,6 @@ export function insertCabinetDraft(input:{
  const bounds:FurnitureBounds={id,roomId:room.id,xMm,yMm,widthMm:draft.parameters.widthMm,depthMm:draft.parameters.depthMm,rotationDeg:0};
  const check=validateFurniturePlacement(room,bounds,existing.map(p=>p.bounds),20);
  if(!check.valid)throw Error("Cabinet placement rejected: "+check.reason);
- return [...existing,{id,tenantId,projectId,roomId:room.id,parameters:{...draft.parameters},
- parts:draft.parts.map(p=>({...p,edges:{...p.edges}})),bounds,status:"local-draft"}];
+ return [...existing,{id,tenantId,projectId,roomId:room.id,parameters:{...draft.parameters,furnitureId:id},
+ parts:draft.parts.map(p=>({...p,id:id+":"+p.id,furnitureId:id,edges:{...p.edges}})),bounds,status:"local-draft"}];
 }
