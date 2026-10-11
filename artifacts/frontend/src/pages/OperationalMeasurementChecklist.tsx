@@ -324,6 +324,9 @@ export default function OperationalMeasurementChecklist() {
                     </div>
                     <div className="space-y-2">
                       <div className="text-xs font-medium text-muted-foreground">Resultado</div>
+                      <div className="text-xs text-muted-foreground">Tolerância permitida: ±{run.toleranceMm} mm</div>
+                      {(item.larguraOriginal != null && item.larguraConferida == null || item.alturaOriginal != null && item.alturaConferida == null) && <div className="text-xs text-amber-700">Conferência incompleta: informe as medidas previstas.</div>}
+                      {(Math.abs(item.diferencaLargura ?? 0) > run.toleranceMm || Math.abs(item.diferencaAltura ?? 0) > run.toleranceMm) && <div className="text-xs text-red-700">Divergência acima da tolerância. Revise antes de liberar.</div>}
                       <div className="text-sm">
                         Δ L: <strong className={Math.abs(item.diferencaLargura ?? 0) > run.toleranceMm ? "text-red-600" : ""}>{item.diferencaLargura ?? "—"}</strong> mm
                       </div>
