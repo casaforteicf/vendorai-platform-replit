@@ -31,6 +31,18 @@ export type OperationalChecklistItem = {
   atributosTecnicos?: Record<string, unknown>;
   imagemUrl?: string | null;
   fotos?: string[];
+  surveyElements?: Array<{
+    id: string;
+    roomName: string;
+    elementType: "wall" | "door" | "window" | "column" | "beam" | "electrical" | "plumbing" | "gas" | "other";
+    label: string;
+    widthMm?: number | null;
+    heightMm?: number | null;
+    depthMm?: number | null;
+    sourcePhotoPath?: string | null;
+    note?: string | null;
+    verified: boolean;
+  }>;
   photoMeasurements?: Array<{ id: string; start: { x: number; y: number }; end: { x: number; y: number }; millimeters: number; label: string; photoPath?: string; source: "manual_verified" }>;
   status: OperationalChecklistItemStatus;
   conferidoPor?: string | null;
