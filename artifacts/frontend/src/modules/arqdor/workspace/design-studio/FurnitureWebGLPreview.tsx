@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from "react";
 import type {PlacedCabinet} from "../../shared/placed-cabinet-draft";
-import {buildCabinet3DBoxes} from "../../shared/furniture-preview-3d";
+import {buildFurnitureSceneNodes} from "../../shared/furniture-scene-nodes";
 import {loadThree} from "../../../../pages/arch/render-studio/RenderStudioParametricWebgl";
 
 /** Experimental WebGL preview: shares cabinet data but is not embedded in the BIM scene. */
@@ -23,18 +23,19 @@ export function FurnitureWebGLPreview({items,selectedId,onSelect}:{items:readonl
     if(!T?.WebGLRenderer)throw Error("WebGL indisponível");
     const scene=new T.Scene();scene.background=new T.Color(0xf8fafc);
     const camera=new T.PerspectiveCamera(45,1,.01,500);
-    const boxes=buildCabinet3DBoxes(items);
-    const extent=Math.max(2,...boxes.map(b=>Math.max(b.xMm+b.widthMm,b.yMm+b.depthMm,b.heightMm)/1000));
+    const nodes=buildFurnitureSceneNodes(items);
+    const extent=Math.max(2,...nodes.map(n=>Math.max(n.positionM.x+n.sizeM.x/2,n.positionM.z+n.sizeM.z/2,n.sizeM.y)));
     camera.position.set(extent*1.5,extent*1.2,extent*1.5);
     const target=new T.Vector3(extent/2,0,extent/2);camera.lookAt(target);
     scene.add(new T.AmbientLight(0xffffff,.85));
     const sun=new T.DirectionalLight(0xffffff,.7);sun.position.set(3,8,5);scene.add(sun);
     const ground=new T.GridHelper(Math.max(extent*2,4),20,0x94a3b8,0xe2e8f0);scene.add(ground);
-    for(const b of boxes){
+    for(const n of nodes){
      const material=new T.MeshStandardMaterial({color:0xbab0e6,roughness:.8});
-     const mesh=new T.Mesh(new T.BoxGeometry(b.widthMm/1000,b.heightMm/1000,b.depthMm/1000),material);
-     mesh.position.set((b.xMm+b.widthMm/2)/1000,b.heightMm/2000,(b.yMm+b.depthMm/2)/1000);
-     mesh.userData.furnitureId=b.id;
+     const mesh=new T.Mesh(new T.BoxGeometry(n.sizeM.x,n.sizeM.y,n.sizeM.z),material);
+     mesh.position.set(n.positionM.x,n.positionM.y,n.positionM.z);
+     mesh.userData.furnitureId=n.furnitureId;
+     mesh.userData.sceneNodeId=n.id;
      scene.add(mesh);meshes.push(mesh);
     }
     renderer=new T.WebGLRenderer({antialias:true});
