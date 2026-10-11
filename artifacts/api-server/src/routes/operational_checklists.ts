@@ -238,6 +238,7 @@ const updateItemSchema = z.object({
   surveyElements: z.array(z.object({
     id: z.string().uuid(),
     roomName: z.string().trim().min(1).max(120),
+    floorIndex: z.number().int().min(0).max(49).optional(),
     elementType: z.enum(["wall", "door", "window", "column", "beam", "electrical", "plumbing", "gas", "other"]),
     label: z.string().trim().min(1).max(160),
     widthMm: z.number().positive().max(1000000).nullable().optional(),
@@ -282,7 +283,7 @@ router.patch("/operational-checklists/runs/:runId/items/:itemId", async (req, re
   if (parsed.data.surveyElements) {
     const elements = parsed.data.surveyElements;
     for (const opening of elements.filter((element) => element.elementType === "door" || element.elementType === "window")) {
-      const wall = elements.find((element) => element.id === opening.wallId && element.elementType === "wall" && element.roomName === opening.roomName);
+      const wall = elements.find((element) => element.id === opening.wallId && element.elementType === "wall" && element.roomName === opening.roomName && (element.floorIndex ?? 0) === (opening.floorIndex ?? 0));
       if (!wall || !wall.verified || wall.x1Mm == null || wall.y1Mm == null || wall.x2Mm == null || wall.y2Mm == null || opening.offsetMm == null || opening.widthMm == null || opening.heightMm == null) {
         return void res.status(422).json({ error: "Portas e janelas exigem parede verificada e dimensões/posição completas" });
       }
@@ -549,7 +550,7 @@ router.post("/operational-checklists/runs/:runId/create-arqdor-draft", async (re
     if (!start || !end) return void res.status(409).json({ error: "Existem extremidades de paredes desconectadas" });
   }
   for (const opening of openings) {
-    const parent = walls.find((wall) => wall.id === opening.wallId && wall.roomName === opening.roomName);
+    const parent = walls.find((wall) => wall.id === opening.wallId && wall.roomName === opening.roomName && (wall.floorIndex ?? 0) === (opening.floorIndex ?? 0));
     if (!parent || !parent.verified || opening.offsetMm == null || opening.widthMm == null || opening.heightMm == null ||
         opening.widthMm <= 0 || opening.heightMm <= 0 || opening.offsetMm < 0 ||
         (opening.elementType === "window" && opening.sillHeightMm == null) ||
@@ -569,9 +570,9 @@ router.post("/operational-checklists/runs/:runId/create-arqdor-draft", async (re
   const minX = Math.min(...xs), minY = Math.min(...ys);
   const width = (Math.max(...xs)-minX)/1000, depth = (Math.max(...ys)-minY)/1000;
   if (width <= 0 || depth <= 0) return void res.status(409).json({ error: "Planta sem largura ou profundidade" });
-  const customWalls = walls.map((w) => ({ id:w.id, floor:0, x1:(w.x1Mm!-minX)/1000, y1:(w.y1Mm!-minY)/1000,
+  const customWalls = walls.map((w) => ({ id:w.id, floor:w.floorIndex ?? 0, x1:(w.x1Mm!-minX)/1000, y1:(w.y1Mm!-minY)/1000,
     x2:(w.x2Mm!-minX)/1000, y2:(w.y2Mm!-minY)/1000, thickness:(w.thicknessMm ?? 150)/1000 }));
-  const customOpenings = openings.map((o) => ({ id:o.id, floor:0, wallId:o.wallId!, type:o.elementType as "door" | "window",
+  const customOpenings = openings.map((o) => ({ id:o.id, floor:o.floorIndex ?? 0, wallId:o.wallId!, type:o.elementType as "door" | "window",
     offset:o.offsetMm!/1000, width:o.widthMm!/1000, height:o.heightMm!/1000, sillHeight:(o.sillHeightMm ?? 0)/1000 }));
   const [owner] = await db.select({ id: usersTable.id }).from(usersTable)
     .where(and(eq(usersTable.id, ownerId), eq(usersTable.tenantId, run.tenantId))).limit(1);
@@ -600,7 +601,7 @@ router.post("/operational-checklists/runs/:runId/create-arqdor-draft", async (re
         tenantId: run.tenantId, ownerUserId: ownerId, archProjetoId: project.id,
         title: parsed.data.title, status: "draft",
         lot: { width: Math.max(width,1), depth: Math.max(depth,1) }, rooms: [],
-        configuration: { projectScope:"room", floors:1, desiredArea:width*depth, customWalls, customOpenings,
+        configuration: { projectScope:"room", floors:Math.max(1, ...elements.map(e => (e.floorIndex ?? 0)+1)), desiredArea:width*depth, customWalls, customOpenings,
           startSourceChosen:true, terrainDefined:false },
       }).returning();
       return { project, concept, reused: false };
