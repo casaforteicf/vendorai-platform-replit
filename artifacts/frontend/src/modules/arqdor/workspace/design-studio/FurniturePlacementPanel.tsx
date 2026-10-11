@@ -8,6 +8,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
   const [items,setItems]=useState<PlacedCabinet[]>([]);
   const [message,setMessage]=useState("");
   const [busy,setBusy]=useState(false);
+  const [loadedRevision,setLoadedRevision]=useState<string|null>(null);
   const xs=environment.walls.flatMap(w=>[w.x1,w.x2]);
   const ys=environment.walls.flatMap(w=>[w.y1,w.y2]);
   const width=Math.round((Math.max(...xs)-Math.min(...xs))*1000);
@@ -30,10 +31,12 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
     try{
       const snapshot=createFurnitureSnapshot({tenantId:roomItems[0]?.tenantId??draft?.parameters.tenantId??"",
       projectId:environment.projectId,room:{id:environment.roomId,widthMm:width,depthMm:depth},
-      revision:environment.sourceRevision??"RASCUNHO-1",createdAt:new Date().toISOString(),furniture:roomItems});
+      revision:"R-"+Date.now().toString(36),createdAt:new Date().toISOString(),furniture:roomItems});
+      const body={...snapshot,baseRevision:loadedRevision};
       const response=await fetch("/api/arqdor/projects/"+encodeURIComponent(environment.projectId)+"/furniture/"+encodeURIComponent(environment.roomId),
-       {method:"PUT",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify(snapshot)});
+       {method:"PUT",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify(body)});
       if(!response.ok)throw Error("Falha no salvamento ("+response.status+")");
+      setLoadedRevision(snapshot.revision);
       setMessage("Mobiliário salvo no projeto.");
     }catch(e){setMessage(e instanceof Error?e.message:"Erro ao salvar");}
     finally{setBusy(false);}
@@ -51,6 +54,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
         room:{id:environment.roomId,widthMm:width,depthMm:depth},revision:snapshot.revision,
         createdAt:snapshot.createdAt,furniture:snapshot.furniture});
       if(restored.projectId!==environment.projectId||restored.roomId!==environment.roomId)throw Error("Contexto de projeto incompatível");
+      setLoadedRevision(restored.revision);
       setItems(old=>[...old.filter(i=>i.roomId!==environment.roomId),...restored.furniture.map(item=>({...item,tenantId:"local-preview",parameters:{...item.parameters,tenantId:"local-preview"},parts:item.parts.map(part=>({...part,tenantId:"local-preview"}))}))]);
       setMessage("Mobiliário recuperado.");
     }catch(e){setMessage(e instanceof Error?e.message:"Erro ao carregar");}
