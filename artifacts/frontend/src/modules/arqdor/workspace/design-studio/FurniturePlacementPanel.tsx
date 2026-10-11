@@ -51,16 +51,18 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
     }catch(e){setMessage(e instanceof Error?e.message:"Alteração inválida");}
   }
   function move(id:string){try{const next=repositionPlacedCabinet({room:{id:environment.roomId,widthMm:width,depthMm:depth},items,id,xMm:x,yMm:y});next.forEach(checkObstacles);setItems(next);setMessage("Posição alterada no rascunho. Salve para persistir.");}catch(e){setMessage(e instanceof Error?e.message:"Posicionamento inválido");}}
-  function remove(id:string){try{setItems(old=>removePlacedCabinet(old,id));setMessage("Móvel removido do rascunho. Salve para persistir.");}catch(e){setMessage(e instanceof Error?e.message:"Falha ao remover");}}
+  function remove(id:string){try{setItems(old=>removePlacedCabinet(old,id));if(selectedId===id)setSelectedId(null);setMessage("Móvel removido do rascunho. Salve para persistir.");}catch(e){setMessage(e instanceof Error?e.message:"Falha ao remover");}}
   function authHeaders(){const token=localStorage.getItem("vendorai_token");if(!token)throw Error("Sessão expirada. Faça login novamente.");return {Authorization:"Bearer "+token};}
   async function save(){
     if(!ready||!environment.projectId){setMessage("É necessário salvar o projeto e ter geometria do ambiente.");return;}
+    if(!savedTenantId){setMessage("Carregue o mobiliário do projeto antes de salvar para validar o tenant e a revisão.");return;}
     setBusy(true);
     try{
       roomItems.forEach(checkObstacles);
-      const snapshot=createFurnitureSnapshot({tenantId:savedTenantId??roomItems[0]?.tenantId??draft?.parameters.tenantId??"",
+      const scopedItems=roomItems.map(item=>({...item,tenantId:savedTenantId,parameters:{...item.parameters,tenantId:savedTenantId},parts:item.parts.map(part=>({...part,tenantId:savedTenantId}))}));
+      const snapshot=createFurnitureSnapshot({tenantId:savedTenantId,
       projectId:environment.projectId,room:{id:environment.roomId,widthMm:width,depthMm:depth},
-      revision:crypto.randomUUID(),createdAt:new Date().toISOString(),furniture:roomItems});
+      revision:crypto.randomUUID(),createdAt:new Date().toISOString(),furniture:scopedItems});
       const body={...snapshot,baseRevision:loadedRevision};
       const response=await fetch("/api/arqdor/projects/"+encodeURIComponent(environment.projectId)+"/furniture/"+encodeURIComponent(environment.roomId),
        {method:"PUT",headers:{"Content-Type":"application/json",...authHeaders()},credentials:"include",body:JSON.stringify(body)});
@@ -109,7 +111,8 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
     <button type="button" onClick={()=>setWebglPreview(value=>!value)} className="mt-2 rounded border px-3 py-2 text-xs">{webglPreview?"Ocultar prévia WebGL":"Abrir prévia WebGL experimental"}</button>
     {webglPreview&&<FurnitureWebGLPreview items={roomItems} selectedId={selectedId} onSelect={id=>{const item=roomItems.find(i=>i.id===id);if(!item)return;setSelectedId(id);setX(item.bounds.xMm);setY(item.bounds.yMm);setEdit({widthMm:item.parameters.widthMm,heightMm:item.parameters.heightMm,depthMm:item.parameters.depthMm,materialId:item.parameters.materialId});}}/>}
     <FurnitureAxonometricPreview items={roomItems} selectedId={selectedId} onSelect={id=>{const item=roomItems.find(candidate=>candidate.id===id);if(!item)return;setSelectedId(item.id);setX(item.bounds.xMm);setY(item.bounds.yMm);setEdit({widthMm:item.parameters.widthMm,heightMm:item.parameters.heightMm,depthMm:item.parameters.depthMm,materialId:item.parameters.materialId});}}/>
-    <div className="mt-2 flex gap-2"><button type="button" disabled={busy||!environment.projectId} onClick={save} className="rounded border px-3 py-2 text-xs">Salvar móveis</button><button type="button" disabled={busy||!environment.projectId} onClick={load} className="rounded border px-3 py-2 text-xs">Carregar móveis</button></div>
+    {!savedTenantId&&environment.projectId&&<p className="mt-2 text-xs text-amber-700">Antes do primeiro salvamento, use Carregar móveis para identificar o projeto e consultar sua revisão atual.</p>}
+    <div className="mt-2 flex gap-2"><button type="button" disabled={busy||!environment.projectId||!savedTenantId} onClick={save} className="rounded border px-3 py-2 text-xs">Salvar móveis</button><button type="button" disabled={busy||!environment.projectId} onClick={load} className="rounded border px-3 py-2 text-xs">Carregar móveis</button></div>
     {message&&<p role="alert" className="text-sm text-red-700">{message}</p>}
   </section>;
 }
