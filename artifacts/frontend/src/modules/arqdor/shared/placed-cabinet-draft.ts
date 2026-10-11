@@ -1,4 +1,4 @@
-import type {CabinetDraft} from "./parametric-cabinet-core";
+import {generateCabinetDraft,type CabinetDraft,type CabinetParameters} from "./parametric-cabinet-core";
 import type {FurnitureBounds,RoomBounds} from "./furniture-placement-2d";
 import {validateFurniturePlacement} from "./furniture-placement-2d";
 
@@ -34,4 +34,17 @@ export function repositionPlacedCabinet(input:{room:RoomBounds;items:readonly Pl
 export function removePlacedCabinet(items:readonly PlacedCabinet[],id:string):PlacedCabinet[]{
  if(!items.some(item=>item.id===id))throw Error("Furniture not found");
  return items.filter(item=>item.id!==id);
+}
+
+/** Regenerate a single placed cabinet, preserving stable furniture and part identifiers. */
+export function revisePlacedCabinet(input:{room:RoomBounds;items:readonly PlacedCabinet[];id:string;changes:Partial<Pick<CabinetParameters,"widthMm"|"heightMm"|"depthMm"|"materialId"|"backMaterialId"|"shelfCount"|"doorCount">>}):PlacedCabinet[]{
+ const current=input.items.find(item=>item.id===input.id&&item.roomId===input.room.id);
+ if(!current)throw Error("Furniture not found");
+ const params:CabinetParameters={...current.parameters,...input.changes};
+ const regenerated=generateCabinetDraft(params);
+ const candidateBounds={...current.bounds,widthMm:params.widthMm,depthMm:params.depthMm};
+ const check=validateFurniturePlacement(input.room,candidateBounds,input.items.filter(item=>item.id!==input.id).map(item=>item.bounds),20);
+ if(!check.valid)throw Error("Furniture revision rejected: "+check.reason);
+ return input.items.map(item=>item.id!==input.id?item:{...item,parameters:regenerated.parameters,
+  bounds:candidateBounds,parts:regenerated.parts.map(part=>({...part,edges:{...part.edges}}))});
 }
