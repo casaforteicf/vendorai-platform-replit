@@ -51,6 +51,9 @@ router.put("/arqdor/projects/:id/members/:userId", async (req, res) => {
         .onConflictDoUpdate({
           target: [arqdorWorkspaceMembersTable.tenantId, arqdorWorkspaceMembersTable.projectId, arqdorWorkspaceMembersTable.userId],
           set: { permission },
+          // The owner role cannot be overwritten even if another transaction
+          // grants ownership between the initial read and this upsert.
+          setWhere: sql`${arqdorWorkspaceMembersTable.permission} <> 'owner'`,
         });
       return "ok" as const;
     });
