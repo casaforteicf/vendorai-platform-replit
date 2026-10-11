@@ -29,7 +29,7 @@ export function buildExperimentalRenderOptions(args: {
     Math.hypot(position[0]-target[0],position[1]-target[1],position[2]-target[2])<1e-6)
   throw Error("ARQDOR: câmera capturada inválida");
  const materials:Record<string,string>={};
- const physical:Record<string,{baseColor:readonly [number,number,number];roughness:number;metalness:number}>={};
+ const physical:Record<string,{baseColor:readonly [number,number,number];roughness:number;metalness:number;transmission:number;ior:number}>={};
  for(const material of snapshot.materials){
   if(!/^#[0-9a-f]{6}$/i.test(material.baseColor)||
      !Number.isFinite(material.roughness)||material.roughness<0||material.roughness>1||
@@ -41,6 +41,8 @@ export function buildExperimentalRenderOptions(args: {
     // Material color captured as display sRGB: convert to linear for physical transport.
     baseColor:[1,3,5].map(i=>{const srgb=parseInt(hex.slice(i,i+2),16)/255;return srgb<=0.04045?srgb/12.92:Math.pow((srgb+0.055)/1.055,2.4);}) as unknown as readonly [number,number,number],
     roughness:material.roughness,metalness:material.metalness,
+    // Alpha is an imperfect approximation of glass: only opt into this in the lab.
+    transmission:1-material.opacity,ior:1.5,
   };
  }
  for(const mesh of geometry.meshes){
