@@ -177,3 +177,9 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - Caso exista identidade concorrente sem vínculo confirmado, responde HTTP 409 PHOTO_RECONCILE_REQUIRED, sem alegar que a foto está salva no checklist.
 - Dependências ainda pendentes: aplicar o índice único em homologação (sem isso a corrida não dispara 23505); reconciliar registros órfãos; detectar uso indevido de UUID com arquivo diferente por checksum; testar concorrência real, API, R2 e frontend.
 - Código gravado, ainda sem build, testes, PR, merge ou deploy.
+
+## Lote 24 — verificação de conteúdo por SHA-256 (11/10/2026)
+- A API calcula SHA-256 do buffer decodificado, guarda `contentHash` no metadata da mídia e compara o conteúdo ao reutilizar um `uploadId`. UUID reaproveitado com bytes diferentes resulta em HTTP 409 `PHOTO_ID_CONFLICT`.
+- A recuperação de colisão do índice único PostgreSQL também só reutiliza o asset se o checksum corresponder e ele estiver vinculado ao mesmo item.
+- Mantida recusa `PHOTO_RECONCILE_REQUIRED` para asset conhecido que ainda não consta do checklist; a reconciliação automatizada de órfãos segue pendente.
+- Importante: o índice único criado no lote 22 ainda precisa de migração em staging; builds e testes não foram executados. Nenhum PR/merge/deploy.
