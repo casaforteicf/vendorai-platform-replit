@@ -19,18 +19,21 @@ type Props = {
   initialMeasurements?: PhotoMeasure[];
   readOnly?: boolean;
   onSave?: (measurements: PhotoMeasure[]) => Promise<void>;
+  onUpload?: (file: File) => Promise<string>;
 };
 
-export default function PhotoMeasureEditor({ itemId, imageUrl, onClose, initialMeasurements = [], readOnly = false, onSave }: Props) {
+export default function PhotoMeasureEditor({ itemId, imageUrl, onClose, initialMeasurements = [], readOnly = false, onSave, onUpload }: Props) {
   const [localImage, setLocalImage] = useState<string | null>(null);
   const [points, setPoints] = useState<Array<{ x: number; y: number }>>([]);
   const [measures, setMeasures] = useState<PhotoMeasure[]>(initialMeasurements);
   const [saving, setSaving] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [millimeters, setMillimeters] = useState("");
   const [label, setLabel] = useState("");
   const [message, setMessage] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const currentImage = localImage ?? imageUrl ?? null;
+  const currentImage = localImage ?? uploadedImage ?? imageUrl ?? null;
 
   useEffect(() => {
     return () => { if (localImage) URL.revokeObjectURL(localImage); };
@@ -42,6 +45,8 @@ export default function PhotoMeasureEditor({ itemId, imageUrl, onClose, initialM
       setMessage("Escolha uma imagem de até 15 MB.");
       return;
     }
+    setSelectedFile(file);
+    setUploadedImage(null);
     setLocalImage(URL.createObjectURL(file));
     setPoints([]);
     setMeasures([]);
@@ -107,6 +112,18 @@ export default function PhotoMeasureEditor({ itemId, imageUrl, onClose, initialM
       </div>
       <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => selectImage(e.currentTarget.files?.[0])} />
       <Button size="sm" variant="outline" onClick={() => inputRef.current?.click()}>Fotografar / escolher imagem</Button>
+      {selectedFile && onUpload && <Button disabled={saving || readOnly} onClick={async () => {
+        setSaving(true); setMessage("");
+        try {
+          const url = await onUpload(selectedFile);
+          setUploadedImage(url);
+          setSelectedFile(null);
+          setLocalImage(null);
+          setMessage("Fotografia salva no armazenamento privado. Marque as cotas e salve no checklist.");
+        } catch (error) {
+          setMessage(error instanceof Error ? error.message : "Falha no upload.");
+        } finally { setSaving(false); }
+      }}>{saving ? "Enviando..." : "Salvar fotografia no R2"}</Button>}
       {currentImage ? (
         <div className="relative mx-auto w-full max-w-3xl overflow-hidden rounded border bg-slate-950" onClick={markPoint} role="button" tabIndex={0} aria-label="Marcar pontos da medida na fotografia" onKeyDown={(e) => { if (e.key === "Escape") setPoints([]); }}>
           <img src={currentImage} alt="Fotografia de referência para medição" className="block w-full select-none" draggable={false} />
