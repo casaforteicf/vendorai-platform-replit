@@ -275,6 +275,28 @@ router.patch("/operational-checklists/runs/:runId/items/:itemId", async (req, re
 
   const itemId = String(req.params.itemId);
   const targetItem = (run.items ?? []).find((item) => item.id === itemId);
+  if (parsed.data.surveyElements) {
+    const elements = parsed.data.surveyElements;
+    for (const opening of elements.filter((element) => element.elementType === "door" || element.elementType === "window")) {
+      const wall = elements.find((element) => element.id === opening.wallId && element.elementType === "wall" && element.roomName === opening.roomName);
+      if (!wall || !wall.verified || wall.x1Mm == null || wall.y1Mm == null || wall.x2Mm == null || wall.y2Mm == null || opening.offsetMm == null || opening.widthMm == null || opening.heightMm == null) {
+        return void res.status(422).json({ error: "Portas e janelas exigem parede verificada e dimensões/posição completas" });
+      }
+      const length = Math.hypot(wall.x2Mm - wall.x1Mm, wall.y2Mm - wall.y1Mm);
+      if (opening.offsetMm + opening.widthMm > length + 0.01) return void res.status(422).json({ error: "Abertura ultrapassa o comprimento da parede" });
+      if (opening.elementType === "window" && opening.sillHeightMm == null) return void res.status(422).json({ error: "Informe o peitoril da janela" });
+    }
+    const openings = elements.filter((e) => e.elementType === "door" || e.elementType === "window");
+    for (let i = 0; i < openings.length; i++) for (let j = i + 1; j < openings.length; j++) {
+      const a = openings[i], other = openings[j];
+      if (a.wallId && a.wallId === other.wallId && a.offsetMm != null && other.offsetMm != null && a.widthMm != null && other.widthMm != null &&
+          a.offsetMm < other.offsetMm + other.widthMm && other.offsetMm < a.offsetMm + a.widthMm) {
+        const aBottom = a.sillHeightMm ?? 0, bBottom = other.sillHeightMm ?? 0;
+        if (aBottom < bBottom + (other.heightMm ?? 0) && bBottom < aBottom + (a.heightMm ?? 0))
+          return void res.status(422).json({ error: "Aberturas sobrepostas na mesma parede" });
+      }
+    }
+  }
   if (parsed.data.surveyElements?.some((element) => element.sourcePhotoPath && !targetItem?.fotos?.includes(element.sourcePhotoPath)))
     return void res.status(422).json({ error: "Elemento vinculado a fotografia inexistente neste item" });
   if (parsed.data.photoMeasurements?.some((m) => m.photoPath && !targetItem?.fotos?.includes(m.photoPath)))
