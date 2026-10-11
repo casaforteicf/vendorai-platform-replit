@@ -1,3 +1,4 @@
+import { architecturalSlabVoids, rectangularSolidCells } from "./conceptArchitecturalSlabVoids";
 import { createRoof, createSlab, createStraightStair, openingSchedule, type Roof, type Slab, type Stair, type OpeningScheduleItem } from "./conceptArchitecturalElements";
 
 /** Serializable model shared by future 2D, 3D and documentation adapters. */
@@ -12,7 +13,7 @@ export type ArchitecturalElement = { kind: "slab"; value: Slab } | { kind: "stai
 export type ArchitecturalEdit = { action: "upsert"; element: ArchitecturalElement } | { action: "remove"; kind: ArchitecturalElement["kind"]; id: string };
 type Result<T> = { value: T } | { error: string };
 export const emptyArchitecturalModel = (): ArchitecturalModel => ({ version: 1, slabs: [], stairs: [], roofs: [], openings: [] });
-const clone = (model: ArchitecturalModel): ArchitecturalModel => ({
+export const cloneArchitecturalModel = (model: ArchitecturalModel): ArchitecturalModel => ({
   version: 1, slabs: model.slabs.map(s => ({ ...s, voids: s.voids.map(v => ({ ...v })) })),
   stairs: model.stairs.map(s => ({ ...s })), roofs: model.roofs.map(r => ({ ...r })), openings: model.openings.map(o => ({ ...o })),
 });
@@ -24,7 +25,7 @@ function validOpening(o: OpeningScheduleItem): boolean {
 }
 export function applyArchitecturalEdits(model: ArchitecturalModel, edits: readonly ArchitecturalEdit[]): Result<ArchitecturalModel> {
   if (model.version !== 1) return { error: "Versão do modelo incompatível." };
-  const next = clone(model);
+  const next = cloneArchitecturalModel(model);
   for (const edit of edits) {
     const kind = edit.action === "upsert" ? edit.element.kind : edit.kind;
     const key = kind === "slab" ? "slabs" : kind === "stair" ? "stairs" : kind === "roof" ? "roofs" : "openings";
@@ -57,9 +58,10 @@ export function applyArchitecturalEdits(model: ArchitecturalModel, edits: readon
 /** Read-models do not mutate the central snapshot. */
 export function architecturalQuantities(model: ArchitecturalModel) {
   return {
-    slabNetArea: model.slabs.reduce((total, slab) => total + slab.width * slab.depth - slab.voids.reduce((area, v) => area + v.width * v.depth, 0), 0),
+    slabNetArea: model.slabs.reduce((total, slab) => total + rectangularSolidCells(slab, architecturalSlabVoids(model, slab)).reduce((area, cell) => area + cell.width * cell.depth, 0), 0),
     roofFootprintArea: model.roofs.reduce((total, roof) => total + (roof.width + 2 * roof.overhang) * (roof.depth + 2 * roof.overhang), 0),
     openings: openingSchedule(model.openings),
     stairs: model.stairs.length,
   };
 }
+

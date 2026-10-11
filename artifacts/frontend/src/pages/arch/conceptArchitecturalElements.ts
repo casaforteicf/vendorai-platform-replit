@@ -1,7 +1,7 @@
 /** Pure, versionable parametric geometry for the concept editor (metres). */
 export type Rect = { x: number; y: number; width: number; depth: number };
 export type Slab = Rect & { id: string; floor: number; thickness: number; elevation: number; voids: Rect[] };
-export type Stair = { id: string; floor: number; x: number; y: number; width: number; run: number; rise: number; preferredRiser?: number };
+export type Stair = { id: string; floor: number; x: number; y: number; width: number; run: number; rise: number; preferredRiser?: number; openSlab?: boolean };
 export type Roof = Rect & { id: string; elevation: number; pitchDegrees: number; overhang: number; type: "flat" | "mono" | "gable" };
 export type OpeningScheduleItem = { id: string; wallId: string; type: "door" | "window"; width: number; height: number; sillHeight: number; quantity: number };
 type Result<T> = { value: T } | { error: string };
@@ -22,7 +22,7 @@ export function slabNetArea(slab: Slab): number {
   return slab.width * slab.depth - slab.voids.reduce((total, hole) => total + hole.width * hole.depth, 0);
 }
 export function createStraightStair(input: Stair): Result<Stair & { steps: number; riser: number; tread: number }> {
-  if (!finite(input.x, input.y, input.width, input.run, input.rise, input.preferredRiser ?? 0.175) || input.width <= 0 || input.run <= 0 || input.rise <= 0 || !Number.isInteger(input.floor)) return { error: "Dimensões da escada inválidas." };
+  if ((input.openSlab !== undefined && typeof input.openSlab !== "boolean") || !finite(input.x, input.y, input.width, input.run, input.rise, input.preferredRiser ?? 0.175) || input.width <= 0 || input.run <= 0 || input.rise <= 0 || !Number.isInteger(input.floor)) return { error: "Dimensões da escada inválidas." };
   const preferred = input.preferredRiser ?? 0.175;
   if (preferred < 0.1 || preferred > 0.22) return { error: "Espelho preferencial fora da faixa." };
   const steps = Math.max(2, Math.round(input.rise / preferred));
@@ -51,3 +51,4 @@ export function openingSchedule(openings: readonly OpeningScheduleItem[]) {
   }
   return [...groups.values()].sort((a, b) => a.type.localeCompare(b.type) || a.width - b.width || a.height - b.height);
 }
+

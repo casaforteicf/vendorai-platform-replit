@@ -1,3 +1,4 @@
+import { architecturalSlabVoids, rectangularSolidCells } from "./conceptArchitecturalSlabVoids";
 import type { ArchitecturalModel } from "./conceptArchitecturalModel";
 
 /** Shared readonly projections; metres in plan, elevation in 3D.
@@ -21,30 +22,16 @@ export function architecturalPlanPrimitives(model: ArchitecturalModel): PlanPrim
   const items: PlanPrimitive[] = [];
   for (const slab of model.slabs) {
     items.push({ id: slab.id, kind: "slab", floor: slab.floor, x: slab.x, y: slab.y, width: slab.width, depth: slab.depth });
-    slab.voids.forEach((opening, index) => items.push({ id: `${slab.id}:void:${index}`, kind: "slab-void", floor: slab.floor, ...opening }));
+    architecturalSlabVoids(model, slab).forEach((opening, index) => items.push({ id: `${slab.id}:void:${index}`, kind: "slab-void", floor: slab.floor, ...opening }));
   }
   for (const stair of model.stairs) items.push({ id: stair.id, kind: "stair", floor: stair.floor, x: stair.x, y: stair.y, width: stair.width, depth: stair.run });
   for (const roof of model.roofs) items.push({ id: roof.id, kind: "roof", floor: null, x: roof.x - roof.overhang, y: roof.y - roof.overhang, width: roof.width + 2 * roof.overhang, depth: roof.depth + 2 * roof.overhang });
   return items;
 }
-/** Orthogonal slab cells subtract rectangular shafts, keeping openings clear in 3D. */
-function slabCells(x: number, y: number, width: number, depth: number, holes: { x: number; y: number; width: number; depth: number }[]) {
-  const xs = [...new Set([x, x + width, ...holes.flatMap(h => [h.x, h.x + h.width])])].sort((a, b) => a - b);
-  const ys = [...new Set([y, y + depth, ...holes.flatMap(h => [h.y, h.y + h.depth])])].sort((a, b) => a - b);
-  const cells: { x: number; y: number; width: number; depth: number }[] = [];
-  for (let ix = 0; ix < xs.length - 1; ix++) for (let iy = 0; iy < ys.length - 1; iy++) {
-    const x0 = xs[ix], y0 = ys[iy], w = xs[ix + 1] - x0, d = ys[iy + 1] - y0;
-    if (w <= 1e-9 || d <= 1e-9) continue;
-    const cx = x0 + w / 2, cy = y0 + d / 2;
-    if (holes.some(h => cx > h.x && cx < h.x + h.width && cy > h.y && cy < h.y + h.depth)) continue;
-    cells.push({ x: x0, y: y0, width: w, depth: d });
-  }
-  return cells;
-}
 export function architecturalSolidPrimitives(model: ArchitecturalModel): SolidPrimitive[] {
   const solids: SolidPrimitive[] = [];
   for (const slab of model.slabs) {
-    slabCells(slab.x, slab.y, slab.width, slab.depth, slab.voids).forEach((cell, index) => solids.push({
+    rectangularSolidCells(slab, architecturalSlabVoids(model, slab)).forEach((cell, index) => solids.push({
       id: `${slab.id}:solid:${index}`, kind: "slab", floor: slab.floor, ...cell,
       z: slab.elevation - slab.thickness, height: slab.thickness,
     }));
@@ -93,13 +80,14 @@ export function architecturalSceneGeometry(model: ArchitecturalModel, floor: num
 
 /** Keep generated room finishes clear wherever the authored floor has a shaft. */
 export function architecturalFloorCells(model: ArchitecturalModel | undefined, floor: number, cell: { x: number; y: number; width: number; height: number }) {
-  const holes = (model?.slabs ?? []).filter(slab => slab.floor === floor).flatMap(slab => slab.voids)
+  const holes = (model?.slabs ?? []).filter(slab => slab.floor === floor).flatMap(slab => architecturalSlabVoids(model!, slab))
     .map(hole => {
       const x = Math.max(cell.x, hole.x), y = Math.max(cell.y, hole.y);
       return { x, y, width: Math.min(cell.x + cell.width, hole.x + hole.width) - x,
         depth: Math.min(cell.y + cell.height, hole.y + hole.depth) - y };
     }).filter(hole => hole.width > 0 && hole.depth > 0);
   if (!holes.length) return [cell];
-  return slabCells(cell.x, cell.y, cell.width, cell.height, holes)
+  return rectangularSolidCells({ x: cell.x, y: cell.y, width: cell.width, depth: cell.height }, holes)
     .map(piece => ({ x: piece.x, y: piece.y, width: piece.width, height: piece.depth }));
 }
+

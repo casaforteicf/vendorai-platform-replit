@@ -12,7 +12,7 @@ import "./planner5d-reference.css";
 import "./concept-editor-workspace.css";
 import { ConceptIdeaEntry } from "./ConceptIdeaEntry";
 import { ConceptMetricInput } from "./ConceptMetricInput";
-import { emptyArchitecturalModel } from "./conceptArchitecturalModel";
+import { emptyArchitecturalModel, cloneArchitecturalModel } from "./conceptArchitecturalModel";
 import type { ArchitecturalModel } from "./conceptArchitecturalModel";
 const ConceptArchitecturalElementsPanel = lazy(() => import("./ConceptArchitecturalElementsPanel"));
 
@@ -197,6 +197,7 @@ type SpaceProfile = {
 };
 
 type EditorSnapshot = {
+  architecturalModel: ArchitecturalModel;
   rooms: Room[];
   customWalls: CustomWall[];
   customOpenings: CustomOpening[];
@@ -2512,6 +2513,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   };
 
   const snapshotEditor = (): EditorSnapshot => ({
+    architecturalModel: cloneArchitecturalModel(architecturalModel),
     rooms: roomsRef.current.map((room) => ({ ...room })),
     customWalls: customWallsRef.current.map((wall) => ({ ...wall })),
     customOpenings: customOpeningsRef.current.map((opening) => ({ ...opening })),
@@ -2540,6 +2542,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   });
 
   const cloneSnapshot = (snapshot: EditorSnapshot): EditorSnapshot => ({
+    architecturalModel: cloneArchitecturalModel(snapshot.architecturalModel),
     rooms: snapshot.rooms.map((room) => ({ ...room })),
     customWalls: snapshot.customWalls.map((wall) => ({ ...wall })),
     customOpenings: snapshot.customOpenings.map((opening) => ({ ...opening })),
@@ -2569,6 +2572,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
   const restoreSnapshot = (snapshot: EditorSnapshot) => {
     const cloned = cloneSnapshot(snapshot);
+    setArchitecturalModel(cloned.architecturalModel);
     setRooms(cloned.rooms);
     setCustomWalls(cloned.customWalls);
     setCustomOpenings(cloned.customOpenings);
@@ -2592,6 +2596,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const pushRoomHistory = (before: EditorSnapshot) => {
     setRoomHistory((history) => [...history.slice(-39), cloneSnapshot(before)]);
     setRoomFuture([]);
+  };
+
+  const changeArchitecturalModel = (next: ArchitecturalModel) => {
+    if (projectMaster) return;
+    if (JSON.stringify(next) === JSON.stringify(architecturalModel)) return;
+    pushRoomHistory(snapshotEditor());
+    setArchitecturalModel(cloneArchitecturalModel(next));
   };
 
   const beginRoomEdit = () => {
@@ -6132,8 +6143,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     selectedCustomWall,
     selectedOpening,
     selected,
-    roomHistory.length,
-    roomFuture.length,
+    roomHistory,
+    roomFuture,
+    architecturalModel,
     projectMaster,
     interactionMode,
   ]);
@@ -7501,7 +7513,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   {editorLibraryTab === "build" && (
                     <div className="mb-3">
                       <Suspense fallback={<div className="p-3 text-xs">Carregando elementos paramétricos...</div>}>
-                        <ConceptArchitecturalElementsPanel model={architecturalModel} onChange={setArchitecturalModel} floor={activeFloor} lotWidth={lotWidth} lotDepth={lotDepth} />
+                        <ConceptArchitecturalElementsPanel model={architecturalModel} onChange={changeArchitecturalModel} floor={activeFloor} lotWidth={lotWidth} lotDepth={lotDepth} />
                       </Suspense>
                     </div>
                   )}
@@ -11146,6 +11158,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     </div>
   );
 }
+
 
 
 
