@@ -36,7 +36,7 @@ export async function restoreConceptWithAudit(input: {
   }
   const requestFingerprint = restoreRequestFingerprint({
     actorUserId: input.actorUserId,
-    expectedUpdatedAt: input.expectedUpdatedAt.toISOString(),
+    expectedUpdatedAt: input.expectedUpdatedAt,
     rooms: input.rooms,
     openingOverrides: input.openingOverrides,
   });
