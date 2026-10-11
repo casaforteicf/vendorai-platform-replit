@@ -15,6 +15,8 @@ const furniture=z.object({id:z.string().min(1),tenantId:z.string(),projectId:z.s
 const payload=z.object({schemaVersion:z.literal(1),tenantId:z.string().min(1),projectId:z.string().min(1),roomId:z.string().min(1),
  revision:z.string().min(1),baseRevision:z.string().nullable().optional(),createdAt:z.string().datetime({offset:true}),furniture:z.array(furniture).max(500)}).strict();
 const scope=(req:Request)=>req.user?.tenantId??req.tenantId;
+const overlaps=(a:{xMm:number;yMm:number;widthMm:number;depthMm:number},b:{xMm:number;yMm:number;widthMm:number;depthMm:number})=>
+ a.xMm<b.xMm+b.widthMm+20&&a.xMm+a.widthMm+20>b.xMm&&a.yMm<b.yMm+b.depthMm+20&&a.yMm+a.depthMm+20>b.yMm;
 router.get("/arqdor/projects/:id/furniture",async(req:Request,res:Response)=>{
  const tenantId=scope(req),projectId=String(req.params.id);
  if(!tenantId)return res.status(401).json({error:"Tenant obrigatório"});
@@ -33,10 +35,14 @@ router.put("/arqdor/projects/:id/furniture/:roomId",async(req:Request,res:Respon
  const data=parsed.data;
  if(![tenantId,"local-preview"].includes(data.tenantId)||data.projectId!==projectId||data.roomId!==roomId)return res.status(403).json({error:"Projeto/tenant/ambiente incompatível"});
  const ids=new Set<string>(),partIds=new Set<string>();
+ const footprints:typeof data.furniture[number]["bounds"][]=[];
  if(roomId.length>160||projectId.length>160||JSON.stringify(data).length>1500000||data.furniture.reduce((count,f)=>count+f.parts.length,0)>5000)return res.status(400).json({error:"Limite do projeto excedido"});
  for(const f of data.furniture){
   if(ids.has(f.id)||f.tenantId!==data.tenantId||f.projectId!==projectId||f.roomId!==roomId||f.bounds.id!==f.id||f.bounds.roomId!==roomId||
    f.bounds.xMm<0||f.bounds.yMm<0||f.bounds.xMm+f.bounds.widthMm>500000||f.bounds.yMm+f.bounds.depthMm>500000||f.parameters.furnitureId!==f.id||f.parameters.tenantId!==data.tenantId||f.parameters.projectId!==projectId||f.parameters.roomId!==roomId)return res.status(400).json({error:"Identidade inválida"});
+  if(!Number.isFinite(f.parameters.widthMm)||!Number.isFinite(f.parameters.depthMm)||f.parameters.widthMm!==f.bounds.widthMm||f.parameters.depthMm!==f.bounds.depthMm||
+    footprints.some(existing=>overlaps(existing,f.bounds)))return res.status(400).json({error:"Dimensões inconsistentes ou móveis sobrepostos"});
+  footprints.push(f.bounds);
   ids.add(f.id);
   for(const p of f.parts){if(partIds.has(p.id)||!p.materialId.trim()||p.furnitureId!==f.id||p.tenantId!==data.tenantId||p.projectId!==projectId)return res.status(400).json({error:"Peças inválidas"});partIds.add(p.id);}
  }
