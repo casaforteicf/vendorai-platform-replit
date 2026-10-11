@@ -70,10 +70,29 @@ if [[ "$ACTION" == rollback ]]; then
  REPLACED="${CURRENT}-failed-$(date -u +%s)"
  docker stop "$CURRENT" >/dev/null
  docker rename "$CURRENT" "$REPLACED"
- docker rename "$SAVED" "$CURRENT"
- docker start "$CURRENT" >/dev/null
- for _ in $(seq 1 30); do if check; then sed -i "s/^STATUS=PUBLISHED$/STATUS=ROLLED_BACK/" "$STATE"; echo ROLLBACK_HEALTH_200;log "ROLLBACK_OK";exit 0;fi;sleep 2;done
- echo ROLLBACK_HEALTH_FAILED;log "ROLLBACK_HEALTH_FAILED";exit 1
+ if ! docker rename "$SAVED" "$CURRENT"; then
+   docker rename "$REPLACED" "$CURRENT"
+   docker start "$CURRENT" >/dev/null || true
+   echo ROLLBACK_RENAME_FAILED; exit 1
+ fi
+ if ! docker start "$CURRENT" >/dev/null; then
+   docker rename "$CURRENT" "$SAVED"
+   docker rename "$REPLACED" "$CURRENT"
+   docker start "$CURRENT" >/dev/null || true
+   echo ROLLBACK_START_FAILED_ORIGINAL_RESTORED;exit 1
+ fi
+ for _ in $(seq 1 30); do
+   if check; then
+     tmpstate=$(mktemp "$ROOT/state/.rollback.XXXXXXXX")
+     sed 's/^STATUS=PUBLISHED$/STATUS=ROLLED_BACK/' "$STATE" > "$tmpstate"
+     chmod 600 "$tmpstate"; mv -f "$tmpstate" "$STATE"
+     echo ROLLBACK_HEALTH_200;log "ROLLBACK_OK";exit 0
+   fi
+   sleep 2
+ done
+ echo ROLLBACK_HEALTH_FAILED_MANUAL_RECOVERY_REQUIRED
+ log "ROLLBACK_HEALTH_FAILED"
+ exit 1
 fi
 # Publish only an image that was actually built and recorded with the requested commit.
 BUILDSTATE="$ROOT/state/$LOT"
