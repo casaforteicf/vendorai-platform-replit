@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { getUi20VisibleServices, type Ui20Module } from "@/lib/ui20ServiceVisibility";
 import { Link, useLocation } from "wouter";
 import { Bot, BriefcaseBusiness, Building2, CircleHelp, House, Megaphone, Ruler, Settings2, Store, Users } from "lucide-react";
 
@@ -21,15 +22,18 @@ const services = [
 type Props = {
   arqdorVisible: boolean;
   erpVisible: boolean;
+  modules?: Ui20Module[];
+  isAdmin?: boolean;
+  loading?: boolean;
 };
 
-export function ServiceTabsBar({ arqdorVisible, erpVisible }: Props) {
+export function ServiceTabsBar({ arqdorVisible, erpVisible, modules, isAdmin, loading }: Props) {
   const [location] = useLocation();
   const pathname = location.split("?")[0].replace(/\/$/, "") || "/";
-  const visible = useMemo(
-    () => services.filter((item) => (item.id !== "arqdor" || arqdorVisible) && (item.id !== "erp" || erpVisible)),
-    [arqdorVisible, erpVisible],
-  );
+  const visible = useMemo(() => {
+    const allowed = getUi20VisibleServices({ modules, isAdmin, arqdorEligible: arqdorVisible, loading });
+    return services.filter((item) => allowed.has(item.id) && (item.id !== "erp" || erpVisible));
+  }, [modules, isAdmin, arqdorVisible, erpVisible, loading]);
   const current = visible.find((item) => item.paths.some((path) =>
     pathname === path || (path !== "/" && pathname.startsWith(path + "/"))
   ))?.id;
