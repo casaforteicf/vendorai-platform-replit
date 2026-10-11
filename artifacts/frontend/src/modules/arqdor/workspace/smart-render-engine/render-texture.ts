@@ -8,16 +8,24 @@ export type CpuTexture = Readonly<{
  colorSpace?:"linear"|"srgb";
 }>;
 const fract=(v:number)=>v-Math.floor(v);
-export function sampleCpuTexture(texture:CpuTexture, uv:readonly [number,number]):Vec3 {
+// Texture payloads arrive as mutable arrays through Worker messages.
+// Validate every texture once per rendering strip/job; never skip validation for changed data.
+export function validateCpuTexture(texture:CpuTexture):void {
  const {width,height,channels,data,wrap}=texture;
  if(!Number.isInteger(width)||!Number.isInteger(height)||width<=0||height<=0||
-    width*height>4_194_304||data.length!==width*height*channels||
-    ![uv[0],uv[1]].every(Number.isFinite) ||
-    data.some(x=>!Number.isFinite(x)||x<0||x>1) ||
-    (wrap!=="repeat"&&wrap!=="clamp") ||
-    (texture.filter!==undefined&&texture.filter!=="nearest"&&texture.filter!=="bilinear") ||
+    width*height>4_194_304||(channels!==3&&channels!==4)||
+    !data||data.length!==width*height*channels||
+    data.some(x=>!Number.isFinite(x)||x<0||x>1)||
+    (wrap!=="repeat"&&wrap!=="clamp")||
+    (texture.filter!==undefined&&texture.filter!=="nearest"&&texture.filter!=="bilinear")||
     (texture.colorSpace!==undefined&&texture.colorSpace!=="linear"&&texture.colorSpace!=="srgb"))
-   throw Error("ARQDOR: textura CPU inválida");
+ throw Error("ARQDOR: textura CPU inválida");
+}
+
+export function sampleCpuTexture(texture:CpuTexture, uv:readonly [number,number]):Vec3 {
+ validateCpuTexture(texture);
+ const {width,height,channels,data,wrap}=texture;
+ if(!Number.isFinite(uv[0])||!Number.isFinite(uv[1]))throw Error("ARQDOR: UV inválida");
  const address=(n:number)=>wrap==="repeat"?fract(n):Math.max(0,Math.min(1,n));
  const toLinear=(n:number)=>texture.colorSpace==="srgb"?(n<=0.04045?n/12.92:Math.pow((n+0.055)/1.055,2.4)):n;
  const read=(x:number,y:number):Vec3=>{
