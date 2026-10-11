@@ -2,7 +2,7 @@
 # Installs VENDI04 structured runner into existing Contabo host + MCP.
 # Installation only. Does not build images, merge Git, or deploy production.
 set -Eeuo pipefail
-ROOT=/home/vendorai/vendorai-api-auth-test
+ROOT=${VENDI04_SOURCE_ROOT:-/home/vendorai/vendorai-api-auth-test}
 MCP=vendorai-mcp-contabo-fixed
 TMP=$(mktemp -d /tmp/vendi04-install.XXXXXX)
 chmod 700 "$TMP"
