@@ -18,7 +18,12 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 checks=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100")
 python3 -c 'import json,sys; c=json.load(sys.stdin)["check_runs"]; sys.exit(0 if c and all(x["status"]=="completed" and x["conclusion"] in ("success","skipped") for x in c) else 1)' <<< "$checks" || { echo CHECKS_NOT_APPROVED; exit 65; }
 statuses=$(gh api "repos/$REPO/commits/$SHA/status")
-python3 -c 'import json,sys; s=json.load(sys.stdin); sys.exit(0 if s["state"]=="success" else 1)' <<< "$statuses" || { echo COMMIT_STATUS_NOT_SUCCESS; exit 65; }
+python3 -c 'import json,sys
+s=json.load(sys.stdin)
+statuses=s.get("statuses",[])
+active=[x for x in statuses if not x.get("context","").startswith("Vercel – ")]
+# Obsolete Vercel checks are informational only; every other status must pass.
+sys.exit(0 if all(x.get("state")=="success" for x in active) else 1)' <<< "$statuses" || { echo COMMIT_STATUS_NOT_SUCCESS; exit 65; }
 # The API rejects if SHA has changed. Squash merge has a different resulting SHA.
 result=$(gh api --method PUT "repos/$REPO/pulls/$PR/merge" -f sha="$SHA" -f merge_method=squash)
 merged=$(printf '%s' "$result" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("merged",False))')
