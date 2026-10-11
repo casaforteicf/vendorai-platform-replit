@@ -39,6 +39,11 @@ export type OperationalChecklistItem = {
     widthMm?: number | null;
     heightMm?: number | null;
     depthMm?: number | null;
+    x1Mm?: number | null;
+    y1Mm?: number | null;
+    x2Mm?: number | null;
+    y2Mm?: number | null;
+    thicknessMm?: number | null;
     sourcePhotoPath?: string | null;
     note?: string | null;
     verified: boolean;
