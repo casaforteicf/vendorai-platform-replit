@@ -20,3 +20,18 @@ export function insertCabinetDraft(input:{
  return [...existing,{id,tenantId,projectId,roomId:room.id,parameters:{...draft.parameters,furnitureId:id},
  parts:draft.parts.map(p=>({...p,id:id+":"+p.id,furnitureId:id,edges:{...p.edges}})),bounds,status:"local-draft"}];
 }
+
+/** Update only the selected cabinet's footprint, retaining its part identity and materials. */
+export function repositionPlacedCabinet(input:{room:RoomBounds;items:readonly PlacedCabinet[];id:string;xMm:number;yMm:number}):PlacedCabinet[]{
+ const found=input.items.find(item=>item.id===input.id&&item.roomId===input.room.id);
+ if(!found)throw Error("Furniture not found in room");
+ const bounds={...found.bounds,xMm:input.xMm,yMm:input.yMm};
+ const check=validateFurniturePlacement(input.room,bounds,input.items.filter(item=>item.id!==input.id).map(item=>item.bounds),20);
+ if(!check.valid)throw Error("Furniture reposition rejected: "+check.reason);
+ return input.items.map(item=>item.id===input.id?{...item,bounds}:item);
+}
+/** Local draft removal; persisted removal requires an explicit subsequent Save. */
+export function removePlacedCabinet(items:readonly PlacedCabinet[],id:string):PlacedCabinet[]{
+ if(!items.some(item=>item.id===id))throw Error("Furniture not found");
+ return items.filter(item=>item.id!==id);
+}
