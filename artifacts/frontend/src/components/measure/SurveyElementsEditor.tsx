@@ -8,6 +8,7 @@ import { queueSurvey, readPendingSurvey, clearPendingSurvey } from "./offlineSur
 export type SurveyElement = {
   id: string;
   roomName: string;
+  floorIndex?: number;
   elementType: "wall" | "door" | "window" | "column" | "beam" | "electrical" | "plumbing" | "gas" | "other";
   label: string;
   widthMm?: number | null;
@@ -46,6 +47,7 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
     catch { setFeedback("Não foi possível manter cópia nesta sessão. Salve o levantamento."); }
   }, [items, dirty, disabled, storageKey]);
   const [roomName, setRoomName] = useState("");
+  const [floorIndex, setFloorIndex] = useState(0);
   const [label, setLabel] = useState("");
   const [kind, setKind] = useState<SurveyElement["elementType"]>("wall");
   const [width, setWidth] = useState("");
@@ -130,7 +132,7 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
       setFeedback("Informe X1, Y1, X2, Y2 e espessura válidos. Comprimento mínimo: 10 mm."); return;
     }
     if (kind === "door" || kind === "window") {
-      const wall = items.find((e) => e.id === wallId && e.elementType === "wall" && e.verified && e.roomName === roomName.trim());
+      const wall = items.find((e) => e.id === wallId && e.elementType === "wall" && e.verified && e.roomName === roomName.trim() && (e.floorIndex ?? 0) === floorIndex);
       if (!wall || !toDimension(width) || !toDimension(height) || offset.trim() === "" || !Number.isFinite(Number(offset)) || Number(offset) < 0 || (kind === "window" && (sill.trim() === "" || !Number.isFinite(Number(sill)) || Number(sill) < 0))) {
         setFeedback("Selecione parede conferida do ambiente e informe largura, altura, posição e peitoril."); return;
       }
@@ -140,7 +142,7 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
     const opening = kind === "door" || kind === "window" ? { wallId, offsetMm: Number(offset), sillHeightMm: kind === "window" ? Number(sill) : 0 } : {};
     const geometry = kind === "wall" ? {x1Mm:coords[0],y1Mm:coords[1],x2Mm:coords[2],y2Mm:coords[3],thicknessMm:toDimension(thickness)} : {};
     setDirty(true);
-    setItems((old) => [...old, { ...geometry, ...opening, id: crypto.randomUUID(), roomName: roomName.trim(), label: label.trim(), elementType: kind, widthMm: toDimension(width), heightMm: toDimension(height), sourcePhotoPath: photo || null, verified: false }]);
+    setItems((old) => [...old, { ...geometry, ...opening, id: crypto.randomUUID(), roomName: roomName.trim(), floorIndex, label: label.trim(), elementType: kind, widthMm: toDimension(width), heightMm: toDimension(height), sourcePhotoPath: photo || null, verified: false }]);
     setLabel(""); setWidth(""); setHeight(""); setFeedback("Elemento adicionado; salve para persistir.");
   }
   return <section className="mt-3 rounded-lg border p-3 space-y-3 print:hidden" aria-label="Elementos do levantamento">
@@ -153,6 +155,7 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
       </div>
     </div>}
     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <Input aria-label="Pavimento" type="number" min="0" max="49" value={floorIndex} onChange={e => setFloorIndex(Math.max(0, Math.min(49, Number(e.target.value) || 0)))} disabled={disabled}/>
       <Input aria-label="Ambiente" value={roomName} maxLength={120} onChange={(e)=>setRoomName(e.target.value)} placeholder="Ambiente (ex.: Cozinha)" disabled={disabled}/>
       <select aria-label="Tipo de elemento" value={kind} onChange={(e)=>setKind(e.target.value as SurveyElement["elementType"])} disabled={disabled} className="rounded-md border bg-background px-3 py-2 text-sm">{types.map(t=><option key={t} value={t}>{t}</option>)}</select>
       <Input aria-label="Identificação" value={label} maxLength={160} onChange={(e)=>setLabel(e.target.value)} placeholder="Parede A / Janela 01" disabled={disabled}/>
@@ -167,7 +170,7 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
     {(kind === "door" || kind === "window") && <div className="grid gap-2 sm:grid-cols-3">
       <select aria-label="Parede de referência" className="rounded-md border bg-background px-3 py-2 text-sm" value={wallId} onChange={(e)=>setWallId(e.target.value)} disabled={disabled}>
         <option value="">Selecione parede conferida</option>
-        {items.filter((e)=>e.elementType==="wall" && e.verified && e.roomName===roomName.trim()).map((w)=><option key={w.id} value={w.id}>{w.label}</option>)}
+        {items.filter((e)=>e.elementType==="wall" && e.verified && e.roomName===roomName.trim() && (e.floorIndex ?? 0) === floorIndex).map((w)=><option key={w.id} value={w.id}>{w.label}</option>)}
       </select>
       <Input aria-label="Deslocamento na parede em mm" value={offset} onChange={(e)=>setOffset(e.target.value)} placeholder="Distância desde início (mm)" disabled={disabled}/>
       {kind === "window" && <Input aria-label="Peitoril em mm" value={sill} onChange={(e)=>setSill(e.target.value)} placeholder="Peitoril (mm)" disabled={disabled}/>}
