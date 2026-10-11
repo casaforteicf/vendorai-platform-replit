@@ -1,7 +1,7 @@
 import { sampleDielectric } from "./render-glass";
 import { createRenderBvh, type Ray, type Vec3 } from "./render-bvh";
 import type { GeometryTransfer } from "./render-geometry-export";
-import { normalizePhysicalMaterial, sampleDiffuseHemisphere, samplePerfectReflection, type PhysicalMaterial } from "./render-physical-material";
+import { normalizePhysicalMaterial, sampleDiffuseHemisphere, samplePerfectReflection, sampleRoughMetalReflection, type PhysicalMaterial } from "./render-physical-material";
 
 const add=(a:Vec3,b:Vec3):Vec3=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
 const mul=(a:Vec3,b:Vec3):Vec3=>[a[0]*b[0],a[1]*b[1],a[2]*b[2]];
@@ -53,8 +53,8 @@ export function traceDiffusePath(input:{
       throughput=mul(throughput,mat.baseColor);
       continue;
     }
-    const sample=mat.metalness>=0.999 && mat.roughness<=0.02
-      ? samplePerfectReflection(ray.direction,normal,mat)
+    const sample=mat.metalness>=0.999
+      ? (mat.roughness<=0.02 ? samplePerfectReflection(ray.direction,normal,mat) : sampleRoughMetalReflection(ray.direction,normal,mat,random(),random()))
       : sampleDiffuseHemisphere(normal,random(),random(),mat);
     if(sample.pdf<=0)break;
     throughput=mul(throughput,sample.throughput);
