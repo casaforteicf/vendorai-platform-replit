@@ -538,6 +538,8 @@ router.post("/operational-checklists/runs/:runId/create-arqdor-draft", async (re
   const ids = elements.map((element) => element.id);
   if (new Set(ids).size !== ids.length) return void res.status(409).json({ error: "Identificadores duplicados" });
   const validPoint = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 1000000;
+  if (walls.some(w => w.thicknessMm == null || !Number.isFinite(w.thicknessMm) || w.thicknessMm < 50 || w.thicknessMm > 1000))
+    return void res.status(409).json({ error: "Cada parede deve ter espessura conferida entre 50 e 1000 mm" });
   if (walls.some((w) => ![w.x1Mm, w.y1Mm, w.x2Mm, w.y2Mm].every(validPoint) || Math.hypot((w.x2Mm ?? 0)-(w.x1Mm ?? 0), (w.y2Mm ?? 0)-(w.y1Mm ?? 0)) < 10))
     return void res.status(409).json({ error: "Paredes com coordenadas inválidas" });
   const endpoints = walls.flatMap((w) => [{ id:w.id, x:w.x1Mm!, y:w.y1Mm! }, { id:w.id, x:w.x2Mm!, y:w.y2Mm! }]);
@@ -548,9 +550,10 @@ router.post("/operational-checklists/runs/:runId/create-arqdor-draft", async (re
   }
   for (const opening of openings) {
     const parent = walls.find((wall) => wall.id === opening.wallId && wall.roomName === opening.roomName);
-    if (!parent || opening.offsetMm == null || opening.widthMm == null || opening.heightMm == null ||
+    if (!parent || !parent.verified || opening.offsetMm == null || opening.widthMm == null || opening.heightMm == null ||
         opening.widthMm <= 0 || opening.heightMm <= 0 || opening.offsetMm < 0 ||
         (opening.elementType === "window" && opening.sillHeightMm == null) ||
+        !Number.isFinite(opening.offsetMm) || !Number.isFinite(opening.widthMm) || !Number.isFinite(opening.heightMm) ||
         opening.offsetMm + opening.widthMm > Math.hypot(parent.x2Mm!-parent.x1Mm!,parent.y2Mm!-parent.y1Mm!) + 0.01)
       return void res.status(409).json({ error: "Abertura não posicionada ou inválida" });
   }
