@@ -238,6 +238,7 @@ const updateItemSchema = z.object({
     end: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }),
     millimeters: z.number().positive().max(1000000),
     label: z.string().trim().min(1).max(120),
+    photoPath: z.string().startsWith("/objects/").max(500).optional(),
     source: z.literal("manual_verified"),
   })).max(100).optional(),
   status: z.enum(["nao_conferido", "conferido", "divergente", "nao_executado", "resolvido"]).optional(),
@@ -253,6 +254,9 @@ router.patch("/operational-checklists/runs/:runId/items/:itemId", async (req, re
   if (run.status === "concluido") return void res.status(409).json({ error: "Checklist concluído não pode ser alterado" });
 
   const itemId = String(req.params.itemId);
+  const targetItem = (run.items ?? []).find((item) => item.id === itemId);
+  if (parsed.data.photoMeasurements?.some((m) => m.photoPath && !targetItem?.fotos?.includes(m.photoPath)))
+    return void res.status(422).json({ error: "Cota vinculada a fotografia inexistente neste item" });
   let found = false;
   const items = (run.items ?? []).map((item) => {
     if (item.id !== itemId) return item;
