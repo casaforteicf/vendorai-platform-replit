@@ -14,16 +14,19 @@ export function createRenderCaptureCoordinator() {
  };
  const acceptSnapshot=(token:number,snapshot:RenderSceneSnapshot)=>{
    if(!active||active.token!==token||active.error)return false;
+   if(active.snapshot)return false;
    active.snapshot=snapshot;
    return true;
  };
  const acceptGeometry=(token:number,geometry:GeometryTransfer)=>{
    if(!active||active.token!==token||active.error)return false;
+   if(active.geometry)return false;
    active.geometry=geometry;
    return true;
  };
  const fail=(token:number,message:string)=>{
    if(!active||active.token!==token)return false;
+   if(active.error)return false;
    active.error=message||"Falha na captura";
    return true;
  };
