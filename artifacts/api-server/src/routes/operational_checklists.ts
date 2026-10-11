@@ -308,6 +308,8 @@ router.patch("/operational-checklists/runs/:runId/items/:itemId", async (req, re
   if (parsed.data.status === "resolvido" &&
       (!targetItem || targetItem.status !== "divergente" || !parsed.data.resolutionReason || !req.user?.sub))
     return void res.status(422).json({error:"Resolução exige item divergente, justificativa e usuário autenticado"});
+  if (parsed.data.status === "resolvido" && (parsed.data.larguraConferida !== undefined || parsed.data.alturaConferida !== undefined))
+    return void res.status(422).json({error:"Alteração de medidas e aprovação são operações separadas"});
   if (parsed.data.status === "conferido")
     return void res.status(422).json({error:"A conferência deve ser calculada pelas medidas"});
   let found = false;
