@@ -68,3 +68,9 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - Bloqueios identificados: `artifacts/mobile/package.json` ainda usa variáveis REPLIT_* no script de desenvolvimento; build e assinatura em dispositivos não verificados; ícone deve usar original aprovado; permissões de microfone/notificações precisam de testes; draft IndexedDB web não é uma implementação nativa de persistência Expo.
 - Não editar ou publicar pacote sem confirmação de capacidades, autenticação e isolamento entre tenants.
 - Pendente: rodar auditoria e typecheck em ambiente com dependências; executar build EAS preview e testar login, sessão, Arqdor, câmera, notificações, logout e proteção dos dados nos aparelhos. Sem publicação em lojas.
+
+
+## MULTI-05.1 — Execução local sem Replit
+- Alterado `artifacts/mobile/package.json`: `dev` agora executa `expo start --localhost` sem `REPLIT_*`, `EXPO_PACKAGER_PROXY_URL`, `REACT_NATIVE_PACKAGER_HOSTNAME` ou `$PORT`. Adicionado `dev:lan` com `expo start --lan` para testes em celular na mesma rede e `audit:readiness` para a auditoria local.
+- Comandos no workspace mobile: `pnpm dev` (localhost), `pnpm dev:lan` (LAN) e `pnpm audit:readiness`. O aplicativo ainda depende de variáveis próprias de configuração de API/autenticação que devem ser verificadas em execução; não foram inventadas nem alteradas.
+- É apenas correção do script local; builds EAS, credenciais, status da API, testes Android/iOS e publicação permanecem sem validação. Nenhum merge/deploy efetuado.
