@@ -24,9 +24,13 @@ export function FurnitureWebGLPreview({items,selectedId,onSelect}:{items:readonl
     const scene=new T.Scene();scene.background=new T.Color(0xf8fafc);
     const camera=new T.PerspectiveCamera(45,1,.01,500);
     const nodes=buildFurnitureSceneNodes(items);
-    const extent=Math.max(2,...nodes.map(n=>Math.max(n.positionM.x+n.sizeM.x/2,n.positionM.z+n.sizeM.z/2,n.sizeM.y)));
-    camera.position.set(extent*1.5,extent*1.2,extent*1.5);
-    const target=new T.Vector3(extent/2,0,extent/2);camera.lookAt(target);
+    const bounds=new T.Box3();
+    for(const n of nodes){const half=new T.Vector3(n.sizeM.x/2,n.sizeM.y/2,n.sizeM.z/2),p=new T.Vector3(n.positionM.x,n.positionM.y,n.positionM.z);bounds.expandByPoint(p.clone().sub(half));bounds.expandByPoint(p.clone().add(half));}
+    const target=nodes.length?bounds.getCenter(new T.Vector3()):new T.Vector3(0,0,0);
+    const dimensions=nodes.length?bounds.getSize(new T.Vector3()):new T.Vector3(2,2,2);
+    const extent=Math.max(2,dimensions.x,dimensions.y,dimensions.z);
+    camera.position.set(target.x+extent*1.5,target.y+extent*1.2,target.z+extent*1.5);
+    camera.lookAt(target);
     scene.add(new T.AmbientLight(0xffffff,.85));
     const sun=new T.DirectionalLight(0xffffff,.7);sun.position.set(3,8,5);scene.add(sun);
     const ground=new T.GridHelper(Math.max(extent*2,4),20,0x94a3b8,0xe2e8f0);scene.add(ground);
@@ -52,7 +56,7 @@ export function FurnitureWebGLPreview({items,selectedId,onSelect}:{items:readonl
     const up=(e:PointerEvent)=>{dragging=false;if(moved)return;const rect=renderer.domElement.getBoundingClientRect();pointer.set(((e.clientX-rect.left)/rect.width)*2-1,-((e.clientY-rect.top)/rect.height)*2+1);raycaster.setFromCamera(pointer,camera);const hit=raycaster.intersectObjects(meshes)[0];if(hit?.object?.userData?.furnitureId)onSelectRef.current?.(hit.object.userData.furnitureId);};
     const wheel=(e:WheelEvent)=>{e.preventDefault();distance=Math.max(.5,Math.min(extent*8,distance*Math.exp(e.deltaY*.001)));};
     renderer.domElement.addEventListener("pointerdown",down);renderer.domElement.addEventListener("pointermove",move);renderer.domElement.addEventListener("pointerup",up);renderer.domElement.addEventListener("wheel",wheel,{passive:false});
-    const cleanupListeners=()=>{renderer.domElement.removeEventListener("pointerdown",down);renderer.domElement.removeEventListener("pointermove",move);renderer.domElement.removeEventListener("pointerup",up);renderer.domElement.removeEventListener("wheel",wheel);};
+    const cleanupListeners=()=>{renderer.domElement.removeEventListener("pointerdown",down);renderer.domElement.removeEventListener("pointermove",move);renderer.domElement.removeEventListener("pointerup",up);renderer.domElement.removeEventListener("pointercancel",cancel);renderer.domElement.removeEventListener("wheel",wheel);};
     (host as any).__webglCleanup=cleanupListeners;
     function animate(){if(disposed)return;for(const mesh of meshes){mesh.material.color.setHex(mesh.userData.furnitureId===selectedRef.current?0x8b5cf6:0xbab0e6);}render();frame=requestAnimationFrame(animate);}
     animate();
