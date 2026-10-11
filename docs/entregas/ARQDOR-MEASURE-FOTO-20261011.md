@@ -227,3 +227,9 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - Backend rejeita tentativa de marcar conferido manualmente e pedido que edita medidas e aprova divergencia simultaneamente.
 - Frontend pede a justificativa antes de acionar a API.
 - Pendente: trilha imutavel de multiplas aprovacoes, permissoes especificas para aprovador e testes integrados; nenhuma compilacao/homologacao comprovada, sem merge/deploy.
+
+## Lote 32 — validacao BIM de paredes e aberturas (11/10/2026)
+- Servidor exige espessura real conferida para cada parede: entre 50 e 1000 mm. Nao inventa mais o valor padrao de 150 mm ao criar o rascunho.
+- Aberturas sao rejeitadas caso a parede vinculada nao esteja conferida; medidas e deslocamentos devem ser finitos.
+- Previa do conversor Arqdor aplica a mesma validacao de espessura, mostrando alerta ao tecnico se faltar.
+- Pendente: testes de compilacao e integracao BIM, geometria por pavimento, identificacao de ambientes, fluxo de atualizacao controlada de projetos existentes e homologacao. Nao houve merge nem deploy.
