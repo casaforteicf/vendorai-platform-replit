@@ -220,3 +220,10 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - Frontend exibe tolerância em mm, aviso para dimensões originais ainda não conferidas e alerta quando diferença absoluta supera a tolerância.
 - Pendentes para lote 30 completo: fluxo formal de resolução de divergências com justificativa e aprovação; cálculo por item/unidade; testes de regressão, validações reais e homologação.
 - Código registrado, sem build/testes executados, sem merge/deploy em produção.
+
+## Lote 31 — aprovacao de divergencia (11/10/2026)
+- Backend exige justificativa entre 15 e 2000 caracteres e usuario autenticado para mudar um item divergente para resolvido.
+- Registra motivo, aprovador, horario e deltas no registro JSONB do item; alteracao posterior das medidas invalida resolucao.
+- Backend rejeita tentativa de marcar conferido manualmente e pedido que edita medidas e aprova divergencia simultaneamente.
+- Frontend pede a justificativa antes de acionar a API.
+- Pendente: trilha imutavel de multiplas aprovacoes, permissoes especificas para aprovador e testes integrados; nenhuma compilacao/homologacao comprovada, sem merge/deploy.
