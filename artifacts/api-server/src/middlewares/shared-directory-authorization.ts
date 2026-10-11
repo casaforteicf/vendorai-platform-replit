@@ -15,5 +15,12 @@ export const authorizeSharedDirectory: RequestHandler = (req, res, next) => {
     next();
     return;
   }
+  // Relationship actions (e.g. following a directory company) create a
+  // connection record, not a mutation of the shared directory entry itself,
+  // so an authenticated tenant may perform them without Super Admin.
+  if (/\/companies\/[^/]+\/follow(?:[/?]|$)/.test(req.originalUrl ?? "")) {
+    next();
+    return;
+  }
   res.status(403).json({ error: "Shared directory changes require Super Admin" });
 };
