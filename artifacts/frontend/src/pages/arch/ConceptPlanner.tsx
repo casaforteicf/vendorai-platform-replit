@@ -1822,6 +1822,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     }
 
     const sendRequest = async () => {
+      if (revisionAutosaveEnabled && revisionConflictRef.current) throw new Error("Conflito pendente. Gravação bloqueada até revisar o projeto.");
+      if (revisionAutosaveEnabled && targetId && !conceptRevisionRef.current) throw new Error("Revisão do projeto indisponível.");
       const response = await fetch(
         targetId ? `/api/arch/concept-projects/${targetId}` : "/api/arch/concept-projects",
         {
