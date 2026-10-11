@@ -18,7 +18,7 @@ export function createRenderCaptureCoordinator() {
    return true;
  };
  const acceptGeometry=(token:number,geometry:GeometryTransfer)=>{
-   if(!active||active.token!==token)return false;
+   if(!active||active.token!==token||active.error)return false;
    active.geometry=geometry;
    return true;
  };
