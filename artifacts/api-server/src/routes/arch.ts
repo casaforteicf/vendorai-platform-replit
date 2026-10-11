@@ -73,7 +73,7 @@ import {
 } from "@workspace/db";
 import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { authenticate } from "../middlewares/auth.js";
+import { authenticate, requireRole } from "../middlewares/auth.js";
 import { vendorPool } from "../lib/vendorDb";
 import { objectStorageClient, ObjectStorageService } from "../lib/objectStorage.js";
 import { captureGeneratedMedia } from "../services/media-library.js";
@@ -8749,7 +8749,7 @@ router.put("/arqdor/projects/:id", authenticate, async (req, res) => {
 // MULTI-04 — explicit conditional save for future offline sync clients.
 // This does NOT change legacy PUT /arqdor/projects/:id behavior.
 // PostgreSQL xmin is a row MVCC token; server atomically rechecks it at UPDATE.
-router.get("/arqdor/projects/:id/revision", authenticate, async (req, res) => {
+router.get("/arqdor/projects/:id/revision", authenticate, requireRole("super_admin", "tenant_admin"), async (req, res) => {
   const tid = tenantId(req);
   const id = String(req.params.id);
   if (!id.trim()) return res.status(400).json({ error: "Projeto inválido." });
@@ -8762,7 +8762,7 @@ router.get("/arqdor/projects/:id/revision", authenticate, async (req, res) => {
   return res.json({ id, revision: row.revision });
 });
 
-router.put("/arqdor/projects/:id/conditional", authenticate, async (req, res) => {
+router.put("/arqdor/projects/:id/conditional", authenticate, requireRole("super_admin", "tenant_admin"), async (req, res) => {
   const tid = tenantId(req);
   const id = String(req.params.id);
   const { expectedRevision, contextBlob } = req.body ?? {};
