@@ -21,10 +21,16 @@ async function tx<T>(mode:IDBTransactionMode,action:(store:IDBObjectStore)=>IDBR
 }
 export async function queuePhoto(key:string,file:File):Promise<void>{
  if(!key||!["image/jpeg","image/png","image/webp"].includes(file.type)||file.size<1||file.size>5*1024*1024)throw Error("Invalid offline photo");
- await tx("readwrite",s=>s.put({id:key,key,file,name:file.name,mime:file.type,savedAt:new Date().toISOString()}));
+ const existing=await listQueuedPhotos(key);
+ if(existing.length>=20) throw Error("Limite de 20 fotos pendentes por item");
+ await tx("readwrite",s=>s.put({id:crypto.randomUUID(),key,file,name:file.name,mime:file.type,savedAt:new Date().toISOString()}));
+}
+export async function listQueuedPhotos(key:string):Promise<PendingPhoto[]>{
+ const all=await tx<PendingPhoto[]>("readonly",s=>s.getAll());
+ return all.filter(x=>x.key===key).sort((a,b)=>a.savedAt.localeCompare(b.savedAt));
 }
 export async function getQueuedPhoto(key:string):Promise<PendingPhoto|undefined>{
- return tx("readonly",s=>s.get(key));
+ return (await listQueuedPhotos(key))[0];
 }
 export async function removeQueuedPhoto(key:string):Promise<void>{
  await tx("readwrite",s=>s.delete(key));
