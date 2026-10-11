@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { atrCommissionAllocationsTable, atrCommissionAdjustmentsTable, atrIdentityOriginsTable, atrOriginAgreementsTable, atrOriginAgreementCategoriesTable, db } from "@workspace/db";
 import { calculateAtrOriginShareCents, resolveAtrOriginParticipation } from "./atr-origin-rules.js";
 
@@ -24,8 +24,12 @@ export async function allocateAtrReceipt(input: {
 
   const agreements = await db.select().from(atrOriginAgreementsTable)
     .where(eq(atrOriginAgreementsTable.originTenantId,origin.originTenantId));
+  if (agreements.length === 0) return null;
+  // Disabled partner overrides must reach the resolver; filtering enabled=true
+  // would incorrectly fall back to a generic agreement. Scope the read to
+  // agreements belonging to the origin instead of loading other tenants.
   const categories = await db.select().from(atrOriginAgreementCategoriesTable)
-    .where(eq(atrOriginAgreementCategoriesTable.enabled,true));
+    .where(inArray(atrOriginAgreementCategoriesTable.agreementId, agreements.map(a => a.id)));
   const resolution = resolveAtrOriginParticipation({
     originTenantId:origin.originTenantId, originPartnerId:origin.originPartnerId,
     categoryCode:input.categoryCode, occurredAt:input.occurredAt,
