@@ -1,5 +1,5 @@
-import React, {useState} from "react";
-import {createFurnitureSnapshot} from "../../shared/furniture-project-snapshot";
+import React, {useEffect,useState} from "react";
+import {createFurnitureSnapshot,restoreFurnitureSnapshot} from "../../shared/furniture-project-snapshot";
 import type {InteriorEnvironment} from "./interior-environment";
 import type {CabinetDraft} from "../../shared/parametric-cabinet-core";
 import {insertCabinetDraft,type PlacedCabinet} from "../../shared/placed-cabinet-draft";
@@ -9,6 +9,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
   const [message,setMessage]=useState("");
   const [busy,setBusy]=useState(false);
   const [loadedRevision,setLoadedRevision]=useState<string|null>(null);
+  useEffect(()=>{setItems([]);setLoadedRevision(null);setMessage("");},[environment.projectId,environment.roomId]);
   const xs=environment.walls.flatMap(w=>[w.x1,w.x2]);
   const ys=environment.walls.flatMap(w=>[w.y1,w.y2]);
   const width=Math.round((Math.max(...xs)-Math.min(...xs))*1000);
@@ -36,6 +37,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
       const body={...snapshot,baseRevision:loadedRevision};
       const response=await fetch("/api/arqdor/projects/"+encodeURIComponent(environment.projectId)+"/furniture/"+encodeURIComponent(environment.roomId),
        {method:"PUT",headers:{"Content-Type":"application/json",...authHeaders()},credentials:"include",body:JSON.stringify(body)});
+      if(response.status===409)throw Error("Conflito de revisão: carregue a versão mais recente antes de salvar.");
       if(!response.ok)throw Error("Falha no salvamento ("+response.status+")");
       setLoadedRevision(snapshot.revision);
       setMessage("Mobiliário salvo no projeto.");
@@ -51,9 +53,8 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
       const data=await response.json();
       const snapshot=data.furnitureSnapshots?.[environment.roomId];
       if(!snapshot){setMessage("Nenhum mobiliário salvo para este ambiente.");return;}
-      const restored=createFurnitureSnapshot({tenantId:snapshot.tenantId,projectId:snapshot.projectId,
-        room:{id:environment.roomId,widthMm:width,depthMm:depth},revision:snapshot.revision,
-        createdAt:snapshot.createdAt,furniture:snapshot.furniture});
+      const restored=restoreFurnitureSnapshot(snapshot,{tenantId:snapshot.tenantId,projectId:environment.projectId,
+        room:{id:environment.roomId,widthMm:width,depthMm:depth}});
       if(restored.projectId!==environment.projectId||restored.roomId!==environment.roomId)throw Error("Contexto de projeto incompatível");
       setLoadedRevision(restored.revision);
       setItems(old=>[...old.filter(i=>i.roomId!==environment.roomId),...restored.furniture.map(item=>({...item,tenantId:"local-preview",parameters:{...item.parameters,tenantId:"local-preview"},parts:item.parts.map(part=>({...part,tenantId:"local-preview"}))}))]);
