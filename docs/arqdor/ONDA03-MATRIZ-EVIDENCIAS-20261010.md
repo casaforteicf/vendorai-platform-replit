@@ -109,4 +109,14 @@ A main avançou para d1219b301bf0777f0150e2f962f6e62d1b56103e durante a execuç�
 
 Comparação REST de #3422 contra main observou base b7dadf23c8d763811c7b73aa2006588704371032: 322 commits à frente e 87 atrás, com ancestral bcec19c509754628e71b048a835b54cf7cf654da. Isso exige conciliação dos arquivos existentes; não é seguro substituir a main pela árvore desse PR. #3466 foi observado com mergeable=false após novos avanços concorrentes da main. Esses conflitos permanecem pendentes.
 
-Os commits criados pelo conector têm autor/committer vendorai@appvendorai.com e trailer de coautoria marcosreisdorfer@gmail.com. A exigência de autor/committer nesse e-mail ainda precisa ser satisfeita antes da integração; coautoria não certifica a identidade do merge.
+Os commits criados pelo conector têm autor/committer vendorai@appvendorai.com e trailer de coautoria marcosreisdorfer@gmail.com. O e-mail solicitado consta na coautoria; a identidade do merge deverá ser conferida na integração.
+
+## Validação local ampliada — 2026-10-11
+
+Recuperados 246 arquivos textuais por REST; 1587 arquivos frontend/pacotes/config coincidem com blobs do SHA 5fa6038ec11e36a2ade5f6dd3b1bd5244a72ca8e, sem divergências. 145 assets binários não puderam ser obtidos: conector GitHub aceita somente UTF-8. Fonte local isolada; dependências existentes reaproveitadas. pnpm inicialmente tentou reinstalar dependências; foi usado verify-deps-before-run=false, sem alterar package/lock/config versionados.
+
+Vite compilou 4468 módulos e postbuild audit:bundle aprovou os oito limites críticos (EXIT 0), mas isso não certifica pacote completo com assets e dependências reinstaladas. Typecheck inicial EXIT 2; declarações dos pacotes internos foram geradas com tsc -b (EXIT 0), e nova rodada de typecheck foi iniciada.
+
+A suíte completa do frontend encontrou erro de sintaxe em conceptSitePlacement.test.ts: um fragmento incompleto duplicava os dois cenários íntegros de polígono. Removido somente o fragmento inválido. Depois da correção: 59 arquivos / 407 testes passaram (EXIT 0), com pretest audit:ui aprovado no baseline. Os 407 incluem testes de cobertura anteriores: não somar contagens como se fossem cenários distintos.
+
+Sem homologação/publicação nesta execução. Status read-only Contabo agora mostra homolog/prod vendorai-api:main-d31b9de; não comprova release da Onda 03. Operador releaseStatus ONDA-03 falhou. Autorização mantida; aprovação final depende dos gates completos.
