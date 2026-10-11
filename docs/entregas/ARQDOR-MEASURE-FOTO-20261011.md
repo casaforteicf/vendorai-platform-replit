@@ -98,3 +98,9 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - Em transação, cria registros novos em arch_projetos e arch_concept_projects, com vínculo ao lead/deal/proposta, owner do tenant, status briefing/draft e referência textual à revisão de origem.
 - UI na tela de conferência solicita confirmação e exibe identificador criado; não sobrescreve projetos existentes, não libera fabricação e não altera produção.
 - **PENDÊNCIAS CRÍTICAS ANTES DE HOMOLOGAR:** endpoint ainda não é idempotente (cliques repetidos podem criar rascunhos duplicados), teste de concorrência entre alterações do checklist e criação de rascunho, confirmação de tipo do campo tenantId em users, teste transacional de integração, revisão de autorização por negócio/owner, topologia T/cruzamento, governança do dossiê/histórico, validação do editor no projeto criado e todos os gates de compilação. Não abrir PR/merge nem publicar.
+
+## Lote 11 — estabilização da criação de projeto (11/10/2026)
+- A criação do rascunho usa transação e advisory lock PostgreSQL por checklist + revisão, consulta o projeto marcado como origem e reutiliza o conceito já criado quando há repetição. Solicitações concorrentes da mesma origem ficam serializadas.
+- Resposta 200 com `reused: true` para reuso e 201 para criação. Frontend informa o resultado.
+- Critérios ainda a testar: a identificação por texto de descrição não tem índice/constraint exclusivo; evitar que alteração manual da descrição quebre a identidade, compatibilidade do `tx.execute` com driver, escopo de permissões, conflitos concorrentes de atualização do checklist, comportamento do editor e o caso de registro órfão.
+- Gates de compilação, testes e homologação **não executados**; código não foi publicado e não está pronto para PR.
