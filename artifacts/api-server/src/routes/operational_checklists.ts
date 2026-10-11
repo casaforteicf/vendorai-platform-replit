@@ -342,6 +342,7 @@ const uploadPhotoSchema = z.object({
   name: z.string().trim().min(1).max(180),
   contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
   dataBase64: z.string().min(8).max(11_000_000),
+  uploadId: z.string().uuid().optional(),
 });
 
 router.post("/operational-checklists/runs/:runId/items/:itemId/photos", async (req, res) => {
@@ -388,7 +389,7 @@ router.post("/operational-checklists/runs/:runId/items/:itemId/photos", async (r
       tenantId: run.tenantId, userId: req.user?.sub ?? null,
       type: "image", role: "source", source: "upload",
       storageUrl, originalFilename: name, mimeType: contentType, fileSize: buffer.length,
-      metadata: { origin: "arqdor_measure", leadId: run.leadId, dealId: run.dealId, runId: run.id, itemId, revision: run.revision },
+      metadata: { origin: "arqdor_measure", uploadId: parsed.data.uploadId, leadId: run.leadId, dealId: run.dealId, runId: run.id, itemId, revision: run.revision },
     }).returning();
     abandonedAssetId = asset.id;
     let persisted = false;
