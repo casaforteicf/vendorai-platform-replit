@@ -82,14 +82,14 @@ export function traceDiffusePath(input:{
         })));
       }
     }
-    if(mat.transmission>=0.999 && mat.roughness<=0.02){
+    if(mat.transmission>0 && mat.roughness<=0.02 && random()<mat.transmission){
       const event=sampleDielectric(ray.direction,outwardNormal,mat.ior,random());
       const offset=event.reflected ? normal : scale(normal,-1);
       ray={origin:add(hit.point,scale(offset,1e-4)),direction:event.direction};
       throughput=mul(throughput,mat.baseColor);
       continue;
     }
-    const sample=mat.metalness>=0.999
+    const sample=mat.metalness>=0.5
       ? (mat.roughness<=0.02 ? samplePerfectReflection(ray.direction,normal,mat) : sampleRoughMetalReflection(ray.direction,normal,mat,random(),random()))
       : sampleDiffuseHemisphere(normal,random(),random(),mat);
     if(sample.pdf<=0)break;
