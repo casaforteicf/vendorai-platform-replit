@@ -17,6 +17,7 @@ describe("ARQDOR real scene adapter",()=>{
   expect(result.camera.position).toEqual([0,0,4]);
   expect(result.geometry).toBe(geometry);
   expect(result.physicalMaterials?.paint?.roughness).toBe(0.8);
+  expect(result.physicalMaterials?.paint?.baseColor?.[0]).toBeCloseTo(0.21586,4);
  });
  it("rejects material IDs that were not captured on the corresponding mesh",()=>{
   const extra={...snapshot,materials:[...snapshot.materials,
