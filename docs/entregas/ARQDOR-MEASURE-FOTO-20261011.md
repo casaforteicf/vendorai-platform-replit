@@ -84,3 +84,10 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - O formato é baseado na estrutura de `ArchConceptConfiguration` já existente; não altera nenhum projeto, não aplica geometria no backend, não gera um projeto persistido e não libera produção.
 - **Pendências de segurança técnica:** validar topologia, portas/janelas sobrepostas após conversão, paredes contíguas, espaços fechados, vínculo por revisão e origem das medidas. A indicação `readyForReview` não significa aprovação BIM/fabricação.
 - Gates de frontend/API, testes e homologação permanecem pendentes. Não abrir PR/merge/deploy enquanto falharem ou não forem executados.
+
+## Lote 09 — revisão do pré-projeto e gates (11/10/2026)
+- Conversor passou a bloquear prévia pronta para revisão se uma parede tiver extremidade desconectada (tolerância de proximidade 5 mm), se houver IDs duplicados, abertura que ultrapasse parede ou aberturas sobrepostas.
+- UI exige confirmação explícita antes de permitir exportar um pacote JSON de pré-projeto. O pacote indica claramente `savedToArqdor: false`.
+- Criados testes Vitest do conversor: parede isolada, contorno retangular conectado e aberturas sobrepostas.
+- **Escopo efetivamente entregue**: preparação, revisão e exportação de rascunho; a gravação em `arch_concept_projects`, a integração com projeto existente, versionamento/rollback e geometria de fabricação seguem pendentes.
+- Testes adicionados mas não executados; gates de compilação e homologação não comprovados. Nenhum PR/merge/deploy.
