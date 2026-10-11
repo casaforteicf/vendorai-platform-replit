@@ -74,3 +74,10 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - Alterado `artifacts/mobile/package.json`: `dev` agora executa `expo start --localhost` sem `REPLIT_*`, `EXPO_PACKAGER_PROXY_URL`, `REACT_NATIVE_PACKAGER_HOSTNAME` ou `$PORT`. Adicionado `dev:lan` com `expo start --lan` para testes em celular na mesma rede e `audit:readiness` para a auditoria local.
 - Comandos no workspace mobile: `pnpm dev` (localhost), `pnpm dev:lan` (LAN) e `pnpm audit:readiness`. O aplicativo ainda depende de variáveis próprias de configuração de API/autenticação que devem ser verificadas em execução; não foram inventadas nem alteradas.
 - É apenas correção do script local; builds EAS, credenciais, status da API, testes Android/iOS e publicação permanecem sem validação. Nenhum merge/deploy efetuado.
+
+
+## MULTI-05.2 — Testes automatizados da configuração Expo
+- Adicionado `artifacts/mobile/scripts/mobile-readiness.test.mjs` com `node:test` e `node:assert`, sem nova dependência.
+- Cobertura: identificadores de pacote Android/iOS; perfil EAS preview interno/APK; scripts livres de variáveis Replit; entrada Expo Router; disponibilidade de auditoria/typecheck; referência ao ícone original e plugin de armazenamento seguro.
+- Acrescentado script `pnpm test:readiness` ao package mobile.
+- Este teste garante apenas consistência **estática de configuração**; não valida build nativo, permissões em execução, API, login, segurança da sessão, isolamento dos tenants ou publicação. Executar `pnpm test:readiness && pnpm audit:readiness && pnpm typecheck` no workspace mobile e então builds preview Android/iOS em homologação. **Nenhuma execução comprovada nesta sessão.**
