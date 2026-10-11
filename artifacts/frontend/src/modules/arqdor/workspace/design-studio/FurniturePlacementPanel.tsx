@@ -26,10 +26,39 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
   const [edit,setEdit]=useState({widthMm:1200,heightMm:2200,depthMm:600,materialId:"MDF-18"});
   const roomItems=items.filter(i=>i.roomId===environment.roomId);
   const selected=roomItems.find(item=>item.id===selectedId);
+  // Load the authoritative tenant and room revision before allowing edits or saves.
+  useEffect(()=>{
+    if(!environment.projectId||!ready)return;
+    let cancelled=false;
+    setBusy(true);
+    (async()=>{
+      try{
+        const token=localStorage.getItem("vendorai_token");
+        if(!token)throw Error("Sessão expirada. Faça login novamente.");
+        const response=await fetch("/api/arqdor/projects/"+encodeURIComponent(environment.projectId!)+"/furniture",{headers:{Authorization:"Bearer "+token},credentials:"include"});
+        if(!response.ok)throw Error("Falha ao abrir mobiliário ("+response.status+")");
+        const data=await response.json();
+        if(cancelled)return;
+        if(typeof data.tenantId!=="string"||!data.tenantId)throw Error("Tenant ausente");
+        const snapshot=data.furnitureSnapshots?.[environment.roomId];
+        const restored=snapshot?restoreFurnitureSnapshot(snapshot,{tenantId:data.tenantId,projectId:environment.projectId!,room:{id:environment.roomId,widthMm:width,depthMm:depth}}):null;
+        if(cancelled)return;
+        setSavedTenantId(data.tenantId);
+        setLoadedRevision(restored?.revision??null);
+        setItems(restored?.furniture??[]);
+        setSelectedId(null);
+        setMessage(restored?"Mobiliário carregado automaticamente.":"Ambiente pronto para inserir móveis.");
+      }catch(e){if(!cancelled)setMessage(e instanceof Error?e.message:"Falha ao abrir mobiliário");}
+      finally{if(!cancelled)setBusy(false);}
+    })();
+    return ()=>{cancelled=true;};
+  },[environment.projectId,environment.roomId,width,depth,ready]);
+
   function checkObstacles(item:PlacedCabinet){const collisions=findFurnitureObstacleClashes(item.bounds,environment.obstacles??[]);if(collisions.length)throw Error("Interferência com obstáculo: "+collisions.join(", "));}
   function add(){
     if(!draft){setMessage("Gere primeiro o armário paramétrico.");return;}
     if(!ready){setMessage("Ambiente sem medidas.");return;}
+    if(environment.projectId&&!savedTenantId){setMessage("Aguarde o carregamento do ambiente antes de editar.");return;}
 
     try{
       const tenantId=savedTenantId??roomItems[0]?.tenantId??draft.parameters.tenantId;
@@ -55,7 +84,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
   function authHeaders(){const token=localStorage.getItem("vendorai_token");if(!token)throw Error("Sessão expirada. Faça login novamente.");return {Authorization:"Bearer "+token};}
   async function save(){
     if(!ready||!environment.projectId){setMessage("É necessário salvar o projeto e ter geometria do ambiente.");return;}
-    if(!savedTenantId){setMessage("Carregue o mobiliário do projeto antes de salvar para validar o tenant e a revisão.");return;}
+    if(!savedTenantId){setMessage("O projeto ainda não foi carregado ou não está autorizado.");return;}
     setBusy(true);
     try{
       roomItems.forEach(checkObstacles);
@@ -103,7 +132,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
     {draft&&<p className="text-xs">Armário {draft.parameters.widthMm} × {draft.parameters.depthMm} mm · {draft.parts.length} tipos de peças.</p>}
     {ready?<><div className="grid grid-cols-2 gap-2">
       {([["X (mm)",x,setX],["Y (mm)",y,setY]] as const).map(([label,value,change])=><label key={label} className="text-xs">{label}<input type="number" className="w-full rounded border p-2" value={value} onChange={e=>change(Number(e.target.value))}/></label>)}
-    </div><button type="button" disabled={!draft} onClick={add} className="mt-2 rounded bg-violet-700 px-3 py-2 text-sm text-white">Inserir na planta</button>
+    </div><button type="button" disabled={!draft||busy||!savedTenantId} onClick={add} className="mt-2 rounded bg-violet-700 px-3 py-2 text-sm text-white">Inserir na planta</button>
     <svg viewBox={"0 0 "+width+" "+depth} className="mt-3 w-full border" role="img" aria-label="Planta esquemática de móveis">
       <rect width={width} height={depth} fill="#f8fafc" stroke="#334155" strokeWidth="12"/>
       {roomItems.map(i=><rect key={i.id} x={i.bounds.xMm} y={i.bounds.yMm} width={i.bounds.rotationDeg===90||i.bounds.rotationDeg===270?i.bounds.depthMm:i.bounds.widthMm} height={i.bounds.rotationDeg===90||i.bounds.rotationDeg===270?i.bounds.widthMm:i.bounds.depthMm} fill="#ddd6fe" stroke="#6d28d9" strokeWidth="10"/>)}
@@ -111,7 +140,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
     <button type="button" onClick={()=>setWebglPreview(value=>!value)} className="mt-2 rounded border px-3 py-2 text-xs">{webglPreview?"Ocultar prévia WebGL":"Abrir prévia WebGL experimental"}</button>
     {webglPreview&&<FurnitureWebGLPreview items={roomItems} selectedId={selectedId} onSelect={id=>{const item=roomItems.find(i=>i.id===id);if(!item)return;setSelectedId(id);setX(item.bounds.xMm);setY(item.bounds.yMm);setEdit({widthMm:item.parameters.widthMm,heightMm:item.parameters.heightMm,depthMm:item.parameters.depthMm,materialId:item.parameters.materialId});}}/>}
     <FurnitureAxonometricPreview items={roomItems} selectedId={selectedId} onSelect={id=>{const item=roomItems.find(candidate=>candidate.id===id);if(!item)return;setSelectedId(item.id);setX(item.bounds.xMm);setY(item.bounds.yMm);setEdit({widthMm:item.parameters.widthMm,heightMm:item.parameters.heightMm,depthMm:item.parameters.depthMm,materialId:item.parameters.materialId});}}/>
-    {!savedTenantId&&environment.projectId&&<p className="mt-2 text-xs text-amber-700">Antes do primeiro salvamento, use Carregar móveis para identificar o projeto e consultar sua revisão atual.</p>}
+    {!savedTenantId&&environment.projectId&&<p className="mt-2 text-xs text-amber-700">Carregando identidade e revisão do projeto. A edição será habilitada após a consulta.</p>}
     <div className="mt-2 flex gap-2"><button type="button" disabled={busy||!environment.projectId||!savedTenantId} onClick={save} className="rounded border px-3 py-2 text-xs">Salvar móveis</button><button type="button" disabled={busy||!environment.projectId} onClick={load} className="rounded border px-3 py-2 text-xs">Carregar móveis</button></div>
     {message&&<p role="alert" className="text-sm text-red-700">{message}</p>}
   </section>;
