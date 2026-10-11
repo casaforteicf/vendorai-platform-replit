@@ -137,6 +137,32 @@ export default function PhotoMeasureEditor({ itemId, offlineKey, imageUrl, onClo
     setMessage("Cota adicionada ao rascunho local. Exporte para preservar.");
   }
 
+  async function editMeasure(measure: PhotoMeasure) {
+    if (readOnly || saving) return;
+    const raw = window.prompt("Nova medida real em milímetros:", String(measure.millimeters));
+    if (raw === null) return;
+    const value = Number(raw.trim().replace(",", "."));
+    if (!Number.isFinite(value) || value <= 0 || value > 1000000) {
+      setMessage("Informe medida positiva válida (até 1.000.000 mm).");
+      return;
+    }
+    const changed = { ...measure, millimeters: value };
+    if (offlineKey && selectedQueuedId && !measure.photoPath) {
+      try {
+        await withPhotoTabLock(offlineKey, async () => {
+          const photo = (await listQueuedPhotos(offlineKey)).find(p => p.id === selectedQueuedId);
+          if (!photo || photo.uploadedPath) throw Error("Foto não está mais disponível para edição offline.");
+          await saveQueuedPhotoMeasurements(photo, (photo.measures ?? []).map(m => m.id === measure.id ? changed : m));
+        });
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : "Falha ao alterar a cópia offline.");
+        return;
+      }
+    }
+    setMeasures(old => old.map(m => m.id === measure.id ? changed : m));
+    setMessage("Cota alterada no rascunho. Sincronize para gravar no checklist.");
+  }
+
   function exportAnnotations() {
     const payload = {
       schemaVersion: 1,
@@ -234,7 +260,7 @@ export default function PhotoMeasureEditor({ itemId, offlineKey, imageUrl, onClo
       </div>
       {measures.length > 0 && (
         <div className="space-y-2">
-          {measures.map((m) => <div key={m.id} className="flex items-center justify-between gap-2 text-sm"><span>{m.label}: {m.millimeters} mm</span><Button size="sm" variant="ghost" disabled={readOnly} onClick={() => {
+          {measures.map((m) => <div key={m.id} className="flex items-center justify-between gap-2 text-sm"><span>{m.label}: {m.millimeters} mm</span><Button size="sm" variant="outline" disabled={readOnly || saving} onClick={() => { void editMeasure(m); }}>Editar medida</Button><Button size="sm" variant="ghost" disabled={readOnly || saving} onClick={() => {
             setMeasures(list => list.filter(entry => entry.id !== m.id));
             void removeOfflineMeasure(m.id).catch(() => setMessage("Falha ao remover cota da cópia offline."));
           }}>Remover</Button></div>)}
