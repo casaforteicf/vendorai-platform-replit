@@ -33,7 +33,7 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
       const raw = sessionStorage.getItem(storageKey);
       if (!raw || raw.length > 250000) return null;
       const payload = JSON.parse(raw);
-      return payload && Array.isArray(payload.items) && payload.items.length <= 200 && typeof payload.editedAt === "string" ? payload : null;
+      return payload && Array.isArray(payload.items) && payload.items.length <= 200 && typeof payload.editedAt === "string" && payload.items.every((e: unknown) => e && typeof e === "object" && typeof (e as SurveyElement).id === "string" && typeof (e as SurveyElement).elementType === "string") ? payload : null;
     } catch { return null; }
   });
   const [items, setItems] = useState<SurveyElement[]>(elements);
