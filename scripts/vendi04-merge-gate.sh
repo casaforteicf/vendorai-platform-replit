@@ -11,5 +11,6 @@ IFS=$'\t' read -r STATE DRAFT SHA MERGEABLE BASE URL <<< "$json"
 echo "PR=$URL"
 echo "EXPECTED_SHA=$EXPECTED"
 echo "ACTUAL_SHA=$SHA"
-[[ "$STATE" == open && "$DRAFT" == false && "$SHA" == "$EXPECTED" && "$MERGEABLE" == true ]] || { echo MERGE_GATE_BLOCKED;exit 65; }
+echo "BASE=$BASE"
+[[ "$STATE" == open && "$DRAFT" == false && "$SHA" == "$EXPECTED" && "$MERGEABLE" == true && "$BASE" == main ]] || { echo MERGE_GATE_BLOCKED;exit 65; }
 echo MERGE_GATE_ELIGIBLE_MANUAL_OR_OPERATOR_MERGE
