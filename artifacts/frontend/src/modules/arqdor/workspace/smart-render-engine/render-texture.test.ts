@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sampleCpuTexture, sampleMeshUv } from "./render-texture";
+import { sampleCpuTexture, sampleValidatedCpuTexture, validateCpuTexture, sampleMeshUv } from "./render-texture";
 import { traceDiffusePath } from "./render-diffuse-path";
 import type { GeometryTransfer } from "./render-geometry-export";
 const texture={width:1,height:1,channels:3 as const,wrap:"clamp" as const,data:[0.2,0.5,0.8]};
@@ -29,6 +29,11 @@ describe("ARQDOR CPU textures",()=>{
  it("rejects NaN UV coordinates before they reach pixel indexing",()=>{
   expect(()=>sampleMeshUv([0,0,Number.NaN,0,0,1],0,[1,0,0])).toThrow();
   expect(()=>sampleMeshUv([0,0,1,0,0,1],0,[Number.NaN,0,1])).toThrow();
+ });
+ it("prevalidates textures for the optimized inner-loop sampler",()=>{
+  validateCpuTexture(texture);
+  expect(sampleValidatedCpuTexture(texture,[0.3,0.4])).toEqual(sampleCpuTexture(texture,[0.3,0.4]));
+  expect(()=>validateCpuTexture({...texture,data:[-1,0,0]})).toThrow();
  });
  it("rejects malformed pixel buffers",()=>{
   expect(()=>sampleCpuTexture({...texture,data:[0.2]},[0,0])).toThrow();
