@@ -142,3 +142,11 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - Criados testes da política para owner/editor/viewer, divergência entre tenants/projetos/usuários, acesso convidado, IA, usuário inativo e ausência de vínculo.
 - **Não integrado ao endpoint ainda:** requer criar/validar migration com FK composta para tenant+project, validar que o usuário pertence ao mesmo tenant no banco, definir provisionamento de dono dos projetos existentes e mecanismo de convite/revogação; conectar query de membership ao backend e eliminar qualquer fallback permissivo. Até lá, as rotas experimentais continuam restritas ao piloto administrativo.
 - Sem build, migration, teste em banco, merge ou deploy; PR permanece draft.
+
+
+## MULTI-07.1 — Migração SQL preparada sem aplicar
+- Registrado export do esquema `arqdor_workspace_members` em `lib/db/src/schema/index.ts`.
+- Criada migração aditiva `lib/db/migrations/024_arqdor_workspace_members.sql`, com FK composta (projeto, tenant), papel owner/editor/viewer, índice e trigger que exige usuário ativo e pertencente ao mesmo tenant.
+- Por segurança, **não atribui proprietários automaticamente** em projetos históricos. A origem de cada projeto precisa ser confirmada antes do cadastro inicial dos membros.
+- Teste estático `node artifacts/api-server/scripts/test-arqdor-membership-migration.mjs` criado; **não executado** nesta sessão. É preciso avaliar a sequência de migrações do banco atual, colisões de numeração e rodar testes em banco isolado, homologação e revisão da política de migração.
+- A nova tabela **ainda não está conectada à API**; as rotas de sincronização seguem com restrição administrativa. Sem migração executada, merge ou deploy.
