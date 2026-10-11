@@ -13,12 +13,16 @@ arqdorRestoreRouter.post("/arch/concept-projects/:id/restore-reviewed", authenti
   // A public preproject guest token must never authorize restoration.
   // Only explicit full-account platform sessions are considered.
   if (!req.user?.sub || !req.user?.tenantId ||
-      !req.user?.platformRole || req.user.platformRole === "guest") {
+      !req.user?.platformRole || req.user.accessScope != null) {
     res.status(403).json({ error: "RESTORE_FULL_SESSION_REQUIRED" });
     return;
   }
   const payloadLength = Number(req.headers["content-length"] || "0");
   if (payloadLength > 2_000_000) {
+    res.status(413).json({ error: "RESTORE_TOO_LARGE" });
+    return;
+  }
+  if (Buffer.byteLength(JSON.stringify(req.body ?? {}), "utf8") > 2_000_000) {
     res.status(413).json({ error: "RESTORE_TOO_LARGE" });
     return;
   }
@@ -39,8 +43,8 @@ arqdorRestoreRouter.post("/arch/concept-projects/:id/restore-reviewed", authenti
       conceptId: String(req.params.id),
       operationId: parsed.data.operationId,
       expectedUpdatedAt: revision,
-      rooms: parsed.data.rooms as any,
-      openingOverrides: parsed.data.openingOverrides as any,
+      rooms: parsed.data.rooms,
+      openingOverrides: parsed.data.openingOverrides,
     });
     switch (result.status) {
       case "restored": res.status(200).json({ status: result.status, updatedAt: result.updatedAt }); return;
