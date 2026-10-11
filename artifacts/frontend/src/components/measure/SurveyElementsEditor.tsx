@@ -102,6 +102,20 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
       }
     } finally { setSaving(false); }
   }
+  function reviseElement(entry: SurveyElement) {
+    if (disabled || saving) return;
+    const raw = window.prompt("Nova largura em mm (deixe vazio para não informar):", entry.widthMm == null ? "" : String(entry.widthMm));
+    if (raw === null) return;
+    const parsed = raw.trim() === "" ? null : Number(raw.trim().replace(",", "."));
+    if (parsed !== null && (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1000000)) {
+      setFeedback("Largura inválida. Informe valor positivo em milímetros.");
+      return;
+    }
+    setDirty(true);
+    setReviewConfirmed(false);
+    setItems(previous => previous.map(item => item.id === entry.id ? { ...item, widthMm: parsed, verified: false } : item));
+    setFeedback("Medida revisada e conferência removida. Verifique novamente antes de salvar.");
+  }
   function toDimension(value: string): number | null { const n = Number(value.replace(",", ".")); return value.trim() && Number.isFinite(n) && n > 0 && n <= 1000000 ? n : null; }
   function add() {
     if (!roomName.trim() || !label.trim() || (width.trim() && toDimension(width) === null) || (height.trim() && toDimension(height) === null)) { setFeedback("Preencha ambiente, identificação e medidas válidas."); return; }
@@ -153,7 +167,7 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
       {kind === "window" && <Input aria-label="Peitoril em mm" value={sill} onChange={(e)=>setSill(e.target.value)} placeholder="Peitoril (mm)" disabled={disabled}/>}
     </div>}
     <Button size="sm" variant="outline" disabled={disabled} onClick={add}>Adicionar elemento</Button>
-    {items.map((entry)=><div key={entry.id} className="flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-sm"><span>{entry.roomName} · {entry.elementType} · {entry.label} · {entry.widthMm ?? "—"} × {entry.heightMm ?? "—"} mm {entry.verified ? "· Conferido" : "· Pendente"}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={disabled} onClick={()=>{setDirty(true);setItems(old=>old.map(e=>e.id===entry.id?{...e,verified:!e.verified}:e));}}>{entry.verified?"Reabrir":"Marcar conferido"}</Button><Button size="sm" variant="ghost" disabled={disabled} onClick={()=>{setDirty(true);setItems(old=>old.filter(e=>e.id!==entry.id));}}>Excluir</Button></div></div>)}
+    {items.map((entry)=><div key={entry.id} className="flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-sm"><span>{entry.roomName} · {entry.elementType} · {entry.label} · {entry.widthMm ?? "—"} × {entry.heightMm ?? "—"} mm {entry.verified ? "· Conferido" : "· Pendente"}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={disabled || saving} onClick={()=>reviseElement(entry)}>Revisar largura</Button><Button size="sm" variant="outline" disabled={disabled} onClick={()=>{setDirty(true);setItems(old=>old.map(e=>e.id===entry.id?{...e,verified:!e.verified}:e));}}>{entry.verified?"Reabrir":"Marcar conferido"}</Button><Button size="sm" variant="ghost" disabled={disabled} onClick={()=>{setDirty(true);setItems(old=>old.filter(e=>e.id!==entry.id));}}>Excluir</Button></div></div>)}
     {offlinePending && <Button size="sm" variant="outline" disabled={disabled || saving} onClick={() => { void recoverOffline(); }}>Recuperar pendência offline</Button>}
     <Button disabled={disabled||saving} onClick={() => { void saveWithOfflineFallback(); }}>{saving?"Salvando...":offlinePending?"Sincronizar levantamento":"Salvar levantamento"}</Button>
     <SurveyPlanPreview elements={items} />
