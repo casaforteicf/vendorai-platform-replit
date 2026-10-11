@@ -152,3 +152,9 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - `OperationalMeasurementChecklist` passa `offlineKey` delimitada por ID de usuário, ID de checklist, revisão e ID do item.
 - **Limites:** fila comporta uma foto por chave; guardar outra substitui a anterior; não há recuperação de cotas desenhadas mas ainda não salvas; expurgo ao logout e criptografia de IndexedDB não implementados. Upload confirmado com falha na remoção do arquivo local pode reaparecer na fila, exigindo tratamento de idempotência.
 - Compilação, testes E2E, segurança e homologação ainda não executados. Nenhum PR/merge/deploy.
+
+## Lote 19 — múltiplas fotografias offline (11/10/2026)
+- Fila IndexedDB agora grava cada imagem com UUID próprio e chave de contexto, com limite de 20 fotografias pendentes por item e lista ordenada por horário.
+- Editor apresenta quantidade de fotos pendentes, envia a primeira da fila através do upload autenticado existente e remove somente o registro da foto confirmada, por ID exclusivo.
+- **Pendências críticas:** associar e restaurar cotas de cada foto offline; recuperação automática de visualização da foto local quando se reabre o editor; idempotência completa quando upload remoto confirma mas exclusão local falha; validação em navegador real; limite combinado de fotos servidor + pendentes; rotina de logout/privacidade.
+- **Status:** código gravado na branch, builds/testes/homologação não executados, sem PR/merge/deploy.
