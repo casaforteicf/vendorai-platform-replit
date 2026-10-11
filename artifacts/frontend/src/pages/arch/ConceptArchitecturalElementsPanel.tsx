@@ -1,3 +1,4 @@
+import { ConceptArchitecturalDocumentation } from "./ConceptArchitecturalDocumentation";
 import { ConceptArchitecturalSchedule } from "./ConceptArchitecturalSchedule";
 import { duplicateArchitecturalElement } from "./conceptArchitecturalDuplication";
 import { ConceptSlabVoidsEditor } from "./ConceptSlabVoidsEditor";
@@ -132,6 +133,7 @@ export function ConceptArchitecturalElementsPanel({ model, onChange, floor, lotW
     <div className="space-y-1">{items.map((item, i) => <button key={item.value.id} type="button" onClick={() => choose(i)} className="block w-full rounded border p-2 text-left text-xs">{item.kind} · {item.value.id}</button>)}</div>
     {selectedItem?.kind === "slab" && <ConceptSlabVoidsEditor key={selectedItem.value.id} model={model} slab={selectedItem.value} onChange={onChange} />}
     <p className="text-xs text-slate-500">Área líquida de lajes: {qty.slabNetArea.toFixed(2)} m²</p>
+    <ConceptArchitecturalDocumentation model={model} />
     <ConceptArchitecturalSchedule model={model} />
     <ConceptArchitecturalPreview model={model} floor={floor} width={280} height={190} />
   </section>;
