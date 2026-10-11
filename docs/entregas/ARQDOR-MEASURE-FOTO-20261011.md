@@ -137,3 +137,11 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - Leitura do rascunho em `sessionStorage` passou a verificar estrutura básica dos elementos antes de oferecer recuperação.
 - A cópia local contém apenas elementos técnicos em JSON e referências às fotografias já vinculadas ao checklist; não guarda bytes de fotos.
 - **Não comprovado:** build real de frontend, teste no navegador, funcionamento offline e recuperação entre sessões diferentes do navegador. Sem merge nem deploy.
+
+## Lote 17 — fila local de levantamento e envio manual (11/10/2026)
+- Novo `offlineSurveyQueue.ts` usa IndexedDB no navegador para armazenar **somente** elementos técnicos em JSON (sem bytes de fotografias) quando não há conexão ou quando a requisição falha com erro de rede.
+- `SurveyElementsEditor` permite recuperar a pendência local e enviar manualmente pelo fluxo existente. O registro offline é apagado apenas depois de a API confirmar o salvamento.
+- Chave de isolamento inclui usuário autenticado, checklist, revisão e item, impedindo colisão normal de rascunhos entre contas.
+- Conflitos HTTP 409 e rejeições de validação **não** são reenviados automaticamente nem descartam alterações. A UI deve orientar a revisão manual.
+- **Limitações:** IndexedDB não é criptografado por esta mudança; o dispositivo deve ser confiável. Não há fila de uploads fotográficos, sincronização automática, serviço offline do aplicativo (PWA), testes de navegador, índices com expiração nem limpeza no logout. Nenhuma garantia de retenção quando o usuário limpa dados do navegador.
+- Nenhuma compilação ou teste integrado foi executado; sem PR, merge ou publicação.
