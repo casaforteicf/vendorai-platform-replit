@@ -233,7 +233,7 @@ const updateItemSchema = z.object({
   alturaConferida: z.number().nonnegative().nullable().optional(),
   localizacao: z.string().max(500).nullable().optional(),
   observacao: z.string().max(3000).nullable().optional(),
-  fotos: z.array(z.string().min(1)).max(20).optional(),
+  // Photos are only attached through the authenticated upload endpoint.
   surveyElements: z.array(z.object({
     id: z.string().uuid(),
     roomName: z.string().trim().min(1).max(120),
