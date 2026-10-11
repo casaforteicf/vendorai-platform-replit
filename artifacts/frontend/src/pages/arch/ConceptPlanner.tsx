@@ -1806,6 +1806,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       await creatingConceptRef.current.catch(() => null);
     }
     const targetId = conceptIdRef.current ?? conceptId;
+    if (revisionAutosaveEnabled && targetId && !conceptRevisionRef.current) {
+      setSaveState("error");
+      setSaveErrorMessage("Revisão do projeto indisponível. Atualize a página antes de salvar.");
+      return null;
+    }
 
     const request = (async () => {
       const response = await fetch(
