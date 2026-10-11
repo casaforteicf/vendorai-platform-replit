@@ -27,7 +27,6 @@ export function buildExperimentalRenderOptions(args: {
     Math.hypot(position[0]-target[0],position[1]-target[1],position[2]-target[2])<1e-6)
   throw Error("ARQDOR: câmera capturada inválida");
  const materials:Record<string,string>={};
- const physicalMaterials:NonNullable<DiffusePreviewOptions["physicalMaterials"]>={};
  const physical:Record<string,{baseColor:readonly [number,number,number];roughness:number;metalness:number}>={};
  for(const material of snapshot.materials){
   if(!/^#[0-9a-f]{6}$/i.test(material.baseColor)||
