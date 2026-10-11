@@ -718,6 +718,35 @@ const partialExecutionSchema = z.object({
   })).min(1),
 });
 
+// CRM-21/ORC-13/OBR-02: o fluxo de execução parcial tem dois caminhos de reserva —
+// este (lotes em work_cards) e o de /execution-lots (tabelas execution_lots). Para o
+// saldo não ser contado em dobro, cada caminho precisa enxergar as reservas do outro.
+// Esta leitura é TOLERANTE: se as tabelas execution_lots não existirem (ambiente onde
+// a migration do Lote 06 não foi aplicada), retorna vazio e o comportamento fica idêntico ao atual.
+async function readExecutionLotsReservedByIndex(
+  exec: { execute: (q: ReturnType<typeof sql>) => Promise<{ rows: Array<Record<string, unknown>> }> },
+  tenantId: string, dealId: string, proposalId: string,
+): Promise<Map<number, number>> {
+  const reserved = new Map<number, number>();
+  try {
+    const r = await exec.execute(sql`
+      SELECT i.source_item_id AS idx, i.quantity AS q
+      FROM execution_lot_items i
+      JOIN execution_lots l ON l.id = i.lot_id
+      WHERE i.tenant_id = ${tenantId} AND i.deal_id = ${dealId}
+        AND l.proposal_id = ${proposalId}
+        AND i.status <> 'cancelled' AND l.status <> 'cancelled'`);
+    for (const row of r.rows) {
+      const idx = Number(row.idx);
+      const q = Number(row.q);
+      if (Number.isInteger(idx) && Number.isFinite(q)) reserved.set(idx, (reserved.get(idx) ?? 0) + q);
+    }
+  } catch {
+    // Tabelas de execution_lots ausentes neste ambiente: nenhuma reserva adicional a considerar.
+  }
+  return reserved;
+}
+
 router.get("/deals/:id/execution-batches", async (req, res) => {
   const dealId = String(req.params.id);
   const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, dealId)).limit(1);
@@ -741,8 +770,9 @@ router.get("/deals/:id/execution-batches", async (req, res) => {
     const m = card.metadata as Record<string, unknown> | null;
     return m?.loteParcial === true && m?.propostaId === proposal.id;
   });
+  const lotReserved = await readExecutionLotsReservedByIndex(db, deal.tenantId, deal.id, proposal.id);
   const balances = proposal.itens.map((item, indice) => {
-    let enviada = 0;
+    let enviada = lotReserved.get(indice) ?? 0;
     for (const batch of batches) {
       const meta = batch.metadata as Record<string, unknown> | null;
       for (const row of (Array.isArray(meta?.itensLote) ? meta.itensLote : []) as Array<{indice?: unknown; quantidade?: unknown}>) {
@@ -854,6 +884,9 @@ router.post("/deals/:id/execution-batches", async (req, res) => {
         used.set(item.indice as number, (used.get(item.indice as number) ?? 0) + item.quantidade);
       }
     }
+    // Conta também as reservas feitas pelo caminho /execution-lots, para não alocar em dobro.
+    const lotReserved = await readExecutionLotsReservedByIndex(tx, deal.tenantId, deal.id, proposal.id);
+    for (const [indice, qty] of lotReserved) used.set(indice, (used.get(indice) ?? 0) + qty);
     const items = parsed.data.itens.map(i => {
       const original = freshProposal.itens[i.indice];
       if (!original) throw Object.assign(new Error("Item alterado na proposta; atualize os saldos."), { status: 409 });
