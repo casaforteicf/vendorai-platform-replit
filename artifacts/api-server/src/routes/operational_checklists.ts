@@ -445,7 +445,7 @@ router.post("/operational-checklists/runs/:runId/items/:itemId/photos", async (r
       )).limit(1);
       const [latest] = await db.select({ items: operationalChecklistRunsTable.items }).from(operationalChecklistRunsTable)
         .where(and(eq(operationalChecklistRunsTable.id, run.id), eq(operationalChecklistRunsTable.tenantId, run.tenantId))).limit(1);
-      if (existing && latest?.items?.some(item => item.id === itemId && (item.fotos ?? []).includes(existing.storageUrl))) {
+      if (existing && existing.metadata?.contentHash === contentHash && latest?.items?.some(item => item.id === itemId && (item.fotos ?? []).includes(existing.storageUrl))) {
         const accessUrl = await measureStorage.getObjectEntitySignedUrl(existing.storageUrl, 300);
         return void res.status(200).json({ assetId: existing.id, storageUrl: existing.storageUrl, accessUrl, reused: true });
       }
