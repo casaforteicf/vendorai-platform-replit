@@ -75,6 +75,7 @@ export default function OperationalMeasurementChecklist() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [photoItemId, setPhotoItemId] = useState<string | null>(null);
+  const [photoAccess, setPhotoAccess] = useState<Record<string, string>>({});
 
   async function api(path: string, init?: RequestInit) {
     const response = await fetch(path, {
@@ -105,6 +106,33 @@ export default function OperationalMeasurementChecklist() {
   }
 
   useEffect(() => { void load(); }, [dealId, token]);
+
+  async function loadPhoto(itemId: string, runId: string) {
+    try {
+      const result = await api(`/api/operational-checklists/runs/${runId}/items/${itemId}/photos`);
+      const last = result.photos?.at(-1);
+      if (last?.accessUrl) setPhotoAccess((prev) => ({ ...prev, [itemId]: last.accessUrl }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao consultar fotos.");
+    }
+  }
+
+  async function uploadPhoto(itemId: string, file: File): Promise<string> {
+    if (!data?.run) throw new Error("Conferência não iniciada.");
+    if (file.size > 5 * 1024 * 1024) throw new Error("Máximo de 5 MB por foto.");
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("Falha ao ler foto."));
+      reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+      reader.readAsDataURL(file);
+    });
+    const result = await api(`/api/operational-checklists/runs/${data.run.id}/items/${itemId}/photos`, {
+      method: "POST",
+      body: JSON.stringify({ name: file.name, contentType: file.type, dataBase64: base64 }),
+    });
+    setPhotoAccess((prev) => ({ ...prev, [itemId]: result.accessUrl }));
+    return result.accessUrl;
+  }
 
   async function start() {
     setBusy("start");
@@ -285,11 +313,11 @@ export default function OperationalMeasurementChecklist() {
                     </div>
                   </div>
                   <div className="mt-3 print:hidden">
-                    <Button size="sm" variant="outline" onClick={() => setPhotoItemId((current) => current === item.id ? null : item.id)}>
+                    <Button size="sm" variant="outline" onClick={() => { const next = photoItemId === item.id ? null : item.id; setPhotoItemId(next); if (next && data?.run) void loadPhoto(item.id, data.run.id); }}>
                       <Camera className="mr-2 h-4 w-4" /> {photoItemId === item.id ? "Fechar medição fotográfica" : "Medir na fotografia"}
                     </Button>
                     {photoItemId === item.id && (
-                      <PhotoMeasureEditor itemId={item.id} imageUrl={item.imagemUrl} initialMeasurements={item.photoMeasurements ?? []} readOnly={run.status === "concluido"} onSave={async (measurements) => {
+                      <PhotoMeasureEditor itemId={item.id} imageUrl={photoAccess[item.id] ?? item.imagemUrl} onUpload={(file) => uploadPhoto(item.id, file)} initialMeasurements={item.photoMeasurements ?? []} readOnly={run.status === "concluido"} onSave={async (measurements) => {
                         if (!data?.run) throw new Error("Conferência indisponível.");
                         const updated = await api(`/api/operational-checklists/runs/${data.run.id}/items/${item.id}`, {
                           method: "PATCH",
