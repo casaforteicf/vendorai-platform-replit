@@ -1,4 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
+import type { DraftScope, LocalDraft } from "@/lib/arqdorEncryptedDraft";
+import { verifyConflictRecoveryFile } from "@/lib/arqdorVerifiedConflictFile";
 import { compareArqdorSnapshots } from "@/lib/arqdorConflictCompare";
 import { backupReceiptMatches, type ConflictBackupIdentity, type VerifiedConflictBackupReceipt } from "@/lib/arqdorConflictBackupGate";
 
@@ -9,23 +11,32 @@ export function ArqdorConflictReview(props: {
   localSnapshot: unknown;
   remoteSnapshot: unknown;
   backupIdentity: ConflictBackupIdentity;
-  verifyEncryptedBackup: () => Promise<VerifiedConflictBackupReceipt>;
+  localDraft: LocalDraft;
+  authorizedScope: DraftScope;
   onKeepLocalCopy: () => void;
   onUseRemoteAfterBackup: () => void;
   onCancel: () => void;
 }) {
   const [receipt, setReceipt] = useState<VerifiedConflictBackupReceipt | null>(null);
+  const [passphrase, setPassphrase] = useState("");
   const [verifying, setVerifying] = useState(false);
   const [backupError, setBackupError] = useState("");
   const verified = backupReceiptMatches(props.backupIdentity, receipt);
-  async function verifyBackup() {
-    setVerifying(true); setReceipt(null); setBackupError("");
+  async function verifyBackup(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    setReceipt(null);
+    if (!file) return;
+    setVerifying(true); setBackupError("");
     try {
-      const result = await props.verifyEncryptedBackup();
+      const result = await verifyConflictRecoveryFile({
+        file, draft: props.localDraft, authorizedScope: props.authorizedScope,
+        identity: props.backupIdentity, passphrase,
+      });
       if (!backupReceiptMatches(props.backupIdentity, result)) throw new Error("BACKUP_RECEIPT_MISMATCH");
       setReceipt(result);
     } catch {
-      setBackupError("Não foi possível confirmar a cópia criptografada. Nenhuma alteração será descartada.");
+      setBackupError("Arquivo não verificado: a cópia não corresponde ao rascunho atual, à revisão ou à senha.");
     } finally { setVerifying(false); }
   }
   const differences = useMemo(
@@ -46,11 +57,16 @@ export function ArqdorConflictReview(props: {
       </ul>
       {differences.length >= 200 && <p role="alert" className="text-sm">Comparação limitada aos primeiros 200 campos. Exporte cópia antes de continuar.</p>}
       <div className="space-y-2">
-        <button type="button" className="rounded border px-3 py-2 disabled:opacity-50" disabled={verifying}
-          onClick={() => void verifyBackup()}>
-          {verifying ? "Verificando cópia…" : "Criar e verificar cópia criptografada"}
-        </button>
-        {verified && <p role="status" className="text-sm">Cópia verificada para esta revisão. Ainda pode ser necessário um backup externo para proteção contra perda de dados do dispositivo.</p>}
+        <label className="block text-sm">Senha do arquivo de recuperação
+          <input type="password" autoComplete="off" value={passphrase} className="block rounded border p-2"
+            onChange={event => { setPassphrase(event.target.value); setReceipt(null); }} />
+        </label>
+        <label className="inline-block rounded border px-3 py-2 text-sm">
+          Selecionar cópia criptografada salva e verificar
+          <input type="file" accept=".json,application/json" className="sr-only"
+            disabled={verifying || passphrase.length < 12} onChange={event => void verifyBackup(event)} />
+        </label>
+        {verified && <p role="status" className="text-sm">Arquivo selecionado descriptografado e comparado com o rascunho atual.</p>}
         {backupError && <p role="alert" className="text-sm">{backupError}</p>}
       </div>
       <div className="flex flex-wrap gap-2">
