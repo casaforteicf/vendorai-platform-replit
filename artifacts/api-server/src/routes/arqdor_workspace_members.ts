@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { and, eq, sql } from "drizzle-orm";
-import { db, arqdorWorkspaceMembersTable, arqdorWorkspaceProjectsTable, usersTable } from "@workspace/db";
+import { db, arqdorWorkspaceMembersTable, arqdorWorkspaceMemberAuditTable, arqdorWorkspaceProjectsTable, usersTable } from "@workspace/db";
 import { authenticate, requireRole } from "../middlewares/auth.js";
 
 /**
@@ -47,14 +47,19 @@ router.put("/arqdor/projects/:id/members/:userId", async (req, res) => {
       const [existing] = await tx.select({ permission: arqdorWorkspaceMembersTable.permission }).from(arqdorWorkspaceMembersTable)
         .where(and(eq(arqdorWorkspaceMembersTable.tenantId, tenantId), eq(arqdorWorkspaceMembersTable.projectId, projectId), eq(arqdorWorkspaceMembersTable.userId, userId))).limit(1);
       if (existing?.permission === "owner") return "owner-immutable" as const;
-      await tx.insert(arqdorWorkspaceMembersTable).values({ tenantId, projectId, userId, permission })
+      const changed = await tx.insert(arqdorWorkspaceMembersTable).values({ tenantId, projectId, userId, permission })
         .onConflictDoUpdate({
           target: [arqdorWorkspaceMembersTable.tenantId, arqdorWorkspaceMembersTable.projectId, arqdorWorkspaceMembersTable.userId],
           set: { permission },
-          // The owner role cannot be overwritten even if another transaction
-          // grants ownership between the initial read and this upsert.
+          // Guard the owner role in SQL against concurrent owner assignment.
           setWhere: sql`${arqdorWorkspaceMembersTable.permission} <> 'owner'`,
-        });
+        }).returning({ userId: arqdorWorkspaceMembersTable.userId });
+      if (!changed.length) return "owner-immutable" as const;
+      await tx.insert(arqdorWorkspaceMemberAuditTable).values({
+        tenantId, projectId, actorUserId: req.user!.sub, targetUserId: userId,
+        action: existing ? "change" : "grant",
+        previousPermission: existing?.permission ?? null, nextPermission: permission,
+      });
       return "ok" as const;
     });
     if (result !== "ok") return res.status(result === "not-found" ? 404 : result === "owner-immutable" ? 409 : 422).json({ error: result });
@@ -66,12 +71,20 @@ router.delete("/arqdor/projects/:id/members/:userId", async (req, res) => {
   if (!projectId.trim() || !userId.trim()) return res.status(400).json({ error: "Projeto ou usuário inválido." });
   try {
     // Atomic guard: owners can never be deleted by this route, including under concurrency.
-    const removed = await db.delete(arqdorWorkspaceMembersTable).where(and(
-      eq(arqdorWorkspaceMembersTable.tenantId, tenantId),
-      eq(arqdorWorkspaceMembersTable.projectId, projectId),
-      eq(arqdorWorkspaceMembersTable.userId, userId),
-      sql`${arqdorWorkspaceMembersTable.permission} <> 'owner'`,
-    )).returning({ userId: arqdorWorkspaceMembersTable.userId });
+    const removed = await db.transaction(async tx => {
+      const deleted = await tx.delete(arqdorWorkspaceMembersTable).where(and(
+        eq(arqdorWorkspaceMembersTable.tenantId, tenantId),
+        eq(arqdorWorkspaceMembersTable.projectId, projectId),
+        eq(arqdorWorkspaceMembersTable.userId, userId),
+        sql`${arqdorWorkspaceMembersTable.permission} <> 'owner'`,
+      )).returning({ userId: arqdorWorkspaceMembersTable.userId, previousPermission: arqdorWorkspaceMembersTable.permission });
+      if (!deleted.length) return deleted;
+      await tx.insert(arqdorWorkspaceMemberAuditTable).values({
+        tenantId, projectId, actorUserId: req.user!.sub, targetUserId: userId,
+        action: "revoke", previousPermission: deleted[0]!.previousPermission, nextPermission: null,
+      });
+      return deleted;
+    });
     if (!removed.length) return res.status(409).json({ error: "Nenhum colaborador removido; proprietário protegido ou vínculo ausente." });
     return res.json({ projectId, userId, revoked: true });
   } catch { return res.status(503).json({ error: "Não foi possível revogar acesso." }); }
