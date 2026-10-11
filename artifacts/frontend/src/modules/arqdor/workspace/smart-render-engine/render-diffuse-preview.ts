@@ -2,7 +2,7 @@ import type { RectAreaLight } from "./render-area-light";
 import type { DirectionalLight } from "./render-direct-light";
 import { encodeDisplayColor, type ToneMapping } from "./render-postprocess";
 import type { CpuMaterialMaps } from "./render-material-maps";
-import type { CpuTexture } from "./render-texture";
+import { validateCpuTexture, type CpuTexture } from "./render-texture";
 import type { CpuPreviewOptions, PreparedCpuPreview } from "./render-cpu-preview";
 import { traceDiffusePath } from "./render-diffuse-path";
 import type { PhysicalMaterial } from "./render-physical-material";
@@ -39,6 +39,7 @@ export function renderDiffusePreviewStrip(o:DiffusePreviewOptions,rowStart:numbe
  const rgba=new Uint8ClampedArray(width*rowCount*4);
  const mats:Record<string,Partial<PhysicalMaterial>>={...(o.physicalMaterials||{})};
  const meshIndex=new Map(o.geometry.meshes.map(mesh=>[mesh.meshId,mesh]));
+ for(const texture of Object.values(o.textures??{}))validateCpuTexture(texture);
  for(const [id,hex] of Object.entries(o.materials)){
    if(mats[id])continue;
    const baseColor:Vec3=/^#[0-9a-f]{6}$/i.test(hex)
@@ -52,7 +53,7 @@ export function renderDiffusePreviewStrip(o:DiffusePreviewOptions,rowStart:numbe
    const dx=(2*(x+jx)/width-1)*ratio*scale,dy=(1-2*(y+jy)/height)*scale;
    const direction=unit([forward[0]+right[0]*dx+up[0]*dy,forward[1]+right[1]*dx+up[1]*dy,forward[2]+right[2]*dx+up[2]*dy]);
    const color=traceDiffusePath({
-     geometry:o.geometry,prepared,meshIndex,textures:o.textures,materialMaps:o.materialMaps,directionalLight:o.directionalLight,areaLights:o.areaLights,ray:{origin:o.camera.position,direction},materials:mats,
+     geometry:o.geometry,prepared,meshIndex,textures:o.textures,texturesValidated:true,materialMaps:o.materialMaps,directionalLight:o.directionalLight,areaLights:o.areaLights,ray:{origin:o.camera.position,direction},materials:mats,
      sky:o.skyColor||[0.72,0.82,0.95],maxBounces:o.maxBounces??2,
      seed:(Math.imul(sample+1,2654435761)^Math.imul(y+1,2246822519)^Math.imul(x+1,3266489917))>>>0,
    });
