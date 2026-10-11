@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -43,6 +43,7 @@ import { LEAD_SOURCE_OPTIONS } from "@/lib/leadRegistration";
 
 const newLeadSchema = z.object({
   cadastroTipo: z.enum(["pessoa", "casal", "empresa", "negocio"]).default("pessoa"),
+  primaryContactIndex: z.union([z.literal(0), z.literal(1)]).default(0),
   nome: z.string().trim().min(2, "Nome é obrigatório"),
   telefone: z.string().optional().or(z.literal("")),
   email: z.string().email("Email inválido").optional().or(z.literal("")),
@@ -55,6 +56,7 @@ const newLeadSchema = z.object({
   profissao: z.string().optional().or(z.literal("")),
   endereco: z.string().optional().or(z.literal("")),
   documento: z.string().optional().or(z.literal("")),
+  dataNascimento: z.string().optional().or(z.literal("")),
   tipoPessoa: z.enum(["fisica", "juridica"]).default("fisica"),
   mercadoSegmento: z.string().optional().or(z.literal("")),
   cupomCodigo: z.string().optional().or(z.literal("")),
@@ -136,6 +138,8 @@ type EndCustomerDraft = {
 };
 
 type CoClientDraft = {
+  dataNascimento: string;
+  profissao: string;
   nome: string;
   telefone: string;
   email: string;
@@ -196,6 +200,7 @@ const DEFAULT_VALUES: NewLeadValues = {
   mercadoSegmento: "",
   cupomCodigo: "",
   createInitialDeal: true,
+  primaryContactIndex: 0,
   dealTitle: "",
   dealValue: "",
   dealStage: "em_aquecimento",
@@ -276,6 +281,9 @@ export function NewLeadDialog({
   onNavigate,
 }: Props) {
   const [open, setOpen] = useState(false);
+  // Synchronous lock: prevents double-click submitting two lead creations before React rerenders.
+  const submissionInFlight = useRef(false);
+  const registrationRequestIdRef = useRef<string | null>(null);
   const [showMore, setShowMore] = useState(false);
   const [showCommercial, setShowCommercial] = useState(false);
   const [extraContacts, setExtraContacts] = useState<ExtraCompanyContact[]>([]);
@@ -289,6 +297,8 @@ export function NewLeadDialog({
     funcao: "",
   });
   const [coClient, setCoClient] = useState<CoClientDraft>({
+    dataNascimento: "",
+    profissao: "",
     nome: "",
     telefone: "",
     email: "",
@@ -427,7 +437,7 @@ export function NewLeadDialog({
     setExtraContacts([]);
     setCommercialPartners([]);
     setEndCustomer({ enabled: false, nome: "", telefone: "", email: "", documento: "", funcao: "" });
-    setCoClient({ nome: "", telefone: "", email: "", documento: "", funcao: "" });
+    setCoClient({ dataNascimento: "", nome: "", telefone: "", email: "", documento: "", profissao: "", funcao: "" });
     setServerDuplicate(null);
     resetCoupon();
     form.reset(DEFAULT_VALUES);
@@ -597,9 +607,36 @@ export function NewLeadDialog({
       companyId = companyData.company?.id ?? null;
     }
 
+    // Commit both consumers and their deal relationships atomically when a deal exists.
+    if (values.cadastroTipo === "casal" && dealId) {
+      const coupleData = await crmPostJson<{ items: Array<{ personId: string }> }>(
+        `/api/crm/deals/${dealId}/couple`, {
+          tenantId,
+          contextualCompanyId: companyId,
+          registrationRequestId: registrationRequestIdRef.current ?? undefined,
+          primaryContactIndex: values.primaryContactIndex,
+          people: [
+            { nome: values.nome.trim(), telefone: values.telefone || undefined,
+              email: values.email || undefined, documento: values.documento || undefined,
+              dataNascimento: values.dataNascimento || undefined,
+              profissao: values.profissao?.trim() || undefined, source: values.source },
+            { nome: coClient.nome.trim(), telefone: coClient.telefone.trim() || undefined,
+              email: coClient.email.trim() || undefined, documento: coClient.documento.trim() || undefined,
+              dataNascimento: coClient.dataNascimento || undefined,
+              profissao: coClient.profissao.trim() || undefined, source: values.source },
+          ],
+        },
+      );
+      return {
+        personId: coupleData.items[0]?.personId,
+        coClientPersonId: coupleData.items[1]?.personId,
+        companyId,
+      };
+    }
+
     let personId: string | undefined;
 
-    if (companyId) {
+    if (companyId && values.cadastroTipo !== "casal") {
       const primaryContactData = await crmPostJson(`/api/crm/companies/${companyId}/contacts`, {
         tenantId,
         nome: values.nome.trim(),
@@ -631,6 +668,7 @@ export function NewLeadDialog({
         telefone: values.telefone || undefined,
         email: values.email || undefined,
         documento: values.documento || undefined,
+        dataNascimento: values.cadastroTipo === "casal" ? values.dataNascimento || undefined : undefined,
         source: values.source,
       });
       personId = personData.item?.id as string | undefined;
@@ -646,11 +684,16 @@ export function NewLeadDialog({
         telefone: coClient.telefone.trim() || undefined,
         email: coClient.email.trim() || undefined,
         documento: coClient.documento.trim() || undefined,
-        profissao: coClient.funcao.trim() || undefined,
+        dataNascimento: coClient.dataNascimento || undefined,
+        profissao: coClient.profissao.trim() || undefined,
         source: values.source,
       });
       coClientPersonId = secondPersonData.item?.id;
       if (!coClientPersonId) throw new Error("Não foi possível cadastrar o segundo cliente.");
+    }
+
+    if (values.cadastroTipo === "casal" && personId && coClientPersonId && personId === coClientPersonId) {
+      throw new Error("Os dois clientes foram identificados como a mesma pessoa no cadastro mestre. Revise CPF, telefone ou e-mail de cada cliente antes de continuar.");
     }
 
     if (!dealId) return { personId, coClientPersonId, companyId };
@@ -668,10 +711,10 @@ export function NewLeadDialog({
       await crmPostJson(`/api/crm/deals/${dealId}/people`, {
         tenantId,
         personId,
-        role: companyId ? "contato_comercial" : "consumidor_final",
-        isPrimary: true,
+        role: values.cadastroTipo === "casal" ? "consumidor_final" : companyId ? "contato_comercial" : "consumidor_final",
+        isPrimary: values.cadastroTipo !== "casal" || values.primaryContactIndex === 0,
         contextualCompanyId: companyId,
-        relationshipScope: companyId ? "persistent" : "deal_only",
+        relationshipScope: companyId && values.cadastroTipo !== "casal" ? "persistent" : "deal_only",
         metadata: values.cadastroTipo === "casal"
           ? { clientePrincipal: true, ordemClientePrincipal: 1, grupoCliente: "multiplo" }
           : undefined,
@@ -683,7 +726,7 @@ export function NewLeadDialog({
         tenantId,
         personId: coClientPersonId,
         role: "consumidor_final",
-        isPrimary: false,
+        isPrimary: values.primaryContactIndex === 1,
         relationshipScope: "deal_only",
         metadata: { clientePrincipal: true, ordemClientePrincipal: 2, grupoCliente: "multiplo" },
       });
@@ -763,13 +806,33 @@ export function NewLeadDialog({
         : { enabled: false };
 
       if (dealId) {
+        // Commission details must never travel in the generic participant mutation.
         await crmPostJson(`/api/crm/deals/${dealId}/people`, {
           tenantId,
           personId,
           role: partner.role,
           relationshipScope: "deal_only",
-          metadata: { leadId, commission },
+          metadata: { leadId },
         });
+        if (isAdmin && partner.hasCommission) {
+          const parsedValue = Number(partner.commissionValue.trim().replace(",", "."));
+          if (!partner.commissionValue.trim() || !Number.isFinite(parsedValue) ||
+              parsedValue < 0 || (partner.commissionKind === "percent" && parsedValue > 100)) {
+            throw new Error(`Comissão inválida para ${displayName}. Informe um valor válido.`);
+          }
+          const commissionResponse = await fetch(`/api/crm/deals/${dealId}/people/${personId}/commission`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ tenantId, enabled: true, kind: partner.commissionKind, value: parsedValue }),
+          });
+          const commissionResult = await commissionResponse.json().catch(() => ({}));
+          if (!commissionResponse.ok) {
+            throw new Error(commissionResult.error ?? `Falha ao registrar comissão de ${displayName}.`);
+          }
+        }
       }
 
       synced.push({
@@ -790,6 +853,16 @@ export function NewLeadDialog({
         toast({
           title: "Segundo cliente obrigatório",
           description: "Informe os dados do segundo cliente para cadastrar o casal.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const primaryDocument = values.documento.replace(/\D/g, "");
+      const secondDocument = coClient.documento.replace(/\D/g, "");
+      if (primaryDocument && secondDocument && primaryDocument === secondDocument) {
+        toast({
+          title: "Documentos duplicados",
+          description: "Cliente 1 e Cliente 2 precisam ter documentos individuais. Revise o CPF/documento informado.",
           variant: "destructive",
         });
         return;
@@ -815,7 +888,11 @@ export function NewLeadDialog({
       return;
     }
 
+    if (submissionInFlight.current) return;
+    submissionInFlight.current = true;
     setServerDuplicate(null);
+    let createdLeadId: string | undefined;
+    let createdDealId: string | undefined;
     try {
       const couponCode = normalizeCoupon(values.cupomCodigo);
       let coupon = couponValidation;
@@ -849,7 +926,9 @@ export function NewLeadDialog({
         assignedTo: selectedRepresentativeFunctionId ? values.assignedTo : resolvedAssignee!,
       };
 
-      // ui-integrity: error-propagates-to-caller — o catch deste submit exibe toast ao usuário.
+      const registrationRequestId = registrationRequestIdRef.current ??
+        (registrationRequestIdRef.current = crypto.randomUUID());
+      // The same key is reused when an interrupted HTTP request is retried.
       const newLead = await createLead.mutateAsync({
         data: {
           tenantId,
@@ -868,21 +947,23 @@ export function NewLeadDialog({
           documento: submissionValues.documento || null,
           tipoPessoa: "fisica",
           mercadoSegmento: submissionValues.mercadoSegmento || null,
-          metadata: coupon
-            ? {
-                cupomCodigo: coupon.code,
-                descontoCupomPercentual: coupon.discountPercent,
-                cupomAplicacao: coupon.application,
-                parceiroIndicador: coupon.partnerName,
-                tipoParceiro: coupon.partnerType,
-                atribuicao: "cupom_parceiro",
-              }
-            : undefined,
+          metadata: {
+            registrationRequestId,
+            ...(coupon ? {
+              cupomCodigo: coupon.code,
+              descontoCupomPercentual: coupon.discountPercent,
+              cupomAplicacao: coupon.application,
+              parceiroIndicador: coupon.partnerName,
+              tipoParceiro: coupon.partnerType,
+              atribuicao: "cupom_parceiro",
+            } : {}),
+          },
         },
       });
 
       const leadId = (newLead as { id?: string }).id;
       if (!leadId) throw new Error("O contato foi criado sem identificador válido.");
+      createdLeadId = leadId;
 
       // O contato já existe neste ponto. Atualiza a lista imediatamente para
       // evitar a tela ficar em "0 contatos" caso uma etapa secundária falhe.
@@ -891,6 +972,7 @@ export function NewLeadDialog({
 
       const deal = await syncInitialDeal(leadId, submissionValues);
       const dealId = (deal as { id?: string } | null | undefined)?.id;
+      createdDealId = dealId;
       await syncStructuredCrm(dealId, submissionValues);
       const syncedPartners = await syncCommercialPartners(leadId, dealId);
 
@@ -937,9 +1019,24 @@ export function NewLeadDialog({
             : "O contato foi salvo sem abrir um negócio agora.",
       });
 
+      registrationRequestIdRef.current = null;
       closeAndReset();
       if (dealId) onNavigate(`/trabalho/${leadId}?dealId=${encodeURIComponent(dealId)}`);
     } catch (error: any) {
+      if (createdLeadId) {
+        toast({
+          title: "Lead criado; complementação pendente",
+          description: `${error instanceof Error ? error.message : "Uma etapa complementar falhou."} Abra o lead criado para revisar os vínculos; não cadastre novamente.`,
+          variant: "destructive",
+        });
+        queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
+        queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
+        registrationRequestIdRef.current = null;
+        closeAndReset();
+        onNavigate(`/trabalho/${createdLeadId}${createdDealId ? `?dealId=${encodeURIComponent(createdDealId)}` : ""}`);
+        return;
+      }
+      if (error?.data?.code === "IDEMPOTENCY_KEY_REUSED") registrationRequestIdRef.current = null;
       if (error?.status === 409 && error?.data?.isDuplicate && error?.data?.lead) {
         setServerDuplicate({ lead: error.data.lead as Lead, matchBy: error.data.matchBy ?? "dado" });
         return;
@@ -949,6 +1046,8 @@ export function NewLeadDialog({
         description: error instanceof Error ? error.message : error?.data?.error ?? "Tente novamente.",
         variant: "destructive",
       });
+    } finally {
+      submissionInFlight.current = false;
     }
   }
 
@@ -962,7 +1061,7 @@ export function NewLeadDialog({
           setShowCommercial(false);
           setExtraContacts([]);
           setCommercialPartners([]);
-          setCoClient({ nome: "", telefone: "", email: "", documento: "", funcao: "" });
+          setCoClient({ dataNascimento: "", nome: "", telefone: "", email: "", documento: "", profissao: "", funcao: "" });
           setServerDuplicate(null);
           resetCoupon();
           form.reset(DEFAULT_VALUES);
@@ -1133,6 +1232,20 @@ export function NewLeadDialog({
               </div>
 
               {cadastroTipo === "casal" && (
+                <FormField
+                  control={form.control}
+                  name="dataNascimento"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Data de nascimento — Cliente 1</FormLabel>
+                      <FormControl><Input type="date" {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              {cadastroTipo === "casal" && (
                 <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
                   <div>
                     <p className="text-sm font-semibold">Cliente 2</p>
@@ -1176,6 +1289,24 @@ export function NewLeadDialog({
                       />
                     </div>
                     <div>
+                      <label className="text-sm font-medium">Data de nascimento — Cliente 2</label>
+                      <Input
+                        className="mt-2"
+                        type="date"
+                        value={coClient.dataNascimento}
+                        onChange={(event) => setCoClient((current) => ({ ...current, dataNascimento: event.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Profissão — Cliente 2</label>
+                      <Input
+                        className="mt-2"
+                        placeholder="Profissão"
+                        value={coClient.profissao}
+                        onChange={(event) => setCoClient((current) => ({ ...current, profissao: event.target.value }))}
+                      />
+                    </div>
+                    <div>
                       <label className="text-sm font-medium">Função no negócio</label>
                       <Input
                         className="mt-2"
@@ -1184,6 +1315,17 @@ export function NewLeadDialog({
                         onChange={(event) => setCoClient((current) => ({ ...current, funcao: event.target.value }))}
                       />
                     </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Contato principal para comunicação</Label>
+                    <Select value={String(form.watch("primaryContactIndex"))} onValueChange={(value) => form.setValue("primaryContactIndex", value === "1" ? 1 : 0)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">Cliente 1 — {form.watch("nome") || "primeiro cliente"}</SelectItem>
+                        <SelectItem value="1">Cliente 2 — {coClient.nome || "segundo cliente"}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">Essa escolha define somente quem recebe a comunicação principal. Ambos continuam clientes principais, com cadastros independentes.</p>
                   </div>
                   <p className="text-[11px] text-muted-foreground">Cliente 1 e Cliente 2 ficam vinculados ao mesmo negócio como clientes principais. Documentos, contatos e assinaturas permanecem individualizados.</p>
                 </div>
@@ -1266,7 +1408,7 @@ export function NewLeadDialog({
                             </SelectContent>
                           </Select>
                         </div>
-                      </div>
+                      </div>}
                     </div>
                   ))}
                 </div>
@@ -1618,7 +1760,7 @@ export function NewLeadDialog({
                         </div>
                       )}
 
-                      <div className="space-y-2 rounded-md border bg-background p-3">
+                      {isAdmin && <div className="space-y-2 rounded-md border bg-background p-3">
                         <label className="flex cursor-pointer items-center gap-2 text-sm">
                           <input
                             type="checkbox"

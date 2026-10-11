@@ -374,22 +374,39 @@ async function validateReleaseAutonomously(release: any) {
   return { passed: Boolean(result.ok), reason: result.ok ? "passed" : String(result.answer ?? "browser_validation_failed"), impact, result };
 }
 
+// A execução de IA pode gerar efeitos externos (branch/PR). Nunca repetir
+// automaticamente uma tarefa cujo worker morreu antes de persistir o resultado.
+// Sinalize-a para reconciliação humana/automática com GitHub antes de retomar.
+async function quarantineInterruptedImprovements() {
+  const stale = await pool.query(
+    "UPDATE admin_improvements SET agent_status='needs_attention',status='bloqueada',agent_summary='Execução interrompida ou sem heartbeat por mais de 2 horas; reconciliar GitHub antes de tentar novamente.',updated_at=now() WHERE agent_status='running' AND updated_at < now() - interval '2 hours' RETURNING id"
+  );
+  for (const item of stale.rows) {
+    await pool.query(
+      "INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,actor,payload) VALUES ($1,$2,'stale_execution_quarantined',$3,'vendi:worker',$4::jsonb)",
+      [randomUUID(), item.id, 'Execução sem heartbeat isolada; nova tentativa não autorizada automaticamente.', JSON.stringify({ reason: 'stale_running', safeToRetry: false })],
+    );
+  }
+  return stale.rowCount ?? 0;
+}
+
 async function advanceAutonomousImprovement() {
   const found = await pool.query(
-    "SELECT id,title,description,module,priority,source_type AS \"sourceType\",source_ref_id AS \"sourceRefId\" FROM admin_improvements WHERE agent_status IN ('queued','idle') AND status IN ('solicitada','em_desenvolvimento') ORDER BY CASE priority WHEN 'urgente' THEN 0 WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END, created_at ASC LIMIT 1"
+    "WITH candidate AS (SELECT id FROM admin_improvements WHERE agent_status IN ('queued','idle') AND status IN ('solicitada','em_desenvolvimento') AND NOT EXISTS (SELECT 1 FROM admin_improvement_dependencies d LEFT JOIN admin_improvements predecessor ON predecessor.id=d.depends_on_id WHERE d.improvement_id=admin_improvements.id AND (predecessor.id IS NULL OR predecessor.status <> 'producao_validada')) ORDER BY CASE priority WHEN 'urgente' THEN 0 WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END, created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE admin_improvements i SET status='em_desenvolvimento',owner_agent='vendi',agent_status='running',updated_at=now() FROM candidate c WHERE i.id=c.id RETURNING i.id,i.title,i.description,i.module,i.priority,i.source_type AS \"sourceType\",i.source_ref_id AS \"sourceRefId\""
   );
   const item = found.rows[0];
   if (!item) return false;
 
   await pool.query(
-    "UPDATE admin_improvements SET status='em_desenvolvimento',owner_agent='vendi',agent_status='running',updated_at=now() WHERE id=$1",
-    [item.id],
-  );
-  await pool.query(
     "INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,actor,payload) VALUES ($1,$2,'agent_started','Vendi iniciou execução autônoma com Dev IA.','vendi:auto',$3::jsonb)",
     [randomUUID(), item.id, JSON.stringify({ sourceType: item.sourceType, sourceRefId: item.sourceRefId })],
   );
 
+  // Heartbeat permite distinguir execução longa de execução abandonada.
+  const heartbeat = setInterval(() => {
+    void pool.query("UPDATE admin_improvements SET updated_at=now() WHERE id=$1 AND agent_status='running'", [item.id]).catch(() => undefined);
+  }, 60_000);
+  heartbeat.unref();
   try {
     const result = await executeDevAutonomousWork({
       requestId: String(item.id),
@@ -425,6 +442,8 @@ async function advanceAutonomousImprovement() {
       [item.id, message.slice(0, 12000)],
     );
     return false;
+  } finally {
+    clearInterval(heartbeat);
   }
 }
 
@@ -572,7 +591,7 @@ async function createAutonomousReleaseIfReady() {
         AND test_status='passed'
         AND status IN ('pronto_staging','em_homologacao','testando')
       ORDER BY CASE priority WHEN 'urgente' THEN 0 WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END,created_at ASC
-      LIMIT 10`
+      LIMIT 3`
   );
   if (!ready.rowCount) return null;
 
@@ -639,9 +658,32 @@ async function advanceAutonomousRelease() {
       fingerprint,
     ],
   );
+  // A política automática é independente do modo de desenvolvimento.
+  // Mantê-la desativada até os testes reais do operador Contabo e do rollback.
+  const autonomousApprovalEnabled = fullAutonomyEnabled()
+    && String(process.env["VENDI_AUTO_APPROVE_RELEASES"] ?? "").toLowerCase() === "true";
+  if (autonomousApprovalEnabled) {
+    const evidence = await collectDevAgentCheckEvidence(String(validation.impact.head.sha));
+    const safeToApprove = !autonomyRisk(validation.impact).protected
+      && evidence.codeFailures.length === 0
+      && evidence.pending.length === 0
+      && evidence.successes.length > 0;
+    if (safeToApprove) {
+      // Janela fixa das 00h de São Paulo (03:00 UTC). Uma versão homologada
+      // depois desta janela é agendada para a próxima, nunca para o passado.
+      const now = new Date();
+      const scheduledAt = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 3));
+      if (scheduledAt.getTime() <= now.getTime()) scheduledAt.setUTCDate(scheduledAt.getUTCDate() + 1);
+      await pool.query(
+        "UPDATE admin_releases SET status='scheduled',approved_by='vendi:auto',approved_at=now(),scheduled_at=$2,last_error=NULL,updated_at=now() WHERE id=$1 AND status='ready' AND test_status='passed' AND approval_fingerprint=$3",
+        [release.id, scheduledAt, fingerprint],
+      );
+      return true;
+    }
+  }
   await notifySuperAdminsApprovalRequired({
-    title: "Publicação pronta para sua aprovação",
-    message: ("A versão " + String(release.version) + " — " + String(release.name) + " passou por desenvolvimento, testes e homologação automáticos. Falta somente sua aprovação para produção. Ao aprovar, a publicação começa automaticamente."),
+    title: "Publicação homologada — revisão de política pendente",
+    message: ("A versão " + String(release.version) + " — " + String(release.name) + " concluiu a validação automática. A política de aprovação e a programação de publicação devem ser verificadas na Central; a homologação não significa deploy realizado."),
   });
   return true;
 }
@@ -1208,6 +1250,225 @@ async function executeScheduledRelease(release: any) {
   return { sha: merged.sha ?? null, prNumber, prUrl };
 }
 
+// Estado persistente; a tabela é criada exclusivamente por migration, nunca no runtime.
+const controlModes = ["running", "paused", "draining"] as const;
+const controlSchema = z.object({ mode: z.enum(controlModes), reason: z.string().max(1000).optional() });
+async function releaseControl() {
+  const result = await pool.query("SELECT mode,updated_at AS \"updatedAt\",updated_by AS \"updatedBy\",reason FROM admin_release_execution_control WHERE id=1");
+  if (!result.rowCount) throw new Error("RELEASE_CONTROL_NOT_INITIALIZED");
+  return result.rows[0] as { mode: "running" | "paused" | "draining"; updatedAt: string; updatedBy: string; reason: string | null };
+}
+
+router.get("/admin/releases/execution-control", async (_req, res) => {
+  try { await ensureSchema(); return res.json(await releaseControl()); }
+  catch (error) { return res.status(503).json({ error: "RELEASE_CONTROL_UNAVAILABLE" }); }
+});
+
+router.post("/admin/releases/execution-control", async (req, res) => {
+  const parsed = controlSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  // Fail closed: enabling a worker that can eventually merge/deploy requires
+  // a separately configured operator gate, never just a UI click.
+  if (parsed.data.mode === "running" &&
+      process.env["VENDI_RELEASE_OPERATOR_VALIDATED"] !== "true") {
+    return res.status(409).json({
+      error: "OPERADOR_CONTABO_NAO_HOMOLOGADO",
+      message: "Valide build, migrações, operador e rollback antes de habilitar a fila."
+    });
+  }
+  try {
+    await ensureSchema();
+    const result = await pool.query(
+      "UPDATE admin_release_execution_control SET mode=$1,reason=$2,updated_by=$3,updated_at=now() WHERE id=1 RETURNING mode,reason,updated_by AS \"updatedBy\",updated_at AS \"updatedAt\"",
+      [parsed.data.mode, parsed.data.reason ?? null, actor(req)],
+    );
+    if (!result.rowCount) return res.status(503).json({ error: "RELEASE_CONTROL_NOT_INITIALIZED" });
+    return res.json(result.rows[0]);
+  } catch { return res.status(503).json({ error: "RELEASE_CONTROL_UNAVAILABLE" }); }
+});
+
+// Diagnóstico somente leitura da fila; útil mesmo quando o operador Contabo está indisponível.
+router.get("/admin/improvements/queue-diagnostics", async (_req, res) => {
+  try {
+    await ensureSchema();
+    const data = await pool.query(
+      `SELECT i.id, i.title, i.module, i.priority, i.agent_status AS "agentStatus",
+              i.status,
+              COALESCE((
+                SELECT jsonb_agg(jsonb_build_object('id',p.id,'title',p.title,'status',p.status))
+                FROM admin_improvement_dependencies d
+                LEFT JOIN admin_improvements p ON p.id=d.depends_on_id
+                WHERE d.improvement_id=i.id
+                  AND (p.id IS NULL OR p.status <> 'producao_validada')
+              ),'[]'::jsonb) AS blockers
+         FROM admin_improvements i
+        WHERE i.agent_status IN ('queued','idle','running','needs_attention')
+        ORDER BY CASE i.priority WHEN 'urgente' THEN 0 WHEN 'alta' THEN 1
+                                WHEN 'media' THEN 2 ELSE 3 END, i.created_at
+        LIMIT 100`
+    );
+    return res.json({
+      items: data.rows.map((item) => ({
+        ...item,
+        eligibility: item.agentStatus === "running" ? "running"
+          : item.agentStatus === "needs_attention" ? "needs_attention"
+          : item.blockers.length ? "blocked_dependency"
+          : ["solicitada", "em_desenvolvimento"].includes(item.status) ? "ready"
+          : "waiting_stage",
+      })),
+      truncated: data.rows.length === 100,
+    });
+  } catch {
+    return res.status(503).json({ error: "QUEUE_DIAGNOSTICS_UNAVAILABLE" });
+  }
+});
+
+// Vincula itens já registrados na Central aos lotes oficiais sem recriá-los.
+// Registro Mestre é a fonte de planejamento; registros operacionais ficam na Central.
+const registryLinkSchema = z.object({
+  lot: z.string().trim().regex(/^[0-9]{2}$/),
+  sublot: z.string().trim().regex(/^[0-9]{2}\.[0-9]{2}$/),
+  improvementId: z.string().uuid(),
+});
+router.get("/admin/improvements/master-registry-links", async (_req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT lot,sublot,improvement_id AS \"improvementId\",created_at AS \"createdAt\" FROM admin_improvement_master_links ORDER BY lot,sublot"
+    );
+    return res.json({ items: result.rows });
+  } catch { return res.status(503).json({ error: "MASTER_LINK_SCHEMA_NOT_READY" }); }
+});
+router.get("/admin/improvements/master-registry-summary", async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT m.lot,count(*)::int AS linked,
+              count(*) FILTER (WHERE i.status='producao_validada')::int AS validated,
+              count(*) FILTER (WHERE i.agent_status='running')::int AS running,
+              count(*) FILTER (WHERE i.status='bloqueada')::int AS blocked
+         FROM admin_improvement_master_links m
+         JOIN admin_improvements i ON i.id=m.improvement_id
+        GROUP BY m.lot ORDER BY m.lot`
+    );
+    return res.json({ lots: result.rows, coverage: "linked_only", source: "admin_improvement_master_links" });
+  } catch { return res.status(503).json({ error: "MASTER_LINK_SCHEMA_NOT_READY" }); }
+});
+// Reconciliação determinística: somente vínculos por source_ref_id explícito.
+// Não inferir sublotes pelo título e não criar melhorias fictícias.
+// Prévia somente leitura: expõe referências ambíguas para revisão antes de vincular.
+router.get("/admin/improvements/master-registry-reconciliation-preview", async (_req, res) => {
+  try {
+    const data = await pool.query(`
+      WITH extracted AS (
+        SELECT id,title,source_ref_id,
+          (regexp_match(source_ref_id, '(^|[^0-9])([0-9]{2}[.][0-9]{2})($|[^0-9])'))[2] AS sublot
+        FROM admin_improvements WHERE source_ref_id IS NOT NULL
+      ), counts AS (
+        SELECT sublot,count(*)::int AS candidates FROM extracted
+        WHERE sublot IS NOT NULL GROUP BY sublot
+      )
+      SELECT e.id,e.title,e.source_ref_id AS "sourceRefId",e.sublot,
+             c.candidates, m.improvement_id AS "linkedImprovementId"
+        FROM extracted e JOIN counts c ON c.sublot=e.sublot
+        LEFT JOIN admin_improvement_master_links m ON m.sublot=e.sublot
+       WHERE c.candidates>1 OR (m.improvement_id IS NOT NULL AND m.improvement_id<>e.id)
+       ORDER BY e.sublot,e.title LIMIT 100`);
+    return res.json({ items:data.rows, truncated:data.rows.length===100, autoResolved:false });
+  } catch { return res.status(503).json({ error:"MASTER_RECONCILIATION_PREVIEW_UNAVAILABLE" }); }
+});
+
+router.post("/admin/improvements/master-registry-reconcile", async (_req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock($1)", [731004]);
+    const result = await client.query(`
+      WITH candidates AS (
+        SELECT (regexp_match(source_ref_id, '(^|[^0-9])([0-9]{2}[.][0-9]{2})($|[^0-9])'))[2] AS sublot,
+               id, updated_at,
+               count(*) OVER (PARTITION BY source_ref_id) AS source_count
+        FROM admin_improvements
+        WHERE source_ref_id ~ '(^|[^0-9])[0-9]{2}[.][0-9]{2}($|[^0-9])'
+      ), unique_candidates AS (
+        SELECT sublot, id FROM candidates c
+        WHERE c.sublot IS NOT NULL
+          AND c.source_count=1
+          AND NOT EXISTS (SELECT 1 FROM admin_improvement_master_links m WHERE m.sublot=c.sublot)
+          AND NOT EXISTS (SELECT 1 FROM candidates other WHERE other.sublot=c.sublot AND other.id<>c.id)
+      )
+      INSERT INTO admin_improvement_master_links(lot,sublot,improvement_id)
+      SELECT split_part(sublot,'.',1),sublot,id FROM unique_candidates
+      ON CONFLICT (sublot) DO NOTHING
+      RETURNING sublot`);
+    await client.query("COMMIT");
+    return res.json({ ok: true, linked: result.rowCount ?? 0, strategy: "unique_explicit_source_ref_only" });
+  } catch {
+    await client.query("ROLLBACK").catch(() => undefined);
+    return res.status(503).json({ error: "MASTER_RECONCILIATION_FAILED" });
+  } finally { client.release(); }
+});
+
+router.post("/admin/improvements/master-registry-links", async (req, res) => {
+  const input = registryLinkSchema.safeParse(req.body);
+  if (!input.success) return res.status(422).json({ error: "Lote, sublote e melhoria inválidos." });
+  if (!input.data.sublot.startsWith(input.data.lot + ".")) return res.status(422).json({ error: "Sublote incompatível com lote." });
+  try {
+    const found = await pool.query("SELECT id FROM admin_improvements WHERE id=$1", [input.data.improvementId]);
+    if (!found.rowCount) return res.status(404).json({ error: "Melhoria não encontrada." });
+    const result = await pool.query(
+      "INSERT INTO admin_improvement_master_links (lot,sublot,improvement_id) VALUES ($1,$2,$3) ON CONFLICT (sublot) DO UPDATE SET improvement_id=EXCLUDED.improvement_id WHERE admin_improvement_master_links.improvement_id=EXCLUDED.improvement_id RETURNING lot,sublot,improvement_id AS \"improvementId\"",
+      [input.data.lot,input.data.sublot,input.data.improvementId]
+    );
+    if (!result.rowCount) return res.status(409).json({ error: "Sublote já vinculado a outra melhoria. Revise o vínculo existente antes de alterar." });
+    return res.json({ ok: true, item: result.rows[0] });
+  } catch { return res.status(503).json({ error: "MASTER_LINK_UPDATE_FAILED" }); }
+});
+
+// Dependências da fila existente; a mudança é transacional e recusa ciclos.
+const dependencySchema = z.object({ dependsOnId: z.string().uuid() });
+router.get("/admin/improvements/:id/dependencies", async (req, res) => {
+  if (!z.string().uuid().safeParse(req.params.id).success) return res.status(422).json({ error: "ID inválido" });
+  try {
+    const result = await pool.query(
+      "SELECT d.depends_on_id AS \"dependsOnId\",i.title,i.status FROM admin_improvement_dependencies d JOIN admin_improvements i ON i.id=d.depends_on_id WHERE d.improvement_id=$1 ORDER BY i.created_at",
+      [req.params.id],
+    );
+    return res.json({ items: result.rows });
+  } catch { return res.status(503).json({ error: "DEPENDENCY_SCHEMA_NOT_READY" }); }
+});
+router.post("/admin/improvements/:id/dependencies", async (req, res) => {
+  const id = z.string().uuid().safeParse(req.params.id);
+  const body = dependencySchema.safeParse(req.body);
+  if (!id.success || !body.success) return res.status(422).json({ error: "IDs inválidos" });
+  if (id.data === body.data.dependsOnId) return res.status(409).json({ error: "Dependência circular" });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock($1)", [731003]);
+    const nodes = await client.query("SELECT id FROM admin_improvements WHERE id IN ($1,$2)", [id.data, body.data.dependsOnId]);
+    if (nodes.rowCount !== 2) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Melhoria não encontrada" }); }
+    const cycle = await client.query(
+      "WITH RECURSIVE ancestors(id) AS (SELECT depends_on_id FROM admin_improvement_dependencies WHERE improvement_id=$1 UNION SELECT d.depends_on_id FROM admin_improvement_dependencies d JOIN ancestors a ON a.id=d.improvement_id) SELECT 1 FROM ancestors WHERE id=$2 LIMIT 1",
+      [body.data.dependsOnId,id.data],
+    );
+    if (cycle.rowCount) { await client.query("ROLLBACK"); return res.status(409).json({ error: "Dependência circular" }); }
+    await client.query("INSERT INTO admin_improvement_dependencies (improvement_id,depends_on_id) VALUES ($1,$2) ON CONFLICT DO NOTHING", [id.data,body.data.dependsOnId]);
+    await client.query("COMMIT");
+    return res.json({ ok: true });
+  } catch {
+    await client.query("ROLLBACK").catch(() => undefined);
+    return res.status(503).json({ error: "DEPENDENCY_UPDATE_FAILED" });
+  } finally { client.release(); }
+});
+router.delete("/admin/improvements/:id/dependencies/:dependsOnId", async (req, res) => {
+  const id = z.string().uuid().safeParse(req.params.id);
+  const dep = z.string().uuid().safeParse(req.params.dependsOnId);
+  if (!id.success || !dep.success) return res.status(422).json({ error: "IDs inválidos" });
+  try {
+    await pool.query("DELETE FROM admin_improvement_dependencies WHERE improvement_id=$1 AND depends_on_id=$2", [id.data,dep.data]);
+    return res.json({ ok: true });
+  } catch { return res.status(503).json({ error: "DEPENDENCY_UPDATE_FAILED" }); }
+});
+
 const RELEASE_WORKER_LOCK = 731001;
 const GITHUB_RECONCILE_WORKER_LOCK = 731002;
 
@@ -1251,7 +1512,11 @@ async function runReleaseWorkerCycle() {
   try {
     await ensureSchema();
 
-    if (fullAutonomyEnabled()) {
+    const execution = await releaseControl();
+    if (execution.mode === "running" && fullAutonomyEnabled()) {
+      await quarantineInterruptedImprovements().catch((error) => {
+        console.error("[release-worker] interrupted task quarantine failed:", error instanceof Error ? error.message : error);
+      });
       await repairAutonomousBlockedImprovement().catch((error) => {
         console.error("[release-worker] autonomous repair failed:", error instanceof Error ? error.message : error);
       });
@@ -1268,13 +1533,14 @@ async function runReleaseWorkerCycle() {
         console.error("[release-worker] autonomous validation failed:", error instanceof Error ? error.message : error);
       });
     }
+    const allowPublishing = execution.mode === "running";
     const queueBlock = await pool.query(
       "SELECT id,status FROM admin_releases WHERE status IN ('publishing','monitoring') OR (status='blocked' AND scheduled_at IS NOT NULL) ORDER BY updated_at DESC LIMIT 1"
     );
-    const claim = queueBlock.rowCount
+    const claim = !allowPublishing || queueBlock.rowCount
       ? { rows: [] as any[] }
       : await pool.query(
-          "WITH candidate AS (SELECT id FROM admin_releases WHERE status='scheduled' AND scheduled_at<=now() ORDER BY scheduled_at ASC,created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE admin_releases r SET status='publishing',started_at=now(),last_error=NULL,updated_at=now() FROM candidate c WHERE r.id=c.id RETURNING r.id"
+          "WITH control AS (SELECT mode FROM admin_release_execution_control WHERE id=1 FOR SHARE), candidate AS (SELECT id FROM admin_releases WHERE status='scheduled' AND scheduled_at<=now() AND EXISTS (SELECT 1 FROM control WHERE mode='running') ORDER BY scheduled_at ASC,created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE admin_releases r SET status='publishing',started_at=now(),last_error=NULL,updated_at=now() FROM candidate c WHERE r.id=c.id RETURNING r.id"
         );
     const claimedId = claim.rows[0]?.id;
     if (claimedId) {

@@ -717,6 +717,14 @@ export default function PipelineOperacional() {
                   <div><p className="text-xs text-muted-foreground">Conclusão/entrega efetiva</p><p>{formatDate(selectedCard.dataFimEfetiva)}</p></div>
                 </div>
 
+                {selectedCard.pipeline === "execucao" && selectedCard.dealId && selectedCard.propostaId && (
+                  <Button variant="outline" className="w-full" onClick={() => {
+                    window.location.assign("/execution-lots?dealId=" + encodeURIComponent(selectedCard.dealId!) + "&proposalId=" + encodeURIComponent(selectedCard.propostaId!));
+                  }}>
+                    Gerenciar lotes e quantidades de execução
+                  </Button>
+                )}
+
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Etapa</label>
                   <Select value={selectedCard.etapa} disabled={patchCard.isPending} onValueChange={(etapa) => { if (!patchCard.isPending) patchCard.mutate({ id: selectedCard.id, data: { etapa } }); }}>
@@ -1496,6 +1504,10 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
 
   const leadDeals = deals.filter((d) => d.leadId === leadId);
   const selectedLead = leads.find((lead) => lead.id === leadId) ?? null;
+  // Etapa de abertura do chamado = primeira etapa (menor ordem) do pipeline de suporte.
+  // Usada para filtrar os responsáveis elegíveis pelas funções responsáveis da etapa.
+  const openingStage = [...stages].sort((a, b) => a.ordem - b.ordem)[0] ?? null;
+  const eligibleResponsibleUsers = eligibleUsersForStage(users, openingStage);
   const leadGroups = useMemo(() => {
     const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
     const query = normalize(leadSearch);

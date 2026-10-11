@@ -1441,7 +1441,7 @@ export default function ProjetoDetalhe() {
                 <div className="mt-2 max-h-28 space-y-1 overflow-y-auto">
                   {propostasContexto.map((p) => <button key={p.id} type="button" onClick={() => navigate(`/propostas?edit=${encodeURIComponent(p.id)}`)} className="w-full rounded-md border bg-background px-2 py-1.5 text-left hover:bg-muted/40"><p className="truncate text-xs font-medium">{p.numero ? `#${p.numero} · ` : ""}{p.titulo}</p><p className="mt-0.5 text-[11px] text-muted-foreground">{p.status}{p.valorTotal ? ` · R$ ${Number(p.valorTotal).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : ""}</p></button>)}
                 </div>
-                <Button variant="outline" size="sm" className="mt-3 w-full" onClick={() => navigate(`/propostas?${project.leadId ? `leadId=${encodeURIComponent(project.leadId)}` : `dealId=${encodeURIComponent(project.dealId ?? "")}`)}`)}>Ver todas</Button>
+                <Button variant="outline" size="sm" className="mt-3 w-full" onClick={() => navigate(`/propostas?${project.leadId ? `leadId=${encodeURIComponent(project.leadId)}` : `dealId=${encodeURIComponent(project.dealId ?? "")}`}`)}>Ver todas</Button>
               </>
             ) : <p className="mt-1 text-xs text-muted-foreground">Nenhuma proposta encontrada para este cliente/negócio.</p>}
           </div>

@@ -66,6 +66,7 @@ import * as z from "zod";
 import { Plus, GripVertical, DollarSign, User, UserRound, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake, FileText, Clock, CalendarDays, Pen, KanbanSquare, ArrowRight, ArrowLeft, UserMinus, Ruler, Bot, ChevronDown, ChevronUp } from "lucide-react";
 import { PipelineNav } from "@/components/PipelineNav";
 import { AdminDeleteLeadButton } from "@/components/AdminDeleteLeadButton";
+import { PartialExecutionDialog } from "@/components/PartialExecutionDialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   DealEtapaSaas,
@@ -2148,6 +2149,9 @@ function EditDealSheet({
                 </FormItem>
               )}
             />
+            {deal?.id && tenantId && (deal.etapa === "ganho" || deal.etapa === "em_execucao") && (
+              <div className="pt-2 border-t"><PartialExecutionDialog dealId={deal.id} tenantId={tenantId} /></div>
+            )}
             <div className="pt-2 border-t">
               <Button type="button" variant="outline" className="w-full" onClick={() => {
                 setTransferPipeline("suporte");

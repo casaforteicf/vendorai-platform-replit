@@ -448,7 +448,7 @@ export default function Leads() {
     { incluirExcluidos: "apenas" },
     {
       query: {
-        enabled: !!tenantId && viewMode === "excluidos",
+        enabled: !!tenantId && isAdmin && viewMode === "excluidos",
         queryKey: getListTenantLeadsQueryKey(tenantId, { incluirExcluidos: "apenas" }),
         staleTime: 30_000,
         refetchOnWindowFocus: false,
@@ -530,6 +530,7 @@ export default function Leads() {
     },
     onSuccess: (lead) => {
       queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
+      queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId, { incluirExcluidos: "apenas" }) });
       queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
       toast({ title: "Lead excluído", description: `${lead.nome} foi movido pra aba Excluídos.` });
       setDeleteDialog({ open: false, lead: null });
@@ -540,10 +541,9 @@ export default function Leads() {
 
   const restoreLead = useMutation({
     mutationFn: async (lead: Lead) => {
-      const response = await fetch(`/api/leads/${lead.id}`, {
-        method: "PATCH",
+      const response = await fetch(`/api/leads/${lead.id}/restore`, {
+        method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ excluidoEm: null, motivoExclusao: null }),
       });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
@@ -554,6 +554,7 @@ export default function Leads() {
     onSuccess: (lead) => {
       queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
       queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId, { incluirExcluidos: "apenas" }) });
+      queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
       toast({ title: "Lead restaurado", description: `${lead.nome} voltou pra lista ativa.` });
     },
     onError: (error: Error) => toast({ title: "Não foi possível restaurar", description: error.message, variant: "destructive" }),
@@ -852,7 +853,7 @@ export default function Leads() {
 
       <div className="flex items-center gap-2">
         <Button variant={viewMode === "ativos" ? "default" : "outline"} size="sm" onClick={() => setViewMode("ativos")}>Ativos</Button>
-        <Button
+        {isAdmin && <Button
           variant={viewMode === "excluidos" ? "default" : "outline"}
           size="sm"
           onClick={() => setViewMode("excluidos")}
@@ -860,7 +861,7 @@ export default function Leads() {
         >
           <Trash2 className="h-3.5 w-3.5" /> Excluídos
           {excludedLeads && excludedLeads.length > 0 && <Badge variant="secondary" className="ml-0.5">{excludedLeads.length}</Badge>}
-        </Button>
+        </Button>}
       </div>
 
       {viewMode === "excluidos" ? (
@@ -972,6 +973,7 @@ export default function Leads() {
                         <div><EditableSegmentBadge lead={lead} /></div>
                         <div className="flex items-center gap-1.5">
                           {lead.assignedTo && userMap.get(lead.assignedTo) && <p className="text-xs text-muted-foreground truncate">👤 {userMap.get(lead.assignedTo)}</p>}
+                          {(lead as typeof lead & { representativeFunctionId?: string | null }).representativeFunctionId && <p className="text-xs text-muted-foreground truncate">🏢 Empresa representante</p>}
                           {isAdmin && (
                             <button
                               title="Atribuir responsável"
@@ -1127,7 +1129,7 @@ export default function Leads() {
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               <span className="flex items-center gap-2">
-                                <span>{lead.assignedTo ? userMap.get(lead.assignedTo) ?? "—" : "—"}</span>
+                                <span>{lead.assignedTo ? userMap.get(lead.assignedTo) ?? "—" : (lead as typeof lead & { representativeFunctionId?: string | null }).representativeFunctionId ? "Empresa representante" : "—"}</span>
                                 {isAdmin && (
                                   <button
                                     title="Atribuir responsável"
@@ -1195,7 +1197,6 @@ export default function Leads() {
             <Select value={assignSelectedUser} onValueChange={setAssignSelectedUser}>
               <SelectTrigger><SelectValue placeholder="Selecionar vendedor..." /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="__none__">Sem responsável</SelectItem>
                 {tenantUsers.map((tenantUser) => (
                   <SelectItem key={tenantUser.id} value={tenantUser.id}>{tenantUser.name || tenantUser.email || tenantUser.id}</SelectItem>
                 ))}
@@ -1205,9 +1206,9 @@ export default function Leads() {
               <Button variant="outline" size="sm" onClick={() => setAssignDialog({ open: false, leadId: "", currentAssignedTo: null })}>Cancelar</Button>
               <Button
                 size="sm"
-                disabled={updateLead.isPending}
+                disabled={updateLead.isPending || !assignSelectedUser}
                 onClick={() => {
-                  const newAssignedTo = assignSelectedUser === "__none__" ? null : assignSelectedUser || null;
+                  const newAssignedTo = assignSelectedUser;
                   updateLead.mutate(
                     { id: assignDialog.leadId, data: { assignedTo: newAssignedTo } },
                     {

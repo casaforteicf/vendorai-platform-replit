@@ -5,7 +5,8 @@
 //     versionamento imutável com parentVersionId, comparação lado a lado, aprovação com governança,
 //     especificação rastreável, downloads
 
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
+const RenderStudioModels = lazy(() => import("./render-studio/RenderStudioModels"));
 import { WorkspaceProvider } from "@/modules/arqdor/workspace/WorkspaceContext";
 import { ArqdorThemeProvider } from "@/modules/arqdor/theme/ArqdorThemeProvider";
 import { MediaAssetPicker } from "@/components/media/MediaAssetPicker";
@@ -28,6 +29,7 @@ import { useRenderStudioController } from "./render-studio/useRenderStudioContro
 // ─── Main workspace inner ──────────────────────────────────────────────────────
 
 function RenderStudioInner() {
+  const [showModels, setShowModels] = useState(false);
   const {
     setLocation,
     arq,
@@ -133,6 +135,7 @@ function RenderStudioInner() {
     <div className="arqdor-legacy-root" data-arqdor-step={STEPS[stepIndex(step)]?.label ?? step} style={{ height: "100vh", display: "flex", flexDirection: "column", background: D.bg, fontFamily: 'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', boxSizing: "border-box", overflow: "hidden", color: D.text }}
       onClick={handleCanvasControlClick}>
       <style>{GLOBAL_STYLES}</style>
+      {showModels && arq.projectId ? <Suspense fallback={<div role="status">Abrindo modelos 3D…</div>}><RenderStudioModels key={arq.projectId} projectId={arq.projectId} onClose={() => setShowModels(false)} /></Suspense> : null}
 
       {/* Modals */}
       <CreateProjectModal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} onCreate={handleCreateProject} />
@@ -172,6 +175,10 @@ function RenderStudioInner() {
         onShortcuts={() => setShowShortcuts(true)}
       />
 
+      <div style={{ padding: "6px 16px", borderBottom: `1px solid ${D.border}`, background: D.surface }}>
+        <button type="button" disabled={!arq.projectId} onClick={() => setShowModels(true)} style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${D.border}`, color: D.text, background: D.surface, opacity: arq.projectId ? 1 : .5 }}>Modelos 3D</button>
+        {!arq.projectId ? <span style={{ marginLeft: 8, fontSize: 12 }}>Selecione um projeto para importar modelos.</span> : null}
+      </div>
       <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
         <LeftSidebar step={step} projectTitle={arq.projectMeta?.titulo ?? null} onStepClick={handleStepClick} onProjectClick={() => { if (arq.projectId) setLocation(`/arch/projetos/${arq.projectId}`); }} />
 
@@ -243,6 +250,7 @@ function RenderStudioInner() {
 }
 
 function MobileRenderStudio() {
+  const [showModels, setShowModels] = useState(false);
   const {
     setLocation,
     arq,
@@ -279,7 +287,9 @@ function MobileRenderStudio() {
         {approved && <span style={{ padding: "5px 8px", borderRadius: 999, background: "rgba(16,185,129,.14)", color: "#6ee7b7", fontSize: 10, fontWeight: 800 }}>Aprovado</span>}
       </header>
 
+      {showModels && arq.projectId ? <Suspense fallback={<p role="status">Abrindo modelos 3D…</p>}><RenderStudioModels key={arq.projectId} projectId={arq.projectId} onClose={() => setShowModels(false)} /></Suspense> : null}
       <main style={{ padding: 14, display: "flex", flexDirection: "column", gap: 14 }}>
+        <button type="button" disabled={!arq.projectId} onClick={() => setShowModels(true)} style={{ padding: 12, borderRadius: 10, background: "#fff", color: "#111827", opacity: arq.projectId ? 1 : .5 }}>Modelos 3D do projeto</button>
         {err && <div style={{ border: "1px solid rgba(248,113,113,.3)", background: "rgba(248,113,113,.08)", color: "#fca5a5", borderRadius: 12, padding: 12, fontSize: 12 }}>{err}</div>}
 
         <section style={{ borderRadius: 16, overflow: "hidden", border: "1px solid rgba(255,255,255,.1)", background: "#090b10" }}>
@@ -385,3 +395,4 @@ export default function RenderStudioCore() {
     </ArqdorThemeProvider>
   );
 }
+
