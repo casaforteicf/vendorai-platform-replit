@@ -1,12 +1,12 @@
-import type { CpuPreviewOptions } from "./render-cpu-preview";
+import type { DiffusePreviewOptions } from "./render-diffuse-preview";
 export type RenderWorkerEvent =
  | {type:"tile";id:string;y:number;width:number;height:number;rgba:ArrayBuffer;progress:number;sampleCount:number;totalSamples:number}
  | {type:"done";id:string;samples:number}
  | {type:"error";id:string;message:string};
 export function createCpuRenderJob(
- options: CpuPreviewOptions,
+ options: DiffusePreviewOptions,
  handlers: {onTile:(event:Extract<RenderWorkerEvent,{type:"tile"}>)=>void;onDone:()=>void;onError:(error:string)=>void},
- config: {samples?:number;tileRows?:number} = {},
+ config: {samples?:number;tileRows?:number;mode?:"diagnostic"|"diffuse"} = {},
 ) {
  const id="render-"+Math.random().toString(36).slice(2);
  const worker=new Worker(new URL("./render-cpu-preview.worker.ts",import.meta.url),{type:"module"});
