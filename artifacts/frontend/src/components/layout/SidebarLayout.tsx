@@ -4,6 +4,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { loadVerifiedContexts } from "@/lib/unifiedContextsApi";
 import { ContextSwitcher } from "./ContextSwitcher";
+import { ServiceTabsBar } from "./ServiceTabsBar";
 
 import {
   getGetBusinessProfileByTenantQueryKey,
@@ -20,6 +21,8 @@ const MessagingMediaPlanBridge = lazy(() => import("@/components/marketing/Messa
 
 // UI-01 is opt-in and remains off in all existing deployments unless explicitly enabled.
 const UI01_CONTEXT_NAV_ENABLED = import.meta.env.VITE_UI01_CONTEXT_NAV === "true";
+// Controlled preview: disabled until explicit homologation and rollout.
+const UI20_SERVICE_TABS_ENABLED = import.meta.env.VITE_UI20_SERVICE_TABS === "true";
 
 const MARKETING_ROUTE_HINTS = ["marketing", "campanh", "content", "conteudo", "media", "midia", "ads", "anuncio", "analytics", "site", "landing", "video", "planej"];
 
@@ -617,6 +620,9 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
   const shellContent = (
     <>
+      {UI20_SERVICE_TABS_ENABLED && !isPureSuperAdmin ? (
+        <ServiceTabsBar arqdorVisible={arqdorVisible} erpVisible={erpEntitled} />
+      ) : null}
       <Suspense fallback={null}>
         {adsContext ? <AdsMediaPlanContextBanner pathname={location} /> : null}
         {messagingContext ? <MessagingMediaPlanBridge pathname={location} /> : null}
