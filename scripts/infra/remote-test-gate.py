@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path("/home/vendorai/vendorai-test-executor")
@@ -33,6 +34,64 @@ def validated(pr, branch, sha, suite):
         raise ValueError("INVALID_SUITE")
     return str(pr), branch, sha.lower(), suite
 
+def summarize_gates(manifest, results):
+    """Technical evidence only. Never implies homologation, approval or production."""
+    invalid = {"status": "invalid_evidence", "technicalPassed": False,
+               "homologated": False, "published": False}
+    fields = {}
+    for line in manifest.splitlines():
+        if not line.strip():
+            continue
+        if "=" not in line:
+            return invalid
+        key, value = line.split("=", 1)
+        if key in fields:
+            return invalid
+        fields[key] = value
+    try:
+        validated(int(fields.get("pr", "")), fields.get("branch", ""),
+                  fields.get("sha", ""), fields.get("suite", ""))
+    except (ValueError, TypeError):
+        return invalid
+    # A finished timestamp is required; a killed process can leave only successful partial gates.
+    for key in ("started", "finished"):
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", fields.get(key, "")):
+            return invalid
+    try:
+        started = datetime.strptime(fields["started"], "%Y-%m-%dT%H:%M:%SZ")
+        finished = datetime.strptime(fields["finished"], "%Y-%m-%dT%H:%M:%SZ")
+        if finished < started:
+            return invalid
+    except ValueError:
+        return invalid
+    gates = {}
+    for line in results.splitlines():
+        if not line.strip():
+            continue
+        match = re.fullmatch(r"([a-z][a-z0-9-]*) exit=([0-9]{1,3})", line)
+        if not match or match[1] in gates or int(match[2]) > 255:
+            return invalid
+        gates[match[1]] = int(match[2])
+    required = {
+        "crm": ["install", "crm-vitest"],
+        "mcp": ["install", "mcp-contract", "mcp-ts"],
+        "api": ["install", "api-launch-ts", "api-ts", "api-vitest", "api-build"],
+        "frontend": ["install", "frontend-ts", "frontend-build"],
+        "full": ["install", "api-launch-ts", "api-ts", "api-vitest", "api-build",
+                 "frontend-ts", "frontend-build"],
+    }[fields["suite"]]
+    missing = [name for name in required if name not in gates]
+    failed = [name for name, code in gates.items() if code != 0]
+    complete = not missing and not failed
+    return {
+        "status": "failed" if failed else "incomplete" if missing else
+                  "targeted_passed" if fields["suite"] == "crm" else "technical_passed",
+        "sha": fields["sha"].lower(), "suite": fields["suite"],
+        "technicalPassed": complete and fields["suite"] != "crm",
+        "missing": missing, "failed": failed,
+        "homologated": False, "published": False,
+    }
+
 def status(run, lot):
     if not re.fullmatch(r"pr-[1-9][0-9]*-[A-Za-z0-9_-]{8}", run):
         raise ValueError("INVALID_RUN")
@@ -50,6 +109,7 @@ def status(run, lot):
     logs = folder / "logs"
     # Never traverse a redirected logs directory outside this run evidence folder.
     out["logs"] = sorted(p.name for p in logs.glob("*.log") if p.is_file() and not p.is_symlink()) if logs.is_dir() and not logs.is_symlink() else []
+    out["validation"] = summarize_gates(out.get("manifest.txt", ""), out.get("results.txt", ""))
     return out
 
 def cleanup_test_containers(folder):
@@ -165,3 +225,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

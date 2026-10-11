@@ -1,0 +1,1305 @@
+{
+  "schemaVersion": 1,
+  "lot": "ONDA-01",
+  "version": "v2026.10.10-wave01.2",
+  "source": "https://github.com/casaforteicf/vendorai-platform-replit/issues/3463#issuecomment-6103599331",
+  "inventorySha": "45acbf1dd946b9dca5183940208b3a064493659b",
+  "sourceReadsSha": "d31b9de533bafaa28c26dcd544aab07cd7e1d97b",
+  "notice": "51 IDs reconciled as investigation coverage, not 51 implemented or approved features. Inventory presence is not implementation evidence. Read source pinned separately; PR states can change.",
+  "items": [
+    {
+      "id": "INF-01",
+      "title": "Backend Contabo",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [
+        {
+          "number": 3433,
+          "sha": "681a3d078567cc45957efe2c2143ddb123045c06",
+          "state": "investigation_reference"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "scripts/vendi-contabo-operator",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        },
+        {
+          "path": "scripts/vendi04-controlled-release.sh",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Containers observados no estágio anterior; falta conciliar Docker/cron e SHA atual no host.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-02",
+      "title": "Homolog separada",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "scripts/homolog-vendi-02-contabo.sh",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Confirmar DB, segredos, portas e isolamento da homologação por cenário funcional.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-03",
+      "title": "Git PR controlado",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [
+        {
+          "number": 3433,
+          "sha": "681a3d078567cc45957efe2c2143ddb123045c06",
+          "state": "investigation_reference"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "scripts/vendi04-merge-approved-pr.sh",
+          "presentInInventory": false,
+          "sourceReview": "inventory_only"
+        },
+        {
+          "path": "scripts/vendi04-merge-gate.sh",
+          "presentInInventory": false,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Base de #3433 não é main; validar SHA, autorização e controlador em isolamento antes do merge.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-04",
+      "title": "Cloudflare Pages",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/frontend/vite.config.ts",
+          "presentInInventory": true,
+          "sourceReview": "read"
+        }
+      ],
+      "nextStep": "Verificar projeto, build frontend, artefato e deploy manual da versão final.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-05",
+      "title": "R2 privado",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/api-server/src/routes/storage.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Validar objetos privados, URLs assinadas e negação entre tenants; não migrar storage oficial.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-06",
+      "title": "Supabase PostgreSQL",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "lib/db/src/index.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Executar contratos de banco em DB descartável; comprovar conexão e isolamento sem expor segredos.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-07",
+      "title": "Autenticação Vendi 401",
+      "originStatus": "blocked",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [
+        {
+          "number": 3445,
+          "sha": "46415cbd6c42f534b879de6fe79412e83e8e243e",
+          "state": "investigation_reference"
+        },
+        {
+          "number": 3432,
+          "sha": "3b0305de41848b60a52a3b77000c217bb85e0397",
+          "state": "investigation_reference"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/api-server/src/routes/browser_agent_mcp.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        },
+        {
+          "path": "artifacts/api-server/src/lib/homolog-token-exchange.ts",
+          "presentInInventory": false,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Resolver conflitos #3445; teste real de exchange de homologação e identidade/tenant, sem token produtivo.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-08",
+      "title": "Operador Contabo release",
+      "originStatus": "blocked",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [
+        {
+          "number": 3433,
+          "sha": "681a3d078567cc45957efe2c2143ddb123045c06",
+          "state": "investigation_reference"
+        },
+        {
+          "number": 3445,
+          "sha": "46415cbd6c42f534b879de6fe79412e83e8e243e",
+          "state": "investigation_reference"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "scripts/vendi-contabo-operator",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        },
+        {
+          "path": "scripts/vendi04-controlled-release.sh",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Conciliar operador no host versus GitHub e manifesto VENDI-04; imagem observada usa SHA divergente.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-09",
+      "title": "GitHub Actions runner",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": ".github/workflows/vendorai-api-ci.yml",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Runner depende de configuração GitHub; workflow não substitui build Contabo. Inventariar configuração real.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-10",
+      "title": "Browser Agent 500",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [
+        {
+          "number": 3431,
+          "sha": null,
+          "state": "investigation_reference"
+        },
+        {
+          "number": 3465,
+          "sha": null,
+          "state": "investigation_reference"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/api-server/src/routes/browser_agent_mcp.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Validar missão assistida read-only, tenant válido, timeout e erro real em homologação.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-11",
+      "title": "OAuth MCP",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [
+        {
+          "number": 3459,
+          "sha": null,
+          "state": "investigation_reference"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/cloudflare-mcp/src/oauth.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Código OAuth cliente assinado existe; comprovar política runtime e rejeição do token compartilhado.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-12",
+      "title": "Cloudflare config",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/cloudflare-mcp/src/index.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Validar configuração Pages/DNS/R2 pelo ambiente sem imprimir tokens; build MCP independente.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-13",
+      "title": "PAT auditoria",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/api-server/src/routes/admin_improvements.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Verificar permissões efetivas da credencial GitHub, expiração e ausência de segredos em logs/UI.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-14",
+      "title": "Backup rollback",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [
+        {
+          "number": 3433,
+          "sha": "681a3d078567cc45957efe2c2143ddb123045c06",
+          "state": "investigation_reference"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "scripts/vendi04-controlled-release.sh",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Backup recuperável e ensaio restaurável da mesma versão continuam sem comprovação nesta sessão.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-15",
+      "title": "Sem deploy automático",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "AGENTS.md",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Conflito de política: backlog exige sem deploy automático, protocolo atual descreve cron de main. Documentar decisão e conferir o gatilho antes de merge.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-16",
+      "title": "Registro Mestre",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [
+        {
+          "number": 3444,
+          "sha": "41cea93b9a85efef0624f8823f408309a0a4db1a",
+          "state": "investigation_reference"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "docs/master/improvements-registry.json",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        },
+        {
+          "path": "scripts/validate-master-improvements.cjs",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Validador 244 registros aprovado localmente; conciliar registro com 283 IDs documentais, sem declarar funcionalidades concluídas.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-17",
+      "title": "Central Melhorias Releases",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [
+        {
+          "number": 3449,
+          "sha": "e2fcd9bf41818ceef46b44451ce87101b72753a6",
+          "state": "investigation_reference"
+        },
+        {
+          "number": 3451,
+          "sha": "dda910eceaf6311c9221f9d255419d952f54980f",
+          "state": "merged_external"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/api-server/src/routes/admin_release_center.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        },
+        {
+          "path": "artifacts/frontend/src/pages/admin/AdminImprovements.tsx",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Reconciliar conflito #3449 após merge externo #3451; testar estados HTTP, worker, UI e SQL isolado.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-18",
+      "title": "Central Evolução",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [
+        {
+          "number": 3449,
+          "sha": "e2fcd9bf41818ceef46b44451ce87101b72753a6",
+          "state": "investigation_reference"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/api-server/src/routes/admin_improvements.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Integrar a Central existente, reconciliar dependências e evidências sem criar outra Central.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-19",
+      "title": "Auditoria Mestre",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [
+        {
+          "number": 3444,
+          "sha": "41cea93b9a85efef0624f8823f408309a0a4db1a",
+          "state": "investigation_reference"
+        },
+        {
+          "number": 3451,
+          "sha": "dda910eceaf6311c9221f9d255419d952f54980f",
+          "state": "merged_external"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "docs/master/improvements-registry.json",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Cobertura documental não comprova implantação; vincular critérios específicos e evidências de cada ID.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-20",
+      "title": "Testes regressão",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [
+        {
+          "number": 3459,
+          "sha": null,
+          "state": "investigation_reference"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "scripts/infra/test-sha.sh",
+          "presentInInventory": true,
+          "sourceReview": "read"
+        },
+        {
+          "path": "scripts/infra/remote-test-gate.py",
+          "presentInInventory": true,
+          "sourceReview": "read"
+        }
+      ],
+      "nextStep": "Corrigidos launch-ts explícito e resumo de gates nesta branch; validar Docker, cache, MCP e suíte no host.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-21",
+      "title": "UI 2.0",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [
+        {
+          "number": 3453,
+          "sha": "016d035f78d879c927beb665d09171a732e40205",
+          "state": "merged_external"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/frontend/src/components/layout/SidebarLayout.tsx",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        },
+        {
+          "path": "artifacts/frontend/src/ui-standard.css",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Código contextual já mergeado externamente; validar UX e permissões em desktop/mobile com entitlements reais.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-22",
+      "title": "Sem refresh involuntário",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/frontend/src/components/FrontendRecoveryGuard.tsx",
+          "presentInInventory": true,
+          "sourceReview": "read"
+        }
+      ],
+      "nextStep": "Guard tem navegação automática; conferir proteção de formulários/sessão e atualização somente conforme política aprovada.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-23",
+      "title": "Unificar Jarvis routers",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/api-server/src/routes/index.ts",
+          "presentInInventory": true,
+          "sourceReview": "read"
+        },
+        {
+          "path": "artifacts/api-server/src/routes/jarvis_email_actions.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Index já define mountJarvisAuxiliaryRouter; demonstrar entrada única /support/chat e todas ações sem duplicação.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-24",
+      "title": "Unificar gateway IA",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/api-server/src/lib/ai-gateway.ts",
+          "presentInInventory": true,
+          "sourceReview": "read"
+        }
+      ],
+      "nextStep": "Gateway comum existe; inventariar chamadas diretas/remanescentes e testar quota, tenant e contabilização.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-25",
+      "title": "Limpeza de legado",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/frontend/src/App.tsx",
+          "presentInInventory": true,
+          "sourceReview": "read"
+        },
+        {
+          "path": "artifacts/frontend/src/AppLegacy.tsx",
+          "presentInInventory": true,
+          "sourceReview": "read"
+        }
+      ],
+      "nextStep": "Mapear consumidores antes de remover legado; nenhuma exclusão arbitrária ou de módulos usados.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-26",
+      "title": "Unificar prompt variations",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/api-server/src/routes/arch.ts",
+          "presentInInventory": true,
+          "sourceReview": "read"
+        },
+        {
+          "path": "lib/db/src/schema/arch_prompt_variations.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        },
+        {
+          "path": "lib/db/src/schema/prompt_variations.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Dois schemas persistem; conciliar contratos e consumidores antes de migrar/remover; regressões isoladas.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-27",
+      "title": "Correções de interface",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/frontend/src/pages/Configuracoes.tsx",
+          "presentInInventory": true,
+          "sourceReview": "read"
+        }
+      ],
+      "nextStep": "Layout aprovado existe como código; confirmar navegação, sidebar, acessibilidade e integração visual.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-28",
+      "title": "Homolog sem senha prod",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [
+        {
+          "number": 3445,
+          "sha": "46415cbd6c42f534b879de6fe79412e83e8e243e",
+          "state": "investigation_reference"
+        },
+        {
+          "number": 3465,
+          "sha": null,
+          "state": "investigation_reference"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/api-server/src/routes/browser_agent_mcp.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Comprovar login de homologação próprio e segregação das credenciais de produção.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-29",
+      "title": "Changelog e release",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [
+        {
+          "number": 3433,
+          "sha": "681a3d078567cc45957efe2c2143ddb123045c06",
+          "state": "investigation_reference"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/api-server/src/routes/changelog.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Registrar versão, commits, autorização, resultado dos gates e artefatos imutáveis do release final.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "INF-30",
+      "title": "Pós-release monitoramento",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [
+        {
+          "number": 3433,
+          "sha": "681a3d078567cc45957efe2c2143ddb123045c06",
+          "state": "investigation_reference"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "scripts/vendi04-controlled-release.sh",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Conferir last-status, healthchecks e cenário funcional pós-release; monitoramento não inferido do merge.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "AUD-01",
+      "title": "Executor de testes isolados por PR e SHA",
+      "originStatus": "approved_scope_unverified",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [
+        {
+          "number": 3459,
+          "sha": null,
+          "state": "investigation_reference"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "scripts/infra/test-sha.sh",
+          "presentInInventory": true,
+          "sourceReview": "read"
+        },
+        {
+          "path": "scripts/infra/remote-test-gate.py",
+          "presentInInventory": true,
+          "sourceReview": "read"
+        }
+      ],
+      "nextStep": "Gate explicitado e evidência conservadora implementados; ativação e isolamento reais ainda pendentes.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "AUD-02",
+      "title": "Plano Mestre no Superadmin com 258 registros",
+      "originStatus": "approved_scope_unverified",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [
+        {
+          "number": 3451,
+          "sha": "dda910eceaf6311c9221f9d255419d952f54980f",
+          "state": "merged_external"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/frontend/src/pages/admin/AdminMasterPlan.tsx",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        },
+        {
+          "path": "artifacts/api-server/src/routes/admin_improvements.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "#3451 já mergeado por outra execução; 244+14 documentais; falta homologação Superadmin/usuário comum e atualização de estados por release.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "AUD-03",
+      "title": "Merge e release com rastreabilidade",
+      "originStatus": "approved_scope_unverified",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [
+        {
+          "number": 3433,
+          "sha": "681a3d078567cc45957efe2c2143ddb123045c06",
+          "state": "investigation_reference"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "scripts/vendi04-merge-approved-pr.sh",
+          "presentInInventory": false,
+          "sourceReview": "inventory_only"
+        },
+        {
+          "path": "scripts/infra/remote-test-gate.py",
+          "presentInInventory": true,
+          "sourceReview": "read"
+        }
+      ],
+      "nextStep": "Resumo agora rejeita resultado parcial/duplicado/falho; falta integração autenticada e trilha de merge/release no host.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "AUD-04",
+      "title": "Incidente RELEASE_BUSY e serialização de publicação",
+      "originStatus": "approved_scope_unverified",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [
+        {
+          "number": 3433,
+          "sha": "681a3d078567cc45957efe2c2143ddb123045c06",
+          "state": "investigation_reference"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "scripts/vendi04-controlled-release.sh",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Validar RELEASE_BUSY, trava, concorrência e recuperação sem interromper publicações de outra frente.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "AUD-05",
+      "title": "Auditoria de UI, redundâncias e módulos duplicados",
+      "originStatus": "approved_scope_unverified",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-INF-AUD",
+      "candidatePRs": [
+        {
+          "number": 3453,
+          "sha": "016d035f78d879c927beb665d09171a732e40205",
+          "state": "merged_external"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/frontend/scripts/audit-ui-integrity.mjs",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Executar auditoria visual e inventário de redundâncias no bundle real; não deduzir conformidade de fonte.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "ADM-01",
+      "title": "Superadmin tenants",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-ADM",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/frontend/src/pages/AdminTenants.tsx",
+          "presentInInventory": true,
+          "sourceReview": "read"
+        },
+        {
+          "path": "artifacts/api-server/src/routes/tenants.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Código existente; testar CRUD tenant, autorização Superadmin e não vazamento para usuário comum.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "ADM-02",
+      "title": "Permissões",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-ADM",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/api-server/src/middlewares/auth.ts",
+          "presentInInventory": true,
+          "sourceReview": "read"
+        },
+        {
+          "path": "artifacts/frontend/src/components/layout/SidebarLayout.tsx",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "enforceModulePermission existe; validar negar por URL direta, função, tenant e tokens scoped.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "ADM-03",
+      "title": "Plano Negócios wizard",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-ADM",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/frontend/src/components/business-plan/BusinessPlanPanel.tsx",
+          "presentInInventory": true,
+          "sourceReview": "read"
+        },
+        {
+          "path": "artifacts/api-server/src/routes/business_plan.ts",
+          "presentInInventory": true,
+          "sourceReview": "read"
+        }
+      ],
+      "nextStep": "PN existe no Kit da Marca; conciliar wizard/manual aprovado, uploads, versões e alimentações CRM/BI.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "ADM-04",
+      "title": "CNPJ QSA e ICP",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-ADM",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/api-server/src/services/cnpjService.ts",
+          "presentInInventory": true,
+          "sourceReview": "read"
+        },
+        {
+          "path": "artifacts/api-server/src/routes/business_plan.ts",
+          "presentInInventory": true,
+          "sourceReview": "read"
+        }
+      ],
+      "nextStep": "CNPJ/QSA parser existe; testar enriquecimento sem sobrescrever dados verificados, ICP e consentimentos.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "ADM-05",
+      "title": "Dashboard executivo",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-ADM",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/frontend/src/components/dashboard/ExecutiveDashboardModern.tsx",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        },
+        {
+          "path": "artifacts/api-server/src/routes/official_metrics.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Dashboard existe; validar KPIs oficiais, filtros, sidebar, mobile e ausência de números fictícios.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "ADM-06",
+      "title": "Inteligência empresarial",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-ADM",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/api-server/src/routes/customer_intelligence.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        },
+        {
+          "path": "artifacts/api-server/src/routes/analytics.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Código candidato; demonstrar inteligência por tenant e dados oficiais com fluxos completos.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "ADM-07",
+      "title": "Agenda",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-ADM",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/frontend/src/pages/Agenda.tsx",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        },
+        {
+          "path": "artifacts/api-server/src/routes/agendas.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        },
+        {
+          "path": "artifacts/api-server/src/routes/tenant_calendar_settings.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Validar agenda por usuário/equipe, responsável, prazo, cores e atividades automáticas por etapa.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "ADM-08",
+      "title": "Configurações",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-ADM",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/frontend/src/pages/Configuracoes.tsx",
+          "presentInInventory": true,
+          "sourceReview": "read"
+        }
+      ],
+      "nextStep": "Tela reorganizada existe; validar busca/cards/sidebar e rotas reais, conforme layout aprovado.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "ADM-09",
+      "title": "Reconexão",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-ADM",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/api-server/src/services/integration-token-guardian.ts",
+          "presentInInventory": true,
+          "sourceReview": "read"
+        }
+      ],
+      "nextStep": "Renovação proativa existe; demonstrar refresh, revogação, falha e aviso Jarvis sem expor token.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "ADM-10",
+      "title": "Audit trail",
+      "originStatus": "verification_required",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-ADM",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/api-server/src/lib/configuration-audit.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        },
+        {
+          "path": "artifacts/api-server/src/middlewares/configurationBusinessProfileAudit.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Auditoria de configuração existe; verificar autoria/data/histórico por tenant e cobertura de todas mutações críticas.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "UI-01",
+      "title": "Seleção contextual de área após login",
+      "originStatus": "approved_scope_unverified",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-UI",
+      "candidatePRs": [
+        {
+          "number": 3453,
+          "sha": "016d035f78d879c927beb665d09171a732e40205",
+          "state": "merged_external"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/frontend/src/components/layout/ContextSwitcher.tsx",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        },
+        {
+          "path": "artifacts/api-server/src/routes/ui_contexts.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "#3453 mergeado externamente; preview opt-in, troca desabilitada e entitlements pendentes; não é seleção operacional completa.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "UI-02",
+      "title": "Menu e painel condicionados a permissões",
+      "originStatus": "approved_scope_unverified",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-UI",
+      "candidatePRs": [
+        {
+          "number": 3453,
+          "sha": "016d035f78d879c927beb665d09171a732e40205",
+          "state": "merged_external"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/api-server/src/middlewares/auth.ts",
+          "presentInInventory": true,
+          "sourceReview": "read"
+        },
+        {
+          "path": "artifacts/frontend/src/components/layout/SidebarLayout.tsx",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Menu e middleware candidatos; validar contextos, API, funções e acesso negado sem concessão via UI.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "UI-03",
+      "title": "Instalação PWA em desktop e mobile",
+      "originStatus": "approved_scope_unverified",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-UI",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/frontend/public/manifest.json",
+          "presentInInventory": true,
+          "sourceReview": "read"
+        },
+        {
+          "path": "artifacts/frontend/public/sw.js",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Manifest standalone existe; sw desativa registro. Validar instalação real nos navegadores alvo e preparar estratégia offline sem refresh involuntário.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "UI-04",
+      "title": "Projetos com operação desktop offline",
+      "originStatus": "approved_scope_unverified",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-UI",
+      "candidatePRs": [
+        {
+          "number": 3453,
+          "sha": "016d035f78d879c927beb665d09171a732e40205",
+          "state": "merged_external"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/frontend/src/lib/projectContinuity.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        },
+        {
+          "path": "artifacts/frontend/public/sw.js",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Continuidade em #3453 é fundação; worker desativa offline, falta persistência local de projeto e integração real desktop.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "UI-05",
+      "title": "Sincronização e conflitos de versões offline",
+      "originStatus": "approved_scope_unverified",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-UI",
+      "candidatePRs": [
+        {
+          "number": 3453,
+          "sha": "016d035f78d879c927beb665d09171a732e40205",
+          "state": "merged_external"
+        }
+      ],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/frontend/src/lib/projectContinuity.ts",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Falta demonstrar fila offline, versões, conflito explícito, reconciliação servidor e isolamento local por identidade.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    },
+    {
+      "id": "UI-06",
+      "title": "Experiência mobile e câmera adaptativa",
+      "originStatus": "approved_scope_unverified",
+      "stage": "reconciled_pending_validation",
+      "sublot": "ONDA01-UI",
+      "candidatePRs": [],
+      "sourceCandidates": [
+        {
+          "path": "artifacts/frontend/src/modules/arqdor",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        },
+        {
+          "path": "artifacts/frontend/src/pages/arch",
+          "presentInInventory": true,
+          "sourceReview": "inventory_only"
+        }
+      ],
+      "nextStep": "Inventariar câmera/adaptação existentes; validar permissões, orientação, anexos e cotas em mobile real.",
+      "technicalValidation": "not_complete",
+      "homologation": "not_verified",
+      "production": "not_verified"
+    }
+  ]
+}
