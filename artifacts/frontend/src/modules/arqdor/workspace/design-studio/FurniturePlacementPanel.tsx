@@ -19,6 +19,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
   const width=Math.round((Math.max(...xs)-Math.min(...xs))*1000);
   const depth=Math.round((Math.max(...ys)-Math.min(...ys))*1000);
   const ready=Number.isFinite(width)&&Number.isFinite(depth)&&width>0&&depth>0;
+  const heightLimitMm=environment.walls.length?Math.round(Math.min(...environment.walls.map(w=>w.heightM))*1000):null;
   const [x,setX]=useState(100),[y,setY]=useState(100);
   const [selectedId,setSelectedId]=useState<string|null>(null);
   const [edit,setEdit]=useState({widthMm:1200,heightMm:2200,depthMm:600,materialId:"MDF-18"});
@@ -32,6 +33,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
       const tenantId=savedTenantId??roomItems[0]?.tenantId??draft.parameters.tenantId;
       const projectId=environment.projectId??draft.parameters.projectId;
       const scopedDraft={...draft,parameters:{...draft.parameters,tenantId,projectId,roomId:environment.roomId},parts:draft.parts.map(p=>({...p,tenantId,projectId,parentItemId:environment.roomId}))};
+      if(heightLimitMm!==null&&scopedDraft.parameters.heightMm>heightLimitMm)throw Error("Móvel acima da altura do ambiente");
       const next=insertCabinetDraft({tenantId,projectId,room:{id:environment.roomId,widthMm:width,depthMm:depth},draft:scopedDraft,xMm:x,yMm:y,id:crypto.randomUUID(),existing:roomItems});
       setItems(old=>[...old.filter(i=>i.roomId!==environment.roomId),...next]);setMessage("");
     }catch(e){setMessage(e instanceof Error?e.message:"Erro de geometria");}
@@ -39,6 +41,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
   function applyEdits(){
     if(!selectedId)return;
     try{
+      if(heightLimitMm!==null&&edit.heightMm>heightLimitMm)throw Error("Móvel acima da altura do ambiente");
       const next=revisePlacedCabinet({room:{id:environment.roomId,widthMm:width,depthMm:depth},items,id:selectedId,changes:edit});
       setItems(next);setMessage("Peças e dimensões atualizadas no rascunho; salve para persistir.");
     }catch(e){setMessage(e instanceof Error?e.message:"Alteração inválida");}
