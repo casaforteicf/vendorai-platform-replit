@@ -34,6 +34,7 @@ export type OperationalChecklistItem = {
   surveyElements?: Array<{
     id: string;
     roomName: string;
+    floorIndex?: number;
     elementType: "wall" | "door" | "window" | "column" | "beam" | "electrical" | "plumbing" | "gas" | "other";
     label: string;
     widthMm?: number | null;
