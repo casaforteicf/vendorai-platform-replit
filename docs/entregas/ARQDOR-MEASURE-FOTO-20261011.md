@@ -91,3 +91,10 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - Criados testes Vitest do conversor: parede isolada, contorno retangular conectado e aberturas sobrepostas.
 - **Escopo efetivamente entregue**: preparação, revisão e exportação de rascunho; a gravação em `arch_concept_projects`, a integração com projeto existente, versionamento/rollback e geometria de fabricação seguem pendentes.
 - Testes adicionados mas não executados; gates de compilação e homologação não comprovados. Nenhum PR/merge/deploy.
+
+## Lote 10 — criação transacional de rascunho Arqdor (11/10/2026)
+- Endpoint autenticado POST /api/operational-checklists/runs/:runId/create-arqdor-draft com confirmação explícita e nome do projeto.
+- Converte coordenadas mm para metros, desloca a origem para a envoltória positiva, valida paredes verificadas, conexões entre extremidades, janelas e portas dimensionadas, encaixe e sobreposições.
+- Em transação, cria registros novos em arch_projetos e arch_concept_projects, com vínculo ao lead/deal/proposta, owner do tenant, status briefing/draft e referência textual à revisão de origem.
+- UI na tela de conferência solicita confirmação e exibe identificador criado; não sobrescreve projetos existentes, não libera fabricação e não altera produção.
+- **PENDÊNCIAS CRÍTICAS ANTES DE HOMOLOGAR:** endpoint ainda não é idempotente (cliques repetidos podem criar rascunhos duplicados), teste de concorrência entre alterações do checklist e criação de rascunho, confirmação de tipo do campo tenantId em users, teste transacional de integração, revisão de autorização por negócio/owner, topologia T/cruzamento, governança do dossiê/histórico, validação do editor no projeto criado e todos os gates de compilação. Não abrir PR/merge nem publicar.
