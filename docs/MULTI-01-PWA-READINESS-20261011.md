@@ -89,3 +89,11 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - Testes `arqdorDraftRecovery.test.ts` cobrem acesso revogado, ausência de escopo, rascunho ausente e conflito.
 - **Não representa conclusão de MULTI-03/04/05/06**: falta autorização fresca ligada ao editor verdadeiro; criptografia/retention e política de dados, salvamento real, endpoint de escrita atômica, monitoramento, build/typecheck e homologação de dispositivo.
 - Execução local e CI ainda não comprovadas; PR continua draft e produção inalterada.
+
+
+## MULTI-06.2 — Primeira integração efetiva com o workspace real
+- Identificado fluxo real: `artifacts/frontend/src/modules/arqdor/workspace/WorkspaceContext.tsx` realiza PUT debounced em `/api/arqdor/projects/:id`; `ArqWorkspace.tsx` consome este contexto. Há também `useArqProject`, portanto não confundir os dois salvamentos.
+- Corrigido bug preexistente: antes, qualquer resposta HTTP, inclusive erro, era tratada como sucesso; agora somente `response.ok` confirma gravação. Falhas de rede e HTTP geram `saveError` explicitamente; temporizador é limpo ao desmontar.
+- Interface real ArqWorkspace agora exibe `saveError` em alerta, prevenindo falsa confiança de salvamento concluído.
+- **Ainda NÃO conectado IndexedDB nem sincronização**: o PUT existente não foi alterado em formato ou condição de revisão. É indispensável conferir o endpoint e a política de revisões antes de habilitar envio offline. O novo erro exposto não garante salvamento local automático.
+- Pendências de teste: typecheck e Vitest, rede intermitente, HTTP 401/403/409/500, projeto trocado durante debounce, autorização e QA funcional. PR draft, sem deploy.
