@@ -120,3 +120,10 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - Criado `arqdorConditionalUpload.test.ts` cobrindo sessão/permissão, revisão divergente, conflito no servidor, sucesso e falha de rede.
 - **Ainda bloqueado para uso final:** backend atualmente garante autenticação e escopo tenant, mas ainda não prova permissão de edição por usuário/projeto. O cliente recebe `canEdit` do chamador e isso não substitui autorização real do servidor. Exige política de acesso por projeto e testes com banco e múltiplos usuários antes de integrar ao editor ou habilitar o recurso.
 - Sem CI ou build comprovados; PR draft, sem merge/deploy.
+
+
+## MULTI-04.4 — Restrição fail-closed de permissão (intermediária)
+- As duas novas rotas `GET /arqdor/projects/:id/revision` e `PUT /arqdor/projects/:id/conditional` receberam `requireRole("super_admin", "tenant_admin")`. Usuários comuns não podem acessar o recurso experimental enquanto não existe ACL de projeto comprovada. O PUT legado permanece intacto.
+- Estendido teste de contrato para exigir explicitamente o middleware de papel em ambas as rotas.
+- **Não resolve permissões individuais de projeto** nem permite sincronização offline geral: apenas reduz a superfície de acesso durante o desenvolvimento. Antes de liberar a todos os colaboradores, implementar vínculo de projeto/ACL real, garantir autorização por projeto e tenant, limites de corpo, integridade de versão e testes funcionais.
+- Não houve compilação, execução de testes de integração, merge ou publicação nesta etapa.
