@@ -7,7 +7,7 @@ export function convertSurveyToArqdor(elements: SurveyElement[]) {
   const validWalls = walls.filter((e) => e.verified && [e.x1Mm,e.y1Mm,e.x2Mm,e.y2Mm].every((n) => typeof n === "number" && Number.isFinite(n)) && Math.hypot((e.x2Mm ?? 0)-(e.x1Mm ?? 0),(e.y2Mm ?? 0)-(e.y1Mm ?? 0)) >= 10 && typeof e.thicknessMm === "number" && e.thicknessMm >= 50 && e.thicknessMm <= 1000);
   if (validWalls.length !== walls.length) warnings.push("Existem paredes sem coordenadas, espessura válida ou conferência.");
   const customWalls = validWalls.map((w) => ({
-    id: w.id, floor: 0,
+    id: w.id, floor: w.floorIndex ?? 0,
     x1: w.x1Mm! / 1000, y1: w.y1Mm! / 1000,
     x2: w.x2Mm! / 1000, y2: w.y2Mm! / 1000,
     thickness: w.thicknessMm! / 1000,
@@ -15,13 +15,13 @@ export function convertSurveyToArqdor(elements: SurveyElement[]) {
   const wallIds = new Set(customWalls.map((w) => w.id));
   const openings = elements.filter((e) => e.elementType === "door" || e.elementType === "window");
   const customOpenings = openings.filter((e) =>
-    e.verified && e.wallId && wallIds.has(e.wallId) &&
+    e.verified && e.wallId && wallIds.has(e.wallId) && validWalls.some(w => w.id === e.wallId && (w.floorIndex ?? 0) === (e.floorIndex ?? 0) && w.roomName === e.roomName) &&
     typeof e.widthMm === "number" && e.widthMm > 0 &&
     typeof e.heightMm === "number" && e.heightMm > 0 &&
     typeof e.offsetMm === "number" && e.offsetMm >= 0 &&
     (e.elementType === "door" || typeof e.sillHeightMm === "number")
   ).map((e) => ({
-    id: e.id, wallId: e.wallId!, floor: 0,
+    id: e.id, wallId: e.wallId!, floor: e.floorIndex ?? 0,
     type: e.elementType as "door" | "window",
     offset: e.offsetMm! / 1000, width: e.widthMm! / 1000,
     height: e.heightMm! / 1000,
@@ -47,14 +47,14 @@ export function convertSurveyToArqdor(elements: SurveyElement[]) {
   }
   const endpoints = customWalls.flatMap((w) => [{wallId:w.id,x:w.x1,y:w.y1},{wallId:w.id,x:w.x2,y:w.y2}]);
   for (const wall of customWalls) {
-    const start = endpoints.some((p) => p.wallId !== wall.id && Math.hypot(p.x-wall.x1,p.y-wall.y1) < 0.005);
+    const start = endpoints.some((p) => p.wallId !== wall.id && customWalls.find(w => w.id === p.wallId)?.floor === wall.floor && Math.hypot(p.x-wall.x1,p.y-wall.y1) < 0.005);
     const end = endpoints.some((p) => p.wallId !== wall.id && Math.hypot(p.x-wall.x2,p.y-wall.y2) < 0.005);
     if (!start || !end) warnings.push("Parede " + wall.id + " possui extremidades sem conexão comprovada.");
   }
   if (walls.length !== new Set(walls.map((w) => w.id)).size) warnings.push("IDs duplicados no levantamento.");
   return {
     schemaVersion: 1, generatedFrom: "arqdor_measure", previewOnly: true,
-    configuration: { projectScope: "room" as const, floors: 1, customWalls, customOpenings },
+    configuration: { projectScope: "room" as const, floors: Math.max(1, ...elements.map(e => (e.floorIndex ?? 0) + 1)), customWalls, customOpenings },
     warnings,
     readyForReview: customWalls.length > 0 && warnings.length === 0,
   };
