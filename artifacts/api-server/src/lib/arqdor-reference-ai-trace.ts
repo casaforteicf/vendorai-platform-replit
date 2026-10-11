@@ -293,7 +293,7 @@ export function normalizeReferenceTrace(
       y1: Math.round(y1 * 1000) / 1000,
       x2: Math.round(x2 * 1000) / 1000,
       y2: Math.round(y2 * 1000) / 1000,
-      thickness: Math.round(clamp(wall.thickness, 0.08, 0.4, 0.14) * 1000) / 1000,
+      thickness: Math.round(clamp(Number(wall.thickness) > 0 ? wall.thickness : undefined, 0.08, 0.4, 0.15) * 1000) / 1000,
       confidence: clamp(wall.confidence, 0, 1, 0.5),
     });
     wallIndexMap.set(index, id);
