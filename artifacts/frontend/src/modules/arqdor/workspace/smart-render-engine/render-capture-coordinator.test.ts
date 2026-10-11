@@ -21,6 +21,14 @@ describe("ARQDOR paired capture coordinator",()=>{
   expect(coordinator.consume(token)?.geometry).toBe(geometry);
   expect(coordinator.consume(token)).toBeNull();
  });
+ it("does not overwrite accepted captures with duplicate callbacks",()=>{
+  const c=createRenderCaptureCoordinator(),token=c.begin().renderSceneSnapshotToken;
+  expect(c.acceptSnapshot(token,snapshot)).toBe(true);
+  expect(c.acceptSnapshot(token,{...snapshot,sceneId:"different"})).toBe(false);
+  expect(c.acceptGeometry(token,geometry)).toBe(true);
+  expect(c.acceptGeometry(token,{...geometry,totalTriangles:0})).toBe(false);
+  expect(c.consume(token)?.geometry).toBe(geometry);
+ });
  it("ignores callbacks from superseded requests",()=>{
   const c=createRenderCaptureCoordinator();
   const older=c.begin().renderGeometryExportToken;
