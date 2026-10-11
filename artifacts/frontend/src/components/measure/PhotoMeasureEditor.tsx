@@ -22,7 +22,7 @@ type Props = {
   initialMeasurements?: PhotoMeasure[];
   readOnly?: boolean;
   onSave?: (measurements: PhotoMeasure[]) => Promise<void>;
-  onUpload?: (file: File) => Promise<{ storageUrl: string; accessUrl: string }>;
+  onUpload?: (file: File, uploadId?: string) => Promise<{ storageUrl: string; accessUrl: string }>;
   photos?: Array<{ storageUrl: string; accessUrl: string }>;
 };
 
@@ -162,7 +162,7 @@ export default function PhotoMeasureEditor({ itemId, offlineKey, imageUrl, onClo
           if (!saved) throw new Error("Foto offline não encontrada");
           const photo = saved.uploadedPath
             ? { storageUrl: saved.uploadedPath, accessUrl: "" }
-            : await onUpload(new File([saved.file], saved.name, { type: saved.mime }));
+            : await onUpload(new File([saved.file], saved.name, { type: saved.mime }), saved.id);
           if (!saved.uploadedPath) await markPhotoUploaded(saved, photo.storageUrl);
           if (saved.measures?.length && onSave) {
             const annotated = saved.measures.map(m => ({ ...m, photoPath: photo.storageUrl }));
