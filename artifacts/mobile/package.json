@@ -11,7 +11,8 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "dev:lan": "expo start --lan",
-    "audit:readiness": "node scripts/audit-mobile-readiness.mjs"
+    "audit:readiness": "node scripts/audit-mobile-readiness.mjs",
+    "test:readiness": "node --test scripts/mobile-readiness.test.mjs"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
