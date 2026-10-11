@@ -1,5 +1,6 @@
 import { useState, type ChangeEvent } from "react";
-import { exportArqdorRecovery, importArqdorRecovery, type ArqdorRecoveryEnvelope } from "@/lib/arqdorRecoveryPackage";
+import { importArqdorRecovery, type ArqdorRecoveryEnvelope } from "@/lib/arqdorRecoveryPackage";
+import { verifyRecoveryRoundTrip } from "@/lib/arqdorVerifiedRecoveryExport";
 import type { DraftScope, LocalDraft } from "@/lib/arqdorEncryptedDraft";
 import type { ProjectContinuity } from "@/lib/projectContinuity";
 import { evaluateRecoveryForReview } from "@/lib/arqdorRecoveryReview";
@@ -45,7 +46,7 @@ export function ArqdorRecoveryPanel(props: {
   async function exportBackup() {
     setBusy(true); setMessage(""); setExported(false);
     try {
-      const envelope = await exportArqdorRecovery(props.currentDraft, props.authorizedScope, passphrase);
+      const envelope = await verifyRecoveryRoundTrip(props.currentDraft, props.authorizedScope, passphrase);
       const url = URL.createObjectURL(new Blob([JSON.stringify(envelope)], { type: "application/json" }));
       const link = document.createElement("a");
       link.href = url;
