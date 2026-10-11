@@ -27,8 +27,9 @@ export function prepareCpuPreview(geometry: GeometryTransfer): PreparedCpuPrevie
   return createRenderBvh(geometry);
 }
 /** Small deterministic CPU raycast diagnostic, not path tracing or final-quality rendering. */
-export function renderCpuPreview(o:CpuPreviewOptions, rowStart=0, rowCount=o.height, prepared?:PreparedCpuPreview):CpuPreviewResult {
+export function renderCpuPreview(o:CpuPreviewOptions, rowStart=0, rowCount=o.height, prepared?:PreparedCpuPreview, sampleIndex=0):CpuPreviewResult {
   const {width,height}=o;
+  if(!Number.isSafeInteger(sampleIndex)||sampleIndex<0)throw Error("ARQDOR: índice de amostra inválido");
   if(!Number.isInteger(rowStart)||!Number.isInteger(rowCount)||rowStart<0||rowCount<1||rowStart+rowCount>height)throw Error("ARQDOR: faixa de linhas inválida");
   if(!Number.isInteger(width)||!Number.isInteger(height)||width<1||height<1||width*height>262_144)
     throw Error("ARQDOR: resolução de diagnóstico excedida (262144 pixels)");
@@ -43,7 +44,12 @@ export function renderCpuPreview(o:CpuPreviewOptions, rowStart=0, rowCount=o.hei
   const sky:Vec3=o.skyColor||[0.72,0.82,0.95],ambient=clamp(o.ambient??0.16);
   for(let localY=0;localY<rowCount;localY++)for(let x=0;x<width;x++){
     const y=rowStart+localY;
-    const px=(2*(x+0.5)/width-1)*aspect*spread,py=(1-2*(y+0.5)/height)*spread;
+    // Sample zero is pixel-centered for backward-compatible diagnostic results.
+    // Subsequent samples use deterministic low-discrepancy subpixel offsets.
+    const fract=(v:number)=>v-Math.floor(v);
+    const jx=sampleIndex===0?0.5:fract(sampleIndex*0.7548776662466927+x*0.017);
+    const jy=sampleIndex===0?0.5:fract(sampleIndex*0.5698402909980532+y*0.019);
+    const px=(2*(x+jx)/width-1)*aspect*spread,py=(1-2*(y+jy)/height)*spread;
     const direction=unit(add(forward,add(scale(right,px),scale(up,py))));
     const hit=bvh.intersect({origin:o.camera.position,direction});
     let color:Vec3=sky;
