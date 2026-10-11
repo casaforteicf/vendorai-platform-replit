@@ -104,3 +104,10 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - Resposta 200 com `reused: true` para reuso e 201 para criação. Frontend informa o resultado.
 - Critérios ainda a testar: a identificação por texto de descrição não tem índice/constraint exclusivo; evitar que alteração manual da descrição quebre a identidade, compatibilidade do `tx.execute` com driver, escopo de permissões, conflitos concorrentes de atualização do checklist, comportamento do editor e o caso de registro órfão.
 - Gates de compilação, testes e homologação **não executados**; código não foi publicado e não está pronto para PR.
+
+## Lote 12 — auditoria de gates e bloqueio de terminal (11/10/2026)
+- Verificados o modelo `users` (contém `tenantId`) e a rota de criação de conceito em branch.
+- Desktop Commander informou dispositivo remoto online, porém chamadas de execução estão bloqueadas por limite mensal de uso. Tentativa de acesso git via container também falhou por DNS indisponível.
+- Não foi possível executar os comandos oficiais de build frontend/backend, testes de regressão, inspeção do banco ou homologação.
+- A tentativa de impor novo bloqueio para checklists já concluídos foi revertida no mesmo lote, para não alterar o fluxo vigente de criação revisada. Resultado final da rota permanece com o controle anterior, sem alteração funcional consolidada.
+- Sem evidências de sucesso dos gates; não abrir PR/merge/produção.
