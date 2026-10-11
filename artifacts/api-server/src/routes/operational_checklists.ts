@@ -375,10 +375,26 @@ router.post("/operational-checklists/runs/:runId/items/:itemId/photos", async (r
       storageUrl, originalFilename: name, mimeType: contentType, fileSize: buffer.length,
       metadata: { origin: "arqdor_measure", leadId: run.leadId, dealId: run.dealId, runId: run.id, itemId, revision: run.revision },
     }).returning();
-    const items = (run.items ?? []).map((item) => item.id === itemId
-      ? { ...item, fotos: [...(item.fotos ?? []), storageUrl] } : item);
-    await db.update(operationalChecklistRunsTable).set({ items, updatedAt: new Date() })
-      .where(and(eq(operationalChecklistRunsTable.id, run.id), eq(operationalChecklistRunsTable.tenantId, run.tenantId)));
+    let persisted = false;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const [latest] = await db.select().from(operationalChecklistRunsTable)
+        .where(and(eq(operationalChecklistRunsTable.id, run.id), eq(operationalChecklistRunsTable.tenantId, run.tenantId))).limit(1);
+      if (!latest || latest.status === "concluido") break;
+      const target = (latest.items ?? []).find((item) => item.id === itemId);
+      if (!target || (target.fotos ?? []).length >= 20) break;
+      const items = (latest.items ?? []).map((item) => item.id === itemId
+        ? { ...item, fotos: [...(item.fotos ?? []), storageUrl] } : item);
+      const [saved] = await db.update(operationalChecklistRunsTable).set({ items, updatedAt: new Date() })
+        .where(and(eq(operationalChecklistRunsTable.id, latest.id),
+          eq(operationalChecklistRunsTable.tenantId, latest.tenantId),
+          eq(operationalChecklistRunsTable.status, latest.status),
+          eq(operationalChecklistRunsTable.items, latest.items ?? []))).returning();
+      if (saved) { persisted = true; break; }
+    }
+    if (!persisted) return void res.status(409).json({
+      error: "Não foi possível vincular a foto após alterações simultâneas. Confira o checklist antes de tentar novamente.",
+      code: "CHECKLIST_CONFLICT",
+    });
     const accessUrl = await measureStorage.getObjectEntitySignedUrl(storageUrl, 300);
     res.status(201).json({ assetId: asset.id, storageUrl, accessUrl });
   } catch (error) {
