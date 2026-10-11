@@ -1,4 +1,5 @@
 import { Link } from "wouter";
+import { getUi20VisibleServices, type Ui20Module } from "@/lib/ui20ServiceVisibility";
 import { Bot, Building2, CircleHelp, House, Megaphone, Ruler, Settings2, Store, Users, ArrowUpRight } from "lucide-react";
 
 type Props = {
@@ -6,6 +7,8 @@ type Props = {
   isAdmin: boolean;
   arqdorVisible?: boolean;
   erpVisible?: boolean;
+  modules?: Ui20Module[];
+  loading?: boolean;
 };
 
 const modules = [
@@ -20,11 +23,10 @@ const modules = [
 ] as const;
 
 /** Presentation only; tenant/route authorization continues on the server. */
-export function ServiceHome({ name, isAdmin, arqdorVisible = false, erpVisible = false }: Props) {
+export function ServiceHome({ name, isAdmin, arqdorVisible = false, erpVisible = false, modules, loading }: Props) {
+  const allowed = getUi20VisibleServices({ modules, isAdmin, arqdorEligible: arqdorVisible, loading });
   const visible = modules.filter((module) =>
-    (module.key !== "erp" || erpVisible) &&
-    (module.key !== "arqdor" || arqdorVisible) &&
-    (module.key !== "settings" || isAdmin)
+    allowed.has(module.key) && (module.key !== "erp" || erpVisible)
   );
   return (
     <section className="vendor-product-page space-y-5" aria-label="Início do Vendor.ai" data-ui20-home="true">
