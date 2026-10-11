@@ -51,14 +51,14 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
         room:{id:environment.roomId,widthMm:width,depthMm:depth},revision:snapshot.revision,
         createdAt:snapshot.createdAt,furniture:snapshot.furniture});
       if(restored.projectId!==environment.projectId||restored.roomId!==environment.roomId)throw Error("Contexto de projeto incompatível");
-      setItems(old=>[...old.filter(i=>i.roomId!==environment.roomId),...restored.furniture]);
+      setItems(old=>[...old.filter(i=>i.roomId!==environment.roomId),...restored.furniture.map(item=>({...item,tenantId:"local-preview",parameters:{...item.parameters,tenantId:"local-preview"},parts:item.parts.map(part=>({...part,tenantId:"local-preview"}))}))]);
       setMessage("Mobiliário recuperado.");
     }catch(e){setMessage(e instanceof Error?e.message:"Erro ao carregar");}
     finally{setBusy(false);}
   }
   return <section className="rounded-xl border bg-white p-4">
     <h3 className="font-semibold">Móveis na planta</h3>
-    <p className="text-xs text-amber-700">Prévia local, sem salvamento. Colisões 2D retangulares.</p>
+    <p className="text-xs text-amber-700">Prévia 2D; pode salvar no projeto existente. Validação de engenharia pendente.</p>
     {draft&&<p className="text-xs">Armário {draft.parameters.widthMm} × {draft.parameters.depthMm} mm · {draft.parts.length} tipos de peças.</p>}
     {ready?<><div className="grid grid-cols-2 gap-2">
       {([["X (mm)",x,setX],["Y (mm)",y,setY]] as const).map(([label,value,change])=><label key={label} className="text-xs">{label}<input type="number" className="w-full rounded border p-2" value={value} onChange={e=>change(Number(e.target.value))}/></label>)}
