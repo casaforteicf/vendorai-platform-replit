@@ -164,3 +164,10 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - Editor armazena cotas locais sem caminho de foto junto ao arquivo offline; ao sincronizar, envia imagem pela API autenticada, registra o caminho remoto em IndexedDB, então associa cotas ao caminho persistido via PATCH.
 - Se o PATCH das cotas falhar após upload e o reconhecimento tiver sido gravado, a fila não reenviará a imagem: permite nova tentativa de associar as cotas.
 - **Limites importantes:** cotas acrescentadas depois de enfileirar a imagem não são automaticamente anexadas ao registro offline; falha entre confirmação remota e armazenamento do reconhecimento local ainda pode duplicar imagens; não há chave idempotente no backend. Recuperação de exibição da imagem e atualização de marcações offline ainda exigem interface dedicada. A edição conjunta de cotas pode causar conflito e deve ser revisada após erro 409. Sem testes/build/homologação, merge ou produção.
+
+## Lote 22 — proteção de identidade estável de upload (11/10/2026)
+- Frontend propaga o ID UUID persistido da fotografia offline na requisição `POST .../photos`.
+- Backend valida `uploadId` como UUID, registra no metadata da mídia e busca reenvios já vinculados pelo tenant, checklist, item e UUID, devolvendo a fotografia já existente sem repetir upload.
+- Migração **ainda não aplicada** cria índice único parcial para `(tenant_id, metadata->>'uploadId')` de uploads Arqdor Measure. Essa é a garantia de unicidade mesmo sob corrida de chamadas, condicionada à aplicação da migração.
+- Verificação de reuso ocorre antes do limite de 20 fotos, permitindo resposta idempotente a reenvio já vinculado.
+- **Ainda pendente:** concorrência em banco, recuperação elegante de erro unique-violation durante corrida, reconciliação de asset criado sem vínculo ao checklist, prevenir reuso de UUID com imagem diferente via checksum, validação de migração em staging e todos os gates. Nenhuma publicação.
