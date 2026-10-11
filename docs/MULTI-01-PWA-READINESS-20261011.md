@@ -134,3 +134,11 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - Acrescentada regra `canUseArqdorConditionalSave` para as rotas experimentais: somente identidade humana com `sub` presente, tenant compatível, papel super_admin/tenant_admin e escopo normal `tenant` (ou campo legado ausente); acessos `obra`, `preprojeto` e agentes internos são negados.
 - Expandido teste estático do endpoint. **Isto não é ACL individual por projeto.** Não liberar colaborador nem vincular o autosave antigo ao endpoint condicional sem modelagem de proprietário/membros com migração de banco, autorização por projeto e testes reais de transação.
 - As alterações seguem em PR draft, sem build, homologação ou deploy confirmado.
+
+
+## MULTI-07 — Modelagem de colaboradores por projeto (não ativada)
+- Criado `lib/db/src/schema/arqdor_workspace_members.ts` com relação (tenant, projeto, usuário), perfis owner/editor/viewer, chave composta e índice por usuário. Depende de migração SQL e registro no export/schema do banco antes de operar; **nenhuma migração executada**.
+- Criada política pura `artifacts/api-server/src/lib/arqdor-workspace-access.ts` que nega por padrão se não houver membro, escopo correto, usuário ativo, identidade humana e permissão owner/editor.
+- Criados testes da política para owner/editor/viewer, divergência entre tenants/projetos/usuários, acesso convidado, IA, usuário inativo e ausência de vínculo.
+- **Não integrado ao endpoint ainda:** requer criar/validar migration com FK composta para tenant+project, validar que o usuário pertence ao mesmo tenant no banco, definir provisionamento de dono dos projetos existentes e mecanismo de convite/revogação; conectar query de membership ao backend e eliminar qualquer fallback permissivo. Até lá, as rotas experimentais continuam restritas ao piloto administrativo.
+- Sem build, migration, teste em banco, merge ou deploy; PR permanece draft.
