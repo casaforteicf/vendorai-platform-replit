@@ -8746,6 +8746,46 @@ router.put("/arqdor/projects/:id", authenticate, async (req, res) => {
   return res.json(upserted?.contextBlob ?? contextBlob);
 });
 
+// MULTI-04 — explicit conditional save for future offline sync clients.
+// This does NOT change legacy PUT /arqdor/projects/:id behavior.
+// PostgreSQL xmin is a row MVCC token; server atomically rechecks it at UPDATE.
+router.get("/arqdor/projects/:id/revision", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const id = String(req.params.id);
+  if (!id.trim()) return res.status(400).json({ error: "Projeto inválido." });
+  const [row] = await db.select({ revision: sql<string>`xmin::text` })
+    .from(arqdorWorkspaceProjectsTable)
+    .where(and(eq(arqdorWorkspaceProjectsTable.id, id), eq(arqdorWorkspaceProjectsTable.tenantId, tid)))
+    .limit(1);
+  if (!row) return res.status(404).json({ error: "Projeto não encontrado." });
+  res.setHeader("Cache-Control", "no-store");
+  return res.json({ id, revision: row.revision });
+});
+
+router.put("/arqdor/projects/:id/conditional", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const id = String(req.params.id);
+  const { expectedRevision, contextBlob } = req.body ?? {};
+  if (!id.trim() || !/^\\d+$/.test(expectedRevision ?? "") ||
+      !contextBlob || typeof contextBlob !== "object" || Array.isArray(contextBlob) ||
+      contextBlob.id !== id) {
+    return res.status(400).json({ error: "Projeto ou revisão inválidos." });
+  }
+  // CAS: no insert/upsert and no stale overwrite. PostgreSQL re-evaluates xmin
+  // after concurrent updates; conflict returns 409, draft stays local.
+  const [saved] = await db.update(arqdorWorkspaceProjectsTable)
+    .set({ contextBlob, updatedAt: new Date() })
+    .where(and(
+      eq(arqdorWorkspaceProjectsTable.id, id),
+      eq(arqdorWorkspaceProjectsTable.tenantId, tid),
+      sql`xmin::text = ${expectedRevision}`,
+    ))
+    .returning({ revision: sql<string>`xmin::text` });
+  if (!saved) return res.status(409).json({ error: "Revisão alterada ou projeto indisponível. Preserve o rascunho local." });
+  res.setHeader("Cache-Control", "no-store");
+  return res.json({ id, revision: saved.revision });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /arch/copilot/chat — ARQ Copilot Intelligence (real AI, full context)
 // ─────────────────────────────────────────────────────────────────────────────
