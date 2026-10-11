@@ -22,7 +22,7 @@ export function ExperimentalCpuRenderPanel({options}:Props){
  const [comparison,setComparison]=useState<string|null>(null);
  useEffect(()=>()=>{generation.current++;job.current?.cancel();job.current=null;},[]);
  useEffect(()=>{generation.current++;job.current?.cancel();job.current=null;setProgress(0);setCompleted(false);setHistory([]);setComparison(null);setStatus("Cena alterada — renderizar novamente");},[options]);
- const stop=()=>{generation.current++;job.current?.cancel();job.current=null;setStatus("Cancelado");};
+ const stop=()=>{generation.current++;job.current?.cancel();job.current=null;setCompleted(false);setStatus("Cancelado");};
  const exportPng=()=>{
   if(!completed||!canvas.current||job.current)return;
   const link=document.createElement("a");
