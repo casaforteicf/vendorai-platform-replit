@@ -434,12 +434,25 @@ export default function Leads() {
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; lead: Lead | null }>({ open: false, lead: null });
   const [deleteMotivo, setDeleteMotivo] = useState("");
 
-  const { data: leads, isLoading: leadsLoading } = useListTenantLeads(tenantId, undefined, {
-    query: {
-      enabled: !!tenantId && viewMode === "ativos",
-      queryKey: getListTenantLeadsQueryKey(tenantId),
-      staleTime: 30_000,
-      refetchOnWindowFocus: false,
+  // CRM-22: reaproveita o endpoint de listagem, com filtros processados no servidor.
+  // "high_risk" e "quente" são categorias calculadas na tela, não status persistidos.
+  const backendStatus = statusFilter !== "all" && statusFilter !== "high_risk" && statusFilter !== "quente"
+    ? statusFilter : "";
+  const backendSearch = search.trim();
+  const { data: leads, isLoading: leadsLoading } = useQuery<Lead[]>({
+    queryKey: [...getListTenantLeadsQueryKey(tenantId), "crm-22", backendStatus, backendSearch],
+    enabled: !!tenantId && viewMode === "ativos",
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (backendStatus) params.set("status", backendStatus);
+      if (backendSearch) params.set("busca", backendSearch);
+      const response = await fetch(`/api/tenants/${encodeURIComponent(tenantId)}/leads?${params}`, {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Não foi possível carregar os leads");
+      return response.json() as Promise<Lead[]>;
     },
   });
 
@@ -639,6 +652,7 @@ export default function Leads() {
       const matchesSearch =
         !q ||
         lead.nome.toLocaleLowerCase("pt-BR").includes(q) ||
+        lead.documento?.toLocaleLowerCase("pt-BR").includes(q) ||
         lead.email?.toLocaleLowerCase("pt-BR").includes(q) ||
         lead.empresa?.toLocaleLowerCase("pt-BR").includes(q) ||
         lead.telefone?.toLocaleLowerCase("pt-BR").includes(q) ||
@@ -900,7 +914,7 @@ export default function Leads() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 data-testid="input-search-leads"
-                placeholder="Buscar por nome, empresa, segmento, telefone, e-mail ou endereço..."
+                placeholder="Buscar por nome ou documento..."
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 className="pl-9"
