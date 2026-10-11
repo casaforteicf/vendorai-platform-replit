@@ -65,6 +65,15 @@ if [[ "$ACTION" == rollback ]]; then
  [[ -f "$STATE" ]] || { echo NO_ROLLBACK_STATE;exit 65; }
  SAVED=$(sed -n 's/^BACKUP=//p' "$STATE")
  [[ "$SAVED" =~ ^vendorai-prod-api-candidate-backup-[a-z0-9-]+$ ]] || { echo INVALID_BACKUP_STATE;exit 65; }
+ # Preserved from the installed Contabo operator: deny rollback of a release
+ # whose image no longer matches the live container (another agent/release).
+ RECORDED_IMAGE=$(sed -n 's/^IMAGE=//p' "$STATE" | head -1)
+ ACTIVE_IMAGE=$(docker inspect "$CURRENT" --format '{{.Config.Image}}' 2>/dev/null || true)
+ [[ -n "$RECORDED_IMAGE" && "$ACTIVE_IMAGE" == "$RECORDED_IMAGE" ]] || {
+   echo ROLLBACK_BLOCKED_PRODUCTION_VERSION_MISMATCH
+   exit 65
+ }
+
  [[ "$(sed -n 's/^STATUS=//p' "$STATE" | head -1)" == "PUBLISHED" ]] || { echo ROLLBACK_NOT_PUBLISHED;exit 65; }
  docker inspect "$SAVED" >/dev/null || { echo BACKUP_MISSING;exit 65; }
  REPLACED="${CURRENT}-failed-$(date -u +%s)"
@@ -101,7 +110,7 @@ grep -Fxq "SHA=$SHA" "$BUILDSTATE" || { echo SHA_MISMATCH;exit 65; }
 grep -Fxq "IMAGE=$IMAGE" "$BUILDSTATE" || { echo IMAGE_MISMATCH;exit 65; }
 grep -Fxq "STATUS=BUILT_NOT_DEPLOYED" "$BUILDSTATE" || { echo BUILD_NOT_APPROVED;exit 65; }
 docker image inspect "$IMAGE" >/dev/null
-[[ ! -e "$STATE" ]] || { echo RELEASE_RECORD_EXISTS;exit 65; }
+[[ ! -e "$STATE" ]] || { echo RELEASE_RECORD_EXISTS_REQUIRES_RECONCILIATION;exit 65; }
 docker inspect "$CURRENT" >/dev/null
 docker inspect "$BACK" >/dev/null 2>&1 && { echo BACKUP_NAME_EXISTS;exit 65; }
 docker inspect "$NEXT" >/dev/null 2>&1 && { echo NEXT_NAME_EXISTS;exit 65; }
