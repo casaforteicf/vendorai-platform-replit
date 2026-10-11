@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import SurveyPlanPreview from "./SurveyPlanPreview";
@@ -24,10 +24,26 @@ export type SurveyElement = {
   note?: string | null;
   verified: boolean;
 };
-type Props = { elements: SurveyElement[]; photos: string[]; disabled?: boolean; onSave: (items: SurveyElement[]) => Promise<void> };
+type Props = { elements: SurveyElement[]; photos: string[]; draftKey: string; disabled?: boolean; onSave: (items: SurveyElement[]) => Promise<void> };
 const types: SurveyElement["elementType"][] = ["wall","door","window","column","beam","electrical","plumbing","gas","other"];
-export default function SurveyElementsEditor({ elements, photos, disabled = false, onSave }: Props) {
+export default function SurveyElementsEditor({ elements, photos, draftKey, disabled = false, onSave }: Props) {
+  const storageKey = "arqdor-measure-session:" + draftKey;
+  const [recovery] = useState<{ items: SurveyElement[]; editedAt: string } | null>(() => {
+    try {
+      const raw = sessionStorage.getItem(storageKey);
+      if (!raw || raw.length > 250000) return null;
+      const payload = JSON.parse(raw);
+      return payload && Array.isArray(payload.items) && payload.items.length <= 200 && typeof payload.editedAt === "string" ? payload : null;
+    } catch { return null; }
+  });
   const [items, setItems] = useState<SurveyElement[]>(elements);
+  const [dirty, setDirty] = useState(false);
+  const [hasRecovery, setHasRecovery] = useState(Boolean(recovery));
+  useEffect(() => {
+    if (!dirty || disabled) return;
+    try { sessionStorage.setItem(storageKey, JSON.stringify({ items, editedAt: new Date().toISOString() })); }
+    catch { setFeedback("Não foi possível manter cópia nesta sessão. Salve o levantamento."); }
+  }, [items, dirty, disabled, storageKey]);
   const [roomName, setRoomName] = useState("");
   const [label, setLabel] = useState("");
   const [kind, setKind] = useState<SurveyElement["elementType"]>("wall");
@@ -60,11 +76,19 @@ export default function SurveyElementsEditor({ elements, photos, disabled = fals
     }
     const opening = kind === "door" || kind === "window" ? { wallId, offsetMm: Number(offset), sillHeightMm: kind === "window" ? Number(sill) : 0 } : {};
     const geometry = kind === "wall" ? {x1Mm:coords[0],y1Mm:coords[1],x2Mm:coords[2],y2Mm:coords[3],thicknessMm:toDimension(thickness)} : {};
+    setDirty(true);
     setItems((old) => [...old, { ...geometry, ...opening, id: crypto.randomUUID(), roomName: roomName.trim(), label: label.trim(), elementType: kind, widthMm: toDimension(width), heightMm: toDimension(height), sourcePhotoPath: photo || null, verified: false }]);
     setLabel(""); setWidth(""); setHeight(""); setFeedback("Elemento adicionado; salve para persistir.");
   }
   return <section className="mt-3 rounded-lg border p-3 space-y-3 print:hidden" aria-label="Elementos do levantamento">
     <div><h3 className="font-semibold">Ambiente e elementos técnicos</h3><p className="text-xs text-muted-foreground">Inventário técnico, ainda não convertido em geometria BIM. Confira antes de liberar para fabricação.</p></div>
+    {hasRecovery && <div className="rounded border border-amber-300 p-2 space-y-2 text-sm">
+      Há um levantamento não salvo nesta sessão, registrado em {recovery?.editedAt}.
+      <div className="flex gap-2">
+        <Button size="sm" disabled={disabled} onClick={() => {if(recovery){setItems(recovery.items);setDirty(true);}setHasRecovery(false);}}>Recuperar alterações</Button>
+        <Button size="sm" variant="outline" onClick={() => {sessionStorage.removeItem(storageKey);setHasRecovery(false);}}>Descartar cópia</Button>
+      </div>
+    </div>}
     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
       <Input aria-label="Ambiente" value={roomName} maxLength={120} onChange={(e)=>setRoomName(e.target.value)} placeholder="Ambiente (ex.: Cozinha)" disabled={disabled}/>
       <select aria-label="Tipo de elemento" value={kind} onChange={(e)=>setKind(e.target.value as SurveyElement["elementType"])} disabled={disabled} className="rounded-md border bg-background px-3 py-2 text-sm">{types.map(t=><option key={t} value={t}>{t}</option>)}</select>
@@ -86,8 +110,8 @@ export default function SurveyElementsEditor({ elements, photos, disabled = fals
       {kind === "window" && <Input aria-label="Peitoril em mm" value={sill} onChange={(e)=>setSill(e.target.value)} placeholder="Peitoril (mm)" disabled={disabled}/>}
     </div>}
     <Button size="sm" variant="outline" disabled={disabled} onClick={add}>Adicionar elemento</Button>
-    {items.map((entry)=><div key={entry.id} className="flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-sm"><span>{entry.roomName} · {entry.elementType} · {entry.label} · {entry.widthMm ?? "—"} × {entry.heightMm ?? "—"} mm {entry.verified ? "· Conferido" : "· Pendente"}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={disabled} onClick={()=>setItems(old=>old.map(e=>e.id===entry.id?{...e,verified:!e.verified}:e))}>{entry.verified?"Reabrir":"Marcar conferido"}</Button><Button size="sm" variant="ghost" disabled={disabled} onClick={()=>setItems(old=>old.filter(e=>e.id!==entry.id))}>Excluir</Button></div></div>)}
-    <Button disabled={disabled||saving} onClick={async()=>{setSaving(true);setFeedback("");try{await onSave(items);setFeedback("Levantamento salvo no checklist.");}catch(e){setFeedback(e instanceof Error?e.message:"Erro ao salvar.");}finally{setSaving(false);}}}>{saving?"Salvando...":"Salvar levantamento"}</Button>
+    {items.map((entry)=><div key={entry.id} className="flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-sm"><span>{entry.roomName} · {entry.elementType} · {entry.label} · {entry.widthMm ?? "—"} × {entry.heightMm ?? "—"} mm {entry.verified ? "· Conferido" : "· Pendente"}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={disabled} onClick={()=>{setDirty(true);setItems(old=>old.map(e=>e.id===entry.id?{...e,verified:!e.verified}:e));}}>{entry.verified?"Reabrir":"Marcar conferido"}</Button><Button size="sm" variant="ghost" disabled={disabled} onClick={()=>{setDirty(true);setItems(old=>old.filter(e=>e.id!==entry.id));}}>Excluir</Button></div></div>)}
+    <Button disabled={disabled||saving} onClick={async()=>{setSaving(true);setFeedback("");try{await onSave(items);setDirty(false);sessionStorage.removeItem(storageKey);setFeedback("Levantamento salvo no checklist.");}catch(e){setFeedback(e instanceof Error?e.message:"Erro ao salvar.");}finally{setSaving(false);}}}>{saving?"Salvando...":"Salvar levantamento"}</Button>
     <SurveyPlanPreview elements={items} />
     <Button size="sm" variant="outline" onClick={() => setShowDraft((v) => !v)}>Prévia para Arqdor</Button>
     {showDraft && <div className="rounded border p-3 space-y-2">
