@@ -1,7 +1,7 @@
 import { sampleRectAreaLight, type RectAreaLight } from "./render-area-light";
 import { evaluateDirectionalLight, type DirectionalLight } from "./render-direct-light";
 import { sampleRoughnessMap, sampleWorldNormalMap, type CpuMaterialMaps } from "./render-material-maps";
-import { sampleCpuTexture, sampleMeshUv, type CpuTexture } from "./render-texture";
+import { sampleCpuTexture, sampleValidatedCpuTexture, sampleMeshUv, type CpuTexture } from "./render-texture";
 import { sampleDielectric } from "./render-glass";
 import { createRenderBvh, type Ray, type Vec3 } from "./render-bvh";
 import type { GeometryTransfer } from "./render-geometry-export";
@@ -27,6 +27,8 @@ export function traceDiffusePath(input:{
   directionalLight?:DirectionalLight;
   areaLights?:readonly RectAreaLight[];
   textures?: Readonly<Record<string,CpuTexture>>;
+  /** Only set when all textures were validated for this render job. */
+  texturesValidated?: boolean;
   materialMaps?: Readonly<Record<string,CpuMaterialMaps>>;
   maxBounces?:number;
   seed?:number;
@@ -52,7 +54,7 @@ export function traceDiffusePath(input:{
     const texture=input.textures?.[hit.materialId??""];
     if(texture) {
       const uv=sampleMeshUv(mesh.uvs,hit.triangle,hit.barycentric);
-      mat={...mat,baseColor:mul(mat.baseColor,sampleCpuTexture(texture,uv))};
+      mat={...mat,baseColor:mul(mat.baseColor,(input.texturesValidated?sampleValidatedCpuTexture(texture,uv):sampleCpuTexture(texture,uv)))};
     }
     const maps=input.materialMaps?.[hit.materialId??""];
     const mapUv=maps?.roughness||maps?.normal ? sampleMeshUv(mesh.uvs,hit.triangle,hit.barycentric) : undefined;
