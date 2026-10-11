@@ -189,3 +189,10 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - Atualização executada com compare-and-swap por status e snapshot de itens, até cinco tentativas; recusa checklists concluídos, itens ausentes e limites de 20 fotos. Não cria um segundo objeto R2.
 - Após sucesso, registra log de reconciliação com runId/itemId/assetId e retorna o asset existente. Caso falhe, conserva HTTP 409 PHOTO_RECONCILE_REQUIRED.
 - Pendências: revisar concorrência entre várias instâncias, testes de banco e R2, auditoria persistente, validação em homologação, confirmar migração de índice único. Sem merge ou deploy.
+
+## Lote 26 — estabilizacao inicial (11/10/2026)
+- Corrigido o filtro de cotas quando a foto atual e um Blob offline, para exibir cotas locais sem photoPath.
+- Recuperacao da foto limpa a selecao de caminho remoto anterior.
+- Remocao de cota enquanto uma foto local esta selecionada tambem atualiza o registro IndexedDB (quando ainda nao foi enviado).
+- Consulta a checks e workflows PR do commit final anterior retornou listas vazias, sem evidencia de CI aprovado.
+- Gates de TypeScript, backend build, Vite, seguranca, PostgreSQL e testes mobile continuam pendentes; nenhum merge/deploy.
