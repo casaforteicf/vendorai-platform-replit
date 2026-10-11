@@ -13,7 +13,10 @@ export function sampleCpuTexture(texture:CpuTexture, uv:readonly [number,number]
  if(!Number.isInteger(width)||!Number.isInteger(height)||width<=0||height<=0||
     width*height>4_194_304||data.length!==width*height*channels||
     ![uv[0],uv[1]].every(Number.isFinite) ||
-    data.some(x=>!Number.isFinite(x)||x<0||x>1))
+    data.some(x=>!Number.isFinite(x)||x<0||x>1) ||
+    (wrap!=="repeat"&&wrap!=="clamp") ||
+    (texture.filter!==undefined&&texture.filter!=="nearest"&&texture.filter!=="bilinear") ||
+    (texture.colorSpace!==undefined&&texture.colorSpace!=="linear"&&texture.colorSpace!=="srgb"))
    throw Error("ARQDOR: textura CPU inválida");
  const address=(n:number)=>wrap==="repeat"?fract(n):Math.max(0,Math.min(1,n));
  const toLinear=(n:number)=>texture.colorSpace==="srgb"?(n<=0.04045?n/12.92:Math.pow((n+0.055)/1.055,2.4)):n;
@@ -34,7 +37,9 @@ export function sampleCpuTexture(texture:CpuTexture, uv:readonly [number,number]
 }
 export function sampleMeshUv(uvs:readonly number[],triangle:number,barycentric:Vec3):readonly [number,number] {
  const i=triangle*6;
- if(!Number.isSafeInteger(triangle)||triangle<0||i+5>=uvs.length)
+ if(!Number.isSafeInteger(triangle)||triangle<0||i+5>=uvs.length||
+    barycentric.length!==3||barycentric.some(x=>!Number.isFinite(x))||
+    uvs.slice(i,i+6).some(x=>!Number.isFinite(x)))
    throw Error("ARQDOR: triângulo sem UV");
  return [
   uvs[i]*barycentric[0]+uvs[i+2]*barycentric[1]+uvs[i+4]*barycentric[2],
