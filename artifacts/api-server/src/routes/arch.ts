@@ -1883,6 +1883,11 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
 
   const expectedRevisionHeader = req.header("If-Match");
   const expectedRevision = expectedRevisionHeader ? new Date(expectedRevisionHeader.replace(/^"|"$/g, "")) : null;
+  // MULTI-04.18: when restoration is enabled, disallow legacy unversioned PATCH writers.
+  // Keep this independent of the editor rollout flag for fail-closed server behavior.
+  if (process.env.ARQDOR_RESTORE_ENABLED === "true" && !expectedRevisionHeader) {
+    return res.status(428).json({ code: "PROJECT_REVISION_REQUIRED", error: "Envie If-Match com a revisão atual do projeto." });
+  }
   if (expectedRevisionHeader && (!expectedRevision || !Number.isFinite(expectedRevision.getTime()))) {
     return res.status(400).json({ code: "INVALID_PROJECT_REVISION", error: "If-Match deve conter a data de revisão retornada pelo servidor." });
   }
