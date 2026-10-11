@@ -34,6 +34,15 @@ OUT="$(pwd)/.test-evidence"
 mkdir -p "$OUT"
 RUN="$(mktemp -d "$OUT/pr-$PR-XXXXXXXX")"
 mkdir -p "$RUN/work" "$RUN/logs" "$RUN/store"
+printf 'pr=%s\nbranch=%s\nsha=%s\nsuite=%s\nstarted=%s\n' "$PR" "$BRANCH" "$SHA" "$SUITE" "$(date -u +%FT%TZ)" >"$RUN/manifest.txt"
+git fetch --no-tags origin "refs/pull/$PR/head" >"$RUN/logs/fetch-pr.log" 2>&1
+PR_SHA="$(git rev-parse FETCH_HEAD)"
+git fetch --no-tags origin "refs/heads/$BRANCH" >"$RUN/logs/fetch-branch.log" 2>&1
+BRANCH_SHA="$(git rev-parse FETCH_HEAD)"
+if [ "$PR_SHA" != "$SHA" ] || [ "$BRANCH_SHA" != "$SHA" ]; then
+  echo "PR/branch/SHA mismatch; refusing execution" >&2; exit 65
+fi
+# Validate the requested PR and branch before allocating or copying the pnpm cache.
 # Reuse only a hydrated ephemeral store for the SAME SHA, without copying or downloading.
 REUSE="$(printenv VENDORAI_REUSE_STORE || true)"
 if [ -n "$REUSE" ]; then
@@ -50,14 +59,6 @@ else
     echo "Could not snapshot offline store safely" >&2; exit 69
   fi
   chmod -R u+rwX "$RUN/store"
-fi
-printf 'pr=%s\nbranch=%s\nsha=%s\nsuite=%s\nstarted=%s\n' "$PR" "$BRANCH" "$SHA" "$SUITE" "$(date -u +%FT%TZ)" >"$RUN/manifest.txt"
-git fetch --no-tags origin "refs/pull/$PR/head" >"$RUN/logs/fetch-pr.log" 2>&1
-PR_SHA="$(git rev-parse FETCH_HEAD)"
-git fetch --no-tags origin "refs/heads/$BRANCH" >"$RUN/logs/fetch-branch.log" 2>&1
-BRANCH_SHA="$(git rev-parse FETCH_HEAD)"
-if [ "$PR_SHA" != "$SHA" ] || [ "$BRANCH_SHA" != "$SHA" ]; then
-  echo "PR/branch/SHA mismatch; refusing execution" >&2; exit 65
 fi
 git archive "$SHA" | tar -x -C "$RUN/work"
 chmod -R a+rwX "$RUN/work"
