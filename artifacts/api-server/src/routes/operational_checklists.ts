@@ -229,6 +229,14 @@ const updateItemSchema = z.object({
   localizacao: z.string().max(500).nullable().optional(),
   observacao: z.string().max(3000).nullable().optional(),
   fotos: z.array(z.string().min(1)).max(20).optional(),
+  photoMeasurements: z.array(z.object({
+    id: z.string().uuid(),
+    start: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }),
+    end: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }),
+    millimeters: z.number().positive().max(1000000),
+    label: z.string().trim().min(1).max(120),
+    source: z.literal("manual_verified"),
+  })).max(100).optional(),
   status: z.enum(["nao_conferido", "conferido", "divergente", "nao_executado", "resolvido"]).optional(),
 });
 
