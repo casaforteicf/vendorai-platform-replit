@@ -171,3 +171,9 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - Migração **ainda não aplicada** cria índice único parcial para `(tenant_id, metadata->>'uploadId')` de uploads Arqdor Measure. Essa é a garantia de unicidade mesmo sob corrida de chamadas, condicionada à aplicação da migração.
 - Verificação de reuso ocorre antes do limite de 20 fotos, permitindo resposta idempotente a reenvio já vinculado.
 - **Ainda pendente:** concorrência em banco, recuperação elegante de erro unique-violation durante corrida, reconciliação de asset criado sem vínculo ao checklist, prevenir reuso de UUID com imagem diferente via checksum, validação de migração em staging e todos os gates. Nenhuma publicação.
+
+## Lote 23 — concorrência no upload idempotente (11/10/2026)
+- Tratado código PostgreSQL 23505 na gravação de mídia: após tentativa de compensar o próprio upload, busca o asset pelo tenant, UUID, checklist e item e verifica, no estado mais recente, se o caminho está vinculado àquele item; se confirmado, retorna HTTP 200 com reused:true.
+- Caso exista identidade concorrente sem vínculo confirmado, responde HTTP 409 PHOTO_RECONCILE_REQUIRED, sem alegar que a foto está salva no checklist.
+- Dependências ainda pendentes: aplicar o índice único em homologação (sem isso a corrida não dispara 23505); reconciliar registros órfãos; detectar uso indevido de UUID com arquivo diferente por checksum; testar concorrência real, API, R2 e frontend.
+- Código gravado, ainda sem build, testes, PR, merge ou deploy.
