@@ -1,3 +1,5 @@
+import { ExperimentalCpuRenderPanel } from "./ExperimentalCpuRenderPanel";
+import type { DiffusePreviewOptions } from "./render-diffuse-preview";
 import React, { useMemo, useState } from "react";
 import { RenderQualityPanel } from "./RenderQualityPanel";
 
@@ -382,6 +384,11 @@ export default function SmartRenderEngine({ arqState, onNavigate }: SmartRenderE
   const [prompt, setPrompt] = useState("");
   const [tab, setTab] = useState("Visão");
 
+  // Experimental renderer appears only when the host explicitly supplies validated geometry.
+  // No fabricated scene, production renderer replacement, or implicit opt-in.
+  const experimentalOptions = arqState?.renderExperimental?.enabled === true
+    ? arqState?.renderExperimental?.options as DiffusePreviewOptions | undefined
+    : undefined;
   const activeVersion = versions.find((version) => version.id === activeId) || versions[0];
 
   const createVersion = (value?: string) => {
@@ -424,6 +431,7 @@ export default function SmartRenderEngine({ arqState, onNavigate }: SmartRenderE
           </section>
 
           <aside className="space-y-5">
+            {experimentalOptions?.geometry && <ExperimentalCpuRenderPanel options={experimentalOptions} />}
             <RenderQualityPanel />
             <AIPanel prompt={prompt} setPrompt={setPrompt} onGenerate={() => createVersion()} />
             <ObjectPanel />
