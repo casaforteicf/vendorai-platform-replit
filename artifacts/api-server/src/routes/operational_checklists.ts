@@ -324,8 +324,17 @@ router.patch("/operational-checklists/runs/:runId/items/:itemId", async (req, re
 
   const [updated] = await db.update(operationalChecklistRunsTable)
     .set({ items, updatedAt: new Date() })
-    .where(eq(operationalChecklistRunsTable.id, run.id))
+    .where(and(
+      eq(operationalChecklistRunsTable.id, run.id),
+      eq(operationalChecklistRunsTable.tenantId, run.tenantId),
+      eq(operationalChecklistRunsTable.status, "em_andamento"),
+      eq(operationalChecklistRunsTable.items, run.items ?? []),
+    ))
     .returning();
+  if (!updated) return void res.status(409).json({
+    error: "O checklist foi alterado em outra operação. Atualize antes de salvar novamente.",
+    code: "CHECKLIST_CONFLICT",
+  });
   res.json(updated);
 });
 
