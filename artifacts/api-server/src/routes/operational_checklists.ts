@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { createHash } from "node:crypto";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -356,20 +357,6 @@ router.post("/operational-checklists/runs/:runId/items/:itemId/photos", async (r
   const itemId = String(req.params.itemId);
   const current = (run.items ?? []).find((item) => item.id === itemId);
   if (!current) return void res.status(404).json({ error: "Item não encontrado" });
-  if (parsed.data.uploadId) {
-    const [previous] = await db.select().from(mediaAssetsTable).where(and(
-      eq(mediaAssetsTable.tenantId,run.tenantId),
-      sql`${mediaAssetsTable.metadata}->>'uploadId' = ${parsed.data.uploadId}`,
-      sql`${mediaAssetsTable.metadata}->>'runId' = ${run.id}`,
-      sql`${mediaAssetsTable.metadata}->>'itemId' = ${itemId}`
-    )).limit(1);
-    if (previous) {
-      if (!(current.fotos ?? []).includes(previous.storageUrl))
-        return void res.status(409).json({error:"Foto existente precisa de reconciliação",code:"PHOTO_RECONCILE_REQUIRED"});
-      return void res.json({assetId:previous.id,storageUrl:previous.storageUrl,accessUrl:await measureStorage.getObjectEntitySignedUrl(previous.storageUrl,300),reused:true});
-    }
-  }
-  if ((current.fotos ?? []).length >= 20) return void res.status(422).json({ error: "Limite de 20 fotografias por item" });
   const { dataBase64, contentType, name } = parsed.data;
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(dataBase64) || dataBase64.length % 4 !== 0)
     return void res.status(422).json({ error: "Conteúdo Base64 inválido" });
@@ -381,6 +368,22 @@ router.post("/operational-checklists/runs/:runId/items/:itemId/photos", async (r
   const isWebp = buffer.toString("ascii",0,4) === "RIFF" && buffer.toString("ascii",8,12) === "WEBP";
   if (!((contentType === "image/jpeg" && isJpeg) || (contentType === "image/png" && isPng) || (contentType === "image/webp" && isWebp)))
     return void res.status(422).json({ error: "Formato real da imagem diferente do declarado" });
+  const contentHash = createHash("sha256").update(buffer).digest("hex");
+  if (parsed.data.uploadId) {
+    const [previous] = await db.select().from(mediaAssetsTable).where(and(
+      eq(mediaAssetsTable.tenantId, run.tenantId),
+      sql`${mediaAssetsTable.metadata}->>'uploadId' = ${parsed.data.uploadId}`
+    )).limit(1);
+    if (previous) {
+      if (previous.metadata?.runId !== run.id || previous.metadata?.itemId !== itemId)
+        return void res.status(409).json({error:"Identificador de foto já usado em outro item",code:"PHOTO_ID_CONFLICT"});
+      if (previous.metadata?.contentHash !== contentHash)
+        return void res.status(409).json({error:"Mesmo identificador enviado com arquivo diferente",code:"PHOTO_ID_CONFLICT"});
+      if (!(current.fotos ?? []).includes(previous.storageUrl))
+        return void res.status(409).json({error:"Foto requer reconciliação",code:"PHOTO_RECONCILE_REQUIRED"});
+      return void res.json({assetId:previous.id,storageUrl:previous.storageUrl,accessUrl:await measureStorage.getObjectEntitySignedUrl(previous.storageUrl,300),reused:true});
+    }
+  }
   let abandonedPath: string | null = null;
   let abandonedAssetId: string | null = null;
   let linked = false;
@@ -402,7 +405,7 @@ router.post("/operational-checklists/runs/:runId/items/:itemId/photos", async (r
       tenantId: run.tenantId, userId: req.user?.sub ?? null,
       type: "image", role: "source", source: "upload",
       storageUrl, originalFilename: name, mimeType: contentType, fileSize: buffer.length,
-      metadata: { origin: "arqdor_measure", uploadId: parsed.data.uploadId, leadId: run.leadId, dealId: run.dealId, runId: run.id, itemId, revision: run.revision },
+      metadata: { origin: "arqdor_measure", uploadId: parsed.data.uploadId, contentHash, leadId: run.leadId, dealId: run.dealId, runId: run.id, itemId, revision: run.revision },
     }).returning();
     abandonedAssetId = asset.id;
     let persisted = false;
