@@ -19,6 +19,15 @@ describe("interior environment entry",()=>{
   expect(measured.walls[1]).toMatchObject({x1:4,y2:3,heightM:2.7});
   expect(fromPreProjectRoom("p1",{id:"r2",largura:4}).walls).toEqual([]);
  });
+ it("preserves supplied wall geometry instead of replacing it with a rectangle",()=>{
+  const walls=[
+   {id:"w1",x1:0,y1:0,x2:4,y2:0,thicknessM:.15,heightM:2.7},
+   {id:"w2",x1:4,y1:0,x2:3,y2:3,thicknessM:.15,heightM:2.7},
+   {id:"w3",x1:3,y1:3,x2:0,y2:0,thicknessM:.15,heightM:2.7}];
+  const env=fromPreProjectRoom("p1",{id:"r1",largura:4,profundidade:3,altura:2.7,walls});
+  expect(env.walls).toEqual(walls);
+  expect(env.walls[1].x2).toBe(3);
+ });
  it("rejects nonphysical dimensions",()=>{
   expect(()=>buildRectangularRoom({name:"Teste",widthM:1,depthM:1,heightM:2.7,thicknessM:.6})).toThrow();
   expect(()=>buildRectangularRoom({name:" ",widthM:4,depthM:3,heightM:2.7,thicknessM:.12})).toThrow();
