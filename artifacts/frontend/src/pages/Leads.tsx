@@ -545,6 +545,8 @@ export default function Leads() {
       queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
       queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId, { incluirExcluidos: "apenas" }) });
       queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
+      // CRM-08: o card do lead excluído também precisa sumir do pipeline operacional (work-cards).
+      queryClient.invalidateQueries({ queryKey: ["work-cards", tenantId] });
       toast({ title: "Lead excluído", description: `${lead.nome} foi movido pra aba Excluídos.` });
       setDeleteDialog({ open: false, lead: null });
       setDeleteMotivo("");
@@ -568,6 +570,8 @@ export default function Leads() {
       queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
       queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId, { incluirExcluidos: "apenas" }) });
       queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
+      // CRM-08: lead restaurado volta a aparecer no pipeline operacional (work-cards).
+      queryClient.invalidateQueries({ queryKey: ["work-cards", tenantId] });
       toast({ title: "Lead restaurado", description: `${lead.nome} voltou pra lista ativa.` });
     },
     onError: (error: Error) => toast({ title: "Não foi possível restaurar", description: error.message, variant: "destructive" }),
