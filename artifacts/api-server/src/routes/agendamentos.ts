@@ -558,6 +558,12 @@ router.get("/tenants/:tenantId/agendamentos/slots", async (req, res) => {
     }
   }
   const slotsIsAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  // Agendas Google sao recursos compartilhados por tenant e nao possuem ACL individual.
+  // Ate existir concessao explicita por agenda, acesso a disponibilidade externa e somente administrativo.
+  if (!slotsIsAdmin && agendaId) {
+    res.status(403).json({ error: "Consulta de disponibilidade de calendario compartilhado exige administrador" });
+    return;
+  }
   if (!slotsIsAdmin && !req.user?.sub) {
     res.status(403).json({ error: "Identidade do usuario obrigatoria" });
     return;
