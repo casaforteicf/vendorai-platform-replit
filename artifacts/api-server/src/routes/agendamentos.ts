@@ -116,6 +116,13 @@ router.post("/agendamentos", async (req, res) => {
     }
   }
 
+  // Shared Google calendars have no per-user ACL. Until that permission
+  // model exists, a non-admin cannot select one or request Meet creation.
+  if (!creatorIsAdmin && (parsed.data.agendaId || parsed.data.gerarMeet)) {
+    res.status(403).json({ error: "Calendario Google compartilhado exige permissao administrativa" });
+    return;
+  }
+
   const leadConditions = [
     eq(leadsTable.id, parsed.data.leadId),
     eq(leadsTable.tenantId, parsed.data.tenantId),
@@ -186,7 +193,7 @@ router.post("/agendamentos", async (req, res) => {
   // flows), fall back to the first Google Calendar-connected agenda for this
   // tenant so the Meet link is always generated when OAuth is configured.
   let resolvedInsertData = parsed.data;
-  if (!parsed.data.agendaId && (parsed.data.gerarMeet || parsed.data.tipo === "reuniao")) {
+  if (creatorIsAdmin && !parsed.data.agendaId && (parsed.data.gerarMeet || parsed.data.tipo === "reuniao")) {
     try {
       const [connectedAgenda] = await db
         .select({ id: agendasTable.id })
