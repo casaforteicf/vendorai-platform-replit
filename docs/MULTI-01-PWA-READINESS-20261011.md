@@ -190,3 +190,10 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - Protege contra desvio da nova ACL por meio das rotas antigas, mas **não é liberação do recurso**: ligar a flag agora bloqueia o carregamento e o autosave do editor atual! Antes de habilitar, criar endpoints de leitura (snapshot com contexto/revisão atômicos) e escrita com ACL, adaptar frontend para eles, definir provisionamento de proprietário e executar testes de banco reais.
 - Teste de contrato estático adicionado em `test-arqdor-conditional-save.mjs`, sem execução confirmada.
 - Nenhuma migração executada, merge ou produção alterados.
+
+
+## MULTI-08.2 — Snapshot seguro por projeto
+- Criado `GET /arqdor/projects/:id/snapshot`, desativado por padrão pela flag `ARQDOR_PROJECT_ACL_ENABLED`. Retorna `id`, `contextBlob` e `revision` do **mesmo SELECT**, evitando captura de revisão desconectada do conteúdo.
+- O SELECT exige membership owner/editor/viewer, conta ativa, identidade humana e tenant compatível; sem acesso retorna 404 sem expor conteúdo. Resposta sem cache.
+- Teste estático do contrato adicionado; ainda não executado. Dependências: migrações 024/025, testes PostgreSQL, controle de concorrência para leitura/revogação, integração com frontend e decisão sobre o comportamento do editor durante habilitação da flag.
+- PR draft; nenhuma publicação ou alteração no banco oficial.
