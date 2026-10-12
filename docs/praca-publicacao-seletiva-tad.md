@@ -45,3 +45,10 @@ Nenhum recurso real é ativado por esta entrega isolada.
 - Categorias irmãs vazias, categorias inativas/não aprovadas, ancestrais inválidos e ciclos não entram na navegação.
 - Testes de unidade em `pracaPublicTaxonomy.test.ts` ainda não executados.
 - NÃO existe endpoint público integrado a esta função ainda. Requer descoberta/implantação da consulta canônica de anúncios (produtos + serviços) sem expor dados internos.
+
+## Lote 06 — contrato de vitrine pública
+- `artifacts/api-server/src/lib/pracaPublicCatalog.ts` projeta cards públicos sanitizados a partir de anúncios de produtos e serviços **já aprovados**.
+- Pesquisa por texto, tipo e categoria descendente; devolve somente campos públicos.
+- `pracaPublicCatalog.test.ts` contém testes ainda não executados.
+- NÃO está ligado a rota HTTP, frontend, provedor de dados nem moderação persistida. Não confundir essa projeção com publicação real.
+- Próxima integração: identificar a tabela canônica de anúncios Praça.ai e sua taxonomia validada, implementar consulta pública server-side, paginação e painel de anunciantes, sem duplicar o mecanismo do Arqdor.
