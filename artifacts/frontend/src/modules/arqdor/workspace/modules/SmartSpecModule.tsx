@@ -170,7 +170,7 @@ function AnalyzingState({ imageUrl }: { imageUrl: string | null }) {
 
 // ─── Spec Item Row ────────────────────────────────────────────────────────────
 function SpecItemRow({
-  item, expanded, onToggle, onSearch, onSetStatus, catalogMatches, searching, onUseMatch,
+  item, expanded, onToggle, onSearch, onSetStatus, catalogMatches, searching, onUseMatch, onSaveDetails,
 }: {
   item: SpecItem
   expanded: boolean
@@ -180,7 +180,7 @@ function SpecItemRow({
   catalogMatches: CatalogMatch[] | null
   searching: boolean
   onUseMatch: (match: CatalogMatch) => void
-  onSaveDetails: (patch: Partial<SpecItem>) => Promise<void>
+  onSaveDetails: (patch: Partial<SpecItem>) => Promise<boolean>
 }) {
   const cc   = confColor(item.confianca)
   const pct  = Math.round(parseFloat(item.confianca) * 100)
