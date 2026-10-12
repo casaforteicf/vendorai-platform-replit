@@ -109,3 +109,9 @@ Nenhum recurso real é ativado por esta entrega isolada.
 - `/tad` usa `FullscreenProtectedRoute` para evitar o menu CRM ao selecionar serviços.
 - Sidebar legado ganha entrada `Voltar à TAD Central`, preservando as rotas existentes.
 - O domínio app.appvendorai.com só mudará após homologação, merge e deploy autorizados. O launcher ainda precisa de permissão individual integrada para liberar links; não declarar pronto.
+
+## TAD — verificação individual
+- Endpoint autenticado `tad-effective-modules` checa usuário e tenant, devolve somente mapeamentos auditados ou módulos para administradores; exige autorização comercial/habilitação do tenant separadamente.
+- Frontend consulta as duas fontes e faz interseção. Falhas bloqueiam novas permissões.
+- Módulos com rotas `null` não são clicáveis; subsistemas sem equivalência de grants confirmada permanecem conservadores.
+- Essa alteração precisa de build e testes de integração antes da publicação.

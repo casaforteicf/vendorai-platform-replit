@@ -5,8 +5,8 @@ import type { LauncherModule } from "@/lib/adaptiveModuleLauncher";
 
 type NavItem = { moduleKey?: string; key?: string; isEnabled?: boolean };
 const MAPPING: Record<string, LauncherModule> = {
-  crm: "crm", marketing: "marketing", scheduler: "agenda", arch: "arqdor",
-  obras: "obras", financeiro: "erp", praca_ai: "marketplace_casa",
+  leads: "crm", campaigns: "marketing", content: "marketing", scheduler: "agenda", arch: "arqdor",
+  obras: "obras", financeiro: "erp", praca_ai: "marketplace_casa", settings: "configuracoes", analytics: "inteligencia",
 };
 /**
  * Conservative gateway: tenant navigation flags only indicate ENABLEMENT,
@@ -17,15 +17,25 @@ export default function TadCentralRoute() {
   const { user, token } = useAuth();
   const [enabled, setEnabled] = useState<LauncherModule[]>([]);
   const [failed, setFailed] = useState(false);
+  const [permitted, setPermitted] = useState<LauncherModule[]>([]);
   useEffect(() => {
     if (!user?.tenantId || !token) return;
     const controller = new AbortController();
     setFailed(false);
     setEnabled([]);
-    fetch(`/api/tenants/${encodeURIComponent(user.tenantId)}/nav-modules`, {
+    setPermitted([]);
+    Promise.all([fetch(`/api/tenants/${encodeURIComponent(user.tenantId)}/nav-modules`, {
       headers: { Authorization: `Bearer ${token}` },
       signal: controller.signal,
-    }).then(async response => {
+    }), fetch(`/api/tenants/${encodeURIComponent(user.tenantId)}/tad-effective-modules`, {
+      headers: { Authorization: `Bearer ${token}` }, signal: controller.signal,
+    })]).then(async ([response, rightsResponse]) => {
+      if (!rightsResponse.ok) throw new Error("Unable to verify user permissions");
+      const rights: unknown = await rightsResponse.json();
+      if (!rights || typeof rights !== "object" || !("permittedModuleKeys" in rights) || !Array.isArray(rights.permittedModuleKeys)) throw new Error("Invalid permissions response");
+      const verified = rights.permittedModuleKeys.filter((key: unknown): key is string => typeof key === "string")
+        .map((key: string) => MAPPING[key]).filter((key): key is LauncherModule => Boolean(key));
+      if (!controller.signal.aborted) setPermitted([...new Set(verified)]);
       if (!response.ok) throw new Error("Unable to load tenant services");
       return response.json();
     }).then((items: unknown) => {
@@ -45,7 +55,7 @@ export default function TadCentralRoute() {
         Não foi possível conferir os serviços habilitados. Nenhum acesso adicional foi liberado.
       </div>}
       <TadCentral audience="business" enabledModules={enabled}
-        permittedModules={[]} previewModules={enabled} companyName={undefined} />
+        permittedModules={permitted} previewModules={enabled} companyName={undefined} />
     </>
   );
 }
