@@ -11,7 +11,7 @@ const MAPPING: Record<string, LauncherModule> = {
 /**
  * Conservative gateway: tenant navigation flags only indicate ENABLEMENT,
  * not a user's effective permission. No sensitive module link is granted
- * until a separate effective-permissions API has been integrated.
+ * Verified tenant enablement and individual permission checks are both required.
  */
 export default function TadCentralRoute() {
   const { user, token } = useAuth();
@@ -43,7 +43,7 @@ export default function TadCentralRoute() {
       const keys = items.filter((item: NavItem) => item.isEnabled === true)
         .map((item: NavItem) => MAPPING[item.moduleKey ?? item.key ?? ""])
         .filter((item): item is LauncherModule => Boolean(item));
-      setEnabled([...new Set(keys)]);
+      if (!controller.signal.aborted) setEnabled([...new Set(keys)]);
     }).catch(() => {
       if (!controller.signal.aborted) {
         setEnabled([]);
