@@ -91,3 +91,8 @@ Nenhum recurso real é ativado por esta entrega isolada.
 - Consulta a API interna de preparação sob autenticação, sem ações de publicação.
 - Exibe itens selecionados, revisão e erros; não afirma que anúncios estão publicados.
 - Ainda pendente painel completo independente dentro da TAD, moderação real, ligação à taxonomia pública, compilação e homologação.
+
+## TAD — correção de renderização e condição de acesso
+- Corrigida inicialização de `canOpen` antes da composição do card, evitando erro de referência na renderização da tela.
+- Cards só recebem link caso o módulo esteja na interseção de habilitação e permissão verificada e possua rota.
+- O endpoint de autorização individual ainda está pendente; não remover `permittedModules=[]` sem integrar uma fonte de permissão efetiva confiável.

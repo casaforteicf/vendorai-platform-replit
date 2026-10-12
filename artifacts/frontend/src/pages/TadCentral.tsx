@@ -82,6 +82,7 @@ export default function TadCentral({ audience, enabledModules, permittedModules,
       <section aria-label="Serviços" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {visible.map(module => {
           const info = TAD_LABELS[module.key];
+          const canOpen = authorized.some(m => m.key === module.key) && !!module.route;
           const body = (
             <>
               <div className="mb-3 flex items-start justify-between gap-2">
@@ -92,7 +93,6 @@ export default function TadCentral({ audience, enabledModules, permittedModules,
               <p className="mt-1 text-sm text-muted-foreground">{info?.description ?? "Ambiente do ecossistema"}</p>
             </>
           );
-          const canOpen = authorized.some(m => m.key === module.key) && !!module.route;
           const className = "block min-h-[145px] rounded-xl border bg-card p-5 text-card-foreground transition-colors hover:bg-muted/40";
           return canOpen
             ? <Link key={module.key} href={module.route} className={className} aria-label={`Abrir ${module.title}`}>{body}</Link>
