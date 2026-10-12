@@ -33,6 +33,20 @@ export function wallOpeningClearances(walls:InteriorWall[],openings:WallOpening[
   return {id:o.id,kind:"opening-clearance" as const,xMm:Math.round(left*1000),yMm:Math.round(top*1000),widthMm:Math.round(wMm*1000),depthMm:Math.round(dMm*1000)};
  });
 }
+/** Swept door leaf positions in room-local millimeters, preserving BIM wall geometry. */
+export function doorSwingFootprint(walls:readonly InteriorWall[],opening:WallOpening,steps=36){
+ const wall=walls.find(w=>w.id===opening.wallId);
+ if(!wall||opening.kind!=="door"||!opening.hinge||!opening.swing||!Number.isInteger(steps)||steps<2||steps>360)throw Error("Invalid door swing");
+ const dx=wall.x2-wall.x1,dy=wall.y2-wall.y1,length=Math.hypot(dx,dy);
+ if(!Number.isFinite(length)||length<=0||![opening.offsetM,opening.widthM].every(Number.isFinite)||opening.offsetM<0||opening.widthM<=0||opening.offsetM+opening.widthM>length)throw Error("Invalid door geometry");
+ const originX=Math.min(...walls.flatMap(w=>[w.x1,w.x2])),originY=Math.min(...walls.flatMap(w=>[w.y1,w.y2]));
+ const t=(opening.offsetM+(opening.hinge==="end"?opening.widthM:0))/length;
+ const hingeX=(wall.x1+dx*t-originX)*1000,hingeY=(wall.y1+dy*t-originY)*1000;
+ const base=Math.atan2(dy,dx)+(opening.hinge==="end"?Math.PI:0);
+ const sign=opening.swing==="left"?1:-1;
+ const radius=opening.widthM*1000;
+ return Array.from({length:steps+1},(_,i)=>({x:hingeX+Math.cos(base+sign*i*Math.PI/(2*steps))*radius,y:hingeY+Math.sin(base+sign*i*Math.PI/(2*steps))*radius}));
+}
 export type InteriorOpeningClearance={id:string;xMm:number;yMm:number;widthMm:number;depthMm:number};
 const finitePositive=(n:number)=>Number.isFinite(n)&&n>0;
 /** Clearances supplied by the architectural model must already be room-local and measured in millimeters. */
