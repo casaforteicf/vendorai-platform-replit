@@ -265,6 +265,12 @@ router.get("/agendas/:id/google-auth-url", async (req, res) => {
   const host = req.get("host") ?? undefined;
   if (!req.user?.sub) return res.status(403).json({ error: "User identity required" });
   const url = await createRegisteredCalendarAuthUrl(agenda.id, agenda.tenantId, req.user.sub, "/agenda", host);
+  const oauthState = new URL(url).searchParams.get("state");
+  if (!oauthState) return res.status(500).json({ error: "OAuth state missing" });
+  res.cookie("vendor_calendar_oauth", createHash("sha256").update(oauthState).digest("hex"), {
+    httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax",
+    maxAge: 600_000, path: "/api/auth/google/calendar/callback",
+  });
   res.json({ url });
 });
 
@@ -407,6 +413,12 @@ googleCallbackRouter.get("/auth/google/calendar/callback", async (req, res) => {
         decoded.issuedAt > Date.now() + 30_000 || Date.now() - decoded.issuedAt > 600_000) throw new Error("Expired state");
     if (typeof decoded.agendaId !== "string" || !decoded.agendaId.trim() || typeof decoded.nonce !== "string" || decoded.nonce.length < 16) throw new Error("Invalid agenda or nonce");
     const stateHash = createHash("sha256").update(state).digest("hex");
+    // Same-browser binding: reject callbacks not carrying the short-lived
+    // httpOnly cookie issued when this administrator initiated the connection.
+    const cookies = String(req.headers.cookie ?? "").split(";").map(value => value.trim());
+    const cookie = cookies.find(value => value.startsWith("vendor_calendar_oauth="))?.slice("vendor_calendar_oauth=".length);
+    if (!cookie || cookie !== stateHash) throw new Error("OAuth initiating browser mismatch");
+    res.clearCookie("vendor_calendar_oauth", { path: "/api/auth/google/calendar/callback" });
     const [consumed] = await db.update(calendarOauthStatesTable).set({ consumedAt: new Date() }).where(and(
       eq(calendarOauthStatesTable.stateHash, stateHash),
       eq(calendarOauthStatesTable.agendaId, decoded.agendaId),
