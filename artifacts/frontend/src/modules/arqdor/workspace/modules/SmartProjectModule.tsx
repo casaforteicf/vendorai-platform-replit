@@ -376,8 +376,61 @@ function ProjectMeasurements({ projectId }: { projectId: string | null }) {
   </section>;
 }
 
+
+type QuantityObject = {
+  id:string; name?:string|null; category?:string|null; ambiente_id?:string|null;
+  quantity?:string|number|null; unit?:string|null; quantity_source?:string|null;
+  area_m2?:string|number|null; volume_m3?:string|number|null;
+  material_name?:string|null; product_name?:string|null;
+  measurement_source?:string|null; status?:string|null;
+};
+function ProjectQuantities({projectId}:{projectId:string|null}) {
+  const [items,setItems] = useState<QuantityObject[]>([]);
+  const [loading,setLoading] = useState(false);
+  const [error,setError] = useState<string|null>(null);
+  useEffect(()=>{
+    setItems([]); setError(null);
+    if(!projectId){setLoading(false);return;}
+    const controller=new AbortController();
+    setLoading(true);
+    const token=localStorage.getItem("vendorai_token");
+    fetch(`/api/arch/spec-objects?projectId=${encodeURIComponent(projectId)}`,{
+      signal:controller.signal,headers:token?{Authorization:`Bearer ${token}`}:{},
+    }).then(async response=>{
+      if(!response.ok)throw new Error(`Falha na consulta (HTTP ${response.status}).`);
+      return response.json();
+    }).then(data=>{if(!controller.signal.aborted)setItems(Array.isArray(data.items)?data.items:[]);})
+      .catch(cause=>{if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:"Não foi possível carregar quantitativos.");})
+      .finally(()=>{if(!controller.signal.aborted)setLoading(false);});
+    return ()=>controller.abort();
+  },[projectId]);
+  const fmt=(x:string|number|null|undefined)=>x==null?"Não informado":Number.isFinite(Number(x))?Number(x).toLocaleString("pt-BR",{maximumFractionDigits:3}):"Valor inválido";
+  const withQuantity=items.filter(x=>x.quantity!=null && Number.isFinite(Number(x.quantity)));
+  return <section aria-label="Quantitativos e materiais do projeto" className="min-w-0 rounded-2xl bg-slate-50 p-4 md:p-5">
+    <h3 className="text-lg font-semibold text-slate-900">Quantitativos e materiais</h3>
+    <p className="mt-2 text-sm text-slate-600">Dados registrados nos objetos técnicos do projeto. Quantidades e áreas não são calculadas automaticamente a partir de um render.</p>
+    {!projectId&&<p className="mt-3 text-sm text-amber-700">Selecione um projeto para consultar os quantitativos.</p>}
+    {loading&&<p className="mt-3 text-sm text-slate-600">Carregando quantitativos…</p>}
+    {error&&<p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
+    {!loading&&!error&&projectId&&<p className="mt-3 text-sm font-medium text-slate-800">{items.length} componente(s) · {withQuantity.length} com quantidade registrada</p>}
+    <div className="mt-4 grid gap-3">
+    {items.map(item=><article key={item.id} className="min-w-0 rounded-xl border border-slate-200 bg-white p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="break-words text-sm font-semibold text-slate-900">{item.name||"Componente"}</h4><span className="text-xs text-slate-500">{item.status||"Sem status"}</span></div>
+      <p className="mt-1 break-words text-xs text-slate-600">{item.category||"Categoria não definida"} · Ambiente {item.ambiente_id||"não informado"}</p>
+      <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-700 sm:grid-cols-4">
+        <span>Quantidade: {fmt(item.quantity)} {item.unit||""}</span>
+        <span>Área: {fmt(item.area_m2)} m²</span>
+        <span>Volume: {fmt(item.volume_m3)} m³</span>
+        <span>Origem: {item.quantity_source||"não informada"}</span>
+      </div>
+      <p className="mt-2 break-words text-xs text-slate-600">Material: {item.material_name||"não definido"} · Produto: {item.product_name||"não definido"} · Medida: {item.measurement_source||"não informada"}</p>
+    </article>)}
+    </div>
+    {!loading&&!error&&projectId&&items.length===0&&<p className="mt-3 text-sm text-slate-500">Nenhum objeto técnico registrado para este projeto.</p>}
+  </section>;
+}
 export default function SmartProjectModule({ arqState, onNavigate, projectId }: SmartProjectModuleProps) {
-  const [activeTab, setActiveTab] = useState<"overview" | "ambientes" | "timeline" | "briefing" | "especificacoes" | "medicoes">(() =>
+  const [activeTab, setActiveTab] = useState<"overview" | "ambientes" | "timeline" | "briefing" | "especificacoes" | "medicoes" | "quantitativos">(() =>
     typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tab") === "especificacoes"
       ? "especificacoes" : "overview"
   );
@@ -457,6 +510,7 @@ export default function SmartProjectModule({ arqState, onNavigate, projectId }: 
                 ["ambientes", "Ambientes"],
                 ["especificacoes", "Especificações"],
                 ["medicoes", "Medições"],
+                ["quantitativos", "Quantitativos"],
                 ["timeline", "Timeline"],
                 ["briefing", "Briefing"],
               ].map(([key, label]) => (
@@ -475,6 +529,8 @@ export default function SmartProjectModule({ arqState, onNavigate, projectId }: 
                 </button>
               ))}
             </nav>
+
+            {activeTab === "quantitativos" ? <ProjectQuantities projectId={projectId ?? project.id ?? null} /> : null}
 
             {activeTab === "medicoes" ? <ProjectMeasurements projectId={projectId ?? project.id ?? null} /> : null}
 
