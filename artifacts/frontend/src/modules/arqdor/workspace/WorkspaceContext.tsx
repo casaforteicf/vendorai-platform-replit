@@ -106,12 +106,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     saveTimerRef.current = setTimeout(async () => {
       setSaving(true)
       try {
-        await fetch(`${BASE}/arqdor/projects/${ctx.id}`, {
+        const response = await fetch(`${BASE}/arqdor/projects/${ctx.id}`, {
           method: 'PUT',
           headers: authHeaders(),
           body: JSON.stringify(ctx),
         })
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
         localStorage.setItem(STORAGE_KEY, ctx.id)
+        setLoadError(null)
       } catch {
         // silently ignore network errors — we'll retry on next change
       } finally {
