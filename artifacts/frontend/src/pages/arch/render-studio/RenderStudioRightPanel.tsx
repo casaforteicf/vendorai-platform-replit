@@ -88,7 +88,7 @@ export function RenderStudioRightPanel({
         <div style={{ width: 300, flexShrink: 0, background: D.surface, borderLeft: `1px solid ${D.border}`, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ display: "flex", borderBottom: `1px solid ${D.border}`, flexShrink: 0 }}>
             {(["propriedades", "camadas"] as const).map((t) => (
-              <button key={t} onClick={() => setTab(t)} aria-selected={tab === t} style={{ flex: 1, padding: "10px 0", fontSize: 11, fontWeight: tab === t ? 700 : 400, color: tab === t ? D.purpleText : D.muted, background: "none", border: "none", borderBottom: tab === t ? `2px solid ${D.purple}` : "2px solid transparent", cursor: "pointer", marginBottom: -1 }}>
+              <button key={t} type="button" role="tab" id={`arqdor-render-tab-${t}`} aria-controls="arqdor-render-tab-content" onClick={() => setTab(t)} aria-selected={tab === t} style={{ flex: 1, padding: "10px 0", fontSize: 11, fontWeight: tab === t ? 700 : 400, color: tab === t ? D.purpleText : D.muted, background: "none", border: "none", borderBottom: tab === t ? `2px solid ${D.purple}` : "2px solid transparent", cursor: "pointer", marginBottom: -1 }}>
                 {t.charAt(0).toUpperCase() + t.slice(1)}
               </button>
             ))}
