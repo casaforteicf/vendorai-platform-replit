@@ -175,3 +175,11 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - Teste estrutural estendido em `test-arqdor-members-routes.mjs`.
 - **Gates pendentes:** compilar/typecheck Drizzle e verificar `setWhere` e `returning` com PostgreSQL isolado; testar concessão/alteração/revogação concorrentes, RBAC real, rollback de transações, ausência de dono provisionado, migrações 024/025. Não habilitar `ARQDOR_PROJECT_ACL_ENABLED` até estes gates e homologação. Gravação condicional offline ainda não consulta esta ACL dentro da transação.
 - PR draft, sem merge/deploy e produção inalterada.
+
+
+## MULTI-07.5 — Gravação condicional individual experimental
+- Criada rota `PUT /arqdor/projects/:id/member-conditional`, com flag `ARQDOR_PROJECT_ACL_ENABLED=true` desligada por padrão; autentica identidade humana, confere tenant e exige revisão base em `xmin`.
+- O UPDATE verifica a existência de membership `owner/editor` e usuário ativo no próprio WHERE SQL, além do tenant/projeto/revisão. Evita confiar em `canEdit` informado no navegador ou em consulta de autorização desatualizada.
+- Teste estrutural ampliado `artifacts/api-server/scripts/test-arqdor-conditional-save.mjs`.
+- **Ainda NÃO homologado e NÃO plenamente protegido contra corrida com revogação concorrente**: snapshot MVCC do statement pode observar membro enquanto uma transação de revogação está em curso. Antes da liberação, serializar alteração de membros e escrita do projeto (e.g. lock consistente por projeto ou mecanismo equivalente), além de testes PostgreSQL reais de revogação simultânea.
+- Migrações 024/025 continuam sem aplicação. UI/IndexedDB ainda não chamam a nova rota. Ainda faltam limites de payload, ACL de leitura e retorno de revision do GET, atribuição inicial de owner, testes e CI, homologação e publicação controlada.
