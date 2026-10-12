@@ -26,14 +26,14 @@ export function conceptRoomFurnitureGeometry(room:ConceptRoom,walls:readonly Con
   wallMap.set(wall.id,wall);
  }
  for(const opening of openings){
-  const wall=wallMap.get(opening.wallId);
-  if(!wall||!opening.id||!Number.isFinite(opening.offset)||!Number.isFinite(opening.width)||opening.offset<0||!opening.width||opening.width<=0)throw Error("Abertura incompleta");
+  const wall=wallMap.get(opening.wallId),openingWidth=opening.width;
+  if(!wall||!opening.id||!Number.isFinite(opening.offset)||typeof openingWidth!=="number"||!Number.isFinite(openingWidth)||opening.offset<0||openingWidth<=0)throw Error("Abertura incompleta");
   const dx=wall.x2-wall.x1,dy=wall.y2-wall.y1,len=Math.hypot(dx,dy);
-  if(opening.offset+opening.width>len+eps)throw Error("Abertura ultrapassa parede");
+  if(opening.offset+openingWidth>len+eps)throw Error("Abertura ultrapassa parede");
   const ax=wall.x1+dx/len*opening.offset-x,ay=wall.y1+dy/len*opening.offset-y;
-  const bx=wall.x1+dx/len*(opening.offset+opening.width)-x,by=wall.y1+dy/len*(opening.offset+opening.width)-y;
+  const bx=wall.x1+dx/len*(opening.offset+openingWidth)-x,by=wall.y1+dy/len*(opening.offset+openingWidth)-y;
   // Door side/hinge uncertainty: reserve both sides for the full leaf sweep.
-  const clearance=opening.type==="door"?opening.width:0.3;
+  const clearance=opening.type==="door"?openingWidth:0.3;
   const minX=Math.max(0,Math.round((Math.min(ax,bx)-clearance)*1000));
   const minY=Math.max(0,Math.round((Math.min(ay,by)-clearance)*1000));
   const maxX=Math.min(w,Math.round((Math.max(ax,bx)+clearance)*1000));
