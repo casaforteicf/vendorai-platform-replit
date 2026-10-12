@@ -101,13 +101,14 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
         throw new Error("Recupere a cópia offline antes de sincronizar.");
       }
       // Persist first: network failures, HTTP conflicts and tab closures must not lose survey edits.
-      await queueSurvey(storageKey, items);
+      const revisionId = await queueSurvey(storageKey, items);
       setOfflinePending(true);
       if (!navigator.onLine) {
         return false;
       }
       await onSave(items);
-      await clearPendingSurvey(storageKey);
+      const cleared = await clearPendingSurvey(storageKey, revisionId);
+      if (!cleared) throw new Error("Uma edição offline mais recente foi detectada e preservada.");
       setOfflinePending(false);
       setDirty(false);
       sessionStorage.removeItem(storageKey);
