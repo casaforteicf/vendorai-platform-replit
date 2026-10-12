@@ -10,5 +10,16 @@ describe("L shaped rooms",()=>{
   expect(furnitureInsidePolygon({id:"b",roomId:"r",xMm:3000,yMm:3000,widthMm:500,depthMm:500,rotationDeg:0},polygon)).toBe(false);
  });
  it("normalizes world coordinates",()=>{const shifted=walls.map(w=>({a:{x:w.a.x+10000,y:w.a.y+5000},b:{x:w.b.x+10000,y:w.b.y+5000}}));const result=localRoomPolygon(shifted);expect(result?.originMm).toEqual({x:10000,y:5000});expect(result?.widthMm).toBe(4000);});
+ it("rejects cabinet straddling the concave L corner",()=>{
+  const polygon=closedRoomPolygon(walls)!;
+  expect(furnitureInsidePolygon({id:"c",roomId:"r",xMm:1600,yMm:1600,widthMm:900,depthMm:900,rotationDeg:0},polygon)).toBe(false);
+ });
+ it("keeps offset polygon local to zero",()=>{
+  const shifted=walls.map(w=>({a:{x:w.a.x-7000,y:w.a.y+9000},b:{x:w.b.x-7000,y:w.b.y+9000}}));
+  const local=localRoomPolygon(shifted)!;
+  expect(local.originMm).toEqual({x:-7000,y:9000});
+  expect(Math.min(...local.polygon.map(p=>p.x))).toBe(0);
+  expect(Math.min(...local.polygon.map(p=>p.y))).toBe(0);
+ });
  it("rejects missing walls",()=>expect(closedRoomPolygon(walls.slice(1))).toBeNull());
 });
