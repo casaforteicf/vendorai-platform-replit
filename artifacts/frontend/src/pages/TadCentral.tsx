@@ -31,6 +31,7 @@ const TAD_LABELS: Partial<Record<LauncherModule, { description: string; section:
   inteligencia: { description: "Indicadores e insights", section: "Inteligência" },
   agentes_ia: { description: "Vendi e agentes inteligentes", section: "Inteligência" },
   configuracoes: { description: "Usuários, permissões e integrações", section: "Administração" },
+  suporte: { description: "Ajuda, perguntas frequentes e orientação", section: "Suporte" },
 };
 
 export default function TadCentral({ audience, enabledModules, permittedModules, previewModules = [], companyName }: TadCentralProps) {

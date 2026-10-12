@@ -5,7 +5,7 @@
  */
 export type LauncherModule = "crm" | "marketing" | "omnichannel" | "agenda" |
   "arqdor" | "obras" | "pdv" | "erp" | "marketplace_casa" |
-  "parceiros" | "portal_cliente" | "inteligencia" | "agentes_ia" | "configuracoes";
+  "parceiros" | "portal_cliente" | "inteligencia" | "agentes_ia" | "configuracoes" | "suporte";
 
 export type LauncherAudience = "consumer" | "professional" | "business";
 export interface LauncherModuleInfo {
@@ -30,6 +30,7 @@ export const LAUNCHER_MODULES: readonly LauncherModuleInfo[] = [
   { key: "inteligencia", title: "Inteligência", route: "/analytics", audiences: ["professional", "business"] },
   { key: "agentes_ia", title: "Vendi IA", route: "/vendi/operacoes", audiences: ["professional", "business"] },
   { key: "configuracoes", title: "Configurações", route: "/configuracoes", audiences: ["business"] },
+  { key: "suporte", title: "Suporte", route: "/faq", audiences: ["professional", "business"] },
 ] as const;
 
 export function authorizedLauncherModules(input: {
