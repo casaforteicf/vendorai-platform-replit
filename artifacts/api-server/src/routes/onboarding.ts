@@ -1595,7 +1595,7 @@ router.get("/onboarding/integracoes/google-url", authenticate, async (req, res) 
   const url = await createRegisteredCalendarAuthUrl(agenda.id, tenantId, req.user!.sub, "/onboarding/integracoes");
   const oauthState = new URL(url).searchParams.get("state");
   if (!oauthState) return res.status(500).json({ error: "OAuth state missing" });
-  res.cookie("vendor_calendar_oauth", createHash("sha256").update(oauthState).digest("hex"), {
+  res.cookie(`vendor_calendar_oauth_${createHash("sha256").update(oauthState).digest("hex").slice(0, 16)}`, createHash("sha256").update(oauthState).digest("hex"), {
     httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax",
     maxAge: 600_000, path: "/api/auth/google/calendar/callback",
   });
