@@ -24,7 +24,7 @@ export const LAUNCHER_MODULES: readonly LauncherModuleInfo[] = [
   { key: "obras", title: "Obras e Serviços", route: "/obras", audiences: ["professional", "business"] },
   { key: "pdv", title: "PDV", route: null, audiences: ["business"] },
   { key: "erp", title: "ERP", route: "/erp", audiences: ["business"] },
-  { key: "marketplace_casa", title: "Marketplace Casa", route: null, audiences: ["consumer", "professional", "business"] },
+  { key: "marketplace_casa", title: "Praça.ai · Operações", route: "/praca-executivo", audiences: ["consumer", "professional", "business"] },
   { key: "parceiros", title: "Parceiros", route: null, audiences: ["professional", "business"] },
   { key: "portal_cliente", title: "Portal do Cliente", route: null, audiences: ["consumer"] },
   { key: "inteligencia", title: "Inteligência", route: "/analytics", audiences: ["professional", "business"] },
