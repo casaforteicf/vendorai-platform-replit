@@ -43,6 +43,7 @@ export type ConceptModelLevel = {
 };
 
 type Props = {
+  arqdorProjectId?: string;
   /** Restricted laboratory feature; host must supply both opt-in and explicit permission. */
   experimentalCpuRenderEnabled?: boolean;
   experimentalCpuRenderAuthorized?: boolean;
@@ -585,6 +586,7 @@ function roofBounds(level: ConceptModelLevel | undefined) {
 }
 
 export default function ConceptModel3D({
+  arqdorProjectId,
   experimentalCpuRenderEnabled = false,
   experimentalCpuRenderAuthorized = false,
   renderCaptureToken,
@@ -1692,7 +1694,7 @@ export default function ConceptModel3D({
             Capturar cena para prévia física experimental
           </button>
           {experimentalCapture.error && <p role="alert" className="text-xs text-red-700">{experimentalCapture.error}</p>}
-          {experimentalCapture.options && <ExperimentalCpuRenderPanel options={experimentalCapture.options} tenantId={user?.tenantId} authToken={token ?? undefined} />}
+          {experimentalCapture.options && <ExperimentalCpuRenderPanel options={experimentalCapture.options} tenantId={user?.tenantId} authToken={token ?? undefined} arqdorProjectId={arqdorProjectId} />}
         </div>
       )}
       <ConceptWebGLScene
