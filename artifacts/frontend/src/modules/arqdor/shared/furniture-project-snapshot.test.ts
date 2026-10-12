@@ -44,4 +44,8 @@ describe("C04 furniture snapshot contract",()=>{
   const broken={...furniture[0],parts:[null]};
   expect(()=>createFurnitureSnapshot({...base,furniture:[broken as any]})).toThrow("Invalid furniture snapshot scope");
  });
+ it("rejects blank material identifiers before API persistence",()=>{
+  const broken={...furniture[0],parts:[{...furniture[0].parts[0],materialId:"  "}]};
+  expect(()=>createFurnitureSnapshot({...base,furniture:[broken]})).toThrow("Invalid cabinet part");
+ });
 });
