@@ -26,3 +26,21 @@ describe("Arqdor Measure conversion gate", () => {
     expect(result.warnings.some((w)=>w.includes("sobrepostas"))).toBe(true);
   });
 });
+
+describe("Arqdor Measure floor isolation", () => {
+  it("does not connect endpoints of walls on different floors", () => {
+    const ground = { ...wall("floor-a",0,0,3000,0), floorIndex:0 };
+    const upper = { ...wall("floor-b",0,0,3000,0), floorIndex:1 };
+    const result = convertSurveyToArqdor([ground,upper]);
+    expect(result.configuration.floors).toBe(2);
+    expect(result.readyForReview).toBe(false);
+    expect(result.warnings.some(w => w.includes("sem conexão"))).toBe(true);
+  });
+  it("rejects a door linked to another floor", () => {
+    const ground = { ...wall("floor-a",0,0,3000,0), floorIndex:0 };
+    const door: SurveyElement = {id:"door",roomName:"Cozinha",floorIndex:1,elementType:"door",label:"Porta",wallId:"floor-a",widthMm:900,heightMm:2100,offsetMm:100,verified:true};
+    const result=convertSurveyToArqdor([ground,door]);
+    expect(result.configuration.customOpenings).toHaveLength(0);
+    expect(result.warnings.some(w => w.includes("aberturas pendentes"))).toBe(true);
+  });
+});
