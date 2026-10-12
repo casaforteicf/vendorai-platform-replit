@@ -19,14 +19,28 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
  const [transmission,setTransmission]=useState(0);
  const [completed,setCompleted]=useState(false);
  const [saving,setSaving]=useState(false);
+ const [savedVersions,setSavedVersions]=useState<Array<{id:string;label:string;image:string}>>([]);
+ const [loadingVersions,setLoadingVersions]=useState(false);
  const [history,setHistory]=useState<Array<{image:string;label:string}>>([]);
  const [comparison,setComparison]=useState<string|null>(null);
  const [latestCompletedImage,setLatestCompletedImage]=useState<string|null>(null);
  const historySequence=useRef(0);
  const mediaProjectRef=useRef<{key:string;id:string}|null>(null);
+ const loadSavedVersions=async (mediaId:string,tenant:string,token:string)=>{
+  setLoadingVersions(true);
+  try {
+   const response=await fetch(`/api/tenants/${encodeURIComponent(tenant)}/media/projects/${encodeURIComponent(mediaId)}`,{headers:{Authorization:`Bearer ${token}`},cache:"no-store"});
+   if(!response.ok)throw Error("Falha ao carregar versões");
+   const payload=await response.json();
+   const assets=new Map((Array.isArray(payload.assets)?payload.assets:[]).map((a:any)=>[a.id,a]));
+   const versions=(Array.isArray(payload.versions)?payload.versions:[]).filter((v:any)=>v.operation==="arqdor_cpu_preview").slice(0,20);
+   setSavedVersions(versions.flatMap((v:any)=>{const asset:any=assets.get(v.assetId);return typeof asset?.accessUrl==="string"&&asset.accessUrl?[{id:v.id,label:v.label||"Prévia CPU",image:asset.accessUrl}]:[];}));
+  }catch(error){setStatus(error instanceof Error?error.message:String(error));}
+  finally{setLoadingVersions(false);}
+ };
  const savedGeneration=useRef(0);
  useEffect(()=>()=>{generation.current++;job.current?.cancel();job.current=null;},[]);
- useEffect(()=>{generation.current++;job.current?.cancel();job.current=null;setProgress(0);setCompleted(false);setHistory([]);historySequence.current=0;setComparison(null);setLatestCompletedImage(null);savedGeneration.current++;mediaProjectRef.current=null;setStatus("Cena alterada — renderizar novamente");},[options]);
+ useEffect(()=>{generation.current++;job.current?.cancel();job.current=null;setProgress(0);setCompleted(false);setHistory([]);setSavedVersions([]);historySequence.current=0;setComparison(null);setLatestCompletedImage(null);savedGeneration.current++;mediaProjectRef.current=null;setStatus("Cena alterada — renderizar novamente");},[options]);
  const stop=()=>{generation.current++;job.current?.cancel();job.current=null;setCompleted(false);setStatus("Cancelado");};
  const exportPng=()=>{
   if(!completed||!canvas.current||job.current)return;
@@ -51,7 +65,7 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
    const key=sourceKey;
    let mediaId=mediaProjectRef.current?.key===key?mediaProjectRef.current.id:null;
    if(!mediaId){
-    const lookup=await fetch(`${mediaRoot}/projects?kind=mixed&limit=100`,{headers:{Authorization:`Bearer ${authToken}`}});
+    const lookup=await fetch(`${mediaRoot}/projects?kind=mixed&arqdorProjectId=${encodeURIComponent(arqdorProjectId)}&limit=1`,{headers:{Authorization:`Bearer ${authToken}`}});
     if(!lookup.ok)throw Error("Falha ao localizar histórico");
     const payload=await lookup.json();
     const existing=Array.isArray(payload.projects)?payload.projects.find((item:any)=>
@@ -83,7 +97,7 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
     metadata:{folderPath:"Arqdor / Laboratório",arqdorProjectId,generator:"arqdor-cpu-experimental",status:"experimental",published:false}
    })});
    if(!registered.ok){const error=await registered.json().catch(()=>({}));throw Error(error.error||"Falha ao registrar imagem");}
-   if(sourceGeneration===savedGeneration.current)setStatus("Prévia experimental salva na Biblioteca de Mídias do tenant");
+   if(sourceGeneration===savedGeneration.current){setStatus("Prévia experimental salva na Biblioteca de Mídias do tenant");await loadSavedVersions(mediaId!,tenantId,authToken);}
   }catch(error){if(sourceGeneration===savedGeneration.current)setStatus("Falha ao salvar: "+(error instanceof Error?error.message:String(error)));}
   finally{setSaving(false);}
  };
@@ -147,6 +161,17 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
    {tenantId && authToken && arqdorProjectId && <button type="button" disabled={!completed||!!job.current||saving} onClick={()=>void saveToLibrary()} className="rounded border px-3 py-2 disabled:opacity-40">{saving?"Salvando...":"Salvar na Biblioteca (experimental)"}</button>}
   </div>
   <div role="status" className="text-xs text-slate-600">{status} · {progress}%</div>
+  {tenantId && authToken && arqdorProjectId && <div className="space-y-2">
+   <button type="button" disabled={loadingVersions} onClick={()=>void (async()=>{
+    const response=await fetch(`/api/tenants/${encodeURIComponent(tenantId)}/media/projects?kind=mixed&arqdorProjectId=${encodeURIComponent(arqdorProjectId)}&limit=1`,{headers:{Authorization:`Bearer ${authToken}`}});
+    if(!response.ok){setStatus("Não foi possível consultar histórico persistente");return;}
+    const payload=await response.json();
+    const id=payload.projects?.[0]?.id;
+    if(typeof id==="string"){mediaProjectRef.current={key:`${tenantId}:${arqdorProjectId}`,id};await loadSavedVersions(id,tenantId,authToken);}
+    else setSavedVersions([]);
+   })()} className="rounded border px-3 py-2 text-xs disabled:opacity-40">Atualizar histórico salvo</button>
+   {savedVersions.length>0 && <div className="flex flex-wrap gap-2">{savedVersions.map(v=><button type="button" key={v.id} className="rounded border p-1 text-xs" onClick={()=>setComparison(v.image)}><img src={v.image} alt={v.label} className="h-14 w-20 object-cover"/>{v.label}</button>)}</div>}
+  </div>
   {history.length>0 && <div className="space-y-2">
    <p className="text-xs text-slate-600">Últimas três prévias desta cena (somente nesta sessão)</p>
    <div className="flex flex-wrap gap-2">{history.map((entry,index)=><button key={index} type="button" onClick={()=>setComparison(entry.image)} className="rounded border p-1 text-xs">
