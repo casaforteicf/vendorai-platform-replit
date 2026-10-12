@@ -763,4 +763,28 @@ router.post("/operational-checklists/runs/:runId/remote-invite/revoke", async (r
   return void res.json({revoked:true});
 });
 
+
+// This authenticated operator workflow is intentionally NOT a public token redemption endpoint.
+// A remote recipient must have independently verified identity before their consent can be accepted.
+const verifyRemoteInviteSchema = z.object({
+  token: z.string().min(30).max(256),
+});
+router.post("/operational-checklists/runs/:runId/remote-invite/inspect", async (req,res) => {
+  if (!req.user?.sub) return void res.status(401).json({error:"Autenticacao obrigatoria"});
+  const parsed = verifyRemoteInviteSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return void res.status(422).json({error:"Token invalido"});
+  const [run] = await db.select().from(operationalChecklistRunsTable)
+    .where(eq(operationalChecklistRunsTable.id,String(req.params.runId))).limit(1);
+  if (!run) return void res.status(404).json({error:"Levantamento nao encontrado"});
+  if (!canAccessTenant(req,run.tenantId)) return void res.status(403).json({error:"Acesso negado"});
+  const raw = run.headerSnapshot.remoteAcceptanceInvitation;
+  const invitation = raw && typeof raw === "object" ? raw as Record<string,unknown> : null;
+  const digest = createHash("sha256").update(parsed.data.token).digest("hex");
+  if (!invitation || invitation.tokenHash !== digest || invitation.status !== "pending" ||
+      invitation.revision !== run.revision || typeof invitation.expiresAt !== "string" ||
+      !Number.isFinite(Date.parse(invitation.expiresAt)) || Date.parse(invitation.expiresAt) <= Date.now())
+    return void res.status(404).json({error:"Convite indisponivel ou expirado"});
+  res.setHeader("Cache-Control","no-store");
+  return void res.json({valid:true,recipientName:invitation.recipientName,expiresAt:invitation.expiresAt,externalAcceptanceEnabled:false});
+});
 export default router;
