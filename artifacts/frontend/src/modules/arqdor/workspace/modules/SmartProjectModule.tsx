@@ -80,9 +80,13 @@ function getProjects(arqState: ArqStateLike): ProjectLike[] {
   return Array.isArray(list) ? list : [];
 }
 
-function getCurrentProject(arqState: ArqStateLike): ProjectLike | null {
+function getCurrentProject(arqState: ArqStateLike, requestedId?: string | null): ProjectLike | null {
   const projects = getProjects(arqState);
-  return arqState?.currentProject || arqState?.selectedProject || arqState?.project || projects?.[0] || null;
+  const candidates = [arqState?.currentProject, arqState?.selectedProject, arqState?.project, ...projects].filter(
+    (project): project is ProjectLike => Boolean(project)
+  );
+  if (requestedId) return candidates.find(project => project.id === requestedId) ?? null;
+  return candidates[0] ?? null;
 }
 
 function getTitle(project?: ProjectLike | null): string {
@@ -437,13 +441,14 @@ export default function SmartProjectModule({ arqState, onNavigate, projectId }: 
       ? "especificacoes" : "overview"
   );
 
-  const project = useMemo(() => getCurrentProject(arqState), [arqState]);
+  const project = useMemo(() => getCurrentProject(arqState, projectId), [arqState, projectId]);
   const progress = useMemo(() => getProjectProgress(project), [project]);
   const timeline = useMemo(() => buildTimeline(project), [project]);
   const radar = useMemo(() => buildRadar(project), [project]);
   const environments = project?.ambientes || [];
 
   if (!project) {
+    if (projectId) return <section className="p-6 text-sm text-slate-700" role="status">O projeto solicitado ainda não está disponível no contexto atual. Reabra-o pela lista de projetos para evitar visualizar ou editar dados de outro projeto.</section>;
     return <EmptyProject onNavigate={onNavigate} />;
   }
 
@@ -563,7 +568,7 @@ export default function SmartProjectModule({ arqState, onNavigate, projectId }: 
               </section>
             ) : null}
 
-            {activeTab === "quantitativos" ? <ProjectQuantities projectId={projectId ?? project.id ?? null} /> : null}
+            {activeTab === "quantitativos" ? <ProjectQuantities projectId={project.id ?? null} /> : null}
 
             {activeTab === "medicoes" ? <ProjectMeasurements projectId={projectId ?? project.id ?? null} /> : null}
 
