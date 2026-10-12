@@ -27,4 +27,9 @@ describe("Concept furniture geometry publisher",()=>{
   expect(()=>conceptRoomFurnitureGeometry(room,[wall],[{...door,floor:1}])).toThrow("Abertura incompleta");
  });
 
+ it("rejects walls collapsing to zero millimeters and invalid floor indices",()=>{
+  expect(()=>conceptRoomFurnitureGeometry(room,[{...wall,x1:5.00001,x2:5.00002,y1:10,y2:10.00001}],[])).toThrow("Parede sem comprimento");
+  expect(()=>conceptRoomFurnitureGeometry(room,[{...wall,floor:-1}],[])).toThrow("Pavimento inválido");
+ });
+
 });
