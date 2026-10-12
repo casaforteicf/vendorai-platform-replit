@@ -14,7 +14,7 @@
 import { Router, type Request, type Response, type IRouter } from "express";
 import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { z } from "zod";
-import { db, agentConfigsTable, agendamentosTable, agendasTable, leadsTable } from "@workspace/db";
+import { db, agentConfigsTable, agendamentosTable, agendasTable, agendaAccessGrantsTable, leadsTable } from "@workspace/db";
 import type { Agendamento } from "@workspace/db";
 import { createGoogleEvent } from "../lib/google-calendar.js";
 import { detectMeetingIntent } from "../lib/detect-meeting-intent.js";
@@ -429,7 +429,26 @@ async function handleSchedulerProcess(req: Request, res: Response): Promise<void
     // Calendar-connected agenda for this tenant so the Meet link is always
     // generated when the tenant has a valid OAuth connection.
     let resolvedAgendaId = agendamentoInput.agendaId ?? null;
-    if (!resolvedAgendaId) {
+    const schedulerIsAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+    if (resolvedAgendaId) {
+      const [selectedAgenda] = await db.select({ id: agendasTable.id, ownerUserId: agendasTable.ownerUserId })
+        .from(agendasTable).where(and(eq(agendasTable.id, resolvedAgendaId), eq(agendasTable.tenantId, tenantId))).limit(1);
+      if (!selectedAgenda) {
+        res.status(422).json({ error: "Agenda nao pertence a este tenant" });
+        return;
+      }
+      if (!schedulerIsAdmin) {
+        const callerId = req.user?.sub;
+        const [grant] = callerId ? await db.select({ userId: agendaAccessGrantsTable.userId })
+          .from(agendaAccessGrantsTable).where(and(eq(agendaAccessGrantsTable.agendaId, resolvedAgendaId),
+            eq(agendaAccessGrantsTable.tenantId, tenantId), eq(agendaAccessGrantsTable.userId, callerId))).limit(1) : [];
+        if (!callerId || (selectedAgenda.ownerUserId !== callerId && !grant)) {
+          res.status(403).json({ error: "Acesso ao calendario nao autorizado" });
+          return;
+        }
+      }
+    }
+    if (!resolvedAgendaId && schedulerIsAdmin) {
       try {
         const [connectedAgenda] = await db
           .select({ id: agendasTable.id })
