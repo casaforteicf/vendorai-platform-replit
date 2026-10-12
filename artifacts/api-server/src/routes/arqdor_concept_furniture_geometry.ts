@@ -10,11 +10,13 @@ export function conceptRoomFurnitureGeometry(room:ConceptRoom,walls:readonly Con
  if(w<=0||d<=0)throw Error("Dimensão não representável");
  const zones:Zone[]=[];
  const wallMap=new Map<string,ConceptWall>();
+ const openingIds=new Set<string>();
  const eps=0.001;
  for(const wall of walls){
   if(!wall.id||wallMap.has(wall.id)||![wall.x1,wall.x2,wall.y1,wall.y2].every(Number.isFinite))throw Error("Parede inválida");
   const vertical=Math.abs(wall.x1-wall.x2)<eps,horizontal=Math.abs(wall.y1-wall.y2)<eps;
   if(!horizontal&&!vertical)throw Error("Paredes oblíquas exigem BIM completo");
+  if(Math.hypot(wall.x2-wall.x1,wall.y2-wall.y1)<eps)throw Error("Parede sem comprimento");
   const left=Math.min(wall.x1,wall.x2),right=Math.max(wall.x1,wall.x2),top=Math.min(wall.y1,wall.y2),bottom=Math.max(wall.y1,wall.y2);
   const thickness=wall.thickness??0.15;
   if(!Number.isFinite(thickness)||thickness<=0||thickness>1)throw Error("Espessura inválida");
@@ -27,9 +29,10 @@ export function conceptRoomFurnitureGeometry(room:ConceptRoom,walls:readonly Con
  }
  for(const opening of openings){
   const wall=wallMap.get(opening.wallId),openingWidth=opening.width;
-  if(!wall||!opening.id||!Number.isFinite(opening.offset)||typeof openingWidth!=="number"||!Number.isFinite(openingWidth)||opening.offset<0||openingWidth<=0)throw Error("Abertura incompleta");
+  if(!wall||!opening.id||openingIds.has(opening.id)||!["door","window"].includes(opening.type)||opening.floor!==wall.floor||!Number.isFinite(opening.offset)||typeof openingWidth!=="number"||!Number.isFinite(openingWidth)||opening.offset<0||openingWidth<=0)throw Error("Abertura incompleta");
   const dx=wall.x2-wall.x1,dy=wall.y2-wall.y1,len=Math.hypot(dx,dy);
   if(opening.offset+openingWidth>len+eps)throw Error("Abertura ultrapassa parede");
+  openingIds.add(opening.id);
   const ax=wall.x1+dx/len*opening.offset-x,ay=wall.y1+dy/len*opening.offset-y;
   const bx=wall.x1+dx/len*(opening.offset+openingWidth)-x,by=wall.y1+dy/len*(opening.offset+openingWidth)-y;
   // Door side/hinge uncertainty: reserve both sides for the full leaf sweep.
