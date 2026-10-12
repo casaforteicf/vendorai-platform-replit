@@ -1,4 +1,4 @@
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import {
   activitiesTable,
   agendasTable,
@@ -76,7 +76,12 @@ export async function scheduleProspectMeeting(input: {
     .where(and(eq(agendasTable.tenantId, input.tenantId), isNotNull(agendasTable.googleRefreshToken)))
     .limit(1);
 
-  let [appointment] = await db.insert(agendamentosTable).values({
+  const appointment = await db.transaction(async (tx) => {
+    if (agenda?.id) {
+      const locked = await tx.execute(sql`SELECT id FROM agendas WHERE id = ${agenda.id} AND tenant_id = ${input.tenantId} AND google_refresh_token IS NOT NULL FOR UPDATE`);
+      if (!locked.rows.length) throw new Error("PROSPECT_AGENDA_UNAVAILABLE");
+    }
+    const [created] = await tx.insert(agendamentosTable).values({
     tenantId: input.tenantId,
     agendaId: agenda?.id ?? null,
     leadId: converted.leadId,
@@ -99,6 +104,8 @@ export async function scheduleProspectMeeting(input: {
     }],
     observacoes: meetingBrief(prospect),
   }).returning();
+    return created;
+  });
 
   let meetLink: string | null = null;
   if (agenda?.id && agenda.googleRefreshToken) {
