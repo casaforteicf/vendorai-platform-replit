@@ -214,3 +214,12 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - Teste estático de contrato ampliado. **Não há prova de teste React, browser, PostgreSQL, multiaba ou execução da suíte** nesta sessão.
 - **Pendências críticas**: persistir fila em IndexedDB com isolamento, evitar efeitos colaterais dentro de updater React, fluxo de retomada após erro, ciclo completo de troca/criação de projeto, snapshot/ACL e flags em homologação. O conteúdo pendente atualmente só reside na memória da aba; não é garantia de salvamento offline.
 - PR draft, sem merge, migração ou publicação.
+
+
+## MULTI-09.1 — Escrita local experimental vinculada ao editor
+- No `WorkspaceContext.tsx`, o fluxo de fila de salvamento passa a gravar uma cópia do contexto em `IndexedDB` antes do PUT de rede **somente** se `VITE_MULTI08_PROJECT_ACL=true` e `VITE_MULTI09_LOCAL_DRAFTS=true`. Ambas as flags estão desligadas por padrão.
+- O escopo local só é montado após snapshot autenticado da mesma identidade `tenantId/userId/projectId`; troca de projeto invalida esse escopo. A revisão base do servidor acompanha o rascunho.
+- Se falhar a gravação local, o envio de rede também é bloqueado no piloto, com erro visível. Sucesso HTTP não elimina automaticamente a cópia local.
+- Teste estático adicionado, **não executado**. Nenhum teste real de IndexedDB ou navegador.
+- **ALERTA:** o IndexedDB atual armazena JSON em claro, sem criptografia e sem controle de acesso pelo sistema operacional; não ativar com projetos reais ou informações pessoais/confidenciais. Ainda falta criptografia adequada, recuperação pós-reabertura com consentimento/reauth, atualização segura de revisões, resolução multiaba, política de retenção e limite de armazenamento, tratamento de páginas de origem e limpeza de sessão.
+- O editor ainda não recupera nem reenvia rascunhos automaticamente. PR draft; sem merge, migração ou deploy.
