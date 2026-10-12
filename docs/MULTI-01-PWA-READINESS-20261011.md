@@ -223,3 +223,11 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - Teste estático adicionado, **não executado**. Nenhum teste real de IndexedDB ou navegador.
 - **ALERTA:** o IndexedDB atual armazena JSON em claro, sem criptografia e sem controle de acesso pelo sistema operacional; não ativar com projetos reais ou informações pessoais/confidenciais. Ainda falta criptografia adequada, recuperação pós-reabertura com consentimento/reauth, atualização segura de revisões, resolução multiaba, política de retenção e limite de armazenamento, tratamento de páginas de origem e limpeza de sessão.
 - O editor ainda não recupera nem reenvia rascunhos automaticamente. PR draft; sem merge, migração ou deploy.
+
+
+## MULTI-09.2 — Proteção dos rascunhos locais antes da ativação
+- Identificada implementação AES-GCM já existente em `arqdorEncryptedDraft.ts` com chave de sessão não persistida; portanto **não foi duplicado o codec criptográfico**.
+- **Corrigido risco de dados em claro**: a integração experimental do editor agora bloqueia `VITE_MULTI09_LOCAL_DRAFTS` em vez de gravar `contextBlob` sem criptografia no IndexedDB. Nenhum envio em rede é prometido após essa falha segura. A versão legada sem ambas as flags mantém seu comportamento atual.
+- Adicionado `arqdorRecoveryKey.ts`, derivação PBKDF2-SHA256 (310.000 iterações, salt aleatório 16 bytes) de uma frase de recuperação do usuário para chave AES-GCM 256 não exportável, compatível com o codec existente. **Helper ainda não conectado ao editor**; nenhuma senha/chave deve ser persistida nem derivada do JWT.
+- Ajustado teste estrutural do editor para verificar o bloqueio do armazenamento em claro.
+- Pendentes: testes WebCrypto, UI de frase de recuperação com reautenticação, metadados e armazenamento apenas do envelope cifrado, validação de escopo após recuperação, limpeza/expiração, revisões e QA em browser. Nenhum teste executado, migração, merge ou deploy nesta etapa. Flag offline não pode ser ativada até esses itens.
