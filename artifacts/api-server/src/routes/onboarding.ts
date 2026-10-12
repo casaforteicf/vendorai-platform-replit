@@ -24,7 +24,7 @@ import {
   searchConsoleConnectionsTable,
   socialConnectionsTable,
 } from "@workspace/db";
-import { buildAuthUrl } from "../lib/google-calendar.js";
+import { createRegisteredCalendarAuthUrl } from "../lib/google-calendar.js";
 import { authenticate, requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
 import { objectStorageClient } from "../lib/objectStorage.js";
 import { extractBusinessDataFromDocuments } from "../lib/document-extraction.js";
@@ -1572,6 +1572,7 @@ router.post("/onboarding/integracoes/validate-zapsign", authenticate, async (req
 router.get("/onboarding/integracoes/google-url", authenticate, async (req, res) => {
   const tenantId = req.user!.tenantId;
   if (!tenantId) { return res.status(403).json({ error: "Tenant não identificado" }); }
+  if (!["tenant_admin", "super_admin"].includes(req.user!.platformRole) || !req.user!.sub) return res.status(403).json({ error: "Admin required for Google Calendar connection" });
   if (!process.env["GOOGLE_CLIENT_ID"]) {
     return res.status(503).json({ error: "Google Calendar não configurado" });
   }
@@ -1590,7 +1591,7 @@ router.get("/onboarding/integracoes/google-url", authenticate, async (req, res) 
     agenda = created!;
   }
 
-  const url = buildAuthUrl(agenda.id, "/onboarding/integracoes");
+  const url = await createRegisteredCalendarAuthUrl(agenda.id, tenantId, req.user!.sub, "/onboarding/integracoes");
   return res.json({ url });
 });
 
