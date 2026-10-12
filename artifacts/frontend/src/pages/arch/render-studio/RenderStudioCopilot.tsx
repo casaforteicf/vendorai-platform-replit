@@ -73,7 +73,7 @@ export function RenderStudioCopilot({ projectId, step, selections, onTestAction 
   const unreadCount = history.filter(m => m.role === "assistant").length;
 
   return (
-    <div className="arqdor-copilot-strip" style={{ borderTop: `1px solid ${D.border}`, background: `${D.surface}F8`, flexShrink: 0 }}>
+    <div className="arqdor-copilot-strip arqdor-studio-copilot" style={{ borderTop: `1px solid ${D.border}`, background: `${D.surface}F8`, flexShrink: 0 }}>
       <button onClick={() => setIsOpen(o => !o)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }} aria-expanded={isOpen}>
         <span style={{ fontSize: 11, color: D.purple }}>✦</span>
         <span style={{ fontSize: 10, fontWeight: 800, color: D.purple, letterSpacing: "0.06em", flex: 1 }}>IA COPILOT</span>
@@ -116,7 +116,7 @@ export function RenderStudioCopilot({ projectId, step, selections, onTestAction 
             </div>
           )}
           <div style={{ display: "flex", gap: 6, padding: "8px 12px", borderTop: `1px solid ${D.border}` }}>
-            <input value={input} onChange={(e) => setInput(e.target.value)}
+            <input className="arqdor-render-tech-field" value={input} onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendMessage(); } }}
               placeholder="Pergunte ao Copilot…" disabled={busy}
               aria-label="Mensagem para o Copilot" style={{ ...inputStyle, flex: 1, fontSize: 11 }} />
