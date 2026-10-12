@@ -15,7 +15,10 @@ test("recovery requires both server snapshot and edit permission", () => {
   assert.match(panel, /\/edit-access/);
   assert.match(panel, /authorization\.canEdit !== true/);
 });
-test("recovery never writes or applies local content", () => {
+test("recovery applies only after manual confirmation and refreshed access", () => {
   assert.doesNotMatch(panel, /method: "PUT"|method: "POST"|setProjectCtx\(/);
   assert.match(panel, /reviewEncryptedRecovery\(/);
+  assert.match(panel, /window\.confirm\(/);
+  assert.match(panel, /snapshot\.revision !== candidate\.revision/);
+  assert.match(panel, /applyRecoveredDraft\(candidate\.context\)/);
 });
