@@ -274,7 +274,7 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
         <Button size="sm" variant="outline" onClick={() => { void applyReviewedMerge(); }}>Guardar mesclagem para nova conferência</Button>
       </div>}
       <Button size="sm" variant="outline" onClick={() => {
-        const url = URL.createObjectURL(new Blob([JSON.stringify({schemaVersion:1,source:"arqdor_measure_conflict",draftKey,items,exportedAt:new Date().toISOString()},null,2)],{type:"application/json"}));
+        const url = URL.createObjectURL(new Blob([JSON.stringify({schemaVersion:1,source:"arqdor_measure_conflict",draftKey,items,exportedAt:new Date().toISOString(),warning:"Cópia local não homologada; requer conferência antes de uso técnico."},null,2)],{type:"application/json"}));
         const link = document.createElement("a"); link.href=url; link.download="arqdor-measure-conflito.json"; link.click(); URL.revokeObjectURL(url);
       }}>Exportar cópia local</Button>
     </div>}
