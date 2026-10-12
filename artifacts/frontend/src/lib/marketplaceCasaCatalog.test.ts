@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPublicCasaListing, visibleCasaCategories, visibleCasaSubcategories, type CasaPublishableListing } from "./marketplaceCasaCatalog";
+import { isPublicCasaListing, visibleCasaCategories, visibleCasaSubcategories, projectPracaSourceItem, type CasaPublishableListing } from "./marketplaceCasaCatalog";
 
 const item = (overrides: Partial<CasaPublishableListing> = {}): CasaPublishableListing => ({
   id: "1", category: "moveis", subcategory: "Planejados", publishToPraca: true,
@@ -7,6 +7,13 @@ const item = (overrides: Partial<CasaPublishableListing> = {}): CasaPublishableL
 });
 
 describe("Praça.ai publicação seletiva e categorias públicas", () => {
+  it("respects the existing nullable product opt-in", () => {
+    const base = { id: "p1", ativo: true, categoriaPraca: "moveis" as const, statusPublicacao: "published" as const, aprovado: true };
+    expect(isPublicCasaListing(projectPracaSourceItem({ ...base, vendeNoPracaAi: null })!)).toBe(false);
+    expect(isPublicCasaListing(projectPracaSourceItem({ ...base, vendeNoPracaAi: false })!)).toBe(false);
+    expect(isPublicCasaListing(projectPracaSourceItem({ ...base, vendeNoPracaAi: true })!)).toBe(true);
+    expect(projectPracaSourceItem({ ...base, vendeNoPracaAi: true, categoriaPraca: null })).toBeNull();
+  });
   it("never exposes unselected, unapproved or disabled listings", () => {
     expect(isPublicCasaListing(item({ publishToPraca: false }))).toBe(false);
     expect(isPublicCasaListing(item({ status: "draft" }))).toBe(false);
