@@ -52,6 +52,7 @@ type ArqStateLike = {
 type SmartProjectModuleProps = {
   arqState: ArqStateLike;
   onNavigate?: (module: string) => void;
+  projectId?: string | null;
 };
 
 const projectStatusLabel: Record<string, string> = {
@@ -320,7 +321,7 @@ function EmptyProject({ onNavigate }: { onNavigate?: (module: string) => void })
   );
 }
 
-export default function SmartProjectModule({ arqState, onNavigate }: SmartProjectModuleProps) {
+export default function SmartProjectModule({ arqState, onNavigate, projectId }: SmartProjectModuleProps) {
   const [activeTab, setActiveTab] = useState<"overview" | "ambientes" | "timeline" | "briefing" | "especificacoes">(() =>
     typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tab") === "especificacoes"
       ? "especificacoes" : "overview"
@@ -421,7 +422,7 @@ export default function SmartProjectModule({ arqState, onNavigate }: SmartProjec
 
             {activeTab === "especificacoes" ? (
               <div className="min-w-0 overflow-hidden rounded-2xl bg-slate-950" style={{ minHeight: 540 }}>
-                <SmartSpecModule projectId={project.id ?? null} onOpenRender={() => onNavigate?.("renders")} />
+                <SmartSpecModule projectId={projectId ?? project.id ?? null} onOpenRender={() => onNavigate?.("renders")} />
               </div>
             ) : null}
 
