@@ -794,14 +794,13 @@ export function SmartSpecModule({
       if (r.ok) {
         const updated: SpecItem = await r.json()
         setItems(prev => prev.map(i => i.id === itemId ? { ...i, ...updated } : i))
-        if (patch.status) setSpec(prev => prev ? {
-          ...prev,
-          specifiedCount: patch.status === 'especificado'
-            ? prev.specifiedCount + 1
-            : Math.max(0, prev.specifiedCount - (items.find(i => i.id === itemId)?.status === 'especificado' ? 1 : 0)),
-        } : prev)
+      } else {
+        const payload = await r.json().catch(() => ({}))
+        throw new Error(payload.error ?? `Erro ao salvar componente (HTTP ${r.status})`)
       }
-    } catch {}
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível salvar o componente.')
+    }
   }
 
   // Use catalog match
@@ -873,7 +872,7 @@ export function SmartSpecModule({
           {spec && (
             <div className="ss-spec-stats" style={{ display:'flex', gap:6, alignItems:'center' }}>
               <div style={{ textAlign:'center', padding:'6px 12px', borderRadius:8, background:'rgba(74,222,128,0.08)', border:`1px solid rgba(74,222,128,0.2)` }}>
-                <p style={{ margin:'0 0 1px', fontSize:16, fontWeight:900, color:T.green }}>{spec.specifiedCount}</p>
+                <p style={{ margin:'0 0 1px', fontSize:16, fontWeight:900, color:T.green }}>{counts.especificados}</p>
                 <p style={{ margin:0, fontSize:8, color:T.dim, fontWeight:700 }}>ESPECIFICADOS</p>
               </div>
               <div style={{ textAlign:'center', padding:'6px 12px', borderRadius:8, background:'rgba(251,191,36,0.08)', border:`1px solid rgba(251,191,36,0.2)` }}>
