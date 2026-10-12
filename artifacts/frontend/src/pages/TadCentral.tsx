@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
-import { authorizedLauncherModules, type LauncherAudience, type LauncherModule } from "@/lib/adaptiveModuleLauncher";
+import { LAUNCHER_MODULES, authorizedLauncherModules, type LauncherAudience, type LauncherModule } from "@/lib/adaptiveModuleLauncher";
 
 /**
  * TAD — selectable ecosystem start screen.
@@ -12,6 +12,7 @@ export interface TadCentralProps {
   audience: LauncherAudience;
   enabledModules: readonly LauncherModule[];
   permittedModules: readonly LauncherModule[];
+  previewModules?: readonly LauncherModule[];
   companyName?: string;
 }
 
@@ -32,21 +33,31 @@ const TAD_LABELS: Partial<Record<LauncherModule, { description: string; section:
   configuracoes: { description: "Usuários, permissões e integrações", section: "Administração" },
 };
 
-export default function TadCentral({ audience, enabledModules, permittedModules, companyName }: TadCentralProps) {
+export default function TadCentral({ audience, enabledModules, permittedModules, previewModules = [], companyName }: TadCentralProps) {
   const [search, setSearch] = useState("");
   const [section, setSection] = useState("Todos");
   const authorized = useMemo(
     () => authorizedLauncherModules({ audience, enabledModules, permittedModules }),
     [audience, enabledModules, permittedModules],
   );
-  const sections = useMemo(() => ["Todos", ...new Set(authorized.map(m => TAD_LABELS[m.key]?.section ?? "Outros"))], [authorized]);
-  const visible = useMemo(() => authorized.filter(m => {
+  // Preview is only informational; authorization determines clickable links.
+  const listed = useMemo(() => {
+    const available = new Set(authorized.map(m => m.key));
+    const preview = new Set(previewModules);
+    const enabled = new Set(enabledModules);
+    return [
+      ...authorized,
+      ...LAUNCHER_MODULES.filter(m => !available.has(m.key) && preview.has(m.key) && enabled.has(m.key) && m.audiences.includes(audience)),
+    ];
+  }, [authorized, previewModules, enabledModules, audience]);
+  const sections = useMemo(() => ["Todos", ...new Set(listed.map(m => TAD_LABELS[m.key]?.section ?? "Outros"))], [listed]);
+  const visible = useMemo(() => listed.filter(m => {
     const label = TAD_LABELS[m.key];
     const matchesSection = section === "Todos" || (label?.section ?? "Outros") === section;
     const matchesSearch = [m.title, label?.description ?? "", label?.section ?? ""]
       .join(" ").toLocaleLowerCase("pt-BR").includes(search.trim().toLocaleLowerCase("pt-BR"));
     return matchesSection && matchesSearch;
-  }), [authorized, search, section]);
+  }), [listed, search, section]);
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8" aria-label="TAD Central">
       <header className="mb-7 flex flex-wrap items-center justify-between gap-4">
@@ -55,7 +66,7 @@ export default function TadCentral({ audience, enabledModules, permittedModules,
           <h1 className="mt-2 text-2xl font-semibold tracking-tight">Escolha seu ambiente de trabalho</h1>
           <p className="mt-1 text-sm text-muted-foreground">{companyName ? `Empresa: ${companyName} • ` : ""}Somente serviços autorizados para seu acesso</p>
         </div>
-        <span className="rounded-full border px-3 py-1 text-xs text-muted-foreground">{authorized.length} serviços disponíveis</span>
+        <span className="rounded-full border px-3 py-1 text-xs text-muted-foreground">{authorized.length} serviços autorizados</span>
       </header>
       <div className="mb-5 flex flex-col gap-3 sm:flex-row">
         <label className="sr-only" htmlFor="tad-search">Buscar serviço</label>
@@ -75,14 +86,15 @@ export default function TadCentral({ audience, enabledModules, permittedModules,
             <>
               <div className="mb-3 flex items-start justify-between gap-2">
                 <span className="text-xs font-medium text-muted-foreground">{info?.section ?? "Serviço"}</span>
-                <span className="text-xs text-muted-foreground">{module.route ? "Abrir ↗" : "Em integração"}</span>
+                <span className="text-xs text-muted-foreground">{canOpen ? "Abrir ↗" : "Acesso em validação"}</span>
               </div>
               <h2 className="text-lg font-semibold">{module.key === "marketplace_casa" ? "Praça.ai" : module.title}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{info?.description ?? "Ambiente do ecossistema"}</p>
             </>
           );
+          const canOpen = authorized.some(m => m.key === module.key) && !!module.route;
           const className = "block min-h-[145px] rounded-xl border bg-card p-5 text-card-foreground transition-colors hover:bg-muted/40";
-          return module.route
+          return canOpen
             ? <Link key={module.key} href={module.route} className={className} aria-label={`Abrir ${module.title}`}>{body}</Link>
             : <div key={module.key} className={className} aria-disabled="true">{body}</div>;
         })}
