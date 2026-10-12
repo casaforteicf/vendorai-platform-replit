@@ -3,6 +3,7 @@ import {FurnitureAxonometricPreview} from "./FurnitureAxonometricPreview";
 import {FurnitureWebGLPreview} from "./FurnitureWebGLPreview";
 import {findFurnitureObstacleClashes} from "../../shared/furniture-obstacle-clashes";
 import {furnitureWallClashes} from "../../shared/furniture-wall-clashes";
+import {furnitureDoorSwingClashes} from "../../shared/furniture-door-swing-clashes";
 import {createFurnitureSnapshot,restoreFurnitureSnapshot} from "../../shared/furniture-project-snapshot";
 import type {InteriorEnvironment} from "./interior-environment";
 import {localRoomPolygon,furnitureInsidePolygon} from "../../shared/furniture-room-polygon";
@@ -63,7 +64,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
     return ()=>{cancelled=true;};
   },[environment.projectId,environment.roomId,width,depth,ready]);
 
-  function checkObstacles(item:PlacedCabinet){if(!polygon||!furnitureInsidePolygon(item.bounds,polygon))throw Error("Móvel fora do contorno real do ambiente");const wallCollisions=furnitureWallClashes(item.bounds,environment.walls,localGeometry?.originMm??{x:0,y:0});if(wallCollisions.length)throw Error("Interferência com espessura da parede: "+wallCollisions.join(", "));const collisions=findFurnitureObstacleClashes(item.bounds,environment.obstacles??[]);if(collisions.length)throw Error("Interferência com obstáculo: "+collisions.join(", "));}
+  function checkObstacles(item:PlacedCabinet){if(!polygon||!furnitureInsidePolygon(item.bounds,polygon))throw Error("Móvel fora do contorno real do ambiente");const wallCollisions=furnitureWallClashes(item.bounds,environment.walls,localGeometry?.originMm??{x:0,y:0});if(wallCollisions.length)throw Error("Interferência com espessura da parede: "+wallCollisions.join(", "));const doorCollisions=furnitureDoorSwingClashes(item.bounds,environment.walls,environment.wallOpenings??[]);if(doorCollisions.length)throw Error("Interferência com o giro da porta: "+doorCollisions.join(", "));const collisions=findFurnitureObstacleClashes(item.bounds,environment.obstacles??[]);if(collisions.length)throw Error("Interferência com obstáculo: "+collisions.join(", "));}
   function add(){
     if(!draft){setMessage("Gere primeiro o armário paramétrico.");return;}
     if(!ready){setMessage("Ambiente sem medidas.");return;}
