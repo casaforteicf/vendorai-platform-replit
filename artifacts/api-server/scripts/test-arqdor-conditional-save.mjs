@@ -70,3 +70,16 @@ test("MULTI-08 legacy project reads/writes and admin CAS cannot bypass enabled A
     assert.match(beginning, /status\(403\)/);
   }
 });
+
+test("MULTI-08.2 snapshot reads context and revision atomically with ACL", () => {
+  const begin = source.indexOf('router.get("/arqdor/projects/:id/snapshot"');
+  const end = source.indexOf('// MULTI-07: read-only per-project ACL probe', begin);
+  assert.ok(begin > 0 && end > begin);
+  const code = source.slice(begin, end);
+  assert.match(code, /ARQDOR_PROJECT_ACL_ENABLED !== "true"/);
+  assert.match(code, /contextBlob: arqdorWorkspaceProjectsTable\.contextBlob/);
+  assert.match(code, /revision: sql<string>`xmin::text`/);
+  assert.match(code, /m\.permission IN \('owner', 'editor', 'viewer'\)/);
+  assert.match(code, /u\.active = TRUE/);
+  assert.match(code, /Cache-Control", "no-store"/);
+});
