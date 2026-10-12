@@ -95,3 +95,28 @@
   font-weight:600;
 }
 .arqdor-studio-ui .arqdor-render-next-action:hover {background:#21856C;}
+
+/* UI-13 — Render sidebar steps, preserving active/completed/disabled semantics */
+.arqdor-studio-ui .arqdor-render-step {
+  display:flex;
+  width:100%;
+  justify-content:flex-start;
+  align-items:center;
+  text-align:left;
+  gap:8px;
+  min-height:34px;
+  padding:7px 14px 7px 12px;
+  border:0;
+  border-left:2px solid transparent;
+  border-radius:0 6px 6px 0;
+  background:transparent;
+  transition:background .12s ease;
+}
+.arqdor-studio-ui .arqdor-render-step:hover:not(:disabled) {background:var(--arq2-raised);}
+.arqdor-studio-ui .arqdor-render-step[aria-current="step"] {
+  border-left-color:var(--arq2-accent);
+  background:#176d5926;
+}
+.arqdor-studio-ui .arqdor-render-step:disabled {opacity:.35;cursor:not-allowed;}
+.arqdor-studio-ui .arqdor-render-step[data-completed="true"]:not([aria-current="step"]) {color:var(--arq2-text);}
+@media(pointer:coarse){.arqdor-studio-ui .arqdor-render-step{min-height:44px;}}
