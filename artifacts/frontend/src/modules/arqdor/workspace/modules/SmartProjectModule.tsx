@@ -332,6 +332,7 @@ type TechnicalObject = {
   id: string; name?: string|null; category?: string|null; ambiente_id?: string|null; status?: string|null;
   source_object_id?: string|null; source_type?: string|null; project_revision?: string|null;
   render_id?: string|null; geometry_hash?: string|null; catalog_product_id?: string|null; catalog_material_id?: string|null;
+  technical_approval_status?: string|null; technical_approved_at?: string|null;
   width_mm?: string|number|null; height_mm?: string|number|null; depth_mm?: string|number|null;
   length_mm?: string|number|null; measurement_source?: string|null; measurement_revision?: string|null;
   quantity?: string|number|null; unit?: string|null; quantity_source?: string|null;
@@ -370,6 +371,9 @@ function TechnicalProvenance({item}:{item:TechnicalObject}) {
   return <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Rastreabilidade do componente">
     <span className="rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-600" title={item.id}>ID técnico: {item.id.slice(0,8)}</span>
     {links.map(([label,value])=><span key={label} title={value} className="max-w-full break-all rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-600">{label}: {value}</span>)}
+    <span className={item.technical_approval_status === "approved" ? "rounded bg-emerald-50 px-2 py-1 text-[11px] text-emerald-800" : "rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-800"}>
+      Aprovação técnica: {item.technical_approval_status === "approved" ? "aprovada" : "pendente ou não registrada"}
+    </span>
     {!item.source_object_id && <span className="rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-800">Sem vínculo BIM identificado</span>}
   </div>;
 }
