@@ -1,8 +1,8 @@
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { ConceptArchitecturalDocumentation } from "./ConceptArchitecturalDocumentation";
 import { emptyArchitecturalModel } from "./conceptArchitecturalModel";
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 it("updates visible dimensions from authored model and allows hiding them", () => {
  const model = emptyArchitecturalModel();
  model.slabs.push({ id: "s", floor: 1, x: 0, y: 0, width: 4, depth: 5, thickness: 0.2, elevation: 3.12, voids: [] });
@@ -24,4 +24,45 @@ it("avoids dimensions on empty slices and distinguishes elevation projections", 
  fireEvent.change(screen.getByLabelText("Vista"), { target: { value: "elevation" } });
  expect(screen.queryByRole("status")).toBeNull();
  expect(screen.getByText("5.00 m")).toBeTruthy();
+});
+
+it("exports a physical A3 sheet with scale, safe title and current dimension visibility", () => {
+ const model = emptyArchitecturalModel();
+ model.slabs.push({ id: "s", floor: 0, x: 0, y: 0, width: 4, depth: 5, thickness: 0.15, elevation: 0.16, voids: [] });
+ let exported = "";
+ vi.stubGlobal("Blob", class { constructor(parts: string[]) { exported = parts.join(""); } });
+ vi.stubGlobal("URL", { createObjectURL: vi.fn(() => "blob:test"), revokeObjectURL: vi.fn() });
+ const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+ render(<ConceptArchitecturalDocumentation model={model} />);
+ fireEvent.change(screen.getByLabelText("Título da prancha"), { target: { value: '<script>alert("x")</script>' } });
+ fireEvent.change(screen.getByLabelText("Escala da prancha"), { target: { value: "50" } });
+ fireEvent.click(screen.getByLabelText("Mostrar cotas gerais da vista"));
+ fireEvent.click(screen.getByRole("button", { name: "Exportar prancha A3 SVG" }));
+ const doc = new DOMParser().parseFromString(exported, "image/svg+xml");
+ expect(doc.querySelector("parsererror")).toBeNull();
+ expect(doc.documentElement.getAttribute("width")).toBe("420mm");
+ expect(doc.documentElement.getAttribute("height")).toBe("297mm");
+ expect(doc.querySelector("script")).toBeNull();
+ expect(doc.documentElement.textContent).toContain('<script>alert("x")</script>');
+ expect(doc.documentElement.textContent).toContain("escala 1:50");
+ const drawing = doc.documentElement.querySelector("svg");
+ expect(Number(drawing?.getAttribute("width"))).toBeCloseTo(138);
+ expect(drawing?.querySelector("text")).toBeNull();
+ expect(click).toHaveBeenCalledOnce();
+ expect(document.querySelector('a[download]')).toBeNull();
+});
+it("blocks oversized export then exports when a fitting scale is chosen", () => {
+ const model = emptyArchitecturalModel();
+ model.slabs.push({ id: "s", floor: 0, x: 0, y: 0, width: 4, depth: 25, thickness: 0.15, elevation: 0.16, voids: [] });
+ vi.stubGlobal("URL", { createObjectURL: vi.fn(() => "blob:test"), revokeObjectURL: vi.fn() });
+ const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+ render(<ConceptArchitecturalDocumentation model={model} />);
+ fireEvent.change(screen.getByLabelText("Escala da prancha"), { target: { value: "50" } });
+ fireEvent.click(screen.getByRole("button", { name: "Exportar prancha A3 SVG" }));
+ expect(screen.getByRole("alert").textContent).toContain("não cabe");
+ expect(click).not.toHaveBeenCalled();
+ fireEvent.change(screen.getByLabelText("Escala da prancha"), { target: { value: "100" } });
+ expect(screen.queryByRole("alert")).toBeNull();
+ fireEvent.click(screen.getByRole("button", { name: "Exportar prancha A3 SVG" }));
+ expect(click).toHaveBeenCalledOnce();
 });

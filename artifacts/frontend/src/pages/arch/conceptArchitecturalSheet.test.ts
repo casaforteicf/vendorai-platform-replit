@@ -17,3 +17,8 @@ it("rejects oversized sheets and invalid scale without silently shrinking the dr
  expect(architecturalSheetLayout(bounds, 0)).toHaveProperty("error");
  expect(architecturalSheetLayout({ ...bounds, maxU: NaN }, 100)).toHaveProperty("error");
 });
+
+it("rejects reversed bounds instead of producing a misleading scaled sheet", () => {
+ expect(architecturalSheetLayout({ minU: 5, maxU: 0, minZ: 0, maxZ: 3 }, 100)).toHaveProperty("error");
+ expect(architecturalSheetLayout({ minU: 0, maxU: 5, minZ: 3, maxZ: 0 }, 100)).toHaveProperty("error");
+});
