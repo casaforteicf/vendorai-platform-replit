@@ -579,7 +579,7 @@ export default function SmartProjectModule({ arqState, onNavigate, projectId }: 
                     <div key={arquivo.id} className="min-w-0 rounded-xl border border-slate-200 bg-white p-3">
                       <p className="break-words text-sm font-semibold text-slate-900">{arquivo.nome}</p>
                       <p className="mt-1 text-xs text-slate-500">{arquivo.tipo} · {arquivo.ambienteId ? `Ambiente: ${arquivo.ambienteId}` : "Documento geral"} · {arquivo.createdAt ? new Date(arquivo.createdAt).toLocaleDateString("pt-BR") : "Data não informada"}</p>
-                      {arquivo.url && /^(https?:\\/\\/|\\/)/i.test(arquivo.url) && (
+                      {arquivo.url && (/^https?:\/\//i.test(arquivo.url) || arquivo.url.startsWith("/")) && (
                         <a className="mt-2 inline-block break-all text-sm font-medium text-violet-700 underline" href={arquivo.url} target="_blank" rel="noopener noreferrer">Abrir arquivo</a>
                       )}
                     </div>
@@ -601,7 +601,7 @@ export default function SmartProjectModule({ arqState, onNavigate, projectId }: 
 
             {activeTab === "quantitativos" ? <ProjectQuantities projectId={project.id ?? null} /> : null}
 
-            {activeTab === "medicoes" ? <ProjectMeasurements projectId={projectId ?? project.id ?? null} /> : null}
+            {activeTab === "medicoes" ? <ProjectMeasurements projectId={project.id ?? null} /> : null}
 
             {activeTab === "especificacoes" ? (
               <div className="min-w-0 overflow-hidden rounded-2xl bg-slate-950" style={{ minHeight: 540 }}>
