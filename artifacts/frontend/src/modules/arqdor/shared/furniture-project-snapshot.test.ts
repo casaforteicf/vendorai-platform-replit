@@ -36,4 +36,8 @@ describe("C04 furniture snapshot contract",()=>{
  it("applies the same 500-furniture maximum enforced by the server",()=>{
   expect(()=>createFurnitureSnapshot({...base,furniture:Array.from({length:501},()=>furniture[0])})).toThrow();
  });
+ it("rejects malformed backup entries before dereferencing their pieces",()=>{
+  expect(()=>restoreFurnitureSnapshot({schemaVersion:1,tenantId:"t",projectId:"p",roomId:"room",revision:"r",createdAt:"2026-10-11T12:00:00Z",furniture:[null]} as any,{tenantId:"t",projectId:"p",room})).toThrow("Malformed furniture entry");
+  expect(()=>createFurnitureSnapshot({...base,furniture:[{...furniture[0],parts:null} as any]})).toThrow("Malformed furniture entry");
+ });
 });
