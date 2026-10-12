@@ -830,12 +830,13 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
       const serviceGroups = [
         { name: "Início", match: ["/dashboard", "/trabalho", "/"], links: homeNav },
         { name: "CRM", match: ["/leads", "/deals", "/pipeline", "/conversations", "/agenda", "/propostas", "/empresas", "/app/prospector"], links: [...crmAtendimentoNav, ...commercialNav] },
-        { name: "Marketing", match: ["/marketing", "/content", "/ads", "/analytics"], links: [...analyticsNav, ...crmNav.filter((item) => marketingHrefs.has(item.href))] },
+        { name: "Marketing", match: ["/marketing", "/content", "/ads", "/analytics"], links: navigation.filter((item) => ui20ServiceForPath(item.href) === "marketing") },
         { name: "ERP", match: ["/erp", "/estoque", "/obras", "/entregas", "/insumos", "/composicoes"], links: [...financeNav, ...verticalOperationNav] },
         { name: "IA", match: ["/agents", "/vendi", "/base-conhecimento", "/brain"], links: aiKnowledgeNav },
-        { name: "Marketplace", match: ["/marketplace"], links: crmNav.filter((item) => item.href === "/marketplace") },
-        { name: "Arqdor", match: ["/arch"], links: arqdorVisible ? [...verticalNav.filter((item) => item.href.startsWith("/arch"))] : [] },
+        { name: "Marketplace", match: ["/marketplace"], links: navigation.filter((item) => item.href === "/marketplace") },
+        { name: "Arqdor", match: ["/arch"], links: arqdorVisible ? navigation.filter((item) => item.href === "/arch" || item.href.startsWith("/arch/")) : [] },
         { name: "Configurações", match: ["/configuracoes", "/usuarios", "/organizacao"], links: administrationNav },
+        { name: "Suporte", match: ["/faq", "/suporte"], links: [{ href: "/faq", name: "Central de ajuda", icon: HelpCircle }] },
       ];
       const permittedServices = getUi20VisibleServices({ modules: tenantNavModules, isAdmin: isTenantAdmin, arqdorEligible: arqdorVisible, loading: !tenantNavModules });
       const detected = ui20ServiceForPath(path);
