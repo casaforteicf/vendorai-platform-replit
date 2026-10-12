@@ -16,3 +16,16 @@ it("escapes spreadsheet formulas and exports decimal commas without mutating the
  expect(csv).toContain('"\'=bad""id"');expect(csv).toContain('"2,200"');expect(JSON.stringify(openings)).toBe(before);
  expect(documentationOpeningRows(walls,[])).toEqual([]);
 });
+
+it("flags wall length/height overflow and degenerate walls",()=>{
+ const base={id:"d",wallId:"w",floor:0,type:"door" as const,offset:0.5,width:1,height:2.1,sillHeight:0};
+ expect(documentationOpeningRows(walls,[{...base,offset:0}])[0].status).toBe("Vão ultrapassa a parede");
+ expect(documentationOpeningRows(walls,[{...base,height:3}])[0].status).toBe("Vão ultrapassa a parede");
+ expect(documentationOpeningRows([{...walls[0],x2:0}],[base])[0].status).toBe("Parede inválida");
+});
+it("detects collisions and duplicate IDs while allowing touching edges",()=>{
+ const base={id:"d",wallId:"w",floor:0,type:"door" as const,offset:0.5,width:1,height:2.1,sillHeight:0};
+ expect(documentationOpeningRows(walls,[base,{...base,id:"d2",offset:0.6}]).every(r=>r.status==="Vãos sobrepostos")).toBe(true);
+ expect(documentationOpeningRows(walls,[base,{...base,id:"d2",offset:0.75}]).every(r=>r.status==="Informado")).toBe(true);
+ expect(documentationOpeningRows(walls,[base,{...base}])[0].status).toBe("ID duplicado");
+});
