@@ -4,19 +4,20 @@ type Quote = { items: {id:string;descricao:string;quantidade:string;unidade:stri
 export function ConceptOpeningBudget({conceptId,openings}:{conceptId?:string|null;openings:readonly DocumentationOpening[]}) {
  const [quote,setQuote]=useState<Quote|null>(null),[busy,setBusy]=useState(false),[message,setMessage]=useState("");
  const generation=useRef(0);
- useEffect(()=>{generation.current++;setQuote(null);setMessage("");setBusy(false);return ()=>{generation.current++;};},[conceptId,openings]);
+ const requestLock=useRef<number|null>(null);
+ useEffect(()=>{generation.current++;requestLock.current=null;setQuote(null);setMessage("");setBusy(false);return ()=>{generation.current++;};},[conceptId,openings]);
  async function request(apply:boolean){
-  if(!conceptId||busy||(apply&&!quote?.canApply))return;
-  const turn=generation.current;setBusy(true);setMessage("");
+  if(!conceptId||requestLock.current!==null||busy||(apply&&!quote?.canApply))return;
+  const turn=generation.current;requestLock.current=turn;setBusy(true);setMessage("");
   try{
    const response=await fetch(`/api/arch/concept-projects/${encodeURIComponent(conceptId)}/opening-budget`,{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({apply,...(apply?{quoteToken:quote?.quoteToken}:{})})});
    const data=await response.json();
    if(turn!==generation.current)return;
    if(!response.ok)throw Error(data.error||"Não foi possível consultar o orçamento.");
    if(apply){setQuote(null);setMessage(`${data.synced} esquadria(s) sincronizada(s) com o orçamento.`);}
-   else {if(!Array.isArray(data.items)||!Array.isArray(data.issues)||typeof data.quoteToken!=="string"||!Number.isFinite(data.total))throw Error("Resposta de preços inválida.");setQuote(data);}
+   else {if(!Array.isArray(data.items)||!data.items.every((item: Quote["items"][number])=>item&&typeof item.id==="string"&&typeof item.descricao==="string"&&typeof item.unidade==="string"&&[item.quantidade,item.valorUnitario,item.valorTotal].every(v=>typeof v==="string"&&/^\d+(\.\d+)?$/.test(v)&&Number.isFinite(Number(v)))&&Number(item.quantidade)>0)||!Array.isArray(data.issues)||!data.issues.every((issue:unknown)=>typeof issue==="string")||typeof data.quoteToken!=="string"||!data.quoteToken||typeof data.canApply!=="boolean"||(data.projectId!==null&&typeof data.projectId!=="string")||!Number.isFinite(data.total)||data.total<0||(data.canApply&&(!data.items.length||!data.projectId||data.issues.length)))throw Error("Resposta de preços inválida.");setQuote(data);}
   }catch(error){if(turn===generation.current){setQuote(null);setMessage(error instanceof Error?error.message:"Falha na consulta.");}}
-  finally{if(turn===generation.current)setBusy(false);}
+  finally{if(turn===generation.current){requestLock.current=null;setBusy(false);}}
  }
  const money=(value:number)=>value.toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
  return <section aria-label="Orçamento das esquadrias" className="space-y-2 rounded border p-2">
