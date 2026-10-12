@@ -27,4 +27,4 @@ jobs:
       - name: Furniture API geometry tests
         run: pnpm --filter @workspace/api-server exec vitest run src/routes/arqdor_furniture_bim_geometry.test.ts
       - name: Furniture frontend tests
-        run: pnpm --filter @workspace/frontend exec vitest run src/modules/arqdor/shared/furniture-project-snapshot.test.ts src/modules/arqdor/shared/furniture-door-swing-clashes.test.ts
+        run: pnpm --filter @workspace/frontend exec vitest run --config vitest.config.ts src/modules/arqdor/shared/furniture-project-snapshot.test.ts src/modules/arqdor/shared/furniture-door-swing-clashes.test.ts
