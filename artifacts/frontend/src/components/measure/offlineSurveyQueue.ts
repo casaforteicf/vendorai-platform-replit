@@ -36,9 +36,21 @@ export async function queueSurvey(key: string, items: SurveyElement[]): Promise<
   return revisionId;
 }
 export async function clearPendingSurvey(key: string, expectedRevisionId?: string): Promise<boolean> {
-  const current = await readPendingSurvey(key);
-  if (!current) return true;
-  if (expectedRevisionId && current.revisionId !== expectedRevisionId) return false;
-  await transact("readwrite", store => store.delete(key));
-  return true;
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    const store = tx.objectStore(STORE);
+    let matched = false;
+    const get = store.get(key);
+    get.onsuccess = () => {
+      const current = get.result as PendingSurvey | undefined;
+      if (!current) { matched = true; return; }
+      if (expectedRevisionId && current.revisionId !== expectedRevisionId) return;
+      matched = true;
+      store.delete(key);
+    };
+    tx.oncomplete = () => { db.close(); resolve(matched); };
+    tx.onabort = () => { db.close(); reject(tx.error); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+  });
 }
