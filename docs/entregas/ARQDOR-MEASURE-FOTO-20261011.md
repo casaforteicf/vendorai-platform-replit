@@ -280,3 +280,6 @@ Validação de hash do token usa comparacao em tempo constante e exige hash hexa
 
 ## Lote 47 — protecao contra descarte de rascunho offline mais novo (12/10/2026)
 A fila de levantamento armazena revisionId aleatorio por salvamento; apos envio online, somente apaga o registro IndexedDB se a versao local ainda for a mesma. Comparacao e exclusao na mesma transacao readwrite. Caso surja edicao mais nova, ela e preservada e a interface informa o conflito. Falta teste funcional e compilacao e detecao de concorrencia entre dispositivos fisicos; sem homologacao/merge/deploy.
+
+## Lote 48 — versao de servidor contra sobrescrita entre dispositivos (12/10/2026)
+PATCH de itens aceita expectedUpdatedAt e devolve CHECKLIST_CONFLICT quando a versao do levantamento carregada anteriormente nao corresponde ao estado corrente no banco. Frontend envia expectedUpdatedAt nas alteracoes manuais, fotoanotacoes e elementos BIM. Atualizacoes sem campo continuam aceitas para compatibilidade e exigem posterior migracao para obrigatoriedade; upload de foto pode atualizar versao e necessitar recarga para sincronizar cotas. Testes automatizados e integrados pendentes; sem merge/deploy.
