@@ -360,4 +360,21 @@ router.get("/nav-modules/catalog", async (req, res) => {
   res.json(NAV_MODULE_CATALOG);
 });
 
+
+// Experimental Arqdor CPU laboratory: fail closed for every tenant by default.
+// A server-side environment opt-in AND super-admin identity are both mandatory.
+// Tenant-admin and regular users cannot enable access through client-side flags.
+router.get("/tenants/:tenantId/arqdor-cpu-render-access", async (req, res) => {
+  const tenantId = routeTenantId(req);
+  const user = (req as any).user;
+  if (!user) { res.status(401).json({ enabled: false }); return; }
+  if (user.platformRole !== "super_admin" && user.tenantId !== tenantId) {
+    res.status(403).json({ enabled: false }); return;
+  }
+  const enabled = user.platformRole === "super_admin" &&
+    process.env.ARQDOR_EXPERIMENTAL_CPU_RENDER === "true";
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ enabled });
+});
+
 export default router;
