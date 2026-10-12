@@ -40,4 +40,8 @@ describe("C04 furniture snapshot contract",()=>{
   expect(()=>restoreFurnitureSnapshot({schemaVersion:1,tenantId:"t",projectId:"p",roomId:"room",revision:"r",createdAt:"2026-10-11T12:00:00Z",furniture:[null]} as any,{tenantId:"t",projectId:"p",room})).toThrow("Malformed furniture entry");
   expect(()=>createFurnitureSnapshot({...base,furniture:[{...furniture[0],parts:null} as any]})).toThrow("Malformed furniture entry");
  });
+ it("rejects null parts in imported snapshots with a validation error",()=>{
+  const broken={...furniture[0],parts:[null]};
+  expect(()=>createFurnitureSnapshot({...base,furniture:[broken as any]})).toThrow("Invalid furniture snapshot scope");
+ });
 });
