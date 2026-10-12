@@ -270,6 +270,7 @@ export default function OperationalMeasurementChecklist() {
             </CardContent>
           </Card>
 
+          <MeasurementPrintReport name={run.name} revision={run.revision} toleranceMm={run.toleranceMm} status={run.status} items={items} />
           <div className="grid gap-3 sm:grid-cols-4 print:hidden">
             <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Progresso</div><div className="text-2xl font-semibold">{progress}%</div></CardContent></Card>
             <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Itens</div><div className="text-2xl font-semibold">{items.length}</div></CardContent></Card>
