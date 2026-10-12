@@ -208,7 +208,6 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
         const url = URL.createObjectURL(new Blob([JSON.stringify({schemaVersion:1,source:"arqdor_measure_conflict",draftKey,items,exportedAt:new Date().toISOString()},null,2)],{type:"application/json"}));
         const link = document.createElement("a"); link.href=url; link.download="arqdor-measure-conflito.json"; link.click(); URL.revokeObjectURL(url);
       }}>Exportar cópia local</Button>
-      <Button size="sm" variant="outline" onClick={() => { setServerConflict(false); setFeedback("Recarregue o checklist do servidor e confira as diferenças antes de sincronizar."); }}>Revisar conflito</Button>
     </div>}
     {offlinePending && <Button size="sm" variant="outline" disabled={disabled || saving} onClick={() => { void recoverOffline(); }}>Recuperar pendência offline</Button>}
     <Button disabled={disabled||saving} onClick={() => { void saveWithOfflineFallback(); }}>{saving?"Salvando...":offlinePending?"Sincronizar levantamento":"Salvar levantamento"}</Button>
