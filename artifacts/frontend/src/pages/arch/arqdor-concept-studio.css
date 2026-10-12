@@ -1,0 +1,29 @@
+/* ARQDOR-UI-03 — Concept Studio 2.0 workspace shell.
+   Deliberately scoped: do not recolor technical drawings, photos or project material swatches. */
+.arqdor-concept-studio {
+  --arq-bg: #171F22;
+  --arq-surface: #20282A;
+  --arq-panel: #263034;
+  --arq-border: #3A4649;
+  --arq-text: #EEF2EF;
+  --arq-muted: #AAB8B5;
+  --arq-accent: #176D59;
+  font-family: Inter, "IBM Plex Sans", "Segoe UI", sans-serif;
+  font-size: 12px;
+}
+.arqdor-concept-studio :where(button,input,select,textarea) {
+  font-family: inherit;
+}
+.arqdor-concept-studio :where(button,input,select,textarea):focus-visible {
+  outline: 2px solid #4AC59A;
+  outline-offset: 2px;
+}
+.arqdor-concept-studio :where(button[aria-pressed="true"],button[data-state="active"],[role="tab"][aria-selected="true"]) {
+  border-color: #176D59;
+}
+@media (prefers-reduced-motion: reduce) {
+  .arqdor-concept-studio *, .arqdor-concept-studio *::before, .arqdor-concept-studio *::after {
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+  }
+}
