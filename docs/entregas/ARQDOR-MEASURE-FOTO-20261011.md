@@ -260,3 +260,9 @@ Criada rota autenticada de inspecao do convite com validacao de token hash SHA-2
 
 ## Lote 40 — endurecimento de convites remotos
 Validação de hash do token usa comparacao em tempo constante e exige hash hexadecimal de 32 bytes. Novo convite pendente e vigente nao pode ser sobrescrito; operador precisa revogar antes de trocar. Revogacao repetida passa a retornar conflito. Continua inexistente rota publica de aceite, consumo atomico de uso unico ou verificacao de identidade. Compilacao e testes nao executados; nao homologado nem publicado.
+
+## Lote 41 - integridade offline e dependencias BIM (12/10/2026)
+- Levantamento tecnico agora guarda rascunho em IndexedDB ANTES de tentativa de envio online; falhas de rede, conflitos HTTP e rejeicoes do servidor nao descartam a copia local.
+- Quando existe levantamento offline pendente e a tela nao tem edicao local recuperada, a sincronizacao e bloqueada ate recuperar/conferir a copia para evitar sobrescrita silenciosa.
+- Recuperar rascunho offline sobre edicoes ja presentes exige confirmacao. Revisar dimensoes da parede invalida conferencia das aberturas dependentes e exige nova verificacao.
+- Pendente: testes automatizados e reais, versao offline por item, recuperacao simultanea de multiplos dispositivos, aceite remoto e assinatura, instalacao mobile/PC e homologacao. Nenhum merge/deploy.
