@@ -24,7 +24,8 @@ export function getUi20VisibleServices(input: {
     !modules.some((module) => module.moduleKey === key && (module.hasOverride === true && !module.isEnabled || module.commerciallyEntitled === false));
   if (permitted("financeiro")) visible.add("erp");
   if (arqdorEligible && notExplicitlyDisabled("arch")) visible.add("arqdor");
-  if (notExplicitlyDisabled("agents")) visible.add("ia");
+  // IA is paid/permissioned: never infer access from an absent module record.
+  if (permitted("agents")) visible.add("ia");
   for (const [service, key] of [["crm", "leads"], ["marketing", "marketing"], ["marketplace", "marketplace"]] as const) {
     if (!notExplicitlyDisabled(key)) visible.delete(service);
   }
