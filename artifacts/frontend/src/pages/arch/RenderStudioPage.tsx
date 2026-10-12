@@ -521,6 +521,94 @@ const SHELL_STYLES = `
       display: none;
     }
   }
+
+  /* ARQDOR-UI-02: official Studio 2.0 visual layer.
+     Scoped to Render only: preserve workflow handlers, persistence and navigation. */
+  .arqdor-studio-v3 {
+    --arq-studio-bg: #171F22;
+    --arq-studio-surface: #20282A;
+    --arq-studio-panel: #263034;
+    --arq-studio-border: #3A4649;
+    --arq-studio-text: #EEF2EF;
+    --arq-studio-muted: #AAB8B5;
+    --arq-studio-accent: #176D59;
+    background: var(--arq-studio-bg);
+    color: var(--arq-studio-text);
+    color-scheme: dark;
+    font-family: Inter, "IBM Plex Sans", "Segoe UI", sans-serif;
+    font-size: 12px;
+  }
+  .arqdor-studio-v3 .arqdor-legacy-root,
+  .arqdor-studio-v3 .arqdor-legacy-workspace {
+    background: var(--arq-studio-bg) !important;
+    color: var(--arq-studio-text) !important;
+  }
+  .arqdor-studio-v3 .arqdor-legacy-topbar {
+    height: 52px !important;
+    min-height: 52px !important;
+    background: var(--arq-studio-surface) !important;
+    border-bottom: 1px solid var(--arq-studio-border) !important;
+    color: var(--arq-studio-text) !important;
+    box-shadow: none !important;
+  }
+  .arqdor-studio-v3 .arqdor-legacy-topbar span {
+    font-size: 12px !important;
+    color: var(--arq-studio-text) !important;
+  }
+  .arqdor-studio-v3 .arqdor-legacy-sidebar {
+    background: var(--arq-studio-surface) !important;
+    border-right: 1px solid var(--arq-studio-border) !important;
+    box-shadow: none !important;
+  }
+  .arqdor-studio-v3 .arqdor-legacy-right-panel,
+  .arqdor-studio-v3 .arqdor-legacy-right-panel > div {
+    background: var(--arq-studio-panel) !important;
+    color: var(--arq-studio-text) !important;
+    border-color: var(--arq-studio-border) !important;
+  }
+  .arqdor-studio-v3 .arqdor-legacy-topbar .arqdor-primary-action {
+    min-height: 32px !important;
+    padding: 0 12px !important;
+    border-radius: 6px !important;
+    background: var(--arq-studio-accent) !important;
+    border-color: var(--arq-studio-accent) !important;
+    color: #fff !important;
+    box-shadow: none !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+  }
+  .arqdor-studio-v3 .arqdor-legacy-topbar .arqdor-primary-action:hover {
+    background: #21856C !important;
+  }
+  .arqdor-studio-v3 .arqdor-back-btn,
+  .arqdor-studio-v3 .arqdor-market-btn {
+    height: 32px;
+    background: var(--arq-studio-panel);
+    color: var(--arq-studio-text);
+    border-color: var(--arq-studio-border);
+    box-shadow: none;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .arqdor-studio-v3 .arqdor-back-btn:hover,
+  .arqdor-studio-v3 .arqdor-market-btn:hover {
+    border-color: #4AC59A;
+    background: #30423D;
+    color: #EEF2EF;
+    transform: none;
+  }
+  .arqdor-studio-v3 :where(button, input, select, textarea):focus-visible {
+    outline: 2px solid #4AC59A;
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .arqdor-studio-v3 *, .arqdor-studio-v3 *::before, .arqdor-studio-v3 *::after {
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
 `;
 
 function clearRenderDraftSession() {
