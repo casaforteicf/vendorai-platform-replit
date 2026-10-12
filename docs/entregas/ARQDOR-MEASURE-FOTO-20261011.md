@@ -239,3 +239,6 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 - API valida floorIndex e gera customWalls/customOpenings com floor correto, floors conforme pavimento mais alto. Conferencia de conectividade das paredes na criacao de projeto somente compara extremidades no mesmo pavimento.
 - Conversor de previsualizacao acompanha pavimentos. Planta SVG pode selecionar pavimento para nao sobrepor geometrias de andares diferentes.
 - Pendencias: modelo semantico persistente de ambientes BIM, cotas altimetricas, escadas/lajes, testes de exportacao, compilacao e homologacao. Sem merge ou deploy.
+
+## Lote 34 - relatorio de impressao
+Componente MeasurementPrintReport integrado ao checklist. Inclui medidas, diferencas, aprovadores e contagem de fotos. Fotos privadas nao sao impressas. Nao equivale a aceite assinado. Testes de compilacao e browser ainda nao executados. Sem publicacao.
