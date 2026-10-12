@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -728,6 +728,9 @@ router.post("/operational-checklists/runs/:runId/remote-invite", async (req, res
   if (!run) return void res.status(404).json({error:"Levantamento nao encontrado"});
   if (!canAccessTenant(req, run.tenantId)) return void res.status(403).json({error:"Acesso negado"});
   if (run.status !== "concluido") return void res.status(409).json({error:"Conclua a conferencia primeiro"});
+  const prior = run.headerSnapshot.remoteAcceptanceInvitation;
+  if (prior && typeof prior === "object" && prior.status === "pending" && typeof prior.expiresAt === "string" && Date.parse(prior.expiresAt) > Date.now())
+    return void res.status(409).json({error:"Revogue o convite anterior antes de emitir outro"});
   const token = randomBytes(32).toString("base64url");
   const invitation = {
     tokenHash: createHash("sha256").update(token).digest("hex"),
@@ -779,8 +782,10 @@ router.post("/operational-checklists/runs/:runId/remote-invite/inspect", async (
   if (!canAccessTenant(req,run.tenantId)) return void res.status(403).json({error:"Acesso negado"});
   const raw = run.headerSnapshot.remoteAcceptanceInvitation;
   const invitation = raw && typeof raw === "object" ? raw as Record<string,unknown> : null;
-  const digest = createHash("sha256").update(parsed.data.token).digest("hex");
-  if (!invitation || invitation.tokenHash !== digest || invitation.status !== "pending" ||
+  const digest = createHash("sha256").update(parsed.data.token).digest();
+  const storedHash = typeof invitation?.tokenHash === "string" && /^[a-f0-9]{64}$/i.test(invitation.tokenHash) ? Buffer.from(invitation.tokenHash, "hex") : null;
+  const tokenMatches = storedHash !== null && timingSafeEqual(storedHash, digest);
+  if (!invitation || !tokenMatches || invitation.status !== "pending" ||
       invitation.revision !== run.revision || typeof invitation.expiresAt !== "string" ||
       !Number.isFinite(Date.parse(invitation.expiresAt)) || Date.parse(invitation.expiresAt) <= Date.now())
     return void res.status(404).json({error:"Convite indisponivel ou expirado"});
