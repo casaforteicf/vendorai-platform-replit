@@ -7,7 +7,7 @@ export type InteriorSource="preproject"|"new-room"|"import";
 export type InteriorWall={id:string;x1:number;y1:number;x2:number;y2:number;thicknessM:number;heightM:number};
 export type InteriorEnvironment={
   source:InteriorSource;projectId:string|null;roomId:string;name:string;
-  walls:InteriorWall[];obstacles?:InteriorObstacle[];sourceRevision?:string;sourceFileName?:string;
+  walls:InteriorWall[];obstacles?:InteriorObstacle[];wallOpenings?:WallOpening[];sourceRevision?:string;sourceFileName?:string;
   persistStatus:"draft-only";
 };
 export type WallOpening={id:string;wallId:string;offsetM:number;widthM:number;clearanceM:number;kind?:"door"|"window";hinge?:"start"|"end";swing?:"left"|"right"};
@@ -79,7 +79,7 @@ export function fromPreProjectRoom(projectId:string,room:{id:string;nome?:string
    {id:"preview-wall-4",x1:0,y1:depth!,x2:0,y2:0,thicknessM:.14,heightM:height!}
   ]:[]);
   return {source:"preproject",projectId,roomId:room.id,name:room.nome||room.name||room.titulo||"Ambiente",
-    walls,obstacles:[...openingClearanceObstacles(room.openingClearances??[]),...wallOpeningClearances(walls,room.wallOpenings??[])],sourceRevision:revision,persistStatus:"draft-only"};
+    walls,wallOpenings:room.wallOpenings??[],obstacles:[...openingClearanceObstacles(room.openingClearances??[]),...wallOpeningClearances(walls,room.wallOpenings??[])],sourceRevision:revision,persistStatus:"draft-only"};
 }
 
 /** Only allow furniture placement in rooms with a verified axis-aligned rectangular boundary.
