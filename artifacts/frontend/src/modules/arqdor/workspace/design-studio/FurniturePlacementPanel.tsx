@@ -21,12 +21,10 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
   function markDirty(){dirtyRef.current=true;setDirty(true);}
   function markClean(){dirtyRef.current=false;setDirty(false);setConflicted(false);}
   useEffect(()=>{setItems([]);setLoadedRevision(null);setSavedTenantId(null);setSelectedId(null);setMessage("");markClean();},[environment.projectId,environment.roomId]);
-  const xs=environment.walls.flatMap(w=>[w.x1,w.x2]);
-  const ys=environment.walls.flatMap(w=>[w.y1,w.y2]);
-  const width=Math.round((Math.max(...xs)-Math.min(...xs))*1000);
-  const depth=Math.round((Math.max(...ys)-Math.min(...ys))*1000);
   const localGeometry=localRoomPolygon(environment.walls.map(w=>({a:{x:Math.round(w.x1*1000),y:Math.round(w.y1*1000)},b:{x:Math.round(w.x2*1000),y:Math.round(w.y2*1000)}})));
   const polygon=localGeometry?.polygon??null;
+  const width=localGeometry?.widthMm??0;
+  const depth=localGeometry?.depthMm??0;
   const ready=!!localGeometry&&Number.isFinite(width)&&Number.isFinite(depth)&&width>0&&depth>0;
   const heightLimitMm=environment.walls.length?Math.round(Math.min(...environment.walls.map(w=>w.heightM))*1000):null;
   const [x,setX]=useState(100),[y,setY]=useState(100);
@@ -51,6 +49,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
         const snapshot=data.furnitureSnapshots?.[environment.roomId];
         const restored=snapshot?restoreFurnitureSnapshot(snapshot,{tenantId:data.tenantId,projectId:environment.projectId!,room:{id:environment.roomId,widthMm:width,depthMm:depth}}):null;
         if(cancelled)return;
+        (restored?.furniture??[]).forEach(checkObstacles);
         setSavedTenantId(data.tenantId);
         setLoadedRevision(restored?.revision??null);
         if(dirtyRef.current){setConflicted(true);setMessage("Alterações locais detectadas durante o carregamento; não serão sobrescritas.");return;}
@@ -129,6 +128,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
       const restored=restoreFurnitureSnapshot(snapshot,{tenantId:data.tenantId,projectId:environment.projectId,
         room:{id:environment.roomId,widthMm:width,depthMm:depth}});
       if(restored.projectId!==environment.projectId||restored.roomId!==environment.roomId)throw Error("Contexto de projeto incompatível");
+      restored.furniture.forEach(checkObstacles);
       setLoadedRevision(restored.revision);
       setSavedTenantId(data.tenantId);
       setItems(old=>[...old.filter(i=>i.roomId!==environment.roomId),...restored.furniture]);
@@ -164,7 +164,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
       {([["X (mm)",x,setX],["Y (mm)",y,setY]] as const).map(([label,value,change])=><label key={label} className="text-xs">{label}<input type="number" className="w-full rounded border p-2" value={value} onChange={e=>change(Number(e.target.value))}/></label>)}
     </div><button type="button" disabled={!draft||busy||!savedTenantId} onClick={add} className="mt-2 rounded bg-violet-700 px-3 py-2 text-sm text-white">Inserir na planta</button>
     <svg viewBox={"0 0 "+width+" "+depth} className="mt-3 w-full border" role="img" aria-label="Planta esquemática de móveis">
-      <rect width={width} height={depth} fill="#f8fafc" stroke="#334155" strokeWidth="12"/>
+      {polygon?<polygon points={polygon.map(p=>`${p.x},${p.y}`).join(" ")} fill="#f8fafc" stroke="#334155" strokeWidth="12"/>:null}
       {roomItems.map(i=><rect key={i.id} x={i.bounds.xMm} y={i.bounds.yMm} width={i.bounds.rotationDeg===90||i.bounds.rotationDeg===270?i.bounds.depthMm:i.bounds.widthMm} height={i.bounds.rotationDeg===90||i.bounds.rotationDeg===270?i.bounds.widthMm:i.bounds.depthMm} fill="#ddd6fe" stroke="#6d28d9" strokeWidth="10"/>)}
     </svg><div className="mt-2 space-y-2">{roomItems.map(item=><div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded border p-2 text-xs"><span>{item.id} · {item.bounds.widthMm} × {item.bounds.depthMm} mm · {item.parts.length} peças</span><div className="flex gap-2"><button type="button" disabled={busy} className="rounded border px-2 py-1" onClick={()=>{setSelectedId(item.id);setX(item.bounds.xMm);setY(item.bounds.yMm);setEdit({widthMm:item.parameters.widthMm,heightMm:item.parameters.heightMm,depthMm:item.parameters.depthMm,materialId:item.parameters.materialId});}}>Selecionar</button><button type="button" disabled={busy} className="rounded border px-2 py-1" onClick={()=>move(item.id)}>Mover para X/Y</button><button type="button" disabled={busy} className="rounded border border-red-200 px-2 py-1 text-red-700" onClick={()=>remove(item.id)}>Remover</button></div></div>)}</div>{selected&&<div className="mt-3 rounded-lg border border-violet-200 p-3"><strong className="text-sm">Editar {selected.id}</strong><div className="mt-2 grid grid-cols-2 gap-2">{(["widthMm","heightMm","depthMm"] as const).map(k=><label key={k} className="text-xs">{k==="widthMm"?"Largura":k==="heightMm"?"Altura":"Profundidade"} (mm)<input type="number" className="w-full rounded border p-2" value={edit[k]} onChange={e=>setEdit(old=>({...old,[k]:Number(e.target.value)}))}/></label>)}<label className="text-xs">Material<input className="w-full rounded border p-2" value={edit.materialId} onChange={e=>setEdit(old=>({...old,materialId:e.target.value}))}/></label></div><button type="button" disabled={busy} onClick={applyEdits} className="mt-2 rounded bg-violet-700 px-3 py-2 text-xs text-white">Atualizar móvel e peças</button></div>}</>:<p className="text-sm">Geometria do ambiente ainda indisponível.</p>}
     <button type="button" onClick={()=>setWebglPreview(value=>!value)} className="mt-2 rounded border px-3 py-2 text-xs">{webglPreview?"Ocultar prévia WebGL":"Abrir prévia WebGL experimental"}</button>
