@@ -130,7 +130,7 @@ export function RenderStudioSidebar({
               aria-current={active ? "step" : undefined}
               disabled={!clickable}
               title={!clickable ? "Complete as etapas anteriores primeiro" : done ? `Voltar para ${item.label}` : undefined}
-              style={{ width: "100%", textAlign: "left", background: active ? `${C.accent}18` : "none", border: "none", borderLeft: active ? `2px solid ${C.accent}` : "2px solid transparent", padding: "7px 14px 7px 12px", cursor: clickable ? "pointer" : "default", display: "flex", alignItems: "center", gap: 8, borderRadius: "0 6px 6px 0", transition: "background 0.12s", opacity: clickable ? 1 : 0.35 }}
+              data-completed={done ? "true" : undefined}
             >
               <span style={{ fontSize: 12, color: active ? C.accent : done ? C.green : C.dim, width: 14, flexShrink: 0, textAlign: "center" }}>{done ? "✓" : item.icon}</span>
               <span style={{ fontSize: 11, fontWeight: active ? 700 : 400, color: active ? C.accentText : done ? C.text : C.muted }}>{item.label}</span>
