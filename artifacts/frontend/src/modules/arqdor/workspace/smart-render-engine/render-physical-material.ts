@@ -21,7 +21,7 @@ export function normalizePhysicalMaterial(input: Partial<PhysicalMaterial>): Phy
       (input.metalness !== undefined && !Number.isFinite(input.metalness)) ||
       (input.transmission !== undefined && !Number.isFinite(input.transmission)) ||
       (input.ior !== undefined && (!Number.isFinite(input.ior) || input.ior <= 1 || input.ior > 3)))
-    throw new Error("ARQDOR: parâmetro físico inválido");
+    throw new Error("ARQDOR: parâmetro físico de material inválido");
   return {
     baseColor: channels(input.baseColor, [0.75, 0.75, 0.75]),
     roughness: clamp(input.roughness ?? 0.8),

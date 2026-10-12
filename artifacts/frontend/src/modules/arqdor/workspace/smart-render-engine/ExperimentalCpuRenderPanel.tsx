@@ -171,7 +171,7 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
     else setSavedVersions([]);
    })()} className="rounded border px-3 py-2 text-xs disabled:opacity-40">Atualizar histórico salvo</button>
    {savedVersions.length>0 && <div className="flex flex-wrap gap-2">{savedVersions.map(v=><button type="button" key={v.id} className="rounded border p-1 text-xs" onClick={()=>setComparison(v.image)}><img src={v.image} alt={v.label} className="h-14 w-20 object-cover"/>{v.label}</button>)}</div>}
-  </div>
+  </div>}
   {history.length>0 && <div className="space-y-2">
    <p className="text-xs text-slate-600">Últimas três prévias desta cena (somente nesta sessão)</p>
    <div className="flex flex-wrap gap-2">{history.map((entry,index)=><button key={index} type="button" onClick={()=>setComparison(entry.image)} className="rounded border p-1 text-xs">
@@ -182,6 +182,6 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
      <figure><figcaption className="text-xs text-slate-600">Versão selecionada</figcaption><img src={comparison} alt="Prévia selecionada" className="w-full rounded border"/></figure>
      {latestCompletedImage && <figure><figcaption className="text-xs text-slate-600">Última versão concluída</figcaption><img src={latestCompletedImage} alt="Última prévia concluída" className="w-full rounded border"/></figure>}
     </div></div>}
-  </div>
+  </div>}
  </section>;
 }
