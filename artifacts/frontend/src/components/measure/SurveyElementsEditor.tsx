@@ -47,6 +47,15 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
     try { sessionStorage.setItem(storageKey, JSON.stringify({ items, editedAt: new Date().toISOString() })); }
     catch { setFeedback("Não foi possível manter cópia nesta sessão. Salve o levantamento."); }
   }, [items, dirty, disabled, storageKey]);
+  useEffect(() => {
+    if (!dirty || disabled) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty, disabled]);
   const [roomName, setRoomName] = useState("");
   const [floorIndex, setFloorIndex] = useState(0);
   const [label, setLabel] = useState("");
