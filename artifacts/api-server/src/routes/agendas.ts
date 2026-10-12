@@ -341,10 +341,14 @@ router.patch("/agendas/:id/owner", async (req, res) => {
       .where(and(eq(usersTable.id, ownerId), eq(usersTable.tenantId, existing.tenantId))).limit(1);
     if (!member) return res.status(422).json({ error: "Owner must belong to the agenda tenant" });
   }
-  const [updated] = await db.update(agendasTable).set({
-    ownerUserId: ownerId, updatedAt: new Date(),
-  }).where(and(eq(agendasTable.id, existing.id), eq(agendasTable.tenantId, existing.tenantId)))
-    .returning({ id: agendasTable.id, tenantId: agendasTable.tenantId, ownerUserId: agendasTable.ownerUserId });
+  const updated = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM agendas WHERE id = ${existing.id} AND tenant_id = ${existing.tenantId} FOR UPDATE`);
+    const [row] = await tx.update(agendasTable).set({
+      ownerUserId: ownerId, updatedAt: new Date(),
+    }).where(and(eq(agendasTable.id, existing.id), eq(agendasTable.tenantId, existing.tenantId)))
+      .returning({ id: agendasTable.id, tenantId: agendasTable.tenantId, ownerUserId: agendasTable.ownerUserId });
+    return row;
+  });
   const audited = await writeConfigurationAudit({
     tenantId: existing.tenantId, action: "atualizar", entity: "agenda_owner",
     entityId: existing.id, before: { ownerUserId: existing.ownerUserId },
