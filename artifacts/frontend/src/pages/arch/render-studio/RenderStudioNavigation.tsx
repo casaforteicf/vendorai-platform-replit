@@ -1,4 +1,5 @@
 import type { RenderStudioStep } from "./renderStudioModel";
+import { StudioToolButton } from "../../../modules/arqdor/theme/ArqdorStudioComponents";
 import { RENDER_STUDIO_COLORS as C, RENDER_STUDIO_STEPS, renderStudioStepIndex } from "./renderStudioModel";
 
 export function RenderStudioTopbar({
@@ -54,24 +55,24 @@ export function RenderStudioTopbar({
       <div style={{ flex: 1 }} />
 
       {(step === "versao" || step === "aprovar") && (
-        <button
+        <StudioToolButton
           onClick={onOpenStudio}
           aria-label="Melhorar render"
           title="Materiais, iluminação, ajustes e versões"
           style={{ background: C.card, color: C.accentText, border: `1px solid ${C.accent}55`, borderRadius: 8, padding: "7px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer", marginRight: 8 }}
         >
           ✦ Melhorar render
-        </button>
+        </StudioToolButton>
       )}
 
       {step !== "aprovar" && (
-        <button
+        <StudioToolButton
           onClick={onNextStep}
           aria-label={nextLabels[step] ?? "Próxima Etapa"}
           style={{ background: `linear-gradient(135deg, ${C.accent}, ${C.accentHover})`, color: "#fff", border: "none", borderRadius: 8, padding: "7px 18px", fontSize: 12, fontWeight: 700, cursor: "pointer", letterSpacing: "0.02em", boxShadow: `0 0 16px ${C.accentGlow}`, marginRight: 12 }}
         >
           {nextLabels[step] ?? "Próxima Etapa"}
-        </button>
+        </StudioToolButton>
       )}
 
       <button type="button" onClick={_onHelp} aria-label="Ajuda da etapa" title="Ajuda da etapa" style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: C.muted, cursor: "pointer", marginRight: 6 }}>?</button>
