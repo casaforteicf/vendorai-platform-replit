@@ -104,6 +104,10 @@ router.put("/arqdor/projects/:id/furniture/:roomId",async(req:Request,res:Respon
   const validation=validateBimFurnitureFootprints(authoritative,roomId,data.furniture.map(f=>f.bounds));
   if(!validation.ok)return res.status(422).json({error:"Geometria BIM rejeitou posicionamento",reason:validation.reason});
   const geometryRevision=validation.revision;
+  const [sourceConcept]=await db.select({id:archConceptProjectsTable.id,updatedAt:archConceptProjectsTable.updatedAt}).from(archConceptProjectsTable)
+   .where(and(eq(archConceptProjectsTable.tenantId,tenantId),or(eq(archConceptProjectsTable.id,projectId),eq(archConceptProjectsTable.archProjetoId,projectId)))).limit(1);
+  if(!sourceConcept||sourceConcept.id+":"+sourceConcept.updatedAt.toISOString()!==geometryRevision)
+   return res.status(409).json({error:"Concept alterado após a publicação da geometria BIM; atualize o ambiente"});
   if(data.geometryRevision!==geometryRevision)return res.status(409).json({error:"Revisão arquitetônica desatualizada"});
   const records=await db.update(arqdorWorkspaceProjectsTable)
    .set({contextBlob:sql`jsonb_set(jsonb_set(COALESCE(${arqdorWorkspaceProjectsTable.contextBlob}, '{}'::jsonb), '{furnitureSnapshots}', CASE WHEN jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots')='object' THEN ${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots' ELSE '{}'::jsonb END, true), ARRAY['furnitureSnapshots', ${roomId}]::text[], ${JSON.stringify(normalized)}::jsonb, true)`,updatedAt:new Date()})
