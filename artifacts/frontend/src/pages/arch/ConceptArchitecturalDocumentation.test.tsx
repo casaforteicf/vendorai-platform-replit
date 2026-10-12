@@ -66,3 +66,16 @@ it("blocks oversized export then exports when a fitting scale is chosen", () => 
  fireEvent.click(screen.getByRole("button", { name: "Exportar prancha A3 SVG" }));
  expect(click).toHaveBeenCalledOnce();
 });
+
+it("switches to plan documentation and selects the authored floor", () => {
+ const model = emptyArchitecturalModel();
+ model.slabs.push({ id: "s", floor: 1, x: 0, y: 0, width: 4, depth: 5, thickness: 0.2, elevation: 3.12, voids: [] });
+ render(<ConceptArchitecturalDocumentation model={model} />);
+ fireEvent.change(screen.getByLabelText("Vista"), { target: { value: "plan" } });
+ expect(screen.getByRole("status")).toBeTruthy();
+ expect(screen.queryByLabelText("Direção")).toBeNull();
+ fireEvent.change(screen.getByLabelText("Pavimento da planta"), { target: { value: "1" } });
+ expect(screen.queryByRole("status")).toBeNull();
+ expect(screen.getByText("4.00 m")).toBeTruthy();
+ expect(screen.getByText("5.00 m")).toBeTruthy();
+});

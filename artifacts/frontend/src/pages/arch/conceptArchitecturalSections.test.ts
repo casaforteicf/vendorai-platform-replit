@@ -22,3 +22,18 @@ it("intersects real pitched roof faces and updates with model edits", () => {
  expect(architecturalSection(model, "x", 2).flatMap(item => item.points).every(p => p.z === 3)).toBe(true);
  expect(architecturalSection(model, "x", 10, true)).toHaveLength(2);
 });
+
+it("derives plans by floor while preserving slab holes", async () => {
+ const { architecturalDocumentationPlan } = await import("./conceptArchitecturalSections");
+ const model = emptyArchitecturalModel();
+ model.slabs.push({ id: "s", floor: 1, x: 0, y: 0, width: 4, depth: 4, thickness: 0.2, elevation: 3.12, voids: [{ x: 1, y: 1, width: 1, depth: 1 }] });
+ expect(architecturalDocumentationPlan(model, 0)).toEqual([]);
+ const plan = architecturalDocumentationPlan(model, 1);
+ expect(plan).toHaveLength(8);
+ const area = plan.reduce((sum, item) => {
+ const us = item.points.map(p => p.u), zs = item.points.map(p => p.z);
+ return sum + (Math.max(...us) - Math.min(...us)) * (Math.max(...zs) - Math.min(...zs));
+ }, 0);
+ expect(area).toBe(15);
+ expect(architecturalDocumentationPlan(model, NaN)).toEqual([]);
+});

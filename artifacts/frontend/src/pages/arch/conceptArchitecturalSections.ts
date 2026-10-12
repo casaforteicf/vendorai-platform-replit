@@ -29,3 +29,12 @@ export function architecturalSection(model: ArchitecturalModel, axis: "x" | "y",
   }
   return items;
 }
+
+/** Plan footprints with slab cuts derived from the same solid cells as 3D. */
+export function architecturalDocumentationPlan(model: ArchitecturalModel, floor: number): DrawingPrimitive[] {
+  if (!Number.isInteger(floor) || floor < 0) return [];
+  const scene = architecturalSceneGeometry(model, floor, false, false);
+  const rectangles = scene.boxes.filter(box => box.kind === "slab").map(box => ({ id: box.id, x: box.x, y: box.y, width: box.width, depth: box.depth }));
+  rectangles.push(...model.stairs.filter(stair => stair.floor === floor).map(stair => ({ id: stair.id, x: stair.x, y: stair.y, width: stair.width, depth: stair.run })));
+  return rectangles.map(rect => ({ id: rect.id, kind: "solid", points: [{ u: rect.x, z: -rect.y }, { u: rect.x + rect.width, z: -rect.y }, { u: rect.x + rect.width, z: -rect.y - rect.depth }, { u: rect.x, z: -rect.y - rect.depth }] }));
+}
