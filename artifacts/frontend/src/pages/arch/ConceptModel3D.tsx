@@ -1692,7 +1692,7 @@ export default function ConceptModel3D({
             Capturar cena para prévia física experimental
           </button>
           {experimentalCapture.error && <p role="alert" className="text-xs text-red-700">{experimentalCapture.error}</p>}
-          {experimentalCapture.options && <ExperimentalCpuRenderPanel options={experimentalCapture.options} />}
+          {experimentalCapture.options && <ExperimentalCpuRenderPanel options={experimentalCapture.options} tenantId={user?.tenantId} authToken={token ?? undefined} />}
         </div>
       )}
       <ConceptWebGLScene
