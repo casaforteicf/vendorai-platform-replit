@@ -744,7 +744,7 @@ export default function RenderStudioPage() {
   const targetKey = `${projectId ?? "no-project"}:${ambiente}`;
 
   const recoveryCache = useMemo(() => {
-    if (freshStart) return { versions: [], renderId: null, renderUrl: null, imageUrl: null };
+    if (freshStart || !projectId) return { versions: [], renderId: null, renderUrl: null, imageUrl: null };
     const cachedContext = sessionStorage.getItem(SK.context);
     if (cachedContext !== targetKey) {
       return { versions: [], renderId: null, renderUrl: null, imageUrl: null };
@@ -755,7 +755,7 @@ export default function RenderStudioPage() {
       renderUrl: sessionStorage.getItem(SK.renderUrl),
       imageUrl: sessionStorage.getItem(SK.imageUrl),
     };
-  }, [targetKey, freshStart]);
+  }, [targetKey, freshStart, projectId]);
 
   const bootstrap = useRenderStudioPersistentBootstrap(projectId, ambiente, recoveryCache);
 
