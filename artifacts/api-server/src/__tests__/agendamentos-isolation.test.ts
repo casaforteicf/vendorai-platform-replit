@@ -114,7 +114,7 @@ describe("POST /api/agendamentos — cross-tenant isolation", () => {
         dataHoraFim: VALID_END,
       },
     });
-    setupSelectReturning([{ id: "lead-1" }]);
+    mockDbSelect.mockReturnValue({ from: () => ({ where: () => ({ limit: async () => [{ id: "lead-1" }] }) }) });
     setupInsertReturning([newRecord]);
 
     const res = await request(app)
@@ -137,7 +137,7 @@ describe("POST /api/agendamentos — cross-tenant isolation", () => {
         dataHoraFim: VALID_END,
       },
     });
-    setupSelectReturning([{ id: "lead-1" }]);
+    mockDbSelect.mockReturnValue({ from: () => ({ where: () => ({ limit: async () => [{ id: "lead-1" }] }) }) });
     setupInsertReturning([newRecord]);
 
     const res = await request(app)
