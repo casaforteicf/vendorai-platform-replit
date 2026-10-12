@@ -396,8 +396,9 @@ googleCallbackRouter.get("/auth/google/calendar/callback", async (req, res) => {
     const decoded = JSON.parse(
       Buffer.from(state, "base64url").toString("utf-8")
     ) as { agendaId: string; returnTo?: string };
+    if (typeof decoded.agendaId !== "string" || !decoded.agendaId.trim()) throw new Error("Invalid agenda");
     agendaId = decoded.agendaId;
-    if (decoded.returnTo) returnTo = decoded.returnTo;
+    if (decoded.returnTo === "/agenda" || decoded.returnTo === "/configuracoes") returnTo = decoded.returnTo;
   } catch {
     res.redirect(`${appUrl}/configuracoes?googleError=invalid_state`);
     return;
