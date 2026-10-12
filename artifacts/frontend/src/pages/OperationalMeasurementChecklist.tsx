@@ -210,6 +210,29 @@ export default function OperationalMeasurementChecklist() {
     } finally { setBusy(null); }
   }
 
+  async function recordExternalAcknowledgement() {
+    if (!data?.run || data.run.status !== "concluido") return;
+    const signerName = window.prompt("Nome da pessoa que declarou ciência presencialmente:");
+    if (signerName === null) return;
+    const signerRole = window.prompt("Relação da pessoa com a obra (cliente, representante etc.):");
+    if (signerRole === null) return;
+    if (signerName.trim().length < 3 || signerRole.trim().length < 3) {
+      setError("Informe nome e vínculo com a obra (mínimo 3 caracteres).");
+      return;
+    }
+    if (!window.confirm("Registrar declaração presencial informada pelo operador? Isto NÃO é assinatura digital ou verificação independente de identidade.")) return;
+    setBusy("external-ack");
+    setError(null);
+    try {
+      const updated = await api(`/api/operational-checklists/runs/${data.run.id}/external-acknowledgement`, {
+        method: "POST", body: JSON.stringify({ signerName: signerName.trim(), signerRole: signerRole.trim(), declaration: true }),
+      });
+      setData(previous => previous ? { ...previous, run: updated } : previous);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao registrar ciência presencial.");
+    } finally { setBusy(null); }
+  }
+
   async function complete() {
     if (!data?.run) return;
     const signerName = window.prompt("Nome do responsável pelo aceite técnico:");
