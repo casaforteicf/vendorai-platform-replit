@@ -358,6 +358,24 @@ describe("member ownership authorization — agendamentos", () => {
     expect(mockDbInsert).not.toHaveBeenCalled();
   });
 
+  it("allows a member to edit their own appointment", async () => {
+    setupSelectReturning([{ ...recordOwnedByTenantB, responsavelId: memberId }]);
+    setupUpdateReturning([{ ...recordOwnedByTenantB, responsavelId: memberId, tipo: "consulta" }]);
+    const res = await request(app).patch(`/api/agendamentos/${RECORD_ID}`)
+      .set("Authorization", `Bearer ${memberToken}`).send({ tipo: "consulta" });
+    expect(res.status).toBe(200);
+    expect(mockDbUpdate).toHaveBeenCalled();
+  });
+
+  it("allows a member to delete their own appointment", async () => {
+    setupSelectReturning([{ ...recordOwnedByTenantB, responsavelId: memberId }]);
+    setupDeleteSuccess();
+    const res = await request(app).delete(`/api/agendamentos/${RECORD_ID}`)
+      .set("Authorization", `Bearer ${memberToken}`);
+    expect(res.status).toBe(204);
+    expect(mockDbDelete).toHaveBeenCalled();
+  });
+
   it("refuses editing another member's appointment in the same tenant", async () => {
     setupSelectReturning([{ ...recordOwnedByTenantB, responsavelId: "another-user" }]);
     const res = await request(app).patch(`/api/agendamentos/${RECORD_ID}`)
