@@ -231,3 +231,9 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - Adicionado `arqdorRecoveryKey.ts`, derivação PBKDF2-SHA256 (310.000 iterações, salt aleatório 16 bytes) de uma frase de recuperação do usuário para chave AES-GCM 256 não exportável, compatível com o codec existente. **Helper ainda não conectado ao editor**; nenhuma senha/chave deve ser persistida nem derivada do JWT.
 - Ajustado teste estrutural do editor para verificar o bloqueio do armazenamento em claro.
 - Pendentes: testes WebCrypto, UI de frase de recuperação com reautenticação, metadados e armazenamento apenas do envelope cifrado, validação de escopo após recuperação, limpeza/expiração, revisões e QA em browser. Nenhum teste executado, migração, merge ou deploy nesta etapa. Flag offline não pode ser ativada até esses itens.
+
+
+## MULTI-09.4 — Revisão manual de recuperação criptografada
+- Implementado `arqdorEncryptedRecovery.ts`: verifica escopo e `canEdit` antes de abrir o cofre, compara revisão do rascunho com a revisão autorizada e retorna `missing`, `denied` ou `review`. Não faz upload.
+- Adicionados testes unitários para divergência de identidade, ausência de rascunho e conflito de revisão (ainda não executados).
+- **Pendente:** interface de frase de recuperação, consulta integrada de snapshot e edit-access frescos, revisão explícita pelo usuário, testes IndexedDB/WebCrypto em navegador e integração no editor. Não habilitar flags nem usar em produção.
