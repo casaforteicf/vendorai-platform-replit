@@ -1,6 +1,6 @@
 import type { Request } from "express";
 import { and, eq } from "drizzle-orm";
-import { db, archProjetosTable } from "@workspace/db";
+import { db, archProjetosTable, obrasTable } from "@workspace/db";
 import { canAccessLead } from "./lead-scope-access.js";
 
 /**
@@ -19,6 +19,7 @@ export async function canAccessArqdorProjectViaLead(
   const [project] = await db.select({
     id: archProjetosTable.id,
     leadId: archProjetosTable.leadId,
+    obraId: archProjetosTable.obraId,
   }).from(archProjetosTable).where(and(
     eq(archProjetosTable.id, projectId),
     eq(archProjetosTable.tenantId, tenantId),
@@ -26,4 +27,34 @@ export async function canAccessArqdorProjectViaLead(
 
   if (!project?.leadId) return false;
   return canAccessLead(req, tenantId, project.leadId);
+}
+
+/**
+ * Obra-linked path: only the accountable user registered on the canonical obra
+ * may access through this specific route. No implicit grant to other tenant users.
+ * This does not cover administrators, collaborators, or client portals yet.
+ */
+export async function canAccessArqdorProjectViaObra(
+  req: Request,
+  tenantId: string,
+  projectId: string,
+): Promise<boolean> {
+  const userId = req.user?.sub;
+  if (!tenantId || !projectId || !userId || req.user?.tenantId !== tenantId) return false;
+
+  const [project] = await db.select({ obraId: archProjetosTable.obraId })
+    .from(archProjetosTable)
+    .where(and(eq(archProjetosTable.id, projectId), eq(archProjetosTable.tenantId, tenantId)))
+    .limit(1);
+  if (!project?.obraId) return false;
+
+  const [obra] = await db.select({ id: obrasTable.id })
+    .from(obrasTable)
+    .where(and(
+      eq(obrasTable.id, project.obraId),
+      eq(obrasTable.tenantId, tenantId),
+      eq(obrasTable.responsavelId, userId),
+    ))
+    .limit(1);
+  return Boolean(obra);
 }
