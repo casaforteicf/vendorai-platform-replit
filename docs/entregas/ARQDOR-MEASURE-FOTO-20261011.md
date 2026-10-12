@@ -245,3 +245,6 @@ Componente MeasurementPrintReport integrado ao checklist. Inclui medidas, difere
 
 ## Lote 35 - fotografias autorizadas no relatorio tecnico
 Componente de impressao pode renderizar fotos com URLs temporarias retornadas pela API autenticada, sem exibir caminhos internos como URLs publicas. A tela recebeu acao Preparar fotos para PDF que consulta fotos de cada item autorizado antes da impressao. Ausencia de URL exibe indicador sem expor dados privados. Pendentes: validacao de carregamento completo antes de imprimir, expiracao de URLs, testes de compilacao e impressao, assinatura e aceite formal. Sem homologacao ou deploy.
+
+## Lote 36 - aceite tecnico autenticado
+Conclusao exige confirmacao explicita e nome do responsavel (minimo 3 caracteres), associado ao usuario autenticado e horario no headerSnapshot. Impressao mostra o registro de aceite. Nao e assinatura digital certificada nem aceite juridico externo. Atualizacao usa comparacao de versao por updatedAt para evitar conclusao sobre checklist alterado por outra operacao. Pendente: testes de compilacao e integracao, assinatura formal com cliente, aceite por parte externa e homologacao. Sem merge/deploy de producao.
