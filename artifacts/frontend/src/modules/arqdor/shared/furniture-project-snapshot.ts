@@ -24,7 +24,7 @@ export function createFurnitureSnapshot(input:{
   totalParts+=item.parts.length;
   ids.add(item.id);
   for(const p of item.parts){
-   if(!p||!p.id||!Number.isFinite(p.widthMm)||p.widthMm<=0||!Number.isFinite(p.lengthMm)||p.lengthMm<=0||!Number.isSafeInteger(p.quantity)||p.quantity<=0)throw Error("Invalid cabinet part");if(parts.has(p.id))throw Error("Duplicate part identity");parts.add(p.id);}
+   if(!p||!p.id||typeof p.materialId!=="string"||!p.materialId.trim()||!Number.isFinite(p.widthMm)||p.widthMm<=0||!Number.isFinite(p.lengthMm)||p.lengthMm<=0||!Number.isSafeInteger(p.quantity)||p.quantity<=0)throw Error("Invalid cabinet part");if(parts.has(p.id))throw Error("Duplicate part identity");parts.add(p.id);}
   previous.push(item);
  }
  return {schemaVersion:1,tenantId,projectId,roomId:room.id,revision,createdAt,
