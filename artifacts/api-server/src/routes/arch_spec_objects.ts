@@ -1107,6 +1107,29 @@ archSpecObjectsRouter.post("/arch/spec-objects/sync-project", async (req, res, n
   }
 });
 
+archSpecObjectsRouter.get("/arch/spec-objects/:id/changes", async (req, res, next) => {
+  try {
+    const tId = tenantId(req);
+    const values: unknown[] = [req.params["id"]!];
+    let where = "id=$1";
+    if (tId) { values.push(tId); where += " AND tenant_id=$2"; }
+    const match = await pool.query(`SELECT id, tenant_id FROM arch_spec_objects WHERE ${where} LIMIT 1`, values);
+    if (!match.rows.length) { res.status(404).json({ error: "Componente não encontrado" }); return; }
+    const scope = match.rows[0].tenant_id;
+    const changes = await pool.query(
+      `SELECT id, spec_object_id, actor_id, actor_name, project_revision, changes, occurred_at
+         FROM arch_spec_object_change_audit
+        WHERE spec_object_id=$1 AND tenant_id IS NOT DISTINCT FROM $2
+        ORDER BY occurred_at DESC, id DESC LIMIT 100`,
+      [req.params["id"]!, scope],
+    );
+    res.json({ changes: changes.rows });
+  } catch (err) {
+    logger.error({ err }, "arch/spec-objects changes GET error");
+    next(err);
+  }
+});
+
 archSpecObjectsRouter.get("/arch/spec-objects/:id/approvals", async (req, res, next) => {
   try {
     const approvals = await getSpecObjectApprovals(tenantId(req), req.params["id"]!);
