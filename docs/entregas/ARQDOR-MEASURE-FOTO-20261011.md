@@ -266,3 +266,8 @@ Validação de hash do token usa comparacao em tempo constante e exige hash hexa
 - Quando existe levantamento offline pendente e a tela nao tem edicao local recuperada, a sincronizacao e bloqueada ate recuperar/conferir a copia para evitar sobrescrita silenciosa.
 - Recuperar rascunho offline sobre edicoes ja presentes exige confirmacao. Revisar dimensoes da parede invalida conferencia das aberturas dependentes e exige nova verificacao.
 - Pendente: testes automatizados e reais, versao offline por item, recuperacao simultanea de multiplos dispositivos, aceite remoto e assinatura, instalacao mobile/PC e homologacao. Nenhum merge/deploy.
+
+## Lotes 42-43 - integridade offline e geometria BIM (12/10/2026)
+- L42: sincronizacao dos elementos sob Web Lock por chave de usuario/revisao/item, evitando duas abas gravando o mesmo levantamento simultaneamente. Corrigida a mensagem de sucesso indevida quando dados foram apenas salvos offline. A sincronizacao entre dispositivos permanece pendente.
+- L43: corrigida validacao da segunda extremidade da parede na previa BIM para exigir parede vizinha no mesmo pavimento. Adicionados testes de regressao ao arquivo existente convertSurveyToArqdor.test.ts. Testes criados, ainda NAO executados.
+- L44/L45/L46 continuam abertos: identidade/assinatura remota, aplicativo instalavel, auditoria e relatorio, alem de compilacao e homologacao. Sem merge/deploy em producao.
