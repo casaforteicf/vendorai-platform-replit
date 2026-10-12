@@ -30,11 +30,9 @@ test("MULTI-08.4 serializes requests and stops on switching projects", () => {
   assert.match(source, /writeBlockedRef\.current = true/);
 });
 
-test("MULTI-09 local draft writes require explicit flags and authenticated snapshot scope", () => {
+test("MULTI-09 plaintext draft saving is blocked until vault integration", () => {
   assert.match(source, /VITE_MULTI09_LOCAL_DRAFTS === 'true'/);
-  assert.match(source, /saveArqdorDraft\(\{ \.\.\.scope, baseRevision: expectedRevision/);
-  assert.match(source, /authorizedDraftScopeRef\.current = identity/);
-  assert.match(source, /scope\.tenantId !== identity\.tenantId/);
-  assert.match(source, /scope\.userId !== identity\.userId/);
-  assert.match(source, /authorizedDraftScopeRef\.current = null/);
+  assert.match(source, /if \(USE_LOCAL_DRAFTS\)/);
+  assert.match(source, /Rascunho offline seguro ainda não configurado/);
+  assert.doesNotMatch(source, /saveArqdorDraft\(/);
 });
