@@ -376,7 +376,7 @@ export function RenderStudioRightPanel({
                         {/* P2-16: Material library */}
                         {melhoriaMode === "change-material" && (
                           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                            <button onClick={onOpenMaterialLib} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 7, background: D.card, border: `1px solid ${D.border}`, cursor: "pointer", fontSize: 11, color: D.text }}>
+                            <button type="button" onClick={onOpenMaterialLib} className="arqdor-render-material-picker" aria-label={selectedMaterial ? `Alterar material: ${selectedMaterial.nome}` : "Abrir biblioteca de materiais"}>
                               <span style={{ fontSize: 14 }}>▦</span>
                               {selectedMaterial ? (
                                 <><span style={{ fontWeight: 700, flex: 1 }}>{selectedMaterial.nome}</span><span style={{ fontSize: 9, color: D.dim }}>{selectedMaterial.categoria}</span></>
