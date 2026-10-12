@@ -71,6 +71,8 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
   async function recoverOffline() {
     const pending = await readPendingSurvey(storageKey);
     if (!pending) return;
+    if (dirty && !window.confirm("Substituir as edições desta tela pela cópia offline? Exporte ou salve as alterações atuais antes de continuar.")) return;
+    setReviewConfirmed(false);
     setItems(pending.items);
     setDirty(true);
     setOfflinePending(true);
