@@ -48,4 +48,10 @@ describe("verified BIM room footprint for cabinet placement",()=>{
   expect(Math.round(start[18].y)).toBe(900);
   expect(end[0].x).toBeCloseTo(1000);
  });
+ it("rejects duplicate opening IDs and invalid wall thickness",()=>{
+  const env=buildRectangularRoom({name:"Sala",widthM:4,depthM:3,heightM:2.7,thicknessM:.14});
+  const door={id:"d1",wallId:"wall-1",offsetM:1,widthM:.9,clearanceM:.9};
+  expect(()=>wallOpeningClearances(env.walls,[door,door])).toThrow("Duplicate or missing opening identity");
+  expect(()=>wallOpeningClearances([{...env.walls[0],thicknessM:0}], [door])).toThrow("Unsupported opening wall");
+ });
 });
