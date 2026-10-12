@@ -53,3 +53,11 @@ Executar suíte de testes existente relevante, além de testes dedicados para al
 ## 5. Relatório final do executor
 Enviar: SHA testado, relação de arquivos alterados, resultado completo de typecheck/build/testes, evidências QA, riscos, bloqueadores, confirmação do backup, URL de staging, rollback e decisão `APTO PARA APROVAÇÃO` ou `BLOQUEADO`.
 **Não declarar publicado até confirmar deployment e saúde da versão em produção.**
+
+## Verificação complementar — 12/10/2026 (sem liberação)
+- SHA de referência do PR #3494: `dfdd2af53922ffd65257c97be5483d4fc63b4eeb`; comparar sempre com HEAD atualizado antes dos testes.
+- Comparação com `main`: branch divergente, 44 commits à frente e 3 atrás no momento desta verificação. Conciliar antes de homologar.
+- Operador da Contabo consultado com `releaseStatus` e lote `ARQDOR-3494`: `LOT_NOT_REGISTERED`, `BUILD=BLOCKED`, `PRODUCTION=untouched`. Não existe build homologado comprovado desse lote.
+- Avaliadores de projeto em `artifacts/api-server/src/lib/arqdor-project-access.ts` presentes, porém não conectados. Não impor ACL parcial a projetos sem lead ou obra: definir política de propriedade, participantes e papel administrativo primeiro e aplicar com testes negativos por recurso.
+- Protocolo de validação: executar comandos reais do documento no ambiente de trabalho autorizado, registrar logs e SHA; testar Render/Concept, cache entre sessões, assinaturas de URLs, multitenancy e responsividade antes da decisão de publicação.
+- Sem aprovação explícita de versão homologada, **não realizar merge ou deploy**.
