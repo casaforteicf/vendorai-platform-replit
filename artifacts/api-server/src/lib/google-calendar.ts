@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { google } from "googleapis";
 import { db, agendasTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
@@ -61,7 +62,11 @@ export function createOAuth2Client(host?: string) {
 
 export function buildAuthUrl(agendaId: string, returnTo?: string, host?: string): string {
   const oauth2 = createOAuth2Client(host);
-  const state = Buffer.from(JSON.stringify({ agendaId, returnTo })).toString("base64url");
+  const secret = process.env.GOOGLE_CALENDAR_OAUTH_STATE_SECRET;
+  if (!secret || secret.length < 32) throw new Error("Calendar OAuth state secret not configured");
+  const payload = Buffer.from(JSON.stringify({ agendaId, returnTo, issuedAt: Date.now() })).toString("base64url");
+  const mac = createHmac("sha256", secret).update(payload).digest("base64url");
+  const state = `${payload}.${mac}`;
   return oauth2.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
