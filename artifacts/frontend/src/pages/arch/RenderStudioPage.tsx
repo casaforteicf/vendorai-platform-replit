@@ -722,7 +722,9 @@ export default function RenderStudioPage() {
   });
   const [projectId, setProjectId] = useState<string | null>(() => {
     const requested = new URLSearchParams(window.location.search).get("project_id")?.trim();
-    return requested || localStorage.getItem("arq_last_project_id");
+    // Never reuse a project identifier from a different sign-in on shared browsers.
+    // Project selection or explicit navigation must establish the current context.
+    return requested || null;
   });
   const [ambiente, setAmbiente] = useState(() => {
     const params = new URLSearchParams(window.location.search);
