@@ -34,3 +34,16 @@ test("experimental conditional routes reject guest and internal actors", () => {
   const gate = 'if (!canUseArqdorConditionalSave(req.user, tid))';
   assert.equal(source.split(gate).length - 1, 2);
 });
+
+test("member conditional save requires feature flag and atomic membership check", () => {
+  const begin = source.indexOf('router.put("/arqdor/projects/:id/member-conditional"');
+  const end = source.indexOf('router.put("/arqdor/projects/:id/conditional"', begin);
+  assert.ok(begin > 0 && end > begin);
+  const code = source.slice(begin, end);
+  assert.match(code, /ARQDOR_PROJECT_ACL_ENABLED !== "true"/);
+  assert.match(code, /m\.permission IN \('owner','editor'\)/);
+  assert.match(code, /u\.active = TRUE/);
+  assert.match(code, /xmin::text =/);
+  assert.match(code, /req\.user\.sub/);
+  assert.doesNotMatch(code, /onConflictDoUpdate/);
+});
