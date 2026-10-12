@@ -25,26 +25,32 @@ export default function TadCentralRoute() {
     setFailed(false);
     setEnabled([]);
     setPermitted([]);
-    Promise.all([fetch(`/api/tenants/${encodeURIComponent(user.tenantId)}/nav-modules`, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: controller.signal,
-    }), fetch(`/api/tenants/${encodeURIComponent(user.tenantId)}/tad-effective-modules`, {
-      headers: { Authorization: `Bearer ${token}` }, signal: controller.signal,
-    })]).then(async ([response, rightsResponse]) => {
-      if (!rightsResponse.ok || !response.ok) throw new Error("Unable to verify module access");
+    Promise.all([
+      fetch(`/api/tenants/${encodeURIComponent(user.tenantId)}/nav-modules`, {
+        headers: { Authorization: `Bearer ${token}` }, signal: controller.signal,
+      }),
+      fetch(`/api/tenants/${encodeURIComponent(user.tenantId)}/tad-effective-modules`, {
+        headers: { Authorization: `Bearer ${token}` }, signal: controller.signal,
+      }),
+    ]).then(async ([modulesResponse, rightsResponse]) => {
+      if (!modulesResponse.ok || !rightsResponse.ok) throw new Error("Access verification failed");
+      const modules: unknown = await modulesResponse.json();
       const rights: unknown = await rightsResponse.json();
-      if (!rights || typeof rights !== "object" || !("permittedModuleKeys" in rights) || !Array.isArray(rights.permittedModuleKeys)) throw new Error("Invalid permissions response");
-      const verified = rights.permittedModuleKeys.filter((key: unknown): key is string => typeof key === "string")
-        .map((key: string) => MAPPING[key]).filter((key): key is LauncherModule => Boolean(key));
-      if (!controller.signal.aborted) setPermitted([...new Set(verified)]);
-      if (!response.ok) throw new Error("Unable to load tenant services");
-      return response.json();
-    }).then((items: unknown) => {
-      if (!Array.isArray(items)) throw new Error("Invalid module permissions response");
-      const keys = items.filter((item: NavItem) => item.isEnabled === true)
+      if (!Array.isArray(modules) || !rights || typeof rights !== "object" ||
+          !("permittedModuleKeys" in rights) || !Array.isArray(rights.permittedModuleKeys)) {
+        throw new Error("Invalid access verification data");
+      }
+      const enabledKeys = modules.filter((item: NavItem) => item.isEnabled === true)
         .map((item: NavItem) => MAPPING[item.moduleKey ?? item.key ?? ""])
-        .filter((item): item is LauncherModule => Boolean(item));
-      if (!controller.signal.aborted) setEnabled([...new Set(keys)]);
+        .filter((key): key is LauncherModule => Boolean(key));
+      const permittedKeys = rights.permittedModuleKeys
+        .filter((key: unknown): key is string => typeof key === "string")
+        .map((key: string) => MAPPING[key])
+        .filter((key): key is LauncherModule => Boolean(key));
+      if (!controller.signal.aborted) {
+        setEnabled([...new Set(enabledKeys)]);
+        setPermitted([...new Set(permittedKeys)]);
+      }
     }).catch(() => {
       if (!controller.signal.aborted) {
         setEnabled([]);
