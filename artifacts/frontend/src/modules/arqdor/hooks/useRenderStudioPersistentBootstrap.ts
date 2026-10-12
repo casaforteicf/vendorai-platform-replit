@@ -36,6 +36,8 @@ export function useRenderStudioPersistentBootstrap(
   );
 
   const state = useMemo<RenderStudioPersistentState>(() => {
+    // Uma resposta bem-sucedida e vazia do backend é autoritativa: não ressuscite versões do cache.
+    if (projectId && history.loadedProjectId === projectId && !history.error) return persistentState;
     const recovered = mergeRecoveryCache(
       persistentState,
       Array.isArray(recoveryCache.versions) ? recoveryCache.versions : [],
@@ -66,7 +68,7 @@ export function useRenderStudioPersistentBootstrap(
     }
 
     return recovered;
-  }, [persistentState, recoveryCache.versions, recoveryCache.renderId, recoveryCache.renderUrl, recoveryCache.imageUrl]);
+  }, [persistentState, projectId, history.loadedProjectId, history.error, recoveryCache.versions, recoveryCache.renderId, recoveryCache.renderUrl, recoveryCache.imageUrl]);
 
   const source = history.versions.length > 0 ? "backend" : state.versions.length > 0 ? "recovery" : "empty";
 
