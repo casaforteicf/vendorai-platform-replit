@@ -1,6 +1,6 @@
 import type { SurveyElement } from "./SurveyElementsEditor";
 
-type PendingSurvey = { key: string; items: SurveyElement[]; updatedAt: string };
+type PendingSurvey = { key: string; items: SurveyElement[]; updatedAt: string; revisionId?: string };
 const DB_NAME = "arqdor-measure-offline-v1";
 const STORE = "pending-surveys";
 
@@ -29,10 +29,16 @@ async function transact<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore)
 export async function readPendingSurvey(key: string): Promise<PendingSurvey | undefined> {
   return transact("readonly", store => store.get(key));
 }
-export async function queueSurvey(key: string, items: SurveyElement[]): Promise<void> {
+export async function queueSurvey(key: string, items: SurveyElement[]): Promise<string> {
   if (!key || items.length > 200) throw new Error("Levantamento inválido para armazenamento offline");
-  await transact("readwrite", store => store.put({ key, items, updatedAt: new Date().toISOString() }));
+  const revisionId = crypto.randomUUID();
+  await transact("readwrite", store => store.put({ key, items, updatedAt: new Date().toISOString(), revisionId }));
+  return revisionId;
 }
-export async function clearPendingSurvey(key: string): Promise<void> {
+export async function clearPendingSurvey(key: string, expectedRevisionId?: string): Promise<boolean> {
+  const current = await readPendingSurvey(key);
+  if (!current) return true;
+  if (expectedRevisionId && current.revisionId !== expectedRevisionId) return false;
   await transact("readwrite", store => store.delete(key));
+  return true;
 }
