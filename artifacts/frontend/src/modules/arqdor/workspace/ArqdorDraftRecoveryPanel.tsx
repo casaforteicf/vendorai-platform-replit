@@ -40,7 +40,10 @@ export function ArqdorDraftRecoveryPanel() {
         { userId:user.id, tenantId:user.tenantId, projectId:id, contextId:"arqdor-workspace",
           revision:snapshot.revision, canEdit:true }, phrase,
       );
-      if (result.status === "missing") setMessage("Nenhum rascunho criptografado encontrado neste dispositivo.");
+      if (result.status === "missing") {
+        unlockDraftSaving(phrase);
+        setMessage("Nenhum rascunho existente. Cofre desbloqueado para novos salvamentos criptografados nesta sessão.");
+      }
       else if (result.status === "denied") setMessage("Recuperação negada: identidade ou revisão inválida.");
       else {
         if (result.decision.status === "ready" && result.draft.content &&
