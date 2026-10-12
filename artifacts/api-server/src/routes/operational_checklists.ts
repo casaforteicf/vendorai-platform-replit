@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -709,6 +709,58 @@ router.post("/operational-checklists/runs/:runId/external-acknowledgement", asyn
     .returning();
   if (!updated) return void res.status(409).json({ error: "Levantamento alterado por outra operação. Recarregue." });
   return void res.json(updated);
+});
+
+
+const remoteInviteSchema = z.object({
+  recipientName: z.string().trim().min(3).max(160),
+  expiresHours: z.number().int().min(1).max(72).default(24),
+});
+
+// Preparation only. The token is returned once and never persisted in plaintext.
+// Do not expose a public acceptance route until identity verification and rate limits exist.
+router.post("/operational-checklists/runs/:runId/remote-invite", async (req, res) => {
+  if (!req.user?.sub) return void res.status(401).json({error:"Autenticacao obrigatoria"});
+  const parsed = remoteInviteSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return void res.status(422).json({error:"Destinatario ou validade invalidos"});
+  const [run] = await db.select().from(operationalChecklistRunsTable)
+    .where(eq(operationalChecklistRunsTable.id, String(req.params.runId))).limit(1);
+  if (!run) return void res.status(404).json({error:"Levantamento nao encontrado"});
+  if (!canAccessTenant(req, run.tenantId)) return void res.status(403).json({error:"Acesso negado"});
+  if (run.status !== "concluido") return void res.status(409).json({error:"Conclua a conferencia primeiro"});
+  const token = randomBytes(32).toString("base64url");
+  const invitation = {
+    tokenHash: createHash("sha256").update(token).digest("hex"),
+    recipientName: parsed.data.recipientName,
+    issuedBy: req.user.sub,
+    issuedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + parsed.data.expiresHours * 3600000).toISOString(),
+    revision: run.revision,
+    status: "pending",
+  };
+  const [updated] = await db.update(operationalChecklistRunsTable)
+    .set({headerSnapshot:{...run.headerSnapshot, remoteAcceptanceInvitation:invitation},updatedAt:new Date()})
+    .where(and(eq(operationalChecklistRunsTable.id,run.id),eq(operationalChecklistRunsTable.updatedAt,run.updatedAt),eq(operationalChecklistRunsTable.status,"concluido")))
+    .returning();
+  if (!updated) return void res.status(409).json({error:"Levantamento alterado. Recarregue"});
+  res.setHeader("Cache-Control","no-store");
+  return void res.json({inviteToken:token,expiresAt:invitation.expiresAt,remoteAcceptanceEnabled:false});
+});
+
+router.post("/operational-checklists/runs/:runId/remote-invite/revoke", async (req,res) => {
+  if (!req.user?.sub) return void res.status(401).json({error:"Autenticacao obrigatoria"});
+  const [run] = await db.select().from(operationalChecklistRunsTable)
+    .where(eq(operationalChecklistRunsTable.id,String(req.params.runId))).limit(1);
+  if (!run) return void res.status(404).json({error:"Levantamento nao encontrado"});
+  if (!canAccessTenant(req,run.tenantId)) return void res.status(403).json({error:"Acesso negado"});
+  const existing = run.headerSnapshot.remoteAcceptanceInvitation;
+  if (!existing || typeof existing !== "object") return void res.status(404).json({error:"Convite nao encontrado"});
+  const [updated] = await db.update(operationalChecklistRunsTable)
+    .set({headerSnapshot:{...run.headerSnapshot,remoteAcceptanceInvitation:{...existing, status:"revoked",revokedAt:new Date().toISOString(),revokedBy:req.user.sub}},updatedAt:new Date()})
+    .where(and(eq(operationalChecklistRunsTable.id,run.id),eq(operationalChecklistRunsTable.updatedAt,run.updatedAt)))
+    .returning();
+  if (!updated) return void res.status(409).json({error:"Levantamento alterado. Recarregue"});
+  return void res.json({revoked:true});
 });
 
 export default router;
