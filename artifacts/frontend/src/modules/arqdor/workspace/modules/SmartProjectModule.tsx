@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { SmartSpecModule } from "./SmartSpecModule";
 
 type ProjectLike = {
@@ -321,6 +321,61 @@ function EmptyProject({ onNavigate }: { onNavigate?: (module: string) => void })
   );
 }
 
+
+type TechnicalMeasurement = {
+  id: string; name?: string | null; ambiente_id?: string | null; status?: string | null;
+  width_mm?: string | number | null; height_mm?: string | number | null;
+  depth_mm?: string | number | null; length_mm?: string | number | null;
+  measurement_source?: string | null; measurement_revision?: string | null;
+};
+function ProjectMeasurements({ projectId }: { projectId: string | null }) {
+  const [items, setItems] = useState<TechnicalMeasurement[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setItems([]);
+    setError(null);
+    if (!projectId) return;
+    const ctrl = new AbortController();
+    setLoading(true);
+    const token = localStorage.getItem("vendorai_token");
+    fetch(`/api/arch/spec-objects?projectId=${encodeURIComponent(projectId)}`, {
+      signal: ctrl.signal, headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }).then(async response => {
+      if (!response.ok) throw new Error(`Não foi possível consultar as medidas (HTTP ${response.status}).`);
+      return response.json();
+    }).then(data => {
+      if (!ctrl.signal.aborted) setItems(Array.isArray(data.items) ? data.items : []);
+    }).catch(reason => {
+      if (!ctrl.signal.aborted) setError(reason instanceof Error ? reason.message : "Falha ao carregar as medidas.");
+    }).finally(() => {
+      if (!ctrl.signal.aborted) setLoading(false);
+    });
+    return () => ctrl.abort();
+  }, [projectId]);
+  const measured = items.filter(item => [item.width_mm,item.height_mm,item.depth_mm,item.length_mm].some(v => v != null));
+  const format = (value: number | string | null | undefined) => value == null ? "—" : `${Number(value).toLocaleString("pt-BR")} mm`;
+  return <section className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:p-5" aria-label="Medições técnicas do projeto">
+    <h3 className="text-lg font-semibold text-slate-900">Medidas técnicas do projeto</h3>
+    <p className="mt-2 text-sm text-slate-600">Dimensões registradas nos objetos de especificação deste projeto. Medidas estimadas ou não verificadas não são tratadas como conferência em campo.</p>
+    {!projectId && <p className="mt-4 text-sm text-amber-700">Selecione um projeto para consultar os registros.</p>}
+    {loading && <p className="mt-4 text-sm text-slate-600">Carregando medidas…</p>}
+    {error && <p role="alert" className="mt-4 text-sm text-red-700">{error}</p>}
+    {!loading && !error && projectId && <p className="mt-4 text-sm font-medium text-slate-700">{measured.length} objeto(s) com alguma dimensão registrada · {items.length} objeto(s) no projeto</p>}
+    <div className="mt-3 grid gap-3">
+      {measured.map(item => <article key={item.id} className="min-w-0 rounded-xl border border-slate-200 bg-white p-3">
+        <h4 className="break-words text-sm font-semibold text-slate-900">{item.name || "Componente sem nome"}</h4>
+        <p className="mt-1 text-xs text-slate-500">Ambiente: {item.ambiente_id || "não informado"} · Origem: {item.measurement_source || "não informada"} · Revisão: {item.measurement_revision || "—"}</p>
+        <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-700 sm:grid-cols-4">
+          <span>Largura: {format(item.width_mm)}</span><span>Altura: {format(item.height_mm)}</span>
+          <span>Profundidade: {format(item.depth_mm)}</span><span>Comprimento: {format(item.length_mm)}</span>
+        </div>
+      </article>)}
+    </div>
+    {!loading && !error && projectId && measured.length === 0 && <p className="mt-3 text-sm text-slate-500">Nenhuma dimensão registrada. A integração de captura e conferência do Arqdor Measure continua pendente.</p>}
+  </section>;
+}
+
 export default function SmartProjectModule({ arqState, onNavigate, projectId }: SmartProjectModuleProps) {
   const [activeTab, setActiveTab] = useState<"overview" | "ambientes" | "timeline" | "briefing" | "especificacoes" | "medicoes">(() =>
     typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tab") === "especificacoes"
@@ -421,13 +476,7 @@ export default function SmartProjectModule({ arqState, onNavigate, projectId }: 
               ))}
             </nav>
 
-            {activeTab === "medicoes" ? (
-              <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5" aria-label="Medições do projeto">
-                <h3 className="text-lg font-semibold text-slate-900">Conferência de medidas do projeto</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-600">As medições técnicas deverão ser vinculadas ao projeto, aos ambientes e aos componentes da mesma base utilizada pelas especificações e pelo orçamento. A integração com o Arqdor Measure ainda está pendente. Nenhuma medição foi inferida ou registrada nesta tela.</p>
-                <p className="mt-3 text-xs font-medium text-amber-700">Integração em desenvolvimento — não confundir com medições físico-financeiras de obra.</p>
-              </section>
-            ) : null}
+            {activeTab === "medicoes" ? <ProjectMeasurements projectId={projectId ?? project.id ?? null} /> : null}
 
             {activeTab === "especificacoes" ? (
               <div className="min-w-0 overflow-hidden rounded-2xl bg-slate-950" style={{ minHeight: 540 }}>
