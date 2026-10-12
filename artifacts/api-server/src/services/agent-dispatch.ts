@@ -272,7 +272,10 @@ async function autoScheduleAndGetMeetLink(params: {
   // 3. Create agendamento record
   const agendamentoId = crypto.randomUUID();
   const titulo = `Reunião com ${leadNome || "Lead"}`;
-  await db.insert(agendamentosTable).values({
+  await db.transaction(async (tx) => {
+    const [lockedAgenda] = await tx.execute(sql`SELECT id FROM agendas WHERE id = ${agendaWithToken.id} AND tenant_id = ${tenantId} AND google_refresh_token IS NOT NULL FOR UPDATE`).then((r) => r.rows);
+    if (!lockedAgenda) throw new Error("CLOSER_AGENDA_UNAVAILABLE");
+    await tx.insert(agendamentosTable).values({
     id: agendamentoId,
     tenantId,
     leadId,
@@ -284,6 +287,7 @@ async function autoScheduleAndGetMeetLink(params: {
     agendaId: agendaWithToken.id,
     gerarMeet: true,
     criadoPor: "closer_auto",
+    });
   });
 
   log.info({ agendamentoId, agendaId: agendaWithToken.id, dataHoraInicio }, "autoSchedule: agendamento created, calling Google Calendar");
