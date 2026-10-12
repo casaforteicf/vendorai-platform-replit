@@ -133,6 +133,8 @@ export default function Dashboard() {
           modules={ui20NavQuery.data}
           overdueTasks={official?.operation?.overdueTasks}
           unassignedLeads={official?.commercial?.unassignedLeads}
+          overdueTaskItems={official?.operation?.overdueTaskItems}
+          recentActivity={executive?.atividade?.ultimas20}
           loading={!ui20NavQuery.isSuccess}
           erpVisible={ui20NavQuery.data?.some((module) => module.moduleKey === "financeiro" && module.isEnabled) ?? false}
           arqdorVisible={Boolean(user?.tenantVertical && /constr|arquit|obra|marcen|m[oó]ve|design/i.test(user.tenantVertical))}
