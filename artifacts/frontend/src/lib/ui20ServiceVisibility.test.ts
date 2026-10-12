@@ -18,8 +18,19 @@ describe("UI20 service visibility (presentation only)", () => {
 
   it("does not expose IA without explicit enabled entitlement", () => {
     expect(getUi20VisibleServices({ modules: [] }).has("ia")).toBe(false);
-    expect(getUi20VisibleServices({ modules: [{ moduleKey: "agents", isEnabled: false }] }).has("ia")).toBe(false);
-    expect(getUi20VisibleServices({ modules: [{ moduleKey: "agents", isEnabled: true, commerciallyEntitled: true }] }).has("ia")).toBe(true);
+    expect(getUi20VisibleServices({ modules: [{ moduleKey: "vendor_brain", isEnabled: false }] }).has("ia")).toBe(false);
+    expect(getUi20VisibleServices({ modules: [{ moduleKey: "vendor_brain", isEnabled: true, commerciallyEntitled: true }] }).has("ia")).toBe(true);
+  });
+
+  it("uses catalog keys to show CRM, Marketing and settings", () => {
+    const visible = getUi20VisibleServices({ isAdmin: true, modules: [
+      { moduleKey: "leads", isEnabled: true },
+      { moduleKey: "campaigns", isEnabled: true },
+      { moduleKey: "settings", isEnabled: true },
+    ] });
+    expect(visible.has("crm")).toBe(true);
+    expect(visible.has("marketing")).toBe(true);
+    expect(visible.has("settings")).toBe(true);
   });
 
   it("does not show ERP without an enabled financial entitlement", () => {
@@ -43,7 +54,7 @@ describe("UI20 service visibility (presentation only)", () => {
 
   it("does not show a commercially excluded service", () => {
     const visible = getUi20VisibleServices({
-      modules: [{ moduleKey: "marketing", isEnabled: true, commerciallyEntitled: false }],
+      modules: [{ moduleKey: "content", isEnabled: true, commerciallyEntitled: false }],
     });
     expect(visible.has("marketing")).toBe(false);
   });
