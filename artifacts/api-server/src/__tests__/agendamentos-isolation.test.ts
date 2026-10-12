@@ -364,10 +364,12 @@ describe("member ownership authorization — agendamentos", () => {
     const ownedCalendarRecord = { ...recordOwnedByTenantB, responsavelId: memberId, agendaId: "calendar-revoked" };
     // First query fetches the appointment, second fetches the calendar.
     // Neither an owner match nor a grant is returned.
+    // The PATCH handler awaits .where() directly on the appointment fetch
+    // (no .limit()), while hasAgendaAccess uses .where().limit(1).
     const query = (rows: MockRow[]) => ({
       from: () => ({ where: () => ({ limit: async () => rows }) }),
     });
-    mockDbSelect.mockReturnValueOnce(query([ownedCalendarRecord]))
+    mockDbSelect.mockReturnValueOnce({ from: () => ({ where: async () => [ownedCalendarRecord] }) })
       .mockReturnValueOnce(query([{ id: "calendar-revoked", ownerUserId: "different-user" }]))
       .mockReturnValueOnce(query([]));
     const res = await request(app).patch(`/api/agendamentos/${RECORD_ID}`)

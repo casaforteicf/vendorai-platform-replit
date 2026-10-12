@@ -143,6 +143,18 @@ router.post("/agendamentos", async (req, res) => {
     }
   }
 
+  // Pure input validation on the parsed payload runs before any resource
+  // lookup so an obviously invalid date fails fast (400/422) without leaking
+  // lead/deal/agenda access state and without a DB round-trip.
+  if (parsed.data.dataHoraFim <= parsed.data.dataHoraInicio) {
+    res.status(422).json({ error: "dataHoraFim must be after dataHoraInicio" });
+    return;
+  }
+  if (parsed.data.dataHoraInicio <= new Date()) {
+    res.status(400).json({ error: "Nao e possivel agendar para uma data/horario no passado." });
+    return;
+  }
+
   const leadConditions = [
     eq(leadsTable.id, parsed.data.leadId),
     eq(leadsTable.tenantId, parsed.data.tenantId),
@@ -198,16 +210,6 @@ router.post("/agendamentos", async (req, res) => {
   const bodyLeadEmail: string | undefined = typeof req.body.leadEmail === "string" && req.body.leadEmail.trim()
     ? req.body.leadEmail.trim()
     : undefined;
-
-  const { dataHoraInicio, dataHoraFim } = parsed.data;
-  if (dataHoraFim <= dataHoraInicio) {
-    res.status(422).json({ error: "dataHoraFim must be after dataHoraInicio" });
-    return;
-  }
-  if (dataHoraInicio <= new Date()) {
-    res.status(400).json({ error: "Nao e possivel agendar para uma data/horario no passado." });
-    return;
-  }
 
   // Auto-resolve agendaId: if not supplied by the caller (common in AI-driven
   // flows), fall back to the first Google Calendar-connected agenda for this
