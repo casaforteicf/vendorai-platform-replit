@@ -85,6 +85,30 @@ const CSS = `
     0%,100% { opacity:1; }
     50%     { opacity:0.4; }
   }
+  .ss-spec-root { min-width:0; width:100%; max-width:100%; overflow:hidden; }
+  .ss-spec-root * { box-sizing:border-box; }
+  .ss-spec-main, .ss-spec-results { min-width:0; }
+  .ss-spec-results { overflow-wrap:anywhere; }
+  .ss-spec-results pre { max-width:100%; overflow-wrap:anywhere; white-space:pre-wrap; }
+  @media (max-width: 700px) {
+    .ss-spec-root { height:auto !important; min-height:100%; overflow:visible !important; }
+    .ss-spec-header { padding:12px !important; }
+    .ss-spec-header-row { flex-wrap:wrap !important; align-items:flex-start !important; }
+    .ss-spec-heading { min-width:0 !important; flex:1 1 calc(100% - 56px) !important; }
+    .ss-spec-heading h2 { overflow-wrap:anywhere; }
+    .ss-spec-stats { width:100% !important; flex:1 1 100% !important; display:grid !important; grid-template-columns:repeat(3,minmax(0,1fr)); }
+    .ss-spec-stats > div { min-width:0 !important; padding:8px 3px !important; }
+    .ss-spec-stats p { overflow-wrap:anywhere; font-size:9px !important; }
+    .ss-spec-main { flex-direction:column !important; overflow:visible !important; }
+    .ss-spec-picker { width:100% !important; max-width:100% !important; border-right:none !important; border-bottom:1px solid rgba(255,255,255,.12) !important; }
+    .ss-spec-results { width:100% !important; overflow:visible !important; }
+    .ss-spec-results > div { max-width:100% !important; }
+    .ss-spec-scroll { overflow:visible !important; max-height:none !important; }
+    .ss-spec-tabs { overflow-x:auto !important; padding:8px 12px 0 !important; max-width:100%; }
+    .ss-spec-tabs button { flex-shrink:0; }
+    .ss-spec-item-fields { grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
+    .ss-spec-root input, .ss-spec-root select, .ss-spec-root textarea { max-width:100%; min-width:0; }
+  }
   .ss-render-card {
     transition: border-color 0.18s ease, transform 0.18s ease !important;
     cursor: pointer;
@@ -789,16 +813,16 @@ export function SmartSpecModule({
   }
 
   return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column', background:T.bg }}>
+    <div className="ss-spec-root" style={{ height:'100%', display:'flex', flexDirection:'column', background:T.bg }}>
       <style>{CSS}</style>
 
       {/* ── Header ── */}
-      <div style={{
+      <div className="ss-spec-header" style={{
         padding:'12px 20px', flexShrink:0,
         background:'linear-gradient(180deg, rgba(124,58,237,0.08) 0%, transparent 100%)',
         borderBottom:`1px solid ${T.border}`,
       }}>
-        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+        <div className="ss-spec-header-row" style={{ display:'flex', alignItems:'center', gap:12 }}>
           {onBack && (
             <button
               type="button"
@@ -817,7 +841,7 @@ export function SmartSpecModule({
               ←
             </button>
           )}
-          <div style={{ flex:1 }}>
+          <div className="ss-spec-heading" style={{ flex:1 }}>
             <h2 style={{ margin:'0 0 2px', fontSize:16, fontWeight:900, color:'#fff', letterSpacing:'-0.02em' }}>
               ✨ Smart Specification
             </h2>
@@ -826,7 +850,7 @@ export function SmartSpecModule({
             </p>
           </div>
           {spec && (
-            <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+            <div className="ss-spec-stats" style={{ display:'flex', gap:6, alignItems:'center' }}>
               <div style={{ textAlign:'center', padding:'6px 12px', borderRadius:8, background:'rgba(74,222,128,0.08)', border:`1px solid rgba(74,222,128,0.2)` }}>
                 <p style={{ margin:'0 0 1px', fontSize:16, fontWeight:900, color:T.green }}>{spec.specifiedCount}</p>
                 <p style={{ margin:0, fontSize:8, color:T.dim, fontWeight:700 }}>ESPECIFICADOS</p>
@@ -845,10 +869,10 @@ export function SmartSpecModule({
       </div>
 
       {/* ── Body ── */}
-      <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
+      <div className="ss-spec-main" style={{ flex:1, display:'flex', overflow:'hidden' }}>
 
         {/* ── Left: Render Picker + Controls ── */}
-        <div style={{ width:220, flexShrink:0, borderRight:`1px solid ${T.border}`, display:'flex', flexDirection:'column', background:T.sidebar }}>
+        <div className="ss-spec-picker" style={{ width:220, flexShrink:0, borderRight:`1px solid ${T.border}`, display:'flex', flexDirection:'column', background:T.sidebar }}>
 
           {/* Render picker */}
           <div style={{ padding:'10px', borderBottom:`1px solid ${T.border}`, flexShrink:0 }}>
@@ -964,7 +988,7 @@ export function SmartSpecModule({
         </div>
 
         {/* ── Right: Results ── */}
-        <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+        <div className="ss-spec-results" style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
 
           {/* Error */}
           {error && (
@@ -1046,7 +1070,7 @@ export function SmartSpecModule({
           {!analyzing && !loadingSpec && items.length > 0 && !memorial && (
             <>
               {/* Tabs */}
-              <div style={{ display:'flex', gap:2, padding:'10px 16px 0', flexShrink:0, borderBottom:`1px solid ${T.border}` }}>
+              <div className="ss-spec-tabs" style={{ display:'flex', gap:2, padding:'10px 16px 0', flexShrink:0, borderBottom:`1px solid ${T.border}` }}>
                 {([
                   { id:'todos',             label:'Todos',       count:counts.todos },
                   { id:'pendentes',         label:'Pendentes',   count:counts.pendentes,         color:T.amber },
@@ -1076,7 +1100,7 @@ export function SmartSpecModule({
               </div>
 
               {/* Item list */}
-              <div style={{ flex:1, overflowY:'auto', padding:'12px 16px' }}>
+              <div className="ss-spec-scroll" style={{ flex:1, overflowY:'auto', padding:'12px 16px' }}>
                 {filteredItems.length === 0 && (
                   <div style={{ textAlign:'center', padding:'30px', color:T.dim, fontSize:12 }}>
                     Nenhum item nesta categoria.
