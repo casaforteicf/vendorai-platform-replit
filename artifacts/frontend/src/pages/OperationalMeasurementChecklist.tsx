@@ -124,6 +124,26 @@ export default function OperationalMeasurementChecklist() {
     }
   }
 
+  async function preparePhotoReport() {
+    if (!data?.run) return;
+    setBusy("report");
+    setError(null);
+    try {
+      const runId = data.run.id;
+      const photographed = data.run.items.filter(item => (item.fotos?.length ?? 0) > 0);
+      const all = await Promise.all(photographed.map(async item => {
+        const response = await api(`/api/operational-checklists/runs/${runId}/items/${item.id}/photos`);
+        return [item.id, response.photos ?? []] as const;
+      }));
+      const next = Object.fromEntries(all);
+      setPhotoAccess(previous => ({ ...previous, ...next }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao preparar imagens para o relatório.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function uploadPhoto(itemId: string, file: File, uploadId?: string): Promise<{ storageUrl: string; accessUrl: string }> {
     if (!data?.run) throw new Error("Conferência não iniciada.");
     if (file.size > 5 * 1024 * 1024) throw new Error("Máximo de 5 MB por foto.");
