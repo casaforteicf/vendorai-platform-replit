@@ -59,6 +59,7 @@ router.get("/tenants/:tenantId/agendas", async (req, res) => {
       nome: agendasTable.nome,
       cor: agendasTable.cor,
       isDefault: agendasTable.isDefault,
+      ownerUserId: agendasTable.ownerUserId,
       googleCalendarId: agendasTable.googleCalendarId,
       googleEmail: agendasTable.googleEmail,
       createdAt: agendasTable.createdAt,
@@ -320,6 +321,39 @@ router.post("/agendas/:id/google/disconnect", async (req, res) => {
   res.json(updated);
 });
 
+
+const ownerBodySchema = z.object({ ownerUserId: z.string().min(1).nullable() });
+
+router.patch("/agendas/:id/owner", async (req, res) => {
+  const parsed = ownerBodySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: "ownerUserId must be a user ID or null" });
+  const [existing] = await db.select({
+    id: agendasTable.id, tenantId: agendasTable.tenantId, ownerUserId: agendasTable.ownerUserId,
+  }).from(agendasTable).where(eq(agendasTable.id, String(req.params.id))).limit(1);
+  if (!existing) return res.status(404).json({ error: "Agenda not found" });
+  if (!req.user || !["tenant_admin", "super_admin"].includes(req.user.platformRole) ||
+      (req.user.platformRole !== "super_admin" && req.user.tenantId !== existing.tenantId)) {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+  const ownerId = parsed.data.ownerUserId;
+  if (ownerId) {
+    const [member] = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(and(eq(usersTable.id, ownerId), eq(usersTable.tenantId, existing.tenantId))).limit(1);
+    if (!member) return res.status(422).json({ error: "Owner must belong to the agenda tenant" });
+  }
+  const [updated] = await db.update(agendasTable).set({
+    ownerUserId: ownerId, updatedAt: new Date(),
+  }).where(and(eq(agendasTable.id, existing.id), eq(agendasTable.tenantId, existing.tenantId)))
+    .returning({ id: agendasTable.id, tenantId: agendasTable.tenantId, ownerUserId: agendasTable.ownerUserId });
+  const audited = await writeConfigurationAudit({
+    tenantId: existing.tenantId, action: "atualizar", entity: "agenda_owner",
+    entityId: existing.id, before: { ownerUserId: existing.ownerUserId },
+    after: { ownerUserId: updated.ownerUserId },
+    actor: { userId: req.user.sub ?? null, ip: req.ip ?? null },
+  });
+  if (!audited) req.log?.warn({ agendaId: existing.id }, "Agenda owner change audit failed");
+  return res.json(updated);
+});
 
 const grantBodySchema = z.object({ userId: z.string().min(1) });
 
