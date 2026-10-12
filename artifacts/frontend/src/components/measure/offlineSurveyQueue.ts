@@ -1,6 +1,6 @@
 import type { SurveyElement } from "./SurveyElementsEditor";
 
-type PendingSurvey = { key: string; items: SurveyElement[]; updatedAt: string; revisionId?: string };
+type PendingSurvey = { key: string; items: SurveyElement[]; updatedAt: string; revisionId?: string; reconciliation?: { recordedAt: string; choices: Record<string, "local" | "remote">; changedIds: string[]; localCount: number; serverCount: number } };
 const DB_NAME = "arqdor-measure-offline-v1";
 const STORE = "pending-surveys";
 
@@ -29,10 +29,10 @@ async function transact<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore)
 export async function readPendingSurvey(key: string): Promise<PendingSurvey | undefined> {
   return transact("readonly", store => store.get(key));
 }
-export async function queueSurvey(key: string, items: SurveyElement[]): Promise<string> {
+export async function queueSurvey(key: string, items: SurveyElement[], reconciliation?: PendingSurvey["reconciliation"]): Promise<string> {
   if (!key || items.length > 200) throw new Error("Levantamento inválido para armazenamento offline");
   const revisionId = crypto.randomUUID();
-  await transact("readwrite", store => store.put({ key, items, updatedAt: new Date().toISOString(), revisionId }));
+  await transact("readwrite", store => store.put({ key, items, updatedAt: new Date().toISOString(), revisionId, reconciliation }));
   return revisionId;
 }
 export async function clearPendingSurvey(key: string, expectedRevisionId?: string): Promise<boolean> {
