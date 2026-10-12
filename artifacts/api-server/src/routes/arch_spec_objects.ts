@@ -144,7 +144,7 @@ async function createSpecObject(tId: string | null, payload: SpecObjectPayload) 
   return result.rows[0];
 }
 
-async function updateSpecObject(id: string, tId: string | null, payload: Partial<SpecObjectPayload>, expectedUpdatedAt?: Date) {
+async function updateSpecObject(id: string, tId: string | null, payload: Partial<SpecObjectPayload>, expectedUpdatedAt?: Date, actor?: {id:string|null;name:string|null}) {
   const currentValues: unknown[] = [id];
   let currentWhere = `id = $1`;
   if (tId) {
@@ -263,11 +263,38 @@ async function updateSpecObject(id: string, tId: string | null, payload: Partial
     where += ` AND tenant_id = $${values.length}`;
   }
 
-  if (expectedUpdatedAt) {
-    values.push(expectedUpdatedAt);
-    where += ` AND updated_at = ${values.length}`;
-  }
-  const result = await pool.query(`UPDATE arch_spec_objects SET ${sets.join(", ")} WHERE ${where} RETURNING *`, values);
+  // Compare every write to the snapshot used to compute approval invalidation.
+  values.push(expectedUpdatedAt ?? new Date(current.updated_at));
+  where += ` AND updated_at = ${values.length}`;
+  const watchedColumns = [...new Set([...Object.values(allowed), "technical_approval_status", "status"])];
+  const before = Object.fromEntries(watchedColumns.map(column => [column, current[column] ?? null]));
+  values.push(JSON.stringify(before));
+  const beforeParam = values.length;
+  values.push(watchedColumns);
+  const keysParam = values.length;
+  values.push(actor?.id ?? null);
+  const actorIdParam = values.length;
+  values.push(actor?.name ?? null);
+  const actorNameParam = values.length;
+  const sql = `WITH updated AS (
+    UPDATE arch_spec_objects SET ${sets.join(", ")} WHERE ${where} RETURNING *
+  ), logged AS (
+    INSERT INTO arch_spec_object_change_audit
+      (tenant_id, project_id, spec_object_id, actor_id, actor_name, project_revision, changes)
+    SELECT updated.tenant_id, updated.project_id, updated.id,
+      ${actorIdParam}, ${actorNameParam}, updated.project_revision,
+      COALESCE((
+        SELECT jsonb_object_agg(field.key,
+          jsonb_build_object('before', ${beforeParam}::jsonb -> field.key, 'after', field.value))
+        FROM jsonb_each(to_jsonb(updated)) AS field
+        WHERE field.key = ANY(${keysParam}::text[])
+          AND (${beforeParam}::jsonb -> field.key) IS DISTINCT FROM field.value
+      ), '{}'::jsonb)
+    FROM updated
+    RETURNING spec_object_id
+  )
+  SELECT updated.* FROM updated JOIN logged ON logged.spec_object_id = updated.id`;
+  const result = await pool.query(sql, values);
   return result.rows[0] ?? null;
 }
 
@@ -1189,7 +1216,7 @@ archSpecObjectsRouter.patch("/arch/spec-objects/:id", async (req, res, next) => 
         return;
       }
     }
-    const item = await updateSpecObject(req.params["id"]!, tId, patch, patch.expectedUpdatedAt ? new Date(patch.expectedUpdatedAt) : undefined);
+    const item = await updateSpecObject(req.params["id"]!, tId, patch, patch.expectedUpdatedAt ? new Date(patch.expectedUpdatedAt) : undefined, { id: actorId(req), name: actorName(req) });
     if (!item) {
       res.status(patch.expectedUpdatedAt ? 409 : 404).json({
         error: patch.expectedUpdatedAt ? "O componente foi alterado durante a edição. Recarregue antes de salvar." : "SpecObject não encontrado",
