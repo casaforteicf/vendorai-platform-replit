@@ -30,7 +30,7 @@ export default function TadCentralRoute() {
     }), fetch(`/api/tenants/${encodeURIComponent(user.tenantId)}/tad-effective-modules`, {
       headers: { Authorization: `Bearer ${token}` }, signal: controller.signal,
     })]).then(async ([response, rightsResponse]) => {
-      if (!rightsResponse.ok) throw new Error("Unable to verify user permissions");
+      if (!rightsResponse.ok || !response.ok) throw new Error("Unable to verify module access");
       const rights: unknown = await rightsResponse.json();
       if (!rights || typeof rights !== "object" || !("permittedModuleKeys" in rights) || !Array.isArray(rights.permittedModuleKeys)) throw new Error("Invalid permissions response");
       const verified = rights.permittedModuleKeys.filter((key: unknown): key is string => typeof key === "string")
@@ -44,8 +44,12 @@ export default function TadCentralRoute() {
         .map((item: NavItem) => MAPPING[item.moduleKey ?? item.key ?? ""])
         .filter((item): item is LauncherModule => Boolean(item));
       setEnabled([...new Set(keys)]);
-    }).catch(error => {
-      if (!controller.signal.aborted) setFailed(true);
+    }).catch(() => {
+      if (!controller.signal.aborted) {
+        setEnabled([]);
+        setPermitted([]);
+        setFailed(true);
+      }
     });
     return () => controller.abort();
   }, [user?.tenantId, token]);
