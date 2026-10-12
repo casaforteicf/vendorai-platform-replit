@@ -9,8 +9,9 @@ export function createFurnitureSnapshot(input:{
  tenantId:string;projectId:string;room:RoomBounds;revision:string;createdAt:string;furniture:readonly PlacedCabinet[];
 }):FurnitureProjectSnapshot{
  const {tenantId,projectId,room,revision,createdAt,furniture}=input;
- if(!tenantId||!projectId||!room.id||!revision||!Number.isFinite(Date.parse(createdAt))||furniture.length>2000)throw Error("Invalid snapshot metadata");
+ if(!tenantId||!projectId||!room.id||!revision||!Number.isFinite(Date.parse(createdAt))||furniture.length>500)throw Error("Invalid snapshot metadata");
  const ids=new Set<string>(),parts=new Set<string>();
+ let totalParts=0;
  const previous:PlacedCabinet[]=[];
  for(const item of furniture){
   if(ids.has(item.id)||item.tenantId!==tenantId||item.projectId!==projectId||item.roomId!==room.id||item.bounds.id!==item.id||
@@ -18,8 +19,11 @@ export function createFurnitureSnapshot(input:{
    item.bounds.roomId!==room.id||item.parameters.widthMm!==item.bounds.widthMm||item.parameters.depthMm!==item.bounds.depthMm||
    item.parts.some(p=>p.furnitureId!==item.id||p.tenantId!==tenantId||p.projectId!==projectId))throw Error("Invalid furniture snapshot scope");
   if(!validateFurniturePlacement(room,item.bounds,previous.map(p=>p.bounds),20).valid)throw Error("Invalid furniture placement");
+  if(!Array.isArray(item.parts)||item.parts.length>2000||totalParts+item.parts.length>5000)throw Error("Furniture parts limit exceeded");
+  totalParts+=item.parts.length;
   ids.add(item.id);
-  for(const p of item.parts){if(parts.has(p.id))throw Error("Duplicate part identity");parts.add(p.id);}
+  for(const p of item.parts){
+   if(!p||!p.id||!Number.isFinite(p.widthMm)||p.widthMm<=0||!Number.isFinite(p.lengthMm)||p.lengthMm<=0||!Number.isSafeInteger(p.quantity)||p.quantity<=0)throw Error("Invalid cabinet part");if(parts.has(p.id))throw Error("Duplicate part identity");parts.add(p.id);}
   previous.push(item);
  }
  return {schemaVersion:1,tenantId,projectId,roomId:room.id,revision,createdAt,
