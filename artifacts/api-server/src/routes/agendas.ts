@@ -20,8 +20,6 @@ async function googleCalendarSnapshot(agendaId: string) {
     nome: agendasTable.nome,
     googleCalendarId: agendasTable.googleCalendarId,
     googleEmail: agendasTable.googleEmail,
-    googleAccessToken: agendasTable.googleAccessToken,
-    googleRefreshToken: agendasTable.googleRefreshToken,
     googleTokenExpiresAt: agendasTable.googleTokenExpiresAt,
     updatedAt: agendasTable.updatedAt,
   }).from(agendasTable).where(eq(agendasTable.id, agendaId)).limit(1).then((rows) => rows[0] ?? null);
