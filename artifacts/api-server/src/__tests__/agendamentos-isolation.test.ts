@@ -31,7 +31,8 @@ vi.mock("@workspace/db", () => ({
   agendaAccessGrantsTable: { agendaId: "agendaId", tenantId: "tenantId", userId: "userId" },
   agendasTable: { id: "id", tenantId: "tenantId", ownerUserId: "ownerUserId", googleRefreshToken: "googleRefreshToken" },
   leadsTable: { id: "id", tenantId: "tenantId" },
-  dealsTable: { id: "id", tenantId: "tenantId", leadId: "leadId" },
+  dealsTable: { id: "id", tenantId: "tenantId", leadId: "leadId", valor: "valor" },
+  propostasTable: { id: "id", tenantId: "tenantId", leadId: "leadId", dealId: "dealId", valorTotal: "valorTotal", valorMensal: "valorMensal", recorrente: "recorrente", createdAt: "createdAt", updatedAt: "updatedAt" },
   usersTable: { id: "id", tenantId: "tenantId" },
   activitiesTable: { id: "id" },
   agendamentosTable: {
