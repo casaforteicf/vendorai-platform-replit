@@ -1,4 +1,4 @@
-import { documentationWallPlan, type DocumentationWall, type DocumentationOpening } from "./conceptDocumentationWalls";
+import { documentationWallPlan, documentationWallSection, type DocumentationWall, type DocumentationOpening } from "./conceptDocumentationWalls";
 import { architecturalSheetLayout } from "./conceptArchitecturalSheet";
 import { useMemo, useRef, useState } from "react";
 import type { ArchitecturalModel } from "./conceptArchitecturalModel";
@@ -13,7 +13,7 @@ export function ConceptArchitecturalDocumentation({ model, walls = [], openings 
   const [sheetTitle, setSheetTitle] = useState("Pré-projeto");
   const [sheetError, setSheetError] = useState<string | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
-  const items = useMemo(() => plan ? [...architecturalDocumentationPlan(model, planFloor), ...documentationWallPlan(walls, openings, planFloor)] : architecturalSection(model, axis, position, elevation), [model, axis, position, elevation, plan, planFloor, walls, openings]);
+  const items = useMemo(() => plan ? [...architecturalDocumentationPlan(model, planFloor), ...documentationWallPlan(walls, openings, planFloor)] : [...architecturalSection(model, axis, position, elevation), ...documentationWallSection(walls, openings, axis, position, elevation)], [model, axis, position, elevation, plan, planFloor, walls, openings]);
   const points = items.flatMap(item => item.points);
   const minU = points.length ? Math.min(...points.map(p => p.u)) : 0, maxU = points.length ? Math.max(...points.map(p => p.u)) : 5;
   const minZ = points.length ? Math.min(...points.map(p => p.z)) : 0, maxZ = points.length ? Math.max(...points.map(p => p.z)) : 5;
@@ -51,7 +51,7 @@ export function ConceptArchitecturalDocumentation({ model, walls = [], openings 
   }
   return <section aria-label="Documentação paramétrica" className="space-y-2 rounded border p-2">
     <h4 className="text-sm font-semibold">Plantas, cortes e elevações</h4>
-    <p className="text-xs text-slate-500">Vista esquemática de lajes, escadas e coberturas. Na planta, inclui paredes desenhadas e vãos interceptados a 1,20 m. Cortes e elevações ainda não incluem paredes/esquadrias. Medidas em metros; cotas gerais medem a extensão dos elementos visíveis. Exportação sem escala de impressão definida.</p>
+    <p className="text-xs text-slate-500">Vista esquemática de lajes, escadas e coberturas. Na planta, inclui paredes desenhadas e vãos interceptados a 1,20 m. Cortes e elevações incluem paredes desenhadas e vãos. Altura de parede: 2,80 m; cotas seguem os pavimentos do editor. Medidas em metros; cotas gerais medem a extensão dos elementos visíveis. Exportação sem escala de impressão definida.</p>
     <div className="grid grid-cols-2 gap-2">
       <label className="text-xs">Vista<select value={view} onChange={e => { setView(e.target.value as typeof view); setSheetError(null); }} className="w-full rounded border p-2"><option value="plan">Planta por pavimento</option><option value="section">Corte</option><option value="elevation">Elevação</option></select></label>
       {!plan && <label className="text-xs">Direção<select value={axis} onChange={e => setAxis(e.target.value as "x" | "y")} className="w-full rounded border p-2"><option value="x">Olhar ao longo de X</option><option value="y">Olhar ao longo de Y</option></select></label>}

@@ -19,3 +19,23 @@ it("keeps high windows solid at cut height and handles diagonal walls and overla
  expect(diagonal.points[1].u).toBeLessThan(4);
  expect(documentationWallPlan([{ ...wall, x2: 0 }], [], 0)).toEqual([]);
 });
+
+it("keeps window sill and lintel solids in a transverse section", async () => {
+ const { documentationWallSection } = await import("./conceptDocumentationWalls");
+ const shapes = documentationWallSection([wall], [{ id:"j",wallId:"w",floor:0,type:"window",offset:0.5,width:1,height:1.2,sillHeight:0.9 }], "x", 2);
+ expect(shapes).toHaveLength(2);
+ expect(shapes[0].points[0].z).toBeCloseTo(0.16);
+ expect(shapes[0].points[2].z).toBeCloseTo(1.06);
+ expect(shapes[1].points[0].z).toBeCloseTo(2.26);
+ expect(shapes[1].points[2].z).toBeCloseTo(2.96);
+ expect(documentationWallSection([wall], [], "x", 5)).toEqual([]);
+});
+it("projects upper-floor walls without filling door voids", async () => {
+ const { documentationWallSection } = await import("./conceptDocumentationWalls");
+ const upper = {...wall,floor:1};
+ const shapes = documentationWallSection([upper], [{id:"d",wallId:"w",floor:1,type:"door",offset:0.5,width:1,height:2.1}], "y", 0, true);
+ expect(shapes.every(shape => shape.points[0].z >= 3.12 - 1e-9)).toBe(true);
+ expect(shapes.some(shape => shape.points[0].u === 1.5 && shape.points[1].u === 2.5 && shape.points[0].z > 5)).toBe(true);
+ expect(shapes.some(shape => shape.points[0].u === 1.5 && shape.points[1].u === 2.5 && shape.points[0].z < 5)).toBe(false);
+ expect(documentationWallSection([wall], [], "x", NaN)).toEqual([]);
+});

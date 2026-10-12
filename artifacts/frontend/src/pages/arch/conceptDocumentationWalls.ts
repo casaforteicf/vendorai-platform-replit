@@ -1,3 +1,4 @@
+import { rectangularSolidCells } from "./conceptArchitecturalSlabVoids";
 import type { DrawingPrimitive } from "./conceptArchitecturalSections";
 export type DocumentationWall = { id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number };
 export type DocumentationOpening = { id: string; wallId: string; floor: number; type: "door" | "window"; offset: number; width?: number; height?: number; sillHeight?: number };
@@ -19,6 +20,43 @@ export function documentationWallPlan(walls: readonly DocumentationWall[], openi
   if (cursor < length) spans.push([cursor,length]);
   const ux = dx / length, uy = dy / length, nx = -uy * thickness / 2, ny = ux * thickness / 2;
   spans.forEach(([a,b],i) => result.push({ id: `wall:${wall.id}:${i}`, kind: "solid", points: [[a,1],[b,1],[b,-1],[a,-1]].map(([t, side]) => ({ u: wall.x1 + ux * t + nx * side, z: -(wall.y1 + uy * t + ny * side) })) }));
+ }
+ return result;
+}
+
+/** Wall sections use the editor's current storey convention: 2.96m + 0.16m. */
+export function documentationWallSection(walls: readonly DocumentationWall[], openings: readonly DocumentationOpening[], axis: "x" | "y", position: number, elevation = false): DrawingPrimitive[] {
+ if (!Number.isFinite(position)) return [];
+ const result: DrawingPrimitive[] = [];
+ for (const wall of walls) {
+  const dx = wall.x2 - wall.x1, dy = wall.y2 - wall.y1, length = Math.hypot(dx,dy), thickness = wall.thickness ?? 0.15;
+  if (![wall.x1,wall.y1,wall.x2,wall.y2,length,thickness,wall.floor].every(Number.isFinite) || length < 1e-9 || thickness <= 0 || !Number.isInteger(wall.floor) || wall.floor < 0) continue;
+  const holes = openings.filter(o => o.wallId === wall.id && o.floor === wall.floor).flatMap(o => {
+   const width = o.width ?? (o.type === "door" ? 0.9 : 1.2), height = o.height ?? (o.type === "door" ? 2.1 : 1.2), sill = o.sillHeight ?? (o.type === "door" ? 0 : 0.9);
+   if (![width,height,sill,o.offset].every(Number.isFinite) || width <= 0 || height <= 0 || sill < 0 || o.offset < 0 || o.offset > 1) return [];
+   const x = Math.max(0, o.offset * length - width / 2), end = Math.min(length, o.offset * length + width / 2);
+   return end > x && sill < 2.8 ? [{ x, y: sill, width: end - x, depth: Math.min(height, 2.8 - sill) }] : [];
+  });
+  const cells = rectangularSolidCells({ x: 0, y: 0, width: length, depth: 2.8 }, holes);
+  const ux = dx / length, uy = dy / length, nx = -uy * thickness / 2, ny = ux * thickness / 2;
+  cells.forEach((cell,index) => {
+   const polygon = [[cell.x,1],[cell.x + cell.width,1],[cell.x + cell.width,-1],[cell.x,-1]].map(([s,side]) => ({ x: wall.x1 + ux * s + nx * side, y: wall.y1 + uy * s + ny * side }));
+   const projection = (p: { x: number; y: number }) => axis === "x" ? p.y : p.x;
+   const hits: number[] = [];
+   if (elevation) hits.push(...polygon.map(projection));
+   else for (let i=0;i<polygon.length;i++) {
+    const a=polygon[i], b=polygon[(i+1)%polygon.length];
+    if (Math.abs(a[axis] - position) < 1e-9) hits.push(projection(a));
+    if ((a[axis] < position && b[axis] > position) || (a[axis] > position && b[axis] < position)) {
+     const t=(position-a[axis])/(b[axis]-a[axis]);
+     hits.push(projection({ x:a.x+t*(b.x-a.x), y:a.y+t*(b.y-a.y) }));
+    }
+   }
+   if (hits.length < 2) return;
+   const start=Math.min(...hits), end=Math.max(...hits), z=wall.floor*2.96+0.16+cell.y;
+   if (end-start < 1e-9) return;
+   result.push({ id:`wall:${wall.id}:section:${index}`, kind:"solid", points:[{u:start,z},{u:end,z},{u:end,z:z+cell.depth},{u:start,z:z+cell.depth}] });
+  });
  }
  return result;
 }
