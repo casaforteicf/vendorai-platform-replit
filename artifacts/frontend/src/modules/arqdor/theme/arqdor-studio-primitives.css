@@ -77,3 +77,21 @@
   .arqdor-studio-ui .arq2-tool-button,
   .arqdor-studio-ui .arq2-field {min-height:44px;}
 }
+
+/* UI-11 — semantic actions used by RenderStudioNavigation */
+.arqdor-studio-ui .arqdor-render-improve-action {
+  margin-right:8px;
+  background:var(--arq2-panel);
+  color:var(--arq2-text);
+  border:1px solid var(--arq2-accent);
+  font-size:11px;
+  font-weight:600;
+}
+.arqdor-studio-ui .arqdor-render-next-action {
+  margin-right:12px;
+  background:var(--arq2-accent);
+  color:#fff;
+  font-size:12px;
+  font-weight:600;
+}
+.arqdor-studio-ui .arqdor-render-next-action:hover {background:#21856C;}
