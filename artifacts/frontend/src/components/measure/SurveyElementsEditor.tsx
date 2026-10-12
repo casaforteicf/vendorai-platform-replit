@@ -84,7 +84,7 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
     setSaving(true);
     setFeedback("");
     try {
-      await withPhotoTabLock("survey:" + storageKey, async () => {
+      const synced = await withPhotoTabLock("survey:" + storageKey, async () => {
       const pending = await readPendingSurvey(storageKey);
       if (pending && !dirty) {
         setOfflinePending(true);
@@ -95,16 +95,16 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
       await queueSurvey(storageKey, items);
       setOfflinePending(true);
       if (!navigator.onLine) {
-        setFeedback("Sem conexão. Medições guardadas no dispositivo; não sincronizadas.");
-        return;
+        return false;
       }
       await onSave(items);
       await clearPendingSurvey(storageKey);
       setOfflinePending(false);
       setDirty(false);
       sessionStorage.removeItem(storageKey);
+      return true;
       });
-      setFeedback("Levantamento sincronizado no checklist.");
+      setFeedback(synced ? "Levantamento sincronizado no checklist." : "Sem conexão. Medições guardadas neste dispositivo; não sincronizadas.");
     } catch (error) {
       setOfflinePending(true);
       setFeedback(error instanceof Error
