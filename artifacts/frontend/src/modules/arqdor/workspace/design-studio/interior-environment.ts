@@ -10,7 +10,7 @@ export type InteriorEnvironment={
   walls:InteriorWall[];obstacles?:InteriorObstacle[];wallOpenings?:WallOpening[];sourceRevision?:string;sourceFileName?:string;
   persistStatus:"draft-only";
 };
-export type WallOpening={id:string;wallId:string;offsetM:number;widthM:number;clearanceM:number;kind?:"door"|"window";hinge?:"start"|"end";swing?:"left"|"right"};
+export type WallOpening={id:string;wallId:string;offsetM:number;widthM:number;clearanceM:number;kind?:"door"|"window";hinge?:"start"|"end";swing?:"left"|"right";openingAngleDeg?:number;leafThicknessMm?:number};
 export function wallOpeningClearances(walls:InteriorWall[],openings:WallOpening[]):InteriorObstacle[]{
  const minX=Math.min(...walls.flatMap(w=>[w.x1,w.x2])),minY=Math.min(...walls.flatMap(w=>[w.y1,w.y2]));
  return openings.map(o=>{
@@ -45,7 +45,9 @@ export function doorSwingFootprint(walls:readonly InteriorWall[],opening:WallOpe
  const base=Math.atan2(dy,dx)+(opening.hinge==="end"?Math.PI:0);
  const sign=opening.swing==="left"?1:-1;
  const radius=opening.widthM*1000;
- return Array.from({length:steps+1},(_,i)=>({x:hingeX+Math.cos(base+sign*i*Math.PI/(2*steps))*radius,y:hingeY+Math.sin(base+sign*i*Math.PI/(2*steps))*radius}));
+ const angle=opening.openingAngleDeg??90;
+ if(!Number.isFinite(angle)||angle<=0||angle>180)throw Error("Invalid door opening angle");
+ return Array.from({length:steps+1},(_,i)=>({x:hingeX+Math.cos(base+sign*i*angle*Math.PI/(180*steps))*radius,y:hingeY+Math.sin(base+sign*i*angle*Math.PI/(180*steps))*radius}));
 }
 export type InteriorOpeningClearance={id:string;xMm:number;yMm:number;widthMm:number;depthMm:number};
 const finitePositive=(n:number)=>Number.isFinite(n)&&n>0;
