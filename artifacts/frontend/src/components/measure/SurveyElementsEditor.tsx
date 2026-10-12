@@ -71,6 +71,7 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
   const [saving, setSaving] = useState(false);
   const [offlinePending, setOfflinePending] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const [serverConflict, setServerConflict] = useState(false);
   const [showDraft, setShowDraft] = useState(false);
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   useEffect(() => {
@@ -90,6 +91,7 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
   }
   async function saveWithOfflineFallback() {
     if (saving || disabled) return;
+    if (serverConflict) { setFeedback("Conflito com outra versão. Exporte ou recupere os dados antes de nova sincronização."); return; }
     setSaving(true);
     setFeedback("");
     try {
@@ -114,9 +116,11 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
       sessionStorage.removeItem(storageKey);
       return true;
       });
+      if (synced) setServerConflict(false);
       setFeedback(synced ? "Levantamento sincronizado no checklist." : "Sem conexão. Medições guardadas neste dispositivo; não sincronizadas.");
     } catch (error) {
       setOfflinePending(true);
+      if (error instanceof Error && /conflito|outra operação|desatualizada|CHECKLIST_CONFLICT/i.test(error.message)) setServerConflict(true);
       setFeedback(error instanceof Error
         ? error.message + " — mantenha a cópia offline e revise antes de tentar novamente."
         : "Falha ao salvar. Confira se os dados foram preservados no dispositivo.");
@@ -198,6 +202,14 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
     </div>}
     <Button size="sm" variant="outline" disabled={disabled} onClick={add}>Adicionar elemento</Button>
     {items.map((entry)=><div key={entry.id} className="flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-sm"><span>{entry.roomName} · {entry.elementType} · {entry.label} · {entry.widthMm ?? "—"} × {entry.heightMm ?? "—"} mm {entry.verified ? "· Conferido" : "· Pendente"}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={disabled || saving} onClick={()=>reviseElement(entry)}>Revisar medidas</Button><Button size="sm" variant="outline" disabled={disabled} onClick={()=>{setDirty(true);setItems(old=>old.map(e=>e.id===entry.id?{...e,verified:!e.verified}:e));}}>{entry.verified?"Reabrir":"Marcar conferido"}</Button><Button size="sm" variant="ghost" disabled={disabled} onClick={()=>{setDirty(true);setItems(old=>old.filter(e=>e.id!==entry.id));}}>Excluir</Button></div></div>)}
+    {serverConflict && <div className="rounded border border-amber-500 p-3 text-sm" role="alert">
+      <p>Outra pessoa alterou este levantamento. A cópia local foi preservada. Exporte as medições e compare com a versão atual do servidor antes de reconciliar.</p>
+      <Button size="sm" variant="outline" onClick={() => {
+        const url = URL.createObjectURL(new Blob([JSON.stringify({schemaVersion:1,source:"arqdor_measure_conflict",draftKey,items,exportedAt:new Date().toISOString()},null,2)],{type:"application/json"}));
+        const link = document.createElement("a"); link.href=url; link.download="arqdor-measure-conflito.json"; link.click(); URL.revokeObjectURL(url);
+      }}>Exportar cópia local</Button>
+      <Button size="sm" variant="outline" onClick={() => { setServerConflict(false); setFeedback("Recarregue o checklist do servidor e confira as diferenças antes de sincronizar."); }}>Revisar conflito</Button>
+    </div>}
     {offlinePending && <Button size="sm" variant="outline" disabled={disabled || saving} onClick={() => { void recoverOffline(); }}>Recuperar pendência offline</Button>}
     <Button disabled={disabled||saving} onClick={() => { void saveWithOfflineFallback(); }}>{saving?"Salvando...":offlinePending?"Sincronizar levantamento":"Salvar levantamento"}</Button>
     <SurveyPlanPreview elements={items} />
