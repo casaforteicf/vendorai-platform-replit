@@ -1169,8 +1169,8 @@ archSpecObjectsRouter.patch("/arch/spec-objects/:id", async (req, res, next) => 
   try {
     const tId = tenantId(req);
     const patch = req.body as Partial<SpecObjectPayload> & { expectedUpdatedAt?: string };
-    if (patch.status === "sent-to-budget") {
-      res.status(409).json({ error: "Use a ação de envio ao orçamento, que exige aprovação técnica.", code: "TECHNICAL_APPROVAL_REQUIRED" });
+    if (patch.status === "sent-to-budget" || patch.status === "approved") {
+      res.status(409).json({ error: "A aprovação técnica e o envio ao orçamento exigem seus fluxos específicos.", code: "TECHNICAL_APPROVAL_REQUIRED" });
       return;
     }
     if (patch.expectedUpdatedAt !== undefined) {
