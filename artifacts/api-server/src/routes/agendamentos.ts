@@ -450,6 +450,11 @@ router.post("/agendamentos", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/agendamentos", async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? "");
+  if (!req.user || (req.user.platformRole !== "super_admin" && req.user.tenantId !== tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
   const { leadId, status, from, to, agendaId } = req.query as Record<
     string,
     string | undefined
@@ -460,10 +465,13 @@ router.get("/tenants/:tenantId/agendamentos", async (req, res) => {
   ];
 
   const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-  const isSeller = req.user?.platformRole === "tenant_seller";
-  const userFn = req.user?.userFunction as string | undefined;
-  const userId = req.user?.sub;
-  if (!isAdmin && userId && (isSeller || userFn === "vendedor" || userFn === "representante_comercial" || userFn === "entrega")) {
+  const userId = req.user.sub;
+  // Non-admin users may only list their own assigned appointments.
+  if (!isAdmin) {
+    if (!userId) {
+      res.status(403).json({ error: "User identity required" });
+      return;
+    }
     conditions.push(eq(agendamentosTable.responsavelId, userId));
   }
 
