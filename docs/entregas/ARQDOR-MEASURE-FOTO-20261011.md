@@ -271,3 +271,9 @@ Validação de hash do token usa comparacao em tempo constante e exige hash hexa
 - L42: sincronizacao dos elementos sob Web Lock por chave de usuario/revisao/item, evitando duas abas gravando o mesmo levantamento simultaneamente. Corrigida a mensagem de sucesso indevida quando dados foram apenas salvos offline. A sincronizacao entre dispositivos permanece pendente.
 - L43: corrigida validacao da segunda extremidade da parede na previa BIM para exigir parede vizinha no mesmo pavimento. Adicionados testes de regressao ao arquivo existente convertSurveyToArqdor.test.ts. Testes criados, ainda NAO executados.
 - L44/L45/L46 continuam abertos: identidade/assinatura remota, aplicativo instalavel, auditoria e relatorio, alem de compilacao e homologacao. Sem merge/deploy em producao.
+
+## Lotes 45-46 — UX e relatorio (12/10/2026)
+- L45 parcial: editor de levantamento avisa ao fechar/atualizar pagina com alteracoes nao gravadas. Confirmado que ja existe manifest.json global Vendor.ai; aplicacao offline instalavel para Measure ainda requer service worker, politicas seguras de cache, testes em mobile/PC e permissoes de camera.
+- L46 parcial: relatorio de impressao inclui data de emissao, total de itens, divergencias abertas e pendencias. Ainda faltam trilha de auditoria imutavel, fotos totalmente carregadas no PDF, versionamento formal e testes.
+- L44 permanece pendente: aceite remoto com verificacao independente de identidade e consumo de token unico. Nao habilitar a rota publica prematuramente.
+- NENHUMA compilacao/teste funcional/homologacao executada nesta etapa. Sem merge/deploy.
