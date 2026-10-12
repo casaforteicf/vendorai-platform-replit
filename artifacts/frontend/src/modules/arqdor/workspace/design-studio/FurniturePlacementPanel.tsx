@@ -16,13 +16,14 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
   const [busy,setBusy]=useState(false);
   const [webglPreview,setWebglPreview]=useState(false);
   const [loadedRevision,setLoadedRevision]=useState<string|null>(null);
+  const [geometryRevision,setGeometryRevision]=useState<string|null>(null);
   const [savedTenantId,setSavedTenantId]=useState<string|null>(null);
   const [dirty,setDirty]=useState(false);
   const [conflicted,setConflicted]=useState(false);
   const dirtyRef=useRef(false);
   function markDirty(){dirtyRef.current=true;setDirty(true);}
   function markClean(){dirtyRef.current=false;setDirty(false);setConflicted(false);}
-  useEffect(()=>{setItems([]);setLoadedRevision(null);setSavedTenantId(null);setSelectedId(null);setMessage("");markClean();},[environment.projectId,environment.roomId]);
+  useEffect(()=>{setItems([]);setLoadedRevision(null);setGeometryRevision(null);setSavedTenantId(null);setSelectedId(null);setMessage("");markClean();},[environment.projectId,environment.roomId]);
   const localGeometry=localRoomPolygon(environment.walls.map(w=>({a:{x:Math.round(w.x1*1000),y:Math.round(w.y1*1000)},b:{x:Math.round(w.x2*1000),y:Math.round(w.y2*1000)}})));
   const polygon=localGeometry?.polygon??null;
   const width=localGeometry?.widthMm??0;
@@ -52,6 +53,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
         const restored=snapshot?restoreFurnitureSnapshot(snapshot,{tenantId:data.tenantId,projectId:environment.projectId!,room:{id:environment.roomId,widthMm:width,depthMm:depth}}):null;
         if(cancelled)return;
         (restored?.furniture??[]).forEach(checkObstacles);
+        setGeometryRevision(typeof data.geometryRevision==="string"?data.geometryRevision:null);
         setSavedTenantId(data.tenantId);
         setLoadedRevision(restored?.revision??null);
         if(dirtyRef.current){setConflicted(true);setMessage("Alterações locais detectadas durante o carregamento; não serão sobrescritas.");return;}
@@ -95,6 +97,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
   async function save(){
     if(!ready||!environment.projectId){setMessage("É necessário salvar o projeto e ter geometria do ambiente.");return;}
     if(!savedTenantId){setMessage("O projeto ainda não foi carregado ou não está autorizado.");return;}
+    if(!geometryRevision){setMessage("Geometria BIM oficial ausente. Publique o ambiente arquitetônico antes de salvar móveis.");return;}
     setBusy(true);
     try{
       roomItems.forEach(checkObstacles);
@@ -102,7 +105,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
       const snapshot=createFurnitureSnapshot({tenantId:savedTenantId,
       projectId:environment.projectId,room:{id:environment.roomId,widthMm:width,depthMm:depth},
       revision:crypto.randomUUID(),createdAt:new Date().toISOString(),furniture:scopedItems});
-      const body={...snapshot,baseRevision:loadedRevision};
+      const body={...snapshot,baseRevision:loadedRevision,geometryRevision};
       const response=await fetch("/api/arqdor/projects/"+encodeURIComponent(environment.projectId)+"/furniture/"+encodeURIComponent(environment.roomId),
        {method:"PUT",headers:{"Content-Type":"application/json",...authHeaders()},credentials:"include",body:JSON.stringify(body)});
       if(response.status===409){setConflicted(true);throw Error("Conflito de revisão: outra aba alterou o ambiente. Suas alterações locais foram preservadas; exporte-as antes de recarregar.");}
@@ -124,6 +127,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
       const response=await fetch("/api/arqdor/projects/"+encodeURIComponent(environment.projectId)+"/furniture",{headers:authHeaders(),credentials:"include"});
       if(!response.ok)throw Error("Falha no carregamento ("+response.status+")");
       const data=await response.json();
+      setGeometryRevision(typeof data.geometryRevision==="string"?data.geometryRevision:null);
       const snapshot=data.furnitureSnapshots?.[environment.roomId];
       if(!data.tenantId)throw Error("Resposta sem identificação do tenant");
       if(!snapshot){setSavedTenantId(data.tenantId);setLoadedRevision(null);setItems(old=>old.filter(item=>item.roomId!==environment.roomId));setSelectedId(null);markClean();setMessage("Nenhum mobiliário salvo para este ambiente.");return;}
