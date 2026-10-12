@@ -33,3 +33,9 @@ Nenhum recurso real é ativado por esta entrega isolada.
 - `arch_marketplace_items` continua ligado ao mecanismo do Arqdor; não assumir que é a vitrine pública Praça.ai.
 - `Marketplace.tsx` exporta `MarketplaceV2`, que administra templates de segmento, não a vitrine pública Praça.ai.
 - Adapter de leitura `projectPracaSourceItem` adicionado para explicitar opt-in; backend e interface ainda não integrados.
+
+## Lote 04 — serviços
+- Confirmada a opção `vendeNoPracaAi` já presente em `servicos_tipos` e na tela `ServicosCadastros`.
+- As rotas de criação e alteração de serviço rejeitam opt-in com categoria em branco ou serviço desativado, mantendo o isolamento tenant.
+- Não foi criada nova vitrine ou categoria pública: a ocultação de categorias vazias ainda precisa da API efetiva do Praça.ai.
+- Pendência: taxonomia global canônica de serviços (categorias atuais são livres), revisão de aprovação/moderação, validação integral do payload de serviços e teste de integração.
