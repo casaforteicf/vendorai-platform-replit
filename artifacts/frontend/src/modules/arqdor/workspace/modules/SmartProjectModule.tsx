@@ -605,7 +605,7 @@ export default function SmartProjectModule({ arqState, onNavigate, projectId }: 
 
             {activeTab === "especificacoes" ? (
               <div className="min-w-0 overflow-hidden rounded-2xl bg-slate-950" style={{ minHeight: 540 }}>
-                <SmartSpecModule projectId={projectId ?? project.id ?? null} onOpenRender={() => onNavigate?.("renders")} />
+                <SmartSpecModule projectId={project.id ?? null} onOpenRender={() => onNavigate?.("renders")} />
               </div>
             ) : null}
 
