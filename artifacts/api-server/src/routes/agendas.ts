@@ -1,6 +1,6 @@
 import { createHmac, createHash, timingSafeEqual } from "node:crypto";
 import { Router, type IRouter } from "express";
-import { and, eq, or, inArray, isNull, gt } from "drizzle-orm";
+import { and, eq, or, inArray, isNull, gt, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { db, agendasTable, agendaAccessGrantsTable, calendarOauthStatesTable, usersTable, insertAgendaSchema, updateAgendaSchema } from "@workspace/db";
 import {
@@ -400,8 +400,11 @@ router.delete("/agendas/:id/access/:userId", async (req, res) => {
     return res.status(403).json({ error: "Admin access required" });
   }
   const userId = String(req.params.userId);
-  await db.delete(agendaAccessGrantsTable).where(and(eq(agendaAccessGrantsTable.agendaId, agenda.id),
-    eq(agendaAccessGrantsTable.tenantId, agenda.tenantId), eq(agendaAccessGrantsTable.userId, userId)));
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM agendas WHERE id = ${agenda.id} AND tenant_id = ${agenda.tenantId} FOR UPDATE`);
+    await tx.delete(agendaAccessGrantsTable).where(and(eq(agendaAccessGrantsTable.agendaId, agenda.id),
+      eq(agendaAccessGrantsTable.tenantId, agenda.tenantId), eq(agendaAccessGrantsTable.userId, userId)));
+  });
   await writeConfigurationAudit({ tenantId: agenda.tenantId, action: "excluir", entity: "agenda_access_grant", entityId: `${agenda.id}:${userId}`, before: { agendaId: agenda.id, userId }, actor: { userId: req.user.sub ?? null, ip: req.ip ?? null } });
   return res.status(204).send();
 });
