@@ -2,8 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { createCpuRenderJob } from "./render-worker-client";
 import type { DiffusePreviewOptions } from "./render-diffuse-preview";
 
-type Props={options:DiffusePreviewOptions};
-export function ExperimentalCpuRenderPanel({options}:Props){
+type Props={options:DiffusePreviewOptions; tenantId?:string; authToken?:string};
+export function ExperimentalCpuRenderPanel({options,tenantId,authToken}:Props){
  const canvas=useRef<HTMLCanvasElement>(null);
  const job=useRef<ReturnType<typeof createCpuRenderJob>|null>(null);
  const generation=useRef(0);
@@ -18,6 +18,7 @@ export function ExperimentalCpuRenderPanel({options}:Props){
  const [roughness,setRoughness]=useState(0.35);
  const [transmission,setTransmission]=useState(0);
  const [completed,setCompleted]=useState(false);
+ const [saving,setSaving]=useState(false);
  const [history,setHistory]=useState<Array<{image:string;label:string}>>([]);
  const [comparison,setComparison]=useState<string|null>(null);
  const [latestCompletedImage,setLatestCompletedImage]=useState<string|null>(null);
@@ -31,6 +32,32 @@ export function ExperimentalCpuRenderPanel({options}:Props){
   link.download="arqdor-previa-cpu-experimental.png";
   link.href=canvas.current.toDataURL("image/png");
   link.click();
+ };
+ const saveToLibrary=async()=>{
+  if(!completed||!canvas.current||job.current||saving||!tenantId||!authToken)return;
+  setSaving(true);
+  try{
+   const blob=await new Promise<Blob>((resolve,reject)=>{
+    canvas.current!.toBlob(value=>value?resolve(value):reject(Error("Não foi possível criar o PNG")),"image/png");
+   });
+   if(blob.size===0||blob.size>15*1024*1024)throw Error("Imagem fora do limite de 15 MB");
+   const root=`/api/tenants/${encodeURIComponent(tenantId)}/media/assets`;
+   const headers={Authorization:`Bearer ${authToken}`,"Content-Type":"application/json"};
+   const name=`arqdor-cpu-previa-${Date.now()}.png`;
+   const requested=await fetch(`${root}/request-upload`,{method:"POST",headers,body:JSON.stringify({name,contentType:"image/png",type:"image",size:blob.size})});
+   const prepared=await requested.json().catch(()=>({}));
+   if(!requested.ok||typeof prepared.uploadURL!=="string"||typeof prepared.objectPath!=="string")throw Error(prepared.error||"Falha ao preparar envio");
+   const uploaded=await fetch(prepared.uploadURL,{method:"PUT",headers:{"Content-Type":"image/png"},body:blob});
+   if(!uploaded.ok)throw Error("Falha ao transferir imagem");
+   const registered=await fetch(root,{method:"POST",headers,body:JSON.stringify({
+    type:"image",role:"output",source:"upload",storageUrl:prepared.objectPath,
+    originalFilename:name,mimeType:"image/png",fileSize:blob.size,
+    metadata:{folderPath:"Arqdor / Laboratório",generator:"arqdor-cpu-experimental",status:"experimental",published:false}
+   })});
+   if(!registered.ok){const error=await registered.json().catch(()=>({}));throw Error(error.error||"Falha ao registrar imagem");}
+   setStatus("Prévia experimental salva na Biblioteca de Mídias do tenant");
+  }catch(error){setStatus("Falha ao salvar: "+(error instanceof Error?error.message:String(error)));}
+  finally{setSaving(false);}
  };
  const start=()=>{
   stop();
@@ -89,6 +116,7 @@ export function ExperimentalCpuRenderPanel({options}:Props){
    <button type="button" onClick={start} className="rounded bg-slate-900 px-3 py-2 text-white">Renderizar prévia</button>
    <button type="button" onClick={stop} className="rounded border px-3 py-2">Cancelar</button>
    <button type="button" disabled={!completed||!!job.current} onClick={exportPng} className="rounded border px-3 py-2 disabled:opacity-40">Exportar PNG local</button>
+   {tenantId && authToken && <button type="button" disabled={!completed||!!job.current||saving} onClick={()=>void saveToLibrary()} className="rounded border px-3 py-2 disabled:opacity-40">{saving?"Salvando...":"Salvar na Biblioteca (experimental)"}</button>}
   </div>
   <div role="status" className="text-xs text-slate-600">{status} · {progress}%</div>
   {history.length>0 && <div className="space-y-2">
