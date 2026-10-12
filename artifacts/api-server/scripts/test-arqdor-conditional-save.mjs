@@ -56,3 +56,17 @@ test("member save locks project before conditional update", () => {
   assert.match(code, /\.for\("update"\)/);
   assert.match(code, /return tx\.update\(arqdorWorkspaceProjectsTable\)/);
 });
+
+test("MULTI-08 legacy project reads/writes and admin CAS cannot bypass enabled ACL", () => {
+  for (const route of [
+    'router.get("/arqdor/projects/:id", authenticate',
+    'router.put("/arqdor/projects/:id", authenticate',
+    'router.put("/arqdor/projects/:id/conditional", authenticate',
+  ]) {
+    const start = source.indexOf(route);
+    assert.ok(start >= 0, route);
+    const beginning = source.slice(start, start + 500);
+    assert.match(beginning, /ARQDOR_PROJECT_ACL_ENABLED === "true"/);
+    assert.match(beginning, /status\(403\)/);
+  }
+});
