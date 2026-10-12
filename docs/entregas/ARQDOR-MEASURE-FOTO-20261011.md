@@ -242,3 +242,6 @@ Implementação disponível apenas nesta branch; os comandos oficiais `pnpm exec
 
 ## Lote 34 - relatorio de impressao
 Componente MeasurementPrintReport integrado ao checklist. Inclui medidas, diferencas, aprovadores e contagem de fotos. Fotos privadas nao sao impressas. Nao equivale a aceite assinado. Testes de compilacao e browser ainda nao executados. Sem publicacao.
+
+## Lote 35 - fotografias autorizadas no relatorio tecnico
+Componente de impressao pode renderizar fotos com URLs temporarias retornadas pela API autenticada, sem exibir caminhos internos como URLs publicas. A tela recebeu acao Preparar fotos para PDF que consulta fotos de cada item autorizado antes da impressao. Ausencia de URL exibe indicador sem expor dados privados. Pendentes: validacao de carregamento completo antes de imprimir, expiracao de URLs, testes de compilacao e impressao, assinatura e aceite formal. Sem homologacao ou deploy.
