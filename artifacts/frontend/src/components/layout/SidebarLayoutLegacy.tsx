@@ -15,6 +15,7 @@ import {
   Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle, WalletCards, Camera, KanbanSquare, ClipboardCheck, FileCheck, UserCog, Instagram,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ui20ServiceForPath } from "@/lib/ui20ServiceRoutes";
 import { Button } from "@/components/ui/button";
 import logoFull from "/logo-full-light.svg";
 import { applyTenantTheme, resetTenantTheme } from "@/lib/tenantTheme";
@@ -835,7 +836,8 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
         { name: "Arqdor", match: ["/arch"], links: arqdorVisible ? [...verticalNav.filter((item) => item.href.startsWith("/arch"))] : [] },
         { name: "Configurações", match: ["/configuracoes", "/usuarios", "/organizacao"], links: administrationNav },
       ];
-      const selected = serviceGroups.find((group) => group.match.some((prefix) => path === prefix || (prefix !== "/" && path.startsWith(prefix + "/")))) ?? serviceGroups[0];
+      const detected = ui20ServiceForPath(path);
+      const selected = serviceGroups.find((group) => group.name === ({home:"Início",crm:"CRM",marketing:"Marketing",erp:"ERP",ia:"IA",marketplace:"Marketplace",arqdor:"Arqdor",settings:"Configurações",support:"Suporte"} as Record<string,string>)[detected ?? "home"]) ?? serviceGroups[0];
       const unique = selected.links.filter((item, index, all) => all.findIndex((other) => other.href === item.href) === index);
       return (
         <nav aria-label={`Menu interno de ${selected.name}`} className="space-y-1" data-ui20-context-menu={selected.name}>
