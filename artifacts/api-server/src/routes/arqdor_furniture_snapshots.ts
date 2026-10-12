@@ -3,6 +3,7 @@ import {z} from "zod/v4";
 import {db,arqdorWorkspaceProjectsTable} from "@workspace/db";
 import {and,eq,sql} from "drizzle-orm";
 import {authenticate} from "../middlewares/auth.js";
+import {validateBimFurnitureFootprints} from "./arqdor_furniture_bim_geometry.js";
 /** Only mount under the globally authenticated API router. No whole-context overwrite. */
 const router=Router();
 router.use("/arqdor/projects/:id/furniture",authenticate);
@@ -57,10 +58,23 @@ router.put("/arqdor/projects/:id/furniture/:roomId",async(req:Request,res:Respon
  const normalized={...data,tenantId,furniture:data.furniture.map(f=>({...f,tenantId,parameters:{...f.parameters,tenantId},parts:f.parts.map(p=>({...p,tenantId}))}))};
  try{
   const expected=data.baseRevision??null;
+  const [project]=await db.select({contextBlob:arqdorWorkspaceProjectsTable.contextBlob}).from(arqdorWorkspaceProjectsTable)
+   .where(and(eq(arqdorWorkspaceProjectsTable.id,projectId),eq(arqdorWorkspaceProjectsTable.tenantId,tenantId))).limit(1);
+  if(!project)return res.status(404).json({error:"Projeto não encontrado"});
+  const context=project.contextBlob;
+  if(!context||typeof context!=="object"||Array.isArray(context))return res.status(409).json({error:"Contexto do projeto inválido"});
+  const authoritative=(context as Record<string,unknown>).furnitureGeometryV1;
+  let geometryRevision:string|null=null;
+  if(authoritative!==undefined){
+   const validation=validateBimFurnitureFootprints(authoritative,roomId,data.furniture.map(f=>f.bounds));
+   if(!validation.ok)return res.status(422).json({error:"Geometria BIM rejeitou posicionamento",reason:validation.reason});
+   geometryRevision=validation.revision;
+  }
   const records=await db.update(arqdorWorkspaceProjectsTable)
    .set({contextBlob:sql`jsonb_set(jsonb_set(COALESCE(${arqdorWorkspaceProjectsTable.contextBlob}, '{}'::jsonb), '{furnitureSnapshots}', CASE WHEN jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots')='object' THEN ${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots' ELSE '{}'::jsonb END, true), ARRAY['furnitureSnapshots', ${roomId}]::text[], ${JSON.stringify(normalized)}::jsonb, true)`,updatedAt:new Date()})
    .where(and(eq(arqdorWorkspaceProjectsTable.id,projectId),eq(arqdorWorkspaceProjectsTable.tenantId,tenantId),
     sql`jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob}) = 'object'`,
+    sql`(${geometryRevision}::text IS NULL AND ${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureGeometryV1' IS NULL OR ${arqdorWorkspaceProjectsTable.contextBlob} #>> '{furnitureGeometryV1,revision}' = ${geometryRevision})`,
     sql`(jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots') IS NULL OR jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots') = 'object')`,
     sql`(${arqdorWorkspaceProjectsTable.contextBlob} #>> ARRAY['furnitureSnapshots', ${roomId}, 'revision']::text[]) IS NOT DISTINCT FROM ${expected}`)).returning({id:arqdorWorkspaceProjectsTable.id});
   if(!records.length)return res.status(409).json({error:"Projeto não encontrado ou mobiliário alterado por outro usuário; recarregue antes de salvar"});
