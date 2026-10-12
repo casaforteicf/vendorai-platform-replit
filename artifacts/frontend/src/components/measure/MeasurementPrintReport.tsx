@@ -7,8 +7,8 @@ type ReportItem = {
  fotos?:string[];
  divergenceResolution?: {reason:string;approvedBy:string;approvedAt:string}|null;
 };
-export default function MeasurementPrintReport({name,revision,toleranceMm,status,items,photoAccess}:{
- name:string;revision:number;toleranceMm:number;status:string;items:ReportItem[];photoAccess?:Record<string,Array<{storageUrl:string;accessUrl:string}>>;
+export default function MeasurementPrintReport({name,revision,toleranceMm,status,items,photoAccess,acceptance}:{
+ name:string;revision:number;toleranceMm:number;status:string;items:ReportItem[];photoAccess?:Record<string,Array<{storageUrl:string;accessUrl:string}>>;acceptance?:{signerName:string;acceptedAt:string;signerUserId:string;technicalNote?:string|null}|null;
 }) {
  return <section className="hidden print:block space-y-3 text-sm">
   <h2 className="text-xl font-semibold">Relatório técnico de conferência — {name}</h2>
@@ -29,6 +29,7 @@ export default function MeasurementPrintReport({name,revision,toleranceMm,status
    })}
    {item.divergenceResolution && <p>Resolução: {item.divergenceResolution.reason} · Aprovador: {item.divergenceResolution.approvedBy} · Data: {item.divergenceResolution.approvedAt}</p>}
   </div>)}
-  <p>Este relatório não substitui assinatura e aceite técnico formal.</p>
+  {acceptance && <div className="border-t pt-3"><p className="font-semibold">Declaração de aceite técnico autenticado</p><p>Responsável: {acceptance.signerName} · Registro: {acceptance.acceptedAt} · Usuário: {acceptance.signerUserId}</p><p>{acceptance.technicalNote ?? "Sem observações adicionais."}</p></div>}
+  <p>Este registro autenticado não equivale a assinatura digital certificada nem substitui aprovações legais aplicáveis.</p>
  </section>;
 }
