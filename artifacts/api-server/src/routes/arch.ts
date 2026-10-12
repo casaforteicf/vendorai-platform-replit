@@ -8720,12 +8720,17 @@ router.put("/arqdor/projects/:id", authenticate, async (req, res) => {
     return res.status(400).json({ error: "Corpo inválido: deve ser um objeto JSON." });
   }
 
+  // Browser project saves may not replace furniture snapshots or server-authored BIM data.
+  const safeContext = { ...contextBlob } as Record<string,unknown>;
+  delete safeContext.furnitureSnapshots;
+  delete safeContext.furnitureGeometryV1;
+
   const [upserted] = await db
     .insert(arqdorWorkspaceProjectsTable)
-    .values({ id, tenantId: tid, contextBlob, updatedAt: new Date() })
+    .values({ id, tenantId: tid, contextBlob: safeContext, updatedAt: new Date() })
     .onConflictDoUpdate({
       target: [arqdorWorkspaceProjectsTable.id, arqdorWorkspaceProjectsTable.tenantId],
-      set: { contextBlob, updatedAt: new Date() },
+      set: { contextBlob: sql`(${JSON.stringify(safeContext)}::jsonb || jsonb_strip_nulls(jsonb_build_object(\'furnitureSnapshots\', ${arqdorWorkspaceProjectsTable.contextBlob}->\'furnitureSnapshots\', \'furnitureGeometryV1\', ${arqdorWorkspaceProjectsTable.contextBlob}->\'furnitureGeometryV1\')))`, updatedAt: new Date() },
     })
     .returning();
 
