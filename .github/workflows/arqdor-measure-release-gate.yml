@@ -1,0 +1,36 @@
+name: Arqdor Measure release gate
+on:
+  pull_request:
+    paths:
+      - 'artifacts/frontend/src/components/measure/**'
+      - 'artifacts/frontend/src/pages/OperationalMeasurementChecklist.tsx'
+      - 'artifacts/api-server/src/routes/operational_checklists.ts'
+      - 'lib/db/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/arqdor-measure-release-gate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  measure-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck workspace
+        run: pnpm run typecheck
+      - name: Measure regression suite
+        run: pnpm --filter @workspace/frontend exec vitest run src/components/measure
+      - name: Frontend production build
+        run: pnpm --filter @workspace/frontend run build
+      - name: API server production build
+        run: pnpm --filter @workspace/api-server run build
