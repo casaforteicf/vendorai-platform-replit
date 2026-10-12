@@ -288,3 +288,6 @@ PATCH de itens aceita expectedUpdatedAt e devolve CHECKLIST_CONFLICT quando a ve
 - Apos POST de fotografia autenticada, cliente recarrega o checklist atual para obter updatedAt do servidor antes de persistir cotas.
 - Ref de versao mais recente evita uso de closure desatualizada nas operacoes encadeadas de upload/medicao e atualiza quando PATCH retorna novo checklist.
 - Lista de acesso a fotos evita duplicar a mesma storageUrl no estado local. Persistem pendentes testes TypeScript/build, fluxo real online/offline e concorrencia em varios dispositivos. Sem merge/deploy.
+
+## Lote 50 — recuperação de conflito entre dispositivos (12/10/2026)
+Ao receber erro de concorrencia do servidor, editor de elementos tecnicos mantém rascunho IndexedDB e bloqueia novas tentativas de sincronizacao na mesma instancia. Interface mostra alerta e permite exportar JSON local para comparacao manual. Nao faz merge automatico nem libera sobrescrita de medidas alheias. Para resolver, recarregar versao do servidor, recuperar copia local e reconciliar conscientemente. Pendente implementacao de diff/merge assistido, testes de compilacao e integracao. Sem publicacao.
