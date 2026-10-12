@@ -94,7 +94,7 @@ export function RenderStudioRightPanel({
             ))}
           </div>
 
-          <div className="arqdor-properties-scroll" style={{ flex: 1, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div id="arqdor-render-tab-content" role="tabpanel" aria-labelledby={`arqdor-render-tab-${tab}`} className="arqdor-properties-scroll" style={{ flex: 1, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
 
             {/* P2-15: Camadas — dados reais */}
             {tab === "camadas" && (
