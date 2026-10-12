@@ -201,7 +201,9 @@ async function updateSpecObject(id: string, tId: string | null, payload: Partial
   const values: unknown[] = [];
   const payloadRecord = payload as Record<string, unknown>;
   const approvalSensitiveFields = new Set([
-    "quantity", "unit",
+    "quantity", "unit", "quantitySource",
+    "sourceObjectId", "sourceType", "projectRevision", "revisionImpact", "geometryHash",
+    "measurementSource", "measurementRevision",
     "catalogProductId", "catalogMaterialId", "catalogCode",
     "manufacturerId", "supplierId",
     "productName", "materialName", "manufacturerName", "supplierName",
@@ -225,7 +227,7 @@ async function updateSpecObject(id: string, tId: string | null, payload: Partial
   if (payloadRecord.status !== undefined) {
     const nextStatus = invalidatesTechnicalApproval
       && current.technical_approval_status === "approved"
-      && payloadRecord.status === "approved"
+      && (payloadRecord.status === "approved" || payloadRecord.status === "sent-to-budget")
         ? "specified"
         : payloadRecord.status;
     values.push(nextStatus);
@@ -240,7 +242,7 @@ async function updateSpecObject(id: string, tId: string | null, payload: Partial
     sets.push("technical_approved_by = NULL");
     sets.push("technical_approval_note = NULL");
     if (payloadRecord.status === undefined) {
-      sets.push("status = CASE WHEN status = 'approved' THEN 'specified' ELSE status END");
+      sets.push("status = CASE WHEN status IN ('approved', 'sent-to-budget') THEN 'specified' ELSE status END");
     }
   }
 
