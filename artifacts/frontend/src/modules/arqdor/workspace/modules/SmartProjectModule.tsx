@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { SmartSpecModule } from "./SmartSpecModule";
 
 type ProjectLike = {
   id?: string;
@@ -320,7 +321,10 @@ function EmptyProject({ onNavigate }: { onNavigate?: (module: string) => void })
 }
 
 export default function SmartProjectModule({ arqState, onNavigate }: SmartProjectModuleProps) {
-  const [activeTab, setActiveTab] = useState<"overview" | "ambientes" | "timeline" | "briefing">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "ambientes" | "timeline" | "briefing" | "especificacoes">(() =>
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tab") === "especificacoes"
+      ? "especificacoes" : "overview"
+  );
 
   const project = useMemo(() => getCurrentProject(arqState), [arqState]);
   const progress = useMemo(() => getProjectProgress(project), [project]);
@@ -395,6 +399,7 @@ export default function SmartProjectModule({ arqState, onNavigate }: SmartProjec
               {[
                 ["overview", "Visão geral"],
                 ["ambientes", "Ambientes"],
+                ["especificacoes", "Especificações"],
                 ["timeline", "Timeline"],
                 ["briefing", "Briefing"],
               ].map(([key, label]) => (
@@ -413,6 +418,12 @@ export default function SmartProjectModule({ arqState, onNavigate }: SmartProjec
                 </button>
               ))}
             </nav>
+
+            {activeTab === "especificacoes" ? (
+              <div className="min-w-0 overflow-hidden rounded-2xl bg-slate-950" style={{ minHeight: 540 }}>
+                <SmartSpecModule projectId={project.id ?? null} onOpenRender={() => onNavigate?.("renders")} />
+              </div>
+            ) : null}
 
             {activeTab === "overview" ? (
               <div className="grid gap-4 md:grid-cols-2">
