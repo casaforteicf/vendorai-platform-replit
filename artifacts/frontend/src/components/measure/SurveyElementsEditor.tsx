@@ -106,7 +106,7 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
         throw new Error("Recupere a cópia offline antes de sincronizar.");
       }
       // Persist first: network failures, HTTP conflicts and tab closures must not lose survey edits.
-      const revisionId = await queueSurvey(storageKey, items);
+      const revisionId = await queueSurvey(storageKey, items, pending?.reconciliation);
       setOfflinePending(true);
       if (!navigator.onLine) {
         return false;
@@ -158,7 +158,8 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
     const reconciled = next.map(entry => entry.wallId && changedWalls.has(entry.wallId) ? { ...entry, verified: false } : entry);
     if (!window.confirm("Aplicar a mesclagem revisada? Elementos alterados perderão a conferência técnica e precisarão ser conferidos novamente.")) return;
     try {
-      await queueSurvey(storageKey, reconciled);
+      const reconciliation = { recordedAt: new Date().toISOString(), choices: Object.fromEntries(changed.map(id => [id, mergeChoices[id]])) as Record<string, "local" | "remote">, changedIds: changed, localCount: items.length, serverCount: remoteItems.length };
+      await queueSurvey(storageKey, reconciled, reconciliation);
       setItems(reconciled);
       setDirty(true);
       setReviewConfirmed(false);
