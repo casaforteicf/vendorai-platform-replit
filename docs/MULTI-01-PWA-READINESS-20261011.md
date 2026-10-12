@@ -197,3 +197,11 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - O SELECT exige membership owner/editor/viewer, conta ativa, identidade humana e tenant compatível; sem acesso retorna 404 sem expor conteúdo. Resposta sem cache.
 - Teste estático do contrato adicionado; ainda não executado. Dependências: migrações 024/025, testes PostgreSQL, controle de concorrência para leitura/revogação, integração com frontend e decisão sobre o comportamento do editor durante habilitação da flag.
 - PR draft; nenhuma publicação ou alteração no banco oficial.
+
+
+## MULTI-08.3 — Integração experimental do editor com a ACL
+- `WorkspaceContext.tsx` agora possui o gate frontend `VITE_MULTI08_PROJECT_ACL=true`, **desligado por padrão**. Sem a flag, permanece o GET/PUT legado.
+- Sob o gate, o carregamento usa `GET /arqdor/projects/:id/snapshot`, verifica ID/revision/contextBlob e utiliza `PUT /arqdor/projects/:id/member-conditional` passando a revisão base do snapshot ou do último save reconhecido. Não apaga o ID local em 404 da ACL; conflitos 409 são expostos ao usuário.
+- Criado teste estático `artifacts/frontend/scripts/test-arqdor-acl-editor.mjs`; **ainda sem execução comprovada**. Este fluxo não equivale a offline completo.
+- **Bloqueios antes de ativar:** migrações 024/025 e owner provisionado; ciclo de vida de revisões ao alternar/criar projeto; fila de alterações durante um envio em voo; revisão do comportamento do editor sob falhas; limites e privacidade do IndexedDB; testes React/build, multiaba/multissessão, PostgreSQL, Contabo e UX de recuperação. Flag backend e frontend devem permanecer desligadas; no estado atual a abertura de projetos sem membership seria negada.
+- PR draft, sem merge, homologação ou deploy.
