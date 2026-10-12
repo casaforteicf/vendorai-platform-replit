@@ -120,3 +120,26 @@
 .arqdor-studio-ui .arqdor-render-step:disabled {opacity:.35;cursor:not-allowed;}
 .arqdor-studio-ui .arqdor-render-step[data-completed="true"]:not([aria-current="step"]) {color:var(--arq2-text);}
 @media(pointer:coarse){.arqdor-studio-ui .arqdor-render-step{min-height:44px;}}
+
+/* UI-15: technical form inputs in the Render properties inspector. */
+.arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-render-tech-field {
+  background:#20282A !important;
+  color:#EEF2EF !important;
+  border:1px solid #3A4649 !important;
+  border-radius:6px !important;
+  font:400 12px/1.45 Inter,"IBM Plex Sans","Segoe UI",sans-serif !important;
+  min-height:32px;
+  padding:6px 8px;
+  max-width:100%;
+}
+.arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-render-tech-field::placeholder {
+  color:#AAB8B5;
+  opacity:1;
+}
+.arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-render-tech-field:focus-visible {
+  outline:2px solid #4AC59A !important;
+  outline-offset:2px;
+}
+@media(pointer:coarse){
+  .arqdor-studio-ui .arqdor-legacy-right-panel :is(input,select).arqdor-render-tech-field {min-height:44px;}
+}
