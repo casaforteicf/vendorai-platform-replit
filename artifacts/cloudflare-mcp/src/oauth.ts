@@ -99,6 +99,18 @@ export function authorized(req: IncomingMessage): boolean {
   const claims = read(token);
   return claims?.type === "access" && claims.iss === issuer() && claims.aud === resource() && claims.scope === SCOPE && claims.instance === instance() && claims.exp > now() && !revokedFamilies.has(claims.family);
 }
+// A signed OAuth client binding, never the caller-supplied agent field.
+// Legacy master MCP_ACCESS_TOKEN has no individual identity and is denied here.
+export function verifiedOperatorClient(req: IncomingMessage): string | null {
+  const token = req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
+  if (!token || !key() || equal(token, key())) return null;
+  const claims = read(token);
+  if (claims?.type !== "access" || claims.iss !== issuer() ||
+      claims.aud !== resource() || claims.scope !== SCOPE ||
+      claims.instance !== instance() || claims.exp <= now() ||
+      revokedFamilies.has(claims.family) || typeof claims.client !== "string") return null;
+  return createHash("sha256").update(claims.client).digest("hex");
+}
 export function challenge(): string {
   return `Bearer resource_metadata="${issuer()}/.well-known/oauth-protected-resource/mcp", scope="${SCOPE}"`;
 }

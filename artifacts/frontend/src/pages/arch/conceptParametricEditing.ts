@@ -38,7 +38,7 @@ export function clampWallToLot<T extends EditableWall>(wall: T, lotWidth: number
     x2: Math.max(0, Math.min(lotWidth, Number(wall.x2) || 0)),
     y1: Math.max(0, Math.min(lotDepth, Number(wall.y1) || 0)),
     y2: Math.max(0, Math.min(lotDepth, Number(wall.y2) || 0)),
-    thickness: Math.max(0.08, Math.min(0.5, Number(wall.thickness) || 0.14)),
+    thickness: Math.max(0.08, Math.min(0.5, Number.isFinite(Number(wall.thickness)) && Number(wall.thickness) > 0 ? Number(wall.thickness) : 0.15)),
   };
 }
 

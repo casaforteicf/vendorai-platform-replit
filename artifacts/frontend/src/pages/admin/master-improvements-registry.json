@@ -1,0 +1,2253 @@
+{
+  "schema_version": 1,
+  "lot": "MASTER-20261010",
+  "updated": "2026-10-10",
+  "notice": "Status verification_required does not assert no implementation; code_in_pr does not mean homologated or deployed.",
+  "items": [
+    {
+      "id": "CRM-01",
+      "module": "CRM",
+      "title": "Cadastro PF/PJ e envolvidos",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/3099"
+    },
+    {
+      "id": "CRM-02",
+      "module": "CRM",
+      "title": "Casal com duas qualificações",
+      "status": "code_in_pr",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/pull/3428"
+    },
+    {
+      "id": "CRM-03",
+      "module": "CRM",
+      "title": "Múltiplos contatos do negócio",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "CRM-04",
+      "module": "CRM",
+      "title": "Múltiplos negócios por cliente",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "CRM-05",
+      "module": "CRM",
+      "title": "Responsável obrigatório",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "CRM-06",
+      "module": "CRM",
+      "title": "Empresa representante responsável",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "CRM-07",
+      "module": "CRM",
+      "title": "Comissão representante privada",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "CRM-08",
+      "module": "CRM",
+      "title": "Exclusão administrativa soft delete",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "CRM-09",
+      "module": "CRM",
+      "title": "Não Lead no aquecimento",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "CRM-10",
+      "module": "CRM",
+      "title": "Classificações configuráveis",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "CRM-11",
+      "module": "CRM",
+      "title": "Devolução orçamento qualificado",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "CRM-12",
+      "module": "CRM",
+      "title": "Movimentação de etapas",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "CRM-13",
+      "module": "CRM",
+      "title": "Tarefas automáticas por etapa",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "CRM-14",
+      "module": "CRM",
+      "title": "Qualificação IA decisor",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "CRM-15",
+      "module": "CRM",
+      "title": "Nome contato agenda WhatsApp",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "CRM-16",
+      "module": "CRM",
+      "title": "Histórico unificado",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "CRM-17",
+      "module": "CRM",
+      "title": "Pipeline só negócios ativos",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "CRM-18",
+      "module": "CRM",
+      "title": "Edição rápida de responsável",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "CRM-19",
+      "module": "CRM",
+      "title": "Anexos unificados",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "CRM-20",
+      "module": "CRM",
+      "title": "Pastas protegidas por senha",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/3122"
+    },
+    {
+      "id": "CRM-21",
+      "module": "CRM",
+      "title": "Relacionamento negócio orçamento execução",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "CRM-22",
+      "module": "CRM",
+      "title": "Filtros e busca CRM",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "CRM-23",
+      "module": "CRM",
+      "title": "Recuperação de excluídos",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "CRM-24",
+      "module": "CRM",
+      "title": "Privacidade conversas",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ORC-01",
+      "module": "ORC",
+      "title": "Orçamento universal",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ORC-02",
+      "module": "ORC",
+      "title": "Modelo CasaForte",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ORC-03",
+      "module": "ORC",
+      "title": "Composições de produtos",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ORC-04",
+      "module": "ORC",
+      "title": "Unidades perdas rendimento",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ORC-05",
+      "module": "ORC",
+      "title": "Múltiplos e fracionamento",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ORC-06",
+      "module": "ORC",
+      "title": "Importar orçamento PDF",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/3150"
+    },
+    {
+      "id": "ORC-07",
+      "module": "ORC",
+      "title": "Versionamento R1+",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ORC-08",
+      "module": "ORC",
+      "title": "Link único proposta",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ORC-09",
+      "module": "ORC",
+      "title": "Inclusões e opcionais",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ORC-10",
+      "module": "ORC",
+      "title": "Cronograma físico-financeiro",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ORC-11",
+      "module": "ORC",
+      "title": "Entrada distribuída",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ORC-12",
+      "module": "ORC",
+      "title": "Etapas simultâneas",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ORC-13",
+      "module": "ORC",
+      "title": "Execução parcial",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ORC-14",
+      "module": "ORC",
+      "title": "Catálogo material versus produto",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ORC-15",
+      "module": "ORC",
+      "title": "Isolamento por vertical",
+      "status": "code_in_pr",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/pull/3437"
+    },
+    {
+      "id": "ORC-16",
+      "module": "ORC",
+      "title": "Cotação fornecedores",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ORC-17",
+      "module": "ORC",
+      "title": "Comissão arquitetos",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ORC-18",
+      "module": "ORC",
+      "title": "Proposta a contrato e pedido",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "OBR-01",
+      "module": "OBR",
+      "title": "Pipeline de execução",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "OBR-02",
+      "module": "OBR",
+      "title": "Execução parcial",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "OBR-03",
+      "module": "OBR",
+      "title": "Diário de obra",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "OBR-04",
+      "module": "OBR",
+      "title": "Cronograma físico",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "OBR-05",
+      "module": "OBR",
+      "title": "Checklist instalação",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "OBR-06",
+      "module": "OBR",
+      "title": "Checklist transporte",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "OBR-07",
+      "module": "OBR",
+      "title": "Conferência de medidas",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/2805"
+    },
+    {
+      "id": "OBR-08",
+      "module": "OBR",
+      "title": "Aceite assinado",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "OBR-09",
+      "module": "OBR",
+      "title": "Assistência com pedido",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "OBR-10",
+      "module": "OBR",
+      "title": "Importação de pedido legado",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "OBR-11",
+      "module": "OBR",
+      "title": "OS modular por etapa",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/3119"
+    },
+    {
+      "id": "OBR-12",
+      "module": "OBR",
+      "title": "Relatório vivo",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "OBR-13",
+      "module": "OBR",
+      "title": "Link único de acompanhamento",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "OBR-14",
+      "module": "OBR",
+      "title": "Preenchimento colaborativo",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "OBR-15",
+      "module": "OBR",
+      "title": "Garantia e pós-venda",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "OBR-16",
+      "module": "OBR",
+      "title": "Anexos financeiros",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-01",
+      "module": "ARQ",
+      "title": "BIM único",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-02",
+      "module": "ARQ",
+      "title": "Acesso direto ao editor",
+      "status": "code_in_pr",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/pull/3423"
+    },
+    {
+      "id": "ARQ-03",
+      "module": "ARQ",
+      "title": "Planta 2D precisa",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-04",
+      "module": "ARQ",
+      "title": "Sincronização 2D 3D fachada",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-05",
+      "module": "ARQ",
+      "title": "Espessura 15cm configurável",
+      "status": "code_in_pr",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/pull/3438"
+    },
+    {
+      "id": "ARQ-06",
+      "module": "ARQ",
+      "title": "Interseções ortogonais",
+      "status": "code_in_pr",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/pull/3440"
+    },
+    {
+      "id": "ARQ-07",
+      "module": "ARQ",
+      "title": "Esquadrias paramétricas",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-08",
+      "module": "ARQ",
+      "title": "Vãos geométricos reais",
+      "status": "code_in_pr",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/pull/3441"
+    },
+    {
+      "id": "ARQ-09",
+      "module": "ARQ",
+      "title": "Validador geométrico",
+      "status": "code_in_pr",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/pull/3442"
+    },
+    {
+      "id": "ARQ-10",
+      "module": "ARQ",
+      "title": "Malhas trianguladas",
+      "status": "code_in_pr",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/pull/3443"
+    },
+    {
+      "id": "ARQ-11",
+      "module": "ARQ",
+      "title": "Lajes paramétricas",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-12",
+      "module": "ARQ",
+      "title": "Escadas paramétricas",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-13",
+      "module": "ARQ",
+      "title": "Coberturas paramétricas",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-14",
+      "module": "ARQ",
+      "title": "Multiplos pavimentos",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-15",
+      "module": "ARQ",
+      "title": "Posicionamento preciso",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-16",
+      "module": "ARQ",
+      "title": "Biblioteca mobiliário",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-17",
+      "module": "ARQ",
+      "title": "Circulação ergonomia",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-18",
+      "module": "ARQ",
+      "title": "Ventilação e iluminação",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-19",
+      "module": "ARQ",
+      "title": "Validações arquitetônicas",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-20",
+      "module": "ARQ",
+      "title": "Implantação no terreno",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-21",
+      "module": "ARQ",
+      "title": "Plantas por IA",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-22",
+      "module": "ARQ",
+      "title": "Fachada fiel à planta",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-23",
+      "module": "ARQ",
+      "title": "Importação croqui planta",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-24",
+      "module": "ARQ",
+      "title": "Calibração C9 C10 C11",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-25",
+      "module": "ARQ",
+      "title": "Importação IFC DXF SKP",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-26",
+      "module": "ARQ",
+      "title": "Exportação IFC",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-27",
+      "module": "ARQ",
+      "title": "Importação GLB",
+      "status": "code_in_pr",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/pull/3422"
+    },
+    {
+      "id": "ARQ-28",
+      "module": "ARQ",
+      "title": "Biblioteca plantas",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-29",
+      "module": "ARQ",
+      "title": "Biblioteca fachadas",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-30",
+      "module": "ARQ",
+      "title": "Biblioteca projetos completos",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-31",
+      "module": "ARQ",
+      "title": "Quadro de esquadrias",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-32",
+      "module": "ARQ",
+      "title": "Quantitativos por ambiente",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-33",
+      "module": "ARQ",
+      "title": "Orçamento arquitetônico",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-34",
+      "module": "ARQ",
+      "title": "Persistência e versões",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-35",
+      "module": "ARQ",
+      "title": "Mobile caminhada",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ARQ-36",
+      "module": "ARQ",
+      "title": "Projeto inteligente real",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/1619"
+    },
+    {
+      "id": "REN-01",
+      "module": "REN",
+      "title": "Fidelidade geométrica",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "REN-02",
+      "module": "REN",
+      "title": "Motor GPT Image 2",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "REN-03",
+      "module": "REN",
+      "title": "Três imagens por ação",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "REN-04",
+      "module": "REN",
+      "title": "Histórico render",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "REN-05",
+      "module": "REN",
+      "title": "Melhoria sem distorção",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "REN-06",
+      "module": "REN",
+      "title": "Troca materiais",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "REN-07",
+      "module": "REN",
+      "title": "Luz natural LED",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "REN-08",
+      "module": "REN",
+      "title": "Estilos arquitetônicos",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "REN-09",
+      "module": "REN",
+      "title": "Layout Render Studio",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "REN-10",
+      "module": "REN",
+      "title": "Vídeo de projeto",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "REN-11",
+      "module": "REN",
+      "title": "Biblioteca automática",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "REN-12",
+      "module": "REN",
+      "title": "Consumo e tentativas",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MEP-01",
+      "module": "MEP",
+      "title": "Contrato BIM MEP",
+      "status": "code_in_pr",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/pull/3425"
+    },
+    {
+      "id": "MEP-02",
+      "module": "MEP",
+      "title": "Redes nós e segmentos",
+      "status": "code_in_pr",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/pull/3426"
+    },
+    {
+      "id": "MEP-03",
+      "module": "MEP",
+      "title": "Elétrica",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MEP-04",
+      "module": "MEP",
+      "title": "Hidráulica",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MEP-05",
+      "module": "MEP",
+      "title": "Esgoto pluvial",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MEP-06",
+      "module": "MEP",
+      "title": "Climatização",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MEP-07",
+      "module": "MEP",
+      "title": "Energia solar",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MEP-08",
+      "module": "MEP",
+      "title": "Automação e cabeamento",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MEP-09",
+      "module": "MEP",
+      "title": "Piso aquecido",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MEP-10",
+      "module": "MEP",
+      "title": "Compatibilização MEP arquitetura",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MEP-11",
+      "module": "MEP",
+      "title": "Quantitativos MEP",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MEP-12",
+      "module": "MEP",
+      "title": "Memorial técnico",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-01",
+      "module": "IA",
+      "title": "Gestores proativos",
+      "status": "code_in_pr",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/pull/3435"
+    },
+    {
+      "id": "IA-02",
+      "module": "IA",
+      "title": "Rotinas e eventos",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-03",
+      "module": "IA",
+      "title": "Triagem tenant plataforma",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-04",
+      "module": "IA",
+      "title": "Jarvis contato proativo",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-05",
+      "module": "IA",
+      "title": "Aprovação de ações",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-06",
+      "module": "IA",
+      "title": "Gestor CRM",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-07",
+      "module": "IA",
+      "title": "Gestor Comercial",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-08",
+      "module": "IA",
+      "title": "Gestor Financeiro",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-09",
+      "module": "IA",
+      "title": "Gestor Marketing",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-10",
+      "module": "IA",
+      "title": "Gestor Omnichannel",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-11",
+      "module": "IA",
+      "title": "Gestor Obras",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-12",
+      "module": "IA",
+      "title": "Gestor Arqdor",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-13",
+      "module": "IA",
+      "title": "Gestor Segurança",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-14",
+      "module": "IA",
+      "title": "Auditoria 24h",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-15",
+      "module": "IA",
+      "title": "SDR",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-16",
+      "module": "IA",
+      "title": "Closer",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-17",
+      "module": "IA",
+      "title": "Cobrança",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-18",
+      "module": "IA",
+      "title": "Suporte",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-19",
+      "module": "IA",
+      "title": "Agendamento",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-20",
+      "module": "IA",
+      "title": "Pós-venda",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-21",
+      "module": "IA",
+      "title": "Browser Agent próprio",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-22",
+      "module": "IA",
+      "title": "Sessão Vendi durável",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/3430"
+    },
+    {
+      "id": "IA-23",
+      "module": "IA",
+      "title": "Consulta CRM MCP",
+      "status": "code_in_pr",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/pull/3433"
+    },
+    {
+      "id": "IA-24",
+      "module": "IA",
+      "title": "Resolver tenant MCP",
+      "status": "code_in_pr",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/pull/3431"
+    },
+    {
+      "id": "IA-25",
+      "module": "IA",
+      "title": "Autenticação Vendi",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-26",
+      "module": "IA",
+      "title": "Action Orchestrator",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-27",
+      "module": "IA",
+      "title": "Presença executiva Jarvis",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-28",
+      "module": "IA",
+      "title": "Jarvis Core",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-29",
+      "module": "IA",
+      "title": "Autonomia por tenant",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-30",
+      "module": "IA",
+      "title": "Chamados automáticos",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-31",
+      "module": "IA",
+      "title": "Auditoria de agentes",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "IA-32",
+      "module": "IA",
+      "title": "Cotas sem custo monetário",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "COM-01",
+      "module": "COM",
+      "title": "WhatsApp CRM",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "COM-02",
+      "module": "COM",
+      "title": "QR Code WhatsApp",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "COM-03",
+      "module": "COM",
+      "title": "Privacidade de conversas",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "COM-04",
+      "module": "COM",
+      "title": "Instagram DM",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "COM-05",
+      "module": "COM",
+      "title": "Email Google Microsoft",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "COM-06",
+      "module": "COM",
+      "title": "IMAP SMTP",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "COM-07",
+      "module": "COM",
+      "title": "Threads e templates",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "COM-08",
+      "module": "COM",
+      "title": "Vínculo conversa lead",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "COM-09",
+      "module": "COM",
+      "title": "Portal único",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/3052"
+    },
+    {
+      "id": "COM-10",
+      "module": "COM",
+      "title": "Briefing no portal",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "COM-11",
+      "module": "COM",
+      "title": "Acompanhamento obra",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "COM-12",
+      "module": "COM",
+      "title": "Assistência portal",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "COM-13",
+      "module": "COM",
+      "title": "Uploads cliente",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "COM-14",
+      "module": "COM",
+      "title": "Aceite digital",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "COM-15",
+      "module": "COM",
+      "title": "Notificações",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "COM-16",
+      "module": "COM",
+      "title": "Histórico omnichannel",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "COM-17",
+      "module": "COM",
+      "title": "Visitor Intelligence",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/1209"
+    },
+    {
+      "id": "MKT-01",
+      "module": "MKT",
+      "title": "Calendário Marketing",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MKT-02",
+      "module": "MKT",
+      "title": "Campanhas IA",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MKT-03",
+      "module": "MKT",
+      "title": "Kit marca",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MKT-04",
+      "module": "MKT",
+      "title": "Biblioteca peças",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MKT-05",
+      "module": "MKT",
+      "title": "Publicação social",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MKT-06",
+      "module": "MKT",
+      "title": "Meta Growth",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/1364"
+    },
+    {
+      "id": "MKT-07",
+      "module": "MKT",
+      "title": "Meta CAPI Google Data Manager",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/3069"
+    },
+    {
+      "id": "MKT-08",
+      "module": "MKT",
+      "title": "Isolamento de campanha",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/3066"
+    },
+    {
+      "id": "MKT-09",
+      "module": "MKT",
+      "title": "Windsor analytics",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/1466"
+    },
+    {
+      "id": "MKT-10",
+      "module": "MKT",
+      "title": "Video Studio",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/1314"
+    },
+    {
+      "id": "MKT-11",
+      "module": "MKT",
+      "title": "Dublê Digital",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MKT-12",
+      "module": "MKT",
+      "title": "Media Hub",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/372"
+    },
+    {
+      "id": "MKT-13",
+      "module": "MKT",
+      "title": "Radar de Obras",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MKT-14",
+      "module": "MKT",
+      "title": "Prospecção ICP",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MKT-15",
+      "module": "MKT",
+      "title": "Enriquecimento de prospects",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MKT-16",
+      "module": "MKT",
+      "title": "Decisor",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MKT-17",
+      "module": "MKT",
+      "title": "Oferta gratuita personalizada",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MKT-18",
+      "module": "MKT",
+      "title": "Aprovação de abordagem",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MKT-19",
+      "module": "MKT",
+      "title": "SEO e autoridade",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MKT-20",
+      "module": "MKT",
+      "title": "Customer Intelligence",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MKT-21",
+      "module": "MKT",
+      "title": "Churn",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "MKT-22",
+      "module": "MKT",
+      "title": "Atribuição receita",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ECO-01",
+      "module": "ECO",
+      "title": "Praça.ai",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ECO-02",
+      "module": "ECO",
+      "title": "Marketplace templates",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ECO-03",
+      "module": "ECO",
+      "title": "Editar antes de ativar",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/1056"
+    },
+    {
+      "id": "ECO-04",
+      "module": "ECO",
+      "title": "Prévia impacto",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/1058"
+    },
+    {
+      "id": "ECO-05",
+      "module": "ECO",
+      "title": "Resumo de impacto",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/1059"
+    },
+    {
+      "id": "ECO-06",
+      "module": "ECO",
+      "title": "Corrigir templates vazios",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/1053"
+    },
+    {
+      "id": "ECO-07",
+      "module": "ECO",
+      "title": "Convites multiempresa",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ECO-08",
+      "module": "ECO",
+      "title": "Permissões entre empresas",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ECO-09",
+      "module": "ECO",
+      "title": "Parceiros em negócios",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ECO-10",
+      "module": "ECO",
+      "title": "Cotação multi-fornecedor",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ECO-11",
+      "module": "ECO",
+      "title": "Comissões entre parceiros",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ECO-12",
+      "module": "ECO",
+      "title": "Pedidos interempresas",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ECO-13",
+      "module": "ECO",
+      "title": "Auditoria financeira",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ECO-14",
+      "module": "ECO",
+      "title": "Partner Hub dados reais",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/1618"
+    },
+    {
+      "id": "ECO-15",
+      "module": "ECO",
+      "title": "Reputação de fornecedores",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ADM-01",
+      "module": "ADM",
+      "title": "Superadmin tenants",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ADM-02",
+      "module": "ADM",
+      "title": "Permissões",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ADM-03",
+      "module": "ADM",
+      "title": "Plano Negócios wizard",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ADM-04",
+      "module": "ADM",
+      "title": "CNPJ QSA e ICP",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ADM-05",
+      "module": "ADM",
+      "title": "Dashboard executivo",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ADM-06",
+      "module": "ADM",
+      "title": "Inteligência empresarial",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ADM-07",
+      "module": "ADM",
+      "title": "Agenda",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ADM-08",
+      "module": "ADM",
+      "title": "Configurações",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ADM-09",
+      "module": "ADM",
+      "title": "Reconexão",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "ADM-10",
+      "module": "ADM",
+      "title": "Audit trail",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "INF-01",
+      "module": "INF",
+      "title": "Backend Contabo",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "INF-02",
+      "module": "INF",
+      "title": "Homolog separada",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "INF-03",
+      "module": "INF",
+      "title": "Git PR controlado",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "INF-04",
+      "module": "INF",
+      "title": "Cloudflare Pages",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "INF-05",
+      "module": "INF",
+      "title": "R2 privado",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "INF-06",
+      "module": "INF",
+      "title": "Supabase PostgreSQL",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "INF-07",
+      "module": "INF",
+      "title": "Autenticação Vendi 401",
+      "status": "blocked",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "INF-08",
+      "module": "INF",
+      "title": "Operador Contabo release",
+      "status": "blocked",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/3436"
+    },
+    {
+      "id": "INF-09",
+      "module": "INF",
+      "title": "GitHub Actions runner",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/1752"
+    },
+    {
+      "id": "INF-10",
+      "module": "INF",
+      "title": "Browser Agent 500",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/2897"
+    },
+    {
+      "id": "INF-11",
+      "module": "INF",
+      "title": "OAuth MCP",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/2879"
+    },
+    {
+      "id": "INF-12",
+      "module": "INF",
+      "title": "Cloudflare config",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/2859"
+    },
+    {
+      "id": "INF-13",
+      "module": "INF",
+      "title": "PAT auditoria",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/2860"
+    },
+    {
+      "id": "INF-14",
+      "module": "INF",
+      "title": "Backup rollback",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "INF-15",
+      "module": "INF",
+      "title": "Sem deploy automático",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "INF-16",
+      "module": "INF",
+      "title": "Registro Mestre",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "INF-17",
+      "module": "INF",
+      "title": "Central Melhorias Releases",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/2896"
+    },
+    {
+      "id": "INF-18",
+      "module": "INF",
+      "title": "Central Evolução",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/2922"
+    },
+    {
+      "id": "INF-19",
+      "module": "INF",
+      "title": "Auditoria Mestre",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/2895"
+    },
+    {
+      "id": "INF-20",
+      "module": "INF",
+      "title": "Testes regressão",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/1764"
+    },
+    {
+      "id": "INF-21",
+      "module": "INF",
+      "title": "UI 2.0",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/2763"
+    },
+    {
+      "id": "INF-22",
+      "module": "INF",
+      "title": "Sem refresh involuntário",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "INF-23",
+      "module": "INF",
+      "title": "Unificar Jarvis routers",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/1615"
+    },
+    {
+      "id": "INF-24",
+      "module": "INF",
+      "title": "Unificar gateway IA",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/1616"
+    },
+    {
+      "id": "INF-25",
+      "module": "INF",
+      "title": "Limpeza de legado",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/1617"
+    },
+    {
+      "id": "INF-26",
+      "module": "INF",
+      "title": "Unificar prompt variations",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation",
+      "tracking_url": "https://github.com/casaforteicf/vendorai-platform-replit/issues/1614"
+    },
+    {
+      "id": "INF-27",
+      "module": "INF",
+      "title": "Correções de interface",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "INF-28",
+      "module": "INF",
+      "title": "Homolog sem senha prod",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "INF-29",
+      "module": "INF",
+      "title": "Changelog e release",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    },
+    {
+      "id": "INF-30",
+      "module": "INF",
+      "title": "Pós-release monitoramento",
+      "status": "verification_required",
+      "homologation": "not_verified",
+      "production": "not_verified",
+      "source": "approved_scope_consolidation"
+    }
+  ]
+}

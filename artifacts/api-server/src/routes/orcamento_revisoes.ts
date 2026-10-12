@@ -1,4 +1,8 @@
 import { Router, type IRouter } from "express";
+import { createHash } from "node:crypto";
+import multer from "multer";
+import { extractQuoteData } from "../lib/document-extraction";
+import { reviewImport, type OriginalBudget } from "../lib/commercial-import-review";
 import { and, eq, desc, inArray, like, or, sql } from "drizzle-orm";
 import {
   db,
@@ -8,12 +12,157 @@ import {
   propostasTable,
 } from "@workspace/db";
 import { z } from "zod/v4";
+import { buildFinancialSchedule } from "../lib/commercial-financial-schedule";
+import { calculateBudget, compositionPackages, marginReport } from "../lib/commercial-budget-core";
+import { validatePartialExecution, rankSupplierOffers } from "../lib/commercial-execution-supplier";
 
 const router: IRouter = Router();
 
 function hasAccess(req: any, tenantId: string): boolean {
   return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
 }
+
+// ─── LOTE 05: prévia determinística, sem gravação em banco ───────────────
+router.post("/tenants/:tenantId/leads/:leadId/orcamento-revisoes/simular-cronograma", (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!hasAccess(req, tenantId)) return res.status(403).json({ error: "Acesso negado" });
+  const input = z.object({
+    grossCents: z.number().int().nonnegative().safe(),
+    advanceCents: z.number().int().nonnegative().safe(),
+    stages: z.array(z.object({
+      id: z.string().trim().min(1),
+      weight: z.number().finite().positive(),
+      startsAt: z.string().optional(),
+      endsAt: z.string().optional(),
+    })).min(1).max(200),
+  }).safeParse(req.body);
+  if (!input.success) return res.status(422).json({ error: "Dados inválidos", details: input.error.flatten() });
+  try {
+    return res.json({ tenantId, leadId: String(req.params.leadId), preview: buildFinancialSchedule(
+      input.data.grossCents, input.data.advanceCents, input.data.stages,
+    ) });
+  } catch (error) {
+    return res.status(422).json({ error: error instanceof Error ? error.message : "Cronograma inválido" });
+  }
+});
+
+// ─── LOTE 05: simulação universal, sem alterar proposta ou catálogo ──────────
+router.post("/tenants/:tenantId/leads/:leadId/orcamento-revisoes/simular-comercial", (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!hasAccess(req, tenantId)) return res.status(403).json({ error: "Acesso negado" });
+  const lineSchema = z.object({
+    id: z.string().min(1), kind: z.enum(["product", "service", "package", "composition"]),
+    description: z.string().min(1), sku: z.string().optional(), unit: z.string().min(1),
+    quantity: z.number().int().nonnegative().safe(),
+    unitPriceCents: z.number().int().nonnegative().safe(),
+    discountCents: z.number().int().nonnegative().safe().optional(),
+    inclusion: z.enum(["included", "excluded", "optional"]).optional(),
+    environmentId: z.string().optional(), phaseId: z.string().optional(), sourceItemId: z.string().optional(),
+  });
+  const payload = z.object({
+    lines: z.array(lineSchema).max(1000),
+    costCents: z.number().int().nonnegative().safe().optional(),
+    inputs: z.array(z.object({
+      id: z.string().min(1), quantity: z.number().int().nonnegative().safe(),
+      packageQuantity: z.number().int().positive().safe(),
+      packagePriceCents: z.number().int().nonnegative().safe(),
+      lossPercent: z.number().finite().min(0).lt(100).optional(),
+    })).max(500).optional(),
+  }).safeParse(req.body);
+  if (!payload.success) return res.status(422).json({ error: "Dados comerciais inválidos", details: payload.error.flatten() });
+  try {
+    const totals = calculateBudget(payload.data.lines);
+    return res.json({
+      tenantId, leadId: String(req.params.leadId), totals,
+      compositions: (payload.data.inputs ?? []).map(compositionPackages),
+      margin: payload.data.costCents === undefined ? null : marginReport(totals.includedCents, payload.data.costCents),
+      persisted: false,
+    });
+  } catch (error) {
+    return res.status(422).json({ error: error instanceof Error ? error.message : "Orçamento inválido" });
+  }
+});
+
+// ─── LOTE 05: verificação de envio parcial, sem criar execução ───────────────
+router.post("/tenants/:tenantId/leads/:leadId/orcamento-revisoes/simular-execucao", (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!hasAccess(req, tenantId)) return res.status(403).json({ error: "Acesso negado" });
+  const body = z.object({ items: z.array(z.object({
+    itemId: z.string().min(1),
+    approvedMilliQuantity: z.number().int().nonnegative().safe(),
+    previouslyReleasedMilliQuantity: z.number().int().nonnegative().safe(),
+    requestedMilliQuantity: z.number().int().nonnegative().safe(),
+  })).min(1).max(1000) }).safeParse(req.body);
+  if (!body.success) return res.status(422).json({ error: "Itens inválidos", details: body.error.flatten() });
+  try { return res.json({ ...validatePartialExecution(body.data.items), persisted: false }); }
+  catch (error) { return res.status(422).json({ error: error instanceof Error ? error.message : "Execução inválida" }); }
+});
+
+// ─── LOTE 05: avaliação de ofertas, sem contratar fornecedor ────────────────
+router.post("/tenants/:tenantId/leads/:leadId/orcamento-revisoes/comparar-fornecedores", (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!hasAccess(req, tenantId)) return res.status(403).json({ error: "Acesso negado" });
+  const body = z.object({ offers: z.array(z.object({
+    supplierId: z.string().min(1), itemId: z.string().min(1),
+    priceCents: z.number().int().nonnegative().safe(),
+    freightCents: z.number().int().nonnegative().safe(),
+    deliveryDays: z.number().int().nonnegative().safe(),
+  })).max(1000) }).safeParse(req.body);
+  if (!body.success) return res.status(422).json({ error: "Ofertas inválidas", details: body.error.flatten() });
+  try { return res.json({ offers: rankSupplierOffers(body.data.offers), persisted: false }); }
+  catch (error) { return res.status(422).json({ error: error instanceof Error ? error.message : "Ofertas inválidas" }); }
+});
+
+// ─── LOTE 05: importação de PDF externa para revisão, sem persistência ──────
+const externalPdfUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) => cb(null, file.mimetype === "application/pdf" && /\.pdf$/i.test(file.originalname)),
+});
+router.post("/tenants/:tenantId/leads/:leadId/orcamento-revisoes/importar-pdf/preview",
+  externalPdfUpload.single("file"), async (req, res) => {
+    const tenantId = String(req.params.tenantId);
+    if (!hasAccess(req, tenantId)) return res.status(403).json({ error: "Acesso negado" });
+    if (!req.file || req.file.buffer.subarray(0, 5).toString("ascii") !== "%PDF-") {
+      return res.status(422).json({ error: "PDF válido é obrigatório." });
+    }
+    try {
+      const extracted = await extractQuoteData([{
+        buffer: req.file.buffer, mimeType: "application/pdf", originalName: req.file.originalname,
+      }], tenantId);
+      const brl = (n: number | null | undefined): string =>
+        typeof n === "number" && Number.isFinite(n) ? n.toFixed(2).replace(".", ",") : "";
+      const original: OriginalBudget = {
+        tenantId, sourceFileName: req.file.originalname,
+        sourceSha256: createHash("sha256").update(req.file.buffer).digest("hex"),
+        budgetNumber: extracted.numeroDocumento ?? undefined,
+        customerDocument: extracted.clienteDocumento ?? undefined,
+        issueDate: extracted.dataEmissao ?? undefined,
+        originalTotalText: brl(extracted.valorTotal),
+        lines: (extracted.itens ?? []).map(item => ({
+          description: item.descricao,
+          sku: item.codigo ?? undefined,
+          unit: item.unidade ?? "",
+          quantityText: item.quantidade == null ? "" : String(item.quantidade),
+          unitPriceText: brl(item.valorUnitario),
+          totalText: brl(item.valorTotal),
+        })),
+        unrecognizedFields: {
+          originalExtraction: extracted,
+          warnings: extracted.informacoesAdicionais ?? [],
+        },
+      };
+      return res.json({
+        previewOnly: true, requiresConfirmation: true,
+        leadId: String(req.params.leadId),
+        extracted, original, review: reviewImport(original),
+        sourceAttachmentPersisted: false,
+      });
+    } catch (error) {
+      return res.status(422).json({ error: "Falha na extração do PDF; nenhuma alteração foi gravada." });
+    }
+  },
+);
 
 // ─── List revision history for a lead ──────────────────────────────────────
 router.get("/tenants/:tenantId/leads/:leadId/orcamento-revisoes", async (req, res) => {

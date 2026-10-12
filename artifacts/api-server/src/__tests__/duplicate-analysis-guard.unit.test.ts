@@ -32,6 +32,21 @@ vi.mock("@workspace/db", () => ({
   conversationsTable: {},
   messagesTable: {},
   activitiesTable: {},
+  propostasTable: {
+    id: "id",
+    tenantId: "tenantId",
+    leadId: "leadId",
+    dealId: "dealId",
+    titulo: "titulo",
+    numero: "numero",
+    status: "status",
+    valorTotal: "valorTotal",
+    valorMensal: "valorMensal",
+    recorrente: "recorrente",
+    createdAt: "createdAt",
+    updatedAt: "updatedAt",
+  },
+  dealsTable: { id: "id", valor: "valor", tenantId: "tenantId" },
   tenantsTable: {},
 }));
 

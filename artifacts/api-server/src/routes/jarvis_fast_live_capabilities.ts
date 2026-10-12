@@ -42,7 +42,10 @@ function detectGenericMusicIntent(text: string) {
   const normalized = normalize(text);
   const hasMusic = /\b(musica|som|spotify|playlist|faixa|album|artista)\b/.test(normalized);
   const wantsPlayback = /\b(quero|queria|gostaria|toca|toque|tocar|coloca|coloque|ouvir|escutar|abra|abrir)\b/.test(normalized);
-  return hasMusic && wantsPlayback;
+  // Verbo de reprodução musical ("toca/coloca/ouvir/escutar X") já indica intenção de música,
+  // mesmo sem um substantivo como "música" (ex.: "quero ouvir Time do Pink Floyd").
+  const musicVerb = /\b(toca|toque|tocar|coloca|coloque|colocar|ouvir|escutar)\b/.test(normalized);
+  return (hasMusic && wantsPlayback) || musicVerb;
 }
 
 function extractSpecificMusicQuery(text: string): string | null {

@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
+import { parseRegistrationRequestId, fingerprintRegistrationPayload, matchesRegistrationReplay } from "../lib/crm-lead-idempotency.js";
 import { rateLimit } from "express-rate-limit";
-import { and, eq, inArray, desc, ilike, isNull, isNotNull, sql } from "drizzle-orm";
+import { and, or, eq, inArray, desc, ilike, isNull, isNotNull, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
@@ -172,7 +173,14 @@ async function validateRepresentativeFunction(tenantId: string, functionId: stri
       eq(tenantUserFunctionsTable.kind, "external_company"),
     ))
     .limit(1);
-  return representativeFunction ?? null;
+  // A representação precisa ter vínculo com tenant real, permissão comercial
+  // e não pode estar desativada. Funções com configuração de distribuição nula
+  // permanecem elegíveis para atribuição manual (legado).
+  if (!representativeFunction?.linkedTenantId ||
+      representativeFunction.leadAssignmentEnabled === false ||
+      !Array.isArray(representativeFunction.permissions) ||
+      !representativeFunction.permissions.includes("leads")) return null;
+  return representativeFunction;
 }
 
 async function findRepresentativeLeadAccess(req: any, targetTenantId: string, functionId?: string | null) {
@@ -192,7 +200,7 @@ async function findRepresentativeLeadAccess(req: any, targetTenantId: string, fu
     .where(and(...conditions))
     .limit(1);
 
-  if (!link || !Array.isArray(link.permissions) || !link.permissions.includes("leads")) return null;
+  if (!link || link.leadAssignmentEnabled === false || !Array.isArray(link.permissions) || !link.permissions.includes("leads")) return null;
 
   const allowedUsers = Array.isArray(link.representativeUserIds) ? link.representativeUserIds : [];
   if (allowedUsers.length > 0 && req.user?.sub && !allowedUsers.includes(req.user.sub)) return null;
@@ -208,6 +216,7 @@ router.get("/leads", async (req, res) => {
     }
     conditions.push(eq(leadsTable.tenantId, req.user.tenantId));
   }
+  conditions.push(isNull(leadsTable.excluidoEm));
   conditions.push(...buildUserFunctionFilter(req, leadsTable));
 
   const leads = await db
@@ -248,6 +257,35 @@ router.post("/leads", async (req, res) => {
   }
 
   const data = parsed.data;
+  // Idempotência de cadastro manual: chave única por solicitação, associada ao autor e ao conteúdo.
+  let registrationRequestId: string | null;
+  try {
+    registrationRequestId = parseRegistrationRequestId(data.metadata?.registrationRequestId);
+  } catch (error: any) {
+    res.status(error.status ?? 422).json({ error: error.message });
+    return;
+  }
+  const registrationActorId = req.user?.sub ?? req.user?.id ?? null;
+  const registrationPayloadHash = registrationRequestId
+    ? fingerprintRegistrationPayload(data) : null;
+  if (registrationRequestId && !registrationActorId) {
+    res.status(403).json({ error: "Autor do cadastro não identificado." });
+    return;
+  }
+  const replayFilter = registrationRequestId
+    ? and(eq(leadsTable.tenantId, data.tenantId),
+        sql`${leadsTable.metadata}->>'registrationRequestId' = ${registrationRequestId}`) : undefined;
+  if (replayFilter) {
+    const [previous] = await db.select().from(leadsTable).where(replayFilter).limit(1);
+    if (previous) {
+      if (!matchesRegistrationReplay(previous.metadata, registrationActorId, registrationPayloadHash!)) {
+        res.status(409).json({ code: "IDEMPOTENCY_KEY_REUSED", error: "Identificador já usado em outro cadastro." });
+        return;
+      }
+      res.status(200).json(previous);
+      return;
+    }
+  }
 
   if (data.representativeFunctionId) {
     const representativeFunction = await validateRepresentativeFunction(data.tenantId, data.representativeFunctionId);
@@ -266,6 +304,17 @@ router.post("/leads", async (req, res) => {
   const match = await findLeadByDedup(data.tenantId, data.telefone ?? null, data.documento ?? null, data.nome);
 
   if (match.found) {
+    // A concurrent request may have completed between the first replay lookup
+    // and the legacy dedup query; recognise that committed registration.
+    if (registrationRequestId && match.lead?.metadata?.registrationRequestId === registrationRequestId) {
+      if (match.lead.metadata.registrationActorId === registrationActorId
+          && match.lead.metadata.registrationPayloadHash === registrationPayloadHash) {
+        res.status(200).json(match.lead);
+      } else {
+        res.status(409).json({ code: "IDEMPOTENCY_KEY_REUSED", error: "Identificador já usado em outro cadastro." });
+      }
+      return;
+    }
     res.status(409).json({
       error: "Lead already exists",
       isDuplicate: true,
@@ -276,6 +325,15 @@ router.post("/leads", async (req, res) => {
   }
 
   if (match.similar) {
+    if (registrationRequestId && match.similar?.metadata?.registrationRequestId === registrationRequestId) {
+      if (match.similar.metadata.registrationActorId === registrationActorId
+          && match.similar.metadata.registrationPayloadHash === registrationPayloadHash) {
+        res.status(200).json(match.similar);
+      } else {
+        res.status(409).json({ code: "IDEMPOTENCY_KEY_REUSED", error: "Identificador já usado em outro cadastro." });
+      }
+      return;
+    }
     res.status(409).json({
       error: "Já existe um lead com nome semelhante",
       isDuplicate: true,
@@ -315,6 +373,25 @@ router.post("/leads", async (req, res) => {
     resolvedRepresentativeFunctionId = assignment?.kind === "external_company" ? assignment.id : null;
   }
 
+  // Validação final vale também para distribuição automática, não apenas
+  // para escolha manual no formulário.
+  if (resolvedRepresentativeFunctionId &&
+      !(await validateRepresentativeFunction(data.tenantId, resolvedRepresentativeFunctionId))) {
+    res.status(422).json({ error: "Empresa representante sem vínculo ativo ou autorização para receber leads." });
+    return;
+  }
+
+  // CRM-05: impedir atribuição a ID arbitrário, inclusive de outro tenant.
+  if (resolvedAssignedTo) {
+    const [assignee] = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(and(eq(usersTable.id, resolvedAssignedTo), eq(usersTable.tenantId, data.tenantId), eq(usersTable.active, true)))
+      .limit(1);
+    if (!assignee) {
+      res.status(422).json({ error: "Responsável não pertence à equipe deste tenant." });
+      return;
+    }
+  }
+
   if (!resolvedAssignedTo && !resolvedRepresentativeFunctionId) {
     res.status(422).json({
       error: "Responsável obrigatório. Selecione um usuário da equipe, uma empresa representante ou configure a distribuição automática com ao menos um responsável elegível.",
@@ -322,7 +399,19 @@ router.post("/leads", async (req, res) => {
     return;
   }
 
-  const [lead] = await db.insert(leadsTable).values({
+  // Lead and its automatic pipeline deal either persist together or roll back together.
+  const creation = await db.transaction(async (tx) => {
+    if (registrationRequestId && replayFilter) {
+      // Serialize across processes and browser sessions; replay reads the committed row.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${data.tenantId}), hashtext(${registrationRequestId}))`);
+      const [previous] = await tx.select().from(leadsTable).where(replayFilter).limit(1);
+      if (previous) {
+        if (!matchesRegistrationReplay(previous.metadata, registrationActorId, registrationPayloadHash!))
+          throw Object.assign(new Error("Identificador já usado em outro cadastro."), { status: 409 });
+        return { lead: previous, replay: true };
+      }
+    }
+  const [lead] = await tx.insert(leadsTable).values({
     ...data,
     nome: normalizeLeadName(data.nome, "Lead"),
     email: normalizeLeadEmail(data.email),
@@ -333,35 +422,50 @@ router.post("/leads", async (req, res) => {
     longitude: geocoded?.lng ?? null,
     telefone: storePhone(data.telefone),
     documento: data.documento ? data.documento.replace(/\D/g, "") : data.documento,
-    metadata: leadRegistrationMetadata(data.metadata, {
-      entryChannel: data.source === "whatsapp"
-        ? "whatsapp"
-        : data.source === "instagram"
-          ? "instagram"
-          : data.source === "email"
-            ? "email"
-            : data.source?.includes("site") || data.source?.includes("website")
-              ? "site"
-              : data.source?.includes("prospec")
-                ? "prospeccao"
-                : data.source?.includes("indicacao")
-                  ? "parceiro"
-                  : "manual",
-      entrySource: data.source || "manual",
-    }),
+    metadata: {
+      ...leadRegistrationMetadata(data.metadata, {
+        entryChannel: data.source === "whatsapp" ? "whatsapp" :
+          data.source === "instagram" ? "instagram" :
+          data.source === "email" ? "email" :
+          data.source?.includes("site") || data.source?.includes("website") ? "site" :
+          data.source?.includes("prospec") ? "prospeccao" :
+          data.source?.includes("indicacao") ? "parceiro" : "manual",
+        entrySource: data.source || "manual",
+      }),
+      ...(registrationRequestId ? {
+        registrationRequestId, registrationActorId, registrationPayloadHash,
+      } : {}),
+      responsibilityHistory: [{
+        previousUserId: null,
+        previousRepresentativeFunctionId: null,
+        nextUserId: resolvedAssignedTo,
+        nextRepresentativeFunctionId: resolvedRepresentativeFunctionId,
+        actorId: req.user?.sub ?? null,
+        changedAt: new Date().toISOString(),
+        source: "lead_creation",
+      }],
+    },
     possivelDuplicata: false,
     leadSimilarId: null,
   } as any).returning();
 
   // Auto-create deal in pipeline (aquecimento) unless lead is pipeline-exempt
   if (!lead.pipelineExempt) {
-    await db.insert(dealsTable).values({
+    await tx.insert(dealsTable).values({
       tenantId: lead.tenantId,
       leadId: lead.id,
       titulo: lead.nome,
       etapa: "em_aquecimento",
       assignedTo: resolvedAssignedTo,
     });
+  }
+
+    return { lead, replay: false };
+  });
+  const lead = creation.lead;
+  if (creation.replay) {
+    res.status(200).json(lead);
+    return;
   }
 
   if (resolvedAssignedTo) {
@@ -451,23 +555,69 @@ router.post("/tenants/:tenantId/leads/bulk-reassign", async (req, res) => {
     return;
   }
 
-  const leadsUpdated = await db
-    .update(leadsTable)
-    .set({ assignedTo: toUserId })
-    .where(and(eq(leadsTable.tenantId, tenantId), eq(leadsTable.assignedTo, fromUserId)))
-    .returning({ id: leadsTable.id });
+  // Transação: lead, negócio e trilha de responsabilidade devem mudar juntos.
+  // Serializa redistribuições com destino/origem compartilhados no mesmo tenant.
+    const outcome = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${tenantId}), 2405)`);
+    // Bloqueia a desativação do usuário de destino durante a transferência.
+    const [destinationUser] = await tx.select({ id: usersTable.id }).from(usersTable)
+      .where(and(eq(usersTable.id, toUserId), eq(usersTable.tenantId, tenantId),
+        eq(usersTable.active, true))).for("share").limit(1);
+    if (!destinationUser) {
+      throw Object.assign(new Error("Destino da redistribuição não está ativo neste tenant."), { status: 422 });
+    }
+    const candidates = await tx.select({
+      id: leadsTable.id, metadata: leadsTable.metadata,
+    }).from(leadsTable).where(and(
+      eq(leadsTable.tenantId, tenantId), eq(leadsTable.assignedTo, fromUserId),
+      isNull(leadsTable.excluidoEm),
+    )).for("update");
+    const now = new Date().toISOString();
+    for (const candidate of candidates) {
+      const previous = candidate.metadata && typeof candidate.metadata === "object" &&
+        !Array.isArray(candidate.metadata) ? candidate.metadata as Record<string, unknown> : {};
+      const history = Array.isArray(previous.responsibilityHistory) ? previous.responsibilityHistory : [];
+      await tx.update(leadsTable).set({
+        assignedTo: toUserId,
+        metadata: { ...previous, responsibilityHistory: [...history, {
+          previousUserId: fromUserId, previousRepresentativeFunctionId: null,
+          nextUserId: toUserId, nextRepresentativeFunctionId: null,
+          actorId: req.user?.sub ?? null, changedAt: now, source: "bulk_reassignment",
+        }] },
+        updatedAt: new Date(now),
+      }).where(eq(leadsTable.id, candidate.id));
+    }
+    // Sincronizar somente negócios dos leads efetivamente transferidos nesta transação.
+    // Não mover negócio de outro lead que permaneceu com o responsável anterior.
+    const transferredIds = candidates.map((candidate) => candidate.id);
+    const dealsUpdated = transferredIds.length > 0
+      ? await tx.update(dealsTable).set({ assignedTo: toUserId })
+          .where(and(eq(dealsTable.tenantId, tenantId), eq(dealsTable.assignedTo, fromUserId),
+            inArray(dealsTable.leadId, transferredIds)))
+          .returning({ id: dealsTable.id })
+      : [];
+    return { leadsReassigned: candidates.length, dealsReassigned: dealsUpdated.length };
+  }).catch((error: any) => {
+    if (error.status === 422) return null;
+    throw error;
+  });
+  if (!outcome) {
+    res.status(422).json({ error: "Destino da redistribuição não está ativo neste tenant." });
+    return;
+  }
 
-  const dealsUpdated = await db
-    .update(dealsTable)
-    .set({ assignedTo: toUserId })
-    .where(and(eq(dealsTable.tenantId, tenantId), eq(dealsTable.assignedTo, fromUserId)))
-    .returning({ id: dealsTable.id });
-
-  res.json({ leadsReassigned: leadsUpdated.length, dealsReassigned: dealsUpdated.length });
+  res.json(outcome);
 });
 
 router.post("/tenants/:tenantId/leads/import", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
+
+  const isAdmin = req.user?.platformRole === "super_admin" ||
+    req.user?.platformRole === "tenant_admin" || req.user?.userFunction === "administrador";
+  if (!isAdmin) {
+    res.status(403).json({ error: "Somente administradores podem importar leads em massa." });
+    return;
+  }
 
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
     res.status(403).json({ error: "Acesso negado" });
@@ -500,13 +650,19 @@ router.post("/tenants/:tenantId/leads/import", async (req, res) => {
       if (row.responsavel?.trim()) {
         const [vendedor] = await db.select({ id: usersTable.id })
           .from(usersTable)
-          .where(and(eq(usersTable.tenantId, tenantId), ilike(usersTable.name, row.responsavel.trim())))
+          .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true), ilike(usersTable.name, row.responsavel.trim())))
           .limit(1);
         importAssignedTo = vendedor?.id ?? null;
       }
       if (!importAssignedTo) importAssignedTo = await pickNextVendedor(tenantId, { location: row.endereco });
+      if (importAssignedTo) {
+        const [eligible] = await db.select({ id: usersTable.id }).from(usersTable)
+          .where(and(eq(usersTable.id, importAssignedTo), eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)))
+          .limit(1);
+        if (!eligible) importAssignedTo = null;
+      }
       if (!importAssignedTo) {
-        throw new Error("Responsável obrigatório: nenhum usuário elegível foi encontrado para este lead.");
+        throw new Error("Responsável obrigatório: nenhum usuário ativo e autorizado foi encontrado para este lead.");
       }
 
       const [importedLead] = await db.insert(leadsTable).values({
@@ -523,10 +679,18 @@ router.post("/tenants/:tenantId/leads/import", async (req, res) => {
         possivelDuplicata: match.similar ? true : false,
         leadSimilarId: match.similar?.id ?? null,
         assignedTo: importAssignedTo,
-        metadata: leadRegistrationMetadata(row.camposExtras, {
-          entryChannel: "importacao",
-          entrySource: "importacao_planilha",
-        }),
+        metadata: {
+          ...leadRegistrationMetadata(row.camposExtras, {
+            entryChannel: "importacao",
+            entrySource: "importacao_planilha",
+          }),
+          responsibilityHistory: [{
+            previousUserId: null, previousRepresentativeFunctionId: null,
+            nextUserId: importAssignedTo, nextRepresentativeFunctionId: null,
+            actorId: req.user?.sub ?? null, changedAt: new Date().toISOString(),
+            source: "spreadsheet_import",
+          }],
+        },
       }).returning();
       if (importedLead) {
         await db.insert(dealsTable).values({ tenantId, leadId: importedLead.id, titulo: importedLead.nome, etapa: "em_aquecimento", assignedTo: importAssignedTo });
@@ -577,6 +741,15 @@ router.get("/tenants/:tenantId/leads", async (req, res) => {
   // resto do app (dashboard, pipeline, campanhas etc.) automaticamente,
   // já que praticamente tudo usa esse mesmo endpoint.
   const incluirExcluidos = req.query["incluirExcluidos"];
+  // Dados excluídos e a respectiva auditoria são acessíveis apenas ao admin
+  // do tenant proprietário, nunca ao representante ou usuário comum.
+  if ((incluirExcluidos === "apenas" || incluirExcluidos === "incluir") &&
+      (!isOwnTenant || !(req.user?.platformRole === "super_admin" ||
+        req.user?.platformRole === "tenant_admin" ||
+        req.user?.userFunction === "administrador"))) {
+    res.status(403).json({ error: "Apenas administradores podem consultar leads excluídos." });
+    return;
+  }
   if (incluirExcluidos === "apenas") {
     conditions.push(isNotNull(leadsTable.excluidoEm));
   } else if (incluirExcluidos !== "incluir") {
@@ -593,6 +766,26 @@ router.get("/tenants/:tenantId/leads", async (req, res) => {
   }
   if (!representativeAccess) {
     conditions.push(...buildUserFunctionFilter(req, leadsTable));
+  }
+
+  // CRM-22: filtros opcionais, sempre combinados às restrições de tenant/acesso.
+  const status = typeof req.query["status"] === "string" ? req.query["status"].trim() : "";
+  const busca = typeof req.query["busca"] === "string" ? req.query["busca"].trim().slice(0, 120) : "";
+  if (status) {
+    conditions.push(eq(leadsTable.status, status));
+  }
+  if (busca) {
+    const escapedSearch = busca.replace(/[\\%_]/g, "\\$&");
+    const pattern = `%${escapedSearch}%`;
+    conditions.push(or(
+      ilike(leadsTable.nome, pattern),
+      ilike(leadsTable.documento, pattern),
+      ilike(leadsTable.empresa, pattern),
+      ilike(leadsTable.email, pattern),
+      ilike(leadsTable.telefone, pattern),
+      ilike(leadsTable.endereco, pattern),
+      ilike(leadsTable.mercadoSegmento, pattern),
+    )!);
   }
 
   const leads = await db
@@ -631,7 +824,14 @@ router.get("/tenants/:tenantId/leads", async (req, res) => {
       }));
 
     const ownIds = new Set(leads.map((lead) => lead.id));
-    return res.json([...leads, ...sharedLeads.filter((lead) => !ownIds.has(lead.id))]);
+    const filteredShared = sharedLeads.filter((lead) => {
+      if (ownIds.has(lead.id) || (status && lead.status !== status)) return false;
+      if (!busca) return true;
+      const term = busca.toLocaleLowerCase("pt-BR");
+      return [lead.nome, lead.documento, lead.empresa, lead.email, lead.telefone, lead.endereco, lead.mercadoSegmento]
+        .some((value) => typeof value === "string" && value.toLocaleLowerCase("pt-BR").includes(term));
+    });
+    return res.json([...leads, ...filteredShared]);
   }
 
   res.json(leads);
@@ -1120,6 +1320,13 @@ router.get("/leads/:id", async (req, res) => {
     return;
   }
 
+  if (lead.excluidoEm && req.user?.platformRole !== "super_admin" &&
+      !(lead.tenantId === req.user?.tenantId &&
+        (req.user?.platformRole === "tenant_admin" || req.user?.userFunction === "administrador"))) {
+    res.status(403).json({ error: "Lead excluído: acesso administrativo obrigatório." });
+    return;
+  }
+
   const isOwnTenant = req.user?.platformRole === "super_admin" || lead.tenantId === req.user?.tenantId;
   const representativeAccess = isOwnTenant
     ? null
@@ -1167,6 +1374,14 @@ router.get("/leads/:id", async (req, res) => {
 });
 
 router.patch("/leads/:id", async (req, res) => {
+  // Nunca aceitar exclusão/recuperação ou sobrescrita da auditoria
+  // através da rota genérica, independentemente do perfil do usuário.
+  const protectedFields = ["excluidoEm", "motivoExclusao", "metadata"];
+  if (req.body && typeof req.body === "object" &&
+      protectedFields.some((key) => Object.prototype.hasOwnProperty.call(req.body, key))) {
+    res.status(403).json({ error: "Campos protegidos exigem uma operação administrativa específica." });
+    return;
+  }
   const parsed = updateLeadSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.message });
@@ -1174,12 +1389,17 @@ router.patch("/leads/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo, representativeFunctionId: leadsTable.representativeFunctionId })
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo, representativeFunctionId: leadsTable.representativeFunctionId, metadata: leadsTable.metadata, excluidoEm: leadsTable.excluidoEm })
     .from(leadsTable)
     .where(eq(leadsTable.id, req.params.id));
 
   if (!existing) {
     res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  if (existing.excluidoEm) {
+    res.status(409).json({ error: "Lead excluído. Restaure antes de editar." });
     return;
   }
 
@@ -1225,11 +1445,79 @@ router.patch("/leads/:id", async (req, res) => {
     return;
   }
 
+  if (parsed.data.assignedTo) {
+    const [newAssignee] = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(and(eq(usersTable.id, parsed.data.assignedTo), eq(usersTable.tenantId, existing.tenantId), eq(usersTable.active, true)))
+      .limit(1);
+    if (!newAssignee) {
+      res.status(422).json({ error: "Responsável não pertence à equipe deste tenant." });
+      return;
+    }
+  }
+
+  // CRM-05/06: exatamente uma forma de responsabilidade comercial.
+  // Ao trocar de responsável interno para representante (ou vice-versa),
+  // remover o vínculo anterior explicitamente e rejeitar lead sem responsável.
+  if (parsed.data.assignedTo && parsed.data.representativeFunctionId) {
+    res.status(422).json({ error: "Não atribua usuário e representante simultaneamente." });
+    return;
+  }
+  const changingRepresentative = parsed.data.representativeFunctionId !== undefined;
+  const changingOwner = parsed.data.assignedTo !== undefined;
+  const nextRepresentative = changingOwner && parsed.data.assignedTo
+    ? null : changingRepresentative ? parsed.data.representativeFunctionId : existing.representativeFunctionId;
+  const nextOwner = changingRepresentative && parsed.data.representativeFunctionId
+    ? null : changingOwner ? parsed.data.assignedTo : existing.assignedTo;
+  if ((!!nextRepresentative && !!nextOwner) || (!nextRepresentative && !nextOwner)) {
+    res.status(422).json({ error: "Informe exatamente um responsável: usuário interno ou empresa representante." });
+    return;
+  }
+  const ownershipUpdate = changingRepresentative && nextRepresentative
+    ? { assignedTo: null }
+    : changingOwner && nextOwner
+      ? { representativeFunctionId: null }
+      : {};
+
+  const responsibilityChanged =
+    nextOwner !== existing.assignedTo || nextRepresentative !== existing.representativeFunctionId;
+  const priorMetadata = existing.metadata && typeof existing.metadata === "object" &&
+    !Array.isArray(existing.metadata) ? existing.metadata as Record<string, unknown> : {};
+  const history = Array.isArray(priorMetadata.responsibilityHistory)
+    ? priorMetadata.responsibilityHistory : [];
+  const historyUpdate = responsibilityChanged ? {
+    metadata: {
+      ...priorMetadata,
+      // Um operador de outra empresa não pode permanecer vinculado após a transferência.
+      representativeOperationalUserId: nextRepresentative !== existing.representativeFunctionId
+        ? null : priorMetadata.representativeOperationalUserId ?? null,
+      representativeOperatorHistory: nextRepresentative !== existing.representativeFunctionId
+        ? [...(Array.isArray(priorMetadata.representativeOperatorHistory) ? priorMetadata.representativeOperatorHistory : []), {
+          representativeFunctionId: existing.representativeFunctionId,
+          previousOperationalUserId: priorMetadata.representativeOperationalUserId ?? null,
+          nextOperationalUserId: null,
+          actorId: req.user?.sub ?? null, changedAt: new Date().toISOString(),
+          reason: "representative_changed",
+        }] : priorMetadata.representativeOperatorHistory ?? [],
+      responsibilityHistory: [...history, {
+        previousUserId: existing.assignedTo,
+        previousRepresentativeFunctionId: existing.representativeFunctionId,
+        nextUserId: nextOwner,
+        nextRepresentativeFunctionId: nextRepresentative,
+        actorId: req.user?.sub ?? null,
+        changedAt: new Date().toISOString(),
+      }],
+    },
+  } : {};
   const [lead] = await db
     .update(leadsTable)
-    .set({ ...parsed.data, updatedAt: new Date() } as any)
-    .where(eq(leadsTable.id, existing.id))
+    .set({ ...parsed.data, ...ownershipUpdate, ...historyUpdate, updatedAt: new Date() } as any)
+    .where(and(eq(leadsTable.id, existing.id), eq(leadsTable.tenantId, existing.tenantId),
+      isNull(leadsTable.excluidoEm)))
     .returning();
+  if (!lead) {
+    res.status(409).json({ error: "Lead alterado ou excluído durante a operação." });
+    return;
+  }
 
   if ("discoveryData" in parsed.data) {
     await syncProtectedObjectsForLead(existing.tenantId, existing.id);
@@ -1254,6 +1542,94 @@ router.patch("/leads/:id", async (req, res) => {
   res.json(lead);
 });
 
+// CRM-06: catálogo restrito de operadores da empresa que já responde pelo lead.
+router.get("/leads/:id/representative-operators", async (req, res) => {
+  if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") {
+    res.status(403).json({ error: "Somente administradores podem listar operadores." }); return;
+  }
+  const [lead] = await db.select({ tenantId: leadsTable.tenantId,
+    representativeFunctionId: leadsTable.representativeFunctionId,
+    metadata: leadsTable.metadata, excluidoEm: leadsTable.excluidoEm,
+  }).from(leadsTable).where(eq(leadsTable.id, req.params.id)).limit(1);
+  if (!lead || lead.excluidoEm) { res.status(404).json({ error: "Lead não encontrado." }); return; }
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== lead.tenantId) {
+    res.status(403).json({ error: "Acesso negado ao tenant." }); return;
+  }
+  const representative = await validateRepresentativeFunction(lead.tenantId, lead.representativeFunctionId);
+  if (!representative) { res.status(422).json({ error: "Representante inválida ou sem permissão." }); return; }
+  const allowed = Array.isArray(representative.representativeUserIds) ? representative.representativeUserIds : [];
+  const eligible = await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
+    .from(usersTable).where(and(eq(usersTable.tenantId, representative.linkedTenantId!), eq(usersTable.active, true)));
+  const metadata = lead.metadata && typeof lead.metadata === "object" && !Array.isArray(lead.metadata)
+    ? lead.metadata as Record<string, unknown> : {};
+  res.json({ representativeFunctionId: representative.id,
+    operationalUserId: typeof metadata.representativeOperationalUserId === "string" ? metadata.representativeOperationalUserId : null,
+    users: eligible.filter((user) => allowed.length === 0 || allowed.includes(user.id)),
+  });
+});
+
+// CRM-06: escolha administrativa do operador dentro da empresa representante.
+// O responsável comercial permanece sendo a empresa (representativeFunctionId).
+router.patch("/leads/:id/representative-operator", async (req, res) => {
+  const parsed = z.object({ operationalUserId: z.string().uuid().nullable() }).strict().safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: "Informe um usuário operacional válido ou null para limpar a seleção." });
+    return;
+  }
+  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  if (!isAdmin) {
+    res.status(403).json({ error: "Somente administradores podem atribuir o operador da representante." });
+    return;
+  }
+  const [lead] = await db.select({
+    id: leadsTable.id, tenantId: leadsTable.tenantId,
+    representativeFunctionId: leadsTable.representativeFunctionId,
+    metadata: leadsTable.metadata, excluidoEm: leadsTable.excluidoEm,
+  }).from(leadsTable).where(eq(leadsTable.id, req.params.id)).limit(1);
+  if (!lead) { res.status(404).json({ error: "Lead não encontrado." }); return; }
+  if (lead.excluidoEm) { res.status(409).json({ error: "Lead excluído." }); return; }
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== lead.tenantId) {
+    res.status(403).json({ error: "Acesso negado ao tenant." }); return;
+  }
+  const representative = await validateRepresentativeFunction(lead.tenantId, lead.representativeFunctionId);
+  if (!representative) {
+    res.status(422).json({ error: "Lead sem empresa representante ativa e autorizada." }); return;
+  }
+  const operationalUserId = parsed.data.operationalUserId;
+  if (operationalUserId) {
+    const allowed = Array.isArray(representative.representativeUserIds) ? representative.representativeUserIds : [];
+    const [operator] = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(and(eq(usersTable.id, operationalUserId),
+        eq(usersTable.tenantId, representative.linkedTenantId!), eq(usersTable.active, true)))
+      .limit(1);
+    if (!operator || (allowed.length > 0 && !allowed.includes(operationalUserId))) {
+      res.status(422).json({ error: "Operador não pertence à representante autorizada." }); return;
+    }
+  }
+  const metadata = lead.metadata && typeof lead.metadata === "object" && !Array.isArray(lead.metadata)
+    ? lead.metadata as Record<string, unknown> : {};
+  const previousOperationalUserId = typeof metadata.representativeOperationalUserId === "string"
+    ? metadata.representativeOperationalUserId : null;
+  const history = Array.isArray(metadata.representativeOperatorHistory) ? metadata.representativeOperatorHistory : [];
+  const nextMetadata = {
+    ...metadata, representativeOperationalUserId: operationalUserId,
+    representativeOperatorHistory: previousOperationalUserId === operationalUserId ? history : [...history, {
+      representativeFunctionId: representative.id,
+      previousOperationalUserId, nextOperationalUserId: operationalUserId,
+      actorId: req.user?.sub ?? null, changedAt: new Date().toISOString(),
+    }],
+  };
+  const [updated] = await db.update(leadsTable)
+    .set({ metadata: nextMetadata, updatedAt: new Date() } as any)
+    .where(and(eq(leadsTable.id, lead.id), eq(leadsTable.tenantId, lead.tenantId),
+      eq(leadsTable.representativeFunctionId, representative.id), isNull(leadsTable.excluidoEm),
+      // Optimistic concurrency: never overwrite a newer operator or audit entry.
+      sql`${leadsTable.metadata} IS NOT DISTINCT FROM ${JSON.stringify(lead.metadata)}::jsonb`))
+    .returning({ id: leadsTable.id });
+  if (!updated) { res.status(409).json({ error: "Responsabilidade alterada durante a operação." }); return; }
+  res.json({ leadId: lead.id, representativeFunctionId: representative.id, operationalUserId });
+});
+
 router.get("/leads/:id/responsavel-historico", async (req, res) => {
   const [existing] = await db
     .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo })
@@ -1270,9 +1646,11 @@ router.get("/leads/:id/responsavel-historico", async (req, res) => {
     return;
   }
 
+  // CRM-05/06: o histórico segue a mesma restrição de carteira dos detalhes do lead.
+  // Perfis não administrativos do tenant proprietário não podem consultar
+  // mudanças de responsabilidade de leads de outros vendedores.
   const isAdmin3 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-  const userFn3 = req.user?.userFunction as UserFunction | undefined;
-  if (!isAdmin3 && userFn3 === "vendedor" && existing.assignedTo !== req.user?.sub) {
+  if (!isAdmin3 && existing.assignedTo !== req.user?.sub) {
     res.status(403).json({ error: "Access denied to this lead" });
     return;
   }
@@ -1293,9 +1671,59 @@ router.get("/leads/:id/responsavel-historico", async (req, res) => {
   res.json(historico);
 });
 
+// Recuperação administrativa separada da edição comum (CRM-23).
+router.post("/leads/:id/restore", async (req, res) => {
+  const [existing] = await db.select({
+    id: leadsTable.id,
+    tenantId: leadsTable.tenantId,
+    excluidoEm: leadsTable.excluidoEm,
+    metadata: leadsTable.metadata,
+  }).from(leadsTable).where(eq(leadsTable.id, req.params.id)).limit(1);
+
+  if (!existing) return res.status(404).json({ error: "Lead não encontrado." });
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    return res.status(403).json({ error: "Acesso negado ao tenant." });
+  }
+  if (req.user?.platformRole !== "super_admin" &&
+      req.user?.platformRole !== "tenant_admin" &&
+      req.user?.userFunction !== "administrador") {
+    return res.status(403).json({ error: "Apenas administradores podem restaurar leads." });
+  }
+  if (!existing.excluidoEm) return res.status(409).json({ error: "Lead não está excluído." });
+
+  const previousMetadata = existing.metadata && typeof existing.metadata === "object" &&
+    !Array.isArray(existing.metadata) ? existing.metadata as Record<string, unknown> : {};
+  // Leads absorvidos por mesclagem exigem reversão dos vínculos, não simples reativação.
+  if (previousMetadata.leadMerge) {
+    return res.status(409).json({ error: "Lead mesclado requer revisão administrativa dos vínculos antes da restauração." });
+  }
+
+  const [restored] = await db.update(leadsTable).set({
+    excluidoEm: null,
+    motivoExclusao: null,
+    metadata: {
+      ...previousMetadata,
+      leadRestoration: {
+        restoredBy: req.user?.sub ?? null,
+        restoredAt: new Date().toISOString(),
+        previousDeletion: previousMetadata.leadDeletion ?? null,
+      },
+    },
+    updatedAt: new Date(),
+  }).where(and(
+    eq(leadsTable.id, existing.id),
+    eq(leadsTable.tenantId, existing.tenantId),
+    // Não restaurar uma exclusão posterior feita entre a leitura e o UPDATE.
+    eq(leadsTable.excluidoEm, existing.excluidoEm),
+  )).returning();
+
+  if (!restored) return res.status(409).json({ error: "Lead já restaurado por outra operação." });
+  return res.json(restored);
+});
+
 router.delete("/leads/:id", async (req, res) => {
   const [existing] = await db
-    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo, metadata: leadsTable.metadata })
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo, metadata: leadsTable.metadata, excluidoEm: leadsTable.excluidoEm })
     .from(leadsTable)
     .where(eq(leadsTable.id, req.params.id));
 
@@ -1314,6 +1742,11 @@ router.delete("/leads/:id", async (req, res) => {
     || req.user?.userFunction === "administrador";
   if (!isAdmin3) {
     res.status(403).json({ error: "Apenas administradores do tenant podem excluir leads." });
+    return;
+  }
+
+  if (existing.excluidoEm) {
+    res.status(409).json({ error: "Lead já excluído.", deletedAt: existing.excluidoEm });
     return;
   }
 
@@ -1342,9 +1775,13 @@ router.delete("/leads/:id", async (req, res) => {
       },
       updatedAt: new Date(),
     })
-    .where(and(eq(leadsTable.id, existing.id), eq(leadsTable.tenantId, existing.tenantId)))
+    .where(and(eq(leadsTable.id, existing.id), eq(leadsTable.tenantId, existing.tenantId), isNull(leadsTable.excluidoEm)))
     .returning();
 
+  if (!updated) {
+    res.status(409).json({ error: "Lead já excluído por outra operação." });
+    return;
+  }
   res.status(200).json(updated);
 });
 
@@ -1365,6 +1802,8 @@ router.get("/tenants/:tenantId/leads/duplicates", async (req, res) => {
       and(
         eq(leadsTable.tenantId, tenantId),
         eq(leadsTable.possivelDuplicata, true),
+        // Soft-deleted leads must not reappear in active CRM review queues.
+        isNull(leadsTable.excluidoEm),
         ...buildUserFunctionFilter(req, leadsTable)
       )
     )
@@ -1377,7 +1816,7 @@ router.get("/tenants/:tenantId/leads/duplicates", async (req, res) => {
       const [similar] = await db
         .select()
         .from(leadsTable)
-        .where(and(eq(leadsTable.id, lead.leadSimilarId), eq(leadsTable.tenantId, tenantId)))
+        .where(and(eq(leadsTable.id, lead.leadSimilarId), eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm)))
         .limit(1);
       return { lead, similar: similar ?? null };
     })
@@ -1421,6 +1860,11 @@ router.post("/leads/:id/merge", async (req, res) => {
 
   if (!duplicate || !target) {
     res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  if (duplicate.excluidoEm || target.excluidoEm) {
+    res.status(409).json({ error: "Leads excluídos não podem participar da mesclagem." });
     return;
   }
 
@@ -1531,8 +1975,31 @@ router.post("/leads/:id/merge", async (req, res) => {
       .set({ leadId: targetLeadId, updatedAt: new Date() })
       .where(and(eq(leadBriefingsTable.tenantId, tenantId), eq(leadBriefingsTable.leadId, duplicateId)));
 
-    // Delete the duplicate
-    await tx.delete(leadsTable).where(eq(leadsTable.id, duplicateId));
+    // Preserve the source lead as a soft-deleted record for audit and recovery.
+    // Related records are reassigned above, but the original lead identity must
+    // remain available to administrators rather than being physically removed.
+    const [archivedSource] = await tx
+      .update(leadsTable)
+      .set({
+        excluidoEm: new Date(),
+        motivoExclusao: "Mesclado com outro lead",
+        metadata: {
+          ...((duplicate.metadata && typeof duplicate.metadata === "object" && !Array.isArray(duplicate.metadata))
+            ? duplicate.metadata as Record<string, unknown>
+            : {}),
+          leadMerge: {
+            targetLeadId,
+            mergedBy: req.user?.sub ?? null,
+            mergedAt: new Date().toISOString(),
+          },
+        },
+        updatedAt: new Date(),
+      })
+      .where(and(eq(leadsTable.id, duplicateId), eq(leadsTable.tenantId, tenantId), isNull(leadsTable.excluidoEm)))
+      .returning({ id: leadsTable.id });
+    if (!archivedSource) {
+      throw new Error("Source lead was already archived during merge");
+    }
 
     // Return the merged (target) lead
     return tx.select().from(leadsTable).where(eq(leadsTable.id, targetLeadId)).limit(1);
@@ -1565,7 +2032,7 @@ router.post("/leads/:id/dismiss-duplicate", async (req, res) => {
   const leadId = String(req.params.id);
 
   const [existing] = await db
-    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo })
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo, excluidoEm: leadsTable.excluidoEm })
     .from(leadsTable)
     .where(eq(leadsTable.id, leadId));
 
@@ -1579,6 +2046,11 @@ router.post("/leads/:id/dismiss-duplicate", async (req, res) => {
     return;
   }
 
+  if (existing.excluidoEm) {
+    res.status(409).json({ error: "Lead excluído não pode ser alterado na triagem de duplicatas." });
+    return;
+  }
+
   const isAdmin4 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
   const userFn4 = req.user?.userFunction as UserFunction | undefined;
   if (!isAdmin4 && userFn4 === "vendedor" && existing.assignedTo !== req.user?.sub) {
@@ -1589,9 +2061,13 @@ router.post("/leads/:id/dismiss-duplicate", async (req, res) => {
   const [lead] = await db
     .update(leadsTable)
     .set({ possivelDuplicata: false, leadSimilarId: null, updatedAt: new Date() })
-    .where(eq(leadsTable.id, leadId))
+    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, existing.tenantId), isNull(leadsTable.excluidoEm)))
     .returning();
 
+  if (!lead) {
+    res.status(409).json({ error: "Lead excluído por outra operação." });
+    return;
+  }
   res.json({ success: true, lead });
 });
 

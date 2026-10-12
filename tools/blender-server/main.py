@@ -9,10 +9,14 @@ import json
 import threading
 import subprocess
 import tempfile
+import sqlite3
+import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from dotenv import load_dotenv
+from arqdor_feature_contracts import validate_camera_path, resolve_render_preset, validate_postproduction
 
 load_dotenv()
 
@@ -33,6 +37,47 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # ─── Fila em memória ─────────────────────────────────────────────────────────
 jobs_status: dict[str, dict] = {}
 jobs_lock = threading.Lock()
+MAX_WORKERS = max(1, min(int(os.getenv("ARQDOR_RENDER_WORKERS", "1")), 4))
+executor = ThreadPoolExecutor(max_workers=MAX_WORKERS, thread_name_prefix="arqdor-render")
+DB_PATH = os.getenv("ARQDOR_RENDER_QUEUE_DB", os.path.join(OUTPUT_DIR, "jobs.sqlite3"))
+ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+
+
+def db_connection():
+    connection = sqlite3.connect(DB_PATH, timeout=20)
+    connection.execute("PRAGMA busy_timeout = 20000")
+    connection.execute("""CREATE TABLE IF NOT EXISTS render_jobs (
+        job_id TEXT PRIMARY KEY, payload TEXT NOT NULL, status TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )""")
+    return connection
+
+
+def persist_job(job_id, job):
+    with db_connection() as connection:
+        connection.execute(
+            "INSERT INTO render_jobs(job_id,payload,status,updated_at) VALUES(?,?,?,?) "
+            "ON CONFLICT(job_id) DO UPDATE SET payload=excluded.payload, "
+            "status=excluded.status,updated_at=excluded.updated_at",
+            (job_id, json.dumps(job, ensure_ascii=False), job["status"], job["updatedAt"]),
+        )
+
+
+def restore_jobs():
+    with db_connection() as connection:
+        records = connection.execute("SELECT job_id,payload FROM render_jobs").fetchall()
+    for job_id, payload in records:
+        job = json.loads(payload)
+        if job["status"] in ("aguardando", "processando"):
+            # A process may have died mid-render: report the interruption explicitly.
+            job["status"] = "erro"
+            job["erro"] = "Worker reiniciado durante processamento; reenviar o mesmo job para retomar."
+            job["updatedAt"] = datetime.utcnow().isoformat() + "Z"
+            persist_job(job_id, job)
+        jobs_status[job_id] = job
+
+
+restore_jobs()
 
 
 # ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -98,6 +143,7 @@ def execute_render(job_id: str, cena_id: str, tenant_id: str, scene_config: dict
                 jobs_status[job_id]["imageUrl"]  = image_url
                 jobs_status[job_id]["erro"]      = erro
                 jobs_status[job_id]["updatedAt"] = datetime.utcnow().isoformat() + "Z"
+                persist_job(job_id, jobs_status[job_id])
 
     set_status("processando")
 
@@ -138,17 +184,26 @@ def execute_render(job_id: str, cena_id: str, tenant_id: str, scene_config: dict
                 f"STDERR:\n{result.stderr[-1000:]}"
             )
 
-        if not os.path.exists(output_path):
+        is_video = isinstance(scene_config.get("video"), dict)
+        artifact_path = os.path.splitext(output_path)[0] + (".mp4" if is_video else ".png")
+        if not os.path.exists(artifact_path):
             raise RuntimeError(
                 f"Blender concluiu mas o arquivo de saída não foi criado: {output_path}\n"
                 f"STDOUT:\n{result.stdout[-1000:]}"
             )
 
-        # 3. Upload para Supabase
-        storage_key = f"{tenant_id}/{cena_id}/{job_id}.png"
-        image_url   = upload_to_supabase(output_path, storage_key)
-
-        set_status("concluido", image_url=image_url)
+        # Result remains private on the worker until the authenticated API
+        # transfers it into the tenant media library.
+        with open(artifact_path, "rb") as source:
+            signature = source.read(12)
+        if is_video:
+            if signature[4:8] != b"ftyp":
+                raise RuntimeError("Resultado Blender não é MP4 válido")
+        elif signature[:8] != bytes.fromhex("89504e470d0a1a0a"):
+            raise RuntimeError("Resultado Blender não é PNG válido")
+        private_result = os.path.join(OUTPUT_DIR, f"{job_id}.result." + ("mp4" if is_video else "png"))
+        os.replace(artifact_path, private_result)
+        set_status("concluido")
 
     except subprocess.TimeoutExpired:
         set_status("erro", erro="Timeout: render excedeu 10 minutos.")
@@ -161,11 +216,12 @@ def execute_render(job_id: str, cena_id: str, tenant_id: str, scene_config: dict
                 os.unlink(config_file)
             except OSError:
                 pass
-        if os.path.exists(output_path):
-            try:
-                os.unlink(output_path)
-            except OSError:
-                pass
+        for transient in (output_path, os.path.splitext(output_path)[0] + ".mp4"):
+            if os.path.exists(transient):
+                try:
+                    os.unlink(transient)
+                except OSError:
+                    pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -197,12 +253,28 @@ def post_render():
         return jsonify({"error": "cenaId é obrigatório"}), 400
     if not tenant_id:
         return jsonify({"error": "tenantId é obrigatório"}), 400
+    if not all(ID_PATTERN.fullmatch(value) for value in (job_id, cena_id, tenant_id)):
+        return jsonify({"error": "Identificador inválido"}), 422
+    if not isinstance(scene_config, dict):
+        return jsonify({"error": "sceneConfig deve ser um objeto"}), 422
+    try:
+        resolve_render_preset(scene_config)
+        validate_postproduction(scene_config.get("postproduction"))
+        if scene_config.get("video") is not None:
+            video = scene_config["video"]
+            if not isinstance(video, dict):
+                raise ValueError("Configuração de vídeo inválida")
+            validate_camera_path(video.get("keyframes"), video.get("fps", 24),
+                                 video.get("maxSeconds", 120))
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 422
 
     now = datetime.utcnow().isoformat() + "Z"
     job = {
         "jobId":       job_id,
         "cenaId":      cena_id,
         "tenantId":    tenant_id,
+        "artifactType": "video" if isinstance(scene_config.get("video"), dict) else "image",
         "status":      "aguardando",
         "imageUrl":    None,
         "erro":        None,
@@ -211,14 +283,17 @@ def post_render():
     }
 
     with jobs_lock:
+        previous = jobs_status.get(job_id)
+        if previous:
+            if previous.get("tenantId") != tenant_id or previous.get("cenaId") != cena_id:
+                return jsonify({"error": "Job já pertence a outra cena ou tenant"}), 409
+            if previous["status"] != "erro":
+                return jsonify({"jobId": job_id, "status": previous["status"]}), 200
+            # Retry only interrupted/failed jobs, with the same tenant and scene.
         jobs_status[job_id] = job
+        persist_job(job_id, job)
 
-    thread = threading.Thread(
-        target=execute_render,
-        args=(job_id, cena_id, tenant_id, scene_config),
-        daemon=True,
-    )
-    thread.start()
+    executor.submit(execute_render, job_id, cena_id, tenant_id, scene_config)
 
     return jsonify({"jobId": job_id, "status": "aguardando"}), 202
 
@@ -239,6 +314,29 @@ def get_render(job_id):
         "erro":      job.get("erro"),
         "updatedAt": job.get("updatedAt"),
     })
+
+
+@app.route("/render/<job_id>/artifact", methods=["GET"])
+@require_auth
+def get_render_artifact(job_id):
+    if not ID_PATTERN.fullmatch(job_id):
+        return jsonify({"error": "Identificador inválido"}), 422
+    with jobs_lock:
+        job = jobs_status.get(job_id)
+        if not job:
+            return jsonify({"error": "Job não encontrado"}), 404
+        if job["status"] != "concluido":
+            return jsonify({"error": "Resultado ainda indisponível"}), 409
+    is_video = job.get("artifactType") == "video"
+    extension = "mp4" if is_video else "png"
+    artifact = os.path.join(OUTPUT_DIR, f"{job_id}.result.{extension}")
+    if not os.path.isfile(artifact):
+        return jsonify({"error": "Artefato não encontrado no worker"}), 404
+    mime_type = "video/mp4" if is_video else "image/png"
+    response = send_file(artifact, mimetype=mime_type, as_attachment=True, download_name=f"{job_id}.{extension}")
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @app.route("/render", methods=["GET"])

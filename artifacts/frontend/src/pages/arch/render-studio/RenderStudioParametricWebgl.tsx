@@ -1,0 +1,307 @@
+import { useEffect, useRef, useState } from "react";
+import { unionOrthogonalWalls } from "./arqdorOrthogonalUnion";
+
+export type ParametricWall = {
+  id: string;
+  start: [number, number]; end: [number, number];
+  thickness: number; height: number;
+  openings: Array<{ id: string; kind: "door" | "window"; offset: number; width: number; sill: number; height: number }>;
+};
+
+let engine: Promise<void> | null = null;
+export function loadThree(): Promise<void> {
+  if (!engine) engine = new Promise((resolve, reject) => {
+    if ((window as any).THREE?.WebGLRenderer) { resolve(); return; }
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
+    let settled = false;
+    const timeout = setTimeout(() => fail("Tempo esgotado ao carregar Three.js"), 12000);
+    function fail(message: string) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      script.onload = null;
+      script.onerror = null;
+      script.remove();
+      reject(new Error(message));
+    }
+    script.onload = () => {
+      if (settled) return;
+      if (!(window as any).THREE?.WebGLRenderer) {
+        fail("Three.js carregado sem WebGLRenderer");
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      script.onload = null;
+      script.onerror = null;
+      resolve();
+    };
+    script.onerror = () => fail("Não foi possível carregar Three.js");
+    try {
+      document.head.appendChild(script);
+    } catch {
+      fail("Não foi possível iniciar o carregamento de Three.js");
+    }
+  }).catch(error => {
+    engine = null;
+    throw error;
+  });
+  return engine;
+}
+
+export function buildWallGeometry(THREE: any, wall: ParametricWall) {
+  if (!Array.isArray(wall.start) || !Array.isArray(wall.end) ||
+      wall.start.length !== 2 || wall.end.length !== 2 ||
+      ![...wall.start, ...wall.end].every(Number.isFinite))
+    throw new Error("Coordenadas da parede inválidas");
+  const dx = wall.end[0] - wall.start[0], dy = wall.end[1] - wall.start[1];
+  const length = Math.hypot(dx, dy);
+  if (!Number.isFinite(length) || length < .1 || length > 1000 ||
+      !Number.isFinite(wall.height) || wall.height <= 0 || wall.height > 20 ||
+      !Number.isFinite(wall.thickness) || wall.thickness < .05 || wall.thickness > 1 ||
+      !Array.isArray(wall.openings) || wall.openings.length > 100)
+    throw new Error("Parede inválida");
+  for (const o of wall.openings) {
+    if (!o || ![o.offset, o.width, o.sill, o.height].every(Number.isFinite) ||
+        o.offset < 0 || o.width <= 0 || o.offset + o.width > length ||
+        o.sill < 0 || o.height <= 0 || o.sill + o.height > wall.height)
+      throw new Error("Vão inválido na parede");
+  }
+  // Diagonal preview must enforce the same opening-overlap rule as the
+  // orthogonal union, otherwise switching wall orientation changes validity.
+  for (let i = 0; i < wall.openings.length; i++) {
+    const a = wall.openings[i];
+    for (let j = i + 1; j < wall.openings.length; j++) {
+      const b = wall.openings[j];
+      if (a.offset < b.offset + b.width && a.offset + a.width > b.offset &&
+          a.sill < b.sill + b.height && a.sill + a.height > b.sill)
+        throw new Error("Aberturas sobrepostas na parede");
+    }
+  }
+  const ux = dx / length, uy = dy / length, nx = -uy, ny = ux;
+  const xs = [...new Set([0, length, ...wall.openings.flatMap(o => [o.offset, o.offset + o.width])])].sort((a, b) => a - b);
+  const zs = [...new Set([0, wall.height, ...wall.openings.flatMap(o => [o.sill, o.sill + o.height])])].sort((a, b) => a - b);
+  if (xs.length * zs.length > 10000) throw new Error("Malha excede limite de subdivisões");
+  const filled = (i: number, j: number) => {
+    const x = (xs[i] + xs[i + 1]) / 2, z = (zs[j] + zs[j + 1]) / 2;
+    return !wall.openings.some(o => x > o.offset && x < o.offset + o.width && z > o.sill && z < o.sill + o.height);
+  };
+  const positions: number[] = [];
+  const point = (x: number, side: number, z: number): [number, number, number] =>
+    [wall.start[0] + ux * x + nx * side * wall.thickness / 2,
+     wall.start[1] + uy * x + ny * side * wall.thickness / 2, z];
+  const quad = (a: number[], b: number[], c: number[], d: number[]) =>
+    positions.push(...a, ...b, ...c, ...a, ...c, ...d);
+  for (let i = 0; i < xs.length - 1; i++) for (let j = 0; j < zs.length - 1; j++) {
+    if (!filled(i, j)) continue;
+    const [a, b, lo, hi] = [xs[i], xs[i + 1], zs[j], zs[j + 1]];
+    quad(point(a, 1, lo), point(b, 1, lo), point(b, 1, hi), point(a, 1, hi));
+    quad(point(a, -1, hi), point(b, -1, hi), point(b, -1, lo), point(a, -1, lo));
+    if (i === 0 || !filled(i - 1, j))
+      quad(point(a, -1, lo), point(a, 1, lo), point(a, 1, hi), point(a, -1, hi));
+    if (i === xs.length - 2 || !filled(i + 1, j))
+      quad(point(b, 1, lo), point(b, -1, lo), point(b, -1, hi), point(b, 1, hi));
+    if (j === 0 || !filled(i, j - 1))
+      quad(point(a, -1, lo), point(b, -1, lo), point(b, 1, lo), point(a, 1, lo));
+    if (j === zs.length - 2 || !filled(i, j + 1))
+      quad(point(a, 1, hi), point(b, 1, hi), point(b, -1, hi), point(a, -1, hi));
+  }
+  const geometry = new THREE.BufferGeometry();
+  try {
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geometry.computeVertexNormals();
+    return geometry;
+  } catch (error) {
+    // Caller cannot register this geometry for teardown until we return it.
+    geometry.dispose();
+    throw error;
+  }
+}
+
+export function shouldUseOrthogonalUnion(walls: ParametricWall[]): boolean {
+  if (!Array.isArray(walls) || walls.some(w =>
+    !w || !Array.isArray(w.start) || !Array.isArray(w.end) ||
+    w.start.length !== 2 || w.end.length !== 2 ||
+    ![...w.start, ...w.end].every(Number.isFinite)))
+    throw new Error("Coordenadas da parede inválidas");
+  return walls.every(w =>
+    Math.abs(w.start[0] - w.end[0]) < 1e-8 ||
+    Math.abs(w.start[1] - w.end[1]) < 1e-8);
+}
+
+export default function RenderStudioParametricWebgl({ walls, active, onSelect }: { walls: ParametricWall[]; active: string; onSelect?: (id: string) => void }) {
+  const holder = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState("");
+  const [quantities, setQuantities] = useState<{ volume: number; surface: number } | null>(null);
+  useEffect(() => {
+    let disposed = false;
+    let cleanup = () => {};
+    setQuantities(null);
+    // An empty plan does not need to fetch Three.js or create a GPU context.
+    if (Array.isArray(walls) && walls.length === 0) {
+      setError("");
+      return () => { disposed = true; };
+    }
+    // Reject malformed models before downloading the engine or creating WebGL.
+    let orthogonal: boolean;
+    try {
+      orthogonal = shouldUseOrthogonalUnion(walls);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Paredes inválidas");
+      return () => { disposed = true; };
+    }
+    loadThree().then(() => {
+      if (disposed || !holder.current) return;
+      // Build union before allocating the GPU context.
+      const union = orthogonal && walls.length ? unionOrthogonalWalls(walls) : null;
+      if (union) setQuantities({ volume: union.netVolumeM3, surface: union.exposedSurfaceM2 });
+      if (union && !union.topology.closedByEdgeIncidence) {
+        setError(`A união 3D exige revisão: ${union.topology.boundaryEdges} arestas abertas, ${union.topology.nonmanifoldEdges} não-manifold e ${union.topology.orientationErrors} com orientação inconsistente; ${union.topology.connectedSolidComponents} componentes sólidos; volume ${union.topology.signedVolumeMatchesOccupancy ? "coerente" : "divergente"}.`);
+        return;
+      }
+      const THREE = (window as any).THREE;
+      const scene = new THREE.Scene(); scene.background = new THREE.Color(0xf8fafc);
+      scene.up?.set?.(0, 0, 1);
+      const camera = new THREE.PerspectiveCamera(48, 1, .01, 3000);
+      camera.up.set(0, 0, 1);
+      let renderer: InstanceType<typeof THREE.WebGLRenderer>;
+      try {
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+      } catch {
+        throw new Error("Não foi possível iniciar WebGL neste dispositivo");
+      }
+      const node = holder.current;
+      const disposableResources: Array<{ dispose: () => void }> = [];
+      const raycaster = new THREE.Raycaster();
+      const pointer = new THREE.Vector2();
+      let observer: ResizeObserver | null = null;
+      // Register cleanup before any subsequent scene-building operation can
+      // throw. The old handler was registered only after a successful render.
+      let released = false;
+      cleanup = () => {
+        if (released) return;
+        released = true;
+        observer?.disconnect();
+        for (const resource of disposableResources) resource.dispose();
+        renderer.dispose();
+        renderer.domElement.remove();
+      };
+      try {
+      renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+      node.appendChild(renderer.domElement);
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x64748b, 1.9));
+      const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+      sun.position.set(8, -7, 16); scene.add(sun);
+      if (union) {
+        const positions: number[] = [];
+        for (const face of union.faces) {
+          const [a, b, c, d] = face.map(index => union.vertices[index]);
+          positions.push(...a, ...b, ...c, ...a, ...c, ...d);
+        }
+        const geometry = new THREE.BufferGeometry();
+        disposableResources.push(geometry);
+        geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        geometry.computeVertexNormals();
+        const material = new THREE.MeshStandardMaterial({ color: 0x94a3b8, side: THREE.DoubleSide, roughness: .8 });
+        disposableResources.push(material);
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.name = "uniao-ortogonal"; scene.add(mesh);
+      } else for (const wall of walls) {
+        const geometry = buildWallGeometry(THREE, wall);
+        disposableResources.push(geometry);
+        const material = new THREE.MeshStandardMaterial({
+          color: wall.id === active ? 0x6ee7b7 : 0x94a3b8,
+          side: THREE.DoubleSide, metalness: 0, roughness: .8,
+        });
+        disposableResources.push(material);
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.name = wall.id; scene.add(mesh);
+      }
+      // The union is a single mesh, so preserve selection context with a
+      // lightweight guide above the selected wall (without changing the CSG).
+      if (union && active) {
+        const selected = walls.find(wall => wall.id === active);
+        if (selected) {
+          const z = selected.height + 0.025;
+          const points = [
+            new THREE.Vector3(selected.start[0], selected.start[1], z),
+            new THREE.Vector3(selected.end[0], selected.end[1], z),
+          ];
+          const guideGeometry = new THREE.BufferGeometry().setFromPoints(points);
+          disposableResources.push(guideGeometry);
+          const guideMaterial = new THREE.LineBasicMaterial({ color: 0x059669, depthTest: false });
+          disposableResources.push(guideMaterial);
+          const guide = new THREE.Line(guideGeometry, guideMaterial);
+          guide.name = `parede-selecionada-${selected.id}`;
+          guide.renderOrder = 10;
+          scene.add(guide);
+        }
+      }
+      const bounds = new THREE.Box3().setFromObject(scene);
+      const center = bounds.getCenter(new THREE.Vector3());
+      const dimensions = bounds.getSize(new THREE.Vector3());
+      const radius = Math.max(dimensions.x, dimensions.y, dimensions.z, 1);
+      camera.position.set(center.x + radius * 1.5, center.y - radius * 1.7, center.z + radius * 1.3);
+      camera.lookAt(center);
+      const resize = () => {
+        if (!node.isConnected) return;
+        const width = node.clientWidth || 320, height = 320;
+        camera.aspect = width / height; camera.updateProjectionMatrix(); renderer.setSize(width, height);
+        renderer.render(scene, camera);
+      };
+      // Select the closest wall centerline at the 3D hit point. The merged
+      // orthogonal mesh is not split by wall, so it has no per-wall mesh ids.
+      const onPointerDown = (event: PointerEvent) => {
+        if (!onSelect) return;
+        const rect = renderer.domElement.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+        pointer.set((event.clientX - rect.left) / rect.width * 2 - 1,
+          -((event.clientY - rect.top) / rect.height * 2 - 1));
+        raycaster.setFromCamera(pointer, camera);
+        const hits = raycaster.intersectObjects(scene.children, false)
+          .filter((hit: any) => hit.object?.isMesh);
+        if (!hits.length) return;
+        const hit = hits[0];
+        const direct = walls.find(wall => wall.id === hit.object.name);
+        if (direct) { onSelect(direct.id); return; }
+        if (!union) return;
+        const xy = hit.point;
+        const matches = walls.map(wall => {
+          const ax = wall.start[0], ay = wall.start[1];
+          const dx = wall.end[0] - ax, dy = wall.end[1] - ay;
+          const denom = dx * dx + dy * dy;
+          if (denom < 1e-12) return { wall, score: Infinity };
+          const t = Math.min(1, Math.max(0, ((xy.x - ax) * dx + (xy.y - ay) * dy) / denom));
+          const distance = Math.hypot(xy.x - ax - t * dx, xy.y - ay - t * dy);
+          const outsideZ = Math.max(0, xy.z - wall.height, -xy.z);
+          return { wall, score: Math.hypot(distance, outsideZ) };
+        }).sort((a, b) => a.score - b.score);
+        if (matches[0] && matches[0].score <= matches[0].wall.thickness / 2 + 0.1)
+          onSelect(matches[0].wall.id);
+      };
+      renderer.domElement.addEventListener("pointerdown", onPointerDown);
+      const previousCleanup = cleanup;
+      cleanup = () => {
+        renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+        previousCleanup();
+      };
+      resize();
+      observer = new ResizeObserver(resize); observer.observe(node);
+      setError("");
+      } catch (reason) {
+        cleanup();
+        cleanup = () => {};
+        throw reason;
+      }
+    }).catch(reason => { if (!disposed) setError(reason instanceof Error ? reason.message : "Erro WebGL"); });
+    return () => { disposed = true; cleanup(); };
+  }, [walls, active, onSelect]);
+  return <div className="space-y-1">
+    <div ref={holder} className="h-[320px] w-full overflow-hidden rounded bg-slate-50" aria-label="Malhas paramétricas WebGL em prévia" />
+    {quantities && !error ? <p className="text-xs text-slate-700">Quantitativo preliminar da união: {quantities.volume.toFixed(3)} m³ de volume líquido · {quantities.surface.toFixed(2)} m² de superfície exposta.</p> : null}
+    {error ? <p role="alert" className="text-xs text-red-700">{error}</p> :
+      walls.length === 0 ? <p className="text-xs text-slate-600">Adicione uma parede para visualizar o modelo 3D.</p> :
+      <p className="text-xs text-slate-600">WebGL: paredes ortogonais combinadas em volume único; diagonais usam malhas individuais. Geometria ainda sujeita a revisão.</p>}
+  </div>;
+}

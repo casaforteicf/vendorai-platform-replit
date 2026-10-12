@@ -31,17 +31,28 @@ import {
   archAmbientesTable,
   archRenderVersoesTable,
   archRenderSolicitacoesTable,
+  mediaAssetsTable,
   type ItemAdicionado,
   type TexturaAlterada,
 } from "@workspace/db";
-import { eq, or, and, desc } from "drizzle-orm";
+import { eq, or, and, desc, sql } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { ModelFileStore, safeSegment } from "../lib/arqdor-model-files.js";
+import { createProcessingMediaProject, registerGeneratedMediaOutput } from "./media-library.js";
 
 // ─── Tipos locais ──────────────────────────────────────────────────────────────
 
 type SceneData = {
+  // Private worker staging key; never an arbitrary filesystem path or URL.
+  model?: {
+    key: string;
+    sha256: string;
+    calibration: { measuredDistance: number; actualMeters: number };
+    referenceDimensions: { width: number; depth: number; height: number };
+    tolerance?: number;
+  };
   estilo?:       string;
   cores?:        string;
   produtos?:     string[];
@@ -50,6 +61,9 @@ type SceneData = {
   // Campos extendidos (editor futuro)
   resolution?:   [number, number];
   samples?:      number;
+  qualityPreset?: "preview" | "full_hd" | "4k" | "print";
+  postproduction?: { exposure?: number; gamma?: number };
+  video?: { fps?: number; maxSeconds?: number; keyframes: Array<{ second: number; position: number[]; target: number[] }> };
   hdri?:         string;
   hdriStrength?: number;
   room?:         Record<string, unknown>;
@@ -149,11 +163,27 @@ function buildSceneConfig(
   sceneData: SceneData,
   ambienteNome: string | null,
 ): Record<string, unknown> {
+  if (sceneData.model) {
+    return {
+      model: sceneData.model,
+      resolution: sceneData.resolution,
+      samples: sceneData.samples,
+      qualityPreset: sceneData.qualityPreset,
+      postproduction: sceneData.postproduction,
+      video: sceneData.video,
+      hdri: sceneData.hdri ?? "natural",
+      hdriStrength: sceneData.hdriStrength ?? 1,
+      camera: sceneData.camera ?? {},
+    };
+  }
   // Se o sceneData já traz um sceneConfig completo (editor futuro), usa direto
   if (sceneData.objects && sceneData.objects.length > 0 && sceneData.hdri) {
     return {
-      resolution:   sceneData.resolution  ?? [1920, 1080],
-      samples:      sceneData.samples     ?? 64,
+      resolution:   sceneData.resolution,
+      samples:      sceneData.samples,
+      qualityPreset: sceneData.qualityPreset,
+      postproduction: sceneData.postproduction,
+      video: sceneData.video,
       hdri:         sceneData.hdri,
       hdriStrength: sceneData.hdriStrength ?? 1.0,
       room:         sceneData.room        ?? {},
@@ -182,8 +212,11 @@ function buildSceneConfig(
   });
 
   return {
-    resolution:   [1920, 1080],
-    samples:      64,
+    resolution: sceneData.resolution,
+    samples: sceneData.samples,
+    qualityPreset: sceneData.qualityPreset,
+    postproduction: sceneData.postproduction,
+    video: sceneData.video,
     hdri,
     hdriStrength: 1.0,
     room: {
@@ -351,6 +384,13 @@ export async function iniciarRender(
 
   if (!projeto) throw new Error(`Projeto ${cena.projetoId} não encontrado.`);
 
+  // A text-only AI fallback cannot reproduce an imported model faithfully.
+  // Preserve the existing image path, but reject this request before creating a job.
+  const sceneData = (cena.sceneData ?? {}) as SceneData;
+  if (sceneData.model && !process.env.BLENDER_SERVER_URL?.trim()) {
+    throw new Error("Render 3D indisponível. Configure o worker Blender; use o Render IA com uma imagem de referência para uma alternativa visual.");
+  }
+
   let ambienteNome: string | null = null;
   if (cena.ambienteId) {
     const [amb] = await db
@@ -359,6 +399,23 @@ export async function iniciarRender(
       .where(eq(archAmbientesTable.id, cena.ambienteId))
       .limit(1);
     ambienteNome = amb?.nome ?? null;
+  }
+
+  // Attach only a private scene configuration tied to the exact imported model.
+  // Fail before creating a render job if the saved version cannot be verified.
+  let storedSettings: Record<string, unknown> | undefined;
+  if (sceneData.model) {
+    const root = process.env.ARQDOR_MODEL_ROOT;
+    if (!root?.trim()) throw new Error("Armazenamento privado de modelos não configurado");
+    const key = sceneData.model.key;
+    const match = /^([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)\/model\.glb$/.exec(key);
+    if (!match || match[1] !== cena.projetoId) throw new Error("Referência de modelo incompatível com o projeto");
+    const modelId = safeSegment(match[2]);
+    const storage = new ModelFileStore(root);
+    const record = await storage.get(projeto.tenantId, cena.projetoId, modelId);
+    if (record.sha256 !== sceneData.model.sha256) throw new Error("Versão do modelo divergente");
+    const persisted = await storage.sceneSettings(projeto.tenantId, cena.projetoId, modelId);
+    storedSettings = persisted.settings;
   }
 
   // 2. Inserir registro de render (aguardando)
@@ -376,11 +433,22 @@ export async function iniciarRender(
     .where(eq(archCenasTable.id, cenaId));
 
   // 4. Montar sceneConfig
-  const sceneData   = (cena.sceneData ?? {}) as SceneData;
   const sceneConfig = buildSceneConfig(sceneData, ambienteNome ?? cena.nome);
+  if (storedSettings) sceneConfig.sceneSettings = storedSettings;
+  if (sceneData.model) {
+    sceneConfig.model = { ...sceneData.model, tenantId: projeto.tenantId };
+  }
 
   // 5. Verificar se o servidor Blender está configurado; se não, usar fallback gpt-image-1
   if (!process.env.BLENDER_SERVER_URL?.trim()) {
+    if (sceneData.model || sceneData.video) {
+      await db.update(archRendersTable).set({
+        status: "erro", erroMsg: "Render 3D/vídeo requer worker Blender configurado",
+      }).where(eq(archRendersTable.id, render.id));
+      await db.update(archCenasTable).set({ status: "erro", updatedAt: new Date() })
+        .where(eq(archCenasTable.id, cenaId));
+      throw new Error("Render 3D/vídeo requer worker Blender configurado; não será substituído por imagem IA");
+    }
     logger.info(
       { cenaId, renderId: render.id },
       "blenderService: BLENDER_SERVER_URL ausente — usando fallback gpt-image-1",
@@ -512,8 +580,74 @@ export async function checkRenderStatus(renderId: string): Promise<void> {
   }
 
   // 5. Concluído ou erro — atualizar render + cena
-  const imageUrl = statusResp.imageUrl ?? null;
-  const erroMsg  = statusResp.erro     ?? null;
+  let imageUrl = statusResp.imageUrl ?? null;
+  let erroMsg = statusResp.erro ?? null;
+  if (remoteStatus === "concluido" && !imageUrl) {
+    try {
+      const [previousAsset] = await db.select({ storageUrl: mediaAssetsTable.storageUrl, mimeType: mediaAssetsTable.mimeType })
+        .from(mediaAssetsTable)
+        .where(and(eq(mediaAssetsTable.source, "generated"),
+          sql`${mediaAssetsTable.metadata}->>'archRenderId' = ${renderId}`))
+        .limit(1);
+      if (previousAsset) {
+        imageUrl = previousAsset.mimeType === "video/mp4" ? null : `/api/storage${previousAsset.storageUrl}`;
+      } else {
+      const [scene] = await db.select({ projetoId: archCenasTable.projetoId })
+        .from(archCenasTable).where(eq(archCenasTable.id, render.cenaId)).limit(1);
+      if (!scene) throw new Error("Cena do render não encontrada");
+      const [project] = await db.select({ tenantId: archProjetosTable.tenantId })
+        .from(archProjetosTable).where(eq(archProjetosTable.id, scene.projetoId)).limit(1);
+      if (!project) throw new Error("Tenant do render não encontrado");
+      const artifact = await fetch(`${getBlenderUrl()}/render/${encodeURIComponent(render.blenderJobId)}/artifact`, {
+        headers: blenderHeaders(), signal: AbortSignal.timeout(60_000),
+      });
+      if (!artifact.ok) throw new Error(`Não foi possível recuperar PNG privado (${artifact.status})`);
+      const bytes = Buffer.from(await artifact.arrayBuffer());
+      const isVideo = artifact.headers.get("content-type")?.toLowerCase().startsWith("video/mp4") ?? false;
+      const extension = isVideo ? "mp4" : "png";
+      const mimeType = isVideo ? "video/mp4" : "image/png";
+      if (bytes.length < 12 || bytes.length > 80 * 1024 * 1024 ||
+          (isVideo ? bytes.toString("ascii", 4, 8) !== "ftyp" :
+          !bytes.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"))))
+        throw new Error("Artefato de render inválido");
+      const objectPath = await new ObjectStorageService().savePrivateBuffer(
+        bytes, mimeType, `arqdor-render-${renderId}.${extension}`, project.tenantId,
+      );
+      // Link the private render to the tenant media library. A retry must
+      // not create duplicate library assets after the render has completed.
+      const [existingLibrary] = await db.select({ id: mediaAssetsTable.id })
+        .from(mediaAssetsTable)
+        .where(and(eq(mediaAssetsTable.tenantId, project.tenantId),
+          eq(mediaAssetsTable.storageUrl, objectPath))).limit(1);
+      if (!existingLibrary) {
+        const mediaProjectId = await createProcessingMediaProject({
+          tenantId: project.tenantId,
+          title: `Render Arqdor — ${render.cenaId}`,
+          operation: "arqdor_blender_render",
+          kind: isVideo ? "video" : "image",
+          context: { archCenaId: render.cenaId, archRenderId: renderId },
+        });
+        await registerGeneratedMediaOutput({
+          tenantId: project.tenantId,
+          projectId: mediaProjectId,
+          storageUrl: objectPath,
+          mimeType,
+          fileSize: bytes.length,
+          type: isVideo ? "video" : "image",
+          originalFilename: `arqdor-render-${renderId}.${extension}`,
+          operation: "arqdor_blender_render",
+          metadata: { archCenaId: render.cenaId, archRenderId: renderId },
+        });
+      }
+      // Never place an MP4 in an image-only field.
+      imageUrl = isVideo ? null : `/api/storage${objectPath}`;
+      }
+    } catch (error) {
+      logger.error({ error, renderId }, "blenderService: falha ao armazenar PNG privado");
+      // Keep the render in progress so polling can retry the transfer.
+      return;
+    }
+  }
   const agora    = Date.now();
 
   await db
@@ -761,3 +895,4 @@ export async function pollPendingRenders(log: typeof logger): Promise<void> {
     ),
   );
 }
+

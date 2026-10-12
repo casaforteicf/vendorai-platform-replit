@@ -2,22 +2,24 @@ import React, { useState } from "react";
 import { FurnitureSidebar } from "./FurnitureSidebar";
 import { ManufacturerLibrary } from "./ManufacturerLibrary";
 import { MaterialSidebar } from "./MaterialSidebar";
+import { DxfReferencePanel } from "./DxfReferencePanel";
 
 type LibraryPanelProps = {
   onApply?: (payload: unknown) => void;
 };
 
 export function LibraryPanel({ onApply }: LibraryPanelProps) {
-  const [tab, setTab] = useState<"materials" | "furniture" | "manufacturers">("materials");
+  const [tab, setTab] = useState<"materials" | "furniture" | "manufacturers" | "import">("materials");
 
   return (
     <div className="flex h-full flex-col bg-white">
       <div className="border-b border-slate-100 p-4">
-        <div className="grid grid-cols-3 gap-2 rounded-2xl bg-slate-50 p-1">
+        <div className="grid grid-cols-4 gap-2 rounded-2xl bg-slate-50 p-1">
           {[
             ["materials", "Materiais"],
             ["furniture", "Móveis"],
             ["manufacturers", "Marcas"],
+            ["import", "Importar"],
           ].map(([key, label]) => (
             <button
               key={key}
@@ -38,6 +40,7 @@ export function LibraryPanel({ onApply }: LibraryPanelProps) {
         {tab === "materials" ? <MaterialSidebar onSelect={onApply} /> : null}
         {tab === "furniture" ? <FurnitureSidebar onSelect={onApply} /> : null}
         {tab === "manufacturers" ? <ManufacturerLibrary onSelect={onApply} /> : null}
+        {tab === "import" ? <DxfReferencePanel onApply={onApply} /> : null}
       </div>
     </div>
   );

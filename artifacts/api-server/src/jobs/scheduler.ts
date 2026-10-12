@@ -12,6 +12,7 @@
  *        (enviar_whatsapp with the campaign message), and advance status.
  */
 import cron from "node-cron";
+import { runActiveManagerCycle } from "../services/active-manager-cycle.js";
 import { and, desc, eq, gt, isNotNull, isNull, lte, gte, lt, inArray, not, sql } from "drizzle-orm";
 import { runMonthlyBilling } from "../lib/billing.js";
 import { isBirthdayOn, parseBirthdayParts } from "../lib/birthday-date.js";
@@ -1678,6 +1679,15 @@ async function runNoResponseClosingMessage(log: Logger): Promise<void> {
 }
 
 export function startScheduler(log: Logger): void {
+  // AGENT-01: periodic, read-only opportunity checks and Jarvis case registration.
+  // Feature flag prevents new background work before Contabo homologation.
+  if (process.env.ACTIVE_MANAGER_CYCLES_ENABLED === "true") {
+    cron.schedule("*/15 * * * *", () => {
+      runActiveManagerCycle(log).catch((err) => log.error({ err }, "active-managers: scheduler error"));
+    }, { timezone: "America/Sao_Paulo" });
+    log.info("active-managers: 15-minute scheduler registered");
+  }
+
   // Token Guardian: refresh expiring OAuth credentials without browser interaction.
   runTokenGuardian(log).catch((err) => log.error({ err }, "scheduler/token-guardian: startup failure"));
   cron.schedule("10 * * * *", () => {

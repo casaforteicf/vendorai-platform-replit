@@ -717,6 +717,14 @@ export default function PipelineOperacional() {
                   <div><p className="text-xs text-muted-foreground">Conclusão/entrega efetiva</p><p>{formatDate(selectedCard.dataFimEfetiva)}</p></div>
                 </div>
 
+                {selectedCard.pipeline === "execucao" && selectedCard.dealId && selectedCard.propostaId && (
+                  <Button variant="outline" className="w-full" onClick={() => {
+                    window.location.assign("/execution-lots?dealId=" + encodeURIComponent(selectedCard.dealId!) + "&proposalId=" + encodeURIComponent(selectedCard.propostaId!));
+                  }}>
+                    Gerenciar lotes e quantidades de execução
+                  </Button>
+                )}
+
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Etapa</label>
                   <Select value={selectedCard.etapa} disabled={patchCard.isPending} onValueChange={(etapa) => { if (!patchCard.isPending) patchCard.mutate({ id: selectedCard.id, data: { etapa } }); }}>

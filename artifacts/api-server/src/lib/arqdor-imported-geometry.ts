@@ -219,7 +219,7 @@ export function importedFloorPlanToEditableGeometry(
       y1,
       x2,
       y2,
-      thickness: clamp(Number(wall.thickness ?? 0.14), 0.05, 0.6),
+      thickness: clamp(n(wall.thickness) && n(wall.thickness)! > 0 ? n(wall.thickness)! : 0.15, 0.05, 0.6),
       confidence,
       classification: wall.classification ?? "unknown",
       material: wall.material ?? null,

@@ -36,6 +36,10 @@ function isNightAuditWindow() {
 }
 
 async function runEmergencyRemediation(improvementId: string, finding: AuditFinding, log: Logger) {
+  // Audit can always report incidents, but code-changing remediation needs explicit autonomous mode.
+  if (process.env.VENDI_AUTONOMY_ENABLED !== "true" || !isNightAuditWindow()) return;
+  // Security incidents require explicit Superadmin review even in autonomous mode.
+  if (finding.module.startsWith("Segurança")) return;
   if (finding.priority !== "urgente") return;
 
   const recent = await pool.query(
@@ -206,6 +210,91 @@ async function upsertFinding(finding: AuditFinding, log: Logger) {
   await runEmergencyRemediation(id, finding, log);
 }
 
+async function auditFrontendRenderFailures(): Promise<AuditFinding[]> {
+  const available = await pool.query(
+    "SELECT to_regclass('public.ux_runtime_errors') AS telemetry",
+  );
+  if (!available.rows[0]?.telemetry) return [];
+  // Data minimization: discard expired hourly aggregates in small batches.
+  // A bounded deletion avoids long locks during the frequent audit cycle.
+  await pool.query(
+    `DELETE FROM ux_runtime_errors WHERE id IN (
+      SELECT id FROM ux_runtime_errors
+      WHERE bucket_start < now() - interval '30 days'
+      ORDER BY bucket_start ASC LIMIT 500
+    )`,
+  );
+  // Only aggregated counts leave the database; do not attach route or tenant IDs
+  // to cross-tenant Superadmin improvement summaries.
+  const result = await pool.query(
+    `WITH repeated AS (
+       SELECT tenant_id, route_key, sum(occurrences)::int AS failures
+       FROM ux_runtime_errors
+       WHERE bucket_start >= now() - interval '24 hours'
+       GROUP BY tenant_id, route_key
+       HAVING sum(occurrences) >= 5
+     )
+     SELECT coalesce(sum(failures),0)::int AS total,
+            count(DISTINCT tenant_id)::int AS affected_tenants
+     FROM repeated`,
+  );
+  const total = Number(result.rows[0]?.total ?? 0);
+  if (total < 5) return [];
+  const affected = Number(result.rows[0]?.affected_tenants ?? 0);
+  return [{
+    key: "ux:recurring-react-render-failures",
+    title: "Falhas de renderização recorrentes detectadas pelo Agente UX",
+    description: `A telemetria identificou ${total} falhas em combinações tenant/rota com pelo menos cinco ocorrências nas últimas 24h, envolvendo ${affected} tenants. Investigar em homologação; não há dados de usuários, rotas ou stacks no chamado.`,
+    module: "UI / UX",
+    priority: total >= 30 ? "alta" : "media",
+    riskSummary: "Renderizações interrompidas podem tornar telas do Vendor.ai indisponíveis.",
+    acceptanceCriteria: "Reproduzir a falha em homologação, verificar origem e validar correção com evidência funcional.",
+  }];
+}
+
+async function auditConversationTenantIsolation(): Promise<AuditFinding[]> {
+  // Aggregate counts only: never expose messages, phone numbers or tenant IDs.
+  const available = await pool.query(
+    "SELECT to_regclass('public.conversations') AS conversations, to_regclass('public.whatsapp_connections') AS connections, to_regclass('public.leads') AS leads",
+  );
+  if (!available.rows[0]?.conversations) return [];
+  const findings: AuditFinding[] = [];
+  const checks = [
+    {
+      available: Boolean(available.rows[0]?.connections),
+      key: "security:cross-tenant-whatsapp-conversation-link",
+      title: "Conversa vinculada a WhatsApp de outro tenant",
+      sql: `SELECT count(*)::int AS violations FROM conversations c
+            JOIN whatsapp_connections w ON w.id = c.whatsapp_connection_id
+            WHERE c.tenant_id <> w.tenant_id`,
+    },
+    {
+      available: Boolean(available.rows[0]?.leads),
+      key: "security:cross-tenant-lead-conversation-link",
+      title: "Conversa vinculada a lead de outro tenant",
+      sql: `SELECT count(*)::int AS violations FROM conversations c
+            JOIN leads l ON l.id = c.lead_id
+            WHERE c.tenant_id <> l.tenant_id`,
+    },
+  ];
+  for (const check of checks) {
+    if (!check.available) continue;
+    const result = await pool.query(check.sql);
+    const violations = Number(result.rows[0]?.violations ?? 0);
+    if (violations === 0) continue;
+    findings.push({
+      key: check.key,
+      title: check.title,
+      description: `Detectados ${violations} vínculos entre tenants distintos. Somente contagem agregada. Exige investigação e aprovação do Superadmin antes de qualquer correção.`,
+      module: "Segurança / Isolamento multi-tenant",
+      priority: "urgente",
+      riskSummary: "Possível violação de isolamento e permissões no Omnichannel.",
+      acceptanceCriteria: "Investigar origem, corrigir mediante aprovação e comprovar isolamento entre tenants.",
+    });
+  }
+  return findings;
+}
+
 async function auditDatabaseSchema(): Promise<AuditFinding[]> {
   const criticalTables = [
     "tenants", "leads", "deals", "agent_tasks", "agent_configs",
@@ -229,6 +318,8 @@ async function auditDatabaseSchema(): Promise<AuditFinding[]> {
 }
 
 async function recoverStalledImprovements(log: Logger) {
+  // When autonomy is off, preserve approval workflow; never initiate code changes silently.
+  if (process.env.VENDI_AUTONOMY_ENABLED !== "true" || !isNightAuditWindow()) return;
   const candidates = await pool.query(
     `SELECT id,title,description,module,priority,status,test_status AS "testStatus",
             agent_status AS "agentStatus",agent_summary AS "agentSummary",updated_at AS "updatedAt"
@@ -439,7 +530,9 @@ async function auditRuntimeUrls(): Promise<AuditFinding[]> {
 
 async function auditFrontendRoutes(): Promise<AuditFinding[]> {
   const findings: AuditFinding[] = [];
-  const base = (process.env["HOMOLOGATION_URL"] || process.env["PUBLIC_APP_URL"] || process.env["APP_URL"] || "").replace(/\/$/, "");
+  // UX route checks must target homologation only; production traffic and login
+  // redirects are not evidence of frontend regression-free operation.
+  const base = (process.env["HOMOLOGATION_URL"] || "").replace(/\/$/, "");
   if (!base) return findings;
 
   const routes = [
@@ -456,17 +549,18 @@ async function auditFrontendRoutes(): Promise<AuditFinding[]> {
 
   for (const path of routes) {
     const url = `${base}${path}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
       const startedAt = Date.now();
       const response = await fetch(url, {
         method: "GET",
         signal: controller.signal,
-        redirect: "follow",
+        redirect: "manual",
         headers: { "User-Agent": "VendorAI-Continuous-Audit/1.0" },
       });
-      clearTimeout(timeout);
+      // Auth redirects and 401/403 are normal for protected SPA routes.
+      // An unauthenticated HTTP probe cannot validate rendered UI.
       const latency = Date.now() - startedAt;
 
       if (response.status >= 500 || latency > 5000) {
@@ -484,12 +578,14 @@ async function auditFrontendRoutes(): Promise<AuditFinding[]> {
       findings.push({
         key: `ui-route:${path}:unreachable`,
         title: `Rota inacessível: ${path}`,
-        description: `A auditoria não conseguiu abrir ${url}: ${error instanceof Error ? error.message : String(error)}`,
+        description: `A auditoria HTTP da rota ${path} não respondeu: ${error instanceof Error ? error.name : "NetworkError"}. Validar em homologação sem incluir parâmetros ou dados de sessão.`,
         module: "UI / UX",
         priority: "alta",
         riskSummary: "A rota pode estar indisponível ou presa em falha de runtime.",
         acceptanceCriteria: `${path} deve responder de forma estável e ser validada pelo Browser Agent em desktop e mobile.`,
       });
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
@@ -510,6 +606,8 @@ async function runAudit(log: Logger, mode: "fast" | "deep") {
     }
     const batches = await Promise.all([
       auditDatabaseSchema(),
+      auditFrontendRenderFailures(),
+      auditConversationTenantIsolation(),
       auditImprovementFlow(),
       ...(mode === "deep" ? [auditRuntimeUrls(), auditFrontendRoutes()] : []),
     ]);

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Link2, Loader2, Plus, Trash2, UserRound } from "lucide-react";
+import { Building2, Link2, Loader2, Pencil, Plus, Trash2, UserRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,6 +16,7 @@ type PersonParticipant = {
   personId: string;
   nome: string;
   documento?: string | null;
+  dataNascimento?: string | null;
   telefones?: string[] | null;
   emails?: string[] | null;
   role: string;
@@ -86,23 +87,28 @@ export function DealParticipantsCard({
   tenantId,
   dealId,
   token,
+  canManageCommission = false,
 }: {
   tenantId: string;
   dealId: string;
   token?: string | null;
+  canManageCommission?: boolean;
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<"person" | "company">("person");
   const [saving, setSaving] = useState(false);
+  const [editingPerson, setEditingPerson] = useState<PersonParticipant | null>(null);
   const [personMode, setPersonMode] = useState<"existing" | "new">("existing");
   const [personId, setPersonId] = useState("");
   const [personRole, setPersonRole] = useState("consumidor_final");
+  const [contactPrimary, setContactPrimary] = useState(false);
   const [personName, setPersonName] = useState("");
   const [personPhone, setPersonPhone] = useState("");
   const [personEmail, setPersonEmail] = useState("");
   const [personDocument, setPersonDocument] = useState("");
+  const [personBirthDate, setPersonBirthDate] = useState("");
   const [contextCompanyId, setContextCompanyId] = useState("__none__");
   const [relationshipScope, setRelationshipScope] = useState<"deal_only" | "persistent">("deal_only");
   const [hasCommission, setHasCommission] = useState(false);
@@ -156,12 +162,15 @@ export function DealParticipantsCard({
 
   function resetForm() {
     setPersonMode("existing");
+    setEditingPerson(null);
     setPersonId("");
     setPersonRole("consumidor_final");
+    setContactPrimary(false);
     setPersonName("");
     setPersonPhone("");
     setPersonEmail("");
     setPersonDocument("");
+    setPersonBirthDate("");
     setContextCompanyId("__none__");
     setRelationshipScope("deal_only");
     setHasCommission(false);
@@ -172,6 +181,27 @@ export function DealParticipantsCard({
     setCompanyRole("contratante");
     setNewCompanyName("");
     setNewCompanyCnpj("");
+  }
+
+  function editPerson(person: PersonParticipant) {
+    resetForm();
+    setKind("person");
+    setEditingPerson(person);
+    setPersonId(person.personId);
+    setPersonName(person.nome);
+    setPersonPhone(person.telefones?.[0] ?? "");
+    setPersonEmail(person.emails?.[0] ?? "");
+    setPersonDocument(person.documento ?? "");
+    setPersonBirthDate(person.dataNascimento ?? "");
+    setPersonRole(person.role);
+    setContactPrimary(person.isPrimary);
+    setContextCompanyId(person.contextualCompanyId ?? "__none__");
+    setRelationshipScope(person.relationshipScope);
+    const commission = person.metadata?.commission as { enabled?: boolean; kind?: string; value?: string | number | null } | undefined;
+    setHasCommission(commission?.enabled === true);
+    setCommissionKind(commission?.kind === "fixed" ? "fixed" : "percent");
+    setCommissionValue(commission?.value == null ? "" : String(commission.value));
+    setOpen(true);
   }
 
   async function savePerson() {
@@ -185,8 +215,10 @@ export function DealParticipantsCard({
     }
     setSaving(true);
     try {
-      const response = await fetch(`/api/crm/deals/${dealId}/people`, {
-        method: "POST",
+      const response = await fetch(editingPerson
+        ? `/api/crm/deals/${dealId}/people/${editingPerson.personId}`
+        : `/api/crm/deals/${dealId}/people`, {
+        method: editingPerson ? "PATCH" : "POST",
         headers,
         body: JSON.stringify({
           tenantId,
@@ -197,24 +229,50 @@ export function DealParticipantsCard({
             email: personEmail.trim() || undefined,
             documento: personDocument.trim() || undefined,
           } : undefined,
+          profile: editingPerson ? { nome: personName.trim(), telefone: personPhone.trim(), email: personEmail.trim(), documento: personDocument.trim(), dataNascimento: personBirthDate } : undefined,
           role: personRole,
+          isPrimary: contactPrimary,
           contextualCompanyId: contextCompanyId === "__none__" ? null : contextCompanyId,
           relationshipScope,
-          metadata: {
-            commission: hasCommission
-              ? { enabled: true, kind: commissionKind, value: commissionValue.trim() || null, status: "prevista" }
-              : { enabled: false },
-          },
+
         }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error ?? "Não foi possível adicionar a pessoa.");
+
       await qc.invalidateQueries({ queryKey: ["crm-deal-participants", tenantId, dealId] });
       setOpen(false);
       resetForm();
-      toast({ title: "Pessoa vinculada ao negócio." });
+      toast({ title: editingPerson ? "Vínculo atualizado." : "Pessoa vinculada ao negócio." });
     } catch (error) {
       toast({ title: "Erro ao adicionar envolvido", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveCommission() {
+    if (!editingPerson || !canManageCommission) return;
+    const rawValue = commissionValue.trim().replace(",", ".");
+    const value = hasCommission ? Number(rawValue) : null;
+    if (hasCommission && (!rawValue || !Number.isFinite(value))) {
+      toast({ title: "Informe um valor de comissão válido.", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/crm/deals/${dealId}/people/${editingPerson.personId}/commission`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ tenantId, enabled: hasCommission, kind: commissionKind, value }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível alterar a comissão.");
+      await qc.invalidateQueries({ queryKey: ["crm-deal-participants", tenantId, dealId] });
+      toast({ title: "Comissão atualizada." });
+      setOpen(false);
+    } catch (error) {
+      toast({ title: "Erro ao atualizar comissão", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -270,6 +328,9 @@ export function DealParticipantsCard({
       return;
     }
     await qc.invalidateQueries({ queryKey: ["crm-deal-participants", tenantId, dealId] });
+    if (kindToRemove === "people" && people.find((item) => item.relationId === relationId)?.isPrimary) {
+      toast({ title: "Contato principal removido", description: "Selecione outro envolvido e marque Contato principal deste negócio." });
+    }
   }
 
   const hasParticipants = people.length > 0 || companies.length > 0;
@@ -331,19 +392,18 @@ export function DealParticipantsCard({
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">{person.nome}</p>
                         <p className="text-xs text-muted-foreground">
-                          {roleLabel(person.role)}
+                          {roleLabel(person.role)}{person.isPrimary ? " · contato principal" : ""}
                           {contextualCompany ? ` · ${contextualCompany.nomeFantasia || contextualCompany.razaoSocial}` : ""}
                           {person.relationshipScope === "deal_only" ? " · somente neste negócio" : " · vínculo permanente"}
-                          {(() => {
-                            const commission = person.metadata && typeof person.metadata === "object" ? (person.metadata as any).commission : null;
-                            if (!commission?.enabled) return " · sem comissão";
-                            const value = commission.value ? ` ${commission.value}` : "";
-                            return commission.kind === "fixed" ? ` · comissão fixa${value}` : ` · comissão %${value}`;
-                          })()}
+
                         </p>
                       </div>
                     </div>
-                    <Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={() => void remove("people", person.relationId)}><Trash2 className="h-4 w-4" /></Button>
+                    <div className="flex items-center gap-1">
+                      <Button type="button" size="icon" variant="ghost" className="h-8 w-8" title="Editar vínculo" onClick={() => editPerson(person)}><Pencil className="h-4 w-4" /></Button>
+                      {canManageCommission && <Button type="button" size="sm" variant="ghost" title="Editar comissão do envolvido" onClick={() => editPerson(person)}>Editar comissão</Button>}
+                      <Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={() => void remove("people", person.relationId)}><Trash2 className="h-4 w-4" /></Button>
+                    </div>
                   </div>
                 );
               })}
@@ -356,7 +416,7 @@ export function DealParticipantsCard({
       <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) resetForm(); }}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>Vincular cliente/contato ao lead</DialogTitle>
+            <DialogTitle>{editingPerson ? "Editar vínculo da pessoa" : "Vincular cliente/contato ao negócio"}</DialogTitle>
           </DialogHeader>
           <Tabs value={kind} onValueChange={(value) => setKind(value as "person" | "company")}>
             <p className="text-sm text-muted-foreground">Selecione um cadastro existente para anexar este atendimento ao cliente correto ou cadastre um novo sem duplicar o lead.</p>
@@ -368,12 +428,12 @@ export function DealParticipantsCard({
             <TabsContent value="person" className="space-y-4 pt-3">
               <div className="grid grid-cols-2 gap-2">
                 <Button type="button" variant={personMode === "existing" ? "default" : "outline"} onClick={() => setPersonMode("existing")}>Pessoa existente</Button>
-                <Button type="button" variant={personMode === "new" ? "default" : "outline"} onClick={() => setPersonMode("new")}>Nova pessoa</Button>
+                <Button type="button" disabled={Boolean(editingPerson)} variant={personMode === "new" ? "default" : "outline"} onClick={() => setPersonMode("new")}>Nova pessoa</Button>
               </div>
               {personMode === "existing" ? (
                 <div className="space-y-1.5">
                   <Label>Pessoa</Label>
-                  <Select value={personId} onValueChange={setPersonId}>
+                  <Select value={personId} onValueChange={setPersonId} disabled={Boolean(editingPerson)}>
                     <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                     <SelectContent>{peopleOptions.map((person) => <SelectItem key={person.id} value={person.id}>{person.nome}</SelectItem>)}</SelectContent>
                   </Select>
@@ -386,6 +446,21 @@ export function DealParticipantsCard({
                   <div className="space-y-1.5 sm:col-span-2"><Label>CPF / documento</Label><Input value={personDocument} onChange={(e) => setPersonDocument(e.target.value)} /></div>
                 </div>
               )}
+              {editingPerson && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5 sm:col-span-2"><Label>Nome</Label><Input value={personName} onChange={(e) => setPersonName(e.target.value)} /></div>
+                  <div className="space-y-1.5"><Label>Telefone</Label><Input value={personPhone} onChange={(e) => setPersonPhone(e.target.value)} /></div>
+                  <div className="space-y-1.5"><Label>E-mail</Label><Input type="email" value={personEmail} onChange={(e) => setPersonEmail(e.target.value)} /></div>
+                  <div className="space-y-1.5"><Label>CPF / documento</Label><Input value={personDocument} onChange={(e) => setPersonDocument(e.target.value)} /></div>
+                  <div className="space-y-1.5"><Label>Nascimento</Label><Input type="date" value={personBirthDate} onChange={(e) => setPersonBirthDate(e.target.value)} /></div>
+                  <p className="text-xs text-muted-foreground sm:col-span-2">Esses dados pertencem à pessoa e também serão atualizados nos outros negócios vinculados.</p>
+                </div>
+              )}
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={contactPrimary} onChange={(event) => setContactPrimary(event.target.checked)} />
+                Contato principal deste negócio
+              </label>
+              <p className="text-xs text-muted-foreground">Somente um contato é principal para comunicação. Ambos os integrantes do casal continuam sendo clientes principais.</p>
               <div className="space-y-1.5">
                 <Label>Papel neste negócio</Label>
                 <Select value={personRole} onValueChange={setPersonRole}>
@@ -404,7 +479,7 @@ export function DealParticipantsCard({
                 </Select>
                 <p className="text-[11px] text-muted-foreground">Ex.: consumidor final de um empreendimento. Isso não o transforma em funcionário da empresa.</p>
               </div>
-              <div className="space-y-2 rounded-lg border p-3">
+              {canManageCommission && editingPerson && <div className="space-y-2 rounded-lg border p-3">
                 <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
                   <input type="checkbox" checked={hasCommission} onChange={(e) => setHasCommission(e.target.checked)} />
                   Este envolvido possui comissão / ganho
@@ -422,7 +497,8 @@ export function DealParticipantsCard({
                     <Input value={commissionValue} onChange={(e) => setCommissionValue(e.target.value)} placeholder={commissionKind === "percent" ? "Ex.: 15" : "Ex.: 1500,00"} />
                   </div>
                 )}
-              </div>
+              <Button type="button" variant="outline" onClick={() => void saveCommission()} disabled={saving}>Salvar comissão separadamente</Button>
+              </div>}
               {contextCompanyId !== "__none__" && (
                 <div className="space-y-1.5">
                   <Label>Tipo de vínculo</Label>
@@ -435,7 +511,7 @@ export function DealParticipantsCard({
                   </Select>
                 </div>
               )}
-              <Button className="w-full" onClick={() => void savePerson()} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Adicionar pessoa</Button>
+              <Button className="w-full" onClick={() => void savePerson()} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editingPerson ? "Salvar alterações" : "Adicionar pessoa"}</Button>
             </TabsContent>
 
             <TabsContent value="company" className="space-y-4 pt-3">

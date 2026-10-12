@@ -120,7 +120,8 @@ function extractContactDeviceIntent(text: string): ContactDeviceIntent | null {
 function extractVendorAiRoute(text: string): { path: string; label: string } | null {
   const normalized = normalize(stripJarvis(text));
   if (!/\b(abre|abra|abrir|va|ir|mostre|mostrar|acesse|acessar|leve)\b/.test(normalized)) return null;
-  return VENDORAI_ROUTES.find((entry) => entry.keywords.test(normalized)) ?? null;
+  const entry = VENDORAI_ROUTES.find((route) => route.keywords.test(normalized));
+  return entry ? { path: entry.path, label: entry.label } : null;
 }
 
 function writeSse(res: any, content: string, extra: Record<string, unknown> = {}) {

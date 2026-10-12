@@ -47,6 +47,9 @@ import os
 import sys
 import json
 import math
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from imported_model import import_model
+from arqdor_feature_contracts import validate_camera_path, resolve_render_preset, validate_postproduction
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -455,14 +458,77 @@ def setup_hdri(hdri_key: str, strength: float = 1.0):
     tree.links.new(bg.outputs["Background"], out.inputs["Surface"])
 
 
+
+def apply_imported_scene_settings(settings, material_mapping=None):
+    """Apply explicitly supplied preview settings; never change geometry."""
+    if not isinstance(settings, dict):
+        return
+    sunlight = settings.get("sunlight")
+    if isinstance(sunlight, (int, float)) and math.isfinite(sunlight) and 0 <= sunlight <= 4:
+        bpy.ops.object.light_add(type="SUN", location=(0, 0, 20))
+        sun = bpy.context.object
+        sun.name = "Arqdor_Preview_Sun"
+        sun.data.energy = sunlight
+        sun.rotation_euler = (math.radians(35), math.radians(-20), math.radians(25))
+    # Saved WebGL cameras use Y-up, whereas Blender uses Z-up.
+    # Convert coordinates explicitly; never silently use the wrong axes.
+    cameras = settings.get("cameras", [])
+    if isinstance(cameras, list) and cameras:
+        camera = cameras[0]
+        position, target = camera.get("position"), camera.get("target")
+        if (isinstance(position, list) and isinstance(target, list)
+                and len(position) == len(target) == 3
+                and all(isinstance(v, (int, float)) and math.isfinite(v)
+                        for v in position + target)):
+            convert = lambda p: [p[0], -p[2], p[1]]
+            setup_camera({"location": convert(position), "target": convert(target), "fov": 50})
+    overrides = settings.get("materials", {})
+    if overrides:
+        mapping = material_mapping or {}
+        if not isinstance(overrides, dict):
+            raise ValueError("Substituições de materiais inválidas")
+        for key, color in overrides.items():
+            name = mapping.get(key)
+            if not name:
+                raise ValueError(f"Material sem correspondência inequívoca: {key}")
+            if not isinstance(color, str) or len(color) != 7 or color[0] != "#":
+                raise ValueError("Cor de material inválida")
+            try:
+                rgb = [int(color[i:i + 2], 16) / 255.0 for i in (1, 3, 5)]
+            except ValueError as error:
+                raise ValueError("Cor hexadecimal inválida") from error
+            material = bpy.data.materials.get(name)
+            if not material or not material.use_nodes:
+                raise ValueError(f"Material não encontrado no Blender: {name}")
+            principled = next((node for node in material.node_tree.nodes if node.type == "BSDF_PRINCIPLED"), None)
+            if principled is None:
+                raise ValueError(f"Material sem shader compatível: {name}")
+            principled.inputs["Base Color"].default_value = (*rgb, 1.0)
+            material.diffuse_color = (*rgb, 1.0)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Render settings
 # ─────────────────────────────────────────────────────────────────────────────
 
+def configure_postproduction(config):
+    """Adjust output color management without changing imported geometry."""
+    post = validate_postproduction(config.get("postproduction"))
+    view = bpy.context.scene.view_settings
+    view.exposure = post["exposure"]
+    view.gamma = post["gamma"]
+
+
 def configure_render(config: dict, out_path: str):
     scene = bpy.context.scene
-    res   = config.get("resolution", [1920, 1080])
-    samp  = int(config.get("samples", 64))
+    res, samples = resolve_render_preset(config)
+    # Reject oversized/malformed render requests before allocating GPU memory.
+    if (not isinstance(res, (list, tuple)) or len(res) != 2
+            or any(type(v) is not int or v < 64 or v > 8192 for v in res)
+            or res[0] * res[1] > 8192 * 8192):
+        raise ValueError("Resolução de render inválida (64–8192 pixels por eixo)")
+    if type(samples) is not int or samples < 1 or samples > 4096:
+        raise ValueError("Amostragem de render inválida (1–4096)")
+    samp = samples
 
     scene.render.engine               = "CYCLES"
     scene.render.resolution_x         = int(res[0])
@@ -475,20 +541,30 @@ def configure_render(config: dict, out_path: str):
     scene.cycles.use_denoising        = True
     scene.cycles.device               = "CPU"
 
-    # Tenta GPU se disponível
-    prefs = bpy.context.preferences.addons.get("cycles")
-    if prefs:
-        cprefs = prefs.preferences
-        cprefs.compute_device_type = "CUDA"
+    # GPU opt-in: CPU remains the safe fallback when a compatible device
+    # is missing or unavailable. Do not assume CUDA exists on every host.
+    requested = os.environ.get("ARQDOR_CYCLES_GPU_BACKEND", "").upper()
+    if requested in ("CUDA", "OPTIX", "HIP", "ONEAPI", "METAL"):
         try:
-            cprefs.get_devices()
-            for d in cprefs.devices:
-                d.use = True
+            addon = bpy.context.preferences.addons.get("cycles")
+            if addon is None:
+                raise RuntimeError("Cycles não disponível")
+            prefs = addon.preferences
+            prefs.compute_device_type = requested
+            prefs.get_devices()
+            devices = [device for device in prefs.devices if device.type == requested]
+            if not devices:
+                raise RuntimeError("Nenhuma GPU compatível encontrada")
+            for device in prefs.devices:
+                device.use = device in devices
             scene.cycles.device = "GPU"
-            print("Usando GPU para render.")
-        except Exception:
+            print(f"Cycles GPU habilitada: {requested} ({len(devices)} dispositivo(s))")
+        except Exception as error:
             scene.cycles.device = "CPU"
-            print("GPU não disponível — usando CPU.")
+            print(f"GPU indisponível: {error}. Usando CPU.")
+    elif requested:
+        raise ValueError("Backend de GPU não permitido")
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -509,21 +585,76 @@ def main():
 
     clear_scene()
     configure_render(config, out_path)
+    configure_postproduction(config)
 
-    room_cfg = config.get("room", {})
-    build_room(room_cfg)
+    if config.get("model"):
+        report = import_model(config["model"])
+        report_path = os.environ.get("MODEL_REPORT_PATH")
+        if report_path:
+            with open(report_path, "w", encoding="utf-8") as report_file:
+                json.dump(report, report_file, ensure_ascii=False)
+        if os.environ.get("MODEL_INSPECT_ONLY") == "1":
+            print("MODEL_INSPECTION_DONE")
+            return
+    else:
+        room_cfg = config.get("room", {})
+        build_room(room_cfg)
 
     hdri_key      = config.get("hdri", "interior_warm")
     hdri_strength = float(config.get("hdriStrength", 1.0))
     setup_hdri(hdri_key, hdri_strength)
 
-    for obj_spec in config.get("objects", []):
+    for obj_spec in ([] if config.get("model") else config.get("objects", [])):
         try:
             add_object(obj_spec)
         except Exception as e:
             print(f"[AVISO] Erro ao adicionar objeto '{obj_spec.get('name', '?')}': {e}")
 
-    setup_camera(config.get("camera", {}))
+    if config.get("model") and config.get("sceneSettings", {}).get("cameras"):
+        apply_imported_scene_settings(config["sceneSettings"], report.get("materialMapping", {}))
+    else:
+        setup_camera(config.get("camera", {}))
+        if config.get("model"):
+            apply_imported_scene_settings({**config.get("sceneSettings", {}), "cameras": []}, report.get("materialMapping", {}))
+
+    video = config.get("video")
+    if video is not None:
+        if not isinstance(video, dict):
+            raise ValueError("Configuração de vídeo inválida")
+        path = validate_camera_path(video.get("keyframes"), video.get("fps", 24),
+                                    video.get("maxSeconds", 120))
+        if path["frames"] > 720:
+            raise ValueError("Render de vídeo limitado a 720 quadros nesta etapa")
+        from mathutils import Vector
+        animation_camera = bpy.context.scene.camera
+        if animation_camera is None:
+            setup_camera({})
+            animation_camera = bpy.context.scene.camera
+        for key in path["keyframes"]:
+            frame = round(key["second"] * path["fps"]) + 1
+            pos = key["position"]
+            target = key["target"]
+            location = Vector((pos[0], -pos[2], pos[1]))
+            aim = Vector((target[0], -target[2], target[1]))
+            direction = aim - location
+            if direction.length < 0.00001:
+                raise ValueError("Câmera e alvo coincidentes")
+            animation_camera.location = location
+            animation_camera.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
+            animation_camera.keyframe_insert(data_path="location", frame=frame)
+            animation_camera.keyframe_insert(data_path="rotation_euler", frame=frame)
+        scene = bpy.context.scene
+        scene.render.fps = path["fps"]
+        scene.frame_start = 1
+        scene.frame_end = path["frames"]
+        scene.render.image_settings.file_format = "FFMPEG"
+        scene.render.ffmpeg.format = "MPEG4"
+        scene.render.ffmpeg.codec = "H264"
+        video_path = os.path.splitext(out_path)[0] + ".mp4"
+        scene.render.filepath = video_path
+        bpy.ops.render.render(animation=True)
+        print(f"VIDEO_DONE:{video_path}")
+        return
 
     print("Iniciando render...")
     bpy.ops.render.render(write_still=True)
@@ -531,3 +662,4 @@ def main():
 
 
 main()
+

@@ -68,6 +68,7 @@ export function LeadQuickEditButton({
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const updateLead = useUpdateLead();
+  const hasRepresentative = Boolean((lead as Lead & { representativeFunctionId?: string | null }).representativeFunctionId);
 
   const { data: tenantUsers = [] } = useListTenantUsers(lead.tenantId, {
     query: {
@@ -107,7 +108,7 @@ export function LeadQuickEditButton({
       telefone: draft.telefone.trim() || null,
       email: email || null,
       status: draft.status,
-      ...(isAdmin ? { assignedTo: draft.assignedTo === "__none__" ? null : draft.assignedTo } : {}),
+      ...(isAdmin && !hasRepresentative && draft.assignedTo !== "__none__" ? { assignedTo: draft.assignedTo } : {}),
     };
 
     if (currentDadosPj && typeof currentDadosPj === "object") {
@@ -222,7 +223,10 @@ export function LeadQuickEditButton({
               </div>
             </div>
 
-            {isAdmin && (
+            {isAdmin && hasRepresentative && (
+              <p className="text-sm text-muted-foreground">Responsável: empresa representante. A atribuição deve ser alterada no cadastro completo do lead.</p>
+            )}
+            {isAdmin && !hasRepresentative && (
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Responsável</label>
                 <Select
@@ -231,7 +235,7 @@ export function LeadQuickEditButton({
                 >
                   <SelectTrigger><SelectValue placeholder="Selecionar responsável" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__none__">Sem responsável</SelectItem>
+                    <SelectItem value="__none__" disabled>Selecione um responsável</SelectItem>
                     {tenantUsers.map((tenantUser) => (
                       <SelectItem key={tenantUser.id} value={tenantUser.id}>
                         {tenantUser.name || tenantUser.email || tenantUser.id}

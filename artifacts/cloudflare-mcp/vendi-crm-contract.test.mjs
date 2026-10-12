@@ -25,3 +25,23 @@ test("Vendi CRM native tool resolves tenant and excludes deleted leads", () => {
   assert.match(handler, /activeLeads/);
   assert.doesNotMatch(handler, /\.insert\(|\.update\(|\.delete\(/);
 });
+
+test("Browser Agent exposes explicit homolog routing and never silently falls back", () => {
+  const connections = mcp.slice(mcp.indexOf('"browser_agent_connections"'), mcp.indexOf('"browser_agent_run"'));
+  const run = mcp.slice(mcp.indexOf('"browser_agent_run"'), mcp.indexOf("return server;", mcp.indexOf('"browser_agent_run"')));
+  assert.match(connections, /environment:\s*z\.enum\(\["default", "homolog"\]\)/);
+  assert.match(connections, /environment === "homolog" \? requiredEnv\("VENDI_HOMOLOG_API_BASE"\)/);
+  assert.match(connections, /\}, targetBase\)/);
+  assert.match(run, /environment === "homolog" && \(mode === "autonomo" \|\| allowWrite === true\)/);
+  assert.match(run, /mode: environment === "homolog" \? "assistido" : mode/);
+  assert.match(run, /allowWrite: environment === "homolog" \? false : allowWrite/);
+  assert.match(run, /\}, targetBase\)/);
+});
+
+test("Browser backend honors explicit assisted and read-only requests despite autonomy", () => {
+  const run = api.slice(api.indexOf('router.post("/internal/browser-mcp/run"'));
+  assert.match(run, /parsed\.data\.mode === "assistido"/);
+  assert.match(run, /parsed\.data\.allowWrite === false/);
+  assert.match(run, /resolveTenantId\(parsed\.data\.tenantKey\)/);
+  assert.match(run, /eq\(browserAgentConnectionsTable\.tenantId, tenantId\)/);
+});

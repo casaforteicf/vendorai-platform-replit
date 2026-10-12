@@ -1,0 +1,313 @@
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
+
+export const MODEL_FILE_LIMIT = 45 * 1024 * 1024;
+export type ModelCalibration = {
+  measuredDistance: number; actualMeters: number;
+  referenceDimensions: { width: number; depth: number; height: number };
+  tolerance: number;
+};
+export type ModelRecord = {
+  id: string; sha256: string; key: string; originalName: string; bytes: number;
+  createdAt: string; format: "glb"; meshCount: number;
+  materials: { name: string; specificationStatus: "unconfirmed" }[];
+  geometryStatus: "requires_review"; quantitiesEnabled: false;
+};
+
+export function safeSegment(value: string): string {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(value)) throw new Error("Identificador inválido");
+  return value;
+}
+
+export function inspectEmbeddedGlb(buffer: Buffer) {
+  if (buffer.length > MODEL_FILE_LIMIT) throw new Error("Modelo excede 45 MB");
+  if (buffer.length < 20 || buffer.toString("ascii", 0, 4) !== "glTF" ||
+      buffer.readUInt32LE(4) !== 2 || buffer.readUInt32LE(8) !== buffer.length) {
+    throw new Error("Envie um GLB 2.0 válido");
+  }
+  const length = buffer.readUInt32LE(12);
+  if (buffer.readUInt32LE(16) !== 0x4e4f534a || length % 4 !== 0 ||
+      length > 16 * 1024 * 1024 || length > buffer.length - 20) {
+    throw new Error("Metadados GLB inválidos");
+  }
+  const document = JSON.parse(buffer.toString("utf8", 20, 20 + length));
+  if (!document || document.asset?.version !== "2.0") throw new Error("Metadados glTF 2.0 obrigatórios");
+  for (const name of ["buffers", "images", "meshes", "materials"]) {
+    if (document[name] !== undefined && !Array.isArray(document[name])) throw new Error("Estrutura GLB inválida");
+  }
+  for (const resource of [...(document.buffers ?? []), ...(document.images ?? [])]) {
+    if (!resource || typeof resource !== "object") throw new Error("Recurso GLB inválido");
+    if (resource.uri !== undefined && (typeof resource.uri !== "string" || !resource.uri.startsWith("data:"))) {
+      throw new Error("GLB deve incorporar os recursos. Não são aceitos arquivos externos.");
+    }
+  }
+  if (!document.meshes?.length) throw new Error("Modelo sem malhas");
+  return {
+    meshCount: document.meshes.length as number,
+    materials: (document.materials ?? []).map((material: { name?: unknown }, index: number) => ({
+      name: typeof material?.name === "string" ? material.name.slice(0, 200) : `Material ${index + 1}`,
+      specificationStatus: "unconfirmed" as const,
+    })),
+  };
+}
+
+export function validateCalibration(input: unknown): ModelCalibration {
+  if (!input || typeof input !== "object") throw new Error("Informe medidas de referência");
+  const body = input as Record<string, any>;
+  const positive = (value: unknown): number => {
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) throw new Error("As medidas devem ser números positivos e finitos");
+    return value;
+  };
+  const measuredDistance = positive(body.measuredDistance);
+  const actualMeters = positive(body.actualMeters);
+  positive(actualMeters / measuredDistance);
+  const tolerance = positive(body.tolerance ?? .01);
+  if (tolerance > .05) throw new Error("Tolerância máxima de 5%");
+  return { measuredDistance, actualMeters, tolerance, referenceDimensions: {
+    width: positive(body.referenceDimensions?.width), depth: positive(body.referenceDimensions?.depth),
+    height: positive(body.referenceDimensions?.height),
+  } };
+}
+
+
+export type ModelSceneSettings = {
+  sunlight: number;
+  materials: Record<string, string>;
+  cameras: Array<{ name: string; position: [number, number, number]; target: [number, number, number] }>;
+};
+export function validateSceneSettings(value: unknown): ModelSceneSettings {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Configuração de cena inválida");
+  const input = value as Record<string, unknown>;
+  if (typeof input.sunlight !== "number" || !Number.isFinite(input.sunlight) || input.sunlight < 0 || input.sunlight > 4)
+    throw new Error("Intensidade solar fora do intervalo");
+  if (!input.materials || typeof input.materials !== "object" || Array.isArray(input.materials)) throw new Error("Materiais inválidos");
+  const entries = Object.entries(input.materials);
+  if (entries.length > 2000 || entries.some(([key, color]) => key.length > 128 || !/^mat-(0|[1-9][0-9]{0,5})$/.test(key) || typeof color !== "string" || !/^#[a-fA-F0-9]{6}$/.test(color)))
+    throw new Error("Cores de superfície inválidas");
+  if (!Array.isArray(input.cameras) || input.cameras.length > 100) throw new Error("Câmeras inválidas");
+  const tuple = (value: unknown): value is [number, number, number] =>
+    Array.isArray(value) && value.length === 3 && value.every(item => typeof item === "number" && Number.isFinite(item) && Math.abs(item) <= 1e8);
+  const cameras = input.cameras.map((candidate: unknown) => {
+    if (!candidate || typeof candidate !== "object") throw new Error("Câmera inválida");
+    const item = candidate as Record<string, unknown>;
+    if (typeof item.name !== "string" || !item.name.trim() || item.name.length > 80 || !tuple(item.position) || !tuple(item.target)) throw new Error("Dados de câmera inválidos");
+    return { name: item.name, position: item.position, target: item.target };
+  });
+  return { sunlight: input.sunlight, materials: Object.fromEntries(entries) as Record<string, string>, cameras };
+}
+
+export class ModelFileStore {
+  root: string;
+  constructor(root: string) { this.root = path.resolve(root); }
+
+  private async directory(tenantId: string, projectId: string, modelId?: string) {
+    await mkdir(this.root, { recursive: true, mode: 0o700 });
+    const root = await realpath(this.root);
+    let current = root;
+    for (const segment of [tenantId, projectId, ...(modelId ? [modelId] : [])]) {
+      const next = path.join(current, safeSegment(segment));
+      await mkdir(next, { recursive: true, mode: 0o700 });
+      if (await realpath(next) !== next) throw new Error("Diretório privado inválido");
+      current = next;
+    }
+    return current;
+  }
+
+  private async privateRead(directory: string, filename: string) {
+    const target = path.join(directory, filename);
+    if (await realpath(target) !== target) throw new Error("Arquivo privado inválido");
+    return readFile(target);
+  }
+
+  async save(tenantId: string, projectId: string, originalName: string, buffer: Buffer): Promise<ModelRecord> {
+    const summary = inspectEmbeddedGlb(buffer);
+    const id = randomUUID();
+    const directory = await this.directory(tenantId, projectId, id);
+    const record: ModelRecord = {
+      id, sha256: createHash("sha256").update(buffer).digest("hex"),
+      key: `${projectId}/${id}/model.glb`, originalName: path.basename(originalName).slice(0, 200),
+      bytes: buffer.length, createdAt: new Date().toISOString(), format: "glb", ...summary,
+      geometryStatus: "requires_review", quantitiesEnabled: false,
+    };
+    try {
+      await writeFile(path.join(directory, "model.glb"), buffer, { flag: "wx", mode: 0o600 });
+      await writeFile(path.join(directory, "metadata.tmp"), JSON.stringify(record), { flag: "wx", mode: 0o600 });
+      await rename(path.join(directory, "metadata.tmp"), path.join(directory, "metadata.json"));
+      return record;
+    } catch (error) {
+      await rm(directory, { recursive: true, force: true });
+      throw error;
+    }
+  }
+
+  async attachConvertedSource(tenantId: string, projectId: string, modelId: string,
+    originalName: string, source: Buffer, sourceSha256: string, conversionDetails?: Record<string, unknown>) {
+    const record = await this.get(tenantId, projectId, modelId);
+    if (!/\\.(obj|fbx)$/i.test(originalName)) throw new Error("Extensão de origem inválida");
+    const sha = createHash("sha256").update(source).digest("hex");
+    if (sha !== sourceSha256) throw new Error("SHA256 de origem divergente");
+    const directory = await this.directory(tenantId, projectId, modelId);
+    const extension = path.extname(originalName).toLowerCase();
+    await writeFile(path.join(directory, `source${extension}`), source, { flag: "wx", mode: 0o600 });
+    const audit = { originalName: path.basename(originalName).slice(0, 200), sourceSha256: sha,
+      sourceBytes: source.length, convertedSha256: record.sha256,
+      geometryApproved: false, materialsApproved: false,
+      status: "converted_pending_geometry_review",
+      geometryReport: conversionDetails ?? null };
+    await writeFile(path.join(directory, "conversion-report.json"), JSON.stringify(audit), { flag: "wx", mode: 0o600 });
+    return audit;
+  }
+
+  async conversionReport(tenantId: string, projectId: string, modelId: string) {
+    const record = await this.get(tenantId, projectId, modelId);
+    const directory = await this.directory(tenantId, projectId, modelId);
+    const audit = JSON.parse((await this.privateRead(directory, "conversion-report.json")).toString("utf8")) as Record<string, unknown>;
+    const source = audit.sourceSha256;
+    const details = audit.geometryReport as Record<string, unknown> | null;
+    if (typeof source !== "string" || !/^[a-f0-9]{64}$/.test(source) ||
+        audit.convertedSha256 !== record.sha256 || !details ||
+        details.sourceSha256 !== source || !Array.isArray(details.openingScheduleDraft)) {
+      throw new Error("Relatório de conversão divergente do modelo");
+    }
+    return { modelId: record.id, modelSha256: record.sha256, sourceSha256: source,
+      status: "converted_pending_geometry_review" as const,
+      openingScheduleDraft: details.openingScheduleDraft,
+      geometryApproved: false as const, fabricationReady: false as const,
+      quantitiesEnabled: false as const };
+  }
+
+  async parametricDrafts(tenantId: string, projectId: string, modelId: string) {
+    const record = await this.get(tenantId, projectId, modelId);
+    const directory = await this.directory(tenantId, projectId, modelId);
+    try {
+      const draft = JSON.parse((await this.privateRead(directory, "parametric-draft.json")).toString("utf8"));
+      if (draft.modelSha256 !== record.sha256) throw new Error("Versão do modelo divergente");
+      return draft;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT")
+        return { revision: 0, modelSha256: record.sha256, walls: [], updatedAt: null };
+      throw error;
+    }
+  }
+
+  async saveParametricDraft(tenantId: string, projectId: string, modelId: string,
+    userId: string, input: unknown) {
+    const lockDirectory = path.join(await this.directory(tenantId, projectId, modelId), "parametric-write.lock");
+    try {
+      await mkdir(lockDirectory);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new Error("Conflito de versão do modelo: gravação em andamento");
+      throw error;
+    }
+    try {
+    const current = await this.parametricDrafts(tenantId, projectId, modelId);
+    const record = await this.get(tenantId, projectId, modelId);
+    if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Projeto paramétrico inválido");
+    const data = input as Record<string, unknown>;
+    if (data.modelSha256 !== record.sha256 || !Number.isInteger(data.revision) ||
+        data.revision !== current.revision) throw new Error("Conflito de versão do modelo");
+    const walls = data.walls;
+    if (!Array.isArray(walls) || walls.length > 500) throw new Error("Paredes inválidas");
+    for (const item of walls) {
+      if (!item || typeof item !== "object") throw new Error("Parede inválida");
+      const wall = item as Record<string, unknown>;
+      const validPoint = (p: unknown): p is number[] => Array.isArray(p) && p.length === 2 &&
+        p.every(n => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= 10000);
+      if (typeof wall.id !== "string" || !/^[a-zA-Z0-9_-]{1,80}$/.test(wall.id) ||
+          !validPoint(wall.start) || !validPoint(wall.end) ||
+          ![wall.thickness, wall.height].every(n => typeof n === "number" && Number.isFinite(n) && n > 0 && n <= 20) ||
+          !Array.isArray(wall.openings) || wall.openings.length > 100)
+        throw new Error("Geometria paramétrica inválida");
+      const distance = Math.hypot(wall.end[0] - wall.start[0], wall.end[1] - wall.start[1]);
+      if (distance < .1) throw new Error("Parede muito curta");
+      for (const opening of wall.openings) {
+        const o = opening as Record<string, unknown>;
+        if (!o || !["door", "window"].includes(String(o.kind)) ||
+            ![o.offset, o.width, o.sill, o.height].every(n => typeof n === "number" && Number.isFinite(n)) ||
+            o.offset < 0 || o.width <= 0 || o.sill < 0 || o.height <= 0 ||
+            o.offset + o.width > distance || o.sill + o.height > wall.height)
+          throw new Error("Abertura paramétrica inválida");
+      }
+    }
+    const directory = await this.directory(tenantId, projectId, modelId);
+    const next = { revision: current.revision + 1, modelSha256: record.sha256,
+      walls, updatedBy: userId, updatedAt: new Date().toISOString(),
+      geometryApproved: false, quantitiesEnabled: false };
+    const draftPath = path.join(directory, `parametric-${randomUUID()}.tmp`);
+    try {
+      await writeFile(draftPath, JSON.stringify(next), { flag: "wx", mode: 0o600 });
+      await rename(draftPath, path.join(directory, "parametric-draft.json"));
+    } finally { await rm(draftPath, { force: true }); }
+    return next;
+    } finally { await rm(lockDirectory, { recursive: true, force: true }); }
+  }
+
+  async list(tenantId: string, projectId: string): Promise<ModelRecord[]> {
+    const directory = await this.directory(tenantId, projectId);
+    const entries = await readdir(directory, { withFileTypes: true });
+    const records = await Promise.all(entries.filter(entry => entry.isDirectory()).map(async entry => {
+      try { return await this.get(tenantId, projectId, entry.name); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
+    }));
+    return records.filter((record): record is ModelRecord => record !== null).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async get(tenantId: string, projectId: string, modelId: string): Promise<ModelRecord> {
+    const directory = await this.directory(tenantId, projectId, modelId);
+    return JSON.parse((await this.privateRead(directory, "metadata.json")).toString("utf8"));
+  }
+
+  async file(tenantId: string, projectId: string, modelId: string) {
+    const record = await this.get(tenantId, projectId, modelId);
+    const buffer = await this.privateRead(await this.directory(tenantId, projectId, modelId), "model.glb");
+    if (createHash("sha256").update(buffer).digest("hex") !== record.sha256) throw new Error("Integridade do modelo inválida");
+    return { record, buffer };
+  }
+
+  async sceneSettings(tenantId: string, projectId: string, modelId: string) {
+    const record = await this.get(tenantId, projectId, modelId);
+    const directory = await this.directory(tenantId, projectId, modelId);
+    try {
+      const saved = JSON.parse((await this.privateRead(directory, "scene-settings.json")).toString("utf8"));
+      if (saved.modelSha256 !== record.sha256) throw new Error("Configuração de outra versão do modelo");
+      return saved;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT")
+        return { modelSha256: record.sha256, settings: { sunlight: 1.2, materials: {}, cameras: [] } };
+      throw error;
+    }
+  }
+
+  async saveSceneSettings(tenantId: string, projectId: string, modelId: string, userId: string, input: unknown) {
+    const record = await this.get(tenantId, projectId, modelId);
+    const settings = validateSceneSettings(input);
+    const directory = await this.directory(tenantId, projectId, modelId);
+    const draft = { modelSha256: record.sha256, settings, updatedBy: userId, updatedAt: new Date().toISOString() };
+    const temp = path.join(directory, `scene-settings-${randomUUID()}.tmp`);
+    try {
+      await writeFile(temp, JSON.stringify(draft), { flag: "wx", mode: 0o600 });
+      await rename(temp, path.join(directory, "scene-settings.json"));
+    } finally { await rm(temp, { force: true }); }
+    return draft;
+  }
+
+  async saveCalibration(tenantId: string, projectId: string, modelId: string, userId: string, input: unknown) {
+    const calibration = validateCalibration(input);
+    const record = await this.get(tenantId, projectId, modelId);
+    const directory = await this.directory(tenantId, projectId, modelId);
+    const draft = { id: randomUUID(), modelSha256: record.sha256, calibration, createdBy: userId,
+      createdAt: new Date().toISOString(), status: "pending_worker_validation" };
+    await writeFile(path.join(directory, `calibration-${draft.id}.json`), JSON.stringify(draft), { flag: "wx", mode: 0o600 });
+    return draft;
+  }
+
+  async calibrations(tenantId: string, projectId: string, modelId: string) {
+    await this.get(tenantId, projectId, modelId);
+    const directory = await this.directory(tenantId, projectId, modelId);
+    const entries = await readdir(directory);
+    const drafts = await Promise.all(entries.filter(name => /^calibration-[a-f0-9-]+\.json$/.test(name))
+      .map(async name => JSON.parse((await this.privateRead(directory, name)).toString("utf8"))));
+    return drafts.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+}

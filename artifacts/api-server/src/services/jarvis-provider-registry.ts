@@ -17,6 +17,7 @@ export type JarvisProviderExecution = {
 
 const FIAT_ALIASES: Record<string, string> = {
   dolar: "USD",
+  dolares: "USD",
   dollar: "USD",
   usd: "USD",
   real: "BRL",
@@ -96,18 +97,23 @@ async function fetchJson(url: string, timeoutMs = 6000): Promise<any> {
 
 export function detectFiatCurrencies(text: string): string[] {
   const normalized = normalize(text);
-  const found: string[] = [];
+  // Coleta cada moeda com a posição onde aparece, para devolver na ordem de menção no texto.
+  const hits: Array<{ code: string; index: number }> = [];
   for (const [alias, code] of Object.entries(FIAT_ALIASES)) {
     const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    if (new RegExp(`(^|\\b)${escaped}(\\b|$)`, "i").test(normalized)) found.push(code);
+    const match = new RegExp(`(^|\\b)${escaped}(\\b|$)`, "i").exec(normalized);
+    if (match) hits.push({ code, index: match.index });
   }
-  for (const code of text.match(/\b[A-Z]{3}\b/g) ?? []) found.push(code.toUpperCase());
-
-  if (!found.length && /\b(cambio|forex|moedas?)\b/.test(normalized)) {
-    found.push("USD", "BRL");
+  for (const match of text.matchAll(/\b[A-Z]{3}\b/g)) {
+    hits.push({ code: match[0].toUpperCase(), index: match.index ?? 0 });
   }
 
-  return unique(found);
+  if (!hits.length && /\b(cambio|forex|moedas?)\b/.test(normalized)) {
+    return ["USD", "BRL"];
+  }
+
+  hits.sort((a, b) => a.index - b.index);
+  return unique(hits.map((hit) => hit.code));
 }
 
 export function detectCryptoAssets(text: string): string[] {

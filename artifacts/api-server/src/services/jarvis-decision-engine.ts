@@ -136,6 +136,15 @@ function normalize(value: string) {
 
 export function resolveJarvisDecisionMode(text: string): JarvisDecisionResolution {
   const normalized = normalize(text);
+
+  // high_stakes tem precedência por SEVERIDADE: qualquer sinal de alto risco
+  // (demitir, contrato, investir, processo judicial, irreversível...) classifica a
+  // decisão como alto risco, mesmo que padrões de outras categorias também casem.
+  if (MODES.high_stakes.patterns.some((pattern) => pattern.test(normalized))) {
+    const { patterns: _highStakesPatterns, ...highStakesConfig } = MODES.high_stakes;
+    return { mode: "high_stakes", ...highStakesConfig };
+  }
+
   let best: JarvisDecisionMode = "general";
   let score = 0;
 
