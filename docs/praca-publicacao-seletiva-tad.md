@@ -59,3 +59,10 @@ Nenhum recurso real é ativado por esta entrega isolada.
 - `pracaSourceAdapters.test.ts` documenta os casos de segurança, ainda não executados.
 - Sem rota pública montada: os adapters exigem um registro canônico de aprovação ainda não identificado. Publicar usando apenas o flag seria inseguro.
 - Próximo lote exige conexão à fonte validada de anúncios e exposição do endpoint com paginação e checagem de permissões.
+
+## TAD — primeira tela de uso (não ativada)
+- Criado `artifacts/frontend/src/pages/TadCentral.tsx` com buscador, agrupamento, cards e navegação por serviço.
+- Usa `authorizedLauncherModules`: somente interseção das permissões e habilitações validadas pelo servidor.
+- Onde a rota não foi auditada, exibe "Em integração" e não cria navegação falsa.
+- Praça.ai aparece como serviço único, não como marketplace interno do Arqdor.
+- Pendente: endpoint de permissões efetivas por usuário, confirmação das rotas, montagem no App, preferências e gates completos.
