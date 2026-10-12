@@ -59,3 +59,12 @@ export function furnitureInsidePolygon(bounds:FurnitureBounds,polygon:readonly P
  }
  return true;
 }
+
+export function localRoomPolygon(segments:readonly SegmentMm[]){
+ const raw=closedRoomPolygon(segments);
+ if(!raw)return null;
+ const minX=Math.min(...raw.map(p=>p.x)),minY=Math.min(...raw.map(p=>p.y));
+ const maxX=Math.max(...raw.map(p=>p.x)),maxY=Math.max(...raw.map(p=>p.y));
+ if(maxX<=minX||maxY<=minY)return null;
+ return {polygon:raw.map(p=>({x:p.x-minX,y:p.y-minY})),originMm:{x:minX,y:minY},widthMm:maxX-minX,depthMm:maxY-minY};
+}
