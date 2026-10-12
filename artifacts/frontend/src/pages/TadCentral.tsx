@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
+import { useAuth } from "@/contexts/AuthContext";
 import { LAUNCHER_MODULES, authorizedLauncherModules, type LauncherAudience, type LauncherModule } from "@/lib/adaptiveModuleLauncher";
 
 /**
@@ -35,6 +36,8 @@ const TAD_LABELS: Partial<Record<LauncherModule, { description: string; section:
 };
 
 export default function TadCentral({ audience, enabledModules, permittedModules, previewModules = [], companyName }: TadCentralProps) {
+  const { logout } = useAuth();
+  const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
   const [section, setSection] = useState("Todos");
   const authorized = useMemo(
@@ -67,7 +70,10 @@ export default function TadCentral({ audience, enabledModules, permittedModules,
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white md:text-3xl">Escolha seu ambiente de trabalho</h1>
           <p className="mt-1 text-sm text-slate-400">{companyName ? `Empresa: ${companyName} • ` : ""}Somente serviços autorizados para seu acesso</p>
         </div>
-        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">{authorized.length} serviços autorizados</span>
+        <div className="flex items-center gap-3">
+          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">{authorized.length} serviços autorizados</span>
+          <button type="button" onClick={() => { logout(); setLocation("/"); }} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-200 hover:bg-white/10">Sair da conta</button>
+        </div>
       </header>
       <div className="mx-auto mb-6 max-w-7xl overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-r from-[#192c2b] via-[#182434] to-[#10151e] p-5 md:p-8">
         <p className="text-xs font-medium uppercase tracking-[.18em] text-emerald-300">Seu espaço de trabalho</p>
@@ -108,7 +114,7 @@ export default function TadCentral({ audience, enabledModules, permittedModules,
         })}
       </section>
       {visible.length === 0 && <p role="status" className="mt-8 text-center text-sm text-slate-400">
-        Nenhum serviço disponível para esta busca e este perfil.
+        {listed.length === 0 ? "Nenhum serviço habilitado para este perfil. Solicite acesso ao administrador." : "Nenhum serviço corresponde à sua busca."}
       </p>}
     </main>
   );
