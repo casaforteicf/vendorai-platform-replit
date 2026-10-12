@@ -1,3 +1,4 @@
+import type { DocumentationWall, DocumentationOpening } from "./conceptDocumentationWalls";
 import { ConceptArchitecturalDocumentation } from "./ConceptArchitecturalDocumentation";
 import { ConceptArchitecturalSchedule } from "./ConceptArchitecturalSchedule";
 import { duplicateArchitecturalElement } from "./conceptArchitecturalDuplication";
@@ -6,8 +7,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createStraightStair, type Roof } from "./conceptArchitecturalElements";
 import { applyArchitecturalEdits, architecturalQuantities, type ArchitecturalModel, type ArchitecturalElement } from "./conceptArchitecturalModel";
 import { ConceptArchitecturalPreview } from "./ConceptArchitecturalPreview";
-type Props = { requestedSelection?: { id: string; revision: number }; model: ArchitecturalModel; onChange: (model: ArchitecturalModel) => void; floor: number; lotWidth: number; lotDepth: number };
-export function ConceptArchitecturalElementsPanel({ model, onChange, floor, lotWidth, lotDepth, requestedSelection }: Props) {
+type Props = { walls?: readonly DocumentationWall[]; openings?: readonly DocumentationOpening[]; requestedSelection?: { id: string; revision: number }; model: ArchitecturalModel; onChange: (model: ArchitecturalModel) => void; floor: number; lotWidth: number; lotDepth: number };
+export function ConceptArchitecturalElementsPanel({ model, onChange, floor, lotWidth, lotDepth, requestedSelection, walls, openings }: Props) {
   const [kind, setKind] = useState<"slab" | "stair" | "roof">("slab");
   const [selected, setSelected] = useState<string>("");
   const [x, setX] = useState(0), [y, setY] = useState(0);
@@ -133,7 +134,7 @@ export function ConceptArchitecturalElementsPanel({ model, onChange, floor, lotW
     <div className="space-y-1">{items.map((item, i) => <button key={item.value.id} type="button" onClick={() => choose(i)} className="block w-full rounded border p-2 text-left text-xs">{item.kind} · {item.value.id}</button>)}</div>
     {selectedItem?.kind === "slab" && <ConceptSlabVoidsEditor key={selectedItem.value.id} model={model} slab={selectedItem.value} onChange={onChange} />}
     <p className="text-xs text-slate-500">Área líquida de lajes: {qty.slabNetArea.toFixed(2)} m²</p>
-    <ConceptArchitecturalDocumentation model={model} />
+    <ConceptArchitecturalDocumentation model={model} walls={walls} openings={openings} />
     <ConceptArchitecturalSchedule model={model} />
     <ConceptArchitecturalPreview model={model} floor={floor} width={280} height={190} />
   </section>;

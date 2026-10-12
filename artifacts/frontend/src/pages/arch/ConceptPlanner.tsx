@@ -7517,7 +7517,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   {editorLibraryTab === "build" && (
                     <div className="mb-3">
                       <Suspense fallback={<div className="p-3 text-xs">Carregando elementos paramétricos...</div>}>
-                        <ConceptArchitecturalElementsPanel model={architecturalModel} requestedSelection={architecturalSelection} onChange={changeArchitecturalModel} floor={activeFloor} lotWidth={lotWidth} lotDepth={lotDepth} />
+                        <ConceptArchitecturalElementsPanel walls={customWalls} openings={customOpenings} model={architecturalModel} requestedSelection={architecturalSelection} onChange={changeArchitecturalModel} floor={activeFloor} lotWidth={lotWidth} lotDepth={lotDepth} />
                       </Suspense>
                     </div>
                   )}
