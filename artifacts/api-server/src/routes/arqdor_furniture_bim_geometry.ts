@@ -27,6 +27,14 @@ export function validateBimFurnitureFootprints(raw:unknown,roomId:string,items:r
  const room=parsed.data.rooms[roomId];
  if(!room)return {ok:false,reason:"missing-room"} as const;
  const polygon=room.outline;
+ // Reject repeated vertices and degenerate edges before checking furniture.
+ const vertexKeys=new Set<string>();
+ for(let i=0;i<polygon.length;i++){
+  const p=polygon[i],next=polygon[(i+1)%polygon.length];
+  const key=p.xMm+":"+p.yMm;
+  if(vertexKeys.has(key)||Math.hypot(next.xMm-p.xMm,next.yMm-p.yMm)<1)return {ok:false,reason:"invalid-outline"} as const;
+  vertexKeys.add(key);
+ }
  const area=polygon.reduce((sum,p,i)=>{const q=polygon[(i+1)%polygon.length];return sum+p.xMm*q.yMm-p.yMm*q.xMm;},0);
  if(Math.abs(area)<1)return {ok:false,reason:"invalid-outline"} as const;
  for(let i=0;i<polygon.length;i++)for(let j=i+1;j<polygon.length;j++){
