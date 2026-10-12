@@ -56,7 +56,7 @@ router.post("/arqdor/projects/:id/furniture/geometry-from-concept",async(req:Req
    const {id,x,y,width,depth}=room;
    if(typeof id!=="string"||!id||rooms[id]||![x,y,width,depth].every(Number.isFinite)||width<=0||depth<=0||width>500||depth>500)
     return res.status(422).json({error:"Ambiente Concept sem geometria retangular válida"});
-   const x0=Math.round(x*1000),y0=Math.round(y*1000),x1=Math.round((x+width)*1000),y1=Math.round((y+depth)*1000);
+   const x0=0,y0=0,x1=Math.round(width*1000),y1=Math.round(depth*1000);
    rooms[id]={outline:[{xMm:x0,yMm:y0},{xMm:x1,yMm:y0},{xMm:x1,yMm:y1},{xMm:x0,yMm:y1}],exclusions:[]};
   }
   const revision=concept.id+":"+concept.updatedAt.toISOString();
