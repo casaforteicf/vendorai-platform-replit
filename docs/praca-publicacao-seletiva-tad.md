@@ -96,3 +96,9 @@ Nenhum recurso real é ativado por esta entrega isolada.
 - Corrigida inicialização de `canOpen` antes da composição do card, evitando erro de referência na renderização da tela.
 - Cards só recebem link caso o módulo esteja na interseção de habilitação e permissão verificada e possua rota.
 - O endpoint de autorização individual ainda está pendente; não remover `permittedModules=[]` sem integrar uma fonte de permissão efetiva confiável.
+
+## TAD — separação da navegação por ambientes (lote inicial)
+- A Agenda global foi retirada do dropdown `CRM & Atendimento` e se torna uma entrada independente na navegação legada, respeitando os filtros originais de visibilidade por empresa, vertical e usuário.
+- CRM conserva leads, negócios, empresas, pipelines, prospector, conversas e operações comerciais específicas; Arqdor, Marketing, ERP, IA e Administração já tinham grupos distintos no menu legado.
+- O próximo passo é aplicar shells por ambiente da TAD, sem remover nem desativar as rotas legadas e sem quebrar atalhos históricos.
+- Pendência de QA: compilar, confirmar que Agenda não duplica e auditar permissões efetivas antes de alterar pós-login.

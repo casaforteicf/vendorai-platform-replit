@@ -779,6 +779,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
     const homeHrefs = new Set(["/dashboard", "/trabalho"]);
     const commercialHrefs = new Set(["/propostas", "/catalogo", "/pacotes"]);
     const financeHrefs = new Set(["/erp"]);
+    const agendaHrefs = new Set(["/agenda"]);
     const administrationHrefs = new Set(["/organizacao", "/usuarios", "/configuracoes"]);
     const operationHrefs = new Set(["/entregas"]);
     const aiKnowledgeHrefs = new Set(["/agents/config", "/vendi/operacoes", "/base-conhecimento"]);
@@ -789,6 +790,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
       ...homeHrefs,
       ...commercialHrefs,
       ...financeHrefs,
+      ...agendaHrefs,
       ...administrationHrefs,
       ...operationHrefs,
       ...aiKnowledgeHrefs,
@@ -801,6 +803,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
     const crmAtendimentoNav = crmNav.filter((item) => !groupedCoreHrefs.has(item.href));
     const commercialNav = crmNav.filter((item) => commercialHrefs.has(item.href));
     const financeNav = crmNav.filter((item) => financeHrefs.has(item.href));
+    const agendaNav = crmNav.filter((item) => agendaHrefs.has(item.href));
     const administrationNav = crmNav.filter((item) => administrationHrefs.has(item.href));
     const operationNav = crmNav.filter((item) => operationHrefs.has(item.href));
     const aiKnowledgeNav = crmNav.filter((item) => aiKnowledgeHrefs.has(item.href));
@@ -829,6 +832,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
           <NavItem key={item.href} item={item} onNavigate={onNavigate} />
         ))}
 
+        {/* CRM reúne exclusivamente ações de clientes e negócios. */}
         {crmAtendimentoNav.length > 0 && (
           <GroupedNavSection
             label="CRM & Atendimento"
@@ -852,6 +856,11 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
             ))}
           </GroupedNavSection>
         )}
+
+        {/* Agenda é um ambiente independente do CRM. */}
+        {agendaNav.map((item) => (
+          <NavItem key={item.href} item={item} onNavigate={onNavigate} />
+        ))}
 
         {verticalOperationNav.length > 0 && (
           <GroupedNavSection
