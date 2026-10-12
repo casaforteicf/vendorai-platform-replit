@@ -15,6 +15,8 @@ import {
   Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle, WalletCards, Camera, KanbanSquare, ClipboardCheck, FileCheck, UserCog, Instagram,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ui20ServiceForPath } from "@/lib/ui20ServiceRoutes";
+import { getUi20VisibleServices } from "@/lib/ui20ServiceVisibility";
 import { Button } from "@/components/ui/button";
 import logoFull from "/logo-full-light.svg";
 import { applyTenantTheme, resetTenantTheme } from "@/lib/tenantTheme";
@@ -823,6 +825,32 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
 
     const groupActive = (items: Array<{ href: string }>) =>
       items.some((item) => location === item.href || (item.href !== "/" && location.startsWith(item.href)));
+    if (import.meta.env.VITE_UI20_SERVICE_TABS === "true") {
+      const path = location.split("?")[0];
+      const serviceGroups = [
+        { name: "Início", match: ["/dashboard", "/trabalho", "/"], links: homeNav },
+        { name: "CRM", match: ["/leads", "/deals", "/pipeline", "/conversations", "/agenda", "/propostas", "/empresas", "/app/prospector"], links: [...crmAtendimentoNav, ...commercialNav] },
+        { name: "Marketing", match: ["/marketing", "/content", "/ads", "/analytics"], links: navigation.filter((item) => ui20ServiceForPath(item.href) === "marketing") },
+        { name: "ERP", match: ["/erp", "/estoque", "/obras", "/entregas", "/insumos", "/composicoes"], links: [...financeNav, ...verticalOperationNav] },
+        { name: "IA", match: ["/agents", "/vendi", "/base-conhecimento", "/brain"], links: aiKnowledgeNav },
+        { name: "Marketplace", match: ["/marketplace"], links: navigation.filter((item) => item.href === "/marketplace") },
+        { name: "Arqdor", match: ["/arch"], links: arqdorVisible ? navigation.filter((item) => item.href === "/arch" || item.href.startsWith("/arch/")) : [] },
+        { name: "Configurações", match: ["/configuracoes", "/usuarios", "/organizacao"], links: administrationNav },
+        { name: "Suporte", match: ["/faq", "/suporte"], links: [{ href: "/faq", name: "Central de ajuda", icon: HelpCircle }] },
+      ];
+      const permittedServices = getUi20VisibleServices({ modules: tenantNavModules, isAdmin: isTenantAdmin, arqdorEligible: arqdorVisible, loading: !tenantNavModules });
+      const detected = ui20ServiceForPath(path);
+      const selected = serviceGroups.find((group) => group.name === ({home:"Início",crm:"CRM",marketing:"Marketing",erp:"ERP",ia:"IA",marketplace:"Marketplace",arqdor:"Arqdor",settings:"Configurações",support:"Suporte"} as Record<string,string>)[detected ?? "home"]) ?? serviceGroups[0];
+      const canShowService = permittedServices.has(detected ?? "home");
+      const unique = (canShowService ? selected.links : []).filter((item, index, all) => all.findIndex((other) => other.href === item.href) === index);
+      return (
+        <nav aria-label={`Menu interno de ${selected.name}`} className="space-y-1" data-ui20-context-menu={selected.name}>
+          <div className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{selected.name}</div>
+          {unique.map((item) => <NavItem key={item.href} item={item} onNavigate={onNavigate} />)}
+          {unique.length === 0 && <p className="px-3 text-xs text-muted-foreground">Use a aba superior para acessar este serviço.</p>}
+        </nav>
+      );
+    }
     return (
       <>
         {homeNav.map((item) => (

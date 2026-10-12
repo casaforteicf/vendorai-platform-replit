@@ -235,16 +235,21 @@ async function autoScheduleAndGetMeetLink(params: {
   tenantId: string;
   leadId:   string;
   leadNome: string;
+  assignedUserId?: string | null;
   log:      Logger;
 }): Promise<string | null> {
-  const { tenantId, leadId, leadNome, log } = params;
+  const { tenantId, leadId, leadNome, assignedUserId, log } = params;
 
-  // 1. Find the first agenda with a real OAuth token for this tenant.
-  //    Using raw SQL because googleRefreshToken is stored but may not be in
-  //    the Drizzle type's $inferSelect (nullable text column added later).
-  const agendaResult = await db.execute(
-    sql`SELECT id, nome FROM agendas WHERE tenant_id = ${tenantId} AND google_refresh_token IS NOT NULL ORDER BY is_default DESC LIMIT 1`
-  );
+  // Only the lead assignee can delegate a connected calendar to the Closer.
+  if (!assignedUserId) return null;
+  const agendaResult = await db.execute(sql`
+    SELECT a.id, a.nome FROM agendas a
+    WHERE a.tenant_id = ${tenantId} AND a.google_refresh_token IS NOT NULL
+      AND (a.owner_user_id = ${assignedUserId}
+        OR EXISTS (SELECT 1 FROM agenda_access_grants g
+          WHERE g.agenda_id = a.id AND g.tenant_id = a.tenant_id AND g.user_id = ${assignedUserId}))
+    ORDER BY a.is_default DESC LIMIT 1
+  `);
   const agendaWithToken = agendaResult.rows[0] as { id: string; nome: string } | undefined;
 
   if (!agendaWithToken?.id) {
@@ -272,10 +277,29 @@ async function autoScheduleAndGetMeetLink(params: {
   // 3. Create agendamento record
   const agendamentoId = crypto.randomUUID();
   const titulo = `Reunião com ${leadNome || "Lead"}`;
-  await db.execute(
-    `INSERT INTO agendamentos (id, tenant_id, lead_id, tipo, titulo, data_hora_inicio, data_hora_fim, status, agenda_id, gerar_meet, criado_por, created_at, updated_at)
-     VALUES ('${agendamentoId}','${tenantId}','${leadId}','reuniao','${titulo.replace(/'/g,"''")}','${dataHoraInicio.toISOString()}','${dataHoraFim.toISOString()}','agendado','${agendaWithToken.id}',true,'closer_auto',NOW(),NOW())`
-  );
+  await db.transaction(async (tx) => {
+    const [lockedAgenda] = await tx.execute(sql`SELECT id FROM agendas WHERE id = ${agendaWithToken.id} AND tenant_id = ${tenantId} AND google_refresh_token IS NOT NULL FOR UPDATE`).then((r) => r.rows);
+    if (!lockedAgenda) throw new Error("CLOSER_AGENDA_UNAVAILABLE");
+    const authorized = await tx.execute(sql`SELECT a.id FROM agendas a
+      WHERE a.id = ${agendaWithToken.id} AND a.tenant_id = ${tenantId}
+      AND (a.owner_user_id = ${assignedUserId}
+        OR EXISTS (SELECT 1 FROM agenda_access_grants g
+          WHERE g.agenda_id = a.id AND g.tenant_id = a.tenant_id AND g.user_id = ${assignedUserId}))`);
+    if (!authorized.rows.length) throw new Error("CLOSER_AGENDA_ACCESS_REVOKED");
+    await tx.insert(agendamentosTable).values({
+    id: agendamentoId,
+    tenantId,
+    leadId,
+    tipo: "reuniao",
+    titulo,
+    dataHoraInicio,
+    dataHoraFim,
+    status: "agendado",
+    agendaId: agendaWithToken.id,
+    gerarMeet: true,
+    criadoPor: "closer_auto",
+    });
+  });
 
   log.info({ agendamentoId, agendaId: agendaWithToken.id, dataHoraInicio }, "autoSchedule: agendamento created, calling Google Calendar");
 
@@ -290,9 +314,9 @@ async function autoScheduleAndGetMeetLink(params: {
     );
 
     if (meetLink || googleEventId) {
-      await db.execute(
-        `UPDATE agendamentos SET meet_link=${meetLink ? `'${meetLink}'` : "NULL"}, google_event_id=${googleEventId ? `'${googleEventId}'` : "NULL"}, updated_at=NOW() WHERE id='${agendamentoId}'`
-      );
+      await db.update(agendamentosTable)
+        .set({ meetLink: meetLink ?? null, googleEventId: googleEventId ?? null, updatedAt: new Date() })
+        .where(and(eq(agendamentosTable.id, agendamentoId), eq(agendamentosTable.tenantId, tenantId)));
       log.info({ agendamentoId, meetLink, googleEventId }, "autoSchedule: Meet link saved");
     }
 
@@ -1270,6 +1294,7 @@ export async function processAgentInternal(params: {
               tenantId,
               leadId,
               leadNome: ctx.lead.nome ?? "",
+              assignedUserId: ctx.lead.assignedTo,
               log,
             });
             if (autoMeetLink) {

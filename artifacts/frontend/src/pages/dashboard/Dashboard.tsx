@@ -2,6 +2,8 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react
 import { useAuth } from "@/contexts/AuthContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ExecutiveDashboardModern from "@/components/dashboard/ExecutiveDashboardModern";
+import { ServiceHome } from "@/components/dashboard/ServiceHome";
+import type { Ui20Module } from "@/lib/ui20ServiceVisibility";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { dashboardSnapshotQueryKey, fetchDashboardSnapshot } from "@/lib/dashboardSnapshot";
 
@@ -26,6 +28,17 @@ export default function Dashboard() {
   const { user, token } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const [official, setOfficial] = useState<OfficialMetrics>(null);
+  const ui20NavQuery = useQuery<Ui20Module[]>({
+    queryKey: ["tenant-nav-modules", tenantId],
+    enabled: import.meta.env.VITE_UI20_SERVICE_TABS === "true" && Boolean(tenantId && token),
+    staleTime: 60_000,
+    queryFn: async () => {
+      const response = await fetch(`/api/tenants/${tenantId}/nav-modules`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error("Não foi possível verificar os serviços do tenant");
+      return response.json() as Promise<Ui20Module[]>;
+    },
+    retry: false,
+  });
   const [activeAgents, setActiveAgents] = useState<number | undefined>(undefined);
   const [loadingOfficial, setLoadingOfficial] = useState(false);
   const queryClient = useQueryClient();
@@ -112,7 +125,25 @@ export default function Dashboard() {
   }, [tenantId, token, refreshKey]);
 
   return (
-    <Tabs defaultValue="overview" className="w-full vendor-dashboard-v2">
+    <div className="w-full vendor-dashboard-v2">
+      {import.meta.env.VITE_UI20_SERVICE_TABS === "true" ? (
+        <ServiceHome
+          name={user?.name ?? ""}
+          tenantId={tenantId}
+          userId={user?.id ?? ""}
+          token={token}
+          isAdmin={user?.platformRole === "super_admin" || user?.userFunction === "administrador"}
+          modules={ui20NavQuery.data}
+          overdueTasks={official?.operation?.overdueTasks}
+          unassignedLeads={official?.commercial?.unassignedLeads}
+          overdueTaskItems={official?.operation?.overdueTaskItems}
+          recentActivity={executive?.atividade?.ultimas20}
+          loading={!ui20NavQuery.isSuccess}
+          erpVisible={ui20NavQuery.data?.some((module) => module.moduleKey === "financeiro" && module.isEnabled) ?? false}
+          arqdorVisible={Boolean(user?.tenantVertical && /constr|arquit|obra|marcen|m[oó]ve|design/i.test(user.tenantVertical))}
+        />
+      ) : null}
+      <Tabs defaultValue="overview" className="w-full">
       <div className="vendor-product-page pb-0">
         <TabsList className="vendor-product-tabs grid max-w-[520px] grid-cols-2">
           <TabsTrigger value="overview">Visão Geral</TabsTrigger>
@@ -178,6 +209,7 @@ export default function Dashboard() {
           <JarvisNewsMarket token={token} />
         </Suspense>
       </TabsContent>
-    </Tabs>
+      </Tabs>
+    </div>
   );
 }

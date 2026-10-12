@@ -1,5 +1,6 @@
+import { createHmac, createHash, randomBytes } from "node:crypto";
 import { google } from "googleapis";
-import { db, agendasTable } from "@workspace/db";
+import { db, agendasTable, calendarOauthStatesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
 
@@ -61,13 +62,33 @@ export function createOAuth2Client(host?: string) {
 
 export function buildAuthUrl(agendaId: string, returnTo?: string, host?: string): string {
   const oauth2 = createOAuth2Client(host);
-  const state = Buffer.from(JSON.stringify({ agendaId, returnTo })).toString("base64url");
+  const secret = process.env.GOOGLE_CALENDAR_OAUTH_STATE_SECRET;
+  if (!secret || secret.length < 32) throw new Error("Calendar OAuth state secret not configured");
+  const payload = Buffer.from(JSON.stringify({ agendaId, returnTo, issuedAt: Date.now(), nonce: randomBytes(16).toString("hex") })).toString("base64url");
+  const mac = createHmac("sha256", secret).update(payload).digest("base64url");
+  const state = `${payload}.${mac}`;
   return oauth2.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
     scope: SCOPES,
     state,
   });
+}
+
+/** Persist before sending the auth URL; callback atomically consumes state once. */
+export async function createRegisteredCalendarAuthUrl(
+  agendaId: string, tenantId: string, initiatedBy: string,
+  returnTo: string = "/agenda", host?: string
+): Promise<string> {
+  const url = buildAuthUrl(agendaId, returnTo, host);
+  const state = new URL(url).searchParams.get("state");
+  if (!state) throw new Error("OAuth state missing");
+  await db.insert(calendarOauthStatesTable).values({
+    stateHash: createHash("sha256").update(state).digest("hex"),
+    agendaId, tenantId, initiatedBy,
+    expiresAt: new Date(Date.now() + 600_000),
+  });
+  return url;
 }
 
 export async function exchangeCodeAndStore(
