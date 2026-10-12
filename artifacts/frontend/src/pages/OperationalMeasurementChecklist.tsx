@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -80,6 +80,7 @@ export default function OperationalMeasurementChecklist() {
   const [error, setError] = useState<string | null>(null);
   const [photoItemId, setPhotoItemId] = useState<string | null>(null);
   const [createdDraft, setCreatedDraft] = useState<string | null>(null);
+  const runVersionRef = useRef<string | null>(null);
   const [photoAccess, setPhotoAccess] = useState<Record<string, Array<{ storageUrl: string; accessUrl: string }>>>({});
 
   async function api(path: string, init?: RequestInit) {
@@ -106,6 +107,7 @@ export default function OperationalMeasurementChecklist() {
     setError(null);
     try {
       const payload = await api(`/api/operational-checklists/deals/${dealId}/current`);
+      runVersionRef.current = payload.run?.updatedAt ?? null;
       setData(payload);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao carregar checklist.");
@@ -161,6 +163,7 @@ export default function OperationalMeasurementChecklist() {
     // A photo upload mutates the server checklist revision; refresh before saving dimensions.
     const fresh = await api(`/api/operational-checklists/deals/${dealId}/current`);
     if (!fresh.run || fresh.run.id !== data.run.id) throw new Error("A revisão do checklist mudou após o envio. Recarregue antes de salvar cotas.");
+    runVersionRef.current = fresh.run.updatedAt;
     setData(fresh);
     setPhotoAccess((prev) => ({ ...prev, [itemId]: [...(prev[itemId] ?? []).filter(photo => photo.storageUrl !== result.storageUrl), { storageUrl: result.storageUrl, accessUrl: result.accessUrl }] }));
     return { storageUrl: result.storageUrl, accessUrl: result.accessUrl };
@@ -174,6 +177,7 @@ export default function OperationalMeasurementChecklist() {
         method: "POST",
         body: JSON.stringify({ name: "Conferência de Medidas" }),
       });
+      runVersionRef.current = run.updatedAt;
       setData((prev) => prev ? { ...prev, run } : prev);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao iniciar conferência.");
@@ -189,7 +193,7 @@ export default function OperationalMeasurementChecklist() {
     try {
       const run = await api(`/api/operational-checklists/runs/${data.run.id}/items/${item.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ ...patch, expectedUpdatedAt: data.run.updatedAt }),
+        body: JSON.stringify({ ...patch, expectedUpdatedAt: runVersionRef.current ?? data.run.updatedAt }),
       });
       setData((prev) => prev ? { ...prev, run } : prev);
     } catch (err) {
@@ -406,6 +410,7 @@ export default function OperationalMeasurementChecklist() {
                           method: "PATCH",
                           body: JSON.stringify({ photoMeasurements: measurements, expectedUpdatedAt: data.run.updatedAt }),
                         });
+                        runVersionRef.current = updated.updatedAt;
                         setData((prev) => prev ? { ...prev, run: updated } : prev);
                       }} onClose={() => setPhotoItemId(null)} />
                     )}
