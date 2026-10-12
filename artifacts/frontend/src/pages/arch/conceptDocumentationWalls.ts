@@ -60,3 +60,24 @@ export function documentationWallSection(walls: readonly DocumentationWall[], op
  }
  return result;
 }
+
+/** Schematic opening outlines; no invented manufacturer or leaf construction. */
+export function documentationOpeningOutlines(walls: readonly DocumentationWall[], openings: readonly DocumentationOpening[], axis: "x" | "y", position: number, elevation = false): DrawingPrimitive[] {
+ const result: DrawingPrimitive[] = [];
+ for (const opening of openings) {
+  const wall = walls.find(w => w.id === opening.wallId && w.floor === opening.floor);
+  if (!wall) continue;
+  const length = Math.hypot(wall.x2-wall.x1,wall.y2-wall.y1);
+  const width = opening.width ?? (opening.type === "door" ? 0.9 : 1.2), height = opening.height ?? (opening.type === "door" ? 2.1 : 1.2), sill = opening.sillHeight ?? (opening.type === "door" ? 0 : 0.9);
+  if (![length,width,height,sill,opening.offset].every(Number.isFinite) || length < 1e-9 || width <= 0 || height <= 0 || sill < 0 || opening.offset < 0 || opening.offset > 1 || sill >= 2.8) continue;
+  const start = Math.max(0, opening.offset*length-width/2), end = Math.min(length, opening.offset*length+width/2);
+  const ux = (wall.x2-wall.x1)/length, uy=(wall.y2-wall.y1)/length;
+  const virtual = { ...wall, x1:wall.x1+ux*start, y1:wall.y1+uy*start, x2:wall.x1+ux*end, y2:wall.y1+uy*end };
+  for (const shape of documentationWallSection([virtual], [], axis, position, elevation)) {
+   const base=wall.floor*2.96+0.16;
+   const points=shape.points.map(p => ({u:p.u,z:base+sill+(p.z-base>1e-9 ? Math.min(height,2.8-sill) : 0)}));
+   result.push({ id:`opening:${opening.type}:${opening.id}`, kind:"opening", points:[...points,points[0]] });
+  }
+ }
+ return result;
+}

@@ -1,6 +1,6 @@
 import type { ArchitecturalModel } from "./conceptArchitecturalModel";
 import { architecturalSceneGeometry } from "./conceptArchitecturalViews";
-export type DrawingPrimitive = { id: string; kind: "solid" | "roof"; points: { u: number; z: number }[] };
+export type DrawingPrimitive = { id: string; kind: "solid" | "roof" | "opening"; points: { u: number; z: number }[] };
 /** Slice all storeys in absolute metres. Elevations are orthographic projections. */
 export function architecturalSection(model: ArchitecturalModel, axis: "x" | "y", position: number, elevation = false): DrawingPrimitive[] {
   if (!Number.isFinite(position)) return [];

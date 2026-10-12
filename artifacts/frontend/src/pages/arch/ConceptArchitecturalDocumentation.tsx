@@ -1,4 +1,4 @@
-import { documentationWallPlan, documentationWallSection, type DocumentationWall, type DocumentationOpening } from "./conceptDocumentationWalls";
+import { documentationWallPlan, documentationWallSection, documentationOpeningOutlines, type DocumentationWall, type DocumentationOpening } from "./conceptDocumentationWalls";
 import { architecturalSheetLayout } from "./conceptArchitecturalSheet";
 import { useMemo, useRef, useState } from "react";
 import type { ArchitecturalModel } from "./conceptArchitecturalModel";
@@ -13,7 +13,7 @@ export function ConceptArchitecturalDocumentation({ model, walls = [], openings 
   const [sheetTitle, setSheetTitle] = useState("Pré-projeto");
   const [sheetError, setSheetError] = useState<string | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
-  const items = useMemo(() => plan ? [...architecturalDocumentationPlan(model, planFloor), ...documentationWallPlan(walls, openings, planFloor)] : [...architecturalSection(model, axis, position, elevation), ...documentationWallSection(walls, openings, axis, position, elevation)], [model, axis, position, elevation, plan, planFloor, walls, openings]);
+  const items = useMemo(() => plan ? [...architecturalDocumentationPlan(model, planFloor), ...documentationWallPlan(walls, openings, planFloor)] : [...architecturalSection(model, axis, position, elevation), ...documentationWallSection(walls, openings, axis, position, elevation), ...documentationOpeningOutlines(walls, openings, axis, position, elevation)], [model, axis, position, elevation, plan, planFloor, walls, openings]);
   const points = items.flatMap(item => item.points);
   const minU = points.length ? Math.min(...points.map(p => p.u)) : 0, maxU = points.length ? Math.max(...points.map(p => p.u)) : 5;
   const minZ = points.length ? Math.min(...points.map(p => p.z)) : 0, maxZ = points.length ? Math.max(...points.map(p => p.z)) : 5;
@@ -51,7 +51,7 @@ export function ConceptArchitecturalDocumentation({ model, walls = [], openings 
   }
   return <section aria-label="Documentação paramétrica" className="space-y-2 rounded border p-2">
     <h4 className="text-sm font-semibold">Plantas, cortes e elevações</h4>
-    <p className="text-xs text-slate-500">Vista esquemática de lajes, escadas e coberturas. Na planta, inclui paredes desenhadas e vãos interceptados a 1,20 m. Cortes e elevações incluem paredes desenhadas e vãos. Altura de parede: 2,80 m; cotas seguem os pavimentos do editor. Medidas em metros; cotas gerais medem a extensão dos elementos visíveis. Exportação sem escala de impressão definida.</p>
+    <p className="text-xs text-slate-500">Vista esquemática de lajes, escadas e coberturas. Na planta, inclui paredes desenhadas e vãos interceptados a 1,20 m. Cortes e elevações incluem paredes desenhadas e vãos. Contornos azuis identificam portas/janelas nos cortes e elevações. Altura de parede: 2,80 m; cotas seguem os pavimentos do editor. Medidas em metros; cotas gerais medem a extensão dos elementos visíveis. Exportação sem escala de impressão definida.</p>
     <div className="grid grid-cols-2 gap-2">
       <label className="text-xs">Vista<select value={view} onChange={e => { setView(e.target.value as typeof view); setSheetError(null); }} className="w-full rounded border p-2"><option value="plan">Planta por pavimento</option><option value="section">Corte</option><option value="elevation">Elevação</option></select></label>
       {!plan && <label className="text-xs">Direção<select value={axis} onChange={e => setAxis(e.target.value as "x" | "y")} className="w-full rounded border p-2"><option value="x">Olhar ao longo de X</option><option value="y">Olhar ao longo de Y</option></select></label>}
@@ -61,7 +61,7 @@ export function ConceptArchitecturalDocumentation({ model, walls = [], openings 
     <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={showDimensions} onChange={e => setShowDimensions(e.target.checked)} />Mostrar cotas gerais da vista</label>
     <svg ref={svgRef} xmlns="http://www.w3.org/2000/svg" viewBox={`${minU - 1.2} ${-maxZ - 0.7} ${Math.max(1, maxU - minU) + 1.9} ${Math.max(1, maxZ - minZ) + 1.9}`} role="img" aria-label="Vista dos elementos paramétricos" className="w-full border bg-white">
       <title>{plan ? `Planta · pavimento ${planFloor}` : elevation ? "Elevação" : `Corte ${axis.toUpperCase()} = ${position} m`} · elementos paramétricos</title>
-      <g fill="none" stroke="#334155" strokeWidth={0.035}>{items.map(item => item.kind === "solid" ? <polygon key={item.id} points={item.points.map(p => `${p.u},${-p.z}`).join(" ")} fill="#e2e8f0"><title>{item.id}</title></polygon> : <polyline key={item.id} points={item.points.map(p => `${p.u},${-p.z}`).join(" ")} stroke="#0f766e"><title>{item.id}</title></polyline>)}</g>
+      <g fill="none" stroke="#334155" strokeWidth={0.035}>{items.map(item => item.kind === "solid" ? <polygon key={item.id} points={item.points.map(p => `${p.u},${-p.z}`).join(" ")} fill="#e2e8f0"><title>{item.id}</title></polygon> : <polyline key={item.id} points={item.points.map(p => `${p.u},${-p.z}`).join(" ")} stroke={item.kind === "opening" ? "#2563eb" : "#0f766e"}><title>{item.id}</title></polyline>)}</g>
       {showDimensions && points.length > 0 && <g stroke="#64748b" strokeWidth={0.02} fill="none">
         <path d={`M ${minU} ${-minZ + 0.2} V ${-minZ + 0.6} M ${maxU} ${-minZ + 0.2} V ${-minZ + 0.6} M ${minU} ${-minZ + 0.45} H ${maxU}`} />
         <text x={(minU + maxU) / 2} y={-minZ + 0.8} fill="#334155" stroke="none" fontSize={0.18} textAnchor="middle">{(maxU - minU).toFixed(2)} m</text>

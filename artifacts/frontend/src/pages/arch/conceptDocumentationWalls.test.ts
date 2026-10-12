@@ -39,3 +39,21 @@ it("projects upper-floor walls without filling door voids", async () => {
  expect(shapes.some(shape => shape.points[0].u === 1.5 && shape.points[1].u === 2.5 && shape.points[0].z < 5)).toBe(false);
  expect(documentationWallSection([wall], [], "x", NaN)).toEqual([]);
 });
+
+it("adds schematic opening outlines at the correct sill and floor elevations", async () => {
+ const { documentationOpeningOutlines } = await import("./conceptDocumentationWalls");
+ const shapes=documentationOpeningOutlines([{...wall,floor:1}], [{id:"j",wallId:"w",floor:1,type:"window",offset:0.5,width:1,height:1.2,sillHeight:0.9}], "y",0,true);
+ expect(shapes).toHaveLength(1);
+ expect(shapes[0].kind).toBe("opening");
+ expect(shapes[0].points[0]).toMatchObject({u:1.5});
+ expect(shapes[0].points[0].z).toBeCloseTo(4.02);
+ expect(shapes[0].points[2].z).toBeCloseTo(5.22);
+ expect(shapes[0].points[4]).toEqual(shapes[0].points[0]);
+});
+it("does not draw opening outlines outside the cut or for orphan openings", async () => {
+ const { documentationOpeningOutlines } = await import("./conceptDocumentationWalls");
+ const opening={id:"d",wallId:"w",floor:0,type:"door" as const,offset:0.5,width:1};
+ expect(documentationOpeningOutlines([wall],[opening],"x",0)).toEqual([]);
+ expect(documentationOpeningOutlines([], [opening], "y",0,true)).toEqual([]);
+ expect(documentationOpeningOutlines([wall],[{...opening,width:NaN}],"x",2)).toEqual([]);
+});
