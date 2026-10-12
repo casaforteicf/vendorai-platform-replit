@@ -480,9 +480,19 @@ async function handleSchedulerProcess(req: Request, res: Response): Promise<void
     }
 
     const titulo = agendamentoInput.titulo ?? `Reunião com ${ctx.lead.nome}`;
-    const [ag] = await db
-      .insert(agendamentosTable)
-      .values({
+    const ag = await db.transaction(async (tx) => {
+      if (!schedulerIsAdmin && resolvedAgendaId) {
+        await tx.execute(sql`SELECT id FROM agendas WHERE id = ${resolvedAgendaId} AND tenant_id = ${tenantId} FOR UPDATE`);
+        const [owner] = await tx.select({ ownerUserId: agendasTable.ownerUserId })
+          .from(agendasTable).where(and(eq(agendasTable.id, resolvedAgendaId), eq(agendasTable.tenantId, tenantId))).limit(1);
+        const [grant] = req.user?.sub ? await tx.select({ userId: agendaAccessGrantsTable.userId })
+          .from(agendaAccessGrantsTable).where(and(eq(agendaAccessGrantsTable.agendaId, resolvedAgendaId),
+            eq(agendaAccessGrantsTable.tenantId, tenantId), eq(agendaAccessGrantsTable.userId, req.user.sub))).limit(1) : [];
+        if (!owner || !req.user?.sub || (owner.ownerUserId !== req.user.sub && !grant)) {
+          throw new Error("SCHEDULER_AGENDA_REVOKED");
+        }
+      }
+      const [created] = await tx.insert(agendamentosTable).values({
         tenantId,
         leadId,
         tipo:           agendamentoInput.tipo,
@@ -494,8 +504,9 @@ async function handleSchedulerProcess(req: Request, res: Response): Promise<void
         agendaId:       resolvedAgendaId,
         gerarMeet:      agendamentoInput.gerarMeet ?? false,
         status:         "agendado",
-      })
-      .returning();
+      }).returning();
+      return created;
+    });
     agendamentoCriado = ag;
     req.log.info({ agendamentoId: ag.id, leadId, agendaId: resolvedAgendaId }, "scheduler: agendamento created");
 
