@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import "./arqdor-construction-studio.css";
-import { StudioField } from "../../theme/ArqdorStudioComponents";
+import { StudioField, StudioToolButton } from "../../theme/ArqdorStudioComponents";
 import "../../theme/arqdor-studio-primitives.css";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkspaceProject } from "../WorkspaceContext";
@@ -266,8 +266,8 @@ export default function ArqdorConstructionWorkspace({ arqState, onNavigate }: Pr
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => setView("overview")} className={`rounded-2xl px-4 py-2 text-sm font-semibold ${view === "overview" ? "bg-slate-950 text-white" : "bg-slate-50 text-slate-600"}`}>Visão Geral</button>
-              <button type="button" onClick={() => setView("measurements")} className={`rounded-2xl px-4 py-2 text-sm font-semibold ${view === "measurements" ? "bg-slate-950 text-white" : "bg-slate-50 text-slate-600"}`}>Medições</button>
+              <StudioToolButton active={view === "overview"} onClick={() => setView("overview")}>Visão Geral</StudioToolButton>
+              <StudioToolButton active={view === "measurements"} onClick={() => setView("measurements")}>Medições</StudioToolButton>
               <button type="button" onClick={() => onNavigate?.("procurement")} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold">Compras</button>
               <button type="button" onClick={() => onNavigate?.("real-budget")} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold">Orçamento</button>
               <button type="button" onClick={() => onNavigate?.("execution")} className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-700">Produção & Execução</button>
