@@ -76,7 +76,7 @@ export async function scheduleProspectMeeting(input: {
     .where(and(eq(agendasTable.tenantId, input.tenantId), isNotNull(agendasTable.googleRefreshToken)))
     .limit(1);
 
-  const appointment = await db.transaction(async (tx) => {
+  let appointment = await db.transaction(async (tx) => {
     if (agenda?.id) {
       const locked = await tx.execute(sql`SELECT id FROM agendas WHERE id = ${agenda.id} AND tenant_id = ${input.tenantId} AND google_refresh_token IS NOT NULL FOR UPDATE`);
       if (!locked.rows.length) throw new Error("PROSPECT_AGENDA_UNAVAILABLE");
