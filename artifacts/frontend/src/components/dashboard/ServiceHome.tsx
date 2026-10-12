@@ -11,6 +11,8 @@ type Props = {
   loading?: boolean;
   overdueTasks?: number;
   unassignedLeads?: number;
+  overdueTaskItems?: Array<{ id: string; title: string; leadId?: string | null }>;
+  recentActivity?: Array<{ tipo: string; descricao: string; createdAt: string }>;
 };
 
 const serviceCards = [
@@ -25,7 +27,7 @@ const serviceCards = [
 ] as const;
 
 /** Presentation only; tenant/route authorization continues on the server. */
-export function ServiceHome({ name, isAdmin, arqdorVisible = false, erpVisible = false, modules, loading, overdueTasks, unassignedLeads }: Props) {
+export function ServiceHome({ name, isAdmin, arqdorVisible = false, erpVisible = false, modules, loading, overdueTasks, unassignedLeads, overdueTaskItems, recentActivity }: Props) {
   const allowed = getUi20VisibleServices({ modules, isAdmin, arqdorEligible: arqdorVisible, loading });
   const visible = serviceCards.filter((module) =>
     allowed.has(module.key) && (module.key !== "erp" || erpVisible)
@@ -53,6 +55,24 @@ export function ServiceHome({ name, isAdmin, arqdorVisible = false, erpVisible =
           <p className="mt-2 text-sm text-muted-foreground">{unassignedLeads == null ? "Conferir leads" : unassignedLeads > 0 ? `${unassignedLeads} lead(s) sem responsável` : "Nenhum lead sem responsável"}</p>
         </Link>}
       </div>
+      {Boolean(overdueTaskItems?.length || recentActivity?.length) && (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {Boolean(overdueTaskItems?.length) && <section className="rounded-xl border bg-card p-4" aria-label="Pendências recentes">
+            <h2 className="mb-3 text-sm font-semibold">Pendências que precisam de atenção</h2>
+            <ul className="space-y-2">{overdueTaskItems!.slice(0, 4).map((task) => (
+              <li key={task.id} className="text-sm">
+                <Link href={task.leadId ? `/leads/${encodeURIComponent(task.leadId)}?activityId=${encodeURIComponent(task.id)}` : "/trabalho?attention=vencidos"} className="text-primary hover:underline">{task.title}</Link>
+              </li>
+            ))}</ul>
+          </section>}
+          {Boolean(recentActivity?.length) && <section className="rounded-xl border bg-card p-4" aria-label="Atividade recente">
+            <h2 className="mb-3 text-sm font-semibold">Atividade recente</h2>
+            <ul className="space-y-2">{recentActivity!.slice(0, 4).map((item, index) => (
+              <li key={`${item.createdAt}-${index}`} className="text-sm text-muted-foreground">{item.descricao}</li>
+            ))}</ul>
+          </section>}
+        </div>
+      )}
       <div>
         <h2 className="mb-3 text-base font-semibold">Meus serviços</h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
