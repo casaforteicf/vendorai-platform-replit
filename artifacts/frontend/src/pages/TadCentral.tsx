@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { LAUNCHER_MODULES, authorizedLauncherModules, type LauncherAudience, type LauncherModule } from "@/lib/adaptiveModuleLauncher";
 
@@ -37,7 +37,6 @@ const TAD_LABELS: Partial<Record<LauncherModule, { description: string; section:
 
 export default function TadCentral({ audience, enabledModules, permittedModules, previewModules = [], companyName }: TadCentralProps) {
   const { logout } = useAuth();
-  const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
   const [section, setSection] = useState("Todos");
   const authorized = useMemo(
@@ -72,7 +71,7 @@ export default function TadCentral({ audience, enabledModules, permittedModules,
         </div>
         <div className="flex items-center gap-3">
           <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">{authorized.length} serviços autorizados</span>
-          <button type="button" onClick={() => { logout(); setLocation("/"); }} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-200 hover:bg-white/10">Sair da conta</button>
+          <button type="button" onClick={logout} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-200 hover:bg-white/10">Sair da conta</button>
         </div>
       </header>
       <div className="mx-auto mb-6 max-w-7xl overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-r from-[#192c2b] via-[#182434] to-[#10151e] p-5 md:p-8">

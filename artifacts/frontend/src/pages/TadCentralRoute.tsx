@@ -20,11 +20,12 @@ export default function TadCentralRoute() {
   const [failed, setFailed] = useState(false);
   const [permitted, setPermitted] = useState<LauncherModule[]>([]);
   useEffect(() => {
-    if (!user?.tenantId || !token) return;
-    const controller = new AbortController();
+    // Clear prior user/tenant access immediately, even when credentials disappear.
     setFailed(false);
     setEnabled([]);
     setPermitted([]);
+    if (!user?.tenantId || !token) return;
+    const controller = new AbortController();
     Promise.all([
       fetch(`/api/tenants/${encodeURIComponent(user.tenantId)}/nav-modules`, {
         headers: { Authorization: `Bearer ${token}` }, signal: controller.signal,
