@@ -3,15 +3,17 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type Grant = { userId: string; createdAt?: string };
-type AgendaOption = { id: string; nome: string };
+type AgendaOption = { id: string; nome: string; ownerUserId?: string | null };
 type Member = { id: string; name: string };
 export function AgendaAccessManagement({ agendas, users }: { agendas: AgendaOption[]; users: Member[] }) {
   const [agendaId, setAgendaId] = useState("");
   const [userId, setUserId] = useState("");
+  const [ownerOverride, setOwnerOverride] = useState<string | null | undefined>(undefined);
   const [grants, setGrants] = useState<Grant[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const active = agendas.find(a => a.id === agendaId);
+  const selectedOwner = ownerOverride === undefined ? (active?.ownerUserId ?? null) : ownerOverride;
   async function call(path: string, init?: RequestInit) {
     const token = localStorage.getItem("vendorai_token");
     const response = await fetch(`/api${path}`, {
@@ -26,7 +28,16 @@ export function AgendaAccessManagement({ agendas, users }: { agendas: AgendaOpti
     try { setGrants(await call(`/agendas/${encodeURIComponent(id)}/access`)); }
     catch (e) { setGrants([]); setError(e instanceof Error ? e.message : "Erro ao carregar acessos"); }
   }
-  useEffect(() => { void refresh(agendaId); }, [agendaId]);
+  useEffect(() => { setOwnerOverride(undefined); void refresh(agendaId); }, [agendaId]);
+  async function updateOwner(next: string) {
+    if (!agendaId || busy) return;
+    setBusy(true); setError("");
+    try {
+      const updated = await call(`/agendas/${encodeURIComponent(agendaId)}/owner`, { method: "PATCH", body: JSON.stringify({ ownerUserId: next === "__none__" ? null : next }) });
+      setOwnerOverride(updated.ownerUserId ?? null);
+    } catch (e) { setError(e instanceof Error ? e.message : "Falha ao alterar proprietário"); }
+    finally { setBusy(false); }
+  }
   async function change(action: "grant" | "revoke", target: string) {
     if (!agendaId || !target || busy) return;
     setBusy(true); setError("");
@@ -45,7 +56,13 @@ export function AgendaAccessManagement({ agendas, users }: { agendas: AgendaOpti
       <p className="text-xs text-muted-foreground">Conceda acesso somente a usuários desta empresa.</p></div>
     <Select value={agendaId} onValueChange={setAgendaId}><SelectTrigger><SelectValue placeholder="Selecionar agenda" /></SelectTrigger>
       <SelectContent>{agendas.map(a => <SelectItem key={a.id} value={a.id}>{a.nome}</SelectItem>)}</SelectContent></Select>
-    {active && <><div className="flex gap-2">
+    {active && <><div className="space-y-1"><p className="text-xs font-medium">Proprietário da agenda</p>
+      <Select value={selectedOwner ?? "__none__"} onValueChange={value => void updateOwner(value)} disabled={busy}>
+        <SelectTrigger><SelectValue placeholder="Selecionar proprietário" /></SelectTrigger>
+        <SelectContent><SelectItem value="__none__">Sem proprietário definido</SelectItem>
+          {users.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+        </SelectContent>
+      </Select></div><div className="flex gap-2">
       <Select value={userId} onValueChange={setUserId}><SelectTrigger><SelectValue placeholder="Selecionar colaborador" /></SelectTrigger>
         <SelectContent>{users.filter(u => !grants.some(g => g.userId === u.id)).map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent></Select>
       <Button type="button" disabled={!userId || busy} onClick={() => void change("grant", userId)}>Conceder</Button>
