@@ -44,10 +44,10 @@ export function ServiceHome({ name, isAdmin, arqdorVisible = false, erpVisible =
           <div className="flex items-center gap-2 text-sm font-semibold"><ClipboardList className="h-4 w-4 text-primary" /> Minhas atividades</div>
           <p className="mt-2 text-sm text-muted-foreground">{overdueTasks == null ? "Abrir atividades" : overdueTasks > 0 ? `${overdueTasks} tarefa(s) vencida(s)` : "Nenhuma tarefa vencida"}</p>
         </Link>
-        <Link href="/agenda" className="rounded-xl border bg-card p-4 hover:border-primary/50">
+        {modules?.some((module) => module.moduleKey === "scheduler" && module.isEnabled && module.commerciallyEntitled !== false) && <Link href="/agenda" className="rounded-xl border bg-card p-4 hover:border-primary/50">
           <div className="flex items-center gap-2 text-sm font-semibold"><CalendarDays className="h-4 w-4 text-primary" /> Agenda</div>
           <p className="mt-2 text-sm text-muted-foreground">Ver compromissos e prazos</p>
-        </Link>
+        </Link>}
         {allowed.has("crm") && <Link href="/leads" className="rounded-xl border bg-card p-4 hover:border-primary/50">
           <div className="flex items-center gap-2 text-sm font-semibold"><Sparkles className="h-4 w-4 text-primary" /> Atenção comercial</div>
           <p className="mt-2 text-sm text-muted-foreground">{unassignedLeads == null ? "Conferir leads" : unassignedLeads > 0 ? `${unassignedLeads} lead(s) sem responsável` : "Nenhum lead sem responsável"}</p>
