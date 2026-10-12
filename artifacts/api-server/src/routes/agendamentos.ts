@@ -5,6 +5,7 @@ import {
   db,
   agendamentosTable,
   agendasTable,
+  agendaAccessGrantsTable,
   leadsTable,
   dealsTable,
   activitiesTable,
@@ -29,6 +30,22 @@ import { generateSpinForActivity } from "./spin.js";
 import { buildUserFunctionFilter } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
+
+/** Tenant checked before this helper; explicit grant is necessary for non-admin users. */
+async function hasAgendaAccess(agendaId: string, tenantId: string, userId: string): Promise<boolean> {
+  const [agenda] = await db.select({ id: agendasTable.id, ownerUserId: agendasTable.ownerUserId })
+    .from(agendasTable).where(and(eq(agendasTable.id, agendaId), eq(agendasTable.tenantId, tenantId))).limit(1);
+  if (!agenda) return false;
+  if (agenda.ownerUserId === userId) return true;
+  const [grant] = await db.select({ userId: agendaAccessGrantsTable.userId })
+    .from(agendaAccessGrantsTable).where(and(
+      eq(agendaAccessGrantsTable.agendaId, agendaId),
+      eq(agendaAccessGrantsTable.tenantId, tenantId),
+      eq(agendaAccessGrantsTable.userId, userId)
+    )).limit(1);
+  return Boolean(grant);
+}
+
 
 // ── Handoff proativo: agendamento confirmado → aviso interno ao Closer ────────
 // Sinal apenas interno (notificação + WhatsApp para o dono do deal); NUNCA
@@ -119,8 +136,11 @@ router.post("/agendamentos", async (req, res) => {
   // Shared Google calendars have no per-user ACL. Until that permission
   // model exists, a non-admin cannot select one or request Meet creation.
   if (!creatorIsAdmin && (parsed.data.agendaId || parsed.data.gerarMeet)) {
-    res.status(403).json({ error: "Calendario Google compartilhado exige permissao administrativa" });
-    return;
+    if (!parsed.data.agendaId || !req.user?.sub ||
+        !(await hasAgendaAccess(parsed.data.agendaId, parsed.data.tenantId, req.user.sub))) {
+      res.status(403).json({ error: "Acesso ao calendario Google nao autorizado" });
+      return;
+    }
   }
 
   const leadConditions = [
@@ -567,8 +587,9 @@ router.get("/tenants/:tenantId/agendamentos/slots", async (req, res) => {
   const slotsIsAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
   // Agendas Google sao recursos compartilhados por tenant e nao possuem ACL individual.
   // Ate existir concessao explicita por agenda, acesso a disponibilidade externa e somente administrativo.
-  if (!slotsIsAdmin && agendaId) {
-    res.status(403).json({ error: "Consulta de disponibilidade de calendario compartilhado exige administrador" });
+  if (!slotsIsAdmin && agendaId &&
+      (!req.user?.sub || !(await hasAgendaAccess(agendaId, tenantId, req.user.sub)))) {
+    res.status(403).json({ error: "Acesso ao calendario compartilhado nao autorizado" });
     return;
   }
   if (!slotsIsAdmin && !req.user?.sub) {
