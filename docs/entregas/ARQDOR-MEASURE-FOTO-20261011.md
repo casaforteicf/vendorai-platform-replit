@@ -277,3 +277,6 @@ Validação de hash do token usa comparacao em tempo constante e exige hash hexa
 - L46 parcial: relatorio de impressao inclui data de emissao, total de itens, divergencias abertas e pendencias. Ainda faltam trilha de auditoria imutavel, fotos totalmente carregadas no PDF, versionamento formal e testes.
 - L44 permanece pendente: aceite remoto com verificacao independente de identidade e consumo de token unico. Nao habilitar a rota publica prematuramente.
 - NENHUMA compilacao/teste funcional/homologacao executada nesta etapa. Sem merge/deploy.
+
+## Lote 47 — protecao contra descarte de rascunho offline mais novo (12/10/2026)
+A fila de levantamento armazena revisionId aleatorio por salvamento; apos envio online, somente apaga o registro IndexedDB se a versao local ainda for a mesma. Comparacao e exclusao na mesma transacao readwrite. Caso surja edicao mais nova, ela e preservada e a interface informa o conflito. Falta teste funcional e compilacao e detecao de concorrencia entre dispositivos fisicos; sem homologacao/merge/deploy.
