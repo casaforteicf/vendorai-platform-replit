@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import type { ReactNode } from 'react'
+import { useAuth } from '../../../contexts/AuthContext'
 import type { Project } from '../../../pages/arch/arqdor/domain/arqdor-domain-types'
 import type { ArchProject } from '../../../pages/arch/arqdor-types'
 import type { ProjectContext, ProjectObject, ProjectMaterial } from '../engines/aie/aie-types'
@@ -12,6 +13,10 @@ import type { ProjectContext, ProjectObject, ProjectMaterial } from '../engines/
 const BASE = '/api'
 const STORAGE_KEY = 'arqdor_workspace_project_id'
 const SAVE_DEBOUNCE_MS = 2000
+// Experimental ACL flow is disabled by default and must be enabled with the backend flag.
+const USE_PROJECT_ACL = import.meta.env.VITE_MULTI08_PROJECT_ACL === 'true'
+// Unencrypted IndexedDB prototype: use only in explicitly approved, non-sensitive test projects.
+const USE_LOCAL_DRAFTS = USE_PROJECT_ACL && import.meta.env.VITE_MULTI09_LOCAL_DRAFTS === 'true'
 
 export const EMPTY_PROJECT_CONTEXT: ProjectContext = {
   id: '',
@@ -39,18 +44,29 @@ export interface WorkspaceContextValue {
   setProjectCtx:  (ctx: ProjectContext) => void
   saving:         boolean
   loadError:      string | null
+  saveError:      string | null
 }
 
 export const WorkspaceContext = createContext<WorkspaceContextValue | null>(null)
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
+  const identityRef = useRef<{ tenantId: string; userId: string } | null>(null)
+  identityRef.current = user?.tenantId && user?.id ? { tenantId: user.tenantId, userId: user.id } : null
   const [projectCtx, setProjectCtxState] = useState<ProjectContext>(EMPTY_PROJECT_CONTEXT)
   const [isRealProject, setIsRealProject] = useState<boolean>(false)
   const [isInitializing, setIsInitializing] = useState(false)
   const [saving, setSaving]   = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const initialLoadDone = useRef(false)
+  const remoteRevisionRef = useRef<string | null>(null)
+  const saveInFlightRef = useRef(false)
+  const latestPendingRef = useRef<ProjectContext | null>(null)
+  const activeProjectRef = useRef<string | null>(null)
+  const writeBlockedRef = useRef(false)
+  const authorizedDraftScopeRef = useRef<{ tenantId: string; userId: string; contextId: string; projectId: string } | null>(null)
 
   // ── Load on mount ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -63,11 +79,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const storedId = localStorage.getItem(STORAGE_KEY)
     if (!storedId) return  // Nenhum projeto salvo — exibe tela de boas-vindas
 
+    activeProjectRef.current = storedId
     setIsInitializing(true)
-    fetch(`${BASE}/arqdor/projects/${storedId}`, { headers: authHeaders() })
+    fetch(`${BASE}/arqdor/projects/${encodeURIComponent(storedId)}${USE_PROJECT_ACL ? '/snapshot' : ''}`, { headers: authHeaders(), cache: 'no-store' })
       .then(async res => {
-        if (res.status === 404) {
-          // Project no longer exists — clear stale ID so we don't retry on next load
+        if (res.status === 404 && !USE_PROJECT_ACL) {
+          // Legacy-only behavior; an ACL 404 may indicate revoked membership.
           localStorage.removeItem(STORAGE_KEY)
           setLoadError(null) // show empty/welcome state, not an error
           return
@@ -78,7 +95,22 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         }
         let ctx: ProjectContext
         try {
-          ctx = await res.json() as ProjectContext
+          const data = await res.json()
+          if (USE_PROJECT_ACL) {
+            if (!data || data.id !== storedId || !data.contextBlob || typeof data.revision !== 'string') {
+              setLoadError('Resposta de projeto inválida. Salvamento bloqueado.')
+              return
+            }
+            if (activeProjectRef.current !== storedId) return
+            remoteRevisionRef.current = data.revision
+            const identity = identityRef.current
+            authorizedDraftScopeRef.current = identity ? {
+              ...identity, contextId: 'arqdor-workspace', projectId: storedId,
+            } : null
+            ctx = data.contextBlob as ProjectContext
+          } else {
+            ctx = data as ProjectContext
+          }
         } catch {
           // Non-JSON response (e.g. proxy HTML error page) — ignore silently
           return
@@ -97,28 +129,90 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       })
   }, [])
 
-  // ── Debounced save ──────────────────────────────────────────────────────────
-  const persistCtx = useCallback((ctx: ProjectContext) => {
-    const tok = getToken()
-    if (!tok) return
-
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    saveTimerRef.current = setTimeout(async () => {
-      setSaving(true)
-      try {
-        await fetch(`${BASE}/arqdor/projects/${ctx.id}`, {
-          method: 'PUT',
-          headers: authHeaders(),
-          body: JSON.stringify(ctx),
-        })
-        localStorage.setItem(STORAGE_KEY, ctx.id)
-      } catch {
-        // silently ignore network errors — we'll retry on next change
-      } finally {
-        setSaving(false)
+  // ── Debounced, single-flight save (MULTI-08.4) ────────────────────────────
+  // Keep the newest pending context while a request is in flight; never issue
+  // overlapping writes using the same revision.
+  const flushPending = useCallback(async () => {
+    if (saveInFlightRef.current || writeBlockedRef.current) return
+    saveInFlightRef.current = true
+    setSaving(true)
+    try {
+      while (latestPendingRef.current && !writeBlockedRef.current) {
+        const ctx = latestPendingRef.current
+        latestPendingRef.current = null
+        if (activeProjectRef.current !== ctx.id || !getToken()) {
+          writeBlockedRef.current = true
+          setSaveError('Sessão ou projeto alterado. Salvamento interrompido; preserve suas alterações.')
+          break
+        }
+        const expectedRevision = remoteRevisionRef.current
+        if (USE_LOCAL_DRAFTS) {
+          // The current IndexedDB draft store is plaintext. Refuse writes
+          // until the encrypted vault has a recoverable key and unlock UI.
+          writeBlockedRef.current = true
+          setSaveError('Rascunho offline seguro ainda não configurado. Exporte seu projeto antes de sair.')
+          break
+        }
+        if (USE_PROJECT_ACL && !expectedRevision) {
+          writeBlockedRef.current = true
+          setSaveError('Sem revisão autorizada para este projeto. Exporte suas alterações.')
+          break
+        }
+        try {
+          const response = await fetch(`${BASE}/arqdor/projects/${encodeURIComponent(ctx.id)}${USE_PROJECT_ACL ? '/member-conditional' : ''}`, {
+            method: 'PUT',
+            headers: authHeaders(),
+            body: JSON.stringify(USE_PROJECT_ACL ? { expectedRevision, contextBlob: ctx } : ctx),
+          })
+          if (response.status === 409 || response.status === 401 || response.status === 403) {
+            writeBlockedRef.current = true
+            setSaveError('Conflito de versão, sessão expirada ou acesso revogado. Exporte as alterações antes de sair.')
+            break
+          }
+          if (!response.ok) throw new Error(`Save failed: HTTP ${response.status}`)
+          if (USE_PROJECT_ACL) {
+            const saved = await response.json() as { id?: string; revision?: string }
+            if (saved.id !== ctx.id || typeof saved.revision !== 'string') throw new Error('Invalid acknowledgment')
+            if (activeProjectRef.current !== ctx.id) {
+              writeBlockedRef.current = true
+              setSaveError('Projeto alterado durante o envio. Verifique a gravação antes de continuar.')
+              break
+            }
+            remoteRevisionRef.current = saved.revision
+          }
+          if (!latestPendingRef.current) setSaveError(null)
+        } catch {
+          // Delivery may have reached the server: do NOT retry blindly.
+          writeBlockedRef.current = true
+          setSaveError('Não foi possível confirmar a gravação. Preserve ou exporte o projeto antes de sair.')
+          break
+        }
       }
-    }, SAVE_DEBOUNCE_MS)
+    } finally {
+      saveInFlightRef.current = false
+      setSaving(false)
+    }
   }, [])
+
+  const persistCtx = useCallback((ctx: ProjectContext) => {
+    if (!ctx.id?.trim() || !getToken()) {
+      setSaveError('Projeto ou sessão inválidos. As alterações não foram enviadas.')
+      return
+    }
+    if (activeProjectRef.current && activeProjectRef.current !== ctx.id) {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      latestPendingRef.current = null
+      remoteRevisionRef.current = null
+      authorizedDraftScopeRef.current = null
+      writeBlockedRef.current = USE_PROJECT_ACL
+      setSaveError('Projeto alterado. Reabra-o para obter uma revisão autorizada antes de salvar.')
+    }
+    activeProjectRef.current = ctx.id
+    if (writeBlockedRef.current) return
+    latestPendingRef.current = ctx
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => { void flushPending() }, SAVE_DEBOUNCE_MS)
+  }, [flushPending])
 
   // ── Setter exposed to modules ───────────────────────────────────────────────
   // When the incoming context has the same ID as the current one (e.g. a partial
@@ -135,9 +229,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setIsRealProject(true)
   }, [persistCtx])
 
+  useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }, [])
+
   const value = useMemo<WorkspaceContextValue>(
-    () => ({ projectCtx, isRealProject, isInitializing, setProjectCtx, saving, loadError }),
-    [projectCtx, isRealProject, isInitializing, setProjectCtx, saving, loadError],
+    () => ({ projectCtx, isRealProject, isInitializing, setProjectCtx, saving, loadError, saveError }),
+    [projectCtx, isRealProject, isInitializing, setProjectCtx, saving, loadError, saveError],
   )
 
   return (

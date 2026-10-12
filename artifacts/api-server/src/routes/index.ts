@@ -1,3 +1,4 @@
+import uxRuntimeTelemetryRouter from "./ux_runtime_telemetry.js";
 import businessPlanRouter from "./business_plan.js";
 import uiContextsRouter from "./ui_contexts.js";
 import { diagnosticPlanningPublicRouter, diagnosticPlanningProtectedRouter } from "./diagnostic_planning.js";
@@ -99,6 +100,7 @@ import { intakeRouter } from "./intake";
 import publicProposalsRouter from "./public_proposals";
 import construcaoRouter from "./construcao";
 import archRouter, { archPublicRouter } from "./arch";
+import arqdorWorkspaceMembersRouter from "./arqdor_workspace_members";
 import { arqdorPublicLinkRouter, arqdorPublicLinkAdminRouter } from "./arqdor_public_link";
 import arqdorPartnerLotsRouter from "./arqdor_partner_lots";
 import { archAiRenderRouter } from "./arch_ai_render";
@@ -303,6 +305,8 @@ router.use(enforceAccessLicense);
 
 // Commercial entitlement gate: purchased products define which paid capabilities are reachable.
 router.use(enforceCommercialProductAccess);
+// UX telemetry obeys the same tenant, license and entitlement gates as the app.
+router.use(uxRuntimeTelemetryRouter);
 
 // Explicit module allowlist configured in Equipe. This protects the API too,
 // so typing a hidden URL directly does not bypass the permission.
@@ -558,6 +562,7 @@ router.use(partnerProspectorRouter);
 router.use(arqdorPublicLinkAdminRouter);
 router.use(arqdorPartnerLotsRouter);
 router.use(archRouter);
+router.use(arqdorWorkspaceMembersRouter);
 router.use(archSpecObjectsRouter);
 router.use(archBudgetEngineRouter);
 router.use(archClientPortalApprovalRouter);

@@ -18,6 +18,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
+import { authorizeSharedDirectory } from "../middlewares/shared-directory-authorization.js";
 import { eq, and, ilike, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
@@ -31,6 +32,7 @@ import {
 } from "@workspace/db";
 
 const router: IRouter = Router();
+router.use("/partner-hub", authorizeSharedDirectory);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

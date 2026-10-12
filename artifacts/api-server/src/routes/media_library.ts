@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { requestCanAccessLockedObject, syncProtectedObjectsForLead } from "../lib/attachment-folder-access.js";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import {
   db,
   mediaAssetsTable,
@@ -75,6 +75,7 @@ router.get("/tenants/:tenantId/media/projects", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
   const status = nonEmptyString(req.query["status"]);
   const kind = nonEmptyString(req.query["kind"]);
+  const arqdorProjectId = nonEmptyString(req.query["arqdorProjectId"]);
   const limit = clampLimit(req.query["limit"]);
 
   if (status && !PROJECT_STATUSES.has(status)) {
@@ -89,6 +90,10 @@ router.get("/tenants/:tenantId/media/projects", async (req, res) => {
   const filters = [eq(mediaProjectsTable.tenantId, tenantId)];
   if (status) filters.push(eq(mediaProjectsTable.status, status));
   if (kind) filters.push(eq(mediaProjectsTable.kind, kind));
+  if (arqdorProjectId) {
+    filters.push(sql`${mediaProjectsTable.context}->>'arqdorProjectId' = ${arqdorProjectId}`);
+    filters.push(sql`${mediaProjectsTable.context}->>'generator' = 'arqdor-cpu-experimental'`);
+  }
 
   const projects = await db
     .select()

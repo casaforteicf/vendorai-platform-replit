@@ -1,5 +1,7 @@
 import { flushSync } from "react-dom";
 import { conceptReferenceSize } from "./conceptReferenceImage";
+import { compareArqdorSnapshots } from "@/lib/arqdorConflictCompare";
+import { conceptAutosaveIfMatchHeader, isConceptAutosaveConflict } from "@/lib/conceptAutosaveRevisionGate";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import "./planner5d-reference.css";
 import {
@@ -542,6 +544,7 @@ type ProjectSourceFile = {
 
 type ConceptDraftResponse = {
   id: string;
+  updatedAt?: string;
   status?: string;
   archProjetoId?: string | null;
   currentStep: number;
@@ -1115,6 +1118,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [openingOverrides, setOpeningOverrides] = useState<Record<string, OpeningOverride>>({});
   const [conceptId, setConceptId] = useState<string | null>(null);
   const conceptIdRef = useRef<string | null>(null);
+  const revisionAutosaveEnabled = !guestMode && import.meta.env.VITE_MULTI04_REVISION_AUTOSAVE === "true";
+  const conceptRevisionRef = useRef<string | null>(null);
+  const revisionSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const revisionConflictRef = useRef(false);
   const dxfImportInputRef = useRef<HTMLInputElement | null>(null);
   const geometryImportInputRef = useRef<HTMLInputElement | null>(null);
   const referencePlanInputRef = useRef<HTMLInputElement | null>(null);
@@ -1130,6 +1137,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   );
   const [saveState, setSaveState] = useState<"idle" | "loading" | "saving" | "saved" | "error">("loading");
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
+  const [revisionConflictPreview, setRevisionConflictPreview] = useState<{ remoteRevision: string; differences: string[] } | null>(null);
   const [aiDevelopmentState, setAiDevelopmentState] = useState<"idle" | "running" | "error">("idle");
   const [customerProfile, setCustomerProfile] = useState<CustomerProfile>({});
   const [facadePreferences, setFacadePreferences] = useState<ConceptFacadePreferences>(DEFAULT_FACADE);
@@ -1588,6 +1596,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           if (!cancelled) {
             setConceptId(null);
             conceptIdRef.current = null;
+            conceptRevisionRef.current = null;
+            revisionConflictRef.current = false;
+            setRevisionConflictPreview(null);
             // PKG-07 / ARQ-UI: novo pré-projeto entra direto na escolha da origem.
             // Casa é o padrão, terreno é opcional e pode ser informado antes ou depois.
             setProjectScope("house");
@@ -1615,6 +1626,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         }
 
         conceptIdRef.current = draft.id;
+        conceptRevisionRef.current = draft.updatedAt ?? null;
+        revisionConflictRef.current = false;
+        setRevisionConflictPreview(null);
         setConceptId(draft.id);
         setArchProjetoId(draft.archProjetoId ?? null);
         setProjectMaster(draft.configuration?.projectMaster ?? null);
@@ -1801,21 +1815,53 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       await creatingConceptRef.current.catch(() => null);
     }
     const targetId = conceptIdRef.current ?? conceptId;
+    if (revisionAutosaveEnabled && revisionConflictRef.current) {
+      setSaveState("error");
+      setSaveErrorMessage("Conflito pendente: recarregue o projeto e confira suas alterações locais antes de salvar.");
+      return null;
+    }
+    if (revisionAutosaveEnabled && targetId && !conceptRevisionRef.current) {
+      setSaveState("error");
+      setSaveErrorMessage("Revisão do projeto indisponível. Atualize a página antes de salvar.");
+      return null;
+    }
 
-    const request = (async () => {
+    const sendRequest = async () => {
+      if (revisionAutosaveEnabled && revisionConflictRef.current) throw new Error("Conflito pendente. Gravação bloqueada até revisar o projeto.");
+      if (revisionAutosaveEnabled && targetId && !conceptRevisionRef.current) throw new Error("Revisão do projeto indisponível.");
       const response = await fetch(
         targetId ? `/api/arch/concept-projects/${targetId}` : "/api/arch/concept-projects",
         {
           method: targetId ? "PATCH" : "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...conceptAutosaveIfMatchHeader(revisionAutosaveEnabled, targetId, conceptRevisionRef.current),
+          },
           body: JSON.stringify(payload),
         },
       );
+      if (isConceptAutosaveConflict(revisionAutosaveEnabled, response.status)) {
+        revisionConflictRef.current = true;
+        setRevisionConflictPreview(null);
+        try {
+          const remoteResponse = await fetch(`/api/arch/concept-projects/${encodeURIComponent(targetId ?? "")}`, { cache: "no-store" });
+          if (remoteResponse.ok) {
+            const remote = (await remoteResponse.json()) as ConceptDraftResponse;
+            const differences = compareArqdorSnapshots(
+              { rooms: payload.rooms, openingOverrides: payload.openingOverrides, configuration: payload.configuration },
+              { rooms: remote.rooms, openingOverrides: remote.openingOverrides, configuration: remote.configuration },
+            );
+            setRevisionConflictPreview({ remoteRevision: remote.updatedAt ?? "desconhecida", differences: differences.map(item => item.path) });
+          }
+        } catch { /* Fail closed: local edit state stays untouched. */ }
+        throw new Error("Conflito de revisão. As alterações locais foram mantidas; revise o projeto antes de salvar novamente.");
+      }
       if (!response.ok) {
         const errorBody = await response.json().catch(() => null) as { message?: string; error?: string } | null;
         throw new Error(errorBody?.message || errorBody?.error || `Falha ao salvar pré-projeto (${response.status})`);
       }
       const saved = (await response.json()) as ConceptDraftResponse;
+      conceptRevisionRef.current = saved.updatedAt ?? null;
       conceptIdRef.current = saved.id;
       setConceptId(saved.id);
       if (!targetId && typeof window !== "undefined") {
@@ -1824,7 +1870,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         window.history.replaceState(null, "", `/arch/concept?id=${encodeURIComponent(saved.id)}`);
       }
       return saved.id;
-    })();
+    };
+    // Serialize enabled saves, including network waits, to avoid concurrent If-Match writes.
+    const request = revisionAutosaveEnabled
+      ? revisionSaveQueueRef.current.then(sendRequest)
+      : sendRequest();
+    if (revisionAutosaveEnabled) revisionSaveQueueRef.current = request.then(() => undefined, () => undefined);
     if (!targetId) creatingConceptRef.current = request;
 
     try {
@@ -6246,6 +6297,19 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           </div>
         </div>
       )}
+      {revisionAutosaveEnabled && revisionConflictRef.current && (
+        <section role="alert" aria-label="Comparação de conflito" className="mx-auto my-3 max-w-5xl rounded-xl border border-amber-500 p-4">
+          <h2 className="font-semibold">O servidor possui outra versão deste projeto</h2>
+          <p className="text-sm">Suas alterações continuam abertas no editor. O salvamento está bloqueado para impedir substituições.</p>
+          {revisionConflictPreview ? (
+            <>
+              <p className="text-sm">Revisão no servidor: {revisionConflictPreview.remoteRevision}</p>
+              <p className="text-sm">Campos diferentes (amostra): {revisionConflictPreview.differences.slice(0, 20).join(", ") || "nenhum campo identificado"}</p>
+            </>
+          ) : <p className="text-sm">Não foi possível buscar uma comparação atualizada. Nenhuma versão será substituída.</p>}
+          <p className="text-sm">Copie ou exporte suas alterações antes de abrir novamente o projeto. A resolução automática permanece desativada.</p>
+        </section>
+      )}
       {false && (
         <div className="border-b bg-background">
           <div className="mx-auto max-w-[1500px] px-4 py-4 sm:px-6">
@@ -9388,6 +9452,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
                   {editorView === "model3d" && (
                     <ConceptModel3D
+                      arqdorProjectId={conceptId || undefined}
                       lotWidth={lotWidth}
                       lotDepth={lotDepth}
                       activeFloor={activeFloor}
