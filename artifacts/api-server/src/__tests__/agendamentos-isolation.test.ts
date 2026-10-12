@@ -383,6 +383,21 @@ describe("member ownership authorization — agendamentos", () => {
     expect(mockDbUpdate).toHaveBeenCalled();
   });
 
+  it("blocks deleting an owned appointment when calendar access was revoked", async () => {
+    const query = (rows: MockRow[]) => ({
+      from: () => ({ where: () => ({ limit: async () => rows }) }),
+    });
+    // The delete handler loads the appointment via where(), without limit().
+    mockDbSelect.mockReturnValueOnce({
+      from: () => ({ where: async () => [{ ...recordOwnedByTenantB, responsavelId: memberId, agendaId: "revoked-calendar" }] }),
+    }).mockReturnValueOnce(query([{ id: "revoked-calendar", ownerUserId: "another-user" }]))
+      .mockReturnValueOnce(query([]));
+    const response = await request(app).delete(`/api/agendamentos/${RECORD_ID}`)
+      .set("Authorization", `Bearer ${memberToken}`);
+    expect(response.status).toBe(403);
+    expect(mockDbDelete).not.toHaveBeenCalled();
+  });
+
   it("allows a member to delete their own appointment", async () => {
     setupSelectReturning([{ ...recordOwnedByTenantB, responsavelId: memberId }]);
     setupDeleteSuccess();
