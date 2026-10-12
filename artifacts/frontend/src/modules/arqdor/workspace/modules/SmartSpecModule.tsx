@@ -743,7 +743,7 @@ export function SmartSpecModule({
   }, [requestedRenderId, selRender?.id, selRender?.imageUrl, selRender?.projetoId, loadedSpecProjectId, loadingSpec, analyzing, spec?.renderId])
 
   const sendToBudget = async () => {
-    if (!spec?.id) return
+    if (sendingBudget || !spec?.id) return
     const itemIds = items.filter(item => item.status === 'especificado').map(item => item.id)
     if (itemIds.length === 0) {
       setBudgetMsg('Confirme pelo menos um item antes de enviar ao orçamento.')
@@ -757,7 +757,7 @@ export function SmartSpecModule({
         headers: authHeaders(true),
         body: JSON.stringify({ itemIds }),
       })
-      const data = await r.json()
+      const data = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`)
       const pending = Number(data.pendentes ?? 0)
       setBudgetMsg(pending > 0
@@ -776,15 +776,18 @@ export function SmartSpecModule({
     setCatalogMap(m => ({ ...m, [item.id]: null }))
     try {
       const r = await fetch(`${BASE}/arch/catalogo?busca=${encodeURIComponent(item.descricao)}&limit=5`, { headers: authHeaders() })
-      const data: CatalogMatch[] = r.ok ? await r.json() : []
-      setCatalogMap(m => ({ ...m, [item.id]: data }))
+      if (!r.ok) throw new Error(`Falha na busca do catálogo (HTTP ${r.status})`)
+      const data: CatalogMatch[] = await r.json()
+      setCatalogMap(m => ({ ...m, [item.id]: Array.isArray(data) ? data : [] }))
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível consultar o catálogo.')
     } finally {
       setSearchingMap(m => ({ ...m, [item.id]: false }))
     }
   }
 
   // Update item status
-  const updateItem = async (itemId: string, patch: Partial<SpecItem>) => {
+  const updateItem = async (itemId: string, patch: Partial<SpecItem>): Promise<boolean> => {
     try {
       const r = await fetch(`${BASE}/arch/specification/item/${itemId}`, {
         method: 'PATCH',
@@ -794,24 +797,28 @@ export function SmartSpecModule({
       if (r.ok) {
         const updated: SpecItem = await r.json()
         setItems(prev => prev.map(i => i.id === itemId ? { ...i, ...updated } : i))
+        setError(null)
+        return true
       } else {
         const payload = await r.json().catch(() => ({}))
         throw new Error(payload.error ?? `Erro ao salvar componente (HTTP ${r.status})`)
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível salvar o componente.')
+      return false
     }
   }
 
   // Use catalog match
   const useMatch = async (item: SpecItem, match: CatalogMatch) => {
-    await updateItem(item.id, {
+    const saved = await updateItem(item.id, {
       status:             'especificado',
       catalogoItemId:     match.id,
       overrideNome:       match.nome,
       overrideFornecedor: match.fornecedor ?? undefined,
       overridePreco:      match.precoBase ?? undefined,
     } as Partial<SpecItem>)
+    if (!saved) return
     setCatalogMap(m => ({ ...m, [item.id]: null }))
     setExpandedItem(null)
   }
