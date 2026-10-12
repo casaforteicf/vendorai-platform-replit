@@ -558,11 +558,19 @@ router.get("/tenants/:tenantId/agendamentos/slots", async (req, res) => {
     }
   }
   const slotsIsAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-  if (!slotsIsAdmin && selectedResponsavelIds.length > 0 &&
-      (!req.user?.sub || selectedResponsavelIds.some(id => id !== req.user?.sub))) {
+  if (!slotsIsAdmin && !req.user?.sub) {
+    res.status(403).json({ error: "Identidade do usuario obrigatoria" });
+    return;
+  }
+  if (!slotsIsAdmin && selectedResponsavelIds.some(id => id !== req.user?.sub)) {
     res.status(403).json({ error: "Consulta de disponibilidade de terceiros exige perfil administrador" });
     return;
   }
+  // Without an explicit selection a non-admin still receives only their own
+  // availability, never an aggregate derived from other employees' calendars.
+  const effectiveResponsavelIds = !slotsIsAdmin && selectedResponsavelIds.length === 0
+    ? [req.user!.sub!]
+    : selectedResponsavelIds;
 
   // Build day boundaries in São Paulo timezone
   // We convert YYYY-MM-DD (interpreted as São Paulo local) to UTC
@@ -591,8 +599,8 @@ router.get("/tenants/:tenantId/agendamentos/slots", async (req, res) => {
     .from(agendamentosTable)
     .where(and(...conditions));
 
-  const selectedSet = new Set(selectedResponsavelIds);
-  const internal = selectedResponsavelIds.length === 0
+  const selectedSet = new Set(effectiveResponsavelIds);
+  const internal = effectiveResponsavelIds.length === 0
     ? internalRows
     : internalRows.filter((row) => {
         if (row.responsavelId && selectedSet.has(row.responsavelId)) return true;
@@ -613,13 +621,13 @@ router.get("/tenants/:tenantId/agendamentos/slots", async (req, res) => {
   // the responsavel is marked unavailable. dia_inteiro blocks the full
   // workday; manha/tarde block half the day.
   let bloqueioBusy: { start: Date; end: Date }[] = [];
-  if (selectedResponsavelIds.length) {
+  if (effectiveResponsavelIds.length) {
     const bloqueios = await db
       .select({ dataInicio: bloqueiosAgendaTable.dataInicio, dataFim: bloqueiosAgendaTable.dataFim, periodo: bloqueiosAgendaTable.periodo })
       .from(bloqueiosAgendaTable)
       .where(
         and(
-          inArray(bloqueiosAgendaTable.responsavelId, selectedResponsavelIds),
+          inArray(bloqueiosAgendaTable.responsavelId, effectiveResponsavelIds),
           lt(bloqueiosAgendaTable.dataInicio, workEnd),
           gt(bloqueiosAgendaTable.dataFim, workStart)
         )
