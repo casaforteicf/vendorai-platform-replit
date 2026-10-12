@@ -257,3 +257,6 @@ API interna autenticada gera token aleatorio de 256 bits, grava somente SHA-256,
 
 ## Lote 39 — inspecao autenticada de convite remoto
 Criada rota autenticada de inspecao do convite com validacao de token hash SHA-256, revisao, prazo e status pending; nao fornece dados do checklist nem habilita aceite. Revogacao existente invalida consulta. O consumo unico e a identidade verificada ainda NAO foram implementados; a rota publica permanece desativada. Pendente compilacao, testes integrados, rate limiting e implementacao formal de assinatura. Nenhum merge/deploy.
+
+## Lote 40 — endurecimento de convites remotos
+Validação de hash do token usa comparacao em tempo constante e exige hash hexadecimal de 32 bytes. Novo convite pendente e vigente nao pode ser sobrescrito; operador precisa revogar antes de trocar. Revogacao repetida passa a retornar conflito. Continua inexistente rota publica de aceite, consumo atomico de uso unico ou verificacao de identidade. Compilacao e testes nao executados; nao homologado nem publicado.
