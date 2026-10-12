@@ -322,7 +322,7 @@ function EmptyProject({ onNavigate }: { onNavigate?: (module: string) => void })
 }
 
 export default function SmartProjectModule({ arqState, onNavigate, projectId }: SmartProjectModuleProps) {
-  const [activeTab, setActiveTab] = useState<"overview" | "ambientes" | "timeline" | "briefing" | "especificacoes">(() =>
+  const [activeTab, setActiveTab] = useState<"overview" | "ambientes" | "timeline" | "briefing" | "especificacoes" | "medicoes">(() =>
     typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tab") === "especificacoes"
       ? "especificacoes" : "overview"
   );
@@ -401,6 +401,7 @@ export default function SmartProjectModule({ arqState, onNavigate, projectId }: 
                 ["overview", "Visão geral"],
                 ["ambientes", "Ambientes"],
                 ["especificacoes", "Especificações"],
+                ["medicoes", "Medições"],
                 ["timeline", "Timeline"],
                 ["briefing", "Briefing"],
               ].map(([key, label]) => (
@@ -419,6 +420,14 @@ export default function SmartProjectModule({ arqState, onNavigate, projectId }: 
                 </button>
               ))}
             </nav>
+
+            {activeTab === "medicoes" ? (
+              <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5" aria-label="Medições do projeto">
+                <h3 className="text-lg font-semibold text-slate-900">Conferência de medidas do projeto</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">As medições técnicas deverão ser vinculadas ao projeto, aos ambientes e aos componentes da mesma base utilizada pelas especificações e pelo orçamento. A integração com o Arqdor Measure ainda está pendente. Nenhuma medição foi inferida ou registrada nesta tela.</p>
+                <p className="mt-3 text-xs font-medium text-amber-700">Integração em desenvolvimento — não confundir com medições físico-financeiras de obra.</p>
+              </section>
+            ) : null}
 
             {activeTab === "especificacoes" ? (
               <div className="min-w-0 overflow-hidden rounded-2xl bg-slate-950" style={{ minHeight: 540 }}>
