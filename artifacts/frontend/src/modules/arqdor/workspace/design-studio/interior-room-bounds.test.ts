@@ -1,5 +1,5 @@
 import {describe,it,expect} from "vitest";
-import {buildRectangularRoom,rectangularFurnitureRoomBounds,fromPreProjectRoom,wallOpeningClearances} from "./interior-environment";
+import {buildRectangularRoom,rectangularFurnitureRoomBounds,fromPreProjectRoom,wallOpeningClearances,doorSwingFootprint} from "./interior-environment";
 describe("verified BIM room footprint for cabinet placement",()=>{
  it("accepts a genuine four-wall rectangular environment",()=>{
   const room=buildRectangularRoom({name:"Sala",widthM:4,depthM:3,heightM:2.7,thicknessM:.14});
@@ -36,5 +36,16 @@ describe("verified BIM room footprint for cabinet placement",()=>{
  it("requires explicit door swing metadata",()=>{
   const room=buildRectangularRoom({name:"Sala",widthM:4,depthM:3,heightM:2.7,thicknessM:.14});
   expect(()=>wallOpeningClearances(room.walls,[{id:"door",wallId:"wall-1",offsetM:1,widthM:.9,clearanceM:.9,kind:"door"}])).toThrow();
+ });
+ it("samples a quarter-turn around the selected hinge",()=>{
+  const env=buildRectangularRoom({name:"Sala",widthM:4,depthM:3,heightM:2.7,thicknessM:.14});
+  const base={id:"door",wallId:"wall-1",offsetM:1,widthM:.9,clearanceM:.9,kind:"door" as const,swing:"left" as const};
+  const start=doorSwingFootprint(env.walls,{...base,hinge:"start"},18);
+  const end=doorSwingFootprint(env.walls,{...base,hinge:"end"},18);
+  expect(start).toHaveLength(19);
+  expect(start[0]).toEqual({x:1900,y:0});
+  expect(Math.round(start[18].x)).toBe(1000);
+  expect(Math.round(start[18].y)).toBe(900);
+  expect(end[0].x).toBeCloseTo(1000);
  });
 });
