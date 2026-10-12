@@ -59,7 +59,7 @@ export function RenderStudioTopbar({
           onClick={onOpenStudio}
           aria-label="Melhorar render"
           title="Materiais, iluminação, ajustes e versões"
-          style={{ background: C.card, color: C.accentText, border: `1px solid ${C.accent}55`, borderRadius: 8, padding: "7px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer", marginRight: 8 }}
+          className="arqdor-render-improve-action"
         >
           ✦ Melhorar render
         </StudioToolButton>
@@ -69,7 +69,7 @@ export function RenderStudioTopbar({
         <StudioToolButton
           onClick={onNextStep}
           aria-label={nextLabels[step] ?? "Próxima Etapa"}
-          style={{ background: `linear-gradient(135deg, ${C.accent}, ${C.accentHover})`, color: "#fff", border: "none", borderRadius: 8, padding: "7px 18px", fontSize: 12, fontWeight: 700, cursor: "pointer", letterSpacing: "0.02em", boxShadow: `0 0 16px ${C.accentGlow}`, marginRight: 12 }}
+          className="arqdor-render-next-action"
         >
           {nextLabels[step] ?? "Próxima Etapa"}
         </StudioToolButton>
