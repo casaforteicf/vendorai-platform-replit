@@ -103,6 +103,19 @@ router.post("/agendamentos", async (req, res) => {
     return;
   }
 
+  const creatorIsAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  if (!creatorIsAdmin) {
+    const callerId = req.user?.sub;
+    if (!callerId) {
+      res.status(403).json({ error: "User identity required" });
+      return;
+    }
+    if (parsed.data.responsavelId !== callerId) {
+      res.status(403).json({ error: "Usuarios comuns devem criar compromissos atribuidos a si mesmos" });
+      return;
+    }
+  }
+
   const leadConditions = [
     eq(leadsTable.id, parsed.data.leadId),
     eq(leadsTable.tenantId, parsed.data.tenantId),
@@ -525,6 +538,31 @@ router.get("/tenants/:tenantId/agendamentos/slots", async (req, res) => {
       .map((id) => id.trim())
       .filter(Boolean)
   ));
+
+  // Resolve explicit calendar and responsible users within this tenant before
+  // accessing calendar providers or availability blocks.
+  if (agendaId) {
+    const [ownedAgenda] = await db.select({ id: agendasTable.id }).from(agendasTable)
+      .where(and(eq(agendasTable.id, agendaId), eq(agendasTable.tenantId, tenantId))).limit(1);
+    if (!ownedAgenda) {
+      res.status(403).json({ error: "Agenda nao pertence a esta empresa" });
+      return;
+    }
+  }
+  if (selectedResponsavelIds.length) {
+    const owners = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(and(eq(usersTable.tenantId, tenantId), inArray(usersTable.id, selectedResponsavelIds)));
+    if (owners.length !== selectedResponsavelIds.length) {
+      res.status(403).json({ error: "Um ou mais responsaveis nao pertencem a esta empresa" });
+      return;
+    }
+  }
+  const slotsIsAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  if (!slotsIsAdmin && selectedResponsavelIds.length > 0 &&
+      (!req.user?.sub || selectedResponsavelIds.some(id => id !== req.user?.sub))) {
+    res.status(403).json({ error: "Consulta de disponibilidade de terceiros exige perfil administrador" });
+    return;
+  }
 
   // Build day boundaries in São Paulo timezone
   // We convert YYYY-MM-DD (interpreted as São Paulo local) to UTC
