@@ -75,6 +75,7 @@ router.get("/tenants/:tenantId/agendas", async (req, res) => {
 
 router.post("/tenants/:tenantId/agendas", async (req, res) => {
   const tenantId = String(req.params.tenantId);
+  if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") return res.status(403).json({ error: "Admin access required" });
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
     res.status(403).json({ error: "Access denied" });
     return;
@@ -119,6 +120,7 @@ router.get("/agendas/:id", async (req, res) => {
     .select({
       id: agendasTable.id,
       tenantId: agendasTable.tenantId,
+      ownerUserId: agendasTable.ownerUserId,
       nome: agendasTable.nome,
       cor: agendasTable.cor,
       isDefault: agendasTable.isDefault,
@@ -140,6 +142,15 @@ router.get("/agendas/:id", async (req, res) => {
     return;
   }
 
+  if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") {
+    const userId = req.user?.sub;
+    if (!userId) return res.status(403).json({ error: "User identity required" });
+    if (agenda.ownerUserId !== userId) {
+      const [grant] = await db.select({ userId: agendaAccessGrantsTable.userId }).from(agendaAccessGrantsTable)
+        .where(and(eq(agendaAccessGrantsTable.tenantId, agenda.tenantId), eq(agendaAccessGrantsTable.agendaId, agenda.id), eq(agendaAccessGrantsTable.userId, userId))).limit(1);
+      if (!grant) return res.status(403).json({ error: "Agenda access denied" });
+    }
+  }
   res.json(agenda);
 });
 
@@ -150,6 +161,8 @@ router.patch("/agendas/:id", async (req, res) => {
     .select()
     .from(agendasTable)
     .where(eq(agendasTable.id, String(req.params.id)));
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") return res.status(403).json({ error: "Admin access required" });
 
   if (!existing) {
     res.status(404).json({ error: "Agenda not found" });
@@ -202,6 +215,8 @@ router.delete("/agendas/:id", async (req, res) => {
     .from(agendasTable)
     .where(eq(agendasTable.id, String(req.params.id)));
 
+  if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") return res.status(403).json({ error: "Admin access required" });
+
   if (!existing) {
     res.status(404).json({ error: "Agenda not found" });
     return;
@@ -233,6 +248,8 @@ router.get("/agendas/:id/google-auth-url", async (req, res) => {
     .from(agendasTable)
     .where(eq(agendasTable.id, String(req.params.id)));
 
+  if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") return res.status(403).json({ error: "Admin access required" });
+
   if (!agenda) {
     res.status(404).json({ error: "Agenda not found" });
     return;
@@ -255,6 +272,8 @@ router.post("/agendas/:id/google/disconnect", async (req, res) => {
     .select()
     .from(agendasTable)
     .where(eq(agendasTable.id, String(req.params.id)));
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") return res.status(403).json({ error: "Admin access required" });
 
   if (!existing) {
     res.status(404).json({ error: "Agenda not found" });
