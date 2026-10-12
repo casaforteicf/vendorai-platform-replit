@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, CheckCircle2, Printer, RefreshCw, Ruler, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Camera, CheckCircle2, Printer, RefreshCw, Ruler, TriangleAlert } from "lucide-react";
+import PhotoMeasureEditor from "@/components/measure/PhotoMeasureEditor";
+import MeasurementPrintReport from "@/components/measure/MeasurementPrintReport";
+import SurveyElementsEditor, { type SurveyElement } from "@/components/measure/SurveyElementsEditor";
 
 type ItemStatus = "nao_conferido" | "conferido" | "divergente" | "nao_executado" | "resolvido";
 type ChecklistItem = {
@@ -24,12 +27,15 @@ type ChecklistItem = {
   observacao?: string | null;
   imagemUrl?: string | null;
   fotos?: string[];
+  photoMeasurements?: import("@/components/measure/PhotoMeasureEditor").PhotoMeasure[];
+  surveyElements?: SurveyElement[];
   status: ItemStatus;
 };
 type ChecklistRun = {
   id: string;
   name: string;
   revision: number;
+  updatedAt: string;
   status: string;
   toleranceMm: number;
   headerSnapshot: Record<string, unknown>;
@@ -66,12 +72,16 @@ function statusClass(status: ItemStatus) {
 }
 
 export default function OperationalMeasurementChecklist() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const dealId = useMemo(dealIdFromPath, []);
   const [data, setData] = useState<CurrentPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [photoItemId, setPhotoItemId] = useState<string | null>(null);
+  const [createdDraft, setCreatedDraft] = useState<string | null>(null);
+  const runVersionRef = useRef<string | null>(null);
+  const [photoAccess, setPhotoAccess] = useState<Record<string, Array<{ storageUrl: string; accessUrl: string }>>>({});
 
   async function api(path: string, init?: RequestInit) {
     const response = await fetch(path, {
@@ -83,7 +93,11 @@ export default function OperationalMeasurementChecklist() {
       },
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload?.error || payload?.message || "Não foi possível concluir a operação.");
+    if (!response.ok) {
+      if (response.status === 409 && payload?.code === "CHECKLIST_CONFLICT")
+        throw new Error("Outra operação atualizou esta conferência. Suas alterações locais não foram gravadas. Recarregue o checklist e confira antes de salvar novamente.");
+      throw new Error(payload?.error || payload?.message || "Não foi possível concluir a operação.");
+    }
     return payload;
   }
 
@@ -93,6 +107,7 @@ export default function OperationalMeasurementChecklist() {
     setError(null);
     try {
       const payload = await api(`/api/operational-checklists/deals/${dealId}/current`);
+      runVersionRef.current = payload.run?.updatedAt ?? null;
       setData(payload);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao carregar checklist.");
@@ -103,6 +118,57 @@ export default function OperationalMeasurementChecklist() {
 
   useEffect(() => { void load(); }, [dealId, token]);
 
+  async function loadPhoto(itemId: string, runId: string) {
+    try {
+      const result = await api(`/api/operational-checklists/runs/${runId}/items/${itemId}/photos`);
+      setPhotoAccess((prev) => ({ ...prev, [itemId]: result.photos ?? [] }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao consultar fotos.");
+    }
+  }
+
+  async function preparePhotoReport() {
+    if (!data?.run) return;
+    setBusy("report");
+    setError(null);
+    try {
+      const runId = data.run.id;
+      const photographed = data.run.items.filter(item => (item.fotos?.length ?? 0) > 0);
+      const all = await Promise.all(photographed.map(async item => {
+        const response = await api(`/api/operational-checklists/runs/${runId}/items/${item.id}/photos`);
+        return [item.id, response.photos ?? []] as const;
+      }));
+      const next = Object.fromEntries(all);
+      setPhotoAccess(previous => ({ ...previous, ...next }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao preparar imagens para o relatório.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function uploadPhoto(itemId: string, file: File, uploadId?: string): Promise<{ storageUrl: string; accessUrl: string }> {
+    if (!data?.run) throw new Error("Conferência não iniciada.");
+    if (file.size > 5 * 1024 * 1024) throw new Error("Máximo de 5 MB por foto.");
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("Falha ao ler foto."));
+      reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+      reader.readAsDataURL(file);
+    });
+    const result = await api(`/api/operational-checklists/runs/${data.run.id}/items/${itemId}/photos`, {
+      method: "POST",
+      body: JSON.stringify({ name: file.name, contentType: file.type, dataBase64: base64, uploadId }),
+    });
+    // A photo upload mutates the server checklist revision; refresh before saving dimensions.
+    const fresh = await api(`/api/operational-checklists/deals/${dealId}/current`);
+    if (!fresh.run || fresh.run.id !== data.run.id) throw new Error("A revisão do checklist mudou após o envio. Recarregue antes de salvar cotas.");
+    runVersionRef.current = fresh.run.updatedAt;
+    setData(fresh);
+    setPhotoAccess((prev) => ({ ...prev, [itemId]: [...(prev[itemId] ?? []).filter(photo => photo.storageUrl !== result.storageUrl), { storageUrl: result.storageUrl, accessUrl: result.accessUrl }] }));
+    return { storageUrl: result.storageUrl, accessUrl: result.accessUrl };
+  }
+
   async function start() {
     setBusy("start");
     setError(null);
@@ -111,6 +177,7 @@ export default function OperationalMeasurementChecklist() {
         method: "POST",
         body: JSON.stringify({ name: "Conferência de Medidas" }),
       });
+      runVersionRef.current = run.updatedAt;
       setData((prev) => prev ? { ...prev, run } : prev);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao iniciar conferência.");
@@ -126,7 +193,7 @@ export default function OperationalMeasurementChecklist() {
     try {
       const run = await api(`/api/operational-checklists/runs/${data.run.id}/items/${item.id}`, {
         method: "PATCH",
-        body: JSON.stringify(patch),
+        body: JSON.stringify({ ...patch, expectedUpdatedAt: runVersionRef.current ?? data.run.updatedAt }),
       });
       setData((prev) => prev ? { ...prev, run } : prev);
     } catch (err) {
@@ -136,12 +203,55 @@ export default function OperationalMeasurementChecklist() {
     }
   }
 
+  async function createArqdorDraft() {
+    if (!data?.run || !window.confirm("Criar um NOVO rascunho Arqdor com as paredes e aberturas verificadas? O projeto atual não será alterado.")) return;
+    setBusy("arqdor");
+    setError(null);
+    try {
+      const result = await api(`/api/operational-checklists/runs/${data.run.id}/create-arqdor-draft`, {
+        method: "POST",
+        body: JSON.stringify({ confirmed: true, title: "Levantamento " + (data.context.deal?.titulo ?? data.run.name) + " R" + data.run.revision }),
+      });
+      setCreatedDraft(result.archProjetoId);
+      if (result.reused) setError("Já existia um rascunho para esta revisão. O projeto existente foi reutilizado, sem duplicação.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível criar o rascunho.");
+    } finally { setBusy(null); }
+  }
+
+  async function recordExternalAcknowledgement() {
+    if (!data?.run || data.run.status !== "concluido") return;
+    const signerName = window.prompt("Nome da pessoa que declarou ciência presencialmente:");
+    if (signerName === null) return;
+    const signerRole = window.prompt("Relação da pessoa com a obra (cliente, representante etc.):");
+    if (signerRole === null) return;
+    if (signerName.trim().length < 3 || signerRole.trim().length < 3) {
+      setError("Informe nome e vínculo com a obra (mínimo 3 caracteres).");
+      return;
+    }
+    if (!window.confirm("Registrar declaração presencial informada pelo operador? Isto NÃO é assinatura digital ou verificação independente de identidade.")) return;
+    setBusy("external-ack");
+    setError(null);
+    try {
+      const updated = await api(`/api/operational-checklists/runs/${data.run.id}/external-acknowledgement`, {
+        method: "POST", body: JSON.stringify({ signerName: signerName.trim(), signerRole: signerRole.trim(), declaration: true }),
+      });
+      setData(previous => previous ? { ...previous, run: updated } : previous);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao registrar ciência presencial.");
+    } finally { setBusy(null); }
+  }
+
   async function complete() {
     if (!data?.run) return;
+    const signerName = window.prompt("Nome do responsável pelo aceite técnico:");
+    if (signerName === null) return;
+    if (signerName.trim().length < 3) { setError("Informe o nome do responsável com pelo menos 3 caracteres."); return; }
+    if (!window.confirm("Confirmo que revisei o levantamento. Este aceite autenticado não equivale a assinatura digital certificada. Concluir?")) return;
     setBusy("complete");
     setError(null);
     try {
-      const run = await api(`/api/operational-checklists/runs/${data.run.id}/complete`, { method: "POST", body: "{}" });
+      const run = await api(`/api/operational-checklists/runs/${data.run.id}/complete`, { method: "POST", body: JSON.stringify({ acknowledged: true, signerName: signerName.trim() }) });
       setData((prev) => prev ? { ...prev, run } : prev);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível concluir.");
@@ -170,6 +280,9 @@ export default function OperationalMeasurementChecklist() {
           </div>
         </div>
         {run && <div className="flex gap-2">
+          <Button variant="outline" disabled={busy === "arqdor"} onClick={createArqdorDraft}>Criar rascunho Arqdor</Button>
+          {run.status === "concluido" && !run.headerSnapshot?.externalAcknowledgement && <Button variant="outline" disabled={busy === "external-ack"} onClick={recordExternalAcknowledgement}>Registrar ciência presencial</Button>}
+          <Button variant="outline" disabled={busy === "report"} onClick={() => { void preparePhotoReport(); }}>Preparar fotos para PDF</Button>
           <Button variant="outline" onClick={() => window.print()}><Printer className="mr-2 h-4 w-4" /> Gerar PDF</Button>
           <Button onClick={complete} disabled={busy === "complete" || run.status === "concluido" || pending > 0 || divergent > 0}>
             <CheckCircle2 className="mr-2 h-4 w-4" /> {run.status === "concluido" ? "Concluído" : "Concluir conferência"}
@@ -177,6 +290,7 @@ export default function OperationalMeasurementChecklist() {
         </div>}
       </div>
 
+      {createdDraft && <div role="status" className="rounded-lg border p-3 text-sm">Rascunho Arqdor criado: {createdDraft}. Revisão técnica obrigatória antes de fabricação.</div>}
       {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 flex gap-2"><TriangleAlert className="h-4 w-4 mt-0.5" />{error}</div>}
 
       {!run ? (
@@ -214,6 +328,7 @@ export default function OperationalMeasurementChecklist() {
             </CardContent>
           </Card>
 
+          <MeasurementPrintReport name={run.name} revision={run.revision} toleranceMm={run.toleranceMm} status={run.status} items={items} photoAccess={photoAccess} acceptance={run.headerSnapshot?.technicalAcceptance as { signerName: string; acceptedAt: string; signerUserId: string } | undefined} externalAcknowledgement={run.headerSnapshot?.externalAcknowledgement as { signerName: string; signerRole: string; declaredByOperatorId: string; declaredAt: string } | undefined} />
           <div className="grid gap-3 sm:grid-cols-4 print:hidden">
             <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Progresso</div><div className="text-2xl font-semibold">{progress}%</div></CardContent></Card>
             <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Itens</div><div className="text-2xl font-semibold">{items.length}</div></CardContent></Card>
@@ -221,7 +336,7 @@ export default function OperationalMeasurementChecklist() {
             <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Divergências</div><div className="text-2xl font-semibold text-red-600">{divergent}</div></CardContent></Card>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-3 print:hidden">
             {items.map((item, index) => (
               <Card key={item.id} className={item.status === "divergente" ? "border-red-300" : ""}>
                 <CardContent className="p-4">
@@ -269,6 +384,9 @@ export default function OperationalMeasurementChecklist() {
                     </div>
                     <div className="space-y-2">
                       <div className="text-xs font-medium text-muted-foreground">Resultado</div>
+                      <div className="text-xs text-muted-foreground">Tolerância permitida: ±{run.toleranceMm} mm</div>
+                      {(item.larguraOriginal != null && item.larguraConferida == null || item.alturaOriginal != null && item.alturaConferida == null) && <div className="text-xs text-amber-700">Conferência incompleta: informe as medidas previstas.</div>}
+                      {(Math.abs(item.diferencaLargura ?? 0) > run.toleranceMm || Math.abs(item.diferencaAltura ?? 0) > run.toleranceMm) && <div className="text-xs text-red-700">Divergência acima da tolerância. Revise antes de liberar.</div>}
                       <div className="text-sm">
                         Δ L: <strong className={Math.abs(item.diferencaLargura ?? 0) > run.toleranceMm ? "text-red-600" : ""}>{item.diferencaLargura ?? "—"}</strong> mm
                       </div>
@@ -277,10 +395,40 @@ export default function OperationalMeasurementChecklist() {
                       </div>
                       <div className="flex flex-wrap gap-1.5 print:hidden">
                         <Button size="sm" variant="outline" disabled={run.status === "concluido" || busy === item.id} onClick={() => saveItem(item, { status: "nao_executado" })}>Não executado</Button>
-                        {item.status === "divergente" && <Button size="sm" disabled={run.status === "concluido" || busy === item.id} onClick={() => saveItem(item, { status: "resolvido" })}>Marcar resolvido</Button>}
+                        {item.status === "divergente" && <Button size="sm" disabled={run.status === "concluido" || busy === item.id} onClick={() => { const reason = window.prompt("Justifique a resolução (mínimo 15 caracteres):"); if (reason === null) return; if (reason.trim().length < 15) { setError("Informe uma justificativa com pelo menos 15 caracteres."); return; } void saveItem(item, { status: "resolvido", resolutionReason: reason.trim() } as Partial<ChecklistItem>); }}>Marcar resolvido</Button>}
                       </div>
                     </div>
                   </div>
+                  <div className="mt-3 print:hidden">
+                    <Button size="sm" variant="outline" onClick={() => { const next = photoItemId === item.id ? null : item.id; setPhotoItemId(next); if (next && data?.run) void loadPhoto(item.id, data.run.id); }}>
+                      <Camera className="mr-2 h-4 w-4" /> {photoItemId === item.id ? "Fechar medição fotográfica" : "Medir na fotografia"}
+                    </Button>
+                    {photoItemId === item.id && (
+                      <PhotoMeasureEditor itemId={item.id} offlineKey={(user?.id ?? "anonymous") + ":" + run.id + ":" + run.revision + ":" + item.id} imageUrl={item.imagemUrl} photos={photoAccess[item.id] ?? []} onUpload={(file, uploadId) => uploadPhoto(item.id, file, uploadId)} initialMeasurements={item.photoMeasurements ?? []} readOnly={run.status === "concluido"} onSave={async (measurements) => {
+                        if (!data?.run) throw new Error("Conferência indisponível.");
+                        const updated = await api(`/api/operational-checklists/runs/${data.run.id}/items/${item.id}`, {
+                          method: "PATCH",
+                          body: JSON.stringify({ photoMeasurements: measurements, expectedUpdatedAt: runVersionRef.current ?? data.run.updatedAt }),
+                        });
+                        runVersionRef.current = updated.updatedAt;
+                        setData((prev) => prev ? { ...prev, run: updated } : prev);
+                      }} onClose={() => setPhotoItemId(null)} />
+                    )}
+                  </div>
+                  {photoItemId === item.id && <SurveyElementsEditor key={item.id + "-" + (item.surveyElements?.length ?? 0)} draftKey={(user?.id ?? "anonymous") + ":" + run.id + ":" + run.revision + ":" + item.id} elements={item.surveyElements ?? []} photos={item.fotos ?? []} disabled={run.status === "concluido"} onFetchLatest={async () => {
+                    if (!data?.run) throw new Error("Checklist indisponível.");
+                    const fresh: CurrentPayload = await api(`/api/operational-checklists/deals/${dealId}/current`);
+                    if (!fresh.run || fresh.run.id !== data.run.id || fresh.run.revision !== data.run.revision)
+                      throw new Error("O levantamento foi substituído por uma nova revisão. Não é seguro mesclar automaticamente.");
+                    runVersionRef.current = fresh.run.updatedAt;
+                    setData(fresh);
+                    return fresh.run.items.find(entry => entry.id === item.id)?.surveyElements ?? [];
+                  }} onSave={async (surveyElements) => {
+                    if (!data?.run) throw new Error("Checklist indisponível.");
+                    const updated = await api(`/api/operational-checklists/runs/${data.run.id}/items/${item.id}`, { method: "PATCH", body: JSON.stringify({ surveyElements, expectedUpdatedAt: runVersionRef.current ?? data.run.updatedAt }) });
+                    runVersionRef.current = updated.updatedAt;
+                    setData((prev) => prev ? { ...prev, run: updated } : prev);
+                  }} />}
                   <div className="mt-3 grid gap-3 md:grid-cols-2 print:hidden">
                     <Input
                       defaultValue={item.localizacao ?? ""}
