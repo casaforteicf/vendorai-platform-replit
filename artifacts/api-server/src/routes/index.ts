@@ -37,6 +37,7 @@ import smartDeliveryPublicRouter from "./smart_delivery_public";
 import publicDeliveryRuntimeRouter from "./public_delivery_runtime";
 import facebookMarketplaceRouter from "./facebook_marketplace";
 import produtosCatalogoRouter from "./produtos_catalogo";
+import pracaPreparacaoRouter from "./praca_preparacao";
 import solicitacoesCompraRouter from "./solicitacoes_compra";
 import categoriasProdutoRouter from "./categorias_produto";
 import agendasRouter, { googleCallbackRouter } from "./agendas";
@@ -422,6 +423,7 @@ router.use(facebookMarketplaceRouter);
 
 // Sales / CPQ Hub
 router.use(produtosCatalogoRouter);
+router.use(pracaPreparacaoRouter);
 router.use(solicitacoesCompraRouter);
 router.use(categoriasProdutoRouter);
 

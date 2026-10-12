@@ -645,18 +645,38 @@ router.patch("/tenants/:tenantId/produtos-catalogo/praca-ai-bulk", async (req, r
     return;
   }
 
+  // Fail closed: never silently apply a bulk operation to just some of the
+  // selected products (including stale IDs or products from other tenants).
+  const selectedIds = [...new Set(productIds)];
+  const selectedProducts = await db
+    .select({ id: produtosCatalogoTable.id, categoriaId: produtosCatalogoTable.categoriaId })
+    .from(produtosCatalogoTable)
+    .where(and(
+      eq(produtosCatalogoTable.tenantId, tenantId),
+      inArray(produtosCatalogoTable.id, selectedIds),
+    ));
+  if (selectedProducts.length !== selectedIds.length) {
+    res.status(422).json({ error: "Há produtos inexistentes ou que não pertencem à empresa na seleção." });
+    return;
+  }
+
   if (vendeNoPracaAi === true) {
-    const [semCategoria] = await db
-      .select({ id: produtosCatalogoTable.id })
-      .from(produtosCatalogoTable)
-      .where(and(
-        eq(produtosCatalogoTable.tenantId, tenantId),
-        inArray(produtosCatalogoTable.id, productIds),
-        isNull(produtosCatalogoTable.categoriaId),
-      ))
-      .limit(1);
-    if (semCategoria) {
+    const categoryIds = [...new Set(selectedProducts.map(item => item.categoriaId).filter((id): id is string => !!id))];
+    if (categoryIds.length === 0 || selectedProducts.some(item => !item.categoriaId)) {
       res.status(422).json({ error: "Classifique todos os produtos antes de publicá-los na Praça.ai." });
+      return;
+    }
+    const validCategories = await db
+      .select({ id: categoriasProdutoTable.id })
+      .from(categoriasProdutoTable)
+      .where(and(
+        eq(categoriasProdutoTable.tenantId, tenantId),
+        inArray(categoriasProdutoTable.id, categoryIds),
+        eq(categoriasProdutoTable.ativo, true),
+        eq(categoriasProdutoTable.precisaAprovacao, false),
+      ));
+    if (validCategories.length !== categoryIds.length) {
+      res.status(422).json({ error: "Revise as categorias inativas ou pendentes de aprovação antes de publicar." });
       return;
     }
   }
@@ -664,7 +684,7 @@ router.patch("/tenants/:tenantId/produtos-catalogo/praca-ai-bulk", async (req, r
   const updated = await db
     .update(produtosCatalogoTable)
     .set(updateData as any)
-    .where(and(eq(produtosCatalogoTable.tenantId, tenantId), inArray(produtosCatalogoTable.id, productIds)))
+    .where(and(eq(produtosCatalogoTable.tenantId, tenantId), inArray(produtosCatalogoTable.id, selectedIds)))
     .returning({ id: produtosCatalogoTable.id });
 
   res.json({ atualizados: updated.length });

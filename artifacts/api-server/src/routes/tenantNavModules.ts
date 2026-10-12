@@ -4,6 +4,7 @@ import {
   db,
   tenantsTable,
   tenantNavModulesTable,
+  usersTable,
   NAV_MODULE_CATALOG,
   type NavModuleKey,
 } from "@workspace/db";
@@ -261,6 +262,48 @@ router.get("/tenants/:tenantId/nav-modules", async (req, res) => {
   });
 
   res.json(modules);
+});
+
+// A TAD usa a autorização REAL do usuário além da habilitação comercial do tenant.
+// Chaves sem equivalência validada com as permissões legadas não são liberadas.
+const TAD_USER_PERMISSION_MAP: Record<string, readonly string[]> = {
+  leads: ["leads", "deals"],
+  campaigns: ["content"],
+  content: ["content"],
+  scheduler: ["agenda"],
+  settings: ["team"],
+  analytics: ["analytics"],
+  financeiro: ["erp"],
+};
+router.get("/tenants/:tenantId/tad-effective-modules", async (req, res) => {
+  const tenantId = routeTenantId(req);
+  const current = req.user;
+  if (!current) return res.status(401).json({ error: "Unauthorized" });
+  // Tokens de link público, parceiros e atores internos não são usuários da TAD.
+  if ((current.accessScope && current.accessScope !== "tenant") ||
+      current.platformRole === "partner" ||
+      (current.actorType && current.actorType !== "human")) {
+    return res.status(403).json({ error: "TAD user access required" });
+  }
+  if (current.platformRole !== "super_admin" && current.tenantId !== tenantId) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  const [row] = await db.select({ permissions: usersTable.permissions })
+    .from(usersTable)
+    .where(and(eq(usersTable.id, current.sub), eq(usersTable.tenantId, tenantId)))
+    .limit(1);
+  if (!row && current.platformRole !== "super_admin") {
+    return res.status(403).json({ error: "User not found in tenant" });
+  }
+  const admin = current.platformRole === "super_admin" ||
+    current.platformRole === "tenant_admin" || current.userFunction === "administrador";
+  const grants = row?.permissions;
+  const keys = NAV_MODULE_CATALOG.map(m => m.moduleKey).filter(key => {
+    if (admin) return true;
+    const accepted = TAD_USER_PERMISSION_MAP[key];
+    return !!accepted && Array.isArray(grants) && accepted.some(permission => grants.includes(permission));
+  });
+  return res.json({ permittedModuleKeys: keys });
 });
 
 // ── PATCH /tenants/:tenantId/nav-modules/:moduleKey ─────────────────────────
