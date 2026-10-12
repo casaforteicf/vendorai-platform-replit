@@ -1,7 +1,6 @@
 import { createContext, useContext, useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { useAuth } from '../../../contexts/AuthContext'
-import { saveArqdorDraft } from '../../../lib/arqdorLocalDrafts'
 import type { Project } from '../../../pages/arch/arqdor/domain/arqdor-domain-types'
 import type { ArchProject } from '../../../pages/arch/arqdor-types'
 import type { ProjectContext, ProjectObject, ProjectMaterial } from '../engines/aie/aie-types'
@@ -148,22 +147,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         }
         const expectedRevision = remoteRevisionRef.current
         if (USE_LOCAL_DRAFTS) {
-          const scope = authorizedDraftScopeRef.current
-          const identity = identityRef.current
-          if (!scope || !identity || scope.projectId !== ctx.id ||
-              scope.tenantId !== identity.tenantId || scope.userId !== identity.userId || !expectedRevision) {
-            writeBlockedRef.current = true
-            setSaveError('Identidade ou autorização local indisponível. Exporte o projeto antes de sair.')
-            break
-          }
-          try {
-            await saveArqdorDraft({ ...scope, baseRevision: expectedRevision,
-              savedAt: new Date().toISOString(), payload: ctx })
-          } catch {
-            writeBlockedRef.current = true
-            setSaveError('Rascunho local não confirmado. Verifique o espaço do dispositivo e exporte o projeto.')
-            break
-          }
+          // The current IndexedDB draft store is plaintext. Refuse writes
+          // until the encrypted vault has a recoverable key and unlock UI.
+          writeBlockedRef.current = true
+          setSaveError('Rascunho offline seguro ainda não configurado. Exporte seu projeto antes de sair.')
+          break
         }
         if (USE_PROJECT_ACL && !expectedRevision) {
           writeBlockedRef.current = true
