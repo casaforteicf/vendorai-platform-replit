@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { openingBudgetPlan, openingBudgetMutations } from "../lib/arch-opening-budget.js";
 import { architecturalModelError } from "../lib/arch-concept-model-validation.js";
 import { preserveArchitecturalSnapshot } from "../lib/arch-concept-configuration.js";
 import { Router, type Request, type IRouter } from "express";
@@ -5036,6 +5038,53 @@ router.get("/arch/health", authenticate, async (req, res) => {
 });
 
 // GET /api/arch/catalogo
+
+router.post("/arch/concept-projects/:id/opening-budget", authenticate, async (req, res) => {
+  const tid = tenantId(req), userId = req.user?.sub, conceptId = String(req.params.id);
+  if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
+  const body = z.object({ apply: z.boolean().default(false), quoteToken: z.string().max(100).optional() }).safeParse(req.body ?? {});
+  if (!body.success) return res.status(400).json({ error: "Solicitação inválida." });
+  return db.transaction(async tx => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${"arch-opening-budget:" + tid + ":" + conceptId}))`);
+    const [concept] = await tx.select().from(archConceptProjectsTable).where(and(eq(archConceptProjectsTable.id, conceptId), eq(archConceptProjectsTable.tenantId, tid), eq(archConceptProjectsTable.ownerUserId, userId))).limit(1);
+    if (!concept) return res.status(404).json({ error: "Projeto não encontrado." });
+    const config = (concept.configuration ?? {}) as Record<string, any>;
+    const sourceParsed = z.array(z.object({ id: z.string().min(1), wallId: z.string().min(1), floor: z.number().int().nonnegative(), type: z.enum(["door", "window"]), offset: z.number().min(0).max(1), width: z.number().positive().optional(), height: z.number().positive().optional(), sillHeight: z.number().nonnegative().optional(), catalogProductId: z.string().optional() }).passthrough()).safeParse(config.customOpenings ?? []);
+    if (!sourceParsed.success) return res.status(422).json({ error: "Aberturas persistidas inválidas. Corrija o projeto." });
+    const source = sourceParsed.data;
+    const ids = [...new Set(source.map((o: any) => o.catalogProductId).filter((id: unknown): id is string => typeof id === "string" && id.length > 0))] as string[];
+    const products = ids.length ? await tx.select().from(produtosCatalogoTable).where(and(eq(produtosCatalogoTable.tenantId, tid), eq(produtosCatalogoTable.ativo, true), inArray(produtosCatalogoTable.id, ids))) : [];
+    const plan = openingBudgetPlan(conceptId, source, products, Date.now());
+    const walls = Array.isArray(config.customWalls) ? config.customWalls : [];
+    for (const opening of source) {
+      const wall = walls.find((w: any) => w.id === opening.wallId && w.floor === opening.floor);
+      const length = wall ? Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1) : NaN;
+      if (!Number.isFinite(length) || length <= 0 || opening.offset * length - Number(opening.width) / 2 < -1e-8 || opening.offset * length + Number(opening.width) / 2 > length + 1e-8 || Number(opening.sillHeight) + Number(opening.height) > 2.8 + 1e-8) plan.issues.push(opening.id + ": confira o encaixe na parede.");
+    }
+    const projectId = concept.archProjetoId;
+    const [project] = projectId ? await tx.select({ id: archProjetosTable.id }).from(archProjetosTable).where(and(eq(archProjetosTable.id, projectId), eq(archProjetosTable.tenantId, tid))).limit(1) : [];
+    const existing = project ? await tx.select().from(archOrcamentoItensTable).where(eq(archOrcamentoItensTable.projetoId, project.id)) : [];
+    const prefix = "arqdor-opening:" + encodeURIComponent(conceptId) + ":";
+    const owned = existing.filter(item => item.id.startsWith(prefix));
+    const quoteToken = createHash("sha256").update(JSON.stringify({ source, items: plan.items, issues: plan.issues, owned, projectId: project?.id ?? null })).digest("hex");
+    if (!body.data.apply) return res.json({ ...plan, quoteToken, projectId: project?.id ?? null, canApply: Boolean(project) && source.length > 0 && plan.issues.length === 0 });
+    if (!project) return res.status(409).json({ error: "Vincule o Concept a um Projeto Arqdor antes de enviar ao orçamento." });
+    if (!source.length || plan.issues.length) return res.status(422).json({ error: "Confira os produtos e medidas antes de enviar.", issues: plan.issues });
+    if (body.data.quoteToken !== quoteToken) return res.status(409).json({ error: "Projeto, preços ou orçamento mudaram. Consulte novamente antes de enviar.", code: "OPENING_QUOTE_STALE" });
+    const mutations = openingBudgetMutations(plan.items, existing, conceptId);
+    for (const id of mutations.remove) await tx.delete(archOrcamentoItensTable).where(and(eq(archOrcamentoItensTable.id, id), eq(archOrcamentoItensTable.projetoId, project.id)));
+    for (const item of [...mutations.update, ...mutations.insert]) {
+      const { sourceId: _sourceId, id, ...data } = item;
+      if (owned.some(current => current.id === id)) await tx.update(archOrcamentoItensTable).set(data).where(and(eq(archOrcamentoItensTable.id, id), eq(archOrcamentoItensTable.projetoId, project.id)));
+      else await tx.insert(archOrcamentoItensTable).values({ id, projetoId: project.id, ...data });
+    }
+    const totals = await tx.select({ total: archOrcamentoItensTable.valorTotal }).from(archOrcamentoItensTable).where(eq(archOrcamentoItensTable.projetoId, project.id));
+    const total = totals.reduce((sum, item) => sum + Math.round(Number(item.total ?? 0) * 100), 0) / 100;
+    await tx.update(archProjetosTable).set({ orcamentoTotal: total.toFixed(2) }).where(and(eq(archProjetosTable.id, project.id), eq(archProjetosTable.tenantId, tid)));
+    return res.json({ ok: true, projectId: project.id, synced: plan.items.length, total: plan.total, projectTotal: total });
+  });
+});
+
 router.get("/arch/catalogo", authenticate, async (req, res) => {
   const tid = tenantId(req);
   const { categoria, fornecedor, busca, limit = "50", offset = "0" } =
@@ -6671,14 +6720,15 @@ router.post("/arch/orcamento/:itemId/vincular-produto", authenticate, async (req
   }
 
   const [produto] = await db
-    .select({ precoBase: archCatalogoTable.precoBase, nome: archCatalogoTable.nome })
-    .from(archCatalogoTable)
-    .where(eq(archCatalogoTable.id, parsed.data.produtoId))
+    .select({ precoBase: produtosCatalogoTable.precoBase, nome: produtosCatalogoTable.nome })
+    .from(produtosCatalogoTable)
+    .where(and(eq(produtosCatalogoTable.id, parsed.data.produtoId), eq(produtosCatalogoTable.tenantId, projeto.tenantId), eq(produtosCatalogoTable.ativo, true)))
     .limit(1);
 
   if (!produto) return res.status(404).json({ error: "Produto não encontrado no catálogo." });
 
-  const valorUnitario = String(produto.precoBase ?? "0");
+  if (produto.precoBase == null || String(produto.precoBase).trim() === "" || !Number.isFinite(Number(produto.precoBase)) || Number(produto.precoBase) < 0) return res.status(422).json({ error: "Produto sem preço de venda válido." });
+  const valorUnitario = String(produto.precoBase);
   const valorTotal    = (Number(existing.quantidade ?? 0) * Number(valorUnitario)).toFixed(2);
 
   const [updated] = await db
