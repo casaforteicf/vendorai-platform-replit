@@ -32,7 +32,9 @@ router.get("/arqdor/projects/:id/furniture",async(req:Request,res:Response)=>{
   if(!blob||Array.isArray(blob)||typeof blob!=="object")return res.status(409).json({error:"Estrutura do projeto inválida"});
   const stored=(blob as Record<string,unknown>).furnitureSnapshots;
   if(stored!==undefined&&(!stored||typeof stored!=="object"||Array.isArray(stored)))return res.status(409).json({error:"Estrutura do mobiliário inválida"});
-  return res.json({tenantId,furnitureSnapshots:stored??{}});
+  const geometry=(blob as Record<string,unknown>).furnitureGeometryV1;
+  const geometryRevision=geometry&&typeof geometry==="object"&&!Array.isArray(geometry)&&typeof (geometry as Record<string,unknown>).revision==="string"?(geometry as Record<string,string>).revision:null;
+  return res.json({tenantId,furnitureSnapshots:stored??{},geometryRevision});
  }catch(e){console.error("furniture get",e);return res.status(500).json({error:"Falha ao carregar mobiliário"});}
 });
 router.put("/arqdor/projects/:id/furniture/:roomId",async(req:Request,res:Response)=>{
@@ -68,8 +70,7 @@ router.put("/arqdor/projects/:id/furniture/:roomId",async(req:Request,res:Respon
   const validation=validateBimFurnitureFootprints(authoritative,roomId,data.furniture.map(f=>f.bounds));
   if(!validation.ok)return res.status(422).json({error:"Geometria BIM rejeitou posicionamento",reason:validation.reason});
   const geometryRevision=validation.revision;
-  if(data.furniture.length>0&&!(req.body as Record<string,unknown>).geometryRevision)return res.status(409).json({error:"Revisão BIM obrigatória; recarregue o ambiente"});
-  if((req.body as Record<string,unknown>).geometryRevision!==geometryRevision)return res.status(409).json({error:"Revisão arquitetônica desatualizada"});
+  if(data.geometryRevision!==geometryRevision)return res.status(409).json({error:"Revisão arquitetônica desatualizada"});
   const records=await db.update(arqdorWorkspaceProjectsTable)
    .set({contextBlob:sql`jsonb_set(jsonb_set(COALESCE(${arqdorWorkspaceProjectsTable.contextBlob}, '{}'::jsonb), '{furnitureSnapshots}', CASE WHEN jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots')='object' THEN ${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots' ELSE '{}'::jsonb END, true), ARRAY['furnitureSnapshots', ${roomId}]::text[], ${JSON.stringify(normalized)}::jsonb, true)`,updatedAt:new Date()})
    .where(and(eq(arqdorWorkspaceProjectsTable.id,projectId),eq(arqdorWorkspaceProjectsTable.tenantId,tenantId),
