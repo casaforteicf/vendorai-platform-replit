@@ -776,6 +776,13 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
     const isGeradorConteudo = location === "/content";
     const isCampanhas = location.startsWith("/content?tab=campanhas");
 
+    // TAD: outros ambientes não ficam aninhados no workspace comercial.
+    const crmWorkspace = [
+      "/dashboard", "/trabalho", "/leads", "/empresas", "/contacts-nonleads",
+      "/app/prospector", "/deals", "/pipeline-operacional", "/conversations",
+      "/propostas", "/catalogo", "/pacotes",
+    ].some(path => location === path || location.startsWith(path + "/"));
+
     const homeHrefs = new Set(["/dashboard", "/trabalho"]);
     const commercialHrefs = new Set(["/propostas", "/catalogo", "/pacotes"]);
     const financeHrefs = new Set(["/erp"]);
@@ -859,7 +866,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
         )}
 
         {/* Agenda é um ambiente independente do CRM. */}
-        {agendaNav.map((item) => (
+        {!crmWorkspace && agendaNav.map((item) => (
           <NavItem key={item.href} item={item} onNavigate={onNavigate} />
         ))}
 
@@ -875,18 +882,18 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
           </GroupedNavSection>
         )}
 
-        {arqdorVisible && (
+        {arqdorVisible && !crmWorkspace && (
           <NavItem
             item={{ name: "Arqdor.ai", href: "/arch", icon: DraftingCompass, arqdorToolEntry: true }}
             onNavigate={onNavigate}
           />
         )}
 
-        {financeNav.map((item) => (
+        {!crmWorkspace && financeNav.map((item) => (
           <NavItem key={item.href} item={item} onNavigate={onNavigate} />
         ))}
 
-        {pracaAiEnabled && (
+        {!crmWorkspace && pracaAiEnabled && (
           <GroupedNavSection label="Praça.ai" icon={Store} active={isPracaAi}>
             {pracaAiNav.map((item) => (
               <NavItem key={item.href} item={item} onNavigate={onNavigate} />
@@ -944,8 +951,8 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
           </GroupedNavSection>
         )}
 
-        {/* Marketing submenu — fonte declarativa oficial */}
-        <div>
+        {/* Marketing fica fora do menu interno do CRM. */}
+        {!crmWorkspace && <div>
           <button
             onClick={() => setConteudoOpen((v) => {
               const next = !v;
@@ -1071,7 +1078,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
               </Link>
             </div>
           )}
-        </div>
+        </div>}
 
         {/* Relatórios submenu */}
         <div>
@@ -1151,7 +1158,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
           )}
         </div>
 
-        {aiKnowledgeNav.length > 0 && (
+        {!crmWorkspace && aiKnowledgeNav.length > 0 && (
           <GroupedNavSection
             label="IA & Conhecimento"
             icon={Bot}
@@ -1163,7 +1170,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
           </GroupedNavSection>
         )}
 
-        {administrationNav.length > 0 && (
+        {!crmWorkspace && administrationNav.length > 0 && (
           <GroupedNavSection
             label="Administração"
             icon={Settings}
