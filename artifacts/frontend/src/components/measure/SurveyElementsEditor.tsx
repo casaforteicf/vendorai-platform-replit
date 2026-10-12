@@ -122,9 +122,12 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
     }
     setDirty(true);
     setReviewConfirmed(false);
-    setItems(previous => previous.map(item => item.id === entry.id
-      ? { ...item, widthMm, heightMm, verified: false }
-      : item));
+    setItems(previous => previous.map(item => {
+      if (item.id === entry.id) return { ...item, widthMm, heightMm, verified: false };
+      if (entry.elementType === "wall" && item.wallId === entry.id)
+        return { ...item, verified: false };
+      return item;
+    }));
     setFeedback("Dimensões revisadas; é necessário conferir novamente antes de salvar.");
   }
   function toDimension(value: string): number | null { const n = Number(value.replace(",", ".")); return value.trim() && Number.isFinite(n) && n > 0 && n <= 1000000 ? n : null; }
