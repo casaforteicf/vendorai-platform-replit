@@ -59,47 +59,54 @@ export default function TadCentral({ audience, enabledModules, permittedModules,
     return matchesSection && matchesSearch;
   }), [listed, search, section]);
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8" aria-label="TAD Central">
-      <header className="mb-7 flex flex-wrap items-center justify-between gap-4">
+    <main className="min-h-screen w-full bg-[#10141b] px-4 py-7 text-slate-100 md:px-8 lg:px-12" aria-label="TAD Central">
+      <header className="mx-auto mb-6 flex max-w-7xl flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[.2em] text-muted-foreground">TAD • Central do ecossistema</p>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight">Escolha seu ambiente de trabalho</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{companyName ? `Empresa: ${companyName} • ` : ""}Somente serviços autorizados para seu acesso</p>
+          <p className="text-xs font-semibold uppercase tracking-[.2em] text-emerald-400">TAD • Central do ecossistema</p>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white md:text-3xl">Escolha seu ambiente de trabalho</h1>
+          <p className="mt-1 text-sm text-slate-400">{companyName ? `Empresa: ${companyName} • ` : ""}Somente serviços autorizados para seu acesso</p>
         </div>
-        <span className="rounded-full border px-3 py-1 text-xs text-muted-foreground">{authorized.length} serviços autorizados</span>
+        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">{authorized.length} serviços autorizados</span>
       </header>
-      <div className="mb-5 flex flex-col gap-3 sm:flex-row">
+      <div className="mx-auto mb-6 max-w-7xl overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-r from-[#192c2b] via-[#182434] to-[#10151e] p-5 md:p-8">
+        <p className="text-xs font-medium uppercase tracking-[.18em] text-emerald-300">Seu espaço de trabalho</p>
+        <h2 className="mt-2 text-xl font-semibold text-white md:text-2xl">Tudo que sua empresa precisa, em um só lugar.</h2>
+        <p className="mt-2 text-sm text-slate-300">Escolha um ambiente e continue trabalhando sem menus duplicados.</p>
+      </div>
+      <div className="mx-auto mb-5 flex max-w-7xl flex-col gap-3 sm:flex-row">
         <label className="sr-only" htmlFor="tad-search">Buscar serviço</label>
         <input id="tad-search" type="search" placeholder="Buscar serviço..." value={search}
           onChange={e => setSearch(e.target.value)}
-          className="min-w-0 flex-1 rounded-lg border bg-background px-4 py-2.5 text-sm" />
+          className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-slate-500" />
         <label className="sr-only" htmlFor="tad-section">Filtrar grupo</label>
         <select id="tad-section" value={section} onChange={e => setSection(e.target.value)}
-          className="rounded-lg border bg-background px-4 py-2.5 text-sm">
+          className="rounded-lg border border-white/10 bg-[#202834] px-4 py-2.5 text-sm text-white">
           {sections.map(group => <option key={group} value={group}>{group}</option>)}
         </select>
       </div>
-      <section aria-label="Serviços" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <section aria-label="Serviços" className="mx-auto grid max-w-7xl gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {visible.map(module => {
           const info = TAD_LABELS[module.key];
           const canOpen = authorized.some(m => m.key === module.key) && !!module.route;
           const body = (
             <>
               <div className="mb-3 flex items-start justify-between gap-2">
-                <span className="text-xs font-medium text-muted-foreground">{info?.section ?? "Serviço"}</span>
-                <span className="text-xs text-muted-foreground">{canOpen ? "Abrir ↗" : "Acesso em validação"}</span>
+                <span className="text-xs font-medium text-emerald-300">{info?.section ?? "Serviço"}</span>
+                <span className="text-xs text-slate-400">{canOpen ? "Abrir ↗" : "Acesso em validação"}</span>
               </div>
-              <h2 className="text-lg font-semibold">{module.key === "marketplace_casa" ? "Praça.ai" : module.title}</h2>
+              {module.key === "crm" && <img src="/logo-full-light.svg" alt="Vendor.ai" className="mb-3 h-7 max-w-[160px] object-contain object-left" />}
+              {module.key === "arqdor" && <img src="/brand/arqdor-logo.png" alt="Arqdor" className="mb-3 h-9 max-w-[160px] object-contain object-left" />}
+              <h2 className="text-lg font-semibold text-white">{module.key === "marketplace_casa" ? "Praça.ai" : module.title}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{info?.description ?? "Ambiente do ecossistema"}</p>
             </>
           );
-          const className = "block min-h-[145px] rounded-xl border bg-card p-5 text-card-foreground transition-colors hover:bg-muted/40";
+          const className = "block min-h-[162px] rounded-2xl border border-white/10 bg-[#1a212b] p-5 text-slate-100 shadow-lg shadow-black/10 transition-colors hover:border-emerald-400/40 hover:bg-[#212b35]";
           return canOpen
             ? <Link key={module.key} href={module.route} className={className} aria-label={`Abrir ${module.title}`}>{body}</Link>
             : <div key={module.key} className={className} aria-disabled="true">{body}</div>;
         })}
       </section>
-      {visible.length === 0 && <p role="status" className="mt-8 text-center text-sm text-muted-foreground">
+      {visible.length === 0 && <p role="status" className="mt-8 text-center text-sm text-slate-400">
         Nenhum serviço disponível para esta busca e este perfil.
       </p>}
     </main>
