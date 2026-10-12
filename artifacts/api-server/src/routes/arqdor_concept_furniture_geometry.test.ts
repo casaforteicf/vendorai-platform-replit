@@ -18,4 +18,13 @@ describe("Concept furniture geometry publisher",()=>{
  it("rejects diagonal walls rather than guessing their clearance",()=>{
   expect(()=>conceptRoomFurnitureGeometry(room,[{...wall,y2:12}],[])).toThrow();
  });
+ it("rejects zero-length walls before normalizing openings",()=>{
+  expect(()=>conceptRoomFurnitureGeometry(room,[{...wall,x2:wall.x1}],[])).toThrow("Parede sem comprimento");
+ });
+ it("rejects duplicate openings and openings attached to a different floor",()=>{
+  const door={id:"door",floor:0,wallId:"w",type:"door" as const,offset:1,width:.9};
+  expect(()=>conceptRoomFurnitureGeometry(room,[wall],[door,door])).toThrow("Abertura incompleta");
+  expect(()=>conceptRoomFurnitureGeometry(room,[wall],[{...door,floor:1}])).toThrow("Abertura incompleta");
+ });
+
 });
