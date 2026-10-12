@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, eq, or, inArray } from "drizzle-orm";
 import { z } from "zod/v4";
 import { db, agendasTable, agendaAccessGrantsTable, usersTable, insertAgendaSchema, updateAgendaSchema } from "@workspace/db";
 import {
@@ -47,6 +47,11 @@ router.get("/tenants/:tenantId/agendas", async (req, res) => {
     return;
   }
 
+  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userId = req.user?.sub;
+  if (!isAdmin && !userId) return res.status(403).json({ error: "User identity required" });
+  const authorizedIds = isAdmin ? [] : (await db.select({ agendaId: agendaAccessGrantsTable.agendaId })
+    .from(agendaAccessGrantsTable).where(and(eq(agendaAccessGrantsTable.tenantId, tenantId), eq(agendaAccessGrantsTable.userId, userId!)))).map(x => x.agendaId);
   const agendas = await db
     .select({
       id: agendasTable.id,
@@ -60,7 +65,7 @@ router.get("/tenants/:tenantId/agendas", async (req, res) => {
       updatedAt: agendasTable.updatedAt,
     })
     .from(agendasTable)
-    .where(eq(agendasTable.tenantId, tenantId))
+    .where(isAdmin ? eq(agendasTable.tenantId, tenantId) : and(eq(agendasTable.tenantId, tenantId), or(eq(agendasTable.ownerUserId, userId!), ...(authorizedIds.length ? [inArray(agendasTable.id, authorizedIds)] : []))))
     .orderBy(agendasTable.createdAt);
 
   res.json(agendas);
