@@ -16,6 +16,12 @@ describe("UI20 service visibility (presentation only)", () => {
     expect([...visible].sort()).toEqual(["home", "support"]);
   });
 
+  it("does not expose IA without explicit enabled entitlement", () => {
+    expect(getUi20VisibleServices({ modules: [] }).has("ia")).toBe(false);
+    expect(getUi20VisibleServices({ modules: [{ moduleKey: "agents", isEnabled: false }] }).has("ia")).toBe(false);
+    expect(getUi20VisibleServices({ modules: [{ moduleKey: "agents", isEnabled: true, commerciallyEntitled: true }] }).has("ia")).toBe(true);
+  });
+
   it("does not show ERP without an enabled financial entitlement", () => {
     const visible = getUi20VisibleServices({
       modules: [{ moduleKey: "financeiro", isEnabled: false, hasOverride: true }],
