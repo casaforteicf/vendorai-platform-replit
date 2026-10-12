@@ -85,3 +85,9 @@ Nenhum recurso real é ativado por esta entrega isolada.
 - Não fornece dados confidenciais de clientes, custos ou projetos. Não ativa vitrine pública.
 - Serviços ainda precisam mapear texto livre de categoria para taxonomia oficial Praça.ai.
 - Pendente executar build/testes e confirmar tabelas/colunas em homologação; API pública e aprovação continuam bloqueadas.
+
+## Lote 09 — painel privado de preparação
+- Componente React PracaAdsPreparationPanel integrado à tela de Catálogo de Produtos.
+- Consulta a API interna de preparação sob autenticação, sem ações de publicação.
+- Exibe itens selecionados, revisão e erros; não afirma que anúncios estão publicados.
+- Ainda pendente painel completo independente dentro da TAD, moderação real, ligação à taxonomia pública, compilação e homologação.

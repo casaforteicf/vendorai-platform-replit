@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useLocation, Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { CatalogoModal } from "./Propostas";
+import PracaAdsPreparationPanel from "@/components/praca/PracaAdsPreparationPanel";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -1399,6 +1400,7 @@ export default function CatalogoProdutos() {
 
   return (
     <div className="space-y-6">
+      <PracaAdsPreparationPanel />
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Catálogo de Produtos</h1>
