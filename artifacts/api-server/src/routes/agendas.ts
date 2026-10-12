@@ -265,7 +265,7 @@ router.get("/agendas/:id/google-auth-url", async (req, res) => {
   const url = await createRegisteredCalendarAuthUrl(agenda.id, agenda.tenantId, req.user.sub, "/agenda", host);
   const oauthState = new URL(url).searchParams.get("state");
   if (!oauthState) return res.status(500).json({ error: "OAuth state missing" });
-  res.cookie("vendor_calendar_oauth", createHash("sha256").update(oauthState).digest("hex"), {
+  res.cookie(`vendor_calendar_oauth_${createHash("sha256").update(oauthState).digest("hex").slice(0, 16)}`, createHash("sha256").update(oauthState).digest("hex"), {
     httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax",
     maxAge: 600_000, path: "/api/auth/google/calendar/callback",
   });
@@ -414,9 +414,10 @@ googleCallbackRouter.get("/auth/google/calendar/callback", async (req, res) => {
     // Same-browser binding: reject callbacks not carrying the short-lived
     // httpOnly cookie issued when this administrator initiated the connection.
     const cookies = String(req.headers.cookie ?? "").split(";").map(value => value.trim());
-    const cookie = cookies.find(value => value.startsWith("vendor_calendar_oauth="))?.slice("vendor_calendar_oauth=".length);
+    const cookieName = `vendor_calendar_oauth_${stateHash.slice(0, 16)}`;
+    const cookie = cookies.find(value => value.startsWith(`${cookieName}=`))?.slice(cookieName.length + 1);
     if (!cookie || cookie !== stateHash) throw new Error("OAuth initiating browser mismatch");
-    res.clearCookie("vendor_calendar_oauth", { path: "/api/auth/google/calendar/callback" });
+    res.clearCookie(cookieName, { path: "/api/auth/google/calendar/callback" });
     const [consumed] = await db.update(calendarOauthStatesTable).set({ consumedAt: new Date() }).where(and(
       eq(calendarOauthStatesTable.stateHash, stateHash),
       eq(calendarOauthStatesTable.agendaId, decoded.agendaId),
