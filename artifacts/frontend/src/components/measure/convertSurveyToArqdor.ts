@@ -48,7 +48,7 @@ export function convertSurveyToArqdor(elements: SurveyElement[]) {
   const endpoints = customWalls.flatMap((w) => [{wallId:w.id,x:w.x1,y:w.y1},{wallId:w.id,x:w.x2,y:w.y2}]);
   for (const wall of customWalls) {
     const start = endpoints.some((p) => p.wallId !== wall.id && customWalls.find(w => w.id === p.wallId)?.floor === wall.floor && Math.hypot(p.x-wall.x1,p.y-wall.y1) < 0.005);
-    const end = endpoints.some((p) => p.wallId !== wall.id && Math.hypot(p.x-wall.x2,p.y-wall.y2) < 0.005);
+    const end = endpoints.some((p) => p.wallId !== wall.id && customWalls.find(w => w.id === p.wallId)?.floor === wall.floor && Math.hypot(p.x-wall.x2,p.y-wall.y2) < 0.005);
     if (!start || !end) warnings.push("Parede " + wall.id + " possui extremidades sem conexão comprovada.");
   }
   if (walls.length !== new Set(walls.map((w) => w.id)).size) warnings.push("IDs duplicados no levantamento.");
