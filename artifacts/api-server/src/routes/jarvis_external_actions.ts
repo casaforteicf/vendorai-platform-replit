@@ -87,7 +87,8 @@ async function executeCalendarTask(task: AgentTask, log: any): Promise<AgentTask
         .from(agendasTable)
         .where(and(eq(agendasTable.id, agendaId), eq(agendasTable.tenantId, task.tenantId)))
         .limit(1);
-      validAgendaId = agenda?.id ?? null;
+      if (!agenda) throw new Error("Agenda solicitada não pertence a este tenant");
+      validAgendaId = agenda.id;
     }
 
     const [agendamento] = await db
