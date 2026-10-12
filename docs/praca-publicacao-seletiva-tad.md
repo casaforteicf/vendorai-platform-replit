@@ -52,3 +52,10 @@ Nenhum recurso real é ativado por esta entrega isolada.
 - `pracaPublicCatalog.test.ts` contém testes ainda não executados.
 - NÃO está ligado a rota HTTP, frontend, provedor de dados nem moderação persistida. Não confundir essa projeção com publicação real.
 - Próxima integração: identificar a tabela canônica de anúncios Praça.ai e sua taxonomia validada, implementar consulta pública server-side, paginação e painel de anunciantes, sem duplicar o mecanismo do Arqdor.
+
+## Lote 07 — adapters de leitura das fontes reais
+- `pracaSourceAdapters.ts` integra os campos concretos de `produtos_catalogo` e `servicos_tipos` aos contratos de vitrine, sem mutação nem migração.
+- `vendeNoPracaAi` é autorização de intenção, não prova de moderação; falta vínculo com aprovação e categoria canônica pública.
+- `pracaSourceAdapters.test.ts` documenta os casos de segurança, ainda não executados.
+- Sem rota pública montada: os adapters exigem um registro canônico de aprovação ainda não identificado. Publicar usando apenas o flag seria inseguro.
+- Próximo lote exige conexão à fonte validada de anúncios e exposição do endpoint com paginação e checagem de permissões.
