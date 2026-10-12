@@ -480,7 +480,9 @@ async function handleSchedulerProcess(req: Request, res: Response): Promise<void
     }
 
     const titulo = agendamentoInput.titulo ?? `Reunião com ${ctx.lead.nome}`;
-    const ag = await db.transaction(async (tx) => {
+    let ag: typeof agendamentosTable.$inferSelect;
+    try {
+      ag = await db.transaction(async (tx) => {
       if (!schedulerIsAdmin && resolvedAgendaId) {
         await tx.execute(sql`SELECT id FROM agendas WHERE id = ${resolvedAgendaId} AND tenant_id = ${tenantId} FOR UPDATE`);
         const [owner] = await tx.select({ ownerUserId: agendasTable.ownerUserId })
@@ -506,7 +508,14 @@ async function handleSchedulerProcess(req: Request, res: Response): Promise<void
         status:         "agendado",
       }).returning();
       return created;
-    });
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "SCHEDULER_AGENDA_REVOKED") {
+        res.status(403).json({ error: "Permissao de calendario revogada" });
+        return;
+      }
+      throw error;
+    }
     agendamentoCriado = ag;
     req.log.info({ agendamentoId: ag.id, leadId, agendaId: resolvedAgendaId }, "scheduler: agendamento created");
 
