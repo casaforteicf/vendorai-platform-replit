@@ -10,7 +10,18 @@ export type InteriorEnvironment={
   walls:InteriorWall[];obstacles?:InteriorObstacle[];sourceRevision?:string;sourceFileName?:string;
   persistStatus:"draft-only";
 };
+export type InteriorOpeningClearance={id:string;xMm:number;yMm:number;widthMm:number;depthMm:number};
 const finitePositive=(n:number)=>Number.isFinite(n)&&n>0;
+/** Clearances supplied by the architectural model must already be room-local and measured in millimeters. */
+export function openingClearanceObstacles(openings:readonly InteriorOpeningClearance[]):InteriorObstacle[]{
+ const ids=new Set<string>();
+ return openings.map(opening=>{
+  if(!opening||typeof opening.id!=="string"||!opening.id||ids.has(opening.id)||![opening.xMm,opening.yMm,opening.widthMm,opening.depthMm].every(Number.isFinite)||opening.widthMm<=0||opening.depthMm<=0)throw Error("Invalid architectural opening clearance");
+  ids.add(opening.id);
+  return {...opening,kind:"opening-clearance" as const};
+ });
+}
+
 export function buildRectangularRoom(args:{name:string;widthM:number;depthM:number;heightM:number;thicknessM:number;projectId?:string|null}):InteriorEnvironment{
   if(!args.name.trim()||![args.widthM,args.depthM,args.heightM,args.thicknessM].every(finitePositive))throw Error("Ambiente ou medidas invalidas");
   if(args.widthM<=2*args.thicknessM||args.depthM<=2*args.thicknessM)throw Error("Paredes maiores que o ambiente");
@@ -18,7 +29,7 @@ export function buildRectangularRoom(args:{name:string;widthM:number;depthM:numb
   return {source:"new-room",projectId:args.projectId??null,roomId:"draft-"+Date.now().toString(36),name:args.name,
     walls:p.map(([x1,y1,x2,y2],i)=>({id:"wall-"+(i+1),x1,y1,x2,y2,thicknessM:args.thicknessM,heightM:args.heightM})),persistStatus:"draft-only"};
 }
-export function fromPreProjectRoom(projectId:string,room:{id:string;nome?:string;name?:string;titulo?:string;largura?:number;profundidade?:number;altura?:number;widthM?:number;depthM?:number;heightM?:number;walls?:InteriorWall[];paredes?:InteriorWall[]},revision?:string):InteriorEnvironment{
+export function fromPreProjectRoom(projectId:string,room:{id:string;nome?:string;name?:string;titulo?:string;largura?:number;profundidade?:number;altura?:number;widthM?:number;depthM?:number;heightM?:number;walls?:InteriorWall[];paredes?:InteriorWall[];openingClearances?:InteriorOpeningClearance[]},revision?:string):InteriorEnvironment{
   if(!projectId||!room.id)throw Error("Referencia de projeto ou ambiente ausente");
   const width=room.widthM??room.largura,depth=room.depthM??room.profundidade,height=room.heightM??room.altura;
   const valid=[width,depth,height].every(v=>typeof v==="number"&&Number.isFinite(v)&&v>0);
@@ -31,7 +42,7 @@ export function fromPreProjectRoom(projectId:string,room:{id:string;nome?:string
    {id:"preview-wall-4",x1:0,y1:depth!,x2:0,y2:0,thicknessM:.14,heightM:height!}
   ]:[]);
   return {source:"preproject",projectId,roomId:room.id,name:room.nome||room.name||room.titulo||"Ambiente",
-    walls,sourceRevision:revision,persistStatus:"draft-only"};
+    walls,obstacles:room.openingClearances?openingClearanceObstacles(room.openingClearances):undefined,sourceRevision:revision,persistStatus:"draft-only"};
 }
 
 /** Only allow furniture placement in rooms with a verified axis-aligned rectangular boundary.
