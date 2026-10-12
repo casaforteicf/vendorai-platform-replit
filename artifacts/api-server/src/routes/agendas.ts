@@ -1,10 +1,11 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, createHash, timingSafeEqual } from "node:crypto";
 import { Router, type IRouter } from "express";
-import { and, eq, or, inArray } from "drizzle-orm";
+import { and, eq, or, inArray, isNull, gt } from "drizzle-orm";
 import { z } from "zod/v4";
-import { db, agendasTable, agendaAccessGrantsTable, usersTable, insertAgendaSchema, updateAgendaSchema } from "@workspace/db";
+import { db, agendasTable, agendaAccessGrantsTable, calendarOauthStatesTable, usersTable, insertAgendaSchema, updateAgendaSchema } from "@workspace/db";
 import {
   buildAuthUrl,
+  createRegisteredCalendarAuthUrl,
   exchangeCodeAndStore,
   getGoogleRedirectUri,
 } from "../lib/google-calendar";
@@ -262,7 +263,8 @@ router.get("/agendas/:id/google-auth-url", async (req, res) => {
   }
 
   const host = req.get("host") ?? undefined;
-  const url = buildAuthUrl(agenda.id, "/agenda", host);
+  if (!req.user?.sub) return res.status(403).json({ error: "User identity required" });
+  const url = await createRegisteredCalendarAuthUrl(agenda.id, agenda.tenantId, req.user.sub, "/agenda", host);
   res.json({ url });
 });
 
@@ -400,10 +402,18 @@ googleCallbackRouter.get("/auth/google/calendar/callback", async (req, res) => {
     const expected = createHmac("sha256", secret).update(payload).digest();
     const provided = Buffer.from(mac, "base64url");
     if (expected.length !== provided.length || !timingSafeEqual(expected, provided)) throw new Error("Invalid state signature");
-    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf-8")) as { agendaId: string; returnTo?: string; issuedAt?: number };
+    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf-8")) as { agendaId: string; returnTo?: string; issuedAt?: number; nonce?: string };
     if (typeof decoded.issuedAt !== "number" || !Number.isFinite(decoded.issuedAt) ||
         decoded.issuedAt > Date.now() + 30_000 || Date.now() - decoded.issuedAt > 600_000) throw new Error("Expired state");
-    if (typeof decoded.agendaId !== "string" || !decoded.agendaId.trim()) throw new Error("Invalid agenda");
+    if (typeof decoded.agendaId !== "string" || !decoded.agendaId.trim() || typeof decoded.nonce !== "string" || decoded.nonce.length < 16) throw new Error("Invalid agenda or nonce");
+    const stateHash = createHash("sha256").update(state).digest("hex");
+    const [consumed] = await db.update(calendarOauthStatesTable).set({ consumedAt: new Date() }).where(and(
+      eq(calendarOauthStatesTable.stateHash, stateHash),
+      eq(calendarOauthStatesTable.agendaId, decoded.agendaId),
+      isNull(calendarOauthStatesTable.consumedAt),
+      gt(calendarOauthStatesTable.expiresAt, new Date())
+    )).returning({ agendaId: calendarOauthStatesTable.agendaId });
+    if (!consumed) throw new Error("OAuth state already consumed or expired");
     agendaId = decoded.agendaId;
     if (decoded.returnTo === "/agenda" || decoded.returnTo === "/configuracoes") returnTo = decoded.returnTo;
   } catch {
