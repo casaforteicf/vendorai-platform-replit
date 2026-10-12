@@ -64,8 +64,10 @@ router.post("/arqdor/projects/:id/furniture/geometry-from-concept",async(req:Req
   const [saved]=await db.update(arqdorWorkspaceProjectsTable)
    .set({contextBlob:sql`jsonb_set(${arqdorWorkspaceProjectsTable.contextBlob},'{furnitureGeometryV1}',${JSON.stringify(geometry)}::jsonb,true)`,updatedAt:new Date()})
    .where(and(eq(arqdorWorkspaceProjectsTable.id,projectId),eq(arqdorWorkspaceProjectsTable.tenantId,tenantId),
-    sql`jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob})='object'`)).returning({id:arqdorWorkspaceProjectsTable.id});
-  if(!saved)return res.status(404).json({error:"Workspace não encontrado"});
+    sql`jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob})='object'`,
+    sql`(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureGeometryV1' IS NULL OR ${arqdorWorkspaceProjectsTable.contextBlob} #>> '{furnitureGeometryV1,revision}' = ${revision})`,
+    sql`NOT EXISTS (SELECT 1 FROM jsonb_each(CASE WHEN jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots')='object' THEN ${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots' ELSE '{}'::jsonb END) AS item WHERE item.value->>'geometryRevision' IS DISTINCT FROM ${revision})`)).returning({id:arqdorWorkspaceProjectsTable.id});
+  if(!saved)return res.status(409).json({error:"Publicação rejeitada: revisão BIM ou mobiliário já existente exige reconciliação"});
   return res.json({published:true,geometryRevision:revision,rooms:Object.keys(rooms).length});
  }catch(error){console.error("furniture concept geometry",error);return res.status(500).json({error:"Falha ao publicar geometria Concept"});}
 });
