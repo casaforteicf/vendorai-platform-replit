@@ -68,9 +68,9 @@ const SHELL_STYLES = `
 
   .arqdor-studio-v3 .arqdor-back-btn:hover,
   .arqdor-studio-v3 .arqdor-market-btn:hover {
-    border-color: #fb923c;
-    background: #fff7ed;
-    color: #c2410c;
+    border-color: #4AC59A;
+    background: #263934;
+    color: #A6DBCB;
     transform: translateY(-1px);
   }
 
@@ -85,9 +85,9 @@ const SHELL_STYLES = `
     align-items: center;
     gap: 7px;
     border-radius: 10px;
-    border: 1px solid #fed7aa;
-    background: #fff7ed;
-    color: #c2410c;
+    border: 1px solid #3A6154;
+    background: #263934;
+    color: #A6DBCB;
     font-size: 12px;
     font-weight: 800;
     cursor: pointer;
@@ -128,16 +128,16 @@ const SHELL_STYLES = `
     min-height: 38px !important;
     padding: 0 18px !important;
     border-radius: 10px !important;
-    background: #f97316 !important;
+    background: #176D59 !important;
     color: #ffffff !important;
-    border: 1px solid #ea580c !important;
+    border: 1px solid #21856C !important;
     box-shadow: 0 5px 14px rgba(249,115,22,.18) !important;
     font-size: 12px !important;
     font-weight: 800 !important;
   }
 
   .arqdor-studio-v3 .arqdor-legacy-topbar .arqdor-primary-action:hover {
-    background: #ea580c !important;
+    background: #21856C !important;
   }
 
   .arqdor-studio-v3 .arqdor-legacy-sidebar {
@@ -190,14 +190,14 @@ const SHELL_STYLES = `
   }
 
   .arqdor-studio-v3 .arqdor-studio-step:hover:not(:disabled) {
-    background: #fff7ed !important;
-    color: #c2410c !important;
+    background: #263934 !important;
+    color: #A6DBCB !important;
   }
 
   .arqdor-studio-v3 .arqdor-studio-step[aria-current="step"] {
     background: linear-gradient(90deg, #fff3e8 0%, #fff9f4 100%) !important;
-    color: #c2410c !important;
-    box-shadow: inset 3px 0 0 #f97316 !important;
+    color: #A6DBCB !important;
+    box-shadow: inset 3px 0 0 #176D59 !important;
   }
 
   .arqdor-studio-v3 .arqdor-studio-step::after {
@@ -217,7 +217,7 @@ const SHELL_STYLES = `
   }
 
   .arqdor-studio-v3 .arqdor-studio-step[aria-current="step"]::after {
-    color: #c2410c;
+    color: #A6DBCB;
     border-color: #fdba74;
     background: #ffedd5;
   }
@@ -261,15 +261,15 @@ const SHELL_STYLES = `
   }
 
   .arqdor-studio-v3 .arqdor-upload-card:hover {
-    border-color: #f97316 !important;
+    border-color: #176D59 !important;
     background: #fffaf5 !important;
     transform: translateY(-1px);
   }
 
   .arqdor-studio-v3 .arqdor-upload-card > div:first-child {
-    background: #fff1e8 !important;
-    color: #f97316 !important;
-    border: 1px solid #fed7aa !important;
+    background: #30423D !important;
+    color: #176D59 !important;
+    border: 1px solid #3A6154 !important;
   }
 
   .arqdor-studio-v3 .arqdor-legacy-root[data-arqdor-step="Projeto"] .arqdor-upload-card,
@@ -297,8 +297,8 @@ const SHELL_STYLES = `
   }
 
   .arqdor-studio-v3 .arqdor-canvas-toolbar button[aria-pressed="true"] {
-    background: #fff1e8 !important;
-    color: #c2410c !important;
+    background: #30423D !important;
+    color: #A6DBCB !important;
     border-color: #fdba74 !important;
   }
 
@@ -361,7 +361,7 @@ const SHELL_STYLES = `
   .arqdor-studio-v3 .arqdor-legacy-right-panel input:focus,
   .arqdor-studio-v3 .arqdor-legacy-right-panel select:focus,
   .arqdor-studio-v3 .arqdor-legacy-right-panel textarea:focus {
-    border-color: #fb923c !important;
+    border-color: #4AC59A !important;
     box-shadow: 0 0 0 3px rgba(249,115,22,.11) !important;
     outline: none !important;
   }
@@ -391,32 +391,32 @@ const SHELL_STYLES = `
   }
 
   .arqdor-studio-v3 .arqdor-environment-picker > button:not(.arqdor-env-cta):hover {
-    background: #fff7ed !important;
-    color: #c2410c !important;
+    background: #263934 !important;
+    color: #A6DBCB !important;
     border-color: #fdba74 !important;
   }
 
   .arqdor-studio-v3 .arqdor-environment-picker > button:not(.arqdor-env-cta)[style*="249, 115, 22"],
-  .arqdor-studio-v3 .arqdor-environment-picker > button:not(.arqdor-env-cta)[style*="#F97316"] {
-    background: #fff1e8 !important;
-    color: #c2410c !important;
-    border-color: #fb923c !important;
+  .arqdor-studio-v3 .arqdor-environment-picker > button:not(.arqdor-env-cta)[style*="#176D59"] {
+    background: #30423D !important;
+    color: #A6DBCB !important;
+    border-color: #4AC59A !important;
   }
 
   .arqdor-studio-v3 .arqdor-env-cta,
   .arqdor-studio-v3 .arqdor-primary-action {
     min-height: 40px !important;
     border-radius: 10px !important;
-    background: #f97316 !important;
+    background: #176D59 !important;
     color: #ffffff !important;
-    border-color: #ea580c !important;
+    border-color: #21856C !important;
     box-shadow: 0 5px 14px rgba(249,115,22,.16) !important;
     font-weight: 800 !important;
   }
 
   .arqdor-studio-v3 .arqdor-env-cta:hover,
   .arqdor-studio-v3 .arqdor-primary-action:hover {
-    background: #ea580c !important;
+    background: #21856C !important;
   }
 
   .arqdor-studio-v3 .arqdor-copilot-strip {
@@ -463,8 +463,8 @@ const SHELL_STYLES = `
     flex: 0 0 auto;
     border-radius: 10px;
     border: 1px solid #fdba74;
-    background: #fff7ed;
-    color: #c2410c;
+    background: #263934;
+    color: #A6DBCB;
     font-size: 12px;
     font-weight: 800;
     line-height: 1;
@@ -476,7 +476,7 @@ const SHELL_STYLES = `
 
   .arqdor-studio-v3 .arqdor-studio-entry-btn:hover {
     background: #ffedd5;
-    border-color: #fb923c;
+    border-color: #4AC59A;
     color: #9a3412;
   }
 
