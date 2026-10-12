@@ -6,6 +6,7 @@ import {
   tokenA,
   tokenB,
   tokenSuperAdmin,
+  makeToken,
 } from "./helpers/auth.js";
 import { MockRow, createDbHelpers } from "./helpers/isolation.js";
 
@@ -26,6 +27,12 @@ vi.mock("@workspace/db", () => ({
     delete: mockDbDelete,
     insert: mockDbInsert,
   },
+  agendaAccessGrantsTable: { agendaId: "agendaId", tenantId: "tenantId", userId: "userId" },
+  agendasTable: { id: "id", tenantId: "tenantId", ownerUserId: "ownerUserId", googleRefreshToken: "googleRefreshToken" },
+  leadsTable: { id: "id", tenantId: "tenantId" },
+  dealsTable: { id: "id", tenantId: "tenantId", leadId: "leadId" },
+  usersTable: { id: "id", tenantId: "tenantId" },
+  activitiesTable: { id: "id" },
   agendamentosTable: {
     id: "id",
     tenantId: "tenantId",
@@ -314,5 +321,54 @@ describe("PATCH /api/agendamentos/:id — past date validation", () => {
       .send({ status: "concluido", observacoes: "Cliente nao compareceu" });
 
     expect(res.status).toBe(200);
+  });
+});
+
+
+describe("member ownership authorization — agendamentos", () => {
+  const memberToken = makeToken(TENANT_B, "member");
+  const memberId = `user-${TENANT_B}`;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUpdateSchema.mockReturnValue({ success: true, data: { tipo: "consulta" } });
+  });
+
+  it("refuses creation assigned to a different user before any DB write", async () => {
+    mockInsertSchema.mockReturnValue({
+      success: true,
+      data: { tenantId: TENANT_B, leadId: "lead-1", responsavelId: "another-user", dataHoraInicio: VALID_START, dataHoraFim: VALID_END },
+    });
+    const res = await request(app).post("/api/agendamentos")
+      .set("Authorization", `Bearer ${memberToken}`).send({ tenantId: TENANT_B });
+    expect(res.status).toBe(403);
+    expect(mockDbInsert).not.toHaveBeenCalled();
+  });
+
+  it("refuses Meet with no explicitly selected calendar", async () => {
+    mockInsertSchema.mockReturnValue({
+      success: true,
+      data: { tenantId: TENANT_B, leadId: "lead-1", responsavelId: memberId, gerarMeet: true, dataHoraInicio: VALID_START, dataHoraFim: VALID_END },
+    });
+    const res = await request(app).post("/api/agendamentos")
+      .set("Authorization", `Bearer ${memberToken}`).send({ tenantId: TENANT_B });
+    expect(res.status).toBe(403);
+    expect(mockDbInsert).not.toHaveBeenCalled();
+  });
+
+  it("refuses editing another member's appointment in the same tenant", async () => {
+    setupSelectReturning([{ ...recordOwnedByTenantB, responsavelId: "another-user" }]);
+    const res = await request(app).patch(`/api/agendamentos/${RECORD_ID}`)
+      .set("Authorization", `Bearer ${memberToken}`).send({ tipo: "consulta" });
+    expect(res.status).toBe(403);
+    expect(mockDbUpdate).not.toHaveBeenCalled();
+  });
+
+  it("refuses deleting another member's appointment in the same tenant", async () => {
+    setupSelectReturning([{ ...recordOwnedByTenantB, responsavelId: "another-user" }]);
+    const res = await request(app).delete(`/api/agendamentos/${RECORD_ID}`)
+      .set("Authorization", `Bearer ${memberToken}`);
+    expect(res.status).toBe(403);
+    expect(mockDbDelete).not.toHaveBeenCalled();
   });
 });
