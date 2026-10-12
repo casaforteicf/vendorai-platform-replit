@@ -7,8 +7,8 @@ type ReportItem = {
  fotos?:string[];
  divergenceResolution?: {reason:string;approvedBy:string;approvedAt:string}|null;
 };
-export default function MeasurementPrintReport({name,revision,toleranceMm,status,items,photoAccess,acceptance}:{
- name:string;revision:number;toleranceMm:number;status:string;items:ReportItem[];photoAccess?:Record<string,Array<{storageUrl:string;accessUrl:string}>>;acceptance?:{signerName:string;acceptedAt:string;signerUserId:string;technicalNote?:string|null}|null;
+export default function MeasurementPrintReport({name,revision,toleranceMm,status,items,photoAccess,acceptance,externalAcknowledgement}:{
+ name:string;revision:number;toleranceMm:number;status:string;items:ReportItem[];photoAccess?:Record<string,Array<{storageUrl:string;accessUrl:string}>>;acceptance?:{signerName:string;acceptedAt:string;signerUserId:string;technicalNote?:string|null}|null;externalAcknowledgement?:{signerName:string;signerRole:string;declaredByOperatorId:string;declaredAt:string}|null;
 }) {
  return <section className="hidden print:block space-y-3 text-sm">
   <h2 className="text-xl font-semibold">Relatório técnico de conferência — {name}</h2>
@@ -30,6 +30,7 @@ export default function MeasurementPrintReport({name,revision,toleranceMm,status
    {item.divergenceResolution && <p>Resolução: {item.divergenceResolution.reason} · Aprovador: {item.divergenceResolution.approvedBy} · Data: {item.divergenceResolution.approvedAt}</p>}
   </div>)}
   {acceptance && <div className="border-t pt-3"><p className="font-semibold">Declaração de aceite técnico autenticado</p><p>Responsável: {acceptance.signerName} · Registro: {acceptance.acceptedAt} · Usuário: {acceptance.signerUserId}</p><p>{acceptance.technicalNote ?? "Sem observações adicionais."}</p></div>}
+  {externalAcknowledgement && <div className="border-t pt-3"><p className="font-semibold">Registro de ciência presencial informado pelo operador</p><p>Terceiro: {externalAcknowledgement.signerName} · Relação: {externalAcknowledgement.signerRole}</p><p>Registrado por: {externalAcknowledgement.declaredByOperatorId} · Data: {externalAcknowledgement.declaredAt}</p><p>Não há verificação independente da identidade ou assinatura digital do terceiro.</p></div>}
   <p>Este registro autenticado não equivale a assinatura digital certificada nem substitui aprovações legais aplicáveis.</p>
  </section>;
 }
