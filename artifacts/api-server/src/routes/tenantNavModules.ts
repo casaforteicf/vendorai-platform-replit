@@ -279,6 +279,12 @@ router.get("/tenants/:tenantId/tad-effective-modules", async (req, res) => {
   const tenantId = routeTenantId(req);
   const current = req.user;
   if (!current) return res.status(401).json({ error: "Unauthorized" });
+  // Tokens de link público, parceiros e atores internos não são usuários da TAD.
+  if ((current.accessScope && current.accessScope !== "tenant") ||
+      current.platformRole === "partner" ||
+      (current.actorType && current.actorType !== "human")) {
+    return res.status(403).json({ error: "TAD user access required" });
+  }
   if (current.platformRole !== "super_admin" && current.tenantId !== tenantId) {
     return res.status(403).json({ error: "Forbidden" });
   }
