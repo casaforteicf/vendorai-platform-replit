@@ -291,3 +291,9 @@ PATCH de itens aceita expectedUpdatedAt e devolve CHECKLIST_CONFLICT quando a ve
 
 ## Lote 50 — recuperação de conflito entre dispositivos (12/10/2026)
 Ao receber erro de concorrencia do servidor, editor de elementos tecnicos mantém rascunho IndexedDB e bloqueia novas tentativas de sincronizacao na mesma instancia. Interface mostra alerta e permite exportar JSON local para comparacao manual. Nao faz merge automatico nem libera sobrescrita de medidas alheias. Para resolver, recarregar versao do servidor, recuperar copia local e reconciliar conscientemente. Pendente implementacao de diff/merge assistido, testes de compilacao e integracao. Sem publicacao.
+
+## Lote 51 — comparacao e mesclagem assistida de conflitos (12/10/2026)
+- Editor solicita do checklist atual os elementos da MESMA revisao no servidor, bloqueando reconciliacao automatica entre revisoes diferentes.
+- Mostra JSON lado a lado dos elementos diferentes e exige escolha explicita local/servidor para cada elemento. Ausencia de um elemento e representada como exclusao.
+- Mesclagem e guardada no IndexedDB antes de atualizar a tela. Todos os elementos diferentes e aberturas vinculadas a paredes alteradas perdem a marca verified e devem ser conferidos novamente. Nenhum salvamento automatico no servidor ao mesclar.
+- Versao do servidor atualizada no retorno da consulta e apos PATCH. Permanecem testes de compilacao, integracao, race entre revisao consultada e gravacao e auditoria de merge. Sem homologacao, merge na main ou deploy.
