@@ -614,7 +614,17 @@ router.post("/operational-checklists/runs/:runId/create-arqdor-draft", async (re
   }
 });
 
+const completionAcceptanceSchema = z.object({
+  acknowledged: z.literal(true),
+  signerName: z.string().trim().min(3).max(160),
+  technicalNote: z.string().trim().max(1500).optional(),
+});
+
 router.post("/operational-checklists/runs/:runId/complete", async (req, res) => {
+  const acceptance = completionAcceptanceSchema.safeParse(req.body ?? {});
+  if (!acceptance.success) return void res.status(422).json({ error: "Aceite técnico exige confirmação e identificação do responsável." });
+  if (!req.user?.sub) return void res.status(401).json({ error: "Responsável autenticado obrigatório." });
+
   const [run] = await db.select().from(operationalChecklistRunsTable)
     .where(eq(operationalChecklistRunsTable.id, String(req.params.runId))).limit(1);
   if (!run) return void res.status(404).json({ error: "Checklist não encontrado" });
@@ -631,12 +641,23 @@ router.post("/operational-checklists/runs/:runId/complete", async (req, res) => 
     });
   }
 
+  const acceptedAt = new Date();
+  const acceptanceRecord = {
+    version: 1, acknowledged: true,
+    signerName: acceptance.data.signerName,
+    signerUserId: req.user.sub,
+    acceptedAt: acceptedAt.toISOString(),
+    technicalNote: acceptance.data.technicalNote ?? null,
+    meaning: "Declaracao de aceite tecnico autenticado; nao equivale a assinatura digital certificada.",
+  };
   const [updated] = await db.update(operationalChecklistRunsTable).set({
+    headerSnapshot: { ...run.headerSnapshot, technicalAcceptance: acceptanceRecord },
     status: "concluido",
     completedBy: req.user?.sub ?? null,
     completedAt: new Date(),
     updatedAt: new Date(),
-  }).where(eq(operationalChecklistRunsTable.id, run.id)).returning();
+  }).where(and(eq(operationalChecklistRunsTable.id, run.id), eq(operationalChecklistRunsTable.status, "em_andamento"))).returning();
+  if (!updated) return void res.status(409).json({error:"Conferência já concluída ou alterada por outra operação."});
 
   if (run.leadId) {
     await db.insert(activitiesTable).values({
