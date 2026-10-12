@@ -1,0 +1,304 @@
+import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import SurveyPlanPreview from "./SurveyPlanPreview";
+import { convertSurveyToArqdor } from "./convertSurveyToArqdor";
+import { queueSurvey, readPendingSurvey, clearPendingSurvey } from "./offlineSurveyQueue";
+import { withPhotoTabLock } from "./photoTabLock";
+
+export type SurveyElement = {
+  id: string;
+  roomName: string;
+  floorIndex?: number;
+  elementType: "wall" | "door" | "window" | "column" | "beam" | "electrical" | "plumbing" | "gas" | "other";
+  label: string;
+  widthMm?: number | null;
+  heightMm?: number | null;
+  depthMm?: number | null;
+  x1Mm?: number | null;
+  y1Mm?: number | null;
+  x2Mm?: number | null;
+  y2Mm?: number | null;
+  thicknessMm?: number | null;
+  wallId?: string | null;
+  offsetMm?: number | null;
+  sillHeightMm?: number | null;
+  sourcePhotoPath?: string | null;
+  note?: string | null;
+  verified: boolean;
+};
+type Props = { elements: SurveyElement[]; photos: string[]; draftKey: string; disabled?: boolean; onSave: (items: SurveyElement[]) => Promise<void>; onFetchLatest?: () => Promise<SurveyElement[]> };
+const types: SurveyElement["elementType"][] = ["wall","door","window","column","beam","electrical","plumbing","gas","other"];
+export default function SurveyElementsEditor({ elements, photos, draftKey, disabled = false, onSave, onFetchLatest }: Props) {
+  const storageKey = "arqdor-measure-session:" + draftKey;
+  const [recovery] = useState<{ items: SurveyElement[]; editedAt: string } | null>(() => {
+    try {
+      const raw = sessionStorage.getItem(storageKey);
+      if (!raw || raw.length > 250000) return null;
+      const payload = JSON.parse(raw);
+      return payload && Array.isArray(payload.items) && payload.items.length <= 200 && typeof payload.editedAt === "string" && payload.items.every((e: unknown) => e && typeof e === "object" && typeof (e as SurveyElement).id === "string" && typeof (e as SurveyElement).elementType === "string") ? payload : null;
+    } catch { return null; }
+  });
+  const [items, setItems] = useState<SurveyElement[]>(elements);
+  const [dirty, setDirty] = useState(false);
+  const [hasRecovery, setHasRecovery] = useState(Boolean(recovery));
+  useEffect(() => {
+    if (!dirty || disabled) return;
+    try { sessionStorage.setItem(storageKey, JSON.stringify({ items, editedAt: new Date().toISOString() })); }
+    catch { setFeedback("Não foi possível manter cópia nesta sessão. Salve o levantamento."); }
+  }, [items, dirty, disabled, storageKey]);
+  useEffect(() => {
+    if (!dirty || disabled) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty, disabled]);
+  const [roomName, setRoomName] = useState("");
+  const [floorIndex, setFloorIndex] = useState(0);
+  const [label, setLabel] = useState("");
+  const [kind, setKind] = useState<SurveyElement["elementType"]>("wall");
+  const [width, setWidth] = useState("");
+  const [height, setHeight] = useState("");
+  const [photo, setPhoto] = useState("");
+  const [points, setPoints] = useState(["", "", "", ""]);
+  const [thickness, setThickness] = useState("150");
+  const [wallId, setWallId] = useState("");
+  const [offset, setOffset] = useState("");
+  const [sill, setSill] = useState("0");
+  const [saving, setSaving] = useState(false);
+  const [offlinePending, setOfflinePending] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const [serverConflict, setServerConflict] = useState(false);
+  const [remoteItems, setRemoteItems] = useState<SurveyElement[] | null>(null);
+  const [mergeChoices, setMergeChoices] = useState<Record<string, "local" | "remote">>({});
+  const [loadingRemote, setLoadingRemote] = useState(false);
+  const [showDraft, setShowDraft] = useState(false);
+  const [reviewConfirmed, setReviewConfirmed] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void readPendingSurvey(storageKey).then((pending) => { if (active && pending) { setOfflinePending(true); setFeedback("Há um levantamento pendente no dispositivo. Recupere antes de sincronizar."); } }).catch(() => {});
+    return () => { active = false; };
+  }, [storageKey]);
+  async function recoverOffline() {
+    const pending = await readPendingSurvey(storageKey);
+    if (!pending) return;
+    if (dirty && !window.confirm("Substituir as edições desta tela pela cópia offline? Exporte ou salve as alterações atuais antes de continuar.")) return;
+    setReviewConfirmed(false);
+    setItems(pending.items);
+    setDirty(true);
+    setOfflinePending(true);
+    setFeedback("Medições recuperadas. Revise e sincronize quando conectado.");
+  }
+  async function saveWithOfflineFallback() {
+    if (saving || disabled) return;
+    if (serverConflict) { setFeedback("Conflito com outra versão. Exporte ou recupere os dados antes de nova sincronização."); return; }
+    setSaving(true);
+    setFeedback("");
+    try {
+      const synced = await withPhotoTabLock("survey:" + storageKey, async () => {
+      const pending = await readPendingSurvey(storageKey);
+      if (pending && !dirty) {
+        setOfflinePending(true);
+        setFeedback("Existe cópia offline pendente. Recupere e confira as medições antes de salvar.");
+        throw new Error("Recupere a cópia offline antes de sincronizar.");
+      }
+      // Persist first: network failures, HTTP conflicts and tab closures must not lose survey edits.
+      const revisionId = await queueSurvey(storageKey, items, pending?.reconciliation);
+      setOfflinePending(true);
+      if (!navigator.onLine) {
+        return false;
+      }
+      await onSave(items);
+      const cleared = await clearPendingSurvey(storageKey, revisionId);
+      if (!cleared) throw new Error("Uma edição offline mais recente foi detectada e preservada.");
+      setOfflinePending(false);
+      setDirty(false);
+      sessionStorage.removeItem(storageKey);
+      return true;
+      });
+      if (synced) setServerConflict(false);
+      setFeedback(synced ? "Levantamento sincronizado no checklist." : "Sem conexão. Medições guardadas neste dispositivo; não sincronizadas.");
+    } catch (error) {
+      setOfflinePending(true);
+      if (error instanceof Error && /conflito|outra operação|desatualizada|CHECKLIST_CONFLICT/i.test(error.message)) setServerConflict(true);
+      setFeedback(error instanceof Error
+        ? error.message + " — mantenha a cópia offline e revise antes de tentar novamente."
+        : "Falha ao salvar. Confira se os dados foram preservados no dispositivo.");
+    } finally { setSaving(false); }
+  }
+  async function compareWithServer() {
+    if (!onFetchLatest) { setFeedback("Consulta da versão atual indisponível."); return; }
+    setLoadingRemote(true);
+    try {
+      const latest = await onFetchLatest();
+      setRemoteItems(latest);
+      setMergeChoices({});
+      setFeedback("Compare os elementos e escolha uma versão para cada diferença.");
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Falha ao consultar servidor.");
+    } finally { setLoadingRemote(false); }
+  }
+  async function applyReviewedMerge() {
+    if (!remoteItems || disabled || saving) return;
+    const localById = new Map(items.map(entry => [entry.id, entry]));
+    const remoteById = new Map(remoteItems.map(entry => [entry.id, entry]));
+    const allIds = Array.from(new Set([...localById.keys(), ...remoteById.keys()]));
+    const changed = allIds.filter(id => JSON.stringify(localById.get(id) ?? null) !== JSON.stringify(remoteById.get(id) ?? null));
+    if (changed.some(id => !mergeChoices[id])) { setFeedback("Escolha uma versão para todos os elementos diferentes."); return; }
+    const next = allIds.flatMap(id => {
+      const chosen = changed.includes(id) && mergeChoices[id] === "local" ? localById.get(id) : remoteById.get(id);
+      if (!chosen) return [];
+      return [{ ...chosen, verified: changed.includes(id) ? false : chosen.verified }];
+    });
+    // A modified wall invalidates any linked opening regardless of where the opening originated.
+    const changedWalls = new Set(next.filter(entry => entry.elementType === "wall" && changed.includes(entry.id)).map(entry => entry.id));
+    const reconciled = next.map(entry => entry.wallId && changedWalls.has(entry.wallId) ? { ...entry, verified: false } : entry);
+    if (!window.confirm("Aplicar a mesclagem revisada? Elementos alterados perderão a conferência técnica e precisarão ser conferidos novamente.")) return;
+    try {
+      const reconciliation = { recordedAt: new Date().toISOString(), choices: Object.fromEntries(changed.map(id => [id, mergeChoices[id]])) as Record<string, "local" | "remote">, changedIds: changed, localCount: items.length, serverCount: remoteItems.length };
+      await queueSurvey(storageKey, reconciled, reconciliation);
+      setItems(reconciled);
+      setDirty(true);
+      setReviewConfirmed(false);
+      setOfflinePending(true);
+      setServerConflict(false);
+      setRemoteItems(null);
+      setMergeChoices({});
+      setFeedback("Mesclagem guardada offline. Revise todas as alterações e confira novamente antes de sincronizar.");
+    } catch {
+      setFeedback("Não foi possível guardar a mesclagem offline; nenhuma alteração foi aplicada.");
+    }
+  }
+  function reviseElement(entry: SurveyElement) {
+    if (disabled || saving) return;
+    const rawWidth = window.prompt("Largura em milímetros (vazio para não informar):", entry.widthMm == null ? "" : String(entry.widthMm));
+    if (rawWidth === null) return;
+    const rawHeight = window.prompt("Altura em milímetros (vazio para não informar):", entry.heightMm == null ? "" : String(entry.heightMm));
+    if (rawHeight === null) return;
+    const parse = (raw: string) => raw.trim() === "" ? null : Number(raw.trim().replace(",", "."));
+    const widthMm = parse(rawWidth);
+    const heightMm = parse(rawHeight);
+    if ([widthMm, heightMm].some(n => n !== null && (!Number.isFinite(n) || n <= 0 || n > 1000000))) {
+      setFeedback("Dimensões inválidas. Informe valores positivos em milímetros.");
+      return;
+    }
+    setDirty(true);
+    setReviewConfirmed(false);
+    setItems(previous => previous.map(item => {
+      if (item.id === entry.id) return { ...item, widthMm, heightMm, verified: false };
+      if (entry.elementType === "wall" && item.wallId === entry.id)
+        return { ...item, verified: false };
+      return item;
+    }));
+    setFeedback("Dimensões revisadas; é necessário conferir novamente antes de salvar.");
+  }
+  function toDimension(value: string): number | null { const n = Number(value.replace(",", ".")); return value.trim() && Number.isFinite(n) && n > 0 && n <= 1000000 ? n : null; }
+  function add() {
+    if (!roomName.trim() || !label.trim() || (width.trim() && toDimension(width) === null) || (height.trim() && toDimension(height) === null)) { setFeedback("Preencha ambiente, identificação e medidas válidas."); return; }
+    const coords = points.map((v) => Number(v.replace(",", ".")));
+    if (kind === "wall" && (points.some((v) => !v.trim()) || coords.some((v) => !Number.isFinite(v) || Math.abs(v) > 1000000) || Math.hypot(coords[2]-coords[0], coords[3]-coords[1]) < 10 || !toDimension(thickness) || Number(thickness) < 50 || Number(thickness) > 1000)) {
+      setFeedback("Informe X1, Y1, X2, Y2 e espessura válidos. Comprimento mínimo: 10 mm."); return;
+    }
+    if (kind === "door" || kind === "window") {
+      const wall = items.find((e) => e.id === wallId && e.elementType === "wall" && e.verified && e.roomName === roomName.trim() && (e.floorIndex ?? 0) === floorIndex);
+      if (!wall || !toDimension(width) || !toDimension(height) || offset.trim() === "" || !Number.isFinite(Number(offset)) || Number(offset) < 0 || (kind === "window" && (sill.trim() === "" || !Number.isFinite(Number(sill)) || Number(sill) < 0))) {
+        setFeedback("Selecione parede conferida do ambiente e informe largura, altura, posição e peitoril."); return;
+      }
+      const length = Math.hypot((wall.x2Mm ?? 0)-(wall.x1Mm ?? 0),(wall.y2Mm ?? 0)-(wall.y1Mm ?? 0));
+      if (Number(offset) + Number(width) > length) {setFeedback("Abertura ultrapassa o comprimento da parede."); return;}
+    }
+    const opening = kind === "door" || kind === "window" ? { wallId, offsetMm: Number(offset), sillHeightMm: kind === "window" ? Number(sill) : 0 } : {};
+    const geometry = kind === "wall" ? {x1Mm:coords[0],y1Mm:coords[1],x2Mm:coords[2],y2Mm:coords[3],thicknessMm:toDimension(thickness)} : {};
+    setDirty(true);
+    setItems((old) => [...old, { ...geometry, ...opening, id: crypto.randomUUID(), roomName: roomName.trim(), floorIndex, label: label.trim(), elementType: kind, widthMm: toDimension(width), heightMm: toDimension(height), sourcePhotoPath: photo || null, verified: false }]);
+    setLabel(""); setWidth(""); setHeight(""); setFeedback("Elemento adicionado; salve para persistir.");
+  }
+  return <section className="mt-3 rounded-lg border p-3 space-y-3 print:hidden" aria-label="Elementos do levantamento">
+    <div><h3 className="font-semibold">Ambiente e elementos técnicos</h3><p className="text-xs text-muted-foreground">Inventário técnico, ainda não convertido em geometria BIM. Confira antes de liberar para fabricação.</p></div>
+    {hasRecovery && <div className="rounded border border-amber-300 p-2 space-y-2 text-sm">
+      Há um levantamento não salvo nesta sessão, registrado em {recovery?.editedAt}.
+      <div className="flex gap-2">
+        <Button size="sm" disabled={disabled} onClick={() => {if(recovery){setItems(recovery.items);setDirty(true);}setHasRecovery(false);}}>Recuperar alterações</Button>
+        <Button size="sm" variant="outline" onClick={() => {sessionStorage.removeItem(storageKey);setHasRecovery(false);}}>Descartar cópia</Button>
+      </div>
+    </div>}
+    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <Input aria-label="Pavimento" type="number" min="0" max="49" value={floorIndex} onChange={e => setFloorIndex(Math.max(0, Math.min(49, Number(e.target.value) || 0)))} disabled={disabled}/>
+      <Input aria-label="Ambiente" value={roomName} maxLength={120} onChange={(e)=>setRoomName(e.target.value)} placeholder="Ambiente (ex.: Cozinha)" disabled={disabled}/>
+      <select aria-label="Tipo de elemento" value={kind} onChange={(e)=>setKind(e.target.value as SurveyElement["elementType"])} disabled={disabled} className="rounded-md border bg-background px-3 py-2 text-sm">{types.map(t=><option key={t} value={t}>{t}</option>)}</select>
+      <Input aria-label="Identificação" value={label} maxLength={160} onChange={(e)=>setLabel(e.target.value)} placeholder="Parede A / Janela 01" disabled={disabled}/>
+      <Input aria-label="Largura em milímetros" value={width} onChange={(e)=>setWidth(e.target.value)} placeholder="Largura (mm)" inputMode="decimal" disabled={disabled}/>
+      <Input aria-label="Altura em milímetros" value={height} onChange={(e)=>setHeight(e.target.value)} placeholder="Altura (mm)" inputMode="decimal" disabled={disabled}/>
+      <select aria-label="Foto de referência" value={photo} onChange={(e)=>setPhoto(e.target.value)} disabled={disabled} className="rounded-md border bg-background px-3 py-2 text-sm"><option value="">Sem foto associada</option>{photos.map((p,i)=><option key={p} value={p}>Foto {i+1}</option>)}</select>
+    </div>
+    {kind === "wall" && <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+      {["X1 (mm)","Y1 (mm)","X2 (mm)","Y2 (mm)"].map((name,i) => <Input key={name} aria-label={name} placeholder={name} value={points[i]} onChange={(e) => setPoints((old) => old.map((v,j) => i === j ? e.target.value : v))} disabled={disabled}/>)}
+      <Input aria-label="Espessura (mm)" value={thickness} onChange={(e)=>setThickness(e.target.value)} disabled={disabled}/>
+    </div>}
+    {(kind === "door" || kind === "window") && <div className="grid gap-2 sm:grid-cols-3">
+      <select aria-label="Parede de referência" className="rounded-md border bg-background px-3 py-2 text-sm" value={wallId} onChange={(e)=>setWallId(e.target.value)} disabled={disabled}>
+        <option value="">Selecione parede conferida</option>
+        {items.filter((e)=>e.elementType==="wall" && e.verified && e.roomName===roomName.trim() && (e.floorIndex ?? 0) === floorIndex).map((w)=><option key={w.id} value={w.id}>{w.label}</option>)}
+      </select>
+      <Input aria-label="Deslocamento na parede em mm" value={offset} onChange={(e)=>setOffset(e.target.value)} placeholder="Distância desde início (mm)" disabled={disabled}/>
+      {kind === "window" && <Input aria-label="Peitoril em mm" value={sill} onChange={(e)=>setSill(e.target.value)} placeholder="Peitoril (mm)" disabled={disabled}/>}
+    </div>}
+    <Button size="sm" variant="outline" disabled={disabled} onClick={add}>Adicionar elemento</Button>
+    {items.map((entry)=><div key={entry.id} className="flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-sm"><span>{entry.roomName} · {entry.elementType} · {entry.label} · {entry.widthMm ?? "—"} × {entry.heightMm ?? "—"} mm {entry.verified ? "· Conferido" : "· Pendente"}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={disabled || saving} onClick={()=>reviseElement(entry)}>Revisar medidas</Button><Button size="sm" variant="outline" disabled={disabled} onClick={()=>{setDirty(true);setItems(old=>old.map(e=>e.id===entry.id?{...e,verified:!e.verified}:e));}}>{entry.verified?"Reabrir":"Marcar conferido"}</Button><Button size="sm" variant="ghost" disabled={disabled} onClick={()=>{setDirty(true);setItems(old=>old.filter(e=>e.id!==entry.id));}}>Excluir</Button></div></div>)}
+    {serverConflict && <div className="rounded border border-amber-500 p-3 text-sm" role="alert">
+      <p>Outra pessoa alterou este levantamento. A cópia local foi preservada. Exporte as medições e compare com a versão atual do servidor antes de reconciliar.</p>
+      <Button size="sm" variant="outline" disabled={loadingRemote || !onFetchLatest} onClick={() => { void compareWithServer(); }}>{loadingRemote ? "Consultando..." : "Comparar com servidor"}</Button>
+      {remoteItems && <div className="space-y-2 rounded border p-2" aria-label="Comparação de versões">
+        <p className="font-medium">Comparação por elemento — selecione a versão a manter em cada diferença</p>
+        {Array.from(new Set([...items.map(e => e.id), ...remoteItems.map(e => e.id)])).filter(id =>
+          JSON.stringify(items.find(e => e.id === id) ?? null) !== JSON.stringify(remoteItems.find(e => e.id === id) ?? null)
+        ).map(id => {
+          const local = items.find(e => e.id === id);
+          const remote = remoteItems.find(e => e.id === id);
+          return <div key={id} className="rounded border p-2 space-y-1">
+            <p className="font-medium">{local?.label ?? remote?.label ?? id} · {local?.roomName ?? remote?.roomName}</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded bg-muted p-2 text-xs">Local: {JSON.stringify(local ?? null, null, 2)}</pre>
+              <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded bg-muted p-2 text-xs">Servidor: {JSON.stringify(remote ?? null, null, 2)}</pre>
+            </div>
+            <select aria-label={"Escolher versão do elemento " + id} className="rounded border bg-background px-2 py-1" value={mergeChoices[id] ?? ""} onChange={event => setMergeChoices(prev => ({...prev,[id]:event.target.value as "local" | "remote"}))}>
+              <option value="">Escolha obrigatória</option>
+              <option value="local">Manter versão local {local ? "" : "(excluir)"}</option>
+              <option value="remote">Manter versão do servidor {remote ? "" : "(excluir)"}</option>
+            </select>
+          </div>;
+        })}
+        <Button size="sm" variant="outline" onClick={() => { void applyReviewedMerge(); }}>Guardar mesclagem para nova conferência</Button>
+      </div>}
+      <Button size="sm" variant="outline" onClick={() => {
+        const url = URL.createObjectURL(new Blob([JSON.stringify({schemaVersion:1,source:"arqdor_measure_conflict",draftKey,items,exportedAt:new Date().toISOString(),warning:"Cópia local não homologada; requer conferência antes de uso técnico."},null,2)],{type:"application/json"}));
+        const link = document.createElement("a"); link.href=url; link.download="arqdor-measure-conflito.json"; link.click(); URL.revokeObjectURL(url);
+      }}>Exportar cópia local</Button>
+    </div>}
+    {offlinePending && <Button size="sm" variant="outline" disabled={disabled || saving} onClick={() => { void recoverOffline(); }}>Recuperar pendência offline</Button>}
+    <Button disabled={disabled||saving} onClick={() => { void saveWithOfflineFallback(); }}>{saving?"Salvando...":offlinePending?"Sincronizar levantamento":"Salvar levantamento"}</Button>
+    <SurveyPlanPreview elements={items} />
+    <Button size="sm" variant="outline" onClick={() => setShowDraft((v) => !v)}>Prévia para Arqdor</Button>
+    {showDraft && <div className="rounded border p-3 space-y-2">
+      <p className="text-sm font-medium">Rascunho técnico — não altera projeto existente</p>
+      {convertSurveyToArqdor(items).warnings.map((warning) => <p key={warning} className="text-xs text-amber-700">{warning}</p>)}
+      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words text-xs">{JSON.stringify(convertSurveyToArqdor(items), null, 2)}</pre>
+      <label className="flex gap-2 items-center text-xs">
+        <input type="checkbox" checked={reviewConfirmed} onChange={(e) => setReviewConfirmed(e.target.checked)} />
+        Revisei as medidas e entendo que este é apenas um arquivo de pré-projeto, sem aprovação para fabricação.
+      </label>
+      <Button size="sm" variant="outline" disabled={!reviewConfirmed || !convertSurveyToArqdor(items).readyForReview} onClick={() => {
+        const draft = convertSurveyToArqdor(items);
+        const payload = { ...draft, reviewedAt: new Date().toISOString(), source: "measure_manual_review", savedToArqdor: false };
+        const url = URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)], { type: "application/json" }));
+        const link = document.createElement("a");
+        link.href = url; link.download = "arqdor-measure-projeto-rascunho.json"; link.click();
+        URL.revokeObjectURL(url);
+      }}>Exportar pré-projeto revisado</Button>
+    </div>}
+    <p role="status" className="text-xs text-muted-foreground">{feedback}</p>
+  </section>;
+}

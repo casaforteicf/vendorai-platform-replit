@@ -1,6 +1,8 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
+import { ObjectStorageService } from "../lib/objectStorage";
 import {
   db,
   dealsTable,
@@ -11,10 +13,14 @@ import {
   activitiesTable,
   operationalChecklistTemplatesTable,
   operationalChecklistRunsTable,
+  mediaAssetsTable,
+  archProjetosTable,
+  archConceptProjectsTable,
   type OperationalChecklistItem,
 } from "@workspace/db";
 
 const router: IRouter = Router();
+const measureStorage = new ObjectStorageService();
 
 function canAccessTenant(req: any, tenantId: string) {
   return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
@@ -224,12 +230,44 @@ router.post("/operational-checklists/deals/:dealId/start", async (req, res) => {
 });
 
 const updateItemSchema = z.object({
+  expectedUpdatedAt: z.string().datetime().optional(),
   larguraConferida: z.number().nonnegative().nullable().optional(),
   alturaConferida: z.number().nonnegative().nullable().optional(),
   localizacao: z.string().max(500).nullable().optional(),
   observacao: z.string().max(3000).nullable().optional(),
-  fotos: z.array(z.string().min(1)).max(20).optional(),
+  // Photos are only attached through the authenticated upload endpoint.
+  surveyElements: z.array(z.object({
+    id: z.string().uuid(),
+    roomName: z.string().trim().min(1).max(120),
+    floorIndex: z.number().int().min(0).max(49).optional(),
+    elementType: z.enum(["wall", "door", "window", "column", "beam", "electrical", "plumbing", "gas", "other"]),
+    label: z.string().trim().min(1).max(160),
+    widthMm: z.number().positive().max(1000000).nullable().optional(),
+    heightMm: z.number().positive().max(1000000).nullable().optional(),
+    depthMm: z.number().positive().max(1000000).nullable().optional(),
+    x1Mm: z.number().min(-1000000).max(1000000).nullable().optional(),
+    y1Mm: z.number().min(-1000000).max(1000000).nullable().optional(),
+    x2Mm: z.number().min(-1000000).max(1000000).nullable().optional(),
+    y2Mm: z.number().min(-1000000).max(1000000).nullable().optional(),
+    thicknessMm: z.number().min(50).max(1000).nullable().optional(),
+    wallId: z.string().uuid().nullable().optional(),
+    offsetMm: z.number().nonnegative().max(1000000).nullable().optional(),
+    sillHeightMm: z.number().nonnegative().max(1000000).nullable().optional(),
+    sourcePhotoPath: z.string().startsWith("/objects/").max(500).nullable().optional(),
+    note: z.string().max(1000).nullable().optional(),
+    verified: z.boolean(),
+  })).max(200).optional(),
+  photoMeasurements: z.array(z.object({
+    id: z.string().uuid(),
+    start: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }),
+    end: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }),
+    millimeters: z.number().positive().max(1000000),
+    label: z.string().trim().min(1).max(120),
+    photoPath: z.string().startsWith("/objects/").max(500).optional(),
+    source: z.literal("manual_verified"),
+  })).max(100).optional(),
   status: z.enum(["nao_conferido", "conferido", "divergente", "nao_executado", "resolvido"]).optional(),
+  resolutionReason: z.string().trim().min(15).max(2000).optional(),
 });
 
 router.patch("/operational-checklists/runs/:runId/items/:itemId", async (req, res) => {
@@ -240,20 +278,74 @@ router.patch("/operational-checklists/runs/:runId/items/:itemId", async (req, re
   if (!run) return void res.status(404).json({ error: "Checklist não encontrado" });
   if (!canAccessTenant(req, run.tenantId)) return void res.status(403).json({ error: "Acesso negado" });
   if (run.status === "concluido") return void res.status(409).json({ error: "Checklist concluído não pode ser alterado" });
+  if (parsed.data.expectedUpdatedAt && parsed.data.expectedUpdatedAt !== run.updatedAt.toISOString())
+    return void res.status(409).json({error:"Versão do levantamento desatualizada. Recarregue e reconcilie suas alterações.",code:"CHECKLIST_CONFLICT"});
+
 
   const itemId = String(req.params.itemId);
+  const targetItem = (run.items ?? []).find((item) => item.id === itemId);
+  if (parsed.data.surveyElements) {
+    const elements = parsed.data.surveyElements;
+    for (const opening of elements.filter((element) => element.elementType === "door" || element.elementType === "window")) {
+      const wall = elements.find((element) => element.id === opening.wallId && element.elementType === "wall" && element.roomName === opening.roomName && (element.floorIndex ?? 0) === (opening.floorIndex ?? 0));
+      if (!wall || !wall.verified || wall.x1Mm == null || wall.y1Mm == null || wall.x2Mm == null || wall.y2Mm == null || opening.offsetMm == null || opening.widthMm == null || opening.heightMm == null) {
+        return void res.status(422).json({ error: "Portas e janelas exigem parede verificada e dimensões/posição completas" });
+      }
+      const length = Math.hypot(wall.x2Mm - wall.x1Mm, wall.y2Mm - wall.y1Mm);
+      if (opening.offsetMm + opening.widthMm > length + 0.01) return void res.status(422).json({ error: "Abertura ultrapassa o comprimento da parede" });
+      if (opening.elementType === "window" && opening.sillHeightMm == null) return void res.status(422).json({ error: "Informe o peitoril da janela" });
+    }
+    const openings = elements.filter((e) => e.elementType === "door" || e.elementType === "window");
+    for (let i = 0; i < openings.length; i++) for (let j = i + 1; j < openings.length; j++) {
+      const a = openings[i], other = openings[j];
+      if (a.wallId && a.wallId === other.wallId && a.offsetMm != null && other.offsetMm != null && a.widthMm != null && other.widthMm != null &&
+          a.offsetMm < other.offsetMm + other.widthMm && other.offsetMm < a.offsetMm + a.widthMm) {
+        const aBottom = a.sillHeightMm ?? 0, bBottom = other.sillHeightMm ?? 0;
+        if (aBottom < bBottom + (other.heightMm ?? 0) && bBottom < aBottom + (a.heightMm ?? 0))
+          return void res.status(422).json({ error: "Aberturas sobrepostas na mesma parede" });
+      }
+    }
+  }
+  if (parsed.data.surveyElements?.some((element) => element.sourcePhotoPath && !targetItem?.fotos?.includes(element.sourcePhotoPath)))
+    return void res.status(422).json({ error: "Elemento vinculado a fotografia inexistente neste item" });
+  if (parsed.data.photoMeasurements?.some((m) => m.photoPath && !targetItem?.fotos?.includes(m.photoPath)))
+    return void res.status(422).json({ error: "Cota vinculada a fotografia inexistente neste item" });
+  if (parsed.data.status === "resolvido" &&
+      (!targetItem || targetItem.status !== "divergente" || !parsed.data.resolutionReason || !req.user?.sub))
+    return void res.status(422).json({error:"Resolução exige item divergente, justificativa e usuário autenticado"});
+  if (parsed.data.status === "resolvido" && (parsed.data.larguraConferida !== undefined || parsed.data.alturaConferida !== undefined))
+    return void res.status(422).json({error:"Alteração de medidas e aprovação são operações separadas"});
+  if (parsed.data.status === "conferido")
+    return void res.status(422).json({error:"A conferência deve ser calculada pelas medidas"});
   let found = false;
   const items = (run.items ?? []).map((item) => {
     if (item.id !== itemId) return item;
     found = true;
-    const next = { ...item, ...parsed.data };
+    const { resolutionReason, expectedUpdatedAt, ...patch } = parsed.data;
+    const next = { ...item, ...patch };
+    if (parsed.data.status === "resolvido" && resolutionReason) {
+      next.divergenceResolution = {
+        reason: resolutionReason, approvedBy: req.user?.sub ?? "",
+        approvedAt: new Date().toISOString(),
+        widthDeltaMm: next.diferencaLargura ?? null,
+        heightDeltaMm: next.diferencaAltura ?? null,
+      };
+    } else if (parsed.data.larguraConferida !== undefined || parsed.data.alturaConferida !== undefined) {
+      next.divergenceResolution = null;
+    }
     next.diferencaLargura = next.larguraOriginal != null && next.larguraConferida != null
       ? next.larguraConferida - next.larguraOriginal : null;
     next.diferencaAltura = next.alturaOriginal != null && next.alturaConferida != null
       ? next.alturaConferida - next.alturaOriginal : null;
     const maxDelta = Math.max(Math.abs(next.diferencaLargura ?? 0), Math.abs(next.diferencaAltura ?? 0));
-    if (parsed.data.status === undefined && next.larguraConferida != null && next.alturaConferida != null) {
-      next.status = maxDelta > run.toleranceMm ? "divergente" : "conferido";
+    if (parsed.data.status === undefined && (parsed.data.larguraConferida !== undefined || parsed.data.alturaConferida !== undefined)) {
+      const widthReady = next.larguraOriginal == null || next.larguraConferida != null;
+      const heightReady = next.alturaOriginal == null || next.alturaConferida != null;
+      const hasComparedDimension = (next.larguraOriginal != null && next.larguraConferida != null)
+        || (next.alturaOriginal != null && next.alturaConferida != null);
+      next.status = widthReady && heightReady && hasComparedDimension
+        ? maxDelta > run.toleranceMm ? "divergente" : "conferido"
+        : "nao_conferido";
     }
     next.conferidoPor = req.user?.sub ?? null;
     next.conferidoEm = new Date().toISOString();
@@ -263,12 +355,280 @@ router.patch("/operational-checklists/runs/:runId/items/:itemId", async (req, re
 
   const [updated] = await db.update(operationalChecklistRunsTable)
     .set({ items, updatedAt: new Date() })
-    .where(eq(operationalChecklistRunsTable.id, run.id))
+    .where(and(
+      eq(operationalChecklistRunsTable.id, run.id),
+      eq(operationalChecklistRunsTable.tenantId, run.tenantId),
+      eq(operationalChecklistRunsTable.status, "em_andamento"),
+      eq(operationalChecklistRunsTable.items, run.items ?? []),
+    ))
     .returning();
+  if (!updated) return void res.status(409).json({
+    error: "O checklist foi alterado em outra operação. Atualize antes de salvar novamente.",
+    code: "CHECKLIST_CONFLICT",
+  });
   res.json(updated);
 });
 
+const uploadPhotoSchema = z.object({
+  name: z.string().trim().min(1).max(180),
+  contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+  dataBase64: z.string().min(8).max(11_000_000),
+  uploadId: z.string().uuid().optional(),
+});
+
+router.post("/operational-checklists/runs/:runId/items/:itemId/photos", async (req, res) => {
+  const parsed = uploadPhotoSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return void res.status(422).json({ error: "Fotografia inválida" });
+  const [run] = await db.select().from(operationalChecklistRunsTable)
+    .where(eq(operationalChecklistRunsTable.id, String(req.params.runId))).limit(1);
+  if (!run) return void res.status(404).json({ error: "Checklist não encontrado" });
+  if (!canAccessTenant(req, run.tenantId)) return void res.status(403).json({ error: "Acesso negado" });
+  if (run.status === "concluido") return void res.status(409).json({ error: "Checklist concluído" });
+  const itemId = String(req.params.itemId);
+  const current = (run.items ?? []).find((item) => item.id === itemId);
+  if (!current) return void res.status(404).json({ error: "Item não encontrado" });
+  const { dataBase64, contentType, name } = parsed.data;
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(dataBase64) || dataBase64.length % 4 !== 0)
+    return void res.status(422).json({ error: "Conteúdo Base64 inválido" });
+  const buffer = Buffer.from(dataBase64, "base64");
+  if (buffer.length === 0 || buffer.length > 5 * 1024 * 1024)
+    return void res.status(413).json({ error: "Fotografia excede 5 MB" });
+  const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  const isPng = buffer.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
+  const isWebp = buffer.toString("ascii",0,4) === "RIFF" && buffer.toString("ascii",8,12) === "WEBP";
+  if (!((contentType === "image/jpeg" && isJpeg) || (contentType === "image/png" && isPng) || (contentType === "image/webp" && isWebp)))
+    return void res.status(422).json({ error: "Formato real da imagem diferente do declarado" });
+  const contentHash = createHash("sha256").update(buffer).digest("hex");
+  if (parsed.data.uploadId) {
+    const [previous] = await db.select().from(mediaAssetsTable).where(and(
+      eq(mediaAssetsTable.tenantId, run.tenantId),
+      sql`${mediaAssetsTable.metadata}->>'uploadId' = ${parsed.data.uploadId}`
+    )).limit(1);
+    if (previous) {
+      if (previous.metadata?.runId !== run.id || previous.metadata?.itemId !== itemId)
+        return void res.status(409).json({error:"Identificador de foto já usado em outro item",code:"PHOTO_ID_CONFLICT"});
+      if (previous.metadata?.contentHash !== contentHash)
+        return void res.status(409).json({error:"Mesmo identificador enviado com arquivo diferente",code:"PHOTO_ID_CONFLICT"});
+      if (!(current.fotos ?? []).includes(previous.storageUrl)) {
+        let restored = false;
+        for (let retry = 0; retry < 5; retry++) {
+          const [latest] = await db.select().from(operationalChecklistRunsTable).where(and(
+            eq(operationalChecklistRunsTable.id, run.id), eq(operationalChecklistRunsTable.tenantId, run.tenantId)
+          )).limit(1);
+          if (!latest || latest.status === "concluido") break;
+          const target = (latest.items ?? []).find(item => item.id === itemId);
+          if (!target) break;
+          if ((target.fotos ?? []).includes(previous.storageUrl)) { restored = true; break; }
+          if ((target.fotos ?? []).length >= 20) break;
+          const updatedItems = (latest.items ?? []).map(item => item.id === itemId
+            ? {...item, fotos: [...(item.fotos ?? []), previous.storageUrl]} : item);
+          const [updated] = await db.update(operationalChecklistRunsTable).set({items: updatedItems, updatedAt: new Date()})
+            .where(and(eq(operationalChecklistRunsTable.id, latest.id),
+              eq(operationalChecklistRunsTable.tenantId, latest.tenantId),
+              eq(operationalChecklistRunsTable.status, latest.status),
+              eq(operationalChecklistRunsTable.items, latest.items ?? []))).returning();
+          if (updated) { restored = true; break; }
+        }
+        if (!restored) return void res.status(409).json({error:"Foto existente não pôde ser vinculada; revisar checklist",code:"PHOTO_RECONCILE_REQUIRED"});
+        req.log.info({runId:run.id,itemId,assetId:previous.id},"measure: existing photo reconciled");
+      }
+      return void res.json({assetId:previous.id,storageUrl:previous.storageUrl,accessUrl:await measureStorage.getObjectEntitySignedUrl(previous.storageUrl,300),reused:true});
+    }
+  }
+  let abandonedPath: string | null = null;
+  let abandonedAssetId: string | null = null;
+  let linked = false;
+  async function cleanupAbandonedUpload() {
+    if (linked) return;
+    if (abandonedAssetId) {
+      try { await db.delete(mediaAssetsTable).where(and(eq(mediaAssetsTable.id, abandonedAssetId), eq(mediaAssetsTable.tenantId, run.tenantId))); }
+      catch (cleanupError) { req.log.error({ err: cleanupError }, "measure: media cleanup failed"); }
+    }
+    if (abandonedPath) {
+      try { await measureStorage.deleteTenantPrivateBuffer(abandonedPath, run.tenantId); }
+      catch (cleanupError) { req.log.error({ err: cleanupError }, "measure: object cleanup failed"); }
+    }
+  }
+  try {
+    const storageUrl = await measureStorage.savePrivateBuffer(buffer, contentType, name, run.tenantId);
+    abandonedPath = storageUrl;
+    const [asset] = await db.insert(mediaAssetsTable).values({
+      tenantId: run.tenantId, userId: req.user?.sub ?? null,
+      type: "image", role: "source", source: "upload",
+      storageUrl, originalFilename: name, mimeType: contentType, fileSize: buffer.length,
+      metadata: { origin: "arqdor_measure", uploadId: parsed.data.uploadId, contentHash, leadId: run.leadId, dealId: run.dealId, runId: run.id, itemId, revision: run.revision },
+    }).returning();
+    abandonedAssetId = asset.id;
+    let persisted = false;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const [latest] = await db.select().from(operationalChecklistRunsTable)
+        .where(and(eq(operationalChecklistRunsTable.id, run.id), eq(operationalChecklistRunsTable.tenantId, run.tenantId))).limit(1);
+      if (!latest || latest.status === "concluido") break;
+      const target = (latest.items ?? []).find((item) => item.id === itemId);
+      if (!target || (target.fotos ?? []).length >= 20) break;
+      const items = (latest.items ?? []).map((item) => item.id === itemId
+        ? { ...item, fotos: [...(item.fotos ?? []), storageUrl] } : item);
+      const [saved] = await db.update(operationalChecklistRunsTable).set({ items, updatedAt: new Date() })
+        .where(and(eq(operationalChecklistRunsTable.id, latest.id),
+          eq(operationalChecklistRunsTable.tenantId, latest.tenantId),
+          eq(operationalChecklistRunsTable.status, latest.status),
+          eq(operationalChecklistRunsTable.items, latest.items ?? []))).returning();
+      if (saved) { persisted = true; break; }
+    }
+    if (!persisted) {
+      await cleanupAbandonedUpload();
+      return void res.status(409).json({
+      error: "Não foi possível vincular a foto após alterações simultâneas. Confira o checklist antes de tentar novamente.",
+      code: "CHECKLIST_CONFLICT",
+    });
+    }
+    linked = true;
+    const accessUrl = await measureStorage.getObjectEntitySignedUrl(storageUrl, 300);
+    res.status(201).json({ assetId: asset.id, storageUrl, accessUrl });
+  } catch (error) {
+    await cleanupAbandonedUpload();
+    if (parsed.data.uploadId && typeof error === "object" && error !== null && "code" in error && error.code === "23505") {
+      const [existing] = await db.select().from(mediaAssetsTable).where(and(
+        eq(mediaAssetsTable.tenantId, run.tenantId),
+        sql`${mediaAssetsTable.metadata}->>'uploadId' = ${parsed.data.uploadId}`,
+        sql`${mediaAssetsTable.metadata}->>'runId' = ${run.id}`,
+        sql`${mediaAssetsTable.metadata}->>'itemId' = ${itemId}`
+      )).limit(1);
+      const [latest] = await db.select({ items: operationalChecklistRunsTable.items }).from(operationalChecklistRunsTable)
+        .where(and(eq(operationalChecklistRunsTable.id, run.id), eq(operationalChecklistRunsTable.tenantId, run.tenantId))).limit(1);
+      if (existing && existing.metadata?.contentHash === contentHash && latest?.items?.some(item => item.id === itemId && (item.fotos ?? []).includes(existing.storageUrl))) {
+        const accessUrl = await measureStorage.getObjectEntitySignedUrl(existing.storageUrl, 300);
+        return void res.status(200).json({ assetId: existing.id, storageUrl: existing.storageUrl, accessUrl, reused: true });
+      }
+      return void res.status(409).json({ error: "Upload concorrente sem associação confirmada; revisar item.", code: "PHOTO_RECONCILE_REQUIRED" });
+    }
+    req.log.error({ err: error, runId: run.id }, "arqdor-measure: upload failure");
+    res.status(500).json({ error: "Falha ao registrar fotografia" });
+  }
+});
+
+router.get("/operational-checklists/runs/:runId/items/:itemId/photos", async (req, res) => {
+  const [run] = await db.select().from(operationalChecklistRunsTable)
+    .where(eq(operationalChecklistRunsTable.id, String(req.params.runId))).limit(1);
+  if (!run) return void res.status(404).json({ error: "Checklist não encontrado" });
+  if (!canAccessTenant(req, run.tenantId)) return void res.status(403).json({ error: "Acesso negado" });
+  const item = (run.items ?? []).find((entry) => entry.id === String(req.params.itemId));
+  if (!item) return void res.status(404).json({ error: "Item não encontrado" });
+  const photos = await Promise.all((item.fotos ?? []).map(async (storageUrl) => ({
+    storageUrl, accessUrl: await measureStorage.getObjectEntitySignedUrl(storageUrl, 300),
+  })));
+  res.json({ photos });
+});
+
+
+const createArqdorDraftSchema = z.object({
+  confirmed: z.literal(true),
+  title: z.string().trim().min(3).max(180),
+});
+
+router.post("/operational-checklists/runs/:runId/create-arqdor-draft", async (req, res) => {
+  const parsed = createArqdorDraftSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return void res.status(422).json({ error: "Título e confirmação explícita são obrigatórios" });
+  const [run] = await db.select().from(operationalChecklistRunsTable)
+    .where(eq(operationalChecklistRunsTable.id, String(req.params.runId))).limit(1);
+  if (!run) return void res.status(404).json({ error: "Levantamento não encontrado" });
+  if (!canAccessTenant(req, run.tenantId)) return void res.status(403).json({ error: "Acesso negado" });
+  const ownerId = req.user?.sub;
+  if (!ownerId) return void res.status(401).json({ error: "Identificação do responsável obrigatória" });
+  const elements = (run.items ?? []).flatMap((item) => item.surveyElements ?? []);
+  const walls = elements.filter((element) => element.elementType === "wall");
+  const openings = elements.filter((element) => element.elementType === "door" || element.elementType === "window");
+  if (!walls.length || [...walls, ...openings].some((element) => !element.verified))
+    return void res.status(409).json({ error: "Existem paredes ou aberturas não conferidas" });
+  const ids = elements.map((element) => element.id);
+  if (new Set(ids).size !== ids.length) return void res.status(409).json({ error: "Identificadores duplicados" });
+  const validPoint = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 1000000;
+  if (walls.some(w => w.thicknessMm == null || !Number.isFinite(w.thicknessMm) || w.thicknessMm < 50 || w.thicknessMm > 1000))
+    return void res.status(409).json({ error: "Cada parede deve ter espessura conferida entre 50 e 1000 mm" });
+  if (walls.some((w) => ![w.x1Mm, w.y1Mm, w.x2Mm, w.y2Mm].every(validPoint) || Math.hypot((w.x2Mm ?? 0)-(w.x1Mm ?? 0), (w.y2Mm ?? 0)-(w.y1Mm ?? 0)) < 10))
+    return void res.status(409).json({ error: "Paredes com coordenadas inválidas" });
+  const endpoints = walls.flatMap((w) => [{ id:w.id, floor:w.floorIndex ?? 0, x:w.x1Mm!, y:w.y1Mm! }, { id:w.id, floor:w.floorIndex ?? 0, x:w.x2Mm!, y:w.y2Mm! }]);
+  for (const wall of walls) {
+    const start = endpoints.some((p) => p.id !== wall.id && p.floor === (wall.floorIndex ?? 0) && Math.hypot(p.x-wall.x1Mm!,p.y-wall.y1Mm!) <= 5);
+    const end = endpoints.some((p) => p.id !== wall.id && Math.hypot(p.x-wall.x2Mm!,p.y-wall.y2Mm!) <= 5);
+    if (!start || !end) return void res.status(409).json({ error: "Existem extremidades de paredes desconectadas" });
+  }
+  for (const opening of openings) {
+    const parent = walls.find((wall) => wall.id === opening.wallId && wall.roomName === opening.roomName && (wall.floorIndex ?? 0) === (opening.floorIndex ?? 0));
+    if (!parent || !parent.verified || opening.offsetMm == null || opening.widthMm == null || opening.heightMm == null ||
+        opening.widthMm <= 0 || opening.heightMm <= 0 || opening.offsetMm < 0 ||
+        (opening.elementType === "window" && opening.sillHeightMm == null) ||
+        !Number.isFinite(opening.offsetMm) || !Number.isFinite(opening.widthMm) || !Number.isFinite(opening.heightMm) ||
+        opening.offsetMm + opening.widthMm > Math.hypot(parent.x2Mm!-parent.x1Mm!,parent.y2Mm!-parent.y1Mm!) + 0.01)
+      return void res.status(409).json({ error: "Abertura não posicionada ou inválida" });
+  }
+  for (let i = 0; i < openings.length; i++) for (let j = i+1; j < openings.length; j++) {
+    const a = openings[i], other = openings[j];
+    if (a.wallId !== other.wallId) continue;
+    if (a.offsetMm! < other.offsetMm! + other.widthMm! && other.offsetMm! < a.offsetMm! + a.widthMm! &&
+        (a.sillHeightMm ?? 0) < (other.sillHeightMm ?? 0) + other.heightMm! &&
+        (other.sillHeightMm ?? 0) < (a.sillHeightMm ?? 0) + a.heightMm!)
+      return void res.status(409).json({ error: "Aberturas sobrepostas" });
+  }
+  const xs = endpoints.map((p) => p.x), ys = endpoints.map((p) => p.y);
+  const minX = Math.min(...xs), minY = Math.min(...ys);
+  const width = (Math.max(...xs)-minX)/1000, depth = (Math.max(...ys)-minY)/1000;
+  if (width <= 0 || depth <= 0) return void res.status(409).json({ error: "Planta sem largura ou profundidade" });
+  const customWalls = walls.map((w) => ({ id:w.id, floor:w.floorIndex ?? 0, x1:(w.x1Mm!-minX)/1000, y1:(w.y1Mm!-minY)/1000,
+    x2:(w.x2Mm!-minX)/1000, y2:(w.y2Mm!-minY)/1000, thickness:(w.thicknessMm ?? 150)/1000 }));
+  const customOpenings = openings.map((o) => ({ id:o.id, floor:o.floorIndex ?? 0, wallId:o.wallId!, type:o.elementType as "door" | "window",
+    offset:o.offsetMm!/1000, width:o.widthMm!/1000, height:o.heightMm!/1000, sillHeight:(o.sillHeightMm ?? 0)/1000 }));
+  const [owner] = await db.select({ id: usersTable.id }).from(usersTable)
+    .where(and(eq(usersTable.id, ownerId), eq(usersTable.tenantId, run.tenantId))).limit(1);
+  if (!owner)
+    return void res.status(403).json({ error: "Responsável não pertence ao tenant" });
+  try {
+    const created = await db.transaction(async (tx) => {
+      const sourceMarker = "Arqdor Measure checklist " + run.id + " R" + run.revision;
+      // Serialize drafts for the same checklist/revision across concurrent requests.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${sourceMarker}))`);
+      const [existing] = await tx.select({ id: archProjetosTable.id }).from(archProjetosTable)
+        .where(and(eq(archProjetosTable.tenantId, run.tenantId), eq(archProjetosTable.descricao, sourceMarker))).limit(1);
+      if (existing) {
+        const [linked] = await tx.select({ id: archConceptProjectsTable.id }).from(archConceptProjectsTable)
+          .where(and(eq(archConceptProjectsTable.tenantId, run.tenantId), eq(archConceptProjectsTable.archProjetoId, existing.id))).limit(1);
+        if (!linked) throw new Error("Rascunho Arqdor anterior não possui conceito vinculado");
+        return { project: existing, concept: linked, reused: true };
+      }
+      const [project] = await tx.insert(archProjetosTable).values({
+        tenantId: run.tenantId, leadId: run.leadId, dealId: run.dealId, propostaId: run.propostaId,
+        titulo: parsed.data.title, descricao: sourceMarker,
+        status: "briefing",
+        dossieProjeto: { briefing: "Levantamento técnico de origem: " + run.id + ", revisão " + run.revision },
+      }).returning();
+      const [concept] = await tx.insert(archConceptProjectsTable).values({
+        tenantId: run.tenantId, ownerUserId: ownerId, archProjetoId: project.id,
+        title: parsed.data.title, status: "draft",
+        lot: { width: Math.max(width,1), depth: Math.max(depth,1) }, rooms: [],
+        configuration: { projectScope:"room", floors:Math.max(1, ...elements.map(e => (e.floorIndex ?? 0)+1)), desiredArea:width*depth, customWalls, customOpenings,
+          startSourceChosen:true, terrainDefined:false },
+      }).returning();
+      return { project, concept, reused: false };
+    });
+    res.status(created.reused ? 200 : 201).json({ reused: created.reused, archProjetoId:created.project.id, conceptProjectId:created.concept.id,
+      status:"draft", sourceRunId:run.id, sourceRevision:run.revision, fabricationReady:false });
+  } catch (error) {
+    req.log.error({ err:error, runId:run.id }, "arqdor-measure: draft creation failed");
+    res.status(500).json({ error: "Falha ao criar rascunho Arqdor" });
+  }
+});
+
+const completionAcceptanceSchema = z.object({
+  acknowledged: z.literal(true),
+  signerName: z.string().trim().min(3).max(160),
+  technicalNote: z.string().trim().max(1500).optional(),
+});
+
 router.post("/operational-checklists/runs/:runId/complete", async (req, res) => {
+  const acceptance = completionAcceptanceSchema.safeParse(req.body ?? {});
+  if (!acceptance.success) return void res.status(422).json({ error: "Aceite técnico exige confirmação e identificação do responsável." });
+  if (!req.user?.sub) return void res.status(401).json({ error: "Responsável autenticado obrigatório." });
+
   const [run] = await db.select().from(operationalChecklistRunsTable)
     .where(eq(operationalChecklistRunsTable.id, String(req.params.runId))).limit(1);
   if (!run) return void res.status(404).json({ error: "Checklist não encontrado" });
@@ -285,12 +645,23 @@ router.post("/operational-checklists/runs/:runId/complete", async (req, res) => 
     });
   }
 
+  const acceptedAt = new Date();
+  const acceptanceRecord = {
+    version: 1, acknowledged: true,
+    signerName: acceptance.data.signerName,
+    signerUserId: req.user.sub,
+    acceptedAt: acceptedAt.toISOString(),
+    technicalNote: acceptance.data.technicalNote ?? null,
+    meaning: "Declaracao de aceite tecnico autenticado; nao equivale a assinatura digital certificada.",
+  };
   const [updated] = await db.update(operationalChecklistRunsTable).set({
+    headerSnapshot: { ...run.headerSnapshot, technicalAcceptance: acceptanceRecord },
     status: "concluido",
     completedBy: req.user?.sub ?? null,
     completedAt: new Date(),
     updatedAt: new Date(),
-  }).where(eq(operationalChecklistRunsTable.id, run.id)).returning();
+  }).where(and(eq(operationalChecklistRunsTable.id, run.id), eq(operationalChecklistRunsTable.status, "em_andamento"), eq(operationalChecklistRunsTable.updatedAt, run.updatedAt))).returning();
+  if (!updated) return void res.status(409).json({error:"Conferência já concluída ou alterada por outra operação."});
 
   if (run.leadId) {
     await db.insert(activitiesTable).values({
@@ -308,4 +679,122 @@ router.post("/operational-checklists/runs/:runId/complete", async (req, res) => 
   res.json(updated);
 });
 
+
+const externalAcknowledgementSchema = z.object({
+  signerName: z.string().trim().min(3).max(160),
+  signerRole: z.string().trim().min(3).max(120),
+  declaration: z.literal(true),
+  notes: z.string().trim().max(1500).optional(),
+});
+
+// Internal operator records an in-person acknowledgement. This is NOT a public signing endpoint.
+router.post("/operational-checklists/runs/:runId/external-acknowledgement", async (req, res) => {
+  const parsed = externalAcknowledgementSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return void res.status(422).json({ error: "Identificação e declaração de ciência são obrigatórias." });
+  if (!req.user?.sub) return void res.status(401).json({ error: "Autenticação obrigatória." });
+  const [run] = await db.select().from(operationalChecklistRunsTable)
+    .where(eq(operationalChecklistRunsTable.id, String(req.params.runId))).limit(1);
+  if (!run) return void res.status(404).json({ error: "Levantamento não encontrado." });
+  if (!canAccessTenant(req, run.tenantId)) return void res.status(403).json({ error: "Acesso negado." });
+  if (run.status !== "concluido") return void res.status(409).json({ error: "Conclua a conferência técnica antes de registrar ciência externa." });
+  if (run.headerSnapshot.externalAcknowledgement) return void res.status(409).json({ error: "Ciência externa já registrada para esta revisão." });
+  const record = {
+    signerName: parsed.data.signerName,
+    signerRole: parsed.data.signerRole,
+    declaredByOperatorId: req.user.sub,
+    declaredAt: new Date().toISOString(),
+    notes: parsed.data.notes ?? null,
+    type: "in_person_operator_recorded",
+    meaning: "Registro informado por operador autenticado; nao constitui assinatura digital nem identidade verificada do terceiro.",
+  };
+  const [updated] = await db.update(operationalChecklistRunsTable)
+    .set({ headerSnapshot: { ...run.headerSnapshot, externalAcknowledgement: record }, updatedAt: new Date() })
+    .where(and(eq(operationalChecklistRunsTable.id, run.id), eq(operationalChecklistRunsTable.updatedAt, run.updatedAt), eq(operationalChecklistRunsTable.status, "concluido")))
+    .returning();
+  if (!updated) return void res.status(409).json({ error: "Levantamento alterado por outra operação. Recarregue." });
+  return void res.json(updated);
+});
+
+
+const remoteInviteSchema = z.object({
+  recipientName: z.string().trim().min(3).max(160),
+  expiresHours: z.number().int().min(1).max(72).default(24),
+});
+
+// Preparation only. The token is returned once and never persisted in plaintext.
+// Do not expose a public acceptance route until identity verification and rate limits exist.
+router.post("/operational-checklists/runs/:runId/remote-invite", async (req, res) => {
+  if (!req.user?.sub) return void res.status(401).json({error:"Autenticacao obrigatoria"});
+  const parsed = remoteInviteSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return void res.status(422).json({error:"Destinatario ou validade invalidos"});
+  const [run] = await db.select().from(operationalChecklistRunsTable)
+    .where(eq(operationalChecklistRunsTable.id, String(req.params.runId))).limit(1);
+  if (!run) return void res.status(404).json({error:"Levantamento nao encontrado"});
+  if (!canAccessTenant(req, run.tenantId)) return void res.status(403).json({error:"Acesso negado"});
+  if (run.status !== "concluido") return void res.status(409).json({error:"Conclua a conferencia primeiro"});
+  const prior = run.headerSnapshot.remoteAcceptanceInvitation;
+  if (prior && typeof prior === "object" && prior.status === "pending" && typeof prior.expiresAt === "string" && Date.parse(prior.expiresAt) > Date.now())
+    return void res.status(409).json({error:"Revogue o convite anterior antes de emitir outro"});
+  const token = randomBytes(32).toString("base64url");
+  const invitation = {
+    tokenHash: createHash("sha256").update(token).digest("hex"),
+    recipientName: parsed.data.recipientName,
+    issuedBy: req.user.sub,
+    issuedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + parsed.data.expiresHours * 3600000).toISOString(),
+    revision: run.revision,
+    status: "pending",
+  };
+  const [updated] = await db.update(operationalChecklistRunsTable)
+    .set({headerSnapshot:{...run.headerSnapshot, remoteAcceptanceInvitation:invitation},updatedAt:new Date()})
+    .where(and(eq(operationalChecklistRunsTable.id,run.id),eq(operationalChecklistRunsTable.updatedAt,run.updatedAt),eq(operationalChecklistRunsTable.status,"concluido")))
+    .returning();
+  if (!updated) return void res.status(409).json({error:"Levantamento alterado. Recarregue"});
+  res.setHeader("Cache-Control","no-store");
+  return void res.json({inviteToken:token,expiresAt:invitation.expiresAt,remoteAcceptanceEnabled:false});
+});
+
+router.post("/operational-checklists/runs/:runId/remote-invite/revoke", async (req,res) => {
+  if (!req.user?.sub) return void res.status(401).json({error:"Autenticacao obrigatoria"});
+  const [run] = await db.select().from(operationalChecklistRunsTable)
+    .where(eq(operationalChecklistRunsTable.id,String(req.params.runId))).limit(1);
+  if (!run) return void res.status(404).json({error:"Levantamento nao encontrado"});
+  if (!canAccessTenant(req,run.tenantId)) return void res.status(403).json({error:"Acesso negado"});
+  const existing = run.headerSnapshot.remoteAcceptanceInvitation;
+  if (!existing || typeof existing !== "object") return void res.status(404).json({error:"Convite nao encontrado"});
+  if (existing.status !== "pending") return void res.status(409).json({error:"Convite ja revogado ou indisponivel"});
+  const [updated] = await db.update(operationalChecklistRunsTable)
+    .set({headerSnapshot:{...run.headerSnapshot,remoteAcceptanceInvitation:{...existing, status:"revoked",revokedAt:new Date().toISOString(),revokedBy:req.user.sub}},updatedAt:new Date()})
+    .where(and(eq(operationalChecklistRunsTable.id,run.id),eq(operationalChecklistRunsTable.updatedAt,run.updatedAt)))
+    .returning();
+  if (!updated) return void res.status(409).json({error:"Levantamento alterado. Recarregue"});
+  return void res.json({revoked:true});
+});
+
+
+// This authenticated operator workflow is intentionally NOT a public token redemption endpoint.
+// A remote recipient must have independently verified identity before their consent can be accepted.
+const verifyRemoteInviteSchema = z.object({
+  token: z.string().min(30).max(256),
+});
+router.post("/operational-checklists/runs/:runId/remote-invite/inspect", async (req,res) => {
+  if (!req.user?.sub) return void res.status(401).json({error:"Autenticacao obrigatoria"});
+  const parsed = verifyRemoteInviteSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return void res.status(422).json({error:"Token invalido"});
+  const [run] = await db.select().from(operationalChecklistRunsTable)
+    .where(eq(operationalChecklistRunsTable.id,String(req.params.runId))).limit(1);
+  if (!run) return void res.status(404).json({error:"Levantamento nao encontrado"});
+  if (!canAccessTenant(req,run.tenantId)) return void res.status(403).json({error:"Acesso negado"});
+  const raw = run.headerSnapshot.remoteAcceptanceInvitation;
+  const invitation = raw && typeof raw === "object" ? raw as Record<string,unknown> : null;
+  const digest = createHash("sha256").update(parsed.data.token).digest();
+  const storedHash = typeof invitation?.tokenHash === "string" && /^[a-f0-9]{64}$/i.test(invitation.tokenHash) ? Buffer.from(invitation.tokenHash, "hex") : null;
+  const tokenMatches = storedHash !== null && timingSafeEqual(storedHash, digest);
+  if (!invitation || !tokenMatches || invitation.status !== "pending" ||
+      invitation.revision !== run.revision || typeof invitation.expiresAt !== "string" ||
+      !Number.isFinite(Date.parse(invitation.expiresAt)) || Date.parse(invitation.expiresAt) <= Date.now())
+    return void res.status(404).json({error:"Convite indisponivel ou expirado"});
+  res.setHeader("Cache-Control","no-store");
+  return void res.json({valid:true,recipientName:invitation.recipientName,expiresAt:invitation.expiresAt,externalAcceptanceEnabled:false});
+});
 export default router;

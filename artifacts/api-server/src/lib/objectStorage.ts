@@ -575,6 +575,17 @@ export class ObjectStorageService {
     return `/objects/${relativePath}`;
   }
 
+  /** Deletes only a tenant-scoped private object previously produced by savePrivateBuffer. */
+  async deleteTenantPrivateBuffer(rawPath: string, tenantId: string): Promise<void> {
+    const safeTenant = String(tenantId).trim().replace(/[^a-zA-Z0-9_-]/g, "");
+    const expectedPrefix = `/objects/tenants/${safeTenant}/generated/`;
+    if (!safeTenant || !rawPath.startsWith(expectedPrefix) || rawPath.slice(expectedPrefix.length).includes("/") || rawPath.length <= expectedPrefix.length)
+      throw new Error("Invalid tenant-private object path");
+    const fullPath = `${this.getPrivateObjectDir()}/${rawPath.slice("/objects/".length)}`;
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    await objectStorageClient.bucket(bucketName).file(objectName).delete();
+  }
+
   // ACL por objeto não é usado; a fronteira público/privado é aplicada pelas
   // rotas do backend e por URLs presignadas/assinadas temporárias.
   async trySetObjectEntityAclPolicy(rawPath: string): Promise<string> {
