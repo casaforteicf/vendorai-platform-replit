@@ -56,6 +56,7 @@ router.put("/arqdor/projects/:id/furniture/:roomId",async(req:Request,res:Respon
   const records=await db.update(arqdorWorkspaceProjectsTable)
    .set({contextBlob:sql`jsonb_set(jsonb_set(COALESCE(${arqdorWorkspaceProjectsTable.contextBlob}, '{}'::jsonb), '{furnitureSnapshots}', CASE WHEN jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots')='object' THEN ${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots' ELSE '{}'::jsonb END, true), ARRAY['furnitureSnapshots', ${roomId}]::text[], ${JSON.stringify(normalized)}::jsonb, true)`,updatedAt:new Date()})
    .where(and(eq(arqdorWorkspaceProjectsTable.id,projectId),eq(arqdorWorkspaceProjectsTable.tenantId,tenantId),
+    sql`(jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots') IS NULL OR jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots') = 'object')`,
     sql`(${arqdorWorkspaceProjectsTable.contextBlob} #>> ARRAY['furnitureSnapshots', ${roomId}, 'revision']::text[]) IS NOT DISTINCT FROM ${expected}`)).returning({id:arqdorWorkspaceProjectsTable.id});
   if(!records.length)return res.status(409).json({error:"Projeto não encontrado ou mobiliário alterado por outro usuário; recarregue antes de salvar"});
   return res.json({saved:true,tenantId,projectId,roomId,revision:data.revision});
