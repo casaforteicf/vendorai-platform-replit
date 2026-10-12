@@ -2,8 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { createCpuRenderJob } from "./render-worker-client";
 import type { DiffusePreviewOptions } from "./render-diffuse-preview";
 
-type Props={options:DiffusePreviewOptions; tenantId?:string; authToken?:string};
-export function ExperimentalCpuRenderPanel({options,tenantId,authToken}:Props){
+type Props={options:DiffusePreviewOptions; tenantId?:string; authToken?:string; arqdorProjectId?:string};
+export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorProjectId}:Props){
  const canvas=useRef<HTMLCanvasElement>(null);
  const job=useRef<ReturnType<typeof createCpuRenderJob>|null>(null);
  const generation=useRef(0);
@@ -23,6 +23,7 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken}:Props){
  const [comparison,setComparison]=useState<string|null>(null);
  const [latestCompletedImage,setLatestCompletedImage]=useState<string|null>(null);
  const historySequence=useRef(0);
+ const mediaProjectRef=useRef<{key:string;id:string}|null>(null);
  useEffect(()=>()=>{generation.current++;job.current?.cancel();job.current=null;},[]);
  useEffect(()=>{generation.current++;job.current?.cancel();job.current=null;setProgress(0);setCompleted(false);setHistory([]);historySequence.current=0;setComparison(null);setLatestCompletedImage(null);setStatus("Cena alterada — renderizar novamente");},[options]);
  const stop=()=>{generation.current++;job.current?.cancel();job.current=null;setCompleted(false);setStatus("Cancelado");};
@@ -34,25 +35,47 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken}:Props){
   link.click();
  };
  const saveToLibrary=async()=>{
-  if(!completed||!canvas.current||job.current||saving||!tenantId||!authToken)return;
+  if(!completed||!canvas.current||job.current||saving||!tenantId||!authToken||!arqdorProjectId)return;
   setSaving(true);
   try{
    const blob=await new Promise<Blob>((resolve,reject)=>{
     canvas.current!.toBlob(value=>value?resolve(value):reject(Error("Não foi possível criar o PNG")),"image/png");
    });
    if(blob.size===0||blob.size>15*1024*1024)throw Error("Imagem fora do limite de 15 MB");
-   const root=`/api/tenants/${encodeURIComponent(tenantId)}/media/assets`;
+   const mediaRoot=`/api/tenants/${encodeURIComponent(tenantId)}/media`;
+   const root=`${mediaRoot}/assets`;
    const headers={Authorization:`Bearer ${authToken}`,"Content-Type":"application/json"};
+   const key=`${tenantId}:${arqdorProjectId}`;
+   let mediaId=mediaProjectRef.current?.key===key?mediaProjectRef.current.id:null;
+   if(!mediaId){
+    const lookup=await fetch(`${mediaRoot}/projects?kind=mixed&limit=100`,{headers:{Authorization:`Bearer ${authToken}`}});
+    if(!lookup.ok)throw Error("Falha ao localizar histórico");
+    const payload=await lookup.json();
+    const existing=Array.isArray(payload.projects)?payload.projects.find((item:any)=>
+      item?.context?.arqdorProjectId===arqdorProjectId && item?.context?.generator==="arqdor-cpu-experimental"):null;
+    mediaId=typeof existing?.id==="string"?existing.id:null;
+    if(!mediaId){
+     const created=await fetch(`${mediaRoot}/projects`,{method:"POST",headers,body:JSON.stringify({
+      title:`Arqdor · CPU experimental · ${arqdorProjectId}`,kind:"mixed",source:"arqdor",
+      context:{arqdorProjectId,generator:"arqdor-cpu-experimental"}
+     })});
+     const data=await created.json().catch(()=>({}));
+     if(!created.ok||typeof data.project?.id!=="string")throw Error(data.error||"Falha ao criar histórico");
+     mediaId=data.project.id;
+    }
+    mediaProjectRef.current={key,id:mediaId!};
+   }
    const name=`arqdor-cpu-previa-${Date.now()}.png`;
-   const requested=await fetch(`${root}/request-upload`,{method:"POST",headers,body:JSON.stringify({name,contentType:"image/png",type:"image",size:blob.size})});
+   const requested=await fetch(`${root}/request-upload`,{method:"POST",headers,body:JSON.stringify({name,contentType:"image/png",type:"image",size:blob.size,projectId:mediaId})});
    const prepared=await requested.json().catch(()=>({}));
    if(!requested.ok||typeof prepared.uploadURL!=="string"||typeof prepared.objectPath!=="string")throw Error(prepared.error||"Falha ao preparar envio");
    const uploaded=await fetch(prepared.uploadURL,{method:"PUT",headers:{"Content-Type":"image/png"},body:blob});
    if(!uploaded.ok)throw Error("Falha ao transferir imagem");
    const registered=await fetch(root,{method:"POST",headers,body:JSON.stringify({
-    type:"image",role:"output",source:"upload",storageUrl:prepared.objectPath,
+    type:"image",role:"output",source:"upload",projectId:mediaId,operation:"arqdor_cpu_preview",
+    label:"Prévia CPU experimental",storageUrl:prepared.objectPath,
     originalFilename:name,mimeType:"image/png",fileSize:blob.size,
-    metadata:{folderPath:"Arqdor / Laboratório",generator:"arqdor-cpu-experimental",status:"experimental",published:false}
+    metadata:{folderPath:"Arqdor / Laboratório",arqdorProjectId,generator:"arqdor-cpu-experimental",status:"experimental",published:false}
    })});
    if(!registered.ok){const error=await registered.json().catch(()=>({}));throw Error(error.error||"Falha ao registrar imagem");}
    setStatus("Prévia experimental salva na Biblioteca de Mídias do tenant");
@@ -116,7 +139,7 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken}:Props){
    <button type="button" onClick={start} className="rounded bg-slate-900 px-3 py-2 text-white">Renderizar prévia</button>
    <button type="button" onClick={stop} className="rounded border px-3 py-2">Cancelar</button>
    <button type="button" disabled={!completed||!!job.current} onClick={exportPng} className="rounded border px-3 py-2 disabled:opacity-40">Exportar PNG local</button>
-   {tenantId && authToken && <button type="button" disabled={!completed||!!job.current||saving} onClick={()=>void saveToLibrary()} className="rounded border px-3 py-2 disabled:opacity-40">{saving?"Salvando...":"Salvar na Biblioteca (experimental)"}</button>}
+   {tenantId && authToken && arqdorProjectId && <button type="button" disabled={!completed||!!job.current||saving} onClick={()=>void saveToLibrary()} className="rounded border px-3 py-2 disabled:opacity-40">{saving?"Salvando...":"Salvar na Biblioteca (experimental)"}</button>}
   </div>
   <div role="status" className="text-xs text-slate-600">{status} · {progress}%</div>
   {history.length>0 && <div className="space-y-2">
