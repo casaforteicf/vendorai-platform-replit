@@ -48,8 +48,8 @@ async function transaction<T>(mode: IDBTransactionMode, action: (store: IDBObjec
   });
 }
 /** Only call after fresh server authorization of the exact tenant/user/project/context. */
-export function saveArqdorDraft(draft: ArqdorLocalDraft): Promise<void> {
-  if (!nonempty(draft.baseRevision) || !nonempty(draft.savedAt)) return Promise.reject(new Error("Missing revision metadata"));
+export async function saveArqdorDraft(draft: ArqdorLocalDraft): Promise<void> {
+  if (!nonempty(draft.baseRevision) || !nonempty(draft.savedAt)) throw new Error("Missing revision metadata");
   const key = keyOf(draft);
   // IDB structured clone rejects non-cloneable payloads; transaction aborts on failure.
   return transaction<void>("readwrite", (store, done) => {
@@ -58,7 +58,7 @@ export function saveArqdorDraft(draft: ArqdorLocalDraft): Promise<void> {
   });
 }
 /** The caller must verify session and membership before exposing the draft. */
-export function loadArqdorDraft(scope: Pick<ArqdorLocalDraft, "tenantId" | "userId" | "contextId" | "projectId">): Promise<ArqdorLocalDraft | undefined> {
+export async function loadArqdorDraft(scope: Pick<ArqdorLocalDraft, "tenantId" | "userId" | "contextId" | "projectId">): Promise<ArqdorLocalDraft | undefined> {
   const key = keyOf(scope);
   return transaction<ArqdorLocalDraft | undefined>("readonly", (store, done) => {
     const req = store.get(key);
@@ -66,7 +66,7 @@ export function loadArqdorDraft(scope: Pick<ArqdorLocalDraft, "tenantId" | "user
   });
 }
 /** Removes a single scoped draft only; does not clear drafts from other projects or users. */
-export function deleteArqdorDraft(scope: Pick<ArqdorLocalDraft, "tenantId" | "userId" | "contextId" | "projectId">): Promise<void> {
+export async function deleteArqdorDraft(scope: Pick<ArqdorLocalDraft, "tenantId" | "userId" | "contextId" | "projectId">): Promise<void> {
   const key = keyOf(scope);
   return transaction<void>("readwrite", (store, done) => {
     const req = store.delete(key);

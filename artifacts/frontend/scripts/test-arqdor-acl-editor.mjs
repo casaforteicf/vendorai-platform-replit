@@ -13,8 +13,12 @@ test("ACL editor integration is opt-in only", () => {
 });
 test("revision loaded from same snapshot and required before save", () => {
   assert.match(source, /remoteRevisionRef\.current = data\.revision/);
-  assert.match(source, /!remoteRevisionRef\.current/);
-  assert.match(source, /expectedRevision: remoteRevisionRef\.current/);
+  // Revision captured from the authorized snapshot ref and used for the gate + payload.
+  assert.match(source, /const expectedRevision = remoteRevisionRef\.current/);
+  // Fail-closed: no authorized revision blocks the save when ACL is on.
+  assert.match(source, /USE_PROJECT_ACL && !expectedRevision/);
+  // The captured revision is what gets sent to the conditional save endpoint.
+  assert.match(source, /\{ expectedRevision, contextBlob: ctx \}/);
 });
 test("ACL denial never clears stored project and save handles conflicts", () => {
   assert.match(source, /res\.status === 404 && !USE_PROJECT_ACL/);

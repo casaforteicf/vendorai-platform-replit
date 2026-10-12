@@ -17,7 +17,8 @@ test("remote PUT validates HTTP status instead of treating error as save success
   assert.match(source, /setSaveError\('/);
 });
 test("does not send invalid or unauthorized project context", () => {
-  assert.match(source, /if \(!tok \|\| !ctx\.id\?\.trim\(\)\)/);
+  // Guard rejects enqueuing a save without a project id or an auth token (order-independent).
+  assert.match(source, /if \(!ctx\.id\?\.trim\(\) \|\| !getToken\(\)\)/);
 });
 test("save errors are actually visible in Arqdor workspace", () => {
   assert.match(workspace, /workspaceSaveError/);
