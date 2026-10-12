@@ -22,7 +22,15 @@ export function wallOpeningClearances(walls:InteriorWall[],openings:WallOpening[
   const x2=w.x1+dx/len*(o.offsetM+o.widthM),y2=w.y1+dy/len*(o.offsetM+o.widthM);
   const pad=o.clearanceM+w.thicknessM/2;
   if(o.kind==="door"&&(!o.hinge||!o.swing))throw Error("Door swing parameters required");
-  return {id:o.id,kind:"opening-clearance" as const,xMm:Math.round((Math.min(x,x2)-minX-(Math.abs(dx)<0.000001?pad:0))*1000),yMm:Math.round((Math.min(y,y2)-minY-(Math.abs(dy)<0.000001?pad:0))*1000),widthMm:Math.round((Math.abs(dx)<0.000001?pad*2:Math.abs(x2-x))*1000),depthMm:Math.round((Math.abs(dy)<0.000001?pad*2:Math.abs(y2-y))*1000)};
+  const directional=o.kind==="door";
+  const normalX=-dy/len*(o.swing==="right"?-1:1),normalY=dx/len*(o.swing==="right"?-1:1);
+  const horizontal=Math.abs(dy)<0.000001;
+  const xMin=Math.min(x,x2)-minX,yMin=Math.min(y,y2)-minY;
+  const left=horizontal?xMin:(directional?(normalX>0?xMin-w.thicknessM/2:xMin-pad):xMin-pad);
+  const top=horizontal?(directional?(normalY>0?yMin-w.thicknessM/2:yMin-pad):yMin-pad):yMin;
+  const wMm=horizontal?Math.abs(x2-x):(directional?pad+w.thicknessM/2:2*pad);
+  const dMm=horizontal?(directional?pad+w.thicknessM/2:2*pad):Math.abs(y2-y);
+  return {id:o.id,kind:"opening-clearance" as const,xMm:Math.round(left*1000),yMm:Math.round(top*1000),widthMm:Math.round(wMm*1000),depthMm:Math.round(dMm*1000)};
  });
 }
 export type InteriorOpeningClearance={id:string;xMm:number;yMm:number;widthMm:number;depthMm:number};
