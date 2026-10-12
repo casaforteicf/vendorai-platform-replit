@@ -283,3 +283,8 @@ A fila de levantamento armazena revisionId aleatorio por salvamento; apos envio 
 
 ## Lote 48 — versao de servidor contra sobrescrita entre dispositivos (12/10/2026)
 PATCH de itens aceita expectedUpdatedAt e devolve CHECKLIST_CONFLICT quando a versao do levantamento carregada anteriormente nao corresponde ao estado corrente no banco. Frontend envia expectedUpdatedAt nas alteracoes manuais, fotoanotacoes e elementos BIM. Atualizacoes sem campo continuam aceitas para compatibilidade e exigem posterior migracao para obrigatoriedade; upload de foto pode atualizar versao e necessitar recarga para sincronizar cotas. Testes automatizados e integrados pendentes; sem merge/deploy.
+
+## Lote 49 — atualizar versao do checklist apos envio de foto (12/10/2026)
+- Apos POST de fotografia autenticada, cliente recarrega o checklist atual para obter updatedAt do servidor antes de persistir cotas.
+- Ref de versao mais recente evita uso de closure desatualizada nas operacoes encadeadas de upload/medicao e atualiza quando PATCH retorna novo checklist.
+- Lista de acesso a fotos evita duplicar a mesma storageUrl no estado local. Persistem pendentes testes TypeScript/build, fluxo real online/offline e concorrencia em varios dispositivos. Sem merge/deploy.
