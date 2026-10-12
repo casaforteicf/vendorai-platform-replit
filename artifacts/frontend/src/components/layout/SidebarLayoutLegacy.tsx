@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ui20ServiceForPath } from "@/lib/ui20ServiceRoutes";
+import { getUi20VisibleServices } from "@/lib/ui20ServiceVisibility";
 import { Button } from "@/components/ui/button";
 import logoFull from "/logo-full-light.svg";
 import { applyTenantTheme, resetTenantTheme } from "@/lib/tenantTheme";
@@ -836,9 +837,11 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
         { name: "Arqdor", match: ["/arch"], links: arqdorVisible ? [...verticalNav.filter((item) => item.href.startsWith("/arch"))] : [] },
         { name: "Configurações", match: ["/configuracoes", "/usuarios", "/organizacao"], links: administrationNav },
       ];
+      const permittedServices = getUi20VisibleServices({ modules: tenantNavModules, isAdmin: isTenantAdmin, arqdorEligible: arqdorVisible, loading: !tenantNavModules });
       const detected = ui20ServiceForPath(path);
       const selected = serviceGroups.find((group) => group.name === ({home:"Início",crm:"CRM",marketing:"Marketing",erp:"ERP",ia:"IA",marketplace:"Marketplace",arqdor:"Arqdor",settings:"Configurações",support:"Suporte"} as Record<string,string>)[detected ?? "home"]) ?? serviceGroups[0];
-      const unique = selected.links.filter((item, index, all) => all.findIndex((other) => other.href === item.href) === index);
+      const canShowService = permittedServices.has(detected ?? "home");
+      const unique = (canShowService ? selected.links : []).filter((item, index, all) => all.findIndex((other) => other.href === item.href) === index);
       return (
         <nav aria-label={`Menu interno de ${selected.name}`} className="space-y-1" data-ui20-context-menu={selected.name}>
           <div className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{selected.name}</div>
