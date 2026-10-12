@@ -272,6 +272,7 @@ export default function OperationalMeasurementChecklist() {
         </div>
         {run && <div className="flex gap-2">
           <Button variant="outline" disabled={busy === "arqdor"} onClick={createArqdorDraft}>Criar rascunho Arqdor</Button>
+          {run.status === "concluido" && !run.headerSnapshot?.externalAcknowledgement && <Button variant="outline" disabled={busy === "external-ack"} onClick={recordExternalAcknowledgement}>Registrar ciência presencial</Button>}
           <Button variant="outline" disabled={busy === "report"} onClick={() => { void preparePhotoReport(); }}>Preparar fotos para PDF</Button>
           <Button variant="outline" onClick={() => window.print()}><Printer className="mr-2 h-4 w-4" /> Gerar PDF</Button>
           <Button onClick={complete} disabled={busy === "complete" || run.status === "concluido" || pending > 0 || divergent > 0}>
