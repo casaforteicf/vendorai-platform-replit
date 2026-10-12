@@ -8758,6 +8758,42 @@ function canUseArqdorConditionalSave(user: { sub?: string; tenantId?: string; pl
     (!user.actorType || user.actorType === "human"));
 }
 
+// MULTI-08.2: single-query snapshot with server-enforced read membership.
+// Never return project content to unauthenticated, inactive or unrelated users.
+router.get("/arqdor/projects/:id/snapshot", authenticate, async (req, res) => {
+  if (process.env.ARQDOR_PROJECT_ACL_ENABLED !== "true")
+    return res.status(404).json({ error: "Recurso ainda não habilitado." });
+  const tid = tenantId(req);
+  const id = String(req.params.id || "");
+  const actor = req.user;
+  if (!id.trim() || !actor?.sub || actor.tenantId !== tid ||
+      (actor.accessScope && actor.accessScope !== "tenant") ||
+      (actor.actorType && actor.actorType !== "human"))
+    return res.status(403).json({ error: "Acesso negado." });
+  try {
+    const [row] = await db.select({
+      id: arqdorWorkspaceProjectsTable.id,
+      contextBlob: arqdorWorkspaceProjectsTable.contextBlob,
+      revision: sql<string>`xmin::text`,
+    }).from(arqdorWorkspaceProjectsTable).where(and(
+      eq(arqdorWorkspaceProjectsTable.id, id),
+      eq(arqdorWorkspaceProjectsTable.tenantId, tid),
+      sql`EXISTS (
+        SELECT 1 FROM arqdor_workspace_members m JOIN users u
+        ON u.id = m.user_id AND u.tenant_id = m.tenant_id
+        WHERE m.tenant_id = ${tid} AND m.project_id = ${id}
+        AND m.user_id = ${actor.sub}
+        AND m.permission IN ('owner', 'editor', 'viewer') AND u.active = TRUE
+      )`,
+    )).limit(1);
+    res.setHeader("Cache-Control", "no-store");
+    if (!row) return res.status(404).json({ error: "Projeto indisponível ou sem acesso." });
+    return res.json(row);
+  } catch {
+    return res.status(503).json({ error: "Não foi possível consultar o projeto." });
+  }
+});
+
 // MULTI-07: read-only per-project ACL probe; disabled until migration + QA.
 router.get("/arqdor/projects/:id/edit-access", authenticate, async (req, res) => {
   if (process.env.ARQDOR_PROJECT_ACL_ENABLED !== "true") {
