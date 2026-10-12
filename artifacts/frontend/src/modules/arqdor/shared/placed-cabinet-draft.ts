@@ -18,7 +18,7 @@ export function insertCabinetDraft(input:{
  const check=validateFurniturePlacement(room,bounds,existing.map(p=>p.bounds),20);
  if(!check.valid)throw Error("Cabinet placement rejected: "+check.reason);
  return [...existing,{id,tenantId,projectId,roomId:room.id,parameters:{...draft.parameters,furnitureId:id},
- parts:draft.parts.map(p=>({...p,id:id+":"+p.id,furnitureId:id,edges:{...p.edges}})),bounds,status:"local-draft"}];
+ parts:draft.parts.map(p=>({...p,id:id+":"+p.id.slice(draft.parameters.furnitureId.length+1),furnitureId:id,edges:{...p.edges}})),bounds,status:"local-draft"}];
 }
 
 /** Update only the selected cabinet's footprint, retaining its part identity and materials. */
@@ -46,5 +46,5 @@ export function revisePlacedCabinet(input:{room:RoomBounds;items:readonly Placed
  const check=validateFurniturePlacement(input.room,candidateBounds,input.items.filter(item=>item.id!==input.id).map(item=>item.bounds),20);
  if(!check.valid)throw Error("Furniture revision rejected: "+check.reason);
  return input.items.map(item=>item.id!==input.id?item:{...item,parameters:regenerated.parameters,
-  bounds:candidateBounds,parts:regenerated.parts.map(part=>({...part,id:current.id+":"+part.id,furnitureId:current.id,edges:{...part.edges}}))});
+  bounds:candidateBounds,parts:regenerated.parts.map(part=>({...part,id:part.id,furnitureId:current.id,edges:{...part.edges}}))});
 }
