@@ -412,10 +412,12 @@ googleCallbackRouter.get("/auth/google/calendar/callback", async (req, res) => {
       eq(calendarOauthStatesTable.agendaId, decoded.agendaId),
       isNull(calendarOauthStatesTable.consumedAt),
       gt(calendarOauthStatesTable.expiresAt, new Date())
-    )).returning({ agendaId: calendarOauthStatesTable.agendaId });
-    if (!consumed) throw new Error("OAuth state already consumed or expired");
+    )).returning({ agendaId: calendarOauthStatesTable.agendaId, tenantId: calendarOauthStatesTable.tenantId, initiatedBy: calendarOauthStatesTable.initiatedBy });
+    if (!consumed || !consumed.initiatedBy) throw new Error("OAuth state already consumed or expired");
+    const [linkedAgenda] = await db.select({ tenantId: agendasTable.tenantId }).from(agendasTable).where(eq(agendasTable.id, decoded.agendaId)).limit(1);
+    if (!linkedAgenda || linkedAgenda.tenantId !== consumed.tenantId) throw new Error("OAuth state tenant mismatch");
     agendaId = decoded.agendaId;
-    if (decoded.returnTo === "/agenda" || decoded.returnTo === "/configuracoes") returnTo = decoded.returnTo;
+    if (decoded.returnTo === "/agenda" || decoded.returnTo === "/configuracoes" || decoded.returnTo === "/onboarding/integracoes") returnTo = decoded.returnTo;
   } catch {
     res.redirect(`${appUrl}/configuracoes?googleError=invalid_state`);
     return;
