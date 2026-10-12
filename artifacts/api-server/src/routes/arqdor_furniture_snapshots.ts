@@ -13,7 +13,7 @@ const furniture=z.object({id:z.string().min(1),tenantId:z.string(),projectId:z.s
  parts:z.array(part).max(2000),bounds:z.object({id:z.string(),roomId:z.string(),xMm:number,yMm:number,widthMm:number.positive(),depthMm:number.positive(),rotationDeg:z.union([z.literal(0),z.literal(90),z.literal(180),z.literal(270)])}),
  status:z.literal("local-draft")}).passthrough();
 const payload=z.object({schemaVersion:z.literal(1),tenantId:z.string().min(1),projectId:z.string().min(1),roomId:z.string().min(1),
- revision:z.string().min(1),baseRevision:z.string().nullable().optional(),createdAt:z.string().datetime({offset:true}),furniture:z.array(furniture).max(500)}).strict();
+ revision:z.string().min(1).max(160),baseRevision:z.string().min(1).max(160).nullable().optional(),createdAt:z.string().datetime({offset:true}),furniture:z.array(furniture).max(500)}).strict();
 const scope=(req:Request)=>req.user?.tenantId;
 const footprint=(b:{widthMm:number;depthMm:number;rotationDeg:0|90|180|270})=>b.rotationDeg===90||b.rotationDeg===270?{w:b.depthMm,d:b.widthMm}:{w:b.widthMm,d:b.depthMm};
 const overlaps=(a:{xMm:number;yMm:number;widthMm:number;depthMm:number;rotationDeg:0|90|180|270},b:{xMm:number;yMm:number;widthMm:number;depthMm:number;rotationDeg:0|90|180|270})=>{
@@ -28,7 +28,7 @@ router.get("/arqdor/projects/:id/furniture",async(req:Request,res:Response)=>{
    .where(and(eq(arqdorWorkspaceProjectsTable.tenantId,tenantId),eq(arqdorWorkspaceProjectsTable.id,projectId))).limit(1);
   if(!record)return res.status(404).json({error:"Projeto não encontrado"});
   return res.json({tenantId,furnitureSnapshots:(record.contextBlob as Record<string,unknown>|null)?.furnitureSnapshots??{}});
- }catch(e){req.log?.error(e,"furniture get");return res.status(500).json({error:"Falha ao carregar mobiliário"});}
+ }catch(e){console.error("furniture get",e);return res.status(500).json({error:"Falha ao carregar mobiliário"});}
 });
 router.put("/arqdor/projects/:id/furniture/:roomId",async(req:Request,res:Response)=>{
  const tenantId=scope(req),projectId=String(req.params.id),roomId=String(req.params.roomId);
@@ -36,6 +36,7 @@ router.put("/arqdor/projects/:id/furniture/:roomId",async(req:Request,res:Respon
  const parsed=payload.safeParse(req.body);
  if(!parsed.success)return res.status(400).json({error:"Snapshot inválido"});
  const data=parsed.data;
+ if(data.revision===data.baseRevision)return res.status(400).json({error:"A revisão nova precisa ser diferente da anterior"});
  if(data.tenantId!==tenantId||data.projectId!==projectId||data.roomId!==roomId)return res.status(403).json({error:"Projeto/tenant/ambiente incompatível"});
  const ids=new Set<string>(),partIds=new Set<string>();
  const footprints:typeof data.furniture[number]["bounds"][]=[];
@@ -58,6 +59,6 @@ router.put("/arqdor/projects/:id/furniture/:roomId",async(req:Request,res:Respon
     sql`(${arqdorWorkspaceProjectsTable.contextBlob} #>> ARRAY['furnitureSnapshots', ${roomId}, 'revision']::text[]) IS NOT DISTINCT FROM ${expected}`)).returning({id:arqdorWorkspaceProjectsTable.id});
   if(!records.length)return res.status(409).json({error:"Projeto não encontrado ou mobiliário alterado por outro usuário; recarregue antes de salvar"});
   return res.json({saved:true,tenantId,projectId,roomId,revision:data.revision});
- }catch(e){req.log?.error(e,"furniture save");return res.status(500).json({error:"Falha ao salvar mobiliário"});}
+ }catch(e){console.error("furniture save",e);return res.status(500).json({error:"Falha ao salvar mobiliário"});}
 });
 export default router;
