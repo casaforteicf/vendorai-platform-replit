@@ -235,16 +235,21 @@ async function autoScheduleAndGetMeetLink(params: {
   tenantId: string;
   leadId:   string;
   leadNome: string;
+  assignedUserId?: string | null;
   log:      Logger;
 }): Promise<string | null> {
-  const { tenantId, leadId, leadNome, log } = params;
+  const { tenantId, leadId, leadNome, assignedUserId, log } = params;
 
-  // 1. Find the first agenda with a real OAuth token for this tenant.
-  //    Using raw SQL because googleRefreshToken is stored but may not be in
-  //    the Drizzle type's $inferSelect (nullable text column added later).
-  const agendaResult = await db.execute(
-    sql`SELECT id, nome FROM agendas WHERE tenant_id = ${tenantId} AND google_refresh_token IS NOT NULL ORDER BY is_default DESC LIMIT 1`
-  );
+  // Only the lead assignee can delegate a connected calendar to the Closer.
+  if (!assignedUserId) return null;
+  const agendaResult = await db.execute(sql`
+    SELECT a.id, a.nome FROM agendas a
+    WHERE a.tenant_id = ${tenantId} AND a.google_refresh_token IS NOT NULL
+      AND (a.owner_user_id = ${assignedUserId}
+        OR EXISTS (SELECT 1 FROM agenda_access_grants g
+          WHERE g.agenda_id = a.id AND g.tenant_id = a.tenant_id AND g.user_id = ${assignedUserId}))
+    ORDER BY a.is_default DESC LIMIT 1
+  `);
   const agendaWithToken = agendaResult.rows[0] as { id: string; nome: string } | undefined;
 
   if (!agendaWithToken?.id) {
@@ -275,6 +280,12 @@ async function autoScheduleAndGetMeetLink(params: {
   await db.transaction(async (tx) => {
     const [lockedAgenda] = await tx.execute(sql`SELECT id FROM agendas WHERE id = ${agendaWithToken.id} AND tenant_id = ${tenantId} AND google_refresh_token IS NOT NULL FOR UPDATE`).then((r) => r.rows);
     if (!lockedAgenda) throw new Error("CLOSER_AGENDA_UNAVAILABLE");
+    const authorized = await tx.execute(sql`SELECT a.id FROM agendas a
+      WHERE a.id = ${agendaWithToken.id} AND a.tenant_id = ${tenantId}
+      AND (a.owner_user_id = ${assignedUserId}
+        OR EXISTS (SELECT 1 FROM agenda_access_grants g
+          WHERE g.agenda_id = a.id AND g.tenant_id = a.tenant_id AND g.user_id = ${assignedUserId}))`);
+    if (!authorized.rows.length) throw new Error("CLOSER_AGENDA_ACCESS_REVOKED");
     await tx.insert(agendamentosTable).values({
     id: agendamentoId,
     tenantId,
@@ -1283,6 +1294,7 @@ export async function processAgentInternal(params: {
               tenantId,
               leadId,
               leadNome: ctx.lead.nome ?? "",
+              assignedUserId: ctx.lead.assignedTo,
               log,
             });
             if (autoMeetLink) {
