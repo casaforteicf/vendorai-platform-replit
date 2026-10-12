@@ -24,8 +24,9 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
  const [latestCompletedImage,setLatestCompletedImage]=useState<string|null>(null);
  const historySequence=useRef(0);
  const mediaProjectRef=useRef<{key:string;id:string}|null>(null);
+ const savedGeneration=useRef(0);
  useEffect(()=>()=>{generation.current++;job.current?.cancel();job.current=null;},[]);
- useEffect(()=>{generation.current++;job.current?.cancel();job.current=null;setProgress(0);setCompleted(false);setHistory([]);historySequence.current=0;setComparison(null);setLatestCompletedImage(null);setStatus("Cena alterada — renderizar novamente");},[options]);
+ useEffect(()=>{generation.current++;job.current?.cancel();job.current=null;setProgress(0);setCompleted(false);setHistory([]);historySequence.current=0;setComparison(null);setLatestCompletedImage(null);savedGeneration.current++;mediaProjectRef.current=null;setStatus("Cena alterada — renderizar novamente");},[options]);
  const stop=()=>{generation.current++;job.current?.cancel();job.current=null;setCompleted(false);setStatus("Cancelado");};
  const exportPng=()=>{
   if(!completed||!canvas.current||job.current)return;
@@ -37,6 +38,8 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
  const saveToLibrary=async()=>{
   if(!completed||!canvas.current||job.current||saving||!tenantId||!authToken||!arqdorProjectId)return;
   setSaving(true);
+  const sourceKey=`${tenantId}:${arqdorProjectId}`;
+  const sourceGeneration=savedGeneration.current;
   try{
    const blob=await new Promise<Blob>((resolve,reject)=>{
     canvas.current!.toBlob(value=>value?resolve(value):reject(Error("Não foi possível criar o PNG")),"image/png");
@@ -45,7 +48,7 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
    const mediaRoot=`/api/tenants/${encodeURIComponent(tenantId)}/media`;
    const root=`${mediaRoot}/assets`;
    const headers={Authorization:`Bearer ${authToken}`,"Content-Type":"application/json"};
-   const key=`${tenantId}:${arqdorProjectId}`;
+   const key=sourceKey;
    let mediaId=mediaProjectRef.current?.key===key?mediaProjectRef.current.id:null;
    if(!mediaId){
     const lookup=await fetch(`${mediaRoot}/projects?kind=mixed&limit=100`,{headers:{Authorization:`Bearer ${authToken}`}});
@@ -65,12 +68,14 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
     }
     mediaProjectRef.current={key,id:mediaId!};
    }
+   if(sourceGeneration!==savedGeneration.current)throw Error("Projeto ou cena alterados durante o envio");
    const name=`arqdor-cpu-previa-${Date.now()}.png`;
    const requested=await fetch(`${root}/request-upload`,{method:"POST",headers,body:JSON.stringify({name,contentType:"image/png",type:"image",size:blob.size,projectId:mediaId})});
    const prepared=await requested.json().catch(()=>({}));
    if(!requested.ok||typeof prepared.uploadURL!=="string"||typeof prepared.objectPath!=="string")throw Error(prepared.error||"Falha ao preparar envio");
    const uploaded=await fetch(prepared.uploadURL,{method:"PUT",headers:{"Content-Type":"image/png"},body:blob});
    if(!uploaded.ok)throw Error("Falha ao transferir imagem");
+   if(sourceGeneration!==savedGeneration.current)throw Error("Projeto ou cena alterados durante o envio");
    const registered=await fetch(root,{method:"POST",headers,body:JSON.stringify({
     type:"image",role:"output",source:"upload",projectId:mediaId,operation:"arqdor_cpu_preview",
     label:"Prévia CPU experimental",storageUrl:prepared.objectPath,
@@ -78,8 +83,8 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
     metadata:{folderPath:"Arqdor / Laboratório",arqdorProjectId,generator:"arqdor-cpu-experimental",status:"experimental",published:false}
    })});
    if(!registered.ok){const error=await registered.json().catch(()=>({}));throw Error(error.error||"Falha ao registrar imagem");}
-   setStatus("Prévia experimental salva na Biblioteca de Mídias do tenant");
-  }catch(error){setStatus("Falha ao salvar: "+(error instanceof Error?error.message:String(error)));}
+   if(sourceGeneration===savedGeneration.current)setStatus("Prévia experimental salva na Biblioteca de Mídias do tenant");
+  }catch(error){if(sourceGeneration===savedGeneration.current)setStatus("Falha ao salvar: "+(error instanceof Error?error.message:String(error)));}
   finally{setSaving(false);}
  };
  const start=()=>{
