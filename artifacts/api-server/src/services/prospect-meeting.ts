@@ -1,6 +1,7 @@
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, inArray, or, sql } from "drizzle-orm";
 import {
   activitiesTable,
+  agendaAccessGrantsTable,
   agendasTable,
   businessProfilesTable,
   agendamentosTable,
@@ -72,14 +73,38 @@ export async function scheduleProspectMeeting(input: {
   )).limit(1);
   if (!lead) throw new Error("converted_lead_not_found");
 
-  const [agenda] = await db.select().from(agendasTable)
-    .where(and(eq(agendasTable.tenantId, input.tenantId), isNotNull(agendasTable.googleRefreshToken)))
-    .limit(1);
+  // An internal agent must use a calendar the assigned human can access.
+  // An unassigned prospect creates an internal appointment without Google sync.
+  const assignedUserId = prospect.assignedUserId;
+  const allowedIds = assignedUserId
+    ? (await db.select({ agendaId: agendaAccessGrantsTable.agendaId }).from(agendaAccessGrantsTable)
+        .where(and(eq(agendaAccessGrantsTable.tenantId, input.tenantId),
+          eq(agendaAccessGrantsTable.userId, assignedUserId)))).map(row => row.agendaId)
+    : [];
+  const [agenda] = assignedUserId
+    ? await db.select().from(agendasTable).where(and(
+        eq(agendasTable.tenantId, input.tenantId),
+        isNotNull(agendasTable.googleRefreshToken),
+        or(eq(agendasTable.ownerUserId, assignedUserId),
+          ...(allowedIds.length ? [inArray(agendasTable.id, allowedIds)] : [])),
+      )).limit(1)
+    : [];
 
   let appointment = await db.transaction(async (tx) => {
     if (agenda?.id) {
       const locked = await tx.execute(sql`SELECT id FROM agendas WHERE id = ${agenda.id} AND tenant_id = ${input.tenantId} AND google_refresh_token IS NOT NULL FOR UPDATE`);
       if (!locked.rows.length) throw new Error("PROSPECT_AGENDA_UNAVAILABLE");
+      const [currentOwner] = await tx.select({ ownerUserId: agendasTable.ownerUserId })
+        .from(agendasTable).where(and(eq(agendasTable.id, agenda.id),
+          eq(agendasTable.tenantId, input.tenantId))).limit(1);
+      const [grant] = assignedUserId ? await tx.select({ userId: agendaAccessGrantsTable.userId })
+        .from(agendaAccessGrantsTable).where(and(eq(agendaAccessGrantsTable.agendaId, agenda.id),
+          eq(agendaAccessGrantsTable.tenantId, input.tenantId),
+          eq(agendaAccessGrantsTable.userId, assignedUserId))).limit(1) : [];
+      if (!assignedUserId || !currentOwner ||
+          (currentOwner.ownerUserId !== assignedUserId && !grant)) {
+        throw new Error("PROSPECT_AGENDA_ACCESS_REVOKED");
+      }
     }
     const [created] = await tx.insert(agendamentosTable).values({
     tenantId: input.tenantId,
