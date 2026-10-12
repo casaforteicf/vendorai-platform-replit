@@ -758,6 +758,7 @@ router.post("/operational-checklists/runs/:runId/remote-invite/revoke", async (r
   if (!canAccessTenant(req,run.tenantId)) return void res.status(403).json({error:"Acesso negado"});
   const existing = run.headerSnapshot.remoteAcceptanceInvitation;
   if (!existing || typeof existing !== "object") return void res.status(404).json({error:"Convite nao encontrado"});
+  if (existing.status !== "pending") return void res.status(409).json({error:"Convite ja revogado ou indisponivel"});
   const [updated] = await db.update(operationalChecklistRunsTable)
     .set({headerSnapshot:{...run.headerSnapshot,remoteAcceptanceInvitation:{...existing, status:"revoked",revokedAt:new Date().toISOString(),revokedBy:req.user.sub}},updatedAt:new Date()})
     .where(and(eq(operationalChecklistRunsTable.id,run.id),eq(operationalChecklistRunsTable.updatedAt,run.updatedAt)))
