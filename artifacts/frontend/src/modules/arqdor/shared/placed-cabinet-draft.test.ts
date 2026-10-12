@@ -39,6 +39,8 @@ describe("C03 cabinet geometry and parts association",()=>{
   const changed=revisePlacedCabinet({room:ctx.room,items:old,id:"first",changes:{widthMm:1500,materialId:"plywood"}});
   expect(changed[0].bounds.widthMm).toBe(1500);
   expect(changed[0].parts.every(p=>p.furnitureId==="first")).toBe(true);
+  expect(changed[0].parts.map(p=>p.id)).toEqual(old[0].parts.map(p=>p.id));
+  expect(new Set(changed[0].parts.map(p=>p.id)).size).toBe(changed[0].parts.length);
   expect(changed[0].parts.find(p=>p.name==="Base")?.lengthMm).toBe(1500-36);
   expect(old[0].bounds.widthMm).toBe(1200);
  });
