@@ -9,17 +9,18 @@ export function createFurnitureSnapshot(input:{
  tenantId:string;projectId:string;room:RoomBounds;revision:string;createdAt:string;furniture:readonly PlacedCabinet[];
 }):FurnitureProjectSnapshot{
  const {tenantId,projectId,room,revision,createdAt,furniture}=input;
- if(!tenantId||!projectId||!room.id||!revision||!Number.isFinite(Date.parse(createdAt))||furniture.length>500)throw Error("Invalid snapshot metadata");
+ if(!tenantId||!projectId||!room.id||!revision||!Number.isFinite(Date.parse(createdAt))||!Array.isArray(furniture)||furniture.length>500)throw Error("Invalid snapshot metadata");
  const ids=new Set<string>(),parts=new Set<string>();
  let totalParts=0;
  const previous:PlacedCabinet[]=[];
  for(const item of furniture){
+  if(!item||typeof item!=="object"||!item.bounds||!item.parameters||!Array.isArray(item.parts))throw Error("Malformed furniture entry");
   if(ids.has(item.id)||item.tenantId!==tenantId||item.projectId!==projectId||item.roomId!==room.id||item.bounds.id!==item.id||
    item.parameters.furnitureId!==item.id||item.parameters.tenantId!==tenantId||item.parameters.projectId!==projectId||item.parameters.roomId!==room.id||
    item.bounds.roomId!==room.id||item.parameters.widthMm!==item.bounds.widthMm||item.parameters.depthMm!==item.bounds.depthMm||
    item.parts.some(p=>p.furnitureId!==item.id||p.tenantId!==tenantId||p.projectId!==projectId))throw Error("Invalid furniture snapshot scope");
   if(!validateFurniturePlacement(room,item.bounds,previous.map(p=>p.bounds),20).valid)throw Error("Invalid furniture placement");
-  if(!Array.isArray(item.parts)||item.parts.length>2000||totalParts+item.parts.length>5000)throw Error("Furniture parts limit exceeded");
+  if(item.parts.length>2000||totalParts+item.parts.length>5000)throw Error("Furniture parts limit exceeded");
   totalParts+=item.parts.length;
   ids.add(item.id);
   for(const p of item.parts){
@@ -31,6 +32,6 @@ export function createFurnitureSnapshot(input:{
  bounds:{...item.bounds},parts:item.parts.map(p=>({...p,edges:{...p.edges}}))}))};
 }
 export function restoreFurnitureSnapshot(snapshot:FurnitureProjectSnapshot,context:{tenantId:string;projectId:string;room:RoomBounds}):FurnitureProjectSnapshot{
- if(snapshot.schemaVersion!==1||snapshot.tenantId!==context.tenantId||snapshot.projectId!==context.projectId||snapshot.roomId!==context.room.id)throw Error("Snapshot scope mismatch");
+ if(!snapshot||typeof snapshot!=="object"||snapshot.schemaVersion!==1||snapshot.tenantId!==context.tenantId||snapshot.projectId!==context.projectId||snapshot.roomId!==context.room.id)throw Error("Snapshot scope mismatch");
  return createFurnitureSnapshot({...snapshot,room:context.room});
 }
