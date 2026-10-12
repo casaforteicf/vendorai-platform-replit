@@ -8809,7 +8809,13 @@ router.put("/arqdor/projects/:id/member-conditional", authenticate, async (req, 
   try {
     // Atomic membership check in the UPDATE statement; a revoked editor cannot
     // save using an earlier /edit-access=true result.
-    const [saved] = await db.update(arqdorWorkspaceProjectsTable)
+    const [saved] = await db.transaction(async tx => {
+      const [locked] = await tx.select({ id: arqdorWorkspaceProjectsTable.id })
+        .from(arqdorWorkspaceProjectsTable)
+        .where(and(eq(arqdorWorkspaceProjectsTable.tenantId, tid), eq(arqdorWorkspaceProjectsTable.id, id)))
+        .for("update");
+      if (!locked) return [];
+      return tx.update(arqdorWorkspaceProjectsTable)
       .set({ contextBlob, updatedAt: new Date() })
       .where(and(
         eq(arqdorWorkspaceProjectsTable.id, id),
@@ -8820,6 +8826,7 @@ router.put("/arqdor/projects/:id/member-conditional", authenticate, async (req, 
           WHERE m.tenant_id = ${tid} AND m.project_id = ${id}
           AND m.user_id = ${req.user.sub} AND m.permission IN ('owner','editor') AND u.active = TRUE)`,
       )).returning({ revision: sql<string>`xmin::text` });
+    });
     if (!saved) return res.status(409).json({ error: "Revisão incompatível, vínculo revogado ou projeto indisponível." });
     res.setHeader("Cache-Control", "no-store");
     return res.json({ id, revision: saved.revision });
