@@ -1,3 +1,4 @@
+import { ConceptOpeningSchedule } from "./ConceptOpeningSchedule";
 import { documentationWallPlan, documentationWallSection, documentationOpeningOutlines, type DocumentationWall, type DocumentationOpening } from "./conceptDocumentationWalls";
 import { architecturalSheetLayout } from "./conceptArchitecturalSheet";
 import { useMemo, useRef, useState } from "react";
@@ -77,5 +78,6 @@ export function ConceptArchitecturalDocumentation({ model, walls = [], openings 
     {sheetError && <p role="alert" className="text-xs text-red-500">{sheetError}</p>}
     <button type="button" disabled={!items.length} onClick={downloadSheet} className="rounded border px-3 py-2 text-xs disabled:opacity-50">Exportar prancha A3 SVG</button>
     <button type="button" disabled={!items.length} onClick={download} className="rounded border px-3 py-2 text-xs disabled:opacity-50">Exportar vista SVG</button>
+    <ConceptOpeningSchedule walls={walls} openings={openings} />
   </section>;
 }
