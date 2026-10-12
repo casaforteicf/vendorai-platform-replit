@@ -278,7 +278,7 @@ export default function OperationalMeasurementChecklist() {
             <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Divergências</div><div className="text-2xl font-semibold text-red-600">{divergent}</div></CardContent></Card>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-3 print:hidden">
             {items.map((item, index) => (
               <Card key={item.id} className={item.status === "divergente" ? "border-red-300" : ""}>
                 <CardContent className="p-4">
