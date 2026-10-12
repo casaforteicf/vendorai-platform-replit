@@ -25,4 +25,16 @@ describe("verified BIM room footprint for cabinet placement",()=>{
  it("rejects openings whose offsets exceed the wall length",()=>{
   expect(()=>fromPreProjectRoom("project",{id:"room",widthM:4,depthM:3,heightM:2.7,wallOpenings:[{id:"door",wallId:"preview-wall-1",offsetM:3.8,widthM:.9,clearanceM:.9}]})).toThrow();
  });
+ it("distinguishes left and right door swing envelopes",()=>{
+  const room=buildRectangularRoom({name:"Sala",widthM:4,depthM:3,heightM:2.7,thicknessM:.14});
+  const base={id:"door",wallId:"wall-1",offsetM:1,widthM:.9,clearanceM:.9,kind:"door" as const,hinge:"start" as const};
+  const left=wallOpeningClearances(room.walls,[{...base,swing:"left"}])[0];
+  const right=wallOpeningClearances(room.walls,[{...base,swing:"right"}])[0];
+  expect(left.yMm).toBeGreaterThan(right.yMm);
+  expect(left.depthMm).toBe(right.depthMm);
+ });
+ it("requires explicit door swing metadata",()=>{
+  const room=buildRectangularRoom({name:"Sala",widthM:4,depthM:3,heightM:2.7,thicknessM:.14});
+  expect(()=>wallOpeningClearances(room.walls,[{id:"door",wallId:"wall-1",offsetM:1,widthM:.9,clearanceM:.9,kind:"door"}])).toThrow();
+ });
 });
