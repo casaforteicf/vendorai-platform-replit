@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { SmartSpecModule } from "./SmartSpecModule";
+const RealBudgetEngineStudio = lazy(() => import("../real-budget-engine/RealBudgetEngineStudio"));
 
 type ProjectLike = {
   id?: string;
@@ -430,7 +431,7 @@ function ProjectQuantities({projectId}:{projectId:string|null}) {
   </section>;
 }
 export default function SmartProjectModule({ arqState, onNavigate, projectId }: SmartProjectModuleProps) {
-  const [activeTab, setActiveTab] = useState<"overview" | "ambientes" | "timeline" | "briefing" | "especificacoes" | "medicoes" | "quantitativos">(() =>
+  const [activeTab, setActiveTab] = useState<"overview" | "ambientes" | "timeline" | "briefing" | "especificacoes" | "medicoes" | "quantitativos" | "orcamento">(() =>
     typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tab") === "especificacoes"
       ? "especificacoes" : "overview"
   );
@@ -511,6 +512,7 @@ export default function SmartProjectModule({ arqState, onNavigate, projectId }: 
                 ["especificacoes", "Especificações"],
                 ["medicoes", "Medições"],
                 ["quantitativos", "Quantitativos"],
+                ["orcamento", "Orçamento"],
                 ["timeline", "Timeline"],
                 ["briefing", "Briefing"],
               ].map(([key, label]) => (
@@ -529,6 +531,15 @@ export default function SmartProjectModule({ arqState, onNavigate, projectId }: 
                 </button>
               ))}
             </nav>
+
+            {activeTab === "orcamento" ? (
+              <section className="min-w-0 overflow-hidden rounded-2xl bg-white" aria-label="Orçamento técnico do projeto">
+                <p className="px-4 pt-4 text-xs text-slate-600">Orçamento integrado ao projeto, utilizando o motor comercial existente. Confira medidas, composições e valores antes de aprovar ou enviar à execução.</p>
+                <Suspense fallback={<p className="p-5 text-sm text-slate-600">Carregando orçamento…</p>}>
+                  <RealBudgetEngineStudio arqState={arqState} onNavigate={onNavigate} />
+                </Suspense>
+              </section>
+            ) : null}
 
             {activeTab === "quantitativos" ? <ProjectQuantities projectId={projectId ?? project.id ?? null} /> : null}
 
