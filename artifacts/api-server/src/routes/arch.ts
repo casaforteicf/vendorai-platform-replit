@@ -8790,6 +8790,44 @@ router.get("/arqdor/projects/:id/revision", authenticate, requireRole("super_adm
   return res.json({ id, revision: row.revision });
 });
 
+// MULTI-07: additional membership-scoped CAS route, disabled until ACL migrations
+// and PostgreSQL integration tests pass. Legacy/admin endpoints remain unchanged.
+router.put("/arqdor/projects/:id/member-conditional", authenticate, async (req, res) => {
+  if (process.env.ARQDOR_PROJECT_ACL_ENABLED !== "true") {
+    return res.status(404).json({ error: "Recurso ainda não habilitado." });
+  }
+  const tid = tenantId(req);
+  const id = String(req.params.id || "");
+  const { expectedRevision, contextBlob } = req.body ?? {};
+  if (!id.trim() || typeof expectedRevision !== "string" || !/^\d+$/.test(expectedRevision) ||
+      !contextBlob || typeof contextBlob !== "object" || Array.isArray(contextBlob) || contextBlob.id !== id) {
+    return res.status(400).json({ error: "Projeto ou revisão inválidos." });
+  }
+  if (!req.user?.sub || req.user.tenantId !== tid ||
+      (req.user.accessScope && req.user.accessScope !== "tenant") ||
+      (req.user.actorType && req.user.actorType !== "human")) return res.status(403).json({ error: "Acesso negado." });
+  try {
+    // Atomic membership check in the UPDATE statement; a revoked editor cannot
+    // save using an earlier /edit-access=true result.
+    const [saved] = await db.update(arqdorWorkspaceProjectsTable)
+      .set({ contextBlob, updatedAt: new Date() })
+      .where(and(
+        eq(arqdorWorkspaceProjectsTable.id, id),
+        eq(arqdorWorkspaceProjectsTable.tenantId, tid),
+        sql`xmin::text = ${expectedRevision}`,
+        sql`EXISTS (SELECT 1 FROM arqdor_workspace_members m JOIN users u
+          ON u.id = m.user_id AND u.tenant_id = m.tenant_id
+          WHERE m.tenant_id = ${tid} AND m.project_id = ${id}
+          AND m.user_id = ${req.user.sub} AND m.permission IN ('owner','editor') AND u.active = TRUE)`,
+      )).returning({ revision: sql<string>`xmin::text` });
+    if (!saved) return res.status(409).json({ error: "Revisão incompatível, vínculo revogado ou projeto indisponível." });
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({ id, revision: saved.revision });
+  } catch {
+    return res.status(503).json({ error: "Falha ao validar permissão ou gravar projeto." });
+  }
+});
+
 router.put("/arqdor/projects/:id/conditional", authenticate, requireRole("super_admin", "tenant_admin"), async (req, res) => {
   const tid = tenantId(req);
   const id = String(req.params.id);
