@@ -66,3 +66,9 @@ Nenhum recurso real é ativado por esta entrega isolada.
 - Onde a rota não foi auditada, exibe "Em integração" e não cria navegação falsa.
 - Praça.ai aparece como serviço único, não como marketplace interno do Arqdor.
 - Pendente: endpoint de permissões efetivas por usuário, confirmação das rotas, montagem no App, preferências e gates completos.
+
+## TAD — entrada integrada na aplicação (ainda não ativada em produção)
+- Rota autenticada `/tad` montada em `AppLegacy.tsx` na branch.
+- `TadCentralRoute` busca módulos habilitados do tenant com Bearer token, aborta requisições ao sair, limpa estado ao mudar de tenant e falha fechado em erros.
+- Importante: `nav-modules` NÃO prova permissão efetiva do usuário. Portanto `permittedModules=[]` intencionalmente bloqueia links até integração de endpoint de permissões efetivas. A tela ainda não pode servir de launcher funcional.
+- Não altera a página padrão nem o pós-login. Próximo passo é auditar autorização por usuário e conectar entitlements ao seletor.
