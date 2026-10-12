@@ -51,6 +51,8 @@ export async function storeEncryptedArqdorDraft(
   // phrase while keeping the previous draft unreadable.
   const previous = await readEnvelope(authorized);
   const { key, descriptor } = await deriveArqdorRecoveryKey(passphrase, previous?.descriptor);
+  // Reject a wrong phrase before overwriting an existing encrypted draft.
+  if (previous) await decryptLocalDraft(previous.encrypted, authorized, key);
   const encrypted = await encryptLocalDraft(draft, authorized, current, key);
   await inStore<void>("readwrite", (store, finish) => {
     const request = store.put({ descriptor, encrypted } satisfies StoredEnvelope, id);
